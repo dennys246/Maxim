@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Every experiment record says what it is, in the shape the evidence gate will read** (M1b PR 5a).
+  - Harness rows are stamped where they are written (`scripts/_provenance.py::stamp_harness_row`):
+    `record_kind`, `status` (a refusal is `failed`) and an explicit `mock`.
+  - Verdicts (`stamp_verdict`) name their `kind`, their rows file repo-relative with the sha256 of the bytes
+    they parsed, and a scope naming every row they read (`{"all_rows": true}` for a whole file).
+  - The provenance block names its `harness_family` (`in_process` / `spawning`), stamped by `_provenance`
+    itself. The Exp 56/57 harnesses, which import `maxim` rather than spawn it, now stamp in-process
+    provenance, and a provenance failure there or in their analyzers exits 3 (a refusal) rather than 1 (FAIL).
+    The harness lint refuses in-process provenance in a `maxim` spawner, and the `harness_family` literal
+    outside `_provenance.py`.
+  - An Exp 49 trial whose `maxim` crashed is now a `failed` row, not a trial.
 - **The pre-registration lint governs re-runs** (M1b PR 4).
   - A re-run's data needs its own PRE-DATA declaration, landed first. It is either an amendment scoped to
     the entry (`**Amendment N — <date>, PRE-DATA, for \`<entry>\`, …**`), or, for an experiment that never

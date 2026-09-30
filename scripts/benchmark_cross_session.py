@@ -1024,7 +1024,7 @@ def build_record(
 
 
 def build_failed_record(
-    exc: BaseException, *, trial_pair_id: int, arm: str, scenario: str | None, seed: int, model: str
+    exc: BaseException, *, trial_pair_id: int, arm: str, scenario: str | None, seed: int, model: str, mock: bool
 ) -> dict[str, Any]:
     """The row for a sim that failed (M1b, #1003): written before the fire aborts, so the abort is on the
     record rather than only in a log. Readers exclude it from trials; a resume keeps it and re-runs the key."""
@@ -1038,6 +1038,7 @@ def build_failed_record(
         "scenario": scenario,
         "seed": seed,
         "model": model,
+        "mock": bool(mock),  # M1b PR 5a: every harness row says whether it is a smoke; a gate refuses a mock row
         "provenance": dict(_PROVENANCE),
         "wall_clock_iso": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         **_provenance.failed_row(exc),
@@ -1492,7 +1493,15 @@ def run_benchmark(
         try:
             return run_one_sim(**kwargs)
         except Exception as exc:
-            rec = build_failed_record(exc, trial_pair_id=trial_id, arm=arm, scenario=scenario, seed=seed, model=model)
+            rec = build_failed_record(
+                exc,
+                trial_pair_id=trial_id,
+                arm=arm,
+                scenario=scenario,
+                seed=seed,
+                model=model,
+                mock=bool(kwargs["mock"]),  # every call site passes it: a missing one is a KeyError, not "real"
+            )
             out_f.write(json.dumps(rec) + "\n")
             out_f.flush()
             raise

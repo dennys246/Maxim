@@ -45,10 +45,12 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from _provenance import (  # noqa: E402
+    ProvenanceError,
     assert_repo_interpreter,
     evidence_out_paths,
-    executed_code_provenance,
+    in_process_code_provenance,
     preflight_gated_record_or_exit,
+    stamp_harness_row,
 )
 from exp56 import common as C  # noqa: E402
 from exp57 import common57 as X  # noqa: E402
@@ -394,7 +396,17 @@ def main() -> int:
         C.REPO_ROOT, [args.out], write_experiment_results=args.write_experiment_results, allow_dirty=args.allow_dirty
     )[0]
     preflight = preflight_gated_record_or_exit(C.REPO_ROOT, out_path, allow_dirty=args.allow_dirty)
-    provenance = executed_code_provenance(C.REPO_ROOT, "maxim", out_path=out_path, allow_dirty=args.allow_dirty)
+    import maxim  # noqa: PLC0415
+
+    # In-process provenance (M1b PR 5a): this harness IMPORTS maxim and never spawns it, so the executed code
+    # is the imported package (asserted to be this repo's src), not whatever the `maxim` console script resolves.
+    try:
+        provenance = in_process_code_provenance(
+            C.REPO_ROOT, maxim.__file__, out_path=out_path, allow_dirty=args.allow_dirty
+        )
+    except ProvenanceError as exc:  # the imported maxim is not this repo's src: a refusal, never a FAIL
+        print(f"PROVENANCE: {exc}", file=sys.stderr)
+        return 3
 
     if args.mock:
         server = C.ScriptedBridgeServer(seed=1)
@@ -447,6 +459,7 @@ def main() -> int:
     all_pass = all(report[k]["pass"] for k in check_keys)
     report["all_pass"] = all_pass
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    stamp_harness_row(report, mock=bool(args.mock))  # record_kind / status / mock (M1b PR 5a)
     out_path.write_text(json.dumps(report, indent=2, default=str))
     print(json.dumps({k: report[k].get("pass") for k in check_keys}, indent=2))
     print(f"phase0: {'PASS' if all_pass else 'FAIL'} -> {out_path}")

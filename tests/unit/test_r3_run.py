@@ -257,6 +257,8 @@ def test_offline_campaign_apparatus_and_one_event_per_in_process_arm(tmp_path: P
     assert b["event"]["t_surface"] < a["event"]["t_surface"]
     rows = [json.loads(ln) for ln in out.read_text().splitlines() if ln.strip()]
     assert [r["kind"] for r in rows] == ["apparatus", "event", "event", "event", "event"]
+    # M1b PR 5a: every row is stamped where the campaign writes it; R3 has no mock mode (fakes are injected here)
+    assert {(r["record_kind"], r["status"], r["mock"]) for r in rows} == {("harness_row", "ok", False)}
     g = R.write_gauntlet(rows, ap, campaign_id="smoke")
     assert g["n_cal"] == 1 and g["floor_arm"]["survived"] == 1
     if g.get("tick_period_band_s"):  # one cal row may carry no IQR → no band (never a zero-width one)

@@ -105,7 +105,8 @@ Other status surfaces (the CLAUDE.md active-initiatives line, CHANGELOG, release
    with `record_kind` and `harness_run_id` stamps across sim reports and harnesses, and one hash length.
 3. **Ledger normalisation + format lint** (owner reviews every row's status).
 4. **Prereg lint** (`rerun_`, scoped amendments, `NNdMM`).
-5. **The evidence gate** + the legacy snapshot + the exceptions file.
+5. **The evidence gate** + the legacy snapshot + the exceptions file, split in two: **5a** stamps the writers
+   the gate reads, **5b** is the gate.
 
 ## PR 2 as built (#1003, 2026-09-29)
 
@@ -130,7 +131,8 @@ harnesses dropped failed runs. Owner decisions (2026-09-29), all the recommended
 What PR 5 can rely on, and must apply (from the PR 2 review round):
 - **A row is judged only if it says how it ended.** `record_kind` present and `status` absent means the
   writer does not stamp an ending (Exp 44's `campaign_start`, Exp 49/56/57 rows, the instrument checks):
-  fail closed as sim-run evidence. `status: "failed"` is never evidence. A row with no `record_kind` and no
+  fail closed as sim-run evidence (since PR 5a, the Exp 49/56/57 rows and the instrument checks do stamp one;
+  Exp 44's `campaign_start` still does not). `status: "failed"` is never evidence. A row with no `record_kind` and no
   `status` is legacy (the frozen snapshot).
 - **An ok row with no `sims`, or an empty list, carries no sim evidence** (an in-process record, or a mock
   run; mock rows also say `mock: true`, Exp 37 included). Judge the sims, not the row's claim about them.
@@ -211,3 +213,55 @@ For PR 5:
   there, while every entry can read PASS.
 - Wire the exceptions file into this lint too (an `EXCEPTED` status). Otherwise, now that the in-script lists
   are frozen, a future legitimate exception has no path.
+
+## PR 5a as built (2026-09-30)
+
+Every record the gate will read from the writers below now says what it is, stamped where it is written:
+
+- **Harness rows** go through `scripts/_provenance.py::stamp_harness_row`: `record_kind: "harness_row"`, `status`
+  and an explicit `mock`. `status` is `failed` when the row carries a `refusal` (`is not None`, the verdicts' own
+  reading) or already said so, else `ok`; any other existing `status` is refused rather than rewritten. Users: the
+  survival writers (Exp 60, 61, 62, R3), the Exp 56/57 campaigns and instrument checks, and the Exp 49 trials (a
+  trial whose `maxim` exited non-zero is `failed`; the scripted arm is `mock`). Exp 37's failed row (`mock` now a
+  required argument) and the Exp 44 manifest (`mock` = `--dry-run`) carry `mock` too.
+- **Verdicts** go through `stamp_verdict`: `record_kind: "verdict"`, a `kind` (`exp56_verdict` … `exp62_verdict`;
+  the gate owns each kind's pass values), `data` repo-relative, `data_sha256` over the bytes the verdict parsed
+  (the caller reads the file once), and a `scope` naming every row the verdict read: its selectors (`run_ids`,
+  `campaign_id`, which covers all of a campaign's kinds, since the Exp 61/62 verdicts read apparatus and donor rows
+  for drift and the one-code-hash check), or `{"all_rows": true}`. An empty scope or a `None` selector is refused.
+  The Exp 56/57 analyzers stamp their own `provenance`.
+- **`harness_family`** is stamped inside the provenance block by `_provenance` (`in_process` / `spawning`). Exp
+  56/57 import `maxim` and never spawn it, so they moved to `in_process_code_provenance(repo, maxim.__file__)`
+  (the console-script probe described a different package). A provenance failure there, or in their analyzers,
+  exits 3 (a refusal), never 1 (FAIL); their `--mock` runs are no longer exempt. `lint_harness_provenance.py`
+  refuses `in_process_code_provenance` in any file that spawns `maxim`, and the `"harness_family"` literal in any
+  file under `scripts/` but `_provenance.py`: presence checks, which catch forgetting, not evasion.
+- The harness edits fire no ledger `Re-run on:` trigger and match no pre-registration's pinned hash.
+
+Owner decisions (2026-09-30), after the review round and a design pass on widening 5a:
+- **Widen, as PR 5a-2 before 5b:** stamp every writer below. Its design pass found per-line status in event
+  logs fails open (data lines of an aborted run read `ok`), so 5a-2 gets a run-level terminal status per
+  `harness_run_id`, verdicts out of the exp53 log, a `diagnosis` kind, and its own design round.
+- **Instrument checks** get `record_kind: "instrument_check"` with a `pass` field the gate requires true (5a-2
+  moves the Exp 56/57 checks off `stamp_harness_row`); the Exp 44 `campaign_start` row becomes
+  `record_kind: "harness_header"`.
+- **Event logs are judged per run group** (`harness_run_id`), not per file; row files and verdicts stay per file.
+- **`JsonlLog` refuses everywhere** (exit 3) when the imported `maxim` is not this repo's src, scratch logs too.
+- **For 5b:** only `harness_row`, `verdict` and `sim_report` count as new support; an instrument check, diagnosis
+  or header never does.
+- R3's re-admitted rows stay `failed` (noted below).
+
+For PR 5b:
+- **Not stamped yet (fail closed at the gate; PR 5a-2):** `orient_backbone/exp53_cross_context_readout.py` (T1-10's
+  `53d53_*`), the h1 DoA sweep / part-c writers (T1-7), the cradle phase-A scripted output (T1-9), `exp58_run.py`,
+  `exp58_offline_gates.py`, `exp60_water_check.py` (the gate-(ii) records Exp 60/62 cite), `survival_world/
+  instrument_check.py`, `exp62_precheck.py`, and R3's report and gauntlet.
+- The Exp 49 rows carry no `sims` (they spawn `--mode live`, not `--sim`), so under the spawning-family rule
+  they can never be ESTABLISHED.
+- R3's report re-admits rows whose only refusal is the tick band (Amendment 2). Those rows are stamped `failed`,
+  so a gate that skips failed rows never judges rows the report counts: less strict, not more.
+- An instrument check is stamped `ok` whether or not `all_pass` holds; `ok` says how the run ended, not what it
+  measured.
+- `kind` means the row type on survival rows ("receiver") and the verdict kind on verdicts; key on `record_kind`
+  first. `stamp_verdict` resolves `data` through a symlink, so the gate's no-symlink rule reads the verdict's
+  own path.
