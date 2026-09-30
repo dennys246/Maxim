@@ -495,6 +495,7 @@ def compute_verdict(rows: list[dict[str, Any]], *, campaign_id: str | None) -> d
         cause = "; ".join(refused) or "no cause recorded"
     return {
         "_format_version": "1.0",
+        "record_kind": "verdict",  # M1b (#1003)
         "kind": "exp62_verdict",
         "campaign_id": campaign_id,
         "what_this_is": "rung A: does the shipped body carry the fear across pools — bounded to this apparatus class",

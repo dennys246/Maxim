@@ -228,6 +228,7 @@ def load_records(in_path: Path, *, expected_schema: str) -> list[dict[str, Any]]
         raise AnalyzerError(f"Input file does not exist: {in_path}")
     records: list[dict[str, Any]] = []
     seen_versions: set[str] = set()
+    n_failed = 0
     for ln, line in enumerate(in_path.read_text().splitlines(), start=1):
         line = line.strip()
         if not line:
@@ -261,7 +262,14 @@ def load_records(in_path: Path, *, expected_schema: str) -> list[dict[str, Any]]
             raise AnalyzerError(
                 f"{in_path}:{ln} unexpected experiment {rec.get('experiment')!r}; expected {EXPERIMENT_ID!r}"
             )
+        # A failed run is a row too (status "failed", harness 1.1, M1b #1003): it is not a trial. A legacy
+        # row carries no status and is a trial.
+        if rec.get("status") == "failed":
+            n_failed += 1
+            continue
         records.append(rec)
+    if n_failed:
+        print(f"note: {n_failed} failed run(s) recorded in {in_path} and excluded from the trials", file=sys.stderr)
     if not records:
         raise AnalyzerError(f"{in_path} contains zero records.")
     mismatched = {v for v in seen_versions if v != expected_schema}

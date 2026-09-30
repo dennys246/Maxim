@@ -74,7 +74,7 @@ logger = logging.getLogger(__name__)
 from maxim.simulation.report import capture_start_provenance, run_provenance  # noqa: E402
 from maxim.simulation.sim_types import (  # noqa: E402
     SimulationResult,
-    load_resume_context as _load_resume_context,
+    load_resume_context_at as _load_resume_context_at,
     build_resume_prompt as _build_resume_prompt,
     build_basic_analysis as _build_basic_analysis,
 )
@@ -433,6 +433,83 @@ def _finish_runner(
             {"status": status, "reason": reason, "summary": f"{runner} ended: {reason}", "initiated_by": runner}
         )
     stop_event.set()
+
+
+def _restore_aut_from_session(
+    resume_session: str | None,
+    *,
+    persistent_agent: Any,
+    aut_hippocampus: Any,
+    aut_nac: Any,
+    aut_memory_hub: Any,
+) -> dict[str, Any] | None:
+    """Restore the AUT's stores from ``--resume-sim``'s session directory, and say what happened (#1003).
+
+    ``None`` when the run is not a resume. Otherwise ``{"requested", "state_dir", "stores"}``, one outcome per
+    store: ``loaded``; ``absent`` (the prior session never wrote it); ``failed:<Exc>``; ``no_store_in_run``
+    (written, but this run has no such store); ``skipped_persistent_agent``; ``not_restored``. The directory is
+    the EXACT name given; the resume prompt resolves the name separately and also accepts a prefix (#1009),
+    which :func:`maxim.simulation.report.resume_stamp` checks. Restores exactly as before: stamping only.
+    """
+    if not resume_session:
+        return None
+    from maxim.utils.paths import sim_reports as _sim_reports_dir
+
+    prev_dir = _sim_reports_dir() / resume_session
+    paths = {name: prev_dir / f"aut_{name}.json" for name in ("hippocampus", "nac", "ec", "atl")}
+    record: dict[str, Any] = {"requested": resume_session, "state_dir": str(prev_dir.resolve()), "stores": {}}
+    stores = record["stores"]
+    # HANDLE seam (a), branch 2: gated on persistent_agent is None — an
+    # adopted agent already restored its live state via auto_load at handle
+    # construction; re-loading a session AUT file here would CLOBBER it.
+    if persistent_agent is not None:
+        for name, path in paths.items():
+            stores[name] = "skipped_persistent_agent" if path.exists() else "absent"
+        return record
+    if aut_hippocampus is None and aut_nac is None:
+        for name, path in paths.items():
+            stores[name] = "not_restored" if path.exists() else "absent"
+        return record
+
+    # The log lines keep their old spelling: operators grep them (e.g. "Restored AUT EC", Roy 5a protocol).
+    display = {"hippocampus": "hippocampus", "nac": "NAc", "ec": "EC", "atl": "ATL"}
+
+    def _restore(name: str, store: Any, load: Any, describe: Any) -> None:
+        path = paths[name]
+        if not path.exists():
+            stores[name] = "absent"
+        elif store is None:
+            stores[name] = "no_store_in_run"
+        else:
+            try:
+                load(str(path))
+                stores[name] = "loaded"
+                logger.info("Restored AUT %s from %s%s", display[name], path, describe())
+            except Exception as e:
+                stores[name] = f"failed:{type(e).__name__}"
+                logger.debug("Failed to restore AUT %s: %s", display[name], e)
+
+    _restore(
+        "hippocampus",
+        aut_hippocampus,
+        lambda p: aut_hippocampus.load(p),
+        lambda: f" ({len(aut_hippocampus)} memories)",
+    )
+    # apply_decay=False: sims are tick-anchored (agent_loop §8.5); wall-clock elapsed between a training run
+    # and its --resume-sim is the OPERATOR's schedule, not agent-experienced time — decaying here would make
+    # resume-based harnesses (Exp 44's tau-hold pre-load) silently lose their held cluster biases and turn the
+    # resume gap into an unrecorded experimental variable (review fold, Arch #1 + Exec #2, cross-confirmed).
+    _restore(
+        "nac",
+        aut_nac,
+        lambda p: aut_nac.load(p, apply_decay=False),
+        lambda: f" ({sum(len(v) for v in aut_nac._links.values())} links)",
+    )
+    aut_ec = aut_memory_hub.ec if aut_memory_hub is not None else None
+    _restore("ec", aut_ec, lambda p: aut_ec.load(p), lambda: f" ({len(aut_ec._substrate_nodes)} substrate nodes)")
+    aut_atl = aut_memory_hub.atl if aut_memory_hub is not None else None
+    _restore("atl", aut_atl, lambda p: aut_atl.load(p), lambda: "")
+    return record
 
 
 def _resolve_finish_reason(orch_error: Any, finish_context: dict | None, operator_stop: threading.Event) -> str:
@@ -943,53 +1020,14 @@ def start_simulation_mode(
             entity_ref,
         )
 
-    # Restore AUT state from previous session if resuming.
-    # HANDLE seam (a), branch 2: gated on persistent_agent is None — an
-    # adopted agent already restored its live state via auto_load at handle
-    # construction; re-loading a session AUT file here would CLOBBER it.
-    if persistent_agent is None and resume_session and (aut_hippocampus is not None or aut_nac is not None):
-        from maxim.utils.paths import sim_reports as _sim_reports_dir
-
-        prev_dir = _sim_reports_dir() / resume_session
-        hippo_path = prev_dir / "aut_hippocampus.json"
-        nac_path = prev_dir / "aut_nac.json"
-        ec_path = prev_dir / "aut_ec.json"
-        atl_path = prev_dir / "aut_atl.json"
-        if aut_hippocampus is not None and hippo_path.exists():
-            try:
-                aut_hippocampus.load(str(hippo_path))
-                logger.info("Restored AUT hippocampus from %s (%d memories)", hippo_path, len(aut_hippocampus))
-            except Exception as e:
-                logger.debug("Failed to restore AUT hippocampus: %s", e)
-        if aut_nac is not None and nac_path.exists():
-            try:
-                # apply_decay=False: sims are tick-anchored (agent_loop
-                # §8.5); wall-clock elapsed between a training run and its
-                # --resume-sim is the OPERATOR's schedule, not agent-
-                # experienced time — decaying here would make resume-based
-                # harnesses (Exp 44's tau-hold pre-load) silently lose
-                # their held cluster biases and turn the resume gap into
-                # an unrecorded experimental variable (review fold,
-                # Arch #1 + Exec #2, cross-confirmed).
-                aut_nac.load(str(nac_path), apply_decay=False)
-                nac_links = sum(len(v) for v in aut_nac._links.values())
-                logger.info("Restored AUT NAc from %s (%d links)", nac_path, nac_links)
-            except Exception as e:
-                logger.debug("Failed to restore AUT NAc: %s", e)
-        _aut_ec = aut_memory_hub.ec if aut_memory_hub is not None else None
-        if _aut_ec is not None and ec_path.exists():
-            try:
-                _aut_ec.load(str(ec_path))
-                logger.info("Restored AUT EC from %s (%d substrate nodes)", ec_path, len(_aut_ec._substrate_nodes))
-            except Exception as e:
-                logger.debug("Failed to restore AUT EC: %s", e)
-        _aut_atl = aut_memory_hub.atl if aut_memory_hub is not None else None
-        if _aut_atl is not None and atl_path.exists():
-            try:
-                _aut_atl.load(str(atl_path))
-                logger.info("Restored AUT ATL from %s", atl_path)
-            except Exception as e:
-                logger.debug("Failed to restore AUT ATL: %s", e)
+    # Restore AUT state from previous session if resuming; what loaded is stamped into the report (#1003).
+    resume_record = _restore_aut_from_session(
+        resume_session,
+        persistent_agent=persistent_agent,
+        aut_hippocampus=aut_hippocampus,
+        aut_nac=aut_nac,
+        aut_memory_hub=aut_memory_hub,
+    )
 
     # Attach bio-system tracers based on --debug flags / env vars
     def _env_trace(var: str) -> bool:
@@ -2247,7 +2285,8 @@ def start_simulation_mode(
 
     # ── Inject initial goal (or resume context) into orchestrator ────────
     if resume_session:
-        resume_data = _load_resume_context(resume_session)
+        resume_data, resume_dir = _load_resume_context_at(resume_session)
+        resume_record.update(context_dir=str(resume_dir) if resume_dir else None, context_loaded=bool(resume_data))
         if resume_data:
             resume_prompt = _build_resume_prompt(resume_data, goal, mode)
             orchestrator_source.inject_cli(resume_prompt, salience=1.0, novelty=1.0)
@@ -3517,7 +3556,9 @@ def start_simulation_mode(
         # timestamp and diverge from the JSONL log's session_id field.
         session_id=session_id,
         started_at=start_time,
-        provenance=run_provenance(start_provenance, llm_worker=orch_llm_worker, aut_worker=aut_llm_worker),
+        provenance=run_provenance(
+            start_provenance, llm_worker=orch_llm_worker, aut_worker=aut_llm_worker, resume=resume_record
+        ),
     )
 
     # Attach fixture/substrate metrics if present

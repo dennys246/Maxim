@@ -317,12 +317,12 @@ def test_a_leaked_git_variable_cannot_point_the_flag_or_the_hash_elsewhere(
     other = _make_repo(tmp_path / "other")
     (other / "src" / "a.py").write_text("x = 2\n")
     _git(other, "commit", "-q", "-am", "same content as the dirty tree")
-    own_hash = code_tree.head_hash(repo, 12)
+    own_hash = code_tree.head_commit(repo)
     monkeypatch.setenv("GIT_DIR", str(other / ".git"))
     monkeypatch.setenv("GIT_WORK_TREE", str(other))
     monkeypatch.setenv("GIT_LITERAL_PATHSPECS", "1")
     assert code_tree.tree_difference(repo) == "src/a.py: content differs from HEAD"
-    assert code_tree.head_hash(repo, 12) == own_hash
+    assert code_tree.head_commit(repo) == own_hash
 
 
 def test_code_git_cannot_map_is_unknown_and_reads_dirty(repo: Path, tmp_path: Path) -> None:

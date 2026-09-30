@@ -295,8 +295,13 @@ class TestNonePathUnchanged:
         src = inspect.getsource(start_simulation_mode)
         # Branch 1: factory call skipped on adoption
         assert "_aut_instance = _adopted.instance" in src
-        # Branch 2: resume-session file-load gated
-        assert "if persistent_agent is None and resume_session" in src
+        # Branch 2: resume-session file-load gated. The restore moved to a module-level helper (#1003), so
+        # pin BOTH the call site handing it the adopted agent and the helper's skip.
+        assert "_restore_aut_from_session(\n        resume_session,\n        persistent_agent=persistent_agent," in src
+        from maxim.simulation.orchestrator import _restore_aut_from_session
+
+        restore_src = inspect.getsource(_restore_aut_from_session)
+        assert "if persistent_agent is not None:" in restore_src and "skipped_persistent_agent" in restore_src
         # Branch 3: session-dir AUT snapshot skipped
         assert "if persistent_agent is not None:" in src and "no session AUT snapshot" in src
         # Subprocess-tool env gates (bash + git_diff/run_tests since

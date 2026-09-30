@@ -269,7 +269,7 @@ class TestExp44HarnessFork:
 
     def test_record_default_mode_is_substrate_primary(self):
         harness = _load(_HARNESS_PATH, "bench_exp42_fork_default")
-        rec = harness._record("cradle_pref_a", 42, ["warmth_beta_safe_warm_self"], {}, mock=True, git_hash="x")
+        rec = harness._record("cradle_pref_a", 42, ["warmth_beta_safe_warm_self"], {}, mock=True, git_hash="x", sims=[])
         assert rec["aut_mode"] == "substrate-primary"
         assert rec["env_body_state_prompt"] == ""
         assert rec["env_coach_body_layers_disabled"] == ""
@@ -279,7 +279,14 @@ class TestExp44HarnessFork:
         monkeypatch.setenv("MAXIM_ENABLE_BODY_STATE_PROMPT", "1")
         monkeypatch.setenv("MAXIM_DISABLE_COACH_BODY_LAYERS", "1")
         rec = harness._record(
-            "cradle_pref_a", 42, ["warmth_beta_safe_warm_self"], {}, mock=True, git_hash="x", aut_mode="llm-primary"
+            "cradle_pref_a",
+            42,
+            ["warmth_beta_safe_warm_self"],
+            {},
+            mock=True,
+            git_hash="x",
+            sims=[],
+            aut_mode="llm-primary",
         )
         assert rec["aut_mode"] == "llm-primary"
         assert rec["env_body_state_prompt"] == "1"

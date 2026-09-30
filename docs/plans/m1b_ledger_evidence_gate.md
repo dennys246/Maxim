@@ -104,3 +104,42 @@ Other status surfaces (the CLAUDE.md active-initiatives line, CHANGELOG, release
 3. **Ledger normalisation + format lint** (owner reviews every row's status).
 4. **Prereg lint** (`rerun_`, scoped amendments, `NNdMM`).
 5. **The evidence gate** + the legacy snapshot + the exceptions file.
+
+## PR 2 as built (#1003, 2026-09-29)
+
+The first approach note was DO-NOT-BUILD in its own design pass: the sim reports a harness spawns live
+under the gitignored `data/`, so a row listing `session_id`s names files the gate can never read, and three
+harnesses dropped failed runs. Owner decisions (2026-09-29), all the recommended options:
+
+- **E1 echo:** a harness row carries `sims`, the evidence of each report its spawn wrote
+  (`_provenance.sim_evidence`), and `depends_on`, the evidence of every session its home already held. The
+  gate judges the row alone.
+- **E2 failed runs are rows** (`status: "failed"`); readers exclude them, and a row with no `status` (every
+  legacy row) is a trial.
+- **E3 `record_kind` on evidence writers only:** `sim_report`, `harness_row` (every harness the lint's family
+  1 covers, plus Exp 56/57), `verdict` (Exp 56, 57, 60, 61, 62). Any other file fails closed at the gate.
+- **E4 lineage:** the report's `provenance.resume` says whether a `--resume-sim` loaded (both resolutions
+  agree and every store the prior session wrote was restored); the harness's `depends_on` is the lineage
+  authority. Exp 41 gets a fresh home. Exp 37 Arm A and the Arm C prior do too: the same contamination,
+  found while building this PR by the new `depends_on` stamp, approved by the owner at review (2026-09-29).
+- **Fence:** the resume stamp is an owner-approved fenced touch of `orchestrator.py`, paid for by extracting
+  the restore to `_restore_aut_from_session` (`start_simulation_mode` 3313 -> 3277).
+
+What PR 5 can rely on, and must apply (from the PR 2 review round):
+- **A row is judged only if it says how it ended.** `record_kind` present and `status` absent means the
+  writer does not stamp an ending (Exp 44's `campaign_start`, Exp 49/56/57 rows, the instrument checks):
+  fail closed as sim-run evidence. `status: "failed"` is never evidence. A row with no `record_kind` and no
+  `status` is legacy (the frozen snapshot).
+- **An ok row with no `sims`, or an empty list, carries no sim evidence** (an in-process record, or a mock
+  run; mock rows also say `mock: true`, Exp 37 included). Judge the sims, not the row's claim about them.
+- **Bind each sim to its row by code, not by name:** `sims[].code_tree_sha256` equals the row's
+  `provenance.code_tree_sha256`, and read `sims[].working_tree_dirty_src_scripts` (the prereg lint reads
+  only the row's own block, so a sim that went dirty mid-fire shows only there). The key is `record_kind`;
+  `_record_kind` is the `actions.jsonl` header marker.
+
+Also: the run id is a JOIN KEY, not evidence (a report binds to a harness only when a harness
+row names its session); every hash is the full commit id; a harness row's own `provenance` block is the one
+`executed_code_provenance` returned (with `allow_dirty` exactly when granted), nested under `provenance` in
+every family-1 harness (the legacy per-row `git_hash` field says where the harness lives and is never read). The design pass's round-2 and round-3 folds are in
+the PR. Follow-up: [#1009](https://github.com/dennys246/Maxim/issues/1009) (one resolution for
+`--resume-sim`).

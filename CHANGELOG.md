@@ -25,6 +25,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A harness row names the sims it ran, and says what each one ran under** (M1b PR 2, #1003).
+  - The sim reports a harness spawns live under the gitignored `data/`, so the committed row is the only
+    record a ledger gate can read. Each harness mints a run id (`scripts/_provenance.py::harness_run_id`,
+    always fresh; an inherited `MAXIM_HARNESS_RUN_ID` is kept as `parent_harness_run_id`) and sets it on
+    every sub-sim; the sim stamps it into `report.json` as `provenance.harness_run_id`.
+  - The harness then reads back the ONE report its spawn wrote (`find_own_report`: new since a snapshot
+    taken just before the spawn, carrying its run id), never the newest directory, and echoes that
+    report's evidence into the row as `sims` (`sim_evidence`: session, finish reason, `ts`, code,
+    dirty flag, per-role profile and context). `depends_on` echoes every session the home already held
+    (a copied or transplanted home, a `--resume-sim` target). A sim that exits non-zero, or whose report
+    cannot be identified, is a failed run (`spawn_evidence`).
+  - Exp 37 (`benchmark_cross_session.py`) and Exp 41 now stamp the harness `provenance` block into every
+    record; before, both discarded their preflight's result, so no record said which code ran and an
+    `--allow-dirty` run never recorded its allowance. Exp 41, Exp 42 and cradle-mother nest the block
+    under `provenance` (Exp 42 and cradle flattened it); Exp 44's manifest rows do too.
+  - **A failed run is a row** (`status: "failed"`, the reason and whatever evidence exists), not a
+    dropped trial: Exp 41, Exp 42 and cradle-mother dropped them, and Exp 37 aborted the fire without a
+    record (it still aborts, after writing the row). The analyzers exclude failed rows and report how many
+    they excluded; a row with no `status` (every committed row) is still a trial. A resume re-runs a
+    failed key; Exp 37's resume prune keeps failed rows rather than erasing the record of an abort.
+  - Every evidence record says what it is: `record_kind` is `sim_report` on every sim report,
+    `harness_row` on the rows of every harness that spawns `maxim` and of Exp 56/57, and `verdict` on the
+    Exp 56, 57, 60, 61 and 62 verdicts.
+  - A resume says whether it loaded: `report.json` carries `provenance.resume` with the requested name,
+    the directory the stores were read from and the one the resume prompt resolved, each store's outcome
+    (`loaded`, `absent`, `failed:<Exc>`, ...) and `resume_loaded`, true only when both resolutions agree
+    and every store the prior session wrote was restored. The two resolve `--resume-sim` separately (the
+    prompt also takes a prefix; #1009 is the root cause), so a prefix resume injected the prior summary
+    and restored no memory, silently. Exp 37 and Exp 44 now refuse such a resume. Stamping only: the
+    restore itself is unchanged (`orchestrator.py::_restore_aut_from_session`, extracted from
+    `start_simulation_mode`, which shrinks 3313 -> 3277 lines; an owner-approved fenced touch).
+  - A failure found after the report (a missing `actions.jsonl`, an incomplete cradle fade) keeps that
+    report's evidence in the failed row; a failed row's `reason` is its first line, capped at 500
+    characters (the stderr tail stays in the run log). Exp 37 rows say `mock: true` for a mock fire.
+  - `scripts/lint_harness_provenance.py` checks the stamps on the AST: a harness that spawns `maxim` must
+    call `executed_code_provenance(..., out_path=...)` (the preflight alone no longer passes) and name
+    `record_kind`; one that spawns `--sim` must also set `MAXIM_HARNESS_RUN_ID` on the spawn, find its
+    report through the finder and echo it.
+- **Changed:** every provenance stamp names the FULL commit id (`utils/code_tree.head_commit`): sim reports
+  stamped 12 characters and harnesses git's default abbreviation, so equal commits compared unequal. A
+  survival campaign resumed across this change refuses, because its rows then name one commit two ways.
+  Exp 37 Arm A, the Arm C prior and every Exp 41 run now start from a fresh data home: a relaunch into an
+  existing workdir used to inherit the earlier attempt's persisted substrate (#446). Exp 37's
+  `HARNESS_VERSION` is 1.1; its `SCHEMA_VERSION` stays 1.0 (the fields are additive, and its analyzer
+  refuses any other schema, so the committed files must still reproduce without a flag).
+
 - **A sim's `report.json` records which code, interpreter, model profile and context budget it ran
   under** (mechanization backlog M1, first half).
   - New `provenance` block, in `scripts/_provenance.py`'s vocabulary so the prereg lint reads it as it

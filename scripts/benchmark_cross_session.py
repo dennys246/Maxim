@@ -50,10 +50,17 @@ from typing import Any
 # Make `maxim` importable when run from the repo root.
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO_ROOT / "src"))
+sys.path.insert(0, str(_REPO_ROOT / "scripts"))
+import _provenance  # noqa: E402  (scripts/_provenance.py, loaded from THIS tree)
 
 # ─── Constants (frozen at v1) ────────────────────────────────────────────
 
-HARNESS_VERSION = "1.0"
+# 1.1 (M1b, #1003): every record carries record_kind/status, the harness `provenance` block, `sims` (the echoed
+# evidence of the sim report the run wrote, found by harness run id) and `depends_on` (every session the run's
+# home inherited); a failed sim is recorded as a status "failed" row before the fire aborts. All ADDITIVE, so
+# SCHEMA_VERSION stays 1.0: the analyzer refuses any other schema, and the committed 1.0 files must still
+# reproduce without a flag.
+HARNESS_VERSION = "1.1"
 SCHEMA_VERSION = "1.0"
 EXPERIMENT_ID = "exp37_cross_session_graduation"
 
@@ -224,6 +231,9 @@ class SimResult:
     data_home: Path
     report: dict[str, Any]
     actions: list[dict[str, Any]]
+    # The report's echoed evidence (_provenance.sim_evidence) and that of every session the home already held.
+    evidence: dict[str, Any] = dataclasses.field(default_factory=dict)
+    depends_on: list[dict[str, Any]] = dataclasses.field(default_factory=list)
 
 
 class CostCapExceeded(RuntimeError):
@@ -303,9 +313,14 @@ def run_one_sim(
     responsible for seeding ``data_home`` with the prior session's state
     (typically via shutil.copytree from the prior arm's home).
     """
+    run_id = _provenance.harness_run_id()
     if mock:
-        return _mock_sim(data_home, goal, model, max_turns, resume_session, mock_failure_count)
-    result = _real_sim(data_home, goal, model, max_turns, resume_session, extra_env or {}, timeout_s)
+        # The mock writes its report the way a sim does (run id included), and is found the same way, so CI
+        # exercises the finder and the resume check.
+        before = _provenance.list_sessions(data_home)
+        _mock_sim(data_home, goal, model, max_turns, resume_session, mock_failure_count, run_id=run_id)
+        return _own_session(data_home, run_id, before, returncode=0, resume_session=resume_session)
+    result = _real_sim(data_home, goal, model, max_turns, resume_session, extra_env or {}, timeout_s, run_id)
     # Inter-sub-sim pacing (--pace-s): let the cloud provider's per-minute rate
     # bucket recover between sub-sims. Sequential runs of dense-prompt sub-sims
     # otherwise build sustained ITPM that triggers 429s mid-run (the 2026-06-08
@@ -450,11 +465,13 @@ def _real_sim(
     resume_session: str | None,
     extra_env: dict[str, str],
     timeout_s: int,
+    run_id: str,
 ) -> SimResult:
-    """Subprocess maxim --sim, parse the resulting report.json + actions.jsonl."""
+    """Subprocess maxim --sim, parse the report.json + actions.jsonl it wrote (found by run id)."""
     env = os.environ.copy()
     env["MAXIM_DATA_HOME"] = str(data_home)
     env.update(extra_env)
+    env["MAXIM_HARNESS_RUN_ID"] = run_id
 
     # Symlink the models cache so resumed runs don't re-download GGUFs.
     # Per CLAUDE.md "Parallel sessions use worktrees" — sharing model weights
@@ -567,6 +584,7 @@ def _real_sim(
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"sim_{int(time.time() * 1000)}.log"
 
+    before = _provenance.list_sessions(data_home)  # after the caller's copytree: what the home inherited
     try:
         proc = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=timeout_s)
     except subprocess.TimeoutExpired as exc:
@@ -578,41 +596,36 @@ def _real_sim(
 
     # Persist full logs so an exit-nonzero error message doesn't truncate the root cause.
     log_path.write_text(f"exit={proc.returncode}\ncmd={cmd!r}\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}")
-    if proc.returncode != 0:
+    try:
+        return _own_session(data_home, run_id, before, returncode=proc.returncode, resume_session=resume_session)
+    except _provenance.SimRunFailed as exc:
         tail = (proc.stderr or proc.stdout or "")[-1500:]
-        raise RuntimeError(
-            f"maxim --sim exited {proc.returncode} (resume={resume_session!r}, home={data_home}). "
-            f"Full log: {log_path}\n{tail}"
+        raise type(exc)(
+            f"{exc} (resume={resume_session!r}, home={data_home}). Full log: {log_path}\n{tail}",
+            sims=exc.sims,
+            detail=exc.detail,
+        ) from exc
+
+
+def _own_session(
+    data_home: Path, run_id: str, before: set[str], *, returncode: int, resume_session: str | None
+) -> SimResult:
+    """The session this spawn wrote -- found by run id among the directories new since ``before``, never the
+    newest one -- with its evidence and that of every session the home inherited (``depends_on``). A resume
+    whose report says the prior state did not load (``provenance.resume.resume_loaded`` false: a prefix
+    ``--resume-sim`` that restored no memory, a store that failed to load, #1009) fails: the arm would
+    measure a run that never resumed. See ``simulation/report.py::save_action_log`` for the actions.jsonl
+    Stage-0b header contract: the first line is ``{"_record_kind": "header", ...}`` and is skipped."""
+    session_dir, report = _provenance.spawn_evidence(data_home, run_id, before, returncode=returncode)
+    evidence = _provenance.sim_evidence(session_dir, report)
+    if resume_session is not None and not ((report.get("provenance") or {}).get("resume") or {}).get("resume_loaded"):
+        raise _provenance.SimRunFailed(
+            f"--resume-sim {resume_session!r} did not load the prior session's state "
+            f"(resume stamp: {(report.get('provenance') or {}).get('resume')!r})",
+            sims=[evidence],
         )
-
-    return _load_latest_session(data_home, exclude=resume_session)
-
-
-def _load_latest_session(data_home: Path, *, exclude: str | None) -> SimResult:
-    """Pick the newest report.json under ``data_home/sim_reports/`` that isn't
-    the excluded (resumed-prior) session.
-
-    Exclude match is on the exact session-id directory name, NOT a
-    substring of the full path — substring matching is fragile when a
-    session_id is itself a substring of another. See
-    ``simulation/report.py::save_action_log`` for the actions.jsonl
-    Stage-0b header contract: the first line is
-    ``{"_record_kind": "header", "_format_version": ...}`` and consumers
-    MUST skip it before treating per-line records as actions.
-    """
-    reports_dir = data_home / "sim_reports"
-    if not reports_dir.exists():
-        raise RuntimeError(f"sim_reports/ missing under {data_home}")
-    candidates = sorted(
-        (p for p in reports_dir.glob("*/report.json") if exclude is None or p.parent.name != exclude),
-        key=lambda p: p.stat().st_mtime,
-    )
-    if not candidates:
-        raise RuntimeError(f"No new report.json under {reports_dir} (exclude={exclude!r})")
-    report_path = candidates[-1]
-    session_id = report_path.parent.name
-    report = json.loads(report_path.read_text())
-    actions_path = report_path.parent / "actions.jsonl"
+    session_id = session_dir.name
+    actions_path = session_dir / "actions.jsonl"
     actions: list[dict[str, Any]] = []
     if actions_path.exists():
         for line in actions_path.read_text().splitlines():
@@ -633,6 +646,8 @@ def _load_latest_session(data_home: Path, *, exclude: str | None) -> SimResult:
         data_home=data_home,
         report=report,
         actions=actions,
+        evidence=evidence,
+        depends_on=_provenance.depends_on(data_home, before),
     )
 
 
@@ -643,8 +658,11 @@ def _mock_sim(
     max_turns: int,
     resume_session: str | None,
     mock_failure_count: int,
-) -> SimResult:
-    """Write synthetic artifacts for smoke testing — no subprocess, no LLM."""
+    *,
+    run_id: str,
+) -> None:
+    """Write synthetic artifacts for smoke testing — no subprocess, no LLM. The report carries the stamps a
+    real sim writes (record_kind, the harness run id, a resume stamp) so the caller finds it the real way."""
     session_id = f"mock_{int(time.time() * 1000)}_{os.urandom(2).hex()}"
     session_dir = data_home / "sim_reports" / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
@@ -721,6 +739,23 @@ def _mock_sim(
         "cost_usd": 0.0 if _zero else 0.02,
         "total_input_tokens": 0 if _zero else 1000,
         "total_output_tokens": 0 if _zero else 200,
+        "record_kind": "sim_report",
+        "mock": True,  # a synthetic report: its rows say so, and a gate never reads them as evidence
+        "ts": base_ts,
+        "provenance": {
+            "harness_run_id": run_id,
+            **(
+                {
+                    "resume": {
+                        "requested": resume_session,
+                        "resume_loaded": True,
+                        "resumed_from_session": resume_session,
+                    }
+                }
+                if resume_session is not None
+                else {}
+            ),
+        },
     }
     (session_dir / "report.json").write_text(json.dumps(report))
     with (session_dir / "actions.jsonl").open("w") as f:
@@ -741,7 +776,6 @@ def _mock_sim(
         )
         for a in actions:
             f.write(json.dumps(a) + "\n")
-    return SimResult(session_id=session_id, data_home=data_home, report=report, actions=actions)
 
 
 # ─── Metrics ─────────────────────────────────────────────────────────────
@@ -959,9 +993,15 @@ def build_record(
         "schema_version": SCHEMA_VERSION,
         "experiment": EXPERIMENT_ID,
         "harness_version": HARNESS_VERSION,
+        "record_kind": "harness_row",
+        "status": "ok",
+        "mock": bool(sim.report.get("mock")),
         "trial_pair_id": trial_pair_id,
         "arm": arm,
         "scenario": scenario,
+        "provenance": dict(_PROVENANCE),
+        "sims": [sim.evidence],
+        "depends_on": sim.depends_on,
         "session_id": sim.session_id,
         "prior_session_id": prior_session,
         "data_home": str(sim.data_home),
@@ -981,6 +1021,32 @@ def build_record(
         "wall_clock_iso": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         **metrics,
     }
+
+
+def build_failed_record(
+    exc: BaseException, *, trial_pair_id: int, arm: str, scenario: str | None, seed: int, model: str
+) -> dict[str, Any]:
+    """The row for a sim that failed (M1b, #1003): written before the fire aborts, so the abort is on the
+    record rather than only in a log. Readers exclude it from trials; a resume keeps it and re-runs the key."""
+    return {
+        "_format_version": SCHEMA_VERSION,
+        "schema_version": SCHEMA_VERSION,
+        "experiment": EXPERIMENT_ID,
+        "harness_version": HARNESS_VERSION,
+        "trial_pair_id": trial_pair_id,
+        "arm": arm,
+        "scenario": scenario,
+        "seed": seed,
+        "model": model,
+        "provenance": dict(_PROVENANCE),
+        "wall_clock_iso": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        **_provenance.failed_row(exc),
+    }
+
+
+# The harness's own provenance block (executed_code_provenance: code, dirty flag, allowance, run id), set in
+# main() and stamped into every record (#1003: before, the preflight's result was discarded).
+_PROVENANCE: dict[str, Any] = {}
 
 
 # ─── Versioning + cost guard ─────────────────────────────────────────────
@@ -1029,6 +1095,8 @@ def _load_existing_record_keys(out_path: Path) -> set[tuple[str, int, str, str |
             rec = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if _provenance.is_failed_row(rec):
+            continue  # a failed attempt does not occupy its key: the retry is emitted beside it
         keys.add(
             (
                 rec.get("experiment", ""),
@@ -1068,6 +1136,8 @@ def _complete_clean_groups(
     in-session arm A, so a group is the atomic resume unit)."""
     by_group: dict[tuple[int, str | None], dict[str, int]] = {}
     for r in records:
+        if _provenance.is_failed_row(r):
+            continue  # a failed attempt neither completes nor dirties a group; its retry decides
         key = (int(r.get("trial_pair_id", -1)), r.get("scenario"))
         by_group.setdefault(key, {})[r.get("arm", "")] = int(r.get("total_input_tokens", 0) or 0)
     clean: set[tuple[int, str | None]] = set()
@@ -1089,7 +1159,12 @@ def _apply_resume_prune(out_path: Path, arms_set: set[str]) -> set[tuple[int, st
     if not records:
         return set()
     keep_groups = _complete_clean_groups(records, arms_set)
-    kept = [r for r in records if (int(r.get("trial_pair_id", -1)), r.get("scenario")) in keep_groups]
+    # Failed rows stay where they are (#1003): pruning them would erase the record of an abort.
+    kept = [
+        r
+        for r in records
+        if _provenance.is_failed_row(r) or (int(r.get("trial_pair_id", -1)), r.get("scenario")) in keep_groups
+    ]
     dropped = len(records) - len(kept)
     if dropped:
         backup = out_path.with_suffix(out_path.suffix + ".resume-bak")
@@ -1412,6 +1487,16 @@ def run_benchmark(
         prior_cost = observed_max_record_cost if needs_arm_c_prior else 0.0
         return target_cost + prior_cost
 
+    def _run_or_record(arm: str, scenario: str, trial_id: int, seed: int, **kwargs: Any) -> SimResult:
+        """run_one_sim; a failure is written as a failed row (#1003), then aborts the fire as before."""
+        try:
+            return run_one_sim(**kwargs)
+        except Exception as exc:
+            rec = build_failed_record(exc, trial_pair_id=trial_id, arm=arm, scenario=scenario, seed=seed, model=model)
+            out_f.write(json.dumps(rec) + "\n")
+            out_f.flush()
+            raise
+
     with out_path.open("a") as out_f:
         for trial_id in range(1, trials + 1):
             seed = seed_base + trial_id
@@ -1444,8 +1529,16 @@ def run_benchmark(
                 # Arm A target (also = prior for B-family).
                 if needs_arm_a:
                     a_home = workdir / f"trial{trial_id:03d}_{scenario}_A"
-                    a_home.mkdir(parents=True, exist_ok=True)
-                    arm_a_result = run_one_sim(
+                    # Fresh, like the B/C homes (#1003): MAXIM_DATA_HOME persists the substrate (#446), so a
+                    # resumed fire's Arm A would otherwise start from the earlier attempt's learned state.
+                    if a_home.exists():
+                        shutil.rmtree(a_home)
+                    a_home.mkdir(parents=True)
+                    arm_a_result = _run_or_record(
+                        "A",
+                        scenario,
+                        trial_id,
+                        seed,
                         data_home=a_home,
                         goal=SCENARIO_GOAL[scenario],
                         model=model,
@@ -1485,7 +1578,11 @@ def run_benchmark(
                         symlinks=True,
                         ignore=copy_ignore,
                     )
-                    sim = run_one_sim(
+                    sim = _run_or_record(
+                        arm,
+                        scenario,
+                        trial_id,
+                        seed,
                         data_home=resume_home,
                         goal=SCENARIO_GOAL[scenario],
                         model=model,
@@ -1513,8 +1610,14 @@ def run_benchmark(
                 if "C" in arms_set:
                     if arm_c_prior is None:
                         prior_home = workdir / f"trial{trial_id:03d}_C_prior"
-                        prior_home.mkdir(parents=True, exist_ok=True)
-                        arm_c_prior = run_one_sim(
+                        if prior_home.exists():  # fresh, as Arm A (#1003)
+                            shutil.rmtree(prior_home)
+                        prior_home.mkdir(parents=True)
+                        arm_c_prior = _run_or_record(
+                            "C",  # the peaceful prior: its failure blocks Arm C
+                            scenario,
+                            trial_id,
+                            seed,
                             data_home=prior_home,
                             goal=PEACEFUL_GOAL,
                             model=model,
@@ -1540,7 +1643,11 @@ def run_benchmark(
                         symlinks=True,
                         ignore=copy_ignore,
                     )
-                    sim = run_one_sim(
+                    sim = _run_or_record(
+                        "C",
+                        scenario,
+                        trial_id,
+                        seed,
                         data_home=c_home,
                         goal=SCENARIO_GOAL[scenario],
                         model=model,
@@ -1664,15 +1771,24 @@ def main(argv: list[str] | None = None) -> int:
 
     # Provenance guard — refuse to run if the sub-sims would import a `maxim`
     # from outside this repo (scripts/_provenance.py; Exp 42b post-mortem).
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _provenance import ProvenanceError, assert_repo_interpreter, preflight_gated_record_or_exit
-
+    repo_root = Path(__file__).resolve().parent.parent
     try:
-        assert_repo_interpreter(Path(__file__).resolve().parent.parent, _resolve_maxim_binary(), exempt=False)
-    except ProvenanceError as exc:
+        _provenance.assert_repo_interpreter(repo_root, _resolve_maxim_binary(), exempt=False)
+    except _provenance.ProvenanceError as exc:
         print(f"PREFLIGHT FAIL: {exc}", file=sys.stderr)
         return 3
-    preflight_gated_record_or_exit(Path(__file__).resolve().parent.parent, args.out, allow_dirty=args.allow_dirty)
+    _provenance.harness_run_id()  # minted at start, mock runs included
+    try:
+        # Refuses a dirty tree for a gated --out unless --allow-dirty, which it then stamps into every record
+        # (#1003: before, the preflight's result was discarded and no record said which code ran).
+        _PROVENANCE.update(
+            _provenance.executed_code_provenance(
+                repo_root, _resolve_maxim_binary(), out_path=args.out, allow_dirty=args.allow_dirty
+            )
+        )
+    except _provenance.DirtyTreeError as exc:
+        print(f"PREFLIGHT FAIL: {exc}", file=sys.stderr)
+        return 3
 
     global _PACE_S
     _PACE_S = max(0.0, float(args.pace_s))

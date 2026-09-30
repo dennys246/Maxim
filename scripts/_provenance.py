@@ -64,6 +64,7 @@ the same way: by file path from THIS tree, never through ``sys.path`` (#998).
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -71,7 +72,18 @@ from pathlib import Path
 
 __all__ = [
     "GATED_DATA_DIR",
+    "HARNESS_RUN_ID_ENV",
     "DirtyTreeError",
+    "OwnReportError",
+    "SimRunFailed",
+    "failed_row",
+    "is_failed_row",
+    "spawn_evidence",
+    "depends_on",
+    "find_own_report",
+    "harness_run_id",
+    "list_sessions",
+    "sim_evidence",
     "ProvenanceError",
     "assert_repo_interpreter",
     "executed_code_provenance",
@@ -159,7 +171,9 @@ def resolved_maxim_file(binary: str, *, timeout: float = 60.0) -> str | None:
 
 
 def _git_hash(cwd: Path) -> str:
-    return _code_tree.head_hash(cwd)
+    # The FULL commit id, as the sim report stamps it, so a harness row and its sims compare byte for byte
+    # (M1b, #1003; before, harness stamps were git's default abbreviation and sims 12 characters).
+    return _code_tree.head_commit(cwd)
 
 
 def assert_repo_interpreter(repo_root: Path | str, binary: str, *, exempt: bool = False) -> str | None:
@@ -297,7 +311,8 @@ def in_process_code_provenance(
     gate = preflight_gated_record(root, out_path, allow_dirty=allow_dirty)
     prov: dict[str, object] = {
         "executed_maxim_file": str(executed),
-        "executed_git_hash": _git_hash_short12(root),
+        "executed_git_hash": _git_hash(root),
+        **_run_id_stamp(),
         "working_tree_dirty_src_scripts": gate["working_tree_dirty_src_scripts"],
         "code_tree_sha256": code_tree_sha256(root),
         "python": sys.executable,
@@ -306,10 +321,6 @@ def in_process_code_provenance(
     if gate["allow_dirty"]:
         prov["allow_dirty"] = True
     return prov
-
-
-def _git_hash_short12(cwd: Path) -> str:
-    return _code_tree.head_hash(cwd, 12)
 
 
 def executed_code_provenance(
@@ -344,10 +355,169 @@ def executed_code_provenance(
         # is the tree the sub-sims import: an allowance for one tree must never bind to another's code.
         "code_tree_sha256": code_tree_sha256(root) if executed_root == root else "unknown",
         "pythonpath": os.environ.get("PYTHONPATH", ""),
+        **_run_id_stamp(),
     }
     if gate["allow_dirty"]:
         prov["allow_dirty"] = True
     return prov
+
+
+# ── M1b (#1003): the harness run id, and finding the harness's OWN sim report ─────────────────────────
+# A harness mints one run id per process and sets it on every sub-sim's environment; the sim stamps it into
+# ``report.json`` (``simulation/report.py::HARNESS_RUN_ID_ENV``), and the harness then reads back exactly the
+# report its spawn wrote -- not the newest directory -- and echoes that report's evidence into its row: the
+# sim reports live under the gitignored ``data/``, so the committed row is the only record a gate can read.
+# The run id is a join key, never evidence: a report binds to a harness only when a harness row names it.
+
+HARNESS_RUN_ID_ENV = "MAXIM_HARNESS_RUN_ID"  # == simulation/report.py::HARNESS_RUN_ID_ENV (pinned by a test)
+_RUN_ID: dict[str, str] = {}
+
+
+def harness_run_id() -> str:
+    """This harness process's run id: minted on first call, the same on every later one. ALWAYS fresh -- an
+    id inherited from the environment (a parent harness, or a stray shell export) is kept as the parent, never
+    reused, so a sim can only ever carry the id of the harness that spawned it. Call it at harness start,
+    mock runs included, and set ``env[HARNESS_RUN_ID_ENV] = run_id`` on every spawn."""
+    if "id" not in _RUN_ID:
+        import uuid
+
+        _RUN_ID["parent"] = os.environ.get(HARNESS_RUN_ID_ENV, "").strip()
+        _RUN_ID["id"] = uuid.uuid4().hex
+    return _RUN_ID["id"]
+
+
+def _run_id_stamp() -> dict[str, str]:
+    run_id = harness_run_id()
+    return {"harness_run_id": run_id, **({"parent_harness_run_id": _RUN_ID["parent"]} if _RUN_ID["parent"] else {})}
+
+
+class SimRunFailed(ProvenanceError):
+    """A spawned sim did not produce a usable run. ``sims`` is the evidence of every report involved (the one
+    found, or each candidate), so the harness's failed row says what ran; see :func:`failed_row`."""
+
+    def __init__(self, message: str, *, sims: list[dict[str, object]], detail: dict[str, object] | None = None):
+        super().__init__(message)
+        self.sims = sims
+        self.detail = detail or {}
+
+
+class OwnReportError(SimRunFailed):
+    """The harness could not identify the ONE report its spawn wrote (none, or several, carried its run id).
+    ``sims`` is the evidence of every new session directory; ``detail`` has the before/after listings."""
+
+
+def list_sessions(data_home: Path | str) -> set[str]:
+    """The session directory names under ``<data_home>/sim_reports/`` (directories only)."""
+    reports = Path(data_home) / "sim_reports"
+    return {p.name for p in reports.iterdir() if p.is_dir()} if reports.is_dir() else set()
+
+
+def _read_report(session_dir: Path) -> dict | None:
+    try:
+        data = json.loads((session_dir / "report.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def find_own_report(data_home: Path | str, run_id: str, before: set[str]) -> tuple[Path, dict]:
+    """The one report written since ``before`` (a :func:`list_sessions` snapshot taken inside the spawn
+    function, after the home is prepared and immediately before the subprocess) whose
+    ``provenance.harness_run_id`` is ``run_id``. None, or several, raise :class:`OwnReportError`: a harness
+    never guesses which sim it measured."""
+    reports = Path(data_home) / "sim_reports"
+    after = list_sessions(data_home)
+    new = sorted(after - set(before))
+    candidates = [(reports / name, _read_report(reports / name)) for name in new]
+    mine = [
+        (d, r) for d, r in candidates if r is not None and (r.get("provenance") or {}).get("harness_run_id") == run_id
+    ]
+    if len(mine) != 1:
+        raise OwnReportError(
+            f"expected exactly one new report carrying harness_run_id={run_id} under {reports}, found {len(mine)} "
+            f"(new session dirs: {new})",
+            sims=[sim_evidence(d, r) for d, r in candidates],
+            detail={"before": sorted(before), "after": sorted(after)},
+        )
+    return mine[0]
+
+
+def spawn_evidence(data_home: Path | str, run_id: str, before: set[str], *, returncode: int) -> tuple[Path, dict]:
+    """After a spawn has exited: the report it wrote (:func:`find_own_report`), refusing a run whose sim
+    exited non-zero (a typed abort or an error, D22): :class:`SimRunFailed` carries the report's evidence, so
+    the abort is recorded rather than dropped. Returns ``(session_dir, report)``."""
+    try:
+        session_dir, report = find_own_report(data_home, run_id, before)
+    except OwnReportError as exc:
+        if returncode == 0:
+            raise
+        raise SimRunFailed(
+            f"sub-sim exited {returncode} and no report of its own was found: {exc}", sims=exc.sims, detail=exc.detail
+        ) from exc
+    if returncode != 0:
+        raise SimRunFailed(
+            f"sub-sim exited {returncode} (finish_reason={report.get('finish_reason')!r})",
+            sims=[sim_evidence(session_dir, report)],
+        )
+    return session_dir, report
+
+
+def failed_row(exc: BaseException) -> dict[str, object]:
+    """The fields a harness writes for a run that failed, instead of dropping it (#1003): ``status:
+    "failed"``, the reason, and whatever sim evidence the failure carried. Readers exclude these rows from
+    trial counts (a row with no ``status`` is a legacy ok row)."""
+    return {
+        "record_kind": "harness_row",
+        "status": "failed",
+        # First line only, capped: a sub-sim's stderr tail belongs in its log, not in a committed record.
+        "reason": f"{type(exc).__name__}: {str(exc).splitlines()[0] if str(exc) else ''}"[:500],
+        "sims": list(getattr(exc, "sims", []) or []),
+        **({"failure_detail": exc.detail} if getattr(exc, "detail", None) else {}),
+    }
+
+
+def is_failed_row(row: object) -> bool:
+    """True for a harness row recording a failed run. Legacy rows carry no ``status`` and count as ok."""
+    return isinstance(row, dict) and row.get("status") == "failed"
+
+
+# The report fields a harness row echoes for each sim it names (the gate judges the row alone).
+_EVIDENCE_TOP = ("record_kind", "finish_reason", "ts")
+_EVIDENCE_PROVENANCE = (
+    "harness_run_id",
+    "executed_git_hash",
+    "end_executed_git_hash",
+    "code_tree_sha256",
+    "end_code_tree_sha256",
+    "working_tree_dirty_src_scripts",
+    "code_changed_during_run",
+    "configured_n_ctx",
+    "resume",
+)
+_EVIDENCE_ROLE_SUFFIXES = ("_profile", "_router_n_ctx", "_budget_n_ctx")
+
+
+def sim_evidence(session_dir: Path | str, report: dict | None) -> dict[str, object]:
+    """A sim report's evidence, projected for a harness row: its session id, what it is, how it ended, when,
+    and the code/model/context it ran under (each ``provenance`` field copied as stamped; a field the report
+    lacks is ``None``, which no gate reads as established). ``report`` ``None`` = no readable report."""
+    prov = (report or {}).get("provenance") or {}
+    out: dict[str, object] = {"session_id": Path(session_dir).name, "report_found": report is not None}
+    for key in _EVIDENCE_TOP:
+        out[key] = (report or {}).get(key)
+    for key in _EVIDENCE_PROVENANCE:
+        out[key] = prov.get(key)
+    for key in sorted(prov):
+        if key.endswith(_EVIDENCE_ROLE_SUFFIXES):
+            out[key] = prov[key]
+    return out
+
+
+def depends_on(data_home: Path | str, before: set[str]) -> list[dict[str, object]]:
+    """The evidence of every session already in the home when the sim spawned: the state it inherited
+    (a copied or transplanted home, or a ``--resume-sim`` target). Empty for a fresh home."""
+    reports = Path(data_home) / "sim_reports"
+    return [sim_evidence(reports / name, _read_report(reports / name)) for name in sorted(before)]
 
 
 # ── D27: committed-evidence writes are opt-in ────────────────────────────────

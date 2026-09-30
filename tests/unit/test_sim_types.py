@@ -294,9 +294,9 @@ class TestImportPaths:
         assert SimulationResult is not None
 
     def test_private_helpers_from_orchestrator(self):
-        from maxim.simulation.orchestrator import _load_resume_context
+        from maxim.simulation.orchestrator import _load_resume_context_at
 
-        assert callable(_load_resume_context)
+        assert callable(_load_resume_context_at)
 
     def test_private_helpers_build_resume(self):
         from maxim.simulation.orchestrator import _build_resume_prompt

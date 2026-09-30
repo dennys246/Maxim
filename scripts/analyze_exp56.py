@@ -176,6 +176,7 @@ def main() -> int:
     path = Path(args.inp)
     rows = load_rows(path)
     report = analyze(rows, min_pairs=args.min_pairs)
+    report["record_kind"] = "verdict"  # M1b (#1003): the gate classifies a record by this stamp
     # One platform per file (re-baseline port, 2026-09-18): rows carry the server's measured
     # `version` reply; a file mixing platforms (or pre-port rows without the field beside rows
     # with it) has no single apparatus and gets no verdict.

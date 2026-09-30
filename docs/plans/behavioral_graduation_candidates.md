@@ -231,6 +231,23 @@ update.
   ATL relations, and the survival harnesses use the ATL only through `activate_substrate_node` (#812's
   caller grep).
 
+### Trigger walk — 2026-09-29, #1003 (harness rows name their sims; fresh homes; failed runs recorded)
+
+#1003 changes how the sim-spawning harnesses record a run (the echoed `sims`, `depends_on`, the run id,
+failed rows, nested provenance), stamps `record_kind`, `harness_run_id` and a `resume` block into every
+sim report, and gives Exp 37 Arm A, the Arm C prior and every Exp 41 run a fresh data home.
+
+**No row fires.** No `Re-run on:` names the harness scripts, the report's stamps or the data home (the
+cradle rows' "`cradle_mother` arc change" is about the arc; the Exp 37 row fires on prompt construction
+and mechanism changes). The sim's own behaviour is unchanged: the resume restore was moved, not altered.
+- **Committed data:** every committed row predates `status`, so the analyzers' failed-row filter drops
+  none of them (pinned for `41_results.jsonl`, `42_results.jsonl` and `37_results.jsonl`).
+- **Fresh homes:** a relaunch into an existing workdir used to inherit the earlier attempt's persisted
+  substrate (#446): Exp 41 on any relaunch, Exp 37 Arm A and the Arm C prior on a resumed fire. Whether a
+  committed Exp 37 or Exp 41 record came from such a relaunch is not recoverable from it (no record said
+  what its home held); Exp 41 is VOID and moved no row, and the Exp 37 row is PARTIAL on reasons
+  unrelated to this. Recorded, not claimed either way.
+
 ### Trigger walk — 2026-09-29, #1002 (a finished run is `completed`, not `cancel`)
 
 From #524 (1ed83f7e, 2026-08-19) to #1002, the orchestrator stamped `finish_reason: cancel` on every sim
