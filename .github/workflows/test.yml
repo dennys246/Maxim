@@ -1047,11 +1047,19 @@ jobs:
           # See CLAUDE.md "Working principles for new mechanisms" Principle 5
           # for the format convention.
           #
-          # Check 5 (2026-08-29, roadmap 1.1.x item 16.9): every EARNED row in
-          # docs/plans/behavioral_graduation_candidates.md cites a resolving
-          # docs/experiments/data/ link or carries a dated data-lost
-          # annotation. Verified to fail 3/3 rows on the pre-fix ledger.
+          # Check 5 (the ledger's EARNED rows cite their data) moved to the
+          # "Ledger format" step below on 2026-09-30 (M1b PR 3).
           python3 scripts/lint_claude_md_invariants.py
+
+      - name: Ledger format (M1b PR 3 — status line, vocabulary, evidence, IDs)
+        run: |
+          # The behavioural-graduation ledger's two status tables: every row has a
+          # stable ID and a **Status: <TOKEN> <date>** line from a closed vocabulary,
+          # and a positive status cites tracked records under docs/experiments/data/.
+          # Diff-scoped against the merge-base: IDs never vanish, dates never move
+          # back, a raise needs a later date, LEGACY cannot be entered.
+          # Parser shared with M1b PR 5's evidence gate: scripts/_ledger.py.
+          python3 scripts/lint_ledger_format.py
 
       - name: Multi-agent marker lint (Stage 3 of structural invariant tests)
         # The `git fetch origin main --depth=1` that used to precede every
