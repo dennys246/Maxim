@@ -97,9 +97,10 @@ def test_a_verdict_names_its_data_repo_relative_with_the_hash_of_the_bytes_it_ju
     # a verdict over a smoke, or over rows that do not say, is a smoke (M1b PR 5a-2: unknown is mock)
     assert P.any_not_stamped_real([{"mock": False}]) is False
     assert P.any_not_stamped_real([{"mock": False}, {}]) is True and P.any_not_stamped_real([{"mock": True}])
+    assert P.any_not_stamped_real([]) is True, "no rows is not a real run"
 
 
-@pytest.mark.parametrize("scope", [{}, {"campaign_id": None}, {"run_ids": None}])
+@pytest.mark.parametrize("scope", [{}, {"campaign_id": None}, {"run_ids": None}, {"run_ids": []}, {"campaign_id": ""}])
 def test_a_verdict_scope_is_never_empty_or_a_none_selector(scope: dict, tmp_path: Path) -> None:
     """ "Every row" must be said ({"all_rows": True}), never be what a forgotten selector reads as."""
     with pytest.raises(ValueError, match="all_rows"):
@@ -374,4 +375,6 @@ def test_the_exp56_mock_runs_write_stamped_records(rel: str, out_name: str, tmp_
     kind = "instrument_check" if rel.endswith("instrument_check.py") else "harness_row"
     for r in records:
         assert (r["record_kind"], r["status"], r["mock"]) == (kind, "ok", True)
+        if kind == "instrument_check":
+            assert r["pass"] is True and r["pass"] == r["all_pass"]  # no pass-relevant flag (settle_s exempt)
         assert r["provenance"]["harness_family"] == "in_process"

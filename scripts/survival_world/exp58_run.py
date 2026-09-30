@@ -60,6 +60,7 @@ from _provenance import (  # noqa: E402
     ProvenanceError,
     evidence_out_paths_or_exit,
     in_process_code_provenance,
+    instrument_check_authorizes,
     stamp_harness_row,
 )
 from exp56 import common as C  # noqa: E402
@@ -146,8 +147,9 @@ def main(argv: list[str] | None = None) -> int:
     except OSError:
         print(f"[FAIL] offline gates record missing: {gates_path} — gates must pass before live trials")
         return 3
-    if not gates.get("all_pass"):
-        print(f"[FAIL] offline gates record does not carry all_pass=true: {gates_path}")
+    refusal = instrument_check_authorizes(gates)
+    if refusal is not None:
+        print(f"[FAIL] offline gates record {gates_path} does not authorize a run: {refusal}")
         return 3
 
     from maxim.runtime.agent_loop import _encode_current_clusters, propose_via_substrate

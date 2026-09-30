@@ -82,6 +82,7 @@ __all__ = [
     "stamp_harness_row",
     "stamp_harness_header",
     "stamp_instrument_check",
+    "instrument_check_authorizes",
     "stamp_diagnosis",
     "stamp_verdict",
     "any_not_stamped_real",
@@ -519,7 +520,7 @@ def stamp_verdict(
     is refused, so "every row" is never the reading of a writer that forgot. ``mock`` is required: True when any
     row it read is mock or does not say (``any_not_stamped_real``) — a verdict over a smoke is a smoke. Returns the
     same dict."""
-    if not scope or any(v is None for v in scope.values()):
+    if not scope or any(v is None or v == [] or v == "" for v in scope.values()):
         raise ValueError(f"verdict scope {scope!r}: name the selectors, or {{'all_rows': True}} for the whole file")
     root = Path(repo_root).resolve()
     path = Path(data).resolve()
@@ -538,8 +539,8 @@ def stamp_verdict(
 
 def any_not_stamped_real(rows: list) -> bool:
     """True when any row is mock or carries no ``mock`` at all (M1b PR 5a-2): unknown is mock, so a verdict
-    re-computed over legacy (unstamped) rows never reads as a real run's."""
-    return any(not isinstance(r, dict) or r.get("mock") is not False for r in rows)
+    re-computed over legacy (unstamped) rows never reads as a real run's. No rows at all is not a real run either."""
+    return not rows or any(not isinstance(r, dict) or r.get("mock") is not False for r in rows)
 
 
 def stamp_harness_header(row: dict, *, mock: bool) -> dict:
@@ -557,21 +558,45 @@ def stamp_instrument_check(report: dict, *, mock: bool, passed: bool) -> dict:
     ``status`` (how the run ended: ``failed`` when ``instrument_error`` or ``refusal`` is set, else ``ok``),
     ``mock`` and ``pass`` (what it measured, at the writer's FROZEN parameters; the gate requires it true, and an
     instrument check is never support by itself). ``passed`` is required so each writer names its own rule."""
+    _refuse_foreign_status(report)
     ended_badly = report.get("instrument_error") is not None or report.get("refusal") is not None
     report["record_kind"] = "instrument_check"
-    report["status"] = "failed" if ended_badly else "ok"
+    report["status"] = "failed" if ended_badly or report.get("status") == "failed" else "ok"
     report["mock"] = bool(mock)
-    report["pass"] = bool(passed) and not ended_badly
+    report["pass"] = bool(passed) and report["status"] == "ok"
     report.setdefault("ts", time.time())
     return report
+
+
+def instrument_check_authorizes(record: dict) -> str | None:
+    """Why an apparatus record does NOT authorize a live run, or None when it does (M1b PR 5a-2): it must be a
+    stamped, real ``instrument_check`` that ended ``ok`` and passed at its frozen parameters. ``all_pass`` alone
+    no longer authorizes: a check run with ``--cycles 1`` sets it too. A record from before the stamps says none
+    of this and is refused — re-run the check."""
+    if record.get("record_kind") != "instrument_check":
+        return "not a stamped instrument check (a pre-M1b record) — re-run the check"
+    if record.get("mock") is not False:
+        return "a mock (or unmarked) check authorizes nothing"
+    if record.get("status") != "ok":
+        return f"the check ended {record.get('status')!r}"
+    if record.get("pass") is not True:
+        return "the check did not pass at its frozen parameters"
+    return None
+
+
+def _refuse_foreign_status(record: dict) -> None:
+    if record.get("status") not in (None, "ok", "failed"):
+        raise ValueError(f"record status {record['status']!r} is neither 'ok' nor 'failed'")
 
 
 def stamp_diagnosis(report: dict, *, mock: bool, code_provenance: dict) -> dict:
     """A diagnosis (M1b PR 5a-2): a record that informs a design and never counts as support. Its code provenance
     lives under ``code_provenance`` (a diagnosis may use ``provenance`` for its own non-code context), and its
     ``status`` says how the run ended. Returns the same dict."""
+    _refuse_foreign_status(report)
+    ended_badly = report.get("instrument_error") is not None or report.get("refusal") is not None
     report["record_kind"] = "diagnosis"
-    report["status"] = "failed" if report.get("instrument_error") is not None else "ok"
+    report["status"] = "failed" if ended_badly or report.get("status") == "failed" else "ok"
     report["mock"] = bool(mock)
     report["code_provenance"] = code_provenance
     report.setdefault("ts", time.time())

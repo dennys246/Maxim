@@ -440,9 +440,9 @@ def main() -> int:
         # is this experiment's declared apparatus, not a smoke.
         import _provenance  # noqa: PLC0415  (on sys.path since _provenance_block)
 
-        _provenance.stamp_harness_row(report, mock=False)
         if verdict == "VOID":
-            report["status"] = "failed"
+            report["status"] = "failed"  # decided before the stamp, which keeps it
+        _provenance.stamp_harness_row(report, mock=False)
         Path(args.json).write_text(json.dumps(report, indent=2))
         print(f"\nreport written: {args.json}")
     return 0 if sanity else 4

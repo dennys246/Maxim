@@ -1389,11 +1389,19 @@ def _write_verdict(
     args: argparse.Namespace, summary: dict, *, gate: str, recs: list[dict], data_bytes: bytes, code: dict
 ) -> None:
     """The verdict as its own record (M1b PR 5a-2), never appended to the records it judged (that would change
-    the bytes its hash names). Scoped to the exp53 run ids it used; a smoke — or unstamped lines — make it mock."""
+    the bytes its hash names). Scoped to the exp53 run ids it used. It is mock when ANY line of the file is mock or
+    does not say (owner decision 2026-09-30: whole file, as every verdict; smokes go in their own files)."""
     scoped = sorted({rid for rid in summary["runs_used"].values() if rid})
     lines = [r for r in recs if r.get("run_id") in scoped]
     stamped = bool(lines) and all(all(k in r for k in ("log_run_id", "mock", "provenance")) for r in lines)
-    record = {"gate": gate, **summary, "scoped_lines_stamped": stamped, "provenance": code}
+    record = {
+        "_format_version": "1.0",
+        "ts": time.time(),
+        "gate": gate,
+        **summary,
+        "scoped_lines_stamped": stamped,
+        "provenance": code,
+    }
     live_common._provenance.stamp_verdict(
         record,
         repo_root=_HERE.parent.parent,
@@ -1401,7 +1409,7 @@ def _write_verdict(
         data=Path(args.records),
         data_bytes=data_bytes,
         scope={"run_ids": scoped},
-        mock=live_common._provenance.any_not_stamped_real(lines),
+        mock=live_common._provenance.any_not_stamped_real(recs),
     )
     out = Path(args.verdict_out) if args.verdict_out else default_verdict_out(args.records)
     out.write_text(json.dumps(record, indent=2) + "\n")

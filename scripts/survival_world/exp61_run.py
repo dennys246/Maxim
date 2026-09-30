@@ -103,6 +103,7 @@ from _provenance import (  # noqa: E402
     ProvenanceError,
     evidence_out_paths_or_exit,
     in_process_code_provenance,
+    instrument_check_authorizes,
     stamp_harness_row,
     stamp_verdict,
     any_not_stamped_real,
@@ -683,7 +684,7 @@ class _Campaign:
         self.campaign_id = campaign_id
         apparatus = _load_json(C.REPO_ROOT / APPARATUS_RECORD)
         gate = _load_json(C.REPO_ROOT / args.gate_record)
-        if not apparatus.get("all_pass") or not (gate.get("run_gate") or {}).get("pass"):
+        if instrument_check_authorizes(apparatus) is not None or not (gate.get("run_gate") or {}).get("pass"):
             raise SystemExit("[FAIL] the Exp 60 apparatus check / geometry gate records must carry PASS on main")
         self.geom = _load_json(ANCHOR_FILE)
         pain_edge_min = min_pain_edge_s(apparatus)

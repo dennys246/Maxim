@@ -335,6 +335,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--username", default="maxim")
     ap.add_argument("--agent-id", default="exp62_precheck")
     ap.add_argument("--workdir", default=None, help="durable home for the agent (default: a tmpdir)")
+    ap.add_argument("--overwrite", action="store_true", help="replace an existing --out record")
     ap.add_argument(
         "--allow-dirty",
         action="store_true",
@@ -354,6 +355,9 @@ def main(argv: list[str] | None = None) -> int:
     import maxim  # noqa: PLC0415
 
     out_path = Path(args.out).expanduser()
+    if out_path.exists() and not args.overwrite:
+        print(f"REFUSED: {out_path} exists — pass --overwrite to replace it (a failed attempt must not erase it)")
+        return 2
     try:
         code_provenance = in_process_code_provenance(
             SCRIPTS_DIR.parent, maxim.__file__, out_path=out_path, allow_dirty=args.allow_dirty

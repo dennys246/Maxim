@@ -235,7 +235,9 @@ def _run_gauntlet(manifest_path: Path, records_path: Path, allow_dirty: bool) ->
     _spacer()
     if exp53.main(["run", "--phase", "2", *base, *dirty]) != 0:
         _refuse(f"exp53 phase 2 refused for {manifest_path.name} (stop rule I?)")
-    if exp53.main(["verdict", "--records", str(records_path), *dirty]) not in (0, 1):
+    # gate6 owns this records file and its verdict: it replaces the verdict it wrote on an earlier run
+    # (_gate_records reads only a verdict bound to the records' current bytes).
+    if exp53.main(["verdict", "--records", str(records_path), "--overwrite", *dirty]) not in (0, 1):
         _refuse(f"exp53 verdict refused for {records_path.name}")
     return "ok"
 
@@ -256,7 +258,9 @@ def _gate_records(records_path: Path) -> dict[str, dict]:
     verdict_path = exp53.default_verdict_out(records_path)
     if verdict_path.is_file():
         verdict = json.loads(verdict_path.read_text())
-        if verdict.get("gate") == "T":
+        # Bound to THESE records: a verdict left by an earlier run (records since appended) is stale, not read.
+        current = hashlib.sha256(records_path.read_bytes()).hexdigest()
+        if verdict.get("gate") == "T" and verdict.get("data_sha256") == current:
             out["gate_T"] = verdict
     return out
 

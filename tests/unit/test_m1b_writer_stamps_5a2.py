@@ -61,8 +61,11 @@ def test_an_evidence_run_ends_ok_only_through_finish(tmp_path: Path) -> None:
     assert [r["record_kind"] for r in rows] == ["harness_event", "harness_event", "harness_run_end"]
     assert {r["log_run_id"] for r in rows} == {log.log_run_id} and all(r["mock"] is False for r in rows)
     assert rows[0]["provenance"]["harness_family"] == "in_process"
+    # the full block once per run (first + terminal line); every line carries its digest (owner decision 2026-09-30)
+    assert "provenance" not in rows[1] and {r["provenance_sha256"] for r in rows} == {log.provenance_sha256}
     (end,) = _terminals(rows)
     assert end["status"] == "ok" and end["end_code_tree_sha256"] == rows[0]["provenance"]["code_tree_sha256"]
+    assert end["provenance"] == rows[0]["provenance"]
 
 
 def test_every_log_mints_its_own_run_id(tmp_path: Path) -> None:
@@ -192,6 +195,41 @@ def _finish_positions_ok(tree: ast.AST) -> list[str]:
     return problems
 
 
+def _abort_class_call(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Call):
+        return False
+    name = getattr(node.func, "attr", None) or getattr(node.func, "id", None)
+    if name == "mark_aborted":
+        return True
+    first = node.args[0] if node.args else None
+    return (
+        name in ("emit", "write")
+        and isinstance(first, ast.Constant)
+        and isinstance(first.value, str)
+        and (first.value == "abort" or first.value.endswith("_aborted"))
+    )
+
+
+def _handler_problems(tree: ast.AST) -> list[str]:
+    """v6 SF-1, applied where the run's code now lives: in every function that receives the evidence log (a
+    parameter annotated ``JsonlLog``), each ``except`` handler re-raises, writes an abort-class event
+    (``abort`` / ``*_aborted`` — which latches the run failed) or calls ``mark_aborted``, or sits inside a handler
+    that does. So no caught-and-continued failure can reach ``finish("ok")`` from inside these functions."""
+    problems = []
+    for fn in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)):
+        if not any(a.annotation is not None and "JsonlLog" in ast.unparse(a.annotation) for a in fn.args.args):
+            continue
+        handlers = [n for n in ast.walk(fn) if isinstance(n, ast.ExceptHandler)]
+        ok = {id(h) for h in handlers if any(isinstance(n, ast.Raise) or _abort_class_call(n) for n in ast.walk(h))}
+        covered = {
+            id(inner) for h in handlers if id(h) in ok for inner in ast.walk(h) if isinstance(inner, ast.ExceptHandler)
+        }
+        for h in handlers:
+            if id(h) not in ok and id(h) not in covered:
+                problems.append(f"{fn.name}: except at line {h.lineno} neither re-raises nor marks the run aborted")
+    return problems
+
+
 def test_every_orient_log_declares_evidence_and_evidence_logs_run_in_a_with() -> None:
     seen: set[str] = set()
     for path in sorted(ORIENT.glob("*.py")):
@@ -207,6 +245,7 @@ def test_every_orient_log_declares_evidence_and_evidence_logs_run_in_a_with() ->
                 withs = [i.context_expr for w in ast.walk(tree) if isinstance(w, ast.With) for i in w.items]
                 assert call in withs, f"{path.name}:{call.lineno}: an evidence log is a `with` item"
         assert _finish_positions_ok(tree) == [], path.name
+        assert _handler_problems(tree) == [], path.name
     assert seen == EVIDENCE_LOGS
 
 
@@ -219,6 +258,9 @@ def test_the_call_shape_guard_catches_a_finish_in_finally_and_an_alias() -> None
     good = "with JsonlLog(p, mock=False, evidence=True) as log:\n    rc = run(log)\n    if rc == 0:\n        log.finish('ok')\n"
     assert _finish_positions_ok(ast.parse(good)) == []
     assert _finish_positions_ok(ast.parse(bad_finally)) and _finish_positions_ok(ast.parse(bad_alias))
+    swallow = "def _run(args, log: JsonlLog) -> int:\n    try:\n        go()\n    except ConnectionError:\n        pass\n    return 0\n"
+    latched = swallow.replace("        pass\n", "        log.write('abort', reason='x')\n")
+    assert _handler_problems(ast.parse(swallow)) and _handler_problems(ast.parse(latched)) == []
 
 
 # ── the evidence callers, driven through their real paths ────────────────
@@ -346,6 +388,99 @@ def test_the_exp53_verdict_is_its_own_record_and_a_smoke_when_its_lines_are(
     assert h.main(["verdict", "--records", str(records)]) == 2, "an existing verdict is not silently replaced"
 
 
+@pytest.mark.parametrize(("rc", "status"), [(0, "ok"), (6, "ok"), (5, "failed"), (7, "failed"), (2, "failed")])
+def test_exp53_ends_a_run_ok_only_on_a_computed_outcome(rc: int, status: str, tmp_path: Path, monkeypatch) -> None:
+    """rc 0 (PASS) and 6 (a Gate-I / Gate-C FAIL) are results; a stop rule (5, 7) or a refusal is not."""
+    import types
+
+    h = _exp53()
+    (tmp_path / "manifest.json").write_text("{}")
+
+    def fake_run(args, log, **kw):
+        log.write("start", run_id="r", phase=1)
+        return rc
+
+    monkeypatch.setattr(h, "_run_logged", fake_run)
+    out = tmp_path / "records.jsonl"
+    args = types.SimpleNamespace(
+        gate="T",
+        whitelist=False,
+        delta=None,
+        factory=False,
+        targets=None,
+        allow_incomplete_targets=False,
+        manifest=str(tmp_path / "manifest.json"),
+        out=str(out),
+        phase=1,
+        dry_run=True,
+        allow_dirty=False,
+    )
+    assert h.cmd_run(args) == rc
+    (end,) = _terminals(_rows(out))
+    assert end["status"] == status
+
+
+def test_one_mock_line_anywhere_makes_the_exp53_verdict_mock(tmp_path: Path) -> None:
+    """Owner decision 2026-09-30: a verdict's mock is judged over the whole file; smokes go in their own files."""
+    h = _exp53()
+    real = {"log_run_id": "x", "mock": False, "provenance": {}}
+    records = tmp_path / "records.jsonl"
+    rows = _runs(real) + [{"event": "start", "run_id": "Z", "phase": 2, **real, "mock": True}]
+    records.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    assert h.main(["verdict", "--records", str(records), "--run-id", "A", "--run-id", "Q"]) in (0, 1)
+    v = json.loads((tmp_path / "records_verdict.json").read_text())
+    assert v["scope"] == {"run_ids": ["A", "Q"]} and v["mock"] is True
+
+
+def test_gate6_reads_only_a_verdict_bound_to_the_current_records(tmp_path: Path) -> None:
+    g6 = _load("m1b5a2_gate6", ORIENT / "gate6_merged_gauntlet.py")
+    records = tmp_path / "records_A.jsonl"
+    records.write_text(json.dumps({"event": "gate_I", "verdict": "PASS"}) + "\n")
+    verdict = tmp_path / "records_A_verdict.json"
+    verdict.write_text(json.dumps({"gate": "T", "verdict": "PASS", "data_sha256": "stale"}))
+    assert "gate_T" not in g6._gate_records(records), "a verdict from an earlier run of these records"
+    import hashlib
+
+    verdict.write_text(
+        json.dumps({"gate": "T", "verdict": "PASS", "data_sha256": hashlib.sha256(records.read_bytes()).hexdigest()})
+    )
+    assert g6._gate_records(records)["gate_T"]["verdict"] == "PASS"
+
+
+@pytest.mark.parametrize(
+    ("record", "why"),
+    [
+        ({"all_pass": True}, "pre-M1b"),
+        ({"record_kind": "instrument_check", "status": "ok", "pass": True, "mock": True}, "mock"),
+        ({"record_kind": "instrument_check", "status": "failed", "pass": False, "mock": False}, "ended"),
+        ({"record_kind": "instrument_check", "status": "ok", "pass": False, "mock": False}, "frozen"),
+    ],
+)
+def test_only_a_stamped_passing_real_check_authorizes_a_live_run(record: dict, why: str) -> None:
+    """Exp 58/60/61 and R3 used to authorize on `all_pass`, which a `--cycles 1` check also sets."""
+    assert why in P.instrument_check_authorizes(record)
+    passing = {"record_kind": "instrument_check", "status": "ok", "pass": True, "mock": False}
+    assert P.instrument_check_authorizes(passing) is None
+
+
+@pytest.mark.parametrize("rel", ["exp60_run.py", "exp61_run.py", "r3_run.py", "exp58_run.py"])
+def test_the_live_harnesses_authorize_through_the_one_rule(rel: str) -> None:
+    src = (SCRIPTS / "survival_world" / rel).read_text()
+    assert "instrument_check_authorizes(" in src and '.get("all_pass")' not in src
+
+
+def test_a_void_exp52_phase_a_run_is_failed(tmp_path: Path, monkeypatch) -> None:
+    """The credit path misbehaved (no feed credited): VOID is an apparatus failure, never a trial."""
+    phase_a = _load("m1b5a2_exp52a", SCRIPTS / "orient_substrate/9_hunger_relief_orient.py")
+    tel = {"fed": 0, "credits": 0, "credit_rewards": [], "fed_ticks": [], "hunger_at_feed_median": None}
+    monkeypatch.setattr(phase_a, "run", lambda arm, **kw: ([0.5] * 12, [0] * 600, dict(tel)))
+    out = tmp_path / "void.json"
+    monkeypatch.setattr(sys, "argv", ["9_hunger_relief_orient.py", "--json", str(out)])
+    assert phase_a.main() == 4
+    r = json.loads(out.read_text())
+    assert (r["verdict"], r["status"], r["record_kind"]) == ("VOID", "failed", "harness_row")
+
+
 # ── single-record writers ─────────────────────────────────────────────────
 
 
@@ -411,3 +546,5 @@ def test_the_exp62_precheck_records_an_instrument_error(tmp_path: Path, monkeypa
     r = json.loads(out.read_text())
     assert (r["record_kind"], r["status"]) == ("diagnosis", "failed") and r["instrument_error"]
     assert r["code_provenance"]["harness_family"] == "in_process"
+    # a later failed attempt must not erase that record
+    assert pre.main([*argv, "--out", str(out), "--rcon-password", "x"]) == 2

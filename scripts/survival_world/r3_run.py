@@ -46,6 +46,7 @@ from _provenance import (  # noqa: E402
     ProvenanceError,
     evidence_out_paths_or_exit,
     in_process_code_provenance,
+    instrument_check_authorizes,
     stamp_harness_row,
 )
 from exp56 import common as C  # noqa: E402
@@ -483,8 +484,9 @@ class _R3:
         self.out_path = out_path
         self.campaign_id = campaign_id
         apparatus = load_json(C.REPO_ROOT / APPARATUS_RECORD)
-        if not apparatus.get("all_pass"):
-            raise SystemExit(f"[FAIL] {APPARATUS_RECORD} does not carry all_pass")
+        refusal = instrument_check_authorizes(apparatus)
+        if refusal is not None:
+            raise SystemExit(f"[FAIL] {APPARATUS_RECORD} does not authorize a run: {refusal}")
         self.geom = load_json(ANCHOR_FILE)
         if not (self.geom.get("measured") or {}).get("t_damage_onset_min_s"):
             raise SystemExit("[FAIL] the anchor record carries no measured edges — run exp60_water_check first")

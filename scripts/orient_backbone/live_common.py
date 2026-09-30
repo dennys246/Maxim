@@ -21,10 +21,12 @@ toward +1 (source appears more to the right). DEFAULT here matches that:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
 import sys
+import subprocess
 import time
 import uuid
 from collections.abc import Callable
@@ -66,9 +68,11 @@ class JsonlLog:
     and kept going — stamping is detection, refusing is enforcement.
 
     M1b PR 5a-2 (the evidence gate reads these logs): the log also refuses (exit 3), for ANY path, when the
-    imported ``maxim`` is not this repo's src, and stamps every line with the run's code ``provenance``, its
-    ``mock`` flag and a ``log_run_id`` minted fresh per log (never the process-wide harness run id: gate6 runs
-    several Exp 53 phases in one process). ``mock`` and ``evidence`` are required keywords.
+    imported ``maxim`` is not this repo's src. Every line carries its ``mock`` flag, a ``log_run_id`` minted fresh
+    per log and ``provenance_sha256``; the full code ``provenance`` block rides on the run's first line and its
+    terminal line (the gate judges a run as a group, so once is enough, owner decision 2026-09-30). The run id is (never the process-wide harness run id: gate6 runs
+    minted fresh per log, never the process-wide harness run id (gate6 runs several Exp 53 phases in one process).
+    ``mock`` and ``evidence`` are required keywords.
 
     * ``evidence=False``: lines are ``record_kind: "harness_demo"`` — never support; no terminal status.
     * ``evidence=True``: lines are ``"harness_event"``, and the run ends in exactly ONE terminal
@@ -91,6 +95,8 @@ class JsonlLog:
             raise SystemExit(3) from exc
         if gate["allow_dirty"]:
             self.provenance["allow_dirty"] = True
+        self.provenance_sha256 = hashlib.sha256(json.dumps(self.provenance, sort_keys=True).encode()).hexdigest()
+        self._lines = 0
         self.gated = gate["gated"]
         self.mock = bool(mock)
         self.evidence = bool(evidence)
@@ -110,13 +116,16 @@ class JsonlLog:
             raise RuntimeError(f"JsonlLog {self.path}: write({event!r}) after the run's terminal line")
         if "provenance" in fields and fields["provenance"] != self.provenance:
             raise ValueError("a caller's provenance differs from the log's own: pass log.provenance")
-        stamps = {
+        stamps: dict = {
             "record_kind": "harness_event" if self.evidence else "harness_demo",
             "log_run_id": self.log_run_id,
             "mock": self.mock,
-            "provenance": self.provenance,
+            "provenance_sha256": self.provenance_sha256,
         }
+        if self._lines == 0 or "provenance" in fields:
+            stamps["provenance"] = self.provenance  # the run's first line carries the full block
         self._line({"ts": round(time.time(), 3), "event": event, **self._stamp, **fields, **stamps})
+        self._lines += 1
         if event == "abort" or event.endswith("_aborted"):
             self.mark_aborted(event)
 
@@ -137,6 +146,12 @@ class JsonlLog:
         self._terminate(status, **fields)
 
     def _terminate(self, status: str, **fields: object) -> None:
+        # Flag first: an interrupt mid-write leaves no second terminal (zero terminals = failed at the gate).
+        self._terminal = True
+        try:
+            end_digest = _provenance.code_tree_sha256(_REPO_ROOT)
+        except (OSError, subprocess.SubprocessError, ValueError) as exc:
+            end_digest = f"unknown: {type(exc).__name__}"  # never equals the start digest, so the run fails
         self._line(
             {
                 "ts": round(time.time(), 3),
@@ -147,10 +162,11 @@ class JsonlLog:
                 "log_run_id": self.log_run_id,
                 "mock": self.mock,
                 "status": status,
-                "end_code_tree_sha256": _provenance.code_tree_sha256(_REPO_ROOT),
+                "provenance_sha256": self.provenance_sha256,
+                "provenance": self.provenance,
+                "end_code_tree_sha256": end_digest,
             }
         )
-        self._terminal = True
 
     def close(self) -> None:
         """Close the log (idempotent). An evidence run not yet finished ends ``failed`` here."""

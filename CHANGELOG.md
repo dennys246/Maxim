@@ -28,14 +28,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Every writer the ledger cites stamps what its record is, and an event log says how its run ended**
   (M1b PR 5a-2).
   - Orient event logs (`live_common.JsonlLog`) declare evidence vs non-support. An evidence run ends in exactly
-    one terminal line, `ok` only through an explicit `finish("ok")`. An exception, an early return or a
-    caught-and-continued abort ends it `failed`, so the data lines of an aborted run never count.
-  - Every line carries the log's own code provenance, its `mock` flag and a per-log run id.
+    one terminal line, `ok` only through an explicit `finish("ok")`. An exception, an early return or an abort
+    event (`abort` / `*_aborted`) ends it `failed`, so the data lines of an aborted run never count.
+  - Every line carries its `mock` flag, a per-log run id and a provenance digest; the full code provenance rides
+    once per run.
   - The Exp 53 verdict is its own record rather than lines appended to the records it judged.
-  - Instrument checks pass only at their frozen parameters, and Exp 52 Phase A reads `NOT_FROZEN` off them.
+  - Instrument checks pass only at their frozen parameters, and the live survival harnesses (Exp 58/60/61, R3)
+    authorize a run only on a stamped, passing check, no longer on `all_pass` (a pre-M1b apparatus record must
+    be re-checked). Exp 52 Phase A reads `NOT_FROZEN` off its frozen parameters.
   - Diagnoses (the L11 geometry probe, the Exp 62 precheck) and headers (the Exp 44 campaign start) are never
     support.
-  - A verdict over a smoke, or over rows that do not say, is itself `mock`.
+  - A verdict over a file holding any smoke row, or rows that do not say, is itself `mock`.
   - The Exp 62 precheck gains the gated dirty-tree refusal it lacked and records an instrument error instead of
     dropping it.
 - **Every experiment record says what it is, in the shape the evidence gate will read** (M1b PR 5a).

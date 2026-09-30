@@ -132,7 +132,7 @@ What PR 5 can rely on, and must apply (from the PR 2 review round):
 - **A row is judged only if it says how it ended.** `record_kind` present and `status` absent means the
   writer does not stamp an ending (Exp 44's `campaign_start`, Exp 49/56/57 rows, the instrument checks):
   fail closed as sim-run evidence (since PR 5a, the Exp 49/56/57 rows and the instrument checks do stamp one;
-  Exp 44's `campaign_start` still does not). `status: "failed"` is never evidence. A row with no `record_kind` and no
+  since PR 5a-2 Exp 44's `campaign_start` is a `harness_header`, never a run). `status: "failed"` is never evidence. A row with no `record_kind` and no
   `status` is legacy (the frozen snapshot).
 - **An ok row with no `sims`, or an empty list, carries no sim evidence** (an in-process record, or a mock
   run; mock rows also say `mock: true`, Exp 37 included). Judge the sims, not the row's claim about them.
@@ -245,14 +245,15 @@ Owner decisions (2026-09-30), after the review round and a design pass on wideni
 - **Instrument checks** get `record_kind: "instrument_check"` with a `pass` field the gate requires true (5a-2
   moves the Exp 56/57 checks off `stamp_harness_row`); the Exp 44 `campaign_start` row becomes
   `record_kind: "harness_header"`.
-- **Event logs are judged per run group** (`harness_run_id`), not per file; row files and verdicts stay per file.
+- **Event logs are judged per run group**, not per file; row files and verdicts stay per file. (Superseded in
+  detail by PR 5a-2: the group key is the per-log `log_run_id`, never the process-wide `harness_run_id`.)
 - **`JsonlLog` refuses everywhere** (exit 3) when the imported `maxim` is not this repo's src, scratch logs too.
 - **For 5b:** only `harness_row`, `verdict` and `sim_report` count as new support; an instrument check, diagnosis
-  or header never does.
+  or header never does. (Extended by the owner decision of 2026-09-30 recorded in PR 5a-2: `harness_event` too.)
 - R3's re-admitted rows stay `failed` (noted below).
 
 For PR 5b:
-- **Not stamped yet (fail closed at the gate; PR 5a-2):** `orient_backbone/exp53_cross_context_readout.py` (T1-10's
+- **Not stamped yet (fail closed at the gate; PR 5a-2 — see its section for what it stamped):** `orient_backbone/exp53_cross_context_readout.py` (T1-10's
   `53d53_*`), the h1 DoA sweep / part-c writers (T1-7), the cradle phase-A scripted output (T1-9), `exp58_run.py`,
   `exp58_offline_gates.py`, `exp60_water_check.py` (the gate-(ii) records Exp 60/62 cite), `survival_world/
   instrument_check.py`, `exp62_precheck.py`, and R3's report and gauntlet.
@@ -269,12 +270,24 @@ For PR 5b:
 ## PR 5a-2 as built (2026-09-30)
 
 The writers PR 5a left unstamped now stamp too. The design took five adversarial rounds: rounds 1 to 4 each found a
-fail-open hole, and round 5 closed.
+fail-open hole, and round 5 closed. The code review round (executor + architecture) then folded its findings below.
+
+Owner decisions (2026-09-30), in order:
+- **Event logs are support, per run** (design round 4): `harness_event` lines count at 5b, judged per `log_run_id`
+  group — exactly one terminal `ok`, the group's own provenance, no mock line.
+- **Evidence vs non-support** is declared per `JsonlLog` (round 4).
+- **Review round:** `settle_s` is EXEMPT for the Exp 56/57 checks, not frozen (a blind wait before a read can only
+  lower a pass; no pre-registration names a value); provenance rides ONCE per run (first and terminal line) with a
+  `provenance_sha256` on every line; the live harnesses (Exp 58/60/61, R3) authorize only on a stamped, real,
+  passing instrument check (`_provenance.instrument_check_authorizes`), no longer on `all_pass` — so a pre-M1b
+  apparatus record is refused and the check must be re-run before the next live campaign; a verdict's `mock` is
+  judged over the WHOLE file for every verdict writer (smokes go in their own files).
 
 - **Event logs** (`orient_backbone/live_common.py::JsonlLog`, 10 constructions): `mock` and `evidence` are
-  required keywords. Every line carries `record_kind`, the log's own `provenance` (taken once), `mock` and a
-  `log_run_id` minted fresh per log, never the process-wide harness run id (gate6 runs several Exp 53 phases in one
-  process). Stamps win over caller fields, and a caller's `provenance` must equal the log's own. The log refuses
+  required keywords. Every line carries `record_kind`, `mock`, a `log_run_id` minted fresh per log (never the
+  process-wide harness run id: gate6 runs several Exp 53 phases in one process) and `provenance_sha256`; the full
+  `provenance` block (taken once) rides on the run's first line and its terminal line. Stamps win over caller
+  fields, and a caller's `provenance` must equal the log's own. The log refuses
   (exit 3) for any path when the imported `maxim` is not this repo's src.
   - **Non-support** (`evidence=False`; `orient_demo`, `exp53_demo_readout`, `ear_map`, `loudness_bench_poll`,
     `live_2_reactive`, `doa_settle`): `record_kind: "harness_demo"`, never support, no terminal status. The gated
@@ -286,22 +299,36 @@ fail-open hole, and round 5 closed.
     without `finish`, or an abort-class event (`abort`, `*_aborted`, `mark_aborted`) ends it `failed`, so a
     caught-and-continued abort (`live_3_learn`'s lost robot, `delivered_shift_block`'s Ctrl-C) can never end `ok`.
     Exp 53 finishes `ok` on rc 0 or 6: a Gate-I or Gate-C FAIL is a computed result, not a refusal.
+  - **Where the run's code lives:** each evidence caller's body moved into a helper that receives the log
+    (`doa_sweep::_sweep`, `delivered_shift_block::_block`, `live_3_learn::_learn`, exp53 `_run_logged`), so the
+    design's handler rule is applied there: every `except` in a function taking a `JsonlLog` re-raises, writes an
+    abort-class event or calls `mark_aborted`, or sits inside a handler that does (pinned by an AST test). A
+    handler in a function the helper CALLS is outside it (stated below).
+  - **Deviation from design N-c:** the helpers keep their early `log.close()` calls. It is sound — closing an
+    unfinished evidence log can only write `failed` — but the terminal reason then reads "closed without finish"
+    rather than the specific refusal. Early refusals now append a lone `failed` terminal line (no `run_id`).
 - **The Exp 53 verdict** is its own record (`<records stem>_verdict.json`, `--verdict-out`, refusing an existing
-  file unless `--overwrite`). It is no longer appended to the records it judged, which would change the bytes
-  its hash names. Its scope is `{"run_ids": [...]}` over the exp53 run ids it used; it is `mock` when any scoped
-  line is mock or does not say, and `scoped_lines_stamped` says whether every scoped line carries `log_run_id`,
+  file unless `--overwrite`; `_format_version` and `ts` stamped). gate6 passes `--overwrite` (it owns those records)
+  and reads a gate-T verdict only when its `data_sha256` matches the records' current bytes, so a verdict left by
+  an earlier run is never read. It is no longer appended to the records it judged, which would change the bytes
+  its hash names. Its scope is `{"run_ids": [...]}` over the exp53 run ids it used; it is `mock` when any line of
+  the file is mock or does not say, and `scoped_lines_stamped` says whether every scoped line carries `log_run_id`,
   `mock` and `provenance`. Its in-run `gate_I` line stays in the records; gate6 reads gate T from the verdict file.
-- **Verdicts** (`stamp_verdict`) take a required `mock`: true when any row they read is mock or unstamped
-  (`any_not_stamped_real`). A re-verdict over the committed, pre-stamp records therefore reads `mock: true`: unknown
+- **Verdicts** (`stamp_verdict`) take a required `mock`: true when any row of the file is mock or unstamped, or
+  there are no rows (`any_not_stamped_real`); an empty selector (`[]`, `""`) is refused like a `None` one. A re-verdict over the committed, pre-stamp records therefore reads `mock: true`: unknown
   is mock. Read it that way, not as "the run was a smoke".
 - **Instrument checks** (`stamp_instrument_check`): `record_kind: "instrument_check"`, `status` (how it ended),
-  and `pass` (what it measured, only at frozen parameters). The Exp 56/57 checks freeze `settle_s = 0.6`; the
-  survival check `CYCLES = 20` and the water check `CYCLES = 3` (`--cycles 1` passes easier). The Exp 58 offline
-  gates have no pass-relevant flag.
-- **Diagnoses** (`stamp_diagnosis`, never support): the L11 geometry probe (its code provenance moves to
+  and `pass` (what it measured, only at frozen parameters, and never on a failed run). The survival check
+  `CYCLES = 20` and the water check `CYCLES = 3` are frozen (`--cycles 1` passes easier); the Exp 56/57 checks
+  and the Exp 58 offline gates have no pass-relevant flag (`settle_s` exempt, above). The live harnesses read
+  `pass` through `instrument_check_authorizes`.
+- **Diagnoses** (`stamp_diagnosis`, never support; `stamp_diagnosis` and `stamp_instrument_check` refuse an
+  unknown existing `status` like `stamp_harness_row`): the L11 geometry probe (its code provenance moves to
   `code_provenance`) and the Exp 62 precheck. The precheck now takes its provenance, including the gated
   dirty-tree refusal, before any world time, gains `--allow-dirty`, and records an `InstrumentError` as a
-  failed diagnosis instead of dropping it.
+  failed diagnosis instead of dropping it (refusing an existing `--out` unless `--overwrite`, so a failed
+  attempt never erases an earlier record). Pre-5a-2 L11 records keep code provenance under `provenance.code`:
+  legacy; 5b reads only `code_provenance`.
 - **Exp 52 Phase A** (`9_hunger_relief_orient.py`): `FROZEN_PARAMS` from its pre-registration. A run at any other
   value reads `NOT_FROZEN`, never `PASS`. A VOID run is `failed`, and the report gains `ts`, `verdict` and
   `frozen_params`.
@@ -310,13 +337,21 @@ fail-open hole, and round 5 closed.
 
 For PR 5b:
 - Support kinds: `harness_row`, `harness_event` (judged per `log_run_id` group: exactly one terminal `ok`, no mock
-  line), `verdict` and `sim_report`. `instrument_check`, `diagnosis`, `harness_header` and `harness_demo` never
-  count. Pass sets: `exp53_verdict` `{PASS}`; `exp52_phaseA_scripted` rows `{PASS}` read from `verdict`.
+  line, every line's `provenance_sha256` equal to the group's block), `verdict` and `sim_report`.
+  `instrument_check`, `diagnosis`, `harness_header` and `harness_demo` never count. Pass sets: `exp53_verdict`
+  `{PASS}`; Exp 52 Phase A rows (`experiment: "exp52_phaseA_scripted"`) `{PASS}` read from `verdict`.
+- **A cited instrument check must hold** (owner decision, 5a): `status: ok`, `pass: true`, `mock: false`. It never
+  supports a row by itself, but a cited failing one sinks the row. T1-11 cites `56_phase0.json`.
+- **Unjudgeable records, stated:** `h1_partc_summary.json` (T1-7) is hand-authored and has no writer, so it stays
+  legacy forever; T1-7 can be re-earned only through a new `doa_sweep` (evidence) run. R3's report and gauntlet
+  (`r3_run.py::report` / `write_gauntlet`) stay unstamped: uncited, fail closed. Every committed record today is
+  legacy until re-run.
 - An Exp 53 verdict joins its `run_ids` to every `log_run_id` group holding them; each group must be ok, and
   each scoped `run_id` must have at least one line.
 - **Inputs that could lie:**
-  - The abort latch is a naming convention (`abort` / `*_aborted`). A future handler that catches a failure
-    inside a helper, logs it under another name and returns 0 would reach `finish("ok")`.
+  - The abort latch is a naming convention (`abort` / `*_aborted`). The handler rule covers functions that take
+    the log; a handler in a function they CALL that swallows a failure and lets the helper return 0 would still
+    reach `finish("ok")`.
   - `finish` itself is caller-declared.
   - Each writer's `passed` rule and `FROZEN_PARAMS` are the writer's own.
 - **Owner note:** `doa_settle` (the 0.23 s convergence figure cited in T1-7 and Exp 45) and `loudness_bench_poll`
