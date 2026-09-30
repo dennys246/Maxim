@@ -103,7 +103,7 @@ def main() -> int:
 
     from live_common import JsonlLog
 
-    log = JsonlLog(args.log)
+    log = JsonlLog(args.log, mock=False, evidence=False)  # a measurement tool's log: never gate evidence
     rig = LiveRig(host)
     rig.recenter()
 

@@ -341,16 +341,24 @@ def main() -> int:
         "into every record (default: refuse, exit 3 — docs/lessons/experiment-prereg-precedes-data.md)",
     )
     args = ap.parse_args()
+    # An evidence log (M1b PR 5a-2): the run ends `ok` only through the finish below. A Ctrl-C writes
+    # `block_aborted`, which latches the run as failed although the partial summary is still written; an early
+    # return or an exception ends it failed too.
+    with JsonlLog(args.log, mock=args.dry_run, evidence=True, allow_dirty=args.allow_dirty) as log:
+        rc = _block(args, log)
+        if rc == 0 and log.aborted is None:
+            log.finish("ok")
+    return rc
 
+
+def _block(args: argparse.Namespace, log: JsonlLog) -> int:
     affordances = [a.strip() for a in args.affordances.split(",") if a.strip()]
     run_id = f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{os.getpid()}"
-    log = JsonlLog(args.log, allow_dirty=args.allow_dirty)
 
     def emit(event: str, **fields: object) -> None:
         log.write(event, run_id=run_id, label=args.label, dry_run=args.dry_run, **fields)
 
-    repo_root = _HERE.parent.parent
-    prov = provenance(repo_root, out_path=args.log, allow_dirty=args.allow_dirty)
+    prov = log.provenance  # the log's own stamp (the same in_process_code_provenance, taken once)
 
     if args.dry_run:
         rig = DryBlockRig()
@@ -513,7 +521,6 @@ def main() -> int:
         f"  reference: healthy full-range sensor gain {HEALTHY_GAIN} az/rad; YAML _big self_effect azimuth ±0.50 for ±0.9 rad"
     )
     emit("block_done", summary=summary)
-    log.close()
     print(f"\n[done] run_id={run_id} → {args.log}  (group by run_id, not label)")
     return 0
 

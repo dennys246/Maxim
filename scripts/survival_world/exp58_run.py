@@ -60,6 +60,7 @@ from _provenance import (  # noqa: E402
     ProvenanceError,
     evidence_out_paths_or_exit,
     in_process_code_provenance,
+    stamp_harness_row,
 )
 from exp56 import common as C  # noqa: E402
 from survival_world.common import InstrumentError, bot_pos, read_vital, settle_until  # noqa: E402
@@ -548,7 +549,8 @@ def main(argv: list[str] | None = None) -> int:
             records.append(record)
             out_path.parent.mkdir(parents=True, exist_ok=True)
             with open(out_path, "a") as fh:
-                fh.write(json.dumps(record) + "\n")
+                # record_kind / status (refusal → failed) / mock: the evidence gate's reading (M1b PR 5a-2).
+                fh.write(json.dumps(stamp_harness_row(record, mock=False)) + "\n")
     finally:
         rcon.close()
 

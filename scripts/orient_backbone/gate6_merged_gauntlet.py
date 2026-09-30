@@ -241,15 +241,23 @@ def _run_gauntlet(manifest_path: Path, records_path: Path, allow_dirty: bool) ->
 
 
 def _gate_records(records_path: Path) -> dict[str, dict]:
-    """Latest gate_I / gate_T summary records from an exp53 records file."""
+    """The latest gate_I record (an in-run line of the exp53 records) and the gate_T verdict (exp53's own
+    verdict record beside them, M1b PR 5a-2 — no longer appended to the records it judges)."""
+    import exp53_cross_context_readout as exp53
+
     out: dict[str, dict] = {}
     for line in records_path.read_text().splitlines():
         try:
             rec = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if rec.get("event") in ("gate_I", "gate_T"):
-            out[rec["event"]] = rec
+        if rec.get("event") == "gate_I":
+            out["gate_I"] = rec
+    verdict_path = exp53.default_verdict_out(records_path)
+    if verdict_path.is_file():
+        verdict = json.loads(verdict_path.read_text())
+        if verdict.get("gate") == "T":
+            out["gate_T"] = verdict
     return out
 
 

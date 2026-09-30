@@ -51,6 +51,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -80,6 +81,10 @@ HUNGER_MARGIN = 0.20
 SATIATED_MAX = 0.60
 MOTHER_MARGIN = 0.20
 SETTLE_BINS = 4
+# The pass-relevant parameters, frozen by the pre-registration (exp52_nurture_preregistration.md §Phase A,
+# "Parameters (frozen)"). A run at any other value can still be read, but its verdict is NOT_FROZEN, never PASS
+# (M1b PR 5a-2: `--seeds 1` or `--credit constant` must not print a citable PASS).
+FROZEN_PARAMS = {"ticks": 600, "bin": 50, "seeds": 8, "epsilon": 0.2, "credit": "relief"}
 FIRST_N = 5  # pre-learning baseline window (chance by construction), as probe 4
 YOKED_SEED_OFFSET = 100_003  # independent RNG stream for the yoked infant
 
@@ -262,11 +267,11 @@ def _provenance_block(out_path: str, allow_dirty: bool) -> dict:
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Exp 52 Phase A — hunger-relief-taught orienting (scripted)")
-    p.add_argument("--ticks", type=int, default=600)
-    p.add_argument("--bin", type=int, default=50)
-    p.add_argument("--seeds", type=int, default=8)
-    p.add_argument("--epsilon", type=float, default=0.2)
-    p.add_argument("--credit", default="relief", choices=["relief", "constant"])
+    p.add_argument("--ticks", type=int, default=FROZEN_PARAMS["ticks"])
+    p.add_argument("--bin", type=int, default=FROZEN_PARAMS["bin"])
+    p.add_argument("--seeds", type=int, default=FROZEN_PARAMS["seeds"])
+    p.add_argument("--epsilon", type=float, default=FROZEN_PARAMS["epsilon"])
+    p.add_argument("--credit", default=FROZEN_PARAMS["credit"], choices=["relief", "constant"])
     p.add_argument("--json", default="", help="write the full report (curves, telemetry, gates, provenance)")
     p.add_argument(
         "--allow-dirty",
@@ -277,6 +282,7 @@ def main() -> int:
     args = p.parse_args()
 
     prov = _provenance_block(args.json, args.allow_dirty)
+    started = time.time()
     seeds = list(range(args.seeds))
     print(
         f"Exp 52 Phase A — credit={args.credit} ticks={args.ticks} bin={args.bin} "
@@ -389,8 +395,23 @@ def main() -> int:
     else:
         print("\n**FAIL — LEARNED did not clear; per the pre-registration Phase B does not run.**")
 
+    frozen = all(getattr(args, k) == v for k, v in FROZEN_PARAMS.items())
+    if not sanity:
+        verdict = "VOID"
+    elif not frozen:
+        verdict = "NOT_FROZEN"
+    elif learned and hunger_nec and mother_nec:
+        verdict = "PASS"
+    else:
+        verdict = "PARTIAL" if learned else "FAIL"
+    if not frozen:
+        print(f"\n(params differ from the frozen {FROZEN_PARAMS}: verdict {verdict}, never a citable PASS)")
+
     if args.json:
         report = {
+            "ts": started,
+            "verdict": verdict,
+            "frozen_params": frozen,
             "experiment": "exp52_phaseA_scripted",
             "credit": args.credit,
             "params": {
@@ -415,6 +436,13 @@ def main() -> int:
             },
             "provenance": prov,
         }
+        # A harness row (M1b PR 5a-2): a VOID run (the credit path misbehaved) is failed, never a trial. Scripted
+        # is this experiment's declared apparatus, not a smoke.
+        import _provenance  # noqa: PLC0415  (on sys.path since _provenance_block)
+
+        _provenance.stamp_harness_row(report, mock=False)
+        if verdict == "VOID":
+            report["status"] = "failed"
         Path(args.json).write_text(json.dumps(report, indent=2))
         print(f"\nreport written: {args.json}")
     return 0 if sanity else 4

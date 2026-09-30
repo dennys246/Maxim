@@ -25,6 +25,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Every writer the ledger cites stamps what its record is, and an event log says how its run ended**
+  (M1b PR 5a-2).
+  - Orient event logs (`live_common.JsonlLog`) declare evidence vs non-support. An evidence run ends in exactly
+    one terminal line, `ok` only through an explicit `finish("ok")`. An exception, an early return or a
+    caught-and-continued abort ends it `failed`, so the data lines of an aborted run never count.
+  - Every line carries the log's own code provenance, its `mock` flag and a per-log run id.
+  - The Exp 53 verdict is its own record rather than lines appended to the records it judged.
+  - Instrument checks pass only at their frozen parameters, and Exp 52 Phase A reads `NOT_FROZEN` off them.
+  - Diagnoses (the L11 geometry probe, the Exp 62 precheck) and headers (the Exp 44 campaign start) are never
+    support.
+  - A verdict over a smoke, or over rows that do not say, is itself `mock`.
+  - The Exp 62 precheck gains the gated dirty-tree refusal it lacked and records an instrument error instead of
+    dropping it.
 - **Every experiment record says what it is, in the shape the evidence gate will read** (M1b PR 5a).
   - Harness rows are stamped where they are written (`scripts/_provenance.py::stamp_harness_row`):
     `record_kind`, `status` (a refusal is `failed`) and an explicit `mock`.

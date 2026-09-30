@@ -68,7 +68,7 @@ def main() -> int:
     ap.add_argument("--dry-flip", action="store_true", help="dry-run world uses the OPPOSITE sign convention")
     args = ap.parse_args()
 
-    log = JsonlLog(args.log)
+    log = JsonlLog(args.log, mock=args.dry_run, evidence=False)  # a smoke/bring-up log: never evidence
     # sign_mult=+1: default convention (+yaw -> az grows +)  => center via -sign(az)*step
     sign_mult = -1.0 if args.flip_sign else 1.0
     # Dry-run: reads are synthetic and instant — skip real-time pacing.

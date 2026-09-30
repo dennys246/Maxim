@@ -123,7 +123,7 @@ def main() -> int:
         print("[warn] policy is not fully converged — bins probing None will HOLD instead of turning.")
         print("       (train more via live_3_learn.py, or run this demo with --learn)")
 
-    log = JsonlLog(args.log)
+    log = JsonlLog(args.log, mock=args.dry_run, evidence=False)  # a demo log: never evidence
     if args.dry_run:
         rig = DryRig(theta_src=-0.7)
         print(f"[dry] source starts at world bearing {rig.theta_src:+.2f} rad (it wanders)")

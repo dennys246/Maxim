@@ -49,6 +49,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[1]
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
+from _provenance import ProvenanceError, in_process_code_provenance, stamp_diagnosis  # noqa: E402
 from survival_world.common import InstrumentError, sync_snapshot  # noqa: E402
 from survival_world.water_trial import WaterTrial  # noqa: E402
 
@@ -334,6 +335,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--username", default="maxim")
     ap.add_argument("--agent-id", default="exp62_precheck")
     ap.add_argument("--workdir", default=None, help="durable home for the agent (default: a tmpdir)")
+    ap.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="write a record under docs/experiments/data/ from a dirty src/scripts tree (stamps allow_dirty: true)",
+    )
     args = ap.parse_args(argv)
 
     geom1 = json.loads(Path(args.pool1_anchor).expanduser().read_text())
@@ -342,6 +348,19 @@ def main(argv: list[str] | None = None) -> int:
         if "measured" not in geom:
             print(f"INSTRUMENT ERROR: {label}'s record carries no `measured` block — run exp60_water_check on it first")
             return 4
+
+    # Which code ran, taken BEFORE any world time is spent (M1b PR 5a-2): a gated --out from a dirty tree is
+    # refused here (exit 3) unless --allow-dirty, and a maxim that is not this repo's src refuses too.
+    import maxim  # noqa: PLC0415
+
+    out_path = Path(args.out).expanduser()
+    try:
+        code_provenance = in_process_code_provenance(
+            SCRIPTS_DIR.parent, maxim.__file__, out_path=out_path, allow_dirty=args.allow_dirty
+        )
+    except ProvenanceError as exc:
+        print(f"PROVENANCE: {exc}", file=sys.stderr)
+        return 3
 
     import tempfile
 
@@ -362,6 +381,11 @@ def main(argv: list[str] | None = None) -> int:
         )
     except InstrumentError as exc:
         print(f"INSTRUMENT ERROR: {exc}")
+        # The abort is a record too (M1b PR 5a-2), never only a line on stdout.
+        failed = {"_format_version": "1.0", "kind": "exp62_precheck", "ts": time.time(), "instrument_error": str(exc)}
+        stamp_diagnosis(failed, mock=False, code_provenance=code_provenance)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(failed, indent=2, default=str) + "\n")
         return 4
     finally:
         if trial is not None:
@@ -378,8 +402,10 @@ def main(argv: list[str] | None = None) -> int:
         if rcon is not None:
             rcon.close()
 
-    Path(args.out).expanduser().parent.mkdir(parents=True, exist_ok=True)
-    Path(args.out).expanduser().write_text(json.dumps(record, indent=2, default=str) + "\n")
+    # A diagnosis (M1b PR 5a-2): it authorizes nothing and is never evidence.
+    stamp_diagnosis(record, mock=False, code_provenance=code_provenance)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(record, indent=2, default=str) + "\n")
     print(json.dumps(record["rows_ok"], indent=2))
     print(record["carry"]["read_at_pool2"]["reading"])
     print(f"\nprecheck record -> {args.out}")

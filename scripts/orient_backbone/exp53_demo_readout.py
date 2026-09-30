@@ -69,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
     sim_logger.register_sim_sink(sink)
     agent = h.LoadedAgent(spec, 0.0)  # frozen policy: the learned bias decides, nothing else
     rig = h.LiveReadoutRig(host)
-    log = h.JsonlLog(args.log)
+    log = h.JsonlLog(args.log, mock=False, evidence=False)  # a demo log: never evidence
     print(f"[demo] {args.agent}: {spec['bias_entries']} learned biases; δ={args.delta} rad; NOT EVIDENCE")
     print("[demo] speak from a side; the robot takes one glance per speech onset, then holds.")
     t0 = time.time()

@@ -265,3 +265,61 @@ For PR 5b:
 - `kind` means the row type on survival rows ("receiver") and the verdict kind on verdicts; key on `record_kind`
   first. `stamp_verdict` resolves `data` through a symlink, so the gate's no-symlink rule reads the verdict's
   own path.
+
+## PR 5a-2 as built (2026-09-30)
+
+The writers PR 5a left unstamped now stamp too. The design took five adversarial rounds: rounds 1 to 4 each found a
+fail-open hole, and round 5 closed.
+
+- **Event logs** (`orient_backbone/live_common.py::JsonlLog`, 10 constructions): `mock` and `evidence` are
+  required keywords. Every line carries `record_kind`, the log's own `provenance` (taken once), `mock` and a
+  `log_run_id` minted fresh per log, never the process-wide harness run id (gate6 runs several Exp 53 phases in one
+  process). Stamps win over caller fields, and a caller's `provenance` must equal the log's own. The log refuses
+  (exit 3) for any path when the imported `maxim` is not this repo's src.
+  - **Non-support** (`evidence=False`; `orient_demo`, `exp53_demo_readout`, `ear_map`, `loudness_bench_poll`,
+    `live_2_reactive`, `doa_settle`): `record_kind: "harness_demo"`, never support, no terminal status. The gated
+    dirty-tree refusal still applies.
+  - **Evidence** (`evidence=True`; `doa_sweep`, `delivered_shift_block`, `live_3_learn`,
+    `exp53_cross_context_readout`): lines are `harness_event`; each run ends in exactly ONE `harness_run_end` line
+    carrying `status` and `end_code_tree_sha256`. It is `ok` only through an explicit `finish("ok")`, written as
+    the last statement of the `with JsonlLog(...)` body. An exception, an early return, a `close()`, a clean exit
+    without `finish`, or an abort-class event (`abort`, `*_aborted`, `mark_aborted`) ends it `failed`, so a
+    caught-and-continued abort (`live_3_learn`'s lost robot, `delivered_shift_block`'s Ctrl-C) can never end `ok`.
+    Exp 53 finishes `ok` on rc 0 or 6: a Gate-I or Gate-C FAIL is a computed result, not a refusal.
+- **The Exp 53 verdict** is its own record (`<records stem>_verdict.json`, `--verdict-out`, refusing an existing
+  file unless `--overwrite`). It is no longer appended to the records it judged, which would change the bytes
+  its hash names. Its scope is `{"run_ids": [...]}` over the exp53 run ids it used; it is `mock` when any scoped
+  line is mock or does not say, and `scoped_lines_stamped` says whether every scoped line carries `log_run_id`,
+  `mock` and `provenance`. Its in-run `gate_I` line stays in the records; gate6 reads gate T from the verdict file.
+- **Verdicts** (`stamp_verdict`) take a required `mock`: true when any row they read is mock or unstamped
+  (`any_not_stamped_real`). A re-verdict over the committed, pre-stamp records therefore reads `mock: true`: unknown
+  is mock. Read it that way, not as "the run was a smoke".
+- **Instrument checks** (`stamp_instrument_check`): `record_kind: "instrument_check"`, `status` (how it ended),
+  and `pass` (what it measured, only at frozen parameters). The Exp 56/57 checks freeze `settle_s = 0.6`; the
+  survival check `CYCLES = 20` and the water check `CYCLES = 3` (`--cycles 1` passes easier). The Exp 58 offline
+  gates have no pass-relevant flag.
+- **Diagnoses** (`stamp_diagnosis`, never support): the L11 geometry probe (its code provenance moves to
+  `code_provenance`) and the Exp 62 precheck. The precheck now takes its provenance, including the gated
+  dirty-tree refusal, before any world time, gains `--allow-dirty`, and records an `InstrumentError` as a
+  failed diagnosis instead of dropping it.
+- **Exp 52 Phase A** (`9_hunger_relief_orient.py`): `FROZEN_PARAMS` from its pre-registration. A run at any other
+  value reads `NOT_FROZEN`, never `PASS`. A VOID run is `failed`, and the report gains `ts`, `verdict` and
+  `frozen_params`.
+- **Headers** (`stamp_harness_header`, no status, never support): the Exp 44 `campaign_start` row. **Exp 58 rows**
+  are stamped with `stamp_harness_row`.
+
+For PR 5b:
+- Support kinds: `harness_row`, `harness_event` (judged per `log_run_id` group: exactly one terminal `ok`, no mock
+  line), `verdict` and `sim_report`. `instrument_check`, `diagnosis`, `harness_header` and `harness_demo` never
+  count. Pass sets: `exp53_verdict` `{PASS}`; `exp52_phaseA_scripted` rows `{PASS}` read from `verdict`.
+- An Exp 53 verdict joins its `run_ids` to every `log_run_id` group holding them; each group must be ok, and
+  each scoped `run_id` must have at least one line.
+- **Inputs that could lie:**
+  - The abort latch is a naming convention (`abort` / `*_aborted`). A future handler that catches a failure
+    inside a helper, logs it under another name and returns 0 would reach `finish("ok")`.
+  - `finish` itself is caller-declared.
+  - Each writer's `passed` rule and `FROZEN_PARAMS` are the writer's own.
+- **Owner note:** `doa_settle` (the 0.23 s convergence figure cited in T1-7 and Exp 45) and `loudness_bench_poll`
+  (`h2_loudness_bench.jsonl`) produce cited measurements but are non-support logs, so those findings can never be
+  gate support.
+

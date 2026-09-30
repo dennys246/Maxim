@@ -92,6 +92,7 @@ from _provenance import (  # noqa: E402
     in_process_code_provenance,
     stamp_harness_row,
     stamp_verdict,
+    any_not_stamped_real,
 )
 from exp56 import common as C  # noqa: E402
 from survival_world.common import InstrumentError  # noqa: E402
@@ -1220,6 +1221,7 @@ def cmd_verdict(args: argparse.Namespace) -> int:
         kind="exp62_verdict",
         data=Path(args.data).expanduser(),
         data_bytes=data_bytes,
+        mock=any_not_stamped_real(rows),  # a verdict over a smoke, or over unstamped rows, is a smoke
         # every row of the campaign: the verdict reads its receiver/row, replay, apparatus and donor rows (drift, one
         # code hash), not only the rows it counts
         scope={"campaign_id": args.campaign_id} if args.campaign_id else {"all_rows": True},

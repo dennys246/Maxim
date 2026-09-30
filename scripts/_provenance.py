@@ -69,6 +69,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 __all__ = [
@@ -79,7 +80,11 @@ __all__ = [
     "SimRunFailed",
     "failed_row",
     "stamp_harness_row",
+    "stamp_harness_header",
+    "stamp_instrument_check",
+    "stamp_diagnosis",
     "stamp_verdict",
+    "any_not_stamped_real",
     "is_failed_row",
     "spawn_evidence",
     "depends_on",
@@ -498,13 +503,22 @@ def stamp_harness_row(row: dict, *, mock: bool) -> dict:
 
 
 def stamp_verdict(
-    verdict: dict, *, repo_root: Path | str, kind: str, data: Path | str, data_bytes: bytes, scope: dict
+    verdict: dict,
+    *,
+    repo_root: Path | str,
+    kind: str,
+    data: Path | str,
+    data_bytes: bytes,
+    scope: dict,
+    mock: bool,
 ) -> dict:
     """A verdict as the evidence gate reads it (M1b PR 5a): ``record_kind``, its ``kind`` (the gate owns each
     kind's pass values), the rows file it judged as a REPO-RELATIVE path with the sha256 of ``data_bytes`` — the
     bytes the verdict parsed, read ONCE by the caller, so rows appended while it ran cannot slip under the hash — and the scope that selects every row it read: its selectors (``run_ids``,
     ``campaign_id``), or ``{"all_rows": True}`` when it reads the whole file. An empty scope or a ``None`` selector
-    is refused, so "every row" is never the reading of a writer that forgot. Returns the same dict."""
+    is refused, so "every row" is never the reading of a writer that forgot. ``mock`` is required: True when any
+    row it read is mock or does not say (``any_not_stamped_real``) — a verdict over a smoke is a smoke. Returns the
+    same dict."""
     if not scope or any(v is None for v in scope.values()):
         raise ValueError(f"verdict scope {scope!r}: name the selectors, or {{'all_rows': True}} for the whole file")
     root = Path(repo_root).resolve()
@@ -518,7 +532,50 @@ def stamp_verdict(
     verdict["data"] = rel
     verdict["data_sha256"] = hashlib.sha256(data_bytes).hexdigest()
     verdict["scope"] = scope
+    verdict["mock"] = bool(mock)
     return verdict
+
+
+def any_not_stamped_real(rows: list) -> bool:
+    """True when any row is mock or carries no ``mock`` at all (M1b PR 5a-2): unknown is mock, so a verdict
+    re-computed over legacy (unstamped) rows never reads as a real run's."""
+    return any(not isinstance(r, dict) or r.get("mock") is not False for r in rows)
+
+
+def stamp_harness_header(row: dict, *, mock: bool) -> dict:
+    """A header record (M1b PR 5a-2): a campaign's opening config + provenance, not a run. It carries no
+    ``status``, and the evidence gate never counts it as support. Returns the same dict."""
+    if "status" in row:
+        raise ValueError("a harness header has no status: it records a configuration, not a run")
+    row["record_kind"] = "harness_header"
+    row["mock"] = bool(mock)
+    return row
+
+
+def stamp_instrument_check(report: dict, *, mock: bool, passed: bool) -> dict:
+    """An instrument check as the evidence gate reads it (M1b PR 5a-2): ``record_kind: "instrument_check"``,
+    ``status`` (how the run ended: ``failed`` when ``instrument_error`` or ``refusal`` is set, else ``ok``),
+    ``mock`` and ``pass`` (what it measured, at the writer's FROZEN parameters; the gate requires it true, and an
+    instrument check is never support by itself). ``passed`` is required so each writer names its own rule."""
+    ended_badly = report.get("instrument_error") is not None or report.get("refusal") is not None
+    report["record_kind"] = "instrument_check"
+    report["status"] = "failed" if ended_badly else "ok"
+    report["mock"] = bool(mock)
+    report["pass"] = bool(passed) and not ended_badly
+    report.setdefault("ts", time.time())
+    return report
+
+
+def stamp_diagnosis(report: dict, *, mock: bool, code_provenance: dict) -> dict:
+    """A diagnosis (M1b PR 5a-2): a record that informs a design and never counts as support. Its code provenance
+    lives under ``code_provenance`` (a diagnosis may use ``provenance`` for its own non-code context), and its
+    ``status`` says how the run ended. Returns the same dict."""
+    report["record_kind"] = "diagnosis"
+    report["status"] = "failed" if report.get("instrument_error") is not None else "ok"
+    report["mock"] = bool(mock)
+    report["code_provenance"] = code_provenance
+    report.setdefault("ts", time.time())
+    return report
 
 
 def is_failed_row(row: object) -> bool:

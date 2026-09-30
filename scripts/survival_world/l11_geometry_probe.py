@@ -734,10 +734,16 @@ def analyze(args: argparse.Namespace) -> int:
         # not gated behavioural data, so --allow-dirty is offered (stamped).
         sys.path.insert(0, str(_REPO_ROOT / "scripts"))
         import maxim  # noqa: PLC0415  (deferred: keep _provenance the maxim-free surface)
-        from _provenance import in_process_code_provenance  # noqa: PLC0415
+        from _provenance import in_process_code_provenance, stamp_diagnosis  # noqa: PLC0415
 
-        record["provenance"]["code"] = in_process_code_provenance(
-            _REPO_ROOT, maxim.__file__, out_path=out, allow_dirty=args.allow_dirty
+        # A diagnosis (M1b PR 5a-2): it informs a design and is never evidence. Its code provenance lives under
+        # `code_provenance`; `provenance` stays this record's own capture context.
+        stamp_diagnosis(
+            record,
+            mock=False,
+            code_provenance=in_process_code_provenance(
+                _REPO_ROOT, maxim.__file__, out_path=out, allow_dirty=args.allow_dirty
+            ),
         )
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(record, indent=2) + "\n")

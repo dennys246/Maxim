@@ -31,7 +31,7 @@ from _provenance import (  # noqa: E402
     evidence_out_paths,
     in_process_code_provenance,
     preflight_gated_record_or_exit,
-    stamp_harness_row,
+    stamp_instrument_check,
 )
 from _paper_server import server_version_matches  # noqa: E402
 from exp56 import common as C  # noqa: E402
@@ -42,6 +42,10 @@ DISCRIMINABILITY_BAR = 0.70  # prereg Phase-0 check 1 (both separation and stabi
 FLOOR_CONCENTRATION_MAX = 0.5  # check 4
 FLOOR_PROBES = 10
 L1_MARGIN = 0.11
+
+
+# The pass-relevant parameters, frozen (M1b PR 5a-2): the check passes only at these.
+FROZEN_PARAMS = {"settle_s": 0.6}
 
 
 def check_discriminability(bridge_port: int, world, bot: str, work: Path, *, settle: float) -> dict:
@@ -207,7 +211,7 @@ def main() -> int:
     ap.add_argument("--rcon-port", type=int, default=25575)
     ap.add_argument("--rcon-password", default=os.environ.get("EXP56_RCON_PASSWORD", ""))
     ap.add_argument("--bot-name", default=os.environ.get("EXP56_BOT_NAME", "maxim_bench"))
-    ap.add_argument("--settle-s", type=float, default=0.6)
+    ap.add_argument("--settle-s", type=float, default=FROZEN_PARAMS["settle_s"])
     ap.add_argument("--mock", action="store_true")
     ap.add_argument("--write-experiment-results", action="store_true")
     ap.add_argument("--allow-dirty", action="store_true")
@@ -285,7 +289,10 @@ def main() -> int:
     )
     report["all_pass"] = all_pass
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    stamp_harness_row(report, mock=bool(args.mock))  # record_kind / status / mock (M1b PR 5a)
+    # An instrument check (M1b PR 5a-2): it passes only at the frozen settle (a shorter settle reads the world
+    # before it has moved). The ScriptedBridge --mock run is a smoke.
+    report["frozen_params"] = args.settle_s == FROZEN_PARAMS["settle_s"]
+    stamp_instrument_check(report, mock=bool(args.mock), passed=bool(report["all_pass"]) and report["frozen_params"])
     out_path.write_text(json.dumps(report, indent=2))
     print(json.dumps({k: report[k].get("pass") for k in report if k.startswith("check")}, indent=2))
     print(f"phase0: {'PASS' if all_pass else 'FAIL'} -> {out_path}")

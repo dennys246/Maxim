@@ -74,21 +74,36 @@ def test_a_verdict_names_its_data_repo_relative_with_the_hash_of_the_bytes_it_ju
     judged = rows.read_bytes()
     rows.write_text('{"a": 1}\n{"appended": "after the verdict read"}\n')
     v = P.stamp_verdict(
-        {"verdict": "PASS"}, repo_root=tmp_path, kind="k", data=rows, data_bytes=judged, scope={"campaign_id": "c"}
+        {"verdict": "PASS"},
+        repo_root=tmp_path,
+        kind="k",
+        data=rows,
+        data_bytes=judged,
+        scope={"campaign_id": "c"},
+        mock=False,
     )
     assert v["record_kind"] == "verdict" and v["kind"] == "k" and v["scope"] == {"campaign_id": "c"}
     assert v["data"] == "docs/rows.jsonl" and v["data_sha256"] == hashlib.sha256(judged).hexdigest() != _sha(rows)
     outside = P.stamp_verdict(
-        {}, repo_root=tmp_path / "docs", kind="k", data=tmp_path / "x.jsonl", data_bytes=b"", scope={"all_rows": True}
+        {},
+        repo_root=tmp_path / "docs",
+        kind="k",
+        data=tmp_path / "x.jsonl",
+        data_bytes=b"",
+        scope={"all_rows": True},
+        mock=True,
     )
-    assert outside["data"] == str(tmp_path / "x.jsonl")
+    assert outside["data"] == str(tmp_path / "x.jsonl") and outside["mock"] is True
+    # a verdict over a smoke, or over rows that do not say, is a smoke (M1b PR 5a-2: unknown is mock)
+    assert P.any_not_stamped_real([{"mock": False}]) is False
+    assert P.any_not_stamped_real([{"mock": False}, {}]) is True and P.any_not_stamped_real([{"mock": True}])
 
 
 @pytest.mark.parametrize("scope", [{}, {"campaign_id": None}, {"run_ids": None}])
 def test_a_verdict_scope_is_never_empty_or_a_none_selector(scope: dict, tmp_path: Path) -> None:
     """ "Every row" must be said ({"all_rows": True}), never be what a forgotten selector reads as."""
     with pytest.raises(ValueError, match="all_rows"):
-        P.stamp_verdict({}, repo_root=tmp_path, kind="k", data=tmp_path / "r", data_bytes=b"", scope=scope)
+        P.stamp_verdict({}, repo_root=tmp_path, kind="k", data=tmp_path / "r", data_bytes=b"", scope=scope, mock=False)
 
 
 def test_the_provenance_block_names_its_family(monkeypatch) -> None:
@@ -154,6 +169,8 @@ def test_a_survival_verdict_binds_its_rows_file_scope_and_code(
     assert v["record_kind"] == "verdict" and v["kind"] == kind
     assert v["data"] == data and v["data_sha256"] == _sha(REPO / data)
     assert v["scope"] == scope, "the scope names every row the verdict read (a campaign: all of its kinds)"
+    # the committed rows predate the stamps: a re-verdict over them is mock (unknown is mock, M1b PR 5a-2)
+    assert v["mock"] is True
     assert v["provenance"]["harness_family"] == "in_process"
 
 
@@ -180,6 +197,7 @@ def test_the_exp56_and_exp57_analyzers_stamp_their_verdicts(
     assert report["data"] == str(rows) and report["data_sha256"] == _sha(rows)  # outside the repo: named as given
     assert report["provenance"]["harness_family"] == "in_process" and report["scope"] == {"all_rows": True}
     assert report["verdict"] == "NO-VERDICT", "a mock row never yields a verdict"
+    assert report["mock"] is True, "a verdict over a smoke is a smoke (M1b PR 5a-2)"
 
 
 @pytest.mark.parametrize("analyzer", ["analyze_exp56.py", "analyze_exp57.py"])
@@ -211,7 +229,10 @@ def test_an_exp44_dry_run_manifest_is_mock(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(sys, "argv", argv)
     assert exp44.main() == 0
     rows = _rows(work / "manifest.jsonl")
-    assert rows and all(r["record_kind"] == "harness_row" and r["mock"] is True for r in rows)
+    assert rows and all(r["mock"] is True for r in rows)
+    # the opening row is a header (config + provenance, never a run: M1b PR 5a-2), the rest are harness rows
+    assert rows[0]["record_kind"] == "harness_header" and "status" not in rows[0]
+    assert all(r["record_kind"] == "harness_row" for r in rows[1:])
 
 
 def test_the_exp49_scripted_arm_is_mock(tmp_path: Path, monkeypatch) -> None:
@@ -328,7 +349,8 @@ def test_the_exp56_and_exp57_harnesses_stamp_in_process_provenance(rel: str) -> 
 
     calls = L._names_called(ast.parse((SCRIPTS / rel).read_text()))
     assert "in_process_code_provenance" in calls and "executed_code_provenance" not in calls
-    assert "stamp_harness_row" in calls, "its rows are stamped where they are written"
+    stamp = "stamp_instrument_check" if rel.endswith("instrument_check.py") else "stamp_harness_row"
+    assert stamp in calls, "its records are stamped where they are written"
 
 
 @pytest.mark.slow
@@ -349,6 +371,7 @@ def test_the_exp56_mock_runs_write_stamped_records(rel: str, out_name: str, tmp_
     assert proc.returncode == 0, proc.stdout[-2000:] + proc.stderr[-2000:]
     records = _rows(out) if out_name.endswith(".jsonl") else [json.loads(out.read_text())]
     assert records
+    kind = "instrument_check" if rel.endswith("instrument_check.py") else "harness_row"
     for r in records:
-        assert (r["record_kind"], r["status"], r["mock"]) == ("harness_row", "ok", True)
+        assert (r["record_kind"], r["status"], r["mock"]) == (kind, "ok", True)
         assert r["provenance"]["harness_family"] == "in_process"

@@ -97,6 +97,7 @@ from _provenance import (  # noqa: E402
     in_process_code_provenance,
     stamp_harness_row,
     stamp_verdict,
+    any_not_stamped_real,
 )
 from exp56 import common as C  # noqa: E402
 from survival_world.common import InstrumentError  # noqa: E402
@@ -538,6 +539,7 @@ def _verdict(args: argparse.Namespace) -> int:
         kind="exp60_verdict",
         data=Path(args.data).expanduser(),
         data_bytes=data_bytes,
+        mock=any_not_stamped_real(recs),  # a verdict over a smoke, or over unstamped rows, is a smoke
         scope={"run_ids": args.run_id} if args.run_id else {"all_rows": True},
     )
     print(json.dumps({k: v[k] for k in v if k not in ("per_seed", "gates")}, indent=2))

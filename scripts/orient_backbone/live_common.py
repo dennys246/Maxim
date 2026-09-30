@@ -26,6 +26,7 @@ import math
 import os
 import sys
 import time
+import uuid
 from collections.abc import Callable
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -45,6 +46,13 @@ preflight = smoke.preflight
 Reader = Callable[[], "tuple[float, bool] | None"]
 
 
+def _maxim_file() -> str | None:
+    """The imported ``maxim``'s ``__file__`` (a seam the provenance tests point at a fixture repo)."""
+    import maxim
+
+    return getattr(maxim, "__file__", None)
+
+
 class JsonlLog:
     """Append-only JSONL event log (one dict per line, ts stamped).
 
@@ -54,30 +62,117 @@ class JsonlLog:
     ``docs/experiments/data/`` from a dirty ``src``/``scripts`` tree exits 3
     unless the harness passed ``allow_dirty=True`` (its ``--allow-dirty``),
     and an allowed dirty write stamps ``allow_dirty: true`` into EVERY record
-    so the write-up cannot silently omit it. Non-gated paths (``/tmp`` logs)
-    are never refused. Exp 53/53b stamped the dirty flag and kept going —
-    stamping is detection, refusing is enforcement.
+    so the write-up cannot silently omit it. Exp 53/53b stamped the dirty flag
+    and kept going — stamping is detection, refusing is enforcement.
+
+    M1b PR 5a-2 (the evidence gate reads these logs): the log also refuses (exit 3), for ANY path, when the
+    imported ``maxim`` is not this repo's src, and stamps every line with the run's code ``provenance``, its
+    ``mock`` flag and a ``log_run_id`` minted fresh per log (never the process-wide harness run id: gate6 runs
+    several Exp 53 phases in one process). ``mock`` and ``evidence`` are required keywords.
+
+    * ``evidence=False``: lines are ``record_kind: "harness_demo"`` — never support; no terminal status.
+    * ``evidence=True``: lines are ``"harness_event"``, and the run ends in exactly ONE terminal
+      ``"harness_run_end"`` line. It is ``ok`` only through an explicit :meth:`finish` ``("ok")``; an exception out
+      of the ``with`` block, a :meth:`close` or a clean exit without ``finish``, or an earlier abort-class event
+      (``abort`` / ``*_aborted`` / :meth:`mark_aborted`, a naming convention) all end it ``failed``. The gate
+      counts a run's lines only when that one terminal line is ``ok``. Evidence logs are used as
+      ``with JsonlLog(...) as log:`` (tests/unit/test_m1b_writer_stamps_5a2.py pins the call shape).
     """
 
-    def __init__(self, path: str, *, allow_dirty: bool = False, mode: str = "a") -> None:
+    def __init__(self, path: str, *, mock: bool, evidence: bool, allow_dirty: bool = False, mode: str = "a") -> None:
         if mode not in ("a", "w"):
             raise ValueError(f"mode must be 'a' (append, default) or 'w' (truncate), got {mode!r}")
         self.path = path
         gate = _provenance.preflight_gated_record_or_exit(_REPO_ROOT, path, allow_dirty=allow_dirty)
+        try:
+            self.provenance = _provenance.in_process_code_provenance(_REPO_ROOT, _maxim_file())
+        except _provenance.ProvenanceError as exc:
+            print(f"PROVENANCE: {exc}", file=sys.stderr)
+            raise SystemExit(3) from exc
+        if gate["allow_dirty"]:
+            self.provenance["allow_dirty"] = True
         self.gated = gate["gated"]
+        self.mock = bool(mock)
+        self.evidence = bool(evidence)
+        self.log_run_id = uuid.uuid4().hex
+        self.aborted: str | None = None
+        self._terminal = False
+        self._closed = False
         self._stamp = {"allow_dirty": True} if gate["allow_dirty"] else {}
         self._f = open(path, mode, encoding="utf-8")  # noqa: SIM115 - long-lived handle
 
-    def write(self, event: str, **fields: object) -> None:
-        rec = {"ts": round(time.time(), 3), "event": event, **self._stamp, **fields}
+    def _line(self, rec: dict) -> None:
         self._f.write(json.dumps(rec) + "\n")
         self._f.flush()
 
+    def write(self, event: str, **fields: object) -> None:
+        if self._terminal:
+            raise RuntimeError(f"JsonlLog {self.path}: write({event!r}) after the run's terminal line")
+        if "provenance" in fields and fields["provenance"] != self.provenance:
+            raise ValueError("a caller's provenance differs from the log's own: pass log.provenance")
+        stamps = {
+            "record_kind": "harness_event" if self.evidence else "harness_demo",
+            "log_run_id": self.log_run_id,
+            "mock": self.mock,
+            "provenance": self.provenance,
+        }
+        self._line({"ts": round(time.time(), 3), "event": event, **self._stamp, **fields, **stamps})
+        if event == "abort" or event.endswith("_aborted"):
+            self.mark_aborted(event)
+
+    def mark_aborted(self, reason: str) -> None:
+        """Latch the run as aborted: a later ``finish("ok")`` raises, and the terminal line reads ``failed``."""
+        self.aborted = self.aborted or str(reason)
+
+    def finish(self, status: str = "ok", **fields: object) -> None:
+        """Write the run's ONE terminal line. ``ok`` only if nothing aborted the run (the latch)."""
+        if not self.evidence:
+            raise RuntimeError("a non-support log has no terminal status (evidence=False)")
+        if self._terminal:
+            raise RuntimeError(f"JsonlLog {self.path}: finish() twice")
+        if status not in ("ok", "failed"):
+            raise ValueError(f"terminal status must be 'ok' or 'failed', got {status!r}")
+        if status == "ok" and self.aborted is not None:
+            raise RuntimeError(f"finish('ok') on a run that aborted ({self.aborted}); it ends failed")
+        self._terminate(status, **fields)
+
+    def _terminate(self, status: str, **fields: object) -> None:
+        self._line(
+            {
+                "ts": round(time.time(), 3),
+                "event": "run_end_terminal",
+                **self._stamp,
+                **fields,
+                "record_kind": "harness_run_end",
+                "log_run_id": self.log_run_id,
+                "mock": self.mock,
+                "status": status,
+                "end_code_tree_sha256": _provenance.code_tree_sha256(_REPO_ROOT),
+            }
+        )
+        self._terminal = True
+
     def close(self) -> None:
+        """Close the log (idempotent). An evidence run not yet finished ends ``failed`` here."""
+        if self._closed:
+            return
+        if self.evidence and not self._terminal:
+            self._terminate("failed", reason=self.aborted or "closed without finish")
+        self._closed = True
         try:
             self._f.close()
         except Exception:  # noqa: BLE001
             pass
+
+    def __enter__(self) -> "JsonlLog":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        if self.evidence and not self._terminal and not self._closed:
+            reason = f"exception: {exc_type.__name__}" if exc_type else (self.aborted or "ended without finish")
+            self._terminate("failed", reason=reason)
+        self.close()
+        return False
 
 
 def make_rest_reader(host: str) -> Reader:
