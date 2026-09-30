@@ -61,6 +61,7 @@ sys.path.insert(0, str(_REPO / "scripts"))  # _provenance
 if str(_REPO / "src") not in sys.path:
     sys.path.insert(0, str(_REPO / "src"))
 
+import _provenance  # noqa: E402
 from _provenance import ProvenanceError, assert_repo_interpreter, executed_code_provenance  # noqa: E402
 
 MIN_BIAS_DEFAULT = 0.9
@@ -86,7 +87,15 @@ _MANIFEST_STAMP: dict[str, Any] = {}  # {"allow_dirty": True} once executed_code
 def _append_manifest(campaign_dir: Path, record: dict[str, Any]) -> None:
     # `ts` is epoch seconds (zone-unambiguous, for lint_prereg_precedes_data); the old
     # naive local-time string stays under `ts_local` for readers of older manifests.
-    record = {"ts": round(time.time(), 3), "ts_local": time.strftime("%Y-%m-%dT%H:%M:%S"), **_MANIFEST_STAMP, **record}
+    # record_kind (M1b, #1003): every manifest row is a harness row; a stage row carries `status` ok/failed,
+    # `sims` (the echoed evidence of the report its sim wrote, found by harness run id) and `depends_on`.
+    record = {
+        "record_kind": "harness_row",
+        "ts": round(time.time(), 3),
+        "ts_local": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        **_MANIFEST_STAMP,
+        **record,
+    }
     with open(campaign_dir / "manifest.jsonl", "a", encoding="utf-8") as f:
         f.write(json.dumps(record) + "\n")
 
@@ -163,6 +172,7 @@ def _sub_env(data_home: Path, *, profile: str | None, extra: dict[str, str]) -> 
     for var in _SCRUBBED_ENV_VARS:
         env.pop(var, None)
     env["MAXIM_DATA_HOME"] = str(data_home)
+    env["MAXIM_HARNESS_RUN_ID"] = _provenance.harness_run_id()
     env["MAXIM_ROLE"] = "solo"
     env["MAXIM_LLM_CLOUD_ENABLED"] = "0"
     # Controlled arcs must present ONLY their declared entities (Exp 44 fix).
@@ -195,11 +205,7 @@ def _run_sim(cmd: list[str], env: dict[str, str], log_path: Path, timeout_s: int
             return -9
 
 
-def _list_sessions(data_home: Path) -> set[str]:
-    reports = data_home / "sim_reports"
-    if not reports.is_dir():
-        return set()
-    return {d.name for d in reports.iterdir() if d.is_dir()}
+_list_sessions = _provenance.list_sessions
 
 
 def acquire_campaign_lock(campaign_dir: Path) -> bool:
@@ -284,19 +290,23 @@ def capture_stats(capture_path: Path) -> tuple[int, int]:
     return n_pairs, n_annotated
 
 
-def _find_new_session(data_home: Path, before: set[str]) -> Path | None:
-    """Newest session dir CREATED by the run we just launched (snapshot diff).
+def _own_session(data_home: Path, before: set[str], rc: int) -> tuple[Path | None, dict[str, Any]]:
+    """The session dir the run we just launched wrote -- among those new since ``before``, the ONE whose report
+    carries this harness's run id (#1003; a snapshot diff alone took the newest new dir) -- and the stage row's
+    evidence fields: ``sims`` (the echoed report, or every candidate when none/several matched), ``depends_on``
+    (what the home already held) and, on a miss, ``failure``. ``None`` when the run cannot be established.
 
     Newest-mtime-overall is wrong here: learn and capture sessions share one
     sim_reports/, so after a deleted learn marker the newest dir could be a
     CAPTURE session whose resumed, tau-held aut_nac.json would pass the bias
     gate spuriously (executor-lens finding).
     """
-    new = _list_sessions(data_home) - before
-    if not new:
-        return None
-    reports = data_home / "sim_reports"
-    return max((reports / n for n in new), key=lambda d: d.stat().st_mtime)
+    fields: dict[str, Any] = {"depends_on": _provenance.depends_on(data_home, before)}
+    try:
+        session, report = _provenance.spawn_evidence(data_home, _provenance.harness_run_id(), before, returncode=rc)
+    except _provenance.SimRunFailed as exc:
+        return None, {**fields, "sims": exc.sims, "failure": f"{type(exc).__name__}: {exc}"}
+    return session, {**fields, "sims": [_provenance.sim_evidence(session, report)], "report": report}
 
 
 def _fingerprint(d: dict[str, Any]) -> str:
@@ -379,7 +389,8 @@ def stage_learn(
     )
     before = _list_sessions(data_home)
     rc = _run_sim(cmd, env, data_home / "logs" / "learn.log", int(learn.get("timeout_s", LEARN_TIMEOUT_S)))
-    session = _find_new_session(data_home, before)
+    session, evidence = _own_session(data_home, before, rc)
+    evidence.pop("report", None)
     nac = session / "aut_nac.json" if session else None
     bias = _max_abs_cluster_bias(nac) if nac and nac.exists() else 0.0
     ok = rc == 0 and session is not None and bias >= min_bias
@@ -394,7 +405,9 @@ def stage_learn(
             "max_abs_cluster_bias": round(bias, 4),
             "min_bias": min_bias,
             "ok": ok,
-            **prov,
+            "status": "ok" if ok else "failed",
+            **evidence,
+            "provenance": prov,
         },
     )
     if not ok:
@@ -499,7 +512,15 @@ def stage_capture(
             "MAXIM_DETERMINISTIC_SCENE_EMBODIMENT": "1",
         },
     )
+    before = _list_sessions(data_home)  # after the transplant copy: what this capture's home inherited
     rc = _run_sim(cmd, env, data_home / "logs" / "capture.log", int(cap.get("timeout_s", CAPTURE_TIMEOUT_S)))
+    captured_session, evidence = _own_session(data_home, before, rc)
+    report = evidence.pop("report", None) or {}
+    # A capture that asked to resume must have loaded the learned state (#1003, #1009): a resume that
+    # silently started fresh would measure an arm with no substrate.
+    resume_loaded = substrate == "none" or bool(
+        ((report.get("provenance") or {}).get("resume") or {}).get("resume_loaded")
+    )
     n_pairs, n_with_annotation = capture_stats(capture_path)
     annotation_fraction = (n_with_annotation / n_pairs) if n_pairs else 0.0
 
@@ -530,7 +551,13 @@ def stage_capture(
         elif void_marker.exists():
             void_marker.unlink()
 
-    ok = rc == 0 and n_pairs >= int(cap.get("min_pairs", MIN_CAPTURE_PAIRS)) and annotation_ok
+    ok = (
+        rc == 0
+        and captured_session is not None
+        and resume_loaded
+        and n_pairs >= int(cap.get("min_pairs", MIN_CAPTURE_PAIRS))
+        and annotation_ok
+    )
     _append_manifest(
         campaign_dir,
         {
@@ -542,9 +569,12 @@ def stage_capture(
             "annotation_fraction": round(annotation_fraction, 3),
             "substrate": substrate,
             "resumed_session": session.name if session else None,
+            "resume_loaded": resume_loaded,
             "capture_sha16": _sha16(capture_path) if capture_path.exists() else None,
             "ok": ok,
-            **prov,
+            "status": "ok" if ok else "failed",
+            **evidence,
+            "provenance": prov,
         },
     )
     if not ok:
@@ -631,7 +661,8 @@ def stage_requery(
             "rc": rc,
             "out": str(out),
             "ok": ok,
-            **prov,
+            "status": "ok" if ok else "failed",
+            "provenance": prov,
         },
     )
     if not ok:
@@ -690,7 +721,7 @@ def main() -> int:
         return 3
     if prov.get("allow_dirty"):
         _MANIFEST_STAMP["allow_dirty"] = True
-    _append_manifest(campaign_dir, {"stage": "campaign_start", "config": cfg, **prov})
+    _append_manifest(campaign_dir, {"stage": "campaign_start", "config": cfg, "provenance": prov})
 
     arm_filter = {a for a in args.arms.split(",") if a}
     seed_filter = {int(s) for s in args.seeds.split(",") if s}

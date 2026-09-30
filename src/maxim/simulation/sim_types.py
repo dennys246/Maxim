@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -99,8 +100,10 @@ class SimulationResult:
     router_stats: dict[str, Any] = field(default_factory=dict)
 
 
-def load_resume_context(session_id: str) -> dict[str, Any] | None:
-    """Load a previous session's report and action log for resumption."""
+def load_resume_context_at(session_id: str) -> tuple[dict[str, Any] | None, Path | None]:
+    """Load a previous session's report for resumption, and the directory it resolved (resolved path;
+    ``None`` when nothing loaded). The name is tried exactly, then as a prefix (newest match), which the store restore does not do
+    (#1009): the caller stamps both directories so a report can tell whether the two agreed (#1003)."""
     from maxim.utils.paths import sim_reports as _sim_reports_dir
 
     _reports_base = _sim_reports_dir()
@@ -118,7 +121,7 @@ def load_resume_context(session_id: str) -> dict[str, Any] | None:
 
     if not report_path.exists():
         logger.warning("Resume session not found: %s", session_id)
-        return None
+        return None, None
 
     try:
         with open(str(report_path), "r", encoding="utf-8") as f:
@@ -127,10 +130,10 @@ def load_resume_context(session_id: str) -> dict[str, Any] | None:
 
         check_format_version(report_data, "session_report", log=logger)
         logger.info("Loaded previous session: %s", report_path.parent.name)
-        return report_data
+        return report_data, report_path.parent.resolve()
     except Exception as e:
         logger.warning("Failed to load resume session: %s", e)
-        return None
+        return None, None
 
 
 def build_resume_prompt(report_data: dict[str, Any], goal: str, mode: str) -> str:

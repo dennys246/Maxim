@@ -282,6 +282,7 @@ def run_spawned_trial(
     env = _trial_env(arm, home, jsonl, min_confidence=min_confidence)
     started = time.time()
     record: dict = {
+        "record_kind": "harness_row",  # M1b (#1003): the gate classifies a record by this stamp
         "arm": arm,
         "bearing_deg": bearing_deg,
         "seed": seed,

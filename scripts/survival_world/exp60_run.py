@@ -238,6 +238,7 @@ def compute_verdict(
     if dups:
         return {
             "_format_version": "1.0",
+            "record_kind": "verdict",  # M1b (#1003)
             "kind": "exp60_verdict",
             "verdict": "INCOMPLETE",
             "reason": f"duplicate (arm, seed) rows: {dups} — pass --run-id ONCE PER ARM (each arm invocation mints its own id)",
@@ -266,6 +267,7 @@ def compute_verdict(
     need = gates["seeds_per_arm"]
     out: dict[str, Any] = {
         "_format_version": "1.0",
+        "record_kind": "verdict",  # M1b (#1003)
         "kind": "exp60_verdict",
         "gates": gates,
         "per_seed": per_seed,

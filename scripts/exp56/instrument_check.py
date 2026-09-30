@@ -235,7 +235,8 @@ def main() -> int:
 
     work = Path(args.workdir) if args.workdir else Path(tempfile.mkdtemp(prefix="exp56_phase0_"))
     work.mkdir(parents=True, exist_ok=True)
-    report: dict = {"ts": time.time(), "mock": bool(args.mock), "frozen": C.FROZEN}
+    # record_kind (M1b, #1003): the gate classifies a record by this stamp, never by its file name.
+    report: dict = {"record_kind": "harness_row", "ts": time.time(), "mock": bool(args.mock), "frozen": C.FROZEN}
     report.update(preflight)
     report["provenance"] = provenance
     if args.mock:

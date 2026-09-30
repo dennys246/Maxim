@@ -437,6 +437,7 @@ def main() -> int:
                         artifacts_dir=artifacts_dir,
                     )
                     for row in rows:
+                        row["record_kind"] = "harness_row"  # M1b (#1003): the gate classifies by this stamp
                         row["mock"] = bool(args.mock)
                         row["seed_base"] = args.seed_base
                         row["ts"] = time.time()

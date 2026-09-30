@@ -39,6 +39,13 @@ import time
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _provenance  # noqa: E402  (scripts/_provenance.py, loaded from THIS tree)
+
+# Row schema. 2: rows carry record_kind/status, the nested `provenance` block, and `sims` (the echoed
+# evidence of the sim report the run wrote); failed runs are rows with status "failed" (M1b, #1003).
+HARNESS_SCHEMA = 2
+
 ARMS: tuple[str, ...] = ("A_cons", "B_cons", "A_dec", "B_dec")
 
 # arm → (arc goal, exploration on?)
@@ -116,20 +123,14 @@ def _resolve_maxim_binary() -> str:
     return "maxim"
 
 
-def _load_action_tools(data_home: Path) -> list[str]:
-    """Read the newest session's actions.jsonl and return executed tool names.
-
-    Mirrors benchmark_cross_session._load_latest_session: skip the Stage-0b
-    header line, then collect per-action ``tool`` fields in order.
-    """
-    reports = data_home / "sim_reports"
-    if not reports.exists():
-        raise RuntimeError(f"sim_reports/ missing under {data_home}")
-    sessions = sorted(reports.glob("*/actions.jsonl"), key=lambda p: p.stat().st_mtime)
-    if not sessions:
-        raise RuntimeError(f"no actions.jsonl under {reports}")
+def _load_action_tools(session_dir: Path) -> list[str]:
+    """Read THE session's actions.jsonl (the one this run's spawn wrote, found by run id) and return
+    executed tool names: skip the Stage-0b header line, then collect per-action ``tool`` fields in order."""
+    actions = session_dir / "actions.jsonl"
+    if not actions.exists():
+        raise RuntimeError(f"no actions.jsonl in {session_dir}")
     tools: list[str] = []
-    for line in sessions[-1].read_text().splitlines():
+    for line in actions.read_text().splitlines():
         line = line.strip()
         if not line:
             continue
@@ -155,8 +156,14 @@ def _run_real(
     explore_weight: float,
     timeout_s: int,
     workdir: Path,
-) -> list[str]:
+) -> tuple[list[str], dict[str, Any]]:
+    """One sub-sim in a FRESH home. Returns the executed tools and the echoed evidence of the report it
+    wrote; a run that cannot be established raises (``_provenance.SimRunFailed``), and becomes a failed row."""
+    # Fresh per run (#1003; the Exp 42 / cradle rule): MAXIM_DATA_HOME persists the substrate (#446), so a
+    # reused home would resume an earlier launch's NAc under possibly different code.
     data_home = workdir / f"{arm}_seed{seed}"
+    if data_home.exists():
+        shutil.rmtree(data_home)
     data_home.mkdir(parents=True, exist_ok=True)
     # Share the model cache so we don't re-download the small narrator GGUF.
     src_models = Path(os.path.expanduser("~/.maxim/models"))
@@ -174,6 +181,8 @@ def _run_real(
     env["MAXIM_LLM_CLOUD_ENABLED"] = "0"
     env["MAXIM_ROLE"] = "solo"
     env["MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT"] = str(explore_weight if _ARM_EXPLORE[arm] else 0.0)
+    run_id = _provenance.harness_run_id()
+    env["MAXIM_HARNESS_RUN_ID"] = run_id
 
     cmd = [
         _resolve_maxim_binary(),
@@ -193,13 +202,21 @@ def _run_real(
     ]
     log_dir = data_home / "harness_logs"
     log_dir.mkdir(parents=True, exist_ok=True)
+    before = _provenance.list_sessions(data_home)
+    if before:  # the home was just wiped: an inherited session would be state this run did not declare
+        raise _provenance.SimRunFailed(f"fresh home {data_home} already holds sessions {sorted(before)}", sims=[])
     try:
         proc = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=timeout_s)
     except subprocess.TimeoutExpired as exc:
         (log_dir / "timeout.log").write_text(f"TIMEOUT {timeout_s}s\n{exc.stdout or ''}\n{exc.stderr or ''}")
         raise RuntimeError(f"{arm} seed={seed}: sub-sim timed out after {timeout_s}s") from exc
     (log_dir / "run.log").write_text((proc.stdout or "") + "\n---STDERR---\n" + (proc.stderr or ""))
-    return _load_action_tools(data_home)
+    session_dir, report = _provenance.spawn_evidence(data_home, run_id, before, returncode=proc.returncode)
+    evidence = _provenance.sim_evidence(session_dir, report)
+    try:
+        return _load_action_tools(session_dir), evidence
+    except Exception as exc:  # the report was found: the failed row names the session that ran
+        raise _provenance.SimRunFailed(f"{type(exc).__name__}: {exc}", sims=[evidence]) from exc
 
 
 def _mock_tools(arm: str, seed: int) -> list[str]:
@@ -226,8 +243,10 @@ def _mock_tools(arm: str, seed: int) -> list[str]:
     return (["sense_fire_pit"] * (1 + j) + ["fire_pit_warm_self"] * (17 - j))[:18]
 
 
-def _record(arm: str, seed: int, tools: list[str], *, mock: bool, git_hash: str) -> dict[str, Any]:
-    rec = {
+def _base(arm: str, seed: int, *, mock: bool, git_hash: str) -> dict[str, Any]:
+    return {
+        "record_kind": "harness_row",
+        "harness_schema": HARNESS_SCHEMA,
         "experiment": "exp41",
         "arm": arm,
         "arc": _ARM_ARC[arm],
@@ -236,9 +255,21 @@ def _record(arm: str, seed: int, tools: list[str], *, mock: bool, git_hash: str)
         "seed": seed,
         "git_hash": git_hash,
         "mock": mock,
+        "provenance": dict(_PROVENANCE),
     }
+
+
+def _record(
+    arm: str, seed: int, tools: list[str], *, mock: bool, git_hash: str, sims: list[dict[str, Any]]
+) -> dict[str, Any]:
+    rec = {**_base(arm, seed, mock=mock, git_hash=git_hash), "status": "ok", "sims": sims, "depends_on": []}
     rec.update(compute_run_metrics(tools))
     return rec
+
+
+# The harness's own provenance block (executed_code_provenance: code, dirty flag, allowance, run id), set in
+# main() and stamped into every row.
+_PROVENANCE: dict[str, Any] = {}
 
 
 def _git_hash() -> str:
@@ -264,7 +295,8 @@ def _existing_keys(out_path: Path) -> set[tuple[str, int]]:
             rec = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if isinstance(rec, dict) and "arm" in rec and "seed" in rec:
+        # A failed row is not done: a resume re-runs it (legacy rows carry no status and count as done).
+        if isinstance(rec, dict) and "arm" in rec and "seed" in rec and not _provenance.is_failed_row(rec):
             keys.add((rec["arm"], int(rec["seed"])))
     return keys
 
@@ -301,9 +333,9 @@ def run_benchmark(
                 t0 = time.time()
                 try:
                     if mock:
-                        tools = _mock_tools(arm, seed)
+                        tools, sims = _mock_tools(arm, seed), []
                     else:
-                        tools = _run_real(
+                        tools, evidence = _run_real(
                             arm,
                             seed,
                             model=model,
@@ -313,11 +345,15 @@ def run_benchmark(
                             timeout_s=timeout_s,
                             workdir=workdir,
                         )
-                except Exception as exc:  # noqa: BLE001 - log + continue per run
+                        sims = [evidence]
+                except Exception as exc:  # noqa: BLE001 - recorded as a failed row, then continue
                     n_fail += 1
                     print(f"FAIL {arm} seed={seed}: {exc}", file=sys.stderr)
+                    failed = {**_base(arm, seed, mock=mock, git_hash=git_hash), **_provenance.failed_row(exc)}
+                    out.write(json.dumps(failed) + "\n")
+                    out.flush()
                     continue
-                rec = _record(arm, seed, tools, mock=mock, git_hash=git_hash)
+                rec = _record(arm, seed, tools, mock=mock, git_hash=git_hash, sims=sims)
                 out.write(json.dumps(rec) + "\n")
                 out.flush()
                 n_done += 1
@@ -354,15 +390,24 @@ def main(argv: list[str] | None = None) -> int:
 
     # Provenance guard — refuse to run if the sub-sims would import a `maxim`
     # from outside this repo (scripts/_provenance.py; Exp 42b post-mortem).
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _provenance import ProvenanceError, assert_repo_interpreter, preflight_gated_record_or_exit
-
+    repo_root = Path(__file__).resolve().parent.parent
     try:
-        assert_repo_interpreter(Path(__file__).resolve().parent.parent, _resolve_maxim_binary(), exempt=args.mock)
-    except ProvenanceError as exc:
+        _provenance.assert_repo_interpreter(repo_root, _resolve_maxim_binary(), exempt=args.mock)
+    except _provenance.ProvenanceError as exc:
         print(f"PREFLIGHT FAIL: {exc}", file=sys.stderr)
         return 3
-    preflight_gated_record_or_exit(Path(__file__).resolve().parent.parent, args.out, allow_dirty=args.allow_dirty)
+    _provenance.harness_run_id()  # minted at start, mock runs included
+    try:
+        # Refuses a dirty tree for a gated --out unless --allow-dirty, which it then stamps (#1003: before, the
+        # preflight's result was discarded and no row said which code ran).
+        _PROVENANCE.update(
+            _provenance.executed_code_provenance(
+                repo_root, _resolve_maxim_binary(), out_path=args.out, allow_dirty=args.allow_dirty
+            )
+        )
+    except _provenance.DirtyTreeError as exc:
+        print(f"PREFLIGHT FAIL: {exc}", file=sys.stderr)
+        return 3
 
     arms = tuple(a.strip() for a in args.arms.split(",") if a.strip())
     bad = [a for a in arms if a not in ARMS]

@@ -118,6 +118,9 @@ class SimulationReport:
     # report not built by a sim (``build_report`` always sets it).
     ts: float | None = None
     provenance: dict[str, Any] = field(default_factory=dict)
+    # What this file IS, for the ledger evidence gate (M1b): it classifies a record by this stamp, never by
+    # its file name. Harness rows say ``"harness_row"`` and verdicts ``"verdict"`` (``scripts/_provenance.py``).
+    record_kind: str = "sim_report"
 
 
 # The code scope (``src/`` and ``scripts/``; a scenario YAML's state is not covered). The clean flag and the
@@ -127,8 +130,10 @@ _code_tree_sha256 = code_tree.code_tree_sha256
 _tree_dirty = code_tree.tree_dirty
 
 
-def _git_short12(repo: Path) -> str:
-    return code_tree.head_hash(repo, 12)
+# A harness that spawns this sim exports its run id; the report stamps it so the harness can find ITS report
+# and a gate can join the two (M1b, #1003). A join key, never evidence: a report is bound to a harness only when
+# a harness row names its session.
+HARNESS_RUN_ID_ENV = "MAXIM_HARNESS_RUN_ID"
 
 
 def capture_start_provenance() -> dict[str, Any]:
@@ -149,8 +154,10 @@ def capture_start_provenance() -> dict[str, Any]:
     except ConfigurationError as e:  # a malformed env value must not cost the run its start
         logger.warning("report provenance: llm.n_ctx unresolved (%s: %s)", type(e).__name__, e)
         n_ctx, n_ctx_source = None, f"unresolved: {type(e).__name__}"
+    run_id = os.environ.get(HARNESS_RUN_ID_ENV, "").strip()
     return {
         **_code_stamp(Path(maxim.__file__).resolve()),
+        **({"harness_run_id": run_id} if run_id else {}),
         "python": sys.executable,
         "pythonpath": os.environ.get("PYTHONPATH", ""),
         "maxim_version": maxim.__version__,
@@ -159,7 +166,9 @@ def capture_start_provenance() -> dict[str, Any]:
     }
 
 
-def run_provenance(start: dict[str, Any], *, llm_worker: Any | None, aut_worker: Any | None) -> dict[str, Any]:
+def run_provenance(
+    start: dict[str, Any], *, llm_worker: Any | None, aut_worker: Any | None, resume: dict[str, Any] | None
+) -> dict[str, Any]:
     """``start`` (from :func:`capture_start_provenance`) plus what each LLM role actually ran with.
 
     Per role (``language``, ``aut``; ``None`` = no such worker): the router's own profile and configured
@@ -169,6 +178,9 @@ def run_provenance(start: dict[str, Any], *, llm_worker: Any | None, aut_worker:
     while the run was going (an edit made and reverted inside it is not seen); the end values are kept
     beside the start ones. Profile and windows are read here, at report time: a mid-run model switch
     would stamp the model the run ended on.
+
+    ``resume`` is ``None`` for a fresh run, else what the ``--resume-sim`` restore actually did
+    (:func:`resume_stamp`); required, so a caller cannot forget to say whether the run resumed.
     """
     import maxim
 
@@ -189,7 +201,42 @@ def run_provenance(start: dict[str, Any], *, llm_worker: Any | None, aut_worker:
         "code_changed_during_run": changed,
         "end_executed_git_hash": end["executed_git_hash"],
         "end_code_tree_sha256": end["code_tree_sha256"],
+        **({"resume": resume_stamp(resume)} if resume is not None else {}),
     }
+
+
+# The stores a ``--resume-sim`` restore reads from the prior session's directory, and what each may report.
+RESUME_STORES = ("hippocampus", "nac", "ec", "atl")
+_STORE_OK = ("loaded", "absent")
+
+
+def resume_stamp(resume: dict[str, Any]) -> dict[str, Any]:
+    """What a resume actually restored (#1003). The restore and the resume prompt resolve ``--resume-sim``
+    separately (the prompt also accepts a prefix, #1009), so ``resume_loaded`` holds only when the prompt's
+    context loaded from the SAME directory the stores were read from, that directory exists, and every store
+    either loaded or was never written by the prior session (``absent``). A store written but not loaded
+    (``failed:<Exc>``, ``skipped_persistent_agent``) or not attempted (``not_restored``) makes it false.
+    ``resumed_from_session`` names the resolved directory, and only when the resume loaded."""
+    stores = dict(resume.get("stores") or {})
+    state_dir, context_dir = resume.get("state_dir"), resume.get("context_dir")
+    loaded = bool(
+        resume.get("context_loaded")
+        and state_dir is not None
+        and state_dir == context_dir
+        and Path(state_dir).is_dir()
+        and all(stores.get(name) in _STORE_OK for name in RESUME_STORES)
+    )
+    out = {
+        "requested": resume.get("requested"),
+        "state_dir": state_dir,
+        "context_dir": context_dir,
+        "context_loaded": bool(resume.get("context_loaded")),
+        "stores": {name: stores.get(name, "not_restored") for name in RESUME_STORES},
+        "resume_loaded": loaded,
+    }
+    if loaded:
+        out["resumed_from_session"] = Path(state_dir).name
+    return out
 
 
 def _code_stamp(maxim_file: Path) -> dict[str, Any]:
@@ -199,7 +246,7 @@ def _code_stamp(maxim_file: Path) -> dict[str, Any]:
     in_checkout = _has_git_metadata(str(repo)) and (repo / "src" / "maxim").resolve() == maxim_file.parent
     return {
         "executed_maxim_file": str(maxim_file),
-        "executed_git_hash": _git_short12(repo) if in_checkout else "unknown",
+        "executed_git_hash": code_tree.head_commit(repo) if in_checkout else "unknown",
         "working_tree_dirty_src_scripts": _tree_dirty(repo) if in_checkout else True,
         "code_tree_sha256": _code_tree_sha256(repo) if in_checkout else "unknown",
     }

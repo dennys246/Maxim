@@ -399,6 +399,7 @@ def main() -> int:
     path = Path(args.inp)
     rows = load_rows(path)
     report = analyze(rows, cohorts_min=args.cohorts_min, permutations=args.permutations)
+    report["record_kind"] = "verdict"  # M1b (#1003): the gate classifies a record by this stamp
 
     if args.assert_noop_fails:
         artifacts = Path(args.artifacts) if args.artifacts else path.parent / "cohort0_artifacts"

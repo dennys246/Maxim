@@ -37,6 +37,14 @@ import time
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _provenance  # noqa: E402  (scripts/_provenance.py, loaded from THIS tree)
+
+# Row schema. 2: rows carry record_kind/status, the harness provenance NESTED under `provenance` (it was
+# flattened into the row), `sims` (the echoed evidence of the sim report the run wrote, found by harness run
+# id) and `depends_on`; a failed run is a row with status "failed" instead of being dropped (M1b, #1003).
+HARNESS_SCHEMA = 2
+
 ARC = "cradle_mother"
 EMBODIMENT = "bodies/infant_operant"  # hunger drive + DRIVELESS azimuth (no intrinsic orient)
 ARMS = ("taught", "no_feed", "satiated")
@@ -315,7 +323,9 @@ def _run_one(
     stimulus_order: str = "cycle",
     credit: str = "relief",
     embodiment: str = EMBODIMENT,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """One sub-sim in a fresh sandbox: its fade curve, and the echoed evidence of the report it wrote. A run
+    that cannot be established raises (``_provenance.SimRunFailed``) and becomes a failed row."""
     data_home = workdir / f"{arm}_seed{seed}_ew{explore_weight}"
     # ALWAYS a fresh sandbox (2026-08-13 contamination post-mortem): reusing a
     # prior attempt's dir poisons the run through TWO channels — MAXIM_LOG_FILE
@@ -323,8 +333,9 @@ def _run_one(
     # (turns 12 -> 24 -> 36); and MAXIM_DATA_HOME persists the substrate, so a
     # re-run RESUMES the prior attempt's NAc (#446 cross-session persistence)
     # and the "infant" starts pre-trained. Reaching here with an existing dir
-    # means a prior attempt never recorded its row (crash/timeout/kill) — a
-    # clean retry is the only valid semantics.
+    # means a prior attempt did not finish ok (killed, or recorded as a failed
+    # row, #1003) — a clean retry is the only valid semantics. The wipe also
+    # removes that attempt's harness_logs; its failed row keeps the reason.
     if data_home.exists():
         import shutil
 
@@ -352,6 +363,8 @@ def _run_one(
     env["MAXIM_CRADLE_MOTHER_STIMULUS_ORDER"] = stimulus_order
     # Exp 52 credit-value source (S6 fidelity toggle; identical across arms).
     env["MAXIM_CRADLE_MOTHER_CREDIT"] = credit
+    run_id = _provenance.harness_run_id()
+    env["MAXIM_HARNESS_RUN_ID"] = run_id
 
     cmd = _resolve_maxim() + [
         "--sim",
@@ -369,13 +382,17 @@ def _run_one(
     ]
     logdir = data_home / "harness_logs"
     logdir.mkdir(parents=True, exist_ok=True)
+    before = _provenance.list_sessions(data_home)
+    if before:  # the sandbox was just wiped: an inherited session would be state this run did not declare
+        raise _provenance.SimRunFailed(f"fresh sandbox {data_home} already holds sessions {sorted(before)}", sims=[])
     try:
         proc = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=timeout_s)
     except subprocess.TimeoutExpired as exc:
         (logdir / "timeout.log").write_text(f"TIMEOUT {timeout_s}s\n{exc.stderr or ''}")
         raise RuntimeError(f"{arm} seed={seed}: sub-sim timed out after {timeout_s}s") from exc
     (logdir / "run.log").write_text((proc.stdout or "") + "\n---STDERR---\n" + (proc.stderr or ""))
-    return _extract_fade(log_path)
+    session_dir, report = _provenance.spawn_evidence(data_home, run_id, before, returncode=proc.returncode)
+    return _extract_fade(log_path), _provenance.sim_evidence(session_dir, report)
 
 
 def _mock_fade(arm: str, seed: int) -> dict[str, dict[str, float]]:
@@ -503,29 +520,24 @@ def main() -> int:
     # spawns sub-sims): the `maxim` the sub-sims import must be THIS repo.
     # This harness spawns `[sys.executable, "-m", "maxim"]`, so the probe
     # interpreter is sys.executable itself.
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _provenance import (
-        ProvenanceError,
-        assert_repo_interpreter,
-        executed_code_provenance,
-        preflight_gated_record_or_exit,
-    )
-
     repo_root = Path(__file__).resolve().parent.parent
-    provenance: dict[str, str] = {}
     try:
-        assert_repo_interpreter(repo_root, sys.executable, exempt=args.mock)
-    except ProvenanceError as exc:
+        _provenance.assert_repo_interpreter(repo_root, sys.executable, exempt=args.mock)
+    except _provenance.ProvenanceError as exc:
         print(f"PREFLIGHT FAIL: {exc}", file=sys.stderr)
         return 3
+    _provenance.harness_run_id()  # minted at start, mock runs included
     # Gated-record refusal (roadmap 1.1.x item 16.7, both harness families): a record
     # under docs/experiments/data/ from a dirty src/scripts tree exits 3 unless
     # --allow-dirty, which stamps allow_dirty: true into every record.
-    preflight_gated_record_or_exit(repo_root, args.out, allow_dirty=args.allow_dirty)
-    if not args.mock:
-        provenance = executed_code_provenance(
+    try:
+        provenance = _provenance.executed_code_provenance(
             repo_root, sys.executable, out_path=args.out, allow_dirty=args.allow_dirty
         )
+    except _provenance.DirtyTreeError as exc:
+        print(f"PREFLIGHT FAIL: {exc}", file=sys.stderr)
+        return 3
+    if not args.mock:
         err = _narrator_preflight(args.model)
         if err is not None:
             print(f"PREFLIGHT FAIL: {err}", file=sys.stderr)
@@ -548,6 +560,8 @@ def main() -> int:
         for line in out_path.read_text().splitlines():
             try:
                 r = json.loads(line)
+                if _provenance.is_failed_row(r):
+                    continue  # a failed run is not done: the resume re-runs it
                 # Rows without a credit stamp predate Exp 52 = constant credit.
                 # Rows without an embodiment stamp predate the flag = the infant body.
                 done.add(
@@ -590,9 +604,23 @@ def main() -> int:
                 if (arm, seed, float(args.explore_weight), args.credit, arm_bodies[arm]) in done:
                     continue
                 t0 = _t.monotonic() if hasattr(_t, "monotonic") else 0
+                base = {
+                    "record_kind": "harness_row",
+                    "harness_schema": HARNESS_SCHEMA,
+                    "experiment": "cradle_mother",
+                    "arm": arm,
+                    "seed": seed,
+                    "explore_weight": args.explore_weight,
+                    "credit": args.credit,
+                    "embodiment": arm_bodies[arm],
+                    "mock": args.mock,
+                    # Exp 42b self-auditing-artifact rule: the harness's own block (code, dirty flag,
+                    # allowance, run id); `sims` below is what each sub-sim's report says it ran.
+                    "provenance": provenance,
+                }
                 try:
-                    fade = (
-                        _mock_fade(arm, seed)
+                    fade, evidence = (
+                        (_mock_fade(arm, seed), None)
                         if args.mock
                         else _run_one(
                             arm,
@@ -614,14 +642,15 @@ def main() -> int:
                     _acts = ("act1_early", "act2_warming", "act3_consolidating", "act4_autonomous")
                     _missing = [a for a in _acts if a not in fade]
                     if _missing:
-                        raise RuntimeError(
-                            f"incomplete fade — sub-sim ended early, missing acts {_missing}; not recording a partial row"
+                        raise _provenance.SimRunFailed(
+                            f"incomplete fade — sub-sim ended early, missing acts {_missing}; not recording a partial row",
+                            sims=[evidence] if evidence is not None else [],
                         )
                     rec = {
-                        "experiment": "cradle_mother",
-                        "arm": arm,
-                        "seed": seed,
-                        "explore_weight": args.explore_weight,
+                        **base,
+                        "status": "ok",
+                        "sims": [evidence] if evidence is not None else [],
+                        "depends_on": [],
                         # S6 apparatus stamp (review fold, BLOCKING): the
                         # substrate action budget the sub-sim SAW — _run_one
                         # copies os.environ, so an operator-shell value flows
@@ -637,15 +666,8 @@ def main() -> int:
                         # S6 stamp (Exp 52): where the operant credit's VALUE came
                         # from — "relief" (sign of the infant's drive relief) or
                         # "constant" (the pre-Exp-52 by-fiat feed_reward).
-                        "credit": args.credit,
-                        "embodiment": arm_bodies[arm],
-                        "mock": args.mock,
                         "ts": round(time.time(), 3),  # first-write time, for lint_prereg_precedes_data
                         "git_hash": _git_hash(),
-                        # Exp 42b self-auditing-artifact rule: harness hash
-                        # describes where the harness LIVES; these describe
-                        # the code the sub-sims IMPORTED.
-                        **provenance,
                         "fade": fade,
                     }
                     fh.write(json.dumps(rec) + "\n")
@@ -659,6 +681,10 @@ def main() -> int:
                 except Exception as e:  # noqa: BLE001 — one run's failure must not kill the sweep
                     n_fail += 1
                     print(f"FAIL {arm} seed={seed}: {e}", file=sys.stderr)
+                    # Recorded, not dropped (#1003): an abort absent from the JSONL is a survivorship filter.
+                    failed = {**base, "ts": round(time.time(), 3), **_provenance.failed_row(e)}
+                    fh.write(json.dumps(failed) + "\n")
+                    fh.flush()
 
     print(f"\ndone: {n_ok} runs recorded, {n_fail} failed → {out_path}")
     return 0

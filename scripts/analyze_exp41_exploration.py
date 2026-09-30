@@ -390,9 +390,23 @@ def load_records(path: Path) -> list[dict[str, Any]]:
             rec = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if isinstance(rec, dict) and rec.get("arm") in ARMS:
+        # A failed run is a row too (status "failed", M1b #1003): it is not a trial, so it is excluded here and
+        # counted by count_failed_runs; a legacy row carries no status and is a trial.
+        if isinstance(rec, dict) and rec.get("arm") in ARMS and rec.get("status") != "failed":
             records.append(rec)
     return records
+
+
+def count_failed_runs(path: Path) -> int:
+    """How many rows in ``path`` record a failed run (excluded from :func:`load_records`)."""
+    n = 0
+    for line in path.read_text().splitlines():
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        n += isinstance(rec, dict) and rec.get("status") == "failed"
+    return n
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -410,6 +424,11 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_ERROR
 
     records = load_records(args.in_path)
+    n_failed = count_failed_runs(args.in_path)
+    if n_failed:
+        print(
+            f"note: {n_failed} failed run(s) recorded in {args.in_path} and excluded from the trials", file=sys.stderr
+        )
     if not records:
         print(f"error: no valid exp41 records in {args.in_path}", file=sys.stderr)
         return EXIT_ERROR

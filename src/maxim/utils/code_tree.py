@@ -92,6 +92,13 @@ def head_hash(repo: Path | str, length: int | None = None) -> str:
     return out.decode().strip() if out else "unknown"
 
 
+def head_commit(repo: Path | str) -> str:
+    """HEAD's FULL commit id, read through :func:`git_out`. Every provenance stamp uses this one length, so a
+    harness row and the sim reports it spawned compare byte for byte (M1b, #1003). ``"unknown"`` on failure."""
+    out = git_out(repo, "rev-parse", "HEAD")
+    return out.decode().strip() if out else "unknown"
+
+
 def code_paths(repo: Path | str, scope: tuple[str, ...] = SCOPE) -> set[bytes] | None:
     """Every path whose content is the code under ``scope``: the root ``.gitignore``; every tracked path;
     every untracked path the repo's ``.gitignore`` files do not exclude; every path in HEAD (so a deletion

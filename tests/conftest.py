@@ -297,6 +297,30 @@ def _isolate_maxim_auto_download_env():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_harness_run_id_env():
+    """Scrub ``MAXIM_HARNESS_RUN_ID`` across every test (M1b, #1003).
+
+    A harness sets it on each sub-sim; every sim's ``capture_start_provenance`` then stamps it as
+    ``provenance.harness_run_id``, the key a harness uses to find its own report. A leaked value would
+    stamp a foreign run id into every later test's report, and a leaked ``scripts/_provenance`` cache
+    would hand one test's id to the next, so both are reset.
+    """
+    saved = os.environ.pop("MAXIM_HARNESS_RUN_ID", None)
+    cached = sys.modules.get("_provenance")
+    if cached is not None:
+        cached._RUN_ID.clear()
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_HARNESS_RUN_ID", None)
+        if saved is not None:
+            os.environ["MAXIM_HARNESS_RUN_ID"] = saved
+        cached = sys.modules.get("_provenance")
+        if cached is not None:
+            cached._RUN_ID.clear()
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_log_display_env():
     """Scrub log/display env vars introduced by feat/log-display-improvements.
 

@@ -579,6 +579,7 @@ def compute_verdict(rows: list[dict[str, Any]], *, campaign_id: str | None) -> d
         cause = "; ".join(incomplete)
     return {
         "_format_version": "1.0",
+        "record_kind": "verdict",  # M1b (#1003)
         "kind": "exp61_verdict",
         "campaign_id": campaign_id,
         "refused": refused,

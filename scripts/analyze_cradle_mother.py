@@ -112,6 +112,11 @@ def main() -> int:
     args = p.parse_args()
 
     rows = [json.loads(x) for x in Path(args.inp).read_text().splitlines() if x.strip()]
+    # A failed run is a row too (status "failed", M1b #1003): not a trial. Legacy rows carry no status.
+    n_failed = sum(r.get("status") == "failed" for r in rows)
+    rows = [r for r in rows if r.get("status") != "failed"]
+    if n_failed:
+        print(f"note: {n_failed} failed run(s) recorded in {args.inp} and excluded from the trials", file=sys.stderr)
     if not rows:
         print("no rows", file=sys.stderr)
         return 2

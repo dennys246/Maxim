@@ -41,6 +41,13 @@ established is not a validation):
    Note it keys on the LITERAL string ``docs/experiments/data``: a harness
    assembling the path from segments escapes it, per the convention below.
 
+Since 2026-09-29 (M1b, #1003) family 1 must also USE the stamp, not only run the preflight, checked on the
+AST: it calls ``executed_code_provenance(..., out_path=...)`` (the preflight alone was how Exp 37 and Exp 41
+discarded their provenance) and names ``"record_kind"``; and a harness that spawns ``"--sim"`` sets
+``env["MAXIM_HARNESS_RUN_ID"]`` literally, calls ``harness_run_id(``, finds its report through
+``find_own_report``/``spawn_evidence`` (never the newest directory) and echoes it with ``sim_evidence(``.
+Presence checks: one literal covers a file, and they catch forgetting, not a wrong argument.
+
 False positives (a script whose match is not a record write / sub-sim spawn)
 opt out with a line containing ``# provenance-exempt:`` followed by the reason.
 
@@ -56,6 +63,7 @@ Exits: 0 clean; 1 violations (stderr).
 
 from __future__ import annotations
 
+import ast
 import re
 import sys
 from pathlib import Path
@@ -107,6 +115,83 @@ EXEMPT_MARKER = "# provenance-exempt:"
 GATED_DIR_REFERENCE = re.compile(r"docs/experiments/data")
 
 
+def _names_called(tree: ast.AST) -> dict[str, list[ast.Call]]:
+    """Every call in ``tree`` by the called name (``f(...)`` and ``mod.f(...)`` both key ``f``)."""
+    out: dict[str, list[ast.Call]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            name = func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else None
+            if name:
+                out.setdefault(name, []).append(node)
+    return out
+
+
+def _stamps_provenance(calls: dict[str, list[ast.Call]]) -> bool:
+    """``executed_code_provenance(..., out_path=...)``: the call that both refuses a dirty gated write and
+    returns the block the harness stamps."""
+    return any(any(k.arg == "out_path" for k in c.keywords) for c in calls.get("executed_code_provenance", []))
+
+
+def _string_constants(tree: ast.AST) -> set[str]:
+    return {n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)}
+
+
+def _sets_run_id_env(tree: ast.AST) -> bool:
+    """``<env>["MAXIM_HARNESS_RUN_ID"] = ...`` somewhere (the explicit hand-off to each sub-sim)."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if (
+                    isinstance(t, ast.Subscript)
+                    and isinstance(t.slice, ast.Constant)
+                    and t.slice.value == "MAXIM_HARNESS_RUN_ID"
+                ):
+                    return True
+    return False
+
+
+def _spawns_sim(tree: ast.AST) -> bool:
+    """A ``"--sim"`` inside a list literal: a command line that runs a simulation (not an argparse flag)."""
+    return any(
+        isinstance(n, ast.List) and any(isinstance(e, ast.Constant) and e.value == "--sim" for e in n.elts)
+        for n in ast.walk(tree)
+    )
+
+
+def _stamp_failures(rel: Path, tree: ast.AST) -> list[str]:
+    """Family 1's #1003 checks: the provenance block is stamped, records are typed, and a sim spawner binds
+    its sims by run id."""
+    calls = _names_called(tree)
+    out: list[str] = []
+    if not _stamps_provenance(calls):
+        out.append(
+            f"{rel}: spawns maxim sub-sims but never stamps executed_code_provenance(..., out_path=...) — "
+            "the preflight alone refuses a dirty tree but leaves every record unable to say which code ran "
+            "(#1003: Exp 37 and Exp 41 discarded it); stamp the returned block into every record"
+        )
+    if "record_kind" not in _string_constants(tree):
+        out.append(f'{rel}: spawns maxim sub-sims but its records carry no "record_kind" (M1b, #1003)')
+    if _spawns_sim(tree):
+        missing = [
+            what
+            for what, ok in (
+                ('env["MAXIM_HARNESS_RUN_ID"] = run_id on the spawn env', _sets_run_id_env(tree)),
+                ("harness_run_id()", "harness_run_id" in calls),
+                ("find_own_report()/spawn_evidence()", "find_own_report" in calls or "spawn_evidence" in calls),
+                ("sim_evidence()", "sim_evidence" in calls),
+            )
+            if not ok
+        ]
+        if missing:
+            out.append(
+                f"{rel}: spawns `maxim --sim` without binding its sims by harness run id — missing "
+                f"{', '.join(missing)} (M1b, #1003: find the report the spawn wrote, never the newest directory, "
+                "and echo its evidence into the row)"
+            )
+    return out
+
+
 def lint(repo_root: Path = REPO_ROOT) -> list[str]:
     """Return the violation messages for the scripts tree under ``repo_root``."""
     failures: list[str] = []
@@ -136,12 +221,15 @@ def lint(repo_root: Path = REPO_ROOT) -> list[str]:
                 f"'{EXEMPT_MARKER} <reason>' (Exp 42b lesson)"
             )
             continue
-        if not _SPAWNER_GATE.search(text):
-            failures.append(
-                f"{rel}: spawns maxim sub-sims but never runs the gated-record preflight — call "
-                "preflight_gated_record_or_exit(repo_root, <out path>, allow_dirty=args.allow_dirty) or pass "
-                "out_path= to executed_code_provenance (exit 3 on a dirty tree unless --allow-dirty; item 16.7)"
-            )
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            failures.append(f"{rel}: spawns maxim sub-sims but does not parse — cannot check its provenance")
+            flagged.add(path)
+            continue
+        stamp_failures = _stamp_failures(rel, tree)
+        if stamp_failures:
+            failures.extend(stamp_failures)
             flagged.add(path)
 
     # Family 2 — in-process record writers. The guarded writer is the delegate,
@@ -195,6 +283,11 @@ def lint(repo_root: Path = REPO_ROOT) -> list[str]:
         # must accept every form the other two families accept.
         if any(g in text for g in _IN_PROCESS_GUARDS) or _SPAWNER_GATE.search(text):
             continue
+        try:
+            if _stamps_provenance(_names_called(ast.parse(text))):
+                continue  # the spawner's form, however its arguments wrap
+        except SyntaxError:
+            pass
         failures.append(
             f"{rel}: writes records and names docs/experiments/data/ but runs no gated-record "
             "preflight — call scripts/_provenance.py::preflight_gated_record[_or_exit] with the "

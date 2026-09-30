@@ -28,8 +28,9 @@ _REPO = Path(__file__).resolve().parent.parent
 _BASELINES: dict[tuple[str, str], int] = {
     ("src/maxim/runtime/agent_loop.py", "run_agentic_loop"): 3453,
     # 3324 -> 3326 (2026-09-29, owner-approved M1 exception: the code stamp at sim start), then tightened
-    # to 3313 the same day (#1002: the finish-reason resolution extracted to _resolve_finish_reason).
-    ("src/maxim/simulation/orchestrator.py", "start_simulation_mode"): 3313,
+    # to 3313 the same day (#1002: the finish-reason resolution extracted to _resolve_finish_reason), and to
+    # 3277 the same day (#1003: the AUT resume restore extracted to _restore_aut_from_session).
+    ("src/maxim/simulation/orchestrator.py", "start_simulation_mode"): 3277,
     ("src/maxim/cli.py", "_main_impl"): 1743,
 }
 

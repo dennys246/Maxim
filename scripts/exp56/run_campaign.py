@@ -439,6 +439,7 @@ def main() -> int:
                         keep_artifacts=(i == 0),
                         artifacts_dir=out_path.parent / "pair0_artifacts",
                     )
+                    row["record_kind"] = "harness_row"  # M1b (#1003): the gate classifies a record by this stamp
                     row["mock"] = bool(args.mock)
                     row.update(preflight)
                     row.update(preflight_platform)

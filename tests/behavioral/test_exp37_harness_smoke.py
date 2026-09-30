@@ -922,7 +922,7 @@ def test_arm_c_prior_shared_across_scenarios(harness, workdir, out_path):
 # ─── 10. C1 fold: header skip + B2 fold: mock/real schema tripwire ─────
 
 
-def test_load_latest_session_skips_stage_0b_header(harness, tmp_path):
+def test_own_session_skips_stage_0b_header(harness, tmp_path):
     """The real simulation/report.py::save_action_log writes a header line
     as the FIRST entry of actions.jsonl. Without the skip, primary metric
     is off by one and the tail bucket flushes extra zero turns."""
@@ -931,7 +931,8 @@ def test_load_latest_session_skips_stage_0b_header(harness, tmp_path):
     (session_dir / "report.json").write_text(
         '{"session_id": "20260530_120000", "turns": 1, "tool_usage": {}, "cost_usd": 0.0, '
         '"total_input_tokens": 0, "total_output_tokens": 0, "finish_reason": "max_turns", '
-        '"duration_s": 1.0, "aut_memories_formed": 0, "aut_causal_links": 0}'
+        '"duration_s": 1.0, "aut_memories_formed": 0, "aut_causal_links": 0, '
+        '"provenance": {"harness_run_id": "rid"}}'
     )
     actions_jsonl = (
         '{"_format_version": "1.1", "_record_kind": "header", "session_id": "20260530_120000"}\n'
@@ -939,7 +940,7 @@ def test_load_latest_session_skips_stage_0b_header(harness, tmp_path):
         '{"timestamp": 2.0, "tool": "respond", "params": {}, "success": true}\n'
     )
     (session_dir / "actions.jsonl").write_text(actions_jsonl)
-    result = harness._load_latest_session(tmp_path, exclude=None)
+    result = harness._own_session(tmp_path, "rid", set(), returncode=0, resume_session=None)
     # Header is skipped — only 2 actual actions visible to compute_metrics.
     assert len(result.actions) == 2
     assert result.actions[0]["tool"] == "fire_pit_touch"
@@ -949,15 +950,19 @@ def test_load_latest_session_skips_stage_0b_header(harness, tmp_path):
     assert m["primary_metric_repeat_failure_action_rate"] == 1.0
 
 
-def test_load_latest_session_uses_exact_session_id_match(harness, tmp_path):
-    """Substring match would fail if one session_id contains another."""
+def test_own_session_matches_the_inherited_session_exactly(harness, tmp_path):
+    """The inherited (resumed-prior) session is excluded by its EXACT name: substring matching would also
+    skip a new session whose id contains the prior's. Both carry this harness's run id (a copied home keeps
+    the prior's report), so only the before-snapshot tells them apart; the prior lands in depends_on."""
     for sid in ("20260530_120000", "20260530_120000_continued"):
         sd = tmp_path / "sim_reports" / sid
         sd.mkdir(parents=True)
-        (sd / "report.json").write_text('{"session_id": "' + sid + '", "turns": 1}')
-    # Exclude the SHORTER id — substring match would mistakenly skip the longer.
-    result = harness._load_latest_session(tmp_path, exclude="20260530_120000")
+        (sd / "report.json").write_text(
+            '{"session_id": "' + sid + '", "turns": 1, "provenance": {"harness_run_id": "rid"}}'
+        )
+    result = harness._own_session(tmp_path, "rid", {"20260530_120000"}, returncode=0, resume_session=None)
     assert result.session_id == "20260530_120000_continued"
+    assert [d["session_id"] for d in result.depends_on] == ["20260530_120000"]
 
 
 def test_mock_writes_header_matching_real_format(harness, workdir):
@@ -1450,6 +1455,7 @@ class TestCloudDispatchEnvSetup:
                 resume_session=None,
                 extra_env={},
                 timeout_s=60,
+                run_id="rid-1003",
             )
 
         cmd = captured["cmd"]
@@ -1477,6 +1483,8 @@ class TestCloudDispatchEnvSetup:
         # were routing to the leader's local Qwen via tunnel instead of
         # the cloud profile's _AnthropicBackend.
         assert env.get("MAXIM_DISABLE_PEER_CONFIG") == "1"
+        # The sub-sim carries the harness's run id, so the harness can find the report IT wrote (#1003).
+        assert env.get("MAXIM_HARNESS_RUN_ID") == "rid-1003"
 
     def test_local_model_uses_peer_routing_unchanged(self, harness, monkeypatch, tmp_path):
         """Local / peer-routed models must NOT get --language-model on
@@ -1502,6 +1510,7 @@ class TestCloudDispatchEnvSetup:
                 resume_session=None,
                 extra_env={},
                 timeout_s=60,
+                run_id="rid-1003",
             )
 
         cmd = captured["cmd"]
@@ -1530,6 +1539,7 @@ class TestCloudDispatchEnvSetup:
                 resume_session=None,
                 extra_env={},
                 timeout_s=60,
+                run_id="rid-1003",
             )
 
 
