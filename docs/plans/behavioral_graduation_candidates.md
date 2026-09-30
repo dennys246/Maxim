@@ -231,6 +231,39 @@ update.
   ATL relations, and the survival harnesses use the ATL only through `activate_substrate_node` (#812's
   caller grep).
 
+### Trigger walk — 2026-09-29, #1002 (a finished run is `completed`, not `cancel`)
+
+From #524 (1ed83f7e, 2026-08-19) to #1002, the orchestrator stamped `finish_reason: cancel` on every sim
+that ended without a `finish_context`, because the runners' normal return and the shutdown both set the
+same `stop_event` an operator's `/cancel` sets. Since #524, `cancel` counts as a typed abort: the CLI
+exited 4, and `roy_runner`, `BenchmarkRunner`, `curriculum_runner` and `research_orchestrator` treat the
+run as unusable. #1002 records the operator's stop separately, so a finished run reads `completed`.
+
+**No row fires.** No row's `Re-run on:` names finish reasons, abort handling or these runners (Exp 52's
+"`cradle_mother` arc change" is about the arc, which #1002 does not touch). No committed evidence came
+through the Roy, benchmark, curriculum or research runners. Runs recorded inside the window:
+- **Exp 42 (42d53, 2026-09-01), Exp 52 / 52d53 (2026-08-25, 2026-09-02) and Exp 54 Phase A (2026-08-27):**
+  every sim exited 4 and read `cancel`, but `benchmark_exp42_preference.py` and
+  `benchmark_cradle_mother.py` ignore the return code and never read `finish_reason`; the files hold
+  their full seed sets (42d53 20/20, 52d53 36/36, 54 Phase A 36 rows). Data unaffected.
+- **The Exp 53 / 53b agent sweeps (2026-08-26, 08-28, 09-02)** are hardware runs through
+  `scripts/orient_*`, which never spawn `maxim --sim`: not this code path.
+- **The Exp 09 and Exp 10 re-runs** are `planning_failed` (a real D13 abort with a `finish_context`), and
+  the Sim-Short heartbeat sessions are `max_turns`: not this bug.
+- **Exp 37:** `benchmark_cross_session.py` raises on a non-zero exit, so a re-fire at main inside the
+  window would have crashed on its first sim. The Qwen32B heartbeat (`37_heartbeat_1.1_qwen32b.jsonl`,
+  committed 2026-08-24, all rows `cancel`) started at `dad9125b`, before #524 merged, and completed: it
+  ran pre-#524 code. No re-fire inside the window was recorded; #1002 makes one possible again.
+- **Runner failures:** a runner that catches its own failure (a narrator crash, a fixture or DM
+  exception, a failed pre-campaign turn) now records `error` naming the runner (owner decision); before,
+  it read `cancel` by accident. A successful fixture run (which Roy's fixture arms use) moves from
+  `cancel` to `completed`, and a cradle or generative run that exhausts `--sim-max-turns` before its arc
+  finishes now reads `max_turns` (still exit 0; the Exp 42/52 harnesses read neither the exit code nor
+  `finish_reason`, so no row changes). No committed record carries a runner failure, and no `roy_runner`,
+  `BenchmarkRunner`, `curriculum_runner` or `research_orchestrator` record is committed under
+  `docs/experiments/data/` (the `*_bench.jsonl` files there are the R3 / H2 rig harnesses' own logs,
+  which never spawn `maxim --sim`).
+
 ### Trigger walk — 2026-09-29, #991 (enrichment memory valence; Exp 37's "prompt construction change" fires)
 
 #991 reads a memory's success the same way for both record kinds. `bio_enrichment._query_hippocampus`

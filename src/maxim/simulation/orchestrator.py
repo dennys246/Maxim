@@ -361,6 +361,101 @@ def _arm_sandboxed_aut_subprocess_tools() -> None:
     os.environ.setdefault("MAXIM_ALLOW_BASH", "1")
 
 
+def _stop_by_operator(stop_event: threading.Event, operator_stop: threading.Event) -> None:
+    """A human ended the run (``/cancel``, Ctrl+C, an interrupted reader), so it reports ``cancel``.
+
+    ``stop_event`` is also set when a runner simply finishes and again at shutdown, so it cannot tell a
+    finished run from a cancelled one; only this helper sets ``operator_stop`` (#1002).
+    """
+    operator_stop.set()
+    stop_event.set()
+
+
+def _runner_outcome(runner: str, outcome: Any) -> tuple[str, str] | None:
+    """How a campaign runner ended, as ``(status, reason)`` for ``finish_context``, or ``None`` when it simply
+    completed (#1002). Each runner is read in its OWN return shape (pinned against the real producers):
+
+    - ``generative_runner``: ``None`` when it raised, else a ``GenerativeCampaignResult`` whose
+      ``finish_reason`` is ``completed`` / ``max_turns`` / ``error``;
+    - ``dm_runner``: ``{"error": ...}`` when it raised, else ``DMRuntime.get_rollup()``, whose ending is
+      ``campaign.finish_reason`` (``all_encounters_complete`` / ``campaign_end:*`` complete it; ``cancel`` is
+      a Ctrl+C; anything else is a structural failure);
+    - ``fixture_runner``: ``{"error": ...}`` when it raised, else ``asdict(FixtureResult)``, which finishes
+      ``complete``;
+    - ``precampaign_runner``: the analysis dict, whose ``turns`` each carry ``error`` when that turn failed; a
+      failed turn means the scripted run did not happen as written.
+
+    Anything unrecognised reads as ``error``: fail closed.
+    """
+    if outcome is None:
+        return "error", f"{runner} raised (see the log)"
+    if isinstance(outcome, dict) and outcome.get("error"):
+        return "error", str(outcome["error"])
+    if runner == "generative_runner":
+        reason = getattr(outcome, "finish_reason", None)
+        if reason == "completed":
+            return None
+        if reason in ("max_turns", "error"):
+            return reason, f"the generative campaign ended with {reason}"
+    elif runner == "dm_runner" and isinstance(outcome, dict):
+        reason = (outcome.get("campaign") or {}).get("finish_reason")
+        if reason == "all_encounters_complete" or str(reason).startswith("campaign_end:"):
+            return None
+        if reason == "cancel":
+            return "cancel", "the DM campaign was interrupted (Ctrl+C)"
+    elif runner == "fixture_runner" and isinstance(outcome, dict):
+        reason = outcome.get("finish_reason")
+        if reason == "complete":
+            return None
+    elif runner == "precampaign_runner" and isinstance(outcome, dict):
+        failed = [t for t in outcome.get("turns", []) if t.get("error")]
+        if not failed:
+            return None
+        return "error", f"{len(failed)} pre-campaign turn(s) failed: {failed[0]['error']}"
+    else:
+        reason = None
+    return "error", f"{runner} ended with {reason!r}"
+
+
+def _finish_runner(
+    bridge: Any, stop_event: threading.Event, runner: str, outcome: Any, *, errors: list | None = None
+) -> None:
+    """A campaign runner returned: record how it ended (unless a guard already did), then stop the loops.
+
+    Without this a runner that caught its own failure ended the run with no ``finish_context``, which
+    resolves to ``completed`` (#1002). ``errors`` is a worker thread's caught exceptions (the interactive DM
+    campaign runs on one): any makes the outcome an error.
+    """
+    ended = _runner_outcome(runner, {"error": repr(errors[0])} if errors else outcome)
+    if ended is not None and not (bridge.finish_context or {}).get("status"):
+        status, reason = ended
+        bridge.finish_context.update(
+            {"status": status, "reason": reason, "summary": f"{runner} ended: {reason}", "initiated_by": runner}
+        )
+    stop_event.set()
+
+
+def _resolve_finish_reason(orch_error: Any, finish_context: dict | None, operator_stop: threading.Event) -> str:
+    """How the run ended, in priority order:
+
+    1. the orchestrator raised -> ``error``;
+    2. a ``finish_context`` status (the LLM's ``finish_simulation``, or a guard -- max turns, a stall, the
+       AUT dying, planning liveness -- distinguished by ``initiated_by``);
+    3. a human stopped it (``operator_stop``: ``/cancel``, Ctrl+C) -> ``cancel``;
+    4. otherwise a runner finished or the loops exited -> ``completed``.
+
+    ``stop_event`` is deliberately not an input: a finished runner and the shutdown both set it, so it
+    read every finished run as ``cancel`` (#1002).
+    """
+    if orch_error:
+        return "error"
+    if finish_context and finish_context.get("status"):
+        return finish_context["status"]
+    if operator_stop.is_set():
+        return "cancel"
+    return "completed"
+
+
 def _select_aut_prompt_handler(prompt_handler: Any, stop_event: Any) -> tuple[Any, Any]:
     """``(aut_handler, sim_handler)`` -- the handler the AUT's ``request_interaction`` tool asks, and the
     interactive SimPromptHandler the stdin reader must coordinate with (None unless one was built).
@@ -539,6 +634,7 @@ def start_simulation_mode(
 
     # ── Shared stop event ────────────────────────────────────────────────
     stop_event = threading.Event()
+    operator_stop = threading.Event()  # set only when a human ends the run (#1002)
 
     # Reset the process-wide LLM cancellation primitive. If a previous sim
     # in the same Python process requested shutdown (e.g., this is a
@@ -2050,7 +2146,7 @@ def start_simulation_mode(
         # lands on a different key than the pending action — smoke-verified via
         # the ``credited=True`` mother telemetry.
         _gen_agent_id = (getattr(aut_memory_hub, "agent_id", "") if aut_memory_hub is not None else "") or ""
-        _run_gen(
+        gen_result = _run_gen(
             goal=goal,
             bridge=bridge,
             llm_router=llm_router,
@@ -2063,7 +2159,7 @@ def start_simulation_mode(
             nac=aut_nac,
             agent_id=_gen_agent_id,
         )
-        stop_event.set()
+        _finish_runner(bridge, stop_event, "generative_runner", gen_result)
 
     # ── DM Campaign mode — DM runtime drives encounters ────────────────────
     # In interactive mode, the DM campaign runs on its own thread so the
@@ -2105,14 +2201,14 @@ def start_simulation_mode(
                 except Exception as e:
                     _dm_error.append(e)
                 finally:
-                    stop_event.set()
+                    _finish_runner(bridge, stop_event, "dm_runner", dm_rollup, errors=_dm_error)
 
             _dm_thread = threading.Thread(target=_dm_worker, name="sim.dm", daemon=True)
             # Thread started AFTER stdin reader — see below
         else:
             # Non-interactive: run synchronously (original behavior)
             dm_rollup = _run_dm(**_dm_kwargs)
-            stop_event.set()
+            _finish_runner(bridge, stop_event, "dm_runner", dm_rollup)
 
     # ── Pre-campaign turn delivery ────────────────────────────────────────
     campaign_analysis: dict[str, Any] = {}
@@ -2124,7 +2220,7 @@ def start_simulation_mode(
             bridge=bridge,
             introspector=aut_introspector,
         )
-        stop_event.set()
+        _finish_runner(bridge, stop_event, "precampaign_runner", campaign_analysis)
 
     # ── Fixture-driven campaign (S1) — no narrator LLM required ──────────
     # Fix B (2026-05-27, docs/plans/deferred/imagination_substrate_signals.md): the
@@ -2147,7 +2243,7 @@ def start_simulation_mode(
             llm_router=llm_router,
             goal=goal,
         )
-        stop_event.set()
+        _finish_runner(bridge, stop_event, "fixture_runner", fixture_result)
 
     # ── Inject initial goal (or resume context) into orchestrator ────────
     if resume_session:
@@ -2228,7 +2324,7 @@ def start_simulation_mode(
         # Slash commands always take priority, even during a pending prompt.
         if line.lower() in ("/cancel", "/stop", "/quit"):
             display_summary(["Simulation cancelled by user."])
-            stop_event.set()
+            _stop_by_operator(stop_event, operator_stop)
             return True
         elif line.lower() == "/pause":
             if not _paused[0]:
@@ -2532,7 +2628,7 @@ def start_simulation_mode(
                         pass
                 elif ch == "\x03":
                     # Ctrl+C
-                    stop_event.set()
+                    _stop_by_operator(stop_event, operator_stop)
                     break
                 elif ch == "\x04":
                     # Ctrl+D (EOF)
@@ -2571,7 +2667,7 @@ def start_simulation_mode(
                 try:
                     line = input()
                 except (EOFError, KeyboardInterrupt):
-                    stop_event.set()
+                    _stop_by_operator(stop_event, operator_stop)
                     return
                 _sim_prompt_handler.deliver_response(line.strip())
                 continue
@@ -2580,7 +2676,7 @@ def start_simulation_mode(
             except EOFError:
                 return
             except KeyboardInterrupt:
-                stop_event.set()
+                _stop_by_operator(stop_event, operator_stop)
                 break
             if _process_line(line):
                 break
@@ -3140,6 +3236,7 @@ def start_simulation_mode(
                 )
     except KeyboardInterrupt:
         display_summary(["Simulation stopped by user"])
+        _stop_by_operator(stop_event, operator_stop)
     except _PlanningLivenessExhausted as e:
         # D13: the agent loop spent its bounded planning-retry budget and
         # aborted through its normal teardown. Preserve the typed failure:
@@ -3342,23 +3439,8 @@ def start_simulation_mode(
     )
 
     duration = time.time() - start_time
-    # Priority order for finish_reason:
-    #   1. Orchestrator crashed (error)
-    #   2. finish_context populated (either LLM via FinishSimulationTool
-    #      OR stall detector via max_turns guard — both write status into
-    #      bridge.finish_context, distinguished by initiated_by)
-    #   3. User cancelled via stop_event (no finish_context)
-    #   4. Loops exited normally (completed)
     llm_finish = bridge.finish_context if bridge.finish_context else None
-    if orch_error:
-        finish_reason = "error"
-    elif llm_finish and llm_finish.get("status"):
-        finish_reason = llm_finish["status"]
-        # LLM's explanation flows into the report via llm_finish_context below
-    elif stop_event.is_set():
-        finish_reason = "cancel"
-    else:
-        finish_reason = "completed"
+    finish_reason = _resolve_finish_reason(orch_error, llm_finish, operator_stop)
 
     if llm_finish:
         logger.info(
