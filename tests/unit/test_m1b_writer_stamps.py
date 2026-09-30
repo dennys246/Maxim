@@ -61,17 +61,34 @@ def test_a_harness_row_is_failed_when_refused_or_already_failed_and_always_says_
     assert P.stamp_harness_row({"refusal": "no clean donor"}, mock=False)["status"] == "failed"
     assert P.stamp_harness_row({"status": "failed"}, mock=True)["status"] == "failed"
     assert P.stamp_harness_row({"status": "ok"}, mock=True)["mock"] is True
+    # the verdicts' own reading of a refusal: an exception with an empty message is still one
+    assert P.stamp_harness_row({"refusal": ""}, mock=False)["status"] == "failed"
+    with pytest.raises(ValueError, match="neither"):
+        P.stamp_harness_row({"status": "incomplete"}, mock=False)  # never silently rewritten to ok
 
 
 def test_a_verdict_names_its_data_repo_relative_with_the_hash_of_the_bytes_it_judged(tmp_path: Path) -> None:
     rows = tmp_path / "docs" / "rows.jsonl"
     rows.parent.mkdir()
     rows.write_text('{"a": 1}\n')
-    v = P.stamp_verdict({"verdict": "PASS"}, repo_root=tmp_path, kind="k", data=rows, scope={"campaign_id": "c"})
+    judged = rows.read_bytes()
+    rows.write_text('{"a": 1}\n{"appended": "after the verdict read"}\n')
+    v = P.stamp_verdict(
+        {"verdict": "PASS"}, repo_root=tmp_path, kind="k", data=rows, data_bytes=judged, scope={"campaign_id": "c"}
+    )
     assert v["record_kind"] == "verdict" and v["kind"] == "k" and v["scope"] == {"campaign_id": "c"}
-    assert v["data"] == "docs/rows.jsonl" and v["data_sha256"] == _sha(rows)
-    outside = P.stamp_verdict({}, repo_root=tmp_path / "docs", kind="k", data=tmp_path / "missing.jsonl", scope={})
-    assert outside["data"] == str(tmp_path / "missing.jsonl") and outside["data_sha256"] is None
+    assert v["data"] == "docs/rows.jsonl" and v["data_sha256"] == hashlib.sha256(judged).hexdigest() != _sha(rows)
+    outside = P.stamp_verdict(
+        {}, repo_root=tmp_path / "docs", kind="k", data=tmp_path / "x.jsonl", data_bytes=b"", scope={"all_rows": True}
+    )
+    assert outside["data"] == str(tmp_path / "x.jsonl")
+
+
+@pytest.mark.parametrize("scope", [{}, {"campaign_id": None}, {"run_ids": None}])
+def test_a_verdict_scope_is_never_empty_or_a_none_selector(scope: dict, tmp_path: Path) -> None:
+    """ "Every row" must be said ({"all_rows": True}), never be what a forgotten selector reads as."""
+    with pytest.raises(ValueError, match="all_rows"):
+        P.stamp_verdict({}, repo_root=tmp_path, kind="k", data=tmp_path / "r", data_bytes=b"", scope=scope)
 
 
 def test_the_provenance_block_names_its_family(monkeypatch) -> None:
@@ -136,7 +153,7 @@ def test_a_survival_verdict_binds_its_rows_file_scope_and_code(
     assert v["verdict"] == committed["verdict"] == "EARNED"
     assert v["record_kind"] == "verdict" and v["kind"] == kind
     assert v["data"] == data and v["data_sha256"] == _sha(REPO / data)
-    assert {k: v["scope"][k] for k in scope} == scope
+    assert v["scope"] == scope, "the scope names every row the verdict read (a campaign: all of its kinds)"
     assert v["provenance"]["harness_family"] == "in_process"
 
 
@@ -161,8 +178,25 @@ def test_the_exp56_and_exp57_analyzers_stamp_their_verdicts(
     report = json.loads(capsys.readouterr().out.split("\nVERDICT", 1)[0])
     assert report["record_kind"] == "verdict" and report["kind"] == kind
     assert report["data"] == str(rows) and report["data_sha256"] == _sha(rows)  # outside the repo: named as given
-    assert report["provenance"]["harness_family"] == "in_process"
+    assert report["provenance"]["harness_family"] == "in_process" and report["scope"] == {"all_rows": True}
     assert report["verdict"] == "NO-VERDICT", "a mock row never yields a verdict"
+
+
+@pytest.mark.parametrize("analyzer", ["analyze_exp56.py", "analyze_exp57.py"])
+def test_an_analyzer_refuses_with_3_when_its_code_cannot_be_established(
+    analyzer: str, tmp_path: Path, monkeypatch
+) -> None:
+    """3 is the house refusal; 1 is FAIL, which a provenance failure must never read as."""
+    rows = tmp_path / "rows.jsonl"
+    rows.write_text(json.dumps(_EXP57_ROW) + "\n")
+    mod = _load(f"m1b5a_refuse_{analyzer}", analyzer)
+
+    def not_this_repo(*a, **k):
+        raise P.ProvenanceError("imported maxim is not this repo")
+
+    monkeypatch.setattr(P, "in_process_code_provenance", not_this_repo)
+    monkeypatch.setattr(sys, "argv", [analyzer, "--in", str(rows)])
+    assert mod.main() == 3
 
 
 # ── smokes say they are smokes ───────────────────────────────────────────
@@ -188,6 +222,25 @@ def test_the_exp49_scripted_arm_is_mock(tmp_path: Path, monkeypatch) -> None:
     assert exp49.main() == 0
     (row,) = _rows(tmp_path / "trials_scripted.jsonl")
     assert row["record_kind"] == "harness_row" and row["status"] == "ok" and row["mock"] is True
+
+
+def test_an_exp49_trial_whose_maxim_crashed_is_failed(tmp_path: Path, monkeypatch) -> None:
+    exp49 = _load("m1b5a_exp49_spawn", "exp49/run_trials.py")
+
+    class Exited:
+        def __init__(self, code: int) -> None:
+            self.returncode = code
+
+        def poll(self):
+            return self.returncode
+
+    monkeypatch.setattr(exp49._provenance, "executed_code_provenance", lambda *a, **k: {})
+    monkeypatch.setattr(exp49.time, "sleep", lambda s: None)
+    for code, status in ((1, "failed"), (0, "ok")):
+        monkeypatch.setattr(exp49.subprocess, "Popen", lambda *a, _c=code, **k: Exited(_c))
+        rec = exp49.run_spawned_trial("B", 30.0, 1, tmp_path / f"t{code}", "maxim")
+        assert rec["metrics"]["end_reason"] == f"process_exited_{code}"
+        assert P.stamp_harness_row(rec, mock=False)["status"] == status
 
 
 def test_an_exp37_failed_row_says_whether_it_was_a_smoke(tmp_path: Path, monkeypatch) -> None:
@@ -244,6 +297,26 @@ def test_the_lint_refuses_a_sim_spawner_that_claims_the_in_process_family(tmp_pa
     assert fail.startswith("scripts/bench.py") and "in_process_code_provenance" in fail
 
 
+def test_the_lint_refuses_in_process_provenance_in_any_maxim_spawner(tmp_path: Path) -> None:
+    """The Exp 49 shape: `maxim --mode live`, no `--sim`, still judged by the runtime it spawned."""
+    live = """import subprocess
+assert_repo_interpreter(ROOT, b)
+prov = executed_code_provenance(ROOT, resolve(), out_path=out, allow_dirty=a)
+subprocess.Popen(["maxim", "--mode", "live"])
+row = {"record_kind": "harness_row"}
+"""
+    assert L.lint(_tree(tmp_path, live)) == []
+    (fail,) = L.lint(_tree(tmp_path / "b", live + "p = in_process_code_provenance(ROOT, f)\n"))
+    assert "in_process_code_provenance" in fail
+
+
+def test_the_lint_refuses_a_writer_that_names_the_harness_family(tmp_path: Path) -> None:
+    root = _tree(tmp_path, _SPAWNER)
+    (root / "scripts/analysis.py").write_text('prov["harness_family"] = "in_process"\n')
+    (fail,) = L.lint(root)
+    assert fail.startswith("scripts/analysis.py") and "harness_family" in fail
+
+
 @pytest.mark.parametrize(
     "rel",
     ["exp56/run_campaign.py", "exp56/instrument_check.py", "exp57/run_ladder.py", "exp57/instrument_check.py"],
@@ -255,3 +328,27 @@ def test_the_exp56_and_exp57_harnesses_stamp_in_process_provenance(rel: str) -> 
 
     calls = L._names_called(ast.parse((SCRIPTS / rel).read_text()))
     assert "in_process_code_provenance" in calls and "executed_code_provenance" not in calls
+    assert "stamp_harness_row" in calls, "its rows are stamped where they are written"
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    ("rel", "out_name"), [("exp56/run_campaign.py", "rows.jsonl"), ("exp56/instrument_check.py", "phase0.json")]
+)
+def test_the_exp56_mock_runs_write_stamped_records(rel: str, out_name: str, tmp_path: Path) -> None:
+    """The real output of the ScriptedBridge smokes (30-45 s each, so the nightly slow lane)."""
+    import os
+    import subprocess
+
+    out = tmp_path / out_name
+    args = [sys.executable, str(SCRIPTS / rel), "--mock", "--out", str(out), "--allow-dirty"]
+    if rel.endswith("run_campaign.py"):
+        args += ["--pairs", "1", "--workdir", str(tmp_path / "work")]
+    env = dict(os.environ, MAXIM_OPERANT_ONLY_CREDIT="1", PYTHONPATH=str(REPO / "src"))
+    proc = subprocess.run(args, env=env, capture_output=True, text=True, timeout=600)
+    assert proc.returncode == 0, proc.stdout[-2000:] + proc.stderr[-2000:]
+    records = _rows(out) if out_name.endswith(".jsonl") else [json.loads(out.read_text())]
+    assert records
+    for r in records:
+        assert (r["record_kind"], r["status"], r["mock"]) == ("harness_row", "ok", True)
+        assert r["provenance"]["harness_family"] == "in_process"

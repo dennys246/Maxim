@@ -26,6 +26,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from _provenance import (  # noqa: E402
+    ProvenanceError,
     assert_repo_interpreter,
     evidence_out_paths,
     in_process_code_provenance,
@@ -225,9 +226,13 @@ def main() -> int:
 
     # In-process provenance (M1b PR 5a): this harness IMPORTS maxim and never spawns it, so the executed code
     # is the imported package (asserted to be this repo's src), not whatever the `maxim` console script resolves.
-    provenance = in_process_code_provenance(
-        C.REPO_ROOT, maxim.__file__, out_path=out_path, allow_dirty=args.allow_dirty
-    )
+    try:
+        provenance = in_process_code_provenance(
+            C.REPO_ROOT, maxim.__file__, out_path=out_path, allow_dirty=args.allow_dirty
+        )
+    except ProvenanceError as exc:  # the imported maxim is not this repo's src: a refusal, never a FAIL
+        print(f"PROVENANCE: {exc}", file=sys.stderr)
+        return 3
 
     if args.mock:
         server = C.ScriptedBridgeServer(seed=1)

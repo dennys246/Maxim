@@ -398,16 +398,23 @@ def main() -> int:
     args = ap.parse_args()
 
     path = Path(args.inp)
-    rows = load_rows(path)
+    data_bytes = path.read_bytes()  # read once: the verdict and its hash see the same bytes
+    rows = [json.loads(ln) for ln in data_bytes.decode().splitlines() if ln.strip()]
     report = analyze(rows, cohorts_min=args.cohorts_min, permutations=args.permutations)
     # The verdict as the evidence gate reads it (M1b PR 5a): its kind, the rows file (repo-relative + sha256), the
     # scope (every row of the file), and the code that computed it.
-    from _provenance import in_process_code_provenance, stamp_verdict  # noqa: PLC0415
+    from _provenance import ProvenanceError, in_process_code_provenance, stamp_verdict  # noqa: PLC0415
 
     import maxim  # noqa: PLC0415
 
-    stamp_verdict(report, repo_root=REPO_ROOT, kind="exp57_verdict", data=path, scope={})
-    report["provenance"] = in_process_code_provenance(REPO_ROOT, maxim.__file__)
+    stamp_verdict(
+        report, repo_root=REPO_ROOT, kind="exp57_verdict", data=path, data_bytes=data_bytes, scope={"all_rows": True}
+    )
+    try:
+        report["provenance"] = in_process_code_provenance(REPO_ROOT, maxim.__file__)
+    except ProvenanceError as exc:  # the imported maxim is not this repo's src: a refusal (3), never a FAIL (1)
+        print(f"PROVENANCE: {exc}", file=sys.stderr)
+        return 3
 
     if args.assert_noop_fails:
         artifacts = Path(args.artifacts) if args.artifacts else path.parent / "cohort0_artifacts"

@@ -326,6 +326,9 @@ def run_spawned_trial(
     metrics = common.compute_trial_metrics(events)
     metrics.end_reason = end_reason
     record["metrics"] = metrics.to_dict()
+    if proc.returncode not in (0, None) and end_reason.startswith("process_exited_"):
+        # A crashed `maxim` is not a trial (M1b PR 5a): the row says so, and readers of `status` exclude it.
+        record["status"] = "failed"
     record["wall_seconds"] = round(time.time() - started, 1)
     return record
 

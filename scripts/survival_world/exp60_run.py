@@ -527,7 +527,8 @@ def _run(args: argparse.Namespace) -> int:
 
 
 def _verdict(args: argparse.Namespace) -> int:
-    recs = [json.loads(ln) for ln in Path(args.data).expanduser().read_text().splitlines() if ln.strip()]
+    data_bytes = Path(args.data).expanduser().read_bytes()  # read once: the verdict and its hash see the same bytes
+    recs = [json.loads(ln) for ln in data_bytes.decode().splitlines() if ln.strip()]
     v = compute_verdict(recs, run_id=args.run_id)
     v["run_ids"] = args.run_id
     # The rows file as a repo-relative path + its sha256, and the scope selecting its rows (M1b PR 5a).
@@ -536,7 +537,8 @@ def _verdict(args: argparse.Namespace) -> int:
         repo_root=C.REPO_ROOT,
         kind="exp60_verdict",
         data=Path(args.data).expanduser(),
-        scope={"run_ids": args.run_id},
+        data_bytes=data_bytes,
+        scope={"run_ids": args.run_id} if args.run_id else {"all_rows": True},
     )
     print(json.dumps({k: v[k] for k in v if k not in ("per_seed", "gates")}, indent=2))
     print(f"VERDICT: {v['verdict']}")

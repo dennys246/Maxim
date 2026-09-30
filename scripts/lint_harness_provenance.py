@@ -46,10 +46,11 @@ AST: it calls ``executed_code_provenance(..., out_path=...)`` (the preflight alo
 discarded their provenance) and names ``"record_kind"``; and a harness that spawns ``"--sim"`` sets
 ``env["MAXIM_HARNESS_RUN_ID"]`` literally, calls ``harness_run_id(``, finds its report through
 ``find_own_report``/``spawn_evidence`` (never the newest directory) and echoes it with ``sim_evidence(``.
-Since M1b PR 5a a ``"--sim"`` spawner may not call ``in_process_code_provenance``: the provenance block's
-``harness_family`` (``"in_process"`` / ``"spawning"``, stamped by ``_provenance`` itself) tells the evidence gate
-whether to judge a row by its own provenance or by the sims it echoes, so a spawner claiming ``in_process`` would
-be judged without its sims.
+Since M1b PR 5a a spawner may not call ``in_process_code_provenance``: the provenance block's ``harness_family``
+(``"in_process"`` / ``"spawning"``, stamped by ``_provenance`` itself) tells the evidence gate whether to judge a
+row by its own provenance or by the sims it echoes, so a spawner claiming ``in_process`` would be judged without
+them. And no file under ``scripts/`` but ``_provenance.py`` (and this lint) may name the ``"harness_family"``
+literal, so a writer does not set or overwrite it by hand (a presence check: forgetting, not evasion).
 Presence checks: one literal covers a file, and they catch forgetting, not a wrong argument.
 
 False positives (a script whose match is not a record write / sub-sim spawn)
@@ -193,12 +194,12 @@ def _stamp_failures(rel: Path, tree: ast.AST) -> list[str]:
                 f"{', '.join(missing)} (M1b, #1003: find the report the spawn wrote, never the newest directory, "
                 "and echo its evidence into the row)"
             )
-        if "in_process_code_provenance" in calls:
-            out.append(
-                f"{rel}: spawns `maxim --sim` but calls in_process_code_provenance — that stamps "
-                'harness_family: "in_process", which the evidence gate judges by the row\'s own provenance '
-                "instead of the sims it spawned (M1b PR 5a); a spawner stamps executed_code_provenance only"
-            )
+    if "in_process_code_provenance" in calls:
+        out.append(
+            f"{rel}: spawns maxim but calls in_process_code_provenance — that stamps "
+            'harness_family: "in_process", which the evidence gate judges by the row\'s own provenance '
+            "instead of the runtime it spawned (M1b PR 5a); a spawner stamps executed_code_provenance only"
+        )
     return out
 
 
@@ -241,6 +242,21 @@ def lint(repo_root: Path = REPO_ROOT) -> list[str]:
         if stamp_failures:
             failures.extend(stamp_failures)
             flagged.add(path)
+
+    # M1b PR 5a — the harness family is _provenance's to stamp, never a writer's.
+    for path in sorted(scripts.rglob("*.py")):
+        rel = path.relative_to(repo_root)
+        if rel.as_posix() in ("scripts/_provenance.py", "scripts/lint_harness_provenance.py"):
+            continue
+        try:
+            tree = ast.parse(path.read_text(errors="replace"))
+        except SyntaxError:
+            continue  # reported by the parse step and family 1
+        if "harness_family" in _string_constants(tree):
+            failures.append(
+                f'{rel}: names "harness_family" — only scripts/_provenance.py stamps it, inside the provenance '
+                "block, so a writer cannot choose how the evidence gate judges its rows (M1b PR 5a)"
+            )
 
     # Family 2 — in-process record writers. The guarded writer is the delegate,
     # so it must itself reference the preflight (positive control on the delegation).

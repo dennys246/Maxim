@@ -1211,14 +1211,18 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_verdict(args: argparse.Namespace) -> int:
-    rows = [json.loads(ln) for ln in Path(args.data).expanduser().read_text().splitlines() if ln.strip()]
+    data_bytes = Path(args.data).expanduser().read_bytes()  # read once: the verdict and its hash see the same bytes
+    rows = [json.loads(ln) for ln in data_bytes.decode().splitlines() if ln.strip()]
     v = compute_verdict(rows, campaign_id=args.campaign_id)
     stamp_verdict(  # the rows file (repo-relative + sha256) and the rows the verdict counts (M1b PR 5a)
         v,
         repo_root=C.REPO_ROOT,
         kind="exp62_verdict",
         data=Path(args.data).expanduser(),
-        scope={"campaign_id": args.campaign_id, "kinds": ["row", "replay", "apparatus"]},
+        data_bytes=data_bytes,
+        # every row of the campaign: the verdict reads its receiver/row, replay, apparatus and donor rows (drift, one
+        # code hash), not only the rows it counts
+        scope={"campaign_id": args.campaign_id} if args.campaign_id else {"all_rows": True},
     )
     print(json.dumps({k: v[k] for k in v if k != "gates"}, indent=2, default=str))
     print(f"\nVERDICT: {v['verdict']}" + (f" ({v['incomplete_cause']})" if v.get("incomplete_cause") else ""))

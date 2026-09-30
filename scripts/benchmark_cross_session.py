@@ -1500,7 +1500,7 @@ def run_benchmark(
                 scenario=scenario,
                 seed=seed,
                 model=model,
-                mock=bool(kwargs.get("mock")),
+                mock=bool(kwargs["mock"]),  # every call site passes it: a missing one is a KeyError, not "real"
             )
             out_f.write(json.dumps(rec) + "\n")
             out_f.flush()

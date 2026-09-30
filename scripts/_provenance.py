@@ -486,19 +486,27 @@ def failed_row(exc: BaseException) -> dict[str, object]:
 def stamp_harness_row(row: dict, *, mock: bool) -> dict:
     """A harness row as the evidence gate reads it (M1b PR 5a), stamped at the one place a writer writes it:
     ``record_kind``, ``status`` (``failed`` when the row carries a ``refusal`` or was already failed, else ``ok``)
-    and an explicit ``mock`` (a missing ``mock`` is never read as "not mock"). Returns the same dict."""
+    and an explicit ``mock`` (a missing ``mock`` is never read as "not mock"). Returns the same dict. A row already
+    carrying some other ``status`` is refused: overwriting it would erase how the run ended."""
+    if row.get("status") not in (None, "ok", "failed"):
+        raise ValueError(f"harness row status {row['status']!r} is neither 'ok' nor 'failed'")
     row["record_kind"] = "harness_row"
-    refused = bool(row.get("refusal"))
+    refused = row.get("refusal") is not None  # the verdicts' own reading: an empty message is still a refusal
     row["status"] = "failed" if refused or row.get("status") == "failed" else "ok"
     row["mock"] = bool(mock)
     return row
 
 
-def stamp_verdict(verdict: dict, *, repo_root: Path | str, kind: str, data: Path | str, scope: dict) -> dict:
+def stamp_verdict(
+    verdict: dict, *, repo_root: Path | str, kind: str, data: Path | str, data_bytes: bytes, scope: dict
+) -> dict:
     """A verdict as the evidence gate reads it (M1b PR 5a): ``record_kind``, its ``kind`` (the gate owns each
-    kind's pass values), the rows file it judged as a REPO-RELATIVE path with that file's sha256 (rows appended
-    after the verdict change the hash), and the scope that selects its rows (``run_ids`` / ``campaign_id`` + row
-    ``kinds``). Returns the same dict."""
+    kind's pass values), the rows file it judged as a REPO-RELATIVE path with the sha256 of ``data_bytes`` — the
+    bytes the verdict parsed, read ONCE by the caller, so rows appended while it ran cannot slip under the hash — and the scope that selects every row it read: its selectors (``run_ids``,
+    ``campaign_id``), or ``{"all_rows": True}`` when it reads the whole file. An empty scope or a ``None`` selector
+    is refused, so "every row" is never the reading of a writer that forgot. Returns the same dict."""
+    if not scope or any(v is None for v in scope.values()):
+        raise ValueError(f"verdict scope {scope!r}: name the selectors, or {{'all_rows': True}} for the whole file")
     root = Path(repo_root).resolve()
     path = Path(data).resolve()
     try:
@@ -508,7 +516,7 @@ def stamp_verdict(verdict: dict, *, repo_root: Path | str, kind: str, data: Path
     verdict["record_kind"] = "verdict"
     verdict["kind"] = kind
     verdict["data"] = rel
-    verdict["data_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+    verdict["data_sha256"] = hashlib.sha256(data_bytes).hexdigest()
     verdict["scope"] = scope
     return verdict
 
