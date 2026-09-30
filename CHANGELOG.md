@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The pre-registration lint governs re-runs** (M1b PR 4).
+  - A re-run's data needs its own PRE-DATA declaration, landed first. It is either an amendment scoped to
+    the entry (`**Amendment N — <date>, PRE-DATA, for \`<entry>\`, …**`), or, for an experiment that never
+    had a pre-registration, a re-run pre-registration from `docs/experiments/protocols/TEMPLATE_rerun.md`.
+  - Re-runs were silently out of scope before this: the post-D53 re-runs (`42d53`, `52d53`, `53d53`) and the
+    Exp 09 / Exp 10 re-runs.
+  - Declarations are timed by walking the pre-registration's history, so re-scoping or relabelling a header
+    after the data no longer passes.
+  - The allow_dirty echo must name the entry.
+  - The exception lists are frozen. The nine existing re-run entries are listed with reasons.
+  - `--json` prints each entry's classification for the evidence gate.
 - **The behavioural-graduation ledger is machine-readable** (M1b PR 3).
   - Every row of its two status tables has a stable ID (`T1-1`…, `T3-1`…) and opens with
     `**Status: <TOKEN> <date>**` from a closed vocabulary, with ranks.
