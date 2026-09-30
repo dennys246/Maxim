@@ -49,7 +49,8 @@ def poll(base: str, duration: float, period: float, out: Path, *, allow_dirty: b
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from live_common import JsonlLog
 
-    log = JsonlLog(str(out), allow_dirty=allow_dirty, mode="w")
+    # A bench log: never gate evidence (M1b PR 5a-2), but still under the gated-write refusal.
+    log = JsonlLog(str(out), mock=False, evidence=False, allow_dirty=allow_dirty, mode="w")
     try:
         print("RUNNING", flush=True)
         while time.time() - t0 < duration:

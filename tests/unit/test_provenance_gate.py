@@ -120,9 +120,10 @@ def _load_live_common():
 def test_jsonl_log_refuses_gated_path_from_dirty_tree_exit_3(repo: Path, monkeypatch) -> None:
     lc = _load_live_common()
     monkeypatch.setattr(lc, "_REPO_ROOT", str(repo))
+    monkeypatch.setattr(lc, "_maxim_file", lambda: str(repo / "src/maxim/__init__.py"))  # the fixture's maxim
     _dirty(repo)
     with pytest.raises(SystemExit) as ei:
-        lc.JsonlLog(str(repo / "docs/experiments/data/x.jsonl"))
+        lc.JsonlLog(str(repo / "docs/experiments/data/x.jsonl"), mock=False, evidence=False)
     assert ei.value.code == 3
     assert not (repo / "docs/experiments/data/x.jsonl").exists()
 
@@ -130,9 +131,10 @@ def test_jsonl_log_refuses_gated_path_from_dirty_tree_exit_3(repo: Path, monkeyp
 def test_jsonl_log_allow_dirty_stamps_every_record(repo: Path, monkeypatch) -> None:
     lc = _load_live_common()
     monkeypatch.setattr(lc, "_REPO_ROOT", str(repo))
+    monkeypatch.setattr(lc, "_maxim_file", lambda: str(repo / "src/maxim/__init__.py"))  # the fixture's maxim
     _dirty(repo)
     out = repo / "docs/experiments/data/x.jsonl"
-    log = lc.JsonlLog(str(out), allow_dirty=True)
+    log = lc.JsonlLog(str(out), mock=False, evidence=False, allow_dirty=True)
     log.write("start", a=1)
     log.write("trial", b=2)
     log.close()
@@ -144,9 +146,10 @@ def test_jsonl_log_allow_dirty_stamps_every_record(repo: Path, monkeypatch) -> N
 def test_jsonl_log_non_gated_path_never_refuses_or_stamps(repo: Path, tmp_path_factory, monkeypatch) -> None:
     lc = _load_live_common()
     monkeypatch.setattr(lc, "_REPO_ROOT", str(repo))
+    monkeypatch.setattr(lc, "_maxim_file", lambda: str(repo / "src/maxim/__init__.py"))  # the fixture's maxim
     _dirty(repo)
     out = tmp_path_factory.mktemp("tmp") / "scratch.jsonl"
-    log = lc.JsonlLog(str(out))
+    log = lc.JsonlLog(str(out), mock=False, evidence=False)
     log.write("start")
     log.close()
     rec = json.loads(out.read_text().splitlines()[0])
@@ -156,14 +159,15 @@ def test_jsonl_log_non_gated_path_never_refuses_or_stamps(repo: Path, tmp_path_f
 def test_jsonl_log_truncate_mode(repo: Path, tmp_path_factory, monkeypatch) -> None:
     lc = _load_live_common()
     monkeypatch.setattr(lc, "_REPO_ROOT", str(repo))
+    monkeypatch.setattr(lc, "_maxim_file", lambda: str(repo / "src/maxim/__init__.py"))  # the fixture's maxim
     out = tmp_path_factory.mktemp("tmp") / "w.jsonl"
     out.write_text("stale\n")
-    log = lc.JsonlLog(str(out), mode="w")
+    log = lc.JsonlLog(str(out), mock=False, evidence=False, mode="w")
     log.write("header")
     log.close()
     assert [json.loads(line)["event"] for line in out.read_text().splitlines()] == ["header"]
     with pytest.raises(ValueError):
-        lc.JsonlLog(str(out), mode="r+")
+        lc.JsonlLog(str(out), mock=False, evidence=False, mode="r+")
 
 
 def test_executed_code_provenance_stamps_dirty_flag_and_refuses_gated_dirty_write(repo: Path, monkeypatch) -> None:

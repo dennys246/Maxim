@@ -111,15 +111,17 @@ def _write(tmp_path: Path, recs: list[dict]) -> Path:
 
 
 def _gate_record(p: Path, event: str) -> dict:
-    recs = [json.loads(line) for line in p.read_text().splitlines()]
-    return [r for r in recs if r.get("event") == event][-1]
+    """The verdict record exp53 writes beside the records (M1b PR 5a-2), for gate T / gate C."""
+    verdict = json.loads(p.with_name(f"{p.stem}_verdict.json").read_text())
+    assert verdict["gate"] == event.removeprefix("gate_")
+    return verdict
 
 
 def test_verdict_refuses_two_complete_primary_runs_without_run_id(h, tmp_path: Path, capsys) -> None:
     p = _write(tmp_path, _run("A", 1, AGENTS) + _run("Q", 2, AGENTS) + _run("R", 2, AGENTS, toward=False))
     assert h.main(["verdict", "--records", str(p)]) == 2
     assert "REFUSED" in capsys.readouterr().out
-    rc = h.main(["verdict", "--records", str(p), "--run-id", "Q"])
+    rc = h.main(["verdict", "--records", str(p), "--run-id", "Q"])  # the refused call above wrote nothing
     gate = _gate_record(p, "gate_T")
     assert gate["runs_used"]["primary"] == "Q" and rc in (0, 1)
     assert [r["run_id"] for r in gate["runs_excluded"]] == ["R"]

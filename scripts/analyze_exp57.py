@@ -403,12 +403,23 @@ def main() -> int:
     report = analyze(rows, cohorts_min=args.cohorts_min, permutations=args.permutations)
     # The verdict as the evidence gate reads it (M1b PR 5a): its kind, the rows file (repo-relative + sha256), the
     # scope (every row of the file), and the code that computed it.
-    from _provenance import ProvenanceError, in_process_code_provenance, stamp_verdict  # noqa: PLC0415
+    from _provenance import (  # noqa: PLC0415
+        ProvenanceError,
+        any_not_stamped_real,
+        in_process_code_provenance,
+        stamp_verdict,
+    )
 
     import maxim  # noqa: PLC0415
 
     stamp_verdict(
-        report, repo_root=REPO_ROOT, kind="exp57_verdict", data=path, data_bytes=data_bytes, scope={"all_rows": True}
+        report,
+        repo_root=REPO_ROOT,
+        kind="exp57_verdict",
+        data=path,
+        data_bytes=data_bytes,
+        scope={"all_rows": True},
+        mock=any_not_stamped_real(rows),  # a verdict over a smoke, or over unstamped rows, is a smoke
     )
     try:
         report["provenance"] = in_process_code_provenance(REPO_ROOT, maxim.__file__)

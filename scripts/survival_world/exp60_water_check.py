@@ -79,6 +79,7 @@ from _provenance import (  # noqa: E402
     ProvenanceError,
     evidence_out_paths_or_exit,
     in_process_code_provenance,
+    stamp_instrument_check,
 )
 from exp56 import common as C  # noqa: E402
 from survival_world.common import InstrumentError, settle_until, sync_snapshot  # noqa: E402
@@ -350,6 +351,9 @@ def main(argv: list[str] | None = None) -> int:
 
     def _finish(code: int) -> int:
         report["all_pass"] = all_cycles_pass(report["cycles"], args.cycles)
+        # An instrument check (M1b PR 5a-2): it passes only at the frozen cycle count (`--cycles 1` passes easier).
+        report["frozen_params"] = args.cycles == CYCLES
+        stamp_instrument_check(report, mock=False, passed=report["all_pass"] and report["frozen_params"])
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(report, indent=2))
         print(json.dumps({k: report[k] for k in ("cycles", "instrument_error", "all_pass")}, indent=2))

@@ -778,10 +778,21 @@ def cmd_run(args: argparse.Namespace) -> int:
     if args.phase == 2 and not _phase1_passed(out_path):
         print(f"[STOP] no Phase 1 gate_I PASS record in {out_path} — stop rule I: Phase 2 does not run.")
         return 4
-    prov = provenance(
-        _HERE.parent.parent, out_path=out_path, allow_dirty=args.allow_dirty
-    )  # refuses before any file exists
-    log = JsonlLog(str(out_path), allow_dirty=args.allow_dirty)
+    # An evidence log (M1b PR 5a-2), refusing before any file exists. The run ends `ok` only for a COMPUTED
+    # outcome — rc 0, or rc 6 (a Gate-I / Gate-C FAIL is a result, not a refusal); a stop rule (5, 7), an early
+    # refusal or an exception ends it failed. This keys on rc, never on `run_end`'s own status ("stopped" covers
+    # 5, 6 and 7 alike).
+    with JsonlLog(str(out_path), mock=args.dry_run, evidence=True, allow_dirty=args.allow_dirty) as log:
+        rc = _run_logged(args, log, manifest=manifest, targets_decl=targets_decl, out_path=out_path)
+        if rc in (0, 6):
+            log.finish("ok")
+    return rc
+
+
+def _run_logged(
+    args: argparse.Namespace, log: JsonlLog, *, manifest: dict, targets_decl: dict | None, out_path: Path
+) -> int | None:
+    prov = log.provenance  # the log's own stamp (in_process_code_provenance, taken once)
     run_id = f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{os.getpid()}"
 
     def emit(event: str, **fields: object) -> None:
@@ -1235,8 +1246,12 @@ def _phase2(agents, rig, sink, emit, args) -> int:
 
 
 def _read_records(path: str) -> list[dict]:
+    return _records_from_bytes(Path(path).read_bytes())
+
+
+def _records_from_bytes(data: bytes) -> list[dict]:
     out = []
-    for line in Path(path).read_text().splitlines():
+    for line in data.decode().splitlines():
         try:
             out.append(json.loads(line))
         except json.JSONDecodeError:
@@ -1364,11 +1379,61 @@ def select_run(
     return cands[0]
 
 
+def default_verdict_out(records: str | Path) -> Path:
+    """Where ``verdict`` writes by default: ``<records stem>_verdict.json`` beside the records (gate6 reads it)."""
+    p = Path(records)
+    return p.with_name(f"{p.stem}_verdict.json")
+
+
+def _write_verdict(
+    args: argparse.Namespace, summary: dict, *, gate: str, recs: list[dict], data_bytes: bytes, code: dict
+) -> None:
+    """The verdict as its own record (M1b PR 5a-2), never appended to the records it judged (that would change
+    the bytes its hash names). Scoped to the exp53 run ids it used. It is mock when ANY line of the file is mock or
+    does not say (owner decision 2026-09-30: whole file, as every verdict; smokes go in their own files)."""
+    scoped = sorted({rid for rid in summary["runs_used"].values() if rid})
+    lines = [r for r in recs if r.get("run_id") in scoped]
+    stamped = bool(lines) and all(all(k in r for k in ("log_run_id", "mock", "provenance")) for r in lines)
+    record = {
+        "_format_version": "1.0",
+        "ts": time.time(),
+        "gate": gate,
+        **summary,
+        "scoped_lines_stamped": stamped,
+        "provenance": code,
+    }
+    live_common._provenance.stamp_verdict(
+        record,
+        repo_root=_HERE.parent.parent,
+        kind="exp53_verdict",
+        data=Path(args.records),
+        data_bytes=data_bytes,
+        scope={"run_ids": scoped},
+        mock=live_common._provenance.any_not_stamped_real(recs),
+    )
+    out = Path(args.verdict_out) if args.verdict_out else default_verdict_out(args.records)
+    out.write_text(json.dumps(record, indent=2) + "\n")
+    print(f"[verdict] wrote -> {out}")
+
+
 def cmd_verdict(args: argparse.Namespace) -> int:
-    # The gate record is appended to the records file — refuse a dirty-tree write
-    # BEFORE computing, so the refusal is the first thing printed, not the last.
-    out_log = JsonlLog(args.records, allow_dirty=args.allow_dirty)
-    recs = _read_records(args.records)
+    # The verdict is its own record: refuse a dirty-tree or wrong-maxim write, or an existing verdict, BEFORE
+    # computing, so the refusal is the first thing printed, not the last.
+    out = Path(args.verdict_out) if args.verdict_out else default_verdict_out(args.records)
+    if out.exists() and not args.overwrite:
+        print(f"[verdict] REFUSED: {out} exists — pass --overwrite to replace it, or --verdict-out elsewhere")
+        return 2
+    import maxim  # noqa: PLC0415
+
+    try:
+        code = live_common._provenance.in_process_code_provenance(
+            _HERE.parent.parent, maxim.__file__, out_path=out, allow_dirty=args.allow_dirty
+        )
+    except live_common._provenance.ProvenanceError as exc:
+        print(f"[verdict] PROVENANCE: {exc}", file=sys.stderr)
+        return 3
+    data_bytes = Path(args.records).read_bytes()  # read once: the verdict and its hash see the same bytes
+    recs = _records_from_bytes(data_bytes)
     runs = runs_of(recs)
     pinned = tuple(args.run_id or ())
     unknown = sorted(set(pinned) - {r.run_id for r in runs})
@@ -1417,7 +1482,7 @@ def cmd_verdict(args: argparse.Namespace) -> int:
         verdict = _gate_C(list(specs.values()), by_agent)
         verdict = {**verdict, "runs_used": runs_used, "runs_excluded": runs_excluded}
         print(json.dumps(verdict, indent=2))
-        out_log.write("gate_C", **verdict)
+        _write_verdict(args, verdict, gate="C", recs=recs, data_bytes=data_bytes, code=code)
         return 0 if verdict["verdict"] == "PASS" else 1
     gate_i = [r for r in recs if r.get("event") == "gate_I" and _in(run_p1)(r)]
     print(f"[gate I] {gate_i[-1]['verdict'] if gate_i else 'NOT RUN'}")
@@ -1513,7 +1578,7 @@ def cmd_verdict(args: argparse.Namespace) -> int:
         "runs_excluded": runs_excluded,
     }
     print(json.dumps(summary, indent=2))
-    out_log.write("gate_T", **summary)
+    _write_verdict(args, summary, gate="T", recs=recs, data_bytes=data_bytes, code=code)
     return 0 if verdict == "PASS" else 1
 
 
@@ -1802,6 +1867,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     v = sub.add_parser("verdict", parents=[common])
     v.add_argument("--records", required=True)
+    v.add_argument("--verdict-out", default=None, help="the verdict record (default: <records stem>_verdict.json)")
+    v.add_argument("--overwrite", action="store_true", help="replace an existing verdict record")
     v.add_argument(
         "--run-id",
         action="append",

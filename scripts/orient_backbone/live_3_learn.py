@@ -466,9 +466,18 @@ def main() -> int:
         "measurement, so sim mirrors the robot you are about to run on)",
     )
     args = ap.parse_args()
+    # An evidence log (M1b PR 5a-2): the run ends `ok` only through the finish below. A lost robot writes `abort`,
+    # which latches the run as failed even though the summary is still written; an early return or an exception
+    # ends it failed too.
+    with JsonlLog(args.log, mock=args.dry_run, evidence=True) as log:
+        rc = _learn(args, log)
+        if rc == 0 and log.aborted is None:
+            log.finish("ok")
+    return rc
 
+
+def _learn(args: argparse.Namespace, log: JsonlLog) -> int:
     rng = random.Random(args.seed)
-    log = JsonlLog(args.log)
     sign_mult = -1.0 if args.flip_sign else 1.0
     # Dry-run: reads are synthetic and instant — skip real-time pacing.
     poll_s = 0.0 if args.dry_run else 0.15
@@ -848,7 +857,6 @@ def main() -> int:
         greedy_residual_last10=resid_last,
         gain=None if app is None else round(app.gain, 3),
     )
-    log.close()
     return 0
 
 

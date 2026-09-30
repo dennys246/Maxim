@@ -42,6 +42,7 @@ from _provenance import (  # noqa: E402
     ProvenanceError,
     evidence_out_paths_or_exit,
     in_process_code_provenance,
+    stamp_instrument_check,
 )
 from exp56 import common as C  # noqa: E402
 from survival_world.common import make_fresh_encoder, settle_until  # noqa: E402
@@ -100,6 +101,9 @@ def main(argv: list[str] | None = None) -> int:
         report["all_pass"] = bool(
             report.get("G1_read_path", {}).get("pass") and report.get("G2_same_cluster", {}).get("pass")
         )
+        # An instrument check (M1b PR 5a-2): no pass-relevant flag (TRAIN_TICKS is a constant); the scripted bridge
+        # IS its declared instrument, so it is not a mock.
+        stamp_instrument_check(report, mock=False, passed=report["all_pass"])
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(report, indent=2))
         print(json.dumps({k: v for k, v in report.items() if k.startswith("G") or k == "instrument_error"}, indent=2))

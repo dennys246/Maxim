@@ -723,7 +723,13 @@ def main() -> int:
         _MANIFEST_STAMP["allow_dirty"] = True
     # M1b PR 5a: every row says whether it is a smoke; a --dry-run manifest is never evidence.
     _MANIFEST_STAMP["mock"] = bool(args.dry_run)
-    _append_manifest(campaign_dir, {"stage": "campaign_start", "config": cfg, "provenance": prov})
+    # A header, not a run (M1b PR 5a-2): the campaign's config + provenance; the gate never counts it as support.
+    _append_manifest(
+        campaign_dir,
+        _provenance.stamp_harness_header(
+            {"stage": "campaign_start", "config": cfg, "provenance": prov}, mock=bool(args.dry_run)
+        ),
+    )
 
     arm_filter = {a for a in args.arms.split(",") if a}
     seed_filter = {int(s) for s in args.seeds.split(",") if s}

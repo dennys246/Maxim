@@ -156,7 +156,16 @@ def main() -> int:
         "into every record (default: refuse, exit 3 — docs/lessons/experiment-prereg-precedes-data.md)",
     )
     args = ap.parse_args()
+    # An evidence log (M1b PR 5a-2): the run ends `ok` only through the finish below; an early return, an abort
+    # or an exception ends it `failed` (JsonlLog's terminal line), so an aborted sweep never counts.
+    with JsonlLog(args.log, mock=args.dry_run, evidence=True, allow_dirty=args.allow_dirty) as log:
+        rc = _sweep(args, log)
+        if rc == 0:
+            log.finish("ok")
+    return rc
 
+
+def _sweep(args: argparse.Namespace, log: JsonlLog) -> int:
     # Records are keyed by run_id, NOT by --label. The log is append-only and
     # operators reuse labels across re-runs: on 2026-08-23 an aborted attempt
     # (19% yield, 59% outlier samples) and its clean re-run both wrote under
@@ -164,7 +173,6 @@ def main() -> int:
     # silently merged garbage into the analysed set. run_id is unique per
     # invocation; only a run that reaches sweep_done is complete.
     run_id = f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{os.getpid()}"
-    log = JsonlLog(args.log, allow_dirty=args.allow_dirty)
 
     written = {"sweep_point": 0}
 
@@ -253,7 +261,6 @@ def main() -> int:
 
     verdict = _analyse(results)
     emit("sweep_done", **verdict)
-    log.close()
     print(f"\n[done] full data in {args.log} (run_id={run_id}, label={args.label}) — send it back for curve analysis.")
     return 0
 

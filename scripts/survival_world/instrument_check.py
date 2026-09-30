@@ -55,6 +55,7 @@ from _provenance import (  # noqa: E402
     ProvenanceError,
     evidence_out_paths_or_exit,
     in_process_code_provenance,
+    stamp_instrument_check,
 )
 from exp56 import common as C  # noqa: E402
 from survival_world.common import (  # noqa: E402
@@ -132,6 +133,9 @@ def main(argv: list[str] | None = None) -> int:
         report["all_pass"] = bool(
             report.get("check1_light", {}).get("pass") and report.get("check2_world_separability", {}).get("pass")
         )
+        # An instrument check (M1b PR 5a-2): it passes only at the frozen cycle count (fewer cycles pass easier).
+        report["frozen_params"] = args.cycles == CYCLES
+        stamp_instrument_check(report, mock=False, passed=report["all_pass"] and report["frozen_params"])
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(report, indent=2))
         printable = {k: v for k, v in report.items() if k.startswith("check") or k == "instrument_error"}

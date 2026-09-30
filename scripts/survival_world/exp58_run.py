@@ -60,6 +60,8 @@ from _provenance import (  # noqa: E402
     ProvenanceError,
     evidence_out_paths_or_exit,
     in_process_code_provenance,
+    instrument_check_authorizes,
+    stamp_harness_row,
 )
 from exp56 import common as C  # noqa: E402
 from survival_world.common import InstrumentError, bot_pos, read_vital, settle_until  # noqa: E402
@@ -145,8 +147,9 @@ def main(argv: list[str] | None = None) -> int:
     except OSError:
         print(f"[FAIL] offline gates record missing: {gates_path} — gates must pass before live trials")
         return 3
-    if not gates.get("all_pass"):
-        print(f"[FAIL] offline gates record does not carry all_pass=true: {gates_path}")
+    refusal = instrument_check_authorizes(gates)
+    if refusal is not None:
+        print(f"[FAIL] offline gates record {gates_path} does not authorize a run: {refusal}")
         return 3
 
     from maxim.runtime.agent_loop import _encode_current_clusters, propose_via_substrate
@@ -548,7 +551,8 @@ def main(argv: list[str] | None = None) -> int:
             records.append(record)
             out_path.parent.mkdir(parents=True, exist_ok=True)
             with open(out_path, "a") as fh:
-                fh.write(json.dumps(record) + "\n")
+                # record_kind / status (refusal → failed) / mock: the evidence gate's reading (M1b PR 5a-2).
+                fh.write(json.dumps(stamp_harness_row(record, mock=False)) + "\n")
     finally:
         rcon.close()
 

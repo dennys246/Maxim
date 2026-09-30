@@ -189,7 +189,15 @@ def test_offline_campaign_apparatus_and_one_event_per_in_process_arm(tmp_path: P
         shore=_xyz(rec["shore"]), submerged=_xyz(rec["submerged"]), damage_onset_s=16.0, damage_per_s=2.0
     )
     rcon = ScriptedWaterControl(srv, gamerules={r: v for r, v in WT.R3_GAMERULES})
-    apparatus = {"all_pass": True, "ts": 123.0}
+    # a stamped, real, passing instrument check (M1b PR 5a-2: all_pass alone no longer authorizes a run)
+    apparatus = {
+        "all_pass": True,
+        "ts": 123.0,
+        "record_kind": "instrument_check",
+        "status": "ok",
+        "pass": True,
+        "mock": False,
+    }
     monkeypatch.setattr(R, "ANCHOR_FILE", anchor_path)
     monkeypatch.setattr(
         R, "load_json", lambda p: apparatus if str(p).endswith(R.APPARATUS_RECORD) else json.loads(Path(p).read_text())

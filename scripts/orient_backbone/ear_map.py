@@ -131,7 +131,8 @@ def run_sweep(args) -> int:
         args.out
         or f"docs/experiments/data/ear_map_{args.shell}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.jsonl"
     )
-    log = JsonlLog(out_path, allow_dirty=args.allow_dirty, mode="w")
+    # A measurement tool's log: never gate evidence (M1b PR 5a-2), but still under the gated-write refusal.
+    log = JsonlLog(out_path, mock=False, evidence=False, allow_dirty=args.allow_dirty, mode="w")
     header = {
         "record": "header",
         "experiment": "ear_map",

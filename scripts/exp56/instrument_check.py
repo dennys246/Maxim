@@ -31,7 +31,7 @@ from _provenance import (  # noqa: E402
     evidence_out_paths,
     in_process_code_provenance,
     preflight_gated_record_or_exit,
-    stamp_harness_row,
+    stamp_instrument_check,
 )
 from _paper_server import server_version_matches  # noqa: E402
 from exp56 import common as C  # noqa: E402
@@ -285,7 +285,10 @@ def main() -> int:
     )
     report["all_pass"] = all_pass
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    stamp_harness_row(report, mock=bool(args.mock))  # record_kind / status / mock (M1b PR 5a)
+    # An instrument check (M1b PR 5a-2). No flag is pass-relevant: --settle-s is a blind wait before a read, so a
+    # shorter one can only lower a pass and a longer one only makes the read more faithful (owner decision
+    # 2026-09-30: exempt, not frozen at a value no prereg names). The ScriptedBridge --mock run is a smoke.
+    stamp_instrument_check(report, mock=bool(args.mock), passed=bool(report["all_pass"]))
     out_path.write_text(json.dumps(report, indent=2))
     print(json.dumps({k: report[k].get("pass") for k in report if k.startswith("check")}, indent=2))
     print(f"phase0: {'PASS' if all_pass else 'FAIL'} -> {out_path}")

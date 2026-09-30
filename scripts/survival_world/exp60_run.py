@@ -95,8 +95,10 @@ from _provenance import (  # noqa: E402
     ProvenanceError,
     evidence_out_paths_or_exit,
     in_process_code_provenance,
+    instrument_check_authorizes,
     stamp_harness_row,
     stamp_verdict,
+    any_not_stamped_real,
 )
 from exp56 import common as C  # noqa: E402
 from survival_world.common import InstrumentError  # noqa: E402
@@ -359,8 +361,9 @@ def _run(args: argparse.Namespace) -> int:
 
     apparatus = _load(APPARATUS_RECORD)
     gate = _load(args.gate_record)
-    if not apparatus.get("all_pass"):
-        print(f"[FAIL] apparatus record does not carry all_pass=true: {APPARATUS_RECORD}")
+    refusal = instrument_check_authorizes(apparatus)
+    if refusal is not None:
+        print(f"[FAIL] apparatus record {APPARATUS_RECORD} does not authorize a run: {refusal}")
         return 3
     if not (gate.get("run_gate") or {}).get("pass"):
         print(f"[FAIL] geometry gate record does not carry run_gate.pass=true: {args.gate_record}")
@@ -538,6 +541,7 @@ def _verdict(args: argparse.Namespace) -> int:
         kind="exp60_verdict",
         data=Path(args.data).expanduser(),
         data_bytes=data_bytes,
+        mock=any_not_stamped_real(recs),  # a verdict over a smoke, or over unstamped rows, is a smoke
         scope={"run_ids": args.run_id} if args.run_id else {"all_rows": True},
     )
     print(json.dumps({k: v[k] for k in v if k not in ("per_seed", "gates")}, indent=2))
