@@ -72,6 +72,7 @@ def repo(tmp_path: Path) -> Repo:
 def run(repo: Repo, **kw) -> int:
     kw.setdefault("grandfathered", {})
     kw.setdefault("not_governed", {})
+    kw.setdefault("ungoverned_reruns", {})
     return L.lint(repo.root, "main", **kw)
 
 
@@ -165,7 +166,11 @@ def test_allow_dirty_must_be_echoed_in_result_doc(repo: Repo, capsys) -> None:
     repo.commit("data", T0 + 200)
     assert run(repo) == 1
     assert "allow_dirty" in capsys.readouterr().err
-    repo.result_doc("61", "exp61_preregistration.md", "Run with `--allow-dirty`: records carry `allow_dirty: true`.")
+    repo.result_doc(
+        "61",
+        "exp61_preregistration.md",
+        "Run with `--allow-dirty`: `data/61_results.jsonl` carries `allow_dirty: true`.",
+    )
     repo.commit("echo", T0 + 300)
     assert run(repo) == 0
 
@@ -370,7 +375,7 @@ def test_a_result_doc_linking_a_flat_prereg_can_echo_allow_dirty(repo: Repo, cap
     repo.write("docs/experiments/exp60_x_prereg.md", "# prereg\n\nfrozen gates\n")
     repo.write(
         "docs/experiments/60_results.md",
-        "Prereg: [exp60_x_prereg.md](exp60_x_prereg.md). Records carry `allow_dirty: true`.\n",
+        "Prereg: [exp60_x_prereg.md](exp60_x_prereg.md). `exp60_trials.jsonl` carries `allow_dirty: true`.\n",
     )
     repo.commit("prereg", T0)
     repo.data("exp60_trials.jsonl", [T0 + 100], {"allow_dirty": True})
@@ -385,3 +390,407 @@ def test_a_not_governed_entry_naming_a_missing_file_fails(repo: Repo, capsys) ->
     repo.commit("data", T0 + 200)
     assert run(repo, not_governed={"docs/experiments/data/gone.json": "x"}) == 1
     assert "no longer exists" in capsys.readouterr().err
+
+
+# ── M1b PR 4: re-runs are governed ────────────────────────────────────────
+
+
+def test_rerun_tokens_and_the_parent_chain() -> None:
+    assert L.token_of("rerun_exp09_2026-09-24") == "9"
+    assert L.token_of("rerun_exp61_2026-10-01") == "61"
+    assert L.token_of("0_x") == "0"
+    assert L.parent_token("42d53") == "42" and L.parent_token("53b") == "53"
+    assert L.parent_chain("53bd53") == ["53b", "53"]
+    assert L.rerun_by_name("53b_x_replication_2026-08-28.jsonl") and not L.rerun_by_name("61_results.jsonl")
+
+
+def _governed(repo: Repo, amendments: str = "") -> None:
+    repo.result_doc("61", "exp61_preregistration.md")
+    repo.prereg("exp61_preregistration.md", amendments)
+
+
+def test_a_rerun_without_its_own_declaration_fails(repo: Repo, capsys) -> None:
+    _governed(repo)
+    repo.commit("prereg", T0)
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.data("rerun_exp61_2026-10-01.jsonl", [T0 + 300])
+    repo.commit("data", T0 + 400)
+    assert run(repo) == 1
+    assert "a re-run needs its own PRE-DATA declaration" in capsys.readouterr().err
+
+
+def test_a_scoped_amendment_before_the_rerun_passes_and_spares_the_original(repo: Repo, capsys) -> None:
+    _governed(repo)
+    repo.commit("prereg", T0)
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.commit("original data", T0 + 200)
+    _governed(repo, "**Amendment 1 — 2026-10-01, PRE-DATA, for `rerun_exp61_2026-10-01.jsonl`, the re-run.**\n")
+    repo.commit("amendment", T0 + 300)
+    repo.data("rerun_exp61_2026-10-01.jsonl", [T0 + 400])
+    repo.commit("rerun data", T0 + 500)
+    assert run(repo) == 0, capsys.readouterr().err
+
+
+def test_a_scoped_amendment_after_the_rerun_fails(repo: Repo, capsys) -> None:
+    _governed(repo)
+    repo.commit("prereg", T0)
+    repo.data("rerun_exp61_2026-10-01.jsonl", [T0 + 100])
+    repo.commit("rerun data", T0 + 200)
+    _governed(repo, "**Amendment 1 — 2026-10-01, PRE-DATA, for `rerun_exp61_2026-10-01.jsonl`, late.**\n")
+    repo.commit("amendment", T0 + 300)
+    assert run(repo) == 1
+    assert "not before the data" in capsys.readouterr().err
+
+
+def test_an_unscoped_late_amendment_fails_the_original_and_says_to_scope_it(repo: Repo, capsys) -> None:
+    _governed(repo)
+    repo.commit("prereg", T0)
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.commit("data", T0 + 200)
+    _governed(repo, "**Amendment 1 — 2026-10-01, PRE-DATA, meant for a re-run.**\n")
+    repo.commit("amendment", T0 + 300)
+    assert run(repo) == 1
+    assert "scope it" in capsys.readouterr().err
+
+
+def test_rescoping_after_the_data_does_not_inherit_the_old_time(repo: Repo, capsys) -> None:
+    _governed(repo, "**Amendment 1 — 2026-10-01, PRE-DATA, for `rerun_exp61_a.jsonl`, first.**\n")
+    repo.commit("prereg", T0)
+    repo.data("rerun_exp61_a.jsonl", [T0 + 100])
+    repo.data("rerun_exp61_b.jsonl", [T0 + 150])
+    repo.commit("data", T0 + 200)
+    _governed(
+        repo, "**Amendment 1 — 2026-10-01, PRE-DATA, for `rerun_exp61_a.jsonl`, `rerun_exp61_b.jsonl`, first.**\n"
+    )
+    repo.commit("rescope", T0 + 300)
+    assert run(repo) == 1
+    err = capsys.readouterr().err
+    assert "rerun_exp61_b.jsonl:" in err and "rerun_exp61_a.jsonl:" not in err
+
+
+def test_a_post_to_pre_label_flip_dates_from_the_flip(repo: Repo, capsys) -> None:
+    _governed(repo, "**Amendment 1 — 2026-10-01, POST-DATA, a note.**\n")
+    repo.commit("prereg", T0)
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.commit("data", T0 + 200)
+    _governed(repo, "**Amendment 1 — 2026-10-01, PRE-DATA, a note.**\n")
+    repo.commit("flip", T0 + 300)
+    assert run(repo) == 1
+    assert "PRE-DATA amendment 1" in capsys.readouterr().err
+
+
+def test_amendment_1_is_not_timed_by_amendment_10(repo: Repo, capsys) -> None:
+    _governed(repo, "**Amendment 10 — 2026-10-01, POST-DATA, an old one.**\n")
+    repo.commit("prereg", T0)
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.commit("data", T0 + 200)
+    _governed(
+        repo,
+        "**Amendment 10 — 2026-10-01, POST-DATA, an old one.**\n\n**Amendment 1 — 2026-10-01, PRE-DATA, late.**\n",
+    )
+    repo.commit("amendment 1", T0 + 300)
+    assert run(repo) == 1
+
+
+def test_an_informal_pre_data_header_dates_from_when_it_said_so(repo: Repo, capsys) -> None:
+    _governed(repo, "**Amendment 1 (pre-data; apparatus).** text\n")
+    repo.commit("prereg", T0)
+    repo.data("61_results.jsonl", [T0 + 100])
+    _governed(repo, "**Amendment 1 — 2026-10-01, PRE-DATA, apparatus.** text\n")
+    repo.commit("data + header normalised", T0 + 200)
+    assert run(repo) == 0, capsys.readouterr().err
+
+
+def test_a_scope_for_that_does_not_parse_is_exit_2(repo: Repo, capsys) -> None:
+    _governed(repo, "**Amendment 1 — 2026-10-01, PRE-DATA, for the re-run.**\n")
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.commit("all", T0)
+    assert run(repo) == 2
+    assert "does not parse" in capsys.readouterr().err
+
+
+def test_a_scope_naming_a_future_entry_is_a_note_and_a_foreign_one_fails(repo: Repo, capsys) -> None:
+    _governed(repo, "**Amendment 1 — 2026-10-01, PRE-DATA, for `rerun_exp61_later.jsonl`, planned.**\n")
+    repo.commit("prereg", T0)
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.commit("data", T0 + 200)
+    assert run(repo) == 0
+    assert "(yet)" in capsys.readouterr().out
+    repo.data("62_other.jsonl", [T0 + 300])
+    _governed(repo, "**Amendment 1 — 2026-10-01, PRE-DATA, for `62_other.jsonl`, wrong experiment.**\n")
+    repo.commit("foreign", T0 + 400)
+    assert run(repo) == 1
+    assert "not its experiment's data" in capsys.readouterr().err
+
+
+def test_a_rerun_prereg_governs_only_its_scope(repo: Repo, capsys) -> None:
+    """A re-run pre-registration for an experiment must not retroactively govern the original data."""
+    _governed(repo)
+    repo.commit("prereg", T0)
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.commit("original", T0 + 200)
+    repo.write(
+        "docs/experiments/protocols/exp61_rerun_preregistration.md",
+        "# re-run\n\n**Scope:** `rerun_exp61_2026-10-01.jsonl`\n\ngate copied\n",
+    )
+    repo.commit("rerun prereg", T0 + 300)
+    repo.data("rerun_exp61_2026-10-01.jsonl", [T0 + 400])
+    repo.commit("rerun data", T0 + 500)
+    assert run(repo) == 0, capsys.readouterr().err
+
+
+def test_an_explicit_rerun_of_an_unregistered_experiment_fails_unless_listed(repo: Repo, capsys) -> None:
+    _governed(repo)
+    repo.commit("prereg", T0)
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.data("rerun_exp9_2026-10-01.jsonl", [T0 + 100])
+    repo.data("9_replication.jsonl", [T0 + 100])
+    repo.commit("data", T0 + 200)
+    assert run(repo) == 1
+    err = capsys.readouterr().err
+    assert "rerun_exp9_2026-10-01.jsonl" in err and "9_replication" not in err  # a word alone: out of scope
+    assert run(repo, ungoverned_reruns={"docs/experiments/data/rerun_exp9_2026-10-01.jsonl": "why"}) == 0
+
+
+def test_a_rerun_needs_ts_on_every_session_report(repo: Repo, capsys) -> None:
+    _governed(repo, "**Amendment 1 — 2026-10-01, PRE-DATA, for `rerun_exp61_s`, the re-run.**\n")
+    repo.commit("prereg", T0)
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.write("docs/experiments/data/rerun_exp61_s/a/report.json", json.dumps({"ts": T0 + 300}))
+    repo.write("docs/experiments/data/rerun_exp61_s/b/report.json", json.dumps({"finish_reason": "completed"}))
+    repo.write("docs/experiments/data/rerun_exp61_s/a/aut_nac.json", json.dumps({"ts": T0 - 9999}))
+    repo.commit("data", T0 + 400)
+    assert run(repo) == 1
+    err = capsys.readouterr().err
+    assert "carries `ts` on every record" in err and "not before the data" not in err  # aut_*.json is not a record
+
+
+def test_the_echo_names_this_entry_in_the_paragraph(repo: Repo, capsys) -> None:
+    repo.result_doc(
+        "61", "exp61_preregistration.md", "\n`data/1961_x.jsonl` ran with `allow_dirty: true`.\n\n`61_x.jsonl` too.\n"
+    )
+    repo.prereg("exp61_preregistration.md")
+    repo.commit("prereg", T0)
+    repo.data("61_x.jsonl", [T0 + 100], {"allow_dirty": True})
+    repo.commit("data", T0 + 200)
+    assert run(repo) == 1  # 1961_x contains 61_x but is a different entry; 61_x's own paragraph never says allow_dirty
+    assert "names the entry" in capsys.readouterr().err
+
+
+def test_an_rb_section_declares_a_rerun(repo: Repo, capsys) -> None:
+    _governed(repo, "")
+    repo.write(
+        "docs/experiments/protocols/exp61_preregistration.md",
+        "# prereg\n\n- **RB-1 — new platform.** Data: `docs/experiments/data/61_platform/`.\n- **Next bullet**\n",
+    )
+    repo.commit("prereg", T0)
+    repo.write("docs/experiments/data/61_platform/rows.jsonl", json.dumps({"ts": T0 + 100}) + "\n")
+    repo.commit("data", T0 + 200)
+    assert run(repo) == 1
+    assert "a re-run needs its own PRE-DATA declaration" in capsys.readouterr().err
+
+
+def test_the_exception_lists_are_frozen(repo: Repo, capsys) -> None:
+    _governed(repo)
+    repo.data("61_results.jsonl", [T0 - 100])
+    repo.write(  # the ref's copy of the lint already lists the entry (the shrink-only check passes)
+        "scripts/lint_prereg_precedes_data.py",
+        'EXCEPTIONS_FROZEN = 1\nGRANDFATHERED = {"docs/experiments/data/61_results.jsonl": "x"}\n',
+    )
+    repo.commit("squash", T0)
+    gf = {"docs/experiments/data/61_results.jsonl": "the incident"}
+    assert run(repo, grandfathered=gf, frozen_at=T0 + 1) == 0  # committed before the freeze
+    assert run(repo, grandfathered=gf, frozen_at=T0) == 1  # committed at/after the freeze
+    assert "before the freeze" in capsys.readouterr().err
+
+
+def test_the_exception_lists_only_shrink_against_the_ref(repo: Repo, capsys) -> None:
+    _governed(repo)
+    repo.data("61_results.jsonl", [T0 - 100])
+    repo.write("scripts/lint_prereg_precedes_data.py", "EXCEPTIONS_FROZEN = 1\nGRANDFATHERED = {}\n")
+    repo.commit("squash", T0)
+    gf = {"docs/experiments/data/61_results.jsonl": "the incident"}
+    assert run(repo, grandfathered=gf, frozen_at=T0 + 1) == 1
+    assert "added to GRANDFATHERED after the freeze" in capsys.readouterr().err
+
+
+def test_classify_is_the_json_surface(repo: Repo, capsys) -> None:
+    _governed(repo)
+    repo.commit("prereg", T0)
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.data("rerun_exp9_x.jsonl", [T0 + 100])
+    repo.commit("data", T0 + 200)
+    assert run(repo, ungoverned_reruns={"docs/experiments/data/rerun_exp9_x.jsonl": "why"}, as_json=True) == 0
+    doc = json.loads(capsys.readouterr().out)
+    assert set(doc) == {"_format_version", "entries", "failures"} and doc["_format_version"] == "1.0"
+    assert {r["status"] for r in doc["entries"]} <= set(L.STATUSES)
+    rows = {r["entry"].split("/")[-1]: r for r in doc["entries"]}
+    assert rows["61_results.jsonl"]["status"] == "PASS" and rows["61_results.jsonl"]["rerun"] is False
+    assert rows["rerun_exp9_x.jsonl"]["status"] == "UNGOVERNED_RERUN" and rows["rerun_exp9_x.jsonl"]["rerun"] is True
+
+
+# ── M1b PR 4 review-round folds ──────────────────────────────────────────
+
+
+def test_a_scope_line_in_an_original_prereg_fails_and_governs_nothing_away(repo: Repo, capsys) -> None:
+    _governed(repo, "**Scope:** `rerun_exp61_2026-10-01`\n")
+    repo.data("61_results.jsonl", [T0 - 100])  # data before its prereg: must still FAIL, not go out of scope
+    repo.commit("squash", T0)
+    assert run(repo) == 1
+    err = capsys.readouterr().err
+    assert "belongs only in a re-run pre-registration" in err and "61_results.jsonl:" in err
+
+
+def test_a_rerun_prereg_names_its_entries(repo: Repo, capsys) -> None:
+    _governed(repo)
+    repo.write("docs/experiments/protocols/exp61_rerun_x_preregistration.md", "# re-run\n\nno scope\n")
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.commit("all", T0)
+    assert run(repo) == 1
+    assert "names its entries in a `**Scope:**` line" in capsys.readouterr().err
+
+
+def test_a_foreign_scope_line_fails(repo: Repo, capsys) -> None:
+    _governed(repo)
+    repo.write(
+        "docs/experiments/protocols/exp10_rerun_x_preregistration.md", "# re-run\n\n**Scope:** `rerun_exp61_x.jsonl`\n"
+    )
+    repo.commit("preregs", T0)
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.data("rerun_exp61_x.jsonl", [T0 + 100])
+    repo.commit("data", T0 + 200)
+    assert run(repo) == 1
+    assert "not its experiment's data" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("middle", ["", "**Amendment 1 — 2026-10-01, POST-DATA, withdrawn.**\n"])
+def test_a_declaration_that_lapses_dates_from_its_return(repo: Repo, capsys, middle: str) -> None:
+    _governed(repo, "**Amendment 1 — 2026-10-01, PRE-DATA, early.**\n")
+    repo.commit("prereg", T0)
+    _governed(repo, middle)
+    repo.commit("lapse", T0 + 50)
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.commit("data", T0 + 200)
+    _governed(repo, "**Amendment 1 — 2026-10-01, PRE-DATA, early.**\n")
+    repo.commit("return", T0 + 300)
+    assert run(repo) == 1
+    assert "PRE-DATA amendment 1" in capsys.readouterr().err
+
+
+def test_an_oxford_comma_scope_names_every_entry(repo: Repo, capsys) -> None:
+    """Ordinary entries named in a late scoped amendment are each judged: one dropped by the parser would be
+    silently never judged (a re-run would still fail for lacking a declaration, so these are not re-runs)."""
+    _governed(repo)
+    repo.commit("prereg", T0)
+    for e in ("61_a.jsonl", "61_b.jsonl", "61_c.jsonl"):
+        repo.data(e, [T0 + 100])
+    repo.commit("data", T0 + 200)
+    _governed(repo, "**Amendment 1 — 2026-10-01, PRE-DATA, for `61_a.jsonl`, `61_b.jsonl`, and `61_c.jsonl`, late.**\n")
+    repo.commit("late", T0 + 300)
+    assert run(repo) == 1
+    err = capsys.readouterr().err
+    assert all(f"61_{x}.jsonl:" in err for x in "abc"), err
+
+
+@pytest.mark.parametrize("written", ["`rerun_exp61_d/`", "`docs/experiments/data/rerun_exp61_d`", "`rerun_exp61\n_d`"])
+def test_a_scope_name_is_normalised(repo: Repo, capsys, written: str) -> None:
+    _governed(repo)
+    repo.commit("prereg", T0)
+    repo.write("docs/experiments/data/rerun_exp61_d/rows.jsonl", json.dumps({"ts": T0 + 100}) + "\n")
+    repo.commit("data", T0 + 200)
+    _governed(repo, f"**Amendment 1 — 2026-10-01, PRE-DATA, for {written}, late.**\n")
+    repo.commit("late", T0 + 300)
+    assert run(repo) == 1  # judged (and late), never a silent "(yet)" note
+    assert "rerun_exp61_d:" in capsys.readouterr().err
+
+
+def test_a_scope_name_that_is_a_nested_path_is_exit_2(repo: Repo, capsys) -> None:
+    _governed(repo, "**Amendment 1 — 2026-10-01, PRE-DATA, for `rerun_exp61_d/sub.jsonl`, x.**\n")
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.commit("all", T0)
+    assert run(repo) == 2
+    assert "not a top-level name" in capsys.readouterr().err
+
+
+def test_a_prose_bold_line_in_history_declares_nothing(repo: Repo, capsys) -> None:
+    _governed(repo, "**Amendment 1 is drafted as pre-data but not in force yet.** notes\n")
+    repo.commit("prose", T0)
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.commit("data", T0 + 200)
+    _governed(repo, "**Amendment 1 — 2026-10-01, PRE-DATA, in force.**\n")
+    repo.commit("real", T0 + 300)
+    assert run(repo) == 1
+
+
+def test_new_data_inside_a_listed_path_is_not_excused(repo: Repo, capsys) -> None:
+    _governed(repo)
+    repo.commit("prereg", T0)
+    repo.data("rerun_exp9_x.jsonl", [T0 + 100])
+    repo.write(
+        "scripts/lint_prereg_precedes_data.py",
+        'EXCEPTIONS_FROZEN = 1\nUNGOVERNED_RERUNS = {"docs/experiments/data/rerun_exp9_x.jsonl": "x"}\n',
+    )
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.commit("data", T0 + 200)
+    listed = {"docs/experiments/data/rerun_exp9_x.jsonl": "x"}
+    assert run(repo, ungoverned_reruns=listed, frozen_at=T0 + 250) == 0
+    repo.data("rerun_exp9_x.jsonl", [T0 + 100, T0 + 400])  # rows appended after the freeze
+    repo.commit("append", T0 + 500)
+    assert run(repo, ungoverned_reruns=listed, frozen_at=T0 + 250) == 1
+    assert "has changed since" in capsys.readouterr().err
+
+
+def test_rerun_words_need_a_boundary() -> None:
+    assert not L.rerun_by_name("61_prerun_calibration.jsonl") and not L.rerun_by_name("61_unreplicated.jsonl")
+    assert L.rerun_by_name("61_replication.jsonl")
+
+
+def test_the_echo_does_not_accept_a_longer_sibling_name() -> None:
+    assert L._names_entry("see `data/61_x.jsonl` with allow_dirty", "61_x") == []
+    assert L._names_entry("see `data/61_x/`, allow_dirty.", "61_x")
+
+
+def _shallow() -> bool:
+    out = subprocess.run(
+        ["git", "rev-parse", "--is-shallow-repository"], cwd=L.REPO_ROOT, capture_output=True, text=True
+    ).stdout.strip()
+    return out != "false"
+
+
+@pytest.mark.skipif(
+    _shallow(),
+    reason="needs full history; the unit-test job checks out depth 1. The lint job (fetch-depth 0) runs the lint, "
+    "whose stale-list checks fail on any drift of the nine listed re-runs; this pin adds the word-only entries",
+)
+def test_the_real_repo_classifies_its_reruns_as_decided() -> None:
+    doc = L.classify_all(L.REPO_ROOT)
+    by = {r["entry"].split("/")[-1]: r for r in doc["entries"]}
+    for name in (
+        "52d53_phaseB_embodied.jsonl",
+        "53d53_cross_context_readout.jsonl",
+        "53d53_phase2_aborted_run.jsonl",
+        "53b_cross_context_readout_replication_2026-08-28.jsonl",
+        "exp56_rebaseline_1204",
+    ):
+        assert by[name]["status"] == "GRANDFATHERED" and by[name]["rerun"], name
+    for name in (
+        "42d53_results.jsonl",
+        "42d53_results_gateoff.jsonl",
+        "rerun_exp09_2026-09-24",
+        "rerun_exp10_2026-09-27",
+    ):
+        assert by[name]["status"] == "UNGOVERNED_RERUN", name
+    for name in (
+        "45d_magnitude_replication.jsonl",
+        "48_rebaseline_v4.jsonl",
+        "selection_dynamics_rebaseline_2026-09-03.json",
+    ):
+        assert by[name]["status"] == "OUT_OF_SCOPE", name
+
+
+def test_a_ref_without_the_lint_fails_the_lists_closed(repo: Repo, capsys) -> None:
+    _governed(repo)
+    repo.data("61_results.jsonl", [T0 - 100])
+    repo.commit("squash", T0)  # no scripts/lint_prereg_precedes_data.py on the ref (moved or renamed)
+    assert run(repo, grandfathered={"docs/experiments/data/61_results.jsonl": "x"}, frozen_at=T0 + 1) == 1
+    assert "added to GRANDFATHERED after the freeze" in capsys.readouterr().err

@@ -221,3 +221,8 @@ one, and it is the family that would have caught this without being widened.
   gated records nobody had disclosed: `h1_partc_big_block.jsonl` (Exp 45 row) and
   `54_targets.json` (Exp 54 Phase B inputs) — grandfathered with reasons, disclosed on their
   rows/docs, re-runs owed. The refusal now covers the sub-sim spawner family too.
+- 2026-09-30 (M1b PR 4): **re-runs are governed.** `rerun_…` and `NNd<MM>` entries were silently out of
+  scope (their token matched no pre-registration): the post-D53 re-runs and the Exp 09 / Exp 10 re-runs.
+  A re-run now needs its own scoped PRE-DATA declaration. Declarations are timed by walking the
+  pre-registration's history (a re-scoped or relabelled header dates from the edit). The exception lists
+  are frozen. The existing re-runs are listed by path with reasons.

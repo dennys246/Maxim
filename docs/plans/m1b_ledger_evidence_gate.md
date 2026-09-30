@@ -91,6 +91,8 @@ can still cite a clean but irrelevant record, and review is the check for that.
 - Amendments may be scoped: `**Amendment N — <date>, PRE-DATA, for <entry>**` is judged only against the
   named entry; an unscoped one against all.
 - The echo check requires the result doc to name the entry path or the harness run id.
+- *(As built in PR 4: re-runs are recognised by name or declaration, and the exception lists are frozen; see
+  "PR 4 as built" below.)*
 
 ## Out of scope
 
@@ -173,3 +175,39 @@ pattern completion is `LEGACY`, since its data is lost. Two tokens are new: `SUP
   the merge-base commit's date.
 - A date change on a positive row is a trigger, like a raise.
 - The claim cells are Tier 1's `Claim`, and Tier 3's `Bio-claim` and `Graduation predicate`.
+
+## PR 4 as built (2026-09-30)
+
+The prereg lint now governs re-runs. Before this, `rerun_exp09_…` and `rerun_exp10_…` had the token `rerun`,
+and `42d53`, `52d53` and `53d53` had no parent mapping, so all of them were silently out of scope.
+
+- **Recognising a re-run:** by its name (`rerun_…`, `NNd<MM>`, or a replication / re-baseline / rerun word on
+  a governed entry), or because a pre-registration declares it.
+- **Declaring a re-run:** a re-run needs a scoped PRE-DATA declaration before its data. That is an amendment
+  `for \`<entry>\``, or a re-run pre-registration's `**Scope:**` line (`protocols/TEMPLATE_rerun.md`). A
+  re-run pre-registration governs only the entries it names.
+- **Timing:** declarations are timed by walking the pre-registration's history. This closes re-scoping, the
+  POST→PRE relabel and the header-needle collision.
+- **Frozen exception lists:** the lists only shrink. Exceptions after this PR go through PR 5's exceptions
+  file.
+- **For PR 5:** `classify()` / `--json`.
+
+The design pass ran two rounds; v1 was DO-NOT-BUILD, because of a dangling scope, the `-S` timing and
+in-script self-excuse.
+
+Owner decisions (2026-09-30), all the recommended options:
+- The existing re-runs are listed by path with reasons: 52d53, 53d53 ×2, the 53b R1 replication and the Exp 56
+  re-baseline as grandfathered; 42d53 ×2 and the Exp 09 / Exp 10 re-runs as ungoverned re-runs.
+- A re-run is recognised by name or by declaration.
+- A minimal re-run pre-registration template.
+
+For PR 5:
+- A GRANDFATHERED or UNGOVERNED_RERUN entry is not the sole support for a raise (decision 7's legacy rule).
+  T1-6 (42d53) and T1-9 / T1-10 (52d53, 53d53) rest on such entries.
+- Read `classify_all()` or `--json` (a versioned envelope: `entries` with each entry's status, re-run flag,
+  data time and its source, first commit, run ids, dirty/allowance flags, governing pre-registrations and what
+  declared it; plus `failures`). Fail closed on any status outside `STATUSES`, and on a non-empty `failures`
+  list: a failure no single entry carries, such as a foreign declaration or a changed listed path, appears only
+  there, while every entry can read PASS.
+- Wire the exceptions file into this lint too (an `EXCEPTED` status). Otherwise, now that the in-script lists
+  are frozen, a future legitimate exception has no path.
