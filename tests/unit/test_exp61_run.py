@@ -489,3 +489,12 @@ def test_a_duplicate_clean_pair_makes_the_verdict_incomplete() -> None:
     v = E.compute_verdict(rows, campaign_id="c1")
     assert v["verdict"] == "INCOMPLETE", v["verdict"]
     assert "duplicate clean" in (v["incomplete_cause"] or "")
+
+
+@pytest.mark.xfail(strict=True, reason="red gate: both_halves subtracts floats (0.3 - 0.2 = 0.0999...)")
+def test_both_halves_decides_on_exact_rates_at_the_band() -> None:
+    """Dangling 9/30 against isolated 5/25: exactly 0.10 apart, which `< 0.10` fails. Floats say 0.0999... and
+    pass it. (Extra pairs beyond the frozen n are the evidence gate's to refuse; the arithmetic must be exact.)"""
+    v = E.compute_verdict(_campaign(isolated=25, i_rate=0.2, dangling=30, d_rate=0.3), campaign_id="c1")
+    assert v["rates"]["dangling"]["rate"] == 0.3 and v["rates"]["isolated"]["rate"] == 0.2
+    assert v["checks"]["both_halves"] is False, v["checks"]
