@@ -159,3 +159,31 @@ def test_r1_file_selects_the_complete_runs_and_reproduces_the_numbers(h, tmp_pat
     ]
     assert gate["primary_directedness_by_arm"] == {"taught": 1.0, "satiated": 0.0, "no_feed": 0.5}
     assert gate["exploratory_placements_taught"]["-0.6"]["n"] == 9  # the complete run alone, not 15 pooled
+
+
+def _counted(rid: str, toward_by_agent: dict[str, tuple[int, int]]) -> list[dict]:
+    """A complete Phase 2 primary run: each agent ``(toward, n)`` trials, sign rule agreeing with every trial."""
+    recs = [{"ts": 1.0, "event": "start", "run_id": rid, "phase": 2, "only": None}]
+    for a, (k, n) in toward_by_agent.items():
+        recs.append({"ts": 2.0, "event": "agent_load", "run_id": rid, "phase": 2, "agent": a})
+        for i in range(n):
+            recs.append({"ts": 3.0 + i, "event": "trial", "run_id": rid, "phase": 2, "agent": a,
+                         "arm": a.split("_seed")[0], "seed": int(a[-2:]), "condition": "primary",
+                         "exploratory": False, "exploratory_agent": False, "toward": i < k,
+                         "affordance": "turn_left", "sign_rule_correct": i < k, "target_az": -0.3})  # fmt: skip
+        recs.append({"ts": 99.0, "event": "agent_done", "run_id": rid, "phase": 2, "agent": a})
+    return recs
+
+
+@pytest.mark.xfail(strict=True, reason="red gate: gate T compares rounded floats (0.7 - 0.5 = 0.19999...)")
+def test_gate_t_decides_on_exact_rates_at_the_margin(h, tmp_path: Path) -> None:
+    """Taught directedness exactly 0.70 (seeds 6/10 and 8/10) against satiated exactly 0.50: the margin is exactly
+    0.20, which the prereg's `>= 0.20` passes. Rounded floats put it at 0.19999... and fail it."""
+    recs = _run("A", 1, AGENTS) + _counted(
+        "Q", {"taught_seed42": (6, 10), "taught_seed43": (8, 10), "satiated_seed42": (5, 10), "no_feed_seed42": (0, 10)}
+    )
+    p = _write(tmp_path, recs)
+    h.main(["verdict", "--records", str(p)])
+    gate = _gate_record(p, "gate_T")
+    assert gate["primary_directedness_by_arm"]["taught"] == 0.7
+    assert gate["verdict"] == "PASS", gate
