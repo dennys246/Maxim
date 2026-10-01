@@ -766,6 +766,7 @@ jobs:
             | grep -vE "^tests/unit/test_config_writer\.py:" \
             | grep -vE "^tests/unit/test_console_server\.py:" \
             | grep -vE "^tests/unit/test_console_launcher_seams\.py:" \
+            | grep -vE "^tests/unit/test_config_sparse_1_2\.py:" \
             || true)
           if [ -n "$SETUP_VERB_MATCHES" ]; then
             echo "ERROR: new caller of apply_mesh_setup / apply_cloud_setup detected (single-writer boundary, post-merge round 2026-07-26)"
