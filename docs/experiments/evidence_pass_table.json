@@ -1,0 +1,7 @@
+{
+  "_comment": "The ledger evidence gate's pass table (M1b PR 5b; docs/plans/m1b_ledger_evidence_gate.md, 'PR 5b build spec'). Read from the MERGE-BASE: an entry added in the same PR supports nothing. kind -> rows it may support, targets (new status token -> the verdict values that support it), require (dotted field -> exact value on the verdict). A token not listed is not supported. Exp 53/54/60/61/62 entries arrive with PR 5b-2's complete-run rules.",
+  "exp09_verdict": {"rows": ["T3-9"], "targets": {"MAINTAINED": ["PASS"], "PARTIAL": ["PARTIAL"]}, "require": {"apparatus_checked": true}},
+  "exp10_verdict": {"rows": ["T1-1"], "targets": {"MAINTAINED": ["PASS"]}, "require": {"apparatus_checked": true}},
+  "exp56_verdict": {"rows": ["T1-11"], "targets": {"RE-VALIDATED": ["PASS"]}, "require": {"noop_kit.kit_pass": true}},
+  "exp57_verdict": {"rows": ["T1-12"], "targets": {"EARNED": ["PASS"], "PARTIAL": ["PARTIAL"]}, "require": {}}
+}
