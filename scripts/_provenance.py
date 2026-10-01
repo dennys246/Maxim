@@ -80,6 +80,8 @@ __all__ = [
     "SimRunFailed",
     "failed_row",
     "stamp_harness_row",
+    "campaign_out_path",
+    "append_refusal",
     "stamp_harness_header",
     "stamp_instrument_check",
     "instrument_check_authorizes",
@@ -496,11 +498,44 @@ def stamp_harness_row(row: dict, *, mock: bool) -> dict:
     carrying some other ``status`` is refused: overwriting it would erase how the run ended."""
     if row.get("status") not in (None, "ok", "failed"):
         raise ValueError(f"harness row status {row['status']!r} is neither 'ok' nor 'failed'")
+    if not isinstance(row.get("ts"), (int, float)):
+        # The run's own epoch time, set by the writer (M1b PR 5a-3): a write-time default would let a post-hoc
+        # rebuild read as new data at the evidence gate.
+        raise ValueError("a harness row needs an epoch `ts` (the run's time), set by its writer")
     row["record_kind"] = "harness_row"
     refused = row.get("refusal") is not None  # the verdicts' own reading: an empty message is still a refusal
     row["status"] = "failed" if refused or row.get("status") == "failed" else "ok"
     row["mock"] = bool(mock)
     return row
+
+
+def campaign_out_path(stem: str, campaign_id: str) -> str:
+    """The default rows file of one campaign (M1b PR 5a-3, #1022): ``docs/experiments/data/<stem>_<campaign_id>.jsonl``.
+    One campaign per file, so a live re-run never lands in a committed legacy file and ``--resume`` finds its own."""
+    return f"docs/experiments/data/{stem}_{campaign_id}.jsonl"
+
+
+def append_refusal(out_path: Path | str, provenance: dict) -> str | None:
+    """Why appending this run to ``out_path`` would make the file unjudgeable at the evidence gate, or None
+    (M1b PR 5a-3): an existing line that is not JSON, is unstamped (no ``record_kind``: a pre-M1b file), or ran on
+    another code tree (one ``code_tree_sha256`` per file). A resume on the same tree appends freely."""
+    path = Path(out_path)
+    if not path.is_file():
+        return None
+    tree = provenance.get("code_tree_sha256")
+    for i, line in enumerate(path.read_text().splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            return f"{path}: line {i} is not JSON"
+        if not isinstance(row, dict) or "record_kind" not in row:
+            return f"{path}: line {i} is unstamped (a pre-M1b file) — write a fresh file"
+        row_tree = (row.get("provenance") or {}).get("code_tree_sha256")
+        if row_tree != tree:
+            return f"{path}: line {i} ran on another code tree ({row_tree}) — one code tree per file"
+    return None
 
 
 def stamp_verdict(

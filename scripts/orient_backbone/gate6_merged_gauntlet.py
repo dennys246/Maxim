@@ -430,6 +430,12 @@ def run(args) -> int:
             "metrics": metrics,
             "verdict": verdict,
         }
+        # A diagnosis (M1b PR 5a-3): gate6 runs on the dry rig and is cited by no ledger row; its PASS/FAIL is not a
+        # verdict kind any pass table names.
+        from _provenance import stamp_diagnosis
+
+        record["ts"] = datetime.now(timezone.utc).timestamp()
+        stamp_diagnosis(record, mock=True, code_provenance=provenance)
         Path(out_json).parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(out_json, with_format_version(record))
         print(f"  wrote {out_json}")

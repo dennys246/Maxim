@@ -96,6 +96,7 @@ from _provenance import (  # noqa: E402
     ProvenanceError,
     evidence_out_paths_or_exit,
     in_process_code_provenance,
+    append_refusal,
     instrument_check_authorizes,
     stamp_harness_row,
     stamp_verdict,
@@ -350,6 +351,11 @@ def _run(args: argparse.Namespace) -> int:
     except (DirtyTreeError, ProvenanceError) as exc:
         print(f"[FAIL] provenance: {exc}")
         return 3
+    refusal = append_refusal(out_path, provenance)
+    if refusal is not None:
+        # One code tree per file, never onto a pre-M1b file (M1b PR 5a-3, #1022): the operator names a fresh file.
+        print(f"[FAIL] refusing to append: {refusal}")
+        return 2
 
     # ── Preflight: BOTH gated records PASS (prereg instrument-gate stop rule) ──
     def _load(rel: str) -> dict[str, Any]:
@@ -576,7 +582,7 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("run", help="LIVE: one arm, all seeds")
     r.add_argument("--arm", choices=("fear", "ablated"), required=True)
     r.add_argument("--seeds", type=int, default=len(FROZEN["seeds"]))
-    r.add_argument("--out", default="docs/experiments/data/exp60_trials.jsonl")
+    r.add_argument("--out", required=True, help="a fresh rows file; both arms go into the same one for `verdict`")
     r.add_argument("--gate-record", default=GATE_RECORD)
     r.add_argument("--bridge-host", default="127.0.0.1")
     r.add_argument("--bridge-port", type=int, default=25567)

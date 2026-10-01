@@ -305,21 +305,22 @@ def cmd_manifest(args: argparse.Namespace) -> int:
         }
         experiment = "53_cross_context_readout"
     out = Path(args.out)
-    live_common._provenance.preflight_gated_record_or_exit(_HERE.parent.parent, out, allow_dirty=args.allow_dirty)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(
-        json.dumps(
-            {
-                "_format_version": "1.0",
-                "experiment": experiment,
-                "archive": str(archive),
-                "frozen": frozen,
-                "agents": agents,
-            },
-            indent=2,
-        )
-        + "\n"
+    # A header (M1b PR 5a-3): the campaign's configuration with the code that wrote it, never a run. provenance()
+    # runs the gated-record refusal before anything is written.
+    record = live_common._provenance.stamp_harness_header(
+        {
+            "_format_version": "1.0",
+            "ts": time.time(),
+            "experiment": experiment,
+            "archive": str(archive),
+            "frozen": frozen,
+            "agents": agents,
+            "provenance": provenance(_HERE.parent.parent, out_path=out, allow_dirty=args.allow_dirty),
+        },
+        mock=False,
     )
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(record, indent=2) + "\n")
     print(f"[manifest] {len(agents)} agents -> {out}")
     return 0
 
@@ -1399,6 +1400,29 @@ def _lines_stamped(lines: list[dict], recs: list[dict]) -> bool:
     return all((r["log_run_id"], r["provenance_sha256"]) in blocks for r in lines)
 
 
+# The verdict kind each experiment's manifest names (M1b PR 5a-3): taken from what the scoped runs RAN under (their
+# `start` lines' `experiment`), never from a verdict-time flag that could mislabel an Exp 54 run as Exp 53.
+VERDICT_KIND_BY_EXPERIMENT = {
+    "53_cross_context_readout": "exp53_verdict",
+    "54_nurture_reachy_body": "exp54_verdict",
+    # gate6 runs Exp 53's phases in-process on its own manifests (dry rig, uncited): its kind is in no pass table.
+    "gate6_merged_gauntlet": "gate6_exp53_verdict",
+}
+
+
+def _verdict_kind(scoped: list[str], recs: list[dict]) -> str:
+    """The one verdict kind the scoped runs' `start` lines name; refuses (VerdictError) a mix or an unknown value.
+    Runs that predate the field (every scoped `start` without `experiment`, e.g. the 53b R1 replication) get
+    ``exp53_unlabelled_verdict``: still computed for analysis, but no pass table names it, so it never supports."""
+    named = {r.get("experiment") for r in recs if r.get("event") == "start" and r.get("run_id") in scoped}
+    if named == {None}:
+        return "exp53_unlabelled_verdict"
+    kinds = {VERDICT_KIND_BY_EXPERIMENT.get(str(e)) for e in named}
+    if len(kinds) != 1 or None in kinds:
+        raise VerdictError(f"the scoped runs name experiments {sorted(map(str, named))}: one known experiment needed")
+    return kinds.pop()
+
+
 def _write_verdict(
     args: argparse.Namespace, summary: dict, *, gate: str, recs: list[dict], data_bytes: bytes, code: dict
 ) -> None:
@@ -1419,7 +1443,7 @@ def _write_verdict(
     live_common._provenance.stamp_verdict(
         record,
         repo_root=_HERE.parent.parent,
-        kind="exp53_verdict",
+        kind=_verdict_kind(scoped, recs),
         data=Path(args.records),
         data_bytes=data_bytes,
         scope={"run_ids": scoped},
@@ -1496,7 +1520,11 @@ def cmd_verdict(args: argparse.Namespace) -> int:
         verdict = _gate_C(list(specs.values()), by_agent)
         verdict = {**verdict, "runs_used": runs_used, "runs_excluded": runs_excluded}
         print(json.dumps(verdict, indent=2))
-        _write_verdict(args, verdict, gate="C", recs=recs, data_bytes=data_bytes, code=code)
+        try:
+            _write_verdict(args, verdict, gate="C", recs=recs, data_bytes=data_bytes, code=code)
+        except VerdictError as exc:
+            print(f"[verdict] REFUSED: {exc}")
+            return 2
         return 0 if verdict["verdict"] == "PASS" else 1
     gate_i = [r for r in recs if r.get("event") == "gate_I" and _in(run_p1)(r)]
     print(f"[gate I] {gate_i[-1]['verdict'] if gate_i else 'NOT RUN'}")
@@ -1592,7 +1620,11 @@ def cmd_verdict(args: argparse.Namespace) -> int:
         "runs_excluded": runs_excluded,
     }
     print(json.dumps(summary, indent=2))
-    _write_verdict(args, summary, gate="T", recs=recs, data_bytes=data_bytes, code=code)
+    try:
+        _write_verdict(args, summary, gate="T", recs=recs, data_bytes=data_bytes, code=code)
+    except VerdictError as exc:
+        print(f"[verdict] REFUSED: {exc}")
+        return 2
     return 0 if verdict == "PASS" else 1
 
 
@@ -1800,6 +1832,9 @@ def cmd_sweep(args: argparse.Namespace) -> int:
         **decl,
         "agents": all_agents,
     }
+    # A header (M1b PR 5a-3): the declared targets a later run is configured with, never a run itself.
+    out["ts"] = time.time()
+    live_common._provenance.stamp_harness_header(out, mock=False)
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(out, indent=2) + "\n")

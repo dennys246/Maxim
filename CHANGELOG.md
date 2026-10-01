@@ -302,6 +302,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The survival harnesses write one campaign per file and never append onto a legacy file** (M1b PR 5a-3,
+  #1022). Exp 61/62 and R3 default `--out` to the campaign's own file; Exp 58/60 require `--out`; Exp 62 `run`
+  requires its campaign's replay row; R3's gauntlet is keyed by campaign. Every survival writer refuses to
+  append to a file holding unstamped rows or rows from another code tree.
+- `stamp_harness_row` requires the writer's epoch `ts`. The Exp 53/54 verdict kind comes from what the runs ran
+  under (`exp54_verdict` for Exp 54), not a flag. The Exp 53 manifest and targets, R3's gauntlet and report, and
+  the gate6 payload now carry a record kind. Exp 56's analyzer never renders a PASS without its no-op kit.
+
 - **Breaking, to stable surfaces (#939, #950; owner decisions 2026-09-28).** Each change turns a
   silent loss of memories into an error. The owner should confirm at the cut whether they fit a
   patch release.

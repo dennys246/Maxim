@@ -221,6 +221,13 @@ def main() -> int:
         if not kit.get("kit_pass"):
             report["problems"].append("ANTI-VACUITY: a must-collapse no-op variant did not collapse — no verdict")
             report["verdict"] = "NO-VERDICT"
+    elif report["verdict"] == "PASS":
+        # The prereg requires the no-op kit (§Gates); a PASS without it is not rendered — Exp 57's guard, ported
+        # (M1b PR 5a-3: only a stamped verdict supplies support, so the authority must not trust the flag).
+        report["problems"].append(
+            "ANTI-VACUITY: the no-op kit did not run (pass --assert-noop-fails) — no verdict without it"
+        )
+        report["verdict"] = "NO-VERDICT"
 
     print(json.dumps(report, indent=2))
     return 0 if report["verdict"] == "PASS" else (4 if report["verdict"] == "NO-VERDICT" else 1)

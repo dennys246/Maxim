@@ -46,6 +46,9 @@ from _provenance import (  # noqa: E402
     ProvenanceError,
     evidence_out_paths_or_exit,
     in_process_code_provenance,
+    stamp_diagnosis,
+    append_refusal,
+    campaign_out_path,
     instrument_check_authorizes,
     stamp_harness_row,
 )
@@ -75,7 +78,6 @@ from survival_world.water_trial import (  # noqa: E402
 )
 
 APPARATUS_RECORD = "docs/experiments/data/exp60_water_apparatus_2026-09-17.json"  # the DATED re-check
-GAUNTLET_DEFAULT = "docs/experiments/data/r3_gauntlet.json"
 ARMS: tuple[str, ...] = ("A_innate_only", "B_in_situ", "C_self_learned", "D_shared", "E_exposed_ablated")
 DETACHED = {"A_innate_only", "E_exposed_ablated"}
 TRAINED = {"C_self_learned": "fear", "E_exposed_ablated": "ablated"}
@@ -808,8 +810,20 @@ def _existing_clean(out_path: Path, campaign_id: str) -> set[tuple[str, int]]:
     return done
 
 
+def gauntlet_path_for(campaign_id: str) -> str:
+    """The gauntlet a cal campaign writes and its bench reads (M1b PR 5a-3): keyed by the shared campaign id."""
+    return f"docs/experiments/data/r3_gauntlet_{campaign_id}.json"
+
+
 def _setup(args: argparse.Namespace) -> tuple[_R3, Path, str] | int:
-    out_arg = Path(args.out)
+    if (args.resume or args.cmd == "bench") and not args.campaign_id:
+        print("[FAIL] --resume and bench need --campaign-id (bench reads its cal campaign's gauntlet)")
+        return 2
+    campaign_id = args.campaign_id or uuid.uuid4().hex[:12]
+    if not args.gauntlet:
+        args.gauntlet = gauntlet_path_for(campaign_id)
+    # One campaign per file, keyed by subcommand: cal and bench rows never share a file (M1b PR 5a-3, #1022).
+    out_arg = Path(args.out or campaign_out_path(f"r3_{args.cmd}", campaign_id))
     out_abs = out_arg if out_arg.is_absolute() else (C.REPO_ROOT / out_arg)
     out_path = evidence_out_paths_or_exit(
         C.REPO_ROOT,
@@ -826,9 +840,12 @@ def _setup(args: argparse.Namespace) -> tuple[_R3, Path, str] | int:
     except (DirtyTreeError, ProvenanceError) as exc:
         print(f"[FAIL] provenance: {exc}")
         return 3
-    campaign_id = args.campaign_id or uuid.uuid4().hex[:12]
-    if args.resume and not args.campaign_id:
-        print("[FAIL] --resume requires --campaign-id")
+    if args.resume and not out_path.is_file():
+        print(f"[FAIL] --resume: {out_path} does not exist (a resume never starts a campaign over)")
+        return 2
+    refusal = append_refusal(out_path, provenance)
+    if refusal is not None:
+        print(f"[FAIL] refusing to append: {refusal}")
         return 2
     return _R3(args, provenance=provenance, out_path=out_path, campaign_id=campaign_id), out_path, campaign_id
 
@@ -858,6 +875,8 @@ def _cal(args: argparse.Namespace) -> int:
         return 1
     gpath = Path(args.gauntlet)
     gpath = gpath if gpath.is_absolute() else C.REPO_ROOT / gpath
+    # A diagnosis (M1b PR 5a-3): R3 graduates nothing, and its gauntlet is the calibration bench reads, not support.
+    stamp_diagnosis(g, mock=False, code_provenance=camp.provenance)
     gpath.write_text(json.dumps(g, indent=2, default=str) + "\n")
     print(
         f"gauntlet -> {gpath}: floor {g['floor_arm']}; reservoir {g['reservoir_band']}; ticks {g['tick_period_band_s']}"
@@ -960,7 +979,20 @@ def _report(args: argparse.Namespace) -> int:
     print(json.dumps(rep, indent=2, default=str))
     print(f"STATUS: {rep['status']}" + (f" ({rep['incomplete_cause']})" if rep["incomplete_cause"] else ""))
     if args.json:
-        Path(args.json).write_text(json.dumps(rep, indent=2, default=str) + "\n")
+        # A diagnosis (M1b PR 5a-3): R3 has no verdict kind; its STATUS is read, never support. Stamped with the code
+        # that computed it.
+        import maxim
+
+        try:
+            code = in_process_code_provenance(C.REPO_ROOT, maxim.__file__)
+        except ProvenanceError as exc:
+            print(f"[FAIL] provenance: {exc}")
+            return 3
+        # R3's own COMPLETE/INCOMPLETE moves to `r3_status`: a stamped record's `status` says how the run ended.
+        record = {k: v for k, v in rep.items() if k != "status"}
+        record["r3_status"] = rep["status"]
+        stamp_diagnosis(record, mock=False, code_provenance=code)
+        Path(args.json).write_text(json.dumps(record, indent=2, default=str) + "\n")
     return 0
 
 
@@ -979,11 +1011,8 @@ def main() -> int:
         r.add_argument("--campaign-id", default=None)
         r.add_argument("--resume", action="store_true")
         r.add_argument("--gate-record", default=GATE_RECORD)  # Exp 61's donor flow reads it (arm D)
-        r.add_argument("--gauntlet", default=GAUNTLET_DEFAULT)
-        r.add_argument(
-            "--out",
-            default="docs/experiments/data/r3_cal.jsonl" if name == "cal" else "docs/experiments/data/r3_bench.jsonl",
-        )
+        r.add_argument("--gauntlet", default=None, help="default: docs/experiments/data/r3_gauntlet_<campaign_id>.json")
+        r.add_argument("--out", default=None, help=f"default: docs/experiments/data/r3_{name}_<campaign_id>.jsonl")
         r.add_argument("--only", default="", help="bench: comma list of arms")
         r.add_argument("--write-experiment-results", action="store_true")
         r.add_argument("--allow-dirty", action="store_true")

@@ -61,6 +61,7 @@ from _provenance import (  # noqa: E402
     ProvenanceError,
     evidence_out_paths_or_exit,
     in_process_code_provenance,
+    append_refusal,
     instrument_check_authorizes,
     stamp_harness_row,
 )
@@ -111,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--arm", choices=("fear", "ablated"), required=True)
     ap.add_argument("--seeds", type=int, default=len(FROZEN["seeds"]))
-    ap.add_argument("--out", default="docs/experiments/data/exp58_claim_b.jsonl")
+    ap.add_argument("--out", required=True, help="a fresh rows file (both arms of one run go into it)")
     ap.add_argument("--bridge-host", default="127.0.0.1")
     ap.add_argument("--bridge-port", type=int, default=25567)
     ap.add_argument("--rcon-host", default="127.0.0.1")
@@ -140,6 +141,11 @@ def main(argv: list[str] | None = None) -> int:
     except (DirtyTreeError, ProvenanceError) as exc:
         print(f"[FAIL] provenance: {exc}")
         return 3
+    refusal = append_refusal(out_path, provenance)
+    if refusal is not None:
+        # One code tree per file, never onto a pre-M1b file (M1b PR 5a-3, #1022): the operator names a fresh file.
+        print(f"[FAIL] refusing to append: {refusal}")
+        return 2
 
     # ── Preflight: gates record (prereg instrument-gate stop rule) ──
     gates_path = C.REPO_ROOT / GATES_RECORD

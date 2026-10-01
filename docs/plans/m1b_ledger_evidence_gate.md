@@ -374,3 +374,49 @@ For PR 5b:
   becomes an instrument check with that frozen pass rule, never evidence. Neither record is in any ledger
   Evidence field today, so nothing is blocked.
 
+## PR 5b design: owner decisions (2026-09-30)
+
+The 5b design pass ran four rounds on an addendum to the closed PR 5 design. After three rounds in a row found
+new failure modes in making RAW files count as support (raw rows of a failed run, an unidentifiable experiment
+family, a family binding that shared writers get wrong), a bird's-eye audit led to a scope reset:
+
+- **Only a stamped verdict supplies NEW support.** Raw rows files, event logs and sim reports are judged when
+  cited (they must be established) but never count by themselves; a verdict's `kind` names its experiment, and
+  the gate-owned pass table (`docs/experiments/evidence_pass_table.json`, read from the merge-base) decides.
+  No writer-declared family machinery.
+- **Stated losses until their analyzers stamp a verdict:** T1-7 (doa_sweep), T1-9 (cradle Phase B — Exp 52
+  Phase A is judged, never support), Exp 37/41/42/44 rows, Exp 49 (unsupported: live mode stamps no start
+  provenance, #1023).
+- **T1-1 (Exp 10) and T3-9 (Exp 09)**, STALE and blocking 1.3.2, re-validate through re-run verdicts built in
+  **O19's own PR before 5b**: re-run preregs that write each prose gate as numbers (Exp 09 = the ORIGINAL
+  2026-04-25 H1–H7; halves that cannot be measured or pass are stated NOT MET), spawning harnesses that record
+  every attempt and hash the measured files, and the gate's source hash stamped.
+- **Strict defaults** (all owner-chosen): a mock, unstamped or foreign-kind line sinks the whole cited file
+  (event logs too; failed/aborted runs are only excluded); one `code_tree_sha256` per cited file and per verdict
+  scope; cited non-support kinds are judged and a failure sinks the row; a verdict that leaves out a complete
+  run of an arm it scopes is not established.
+
+## PR 5a-3 as built (2026-09-30)
+
+The last writer fixes before 5b.
+
+- **One campaign per file (#1022):** Exp 61/62 and R3 default `--out` to a file named by the campaign
+  (`_provenance.campaign_out_path`: `exp61_pairs_<id>.jsonl`, `exp62_rows_<id>.jsonl`, `r3_cal_<id>.jsonl` /
+  `r3_bench_<id>.jsonl`); `--resume` needs `--campaign-id` and refuses a missing file. Exp 58/60 require `--out`
+  (Exp 60's two arms go into the operator's one file). Exp 62 `run` requires `--campaign-id` and a replay row for
+  it in the file. R3's gauntlet is keyed by campaign (`r3_gauntlet_<id>.json`), and bench needs `--campaign-id`
+  to read its cal campaign's gauntlet.
+- **The append refusal** (`_provenance.append_refusal`, every survival row writer): a file whose existing lines
+  are not JSON, unstamped (pre-M1b), or from another `code_tree_sha256` takes no append (exit 2). A resume on the
+  same tree (docs-only commits included, since the digest covers `src/` + `scripts/`) appends freely; the
+  verdicts' own one-`executed_git_hash` check stays stricter.
+- **`stamp_harness_row` requires an epoch `ts`** (the run's time, set by its writer); Exp 49 rows gain theirs.
+- **The Exp 53/54 verdict kind** comes from the scoped runs' `start` lines (`experiment`), via
+  `VERDICT_KIND_BY_EXPERIMENT`: `exp53_verdict`, `exp54_verdict`, `gate6_exp53_verdict` (uncited). A mix or an
+  unknown experiment refuses; runs that predate the field (the 53b R1 replication) get
+  `exp53_unlabelled_verdict`, which no pass table names.
+- **Companions stamped:** the Exp 53 manifest and targets declaration are `harness_header`s (with code
+  provenance); R3's gauntlet and `report --json` are `diagnosis` records (R3's COMPLETE/INCOMPLETE moves to
+  `r3_status`, since a stamped `status` says how the run ended); the gate6 payload is a mock `diagnosis`.
+- **Exp 56's analyzer** turns a PASS without the no-op kit into NO-VERDICT (Exp 57's guard).
+

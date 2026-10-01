@@ -77,7 +77,6 @@ import math
 import os
 import sys
 import time
-import uuid
 from pathlib import Path
 from typing import Any
 
@@ -90,6 +89,8 @@ from _provenance import (  # noqa: E402
     ProvenanceError,
     evidence_out_paths_or_exit,
     in_process_code_provenance,
+    append_refusal,
+    campaign_out_path,
     stamp_harness_row,
     stamp_verdict,
     any_not_stamped_real,
@@ -1120,14 +1121,28 @@ def interleaved_plan(arms: list[str], *, rows: int | None) -> list[tuple[str, in
     return plan
 
 
-def _out_path(arg: str, args: argparse.Namespace) -> Path:
-    p = Path(arg)
+def _out_path(arg: str | None, args: argparse.Namespace) -> Path:
+    # One campaign per file (M1b PR 5a-3, #1022): replay and run share the campaign's file by default.
+    p = Path(arg or campaign_out_path("exp62_rows", args.campaign_id))
     return evidence_out_paths_or_exit(
         REPO_ROOT,
         [str(p if p.is_absolute() else REPO_ROOT / p)],
         write_experiment_results=args.write_experiment_results,
         allow_dirty=args.allow_dirty,
     )[0]
+
+
+def _has_replay_row(out_path: Path, campaign_id: str) -> bool:
+    if not out_path.is_file():
+        return False
+    for line in out_path.read_text().splitlines():
+        try:
+            row = json.loads(line) if line.strip() else {}
+        except ValueError:
+            continue
+        if row.get("kind") == "replay" and row.get("campaign_id") == campaign_id:
+            return True
+    return False
 
 
 def _provenance_or_none(out_path: Path, args: argparse.Namespace) -> dict[str, Any] | None:
@@ -1146,6 +1161,10 @@ def cmd_replay(args: argparse.Namespace) -> int:
     provenance = _provenance_or_none(out_path, args)
     if provenance is None:
         return 3
+    refusal = append_refusal(out_path, provenance)
+    if refusal is not None:
+        print(f"[FAIL] refusing to append: {refusal}")
+        return 2
     try:
         geoms = load_geoms(args.pool1_anchor, args.pool2_anchor)
     except (Refusal, OSError, ValueError) as exc:
@@ -1165,8 +1184,14 @@ def cmd_run(args: argparse.Namespace) -> int:
     provenance = _provenance_or_none(out_path, args)
     if provenance is None:
         return 3
-    if args.resume and not args.campaign_id:
-        print("[FAIL] --resume requires --campaign-id")
+    # The replay row is one of the five frozen gates and is written BEFORE the campaign, into the campaign's file:
+    # a run with no replay row for its id could only ever verdict INCOMPLETE (M1b PR 5a-3).
+    if not _has_replay_row(out_path, args.campaign_id):
+        print(f"[FAIL] {out_path} holds no replay row for campaign {args.campaign_id} — run `replay` first")
+        return 2
+    refusal = append_refusal(out_path, provenance)
+    if refusal is not None:
+        print(f"[FAIL] refusing to append: {refusal}")
         return 2
     if len(args.gate_record) != 2:
         print("[FAIL] pass --gate-record twice: pool 1's committed gate-(ii) record, then pool 2's")
@@ -1176,7 +1201,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     except (Refusal, OSError, ValueError) as exc:
         print(f"[FAIL] {exc}")
         return 4
-    campaign_id = args.campaign_id or uuid.uuid4().hex[:12]
+    campaign_id = args.campaign_id
     camp = Exp62Campaign(args, geoms, provenance=provenance, out_path=out_path, campaign_id=campaign_id)
     if camp.apparatus_citation().get("refusal") is not None:
         return 4  # nothing measured after this would be trustworthy
@@ -1256,7 +1281,7 @@ def main(argv: list[str] | None = None) -> int:
 
     rp = sub.add_parser("replay", help="write the replay row on the BUILT geometry (before the campaign)")
     rp.add_argument("--campaign-id", required=True)
-    rp.add_argument("--out", default="docs/experiments/data/exp62_rows.jsonl")
+    rp.add_argument("--out", default=None, help="default: docs/experiments/data/exp62_rows_<campaign_id>.jsonl")
     _anchor_args(rp)
     rp.add_argument(
         "--gate-record", action="append", default=[], help="committed gate-(ii) record; pass TWICE, pool 1 first"
@@ -1265,8 +1290,8 @@ def main(argv: list[str] | None = None) -> int:
     rp.set_defaults(func=cmd_replay, workdir=".", rcon_host="", rcon_port=0, rcon_password="")
 
     r = sub.add_parser("run", help="the live campaign (arms interleaved seed by seed)")
-    r.add_argument("--campaign-id", default=None)
-    r.add_argument("--out", default="docs/experiments/data/exp62_rows.jsonl")
+    r.add_argument("--campaign-id", required=True, help="the campaign `replay` wrote its row for")
+    r.add_argument("--out", default=None, help="default: docs/experiments/data/exp62_rows_<campaign_id>.jsonl")
     _anchor_args(r)
     r.add_argument(
         "--gate-record", action="append", default=[], help="committed gate-(ii) record; pass TWICE, pool 1 first"

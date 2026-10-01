@@ -174,6 +174,7 @@ def run_scripted_trial(bearing_deg: float, seed: int, sandbox: Path, *, speech_d
         "bearing_deg": bearing_deg,
         "seed": seed,
         "started_at": _now_iso(),
+        "ts": time.time(),  # the trial's epoch start (stamp_harness_row requires it; M1b PR 5a-3)
         "jsonl": str(jsonl),
         "instrument_ok": expected_converged == metrics.centered,
         "metrics": metrics.to_dict(),
@@ -287,6 +288,7 @@ def run_spawned_trial(
         "bearing_deg": bearing_deg,
         "seed": seed,
         "started_at": _now_iso(),
+        "ts": time.time(),  # the trial's epoch start (stamp_harness_row requires it; M1b PR 5a-3)
         "cmd": cmd,
         "jsonl": str(jsonl),
         "min_confidence_env": min_confidence,
