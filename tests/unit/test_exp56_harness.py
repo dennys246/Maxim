@@ -291,7 +291,6 @@ class TestAnalyzer:
         report = A.analyze(self._rows(), min_pairs=50)
         assert report["verdict"] == "PASS", report
 
-    @pytest.mark.xfail(strict=True, reason="red gate: the gates subtract rounded floats (0.7 - 0.5 = 0.19999...)")
     def test_gates_decide_on_exact_rates_at_the_margin(self):
         """35/50 taught against 25/50 isolated and satiated: exactly 0.20 above each, which `>= 0.20` passes."""
         import analyze_exp56 as A

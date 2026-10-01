@@ -496,3 +496,17 @@ experiment does NOT claim, unchanged.
 survival want learned the hard way by one agent, exported through the shipped signed-bundle path,
 lands on an independent agent and drives its FIRST loop-live submersion, never having felt the
 air-hunger pain. Ledger row: `docs/plans/behavioral_graduation_candidates.md` (Tier 1, beside Exp 60).
+
+## Analyzer correction (2026-10-01; no recorded result changes)
+
+Two defects in `scripts/survival_world/exp61_run.py::compute_verdict` were fixed (test-first):
+
+- **A duplicate clean (arm, pair) row is INCOMPLETE.** The verdict section above names two clean rows for one key
+  a duplicate but did not list it among the INCOMPLETE causes, and the analyzer only named it in `refused`. Which
+  row counts is undefined, so the campaign cannot be judged: INCOMPLETE, as Exp 62 rules.
+- **The gates compare exact rates.** `above_floor`, `cluster_not_fear` and `both_halves` subtracted float rates
+  (9/30 − 5/25 read 0.0999…, passing a `< 0.10` band it sits exactly on). They now compare exact rationals with the
+  frozen thresholds. At the frozen n this boundary is unreachable; it is reachable with extra pairs.
+
+Re-running the corrected analyzer over `exp61_pairs.jsonl` (campaign `exp61-campaign-1`) gives the recorded
+verdict, EARNED, unchanged.

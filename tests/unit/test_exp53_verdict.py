@@ -201,3 +201,17 @@ def test_gate_i_never_rounds_a_rate_up_to_its_threshold(h) -> None:
     assert near["taught_seeds_passing"] == 0 and near["verdict"] == "FAIL", near
     exact = h._gate_I(agents, {a["label"]: rows(2000, 2500) for a in agents})
     assert exact["taught_seeds_passing"] == 2, exact
+
+
+def test_gate_c_never_rounds_a_rate_up_to_its_threshold(h) -> None:
+    """Gate C (Exp 54): 1999/2500 consulted-and-correct = 0.7996 rounds to 0.800; `>= 0.80` must fail it."""
+
+    def rows(k: int, n: int) -> list[dict]:
+        return [{"consulted_bias_by_modality": {"audio": 0.3}, "correct": i < k} for i in range(n)]
+
+    agents = [{"label": f"taught_seed{s}", "arm": "taught", "seed": s} for s in (42, 43)]
+    near = h._gate_C(agents, {a["label"]: rows(1999, 2500) for a in agents})
+    assert near["per_seed"]["taught_seed42"]["consulted_and_correct"] == 0.8  # what the record shows
+    assert near["taught_seeds_passing"] == 0 and near["verdict"] == "FAIL", near
+    exact = h._gate_C(agents, {a["label"]: rows(2000, 2500) for a in agents})
+    assert exact["taught_seeds_passing"] == 2, exact

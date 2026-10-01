@@ -21,6 +21,7 @@ import argparse
 import json
 import math
 import sys
+from fractions import Fraction
 from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
@@ -36,6 +37,12 @@ GATES_V1 = {
     "l2_concentration": 0.90,  # same first-contact choice in >= 90% of an arm = seed-invariant
     "min_pairs": 50,
 }
+
+
+def _exact(threshold: float) -> Fraction:
+    """The frozen decimal threshold as an exact rational: gates compare exact rates, never rounded floats
+    (0.7 - 0.5 is 0.19999... as floats). Rounded rates are for the report only."""
+    return Fraction(str(threshold))
 
 
 def wilson(successes: int, n: int) -> tuple[float, float, float]:
@@ -74,12 +81,14 @@ def analyze(rows: list[dict], *, min_pairs: int) -> dict:
         arms.setdefault(str(r.get("arm")), []).append(r)
 
     stats: dict[str, dict] = {}
+    exact: dict[str, tuple[Fraction, Fraction]] = {}  # arm -> (raw rate, decisive rate), for the gates
     for arm, arm_rows in arms.items():
         n = len(arm_rows)
         raw = sum(1 for r in arm_rows if r.get("chose_target"))
         decisive = sum(1 for r in arm_rows if r.get("chose_target") and r.get("bias_decisive"))
         p_raw, lo_raw, hi_raw = wilson(raw, n)
         p_dec, lo_dec, hi_dec = wilson(decisive, n)
+        exact[arm] = (Fraction(raw, n), Fraction(decisive, n)) if n else (Fraction(0), Fraction(0))
         # L2 seed-invariance: concentration of the literal first-contact
         # CHOICE (not target-relative) within the arm.
         choices: dict[str, int] = {}
@@ -125,10 +134,13 @@ def analyze(rows: list[dict], *, min_pairs: int) -> dict:
         # qualifier, so they compare RAW rates. Both rates are reported;
         # the conjunction still cannot pass without decisiveness because
         # TRANSFERRED gates it.
-        gates["TRANSFERRED"] = taught["rate_decisive"] >= GATES_V1["transferred_min"]
-        gates["ABOVE_FLOOR"] = taught["rate_raw"] - isolated["rate_raw"] >= GATES_V1["above_floor_min"]
-        gates["WANT_NOT_FILE"] = taught["rate_raw"] - satiated["rate_raw"] >= GATES_V1["want_not_file_min"]
-        gates["BOTH_HALVES"] = dangling["rate_raw"] - isolated["rate_raw"] < GATES_V1["both_halves_band"]
+        (t_raw, t_dec), (i_raw, _), (s_raw, _), (d_raw, _) = (
+            exact[a] for a in ("taught", "isolated", "satiated", "dangling")
+        )
+        gates["TRANSFERRED"] = t_dec >= _exact(GATES_V1["transferred_min"])
+        gates["ABOVE_FLOOR"] = t_raw - i_raw >= _exact(GATES_V1["above_floor_min"])
+        gates["WANT_NOT_FILE"] = t_raw - s_raw >= _exact(GATES_V1["want_not_file_min"])
+        gates["BOTH_HALVES"] = d_raw - i_raw < _exact(GATES_V1["both_halves_band"])
     else:
         problems.append("missing arm(s) — all four are required for a verdict")
 
