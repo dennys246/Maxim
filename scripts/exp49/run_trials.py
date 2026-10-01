@@ -96,6 +96,7 @@ def run_scripted_trial(bearing_deg: float, seed: int, sandbox: Path, *, speech_d
     turns with head ride-along, the neck envelope, JSONL event emission,
     and the metric extractor — everything except the agent runtime.
     """
+    started = time.time()
     from maxim.embodiment.audio_localization import gated_azimuth
     from maxim.hardware.controller import MotionTarget
     from maxim.hardware.simulation.controller import SimulatedController
@@ -174,6 +175,7 @@ def run_scripted_trial(bearing_deg: float, seed: int, sandbox: Path, *, speech_d
         "bearing_deg": bearing_deg,
         "seed": seed,
         "started_at": _now_iso(),
+        "ts": started,  # the trial's epoch start (stamp_harness_row requires it; M1b PR 5a-3)
         "jsonl": str(jsonl),
         "instrument_ok": expected_converged == metrics.centered,
         "metrics": metrics.to_dict(),
@@ -287,6 +289,7 @@ def run_spawned_trial(
         "bearing_deg": bearing_deg,
         "seed": seed,
         "started_at": _now_iso(),
+        "ts": started,  # the trial's epoch start (stamp_harness_row requires it; M1b PR 5a-3)
         "cmd": cmd,
         "jsonl": str(jsonl),
         "min_confidence_env": min_confidence,
