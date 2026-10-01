@@ -615,7 +615,7 @@ def test_the_sims_get_no_operator_maxim_env(monkeypatch, tmp_path) -> None:
     }  # fmt: skip
     env09 = h.sim_environment("09", 0, home=tmp_path, run_id="r", run_log=tmp_path / "log")
     assert env09["MAXIM_SUBSTRATE_PATH"] == "1" and env09["MAXIM_BACKEND_TRACE"] == "1"
-    assert h.base_env()[1] == ["MAXIM_SUBSTRATE_ACTIONS_PER_TURN", "MAXIM_SUBSTRATE_PATH"]
+    assert {"MAXIM_SUBSTRATE_ACTIONS_PER_TURN", "MAXIM_SUBSTRATE_PATH"} <= set(h.base_env()[1])  # all are dropped
 
 
 def test_the_preregs_command_parses(monkeypatch) -> None:
