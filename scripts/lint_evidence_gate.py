@@ -1,0 +1,456 @@
+#!/usr/bin/env python3
+"""The ledger evidence gate (M1b PR 5b-1; spec: docs/plans/m1b_ledger_evidence_gate.md, "PR 5b build spec").
+
+A ledger row at a positive status or PARTIAL, when it changes, must rest on evidence that is ESTABLISHED: stamped,
+not a typed abort, not mock, the code on main, one known code tree (judged by ``scripts/_evidence_records.py``). A raise, a move between positive tokens or a date
+change additionally needs NEW support: a newly cited, stamped VERDICT that the merge-base pass table
+(``docs/experiments/evidence_pass_table.json``) lets support this row at its new token. Records committed before
+M1a are LEGACY (``docs/experiments/evidence_legacy.json``): judged as such, never new support. Owner-named
+overrides live in ``docs/experiments/evidence_exceptions.json``: only clauses already on main act, append-only.
+
+Diff-scoped against the merge-base with origin/main. It reads committed bytes (git objects at HEAD); uncommitted
+changes (untracked files included) under the data root, in the ledger, the pass table, the legacy snapshot or the
+exceptions file fail. It catches forgetting, not evasion: an author can still cite a clean
+but irrelevant record (review is the check).
+
+    python scripts/lint_evidence_gate.py              # the gate (CI lint job)
+    python scripts/lint_evidence_gate.py --json       # machine-readable
+    python scripts/lint_evidence_gate.py --write-legacy   # (re)generate the legacy snapshot from the rules
+
+Exits: 0 clean; 1 violations; 2 the base could not be read on a pull request.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+SCRIPTS_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPTS_DIR))
+REPO_ROOT = SCRIPTS_DIR.parent
+
+import _ledger as L  # noqa: E402
+import _lint_git  # noqa: E402
+from _evidence_records import (  # noqa: E402  (re-exported: the gate's record vocabulary)
+    DATA_ROOT,
+    ESTABLISHED,
+    EXCEPTED,
+    LEGACY,
+    NOT_ESTABLISHED,
+    SUPPORT_KINDS,
+    Ctx,
+    MALFORMED,
+    GateError,
+    Judgement,
+    Repo,
+    decompressed,
+    judge_entry,
+    sha256,
+    str_field,
+    unjudged,
+    watched_paths,
+)
+
+PASS_TABLE = "docs/experiments/evidence_pass_table.json"
+LEGACY_SNAPSHOT = "docs/experiments/evidence_legacy.json"
+EXCEPTIONS = "docs/experiments/evidence_exceptions.json"
+
+# M1a (#999) merged at this commit time: a record first committed before it, carrying no `record_kind`, is legacy.
+M1A_CUTOFF = 1790721676  # 2026-09-29T22:41:16Z, `git show -s --format=%ct fc9f19d0`
+LEAVING_UNCHECKED = frozenset({"STALE", "BROKEN"})
+
+
+# ── support, exceptions, the legacy snapshot ─────────────────────────────────────────────────────────────
+
+
+def require_met(record: dict, require: dict) -> bool:
+    for dotted, want in require.items():
+        node = record
+        for part in dotted.split("."):
+            if not isinstance(node, dict) or part not in node:
+                return False
+            node = node[part]
+        if type(node) is not type(want) or node != want:
+            return False
+    return True
+
+
+def support_problem(j: Judgement, row_id: str, token: str, table: dict, after: float) -> str | None:
+    """Why this newly cited record does NOT supply new support for moving ``row_id`` to ``token`` (None = it does)."""
+    if j.status != ESTABLISHED:
+        return f"{j.path} is {j.status}"
+    if j.kind not in SUPPORT_KINDS or j.record is None:
+        return f"{j.path} is a {j.kind}, not a verdict (only a stamped verdict supplies new support)"
+    kind = str_field(j.record, "kind")
+    entry = table.get(kind)
+    if not isinstance(entry, dict):
+        return f"{j.path}: verdict kind {kind!r} is not in the merge-base pass table"
+    if row_id not in (entry.get("rows") or []):
+        return f"{j.path}: {kind} may not support {row_id}"
+    if j.record.get("verdict") not in ((entry.get("targets") or {}).get(token) or []):
+        return f"{j.path}: verdict {j.record.get('verdict')!r} does not support {token}"
+    if not require_met(j.record, entry.get("require") or {}):
+        return f"{j.path}: {kind}'s required fields {entry.get('require')} do not hold"
+    if j.prereg != "PASS" or j.data_prereg != "PASS":
+        return (
+            f"{j.path}: prereg status {j.prereg} / its data's {j.data_prereg} "
+            "(new support and the data it judges must both be pre-registered and PASS)"
+        )
+    if j.allowed_dirty:
+        return f"{j.path}: allowed-dirty data is never the sole new support"
+    if j.time is None or j.time <= after:
+        return f"{j.path}: its runs (ts {j.time}) are not after the previous status was set ({after})"
+    return None
+
+
+EXCEPTION_FIELDS = ("id", "kind", "row", "to", "to_date", "path", "sha256", "owner", "reason", "date")
+
+
+def pass_table_problems(table, where: str) -> list[str]:
+    """The pass table's shape: ``kind -> {rows: [ID], targets: {TOKEN: [verdict]}, require?: {dotted: value}}``."""
+    if not isinstance(table, dict):
+        return [f"{PASS_TABLE} at {where} is not an object"]
+    out = []
+    for kind, entry in table.items():
+        if kind.startswith("_"):
+            continue  # `_comment`
+        rows = entry.get("rows") if isinstance(entry, dict) else None
+        targets = entry.get("targets") if isinstance(entry, dict) else None
+        require = entry.get("require", {}) if isinstance(entry, dict) else None
+        if (
+            not isinstance(rows, list)
+            or not all(isinstance(r, str) and L.ID_RE.match(r) for r in rows)
+            or not isinstance(targets, dict)
+            or not all(
+                t in L.RANK and isinstance(v, list) and all(isinstance(x, str) for x in v) for t, v in targets.items()
+            )
+            or not isinstance(require, dict)
+            or set(entry) - {"rows", "targets", "require", "note"}
+        ):
+            out.append(f"{PASS_TABLE} at {where}: entry {kind!r} is malformed (rows / targets / require)")
+    return out
+
+
+def load_json(repo: Repo, ref: str, path: str, default):
+    raw = repo.blob(ref, path)
+    if raw is None:
+        return default
+    try:
+        return json.loads(raw)
+    except ValueError as exc:
+        raise GateError(f"{path} at {ref[:12]} is not JSON") from exc
+
+
+def exceptions_problems(base_list, head_list) -> list[str]:
+    out = []
+    if not isinstance(head_list, list) or not isinstance(base_list, list):
+        return [f"{EXCEPTIONS} must be a JSON list"]
+    head_set = [json.dumps(e, sort_keys=True) for e in head_list]
+    for e in base_list:
+        if json.dumps(e, sort_keys=True) not in head_set:
+            label = e.get("id") if isinstance(e, dict) else e
+            out.append(f"{EXCEPTIONS}: an entry on main was edited or removed (append-only): {label!r}"[:200])
+    for e in head_list:
+        if not isinstance(e, dict) or e.get("kind") not in ("ledger", "prereg"):
+            out.append(f"{EXCEPTIONS}: an entry is not a ledger/prereg exception: {e!r}"[:200])
+        elif e["kind"] == "ledger" and (
+            any(not e.get(f) for f in EXCEPTION_FIELDS) or "from" not in e  # `from: null` = a new row
+        ):
+            out.append(f"{EXCEPTIONS}: ledger exception {e.get('id')!r} lacks a required field")
+    ids = [e.get("id") for e in head_list if isinstance(e, dict)]
+    if not all(isinstance(i, str) and i for i in ids) or len(set(ids)) != len(ids):
+        out.append(f"{EXCEPTIONS}: every entry needs a unique string id")
+    return out
+
+
+def legacy_problems(repo: Repo, head_snap, base_snap) -> list[str]:
+    out = []
+    if not isinstance(head_snap, dict):
+        return [f"{LEGACY_SNAPSHOT} must be a JSON object"]
+    if base_snap is not None and isinstance(base_snap, dict):
+        for key in sorted(set(head_snap) - set(base_snap)):
+            out.append(f"{LEGACY_SNAPSHOT}: {key} was added (the snapshot only shrinks)")
+    tree = repo.tree("HEAD")
+    for path, digest in sorted(head_snap.items()):
+        if path not in tree:
+            out.append(f"{LEGACY_SNAPSHOT}: {path} is gone (remove its key)")
+            continue
+        data = repo.blob("HEAD", path) or b""
+        if sha256(data) != digest:
+            out.append(f"{LEGACY_SNAPSHOT}: {path} changed since it was snapshotted (a changed record is new data)")
+            continue
+        first = repo.first_commit_time(path, "HEAD")
+        if first is None or first >= M1A_CUTOFF:
+            out.append(f"{LEGACY_SNAPSHOT}: {path} was first committed after M1a")
+        try:
+            body = decompressed(path, data)
+        except MALFORMED:
+            body = data
+        if b'"record_kind"' in body:
+            out.append(f"{LEGACY_SNAPSHOT}: {path} carries a record_kind (it is not legacy)")
+    return out
+
+
+def generate_legacy(repo: Repo) -> dict[str, str]:
+    snap = {}
+    for path, (mode, _oid) in sorted(repo.tree("HEAD").items()):
+        if not path.startswith(DATA_ROOT + "/") or mode in ("120000", "160000"):
+            continue  # a symlink or a submodule is never a record
+        first = repo.first_commit_time(path, "HEAD")
+        if first is None or first >= M1A_CUTOFF:
+            continue
+        data = repo.blob("HEAD", path) or b""
+        try:
+            body = decompressed(path, data)
+        except MALFORMED:
+            body = data
+        if b'"record_kind"' not in body:
+            snap[path] = sha256(data)
+    return snap
+
+
+def status_set_time(repo: Repo, base: str, row_id: str, token: str, date: str) -> float:
+    """The commit time at which the base's status line of ``row_id`` was first set (first-parent history)."""
+    commits = repo.git("log", "--first-parent", "--format=%H %ct", base, "--", L.LEDGER_PATH).splitlines()
+    when = None
+    for line in commits:
+        sha, ct = line.split()
+        rows, _ = L.parse((repo.blob(sha, L.LEDGER_PATH) or b"").decode("utf-8", errors="replace"))
+        row = next((r for r in rows if r.id == row_id), None)
+        if row is None or (row.token, row.date) != (token, date):
+            break
+        when = float(ct)
+    return when if when is not None else float(repo.commit_time(base))
+
+
+# ── the gate ─────────────────────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class RowResult:
+    id: str
+    triggers: list[str]
+    failures: list[str]
+    notes: list[str]
+
+
+def triggers_for(row: L.Row, old: L.Row | None, changed: set[str], watched: list[str]) -> list[str]:
+    out = []
+    if old is None:
+        return ["new row"]
+    if L.is_raise(old.token, row.token):
+        out.append(f"raise {old.token} -> {row.token}")
+    elif old.token != row.token and {old.token, row.token} <= L.POSITIVE:
+        out.append(f"move {old.token} -> {row.token}")
+    if old.date != row.date:
+        out.append(f"date {old.date} -> {row.date}")
+    if {e.path for e in old.evidence} != {e.path for e in row.evidence}:
+        out.append("Evidence changed")
+    if old.claim != row.claim:
+        out.append("claim changed")
+    if old.qualifier and (row.qualifier is None or old.qualifier not in row.qualifier):
+        out.append("qualifier removed or rewritten")
+    for prefix in watched:
+        if any(c == prefix or c.startswith(prefix.rstrip("/") + "/") for c in changed):
+            out.append(f"{prefix} changed")
+    return out
+
+
+def active_exceptions(base_exc, row: L.Row, old: L.Row | None) -> list[dict]:
+    """The ledger exceptions that act on ``row`` now. Only clauses already on main act (an exception added by this
+    change is reviewed first, used after), and only for the row's CURRENT transition: HEAD's token and date are the
+    clause's ``to`` / ``to_date``, and this change performs its ``from -> to`` or the base already sits there. A clause
+    for a transition that is no longer current is inert history."""
+    out = []
+    for e in base_exc if isinstance(base_exc, list) else []:
+        if not (isinstance(e, dict) and e.get("kind") == "ledger" and e.get("row") == row.id):
+            continue
+        if not (isinstance(e.get("id"), str) and isinstance(e.get("path"), str)):
+            continue  # malformed (reported by exceptions_problems): never acts
+        if (e.get("to"), e.get("to_date")) != (row.token, row.date):
+            continue
+        performs = e.get("from") == (old.token if old else None)
+        settled = old is not None and (old.token, old.date) == (row.token, row.date)
+        if performs or settled:
+            out.append(e)
+    return out
+
+
+def pinned(repo: Repo, clause: dict) -> bool:
+    """The clause's ``sha256`` is the bytes of the FILE it names at HEAD (absent, or not a file: never pinned)."""
+    path = clause.get("path")
+    if not isinstance(path, str) or repo.kind("HEAD", path) != "blob":
+        return False
+    return clause.get("sha256") == sha256(repo.blob("HEAD", path) or b"")
+
+
+def judged_class(row: L.Row) -> bool:
+    """Positive rows, PARTIAL rows (on every change: owner decision 2026-10-01) and RE-VALIDATED-BY-TESTS (noted:
+    named, not checked)."""
+    return row.token in L.POSITIVE or row.token in ("PARTIAL", L.BY_TESTS)
+
+
+def gate(
+    repo_root: Path = REPO_ROOT, *, base: str | None = None, prereg: dict[str, str] | None = None
+) -> tuple[list[str], list[str], list[RowResult]]:
+    """(failures, notes, per-row results)."""
+    repo = Repo(repo_root)
+    base = base or _lint_git.base_ref(repo.root)
+    failures: list[str] = []
+    notes: list[str] = []
+    dirty = repo.dirty([L.LEDGER_PATH, DATA_ROOT, PASS_TABLE, LEGACY_SNAPSHOT, EXCEPTIONS])
+    if dirty:
+        failures.append(f"uncommitted changes in gated paths (uncommitted evidence is not evidence): {dirty[:5]}")
+    head_rows, problems = L.parse((repo.blob("HEAD", L.LEDGER_PATH) or b"").decode("utf-8"))
+    base_rows = {r.id: r for r in L.parse((repo.blob(base, L.LEDGER_PATH) or b"").decode("utf-8"))[0]}
+    if problems:
+        failures += [f"ledger: {p}" for p in problems]
+    table = load_json(repo, base, PASS_TABLE, {})
+    failures += pass_table_problems(table, "the merge-base")
+    if not isinstance(table, dict):
+        table = {}
+    failures += pass_table_problems(load_json(repo, "HEAD", PASS_TABLE, {}), "HEAD")
+    head_snap = load_json(repo, "HEAD", LEGACY_SNAPSHOT, None)
+    base_snap = load_json(repo, base, LEGACY_SNAPSHOT, None)
+    if head_snap is None:
+        failures.append(f"{LEGACY_SNAPSHOT} is missing")
+        head_snap = {}
+    failures += legacy_problems(repo, head_snap, base_snap)
+    base_exc = load_json(repo, base, EXCEPTIONS, [])
+    head_exc = load_json(repo, "HEAD", EXCEPTIONS, [])
+    failures += exceptions_problems(base_exc, head_exc)
+    if prereg is None:
+        import lint_prereg_precedes_data as P  # noqa: PLC0415
+
+        try:
+            envelope = P.classify_all(repo.root, base)
+        except P.LintError as exc:
+            raise GateError(f"the prereg classification could not run: {exc}") from exc
+        failures += [f"prereg lint: {f}" for f in envelope.get("failures") or []]
+        prereg = {e["entry"]: e["status"] for e in envelope.get("entries") or []}
+    ctx = Ctx(repo=repo, base=base, ref="HEAD", legacy=head_snap, prereg=prereg)
+    changed = repo.changed(base)
+    results = []
+    for row in head_rows:
+        old = base_rows.get(row.id)
+        if row.token is None:
+            continue
+        if old and old.token in LEAVING_UNCHECKED and row.token != old.token and not judged_class(row):
+            notes.append(f"{row.id}: leaves {old.token} for {row.token} (not judged: review decides)")
+        if row.token == L.BY_TESTS and (old is None or old.token != L.BY_TESTS):
+            entered = f"from {old.token}" if old else "as a new row"
+            notes.append(f"{row.id}: enters RE-VALIDATED-BY-TESTS {entered} (not judged: review decides)")
+        if not judged_class(row):
+            continue
+        judgements = [judge_entry(e.path, ctx) for e in row.evidence]
+        watched = [e.path for e in row.evidence] + [p for j in judgements for p in watched_paths(j)]
+        trig = triggers_for(row, old, changed, watched)
+        if not trig:
+            continue
+        res = RowResult(id=row.id, triggers=trig, failures=[], notes=[])
+        results.append(res)
+        if row.token == L.BY_TESTS:
+            res.notes.append("RE-VALIDATED-BY-TESTS: named, not checked")
+            notes += [f"{row.id}: {n}" for n in res.notes]
+            continue
+        # A clause acts only when pinned to the cited FILE's bytes (a session directory is never pinned).
+        active = [e for e in active_exceptions(base_exc, row, old) if pinned(repo, e)]
+        excepted: set[str] = set()
+        for j in judgements:
+            exc = next((e for e in active if e.get("path") == j.path), None)
+            if j.status == NOT_ESTABLISHED and exc is not None:
+                j.status = EXCEPTED
+                excepted.add(exc.get("id"))
+            if j.status == NOT_ESTABLISHED:
+                res.failures += [f"{j.path}: {r}" for r in (j.reasons or ["not established"])]
+            elif j.status != ESTABLISHED:
+                res.notes.append(f"{j.path}: {j.status}")
+        # A judged row that changes rests on something (owner decision 2026-10-01): an Evidence-less PARTIAL row
+        # cannot be rewritten with nothing to judge.
+        if not any(j.status in (ESTABLISHED, LEGACY, EXCEPTED) for j in judgements):
+            res.failures.append(
+                "cites no ESTABLISHED, LEGACY or EXCEPTED record (a judged row that changes rests on one)"
+            )
+        needs_support = old is None or L.needs_new_date(old.token, row.token) or old.date != row.date
+        if needs_support:
+            base_paths = {e.path for e in old.evidence} if old else set()
+            after = status_set_time(repo, base, row.id, old.token, old.date) if old else float(repo.commit_time(base))
+            new = [j for j in judgements if j.path not in base_paths]
+            problems_new = [support_problem(j, row.id, row.token, table, after) for j in new]
+            cited = {e.path for e in row.evidence}
+            supporting = [e for e in active if e.get("from") == (old.token if old else None) and e.get("path") in cited]
+            excepted |= {e.get("id") for e in supporting}
+            if not any(p is None for p in problems_new) and not supporting:
+                res.failures.append(
+                    "no NEW support: " + ("; ".join(p for p in problems_new if p) or "no newly cited record")
+                )
+        cited_paths = {j.path for j in judgements}
+        for e in active:
+            if e.get("id") not in excepted and e.get("path") in cited_paths:
+                res.notes.append(
+                    f"{e.get('path')}: exception {e.get('id')!r} is stale (the record is judged without it)"
+                )
+        for e in active_exceptions(base_exc, row, old):
+            if e.get("path") in cited_paths and not pinned(repo, e):
+                res.notes.append(f"{e.get('path')}: exception {e.get('id')!r} does not pin the cited bytes (inert)")
+        if old and {e.path for e in old.evidence} - {e.path for e in row.evidence}:
+            base_ctx = Ctx(
+                repo=repo, base=base, ref=base, legacy=load_json(repo, base, LEGACY_SNAPSHOT, {}) or {}, prereg=prereg
+            )
+            at_base = [judge_entry(e.path, base_ctx) for e in old.evidence]
+            # A base record the judges could not judge (a gate defect) keeps the ratchet ON (fail closed), and says why.
+            could_not = [b for b in at_base if unjudged(b)]
+            res.notes += [f"{b.path} at the merge-base could not be judged: {b.reasons[-1]}" for b in could_not]
+            if not any(j.status == ESTABLISHED for j in judgements):
+                if any(b.status == ESTABLISHED for b in at_base):
+                    res.failures.append("Evidence removed: the row had an ESTABLISHED record on main and keeps none")
+                elif could_not:
+                    res.failures.append(
+                        "Evidence removed while a base record could not be judged: keep or add an ESTABLISHED record"
+                    )
+        failures += [f"{row.id}: {f}" for f in res.failures]
+        notes += [f"{row.id}: {n}" for n in res.notes]
+    return failures, notes, results
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--base", help="diff against this commit (default: the merge-base with origin/main)")
+    ap.add_argument("--write-legacy", action="store_true", help="write the legacy snapshot from the rules")
+    args = ap.parse_args(argv)
+    if args.write_legacy:
+        snap = generate_legacy(Repo(REPO_ROOT))
+        (REPO_ROOT / LEGACY_SNAPSHOT).write_text(json.dumps(snap, indent=1, sort_keys=True) + "\n")
+        print(f"wrote {LEGACY_SNAPSHOT}: {len(snap)} legacy records")
+        return 0
+    try:
+        failures, notes, results = gate(REPO_ROOT, base=args.base)
+    except _lint_git.GitUnavailable as exc:
+        if _lint_git.must_not_skip(f"evidence gate: {exc}"):
+            return 2
+        print(f"SKIP evidence gate (no merge-base: {exc})", file=sys.stderr)
+        return 0
+    except GateError as exc:
+        print(f"evidence gate FAILED: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps({"failures": failures, "notes": notes,
+                          "rows": [r.__dict__ for r in results]}, indent=2))  # fmt: skip
+    else:
+        for n in notes:
+            print(f"NOTE {n}")
+        if failures:
+            print(f"evidence gate FAILED ({len(failures)}):", file=sys.stderr)
+            for f in failures:
+                print(f"  {f}", file=sys.stderr)
+        else:
+            print(f"evidence gate: clean ({len(results)} triggered row(s) judged)")
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

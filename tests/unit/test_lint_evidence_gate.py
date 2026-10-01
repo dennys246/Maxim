@@ -1,0 +1,1136 @@
+"""The ledger evidence gate, M1b PR 5b-1 (scripts/lint_evidence_gate.py; spec: docs/plans/m1b_ledger_evidence_gate.md,
+"PR 5b build spec").
+
+Each test builds a throwaway git repo: a BASE commit (the ledger, the pass table, the legacy snapshot, the O19 judge) and
+a HEAD commit that changes a row, then runs ``gate()`` on it. The O19 records are a real attempt written by the
+harness's mock path and judged by the real ``o19_verdict.judge``, then re-stamped as a non-mock, apparatus-checked
+verdict, so the gate's re-judge exercises the shipped code.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "scripts"))
+
+import _evidence_records as R  # noqa: E402
+import lint_evidence_gate as G  # noqa: E402
+
+LEDGER = "docs/plans/behavioral_graduation_candidates.md"
+T1 = "| ID | Claim | Bio-mechanism | Status |\n|---|---|---|---|\n"
+T3 = "| ID | CLAUDE.md ref | Mechanism | Bio-claim | Graduation predicate | Status |\n|---|---|---|---|---|---|\n"
+BASE_DATE = "2026-10-01T00:00:00+00:00"
+HEAD_DATE = "2026-10-02T00:00:00+00:00"
+DATA = "docs/experiments/data"
+
+
+def _git(root: Path, *args: str, date: str = BASE_DATE) -> str:
+    env = {**os.environ, "GIT_COMMITTER_DATE": date, "GIT_AUTHOR_DATE": date}
+    return subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgSign=false", *args],
+        cwd=root, env=env, capture_output=True, text=True, check=True,
+    ).stdout.strip()  # fmt: skip
+
+
+def ledger(t1_rows: list[str], t3_rows: list[str]) -> str:
+    return "# Ledger\n\n" + T1 + "\n".join(t1_rows) + "\n\n## Tier 3\n\n" + T3 + "\n".join(t3_rows) + "\n"
+
+
+def t1(row_id: str, status: str) -> str:
+    return f"| {row_id} | claim {row_id} | mech | {status} Regression guard: x. |"
+
+
+def t3(row_id: str, status: str) -> str:
+    return f"| {row_id} | ref | mech | bio {row_id} | pred | {status} Regression guard: x. |"
+
+
+class Rig:
+    """A temp repo: ``base()`` commits the BASE, ``head()`` the change; ``run()`` gates HEAD against BASE."""
+
+    def __init__(self, root: Path):
+        self.root = root
+        root.mkdir(parents=True)
+        _git(root, "init", "-q", "-b", "main")
+        (root / "scripts").mkdir()
+        shutil.copy(REPO / "scripts" / "o19_verdict.py", root / "scripts" / "o19_verdict.py")
+        self.write(G.EXCEPTIONS, "[]\n")
+        self.write(G.LEGACY_SNAPSHOT, "{}\n")
+        self.write(G.PASS_TABLE, (REPO / G.PASS_TABLE).read_text())
+        self.write(f"{DATA}/legacy_old.jsonl", '{"x": 1}\n')
+        self.prereg = {f"{DATA}/rerun_exp09_o19": "PASS", f"{DATA}/rerun_exp10_o19": "PASS"}
+
+    def write(self, rel: str, text: str | bytes) -> None:
+        path = self.root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(text if isinstance(text, bytes) else text.encode())
+
+    def commit(self, msg: str, date: str) -> str:
+        _git(self.root, "add", "-A")
+        _git(self.root, "commit", "-q", "-m", msg, date=date)
+        return _git(self.root, "rev-parse", "HEAD")
+
+    def base(self, text: str) -> str:
+        self.write(LEDGER, text)
+        self.base_sha = self.commit("base", BASE_DATE)
+        return self.base_sha
+
+    def head(self, text: str) -> str:
+        self.write(LEDGER, text)
+        return self.commit("head", HEAD_DATE)
+
+    def run(self) -> tuple[list[str], list[str]]:
+        failures, notes, _ = G.gate(self.root, base=self.base_sha, prereg=self.prereg)
+        return failures, notes
+
+
+# ── an O19 attempt as the harness writes it, stamped as the verdict writer would ─────────────────────────
+
+
+def o19_attempt(rig: Rig, exp: str, executed: str, *, monkeypatch) -> dict:
+    """Write a complete O19 attempt for ``exp`` under the rig's data dir and return its verdict record."""
+    import o19_rerun as h
+    import o19_verdict as v
+    from _provenance import stamp_verdict
+
+    data_dir = rig.root / v.data_dir(exp)
+    rows_path = data_dir / "rows.jsonl"
+    monkeypatch.setattr(h._provenance, "_RUN_ID", {})
+    monkeypatch.setattr(h._provenance, "evidence_out_path", lambda *a, **k: rows_path)
+    assert h.main(["run", "--exp", exp, "--mock"]) == 0
+    rows = [json.loads(ln) for ln in rows_path.read_text().splitlines()]
+    for r in rows:  # as a real attempt on the rig: not mock, run on a commit on main, its sims stamped likewise
+        r["mock"] = False
+        r["provenance"].update(executed_git_hash=executed, working_tree_dirty_src_scripts=False)
+        for sim in r.get("sims") or []:
+            sim.update(executed_git_hash=executed, working_tree_dirty_src_scripts=False, ts=sim.get("ts") or r["ts"])
+    rows_path.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in rows))
+    attempts = v.attempts_from_rows(rows)
+    rid = next(iter(attempts))
+    out = v.judge(exp, [{"run_id": rid, "k": 1, "rows": attempts[rid]}], data_dir)
+    source = (rig.root / R.O19_JUDGE).read_bytes()
+    blob = _git(rig.root, "hash-object", R.O19_JUDGE)
+    out.update(
+        apparatus_checked=True,
+        apparatus={"markers": [{"run_id": rid, "k": 1}]},
+        bound_files={R.O19_JUDGE: blob},
+        verdict_source_sha256=hashlib.sha256(source).hexdigest(),
+        provenance={
+            "executed_git_hash": executed,
+            "code_tree_sha256": "t" * 64,
+            "working_tree_dirty_src_scripts": False,
+        },
+    )
+    data_bytes = rows_path.read_bytes()
+    stamp_verdict(out, repo_root=rig.root, kind=v.PROTOCOL[exp]["kind"], data=rows_path, data_bytes=data_bytes,
+                  scope={"all_rows": True}, mock=False)  # fmt: skip
+    (data_dir / "verdict.json").write_text(json.dumps(out, indent=1))
+    return out
+
+
+@pytest.fixture
+def rig(tmp_path) -> Rig:
+    return Rig(tmp_path / "repo")
+
+
+def _t39_move(rig: Rig, monkeypatch, *, verdict_edit=None, rows_edit=None, ledger_token="PARTIAL", row="T3-9"):
+    """BASE: T3-9 STALE. HEAD: an O19 Exp 09 attempt + verdict, and ``row`` moved to ``ledger_token`` citing it."""
+    rig.base(ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")]))
+    record = o19_attempt(rig, "09", rig.base_sha, monkeypatch=monkeypatch)
+    if rows_edit:
+        rows_edit(rig)
+    if verdict_edit:
+        verdict_edit(record)
+        (rig.root / DATA / "rerun_exp09_o19" / "verdict.json").write_text(json.dumps(record, indent=1))
+    cite = f"**Evidence:** `{DATA}/rerun_exp09_o19/verdict.json`."
+    status = f"**Status: {ledger_token} 2026-10-02**. {cite}"
+    t1_row = t1("T1-1", status if row == "T1-1" else "**Status: STALE 2026-09-30**.")
+    t3_row = t3("T3-9", status if row == "T3-9" else "**Status: STALE 2026-09-30**.")
+    rig.head(ledger([t1_row], [t3_row]))
+    return record
+
+
+# ── the O19 path: T3-9 STALE -> PARTIAL on an Exp 09 PARTIAL verdict ─────────────────────────────────────
+
+
+def test_an_o19_partial_verdict_moves_t3_9_to_partial(rig, monkeypatch) -> None:
+    record = _t39_move(rig, monkeypatch)
+    assert record["verdict"] == "PARTIAL"  # Exp 09's pre-registered ceiling (H3 not measured)
+    failures, _ = rig.run()
+    assert failures == []
+
+
+def test_a_partial_verdict_does_not_support_maintained(rig, monkeypatch) -> None:
+    _t39_move(rig, monkeypatch, ledger_token="MAINTAINED")
+    failures, _ = rig.run()
+    assert any("does not support MAINTAINED" in f for f in failures), failures
+
+
+def test_a_verdict_supports_only_its_own_rows(rig, monkeypatch) -> None:
+    _t39_move(rig, monkeypatch, row="T1-1")
+    failures, _ = rig.run()
+    assert any("may not support T1-1" in f for f in failures), failures
+
+
+def test_a_pass_table_added_in_the_same_pr_supports_nothing(rig, monkeypatch) -> None:
+    rig.write(G.PASS_TABLE, "{}\n")  # empty on main
+    _t39_move(rig, monkeypatch)
+    rig.write(G.PASS_TABLE, (REPO / G.PASS_TABLE).read_text())
+    rig.commit("table in the same PR", HEAD_DATE)
+    failures, _ = rig.run()
+    assert any("not in the merge-base pass table" in f for f in failures), failures
+
+
+def test_the_apparatus_must_have_been_checked(rig, monkeypatch) -> None:
+    _t39_move(rig, monkeypatch, verdict_edit=lambda r: r.update(apparatus_checked=False))
+    failures, _ = rig.run()
+    # The record itself is NOT-ESTABLISHED (the pass table's `require` would refuse it too, as a second layer).
+    assert any("apparatus (markers, ruleset, landing) was not checked" in f for f in failures), failures
+
+
+def test_a_tampered_session_file_is_refused(rig, monkeypatch) -> None:
+    def tamper(rig):
+        sessions = [p for p in (rig.root / DATA / "rerun_exp09_o19").iterdir() if p.is_dir()]
+        report = sessions[0] / "report.json"
+        report.write_text(report.read_text() + " ")
+
+    _t39_move(rig, monkeypatch, rows_edit=tamper)
+    failures, _ = rig.run()
+    assert any("differs from its row's SHA-256" in f for f in failures), failures
+
+
+def test_a_session_file_present_plain_and_gz_is_refused(rig, monkeypatch) -> None:
+    def both(rig):
+        sessions = [p for p in (rig.root / DATA / "rerun_exp09_o19").iterdir() if p.is_dir()]
+        gz = sessions[0] / "run_log.jsonl.gz"
+        import gzip
+
+        (sessions[0] / "run_log.jsonl").write_bytes(gzip.decompress(gz.read_bytes()))
+
+    _t39_move(rig, monkeypatch, rows_edit=both)
+    failures, _ = rig.run()
+    assert any("present both plain and .gz" in f for f in failures), failures
+
+
+def test_the_judge_must_be_the_one_that_wrote_the_verdict(rig, monkeypatch) -> None:
+    _t39_move(rig, monkeypatch, verdict_edit=lambda r: r.update(verdict_source_sha256="0" * 64))
+    failures, _ = rig.run()
+    assert any("merge-base judge is not the one" in f for f in failures), failures
+
+
+def test_a_verdict_the_judge_does_not_reproduce_is_refused(rig, monkeypatch) -> None:
+    _t39_move(rig, monkeypatch, verdict_edit=lambda r: r.update(verdict="PASS"))
+    failures, _ = rig.run()
+    assert any("gives a different result" in f for f in failures), failures
+
+
+def test_rows_without_a_marker_are_refused(rig, monkeypatch) -> None:
+    _t39_move(rig, monkeypatch, verdict_edit=lambda r: r.update(apparatus={"markers": [{"run_id": "f" * 32, "k": 1}]}))
+    failures, _ = rig.run()
+    assert any("no start marker" in f for f in failures), failures
+
+
+def test_mock_rows_sink_the_verdict(rig, monkeypatch) -> None:
+    def mock(rig):
+        p = rig.root / DATA / "rerun_exp09_o19" / "rows.jsonl"
+        rows = [json.loads(ln) for ln in p.read_text().splitlines()]
+        rows[0]["mock"] = True
+        p.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in rows))
+
+    record_holder = {}
+
+    def restamp(r):  # keep data_sha256 honest so the mock rule is what refuses
+        p = rig.root / DATA / "rerun_exp09_o19" / "rows.jsonl"
+        r["data_sha256"] = hashlib.sha256(p.read_bytes()).hexdigest()
+        record_holder["r"] = r
+
+    _t39_move(rig, monkeypatch, rows_edit=mock, verdict_edit=restamp)
+    failures, _ = rig.run()
+    assert any("verdict over mock" in f for f in failures), failures
+
+
+def test_new_support_must_be_pre_registered(rig, monkeypatch) -> None:
+    rig.prereg = {f"{DATA}/rerun_exp09_o19": "OUT_OF_SCOPE"}
+    _t39_move(rig, monkeypatch)
+    failures, _ = rig.run()
+    assert any("prereg status OUT_OF_SCOPE" in f for f in failures), failures
+
+
+# ── legacy evidence, exceptions, the snapshot ────────────────────────────────────────────────────────────
+
+
+def _legacy_snapshot(rig: Rig) -> None:
+    data = (rig.root / DATA / "legacy_old.jsonl").read_bytes()
+    rig.write(G.LEGACY_SNAPSHOT, json.dumps({f"{DATA}/legacy_old.jsonl": hashlib.sha256(data).hexdigest()}))
+
+
+def test_a_date_advance_on_legacy_evidence_needs_new_support(rig, monkeypatch) -> None:
+    monkeypatch.setattr(G, "M1A_CUTOFF", 4_000_000_000)  # the rig's files count as pre-M1a
+    _legacy_snapshot(rig)
+    cite = f"**Evidence:** `{DATA}/legacy_old.jsonl`."
+    rig.base(
+        ledger([t1("T1-13", f"**Status: EARNED 2026-09-16**. {cite}")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    )
+    rig.head(
+        ledger([t1("T1-13", f"**Status: EARNED 2026-10-02**. {cite}")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    )
+    failures, notes = rig.run()
+    assert any("no NEW support" in f for f in failures), failures
+    assert any("LEGACY" in n for n in notes)
+
+
+def test_an_untouched_positive_row_is_not_judged(rig, monkeypatch) -> None:
+    monkeypatch.setattr(G, "M1A_CUTOFF", 4_000_000_000)
+    _legacy_snapshot(rig)
+    cite = f"**Evidence:** `{DATA}/legacy_old.jsonl`."
+    text = ledger(
+        [t1("T1-13", f"**Status: EARNED 2026-09-16**. {cite}")], [t3("T3-9", "**Status: STALE 2026-09-30**.")]
+    )
+    rig.base(text)
+    rig.head(text.replace("# Ledger", "# The ledger"))
+    assert rig.run()[0] == []
+
+
+def test_an_active_exception_may_supply_the_support(rig, monkeypatch) -> None:
+    monkeypatch.setattr(G, "M1A_CUTOFF", 4_000_000_000)
+    _legacy_snapshot(rig)
+    cite = f"**Evidence:** `{DATA}/legacy_old.jsonl`."
+    digest = hashlib.sha256((rig.root / DATA / "legacy_old.jsonl").read_bytes()).hexdigest()
+    rig.write(G.EXCEPTIONS, json.dumps([{
+        "id": "x1", "kind": "ledger", "row": "T1-13", "from": "EARNED", "to": "EARNED", "to_date": "2026-10-02",
+        "path": f"{DATA}/legacy_old.jsonl", "sha256": digest, "owner": "owner", "reason": "r", "date": "2026-10-01",
+    }]))  # fmt: skip
+    rig.base(
+        ledger([t1("T1-13", f"**Status: EARNED 2026-09-16**. {cite}")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    )
+    rig.head(
+        ledger([t1("T1-13", f"**Status: EARNED 2026-10-02**. {cite}")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    )
+    assert rig.run()[0] == []
+
+
+def test_the_exceptions_file_is_append_only(rig) -> None:
+    entry = {"id": "x1", "kind": "prereg", "path": "p", "sha256": "s"}
+    rig.write(G.EXCEPTIONS, json.dumps([entry]))
+    text = ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    rig.base(text)
+    rig.write(G.EXCEPTIONS, "[]")
+    rig.head(text)
+    assert any("append-only" in f for f in rig.run()[0])
+
+
+def test_the_legacy_snapshot_only_shrinks_and_must_stay_true(rig, monkeypatch) -> None:
+    monkeypatch.setattr(G, "M1A_CUTOFF", 4_000_000_000)
+    text = ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    rig.base(text)
+    _legacy_snapshot(rig)  # a key added after main
+    rig.head(text)
+    assert any("only shrinks" in f for f in rig.run()[0])
+
+
+def test_a_changed_legacy_record_is_stale(rig, monkeypatch) -> None:
+    monkeypatch.setattr(G, "M1A_CUTOFF", 4_000_000_000)
+    _legacy_snapshot(rig)
+    text = ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    rig.base(text)
+    rig.write(f"{DATA}/legacy_old.jsonl", '{"x": 2}\n')
+    rig.head(text)
+    assert any("changed since it was snapshotted" in f for f in rig.run()[0])
+
+
+# ── units ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+def test_require_is_dotted_strict_and_missing_is_unmet() -> None:
+    assert G.require_met({"noop_kit": {"kit_pass": True}}, {"noop_kit.kit_pass": True})
+    assert not G.require_met({"noop_kit": {"kit_pass": 1}}, {"noop_kit.kit_pass": True})  # 1 == True, but not the type
+    assert not G.require_met({"noop_kit": None}, {"noop_kit.kit_pass": True})
+    assert not G.require_met({}, {"apparatus_checked": True})
+
+
+def test_finish_reasons_never_admit_a_failure() -> None:
+    from maxim.simulation.sim_types import SIMULATION_FAILURE_FINISH_REASONS
+
+    assert not (R.FINISH_OK & SIMULATION_FAILURE_FINISH_REASONS)
+    assert all(not R.finish_ok(r) for r in SIMULATION_FAILURE_FINISH_REASONS)
+
+
+def test_the_real_pass_table_names_the_o19_rows() -> None:
+    table = json.loads((REPO / G.PASS_TABLE).read_text())
+    assert table["exp10_verdict"]["rows"] == ["T1-1"] and table["exp09_verdict"]["rows"] == ["T3-9"]
+    assert "MAINTAINED" not in table["exp09_verdict"]["targets"] or table["exp09_verdict"]["targets"]["MAINTAINED"] == [
+        "PASS"
+    ]
+    assert table["exp09_verdict"]["targets"]["PARTIAL"] == ["PARTIAL"]
+    assert not any(k.startswith(("exp53", "exp54", "exp60", "exp61", "exp62")) for k in table)  # 5b-2
+
+
+def test_unknown_digests_never_match() -> None:
+    assert R.unknown("unknown") and R.unknown("unknown: OSError") and R.unknown(None) and R.unknown("")
+    assert not R.unknown("a" * 64)
+
+
+# ── more rules: time, code on main, sims, the removal ratchet, triggers, record kinds ────────────────────
+
+
+def _edit_rows(rig: Rig, exp: str, fn) -> None:
+    import o19_verdict as v
+
+    p = rig.root / v.data_dir(exp) / "rows.jsonl"
+    rows = [json.loads(ln) for ln in p.read_text().splitlines()]
+    for r in rows:
+        fn(r)
+    p.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in rows))
+
+
+def _restamp(rig: Rig, exp: str):
+    import o19_verdict as v
+
+    def edit(record):
+        record["data_sha256"] = hashlib.sha256((rig.root / v.data_dir(exp) / "rows.jsonl").read_bytes()).hexdigest()
+
+    return edit
+
+
+def test_runs_older_than_the_previous_status_are_not_new_support(rig, monkeypatch) -> None:
+    # Inside the clock-skew window of the commit it ran on, but not after the base set the row's STALE status.
+    ts = rig_epoch(BASE_DATE) - 100
+    _t39_move(rig, monkeypatch, rows_edit=lambda rg: _edit_rows(rg, "09", lambda r: r.update(ts=ts)),
+              verdict_edit=_restamp(rig, "09"))  # fmt: skip
+    failures, _ = rig.run()
+    assert any("not after the previous status was set" in f for f in failures), failures
+
+
+def test_code_not_on_main_is_refused(rig, monkeypatch) -> None:
+    _t39_move(rig, monkeypatch, rows_edit=lambda rg: _edit_rows(rg, "09", lambda r: r["provenance"].update(
+        executed_git_hash="f" * 40)), verdict_edit=_restamp(rig, "09"))  # fmt: skip
+    failures, _ = rig.run()
+    assert any("is not on main" in f for f in failures), failures
+
+
+def test_an_o19_sim_whose_code_changed_is_refused(rig, monkeypatch) -> None:
+    def changed(r):
+        for sim in r.get("sims") or []:
+            sim["code_changed_during_run"] = True
+
+    _t39_move(rig, monkeypatch, rows_edit=lambda rg: _edit_rows(rg, "09", changed), verdict_edit=_restamp(rig, "09"))
+    failures, _ = rig.run()
+    assert any("code_changed_during_run" in f for f in failures), failures
+
+
+def test_removing_established_evidence_keeps_one(rig, monkeypatch) -> None:
+    """BASE: T1-1 MAINTAINED on an Exp 10 O19 verdict (ESTABLISHED). HEAD: the verdict dropped for a legacy file."""
+    monkeypatch.setattr(G, "M1A_CUTOFF", 4_000_000_000)
+    _legacy_snapshot(rig)
+    _git(rig.root, "init", "-q")  # (already a repo; keeps the fixture shape explicit)
+    rig.write(
+        LEDGER, ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    )
+    first = rig.commit("main before the run", BASE_DATE)
+    o19_attempt(rig, "10", first, monkeypatch=monkeypatch)
+    cite_v = f"**Evidence:** `{DATA}/rerun_exp10_o19/verdict.json`."
+    rig.base(
+        ledger(
+            [t1("T1-1", f"**Status: MAINTAINED 2026-10-01**. {cite_v}")], [t3("T3-9", "**Status: STALE 2026-09-30**.")]
+        )
+    )
+    cite_l = f"**Evidence:** `{DATA}/legacy_old.jsonl`."
+    rig.head(
+        ledger(
+            [t1("T1-1", f"**Status: MAINTAINED 2026-10-01**. {cite_l}")], [t3("T3-9", "**Status: STALE 2026-09-30**.")]
+        )
+    )
+    failures, _ = rig.run()
+    assert any("keeps none" in f for f in failures), failures
+
+
+def test_a_rewritten_qualifier_triggers_and_an_added_one_does_not() -> None:
+    import _ledger as L
+
+    def row(q):
+        r = L.Row(id="T1-1", table="T1", line=1, cells={})
+        r.token, r.date, r.qualifier = "MAINTAINED", "2026-10-01", q
+        return r
+
+    assert "qualifier removed or rewritten" in G.triggers_for(row("broad"), row("narrow"), set(), [])
+    assert G.triggers_for(row("narrow, one model"), row("narrow"), set(), []) == []
+
+
+def test_uncommitted_gated_files_fail(rig) -> None:
+    text = ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    rig.base(text)
+    rig.head(text.replace("# Ledger", "# The ledger"))
+    rig.write(f"{DATA}/new.jsonl", "{}\n")
+    assert any("uncommitted" in f for f in rig.run()[0])
+
+
+def rig_epoch(iso: str) -> int:
+    import datetime as dt
+
+    return int(dt.datetime.fromisoformat(iso).timestamp())
+
+
+def _ctx(rig: Rig) -> G.Ctx:
+    return G.Ctx(repo=G.Repo(rig.root), base=rig.base_sha, ref="HEAD", legacy={}, prereg={})
+
+
+def test_event_log_groups(rig) -> None:
+    sys.path.insert(0, str(REPO / "scripts" / "orient_backbone"))
+    from live_common import provenance_digest
+
+    text = ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    rig.base(text)
+    block = {"executed_git_hash": rig.base_sha, "code_tree_sha256": "a" * 64,
+             "working_tree_dirty_src_scripts": False, "harness_family": "in_process"}  # fmt: skip
+    d = provenance_digest(block)
+
+    def line(kind, gid, **kw):
+        return json.dumps({"record_kind": kind, "log_run_id": gid, "mock": False, "provenance_sha256": d, "ts": 2e9,
+                           **kw})  # fmt: skip
+
+    ok = [line("harness_event", "g1", provenance=block), line("harness_run_end", "g1", status="ok",
+          provenance=block, end_code_tree_sha256="a" * 64)]  # fmt: skip
+    failed = [line("harness_event", "g2", provenance=block), line("harness_run_end", "g2", status="failed",
+              provenance=block, end_code_tree_sha256="a" * 64)]  # fmt: skip
+    rig.write(f"{DATA}/ev_ok.jsonl", "\n".join(ok + failed) + "\n")
+    rig.write(f"{DATA}/ev_none.jsonl", "\n".join(failed) + "\n")
+    rig.write(f"{DATA}/ev_mock.jsonl", "\n".join(ok).replace('"mock": false', '"mock": true', 1) + "\n")
+    rig.commit("logs", HEAD_DATE)
+    ctx = _ctx(rig)
+    assert G.judge_entry(f"{DATA}/ev_ok.jsonl", ctx).status == G.ESTABLISHED  # the failed group is excluded
+    assert G.judge_entry(f"{DATA}/ev_none.jsonl", ctx).status == G.NOT_ESTABLISHED  # no group ended ok
+    assert G.judge_entry(f"{DATA}/ev_mock.jsonl", ctx).status == G.NOT_ESTABLISHED  # a mock line sinks the file
+
+
+def test_sim_reports_and_instrument_checks(rig) -> None:
+    text = ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    rig.base(text)
+    prov = {"executed_git_hash": rig.base_sha, "code_tree_sha256": "a" * 64, "end_code_tree_sha256": "a" * 64,
+            "working_tree_dirty_src_scripts": False, "code_changed_during_run": False, "configured_n_ctx": 8192,
+            "language_profile": "mistral-7b-instruct-v0.2", "language_router_n_ctx": 8192}  # fmt: skip
+    report = {"record_kind": "sim_report", "finish_reason": "max_turns", "ts": 2e9, "provenance": prov}
+    rig.write(f"{DATA}/s_ok/report.json", json.dumps(report))
+    rig.write(f"{DATA}/s_abort/report.json", json.dumps({**report, "finish_reason": "planning_failed"}))
+    check = {"record_kind": "instrument_check", "status": "ok", "pass": False, "mock": False, "provenance": prov}
+    rig.write(f"{DATA}/check.json", json.dumps(check))
+    rig.commit("records", HEAD_DATE)
+    ctx = _ctx(rig)
+    assert G.judge_entry(f"{DATA}/s_ok", ctx).status == G.ESTABLISHED
+    abort = G.judge_entry(f"{DATA}/s_abort", ctx)
+    assert abort.status == G.NOT_ESTABLISHED and any("planning_failed" in r for r in abort.reasons)
+    assert G.judge_entry(f"{DATA}/check.json", ctx).status == G.NOT_ESTABLISHED  # did not pass
+
+
+def test_a_mock_row_sinks_a_cited_rows_file(rig, monkeypatch) -> None:
+    text = ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    rig.base(text)
+    prov = {"executed_git_hash": rig.base_sha, "code_tree_sha256": "a" * 64, "working_tree_dirty_src_scripts": False,
+            "harness_family": "in_process"}  # fmt: skip
+    row = {"record_kind": "harness_row", "status": "ok", "mock": False, "ts": 2e9, "provenance": prov}
+    rig.write(f"{DATA}/rows_ok.jsonl", json.dumps(row) + "\n")
+    rig.write(f"{DATA}/rows_mock.jsonl", json.dumps(row) + "\n" + json.dumps({**row, "mock": True}) + "\n")
+    rig.commit("rows", HEAD_DATE)
+    ctx = _ctx(rig)
+    assert G.judge_entry(f"{DATA}/rows_ok.jsonl", ctx).status == G.ESTABLISHED
+    j = G.judge_entry(f"{DATA}/rows_mock.jsonl", ctx)
+    assert j.status == G.NOT_ESTABLISHED and any("a line is mock" in r for r in j.reasons)
+
+
+def test_a_one_line_rows_file_is_judged_by_the_rows_rules(rig) -> None:
+    """A one-line rows file is valid single-document JSON too; it must still meet the rows-file rules."""
+    text = ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    rig.base(text)
+    prov = {"executed_git_hash": rig.base_sha, "code_tree_sha256": "a" * 64, "working_tree_dirty_src_scripts": False,
+            "harness_family": "spawning"}  # fmt: skip
+    row = {"record_kind": "harness_row", "status": "ok", "mock": False, "ts": 2e9, "provenance": prov}
+    rig.write(f"{DATA}/one_row.jsonl", json.dumps(row) + "\n")
+    rig.commit("one row", HEAD_DATE)
+    j = G.judge_entry(f"{DATA}/one_row.jsonl", _ctx(rig))
+    assert j.kind == "harness_row" and any("names no sims" in r for r in j.reasons), (j.kind, j.reasons)
+
+
+# ── positive controls for each rule (each proven by deleting its mechanism) ──────────────────────────────
+
+STALE_BOTH = ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+
+
+def _prov(rig: Rig, **kw) -> dict:
+    return {"executed_git_hash": rig.base_sha, "code_tree_sha256": "a" * 64, "working_tree_dirty_src_scripts": False,
+            "harness_family": "in_process", **kw}  # fmt: skip
+
+
+def _row(rig: Rig, **kw) -> dict:
+    return {"record_kind": "harness_row", "status": "ok", "mock": False, "ts": 2e9, "provenance": _prov(rig), **kw}
+
+
+def _sim_report(rig: Rig, **prov) -> dict:
+    p = {"executed_git_hash": rig.base_sha, "code_tree_sha256": "a" * 64, "end_code_tree_sha256": "a" * 64,
+         "working_tree_dirty_src_scripts": False, "code_changed_during_run": False, "configured_n_ctx": 8192,
+         "language_profile": "mistral-7b-instruct-v0.2", "language_router_n_ctx": 8192, **prov}  # fmt: skip
+    return {"record_kind": "sim_report", "finish_reason": "max_turns", "ts": 2e9, "provenance": p}
+
+
+def _judge(rig: Rig, path: str, **ctx_kw) -> R.Judgement:
+    ctx = _ctx(rig)
+    for k, v in ctx_kw.items():
+        setattr(ctx, k, v)
+    return G.judge_entry(path, ctx)
+
+
+def test_status_set_time_is_when_the_base_first_set_the_status(rig) -> None:
+    set_at = "2026-09-30T00:00:00+00:00"
+    rig.write(LEDGER, STALE_BOTH)
+    rig.commit("STALE set", set_at)
+    rig.base(STALE_BOTH.replace("claim T1-1", "claim T1-1 reworded"))  # a later ledger commit, T3-9 untouched
+    assert G.status_set_time(G.Repo(rig.root), rig.base_sha, "T3-9", "STALE", "2026-09-30") == rig_epoch(set_at)
+
+
+def test_a_change_to_cited_data_triggers_its_row(rig) -> None:
+    rig.base_sha = rig.commit("main before the run", BASE_DATE)
+    rig.write(f"{DATA}/r.jsonl", json.dumps(_row(rig)) + "\n")
+    cite = f"**Evidence:** `{DATA}/r.jsonl`."
+    text = ledger(
+        [t1("T1-13", f"**Status: MAINTAINED 2026-09-30**. {cite}")], [t3("T3-9", "**Status: STALE 2026-09-30**.")]
+    )
+    rig.base(text)
+    rig.write(f"{DATA}/r.jsonl", json.dumps(_row(rig, mock=True)) + "\n")  # the ledger is untouched
+    rig.head(text)
+    failures, _ = rig.run()
+    assert any("T1-13" in f and "a line is mock" in f for f in failures), failures
+
+
+def _exception_case(rig, monkeypatch, *, where: str, **override) -> list[str]:
+    monkeypatch.setattr(G, "M1A_CUTOFF", 4_000_000_000)
+    _legacy_snapshot(rig)
+    cite = f"**Evidence:** `{DATA}/legacy_old.jsonl`."
+    digest = hashlib.sha256((rig.root / DATA / "legacy_old.jsonl").read_bytes()).hexdigest()
+    entry = {"id": "x1", "kind": "ledger", "row": "T1-13", "from": "EARNED", "to": "EARNED", "to_date": "2026-10-02",
+             "path": f"{DATA}/legacy_old.jsonl", "sha256": digest, "owner": "owner", "reason": "r",
+             "date": "2026-10-01", **override}  # fmt: skip
+    if where == "base":
+        rig.write(G.EXCEPTIONS, json.dumps([entry]))
+    rig.base(
+        ledger([t1("T1-13", f"**Status: EARNED 2026-09-16**. {cite}")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    )
+    if where == "head":
+        rig.write(G.EXCEPTIONS, json.dumps([entry]))
+    rig.head(
+        ledger([t1("T1-13", f"**Status: EARNED 2026-10-02**. {cite}")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    )
+    return rig.run()[0]
+
+
+def test_an_exception_added_in_the_same_change_does_not_act(rig, monkeypatch) -> None:
+    failures = _exception_case(rig, monkeypatch, where="head")
+    assert any("no NEW support" in f for f in failures), failures
+
+
+def test_an_exception_pinned_to_other_bytes_does_not_act(rig, monkeypatch) -> None:
+    failures = _exception_case(rig, monkeypatch, where="base", sha256="0" * 64)
+    assert any("no NEW support" in f for f in failures), failures
+
+
+def test_an_exception_for_another_transition_is_inert(rig, monkeypatch) -> None:
+    failures = _exception_case(rig, monkeypatch, where="base", to_date="2026-10-03")
+    assert any("no NEW support" in f for f in failures), failures
+
+
+def test_an_exception_may_name_a_new_row_and_must_say_from() -> None:
+    entry = {"id": "x", "kind": "ledger", "row": "T1-1", "from": None, "to": "EARNED", "to_date": "2026-10-02",
+             "path": "p", "sha256": "s", "owner": "o", "reason": "r", "date": "2026-10-01"}  # fmt: skip
+    assert G.exceptions_problems([], [entry]) == []
+    del entry["from"]
+    assert any("lacks a required field" in p for p in G.exceptions_problems([], [entry]))
+
+
+def test_legacy_needs_a_pre_m1a_add_and_no_record_kind(rig) -> None:
+    rig.write(f"{DATA}/early_kind.jsonl", '{"record_kind": "harness_row"}\n')
+    rig.commit("before M1a", "2026-09-01T00:00:00+00:00")
+    rig.write(f"{DATA}/late.jsonl", '{"x": 3}\n')
+    rig.base(STALE_BOTH)
+    repo = G.Repo(rig.root)
+    assert set(G.generate_legacy(repo)) == {f"{DATA}/legacy_old.jsonl"}
+    blob = {p: hashlib.sha256((rig.root / p).read_bytes()).hexdigest()
+            for p in (f"{DATA}/legacy_old.jsonl", f"{DATA}/early_kind.jsonl", f"{DATA}/late.jsonl")}  # fmt: skip
+    problems = G.legacy_problems(repo, blob, blob)
+    assert any("early_kind.jsonl carries a record_kind" in p for p in problems), problems
+    assert any("late.jsonl was first committed after M1a" in p for p in problems), problems
+    assert not any("legacy_old" in p for p in problems), problems
+
+
+def _event_lines(rig, *, digest=None, end_tree="a" * 64, ts=2e9, gid="g1", status="ok") -> list[str]:
+    from _provenance import provenance_digest
+
+    block = _prov(rig)
+    d = digest or provenance_digest(block)
+
+    def line(kind, **kw):
+        return json.dumps({"record_kind": kind, "log_run_id": gid, "mock": False, "provenance_sha256": d, "ts": ts,
+                           "provenance": block, **kw})  # fmt: skip
+
+    return [line("harness_event"), line("harness_run_end", status=status, end_code_tree_sha256=end_tree)]
+
+
+def test_an_event_log_binds_each_line_to_its_block_and_its_end_tree(rig) -> None:
+    rig.base(STALE_BOTH)
+    rig.write(f"{DATA}/ev_digest.jsonl", "\n".join(_event_lines(rig, digest="0" * 64)) + "\n")
+    rig.write(f"{DATA}/ev_end.jsonl", "\n".join(_event_lines(rig, end_tree="b" * 64)) + "\n")
+    rig.commit("logs", HEAD_DATE)
+    j = _judge(rig, f"{DATA}/ev_digest.jsonl")
+    assert j.status == G.NOT_ESTABLISHED and any("provenance_sha256 does not match" in r for r in j.reasons)
+    j = _judge(rig, f"{DATA}/ev_end.jsonl")
+    assert j.status == G.NOT_ESTABLISHED and any("ended on another code tree" in r for r in j.reasons)
+
+
+def test_a_verdict_over_an_event_log_times_only_its_counted_groups(rig) -> None:
+    rig.base(STALE_BOTH)
+    lines = _event_lines(rig, ts=2e9) + _event_lines(rig, ts=1.95e9, gid="g2", status="failed")
+    rig.write(f"{DATA}/ev.jsonl", "\n".join(lines) + "\n")
+    data = (rig.root / DATA / "ev.jsonl").read_bytes()
+    verdict = {"record_kind": "verdict", "kind": "exp57_verdict", "verdict": "PASS", "mock": False,
+               "data": f"{DATA}/ev.jsonl", "data_sha256": hashlib.sha256(data).hexdigest(),
+               "scope": {"all_rows": True}, "provenance": _prov(rig)}  # fmt: skip
+    rig.write(f"{DATA}/v.json", json.dumps(verdict))
+    rig.commit("verdict", HEAD_DATE)
+    j = _judge(rig, f"{DATA}/v.json")
+    assert j.status == G.ESTABLISHED, j.reasons
+    assert j.time == 2e9  # the failed group's earlier events are not a unit
+
+
+def test_one_code_tree_per_rows_file(rig) -> None:
+    rig.base(STALE_BOTH)
+    other = _row(rig, provenance=_prov(rig, code_tree_sha256="b" * 64))
+    rig.write(f"{DATA}/two.jsonl", json.dumps(_row(rig)) + "\n" + json.dumps(other) + "\n")
+    rig.commit("rows", HEAD_DATE)
+    j = _judge(rig, f"{DATA}/two.jsonl")
+    assert j.status == G.NOT_ESTABLISHED and any("2 code trees" in r for r in j.reasons), j.reasons
+
+
+def test_a_verdicts_own_provenance_is_judged(rig, monkeypatch) -> None:
+    def off_main(record):
+        record["provenance"]["executed_git_hash"] = "f" * 40
+
+    _t39_move(rig, monkeypatch, verdict_edit=off_main)
+    failures, _ = rig.run()
+    assert any("verdict provenance: executed" in f for f in failures), failures
+
+
+def test_a_verdict_never_carries_an_allowance(rig, monkeypatch) -> None:
+    def allowed(record):
+        record["provenance"].update(working_tree_dirty_src_scripts=True, allow_dirty=True)
+
+    _t39_move(rig, monkeypatch, verdict_edit=allowed)
+    failures, _ = rig.run()
+    assert any("verdict provenance: working_tree_dirty_src_scripts" in f for f in failures), failures
+
+
+def test_a_verdict_is_bound_to_its_data_bytes(rig, monkeypatch) -> None:
+    _t39_move(rig, monkeypatch, verdict_edit=lambda record: record.update(data_sha256="0" * 64))
+    failures, _ = rig.run()
+    assert any("differs from data_sha256" in f for f in failures), failures
+
+
+def test_verdict_data_lives_under_the_data_root(rig) -> None:
+    rig.base(STALE_BOTH)
+    verdict = {"record_kind": "verdict", "kind": "exp57_verdict", "verdict": "PASS", "mock": False,
+               "data": R.O19_JUDGE, "data_sha256": "0" * 64, "scope": {"all_rows": True},
+               "provenance": _prov(rig)}  # fmt: skip
+    rig.write(f"{DATA}/v.json", json.dumps(verdict))
+    rig.commit("verdict", HEAD_DATE)
+    j = _judge(rig, f"{DATA}/v.json")
+    assert j.status == G.NOT_ESTABLISHED and any("is not a path under" in r for r in j.reasons), j.reasons
+
+
+def test_new_supports_data_must_be_pre_registered_too(rig, monkeypatch) -> None:
+    rig.prereg = {f"{DATA}/rerun_exp09_o19": "PASS", f"{DATA}/rerun_exp09_o19/rows.jsonl": "OUT_OF_SCOPE"}
+    _t39_move(rig, monkeypatch)
+    failures, _ = rig.run()
+    assert any("its data's OUT_OF_SCOPE" in f for f in failures), failures
+
+
+def test_a_symlink_is_not_evidence(rig) -> None:
+    rig.base(STALE_BOTH)
+    os.symlink("legacy_old.jsonl", rig.root / DATA / "link.jsonl")
+    rig.commit("link", HEAD_DATE)
+    j = _judge(rig, f"{DATA}/link.jsonl")
+    assert j.status == G.NOT_ESTABLISHED and any("symlink" in r for r in j.reasons), j.reasons
+
+
+def test_an_allowance_establishes_but_never_supports(rig) -> None:
+    rig.base(STALE_BOTH)
+    granted = _row(rig, provenance=_prov(rig, working_tree_dirty_src_scripts=True, allow_dirty=True))
+    refused = _row(rig, provenance=_prov(rig, working_tree_dirty_src_scripts=True))
+    rig.write(f"{DATA}/granted.jsonl", json.dumps(granted) + "\n")
+    rig.write(f"{DATA}/refused.jsonl", json.dumps(refused) + "\n")
+    rig.commit("rows", HEAD_DATE)
+    j = _judge(rig, f"{DATA}/granted.jsonl")
+    assert j.status == G.ESTABLISHED and j.allowed_dirty
+    assert _judge(rig, f"{DATA}/refused.jsonl").status == G.NOT_ESTABLISHED
+    candidate = R.Judgement(path="v", status=G.ESTABLISHED, kind="verdict", time=3e9, allowed_dirty=True,
+                            prereg="PASS", data_prereg="PASS",
+                            record={"kind": "exp57_verdict", "verdict": "PASS"})  # fmt: skip
+    table = {"exp57_verdict": {"rows": ["T1-12"], "targets": {"EARNED": ["PASS"]}}}
+    assert "allowed-dirty" in (G.support_problem(candidate, "T1-12", "EARNED", table, 1.0) or "")
+
+
+def test_runs_cannot_predate_the_commit_they_ran_on(rig) -> None:
+    rig.base(STALE_BOTH)
+    rig.write(f"{DATA}/old.jsonl", json.dumps(_row(rig, ts=1.0)) + "\n")
+    rig.commit("rows", HEAD_DATE)
+    j = _judge(rig, f"{DATA}/old.jsonl")
+    assert j.status == G.NOT_ESTABLISHED and any("before the commit it claims" in r for r in j.reasons), j.reasons
+
+
+def test_triggers_for_a_new_row_and_a_claim_change() -> None:
+    import _ledger as L
+
+    def row(claim):
+        r = L.Row(id="T1-1", table="T1", line=1, cells={"Claim": claim})
+        r.token, r.date = "MAINTAINED", "2026-10-01"
+        return r
+
+    assert G.triggers_for(row("a"), None, set(), []) == ["new row"]
+    assert "claim changed" in G.triggers_for(row("b"), row("a"), set(), [])
+    assert "d/ changed" in G.triggers_for(row("a"), row("a"), {"d/x.jsonl"}, ["d/"])
+
+
+@pytest.mark.parametrize(
+    ("edit", "why"),
+    [
+        ({"resume": {"resume_loaded": False}}, "resume_loaded is not true"),
+        ({"configured_n_ctx": None}, "no configured_n_ctx"),
+        ({"language_profile": None}, "no language_profile"),
+        ({"language_router_n_ctx": None}, "language ran without a stamped language_router_n_ctx"),
+        ({"aut_profile": "qwen", "aut_router_n_ctx": None}, "aut ran without a stamped aut_router_n_ctx"),
+    ],
+)
+def test_a_sim_report_must_stamp_its_model_context_and_resume(rig, edit, why) -> None:
+    rig.base(STALE_BOTH)
+    rig.write(f"{DATA}/s/report.json", json.dumps(_sim_report(rig, **edit)))
+    rig.commit("report", HEAD_DATE)
+    j = _judge(rig, f"{DATA}/s")
+    assert j.status == G.NOT_ESTABLISHED and any(why in r for r in j.reasons), j.reasons
+
+
+def test_a_sim_report_needs_a_ts(rig) -> None:
+    rig.base(STALE_BOTH)
+    report = _sim_report(rig)
+    del report["ts"]
+    rig.write(f"{DATA}/s/report.json", json.dumps(report))
+    rig.commit("report", HEAD_DATE)
+    j = _judge(rig, f"{DATA}/s")
+    assert j.status == G.NOT_ESTABLISHED and any("no ts" in r for r in j.reasons), j.reasons
+
+
+def test_a_row_names_its_family_and_only_a_spawner_carries_sims(rig) -> None:
+    rig.base(STALE_BOTH)
+    sims = _row(rig, sims=[{"session_id": "s"}])
+    nameless = _row(rig, provenance={k: v for k, v in _prov(rig).items() if k != "harness_family"})
+    rig.write(f"{DATA}/sims.jsonl", json.dumps(sims) + "\n")
+    rig.write(f"{DATA}/nameless.jsonl", json.dumps(nameless) + "\n")
+    rig.commit("rows", HEAD_DATE)
+    j = _judge(rig, f"{DATA}/sims.jsonl")
+    assert j.status == G.NOT_ESTABLISHED and any("in-process row carries sims" in r for r in j.reasons), j.reasons
+    j = _judge(rig, f"{DATA}/nameless.jsonl")
+    assert j.status == G.NOT_ESTABLISHED and any("neither spawning nor in_process" in r for r in j.reasons)
+
+
+def test_partial_rows_are_judged_on_every_change(rig) -> None:
+    rig.base_sha = rig.commit("main before the run", BASE_DATE)
+    rig.write(f"{DATA}/r.jsonl", json.dumps(_row(rig, mock=True)) + "\n")
+    cite = f"**Evidence:** `{DATA}/r.jsonl`."
+    text = ledger(
+        [t1("T1-13", f"**Status: PARTIAL 2026-09-30**. {cite}")], [t3("T3-9", "**Status: STALE 2026-09-30**.")]
+    )
+    rig.base(text)
+    rig.head(text.replace("claim T1-13", "claim T1-13 widened"))
+    failures, _ = rig.run()
+    assert any("T1-13" in f and "a line is mock" in f for f in failures), failures
+
+
+def test_leaving_stale_for_a_non_positive_token_is_noted(rig) -> None:
+    rig.base(STALE_BOTH)
+    rig.head(STALE_BOTH.replace("**Status: STALE 2026-09-30**", "**Status: DROPPED 2026-10-02**", 1))
+    failures, notes = rig.run()
+    assert failures == [] and any("leaves STALE for DROPPED" in n for n in notes), (failures, notes)
+
+
+def test_legacy_still_obeys_the_prereg(rig) -> None:
+    rig.base(STALE_BOTH)
+    path = f"{DATA}/legacy_old.jsonl"
+    legacy = {path: hashlib.sha256((rig.root / path).read_bytes()).hexdigest()}
+    assert _judge(rig, path, legacy=legacy).status == R.LEGACY
+    j = _judge(rig, path, legacy=legacy, prereg={path: "FAIL"})
+    assert j.status == G.NOT_ESTABLISHED and any("prereg status FAIL" in r for r in j.reasons)
+
+
+def test_malformed_records_are_refused_not_raised(rig) -> None:
+    rig.base(STALE_BOTH)
+    rig.write(f"{DATA}/bad.jsonl.gz", b"not gzip")
+    rig.write(f"{DATA}/sims_str.jsonl", json.dumps(_row(rig, provenance=_prov(rig, harness_family="spawning"),
+                                                          sims="s")) + "\n")  # fmt: skip
+    rig.write(f"{DATA}/rows_ok.jsonl", json.dumps(_row(rig)) + "\n")
+    data = (rig.root / DATA / "rows_ok.jsonl").read_bytes()
+    verdict = {"record_kind": "verdict", "kind": "exp57_verdict", "verdict": "PASS", "mock": False,
+               "data": f"{DATA}/rows_ok.jsonl", "data_sha256": hashlib.sha256(data).hexdigest(),
+               "scope": {"run_ids": "r1"}, "provenance": _prov(rig)}  # fmt: skip
+    rig.write(f"{DATA}/v_scope.json", json.dumps(verdict))
+    rig.write(f"{DATA}/s/report.json", json.dumps({**_sim_report(rig), "provenance": ["x"]}))
+    rig.commit("malformed", HEAD_DATE)
+    for path in ("bad.jsonl.gz", "sims_str.jsonl", "v_scope.json", "s"):
+        assert _judge(rig, f"{DATA}/{path}").status == G.NOT_ESTABLISHED, path
+
+
+def test_every_demo_line_is_judged(rig) -> None:
+    rig.base(STALE_BOTH)
+    demo = {"record_kind": "harness_demo", "mock": False, "provenance": _prov(rig)}
+    rig.write(f"{DATA}/demo.jsonl", json.dumps(demo) + "\n" + json.dumps({**demo, "mock": True}) + "\n")
+    rig.commit("demo", HEAD_DATE)
+    assert _judge(rig, f"{DATA}/demo.jsonl").status == G.NOT_ESTABLISHED
+
+
+def test_a_malformed_pass_table_fails_at_head(rig) -> None:
+    rig.base(STALE_BOTH)
+    rig.write(G.PASS_TABLE, json.dumps({"exp09_verdict": {"rows": "T3-9", "targets": {}}}))
+    rig.head(STALE_BOTH)
+    assert any("entry 'exp09_verdict' is malformed" in f for f in rig.run()[0])
+
+
+def test_changed_sees_both_names_of_a_rename(rig) -> None:
+    rig.base(STALE_BOTH)
+    _git(rig.root, "mv", f"{DATA}/legacy_old.jsonl", f"{DATA}/renamed.jsonl")
+    rig.commit("rename", HEAD_DATE)
+    assert {f"{DATA}/legacy_old.jsonl", f"{DATA}/renamed.jsonl"} <= G.Repo(rig.root).changed(rig.base_sha)
+
+
+def test_the_o19_judge_imports_only_the_standard_library() -> None:
+    """The gate executes the merge-base ``o19_verdict.judge``: outside the CLI's ``main`` it imports nothing but
+    the standard library, so re-judging cannot run repo code beyond the bound file."""
+    import ast
+
+    tree = ast.parse((REPO / R.O19_JUDGE).read_text())
+    main = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "main")
+    in_main = {id(n) for n in ast.walk(main)}
+    for node in ast.walk(tree):
+        if id(node) in in_main:
+            continue
+        names = [a.name for a in node.names] if isinstance(node, ast.Import) else []
+        if isinstance(node, ast.ImportFrom):
+            names = [node.module or ""]
+        for name in names:
+            top = name.split(".")[0]
+            assert top == "__future__" or top in sys.stdlib_module_names, name
+
+
+@pytest.mark.parametrize("pin", ["file", "other_bytes"])
+def test_a_settled_pinned_clause_excepts_a_failing_record(rig, pin) -> None:
+    """BASE: T1-13 MAINTAINED on a mock rows file, with a clause on main for that transition. HEAD edits the claim:
+    the row is judged, and only a clause pinned to the cited bytes turns the refusal into EXCEPTED."""
+    rig.base_sha = rig.commit("main before the run", BASE_DATE)
+    path = f"{DATA}/r.jsonl"
+    rig.write(path, json.dumps(_row(rig, mock=True)) + "\n")
+    digest = hashlib.sha256((rig.root / path).read_bytes()).hexdigest() if pin == "file" else "0" * 64
+    rig.write(G.EXCEPTIONS, json.dumps([{
+        "id": "x1", "kind": "ledger", "row": "T1-13", "from": "STALE", "to": "MAINTAINED", "to_date": "2026-09-30",
+        "path": path, "sha256": digest, "owner": "owner", "reason": "r", "date": "2026-09-30",
+    }]))  # fmt: skip
+    cite = f"**Evidence:** `{path}`."
+    text = ledger(
+        [t1("T1-13", f"**Status: MAINTAINED 2026-09-30**. {cite}")], [t3("T3-9", "**Status: STALE 2026-09-30**.")]
+    )
+    rig.base(text)
+    rig.head(text.replace("claim T1-13", "claim T1-13 widened"))
+    failures, notes = rig.run()
+    if pin == "file":
+        assert failures == [] and any("EXCEPTED" in n for n in notes), (failures, notes)
+    else:
+        assert any("a line is mock" in f for f in failures), failures
+        assert any("does not pin the cited bytes" in n for n in notes), notes
+
+
+def test_a_clause_naming_a_session_directory_never_pins_and_never_crashes(rig) -> None:
+    rig.base_sha = rig.commit("main before the run", BASE_DATE)
+    session = f"{DATA}/s"
+    rig.write(f"{session}/report.json", json.dumps({**_sim_report(rig), "finish_reason": "planning_failed"}))
+    rig.write(G.EXCEPTIONS, json.dumps([{
+        "id": "x1", "kind": "ledger", "row": "T1-13", "from": "STALE", "to": "MAINTAINED", "to_date": "2026-09-30",
+        "path": session, "sha256": hashlib.sha256(b"").hexdigest(), "owner": "o", "reason": "r", "date": "2026-09-30",
+    }]))  # fmt: skip
+    cite = f"**Evidence:** `{session}`."
+    text = ledger(
+        [t1("T1-13", f"**Status: MAINTAINED 2026-09-30**. {cite}")], [t3("T3-9", "**Status: STALE 2026-09-30**.")]
+    )
+    rig.base(text)
+    rig.head(text.replace("claim T1-13", "claim T1-13 widened"))
+    failures, _ = rig.run()
+    assert any("planning_failed" in f for f in failures), failures
+
+
+def test_a_verdict_written_on_a_later_commit_than_its_runs_is_established(rig) -> None:
+    ran_at = "2026-09-20T00:00:00+00:00"
+    rig.write(LEDGER, STALE_BOTH)
+    ran_on = rig.commit("the commit the runs ran on", ran_at)
+    rig.base(STALE_BOTH.replace("claim T1-1", "claim T1-1 reworded"))  # main moves on 11 days
+    row = _row(rig, ts=float(rig_epoch(ran_at) + 10), provenance={**_prov(rig), "executed_git_hash": ran_on})
+    rig.write(f"{DATA}/r.jsonl", json.dumps(row) + "\n")
+    data = (rig.root / DATA / "r.jsonl").read_bytes()
+    verdict = {
+        "record_kind": "verdict",
+        "kind": "exp57_verdict",
+        "verdict": "PASS",
+        "mock": False,
+        "data": f"{DATA}/r.jsonl",
+        "data_sha256": hashlib.sha256(data).hexdigest(),
+        "scope": {"all_rows": True},
+        "provenance": _prov(rig),
+    }  # fmt: skip  (written on the later base)
+    rig.write(f"{DATA}/v.json", json.dumps(verdict))
+    rig.commit("verdict", HEAD_DATE)
+    j = _judge(rig, f"{DATA}/v.json")
+    assert j.status == G.ESTABLISHED, j.reasons
+
+
+@pytest.mark.parametrize("cause", ["unknown_kinds", "bad_gzip", "bad_shape", "judge_defect"])
+def test_the_removal_ratchet_and_a_base_record_that_cannot_be_judged(rig, monkeypatch, cause) -> None:
+    """A corrupt base record was never ESTABLISHED: dropping it is free. A judge-code error on main's record keeps
+    the ratchet on (fail closed), with a NOTE saying why."""
+    monkeypatch.setattr(G, "M1A_CUTOFF", 4_000_000_000)
+    _legacy_snapshot(rig)
+    odd = {"bad_gzip": "odd.jsonl.gz", "bad_shape": "odd.json"}.get(cause, "odd.jsonl")
+    body = {"bad_gzip": b"not gzip", "bad_shape": b'{"record_kind": ["verdict"]}'}.get(cause, b'{"x": 1}\n{"x": 2}\n')
+    rig.write(f"{DATA}/{odd}", body)
+    if cause == "judge_defect":
+        monkeypatch.setattr(R, "json_lines", lambda data: {}["boom"])  # a KeyError inside the judges
+    legacy = f"`{DATA}/legacy_old.jsonl`"
+    both = f"**Evidence:** {legacy}, `{DATA}/{odd}`."
+    rig.base(
+        ledger([t1("T1-13", f"**Status: EARNED 2026-09-16**. {both}")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    )
+    rig.head(
+        ledger([t1("T1-13", f"**Status: EARNED 2026-09-16**. **Evidence:** {legacy}.")],
+               [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    )  # fmt: skip
+    failures, notes = rig.run()
+    if cause != "judge_defect":  # never established on main: dropping it is free
+        assert failures == [], failures
+    else:
+        assert any("while a base record could not be judged" in f for f in failures), failures
+        assert any("could not be judged" in n for n in notes), notes
+
+
+def test_an_echoed_sim_cannot_predate_its_own_commit(rig) -> None:
+    rig.base(STALE_BOTH)
+    sim = {k: v for k, v in _sim_report(rig)["provenance"].items()}
+    sim.update(finish_reason="max_turns", ts=1.0)
+    row = _row(rig, provenance=_prov(rig, harness_family="spawning"), sims=[sim])  # the row's own ts is valid
+    rig.write(f"{DATA}/spawn.jsonl", json.dumps(row) + "\n")
+    rig.commit("rows", HEAD_DATE)
+    j = _judge(rig, f"{DATA}/spawn.jsonl")
+    assert any("row 1 sim 0: ran at ts 1" in r for r in j.reasons), j.reasons
+
+
+def test_a_sim_report_cannot_predate_its_commit(rig) -> None:
+    rig.base(STALE_BOTH)
+    rig.write(f"{DATA}/s/report.json", json.dumps({**_sim_report(rig), "ts": 1.0}))
+    rig.commit("report", HEAD_DATE)
+    j = _judge(rig, f"{DATA}/s")
+    assert any("sim_report: ran at ts 1" in r for r in j.reasons), j.reasons
+
+
+def test_an_event_group_cannot_predate_its_commit(rig) -> None:
+    rig.base(STALE_BOTH)
+    rig.write(f"{DATA}/ev.jsonl", "\n".join(_event_lines(rig, ts=1.0)) + "\n")
+    rig.commit("log", HEAD_DATE)
+    j = _judge(rig, f"{DATA}/ev.jsonl")
+    assert any("group g1: ran at ts 1" in r for r in j.reasons), j.reasons
+
+
+def test_entering_by_tests_from_another_token_is_noted(rig) -> None:
+    rig.write("tests/unit/test_x.py", "def test_x():\n    pass\n")
+    text = ledger([t1("T1-2", "**Status: PARTIAL 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    rig.base(text)
+    rig.head(text.replace("**Status: PARTIAL 2026-09-30**.", "**Status: RE-VALIDATED-BY-TESTS 2026-10-02**. "
+                          "**Evidence:** `tests/unit/test_x.py`."))  # fmt: skip
+    _, notes = rig.run()
+    assert any("T1-2: enters RE-VALIDATED-BY-TESTS from PARTIAL" in n for n in notes), notes
+    assert any("T1-2: RE-VALIDATED-BY-TESTS: named, not checked" in n for n in notes), notes
+
+
+def test_exception_ids_are_unique_strings() -> None:
+    entry = {"id": "x", "kind": "prereg", "path": "p", "sha256": "s"}
+    assert any("unique string id" in p for p in G.exceptions_problems([], [entry, dict(entry)]))
+    assert any("unique string id" in p for p in G.exceptions_problems([], [{**entry, "id": ["x"]}]))
+    assert G.exceptions_problems([], [entry]) == []
+
+
+def test_an_evidence_less_judged_row_cannot_change(rig) -> None:
+    text = ledger([t1("T1-2", "**Status: PARTIAL 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    rig.base(text)
+    rig.head(text.replace("claim T1-2", "claim T1-2 widened"))
+    failures, _ = rig.run()
+    assert any("T1-2" in f and "cites no ESTABLISHED" in f for f in failures), failures
+
+
+def test_a_same_date_move_into_by_tests_is_noted_without_a_trigger(rig) -> None:
+    rig.write("tests/unit/test_x.py", "def test_x():\n    pass\n")
+    cite = "**Evidence:** `tests/unit/test_x.py`."
+    text = ledger([t1("T1-2", f"**Status: EARNED 2026-09-30**. {cite}")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    rig.base(text)
+    rig.head(text.replace("EARNED 2026-09-30", "RE-VALIDATED-BY-TESTS 2026-09-30"))
+    _, notes = rig.run()
+    assert any("T1-2: enters RE-VALIDATED-BY-TESTS from EARNED" in n for n in notes), notes
+
+
+def test_a_new_by_tests_row_is_noted(rig) -> None:
+    rig.write("tests/unit/test_x.py", "def test_x():\n    pass\n")
+    rig.base(STALE_BOTH)
+    row = t1("T1-20", "**Status: RE-VALIDATED-BY-TESTS 2026-10-02**. **Evidence:** `tests/unit/test_x.py`.")
+    rig.head(ledger([t1("T1-1", "**Status: STALE 2026-09-30**."), row], [t3("T3-9", "**Status: STALE 2026-09-30**.")]))
+    _, notes = rig.run()
+    assert any("T1-20: enters RE-VALIDATED-BY-TESTS as a new row" in n for n in notes), notes
+
+
+def test_unhashable_record_and_clause_values_are_refused_not_raised(rig) -> None:
+    """A verdict whose ``kind`` is a list, cited by a judged row, and a clause on main whose ``path`` is a list:
+    plain refusals, never a traceback."""
+    rig.base_sha = rig.commit("main before the run", BASE_DATE)
+    rig.write(G.EXCEPTIONS, json.dumps([{
+        "id": "x1", "kind": "ledger", "row": "T1-13", "from": "STALE", "to": "EARNED", "to_date": "2026-10-02",
+        "path": [f"{DATA}/v.json"], "sha256": "0" * 64, "owner": "o", "reason": "r", "date": "2026-09-30",
+    }]))  # fmt: skip
+    rig.base(ledger([t1("T1-13", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")]))
+    rig.write(f"{DATA}/rows.jsonl", json.dumps(_row(rig)) + "\n")
+    data = (rig.root / DATA / "rows.jsonl").read_bytes()
+    verdict = {"record_kind": "verdict", "kind": ["exp10_verdict"], "verdict": "PASS", "mock": False,
+               "data": f"{DATA}/rows.jsonl", "data_sha256": hashlib.sha256(data).hexdigest(),
+               "scope": {"all_rows": True}, "provenance": _prov(rig)}  # fmt: skip
+    rig.write(f"{DATA}/v.json", json.dumps(verdict))
+    cite = f"**Evidence:** `{DATA}/v.json`."
+    rig.head(
+        ledger([t1("T1-13", f"**Status: EARNED 2026-10-02**. {cite}")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    )
+    failures, _ = rig.run()
+    assert any("T1-13: no NEW support" in f and "not in the merge-base pass table" in f for f in failures), failures
+
+
+def test_a_verdict_over_an_event_log_with_a_list_run_id_is_a_plain_refusal(rig) -> None:
+    rig.base(STALE_BOTH)
+    lines = [json.loads(ln) for ln in _event_lines(rig)]
+    lines[0]["log_run_id"] = ["g1"]
+    rig.write(f"{DATA}/ev.jsonl", "".join(json.dumps(ln) + "\n" for ln in lines))
+    data = (rig.root / DATA / "ev.jsonl").read_bytes()
+    verdict = {"record_kind": "verdict", "kind": "exp57_verdict", "verdict": "PASS", "mock": False,
+               "data": f"{DATA}/ev.jsonl", "data_sha256": hashlib.sha256(data).hexdigest(),
+               "scope": {"all_rows": True}, "provenance": _prov(rig)}  # fmt: skip
+    rig.write(f"{DATA}/v.json", json.dumps(verdict))
+    rig.commit("verdict", HEAD_DATE)
+    j = _judge(rig, f"{DATA}/v.json")
+    assert j.status == G.NOT_ESTABLISHED and not R.unjudged(j), j.reasons

@@ -465,3 +465,121 @@ Deviations from the closed design, and consequences, stated:
 - The frozen preregs (`r3_survival_benchmark_prereg.md`, `exp60…prereg.md`, `exp61…prereg.md`) keep their
   original commands; a re-run prereg must use the new ones.
 
+
+## PR 5b build spec (consolidated 2026-10-01; design closed after nine rounds)
+
+The base design (PR 5 approach, three rounds) plus the 5b addendum (rounds 1–6 and two delta checks), merged
+into one text. **5b ships in two PRs** (owner decision 2026-10-01): **5b-1**, the gate core, below; **5b-2**,
+the per-experiment "complete run" rules for Exp 53/60/61/62, whose pass-table entries stay out until it lands
+(those kinds fail closed meanwhile).
+
+### Files
+- `scripts/lint_evidence_gate.py` — the gate (CI lint job; diff-scoped against the merge-base): triggers, new
+  support, exceptions, the legacy snapshot, the CLI. `scripts/_evidence_records.py` — what a cited record is and
+  whether it is established (git access, the record judges, the O19 re-judge); stdlib-only.
+- `docs/experiments/evidence_pass_table.json` — `{kind: {"rows": [IDs], "targets": {TOKEN: [verdict values]},
+  "require": {dotted.field: scalar}}}`, read from the MERGE-BASE (absent there = empty: no support, never
+  unrestricted). 5b-1 entries: `exp10_verdict` (T1-1; MAINTAINED: PASS; require `apparatus_checked: true`),
+  `exp09_verdict` (T3-9; MAINTAINED: PASS, PARTIAL: PARTIAL; require `apparatus_checked: true`), `exp56_verdict`
+  (T1-11; RE-VALIDATED: PASS; require `noop_kit.kit_pass: true`), `exp57_verdict` (T1-12; EARNED: PASS, PARTIAL: PARTIAL).
+  Its shape is validated at the merge-base AND at HEAD (a malformed entry fails before it reaches main).
+- `docs/experiments/evidence_legacy.json` — `{path: sha256}` of every tracked file under `docs/experiments/data/`
+  first committed before the M1a cutoff (merge of #999, 2026-09-29T22:41:16Z) whose bytes (decompressed for
+  `.gz`) carry no `"record_kind"`. Shrink-only against the base; a key whose file is gone or changed FAILS.
+- `docs/experiments/evidence_exceptions.json` — owner-named overrides (empty at landing), read from the merge-base,
+  append-only.
+
+### Triggers (per row ID, base ledger vs HEAD ledger)
+A row is JUDGED when its HEAD token is positive (EARNED/MAINTAINED/RE-VALIDATED) or PARTIAL (on every change,
+not only a raise into it: owner decision 2026-10-01; a re-date then needs a PARTIAL-target verdict), AND any of: a raise (`is_raise`, a new row included); a move between positive tokens; a date change; an
+Evidence entry added or removed; a claim cell changed; a qualifier removed or rewritten (old text not contained in
+the new; adding text is free); a changed file under one of its Evidence paths, under a cited verdict's `data`, or
+under a cited O19 verdict's data directory (prefix `dirname(data)/`, its session files included). RE-VALIDATED-BY-TESTS is
+named unchecked (a NOTE). Raises into rank ≤ 1 claim nothing and are not gated. A row leaving STALE or BROKEN for
+a token that is not judged (e.g. DROPPED) is NOTED, not judged: review decides (owner decision 2026-10-01). A judged
+row that changes must cite at least one record that is ESTABLISHED, LEGACY or EXCEPTED (owner decision
+2026-10-01: an Evidence-less PARTIAL row cannot be rewritten with nothing to judge). A row entering
+RE-VALIDATED-BY-TESTS (from another token, or as a new row) is NOTED whether or not a trigger fires (review
+decides), like a row leaving STALE. (No structured `**Caveat:**` field exists
+yet; the caveat half of F2 has nothing to read until one does.)
+
+### Judging a cited record (each Evidence entry of a judged row)
+Read from git objects at HEAD (any uncommitted change under the data root, untracked files included, or in the
+ledger, the pass table, the legacy snapshot or the exceptions file fails the gate). Classified by `record_kind`, never by
+name; unknown → NOT-ESTABLISHED. Outcomes: ESTABLISHED / LEGACY (in the snapshot) / EXCEPTED / NOT-ESTABLISHED.
+- **Prereg:** checked FIRST, LEGACY included: the entry's data entry (`classify_all` against the merge-base, the
+  longest matching entry) FAIL / NON_GATED / NOT_GOVERNED → NOT-ESTABLISHED; GRANDFATHERED / UNGOVERNED_RERUN
+  records are judged in full but never supply new support; any `classify_all` failure fails the gate.
+- **Malformed input** (wrong types, bad gzip, non-JSON) → NOT-ESTABLISHED with the reason, never a crash.
+- **Time:** each counted unit (a row, an echoed sim, a sim report, an event group's earliest event) may precede
+  the committer time of ITS OWN `executed_git_hash` by at most 300 s (clock skew); a verdict writer's later commit
+  is never compared.
+- **sim_report** (a session directory's `report.json`): `record_kind`, provenance with a 40-hex
+  `executed_git_hash` and a known `code_tree_sha256`, clean (a dirty sim is refused outright: stricter than the
+  base design's bound-allowance path, which no harness writes), `code_changed_during_run` false, `ts`,
+  `language_profile` and `configured_n_ctx`, and every non-empty `<role>_profile` key with its
+  `<role>_router_n_ctx`, `finish_reason` in the allowlist
+  (`completed`, `max_turns`, `complete`, `all_encounters_complete`, `campaign_end:*`; pinned against
+  `sim_types.SIMULATION_FAILURE_FINISH_REASONS`), `resume_loaded` true when resumed.
+- **harness_row file:** only `harness_row` + `harness_header` lines; any `mock` not `false` sinks the file; every
+  non-`failed` row established (full hash, clean or `allow_dirty`; a header's or failed row's provenance is judged
+  too); `harness_family` is `spawning` or `in_process`;
+  a `spawning` row's non-empty `sims[]` judged by the sim rules on the echoed fields, an `in_process` row carries
+  none; one `code_tree_sha256` per file.
+- **event log** (`harness_event` + `harness_run_end` only): judged per `log_run_id` group — exactly one terminal
+  `ok`, one in-group provenance block (`harness_family: in_process`) whose `provenance_digest` equals every line's
+  `provenance_sha256`, terminal `end_code_tree_sha256` equal to the block's tree; a failed group is excluded, a
+  mock line sinks the file; one tree per file.
+- **verdict:** `data` a path under `docs/experiments/data/`, tracked, not a symlink, sha256 = `data_sha256`, its
+  prereg entry not refused; scope (`{"all_rows": true}`, or string `run_ids` / `campaign_id`; anything else is
+  malformed) selects ≥ 1 counted unit (an event log's units: the events of its counted groups); one tree (from one
+  per file); `mock` re-derived false from the bytes; its own provenance clean, known and an
+  ancestor of the merge-base (never compared with the scope's tree).
+- **Non-support kinds** cited (instrument_check, diagnosis, harness_header, harness_demo): provenance clean or
+  allowed, known, executed hash an ancestor of the merge-base, `mock` false; else the row fails. Never support.
+- `unknown` / `unknown:…` digests never match anything; every executed hash must be an ancestor of the merge-base.
+
+### O19 verdicts (`exp10_verdict`, `exp09_verdict`)
+- The merge-base blob of `scripts/o19_verdict.py` must equal `bound_files["scripts/o19_verdict.py"]` and its
+  sha256 `verdict_source_sha256`; the merge-base copy is loaded from a temporary file (`sys.path` restored
+  after), and its pure `judge()` re-run on the bound bytes with attempts built by its own `attempts_from_rows`,
+  ordered by a stable sort of `apparatus.markers` on k; the markers must cover every row's `harness_run_id`; the
+  re-judged `verdict`, `deciding_attempt` and `[(run_id, k, complete)]` must equal the verdict's. Any load or
+  judge exception → NOT-ESTABLISHED.
+- Each `status: ok` row's `files` re-hashed under `dirname(data)/<session_id>/` (plain or `.gz`,
+  uncompressed bytes; both forms present → refused); `session_id` one plain path component inside
+  `dirname(data)`; file names without `/` or `..`; no symlinks. The `sims[]` check runs over ok rows only
+  (`code_changed_during_run` false, end tree == start tree == the row's harness tree).
+- T1-1 / T3-9 cite `rerun_exp*_o19/verdict.json` (+ optionally `rows.jsonl`) by convention; a cited session
+  directory is judged as a sim_report and is never support.
+
+### New support
+A judged row's raise, move between positives, or date change needs ≥ 1 NEWLY cited (absent from the base
+Evidence) record that is a verdict, in the merge-base pass table with this row in `rows`, whose `verdict` is in
+`targets[<new token>]`, whose `require` predicates hold (dotted from the verdict's top level; missing key or
+non-dict on the way = unmet; type-strict equality), ESTABLISHED, prereg-PASS (the verdict and its data entry), clean, and whose time (min `ts` over
+its scoped units; never a terminal's or its own) is after the commit time of the base commit that set the row's
+previous status line (a new row: the merge-base's). LEGACY / GRANDFATHERED / UNGOVERNED / allowed-dirty never
+count; an ACTIVE exception (first clause: this PR performs its exact from→to with HEAD's date == to_date) may.
+
+### Exceptions (ledger kind)
+Only clauses already on main act (one added by this change is reviewed first, used after). A clause is ACTIVE
+for a row when HEAD's token and date are its `to` / `to_date` and this change performs its `from → to` (`from:
+null` = a new row) or the base already sits there; a clause for a transition no longer current is inert history.
+An active clause pinned by `sha256` to the cited bytes turns that record's NOT-ESTABLISHED into EXCEPTED; a
+pinned clause neither excepting a record nor supplying support is NOTED stale, and a cited clause that no longer
+pins the bytes is NOTED inert. A clause pins a FILE: one naming a session directory never acts. Every entry needs a
+unique string `id`.
+Removing Evidence: a row with ≥ 1 ESTABLISHED entry at base keeps one (a base entry that cannot be judged keeps the
+ratchet on, with a NOTE; a record with corrupt bytes or an unexpected shape is simply NOT-ESTABLISHED there).
+
+### Bootstrap
+5b-1's own PR moves no row (the pass table is not on main yet). T1-1 / T3-9 move in a later PR, once the table
+and O19's verdicts are on main. A PR that tightens an entry and moves a row in one diff is judged by the
+merge-base (looser) entry.
+
+### 5b-2 (next)
+Pass entries + "complete run" rules for `exp53_verdict` / `exp54_verdict` (re-derive `runs_of` / `Run.status`
+from the bound bytes, gate-owned), `exp60_verdict` (every seed of `frozen.seeds` under one `(run_id, arm)`,
+refused rows included), `exp61/62_verdict` (one `campaign_id` per data file and scope). Also: `kind: "prereg"` exceptions read by the prereg lint as an `EXCEPTED` status for that data entry (the
+successor of its frozen in-script lists).

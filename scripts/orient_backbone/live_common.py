@@ -21,7 +21,6 @@ toward +1 (source appears more to the right). DEFAULT here matches that:
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import os
@@ -55,11 +54,9 @@ def _maxim_file() -> str | None:
     return getattr(maxim, "__file__", None)
 
 
-def provenance_digest(block: dict) -> str:
-    """The ``provenance_sha256`` every event-log line carries: sha256 of ``json.dumps(block, sort_keys=True)``
-    (default separators, ``ensure_ascii``), over the block as stamped (``allow_dirty`` included). The one
-    definition — the log and every reader that checks a line against its run's block use this function."""
-    return hashlib.sha256(json.dumps(block, sort_keys=True).encode()).hexdigest()
+# The ``provenance_sha256`` digest: one definition, in the stdlib-only ``_provenance`` (the evidence gate reads it
+# without importing this module's hardware stack).
+provenance_digest = _provenance.provenance_digest
 
 
 class JsonlLog:

@@ -49,7 +49,7 @@ discarded their provenance) and names ``"record_kind"``; and a harness that spaw
 Since M1b PR 5a a spawner may not call ``in_process_code_provenance``: the provenance block's ``harness_family``
 (``"in_process"`` / ``"spawning"``, stamped by ``_provenance`` itself) tells the evidence gate whether to judge a
 row by its own provenance or by the sims it echoes, so a spawner claiming ``in_process`` would be judged without
-them. And no file under ``scripts/`` but ``_provenance.py`` (and this lint) may name the ``"harness_family"``
+them. And no file under ``scripts/`` but ``_provenance.py`` (and this lint, and the evidence gate that reads it) may name the ``"harness_family"``
 literal, so a writer does not set or overwrite it by hand (a presence check: forgetting, not evasion).
 Presence checks: one literal covers a file, and they catch forgetting, not a wrong argument.
 
@@ -246,7 +246,12 @@ def lint(repo_root: Path = REPO_ROOT) -> list[str]:
     # M1b PR 5a — the harness family is _provenance's to stamp, never a writer's.
     for path in sorted(scripts.rglob("*.py")):
         rel = path.relative_to(repo_root)
-        if rel.as_posix() in ("scripts/_provenance.py", "scripts/lint_harness_provenance.py"):
+        # _provenance stamps it; this lint and the evidence gate's record judges (the reader the stamp exists for) name it.
+        if rel.as_posix() in (
+            "scripts/_provenance.py",
+            "scripts/lint_harness_provenance.py",
+            "scripts/_evidence_records.py",
+        ):
             continue
         try:
             tree = ast.parse(path.read_text(errors="replace"))

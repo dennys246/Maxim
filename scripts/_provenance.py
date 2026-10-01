@@ -89,6 +89,7 @@ __all__ = [
     "stamp_diagnosis",
     "stamp_verdict",
     "any_not_stamped_real",
+    "provenance_digest",
     "is_failed_row",
     "spawn_evidence",
     "depends_on",
@@ -583,6 +584,14 @@ def stamp_verdict(
     verdict["scope"] = scope
     verdict["mock"] = bool(mock)
     return verdict
+
+
+def provenance_digest(block: dict) -> str:
+    """The ``provenance_sha256`` every event-log line carries: sha256 of ``json.dumps(block, sort_keys=True)``
+    (default separators, ``ensure_ascii``), over the block as stamped (``allow_dirty`` included). The one
+    definition — ``live_common.JsonlLog`` and the evidence gate both use it (stdlib-only, so the gate can run
+    without ``maxim`` installed)."""
+    return hashlib.sha256(json.dumps(block, sort_keys=True).encode()).hexdigest()
 
 
 def any_not_stamped_real(rows: list) -> bool:
