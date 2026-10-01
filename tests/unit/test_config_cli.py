@@ -20,6 +20,8 @@ so tests don't touch the developer's real config.
 
 from __future__ import annotations
 
+from maxim.runtime.config_loader import non_default_paths
+
 import json
 
 import pytest
@@ -124,9 +126,7 @@ class TestGet:
         # Set up a config.json file
         from maxim.runtime.config_writer import write_config
 
-        write_config(
-            MaximConfig(llm=LLMConfigSection(profile="qwen-32b")),
-        )
+        write_config(cfg_ := MaximConfig(llm=LLMConfigSection(profile="qwen-32b")), explicit=non_default_paths(cfg_))
         reset_config_cache()
         rc = run_config_subcommand(["get", "llm.profile"])
         out = capsys.readouterr().out

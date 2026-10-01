@@ -10,6 +10,8 @@ Covers:
 
 from __future__ import annotations
 
+from maxim.runtime.config_loader import non_default_paths
+
 import logging
 from pathlib import Path
 
@@ -84,7 +86,7 @@ class TestAutoMigration:
         # Pre-seed config.json
         from maxim.runtime.config_writer import write_config
 
-        write_config(MaximConfig(role="leader"))
+        write_config(cfg_ := MaximConfig(role="leader"), explicit=non_default_paths(cfg_))
         _write_peer_yml(fake_home)
         # Migration should NOT fire — config.json already has data
         cfg = load_config()
@@ -138,14 +140,14 @@ class TestAutoMigration:
 
         call_count = {"n": 0}
 
-        def fake_write_config(cfg, path=None):
+        def fake_write_config(cfg, path=None, *, explicit):
             call_count["n"] += 1
             if call_count["n"] == 1:
                 raise OSError("simulated disk full")
             return (
-                config_writer.write_config.__wrapped__(cfg, path=path)
+                config_writer.write_config.__wrapped__(cfg, path=path, explicit=explicit)
                 if hasattr(config_writer.write_config, "__wrapped__")
-                else _real_write_config(cfg, path=path)
+                else _real_write_config(cfg, path=path, explicit=explicit)
             )
 
         # Cleaner approach: monkey just the first call
@@ -244,7 +246,7 @@ class TestApplyLaneConfigToEnv:
         api_key_file.write_text("sk-the-real-key\n")
 
         write_config(
-            MaximConfig(
+            cfg_ := MaximConfig(
                 lanes=LanesConfigSection(
                     large=LaneTierConfig(
                         remote_url="http://leader.local/v1",
@@ -252,7 +254,8 @@ class TestApplyLaneConfigToEnv:
                         remote_model="qwen-32b",
                     ),
                 ),
-            )
+            ),
+            explicit=non_default_paths(cfg_),
         )
         reset_config_cache()
 
@@ -278,11 +281,12 @@ class TestApplyLaneConfigToEnv:
         from maxim.runtime.lane_backends import _apply_lane_config_to_env
 
         write_config(
-            MaximConfig(
+            cfg_ := MaximConfig(
                 lanes=LanesConfigSection(
                     large=LaneTierConfig(remote_url="http://from-config/v1"),
                 ),
-            )
+            ),
+            explicit=non_default_paths(cfg_),
         )
         reset_config_cache()
 
@@ -314,11 +318,12 @@ class TestApplyLaneConfigToEnv:
         # config.json declares a leader URL — would normally resolve via
         # resolve_setting and populate MAXIM_LANE_LARGE_REMOTE_URL.
         write_config(
-            MaximConfig(
+            cfg_ := MaximConfig(
                 lanes=LanesConfigSection(
                     large=LaneTierConfig(remote_url="http://leader.local/v1"),
                 ),
-            )
+            ),
+            explicit=non_default_paths(cfg_),
         )
         reset_config_cache()
 
@@ -351,11 +356,12 @@ class TestApplyLaneConfigToEnv:
         from maxim.runtime.config_writer import write_config
 
         write_config(
-            MaximConfig(
+            cfg_ := MaximConfig(
                 lanes=LanesConfigSection(
                     large=LaneTierConfig(remote_url="http://leader.local/v1"),
                 ),
-            )
+            ),
+            explicit=non_default_paths(cfg_),
         )
 
         # Test each truthy form. reset_config_cache() between iterations
@@ -394,13 +400,14 @@ class TestApplyLaneConfigToEnv:
         from maxim.runtime.lane_backends import _apply_lane_config_to_env
 
         write_config(
-            MaximConfig(
+            cfg_ := MaximConfig(
                 llm=LLMConfigSection(
                     profile="mistral-small-24b",
                     n_ctx=16384,
                     auto_download=True,
                 ),
-            )
+            ),
+            explicit=non_default_paths(cfg_),
         )
         reset_config_cache()
 
@@ -434,7 +441,7 @@ class TestApplyLaneConfigToEnv:
         from maxim.runtime.config_writer import write_config
         from maxim.runtime.lane_backends import _apply_lane_config_to_env
 
-        write_config(MaximConfig(llm=LLMConfigSection(profile="from-config")))
+        write_config(cfg_ := MaximConfig(llm=LLMConfigSection(profile="from-config")), explicit=non_default_paths(cfg_))
         reset_config_cache()
         monkeypatch.setenv("MAXIM_LLM_PROFILE", "from-env")
 
@@ -488,11 +495,12 @@ class TestApplyLaneConfigIdempotency:
         from maxim.runtime.lane_backends import _apply_lane_config_to_env
 
         write_config(
-            MaximConfig(
+            cfg_ := MaximConfig(
                 lanes=LanesConfigSection(
                     large=LaneTierConfig(remote_url="http://leader.local/v1"),
                 ),
-            )
+            ),
+            explicit=non_default_paths(cfg_),
         )
         reset_config_cache()
 

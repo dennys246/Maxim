@@ -275,13 +275,8 @@ def test_the_knobs_survive_a_write_then_load(tmp_path, monkeypatch):
     monkeypatch.setattr(config_writer, "config_path", lambda: path)
     config_writer.set_field("memory.strategy", "strength")
     config_writer.set_field("memory.s_base", "5e6")
-    assert json.loads(path.read_text())["memory"] == {
-        "strategy": "strength",
-        "s_base": 5e6,
-        "k": None,
-        "retro_tau_us": None,
-        "retro_cutoff_us": None,
-    }
+    # Format 1.2: the file holds exactly what was set (no defaults dumped beside them).
+    assert json.loads(path.read_text())["memory"] == {"strategy": "strength", "s_base": 5e6}
     loaded = load_config(path)
     assert (loaded.memory.strategy, loaded.memory.s_base) == ("strength", 5e6)
 

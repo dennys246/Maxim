@@ -845,22 +845,12 @@ def _shadow_fix(field_path: str, env_name: str, env_raw: str) -> str:
 
 
 def _read_config_for_doctor(cfg, field_path: str):
-    """Walk the dot path on a MaximConfig to return the raw config value,
-    or ``None`` if the field equals the default (i.e., no operator-set value).
-    Used by check_resolved_config to detect shadow/convergence states."""
-    from maxim.runtime.config_loader import MaximConfig
+    """The value config.json sets for ``field_path``, or ``None`` (not set by the operator) — the loader's
+    own rule (``config_loader._read_from_config``: format 1.2 keys present, or a pre-1.2 file's
+    non-defaults), so doctor's shadow/convergence rows agree with ``resolve_setting``."""
+    from maxim.runtime.config_loader import _read_from_config
 
-    parts = field_path.split(".")
-    obj = cfg
-    default_obj = MaximConfig()
-    for part in parts:
-        obj = getattr(obj, part, None)
-        default_obj = getattr(default_obj, part, None)
-        if obj is None:
-            return None
-    if obj == default_obj:
-        return None
-    return obj
+    return _read_from_config(cfg, field_path)
 
 
 def _check_lane_api_key_refs_health(cfg) -> list["CheckResult"]:

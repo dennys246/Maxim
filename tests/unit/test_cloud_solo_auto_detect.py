@@ -224,3 +224,116 @@ class TestCatalogConsistency:
             "DEEPSEEK_API_KEY",
         }
         assert env_names == expected
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# #1030 — a profile set in config.json is "a local model configured" too
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _config(tmp_path, monkeypatch, profile: str) -> None:
+    """A real config.json naming ``profile`` (``maxim config set llm.profile``), read through the loader."""
+    import json
+
+    from maxim.runtime.config_loader import reset_config_cache
+
+    (tmp_path / "maxim").mkdir()
+    (tmp_path / "maxim" / "config.json").write_text(json.dumps({"llm": {"profile": profile}}))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    reset_config_cache()
+
+
+class TestConfiguredProfile:
+    def test_a_configured_local_profile_is_not_replaced_by_a_cloud_one(self, clean_env, monkeypatch, tmp_path):
+        _config(tmp_path, monkeypatch, "mistral-7b")
+        monkeypatch.setenv("MAXIM_ROLE", "solo")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        configure_cloud_solo_auto_detect(logging.getLogger("test"))
+        assert "MAXIM_LLM_PROFILE" not in os.environ  # the configured local model stands
+        assert "MAXIM_LLM_CLOUD_ENABLED" not in os.environ
+
+    def test_a_configured_cloud_profile_gets_the_gates_and_keeps_its_name(self, clean_env, monkeypatch, tmp_path):
+        _config(tmp_path, monkeypatch, "gpt-4o")
+        monkeypatch.setenv("MAXIM_ROLE", "solo")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-test")
+        configure_cloud_solo_auto_detect(logging.getLogger("test"))
+        assert os.environ["MAXIM_LLM_CLOUD_ENABLED"] == "1"  # bare-key setup still "just works"
+        assert os.environ["MAXIM_LLM_PROFILE"] == "gpt-4o"  # config's, not the first key's claude-sonnet
+
+    def test_an_unknown_configured_profile_is_left_to_the_operator(self, clean_env, monkeypatch, tmp_path):
+        _config(tmp_path, monkeypatch, "my-custom-gguf")
+        monkeypatch.setenv("MAXIM_ROLE", "solo")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        configure_cloud_solo_auto_detect(logging.getLogger("test"))
+        assert "MAXIM_LLM_PROFILE" not in os.environ
+
+    def test_no_configured_profile_still_fires(self, clean_env, monkeypatch, tmp_path):
+        """The bare-API-key path C7a exists for is unchanged."""
+        (tmp_path / "maxim").mkdir()
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        from maxim.runtime.config_loader import reset_config_cache
+
+        reset_config_cache()
+        monkeypatch.setenv("MAXIM_ROLE", "solo")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        configure_cloud_solo_auto_detect(logging.getLogger("test"))
+        assert os.environ["MAXIM_LLM_PROFILE"] == "claude-sonnet"
+
+
+class TestConfigOffSwitchAndUnreadable:
+    """The documented off-switch works (config.json 1.2 can say `cloud.enabled false`), and an unreadable
+    config.json never lets C7a pick a billed cloud model over what the operator may have configured."""
+
+    def test_cloud_enabled_false_in_config_switches_it_off(self, clean_env, monkeypatch, tmp_path):
+        _config_raw(tmp_path, monkeypatch, '{"_format_version": "1.2", "cloud": {"enabled": false}}')
+        monkeypatch.setenv("MAXIM_ROLE", "solo")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        configure_cloud_solo_auto_detect(logging.getLogger("test"))
+        assert "MAXIM_LLM_PROFILE" not in os.environ and "MAXIM_LLM_CLOUD_ENABLED" not in os.environ
+
+    def test_an_unreadable_config_does_not_fire(self, clean_env, monkeypatch, tmp_path):
+        _config_raw(tmp_path, monkeypatch, '{"llm": {"profile": "mistral-7b",')  # truncated JSON
+        monkeypatch.setenv("MAXIM_ROLE", "solo")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        configure_cloud_solo_auto_detect(logging.getLogger("test"))
+        assert "MAXIM_LLM_PROFILE" not in os.environ
+
+
+def _config_raw(tmp_path, monkeypatch, text: str) -> None:
+    from maxim.runtime.config_loader import reset_config_cache
+
+    (tmp_path / "maxim").mkdir()
+    (tmp_path / "maxim" / "config.json").write_text(text)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    reset_config_cache()
+
+
+class TestConfigValuesStand:
+    """C7a writes env vars, which outrank config.json: where config.json sets a field, C7a exports config's own
+    value, never its default (#1030's root cause, not only llm.profile). The runtime reads these gates from the
+    environment only, so skipping would drop the operator's value (#1034 tracks the other roles)."""
+
+    def _fire(self, monkeypatch, tmp_path, cloud: dict) -> None:
+        import json
+
+        _config_raw(tmp_path, monkeypatch, json.dumps({"_format_version": "1.2", "cloud": cloud}))
+        monkeypatch.setenv("MAXIM_ROLE", "solo")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        configure_cloud_solo_auto_detect(logging.getLogger("test"))
+
+    def test_a_configured_budget_takes_effect(self, clean_env, monkeypatch, tmp_path):
+        """The runtime reads the budget from the environment only, so C7a carries config's value there."""
+        self._fire(monkeypatch, tmp_path, {"session_budget_usd": 1.0})
+        assert os.environ["MAXIM_CLOUD_SESSION_BUDGET"] == "1.0"  # config's $1, not C7a's $5
+        assert os.environ["MAXIM_LLM_PROFILE"] == "claude-sonnet"  # the rest still fires
+
+    def test_cloud_enabled_true_in_config_keeps_cloud_on(self, clean_env, monkeypatch, tmp_path):
+        """Executor review blocker: skipping the env var when config set the field left cloud DISABLED."""
+        self._fire(monkeypatch, tmp_path, {"enabled": True, "max_lanes": 2, "redaction_policy": "standard"})
+        assert os.environ["MAXIM_LLM_CLOUD_ENABLED"] == "1"
+        assert os.environ["MAXIM_MAX_CLOUD_LANES"] == "2"
+        assert os.environ["MAXIM_LLM_REDACTION_POLICY"] == "standard"
+        from maxim.models.language.config import load_llm_config
+
+        assert load_llm_config().cloud_enabled is True  # what the router actually reads

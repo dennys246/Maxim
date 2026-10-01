@@ -92,9 +92,23 @@ The legacy `MAXIM_LANE_<TIER>_REMOTE_API_KEY` env var still works (it directly h
 
 The four declarative-config files coexist by design.
 
+### Only what you set is saved (format 1.2)
+
+Since format `"1.2"`, `config.json` holds exactly the settings you chose; everything else follows its
+default. `maxim config set <field> <value>` pins the value, even when it equals the default (so
+`maxim config set llm.n_ctx 8192` reads back as source `config`); `maxim config unset <field>` (or
+`maxim config set <field> null`) hands the field back to its default and removes it from the file.
+
+A file written by an earlier build (`"1.1"` or `"1.0"`) listed every field, defaults included, so its
+intent cannot be read from it: it resolves as before (a value equal to the default counts as not set)
+until the first `maxim config set` on this build, which rewrites it keeping only its non-default values
+plus the field you set. A file with no `_format_version` is treated as hand-written: every key in it is
+a setting you chose. An older build reading a 1.2 file keeps the values but forgets which were pinned
+(see DECISIONS.md, 2026-10-01).
+
 ### Format version and downgrades
 
-`config.json` carries a `_format_version` (`"1.1"` since 1.3.2). A build reading a file with a NEWER
+`config.json` carries a `_format_version` (`"1.2"` since 2026-10-01; `"1.1"` before it). A build reading a file with a NEWER
 minor version tolerates the sections and keys it does not know, with a warning, instead of refusing to
 start. The 1.3.2 bump covers what shipped under `"1.0"` without one:
 - the `console`, `tools`, `sim` and `memory` sections;
@@ -104,9 +118,9 @@ So 1.3.0, which lacks the `memory` section, can read a 1.3.2 file. (1.3.1 alread
 and field in 1.1.)
 
 A file an earlier build wrote as `"1.0"` WITH one of those additions still stops an older build. First
-rewrite it on the newer build by re-setting any field to the value it already has (read it with
-`maxim config get llm.n_ctx`, then `maxim config set llm.n_ctx <that value>`), which stamps it `"1.1"`
-without changing a setting.
+rewrite it on the newer build with any write: `maxim config set` of a field you already chose to the same
+value rewrites it at this build's version without changing a setting. (Avoid re-setting a field you did NOT
+choose: since 1.2 that pins it — see "Only what you set is saved" above.)
 
 After a downgrade, `maxim config set` on a build with this change refuses a newer file instead of silently
 dropping the settings it does not know (#974). An OLDER build without it still drops them.

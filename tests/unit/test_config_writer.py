@@ -17,6 +17,8 @@ each test's loader state clean.
 
 from __future__ import annotations
 
+from maxim.runtime.config_loader import non_default_paths
+
 import json
 import multiprocessing
 from dataclasses import replace
@@ -43,7 +45,7 @@ from maxim.runtime.config_writer import (
 class TestWriteAndReadRoundtrip:
     def test_default_config_roundtrips(self, tmp_path):
         path = tmp_path / "config.json"
-        write_config(MaximConfig(), path=path)
+        write_config(cfg_ := MaximConfig(), path=path, explicit=non_default_paths(cfg_))
         loaded = load_config(path)
         assert loaded == MaximConfig()
 
@@ -53,7 +55,7 @@ class TestWriteAndReadRoundtrip:
             role="leader",
             llm=LLMConfigSection(profile="qwen-32b", n_ctx=16384, auto_download=True),
         )
-        write_config(cfg, path=path)
+        write_config(cfg, path=path, explicit=non_default_paths(cfg))
         loaded = load_config(path)
         assert loaded.role == "leader"
         assert loaded.llm.profile == "qwen-32b"
@@ -72,7 +74,7 @@ class TestWriteAndReadRoundtrip:
                 ),
             ),
         )
-        write_config(cfg, path=path)
+        write_config(cfg, path=path, explicit=non_default_paths(cfg))
         loaded = load_config(path)
         assert loaded.lanes.large.remote_url == "http://example.com/v1"
         assert loaded.lanes.large.extra == {
@@ -82,7 +84,7 @@ class TestWriteAndReadRoundtrip:
 
     def test_written_file_carries_format_version(self, tmp_path):
         path = tmp_path / "config.json"
-        write_config(MaximConfig(), path=path)
+        write_config(cfg_ := MaximConfig(), path=path, explicit=non_default_paths(cfg_))
         raw = json.loads(path.read_text())
         assert raw["_format_version"] == CONFIG_FORMAT_VERSION
 
@@ -106,7 +108,7 @@ class TestWriteAndReadRoundtrip:
         monkeypatch.setattr("maxim.runtime.config_writer.with_format_version", tracking_wrapper)
 
         path = tmp_path / "config.json"
-        write_config(MaximConfig(), path=path)
+        write_config(cfg_ := MaximConfig(), path=path, explicit=non_default_paths(cfg_))
         assert calls, "with_format_version helper was not called by the writer"
         assert calls[0][1] == CONFIG_FORMAT_VERSION
 
@@ -198,7 +200,7 @@ class TestAPIKeyRefRejection:
                 large=LaneTierConfig(remote_api_key_ref="sk-inline-bad"),
             ),
         )
-        write_config(cfg, path=path)
+        write_config(cfg, path=path, explicit=non_default_paths(cfg))
         # Re-read should fail
         with pytest.raises(ConfigurationError, match="Inline plaintext"):
             load_config(path)
@@ -209,12 +211,14 @@ class TestMutateConfig:
 
     def test_mutate_applies_function_and_persists(self, tmp_path):
         path = tmp_path / "config.json"
-        write_config(MaximConfig(llm=LLMConfigSection(profile="initial")), path=path)
+        write_config(
+            cfg_ := MaximConfig(llm=LLMConfigSection(profile="initial")), path=path, explicit=non_default_paths(cfg_)
+        )
 
         def bump_profile(cfg):
             return replace(cfg, llm=replace(cfg.llm, profile="mutated"))
 
-        new, written_path = mutate_config(bump_profile, path=path)
+        new, written_path = mutate_config(bump_profile, path=path, assigned=frozenset({"llm.profile"}))
         assert new.llm.profile == "mutated"
         assert written_path == path
         loaded = load_config(path)
@@ -223,7 +227,9 @@ class TestMutateConfig:
     def test_mutate_reads_inside_lock(self, tmp_path):
         """The mutator receives the freshly-read config, not a stale one."""
         path = tmp_path / "config.json"
-        write_config(MaximConfig(llm=LLMConfigSection(profile="initial")), path=path)
+        write_config(
+            cfg_ := MaximConfig(llm=LLMConfigSection(profile="initial")), path=path, explicit=non_default_paths(cfg_)
+        )
 
         seen_values = []
 
@@ -231,8 +237,8 @@ class TestMutateConfig:
             seen_values.append(cfg.llm.profile)
             return replace(cfg, llm=replace(cfg.llm, profile="round1"))
 
-        mutate_config(capture_then_bump, path=path)
-        mutate_config(capture_then_bump, path=path)
+        mutate_config(capture_then_bump, path=path, assigned=frozenset({"llm.profile"}))
+        mutate_config(capture_then_bump, path=path, assigned=frozenset({"llm.profile"}))
         # The second mutate must see "round1" — i.e., it re-read INSIDE
         # the lock rather than reusing a cached value.
         assert seen_values == ["initial", "round1"]
@@ -260,7 +266,7 @@ class TestConcurrentWriters:
         final config. The FileLock prevents lost-update on the RMW."""
         path = tmp_path / "config.json"
         # Seed
-        write_config(MaximConfig(), path=path)
+        write_config(cfg_ := MaximConfig(), path=path, explicit=non_default_paths(cfg_))
 
         args = [
             ("llm.profile", "from-A", str(path)),
@@ -326,14 +332,14 @@ class TestSingletonInvalidation:
         from maxim.runtime.config_writer import mutate_config, write_config
 
         cfg_path = tmp_path / "config.json"
-        write_config(MaximConfig(), path=cfg_path)
+        write_config(cfg_ := MaximConfig(), path=cfg_path, explicit=non_default_paths(cfg_))
         before = get_config(cfg_path)
         assert before.cloud.enabled is False
 
         def mutator(current: MaximConfig) -> MaximConfig:
             return replace(current, cloud=replace(current.cloud, enabled=True))
 
-        mutate_config(mutator, path=cfg_path)
+        mutate_config(mutator, path=cfg_path, assigned=frozenset({"cloud.enabled"}))
         after = get_config(cfg_path)
         assert after.cloud.enabled is True, "singleton must re-read after a write (was the inert-setup bug)"
 
@@ -344,7 +350,11 @@ class TestSingletonInvalidation:
         from maxim.runtime.config_writer import write_config
 
         cfg_path = tmp_path / "config.json"
-        write_config(MaximConfig(), path=cfg_path)
+        write_config(cfg_ := MaximConfig(), path=cfg_path, explicit=non_default_paths(cfg_))
         assert get_config(cfg_path).cloud.enabled is False
-        write_config(replace(MaximConfig(), cloud=replace(MaximConfig().cloud, enabled=True)), path=cfg_path)
+        write_config(
+            cfg_ := replace(MaximConfig(), cloud=replace(MaximConfig().cloud, enabled=True)),
+            path=cfg_path,
+            explicit=non_default_paths(cfg_),
+        )
         assert get_config(cfg_path).cloud.enabled is True

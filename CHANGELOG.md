@@ -23,7 +23,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **config.json format 1.2: the file holds exactly the settings you chose.** `maxim config set` pins a value even when
+  it equals the default (`llm.n_ctx 8192` now reads back as source `config`, which the O19 re-runs require);
+  `maxim config unset <field>` (or `set <field> null`) returns a field to its default. A 1.1/1.0 full-dump file reads as
+  before until its first write (`config set`/`unset` or a setup verb), which keeps only its non-default values; a file
+  with no `_format_version` (hand-written) is read by key presence at once. On such files: a pinned `llm.enabled true`
+  or `llm.auto_download` is exported to the environment; leader_proxy enforces admission at a pinned `n_ctx`;
+  env-vs-config logs fire for pinned values. An older build keeps the values but forgets which were pinned
+  (DECISIONS.md, 2026-10-01).
+
 ### Fixed
+
+- **Cloud auto-detect (C7a) no longer overrides config.json** (#1030). A solo run with a cloud key in the shell
+  replaced a local `llm.profile` set through `maxim config` with a billed cloud profile, and `cloud.enabled false` (the
+  documented off-switch) did nothing. It now stands down for a configured local or unknown profile, `cloud.enabled
+  false`, or an unreadable `config.json`, and where `config.json` sets a cloud gate it exports that value rather than
+  its own default (the cloud gates are read only from the environment; #1034 tracks the other roles).
 
 - **A follow-up retry after a rejected tool is no longer a byte-identical resend** (#935). The follow-up prompt never
   listed the agent's own tools, and `PromptBuilder.build_prompt` returned it without reading `failed_tools`, so the

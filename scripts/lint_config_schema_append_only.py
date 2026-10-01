@@ -23,6 +23,9 @@ from _lint_git import GitUnavailable, base_ref, must_not_skip, show  # noqa: E40
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIXTURE = "tests/fixtures/config_schema_by_version.json"
+# What each version MEANS (how it resolves) is pinned the same way: a change of meaning is a new version too.
+RESOLUTION_FIXTURE = "tests/fixtures/config_resolution_by_version.json"
+FIXTURES = (FIXTURE, RESOLUTION_FIXTURE)
 
 
 def _entries(text: str) -> dict[str, list[str]]:
@@ -52,9 +55,12 @@ def check() -> int:
             return 1
         print(f"INFO: no base ref available; skipping config-schema append-only check ({exc})")
         return 0
-    ok, msg = verdict(show(REPO_ROOT, base, FIXTURE), (REPO_ROOT / FIXTURE).read_text(encoding="utf-8"))
-    print(f"config-schema append-only: {'clean' if ok else 'FAIL'} -- {msg}")
-    return 0 if ok else 1
+    failed = False
+    for fixture in FIXTURES:
+        ok, msg = verdict(show(REPO_ROOT, base, fixture), (REPO_ROOT / fixture).read_text(encoding="utf-8"))
+        print(f"config-schema append-only ({fixture}): {'clean' if ok else 'FAIL'} -- {msg}")
+        failed = failed or not ok
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
