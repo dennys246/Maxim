@@ -14,6 +14,8 @@ rows in this section.
 
 from __future__ import annotations
 
+from maxim.runtime.config_loader import non_default_paths
+
 
 import pytest
 
@@ -87,7 +89,7 @@ class TestShadowAndConvergence:
     def test_config_only_shows_source_config(self, fake_home):
         from maxim.runtime.config_writer import write_config
 
-        write_config(MaximConfig(llm=LLMConfigSection(profile="from-config")))
+        write_config(cfg_ := MaximConfig(llm=LLMConfigSection(profile="from-config")), explicit=non_default_paths(cfg_))
         reset_config_cache()
         results = check_resolved_config()
         r = _by_name(results, "llm.profile")
@@ -106,7 +108,7 @@ class TestShadowAndConvergence:
     def test_env_shadowing_config_warns_with_both_values(self, fake_home, monkeypatch):
         from maxim.runtime.config_writer import write_config
 
-        write_config(MaximConfig(llm=LLMConfigSection(profile="from-config")))
+        write_config(cfg_ := MaximConfig(llm=LLMConfigSection(profile="from-config")), explicit=non_default_paths(cfg_))
         reset_config_cache()
         monkeypatch.setenv("MAXIM_LLM_PROFILE", "from-env")
         results = check_resolved_config()
@@ -122,7 +124,7 @@ class TestShadowAndConvergence:
         truth confusion class."""
         from maxim.runtime.config_writer import write_config
 
-        write_config(MaximConfig(llm=LLMConfigSection(profile="qwen-32b")))
+        write_config(cfg_ := MaximConfig(llm=LLMConfigSection(profile="qwen-32b")), explicit=non_default_paths(cfg_))
         reset_config_cache()
         monkeypatch.setenv("MAXIM_LLM_PROFILE", "qwen-32b")
         results = check_resolved_config()
@@ -154,14 +156,15 @@ class TestApiKeyRefHealth:
 
         missing = tmp_path / "does-not-exist"
         write_config(
-            MaximConfig(
+            cfg_ := MaximConfig(
                 lanes=LanesConfigSection(
                     large=LaneTierConfig(
                         remote_url="http://leader.local/v1",
                         remote_api_key_ref=str(missing),
                     ),
                 ),
-            )
+            ),
+            explicit=non_default_paths(cfg_),
         )
         reset_config_cache()
         from maxim.runtime.config_loader import load_config
@@ -181,14 +184,15 @@ class TestApiKeyRefHealth:
         # Default mode is 0o644 — explicitly chmod to confirm
         key_file.chmod(0o644)
         write_config(
-            MaximConfig(
+            cfg_ := MaximConfig(
                 lanes=LanesConfigSection(
                     large=LaneTierConfig(
                         remote_url="http://leader.local/v1",
                         remote_api_key_ref=str(key_file),
                     ),
                 ),
-            )
+            ),
+            explicit=non_default_paths(cfg_),
         )
         reset_config_cache()
         from maxim.runtime.config_loader import load_config
@@ -206,14 +210,15 @@ class TestApiKeyRefHealth:
         key_file.write_text("sk-good\n")
         key_file.chmod(0o600)
         write_config(
-            MaximConfig(
+            cfg_ := MaximConfig(
                 lanes=LanesConfigSection(
                     large=LaneTierConfig(
                         remote_url="http://leader.local/v1",
                         remote_api_key_ref=str(key_file),
                     ),
                 ),
-            )
+            ),
+            explicit=non_default_paths(cfg_),
         )
         reset_config_cache()
         from maxim.runtime.config_loader import load_config
@@ -577,7 +582,10 @@ class TestLegacyEnvMigration:
             monkeypatch.delenv(name, raising=False)
 
         # config.json sets n_ctx=13312, profile=qwen2.5-14b-instruct
-        write_config(MaximConfig(llm=LLMConfigSection(n_ctx=13312, profile="qwen2.5-14b-instruct")))
+        write_config(
+            cfg_ := MaximConfig(llm=LLMConfigSection(n_ctx=13312, profile="qwen2.5-14b-instruct")),
+            explicit=non_default_paths(cfg_),
+        )
         reset_config_cache()
         # env sets identical values (convergent case)
         monkeypatch.setenv("MAXIM_LLM_N_CTX", "13312")
@@ -613,7 +621,10 @@ class TestLegacyEnvMigration:
 
         for name in _ABSORBED_ENV_VARS:
             monkeypatch.delenv(name, raising=False)
-        write_config(MaximConfig(llm=LLMConfigSection(n_ctx=13312, profile="qwen2.5-14b-instruct")))
+        write_config(
+            cfg_ := MaximConfig(llm=LLMConfigSection(n_ctx=13312, profile="qwen2.5-14b-instruct")),
+            explicit=non_default_paths(cfg_),
+        )
         reset_config_cache()
         # n_ctx converges, profile diverges
         monkeypatch.setenv("MAXIM_LLM_N_CTX", "13312")
@@ -727,11 +738,12 @@ class TestPlacementView:
         from maxim.runtime.config_writer import write_config
 
         write_config(
-            MaximConfig(
+            cfg_ := MaximConfig(
                 lanes=LanesConfigSection(
                     large=LaneTierConfig(placement=(LaneTierPlacement(origin="peer", url="http://leader/v1"),))
                 )
-            )
+            ),
+            explicit=non_default_paths(cfg_),
         )
         reset_config_cache()
         results = check_resolved_config()
@@ -743,14 +755,15 @@ class TestPlacementView:
         from maxim.runtime.config_writer import write_config
 
         write_config(
-            MaximConfig(
+            cfg_ := MaximConfig(
                 lanes=LanesConfigSection(
                     large=LaneTierConfig(
                         remote_url="http://x/v1",
                         placement=(LaneTierPlacement(origin="local", model="m"),),
                     )
                 )
-            )
+            ),
+            explicit=non_default_paths(cfg_),
         )
         reset_config_cache()
         results = check_resolved_config()
@@ -803,7 +816,10 @@ class TestSecretRedaction:
         key_file = tmp_path / "api_key"
         key_file.write_text("sk-in-file")
         key_file.chmod(0o600)
-        write_config(MaximConfig(lanes=LanesConfigSection(large=LaneTierConfig(remote_api_key_ref=str(key_file)))))
+        write_config(
+            cfg_ := MaximConfig(lanes=LanesConfigSection(large=LaneTierConfig(remote_api_key_ref=str(key_file)))),
+            explicit=non_default_paths(cfg_),
+        )
         reset_config_cache()
         results = check_resolved_config()
         r = _by_name(results, "lanes.large.remote_api_key_ref")
@@ -823,7 +839,10 @@ class TestSecretRedaction:
         key_file = tmp_path / "api_key"
         key_file.write_text("sk-in-file")
         key_file.chmod(0o600)
-        write_config(MaximConfig(lanes=LanesConfigSection(large=LaneTierConfig(remote_api_key_ref=str(key_file)))))
+        write_config(
+            cfg_ := MaximConfig(lanes=LanesConfigSection(large=LaneTierConfig(remote_api_key_ref=str(key_file)))),
+            explicit=non_default_paths(cfg_),
+        )
         reset_config_cache()
         monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_API_KEY", self.KEY)
         r = _by_name(check_resolved_config(), "lanes.large.remote_api_key_ref")

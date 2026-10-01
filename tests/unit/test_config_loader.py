@@ -24,6 +24,8 @@ the absorbed env vars + clears the loader's singleton between tests.
 
 from __future__ import annotations
 
+from maxim.runtime.config_loader import non_default_paths
+
 import json
 import logging
 import platform
@@ -104,7 +106,7 @@ class TestFormatVersionFieldOrder:
 
     def test_format_version_default_matches_module_constant(self):
         cfg = MaximConfig()
-        assert cfg._format_version == CONFIG_FORMAT_VERSION == "1.1"
+        assert cfg._format_version == CONFIG_FORMAT_VERSION == "1.2"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -410,7 +412,7 @@ class TestPrecedenceChain:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         monkeypatch.setenv("HOME", str(tmp_path))
         reset_config_cache()
-        write_config(MaximConfig(llm=LLMConfigSection(n_ctx=13312)))
+        write_config(cfg_ := MaximConfig(llm=LLMConfigSection(n_ctx=13312)), explicit=non_default_paths(cfg_))
         reset_config_cache()
 
         value, source = resolve_setting("llm.n_ctx")  # no config= kwarg
@@ -427,7 +429,7 @@ class TestPrecedenceChain:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         monkeypatch.setenv("HOME", str(tmp_path))
         reset_config_cache()
-        write_config(MaximConfig(llm=LLMConfigSection(n_ctx=13312)))
+        write_config(cfg_ := MaximConfig(llm=LLMConfigSection(n_ctx=13312)), explicit=non_default_paths(cfg_))
         reset_config_cache()
 
         explicit_cfg = MaximConfig(llm=LLMConfigSection(n_ctx=2048))

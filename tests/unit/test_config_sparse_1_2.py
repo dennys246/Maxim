@@ -20,8 +20,6 @@ import pytest
 
 from maxim.runtime.config_loader import load_config, resolve_setting
 
-XFAIL = pytest.mark.xfail(strict=True, reason="config.json 1.2 (sparse, keys = operator choices) not built yet")
-
 
 def _file(tmp_path: Path) -> Path:
     return tmp_path / "config.json"
@@ -38,7 +36,6 @@ def _write_raw(path: Path, payload: dict) -> None:
 # ── the writer persists exactly the operator's choices ───────────────────────────────────────────────────
 
 
-@XFAIL
 def test_setting_the_default_value_pins_it(tmp_path) -> None:
     from maxim.runtime.config_writer import set_field
 
@@ -51,7 +48,6 @@ def test_setting_the_default_value_pins_it(tmp_path) -> None:
     assert _src(path, "llm.enabled")[1] == "default"  # never written, never a choice
 
 
-@XFAIL
 def test_unset_and_null_return_a_field_to_its_default(tmp_path) -> None:
     from maxim.runtime.config_writer import set_field, unset_field
 
@@ -65,7 +61,6 @@ def test_unset_and_null_return_a_field_to_its_default(tmp_path) -> None:
     assert json.loads(path.read_text()) == {"_format_version": "1.2"}
 
 
-@XFAIL
 def test_cloud_enabled_false_is_an_explicit_choice(tmp_path) -> None:
     from maxim.runtime.config_writer import set_field
 
@@ -74,7 +69,6 @@ def test_cloud_enabled_false_is_an_explicit_choice(tmp_path) -> None:
     assert _src(path, "cloud.enabled") == (False, "config")
 
 
-@XFAIL
 def test_a_mutator_changing_an_undeclared_field_is_refused(tmp_path) -> None:
     from maxim.exceptions import ConfigurationError
     from maxim.runtime.config_writer import _apply_field_to_config, mutate_config
@@ -85,7 +79,6 @@ def test_a_mutator_changing_an_undeclared_field_is_refused(tmp_path) -> None:
         )
 
 
-@XFAIL
 def test_the_setup_verbs_pin_what_they_assign(tmp_path) -> None:
     from maxim.runtime.config_writer import apply_cloud_setup
 
@@ -122,7 +115,6 @@ def test_a_1_1_full_dump_reads_exactly_as_before(tmp_path) -> None:
     assert _src(path, "llm.enabled")[1] == "default"
 
 
-@XFAIL
 def test_the_first_write_converts_a_1_1_dump_keeping_only_its_choices(tmp_path) -> None:
     from maxim.runtime.config_writer import set_field
 
@@ -135,7 +127,6 @@ def test_the_first_write_converts_a_1_1_dump_keeping_only_its_choices(tmp_path) 
     assert _src(path, "llm.n_ctx") == (8192, "config")
 
 
-@XFAIL
 def test_a_hand_written_unversioned_file_is_read_by_presence(tmp_path) -> None:
     path = _file(tmp_path)
     _write_raw(path, {"llm": {"n_ctx": 8192}, "cloud": {"enabled": False}})
@@ -143,7 +134,6 @@ def test_a_hand_written_unversioned_file_is_read_by_presence(tmp_path) -> None:
     assert _src(path, "cloud.enabled") == (False, "config")
 
 
-@XFAIL
 def test_a_hand_written_key_survives_the_first_set(tmp_path) -> None:
     from maxim.runtime.config_writer import set_field
 
@@ -162,7 +152,6 @@ def test_a_null_key_is_not_a_choice(tmp_path) -> None:
 # ── restore pins a value equal to its default (round 3, A) ──────────────────────────────────────────────
 
 
-@XFAIL
 def test_restore_pins_a_preserved_default_equal_value(tmp_path) -> None:
     from maxim.runtime.config_writer import preserved_path, restore_preserved, set_field
 
@@ -186,7 +175,6 @@ def test_restore_pins_a_preserved_default_equal_value(tmp_path) -> None:
 # ── doctor reads through the loader's rule ───────────────────────────────────────────────────────────────
 
 
-@XFAIL
 def test_doctor_sees_a_pinned_default_equal_value(tmp_path) -> None:
     from maxim.doctor.checks import _read_config_for_doctor
 
@@ -207,3 +195,51 @@ def test_the_report_stamps_provenance_before_the_router_is_built() -> None:
 
     source = inspect.getsource(orchestrator)
     assert source.index("capture_start_provenance()") < source.index("build_primary_router(")
+
+
+def test_null_returns_the_field_to_its_default_value(tmp_path) -> None:
+    from maxim.runtime.config_writer import set_field
+
+    path = _file(tmp_path)
+    set_field("cloud.session_budget_usd", "2.5", path=path)
+    new, _ = set_field("cloud.session_budget_usd", None, path=path)
+    assert new.cloud.session_budget_usd == 5.0  # the default, not None
+
+
+def test_a_lane_tiers_unknown_keys_survive_a_rewrite(tmp_path) -> None:
+    """A lane tier's undeclared keys are its forward-compat `extra` (CC3 path a): present in the file, so kept."""
+    from maxim.runtime.config_writer import set_field
+
+    path = _file(tmp_path)
+    _write_raw(path, {"_format_version": "1.2", "lanes": {"large": {"future_knob": 3}}})
+    set_field("llm.profile", "mistral-7b", path=path)
+    assert json.loads(path.read_text())["lanes"] == {"large": {"future_knob": 3}}
+
+
+def test_the_config_a_write_returns_resolves_like_the_file(tmp_path) -> None:
+    """Architecture review: mutate_config's mutator used replace(), which drops the explicit set; the returned
+    config would have read a pinned default-equal value as "default" while the file says "config"."""
+    from maxim.runtime.config_writer import set_field
+
+    new, _ = set_field("llm.n_ctx", "8192", path=_file(tmp_path))
+    assert resolve_setting("llm.n_ctx", config=new) == (8192, "config")
+
+
+def test_downgrade_keeps_a_newer_files_pins(tmp_path) -> None:
+    """Executor review: a newer (>= 1.2) file's keys are the operator's choices; downgrading must not unpin a
+    default-equal one (the O19 rig's llm.n_ctx 8192)."""
+    from maxim.runtime.config_writer import downgrade_config
+
+    path = _file(tmp_path)
+    _write_raw(path, {"_format_version": "1.9", "llm": {"n_ctx": 8192}, "future_section": {"x": 1}})
+    downgrade_config(path)
+    assert _src(path, "llm.n_ctx") == (8192, "config")
+
+
+def test_write_config_refuses_a_path_that_is_not_a_field(tmp_path) -> None:
+    from maxim.exceptions import ConfigurationError
+    from maxim.runtime.config_loader import MaximConfig
+    from maxim.runtime.config_writer import write_config
+
+    with pytest.raises(ConfigurationError, match="not config leaf fields"):
+        write_config(MaximConfig(), path=_file(tmp_path), explicit=frozenset({"lanes.large"}))

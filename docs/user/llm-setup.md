@@ -874,7 +874,7 @@ The session cost ceiling (`MAXIM_CLOUD_SESSION_BUDGET`, default $5.00) is enforc
 
 If you export a cloud API key without setting any other LLM config, Maxim **auto-enables cloud dispatch** at startup via `configure_cloud_solo_auto_detect` in `cli_utils.py`. This is why `export ANTHROPIC_API_KEY=... && maxim` works with no additional flags — the seven-flag incantation is done for you.
 
-**When it fires:** role is `solo` (or unset), no `MAXIM_LLM_PROFILE` is set, and no `MAXIM_LANE_LARGE_REMOTE_URL` is set (i.e., not routing to a peer leader). Auto-detect does not fire for `leader` or `peer` roles.
+**When it fires:** role is `solo` (or unset), no `MAXIM_LLM_PROFILE` is set, no `MAXIM_LANE_LARGE_REMOTE_URL` is set (i.e., not routing to a peer leader), and `config.json` neither sets a local `llm.profile` nor `cloud.enabled false`, and can be read. Auto-detect does not fire for `leader` or `peer` roles. A cloud `llm.profile` set in `config.json` keeps its name; auto-detect only enables the cloud gates for it.
 
 **What it sets (only if not already present):**
 
@@ -889,7 +889,7 @@ If you export a cloud API key without setting any other LLM config, Maxim **auto
 
 Priority order: Anthropic → OpenAI → Google → Groq → Together → Fireworks → Mistral → DeepSeek. The first available key wins the profile choice.
 
-**Operator overrides always win.** Any of these env vars already set before startup are left untouched; `maxim config set` values in `config.json` are also respected (env vars take precedence over config in the resolution chain, but existing env vars block the auto-set).
+**Operator overrides always win.** Any of these env vars already set before startup are left untouched, and auto-detect never sets one whose field `config.json` sets (an env var would outrank it).
 
 **Disabling auto-detect:**
 

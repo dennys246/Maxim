@@ -244,7 +244,6 @@ def _config(tmp_path, monkeypatch, profile: str) -> None:
 
 
 class TestConfiguredProfile:
-    @pytest.mark.xfail(strict=True, reason="#1030: C7a reads only MAXIM_LLM_PROFILE, not config.json")
     def test_a_configured_local_profile_is_not_replaced_by_a_cloud_one(self, clean_env, monkeypatch, tmp_path):
         _config(tmp_path, monkeypatch, "mistral-7b")
         monkeypatch.setenv("MAXIM_ROLE", "solo")
@@ -253,7 +252,6 @@ class TestConfiguredProfile:
         assert "MAXIM_LLM_PROFILE" not in os.environ  # the configured local model stands
         assert "MAXIM_LLM_CLOUD_ENABLED" not in os.environ
 
-    @pytest.mark.xfail(strict=True, reason="#1030: C7a overwrites the configured cloud profile with the first key's")
     def test_a_configured_cloud_profile_gets_the_gates_and_keeps_its_name(self, clean_env, monkeypatch, tmp_path):
         _config(tmp_path, monkeypatch, "gpt-4o")
         monkeypatch.setenv("MAXIM_ROLE", "solo")
@@ -261,9 +259,8 @@ class TestConfiguredProfile:
         monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-test")
         configure_cloud_solo_auto_detect(logging.getLogger("test"))
         assert os.environ["MAXIM_LLM_CLOUD_ENABLED"] == "1"  # bare-key setup still "just works"
-        assert "MAXIM_LLM_PROFILE" not in os.environ  # config's gpt-4o, not the first key's claude-sonnet
+        assert os.environ["MAXIM_LLM_PROFILE"] == "gpt-4o"  # config's, not the first key's claude-sonnet
 
-    @pytest.mark.xfail(strict=True, reason="#1030: an unrecognised configured name is overridden too")
     def test_an_unknown_configured_profile_is_left_to_the_operator(self, clean_env, monkeypatch, tmp_path):
         _config(tmp_path, monkeypatch, "my-custom-gguf")
         monkeypatch.setenv("MAXIM_ROLE", "solo")
@@ -288,7 +285,6 @@ class TestConfigOffSwitchAndUnreadable:
     """The documented off-switch works (config.json 1.2 can say `cloud.enabled false`), and an unreadable
     config.json never lets C7a pick a billed cloud model over what the operator may have configured."""
 
-    @pytest.mark.xfail(strict=True, reason="C7a does not read cloud.enabled from config.json")
     def test_cloud_enabled_false_in_config_switches_it_off(self, clean_env, monkeypatch, tmp_path):
         _config_raw(tmp_path, monkeypatch, '{"_format_version": "1.2", "cloud": {"enabled": false}}')
         monkeypatch.setenv("MAXIM_ROLE", "solo")
@@ -296,7 +292,6 @@ class TestConfigOffSwitchAndUnreadable:
         configure_cloud_solo_auto_detect(logging.getLogger("test"))
         assert "MAXIM_LLM_PROFILE" not in os.environ and "MAXIM_LLM_CLOUD_ENABLED" not in os.environ
 
-    @pytest.mark.xfail(strict=True, reason="an unreadable config.json reads as 'nothing configured' and C7a fires")
     def test_an_unreadable_config_does_not_fire(self, clean_env, monkeypatch, tmp_path):
         _config_raw(tmp_path, monkeypatch, '{"llm": {"profile": "mistral-7b",')  # truncated JSON
         monkeypatch.setenv("MAXIM_ROLE", "solo")
@@ -312,3 +307,33 @@ def _config_raw(tmp_path, monkeypatch, text: str) -> None:
     (tmp_path / "maxim" / "config.json").write_text(text)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     reset_config_cache()
+
+
+class TestConfigValuesStand:
+    """C7a writes env vars, which outrank config.json: where config.json sets a field, C7a exports config's own
+    value, never its default (#1030's root cause, not only llm.profile). The runtime reads these gates from the
+    environment only, so skipping would drop the operator's value (#1034 tracks the other roles)."""
+
+    def _fire(self, monkeypatch, tmp_path, cloud: dict) -> None:
+        import json
+
+        _config_raw(tmp_path, monkeypatch, json.dumps({"_format_version": "1.2", "cloud": cloud}))
+        monkeypatch.setenv("MAXIM_ROLE", "solo")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        configure_cloud_solo_auto_detect(logging.getLogger("test"))
+
+    def test_a_configured_budget_takes_effect(self, clean_env, monkeypatch, tmp_path):
+        """The runtime reads the budget from the environment only, so C7a carries config's value there."""
+        self._fire(monkeypatch, tmp_path, {"session_budget_usd": 1.0})
+        assert os.environ["MAXIM_CLOUD_SESSION_BUDGET"] == "1.0"  # config's $1, not C7a's $5
+        assert os.environ["MAXIM_LLM_PROFILE"] == "claude-sonnet"  # the rest still fires
+
+    def test_cloud_enabled_true_in_config_keeps_cloud_on(self, clean_env, monkeypatch, tmp_path):
+        """Executor review blocker: skipping the env var when config set the field left cloud DISABLED."""
+        self._fire(monkeypatch, tmp_path, {"enabled": True, "max_lanes": 2, "redaction_policy": "standard"})
+        assert os.environ["MAXIM_LLM_CLOUD_ENABLED"] == "1"
+        assert os.environ["MAXIM_MAX_CLOUD_LANES"] == "2"
+        assert os.environ["MAXIM_LLM_REDACTION_POLICY"] == "standard"
+        from maxim.models.language.config import load_llm_config
+
+        assert load_llm_config().cloud_enabled is True  # what the router actually reads

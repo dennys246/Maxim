@@ -26,13 +26,11 @@ def config_file(tmp_path, monkeypatch):
     return write
 
 
-@pytest.mark.xfail(strict=True, reason="a config value equal to the schema default reads as 'default'")
 def test_an_explicit_default_equal_value_resolves_from_config(config_file) -> None:
     config_file({"llm": {"profile": "mistral-7b", "n_ctx": 8192}})  # the O19 rig's config
     assert resolve_setting("llm.n_ctx") == (8192, "config")
 
 
-@pytest.mark.xfail(strict=True, reason="a config value equal to the schema default reads as 'default'")
 def test_an_explicit_false_resolves_from_config(config_file) -> None:
     config_file({"cloud": {"enabled": False}})  # C7a's documented off-switch
     assert resolve_setting("cloud.enabled") == (False, "config")

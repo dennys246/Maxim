@@ -11,6 +11,8 @@ change cannot ship without a bump.
 
 from __future__ import annotations
 
+from maxim.runtime.config_loader import non_default_paths
+
 import dataclasses
 import json
 from pathlib import Path
@@ -82,7 +84,7 @@ def test_a_file_this_build_writes_is_tolerated_by_a_1_0_build(tmp_path: Path, mo
     from maxim.runtime.config_writer import write_config
 
     path = tmp_path / "config.json"
-    write_config(cl.MaximConfig(), path=path)
+    write_config(cfg_ := cl.MaximConfig(), path=path, explicit=non_default_paths(cfg_))
     data = json.loads(path.read_text())
     assert data["_format_version"] == cl.CONFIG_FORMAT_VERSION
 
@@ -99,7 +101,7 @@ def test_rewriting_a_config_loaded_from_an_older_file_stamps_this_version(tmp_pa
     path = tmp_path / "config.json"
     path.write_text(json.dumps({"_format_version": "1.0", "role": "solo"}))
     loaded = cl.load_config(path)
-    write_config(loaded, path=path)
+    write_config(loaded, path=path, explicit=non_default_paths(loaded))
     data = json.loads(path.read_text())
     assert data["_format_version"] == cl.CONFIG_FORMAT_VERSION and data["role"] == "solo"
 
@@ -129,5 +131,47 @@ def test_rewriting_a_config_loaded_from_a_newer_file_refuses(tmp_path: Path) -> 
     path.write_text(json.dumps({"_format_version": newer, "role": "solo", "from_the_future": {"x": 1}}))
     loaded = cl.load_config(path)
     with pytest.raises(ConfigurationError, match="newer config.json"):
-        write_config(loaded, path=path)
+        write_config(loaded, path=path, explicit=non_default_paths(loaded))
     assert json.loads(path.read_text())["from_the_future"] == {"x": 1}
+
+
+# ── what each version MEANS is pinned too (config.json 1.2, 2026-10-01) ─────────────────────────────────
+
+RESOLUTION = json.loads(
+    (Path(__file__).resolve().parents[1] / "fixtures" / "config_resolution_by_version.json").read_text()
+)
+
+
+@pytest.mark.parametrize("version", sorted(k for k in RESOLUTION if not k.startswith("_")))
+def test_each_version_resolves_as_pinned(version, tmp_path) -> None:
+    """A change in what a key means (not only the schema) must bump the format: the loader must still read every
+    pinned version's probe files exactly as pinned (a default-equal value, a null, a lane tier's unknown keys, a
+    null section)."""
+    from maxim.runtime.config_loader import explicit_paths, load_config
+
+    for case in RESOLUTION[version]:
+        path = tmp_path / "config.json"
+        path.write_text(json.dumps(case["probe"]))
+        explicit = explicit_paths(load_config(path))
+        got = {field: ("set" if field in explicit else "unset") for field in case["expect"]}
+        assert got == case["expect"], case["probe"]
+
+
+def test_the_current_version_has_a_pinned_resolution() -> None:
+    from maxim.runtime.config_loader import CONFIG_FORMAT_VERSION
+
+    assert CONFIG_FORMAT_VERSION in RESOLUTION
+
+
+def test_the_append_only_lint_guards_both_fixtures() -> None:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "lint_cfg_schema", Path(__file__).resolve().parents[2] / "scripts" / "lint_config_schema_append_only.py"
+    )
+    lint = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(lint)
+    assert set(lint.FIXTURES) == {
+        "tests/fixtures/config_schema_by_version.json",
+        "tests/fixtures/config_resolution_by_version.json",
+    }

@@ -9,6 +9,7 @@ Surface:
   maxim config list                   — human-readable summary, all
                                         effective fields with sources
   maxim config set <field-path> <val> — atomic write via config_writer
+  maxim config unset <field-path>     — back to the default, and out of config.json
   maxim config edit                   — open $EDITOR on the file
   maxim config downgrade              — after running an older build: keep the settings it
                                         knows, set the rest aside in config.preserved.json (#974)
@@ -63,6 +64,8 @@ def run_config_subcommand(argv: Sequence[str]) -> int:
         return _cmd_get(rest)
     if verb == "set":
         return _cmd_set(rest)
+    if verb == "unset":
+        return _cmd_unset(rest)
     if verb == "path":
         return _cmd_path(rest)
     if verb == "list":
@@ -84,7 +87,8 @@ def _print_usage() -> None:
     print()
     print("Verbs:")
     print("  get [field-path]     — print full config + sources, or one field")
-    print("  set <field> <value>  — atomic write to config.json")
+    print("  set <field> <value>  — atomic write to config.json (pins the value, even the default)")
+    print("  unset <field>        — back to the default, and out of config.json")
     print("  path                 — print the resolved config.json path")
     print("  list                 — show every effective field + source marker")
     print("  edit                 — open $EDITOR on the config file")
@@ -228,16 +232,12 @@ def _cmd_set(argv: list[str]) -> int:
         )
         return 2
 
-    from maxim.runtime.config_writer import set_field, _apply_field_to_config
+    from maxim.runtime.config_writer import set_field, unset_field
 
-    # Allow operators to clear a field by passing "null" or "-"
+    # "null" or "-" clears the field: back to its default and out of config.json (= `maxim config unset`)
     if raw_value in ("null", "-"):
         try:
-            current = load_config()
-            new = _apply_field_to_config(current, field_path, None)
-            from maxim.runtime.config_writer import write_config
-
-            write_config(new)
+            unset_field(field_path)
         except ConfigurationError as e:
             print(f"✗ {e}", file=sys.stderr)
             return 2
@@ -257,6 +257,30 @@ def _cmd_set(argv: list[str]) -> int:
         return 1
 
     print(f"✓ set {field_path} = {raw_value}")
+    return 0
+
+
+def _cmd_unset(argv: list[str]) -> int:
+    """``maxim config unset <field-path>``: the field follows its default again (format 1.2)."""
+    if not argv or argv[0] in ("-h", "--help"):
+        print("Usage: maxim config unset <field-path>")
+        print("  Removes the field from config.json so it follows the schema default.")
+        return 0 if argv else 2
+    field_path = argv[0]
+    if field_path not in _FIELD_TO_ENV:
+        print(f"Unknown field path: {field_path!r}\nUse `maxim config list` to see valid paths.", file=sys.stderr)
+        return 2
+    from maxim.runtime.config_writer import unset_field
+
+    try:
+        unset_field(field_path)
+    except ConfigurationError as e:
+        print(f"✗ {e}", file=sys.stderr)
+        return 2
+    except OSError as e:
+        print(f"✗ failed to write config: {e}", file=sys.stderr)
+        return 1
+    print(f"✓ unset {field_path} (now the default)")
     return 0
 
 
@@ -286,7 +310,7 @@ def _cmd_edit(argv: list[str]) -> int:
         # Seed with a minimal skeleton so the operator sees the shape
         from maxim.runtime.config_writer import write_config
 
-        write_config(MaximConfig())
+        write_config(MaximConfig(), explicit=frozenset())  # nothing chosen yet: {"_format_version": ...}
 
     editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or "vi"
 

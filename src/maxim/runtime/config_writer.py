@@ -47,9 +47,14 @@ from maxim.runtime.config_loader import (
     LaneTierConfig,
     LaneTierPlacement,
     MaximConfig,
+    _walk_dot_path,
+    config_field_paths,
     config_path,
+    explicit_paths,
+    explicit_paths_of,
     load_config,
 )
+from maxim.runtime.config_loader import _with_explicit
 from maxim.utils.atomic_io import atomic_write_json, atomic_write_secret
 from maxim.utils.format_version import with_format_version
 
@@ -107,23 +112,51 @@ def _serialize_for_json(config: MaximConfig) -> dict[str, Any]:
     return payload
 
 
+def _serialize_sparse(config: MaximConfig, explicit: frozenset[str]) -> dict[str, Any]:
+    """The JSON payload of exactly the ``explicit`` paths (format 1.2: a key present is the operator's choice).
+    A lane tier's ``extra`` is inlined into its tier, as :func:`_serialize_for_json` does."""
+    full = _serialize_for_json(config)
+    out: dict[str, Any] = {}
+    for field_path in sorted(explicit):
+        parts = field_path.split(".")
+        if parts[0] == "lanes" and len(parts) == 3 and parts[2] == "extra":
+            extra = dict(getattr(getattr(config.lanes, parts[1]), "extra", {}) or {})
+            if extra:
+                out.setdefault("lanes", {}).setdefault(parts[1], {}).update(extra)
+            continue
+        value: Any = full
+        for part in parts:
+            value = value[part]
+        if value is None:
+            continue
+        _set_path(out, field_path, value)
+    return out
+
+
 def write_config(
     config: MaximConfig,
     path: Path | None = None,
+    *,
+    explicit: frozenset[str],
 ) -> Path:
     """Atomically persist a :class:`MaximConfig` to ``config.json``.
 
     Holds ``filelock.FileLock`` for the duration of the write. The
     caller is responsible for having computed the *full* config they
     want persisted — use :func:`mutate_config` for the safe RMW path
-    that re-reads under the lock.
+    that re-reads under the lock. ``explicit`` (required: forgetting it must
+    not silently fall back to "every field") names the paths the operator set;
+    only those are written (format 1.2).
 
     Returns the path written.
     """
     target = path if path is not None else config_path()
     target.parent.mkdir(parents=True, exist_ok=True)
 
-    payload = _serialize_for_json(config)
+    unknown = set(explicit) - config_field_paths()
+    if unknown:
+        raise ConfigurationError(f"config_writer: explicit paths {sorted(unknown)} are not config leaf fields")
+    payload = {"_format_version": config._format_version, **_serialize_sparse(config, frozenset(explicit))}
     # A config parsed from an OLDER (or same-version) file is this build's schema, so it is written at
     # this build's version: passing the old version through made the canonical stamp refuse once
     # CONFIG_FORMAT_VERSION moved (#856). A config parsed from a NEWER file lost the keys this build
@@ -166,6 +199,9 @@ def write_config(
 def mutate_config(
     mutator: Callable[[MaximConfig], MaximConfig],
     path: Path | None = None,
+    *,
+    assigned: frozenset[str],
+    removed: frozenset[str] = frozenset(),
 ) -> tuple[MaximConfig, Path]:
     """Safely apply a mutation to ``config.json`` under the file lock.
 
@@ -180,6 +216,12 @@ def mutate_config(
     Per I-5 fold from the pre-implementation review: lock-acquire
     happens BEFORE the read so a concurrent writer in another process
     can't slip a write between our read and our write.
+
+    Format 1.2: the file keeps exactly the operator's choices. ``assigned`` (required) names the paths the
+    mutator sets — each becomes explicit even when its value equals the current or default one (``maxim
+    config set llm.n_ctx 8192`` pins 8192); ``removed`` the paths it returns to their default. The written
+    set is the file's own explicit set (read by its version) plus ``assigned`` minus ``removed``. A mutator
+    that changes a field it did not declare is refused: the change would be silently left out of the file.
     """
     target = path if path is not None else config_path()
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -198,10 +240,20 @@ def mutate_config(
         # (#974). Refuse, and name the explicit way out.
         _refuse_if_newer(_read_raw_config(target))
         current = load_config(target)
+        before = explicit_paths(current) or frozenset()
         new = mutator(current)
-        payload = _serialize_for_json(new)
-        payload["_format_version"] = CONFIG_FORMAT_VERSION
+        changed = {p for p in config_field_paths() if _walk_dot_path(new, p) != _walk_dot_path(current, p)}
+        undeclared = changed - before - assigned - removed
+        if undeclared:
+            raise ConfigurationError(
+                f"config_writer: the mutation changed {sorted(undeclared)}, which it did not declare as assigned; "
+                "the change would be left out of config.json"
+            )
+        explicit = frozenset(p for p in (before | assigned) - removed if _walk_dot_path(new, p) is not None)
+        payload = with_format_version(_serialize_sparse(new, explicit), CONFIG_FORMAT_VERSION)
         atomic_write_json(str(target), payload)
+        # The returned config resolves exactly as the file just written (replace() inside the mutator dropped it).
+        new = _with_explicit(new, explicit)
 
     # Same invalidation as write_config — mutate_config writes directly and
     # does NOT route through write_config (post-merge review Exec B2).
@@ -387,9 +439,8 @@ def downgrade_config(path: Path | None = None) -> DowngradeResult:
         _write_preserved(sidecar, record)
 
         kept = load_config(target)  # the newer file parses with its unknown keys tolerated and dropped
-        payload = with_format_version(
-            {k: v for k, v in _serialize_for_json(kept).items() if k != "_format_version"}, CONFIG_FORMAT_VERSION
-        )
+        # A newer file is >= 1.2 (it is newer than this build), so its keys are the operator's choices.
+        payload = with_format_version(_serialize_sparse(kept, explicit_paths_of(raw, kept)), CONFIG_FORMAT_VERSION)
         atomic_write_json(str(target), payload)
 
     from maxim.runtime.config_loader import invalidate_config_cache
@@ -525,13 +576,16 @@ def restore_preserved(path: Path | None = None, *, confirm: Callable[[list[Resto
         # What is IN EFFECT now (defaults included), not just what the file spells out: an absent
         # `console.sandbox` is `false`, and the diff must say so.
         # JSON-normalized, so a tuple-typed field compares equal to the list the sidecar holds.
-        in_effect = json.loads(
-            json.dumps(
-                _serialize_for_json(_parse_config_dict({**raw, "_format_version": CONFIG_FORMAT_VERSION})), default=str
-            )
-        )
+        current_cfg = _parse_config_dict({**raw, "_format_version": CONFIG_FORMAT_VERSION})
+        in_effect = json.loads(json.dumps(_serialize_for_json(current_cfg), default=str))
+        # The current file's own choices (read by its version). A preserved value is "in effect" only when the
+        # operator has chosen that same value: one equal to the default but not chosen is restorable, so the
+        # restore pins it (format 1.2).
+        current_explicit = explicit_paths_of(raw, current_cfg) if raw else frozenset()
         candidates = {p: e for p, e in fields.items() if p in leaves}
-        restorable = {p: e for p, e in candidates.items() if _get_path(in_effect, p) != e["value"]}
+        restorable = {
+            p: e for p, e in candidates.items() if p not in current_explicit or _get_path(in_effect, p) != e["value"]
+        }
         # Already in effect: nothing to ask about. They are dropped from the sidecar only as part of a
         # CONFIRMED restore; with nothing to restore, the sidecar is left exactly as it is (the operator
         # never saw its contents, so nothing in it may be discarded).
@@ -559,7 +613,7 @@ def restore_preserved(path: Path | None = None, *, confirm: Callable[[list[Resto
         if not confirm(rows):
             return []
         payload = with_format_version(
-            {k: v for k, v in _serialize_for_json(parsed).items() if k != "_format_version"}, CONFIG_FORMAT_VERSION
+            _serialize_sparse(parsed, current_explicit | frozenset(restorable)), CONFIG_FORMAT_VERSION
         )
         atomic_write_json(str(target), payload)
         # An original entry leaves the sidecar only when EVERY field it holds was restored or is already
@@ -618,6 +672,8 @@ def set_field(
     # path uses, so CLI input ("4") gets converted to int 4. Non-string
     # callers (Python API) can pass typed values directly; we skip
     # coercion for those.
+    if value is None:  # null = unset: the field goes back to its default and out of the file
+        return unset_field(field_path, path=path)
     if isinstance(value, str):
         coerced = _coerce_for_field(value, field_path)
     else:
@@ -626,7 +682,23 @@ def set_field(
     def mutator(current: MaximConfig) -> MaximConfig:
         return _apply_field_to_config(current, field_path, coerced)
 
-    return mutate_config(mutator, path=path)
+    return mutate_config(mutator, path=path, assigned=frozenset({field_path}))
+
+
+def unset_field(field_path: str, path: Path | None = None) -> tuple[MaximConfig, Path]:
+    """Return a field to its schema default and drop it from config.json (``maxim config unset``)."""
+    from maxim.runtime.config_loader import _FIELD_TO_ENV
+
+    if field_path not in _FIELD_TO_ENV:
+        raise ConfigurationError(
+            f"config_writer: unknown field path {field_path!r}. Valid paths: {sorted(_FIELD_TO_ENV.keys())}"
+        )
+    default = _walk_dot_path(MaximConfig(), field_path)
+
+    def mutator(current: MaximConfig) -> MaximConfig:
+        return _apply_field_to_config(current, field_path, default)
+
+    return mutate_config(mutator, path=path, assigned=frozenset(), removed=frozenset({field_path}))
 
 
 def apply_mesh_setup(
@@ -675,7 +747,10 @@ def apply_mesh_setup(
             new = _apply_field_to_config(new, "lanes.large.remote_model", remote_model)
         return new
 
-    _, written = mutate_config(mutator, path=path)
+    assigned = {"role", "lanes.large.remote_url", "lanes.large.remote_api_key_ref"}
+    if remote_model:
+        assigned.add("lanes.large.remote_model")
+    _, written = mutate_config(mutator, path=path, assigned=frozenset(assigned))
     return secret_path, written
 
 
@@ -755,7 +830,10 @@ def apply_cloud_setup(
         cloud = replace(current.cloud, **cloud_kwargs)
         return replace(current, lanes=lanes, cloud=cloud)
 
-    _, written = mutate_config(mutator, path=path)
+    assigned = {"lanes.large.placement", "cloud.enabled", "cloud.max_lanes"}
+    if monthly_budget_usd is not None:
+        assigned.add("cloud.session_budget_usd")
+    _, written = mutate_config(mutator, path=path, assigned=frozenset(assigned))
     return secret_path, written
 
 

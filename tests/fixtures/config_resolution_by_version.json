@@ -1,0 +1,294 @@
+{
+  "_comment": "How each config.json format version RESOLVES (2026-10-01): per version, probe files and, for each probe path, whether the loader reads it as set by the operator ('set') or not ('unset'). APPEND-ONLY, like config_schema_by_version.json (the same lint guards both): a change in what a key MEANS (a default-equal value, a null, a lane tier's unknown keys, a null section) bumps CONFIG_FORMAT_VERSION and ADDS an entry; an existing entry is never edited. 'unversioned' is a hand-written file (the writer has always stamped a version). What the writer persists is pinned by tests/unit/test_config_sparse_1_2.py.",
+  "1.0": [
+    {
+      "probe": {
+        "_format_version": "1.0",
+        "llm": {
+          "profile": "mistral-7b",
+          "n_ctx": 8192
+        },
+        "cloud": {
+          "enabled": false
+        }
+      },
+      "expect": {
+        "llm.profile": "set",
+        "llm.n_ctx": "unset",
+        "cloud.enabled": "unset",
+        "llm.enabled": "unset"
+      }
+    },
+    {
+      "probe": {
+        "_format_version": "1.0",
+        "llm": {
+          "profile": null,
+          "n_ctx": 8192
+        }
+      },
+      "expect": {
+        "llm.profile": "unset",
+        "llm.n_ctx": "unset"
+      }
+    },
+    {
+      "probe": {
+        "_format_version": "1.0",
+        "lanes": {
+          "large": {
+            "future_knob": 1
+          }
+        }
+      },
+      "expect": {
+        "lanes.large.extra": "set",
+        "lanes.large.remote_url": "unset"
+      }
+    },
+    {
+      "probe": {
+        "_format_version": "1.0",
+        "lanes": {
+          "large": {
+            "remote_url": "http://leader:8100"
+          }
+        }
+      },
+      "expect": {
+        "lanes.large.extra": "unset",
+        "lanes.large.remote_url": "set"
+      }
+    },
+    {
+      "probe": {
+        "_format_version": "1.0",
+        "cloud": null,
+        "llm": {
+          "profile": "mistral-7b"
+        }
+      },
+      "expect": {
+        "cloud.enabled": "unset",
+        "llm.profile": "set"
+      }
+    }
+  ],
+  "1.1": [
+    {
+      "probe": {
+        "_format_version": "1.1",
+        "llm": {
+          "profile": "mistral-7b",
+          "n_ctx": 8192
+        },
+        "cloud": {
+          "enabled": false
+        }
+      },
+      "expect": {
+        "llm.profile": "set",
+        "llm.n_ctx": "unset",
+        "cloud.enabled": "unset",
+        "llm.enabled": "unset"
+      }
+    },
+    {
+      "probe": {
+        "_format_version": "1.1",
+        "llm": {
+          "profile": null,
+          "n_ctx": 8192
+        }
+      },
+      "expect": {
+        "llm.profile": "unset",
+        "llm.n_ctx": "unset"
+      }
+    },
+    {
+      "probe": {
+        "_format_version": "1.1",
+        "lanes": {
+          "large": {
+            "future_knob": 1
+          }
+        }
+      },
+      "expect": {
+        "lanes.large.extra": "set",
+        "lanes.large.remote_url": "unset"
+      }
+    },
+    {
+      "probe": {
+        "_format_version": "1.1",
+        "lanes": {
+          "large": {
+            "remote_url": "http://leader:8100"
+          }
+        }
+      },
+      "expect": {
+        "lanes.large.extra": "unset",
+        "lanes.large.remote_url": "set"
+      }
+    },
+    {
+      "probe": {
+        "_format_version": "1.1",
+        "cloud": null,
+        "llm": {
+          "profile": "mistral-7b"
+        }
+      },
+      "expect": {
+        "cloud.enabled": "unset",
+        "llm.profile": "set"
+      }
+    }
+  ],
+  "1.2": [
+    {
+      "probe": {
+        "_format_version": "1.2",
+        "llm": {
+          "profile": "mistral-7b",
+          "n_ctx": 8192
+        },
+        "cloud": {
+          "enabled": false
+        }
+      },
+      "expect": {
+        "llm.profile": "set",
+        "llm.n_ctx": "set",
+        "cloud.enabled": "set",
+        "llm.enabled": "unset"
+      }
+    },
+    {
+      "probe": {
+        "_format_version": "1.2",
+        "llm": {
+          "profile": null,
+          "n_ctx": 8192
+        }
+      },
+      "expect": {
+        "llm.profile": "unset",
+        "llm.n_ctx": "set"
+      }
+    },
+    {
+      "probe": {
+        "_format_version": "1.2",
+        "lanes": {
+          "large": {
+            "future_knob": 1
+          }
+        }
+      },
+      "expect": {
+        "lanes.large.extra": "set",
+        "lanes.large.remote_url": "unset"
+      }
+    },
+    {
+      "probe": {
+        "_format_version": "1.2",
+        "lanes": {
+          "large": {
+            "remote_url": "http://leader:8100"
+          }
+        }
+      },
+      "expect": {
+        "lanes.large.extra": "unset",
+        "lanes.large.remote_url": "set"
+      }
+    },
+    {
+      "probe": {
+        "_format_version": "1.2",
+        "cloud": null,
+        "llm": {
+          "profile": "mistral-7b"
+        }
+      },
+      "expect": {
+        "cloud.enabled": "unset",
+        "llm.profile": "set"
+      }
+    }
+  ],
+  "unversioned": [
+    {
+      "probe": {
+        "llm": {
+          "profile": "mistral-7b",
+          "n_ctx": 8192
+        },
+        "cloud": {
+          "enabled": false
+        }
+      },
+      "expect": {
+        "llm.profile": "set",
+        "llm.n_ctx": "set",
+        "cloud.enabled": "set",
+        "llm.enabled": "unset"
+      }
+    },
+    {
+      "probe": {
+        "llm": {
+          "profile": null,
+          "n_ctx": 8192
+        }
+      },
+      "expect": {
+        "llm.profile": "unset",
+        "llm.n_ctx": "set"
+      }
+    },
+    {
+      "probe": {
+        "lanes": {
+          "large": {
+            "future_knob": 1
+          }
+        }
+      },
+      "expect": {
+        "lanes.large.extra": "set",
+        "lanes.large.remote_url": "unset"
+      }
+    },
+    {
+      "probe": {
+        "lanes": {
+          "large": {
+            "remote_url": "http://leader:8100"
+          }
+        }
+      },
+      "expect": {
+        "lanes.large.extra": "unset",
+        "lanes.large.remote_url": "set"
+      }
+    },
+    {
+      "probe": {
+        "cloud": null,
+        "llm": {
+          "profile": "mistral-7b"
+        }
+      },
+      "expect": {
+        "cloud.enabled": "unset",
+        "llm.profile": "set"
+      }
+    }
+  ]
+}

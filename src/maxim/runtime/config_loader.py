@@ -59,17 +59,26 @@ logger = logging.getLogger(__name__)
 # Schema constants (FROZEN at 1.0)
 # ─────────────────────────────────────────────────────────────────────────────
 
-CONFIG_FORMAT_VERSION: str = "1.1"
-"""The config.json format version. Bumped per CC1 on shape changes:
-minor for additive fields (an older build reading a future minor tolerates
-the keys it does not know, with a warning), major (2.0) for removed or
-renamed fields (loader migration required).
+CONFIG_FORMAT_VERSION: str = "1.2"
+"""The config.json format version. Bumped per CC1 on shape changes AND on changes
+to what a key means: minor for additive fields or meanings (an older build reading
+a future minor tolerates the keys it does not know, with a warning), major (2.0)
+for removed or renamed fields (loader migration required).
 
 History: 1.0 inaugural; 1.1 (#856) covers the ``console``, ``tools``,
 ``sim`` and ``memory`` sections, which shipped under 1.0 so an older
-build refused them. Every field path is pinned per version in
-``tests/fixtures/config_schema_by_version.json``; a schema change without
-a bump fails ``tests/unit/test_config_format_version_856.py``."""
+build refused them; 1.2 (2026-10-01) changes what a key MEANS, not the
+schema: a key present is a value the operator set (``maxim config set``,
+a setup verb, a hand edit), and the writer persists exactly those keys.
+A file stamped below 1.2 is a full dump whose intent is unknowable, so it is
+read by "value != default" until it is rewritten (see
+:func:`explicit_paths_of`). Every field path is pinned per version in
+``tests/fixtures/config_schema_by_version.json``, and how each version
+resolves in ``tests/fixtures/config_resolution_by_version.json``; a change
+of either without a bump fails ``tests/unit/test_config_format_version_856.py``."""
+
+# The first format whose keys are the operator's choices (keys present = explicit).
+SPARSE_FORMAT_SINCE: tuple[int, int] = (1, 2)
 
 _VALID_ROLES: frozenset[str] = frozenset({"leader", "peer", "solo"})
 _VALID_BACKENDS: frozenset[str] = frozenset({"llama_cpp", "pytorch"})
@@ -478,6 +487,14 @@ class MaximConfig:
     tolerates unknown keys only in a NEWER-minor file (#856; guarded by
     tests/unit/test_config_format_version_856.py). Removing or renaming one
     requires ``_format_version 2.0`` + a migration step in the same commit.
+
+    A config returned by :func:`load_config` (and by the writer's
+    ``mutate_config``) also carries, in memory only, the paths its file sets
+    (``_explicit_paths``, read with :func:`explicit_paths`; format 1.2). It is
+    NOT a field: ``dataclasses.replace()`` drops it and ``==``/``hash`` ignore
+    it, so two equal configs can resolve differently — resolve through the
+    loaded instance, never a ``replace()`` of it. A config built in code has
+    none and is read by the pre-1.2 rule (value != default).
 
     Field order: ``_format_version`` is declared first per the
     underscore-sort-first convention (N1 fold from the review round —
@@ -895,12 +912,12 @@ def _walk_dot_path(obj: Any, dot_path: str) -> Any:
 
 
 def _read_from_config(config: MaximConfig | None, field_path: str) -> Any | None:
-    """Read a field value from the config dataclass.
+    """The field's value when ``config.json`` sets it, else ``None`` (so the chain falls to the default).
 
-    Returns ``None`` when the field would shadow a default — i.e., the
-    config either is ``None`` or the value equals the default for that
-    field. This lets the precedence chain distinguish "operator set
-    this in config.json" from "this is the schema's default."
+    A config loaded from a file carries the file's explicit paths (:func:`explicit_paths_of`): the value
+    counts iff its path is one of them, even when it equals the schema default (``maxim config set
+    llm.n_ctx 8192`` is the operator's choice). A config built in code (``MaximConfig()``, ``replace``)
+    carries none and is read by the pre-1.2 rule: a value equal to the default is not set.
     """
     if config is None:
         return None
@@ -908,10 +925,76 @@ def _read_from_config(config: MaximConfig | None, field_path: str) -> Any | None
         actual = _walk_dot_path(config, field_path)
     except AttributeError:
         return None
+    explicit = explicit_paths(config)
+    if explicit is not None:
+        return actual if field_path in explicit and actual is not None else None
     default = _walk_dot_path(MaximConfig(), field_path)
     if actual == default:
         return None
     return actual
+
+
+_EXPLICIT_ATTR = "_explicit_paths"
+
+
+def explicit_paths(config: MaximConfig) -> frozenset[str] | None:
+    """The paths the file this config was loaded from sets, or None for a config built in code."""
+    return getattr(config, _EXPLICIT_ATTR, None)
+
+
+def _with_explicit(config: MaximConfig, paths: frozenset[str]) -> MaximConfig:
+    """Attach the explicit set to a loaded config (in memory only: not a dataclass field, so invisible to
+    ``fields``/``asdict``/``==``/``hash``/``replace`` — MaximConfig's shape is frozen, CC3)."""
+    object.__setattr__(config, _EXPLICIT_ATTR, frozenset(paths))
+    return config
+
+
+def non_default_paths(config: MaximConfig) -> frozenset[str]:
+    """The leaf paths whose value differs from the schema default: the pre-1.2 reading of a full dump, and
+    the explicit set of a config built in code whose every non-default value is meant."""
+    default = MaximConfig()
+    return frozenset(p for p in config_field_paths() if _walk_dot_path(config, p) != _walk_dot_path(default, p))
+
+
+def _version_tuple(value: Any) -> tuple[int, int] | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        major, minor = (int(x) for x in value.split(".")[:2])
+    except ValueError:
+        return None
+    return major, minor
+
+
+def explicit_paths_of(raw: dict[str, Any] | None, config: MaximConfig) -> frozenset[str]:
+    """The paths a config file sets, read by its RAW ``_format_version``.
+
+    * none (a hand-written file: the writer has always stamped one) or ``>= 1.2``: the known leaf fields
+      PRESENT with a non-null value — a lane tier's undeclared keys count as its ``extra``;
+    * stamped below 1.2: a full dump whose intent is unknowable, read as today — the leaves whose value
+      differs from the schema default.
+    """
+    if not raw:
+        return frozenset()
+    version = raw.get("_format_version")
+    parsed = _version_tuple(version)
+    if version is not None and (parsed is None or parsed < SPARSE_FORMAT_SINCE):
+        return non_default_paths(config)
+    present: set[str] = set()
+    tier_fields = {f.name for f in fields(LaneTierConfig)}
+    for path in config_field_paths():
+        parts = path.split(".")
+        if parts[0] == "lanes" and len(parts) == 3 and parts[2] == "extra":
+            tier = (raw.get("lanes") or {}).get(parts[1]) if isinstance(raw.get("lanes"), dict) else None
+            if isinstance(tier, dict) and any(k not in tier_fields for k in tier):
+                present.add(path)
+            continue
+        node: Any = raw
+        for part in parts:
+            node = node.get(part) if isinstance(node, dict) else None
+        if node is not None:
+            present.add(path)
+    return frozenset(present)
 
 
 def _builtin_default(field_path: str) -> Any:
@@ -1806,7 +1889,20 @@ def _maybe_migrate_from_peer_yml(target: Path) -> None:
     )
 
     try:
-        written = write_config(migrated, path=target)
+        written = write_config(
+            migrated,
+            path=target,
+            # Exactly what the migration fills: role + the non-null lane fields (a None model or a declined
+            # key ref is not a choice).
+            explicit=frozenset(
+                {"role"}
+                | {
+                    f"lanes.large.{name}"
+                    for name in ("remote_url", "remote_model", "remote_api_key_ref")
+                    if getattr(migrated.lanes.large, name) is not None
+                }
+            ),
+        )
     except Exception as e:
         logger.warning(
             "config: auto-migration write failed (%s); peer.yml stays as the "
@@ -1913,7 +2009,7 @@ def load_config(path: Path | None = None) -> MaximConfig:
     _maybe_migrate_from_peer_yml(effective_path)
 
     if not effective_path.is_file():
-        return MaximConfig()
+        return _with_explicit(MaximConfig(), frozenset())
 
     try:
         raw = effective_path.read_text(encoding="utf-8")
@@ -1922,7 +2018,7 @@ def load_config(path: Path | None = None) -> MaximConfig:
 
     stripped = raw.strip()
     if not stripped:
-        return MaximConfig()
+        return _with_explicit(MaximConfig(), frozenset())
 
     try:
         data = json.loads(stripped)
@@ -1931,7 +2027,8 @@ def load_config(path: Path | None = None) -> MaximConfig:
             f"config.json: invalid JSON at {effective_path} (line {e.lineno}, col {e.colno}): {e.msg}"
         ) from e
 
-    return _parse_config_dict(data)
+    config = _parse_config_dict(data)
+    return _with_explicit(config, explicit_paths_of(data, config))
 
 
 def get_config(path: Path | None = None) -> MaximConfig:

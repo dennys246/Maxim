@@ -354,8 +354,11 @@ def configure_cloud_solo_auto_detect(logger: logging.Logger) -> None:
     gates so ``maxim`` "just works" with bare-API-key configuration.
 
     Sets ONLY env vars that are not already set (operator overrides
-    always win). Each implicit set logs INFO so the auto-config is
-    visible.
+    always win). Where ``config.json`` sets the field, it exports THAT
+    value rather than its own default: the cloud gates are read only from
+    the environment at runtime, so skipping would silently drop the
+    operator's ``maxim config set`` value (#1030). Each implicit set logs
+    INFO so the auto-config is visible.
 
     Does NOT fire when:
     - Role is leader or peer (cloud-as-leader-serving-peers is C7b,
@@ -363,6 +366,13 @@ def configure_cloud_solo_auto_detect(logger: logging.Logger) -> None:
     - ``MAXIM_LLM_PROFILE`` is already set (operator picked a model)
     - ``MAXIM_LANE_LARGE_REMOTE_URL`` is set (routing to a leader)
     - No cloud API key env vars are present
+    - ``config.json`` cannot be read (it may pin a local model; #1030)
+    - ``config.json`` sets ``cloud.enabled`` to false (the documented
+      off-switch)
+    - ``config.json`` sets ``llm.profile`` to a local or unrecognised
+      profile (``maxim config set llm.profile …`` is the operator picking
+      a model too, #1030). A configured CLOUD profile still gets the
+      cloud gates, under its own name.
 
     This pairs with the larger architectural framing pinned in
     config_unification.md C7a discussion: role and LLM-source are
@@ -392,27 +402,80 @@ def configure_cloud_solo_auto_detect(logger: logging.Logger) -> None:
     if not available:
         return
 
+    # An unreadable config.json must not read as "nothing configured": the operator may have pinned a local
+    # model in it, and firing would pick a billed cloud one instead (#1030). resolve_setting swallows a load
+    # failure and falls to defaults, so load it here first.
+    from maxim.exceptions import ConfigurationError
+    from maxim.runtime.config_loader import get_config
+
+    try:
+        get_config()
+    except (ConfigurationError, OSError) as exc:
+        logger.warning("C7a auto-detect skipped: config.json could not be read (%s)", exc)
+        return
+
+    if _config_value("cloud.enabled") is False:
+        logger.info("C7a auto-detect skipped: config.json sets cloud.enabled=false")
+        return
+    # The operator picked a model in config.json (#1030): a local or unrecognised profile stands; a cloud one
+    # still gets the gates below, under its own name rather than the first key's default.
+    configured = _config_value("llm.profile")
+    if configured is not None and _registered_cloud_flag(str(configured)) is not True:
+        logger.info("C7a auto-detect skipped: config.json sets llm.profile=%s (not a cloud profile)", configured)
+        return
+
     # Pick the highest-priority available profile
     chosen_env, chosen_profile = available[0]
     n_keys_present = len(available)
 
-    # Apply the implicit defaults — only if not already set
-    def _setdefault_with_log(name: str, value: str) -> None:
-        if not os.environ.get(name, "").strip():
-            os.environ[name] = value
-            logger.info(
-                "C7a auto-detect (solo + %s present): %s=%s",
-                chosen_env,
-                name,
-                value,
-            )
+    # Apply the implicit defaults — only if the environment does not set them, and config.json's own value where
+    # it sets one (the runtime reads these gates from the environment only).
+    def _setdefault_with_log(name: str, field_path: str, default: str) -> None:
+        if os.environ.get(name, "").strip():
+            return
+        configured_value = _config_value(field_path)
+        value = default if configured_value is None else _env_text(configured_value)
+        os.environ[name] = value
+        logger.info(
+            "C7a auto-detect (solo + %s present): %s=%s%s",
+            chosen_env,
+            name,
+            value,
+            "" if configured_value is None else " (from config.json)",
+        )
 
-    _setdefault_with_log("MAXIM_LLM_ENABLED", "1")
-    _setdefault_with_log("MAXIM_LLM_CLOUD_ENABLED", "1")
-    _setdefault_with_log("MAXIM_MAX_CLOUD_LANES", str(min(n_keys_present, 3)))
-    _setdefault_with_log("MAXIM_LLM_REDACTION_POLICY", "standard")
-    _setdefault_with_log("MAXIM_CLOUD_SESSION_BUDGET", "5.0")
-    _setdefault_with_log("MAXIM_LLM_PROFILE", chosen_profile)
+    _setdefault_with_log("MAXIM_LLM_ENABLED", "llm.enabled", "1")
+    _setdefault_with_log("MAXIM_LLM_CLOUD_ENABLED", "cloud.enabled", "1")
+    _setdefault_with_log("MAXIM_MAX_CLOUD_LANES", "cloud.max_lanes", str(min(n_keys_present, 3)))
+    _setdefault_with_log("MAXIM_LLM_REDACTION_POLICY", "cloud.redaction_policy", "standard")
+    _setdefault_with_log("MAXIM_CLOUD_SESSION_BUDGET", "cloud.session_budget_usd", "5.0")
+    _setdefault_with_log("MAXIM_LLM_PROFILE", "llm.profile", chosen_profile)
+
+
+def _env_text(value) -> str:
+    """A config value as its env-var spelling (booleans as 1/0, as the env coercers read them)."""
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    return str(value)
+
+
+def _config_value(field_path: str):
+    """The field's value when ``config.json`` sets it (source ``config``), else None. The environment is read by
+    the caller; a schema default is not an operator's choice."""
+    from maxim.runtime.config_loader import resolve_setting
+
+    value, source = resolve_setting(field_path)
+    if source != "config" or value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    return value
+
+
+def _registered_cloud_flag(profile: str) -> bool | None:
+    """The profile's own ``cloud`` field when it is registered (builtin or ``maxim model add``), else None."""
+    from maxim.models.language.config import _BUILTIN_PROFILES, normalize_llm_profile
+
+    entry = _BUILTIN_PROFILES.get(normalize_llm_profile(profile))
+    return None if entry is None else bool(entry.get("cloud", False))
 
 
 def configure_cpu_fallback_model(logger: logging.Logger, home_dir: str = "data") -> None:

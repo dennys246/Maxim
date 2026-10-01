@@ -2,6 +2,26 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-10-01 — config.json 1.2: the file holds exactly the operator's choices
+
+### Decision
+
+Owner decision (the root fix, over a narrow O19 prereg amendment):
+- `config.json` format **1.2** changes what a key MEANS, not the schema: a key present is a value the operator set (`maxim config set`, a setup verb, a hand edit). The writer persists exactly those keys; every write path states what it assigns (`mutate_config(assigned=)`, `write_config(explicit=)`, both required).
+- `maxim config set` pins even a value equal to the default (`llm.n_ctx 8192`). `maxim config unset` and `set <field> null` return a field to its default and drop it from the file.
+- A file stamped below 1.2 is a full dump whose intent is unknowable, so it is read as before (a value equal to the default is not set) until the first write on a 1.2 build, which keeps only its non-default values plus the field being set. A file with NO version was written by hand (the writer has always stamped one) and is read by presence.
+- C7a's cloud auto-detect reads the resolved config: a configured local or unknown `llm.profile`, `cloud.enabled false`, or an unreadable `config.json` stops it, and it never sets an env var whose field `config.json` sets (#1030).
+- How each format version resolves is pinned in `tests/fixtures/config_resolution_by_version.json`, append-only under the #856 lint: a change of meaning is a new version.
+
+### Reason
+
+The writer dumped every field (`asdict`), defaults included, so no reader could tell a choice from a default and the loader guessed "value != default". An operator's `maxim config set llm.n_ctx 8192` therefore read as `default`. The O19 re-runs require `configured_n_ctx_source == "config"` and could never pass, and the documented off-switch `cloud.enabled false` (also the default) did nothing. Two design passes rejected the narrower fixes: reading key presence on full-dump files would have made every field read as set, and an O19 prereg amendment would have left the loader blind everywhere else.
+
+### Tradeoffs
+
+- An older build reading a 1.2 file still parses it, but reads a pinned default-equal value as `default`. The current 1.1 build refuses to write it (#974), and its `downgrade` writes a full 1.1 dump. PyPI 1.3.1 (format 1.0) rewrites it as a full 1.0 dump on `config set`. Values survive either way; only the "the operator set this" source is lost. A PyPI leader and a dev checkout that share `~/.config/maxim` will demote each other's pins.
+- Behaviour that changes on a 1.2 file: a pinned `llm.enabled true` exports `MAXIM_LLM_ENABLED=1`; leader_proxy enforces admission at a pinned `n_ctx`; the env-vs-config convergence and divergence logs fire for pinned values (no longer for dumped defaults); doctor shows pinned values as `config.json`.
+
 ## 2026-09-28 — A newer config.json is refused, then transitioned explicitly (#974)
 
 ### Decision
