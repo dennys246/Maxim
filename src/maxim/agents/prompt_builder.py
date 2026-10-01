@@ -242,9 +242,9 @@ def build_failed_tools_section(request: LLMRequest) -> str:
     reduce negative-instruction backfire on smaller models.
 
     Returns "" when ``request.failed_tools`` is empty so the budgeter sees
-    no section. Caller (agent_loop) is responsible for gating population on
-    the ``MAXIM_TOOL_FAILURE_HINTS`` env var; this function does no gating
-    of its own — empty list IS the off switch.
+    no section; this function does no gating of its own — empty list IS the
+    off switch. The list has two producers (see ``LLMRequest.failed_tools``):
+    D13's retry (the narrator only) and the opt-in ``MAXIM_TOOL_FAILURE_HINTS``.
 
     NOTE: this is a crutch for pretrained LLM training-prior hallucination.
     Disable for grounded-language acquisition experiments — see
@@ -252,28 +252,61 @@ def build_failed_tools_section(request: LLMRequest) -> str:
     NOT use this hint; the substrate should learn tool availability from
     outcomes, not be told).
     """
-    failed = request.failed_tools
-    if not failed:
+    names = ", ".join(repr(n) for n in _recent_failed_tool_names(request))
+    if not names:
         return ""
-    # Dedupe preserving order, cap at 5 most recent.
-    seen: set[str] = set()
-    uniq: list[str] = []
-    for name in reversed(failed):
-        if name in seen:
-            continue
-        seen.add(name)
-        uniq.append(name)
-        if len(uniq) >= 5:
-            break
-    uniq.reverse()
-    names = ", ".join(repr(n) for n in uniq)
     return (
         "=== Tools You've Hallucinated ===\n"
         f"Note: you previously called {names} and they don't exist for you. "
-        "Use only the tools listed under '=== Available Tools ===' above. "
-        "If you need a capability not listed, call 'sense_tools' to discover "
-        "what's actually available."
+        "Use only the tools listed under '=== Available Tools ===' above." + _sense_tools_hint(request)
     )
+
+
+_MAX_ECHOED_TOOL_NAME = 64
+
+
+def _recent_failed_tool_names(request: LLMRequest) -> list[str]:
+    """The 5 most recent distinct rejected tool names, oldest first.
+
+    A rejected name is model output (possibly induced by framed tool output, #823) echoed into a trusted
+    section, so each is cut to 64 characters.
+    """
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for name in reversed(request.failed_tools):
+        if name in seen:
+            continue
+        seen.add(name)
+        uniq.append(name[:_MAX_ECHOED_TOOL_NAME])
+        if len(uniq) >= 5:
+            break
+    uniq.reverse()
+    return uniq
+
+
+def _sense_tools_hint(request: LLMRequest) -> str:
+    """Point at 'sense_tools' only for an agent that has it (#935: the narrator does not)."""
+    if "sense_tools" not in request.available_tools:
+        return ""
+    return " If you need a capability not listed, call 'sense_tools' to discover what's actually available."
+
+
+def build_followup_retry_correction(request: LLMRequest) -> str:
+    """The correction a follow-up RETRY carries after its tool was rejected (#935, D13's retry rule).
+
+    The follow-up prompt does not list the agent's own tools, so a weak model echoes a tool name from the
+    result it just read (the narrator called the AUT's 'sense_tools') and, without this, every retry was
+    byte-identical until the planning-liveness budget aborted the run. Retry-only (owner decision
+    2026-09-30): "" when nothing was rejected, so a first follow-up attempt is unchanged. Retry-only holds
+    with ``MAXIM_TOOL_FAILURE_HINTS`` off (the default); with it on, the session-long list reaches every
+    new request, so a first follow-up attempt carries the correction too — that knob's stated purpose.
+    """
+    names = ", ".join(repr(n) for n in _recent_failed_tool_names(request))
+    if not names:
+        return ""
+    own = ", ".join(repr(n) for n in sorted(request.available_tools))
+    choose = f" Your tools are: {own}. Choose one of these." if own else ""
+    return "=== Correction ===\n" + f"You called {names}, which you do not have." + choose + _sense_tools_hint(request)
 
 
 def build_tools_section_filtered(
@@ -801,7 +834,9 @@ class PromptBuilder:
                     break
 
         if action_followup_input:
-            return self._build_followup_prompt(action_followup_input)
+            prompt = self._build_followup_prompt(action_followup_input)
+            correction = build_followup_retry_correction(request)
+            return f"{prompt}\n\n{correction}" if correction else prompt
 
         # Check for pending user input
         user_question = ""

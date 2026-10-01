@@ -13,8 +13,6 @@ only for an agent that has `sense_tools`.
 
 from __future__ import annotations
 
-import pytest
-
 from maxim.agents.autonomy import AutonomyLevel
 from maxim.agents.bus import StructuredContext
 from maxim.agents.llm_types import LLMRequest, ModeInfo
@@ -54,7 +52,6 @@ def test_the_first_follow_up_attempt_is_unchanged() -> None:
     assert builder.build_prompt(_request(NARRATOR_TOOLS)) == builder._build_followup_prompt(FOLLOWUP)
 
 
-@pytest.mark.xfail(strict=True, reason="#935: build_prompt returns the follow-up early and never reads failed_tools")
 def test_a_follow_up_retry_names_the_rejected_tool_and_the_agents_own_tools() -> None:
     builder = _builder()
     request = _request(NARRATOR_TOOLS)
@@ -66,7 +63,6 @@ def test_a_follow_up_retry_names_the_rejected_tool_and_the_agents_own_tools() ->
     assert all(tool in retry[len(first) :] for tool in NARRATOR_TOOLS), "and lists the agent's own tools"
 
 
-@pytest.mark.xfail(strict=True, reason="#935: the failed-tools hint always says to call sense_tools")
 def test_the_sense_tools_hint_is_only_for_an_agent_that_has_it() -> None:
     narrator = _request(NARRATOR_TOOLS)
     LLMWorker._add_failed_tool_feedback(narrator, "sense_tools")
@@ -74,3 +70,44 @@ def test_the_sense_tools_hint_is_only_for_an_agent_that_has_it() -> None:
     aut = _request({"sense_tools", "look", "listen"})
     LLMWorker._add_failed_tool_feedback(aut, "fly")
     assert "call 'sense_tools'" in build_failed_tools_section(aut)
+
+
+def test_the_worker_retry_carries_the_correction_into_the_next_prompt() -> None:
+    """The shipped path: requeue_request -> _resubmit -> _process_request -> build_prompt, on the same request."""
+    import time
+
+    from tests.unit.test_planning_liveness import NoneLLM, _make_mode_info, _wait_for_proposal
+
+    llm = NoneLLM()
+    worker = LLMWorker(llm=llm, stale_threshold_s=10.0)
+    worker.start()
+    try:
+        ctx = StructuredContext(timestamp=time.time())
+        ctx.cli_inputs = [FOLLOWUP]
+        assert worker.submit_context(
+            context=ctx,
+            mode=_make_mode_info(),
+            autonomy_level=AutonomyLevel.SUPERVISED,
+            internet_access=False,
+            internet_policy_summary="",
+            use_tool_prompting=True,
+            available_tools=set(NARRATOR_TOOLS),
+        )
+        first = _wait_for_proposal(worker)
+        assert first is not None and first.original_request is not None
+        assert worker.requeue_request(first.original_request, failed_tool="sense_tools") is True
+        assert _wait_for_proposal(worker) is not None
+        assert len(llm.prompts) >= 2
+        assert "=== Correction ===" not in llm.prompts[0]
+        assert "You called 'sense_tools'" in llm.prompts[1] and "'observe_actions'" in llm.prompts[1]
+    finally:
+        worker.stop()
+
+
+def test_a_correction_for_an_agent_with_no_listed_tools_still_names_the_rejected_one() -> None:
+    request = _request(set())
+    LLMWorker._add_failed_tool_feedback(request, "x" * 500)
+    from maxim.agents.prompt_builder import build_followup_retry_correction
+
+    correction = build_followup_retry_correction(request)
+    assert "Your tools are" not in correction and repr("x" * 64) in correction and "x" * 65 not in correction

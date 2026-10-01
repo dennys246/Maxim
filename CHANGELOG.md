@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A follow-up retry after a rejected tool is no longer a byte-identical resend** (#935). The follow-up prompt never
+  listed the agent's own tools, and `PromptBuilder.build_prompt` returned it without reading `failed_tools`, so the
+  sim narrator kept proposing the AUT's `sense_tools` until the D13 budget ended the run `planning_failed` (every
+  Sim-Short re-run since August). A retry now names the rejected tool and lists the agent's own; the first attempt
+  is unchanged (with the opt-in `MAXIM_TOOL_FAILURE_HINTS` off, the default). The failed-tools hint says to call
+  `sense_tools` only to an agent that has it. This fixes the mechanism; that a Sim-Short run now gets past the
+  narrator's retries is shown only once a run does (the O19 re-runs).
+
 - **The Exp 53 verdict's `scoped_lines_stamped` reads true for real runs** (#1019). Since provenance rides once per
   run, it now checks each scoped line's `provenance_sha256` against its run's block (`live_common.provenance_digest`,
   the one digest definition) instead of requiring the block on every line. The Exp 61 apparatus refusal now names
