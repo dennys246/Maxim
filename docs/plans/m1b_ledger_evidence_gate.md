@@ -252,7 +252,7 @@ Owner decisions (2026-09-30), after the review round and a design pass on wideni
   or header never does. (Extended by the owner decision of 2026-09-30 recorded in PR 5a-2: `harness_event` too.)
 - R3's re-admitted rows stay `failed` (noted below).
 
-For PR 5b:
+For PR 5b (**Superseded for 5b by "PR 5b design: owner decisions (2026-09-30)" below** (only a stamped verdict supplies new support; R3's report and gauntlet are stamped by 5a-3). Kept as the record of what was decided at the time.):
 - **Not stamped yet (fail closed at the gate; PR 5a-2 — see its section for what it stamped):** `orient_backbone/exp53_cross_context_readout.py` (T1-10's
   `53d53_*`), the h1 DoA sweep / part-c writers (T1-7), the cradle phase-A scripted output (T1-9), `exp58_run.py`,
   `exp58_offline_gates.py`, `exp60_water_check.py` (the gate-(ii) records Exp 60/62 cite), `survival_world/
@@ -339,7 +339,7 @@ Owner decisions (2026-09-30), in order:
 - **Headers** (`stamp_harness_header`, no status, never support): the Exp 44 `campaign_start` row. **Exp 58 rows**
   are stamped with `stamp_harness_row`.
 
-For PR 5b:
+For PR 5b (**Superseded for 5b by "PR 5b design: owner decisions (2026-09-30)" below** (only a stamped verdict supplies new support; R3's report and gauntlet are stamped by 5a-3). Kept as the record of what was decided at the time.):
 - Support kinds: `harness_row`, `harness_event` (judged per `log_run_id` group: exactly one terminal `ok`, no mock
   line, every line's `provenance_sha256` equal to the digest of the group's block), `verdict` and `sim_report`.
   The digest is `live_common.provenance_digest`: sha256 of `json.dumps(block, sort_keys=True)` (default
@@ -391,10 +391,32 @@ family, a family binding that shared writers get wrong), a bird's-eye audit led 
   **O19's own PR before 5b**: re-run preregs that write each prose gate as numbers (Exp 09 = the ORIGINAL
   2026-04-25 H1–H7; halves that cannot be measured or pass are stated NOT MET), spawning harnesses that record
   every attempt and hash the measured files, and the gate's source hash stamped.
-- **Strict defaults** (all owner-chosen): a mock, unstamped or foreign-kind line sinks the whole cited file
+- **Strict defaults chosen by the owner:** a mock, unstamped or foreign-kind line sinks the whole cited file
   (event logs too; failed/aborted runs are only excluded); one `code_tree_sha256` per cited file and per verdict
-  scope; cited non-support kinds are judged and a failure sinks the row; a verdict that leaves out a complete
-  run of an arm it scopes is not established.
+  scope; cited non-support kinds are judged and a failure sinks the row. **Strict default adopted in the design
+  pass (not separately asked):** a verdict that leaves out a complete run of an arm it scopes is not established.
+- **What 5b must also apply** (from the design notes):
+  - Pass table entries: `exp53_verdict`, `exp54_verdict`, `exp56_verdict` (only with `noop_kit.kit_pass` true —
+    the gate's own check, beside the analyzer's guard), `exp57_verdict`, `exp60/61/62_verdict`, and O19's
+    `exp10_verdict` / `exp09_verdict`. An entry added in the same PR counts nothing.
+  - "Complete run" per experiment: Exp 60 — a row for every seed in the row's `frozen.seeds` under one
+    `(run_id, arm)`, refused rows INCLUDED (so "re-run until no refusals" cannot escape); Exp 53 — re-derive
+    `runs_of` / `Run.status` from the bound bytes (never trust `runs_excluded`), filtered to the verdict's
+    `experiment` and the phases/conditions its gate uses; Exp 61/62 — one campaign per file (5a-3), in-campaign
+    duplicates and gaps are `compute_verdict`'s INCOMPLETE. **Stated limit:** a retry under a NEW campaign id
+    (a fresh file) is invisible to the gate, and one campaign per file makes that the easy way to drop a failed
+    campaign quietly — review is the check (the evasion class).
+  - Sim-spawning rows: the gate checks `sims[].code_tree_sha256` (equal across the scope, equal to the row's
+    harness provenance, not unknown/dirty), not only the harness block.
+  - Exp 56/57 verdicts go to stdout only: the committed verdict is the operator's redirect.
+  - A record's time is the min `ts` over its counted units (a row's `ts`, else its `sims[].ts`; never a terminal's
+    or a verdict's own); a digest reading `unknown` (or `unknown:`) never matches anything.
+- **O19's re-run requirements:** a re-run prereg per experiment writing the gate as numbers (Exp 09 = the
+  original H1–H7; halves that cannot be measured or pass stated NOT MET), stamped with the prereg blob sha; a
+  spawning harness that sets `MAXIM_HARNESS_RUN_ID`, records every attempt (failed rows included), copies AND
+  hashes the measured files (`run_log.jsonl`, `aut_hippocampus.json`), asserts `finish_reason == "max_turns"`,
+  one code tree and the resume chain; a verdict writer stamping the gate function's source hash.
+- **Still owed:** a delta design round on the 5b notes' v6 folds before 5b is built (after O19).
 
 ## PR 5a-3 as built (2026-09-30)
 
@@ -419,4 +441,27 @@ The last writer fixes before 5b.
   provenance); R3's gauntlet and `report --json` are `diagnosis` records (R3's COMPLETE/INCOMPLETE moves to
   `r3_status`, since a stamped `status` says how the run ended); the gate6 payload is a mock `diagnosis`.
 - **Exp 56's analyzer** turns a PASS without the no-op kit into NO-VERDICT (Exp 57's guard).
+
+Deviations from the closed design, and consequences, stated:
+- **`exp53_unlabelled_verdict`** (design said "absent → refuse"): runs that predate the `experiment` field still
+  get a computable verdict for analysis, under a kind no pass table names. T1-10 cites `53d53`, whose runs carry
+  the field.
+- **gate6:** its in-process Exp 53 verdicts are `gate6_exp53_verdict` and its payload a MOCK `diagnosis` (it runs
+  on the dry rig; uncited).
+- **R3 bench shares its cal campaign id:** one bench per cal; bench rows carry the cal id (the 1.3 campaign used
+  `r3-bench-1`, so its prereg runbook command no longer finds a gauntlet — refused with a message); re-benching on
+  a new tree needs an explicit `--out` under the same id; `--campaign-id` is required even with `--gauntlet`.
+  `_cal` still writes the gauntlet straight under `docs/experiments/data/` without the gated-write check
+  (pre-existing; it no longer overwrites a committed file).
+- **R3 report:** R3's COMPLETE/INCOMPLETE moves to `r3_status` and the file is `_format_version: "1.1"` (owner
+  decision); a pre-1.1 report reads `status` as R3's own value.
+- **Exp 62:** `run` refuses unless the file holds an UNREFUSED replay row for its campaign. Without
+  `--write-experiment-results` each step is redirected to a fresh temp file, so offline use needs the same
+  explicit `--out` on every step (the refusals say so).
+- `stamp_diagnosis` / `stamp_instrument_check` still default `ts` to write time (neither is support);
+  `stamp_harness_row` requires the writer's.
+- Exp 56/57 and cradle `--resume` into an existing `--out` get no append refusal yet; at 5b the one-code-per-file
+  rule fails such a file closed.
+- The frozen preregs (`r3_survival_benchmark_prereg.md`, `exp60…prereg.md`, `exp61…prereg.md`) keep their
+  original commands; a re-run prereg must use the new ones.
 

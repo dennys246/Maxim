@@ -7,7 +7,8 @@ the event — time to air and per-drive pain-seconds — with survival a declare
 `escaped_before_damage` a route-order flag.
 
     cal     the ONE verification cell: the innate-only floor arm, n = 12, at the Exp 60 depth → the
-            gauntlet file (`r3_gauntlet.json`): the floor's distributions, the reservoir band, the
+            gauntlet file (`r3_gauntlet_<campaign_id>.json`; bench reads it through the SAME --campaign-id,
+            M1b PR 5a-3): the floor's distributions, the reservoir band, the
             loop's tick-period band, the world roster, the code hash — what `bench` refuses drift on.
     bench   the five arms, interleaved by seed, one fresh agent per row, at ONE code hash.
     report  pure over the rows: per-arm distributions with intervals, contrasts named by arm with
@@ -49,6 +50,7 @@ from _provenance import (  # noqa: E402
     stamp_diagnosis,
     append_refusal,
     campaign_out_path,
+    safe_campaign_id,
     instrument_check_authorizes,
     stamp_harness_row,
 )
@@ -812,7 +814,7 @@ def _existing_clean(out_path: Path, campaign_id: str) -> set[tuple[str, int]]:
 
 def gauntlet_path_for(campaign_id: str) -> str:
     """The gauntlet a cal campaign writes and its bench reads (M1b PR 5a-3): keyed by the shared campaign id."""
-    return f"docs/experiments/data/r3_gauntlet_{campaign_id}.json"
+    return f"docs/experiments/data/r3_gauntlet_{safe_campaign_id(campaign_id)}.json"
 
 
 def _setup(args: argparse.Namespace) -> tuple[_R3, Path, str] | int:
@@ -820,10 +822,14 @@ def _setup(args: argparse.Namespace) -> tuple[_R3, Path, str] | int:
         print("[FAIL] --resume and bench need --campaign-id (bench reads its cal campaign's gauntlet)")
         return 2
     campaign_id = args.campaign_id or uuid.uuid4().hex[:12]
-    if not args.gauntlet:
-        args.gauntlet = gauntlet_path_for(campaign_id)
-    # One campaign per file, keyed by subcommand: cal and bench rows never share a file (M1b PR 5a-3, #1022).
-    out_arg = Path(args.out or campaign_out_path(f"r3_{args.cmd}", campaign_id))
+    try:
+        if not args.gauntlet:
+            args.gauntlet = gauntlet_path_for(campaign_id)
+        # One campaign per file, keyed by subcommand: cal and bench rows never share a file (M1b PR 5a-3, #1022).
+        out_arg = Path(args.out or campaign_out_path(f"r3_{args.cmd}", campaign_id))
+    except ValueError as exc:  # a campaign id that is not a plain path segment
+        print(f"[FAIL] {exc}")
+        return 2
     out_abs = out_arg if out_arg.is_absolute() else (C.REPO_ROOT / out_arg)
     out_path = evidence_out_paths_or_exit(
         C.REPO_ROOT,
@@ -841,7 +847,10 @@ def _setup(args: argparse.Namespace) -> tuple[_R3, Path, str] | int:
         print(f"[FAIL] provenance: {exc}")
         return 3
     if args.resume and not out_path.is_file():
-        print(f"[FAIL] --resume: {out_path} does not exist (a resume never starts a campaign over)")
+        print(
+            f"[FAIL] --resume: {out_path} does not exist — a resume never starts a campaign over "
+            "(without --write-experiment-results a docs/experiments/data path is redirected to a fresh temp file per invocation; pass --write-experiment-results, or the same explicit --out to every step)"
+        )
         return 2
     refusal = append_refusal(out_path, provenance)
     if refusal is not None:
@@ -891,6 +900,9 @@ def _bench(args: argparse.Namespace) -> int:
     camp, out_path, campaign_id = got
     gpath = Path(args.gauntlet)
     gpath = gpath if gpath.is_absolute() else C.REPO_ROOT / gpath
+    if not gpath.is_file():
+        print(f"[FAIL] no gauntlet at {gpath} — run `cal` with the same --campaign-id first (or pass --gauntlet)")
+        return 3
     g = load_json(gpath)
     bad = validate_gauntlet(g)
     if bad:
@@ -989,7 +1001,9 @@ def _report(args: argparse.Namespace) -> int:
             print(f"[FAIL] provenance: {exc}")
             return 3
         # R3's own COMPLETE/INCOMPLETE moves to `r3_status`: a stamped record's `status` says how the run ended.
+        # Format 1.1 marks the rename (owner decision 2026-09-30): a pre-1.1 report reads `status` as R3's own value.
         record = {k: v for k, v in rep.items() if k != "status"}
+        record["_format_version"] = "1.1"
         record["r3_status"] = rep["status"]
         stamp_diagnosis(record, mock=False, code_provenance=code)
         Path(args.json).write_text(json.dumps(record, indent=2, default=str) + "\n")

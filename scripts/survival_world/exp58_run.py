@@ -37,7 +37,9 @@ Run ON the bridge box, server + bridge up (bridge started with --flee_x/--flee_z
 the classroom build output), classroom built:
 
     python scripts/survival_world/exp58_run.py --arm fear --rcon-password '<pw>' \\
-        --username maxim --write-experiment-results
+        --username maxim --out docs/experiments/data/exp58_claim_b_<date>.jsonl --write-experiment-results
+    # --out is required and names a FRESH file (M1b PR 5a-3): both arms go into it; appending onto a
+    # pre-M1b file or one from another code tree is refused
 """
 
 from __future__ import annotations

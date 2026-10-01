@@ -83,7 +83,7 @@ def test_exp61_refuses_a_resume_of_nothing_and_an_append_onto_a_legacy_file(tmp_
 def test_exp62_run_needs_its_campaigns_replay_row(tmp_path: Path, capsys) -> None:
     out = tmp_path / "rows.jsonl"
     assert E62.cmd_run(_ns(campaign_id="c1", out=str(out), resume=False)) == 2
-    assert "no replay row for campaign c1" in capsys.readouterr().out
+    assert "no unrefused replay row for campaign c1" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize(
@@ -206,6 +206,7 @@ def test_the_r3_report_is_a_diagnosis_with_its_code(tmp_path: Path, monkeypatch)
     rep = json.loads(out.read_text())
     assert rep["record_kind"] == "diagnosis" and rep["code_provenance"]["harness_family"] == "in_process"
     assert rep["r3_status"] == "INCOMPLETE" and rep["status"] == "ok", "R3's completion vs how the run ended"
+    assert rep["_format_version"] == "1.1", "the rename is marked: a pre-1.1 report reads `status` as R3's own"
 
 
 @pytest.mark.parametrize(
@@ -225,3 +226,72 @@ def test_the_companion_writers_stamp_a_kind(rel: str, stamp: str) -> None:
         if isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", None)) == stamp
     ]
     assert len(calls) >= (2 if rel != "orient_backbone/gate6_merged_gauntlet.py" else 1)
+
+
+def test_an_unknown_code_tree_matches_no_file_not_even_its_own(tmp_path: Path) -> None:
+    unknown = {**_prov(), "code_tree_sha256": "unknown"}
+    assert "unknown" in P.append_refusal(tmp_path / "new.jsonl", unknown)
+    assert "unknown" in P.append_refusal(tmp_path / "new.jsonl", {})
+
+
+@pytest.mark.parametrize("bad", ["", "../x", "a/b", "c 1"])
+def test_a_campaign_id_names_a_plain_path_segment(bad: str) -> None:
+    with pytest.raises(ValueError, match="campaign id"):
+        P.campaign_out_path("exp61_pairs", bad)
+    with pytest.raises(ValueError, match="campaign id"):
+        R3.gauntlet_path_for(bad)
+
+
+def test_a_non_dict_line_never_counts_as_a_replay_row(tmp_path: Path) -> None:
+    out = tmp_path / "rows.jsonl"
+    out.write_text("[1]\n" + json.dumps({"kind": "replay", "campaign_id": "c1"}) + "\n")
+    assert E62._has_replay_row(out, "c1") and not E62._has_replay_row(out, "c2")
+
+
+def test_the_exp57_ladder_stamps_rows_with_their_time(tmp_path: Path) -> None:
+    """The real stamp order (a tiny ScriptedBridge mock, ~2 s): `ts` is set before the stamp requires it."""
+    import os
+    import subprocess
+
+    out = tmp_path / "rows.jsonl"
+    args = [sys.executable, str(SCRIPTS / "exp57/run_ladder.py"), "--mock", "--out", str(out), "--allow-dirty"]
+    args += [
+        "--rungs",
+        "1",
+        "--cohorts",
+        "1",
+        "--conditions",
+        "creche",
+        "--k-max",
+        "2",
+        "--workdir",
+        str(tmp_path / "w"),
+    ]
+    env = dict(os.environ, MAXIM_OPERANT_ONLY_CREDIT="1", PYTHONPATH=str(REPO / "src"))
+    proc = subprocess.run(args, env=env, capture_output=True, text=True, timeout=300)
+    assert proc.returncode == 0, proc.stdout[-1500:] + proc.stderr[-1500:]
+    rows = [json.loads(line) for line in out.read_text().splitlines() if line.strip()]
+    assert rows and all(r["record_kind"] == "harness_row" and isinstance(r["ts"], float) for r in rows)
+
+
+def test_a_refused_replay_row_does_not_open_a_campaign(tmp_path: Path) -> None:
+    """The verdict counts only an unrefused replay row, so `run` must not start on a refused one."""
+    out = tmp_path / "rows.jsonl"
+    out.write_text(json.dumps({"kind": "replay", "campaign_id": "c1", "refusal": "geometry not derivable"}) + "\n")
+    assert not E62._has_replay_row(out, "c1")
+
+
+def test_a_bad_campaign_id_is_a_refusal_not_a_traceback(tmp_path: Path, capsys) -> None:
+    assert E61._run(_ns(campaign_id="../x", resume=False, out=None)) == 2
+    assert R3._setup(_ns(cmd="cal", campaign_id="../x", resume=False, out=None, gauntlet=None)) == 2
+    assert "campaign id" in capsys.readouterr().out
+
+
+def test_a_same_tree_resume_appends_to_rows_its_harness_wrote(tmp_path: Path) -> None:
+    """Positive control: rows written through the real write path, with the run's provenance, take a resume."""
+    from types import SimpleNamespace
+
+    prov = _prov()
+    out = tmp_path / "pairs.jsonl"
+    E61._Campaign.write(SimpleNamespace(out_path=out), {"kind": "receiver", "ts": 1.0, "provenance": prov})
+    assert P.append_refusal(out, prov) is None

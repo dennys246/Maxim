@@ -449,9 +449,9 @@ def main() -> int:
                         artifacts_dir=artifacts_dir,
                     )
                     for row in rows:
+                        row["ts"] = time.time()  # before the stamp, which requires it (M1b PR 5a-3)
                         stamp_harness_row(row, mock=bool(args.mock))  # record_kind / status / mock (M1b PR 5a)
                         row["seed_base"] = args.seed_base
-                        row["ts"] = time.time()
                         row.update(preflight)
                         row["provenance"] = provenance
                         fh.write(json.dumps(row) + "\n")

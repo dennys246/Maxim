@@ -67,9 +67,9 @@ preflight refuses a loop that does not reach its substrate branch >= 4 times in 
         --bridge_port=25567 --username=maxim --state_interval_ms=100)
     export PYTHONPATH="$PWD/src"
     python scripts/survival_world/exp60_run.py run --arm fear --rcon-password '<pw>' \\
-        --username maxim --write-experiment-results
-    python scripts/survival_world/exp60_run.py run --arm ablated ...   # same, other arm
-    python scripts/survival_world/exp60_run.py verdict --data docs/experiments/data/exp60_trials.jsonl \\
+        --username maxim --out docs/experiments/data/exp60_trials_<date>.jsonl --write-experiment-results
+    python scripts/survival_world/exp60_run.py run --arm ablated ...   # same --out, other arm, same tree
+    python scripts/survival_world/exp60_run.py verdict --data docs/experiments/data/exp60_trials_<date>.jsonl \\
         --json docs/experiments/data/exp60_verdict.json --write-experiment-results
 """
 

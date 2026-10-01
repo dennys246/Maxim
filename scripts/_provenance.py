@@ -81,6 +81,7 @@ __all__ = [
     "failed_row",
     "stamp_harness_row",
     "campaign_out_path",
+    "safe_campaign_id",
     "append_refusal",
     "stamp_harness_header",
     "stamp_instrument_check",
@@ -511,8 +512,16 @@ def stamp_harness_row(row: dict, *, mock: bool) -> dict:
 
 def campaign_out_path(stem: str, campaign_id: str) -> str:
     """The default rows file of one campaign (M1b PR 5a-3, #1022): ``docs/experiments/data/<stem>_<campaign_id>.jsonl``.
-    One campaign per file, so a live re-run never lands in a committed legacy file and ``--resume`` finds its own."""
-    return f"docs/experiments/data/{stem}_{campaign_id}.jsonl"
+    One campaign per file, so a live re-run never lands in a committed legacy file and ``--resume`` finds its own.
+    The id must be a plain path segment (letters, digits, ``-``, ``_``)."""
+    return f"docs/experiments/data/{stem}_{safe_campaign_id(campaign_id)}.jsonl"
+
+
+def safe_campaign_id(campaign_id: str) -> str:
+    """``campaign_id`` if it is a plain path segment, else ValueError (it names files under the data dir)."""
+    if not campaign_id or not all(c.isalnum() or c in "-_" for c in campaign_id):
+        raise ValueError(f"campaign id {campaign_id!r} must be letters, digits, '-' or '_'")
+    return campaign_id
 
 
 def append_refusal(out_path: Path | str, provenance: dict) -> str | None:
@@ -520,9 +529,13 @@ def append_refusal(out_path: Path | str, provenance: dict) -> str | None:
     (M1b PR 5a-3): an existing line that is not JSON, is unstamped (no ``record_kind``: a pre-M1b file), or ran on
     another code tree (one ``code_tree_sha256`` per file). A resume on the same tree appends freely."""
     path = Path(out_path)
+    tree = provenance.get("code_tree_sha256")
+    if not isinstance(tree, str) or not tree or tree.startswith("unknown"):
+        # An unknown tree matches nothing, itself included (5b rule 8): refused before any rig time is spent,
+        # since no record this run writes could ever be established.
+        return f"this run's code tree is unknown ({tree!r}) — no record it writes could be established"
     if not path.is_file():
         return None
-    tree = provenance.get("code_tree_sha256")
     for i, line in enumerate(path.read_text().splitlines(), 1):
         if not line.strip():
             continue

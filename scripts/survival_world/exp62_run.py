@@ -64,7 +64,7 @@ the first and last row; bridge at ``--state_interval_ms=100``; no second player)
         --workdir ~/exp62_work \\
         --gate-record docs/experiments/data/exp60_geometry_2026-09-15b.json \\
         --gate-record docs/experiments/data/exp62_pool2_geometry_reconnect.json --write-experiment-results
-    python scripts/survival_world/exp62_run.py verdict --data docs/experiments/data/exp62_rows.jsonl \\
+    python scripts/survival_world/exp62_run.py verdict --data docs/experiments/data/exp62_rows_<id>.jsonl \\
         --campaign-id <id> --json docs/experiments/data/exp62_verdict.json --write-experiment-results
 """
 
@@ -1140,7 +1140,12 @@ def _has_replay_row(out_path: Path, campaign_id: str) -> bool:
             row = json.loads(line) if line.strip() else {}
         except ValueError:
             continue
-        if row.get("kind") == "replay" and row.get("campaign_id") == campaign_id:
+        if (
+            isinstance(row, dict)
+            and row.get("kind") == "replay"
+            and row.get("campaign_id") == campaign_id
+            and row.get("refusal") is None  # the verdict counts only an unrefused replay row
+        ):
             return True
     return False
 
@@ -1157,7 +1162,11 @@ def _provenance_or_none(out_path: Path, args: argparse.Namespace) -> dict[str, A
 
 def cmd_replay(args: argparse.Namespace) -> int:
     """The replay row, written BEFORE the campaign so its prediction cannot be tuned to the result."""
-    out_path = _out_path(args.out, args)
+    try:
+        out_path = _out_path(args.out, args)
+    except ValueError as exc:  # a campaign id that is not a plain path segment
+        print(f"[FAIL] {exc}")
+        return 2
     provenance = _provenance_or_none(out_path, args)
     if provenance is None:
         return 3
@@ -1180,14 +1189,21 @@ def cmd_replay(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    out_path = _out_path(args.out, args)
+    try:
+        out_path = _out_path(args.out, args)
+    except ValueError as exc:  # a campaign id that is not a plain path segment
+        print(f"[FAIL] {exc}")
+        return 2
     provenance = _provenance_or_none(out_path, args)
     if provenance is None:
         return 3
     # The replay row is one of the five frozen gates and is written BEFORE the campaign, into the campaign's file:
     # a run with no replay row for its id could only ever verdict INCOMPLETE (M1b PR 5a-3).
     if not _has_replay_row(out_path, args.campaign_id):
-        print(f"[FAIL] {out_path} holds no replay row for campaign {args.campaign_id} — run `replay` first")
+        print(
+            f"[FAIL] {out_path} holds no unrefused replay row for campaign {args.campaign_id} — run `replay` first "
+            "(without --write-experiment-results a docs/experiments/data path is redirected to a fresh temp file per invocation; pass --write-experiment-results, or the same explicit --out to every step)"
+        )
         return 2
     refusal = append_refusal(out_path, provenance)
     if refusal is not None:
