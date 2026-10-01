@@ -5319,7 +5319,7 @@ def run_agentic_loop(
                                 log_swallowed_exception(e, operation="on_event:inference_start")
 
                         # EXPERIMENTAL — hallucination-hint feature.
-                        # MAXIM_TOOL_FAILURE_HINTS=0 disables (default on).
+                        # MAXIM_TOOL_FAILURE_HINTS=1 enables (default off).
                         # Disable for grounded-language acquisition Phase 0/1.
                         # See docs/plans/grounded_language_acquisition.md.
                         _failed_tools: list[str] = []

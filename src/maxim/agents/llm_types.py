@@ -184,14 +184,15 @@ class LLMRequest:
     # (LLMWorker) at construction; consumers (prompt_builder) read it.
     is_embodied: bool = field(default=False, compare=False)
 
-    # EXPERIMENTAL OPT-IN — pretrained-LLM hallucination mitigation. Names of
-    # tools the model previously called that don't exist for this agent.
-    # Surfaced as a negative-instruction prompt section. Gated by env
-    # MAXIM_TOOL_FAILURE_HINTS (default OFF after E4 validation 2026-05-09
-    # showed no benefit and possible backfire on qwen2.5-14B; n=6 per arm).
-    # Set MAXIM_TOOL_FAILURE_HINTS=1 to enable for further experimentation.
-    # Must remain OFF for grounded language acquisition Phase 0/1 — see
-    # docs/plans/grounded_language_acquisition.md.
+    # Names of tools the model called that don't exist for this agent. TWO producers:
+    # (1) D13 planning liveness (LLMWorker.requeue_request): the rejected name on THIS
+    #     request's retry. Invariant tier (apparatus liveness): only the sim orchestrator
+    #     opts in, so only the narrator gets it; MAXIM_SIM_PLANNING_LIVENESS=0 removes it.
+    # (2) EXPERIMENTAL OPT-IN env MAXIM_TOOL_FAILURE_HINTS (agent_loop.submit): the
+    #     session-long hallucinated list on EVERY new request — a pretrained-LLM crutch,
+    #     default OFF after E4 validation 2026-05-09 (no benefit, possible backfire on
+    #     qwen2.5-14B; n=6 per arm). Must remain OFF for grounded language acquisition
+    #     Phase 0/1 — see docs/plans/grounded_language_acquisition.md.
     failed_tools: list[str] = field(default_factory=list, compare=False)
 
     def __post_init__(self):
