@@ -43,10 +43,12 @@ wind blows through the cave."*, `--embodiment bodies/base_humanoid`, `--sim-max-
 
 **Complete-attempt condition:** the session's `report.json` reads `finish_reason == "max_turns"` and `turns >= 8`;
 `working_tree_dirty_src_scripts == false`, `code_changed_during_run == false`, and its `code_tree_sha256` equals its
-end digest and the harness's own, none `unknown`; the report stamps the language and AUT profile `mistral-7b` and
+end digest and the harness's own, none `unknown`; the report stamps the language and AUT profile `mistral-7b-instruct-v0.2` (the name `llm.profile mistral-7b` normalizes to; the router stamps the normalized name — amended 2026-09-30, before any data, owner decision) and
 `n_ctx` 8192 (`configured_n_ctx_source == "config"`), its `goal` equals the goal above verbatim, the harness row's
-recorded argv and environment (`--interactive false`, `--embodiment`, `--sim-max-turns 8`, `MAXIM_SUBSTRATE_PATH=1`)
-match, and the model the harness read from the server's `/v1/models` while the sim ran matches the profile's GGUF
+recorded argv and environment (`--interactive false`, `--embodiment`, `--sim-max-turns 8`, `MAXIM_SUBSTRATE_PATH=1`,
+and the original command's `MAXIM_BACKEND_TRACE=1`; beyond the harness's own data home, run id, log file and
+`MAXIM_LOG_FILE_MAX_BYTES=0`, no other `MAXIM_*` key reaches the sim) match, its report and run
+log were copied, and the model the harness read from the server's `/v1/models` while the sim ran matches the profile's GGUF
 (`_served_model_matches`).
 
 ## Attempts and the verdict (owner decisions 2026-09-30)
@@ -69,12 +71,19 @@ match, and the model the harness read from the server's `/v1/models` while the s
   A marker with no rows counts as an aborted attempt toward the 3. So an attempt discarded before it was committed
   is still visible, and removing a marker needs an admin to change the ruleset, which its history shows. The
   verdict runs with a token that can read the ruleset and its history; an unreadable ruleset refuses, never skips.
-  Harness refusals before the marker is pushed (preflight, model, tree, a failed push) are not attempts.
+  Harness refusals before the marker is pushed (preflight, model, tree, HEAD not on `main`, the rows file not
+  `main`'s, a server already on the sim's port, a failed push) are not attempts. Once the marker is pushed, every phase
+  that starts writes a row, an interrupted one too (Ctrl-C, SIGTERM, SIGHUP; a SIGKILL or a power loss leaves the marker
+  with fewer rows: an aborted attempt).
 - **Attempts are on main before the next one starts.** After each attempt the operator commits its rows (and copied
-  sessions) to `main` (a merge-committed data PR) before starting another, and fast-forwards the rig worktree to
-  `main`; the code is bound by C3's content digest, not by one commit hash. The verdict checks, from `main`'s
-  first-parent history (`git log --first-parent --format=%cI -- <rows>`), that every attempt's rows landed before
-  the next attempt's first `ts` (the rig clock against GitHub's merge time; PR turnaround is minutes). **If the
+  sessions) to `main` (a merge-committed data PR) before starting another. **The rig stays at the first attempt's commit** (amended 2026-09-30, before any data,
+  owner decision): every attempt runs from a commit on `main`'s history with the first attempt's code tree (in practice
+  that same commit), so the rows file keeps one code tree; only the rows and copies move to `main`. The verdict checks, from `main`'s first-parent history
+  (`git log --first-parent --format=%cI -- <rows>`), that the rows file only ever grew (each version a prefix of the
+  next, the newest the bytes judged), that every attempt's rows landed before the next attempt's marker (its tagger
+  date: the rig clock against GitHub's merge time; PR turnaround is minutes), and that each attempt ran on its
+  marker's commit, on `main`; and that this prereg and the two O19 scripts are byte-identical at every executed
+  commit, on `main` and at the verdict's own commit. **If the
   marker match or the ordering check fails, the verdict refuses: no status change, the row stays STALE.** After 3 aborts T3-9 stays STALE and the cause is investigated. The verdict reads the whole rows file and names the deciding attempt.
 - **Mapping.** The row's own metric is H1 (fire on keyword), H4 (habituation), H5 (sensitization) and H6.
 
