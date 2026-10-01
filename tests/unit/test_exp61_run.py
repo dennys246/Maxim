@@ -482,7 +482,6 @@ def test_export_body_spec_matches_the_component_affordances() -> None:
     assert spec.name == E.BODY_REF
 
 
-@pytest.mark.xfail(strict=True, reason="red gate: a duplicate clean (arm, pair) is only named in `refused`")
 def test_a_duplicate_clean_pair_makes_the_verdict_incomplete() -> None:
     """Two CLEAN rows for one (arm, pair) inside one campaign: which one counts is undefined, so the campaign
     cannot be judged (as Exp 62 already rules) — INCOMPLETE, the duplicate named in the cause."""

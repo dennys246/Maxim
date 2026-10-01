@@ -175,7 +175,6 @@ def _counted(rid: str, toward_by_agent: dict[str, tuple[int, int]]) -> list[dict
     return recs
 
 
-@pytest.mark.xfail(strict=True, reason="red gate: gate T compares rounded floats (0.7 - 0.5 = 0.19999...)")
 def test_gate_t_decides_on_exact_rates_at_the_margin(h, tmp_path: Path) -> None:
     """Taught directedness exactly 0.70 (seeds 6/10 and 8/10) against satiated exactly 0.50: the margin is exactly
     0.20, which the prereg's `>= 0.20` passes. Rounded floats put it at 0.19999... and fail it."""
@@ -187,3 +186,18 @@ def test_gate_t_decides_on_exact_rates_at_the_margin(h, tmp_path: Path) -> None:
     gate = _gate_record(p, "gate_T")
     assert gate["primary_directedness_by_arm"]["taught"] == 0.7
     assert gate["verdict"] == "PASS", gate
+
+
+def test_gate_i_never_rounds_a_rate_up_to_its_threshold(h) -> None:
+    """1999/2500 = 0.7996 rounds to 0.800 at three places; the prereg's `>= 0.80` must fail it."""
+
+    def rows(k: int, n: int) -> list[dict]:
+        return [{"completed": i < k, "correct_with_margin": True, "tool_name": "t", "no_learned_preference": False}
+                for i in range(n)]  # fmt: skip
+
+    agents = [{"label": f"taught_seed{s}", "arm": "taught", "seed": s} for s in (42, 43)]
+    near = h._gate_I(agents, {a["label"]: rows(1999, 2500) for a in agents})
+    assert near["per_seed"]["taught_seed42"]["completed"] == 0.8  # what the record shows
+    assert near["taught_seeds_passing"] == 0 and near["verdict"] == "FAIL", near
+    exact = h._gate_I(agents, {a["label"]: rows(2000, 2500) for a in agents})
+    assert exact["taught_seeds_passing"] == 2, exact

@@ -484,8 +484,10 @@ def compute_verdict(rows: list[dict[str, Any]], *, campaign_id: str | None) -> d
     sel = [r for r in in_campaign if r.get("kind") == "receiver"]
     anti = [r for r in in_campaign if r.get("kind") == "anti_vacuity"]
     refused: list[str] = []
+    duplicates: list[str] = []
     # A later CLEAN row supersedes an earlier REFUSED row for the same (arm, pair) — that is what
-    # `--resume` writes; the refusal is still named. Two CLEAN rows for one key is a duplicate.
+    # `--resume` writes; the refusal is still named. Two CLEAN rows for one key is a duplicate: which one
+    # counts is undefined, so the campaign cannot be judged (INCOMPLETE, as Exp 62 rules).
     clean_by_key: dict[tuple[str, int], dict[str, Any]] = {}
     for r in sorted(sel, key=lambda r: r["ts"]):
         key = (r["arm"], int(r["pair_seed"]))
@@ -494,6 +496,7 @@ def compute_verdict(rows: list[dict[str, Any]], *, campaign_id: str | None) -> d
             continue
         if key in clean_by_key:
             refused.append(f"duplicate clean (arm, pair) row {key} — pass --campaign-id to select one campaign")
+            duplicates.append(f"duplicate clean (arm, pair) row {key}")
             continue
         clean_by_key[key] = r
     clean: dict[str, list[dict[str, Any]]] = {a: [] for a in FROZEN["arms"]}
@@ -524,6 +527,7 @@ def compute_verdict(rows: list[dict[str, Any]], *, campaign_id: str | None) -> d
     incomplete = [
         f"{a}: {n_clean[a]} clean pairs < {FROZEN['arms'][a]}" for a in FROZEN["arms"] if n_clean[a] < FROZEN["arms"][a]
     ]
+    incomplete.extend(duplicates)
     incomplete.extend(campaign_drift(in_campaign, max_s=FROZEN["drift_max_s"]))
     if not anti:
         incomplete.append("anti-vacuity kit not recorded for this campaign")
