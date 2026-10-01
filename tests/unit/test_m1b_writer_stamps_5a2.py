@@ -341,11 +341,14 @@ def _exp53():
     return _load("m1b5a2_exp53", ORIENT / "exp53_cross_context_readout.py")
 
 
-def _runs(stamped: dict | None) -> list[dict]:
+def _runs(stamped: dict | None, experiment: str | None = "53_cross_context_readout") -> list[dict]:
     agents = ("taught_seed42", "satiated_seed42", "no_feed_seed42")
     recs: list[dict] = []
     for rid, phase in (("A", 1), ("Q", 2)):
-        recs.append({"event": "start", "run_id": rid, "phase": phase, "only": None})
+        start = {"event": "start", "run_id": rid, "phase": phase, "only": None}
+        if experiment is not None:
+            start["experiment"] = experiment  # what the run ran under (the manifest's experiment)
+        recs.append(start)
         for a in agents:
             arm = a.split("_seed")[0]
             recs.append({"event": "agent_load", "run_id": rid, "phase": phase, "agent": a})
@@ -399,12 +402,14 @@ def test_the_exp53_verdict_is_its_own_record_and_a_smoke_when_its_lines_are(
         _write_through_real_logs(records, _runs(None), mock=source == "dry")
     else:
         forged = {"log_run_id": "x", "mock": False, "provenance_sha256": "0" * 64}
-        records.write_text("\n".join(json.dumps(r) for r in _runs(forged if source == "forged" else None)) + "\n")
+        rows = _runs(forged) if source == "forged" else _runs(None, experiment=None)  # legacy: predates the field
+        records.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
     before = records.read_bytes()
     assert h.main(["verdict", "--records", str(records)]) in (0, 1)
     assert records.read_bytes() == before, "the verdict never appends to the records it judged"
     v = json.loads((tmp_path / "records_verdict.json").read_text())
-    assert (v["record_kind"], v["kind"], v["gate"]) == ("verdict", "exp53_verdict", "T")
+    kind = "exp53_unlabelled_verdict" if source == "legacy" else "exp53_verdict"  # legacy: no pass table names it
+    assert (v["record_kind"], v["kind"], v["gate"]) == ("verdict", kind, "T")
     assert v["scope"] == {"run_ids": ["A", "Q"]} and v["mock"] is mock and v["scoped_lines_stamped"] is stamped
     assert v["provenance"]["harness_family"] == "in_process"
     assert h.main(["verdict", "--records", str(records)]) == 2, "an existing verdict is not silently replaced"

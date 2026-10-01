@@ -74,8 +74,8 @@ Run ON the bridge box (server + bridge from current main at ONE code hash — no
 between the first and last row; bridge at ``--state_interval_ms=100``; no second player):
     export PYTHONPATH="$PWD/src"
     python scripts/survival_world/exp61_run.py run --rcon-password '<pw>' --username maxim \\
-        --workdir ~/exp61_work --write-experiment-results
-    python scripts/survival_world/exp61_run.py verdict --data docs/experiments/data/exp61_pairs.jsonl \\
+        --workdir ~/exp61_work --campaign-id <id> --write-experiment-results
+    python scripts/survival_world/exp61_run.py verdict --data docs/experiments/data/exp61_pairs_<id>.jsonl \\
         --json docs/experiments/data/exp61_verdict.json --campaign-id <id> --write-experiment-results
 """
 
@@ -103,6 +103,8 @@ from _provenance import (  # noqa: E402
     ProvenanceError,
     evidence_out_paths_or_exit,
     in_process_code_provenance,
+    append_refusal,
+    campaign_out_path,
     instrument_check_authorizes,
     stamp_harness_row,
     stamp_verdict,
@@ -1108,7 +1110,17 @@ def _existing_clean(out_path: Path, campaign_id: str) -> set[tuple[str, str, int
 
 
 def _run(args: argparse.Namespace) -> int:
-    out_arg = Path(args.out)
+    if args.resume and not args.campaign_id:
+        print("[FAIL] --resume requires --campaign-id")
+        return 2
+    campaign_id = args.campaign_id or uuid.uuid4().hex[:12]
+    # One campaign per file (M1b PR 5a-3, #1022): the default is named by the campaign, so a live re-run never lands
+    # in a committed legacy file and --resume finds its own.
+    try:
+        out_arg = Path(args.out or campaign_out_path("exp61_pairs", campaign_id))
+    except ValueError as exc:  # a campaign id that is not a plain path segment
+        print(f"[FAIL] {exc}")
+        return 2
     out_abs = out_arg if out_arg.is_absolute() else (C.REPO_ROOT / out_arg)
     out_path = evidence_out_paths_or_exit(
         C.REPO_ROOT,
@@ -1125,9 +1137,15 @@ def _run(args: argparse.Namespace) -> int:
     except (DirtyTreeError, ProvenanceError) as exc:
         print(f"[FAIL] provenance: {exc}")
         return 3
-    campaign_id = args.campaign_id or uuid.uuid4().hex[:12]
-    if args.resume and not args.campaign_id:
-        print("[FAIL] --resume requires --campaign-id")
+    if args.resume and not out_path.is_file():
+        print(
+            f"[FAIL] --resume: {out_path} does not exist — a resume never starts a campaign over "
+            "(without --write-experiment-results a docs/experiments/data path is redirected to a fresh temp file per invocation; pass --write-experiment-results, or the same explicit --out to every step)"
+        )
+        return 2
+    refusal = append_refusal(out_path, provenance)
+    if refusal is not None:
+        print(f"[FAIL] refusing to append: {refusal}")
         return 2
     camp = _Campaign(args, provenance=provenance, out_path=out_path, campaign_id=campaign_id)
     done = _existing_clean(out_path, campaign_id) if args.resume else set()
@@ -1247,7 +1265,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--campaign-id", default=None)
     r.add_argument("--resume", action="store_true", help="skip (kind, arm, pair) rows already clean for --campaign-id")
     r.add_argument("--gate-record", default=GATE_RECORD)
-    r.add_argument("--out", default="docs/experiments/data/exp61_pairs.jsonl")
+    r.add_argument("--out", default=None, help="default: docs/experiments/data/exp61_pairs_<campaign_id>.jsonl")
     r.add_argument("--write-experiment-results", action="store_true")
     r.add_argument("--allow-dirty", action="store_true")
     r.set_defaults(func=_run)

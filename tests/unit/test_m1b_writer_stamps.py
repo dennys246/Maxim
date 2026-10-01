@@ -52,19 +52,22 @@ def _sha(path: Path) -> str:
 
 
 def test_a_harness_row_is_failed_when_refused_or_already_failed_and_always_says_mock() -> None:
-    assert P.stamp_harness_row({"refusal": None}, mock=False) == {
+    assert P.stamp_harness_row({"refusal": None, "ts": 1.0}, mock=False) == {
         "refusal": None,
+        "ts": 1.0,
         "record_kind": "harness_row",
         "status": "ok",
         "mock": False,
     }
-    assert P.stamp_harness_row({"refusal": "no clean donor"}, mock=False)["status"] == "failed"
-    assert P.stamp_harness_row({"status": "failed"}, mock=True)["status"] == "failed"
-    assert P.stamp_harness_row({"status": "ok"}, mock=True)["mock"] is True
+    assert P.stamp_harness_row({"refusal": "no clean donor", "ts": 1.0}, mock=False)["status"] == "failed"
+    assert P.stamp_harness_row({"status": "failed", "ts": 1.0}, mock=True)["status"] == "failed"
+    assert P.stamp_harness_row({"status": "ok", "ts": 1.0}, mock=True)["mock"] is True
     # the verdicts' own reading of a refusal: an exception with an empty message is still one
-    assert P.stamp_harness_row({"refusal": ""}, mock=False)["status"] == "failed"
+    assert P.stamp_harness_row({"refusal": "", "ts": 1.0}, mock=False)["status"] == "failed"
     with pytest.raises(ValueError, match="neither"):
-        P.stamp_harness_row({"status": "incomplete"}, mock=False)  # never silently rewritten to ok
+        P.stamp_harness_row({"status": "incomplete", "ts": 1.0}, mock=False)  # never silently rewritten to ok
+    with pytest.raises(ValueError, match="epoch `ts`"):
+        P.stamp_harness_row({"refusal": None}, mock=False)  # the run's time is the writer's, never a default
 
 
 def test_a_verdict_names_its_data_repo_relative_with_the_hash_of_the_bytes_it_judged(tmp_path: Path) -> None:
@@ -127,8 +130,8 @@ def test_the_provenance_block_names_its_family(monkeypatch) -> None:
 )
 def test_survival_rows_are_stamped_where_they_are_written(write, tmp_path: Path) -> None:
     out = tmp_path / "rows.jsonl"
-    write(out, {"seed": 1, "refusal": None})
-    write(out, {"seed": 2, "refusal": "InstrumentError: no surface"})
+    write(out, {"seed": 1, "refusal": None, "ts": 1.0})
+    write(out, {"seed": 2, "refusal": "InstrumentError: no surface", "ts": 2.0})
     assert [(r["seed"], r["record_kind"], r["status"], r["mock"]) for r in _rows(out)] == [
         (1, "harness_row", "ok", False),
         (2, "harness_row", "failed", False),
