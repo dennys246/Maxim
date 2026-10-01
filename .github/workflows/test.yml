@@ -733,7 +733,7 @@ jobs:
           # write_mesh_config / mesh_setup.py pattern: operator-
           # explicit one-shot setup verbs only — automatic runtime /
           # admin-API writes to declarative config files are forbidden.
-          CONFIG_WRITER_MATCHES=$(grep -rn --include="*.py" -E "\b(write_config|mutate_config|set_field|downgrade_config|restore_preserved)\(" src/maxim/ tests/ \
+          CONFIG_WRITER_MATCHES=$(grep -rn --include="*.py" -E "\b(write_config|mutate_config|set_field|unset_field|downgrade_config|restore_preserved)\(" src/maxim/ tests/ \
             | grep -vE "^src/maxim/runtime/config_writer\.py:" \
             | grep -vE "^src/maxim/runtime/config_cli\.py:" \
             | grep -vE "^src/maxim/runtime/config_loader\.py:.*written = write_config" \
@@ -747,6 +747,7 @@ jobs:
             | grep -vE "^tests/unit/test_memory_strategy_config\.py:" \
             | grep -vE "^tests/unit/test_config_format_version_856\.py:" \
             | grep -vE "^tests/unit/test_config_downgrade_974\.py:" \
+            | grep -vE "^tests/unit/test_config_sparse_1_2\.py:" \
             || true)
           if [ -n "$CONFIG_WRITER_MATCHES" ]; then
             echo "ERROR: new caller of config_writer.write_config / mutate_config / set_field / downgrade_config / restore_preserved detected (config_unification.md IM2)"
