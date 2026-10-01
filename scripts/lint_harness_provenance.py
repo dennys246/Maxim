@@ -246,11 +246,11 @@ def lint(repo_root: Path = REPO_ROOT) -> list[str]:
     # M1b PR 5a — the harness family is _provenance's to stamp, never a writer's.
     for path in sorted(scripts.rglob("*.py")):
         rel = path.relative_to(repo_root)
-        # _provenance stamps it; this lint and the evidence gate (the reader the stamp exists for) name it.
+        # _provenance stamps it; this lint and the evidence gate's record judges (the reader the stamp exists for) name it.
         if rel.as_posix() in (
             "scripts/_provenance.py",
             "scripts/lint_harness_provenance.py",
-            "scripts/lint_evidence_gate.py",
+            "scripts/_evidence_records.py",
         ):
             continue
         try:
