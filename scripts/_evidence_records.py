@@ -42,7 +42,9 @@ ESTABLISHED, LEGACY, EXCEPTED, NOT_ESTABLISHED = "ESTABLISHED", "LEGACY", "EXCEP
 SUPPORT_KINDS = frozenset({"verdict"})  # only a stamped verdict supplies NEW support (owner decision 2026-09-30)
 NON_SUPPORT_KINDS = frozenset({"instrument_check", "diagnosis", "harness_header", "harness_demo"})
 SINGLE_DOCUMENT_KINDS = frozenset({"verdict", "instrument_check", "diagnosis"})
-BAD_PREREG = frozenset({"FAIL", "NON_GATED", "NOT_GOVERNED"})
+# The prereg lint's statuses a cited record may carry (an ALLOW-list, M1b 5b-2: anything else, an unknown or a new
+# status included, refuses). New support additionally requires PASS.
+PREREG_OK = frozenset({"PASS", "GRANDFATHERED", "UNGOVERNED_RERUN", "OUT_OF_SCOPE", "EXCEPTED"})
 # Errors the judges' own type guards should make impossible: on main's evidence one means "could not be judged".
 CODE_ERRORS = ("TypeError", "AttributeError", "KeyError", "IndexError")
 # What a malformed record raises while being read; each becomes a refusal, never a crash.
@@ -206,6 +208,7 @@ class Ctx:
     ref: str  # where records are read (HEAD; the base for the Evidence-removal ratchet)
     legacy: dict[str, str]
     prereg: dict[str, str]  # top-level data entry -> classify_all status
+    table: dict  # the MERGE-BASE pass table (complete-run rules read its `complete`): required, never defaulted
 
     def prereg_status(self, path: str) -> str | None:
         best = None
@@ -440,7 +443,7 @@ def judge_verdict(rec: dict, j: Judgement, ctx: Ctx) -> None:
         j.fail(f"verdict data {data_rel!r} is not a path under {DATA_ROOT}/")
         return
     j.data_prereg = ctx.prereg_status(data_rel)
-    if j.data_prereg in BAD_PREREG:
+    if j.data_prereg not in PREREG_OK:
         j.fail(f"verdict data {data_rel}: prereg status {j.data_prereg}")
     entry = ctx.repo.tree(ctx.ref).get(data_rel)
     if entry is None or entry[0] == "120000":
@@ -460,11 +463,13 @@ def judge_verdict(rec: dict, j: Judgement, ctx: Ctx) -> None:
         return
     kinds = {kind_of(r) for r in rows}
     sub = Judgement(path=data_rel, status=ESTABLISHED)
+    j_counted: set[str] = set()
     if kinds <= {"harness_row", "harness_header"}:
         judge_row_file(rows, sub, ctx, scope_rows=scoped)
         units = counted_rows(scoped)
     elif kinds <= {"harness_event", "harness_run_end"}:
         counted = judge_event_file(rows, sub, ctx)
+        j_counted = counted
         units = [r for r in scoped if kind_of(r) == "harness_event" and str_field(r, "log_run_id") in counted]
     else:
         j.fail(f"verdict data {data_rel} holds unknown kinds")
@@ -479,8 +484,256 @@ def judge_verdict(rec: dict, j: Judgement, ctx: Ctx) -> None:
     j.time = min(known) if known else None
     j.allowed_dirty = sub.allowed_dirty
     judge_provenance(rec.get("provenance"), j, ctx, "verdict provenance", allow_dirty_ok=False)
+    judge_complete(rec, rows, scoped, j_counted, j, ctx)
     if str_field(rec, "kind") in O19_KINDS:
         judge_o19(rec, rows, data_rel, j, ctx)
+
+
+# ── complete-run rules (M1b PR 5b-2) ─────────────────────────────────────────────────────────────────────
+# The gate re-derives a verdict's run STRUCTURE from the bound bytes; the verdict's VALUE is trusted from its
+# stamped writer (owner decision 2026-10-01). Which rule a kind gets is code-owned; the frozen sets / pins it checks
+# come from the MERGE-BASE pass table's `complete` block (a PR cannot loosen its own sets/pins; the rule code itself,
+# like all gate code, is review's).
+COMPLETE_RULES = {
+    "exp53_verdict": "exp53_runs",
+    "exp60_verdict": "seeds_per_run_arm",
+    "exp61_verdict": "campaign_pairs",
+    "exp62_verdict": "campaign_seeds",
+}
+
+
+def judge_complete(rec: dict, rows: list[dict], scoped: list[dict], counted: set[str], j: Judgement, ctx: Ctx):
+    rule = COMPLETE_RULES.get(str_field(rec, "kind") or "")
+    if rule is None:
+        return
+    spec = as_dict(ctx.table.get(rec["kind"])).get("complete")
+    if not isinstance(spec, dict) or spec.get("rule") != rule:
+        j.fail(f"complete-run: the merge-base pass table carries no `{rule}` rule for {rec['kind']}")
+        return
+    RULES[rule](rec, rows, scoped, counted, spec, j, ctx)
+
+
+def _keyed(r: dict, seed_field: str, sets: dict) -> tuple[str, int] | None:
+    arm, seed = str_field(r, "arm"), r.get(seed_field)
+    if arm not in sets or type(seed) is not int or seed not in sets[arm]:
+        return None
+    return arm, seed
+
+
+def _clean(r: dict) -> bool:
+    return r.get("refusal") is None  # the analyzers' predicate: any non-null refusal (even "") is refused
+
+
+def seeds_per_run_arm(rec, rows, scoped, counted, spec, j: Judgement, ctx: Ctx) -> None:
+    """Exp 60: every run in the FILE whose (arm, seed) keys equal one arm's frozen seeds (refused rows included) is
+    a complete run; exactly one per arm, and the scope is exactly those runs (no cherry-picking a later run)."""
+    sets = spec["sets"]
+    by_run: dict[str, list[tuple[str, int]]] = {}
+    for i, r in enumerate(rows, 1):
+        if kind_of(r) != "harness_row":
+            continue
+        rid, key = str_field(r, "run_id"), _keyed(r, "seed", sets)
+        if rid is None or key is None:
+            j.fail(f"complete-run: row {i} has no string run_id or an (arm, seed) outside the frozen sets")
+            return
+        by_run.setdefault(rid, []).append(key)
+    complete: dict[str, list[str]] = {}
+    for rid, keys in by_run.items():
+        arms = {a for a, _ in keys}
+        if len(keys) != len(set(keys)) or len(arms) != 1:
+            j.fail(f"complete-run: run {rid} repeats an (arm, seed) or spans {len(arms)} arms")
+            return
+        arm = next(iter(arms))
+        if {s for _, s in keys} == set(sets[arm]):
+            complete.setdefault(arm, []).append(rid)
+    for arm in sets:
+        if len(complete.get(arm, [])) != 1:
+            j.fail(
+                f"complete-run: {len(complete.get(arm, []))} complete runs of arm {arm} in the file (need exactly 1)"
+            )
+    run_ids = as_dict(rec.get("scope")).get("run_ids")
+    if run_ids is not None and (len(run_ids) != len(set(run_ids)) or set(run_ids) - set(by_run)):
+        j.fail("complete-run: the scope repeats a run_id or names one with no rows")
+    scoped_runs = {str_field(r, "run_id") for r in scoped if kind_of(r) == "harness_row"}
+    if scoped_runs != {rid for rids in complete.values() for rid in rids}:
+        j.fail("complete-run: the scope is not exactly the file's complete runs (one per arm)")
+
+
+def _campaign_rule(seed_field: str, keyed_kind: str, allowed: frozenset, required: frozenset):
+    def rule(rec, rows, scoped, counted, spec, j: Judgement, ctx: Ctx) -> None:
+        """Exp 61 / 62: one campaign per FILE; the keyed rows' (arm, seed) equal the frozen sets exactly (refused rows
+        present, never a duplicate CLEAN key); every row of an allowed kind; the required kinds present."""
+        sets = spec["sets"]
+        campaigns = {str_field(r, "campaign_id") or f"<{r.get('campaign_id')!r}>" for r in rows}
+        if len(campaigns) != 1:
+            j.fail(f"complete-run: the data file holds {len(campaigns)} campaigns (one per file)")
+            return
+        (campaign,) = campaigns
+        scope = as_dict(rec.get("scope"))
+        named = rec.get("campaign_id")
+        # `verdict` with no --campaign-id writes campaign_id null over all_rows: the file's one campaign is proven above.
+        if scope.get("campaign_id", campaign) != campaign or not (
+            named == campaign or (named is None and "all_rows" in scope)
+        ):
+            j.fail("complete-run: the verdict's campaign_id / scope is not the file's campaign")
+        present: dict[tuple[str, int], int] = {}
+        kinds = set()
+        for i, r in enumerate(rows, 1):
+            kind = str_field(r, "kind")
+            if kind not in allowed:
+                j.fail(f"complete-run: row {i} kind {r.get('kind')!r} is not one of {sorted(allowed)}")
+                return
+            kinds.add(kind)
+            if kind != keyed_kind:
+                continue
+            key = _keyed(r, seed_field, sets)
+            if key is None:
+                j.fail(f"complete-run: row {i} (arm, {seed_field}) is outside the frozen sets")
+                return
+            present.setdefault(key, 0)
+            if _clean(r):
+                present[key] += 1
+        want = {(a, s) for a, seeds in sets.items() for s in seeds}
+        if set(present) != want:
+            j.fail(f"complete-run: {len(want - set(present))} frozen key(s) missing from the campaign")
+        if any(n > 1 for n in present.values()):
+            j.fail("complete-run: a frozen key has two clean rows")
+        if required - kinds:
+            j.fail(f"complete-run: the campaign has no {sorted(required - kinds)} row")
+
+    return rule
+
+
+campaign_pairs = _campaign_rule(
+    "pair_seed", "receiver", frozenset({"receiver", "apparatus", "donor", "anti_vacuity"}), frozenset({"anti_vacuity"})
+)
+campaign_seeds = _campaign_rule(
+    "seed", "row", frozenset({"row", "replay", "apparatus"}), frozenset({"replay", "apparatus"})
+)
+
+
+def exp53_runs(rec, rows, scoped, counted, spec, j: Judgement, ctx: Ctx) -> None:
+    """Exp 53: one experiment and no debug run per file; exactly one gate-I phase-1 run and one complete phase-2
+    primary run, both scoped and named by `runs_used`; each run pinned (start fields, agents to the merge-base
+    manifest) and bound to one ok log group of its own."""
+    events = [r for r in rows if kind_of(r) == "harness_event"]
+    starts = [r for r in events if r.get("event") == "start"]
+    pins = spec["start"]
+    if any(r.get("only") is not None or r.get("experiment") != pins.get("experiment") for r in starts):
+        j.fail("complete-run: the file holds a debug (--only) run or another experiment")
+        return
+    runs: dict[str, list[dict]] = {}
+    for r in events:
+        rid = str_field(r, "run_id")
+        if rid is not None:
+            runs.setdefault(rid, []).append(r)
+
+    def first(rid: str, event: str) -> list[dict]:
+        return [r for r in runs[rid] if r.get("event") == event]
+
+    phase1 = [
+        rid
+        for rid in runs
+        if any(not g.get("informative") for g in first(rid, "gate_I"))
+        and [s.get("phase") for s in first(rid, "start")] == [1]
+    ]
+    primary = [
+        rid
+        for rid in runs
+        if [s.get("phase") for s in first(rid, "start")] == [2]
+        and [e.get("status") for e in first(rid, "run_end")] == ["complete"]
+        and any(t.get("condition") == "primary" for t in first(rid, "trial"))
+    ]
+    if len(phase1) != 1 or len(primary) != 1:
+        j.fail(
+            f"complete-run: {len(phase1)} gate-I phase-1 run(s), {len(primary)} complete primary run(s) (need 1 each)"
+        )
+        return
+    used = rec.get("runs_used")
+    if not isinstance(used, dict) or set(used) != {"phase1", "primary", "secondary"}:
+        j.fail("complete-run: runs_used is not {phase1, primary, secondary}")
+        return
+    secondary = used["secondary"]
+    if (
+        used["phase1"] != phase1[0]
+        or used["primary"] != primary[0]
+        or not (secondary is None or (isinstance(secondary, str) and secondary in runs))
+    ):
+        j.fail("complete-run: runs_used does not name the file's phase-1 and primary runs")
+        return
+    if secondary is not None and not (
+        [s.get("phase") for s in first(secondary, "start")] == [2]
+        and [e.get("status") for e in first(secondary, "run_end")] == ["complete"]
+        and any(t.get("condition") == "secondary" for t in first(secondary, "trial"))
+    ):
+        j.fail("complete-run: runs_used.secondary is not a complete phase-2 run with secondary trials")
+    named = {phase1[0], primary[0]} | ({secondary} if secondary else set())
+    if set(as_dict(rec.get("scope")).get("run_ids") or []) != named:
+        j.fail("complete-run: the scope is not exactly the runs runs_used names")
+    if [g.get("verdict") for g in first(phase1[0], "gate_I")] != ["PASS"]:
+        j.fail("complete-run: the phase-1 run's gate I is not PASS")
+    if not first(phase1[0], "start")[0].get("ts", 0) < first(primary[0], "start")[0].get("ts", 0):
+        j.fail("complete-run: phase 2 does not follow its phase-1 run")
+    for rid in sorted(named):
+        _exp53_run_pinned(rid, runs[rid], rows, counted, spec, j, ctx)
+
+
+def _exp53_run_pinned(rid: str, lines: list[dict], rows: list[dict], counted: set[str], spec, j, ctx: Ctx) -> None:
+    (start,) = [r for r in lines if r.get("event") == "start"] or [{}]
+    for field_, want in spec["start"].items():
+        if start.get(field_) != want or type(start.get(field_)) is not type(want):
+            j.fail(f"complete-run: run {rid} start.{field_} is {start.get(field_)!r}, pinned {want!r}")
+    if any(r.get("dry_run") is not False for r in lines):
+        j.fail(f"complete-run: run {rid} has a dry-run line")
+    groups = {str_field(r, "log_run_id") for r in lines}
+    others = {str_field(r, "run_id") for r in rows if str_field(r, "log_run_id") in groups} - {None, rid}
+    if len(groups) != 1 or not groups <= counted or others:
+        j.fail(f"complete-run: run {rid} is not alone in exactly one log group that ended ok")
+    raw = ctx.repo.blob(ctx.base, spec["manifest"])
+    if raw is None:
+        j.fail(f"complete-run: the manifest {spec['manifest']} is not at the merge-base")
+        return
+    manifest = json.loads(raw)
+    entries = [e for e in as_dict(manifest).get("agents") or [] if isinstance(e, dict)]
+    by_sha = {(e.get("nac_sha256"), e.get("ec_sha256")): e for e in entries}
+    must = {e.get("label") for e in entries if not e.get("exploratory")}
+    loads: dict[str, tuple] = {}
+    per_condition: dict[object, list[str]] = {}
+    for r in lines:
+        if r.get("event") != "agent_load":
+            continue
+        e = by_sha.get((r.get("nac_sha256"), r.get("ec_sha256")))
+        ident = (r.get("agent"), r.get("arm"), r.get("seed"), r.get("exploratory_agent"))
+        if e is None or ident != (e.get("label"), e.get("arm"), e.get("seed"), e.get("exploratory")):
+            j.fail(f"complete-run: run {rid} loads {r.get('agent')!r} unlike its merge-base manifest entry")
+            return
+        if loads.setdefault(r["agent"], ident[1:4:2]) != ident[1:4:2]:
+            j.fail(f"complete-run: run {rid} loads {r['agent']!r} twice differently")
+            return
+        per_condition.setdefault(r.get("condition"), []).append(r["agent"])
+    for cond, labels in per_condition.items():
+        if len(labels) != len(set(labels)) or {a for a in labels if not loads[a][1]} != must:
+            j.fail(f"complete-run: run {rid} ({cond or 'phase 1'}) does not load each manifest agent exactly once")
+    if not per_condition:
+        j.fail(f"complete-run: run {rid} loads no agent")
+    for r in lines:
+        if r.get("event") not in ("trial", "probe"):
+            continue
+        # An invalid placement is logged without arm / exploratory flag (the analyzer drops it): its agent must
+        # still be one the run loaded.
+        if r.get("agent") not in loads or (
+            r.get("invalid") is not True and (r.get("arm"), r.get("exploratory_agent")) != loads[r["agent"]]
+        ):
+            j.fail(f"complete-run: run {rid} has a {r['event']} for {r.get('agent')!r} unlike its load")
+            return
+
+
+RULES = {
+    "exp53_runs": exp53_runs,
+    "seeds_per_run_arm": seeds_per_run_arm,
+    "campaign_pairs": campaign_pairs,
+    "campaign_seeds": campaign_seeds,
+}
 
 
 def judge_o19(rec: dict, rows: list[dict], data_rel: str, j: Judgement, ctx: Ctx) -> None:
@@ -615,7 +868,7 @@ def judge_entry(path: str, ctx: Ctx) -> Judgement:
 
 def _judge_entry(path: str, ctx: Ctx, j: Judgement) -> None:
     j.prereg = ctx.prereg_status(path)
-    if j.prereg in BAD_PREREG:  # before anything else, legacy included
+    if j.prereg not in PREREG_OK:  # before anything else, legacy included
         j.fail(f"prereg status {j.prereg}")
         return
     tree = ctx.repo.tree(ctx.ref)

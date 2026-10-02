@@ -218,7 +218,9 @@ def select_run(
     """Filter to one run and name duplicate (arm, seed) rows (pure).
 
     A re-run appended to the same JSONL must never double n: without ``run_id`` any
-    duplicate (arm, seed) is a refusal reason; with it, only that run's rows count.
+    duplicate (arm, seed) is a refusal reason; with it, only that run's rows count. Selecting a run here is for
+    reading a legacy file: the ledger evidence gate (M1b 5b-2) refuses a verdict over a file holding a second
+    complete run of an arm, so a confirmatory re-run goes to a NEW ``--out``, never appended and picked.
     """
     # Each `run` invocation mints its own run_id, so a two-arm trial is TWO ids — one per arm.
     wanted = set([run_id] if isinstance(run_id, str) else (run_id or []))
@@ -600,7 +602,8 @@ def main(argv: list[str] | None = None) -> int:
         "--run-id",
         action="append",
         default=None,
-        help="select these runs' rows when the JSONL holds re-runs — repeat once per ARM (each `run` invocation mints its own id)",
+        help="select these runs' rows when the JSONL holds re-runs — repeat once per ARM (each `run` invocation mints "
+        "its own id); evidence re-runs go to a NEW --out: the ledger gate refuses a file with two complete runs of an arm",
     )
     v.add_argument("--write-experiment-results", action="store_true")
     v.add_argument("--allow-dirty", action="store_true")

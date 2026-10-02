@@ -34,6 +34,7 @@ REPO_ROOT = SCRIPTS_DIR.parent
 
 import _ledger as L  # noqa: E402
 import _lint_git  # noqa: E402
+import lint_prereg_precedes_data as P  # noqa: E402
 from _evidence_records import (  # noqa: E402  (re-exported: the gate's record vocabulary)
     DATA_ROOT,
     ESTABLISHED,
@@ -42,6 +43,7 @@ from _evidence_records import (  # noqa: E402  (re-exported: the gate's record v
     NOT_ESTABLISHED,
     SUPPORT_KINDS,
     Ctx,
+    COMPLETE_RULES,
     MALFORMED,
     GateError,
     Judgement,
@@ -109,7 +111,7 @@ def support_problem(j: Judgement, row_id: str, token: str, table: dict, after: f
 EXCEPTION_FIELDS = ("id", "kind", "row", "to", "to_date", "path", "sha256", "owner", "reason", "date")
 
 
-def pass_table_problems(table, where: str) -> list[str]:
+def pass_table_problems(table, where: str, *, at_base: bool = False) -> list[str]:
     """The pass table's shape: ``kind -> {rows: [ID], targets: {TOKEN: [verdict]}, require?: {dotted: value}}``."""
     if not isinstance(table, dict):
         return [f"{PASS_TABLE} at {where} is not an object"]
@@ -128,10 +130,46 @@ def pass_table_problems(table, where: str) -> list[str]:
                 t in L.RANK and isinstance(v, list) and all(isinstance(x, str) for x in v) for t, v in targets.items()
             )
             or not isinstance(require, dict)
-            or set(entry) - {"rows", "targets", "require", "note"}
+            or set(entry) - {"rows", "targets", "require", "note", "complete"}
         ):
             out.append(f"{PASS_TABLE} at {where}: entry {kind!r} is malformed (rows / targets / require)")
+        elif complete_problem(kind, entry.get("complete"), at_base=at_base):
+            problem = complete_problem(kind, entry.get("complete"), at_base=at_base)
+            out.append(f"{PASS_TABLE} at {where}: entry {kind!r}: {problem}")
     return out
+
+
+def complete_problem(kind: str, complete, *, at_base: bool = False) -> str | None:
+    """A kind with a code-owned complete-run rule MUST carry its `complete` block at HEAD (and no other kind may): a
+    missing block would read as "no completeness check". At the MERGE-BASE a ruled kind may still lack its block (the
+    PR adding the rule cannot also have added the block on main); the record judges refuse its verdicts meanwhile.
+    A block whose kind has NO rule fails at both: dropping a rule is caught."""
+    rule = COMPLETE_RULES.get(kind)
+    if rule is None:
+        return None if complete is None else "carries a `complete` block, but no complete-run rule exists for it"
+    if complete is None and at_base:
+        return None
+    if not isinstance(complete, dict) or complete.get("rule") != rule:
+        return f"needs a `complete` block with rule {rule!r}"
+    if rule == "exp53_runs":
+        manifest = complete.get("manifest")
+        if set(complete) != {"rule", "start", "manifest"} or not isinstance(complete.get("start"), dict):
+            return "`complete` must be exactly {rule, start, manifest} with `start` an object"
+        if not isinstance(manifest, str) or not manifest.startswith(DATA_ROOT + "/") or ".." in manifest.split("/"):
+            return "`complete.manifest` must be a path under the data root"
+        return None
+    sets = complete.get("sets")
+    if set(complete) != {"rule", "sets"} or not isinstance(sets, dict) or not sets:
+        return "`complete` must be exactly {rule, sets} with `sets` a non-empty object"
+    for arm, seeds in sets.items():
+        if (
+            not isinstance(seeds, list)
+            or not seeds
+            or not all(type(x) is int for x in seeds)
+            or len(set(seeds)) != len(seeds)
+        ):
+            return f"`complete.sets.{arm}` must be a non-empty list of distinct integers"
+    return None
 
 
 def load_json(repo: Repo, ref: str, path: str, default):
@@ -144,7 +182,7 @@ def load_json(repo: Repo, ref: str, path: str, default):
         raise GateError(f"{path} at {ref[:12]} is not JSON") from exc
 
 
-def exceptions_problems(base_list, head_list) -> list[str]:
+def exceptions_problems(base_list, head_list, repo: Repo | None = None) -> list[str]:
     out = []
     if not isinstance(head_list, list) or not isinstance(base_list, list):
         return [f"{EXCEPTIONS} must be a JSON list"]
@@ -160,6 +198,13 @@ def exceptions_problems(base_list, head_list) -> list[str]:
             any(not e.get(f) for f in EXCEPTION_FIELDS) or "from" not in e  # `from: null` = a new row
         ):
             out.append(f"{EXCEPTIONS}: ledger exception {e.get('id')!r} lacks a required field")
+        elif e["kind"] == "prereg":
+            # The pin's form is checked against HEAD only for a NEW clause: one already on main whose entry later
+            # changed shape is inert (the prereg lint notes it), never a permanent failure of every PR.
+            root = repo.root if repo is not None and e not in base_list else None
+            problem = P.prereg_exception_problem(e, root)
+            if problem:
+                out.append(f"{EXCEPTIONS}: prereg exception {e.get('id')!r} {problem}")
     ids = [e.get("id") for e in head_list if isinstance(e, dict)]
     if not all(isinstance(i, str) and i for i in ids) or len(set(ids)) != len(ids):
         out.append(f"{EXCEPTIONS}: every entry needs a unique string id")
@@ -309,7 +354,7 @@ def gate(
     if problems:
         failures += [f"ledger: {p}" for p in problems]
     table = load_json(repo, base, PASS_TABLE, {})
-    failures += pass_table_problems(table, "the merge-base")
+    failures += pass_table_problems(table, "the merge-base", at_base=True)
     if not isinstance(table, dict):
         table = {}
     failures += pass_table_problems(load_json(repo, "HEAD", PASS_TABLE, {}), "HEAD")
@@ -321,17 +366,15 @@ def gate(
     failures += legacy_problems(repo, head_snap, base_snap)
     base_exc = load_json(repo, base, EXCEPTIONS, [])
     head_exc = load_json(repo, "HEAD", EXCEPTIONS, [])
-    failures += exceptions_problems(base_exc, head_exc)
+    failures += exceptions_problems(base_exc, head_exc, repo)
     if prereg is None:
-        import lint_prereg_precedes_data as P  # noqa: PLC0415
-
         try:
             envelope = P.classify_all(repo.root, base)
         except P.LintError as exc:
             raise GateError(f"the prereg classification could not run: {exc}") from exc
         failures += [f"prereg lint: {f}" for f in envelope.get("failures") or []]
         prereg = {e["entry"]: e["status"] for e in envelope.get("entries") or []}
-    ctx = Ctx(repo=repo, base=base, ref="HEAD", legacy=head_snap, prereg=prereg)
+    ctx = Ctx(repo=repo, base=base, ref="HEAD", legacy=head_snap, prereg=prereg, table=table)
     changed = repo.changed(base)
     results = []
     for row in head_rows:
@@ -398,7 +441,12 @@ def gate(
                 res.notes.append(f"{e.get('path')}: exception {e.get('id')!r} does not pin the cited bytes (inert)")
         if old and {e.path for e in old.evidence} - {e.path for e in row.evidence}:
             base_ctx = Ctx(
-                repo=repo, base=base, ref=base, legacy=load_json(repo, base, LEGACY_SNAPSHOT, {}) or {}, prereg=prereg
+                repo=repo,
+                base=base,
+                ref=base,
+                legacy=load_json(repo, base, LEGACY_SNAPSHOT, {}) or {},
+                prereg=prereg,
+                table=table,
             )
             at_base = [judge_entry(e.path, base_ctx) for e in old.evidence]
             # A base record the judges could not judge (a gate defect) keeps the ratchet ON (fail closed), and says why.
