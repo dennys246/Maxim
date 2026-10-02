@@ -123,7 +123,7 @@ def o19_attempt(rig: Rig, exp: str, executed: str, *, monkeypatch) -> dict:
     blob = _git(rig.root, "hash-object", R.O19_JUDGE)
     out.update(
         apparatus_checked=True,
-        apparatus={"markers": [{"run_id": rid, "k": 1}]},
+        apparatus={"markers": [{"run_id": rid, "k": 1, "ref": f"{v.MARKER_NAMESPACE}/{exp}/attempt-1-{rid}"}]},
         bound_files={R.O19_JUDGE: blob},
         verdict_source_sha256=hashlib.sha256(source).hexdigest(),
         provenance={
@@ -236,7 +236,8 @@ def test_a_verdict_the_judge_does_not_reproduce_is_refused(rig, monkeypatch) -> 
 
 
 def test_rows_without_a_marker_are_refused(rig, monkeypatch) -> None:
-    _t39_move(rig, monkeypatch, verdict_edit=lambda r: r.update(apparatus={"markers": [{"run_id": "f" * 32, "k": 1}]}))
+    marker = {"run_id": "f" * 32, "k": 1, "ref": f"refs/tags/o19/09/attempt-1-{'f' * 32}"}  # well formed, not the rows'
+    _t39_move(rig, monkeypatch, verdict_edit=lambda r: r.update(apparatus={"markers": [marker]}))
     failures, _ = rig.run()
     assert any("no start marker" in f for f in failures), failures
 
@@ -1584,3 +1585,78 @@ def test_the_exp53_pins_match_the_harness_constants(monkeypatch) -> None:
     spec.loader.exec_module(mod)
     start = REAL_TABLE["exp53_verdict"]["complete"]["start"]
     assert start["targets"] == list(mod.TARGETS) and start["exploratory_targets"] == list(mod.EXPLORATORY_TARGETS)
+
+
+# ── campaigns: a verdict is bound to its campaign, and a successor to its pinned closure ─────────────────
+
+
+@pytest.mark.parametrize(
+    "edit, expected",
+    [
+        (lambda r: r.update(experiment="zz"), "not in the merge-base campaign table"),
+        (lambda r: r.update(experiment="10c2"), "is not of kind"),
+        (lambda r: r["apparatus"]["markers"][0].update(ref="refs/tags/o19/10/attempt-1-x"), "is not campaign 09's"),
+        (
+            lambda r: r["apparatus"].update(
+                markers=[
+                    {"run_id": f"{k:032x}", "k": k, "ref": f"refs/tags/o19/09/attempt-{k}-{k:032x}"}
+                    for k in range(1, 5)
+                ]  # fmt: skip
+            ),
+            "more than 3 attempts",
+        ),
+    ],
+)
+def test_an_o19_verdict_is_bound_to_its_campaign(rig, monkeypatch, edit, expected) -> None:
+    _t39_move(rig, monkeypatch, verdict_edit=edit)
+    failures, _ = rig.run()
+    assert any(expected in f for f in failures), failures
+
+
+def _t11_from_campaign_2(rig: Rig, monkeypatch, *, closure: bool = True, succession: bool = True) -> list[str]:
+    """BASE: T1-1 STALE (+ campaign 1's closure on main). HEAD: a campaign-2 Exp 10 verdict moves T1-1 to MAINTAINED."""
+    import o19_verdict as v
+
+    sup = v.PROTOCOL["10c2"]["supersedes"]
+    if closure:
+        rig.write(sup["verdict"], (REPO / sup["verdict"]).read_bytes())
+    rig.prereg[f"{DATA}/rerun_exp10_o19c2"] = "PASS"
+    rig.base(ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")]))
+    record = o19_attempt(rig, "10c2", rig.base_sha, monkeypatch=monkeypatch)
+    if succession:
+        record["apparatus"]["succession"] = {**sup, "closure_landed": 1.0, "prereg_landed": 1.0}
+    (rig.root / DATA / "rerun_exp10_o19c2" / "verdict.json").write_text(json.dumps(record, indent=1))
+    cite = f"**Evidence:** `{DATA}/rerun_exp10_o19c2/verdict.json`."
+    rig.head(
+        ledger(
+            [t1("T1-1", f"**Status: MAINTAINED 2026-10-02**. {cite}")], [t3("T3-9", "**Status: STALE 2026-09-30**.")]
+        )
+    )
+    failures, _ = rig.run()
+    return failures
+
+
+def test_a_campaign_2_pass_moves_t1_1(rig, monkeypatch) -> None:
+    assert _t11_from_campaign_2(rig, monkeypatch) == []
+
+
+def test_a_campaign_2_verdict_without_its_pinned_closure_is_refused(rig, monkeypatch) -> None:
+    failures = _t11_from_campaign_2(rig, monkeypatch, closure=False)
+    assert any("is not the pinned verdict" in f for f in failures), failures
+
+
+def test_a_campaign_2_verdict_that_records_no_succession_is_refused(rig, monkeypatch) -> None:
+    failures = _t11_from_campaign_2(rig, monkeypatch, succession=False)
+    assert any("does not record campaign 10c2's succession" in f for f in failures), failures
+
+
+def test_an_o19_verdict_naming_another_rows_file_is_refused(rig, monkeypatch) -> None:
+    """Same bytes, matching data_sha256, another path: the hash check passes, the campaign binding refuses."""
+    other = f"{DATA}/rerun_exp09_o19/copy/rows.jsonl"
+
+    def copy_rows(rg):
+        rg.write(other, (rg.root / DATA / "rerun_exp09_o19" / "rows.jsonl").read_bytes())
+
+    _t39_move(rig, monkeypatch, rows_edit=copy_rows, verdict_edit=lambda r: r.update(data=other))
+    failures, _ = rig.run()
+    assert any("is not campaign 09's rows file" in f for f in failures), failures

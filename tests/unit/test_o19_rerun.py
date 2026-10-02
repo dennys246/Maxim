@@ -35,9 +35,11 @@ def _squash(text: str) -> str:
 
 
 def test_goals_caps_and_scope_are_the_preregs() -> None:
-    p10, p09 = _squash(PREREG["10"]), _squash(PREREG["09"])
-    assert f"`{v.EXP10_GOAL_DUNGEON}` | 8 | none" in p10 and f"`{v.EXP10_GOAL_DUNGEON}` | 8 | phase 1" in p10
-    assert f"`{v.EXP10_GOAL_GARDEN}` | 5 | phase 1" in p10
+    p09 = _squash(PREREG["09"])
+    for key in ("10", "10c2"):
+        p10 = _squash(PREREG[key])
+        assert f"`{v.EXP10_GOAL_DUNGEON}` | 8 | none" in p10 and f"`{v.EXP10_GOAL_DUNGEON}` | 8 | phase 1" in p10
+        assert f"`{v.EXP10_GOAL_GARDEN}` | 5 | phase 1" in p10
     assert f'*"{v.EXP09_GOAL}"*' in p09
     assert "`--embodiment bodies/base_humanoid`, `--sim-max-turns 8`, `MAXIM_SUBSTRATE_PATH=1`" in p09
     for exp in v.PROTOCOL:
@@ -464,9 +466,8 @@ def _git(cwd: Path, *args: str, date: str | None = None) -> str:
 class Rig:
     """A bare origin + a clone standing in for the repo: code commit, markers, rows landing by --no-ff merges."""
 
-    REL = v.rows_path("10")
-
-    def __init__(self, tmp: Path):
+    def __init__(self, tmp: Path, key: str = "10"):
+        self.key, self.REL = key, v.rows_path(key)
         self.origin, self.work = tmp / "origin.git", tmp / "work"
         subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(self.origin)], check=True)
         subprocess.run(["git", "clone", "-q", str(self.origin), str(self.work)], check=True, capture_output=True)
@@ -479,7 +480,7 @@ class Rig:
         self.rows: list[str] = []
 
     def marker(self, k: int, rid: str, date: str, commit: str | None = None) -> None:
-        name = f"o19/10/attempt-{k}-{rid}"
+        name = f"o19/{self.key}/attempt-{k}-{rid}"
         _git(self.work, "tag", "-a", name, "-m", "m", commit or self.code, date=date)
         _git(self.work, "push", "-q", "origin", f"refs/tags/{name}")
 
@@ -505,7 +506,16 @@ class Rig:
         monkeypatch.setattr(v, "_gh_list", lambda path: [] if path.endswith("/history") else [{"id": 7}])
         data = (self.work / self.REL).read_bytes()
         rows = [json.loads(ln) for ln in data.decode().splitlines() if ln.strip()]
-        return v.check_apparatus("10", self.REL, data, v.attempts_from_rows(rows))
+        return v.check_apparatus(self.key, self.REL, data, v.attempts_from_rows(rows))
+
+    def put(self, rel: str, data: bytes, date: str) -> None:
+        """Commit ``rel`` straight onto main (its first-parent landing time is ``date``)."""
+        path = self.work / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        _git(self.work, "add", ".")
+        _git(self.work, "commit", "-q", "-m", f"add {rel}", date=date)
+        _git(self.work, "push", "-q", "origin", "main")
 
 
 def _epoch(iso: str) -> float:
@@ -721,7 +731,7 @@ def test_harness_check_on_main(tmp_path, monkeypatch) -> None:
     rig = Rig(tmp_path)
     monkeypatch.setattr(v, "REPO_ROOT", rig.work)
     monkeypatch.setattr(h, "REPO_ROOT", rig.work)
-    rows_file = rig.work / Rig.REL
+    rows_file = rig.work / rig.REL
     h.check_on_main(rows_file)  # the first attempt: no rows anywhere
     rig.land(RID[0], 1.0, "2026-10-01T11:00:00Z")
     h.check_on_main(rows_file)  # on main, here too
@@ -941,3 +951,165 @@ def test_the_harness_restores_the_signal_handlers(mock_attempt) -> None:
     before = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGHUP)}
     mock_attempt("09")
     assert {sig: signal.getsignal(sig) for sig in before} == before
+
+
+# ── campaigns (owner decisions 2026-10-02: a successor only after a pinned ABORT; campaign 2 is the last) ─────
+
+
+def test_the_campaign_table_is_sound_and_10_is_closed() -> None:
+    assert v.protocol_problems() == []
+    assert v.closed_keys() == {"10": "10c2"}
+    assert v.experiment_of("10c2") == "10" and v.PROTOCOL["10c2"]["phases"] == v.PROTOCOL["10"]["phases"]
+    sup = v.PROTOCOL["10c2"]["supersedes"]
+    assert (sup["owner_decision"], sup["cause_issue"], sup["key"]) == ("2026-10-01", 1042, "10")
+    assert sup["verdict_sha256"] in PREREG["10c2"] and "**second and last**" in PREREG["10c2"]
+
+
+def test_the_pinned_closure_is_campaign_1s_real_abort() -> None:
+    sup = v.PROTOCOL["10c2"]["supersedes"]
+    closure = (REPO / sup["verdict"]).read_bytes()
+    assert v.successor_problems("10c2", closure, 1.0, 1.0, 2.0) == []
+
+
+def _table(**changes) -> dict:
+    import copy
+
+    table = copy.deepcopy(v.PROTOCOL)
+    for key, value in changes.items():
+        if value is None:
+            table.pop(key)
+        else:
+            table[key] = value
+    return table
+
+
+def test_the_campaign_table_refuses() -> None:
+    c2 = v.PROTOCOL["10c2"]
+    third = {**c2, "scope": "rerun_exp10_o19c3", "supersedes": {**c2["supersedes"], "key": "10c2",
+             "verdict": "docs/experiments/data/rerun_exp10_o19c2/verdict.json"}}  # fmt: skip
+    cases = {
+        "more than 2": _table(**{"10c3": third}),
+        "is not [0-9a-z]+": _table(**{"10/c2": c2, "10c2": None}),
+        "or is reserved": _table(**{"preflight": c2, "10c2": None}),
+        "superseded more than once": _table(**{"10c3": {**c2, "scope": "rerun_exp10_o19c3"}}),
+        "2 open campaigns": _table(**{"10c2": {k: x for k, x in c2.items() if k != "supersedes"}}),
+        "is not 10 or 09": _table(**{"09": {**v.PROTOCOL["09"], "experiment": "11"}}),
+        "another experiment or kind": _table(**{"10c2": {**c2, "kind": "exp09_verdict"}}),
+        "is not 10's own": _table(**{"10c2": {**c2, "supersedes": {**c2["supersedes"], "verdict": "docs/x.json"}}}),
+        "owner_decision is missing": _table(
+            **{"10c2": {**c2, "supersedes": {**c2["supersedes"], "owner_decision": ""}}}
+        ),
+        "share a scope": _table(**{"10c2": {**c2, "scope": "rerun_exp10_o19"}}),
+        "share a prereg": _table(**{"10c2": {**c2, "prereg": v.PROTOCOL["10"]["prereg"]}}),
+    }
+    for expected, table in cases.items():
+        problems = v.protocol_problems(table)
+        assert any(expected in p for p in problems), (expected, problems)
+
+
+def test_the_verdict_refuses_an_unsound_campaign_table(monkeypatch, tmp_path, capsys) -> None:
+    monkeypatch.setattr(v, "protocol_problems", lambda: ["broken"])
+    out = tmp_path / "v.json"
+    assert v.main(["--exp", "10c2", "--data", v.rows_path("10c2"), "--json", str(out)]) == 2
+    assert "campaign table is unsound" in capsys.readouterr().err and not out.exists()
+
+
+def test_the_harness_checks_the_campaign_before_any_marker(monkeypatch, capsys) -> None:
+    """The real (non-mock) path runs check_campaign: campaign 10 is refused as closed before anything is pushed."""
+    monkeypatch.setattr(h._provenance, "assert_repo_interpreter", lambda *a, **k: None)
+    monkeypatch.setattr(h._provenance, "executed_code_provenance", lambda *a, **k: {})
+    monkeypatch.setattr(h._provenance, "append_refusal", lambda *a, **k: None)
+    monkeypatch.setattr(h, "take_lock", lambda exp: None)
+    monkeypatch.setattr(h, "check_on_main", lambda rows_file: None)
+    pushed = []
+    monkeypatch.setattr(h, "push_marker", lambda *a, **k: pushed.append(a))
+    assert h.main(["run", "--exp", "10", "--write-experiment-results"]) == 2
+    assert "closed" in capsys.readouterr().err and pushed == []
+
+
+def test_the_apparatus_checks_a_successors_closure(tmp_path, monkeypatch) -> None:
+    sup = v.PROTOCOL["10c2"]["supersedes"]
+    closure, prereg = (REPO / sup["verdict"]).read_bytes(), (REPO / v.PROTOCOL["10c2"]["prereg"]).read_bytes()
+    rig = Rig(tmp_path, key="10c2")
+    rig.put(sup["verdict"], closure, "2026-10-02T09:00:00Z")
+    rig.put(v.PROTOCOL["10c2"]["prereg"], prereg, "2026-10-02T09:30:00Z")
+    rig.marker(1, RID[0], "2026-10-02T10:05:00Z")
+    rig.land(RID[0], _epoch("2026-10-02T10:06:00Z"), "2026-10-02T11:00:00Z")
+    _ordered, record = rig.check(monkeypatch)
+    assert record["succession"]["key"] == "10" and record["succession"]["closure_landed"] < _epoch(
+        "2026-10-02T10:05:00Z"
+    )
+    late = Rig(tmp_path / "late", key="10c2")
+    late.put(v.PROTOCOL["10c2"]["prereg"], prereg, "2026-10-02T09:30:00Z")
+    late.marker(1, RID[0], "2026-10-02T10:05:00Z")
+    late.put(sup["verdict"], closure, "2026-10-02T10:30:00Z")  # the closure landed after the first marker
+    late.land(RID[0], _epoch("2026-10-02T10:06:00Z"), "2026-10-02T11:00:00Z")
+    with pytest.raises(v.Refusal, match="closure verdict reached origin/main after its first marker"):
+        late.check(monkeypatch)
+    swapped = Rig(tmp_path / "swapped", key="10c2")
+    swapped.put(sup["verdict"], b"{}", "2026-10-02T09:00:00Z")  # another file at the path, early
+    swapped.put(v.PROTOCOL["10c2"]["prereg"], prereg, "2026-10-02T09:30:00Z")
+    swapped.marker(1, RID[0], "2026-10-02T10:05:00Z")
+    swapped.put(sup["verdict"], closure, "2026-10-02T10:30:00Z")  # the pinned bytes, after the first marker
+    swapped.land(RID[0], _epoch("2026-10-02T10:06:00Z"), "2026-10-02T11:00:00Z")
+    with pytest.raises(v.Refusal, match="closure verdict reached origin/main after its first marker"):
+        swapped.check(monkeypatch)
+
+
+def test_only_a_pinned_real_abort_landed_before_the_first_marker_may_be_succeeded() -> None:
+    sup = v.PROTOCOL["10c2"]["supersedes"]
+    real = (REPO / sup["verdict"]).read_bytes()
+    record = json.loads(real)
+
+    def edited(**fields) -> bytes:
+        return json.dumps({**record, **fields}).encode()
+
+    assert v.successor_problems("10c2", None, None, 1.0, 2.0)  # not on main
+    assert v.successor_problems("10c2", real + b" ", 1.0, 1.0, 2.0)  # not the pinned bytes
+    for change in ({"verdict": "PASS"}, {"verdict": "FAIL"}, {"mock": True}, {"experiment": "10c2"},
+                   {"apparatus_checked": False}):  # fmt: skip
+        problems = v.successor_problems("10c2", edited(**change), 1.0, 1.0, 2.0)
+        assert any("not a real ABORT" in p or "did not check" in p for p in problems), change
+    assert v.successor_problems("10c2", real, 3.0, 1.0, 2.0)  # the closure landed after the first marker
+    assert v.successor_problems("10c2", real, 1.0, None, 2.0)  # the prereg never reached main
+    assert v.successor_problems("10c2", real, 1.0, 3.0, 2.0)  # ...or after the first marker
+    assert v.successor_problems("09", None, None, None, 2.0) == []  # supersedes nothing
+
+
+def test_the_harness_refuses_a_closed_or_unclosed_campaign(monkeypatch) -> None:
+    with pytest.raises(h.Refused, match="closed"):
+        h.check_campaign("10")
+    monkeypatch.setattr(v, "_git_bytes", lambda *a: None)
+    monkeypatch.setattr(v, "landed_on_main", lambda path, want=None: None)
+    with pytest.raises(h.Refused, match="not on origin/main"):
+        h.check_campaign("10c2")
+    real = (REPO / v.PROTOCOL["10c2"]["supersedes"]["verdict"]).read_bytes()
+    monkeypatch.setattr(v, "_git_bytes", lambda *a: real)
+    monkeypatch.setattr(v, "landed_on_main", lambda path, want=None: 1.0)
+    h.check_campaign("10c2")  # landed before now: may start
+    h.check_campaign("09")
+
+
+def test_every_gate_choice_goes_through_the_experiment_not_the_key() -> None:
+    for script in ("o19_verdict.py", "o19_rerun.py"):
+        text = (REPO / "scripts" / script).read_text()
+        assert not re.search(r"\bexp\s*[!=]=\s*[\"']\d", text), script
+
+
+def test_a_campaign_2_attempt_is_judged_as_exp_10(mock_attempt) -> None:
+    out = _judge("10c2", mock_attempt("10c2"))
+    assert out["verdict"] == "PASS" and out["experiment"] == "10c2" and "P0" in json.dumps(out["gates"])
+
+
+def test_a_closed_campaigns_verdict_is_not_recomputable_after_a_script_change() -> None:
+    """By design (#1050): campaign 1 ran on 17ca6c56, and this change alters the bound verdict script, so
+    ``check_bound`` refuses ``--exp 10`` from now on. Pinned on the real blobs (skipped on a shallow clone)."""
+    closure = json.loads((REPO / v.PROTOCOL["10c2"]["supersedes"]["verdict"]).read_text())
+    then = subprocess.run(
+        ["git", "rev-parse", f"17ca6c56:{v.BOUND_FILES[0]}"], cwd=REPO, capture_output=True, text=True
+    )
+    if then.returncode != 0:
+        pytest.skip("campaign 1's commit is not in this clone")
+    now = subprocess.run(["git", "hash-object", v.BOUND_FILES[0]], cwd=REPO, capture_output=True, text=True)
+    assert then.stdout.strip() != now.stdout.strip()
+    assert closure["bound_files"][v.BOUND_FILES[0]] == then.stdout.strip()  # the closure bound the old script

@@ -2,8 +2,15 @@
 """The O19 re-run verdict: Exp 10 (T1-1) and Exp 09 (T3-9), computed from committed bytes only.
 
 Pre-registrations (read them first; this module implements them and nothing else):
-  docs/experiments/protocols/exp10_rerun_2026-09-30_preregistration.md
-  docs/experiments/protocols/exp09_rerun_2026-09-30_preregistration.md
+  docs/experiments/protocols/exp10_rerun_2026-09-30_preregistration.md   (Exp 10 campaign 1, key "10": CLOSED)
+  docs/experiments/protocols/exp10_rerun_2026-10-02_preregistration.md   (Exp 10 campaign 2, key "10c2")
+  docs/experiments/protocols/exp09_rerun_2026-09-30_preregistration.md   (Exp 09, key "09")
+
+A PROTOCOL key is a CAMPAIGN: its own prereg, data directory and marker namespace (``refs/tags/o19/<key>/``). Its
+``experiment`` ("10"/"09") decides the phases' gates; every gate choice goes through :func:`experiment_of`. A
+successor campaign (``supersedes``) opens only after its predecessor's stamped ABORT verdict, pinned by SHA-256, and
+at most ``MAX_CAMPAIGNS`` campaigns exist per experiment (owner decisions 2026-10-02; :func:`protocol_problems`,
+:func:`successor_problems`).
 
 This module also holds the PROTOCOL (goals, turn caps, flags, model) that ``o19_rerun.py`` runs, so the
 verdict's ``verdict_source_sha256`` covers what was run as well as how it was judged.
@@ -14,7 +21,9 @@ What the verdict reads, and how each input could lie:
   * the start markers (annotated tags ``refs/tags/o19/<exp>/attempt-<k>-<run_id>``) on ``origin``, the tag ruleset
     that keeps them, and its history (``gh api``, read-only) — an attempt discarded before it was committed is still
     visible as a marker, and removing a marker needs a ruleset change, which its history shows;
-  * ``origin/main``'s first-parent history of the rows file — each attempt landed before the next one started.
+  * ``origin/main``'s first-parent history of the rows file — each attempt landed before the next one started;
+  * for a successor campaign, its predecessor's closure verdict and its own prereg on ``origin/main`` — both landed
+    before its first marker (GitHub's merge time against the rig clock: forgetting is caught, not evasion).
   A failure of any of these REFUSES (exit 2, no verdict written): no status change, the row stays STALE. Rig-clock
   times (row ``ts``, tagger dates) are trusted as the prereg says: the gate catches forgetting, not evasion.
 
@@ -58,18 +67,43 @@ EXP09_GOAL = (
 )
 
 # One entry per phase: (phase name, goal, turn cap, resumes phase 1?, extra argv, extra env).
+EXP10_PHASES = [
+    ("baseline", EXP10_GOAL_DUNGEON, 8, False, [], {}),
+    ("gate", EXP10_GOAL_DUNGEON, 8, True, [], {}),
+    ("negative_transfer", EXP10_GOAL_GARDEN, 5, True, [], {}),
+]
+# A campaign may be succeeded at most once per experiment (owner decision 2026-10-02: campaign 2 is the last before
+# the 1.3.2 cut; another ABORT leaves the row STALE and the cause is investigated). Raising it is an owner decision.
+MAX_CAMPAIGNS = 2
+_KEY = re.compile(r"[0-9a-z]+")
+RESERVED_KEYS = frozenset({"preflight"})  # o19_rerun.py's dry-run marker namespace
+
 PROTOCOL: dict[str, dict] = {
     "10": {
+        "experiment": "10",
         "scope": "rerun_exp10_o19",
         "kind": "exp10_verdict",
         "prereg": "docs/experiments/protocols/exp10_rerun_2026-09-30_preregistration.md",
-        "phases": [
-            ("baseline", EXP10_GOAL_DUNGEON, 8, False, [], {}),
-            ("gate", EXP10_GOAL_DUNGEON, 8, True, [], {}),
-            ("negative_transfer", EXP10_GOAL_GARDEN, 5, True, [], {}),
-        ],
+        "phases": EXP10_PHASES,
+    },
+    "10c2": {
+        "experiment": "10",
+        "scope": "rerun_exp10_o19c2",
+        "kind": "exp10_verdict",
+        "prereg": "docs/experiments/protocols/exp10_rerun_2026-10-02_preregistration.md",
+        "phases": EXP10_PHASES,
+        # Campaign 1 closed after one aborted attempt (planning_failed, cause #1042, fixed by #1045 + #1047): owner
+        # decision 2026-10-01; its closing verdict was written 2026-10-02 before any O19 script changed (#1049).
+        "supersedes": {
+            "key": "10",
+            "verdict": "docs/experiments/data/rerun_exp10_o19/verdict.json",
+            "verdict_sha256": "5da2128968bb4516350aa26680294d9f79966424a518fc37b3dd68c0bf826fbe",
+            "owner_decision": "2026-10-01",
+            "cause_issue": 1042,
+        },
     },
     "09": {
+        "experiment": "09",
         "scope": "rerun_exp09_o19",
         "kind": "exp09_verdict",
         "prereg": "docs/experiments/protocols/exp09_rerun_2026-09-30_preregistration.md",
@@ -86,6 +120,108 @@ PROTOCOL: dict[str, dict] = {
     },
 }
 
+
+def experiment_of(key: str) -> str:
+    """The experiment a campaign key runs ("10" or "09"): every gate choice goes through this, never the key."""
+    return PROTOCOL[key]["experiment"]
+
+
+def closed_keys() -> dict[str, str]:
+    """Campaign key -> the key of the campaign that superseded it. A closed campaign starts no attempt. Its closing
+    verdict was computed once, before any O19 script changed; afterwards ``--exp <closed key>`` refuses
+    (``check_bound``: the scripts differ from its executed commit), by design. What survives is the committed
+    verdict, pinned by SHA-256 in its successor."""
+    return {p["supersedes"]["key"]: k for k, p in PROTOCOL.items() if "supersedes" in p}
+
+
+def protocol_problems(protocol: dict[str, dict] | None = None) -> list[str]:
+    """The structural campaign rules ([] = sound): plain keys, one experiment per chain, a successor names an
+    existing predecessor of its own experiment and kind, each campaign is succeeded at most once, at most one open
+    campaign per experiment, and at most ``MAX_CAMPAIGNS`` campaigns per experiment."""
+    protocol = PROTOCOL if protocol is None else protocol
+    problems = []
+    for key, p in protocol.items():
+        if not _KEY.fullmatch(key) or key in RESERVED_KEYS:
+            problems.append(f"campaign key {key!r} is not [0-9a-z]+ or is reserved")
+        if p.get("experiment") not in {"10", "09"}:
+            problems.append(f"campaign {key}: experiment {p.get('experiment')!r} is not 10 or 09")
+        sup = p.get("supersedes")
+        if sup is None:
+            continue
+        prev = protocol.get(sup.get("key"))
+        if prev is None or sup.get("key") == key:
+            problems.append(f"campaign {key} supersedes {sup.get('key')!r}, which is not another campaign")
+            continue
+        if prev.get("experiment") != p.get("experiment") or prev.get("kind") != p.get("kind"):
+            problems.append(f"campaign {key} supersedes {sup['key']}, another experiment or kind")
+        for field in ("verdict", "verdict_sha256", "owner_decision", "cause_issue"):
+            if not sup.get(field):
+                problems.append(f"campaign {key}: supersedes.{field} is missing")
+        if sup.get("verdict") != f"docs/experiments/data/{prev.get('scope')}/verdict.json":
+            problems.append(f"campaign {key}: the closure verdict is not {sup['key']}'s own")
+    for field in ("scope", "prereg"):  # each campaign its own data directory and prereg
+        values = [p.get(field) for p in protocol.values()]
+        if len(set(values)) != len(values):
+            problems.append(f"two campaigns share a {field}")
+    successors: dict[str, list[str]] = {}
+    for key, p in protocol.items():
+        if "supersedes" in p:
+            successors.setdefault(p["supersedes"].get("key"), []).append(key)
+    for prev, keys in successors.items():
+        if len(keys) > 1:
+            problems.append(f"campaign {prev} is superseded more than once: {sorted(keys)}")
+    closed = set(successors)
+    by_experiment: dict[str, list[str]] = {}
+    for key, p in protocol.items():
+        by_experiment.setdefault(p.get("experiment"), []).append(key)
+    for exp, keys in by_experiment.items():
+        open_keys = [k for k in keys if k not in closed]
+        if len(open_keys) != 1:
+            problems.append(f"experiment {exp} has {len(open_keys)} open campaigns ({sorted(open_keys)}), not 1")
+        if len(keys) > MAX_CAMPAIGNS:
+            problems.append(f"experiment {exp} has {len(keys)} campaigns, more than {MAX_CAMPAIGNS}")
+    return problems
+
+
+def successor_problems(key: str, closure: bytes | None, closure_landed: float | None, prereg_landed: float | None,
+                       first_marker: float) -> list[str]:  # fmt: skip
+    """Why campaign ``key`` may not run or be judged ([] = it may, or it supersedes nothing). ``closure`` is the
+    predecessor's verdict as ``origin/main`` holds it, ``*_landed`` when that verdict and this campaign's prereg
+    first reached ``origin/main`` (None = never), ``first_marker`` this campaign's first marker's tagger date (or
+    now, before one is pushed). Only an ABORT may be succeeded: a PASS or FAIL is terminal."""
+    sup = PROTOCOL[key].get("supersedes")
+    if sup is None:
+        return []
+    if closure is None or closure_landed is None:
+        return [f"campaign {key}: {sup['key']}'s closure verdict {sup['verdict']} is not on origin/main"]
+    problems = []
+    if sha256_bytes(closure) != sup["verdict_sha256"]:
+        problems.append(f"campaign {key}: {sup['verdict']} is not the pinned closure verdict")
+    try:
+        verdict = json.loads(closure)
+    except ValueError:
+        return [*problems, f"campaign {key}: {sup['verdict']} is not JSON"]
+    prev = PROTOCOL[sup["key"]]
+    if (verdict.get("verdict"), verdict.get("experiment"), verdict.get("kind"), verdict.get("mock")) != (
+        "ABORT",
+        sup["key"],
+        prev["kind"],
+        False,
+    ):
+        problems.append(
+            f"campaign {key}: {sup['key']}'s closure verdict is not a real ABORT of {sup['key']} "
+            f"({verdict.get('verdict')!r}, {verdict.get('experiment')!r}, mock={verdict.get('mock')!r}); "
+            "only an ABORT may be succeeded"
+        )
+    if verdict.get("apparatus_checked") is not True:
+        problems.append(f"campaign {key}: {sup['key']}'s closure verdict did not check its apparatus")
+    if closure_landed >= first_marker:
+        problems.append(f"campaign {key}: the closure verdict reached origin/main after its first marker")
+    if prereg_landed is None or prereg_landed >= first_marker:
+        problems.append(f"campaign {key}: its prereg did not reach origin/main before its first marker")
+    return problems
+
+
 RUN_LOG = "run_log.jsonl"  # the copied MAXIM_LOG_FILE (stored gzipped)
 # The stores a resume restores (``simulation/report.py::RESUME_STORES``; a test pins the two together).
 RESUME_STORES = ("hippocampus", "nac", "ec", "atl")
@@ -97,7 +233,7 @@ HARNESS_ENV = {"MAXIM_LOG_FILE_MAX_BYTES": "0"}
 
 def required_files(exp: str) -> tuple[str, ...]:
     """The copied files a phase must carry: its report and run log, and Exp 10's hippocampus store (its C2)."""
-    return ("report.json", RUN_LOG, "aut_hippocampus.json") if exp == "10" else ("report.json", RUN_LOG)
+    return ("report.json", RUN_LOG, "aut_hippocampus.json") if experiment_of(exp) == "10" else ("report.json", RUN_LOG)
 
 
 def expected_env(exp: str, index: int) -> dict[str, str]:
@@ -608,6 +744,22 @@ def rows_history(rel_rows: str) -> list[tuple[str, float, bytes]]:
     return out
 
 
+def landed_on_main(path: str, want_sha256: str | None = None) -> float | None:
+    """When ``path`` first reached ``origin/main`` with the bytes it must have (SHA-256 ``want_sha256``, default the
+    bytes ``origin/main`` holds now): the first first-parent commit there whose blob matches (GitHub's merge time),
+    or None. Dated by the bytes, not the path: an earlier, different file at the path does not count."""
+    if want_sha256 is None:
+        now = _git_bytes("show", f"origin/main:{path}")
+        if now is None:
+            return None
+        want_sha256 = sha256_bytes(now)
+    for line in _git("log", "--first-parent", "--reverse", "--format=%H %cI", "origin/main", "--", path).splitlines():
+        sha, when = line.split()
+        if sha256_bytes(_git_bytes("show", f"{sha}:{path}") or b"") == want_sha256:
+            return _iso(when)
+    return None
+
+
 def check_apparatus(exp: str, rel_rows: str, judged: bytes, attempts: dict[str, list[dict]]) -> tuple[list[dict], dict]:
     """The remote half: markers, the ruleset, the rows file's history on ``origin/main`` and each attempt's code on
     main. Returns the attempts in k order (``[{run_id, k, rows}]``, rows [] for a marker with none) and the
@@ -636,6 +788,15 @@ def check_apparatus(exp: str, rel_rows: str, judged: bytes, attempts: dict[str, 
     details = {rs["id"]: _gh_json(f"repos/{nwo}/rulesets/{rs['id']}") for rs in rulesets}
     history = {rid: _gh_list(f"repos/{nwo}/rulesets/{rid}/history") for rid in details}
     problems = ruleset_problems(rulesets, details, history, first_marker, _iso)
+    sup = PROTOCOL[exp].get("supersedes")
+    succession = None
+    if sup is not None:
+        closure_landed = landed_on_main(sup["verdict"], sup["verdict_sha256"])
+        prereg_landed = landed_on_main(PROTOCOL[exp]["prereg"])
+        problems += successor_problems(
+            exp, _git_bytes("show", f"origin/main:{sup['verdict']}"), closure_landed, prereg_landed, first_marker
+        )
+        succession = {**sup, "closure_landed": closure_landed, "prereg_landed": prereg_landed}
     rows_hist = rows_history(rel_rows)
     problems += history_problems([data for _s, _w, data in rows_hist], judged)
     landed = landing_times(rows_hist)
@@ -668,6 +829,7 @@ def check_apparatus(exp: str, rel_rows: str, judged: bytes, attempts: dict[str, 
         },
         "rows_history": [{"commit": sha, "committed_at": when} for sha, when, _d in rows_hist],
         "landed": landed,
+        "succession": succession,
     }
     return [{"run_id": rid, "k": m["k"], "rows": attempts.get(rid, [])} for rid, m in ordered], record
 
@@ -727,14 +889,14 @@ def judge(exp: str, attempts_in_order: list[dict], data_root: Path) -> dict:
         entry["complete"] = not entry["problems"]
         if entry["complete"]:
             deciding = (entry, phases)  # the first complete attempt decides
-    out: dict = {"attempts": listing, "experiment": exp}
+    out: dict = {"attempts": listing, "experiment": exp}  # the CAMPAIGN key ("10c2"), as the gate and successor read it
     if deciding is None:
         out["verdict"] = "ABORT"
         out["deciding_attempt"] = None
         return out
     entry, phases = deciding
     out["deciding_attempt"] = entry["run_id"]
-    gates = exp10_gates(phases) if exp == "10" else exp09_gates(phases[0], phases[0]["log_bytes"])
+    gates = exp10_gates(phases) if experiment_of(exp) == "10" else exp09_gates(phases[0], phases[0]["log_bytes"])
     out["gates"] = gates
     out["verdict"] = gates["verdict"]
     return out
@@ -784,6 +946,9 @@ def main(argv: list[str] | None = None) -> int:
         help="skip the markers/ruleset/history/blob checks; mock rows only, never written as evidence",
     )
     args = ap.parse_args(argv)
+    if problems := protocol_problems():
+        print(f"REFUSED: the campaign table is unsound: {problems}", file=sys.stderr)
+        return 2
     if args.offline and args.write_experiment_results:
         print("REFUSED: an --offline verdict is a smoke and never replaces committed evidence", file=sys.stderr)
         return 2

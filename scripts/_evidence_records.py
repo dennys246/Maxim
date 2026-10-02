@@ -817,7 +817,30 @@ def rejudge_o19(source: bytes, rec: dict, rows: list[dict], data_dir: str, ctx: 
             return f"load: {type(exc).__name__}: {exc}"
         finally:
             sys.path[:] = before
-        exp = {"exp10_verdict": "10", "exp09_verdict": "09"}[rec["kind"]]
+        # The campaign the verdict judged (#1042 follow-up, campaign 2): the record's ``experiment`` names a key of
+        # the merge-base campaign table, of the record's kind, whose rows file and markers the record must be.
+        exp = rec.get("experiment")
+        protocol = getattr(mod, "PROTOCOL", None)
+        if not isinstance(exp, str) or not isinstance(protocol, dict) or exp not in protocol:
+            return f"the verdict's campaign {exp!r} is not in the merge-base campaign table"
+        if protocol[exp].get("kind") != rec.get("kind"):
+            return f"campaign {exp} is not of kind {rec.get('kind')!r}"
+        if rec.get("data") != mod.rows_path(exp):
+            return f"the verdict's data {rec.get('data')!r} is not campaign {exp}'s rows file {mod.rows_path(exp)!r}"
+        if len(ordered_markers) > mod.MAX_ATTEMPTS:
+            return f"{len(ordered_markers)} start markers: more than {mod.MAX_ATTEMPTS} attempts"
+        for m in ordered_markers:
+            if m.get("ref") != f"{mod.MARKER_NAMESPACE}/{exp}/attempt-{m['k']}-{m['run_id']}":
+                return f"start marker {m.get('ref')!r} is not campaign {exp}'s attempt {m['k']}"
+        if problems := mod.protocol_problems():
+            return f"the merge-base campaign table is unsound: {problems}"
+        sup = protocol[exp].get("supersedes")
+        if sup is not None:  # the closure's content; its timing against the markers is the verdict's check
+            closure = ctx.repo.blob(ctx.ref, sup["verdict"])
+            if closure is None or sha256(closure) != sup["verdict_sha256"]:
+                return f"campaign {exp}'s predecessor closure {sup['verdict']} is not the pinned verdict"
+            if as_dict(as_dict(rec.get("apparatus")).get("succession")).get("key") != sup["key"]:
+                return f"the verdict does not record campaign {exp}'s succession from {sup['key']}"
         try:
             attempts = mod.attempts_from_rows(rows)
         except Exception as exc:  # noqa: BLE001 — the judge's own Refusal included
