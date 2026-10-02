@@ -1,0 +1,508 @@
+{
+  "version": "1.0",
+  "links": {
+    "tool:sense_tools": [
+      {
+        "id": "b04c82bf4385b18c",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "describe the layout of the dungeon"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0004379749298095703
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790913256.882283,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "f252929fa4a3691d",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to understand the dungeon's layout before attempting to escape with the sleeping guard. I wil"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 2 capabilities:\n- base_humanoid_listen: Atte",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790913256.882611,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "9b318747a77ea30c",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I need to understand the dungeon's layout before attempting to escape with the sleeping guard. I will use sense_tools to explore and discover any relevant actions or objects."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to understand the dungeon's layout before attempting to escape with the sleeping guard. I will use sense_tools to explore and discover any relevant actions or objects.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790913256.8827252,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "ad5231bc0d432597",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "understand dungeon layout"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.00039124488830566406
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790913306.922521,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "179fa57141b6e0f8",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to understand the dungeon's layout before attempting to escape with the guard's key. Sense_to"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Your capabilities by category:\n- Head (base_humano",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790913306.922865,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "791fd5acac483745",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I need to understand the dungeon's layout before attempting to escape with the guard's key. Sense_tools may reveal new capabilities or actions."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to understand the dungeon's layout before attempting to escape with the guard's key. Sense_tools may reveal new capabilities or actions.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790913306.922985,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "0cbbd1ac1603398e",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "dungeon layout"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0003788471221923828
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790913464.779453,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "e8df9ef92a648a12",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to understand the dungeon's layout before attempting to escape with the sleeping guard. I hav"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Your capabilities by category:\n- Head (base_humano",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790913464.779806,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "c4618e79a680d343",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I need to understand the dungeon's layout before attempting to escape with the sleeping guard. I have already tried using sense_tools once, but it might be worth repeating for more detailed informatio"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to understand the dungeon's layout before attempting to escape with the sleeping guard. I have already tried using sense_tools once, but it might be worth repeating for more detailed informatio:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790913464.779924,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:sense_presence": [
+      {
+        "id": "a0f9e9daaf69cb1a",
+        "event_type": "tool",
+        "event_signature": "tool:sense_presence",
+        "event_context": {
+          "params": {}
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_presence:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0001800060272216797
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790913357.5277498,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "02512ea2fb36d74d",
+        "event_type": "tool",
+        "event_signature": "tool:sense_presence",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I want to know if there's a sleeping guard nearby and where they are located in the dungeon."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:You sense 5 entity/entities nearby:\n\n  [YOU] base_",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790913357.528095,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "5d75809e4581507a",
+        "event_type": "tool",
+        "event_signature": "tool:sense_presence",
+        "event_context": {
+          "goal": "I want to know if there's a sleeping guard nearby and where they are located in the dungeon."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I want to know if there's a sleeping guard nearby and where they are located in the dungeon.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790913357.5282078,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:base_humanoid_move": [
+      {
+        "id": "12344cca0491059b",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_move",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to move closer to the guard's side to reach his pocket."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "failure:[ERROR: Missing required input: speed]",
+        "outcome_valence": "negative",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.43,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790913409.0551538,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "e42577d63e3dd9bf",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_move",
+        "event_context": {
+          "goal": "I need to move closer to the guard's side to reach his pocket."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to move closer to the guard's side to reach his pocket.:failure",
+        "outcome_valence": "negative",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.43,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790913409.055284,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ]
+  },
+  "outcome_index": {
+    "tool:sense_tools:positive": [
+      "ad5231bc0d432597",
+      "b04c82bf4385b18c",
+      "0cbbd1ac1603398e"
+    ],
+    "success:Found 2 capabilities:\n- base_humanoid_listen: Atte": [
+      "f252929fa4a3691d"
+    ],
+    "plan:I need to understand the dungeon's layout before attempting to escape with the sleeping guard. I will use sense_tools to explore and discover any relevant actions or objects.:success": [
+      "9b318747a77ea30c"
+    ],
+    "success:Your capabilities by category:\n- Head (base_humano": [
+      "e8df9ef92a648a12",
+      "179fa57141b6e0f8"
+    ],
+    "plan:I need to understand the dungeon's layout before attempting to escape with the guard's key. Sense_tools may reveal new capabilities or actions.:success": [
+      "791fd5acac483745"
+    ],
+    "tool:sense_presence:positive": [
+      "a0f9e9daaf69cb1a"
+    ],
+    "success:You sense 5 entity/entities nearby:\n\n  [YOU] base_": [
+      "02512ea2fb36d74d"
+    ],
+    "plan:I want to know if there's a sleeping guard nearby and where they are located in the dungeon.:success": [
+      "5d75809e4581507a"
+    ],
+    "failure:[ERROR: Missing required input: speed]": [
+      "12344cca0491059b"
+    ],
+    "plan:I need to move closer to the guard's side to reach his pocket.:failure": [
+      "e42577d63e3dd9bf"
+    ],
+    "plan:I need to understand the dungeon's layout before attempting to escape with the sleeping guard. I have already tried using sense_tools once, but it might be worth repeating for more detailed informatio:success": [
+      "c4618e79a680d343"
+    ]
+  },
+  "priors": {},
+  "total_observations": 14,
+  "reward_bias": {},
+  "goal_reward_bias": {
+    "escape a dungeon with a sleeping guard": 0.06048691260655616
+  },
+  "cluster_reward_bias": {},
+  "cluster_reward_source": {},
+  "inherent_bias_keys": [],
+  "percept_valences": {},
+  "cluster_fear": {},
+  "event_outcome_welford": {},
+  "saved_at": 1790913494.1071281,
+  "_format_version": "1.4"
+}
