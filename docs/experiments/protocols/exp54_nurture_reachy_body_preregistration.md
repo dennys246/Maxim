@@ -327,6 +327,13 @@ Phase A record exists).** Six items, none touching a gate, margin, seed count or
 PASS — an offline rig with a modeled source) and the Exp 53 sweep table. **No nursery on the
 Reachy body has run; no Phase A, B or C data exists.**
 
+**Amendment 2 — 2026-10-01, POST-DATA, structural (analyzer correction; no recorded result changes).** In
+`scripts/orient_backbone/exp53_cross_context_readout.py::_gate_I` and `::_gate_C` (the shared analyzer) the gates compared rates rounded for the report (or float differences of rates) with the frozen decimal
+thresholds, so an outcome sitting exactly on a threshold could read on the wrong side (1999/2500 rounded to 0.800, passing `>= 0.80`). The analyzer now
+decides every gate on exact rationals of the counts against the frozen thresholds; rounded rates stay in the
+report only. No gate, margin, seed count or stop rule changed. Re-running the corrected analyzer over every committed Phase A run (gate I: PASS)
+gives the recorded verdicts unchanged.
+
 ## Sign-off (operator fills before Phase A)
 
 1. Pre-registration read and frozen at commit `efdf5cd5` (#558) — ☑ 2026-08-26

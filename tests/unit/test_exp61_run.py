@@ -480,3 +480,21 @@ def test_export_body_spec_matches_the_component_affordances() -> None:
 
     spec = load_spec(E.BODY_YAML)  # what the CLI does
     assert spec.name == E.BODY_REF
+
+
+def test_a_duplicate_clean_pair_makes_the_verdict_incomplete() -> None:
+    """Two CLEAN rows for one (arm, pair) inside one campaign: which one counts is undefined, so the campaign
+    cannot be judged (as Exp 62 already rules) — INCOMPLETE, the duplicate named in the cause."""
+    rows = _campaign() + [_row("transferred", 200, ts=999.0)]
+    v = E.compute_verdict(rows, campaign_id="c1")
+    assert v["verdict"] == "INCOMPLETE", v["verdict"]
+    assert "duplicate clean" in (v["incomplete_cause"] or "")
+    assert any("duplicate clean" in m for m in v["refused"])  # named in both lists, as Exp 62 does
+
+
+def test_both_halves_decides_on_exact_rates_at_the_band() -> None:
+    """Dangling 9/30 against isolated 5/25: exactly 0.10 apart, which `< 0.10` fails. Floats say 0.0999... and
+    pass it. (Extra pairs beyond the frozen n are the evidence gate's to refuse; the arithmetic must be exact.)"""
+    v = E.compute_verdict(_campaign(isolated=25, i_rate=0.2, dangling=30, d_rate=0.3), campaign_id="c1")
+    assert v["rates"]["dangling"]["rate"] == 0.3 and v["rates"]["isolated"]["rate"] == 0.2
+    assert v["checks"]["both_halves"] is False, v["checks"]

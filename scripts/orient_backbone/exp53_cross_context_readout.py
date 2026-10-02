@@ -76,6 +76,7 @@ import os
 import random
 import statistics
 import sys
+from fractions import Fraction
 import threading
 import time
 from pathlib import Path
@@ -125,6 +126,12 @@ SWEEP_STEP = 0.1  # az grid for the sweep
 FRONT_HEMISPHERE_MAX = 0.6  # gated targets are clamped to |az| ≤ 0.6
 GATE_C_RATE = 0.80
 GATE_C_SEEDS = 2
+
+
+def _at_least(value: Fraction, threshold: float) -> bool:
+    """A gate comparison on the EXACT rate against the prereg's decimal threshold: never on a rounded float
+    (0.7 - 0.5 is 0.19999... as floats; a rate of 0.6996 rounds to 0.7). Rounding is for display only."""
+    return value >= Fraction(str(threshold))
 
 
 def _affordance_of(tool_name: str | None, entity_name: str | None = None) -> str | None:
@@ -1046,6 +1053,7 @@ def _gate_C(agents, results) -> dict:
     consulted audio bias AND the correct direction, for ≥ 2 of 3 seeds. Controls:
     consulted audio bias 0 at every placement."""
     per_seed = {}
+    exact: dict[str, tuple[Fraction, ...]] = {}
     for spec in agents:
         rows = [r for r in results.get(spec["label"], []) if not r.get("exploratory")]
         if not rows:
@@ -1055,6 +1063,7 @@ def _gate_C(agents, results) -> dict:
         vals = [_consulted_audio(r) for r in rows]
         consulted_n = sum(1 for v in vals if v is None or v != 0.0)
         consulted_correct = sum(1 for r, v in zip(rows, vals) if v is not None and v != 0.0 and r.get("correct"))
+        exact[spec["label"]] = (Fraction(consulted_n, len(rows)), Fraction(consulted_correct, len(rows)))
         per_seed[spec["label"]] = {
             "arm": spec["arm"],
             "exploratory": _is_exploratory_agent(spec),
@@ -1064,9 +1073,10 @@ def _gate_C(agents, results) -> dict:
             "acted": round(sum(1 for r in rows if r.get("tool_name")) / len(rows), 3),
         }
     taught = [v for v in per_seed.values() if v["arm"] == "taught" and not v["exploratory"]]
-    taught_pass = sum(1 for v in taught if v["consulted_and_correct"] >= GATE_C_RATE)
+    taught_keys = [k for k, v in per_seed.items() if v["arm"] == "taught" and not v["exploratory"]]
+    taught_pass = sum(1 for k in taught_keys if _at_least(exact[k][1], GATE_C_RATE))
     controls = {k: v for k, v in per_seed.items() if v["arm"] != "taught"}
-    controls_zero = all(v["consulted"] == 0.0 for v in controls.values()) if controls else None
+    controls_zero = all(exact[k][0] == 0 for k in controls) if controls else None
     verdict = "PASS" if (taught_pass >= GATE_C_SEEDS and controls_zero is not False) else "FAIL"
     return {
         "verdict": verdict,
@@ -1082,26 +1092,31 @@ def _gate_C(agents, results) -> dict:
 
 def _gate_I(agents, results) -> dict:
     per_seed = {}
+    exact: dict[str, tuple[Fraction, ...]] = {}
     for spec in agents:
         rows = [r for r in results.get(spec["label"], []) if not r.get("exploratory")]
         if not rows:
             continue
-        completed = sum(1 for r in rows if r["completed"]) / len(rows)
-        cwm = sum(1 for r in rows if r["correct_with_margin"]) / len(rows)
-        acted = sum(1 for r in rows if r["tool_name"]) / len(rows)
-        no_pref = sum(1 for r in rows if r["no_learned_preference"]) / len(rows)
+        completed = Fraction(sum(1 for r in rows if r["completed"]), len(rows))
+        cwm = Fraction(sum(1 for r in rows if r["correct_with_margin"]), len(rows))
+        acted = Fraction(sum(1 for r in rows if r["tool_name"]), len(rows))
+        no_pref = Fraction(sum(1 for r in rows if r["no_learned_preference"]), len(rows))
+        exact[spec["label"]] = (completed, cwm, no_pref)
         per_seed[spec["label"]] = {
             "arm": spec["arm"],
             "exploratory": _is_exploratory_agent(spec),
-            "completed": round(completed, 3),
-            "correct_with_margin": round(cwm, 3),
-            "acted": round(acted, 3),
-            "no_learned_preference": round(no_pref, 3),
+            "completed": round(float(completed), 3),
+            "correct_with_margin": round(float(cwm), 3),
+            "acted": round(float(acted), 3),
+            "no_learned_preference": round(float(no_pref), 3),
         }
     taught = [v for v in per_seed.values() if v["arm"] == "taught" and not v["exploratory"]]
-    taught_pass = sum(1 for v in taught if v["completed"] >= GATE_I_RATE and v["correct_with_margin"] >= GATE_I_RATE)
+    taught_keys = [k for k, v in per_seed.items() if v["arm"] == "taught" and not v["exploratory"]]
+    taught_pass = sum(
+        1 for k in taught_keys if _at_least(exact[k][0], GATE_I_RATE) and _at_least(exact[k][1], GATE_I_RATE)
+    )
     controls = {k: v for k, v in per_seed.items() if v["arm"] != "taught"}
-    controls_no_pref = all(v["no_learned_preference"] == 1.0 for v in controls.values()) if controls else None
+    controls_no_pref = all(exact[k][2] == 1 for k in controls) if controls else None
     verdict = "PASS" if (taught_pass >= GATE_I_SEEDS and controls_no_pref is not False) else "FAIL"
     return {
         "verdict": verdict,
@@ -1550,10 +1565,11 @@ def cmd_verdict(args: argparse.Namespace) -> int:
         arm = rows[0]["arm"]
         if _record_is_exploratory_agent(rows[0]):
             continue
-        d = sum(1 for r in rows if r["toward"]) / len(rows)
-        per_seed[label] = round(d, 3)
+        d = Fraction(sum(1 for r in rows if r["toward"]), len(rows))
+        per_seed[label] = round(float(d), 3)
         arm_dir.setdefault(arm, []).append(d)
-    means = {arm: round(statistics.mean(v), 3) for arm, v in arm_dir.items()}
+    exact_means = {arm: sum(v, Fraction(0)) / len(v) for arm, v in arm_dir.items()}
+    means = {arm: round(float(m), 3) for arm, m in exact_means.items()}
     taught_rows = [
         r
         for label, rows in by_agent.items()
@@ -1561,19 +1577,19 @@ def cmd_verdict(args: argparse.Namespace) -> int:
         if r["arm"] == "taught" and r["affordance"] and not _record_is_exploratory_agent(r)
     ]
     sign_agree = (
-        sum(1 for r in taught_rows if bool(r["sign_rule_correct"]) == bool(r["toward"])) / len(taught_rows)
+        Fraction(sum(1 for r in taught_rows if bool(r["sign_rule_correct"]) == bool(r["toward"])), len(taught_rows))
         if taught_rows
-        else 0.0
+        else Fraction(0)
     )
-    t = means.get("taught", 0.0)
-    learned = t >= GATE_T_LEARNED
-    vs_sat = t - means.get("satiated", 1.0) >= GATE_T_MARGIN
-    vs_nf = t - means.get("no_feed", 1.0) >= GATE_T_MARGIN
+    t = exact_means.get("taught", Fraction(0))
+    learned = _at_least(t, GATE_T_LEARNED)
+    vs_sat = _at_least(t - exact_means.get("satiated", Fraction(1)), GATE_T_MARGIN)
+    vs_nf = _at_least(t - exact_means.get("no_feed", Fraction(1)), GATE_T_MARGIN)
     taught_vals = arm_dir.get("taught", [])
     # L2 check with the S7 ceiling clause: a single repeated value is the phase-lock
     # signature only BELOW ceiling — three seeds at 1.00 is a pass, not an apparatus flag.
     spread = len(set(taught_vals)) > 1 or (bool(taught_vals) and min(taught_vals) >= 1.0)
-    apparatus_ok = sign_agree >= GATE_T_SIGN_AGREEMENT and spread
+    apparatus_ok = _at_least(sign_agree, GATE_T_SIGN_AGREEMENT) and spread
     if not apparatus_ok:
         verdict = "APPARATUS"
     elif learned and vs_sat and vs_nf:
@@ -1609,7 +1625,7 @@ def cmd_verdict(args: argparse.Namespace) -> int:
         "verdict": verdict,
         "primary_directedness_by_arm": means,
         "per_seed": per_seed,
-        "taught_sign_rule_agreement": round(sign_agree, 3),
+        "taught_sign_rule_agreement": round(float(sign_agree), 3),
         "learned_live": learned,
         "taught_minus_satiated_ok": vs_sat,
         "taught_minus_no_feed_ok": vs_nf,

@@ -504,6 +504,13 @@ shakedowns (a 4-pair run: 16/16 rows clean, taught 4/4 bias-decisive, controls a
 `--allow-dirty`, scratchpad, non-confirmatory) claim nothing. The confirmatory campaign
 starts over on the fixed code from an empty `--out` + fresh `--workdir`.
 
+**Amendment 5 — 2026-10-01, POST-DATA, structural (analyzer correction; no recorded result changes).** In
+`scripts/analyze_exp56.py::analyze` the gates compared rates rounded for the report (or float differences of rates) with the frozen decimal
+thresholds, so an outcome sitting exactly on a threshold could read on the wrong side (35/50 − 25/50 read 0.19999…, failing `>= 0.20` at the frozen n = 50). The analyzer now
+decides every gate on exact rationals of the counts against the frozen thresholds; rounded rates stay in the
+report only. No gate, margin, seed count or stop rule changed. Re-running the corrected analyzer over `56_four_arm.jsonl` and `exp56_rebaseline_1204/56_four_arm.jsonl` (PASS, all four gates)
+gives the recorded verdicts unchanged.
+
 ## Amendment rule
 
 Amendments after first data (Phase 0's included) are permitted only for *structural

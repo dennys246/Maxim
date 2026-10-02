@@ -291,6 +291,14 @@ class TestAnalyzer:
         report = A.analyze(self._rows(), min_pairs=50)
         assert report["verdict"] == "PASS", report
 
+    def test_gates_decide_on_exact_rates_at_the_margin(self):
+        """35/50 taught against 25/50 isolated and satiated: exactly 0.20 above each, which `>= 0.20` passes."""
+        import analyze_exp56 as A
+
+        report = A.analyze(self._rows(taught_rate=0.7, iso_rate=0.5, sat_rate=0.5, dang_rate=0.5), min_pairs=50)
+        assert report["gates"]["ABOVE_FLOOR"] is True and report["gates"]["WANT_NOT_FILE"] is True, report["gates"]
+        assert report["verdict"] == "PASS", report
+
     def test_dangling_transfer_fails_both_halves(self):
         import analyze_exp56 as A
 

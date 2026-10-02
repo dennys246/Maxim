@@ -91,6 +91,7 @@ import shutil
 import sys
 import time
 import uuid
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -484,8 +485,10 @@ def compute_verdict(rows: list[dict[str, Any]], *, campaign_id: str | None) -> d
     sel = [r for r in in_campaign if r.get("kind") == "receiver"]
     anti = [r for r in in_campaign if r.get("kind") == "anti_vacuity"]
     refused: list[str] = []
+    duplicates: list[str] = []
     # A later CLEAN row supersedes an earlier REFUSED row for the same (arm, pair) — that is what
-    # `--resume` writes; the refusal is still named. Two CLEAN rows for one key is a duplicate.
+    # `--resume` writes; the refusal is still named. Two CLEAN rows for one key is a duplicate: which one
+    # counts is undefined, so the campaign cannot be judged (INCOMPLETE, as Exp 62 rules).
     clean_by_key: dict[tuple[str, int], dict[str, Any]] = {}
     for r in sorted(sel, key=lambda r: r["ts"]):
         key = (r["arm"], int(r["pair_seed"]))
@@ -493,7 +496,7 @@ def compute_verdict(rows: list[dict[str, Any]], *, campaign_id: str | None) -> d
             refused.append(f"{r['arm']} pair {r['pair_seed']}: {r['refusal']}")
             continue
         if key in clean_by_key:
-            refused.append(f"duplicate clean (arm, pair) row {key} — pass --campaign-id to select one campaign")
+            duplicates.append(f"duplicate clean (arm, pair) row {key} — pass --campaign-id to select one campaign")
             continue
         clean_by_key[key] = r
     clean: dict[str, list[dict[str, Any]]] = {a: [] for a in FROZEN["arms"]}
@@ -505,12 +508,14 @@ def compute_verdict(rows: list[dict[str, Any]], *, campaign_id: str | None) -> d
         refused.append(f"rows span {len(hashes)} code hashes {sorted(map(str, hashes))} — one code hash per campaign")
     n_clean = {a: len(v) for a, v in clean.items()}
     rates: dict[str, dict[str, Any]] = {}
+    exact: dict[str, Fraction | None] = {}  # the gates read exact rates; `rates` is the report
     binaries: dict[str, list[float]] = {}
     for arm, rs in clean.items():
         fcs = [r.get("first_contact") or {} for r in rs]
         succ = [1.0 if fc.get("success") else 0.0 for fc in fcs]
         binaries[arm] = succ
         k, n = int(sum(succ)), len(succ)
+        exact[arm] = Fraction(k, n) if n else None
         rates[arm] = {
             "n": n,
             "successes": k,
@@ -524,6 +529,8 @@ def compute_verdict(rows: list[dict[str, Any]], *, campaign_id: str | None) -> d
     incomplete = [
         f"{a}: {n_clean[a]} clean pairs < {FROZEN['arms'][a]}" for a in FROZEN["arms"] if n_clean[a] < FROZEN["arms"][a]
     ]
+    incomplete.extend(duplicates)
+    refused.extend(duplicates)  # named in both lists, as Exp 62 does
     incomplete.extend(campaign_drift(in_campaign, max_s=FROZEN["drift_max_s"]))
     if not anti:
         incomplete.append("anti-vacuity kit not recorded for this campaign")
@@ -535,29 +542,36 @@ def compute_verdict(rows: list[dict[str, Any]], *, campaign_id: str | None) -> d
 
     perm21 = _fisher("transferred", "isolated")
     perm23 = _fisher("transferred", "cluster_not_fear")
-    r2, r1, r3, r4 = (rates[a]["rate"] for a in ("transferred", "isolated", "cluster_not_fear", "dangling"))
+    r2, r1, r3, r4 = (exact[a] for a in ("transferred", "isolated", "cluster_not_fear", "dangling"))
+
+    def _q(threshold: float) -> Fraction:  # the frozen decimal threshold, exactly (never a float difference)
+        return Fraction(str(threshold))
+
     dangling_accounting = all(
         (r.get("ingest") or {}).get("fear_rekeyed") == 0
         and (r.get("ingest") or {}).get("fear_dropped") == (r.get("donor") or {}).get("fear_shipped")
         for r in clean["dangling"]
     )
     checks = {
-        "transferred": r2 is not None and r2 >= g["transferred_min"],
+        "transferred": r2 is not None and r2 >= _q(g["transferred_min"]),
         "above_floor": (
             r2 is not None
             and r1 is not None
-            and (r2 - r1) >= g["above_floor_min"]
+            and (r2 - r1) >= _q(g["above_floor_min"])
             and perm21 is not None
             and perm21["p_one_sided"] < g["alpha"]
         ),
         "cluster_not_fear": (
             r2 is not None
             and r3 is not None
-            and (r2 - r3) >= g["cluster_not_fear_min"]
+            and (r2 - r3) >= _q(g["cluster_not_fear_min"])
             and perm23 is not None
             and perm23["p_one_sided"] < g["alpha"]
         ),
-        "both_halves": r4 is not None and r1 is not None and (r4 - r1) < g["both_halves_max"] and dangling_accounting,
+        "both_halves": r4 is not None
+        and r1 is not None
+        and (r4 - r1) < _q(g["both_halves_max"])
+        and dangling_accounting,
         # honest as a count of refusals: a CLEAN transferred row passed the representation gate by construction
         "specificity": bool(clean["transferred"])
         and all((r.get("representation_gate") or {}).get("pass") for r in clean["transferred"]),
