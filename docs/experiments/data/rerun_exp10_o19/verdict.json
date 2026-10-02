@@ -1,0 +1,71 @@
+{
+  "attempts": [
+    {
+      "run_id": "d520774f582146b9be6e40d64ce4221c",
+      "k": 1,
+      "complete": false,
+      "problems": [
+        "phase 0 row ended 'failed': SimRunFailed: sub-sim exited 4 (finish_reason='planning_failed')"
+      ]
+    }
+  ],
+  "experiment": "10",
+  "verdict": "ABORT",
+  "deciding_attempt": null,
+  "apparatus_checked": true,
+  "apparatus": {
+    "markers": [
+      {
+        "k": 1,
+        "ref": "refs/tags/o19/10/attempt-1-d520774f582146b9be6e40d64ce4221c",
+        "object": "d808899ccd0e011e844b38bae31af755b67388f6",
+        "peeled": "17ca6c56b533012f338986cb0aa0371916ec58ec",
+        "tagger_date": 1790913173.0,
+        "run_id": "d520774f582146b9be6e40d64ce4221c"
+      }
+    ],
+    "ruleset": {
+      "id": 24345734,
+      "created_at": "2026-10-01T21:27:48.500-06:00",
+      "updated_at": "2026-10-01T21:27:48.517-06:00",
+      "history_versions": [
+        51650702
+      ]
+    },
+    "rows_history": [
+      {
+        "commit": "fd0069938eca965a8f245956b948f51950adba81",
+        "committed_at": 1790953409.0
+      }
+    ],
+    "landed": {
+      "d520774f582146b9be6e40d64ce4221c": 1790953409.0
+    }
+  },
+  "bound_files": {
+    "docs/experiments/protocols/exp10_rerun_2026-09-30_preregistration.md": "810b660493552fc0753b63c41c035cc55e4662af",
+    "scripts/o19_verdict.py": "80d171fa7f799bbaa6d552efeb427cf7405b3414",
+    "scripts/o19_rerun.py": "4c097ba056047ce2e572360f2d7dcab3bf33da55"
+  },
+  "verdict_commit": "207bb1eebde32d23301b464f94fa132f9b2c7efb",
+  "verdict_source_sha256": "752e8757c04f2d294ac4c3c5278db51e1fda80207437c240c48f2130164749a8",
+  "record_kind": "verdict",
+  "kind": "exp10_verdict",
+  "data": "docs/experiments/data/rerun_exp10_o19/rows.jsonl",
+  "data_sha256": "f1c529fa6136c6b9bd5243b0c5ec88abdf6b4009d70320bb2f660f21c6d064db",
+  "scope": {
+    "all_rows": true
+  },
+  "mock": false,
+  "provenance": {
+    "executed_maxim_file": "/Users/dennyschaedig/Scripts/Maxim/.worktrees/o19-c1-closure/src/maxim/__init__.py",
+    "executed_git_hash": "207bb1eebde32d23301b464f94fa132f9b2c7efb",
+    "harness_run_id": "8a1971a461dc4577ae1063cbb98af7eb",
+    "harness_family": "in_process",
+    "working_tree_dirty_src_scripts": false,
+    "code_tree_sha256": "764cfceffe43b6c5c4bd55b10867fa48e254200a47c0279343dda568fe4d0a43",
+    "python": "/Users/dennyschaedig/Scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.worktrees/o19-c1-closure/src"
+  },
+  "_format_version": "1.0"
+}
