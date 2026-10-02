@@ -77,6 +77,7 @@ from maxim.simulation.sim_types import (  # noqa: E402
     load_resume_context_at as _load_resume_context_at,
     build_resume_prompt as _build_resume_prompt,
     build_basic_analysis as _build_basic_analysis,
+    kickoff_instruction as _kickoff_instruction,
 )
 
 
@@ -2288,7 +2289,7 @@ def start_simulation_mode(
         resume_data, resume_dir = _load_resume_context_at(resume_session)
         resume_record.update(context_dir=str(resume_dir) if resume_dir else None, context_loaded=bool(resume_data))
         if resume_data:
-            resume_prompt = _build_resume_prompt(resume_data, goal, mode)
+            resume_prompt = _build_resume_prompt(resume_data, goal, mode, observe_only=_is_observe_only)
             orchestrator_source.inject_cli(resume_prompt, salience=1.0, novelty=1.0)
             display_status(f"Resuming session: {resume_session}")
             display_status(
@@ -2302,30 +2303,13 @@ def start_simulation_mode(
                 f"You are the simulation orchestrator. "
                 f"Use ONLY these tools: send_message, observe_actions, check_completion, "
                 f"analyze_results, inspect_aut, inject_pain, finish_simulation, "
-                f"spawn_sub_simulation, extend_simulation. No other tools exist. "
-                f"Start by calling send_message with your first probe.",
+                f"spawn_sub_simulation, extend_simulation. No other tools exist.\n\n"
+                f"{_kickoff_instruction(goal, observe_only=_is_observe_only)}",
                 salience=1.0,
                 novelty=1.0,
             )
     else:
-        if _is_observe_only:
-            _orch_instruction = (
-                "A human user is present and typing directly to the agent. "
-                "Do NOT send messages to the agent — the human will do that. "
-                "Your role is to OBSERVE ONLY. Use observe_actions and "
-                "check_completion to monitor progress. Only use send_message "
-                "if the human has been idle for over 60 seconds AND the agent "
-                "is also idle. Call finish_simulation when the human stops "
-                "the session."
-            )
-        elif "CAMPAIGN PROTOCOL" in goal:
-            _orch_instruction = "Start now: send the FIRST campaign turn verbatim via send_message."
-        else:
-            _orch_instruction = (
-                "IMPORTANT: Your FIRST action MUST be send_message. Do NOT call "
-                "observe_actions or analyze_results first — there is nothing to "
-                "observe yet. Call send_message NOW with a probe related to the goal."
-            )
+        _orch_instruction = _kickoff_instruction(goal, observe_only=_is_observe_only)
 
         orchestrator_source.inject_cli(
             f"SIMULATION GOAL: {goal}\n\n"

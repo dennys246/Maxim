@@ -269,6 +269,14 @@ diversity-checkpoint strings in `orchestrator.py::start_simulation_mode` now lab
 as not the narrator's own (they were quoted unlabelled, and the narrator echoed them). No logic moves; the function's
 length is unchanged.
 
+**Fence exception, #1052 (owner-approved 2026-10-02):** `submit_context`'s `deliberation_available` is a REQUIRED
+keyword, so `agent_loop.py::run_agentic_loop` states it twice. The planning submit passes `bio_enrichment_pipeline is
+not None`, and the deliberation-cycle submit passes True (ceiling 3389 -> 3391). The fact "this loop can deliberate"
+exists only in the loop, so no unfenced seam can supply it; the decision lives in `prompt_builder` (unfenced). In
+`orchestrator.py::start_simulation_mode`, the narrator's three-way kickoff instruction moved to
+`sim_types.kickoff_instruction`, which the resume prompt now shares (`observe_only=` passed). The function shrinks:
+3265 -> 3248.
+
 *Commitment: batches 0–2.* These close in 1.3.2. Moving one to a later release takes an owner decision
 recorded in this plan.
 

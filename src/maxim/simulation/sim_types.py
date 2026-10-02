@@ -136,7 +136,33 @@ def load_resume_context_at(session_id: str) -> tuple[dict[str, Any] | None, Path
         return None, None
 
 
-def build_resume_prompt(report_data: dict[str, Any], goal: str, mode: str) -> str:
+def kickoff_instruction(goal: str, *, observe_only: bool, resumed: bool = False) -> str:
+    """The narrator's first-action line, one choice for a fresh session's kickoff AND a resumed session's prompt
+    (#1052: a resumed narrator got no first-action line, reflected instead of acting, and aborted planning_failed).
+    Observe-only (a human is typing, ``--sim interactive``), a campaign protocol (a resumed one continues with its
+    next turn, not its first), or a generative probe."""
+    if observe_only:
+        return (
+            "A human user is present and typing directly to the agent. "
+            "Do NOT send messages to the agent — the human will do that. "
+            "Your role is to OBSERVE ONLY. Use observe_actions and "
+            "check_completion to monitor progress. Only use send_message "
+            "if the human has been idle for over 60 seconds AND the agent "
+            "is also idle. Call finish_simulation when the human stops "
+            "the session."
+        )
+    if "CAMPAIGN PROTOCOL" in goal:
+        if resumed:
+            return "Continue now: send the NEXT campaign turn verbatim via send_message."
+        return "Start now: send the FIRST campaign turn verbatim via send_message."
+    return (
+        "IMPORTANT: Your FIRST action MUST be send_message. Do NOT call "
+        "observe_actions or analyze_results first — there is nothing to "
+        "observe yet. Call send_message NOW with a probe related to the goal."
+    )
+
+
+def build_resume_prompt(report_data: dict[str, Any], goal: str, mode: str, *, observe_only: bool) -> str:
     """Build a context-rich prompt for resuming a previous simulation."""
     prev_goal = report_data.get("goal", "unknown")
     # Pre-1.1 reports persisted the mode under the legacy "persona" key.
@@ -183,9 +209,10 @@ def build_resume_prompt(report_data: dict[str, Any], goal: str, mode: str) -> st
     lines.append(
         "Continue the simulation from where it left off. "
         "Build on the previous findings — don't repeat probes that already worked. "
-        "Focus on areas the previous session identified as needing more testing. "
-        "Use send_message to continue probing the agent."
+        "Focus on areas the previous session identified as needing more testing."
     )
+    lines.append("")
+    lines.append(kickoff_instruction(goal, observe_only=observe_only, resumed=True))
 
     return "\n".join(lines)
 

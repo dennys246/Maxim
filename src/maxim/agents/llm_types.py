@@ -189,6 +189,13 @@ class LLMRequest:
     # (LLMWorker) at construction; consumers (prompt_builder) read it.
     is_embodied: bool = field(default=False, compare=False)
 
+    # Whether the loop that submitted this request can DELIBERATE: continue a ``ready_to_act: false`` answer with
+    # another enrichment cycle (#1052). Set by the planning loop from "has a bio-enrichment pipeline" (owner
+    # decision 2026-10-02: per loop). False: the prompt neither offers "keep thinking" nor carries the PFC
+    # preamble, since such an answer could only be dropped as a planning failure (the sim narrator). None (any
+    # other caller): today's behaviour.
+    deliberation_available: bool | None = field(default=None, compare=False)
+
     # Names of tools the model called that don't exist for this agent. TWO producers:
     # (1) D13 planning liveness (LLMWorker.requeue_request): the rejected name on THIS
     #     request's retry. Invariant tier (apparatus liveness): only the sim orchestrator
