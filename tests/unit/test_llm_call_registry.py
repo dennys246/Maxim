@@ -240,3 +240,46 @@ def test_concurrent_query_during_mutation():
 
     assert not errors, f"query loop errored: {errors!r}"
     assert not r.any_call_in_flight()
+
+
+# ─── The composition: the router registers what the stall detector asks for (#1042) ──
+
+
+def _dispatch_observing(lane: str | None) -> dict:
+    """Run one real ``LLMRouter._complete_text_locked`` dispatch whose provider attempt records what the registry
+    reports WHILE the call is in flight — the question the orchestrator's stall detector asks."""
+    import dataclasses
+    from unittest.mock import patch
+
+    from maxim.models.language.config import LLMConfig
+    from maxim.models.language.router import LLMRouter
+
+    cfg = dataclasses.replace(
+        LLMConfig(),
+        enabled=True,
+        providers={"a": {"type": "maxim_peer", "base_url": "http://127.0.0.1:1/v1", "model": "m"}},
+    )
+    router = LLMRouter(cfg)
+    seen: dict = {}
+
+    def fake_try_provider(**_kwargs):
+        seen["large"] = r.any_call_in_flight(tier="large")
+        seen["any"] = r.any_call_in_flight()
+        return "", None, "failed"
+
+    context = {"agent_id": "llm_worker", "request_id": "req-1", **({"lane": lane} if lane else {})}
+    with patch.object(router, "_try_provider", side_effect=fake_try_provider):
+        with patch.object(router, "_candidate_providers", return_value=(["a"], "normal", {})):
+            with router._inference_lock:
+                router._complete_text_locked("", "hi", temperature=0.0, max_tokens=1, request_context=context)
+    return seen
+
+
+@pytest.mark.xfail(strict=True, reason="red gate #1042: the router registers the COST tier, the detector asks the LANE")
+def test_a_routed_call_is_in_flight_at_its_lane_tier() -> None:
+    """The orchestrator's stall detector suppresses nudges while ``any_call_in_flight(tier=<its lane>)``. The router
+    must register the request's LANE ("large"), not its cost-budget tier ("normal"): otherwise every nudge fires
+    during legitimate inference (O19 Exp 10 attempt 1)."""
+    seen = _dispatch_observing("large")
+    assert seen == {"large": True, "any": True}, seen
+
