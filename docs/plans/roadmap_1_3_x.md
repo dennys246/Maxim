@@ -257,6 +257,11 @@ touching it have landed." Every batch below stays inside it. A ⟲ fix in best-e
 after decomposition work has started is discharged by its own rows' re-runs in its own PR, never by the
 closing walk.
 
+**Fence exception, #1042 PR B (owner-approved 2026-10-01, text only):** the narrator's stall-nudge and
+diversity-checkpoint strings in `orchestrator.py::start_simulation_mode` now label the agent-under-test's tool names
+as not the narrator's own (they were quoted unlabelled, and the narrator echoed them). No logic moves; the function's
+length is unchanged.
+
 *Commitment: batches 0–2.* These close in 1.3.2. Moving one to a later release takes an owner decision
 recorded in this plan.
 

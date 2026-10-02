@@ -126,6 +126,14 @@ class ToolRegistry:
         with self._lock:
             return [name for name in self._tools if name not in self._scene_meta or self._scene_meta[name].active]
 
+    def advertised(self) -> list[str]:
+        """Active tools the prompt may offer the model: :meth:`list` minus ``advertised = False`` decoys (#1042).
+
+        A decoy stays registered, so a stray call still dispatches to it and gets its redirect.
+        """
+        with self._lock:
+            return [name for name in self.list() if getattr(self._tools[name], "advertised", True)]
+
     def list_all(self) -> list[str]:
         """Return names of ALL tools, including deactivated scene tools."""
         with self._lock:

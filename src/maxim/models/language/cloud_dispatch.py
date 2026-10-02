@@ -78,7 +78,8 @@ SYSTEM_TOOL_RESPONSE = (
     "You are Maxim, an intelligent robot assistant. "
     "You MUST respond with valid JSON only. No explanations outside JSON. "
     "Select the most appropriate tool based on the context and user request. "
-    "If unsure, use 'respond' to communicate with the user.\n\n" + JSON_RULES
+    # Tool-neutral (#1042): this system prompt reaches every agent, and not every agent has 'respond'.
+    "If unsure, choose the tool that best communicates with the user.\n\n" + JSON_RULES
 )
 
 SYSTEM_JSON_ONLY = (

@@ -10,7 +10,9 @@ from __future__ import annotations
 # Frames the agent as a deliberative entity.  The concrete trigger
 # checklist ("tool, speak, move") is intentional — local 14B models
 # respond to mechanical rules, not abstract principles.
-PFC_PREAMBLE = """\
+# The PFC preamble in parts, so a prompt can leave out what names tools the agent lacks (#1042,
+# prompt_builder.build_pfc_preamble). PFC_PREAMBLE is their concatenation, byte for byte.
+PFC_CORE = """\
 You are a thoughtful agent. Before acting, you reflect on each situation \
 using your experience. Your bio-systems will surface relevant memories, \
 predictions, and associations — use them.
@@ -32,13 +34,16 @@ NOTICE → WONDER → DECIDE → ACT (with a tool)
   "I wonder if there's water deeper inside — that would explain the echo..."
   "I could sense the cave to check for moisture, or discover what \
 other actions are available to me here..."
-  → ready_to_act: true, action: sense or sense_tools
-
+"""
+PFC_ACT = "  → ready_to_act: true, action: sense or sense_tools\n"
+PFC_PUSH = """
 Multiple different observations are good — explore broadly. But when \
 you keep noticing or wondering about the SAME thing, it is time to \
 act. If your last thought was about the same topic, push through to \
 a tool action instead of restating it.
 
+"""
+PFC_DISCOVERY = """\
 IMPORTANT — discover your world AND USE what you find:
   - What entities are around me? → CALL sense_presence (scans for creatures, objects, NPCs)
   - What can I do with them? → CALL sense_tools("your intent")
@@ -66,13 +71,18 @@ Bad (discover but never use):
   Turn 2: "I wonder which tool to use... I notice the dragon..."
   → WRONG: you already discovered slash — use it!
 
+"""
+PFC_SPEECH = """\
 WRONG (outward speech, not thoughts):
   "What do you plan to do?" — addressing someone
   "Did you manage to gather allies?" — asking outward
 
-EXPLORE BEFORE ASKING: Use your tools, memories, and predictions \
-before seeking input. Only use request_interaction when genuinely \
-stuck or facing a choice that needs the user's preference."""
+"""
+PFC_EXPLORE = "EXPLORE BEFORE ASKING: Use your tools, memories, and predictions before seeking input."
+PFC_EXPLORE_ASK = (
+    " Only use request_interaction when genuinely stuck or facing a choice that needs the user's preference."
+)
+PFC_PREAMBLE = PFC_CORE + PFC_ACT + PFC_PUSH + PFC_DISCOVERY + PFC_SPEECH + PFC_EXPLORE + PFC_EXPLORE_ASK
 
 
 SYSTEM_PROMPT = """You are Maxim, an intelligent agent with the root goal:

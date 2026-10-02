@@ -337,12 +337,13 @@ class LoopController:
     # ── Tool registry cache ──────────────────────────────────────────────
 
     def get_all_tools(self) -> set[str]:
-        if hasattr(self.executor, "registry") and hasattr(self.executor.registry, "list"):
-            try:
-                return set(self.executor.registry.list())
-            except (KeyError, AttributeError):
-                pass
-        return set()
+        """The tools the prompt roster may offer: the registry's ``advertised()`` (#1042: a decoy stays dispatchable but
+        is never offered). Every registry the executor takes defines it, so a registry without one fails loudly here
+        rather than silently advertising its decoys."""
+        registry = getattr(self.executor, "registry", None)
+        if registry is None:
+            return set()
+        return set(registry.advertised())
 
     @staticmethod
     def _clear_confirmation_prompt() -> None:

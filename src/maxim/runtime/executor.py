@@ -78,6 +78,10 @@ _TOOL_ALIASES_LOCK = threading.RLock()
 _log = logging.getLogger(__name__)
 
 
+# The "Only use tools from the list" reply names these when the agent has them (#1042).
+_UNREGISTERED_HINTS = (("memory_recall", "remember"), ("say", "speak aloud"), ("think", "reason"))
+
+
 class Executor:
     def __init__(
         self,
@@ -223,8 +227,9 @@ class Executor:
         return reason or "Permission denied."
 
     def _runnable_tools(self) -> list[str]:
-        """Registered tools the gate would let run -- what an error may suggest (#826, D82)."""
-        return sorted(t for t in self.registry.list() if self.permits(t))
+        """Advertised tools the gate would let run -- what an error may suggest (#826, D82; a decoy is never
+        suggested, #1042)."""
+        return sorted(t for t in self.registry.advertised() if self.permits(t))
 
     def permits(self, tool_name: str) -> bool:
         """True when the permission gate -- the live mode (#826) and ``AgentPermissions`` -- would
@@ -350,18 +355,24 @@ class Executor:
             self._tools_hallucinated.append(original_name)
             self._consecutive_failures += 1
             error_msg = f"Tool not registered: {tool_name!r}."
-            suggestions = [t for t in self.registry.find_similar(original_name, limit=5) if self.permits(t)][:3]
+            runnable = self._runnable_tools()
+            # find_similar searches deactivated scene tools too (on purpose); a decoy is never suggested (#1042).
+            suggestions = [
+                t
+                for t in self.registry.find_similar(original_name, limit=5)
+                if self.permits(t) and getattr(self.registry._tools.get(t), "advertised", True)
+            ][:3]
             if suggestions:
                 error_msg += f" Did you mean: {', '.join(suggestions)}?"
             # Phase 5d: proactive tool list after repeated failures
             if self._consecutive_failures >= 2:
-                error_msg += f" Available tools: {', '.join(self._runnable_tools())}."
+                error_msg += f" Available tools: {', '.join(runnable)}."
             else:
-                error_msg += (
-                    " Only use tools from the Available Tools list."
-                    " Use 'memory_recall' to remember, 'say' to speak aloud,"
-                    " 'think' to reason."
-                )
+                error_msg += " Only use tools from the Available Tools list."
+                # Name only the agent's own tools (#1042).
+                hints = [f"'{t}' to {use}" for t, use in _UNREGISTERED_HINTS if t in runnable]
+                if hints:
+                    error_msg += f" Use {', '.join(hints)}."
             result = ToolOutput(success=False, error=error_msg)
             self._report_failure(tool_name, invocation_id, result, params)
             return self._stamp_invocation(result, invocation_id, None)
