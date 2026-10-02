@@ -1,0 +1,58 @@
+{
+  "version": "3.0",
+  "circadian_bins": {},
+  "weekly_bins": {},
+  "monthly_bins": {},
+  "annual_bins": {},
+  "signatures": {},
+  "priors": {},
+  "oscillator": {
+    "phases": [
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "coupling": [
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "observation_count": 0,
+    "prediction_error_ema": 0.0,
+    "event_phases": {},
+    "config": {
+      "coupling_strength": 0.1,
+      "learning_rate": 0.01,
+      "weight_decay": 0.999,
+      "max_weight": 2.0,
+      "min_weight": -0.5,
+      "dt": 0.041666666666666664,
+      "integration_steps": 1,
+      "max_event_phases": 50,
+      "anticipatory_weight": 0.2
+    }
+  },
+  "_format_version": "1.0"
+}

@@ -1,0 +1,173 @@
+{
+  "session_id": "20261002_144108",
+  "timestamp": "2026-10-02 14:47:57",
+  "goal": "escape a dungeon with a sleeping guard",
+  "mode": "generative",
+  "language_model": "/tmp/o19-home-lmkcwmd2/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+  "language_provider": "lane-large",
+  "language_backend_class": "_MaximPeerBackend",
+  "language_endpoint": "http://127.0.0.1:8100/v1",
+  "aut_model": "",
+  "aut_provider": "",
+  "aut_backend_class": "",
+  "aut_endpoint": "",
+  "duration_s": 408.7,
+  "turns": 8,
+  "finish_reason": "max_turns",
+  "total_actions": 8,
+  "blocked_actions": 0,
+  "tool_usage": {
+    "memory_recall": 1,
+    "examine": 1,
+    "sense_tools": 3,
+    "base_humanoid_listen": 3
+  },
+  "tool_success_rates": {
+    "memory_recall": 1.0,
+    "examine": 1.0,
+    "sense_tools": 1.0,
+    "base_humanoid_listen": 1.0
+  },
+  "response_texts": [],
+  "aut_memories_formed": 334,
+  "aut_causal_links": 39,
+  "aut_nac_summary": {
+    "total_links": 39,
+    "top_links": [
+      {
+        "event": "tool:sense_tools",
+        "outcome": "plan:I need to understand the guard's current state before deciding on a course of action.:success",
+        "confidence": 0.609,
+        "observations": 2
+      },
+      {
+        "event": "tool:base_humanoid_listen",
+        "outcome": "tool:base_humanoid_listen:positive",
+        "confidence": 0.609,
+        "observations": 2
+      },
+      {
+        "event": "tool:base_humanoid_listen",
+        "outcome": "success:{'entity': 'base_humanoid', 'affordance': 'listen'",
+        "confidence": 0.609,
+        "observations": 2
+      },
+      {
+        "event": "tool:base_humanoid_listen",
+        "outcome": "plan:I need to determine the guard's direction before planning my escape.:success",
+        "confidence": 0.609,
+        "observations": 2
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "tool:sense_tools:positive",
+        "confidence": 0.579,
+        "observations": 2
+      }
+    ]
+  },
+  "cost_usd": 0.0,
+  "total_input_tokens": 87048,
+  "total_output_tokens": 5193,
+  "lane_breakdown": {
+    "large": {
+      "lane": "large",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    },
+    "small": {
+      "lane": "small",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    }
+  },
+  "latency_p50_ms": 0.0,
+  "latency_p99_ms": 0.0,
+  "pain_events_count": 0,
+  "fear_blocks_count": 0,
+  "learn_events_count": 45,
+  "provider_failures": {},
+  "llm_summary": "During the simulation, the robot assistant successfully completed its mission to escape a dungeon with a sleeping guard in 8 turns. It used various tools such as sense_tools, base_humanoid_listen, memory_recall, and examine with a 100% success rate. The robot formed 334 episodic memories and learned 39 causal links during the mission.",
+  "llm_issues_found": [
+    "The simulation ended prematurely due to reaching the maximum number of turns."
+  ],
+  "llm_recommendations": [
+    "Consider increasing the maximum number of turns allowed in the simulation to allow for more complex problem-solving scenarios. This could lead to better understanding of the robot's decision-making process and improved performance in real-world situations."
+  ],
+  "llm_finish_status": "max_turns",
+  "llm_finish_reason": "reached max_turns=8",
+  "llm_finish_summary": "Simulation stopped after 8 turns because the configured max_turns cap (8) was reached without an LLM-initiated finish. Raise --sim-max-turns or add finish_simulation calls to the orchestrator's decision policy if more turns are expected.",
+  "substrate_metrics": {},
+  "bio_telemetry_path": "/tmp/o19-home-lmkcwmd2/sim_reports/20261002_144108/bio_telemetry.jsonl",
+  "apparatus": {
+    "substrate_actions_per_turn": null
+  },
+  "ts": 1790973668.676569,
+  "provenance": {
+    "executed_maxim_file": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "c11843753210c9edb6d3b2f9025293e2ed29370a",
+    "working_tree_dirty_src_scripts": false,
+    "code_tree_sha256": "5fcac0a8857bd015e02edfcfaa6049282b40d8e79cfb4bf60ce0026d11cc0e5f",
+    "harness_run_id": "fa34886976b5435e8abb05b5a8becefb",
+    "python": "/Users/dennys/RMSrv/scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/src",
+    "maxim_version": "1.3.1",
+    "configured_n_ctx": 8192,
+    "configured_n_ctx_source": "config",
+    "language_profile": "mistral-7b-instruct-v0.2",
+    "language_router_n_ctx": 8192,
+    "language_budget_n_ctx": 8192,
+    "aut_profile": "mistral-7b-instruct-v0.2",
+    "aut_router_n_ctx": 8192,
+    "aut_budget_n_ctx": 8192,
+    "code_changed_during_run": false,
+    "end_executed_git_hash": "c11843753210c9edb6d3b2f9025293e2ed29370a",
+    "end_code_tree_sha256": "5fcac0a8857bd015e02edfcfaa6049282b40d8e79cfb4bf60ce0026d11cc0e5f",
+    "resume": {
+      "requested": "20261002_143553",
+      "state_dir": "/private/tmp/o19-home-lmkcwmd2/sim_reports/20261002_143553",
+      "context_dir": "/private/tmp/o19-home-lmkcwmd2/sim_reports/20261002_143553",
+      "context_loaded": true,
+      "stores": {
+        "hippocampus": "loaded",
+        "nac": "loaded",
+        "ec": "loaded",
+        "atl": "loaded"
+      },
+      "resume_loaded": true,
+      "resumed_from_session": "20261002_143553"
+    }
+  },
+  "record_kind": "sim_report",
+  "_format_version": "1.0"
+}
