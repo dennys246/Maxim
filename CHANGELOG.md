@@ -36,6 +36,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The simulation's stall detector no longer nudges a narrator that is busy** (#1042). Two defects made its
+  suppression dead: the in-flight call registry recorded each routed call under its cost-budget tier (`normal`, ...)
+  while the detector asks for the request's lane (`large`), and it only counted moments when an LLM call was running.
+  On mistral-7b, nudges fired every ~30 s while the narrator waited on the agent, and their stale replies exhausted
+  the planning budget (O19 Exp 10 attempt 1). Now the router registers the request's lane (one `PLANNING_LANE`
+  constant shared with the detector), the narrator counts as busy for the whole of the agent's turn, and an in-flight
+  call is judged wedged by its byte silence when it streams, or by its age when it does not (past the time it is
+  allowed: its own timeout as LLMWorker stamped it, a timeout-retry's doubled allowance included, else the worker's call
+  timeout, default 300 s; or a longer lane timeout; plus the stall margin). Follow-ups: #1043, #1044. Suppression
+  holds back only the idle nudge, never ping-pong; a registry failure in the detector is now reported.
 - **Cloud auto-detect (C7a) no longer overrides config.json** (#1030). A solo run with a cloud key in the shell
   replaced a local `llm.profile` set through `maxim config` with a billed cloud profile, and `cloud.enabled false` (the
   documented off-switch) did nothing. It now stands down for a configured local or unknown profile, `cloud.enabled

@@ -13,6 +13,11 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from maxim.agents.autonomy import AutonomyLevel
 
+# The lane every planning call (the narrator's and the agent-under-test's) is dispatched on, and the lane the
+# simulation's stall detector asks the in-flight call registry about: ONE constant, so the two can never drift apart
+# again (#1042). Lives in the agents layer because agents may not import runtime; runtime and simulation import it.
+PLANNING_LANE = "large"
+
 if TYPE_CHECKING:
     from maxim.agents.bus import StructuredContext
 

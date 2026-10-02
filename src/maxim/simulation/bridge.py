@@ -92,6 +92,9 @@ class SimulationBridge:
         self._prompt_gate = prompt_gate  # SimPromptHandler — block percepts while prompting
         self._max_actions_per_turn = max(1, max_actions_per_turn)
         self._turn_count = 0
+        # Set for the whole of send_and_wait: the narrator is BUSY awaiting the agent's turn (bounded by the
+        # response timeout), not idle — the stall detector reads it (#1042).
+        self._turn_active = threading.Event()
         self._last_observed_action_idx = 0
         self._spinner = Spinner(prefix=spinner_prefix)
         # Track 3 of grounded_language_acquisition.md Phase 0+: when
@@ -141,6 +144,11 @@ class SimulationBridge:
         # anticipatory pain from threatening message content.
         self.percept_anxiety_hook: Any = None
 
+    @property
+    def turn_in_progress(self) -> bool:
+        """True while ``send_and_wait`` is running: the narrator is waiting on the agent's turn."""
+        return self._turn_active.is_set()
+
     def send_and_wait(
         self,
         text: str,
@@ -149,6 +157,23 @@ class SimulationBridge:
         settle_s: float | None = None,
         salience: float = 0.8,
         novelty: float = 0.7,
+    ) -> dict[str, Any]:
+        """Inject a percept and block until the AUT responds or timeout (see :meth:`_send_and_wait`). The turn
+        counts as in progress for the whole call, exceptions included."""
+        self._turn_active.set()
+        try:
+            return self._send_and_wait(text, timeout=timeout, settle_s=settle_s, salience=salience, novelty=novelty)
+        finally:
+            self._turn_active.clear()
+
+    def _send_and_wait(
+        self,
+        text: str,
+        *,
+        timeout: float | None,
+        settle_s: float | None,
+        salience: float,
+        novelty: float,
     ) -> dict[str, Any]:
         """Inject a percept and block until the AUT responds or timeout.
 

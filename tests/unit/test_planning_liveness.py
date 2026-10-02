@@ -657,7 +657,7 @@ class TestSpinnerPlanningWindow:
     def test_send_and_wait_entry_closes_window(self):
         from maxim.simulation import bridge as bridge_mod
 
-        src = inspect.getsource(bridge_mod.SimulationBridge.send_and_wait)
+        src = inspect.getsource(bridge_mod.SimulationBridge._send_and_wait)
         entry = src.split("self._spinner.start(", 1)[0]
         assert "set_planning_window(False)" in entry
 

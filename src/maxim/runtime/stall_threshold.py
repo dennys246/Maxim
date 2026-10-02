@@ -23,6 +23,8 @@ import os
 from typing import Any
 
 __all__ = [
+    "non_streaming_age_bound_s",
+    "stall_suppression",
     "DEFAULT_MAX_BYTE_SILENCE_S",
     "DEFAULT_STALL_FLOOR_S",
     "DEFAULT_STALL_MARGIN_S",
@@ -183,3 +185,49 @@ def _read_clamped_env(name: str, default: float, *, lo: float, hi: float) -> flo
     except (ValueError, TypeError):
         return default
     return max(lo, min(hi, val))
+
+
+def non_streaming_age_bound_s(lane_timeout_s: float | None = None, allowed_s: float | None = None) -> float:
+    """How long a NON-streaming planning call may run before the stall detector judges it wedged by age (#1042):
+    the time it was allowed — its own ``allowed_s`` (the worker's effective timeout, a timeout-retry's doubled
+    allowance included) or, when the caller did not say, the worker's call timeout (``MAXIM_LLM_CALL_TIMEOUT_S``,
+    default 300 s) — or a longer configured lane timeout, plus the stall margin."""
+    from maxim.agents.llm_worker import _read_llm_call_timeout_env
+
+    own = allowed_s if allowed_s is not None and allowed_s > 0 else _read_llm_call_timeout_env()
+    allowed = max(own, float(lane_timeout_s or 0.0))
+    return allowed + _read_clamped_env("MAXIM_STALL_MARGIN_S", DEFAULT_STALL_MARGIN_S, lo=0.0, hi=120.0)
+
+
+def stall_suppression(
+    *, turn_in_progress: bool, lane: str | None = None, lane_timeout_s: float | None = None
+) -> tuple[bool, float | None]:
+    """The simulation stall detector's suppression decision, as one callable (#1042). Returns ``(suppress,
+    wedged_s)``:
+
+    - ``(True, None)``: the narrator is BUSY, not stalled. Either it is waiting on the agent's turn
+      (``turn_in_progress``: the bridge's ``send_and_wait``, bounded by its response timeout), or an LLM call on
+      ``lane`` (default: the planning lane) is in flight and still alive: a STREAMING call that has received bytes
+      within :func:`max_byte_silence_threshold_s`, or a NON-streaming call younger than the time it was allowed
+      (:func:`non_streaming_age_bound_s`; it reports no bytes, so its age is its only evidence). Any planning-lane
+      call counts, the agent-under-test's included (#1043 scopes it to the narrator's own calls).
+    - ``(False, s)``: every in-flight call on ``lane`` is wedged — byte-silent ``s`` seconds (streaming) or ``s``
+      seconds old (the youngest non-streaming call).
+    - ``(False, None)``: nothing is in flight: a real stall candidate.
+    """
+    from maxim.agents.llm_types import PLANNING_LANE
+    from maxim.runtime import llm_call_registry as reg
+
+    if turn_in_progress:
+        return True, None
+    lane = lane or PLANNING_LANE
+    if not reg.any_call_in_flight(tier=lane):
+        return False, None
+    silence = reg.oldest_byte_silence_s(tier=lane)
+    if silence is not None and silence < max_byte_silence_threshold_s():
+        return True, None
+    calls = reg.non_streaming_calls(tier=lane)
+    if any(age < non_streaming_age_bound_s(lane_timeout_s, allowed) for age, allowed in calls):
+        return True, None
+    youngest = min((age for age, _ in calls), default=None)
+    return False, silence if silence is not None else youngest

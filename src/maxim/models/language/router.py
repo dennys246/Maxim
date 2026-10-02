@@ -1042,7 +1042,22 @@ class LLMRouter:
 
         # call_id flows to backend stream consumers via ContextVar
         # (see llm_call_registry.py); no signature threading needed.
-        call_id = register_call_start(tier=str(budget_tier) if budget_tier else "unknown")
+        # The registry's tier is the request's LANE ("large"/"medium"/
+        # "small"): that is what the stall detector asks
+        # (``any_call_in_flight(tier=<its lane>)``). The cost-budget tier
+        # ("normal"/"warning"/...) never matched it, so every nudge fired
+        # during legitimate inference (#1042).
+        from maxim.agents.llm_worker import _normalize_request_context
+
+        lane = _normalize_request_context(request_context).lane
+        # The time the caller allowed this call (LLMWorker stamps its effective timeout): a non-streaming call is
+        # judged wedged by age against it.
+        allowed = request_context.get("allowed_s") if isinstance(request_context, dict) else None
+        call_id = register_call_start(
+            tier=lane or "unknown",
+            streams=bool(stream),
+            allowed_s=float(allowed) if isinstance(allowed, (int, float)) else None,
+        )
         try:
             for provider_key in providers:
                 outcome = self._try_provider(

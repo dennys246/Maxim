@@ -2822,14 +2822,17 @@ def start_simulation_mode(
         # The deprecated-alias handling (MAXIM_SIM_STALL_THRESHOLD_S →
         # MAXIM_STALL_FLOOR_S) is centralized in compute_stall_threshold
         # itself so the orchestrator doesn't need to mutate os.environ.
+        from maxim.agents.llm_types import PLANNING_LANE
+        from maxim.utils.logging import log_swallowed_exception
         from maxim.runtime.stall_threshold import (
             compute_stall_threshold,
             max_byte_silence_threshold_s,
             should_hard_abort,
+            stall_suppression,
         )
         from maxim.simulation.spinner import spinner_truth_message
 
-        _resolved_tier = "large"
+        _resolved_tier = PLANNING_LANE  # the lane planning calls register under (one constant, #1042)
 
         _lane_timeout_env = _os.environ.get(f"MAXIM_LANE_{_resolved_tier.upper()}_TIMEOUT_S")
         _lane_timeout_s: float | None = None
@@ -3005,48 +3008,33 @@ def start_simulation_mode(
             if not (ping_pong or time_stalled):
                 continue
 
-            # ── Stall-detector ↔ in-flight LLM call suppression ──
-            # Per stall_detector_timeout_awareness.md v2: if an LLM call is
-            # in flight at the orchestrator's tier AND bytes have been
-            # flowing within the keepalive-derived budget, suppress the
-            # nudge entirely — the orchestrator isn't stalled, it's
-            # awaiting inference. PR #320 TTFT keepalive frames count as
-            # bytes-on-wire so this works even during multi-minute TTFTs.
-            #
-            # The wedged-call branch fires when bytes have been silent
-            # past max_byte_silence_threshold_s, distinguishing "call
-            # alive but slow" from "connection dead but registered".
+            # ── Stall-detector suppression (one decision: stall_threshold.stall_suppression, #1042) ──
+            # Busy, not stalled: the agent's turn is in progress, or a planning-lane call is in flight and alive
+            # (a streaming one still receiving bytes, a non-streaming one younger than the time it was allowed).
+            # Otherwise _wedged_byte_silence carries the wedged call's byte silence or age for D12 / D14.
             try:
-                from maxim.runtime.llm_call_registry import (
-                    any_call_in_flight,
-                    oldest_byte_silence_s,
+                _suppress, _wedged_byte_silence[0] = stall_suppression(
+                    turn_in_progress=bridge.turn_in_progress, lane=_resolved_tier, lane_timeout_s=_lane_timeout_s
                 )
-
-                if any_call_in_flight(tier=_resolved_tier):
-                    silence_s = oldest_byte_silence_s(tier=_resolved_tier)
-                    if silence_s is None or silence_s < max_byte_silence_threshold_s():
-                        # Call alive, bytes flowing — suppress nudge
-                        _wedged_byte_silence[0] = None
-                        # D14: a healthy call is in flight — the default
-                        # "planning..." text is truthful again; restore it
-                        # if an earlier tick overrode it.
-                        if _spinner_truth_overridden[0]:
-                            try:
-                                bridge._spinner.update_if_planning("Orchestrator planning next probe...")
-                            except Exception as e:
-                                logger.debug("spinner truth restore failed: %s", e)
-                            _spinner_truth_overridden[0] = False
-                        continue
-                    # No bytes for >max_byte_silence_threshold_s — connection
-                    # is wedged. Fall through and let the nudge fire as a
-                    # stuck-call warning.
-                    _wedged_byte_silence[0] = silence_s
-                else:
-                    _wedged_byte_silence[0] = None
             except Exception:
-                # Defensive: registry consultation must never wedge the
-                # detector. On any failure, fall through to existing logic.
-                pass
+                # Never let the registry wedge the detector — but a failure here silently disables the
+                # suppression (#1042's failure mode), so it is reported, not swallowed.
+                log_swallowed_exception(site="orchestrator.py:_stall_detector:stall_suppression")
+                _suppress, _wedged_byte_silence[0] = False, None
+            # Suppression holds back only the IDLE nudge: ping-pong (narrator tool calls without a turn) is a real
+            # signal whatever is in flight (#1042 review).
+            if _suppress and not ping_pong:
+                if bridge.turn_in_progress:
+                    # Waiting on the agent's turn is activity, not idleness: the idle clock restarts from here.
+                    _last_activity_time[0] = time.time()
+                elif _spinner_truth_overridden[0]:
+                    # D14: a healthy call is in flight — the default "planning..." text is truthful again.
+                    try:
+                        bridge._spinner.update_if_planning("Orchestrator planning next probe...")
+                    except Exception as e:
+                        logger.debug("spinner truth restore failed: %s", e)
+                    _spinner_truth_overridden[0] = False
+                continue
 
             # ── D12 hard-abort escalation (bugs ledger; observed 8,624s and
             #    3,286s unbounded 'planning' hangs, 2026-08-18) ─────────────
@@ -3105,7 +3093,7 @@ def start_simulation_mode(
                 byte_silence_threshold_s=max_byte_silence_threshold_s(),
             ):
                 _silence_str = (
-                    f"{_wedged_byte_silence[0]:.0f}s byte-silence on the in-flight call"
+                    f"{_wedged_byte_silence[0]:.0f}s byte-silence or age on the in-flight call"
                     if _wedged_byte_silence[0] is not None
                     else f"{_nudge_count[0]} nudges unconsumed"
                 )
