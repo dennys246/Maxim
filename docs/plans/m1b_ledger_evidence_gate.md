@@ -578,8 +578,56 @@ ratchet on, with a NOTE; a record with corrupt bytes or an unexpected shape is s
 and O19's verdicts are on main. A PR that tightens an entry and moves a row in one diff is judged by the
 merge-base (looser) entry.
 
-### 5b-2 (next)
-Pass entries + "complete run" rules for `exp53_verdict` / `exp54_verdict` (re-derive `runs_of` / `Run.status`
-from the bound bytes, gate-owned), `exp60_verdict` (every seed of `frozen.seeds` under one `(run_id, arm)`,
-refused rows included), `exp61/62_verdict` (one `campaign_id` per data file and scope). Also: `kind: "prereg"` exceptions read by the prereg lint as an `EXCEPTED` status for that data entry (the
-successor of its frozen in-script lists).
+### 5b-2: complete-run rules + prereg exceptions (as built 2026-10-01)
+Owner decisions 2026-10-01: the gate re-derives run STRUCTURE from the bound bytes and trusts the verdict's VALUE
+(review checks the numbers); analyzer defects fixed first at the root (Exp 53/56/61 exact-rate gates, Exp 61
+duplicates INCOMPLETE — its own PR); Exp 60/61/62 scopes must equal the frozen sets exactly; a prereg clause pins a
+file by sha256, a directory by its git tree id. Design: three adversarial rounds (two DO-NOT-BUILD in round 1).
+
+- **The rule is code-owned, the sets are the table's.** `_evidence_records.COMPLETE_RULES` maps `exp53_verdict` /
+  `exp60_verdict` / `exp61_verdict` / `exp62_verdict` to a rule; the MERGE-BASE pass table's `complete` block
+  carries the frozen sets (60/61/62, pinned to each harness's FROZEN by a test) or the start pins + manifest path (53:
+  targets / exploratory targets pinned to the harness constants, δ and the rest to the 53b runbook). At HEAD a ruled
+  kind must carry its block and no other kind may; at the merge-base a ruled kind may still lack it (the PR adding
+  a rule cannot also add the block on main) and its verdicts are NOT-ESTABLISHED meanwhile, while a block whose kind
+  has no rule fails there too (dropping a rule is caught). A PR cannot loosen its own sets/pins; the rule code itself,
+  like all gate code, is review's.
+- **No cherry-picking.** Exp 60: every run in the FILE whose (arm, seed) keys equal one arm's frozen seeds (refused
+  rows included) is complete; exactly one per arm, and the scope is exactly those runs (`all_rows` only when the
+  file is nothing else). Exp 53: one experiment and no `--only` run per file; exactly one gate-I phase-1 run
+  (`gate_I` with `informative` absent/false — a FAIL-then-PASS file is refused) and one complete phase-2 primary
+  run, both named by `runs_used` and the scope; `runs_used.secondary`, when not null, a complete phase-2 run with
+  secondary trials. Exp 61/62: one campaign per file, the keyed rows' (arm, seed)
+  equal the frozen set (refusals present, never two clean rows for one key), allowed kinds only, the required kinds
+  (anti_vacuity; replay + apparatus) present; the verdict names the file's campaign, or null over `all_rows` (the
+  harness's default `verdict`). Stated limits: an attempt killed mid-arm / Ctrl-C, or a re-run written
+  to a NEW file or campaign, is excludable; review catches stamped lines copied into a fresh file.
+- **Exp 53 runs pinned.** Each scoped run's `start` equals the table's pins (`gate: "I"`, `deltas` exactly ±0.30 —
+  53b's declared change, which T1-10 rests on — body, factory false, targets, exploratory targets,
+  allow_incomplete_targets false, rig live, only null, tool whitelist; never `start.frozen`); no dry-run line; each
+  run alone in exactly one log group that ended ok; the manifest present at the merge-base; at least one load per run;
+  each `agent_load` matched by (nac, ec) sha to the MERGE-BASE
+  manifest with equal (label, arm, seed, exploratory), each label once per (run, condition), the manifest's
+  non-exploratory labels all loaded; every trial/probe consistent with its load (an `invalid: true` placement, logged
+  without arm / exploratory flag, need only name a loaded agent). The sha binds the loaded bytes
+  because the harness compares them at each `agent_done` (rc 5 never ends a group ok).
+- **The refusal guarantee.** With set equality and no duplicate clean keys, every frozen key has exactly one clean
+  row whenever the analyzer says EARNED (Exp 60 needs 5 clean per arm and refuses any duplicate; Exp 61/62 need n
+  clean per arm). Clean = `refusal is None` (an empty string is a refusal).
+- **Prereg statuses are an allow-list:** {PASS, GRANDFATHERED, UNGOVERNED_RERUN, OUT_OF_SCOPE, EXCEPTED}; anything
+  else (FAIL, NON_GATED, NOT_GOVERNED, no entry, a status added later) refuses the record. New support still needs
+  PASS.
+- **`kind: "prereg"` clauses** in `evidence_exceptions.json`: {id, kind, path (a top-level data entry), exactly one
+  of `sha256` (a file) / `tree` (a directory), owner, reason, date} — one owner of the shape,
+  `lint_prereg_precedes_data.prereg_exception_problem`, which the gate calls on every PR (the pin's form checked
+  against HEAD for NEW clauses only: an inherited clause whose entry later changed shape goes inert, never blocks).
+  The prereg lint reads clauses from its ref (main, or the gate's merge-base), never applies a malformed one (NOTE),
+  and, while the pin matches HEAD and the working copy is clean, turns a SUBSTANTIVE failure (prereg missing or late,
+  a re-run undeclared) into `EXCEPTED` — never when a record-form failure (ts, dirty stamps, an unechoed allowance)
+  or a list-hygiene failure is also present. A clause on a passing entry is NOTED stale; one that no longer pins is
+  NOTED inert. The frozen in-script lists
+  stay shrink-only.
+- **Pass entries:** exp53 → T1-10 (MAINTAINED / RE-VALIDATED: PASS; require gate T, scoped lines stamped); exp60 →
+  T1-13, exp61 → T1-14, exp62 → T1-15 (EARNED / MAINTAINED / RE-VALIDATED: EARNED). No exp54 entry (no ledger row);
+  gate6 / unlabelled kinds never (fail closed). The committed 60/61/62 verdicts are unstamped legacy: only new runs
+  can support.

@@ -26,6 +26,8 @@ import _evidence_records as R  # noqa: E402
 import lint_evidence_gate as G  # noqa: E402
 
 LEDGER = "docs/plans/behavioral_graduation_candidates.md"
+PREREG_CLAUSE = {"id": "x1", "kind": "prereg", "path": "docs/experiments/data/legacy_old.jsonl", "sha256": "s",
+                 "owner": "o", "reason": "r", "date": "2026-10-01"}  # fmt: skip
 T1 = "| ID | Claim | Bio-mechanism | Status |\n|---|---|---|---|\n"
 T3 = "| ID | CLAUDE.md ref | Mechanism | Bio-claim | Graduation predicate | Status |\n|---|---|---|---|---|---|\n"
 BASE_DATE = "2026-10-01T00:00:00+00:00"
@@ -66,7 +68,8 @@ class Rig:
         self.write(G.LEGACY_SNAPSHOT, "{}\n")
         self.write(G.PASS_TABLE, (REPO / G.PASS_TABLE).read_text())
         self.write(f"{DATA}/legacy_old.jsonl", '{"x": 1}\n')
-        self.prereg = {f"{DATA}/rerun_exp09_o19": "PASS", f"{DATA}/rerun_exp10_o19": "PASS"}
+        # Every rig data entry is PASS unless a test says otherwise (the gate refuses a record with no status).
+        self.prereg = {DATA: "PASS", f"{DATA}/rerun_exp09_o19": "PASS", f"{DATA}/rerun_exp10_o19": "PASS"}
 
     def write(self, rel: str, text: str | bytes) -> None:
         path = self.root / rel
@@ -318,7 +321,7 @@ def test_an_active_exception_may_supply_the_support(rig, monkeypatch) -> None:
 
 
 def test_the_exceptions_file_is_append_only(rig) -> None:
-    entry = {"id": "x1", "kind": "prereg", "path": "p", "sha256": "s"}
+    entry = PREREG_CLAUSE
     rig.write(G.EXCEPTIONS, json.dumps([entry]))
     text = ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
     rig.base(text)
@@ -370,7 +373,7 @@ def test_the_real_pass_table_names_the_o19_rows() -> None:
         "PASS"
     ]
     assert table["exp09_verdict"]["targets"]["PARTIAL"] == ["PARTIAL"]
-    assert not any(k.startswith(("exp53", "exp54", "exp60", "exp61", "exp62")) for k in table)  # 5b-2
+    assert not any(k.startswith(("exp54", "gate6")) for k in table)  # no ledger row / never support
 
 
 def test_unknown_digests_never_match() -> None:
@@ -479,7 +482,7 @@ def rig_epoch(iso: str) -> int:
 
 
 def _ctx(rig: Rig) -> G.Ctx:
-    return G.Ctx(repo=G.Repo(rig.root), base=rig.base_sha, ref="HEAD", legacy={}, prereg={})
+    return G.Ctx(repo=G.Repo(rig.root), base=rig.base_sha, ref="HEAD", legacy={}, prereg={DATA: "PASS"}, table={})
 
 
 def test_event_log_groups(rig) -> None:
@@ -1065,7 +1068,7 @@ def test_entering_by_tests_from_another_token_is_noted(rig) -> None:
 
 
 def test_exception_ids_are_unique_strings() -> None:
-    entry = {"id": "x", "kind": "prereg", "path": "p", "sha256": "s"}
+    entry = {**PREREG_CLAUSE, "id": "x"}
     assert any("unique string id" in p for p in G.exceptions_problems([], [entry, dict(entry)]))
     assert any("unique string id" in p for p in G.exceptions_problems([], [{**entry, "id": ["x"]}]))
     assert G.exceptions_problems([], [entry]) == []
@@ -1134,3 +1137,450 @@ def test_a_verdict_over_an_event_log_with_a_list_run_id_is_a_plain_refusal(rig) 
     rig.commit("verdict", HEAD_DATE)
     j = _judge(rig, f"{DATA}/v.json")
     assert j.status == G.NOT_ESTABLISHED and not R.unjudged(j), j.reasons
+
+
+# ── M1b PR 5b-2: complete-run rules ──────────────────────────────────────────────────────────────────────
+
+REAL_TABLE = json.loads((REPO / G.PASS_TABLE).read_text())
+
+
+def _verdict_over(rig: Rig, name: str, lines: list[dict], kind: str, scope: dict, **extra) -> str:
+    rig.write(f"{DATA}/{name}", "".join(json.dumps(ln) + "\n" for ln in lines))
+    data = (rig.root / DATA / name).read_bytes()
+    verdict = {"record_kind": "verdict", "kind": kind, "verdict": "EARNED", "mock": False, "data": f"{DATA}/{name}",
+               "data_sha256": hashlib.sha256(data).hexdigest(), "scope": scope, "provenance": _prov(rig),
+               **extra}  # fmt: skip
+    rig.write(f"{DATA}/v_{name}.json", json.dumps(verdict))
+    rig.commit(f"verdict over {name}", HEAD_DATE)
+    return f"{DATA}/v_{name}.json"
+
+
+def _complete(rig: Rig, path: str) -> R.Judgement:
+    return _judge(rig, path, table=REAL_TABLE)
+
+
+def _assert_refused(j: R.Judgement, why: str) -> None:
+    assert j.status == G.NOT_ESTABLISHED and any(why in r for r in j.reasons), j.reasons
+
+
+# Exp 60: one complete run per arm in the FILE, and the scope is exactly those runs.
+
+
+def _run60(rig: Rig, rid: str, arm: str, seeds=range(11, 16), refused=()) -> list[dict]:
+    return [_row(rig, run_id=rid, arm=arm, seed=s, refusal="r" if s in refused else None) for s in seeds]
+
+
+def test_exp60_one_complete_run_per_arm_is_established(rig) -> None:
+    rig.base(STALE_BOTH)
+    lines = _run60(rig, "A", "fear") + _run60(rig, "B", "ablated")
+    assert (
+        _complete(rig, _verdict_over(rig, "e60.jsonl", lines, "exp60_verdict", {"run_ids": ["A", "B"]})).status
+        == G.ESTABLISHED
+    )
+    assert (
+        _complete(rig, _verdict_over(rig, "e60b.jsonl", lines, "exp60_verdict", {"all_rows": True})).status
+        == G.ESTABLISHED
+    )
+
+
+def test_exp60_a_second_complete_run_of_an_arm_cannot_be_left_out(rig) -> None:
+    """Re-run the fear arm into the same file after a refusal, then scope the clean run: refused (the committed
+    Exp 60 data has exactly this shape)."""
+    rig.base(STALE_BOTH)
+    lines = _run60(rig, "OLD", "fear", refused=(13,)) + _run60(rig, "A", "fear") + _run60(rig, "B", "ablated")
+    _assert_refused(_complete(rig, _verdict_over(rig, "e60.jsonl", lines, "exp60_verdict", {"run_ids": ["A", "B"]})),
+                    "2 complete runs of arm fear")  # fmt: skip
+
+
+def test_exp60_a_run_killed_mid_arm_is_excludable_but_not_scopable(rig) -> None:
+    rig.base(STALE_BOTH)
+    lines = _run60(rig, "K", "fear", seeds=(11, 12)) + _run60(rig, "A", "fear") + _run60(rig, "B", "ablated")
+    assert (
+        _complete(rig, _verdict_over(rig, "e60.jsonl", lines, "exp60_verdict", {"run_ids": ["A", "B"]})).status
+        == G.ESTABLISHED
+    )
+    _assert_refused(_complete(rig, _verdict_over(rig, "e60b.jsonl", lines, "exp60_verdict", {"all_rows": True})),
+                    "not exactly the file's complete runs")  # fmt: skip
+
+
+@pytest.mark.parametrize(("bad", "why"), [(16, "outside the frozen sets"), (True, "outside the frozen sets")])
+def test_exp60_a_seed_off_the_frozen_list_is_refused(rig, bad, why) -> None:
+    rig.base(STALE_BOTH)
+    lines = _run60(rig, "A", "fear") + _run60(rig, "B", "ablated")
+    lines[0]["seed"] = bad
+    _assert_refused(_complete(rig, _verdict_over(rig, "e60.jsonl", lines, "exp60_verdict", {"all_rows": True})), why)
+
+
+def test_exp60_a_repeated_scope_run_id_is_refused(rig) -> None:
+    rig.base(STALE_BOTH)
+    lines = _run60(rig, "A", "fear") + _run60(rig, "B", "ablated")
+    _assert_refused(_complete(rig, _verdict_over(rig, "e60.jsonl", lines, "exp60_verdict", {"run_ids": ["A", "B", "B"]})),
+                    "repeats a run_id")  # fmt: skip
+
+
+# Exp 61 / 62: one campaign per file, the keyed rows equal the frozen sets.
+
+
+def _campaign61(rig: Rig, campaign="c1") -> list[dict]:
+    sets = REAL_TABLE["exp61_verdict"]["complete"]["sets"]
+    rows = [_row(rig, kind="receiver", campaign_id=campaign, arm=a, pair_seed=s, refusal=None)
+            for a, seeds in sets.items() for s in seeds]  # fmt: skip
+    return rows + [_row(rig, kind="anti_vacuity", campaign_id=campaign, arm="transferred", pair_seed=200, refusal=None)]
+
+
+def _v61(rig, lines, name="e61.jsonl", scope=None, campaign="c1"):
+    return _complete(rig, _verdict_over(rig, name, lines, "exp61_verdict", scope or {"campaign_id": "c1"},
+                                        campaign_id=campaign))  # fmt: skip
+
+
+def test_exp61_a_whole_campaign_is_established(rig) -> None:
+    rig.base(STALE_BOTH)
+    assert _v61(rig, _campaign61(rig)).status == G.ESTABLISHED
+    assert _v61(rig, _campaign61(rig), name="e61b.jsonl", scope={"all_rows": True}).status == G.ESTABLISHED
+
+
+def test_exp61_a_refusal_superseded_on_resume_is_established(rig) -> None:
+    rig.base(STALE_BOTH)
+    lines = _campaign61(rig)
+    lines.insert(0, {**lines[0], "refusal": "bridge stale"})
+    assert _v61(rig, lines).status == G.ESTABLISHED
+
+
+@pytest.mark.parametrize(
+    ("edit", "why"),
+    [
+        (lambda ls: ls.pop(0), "frozen key(s) missing"),
+        (lambda ls: ls.append({**ls[0], "pair_seed": 224}), "outside the frozen sets"),
+        (lambda ls: ls.append({**ls[0]}), "two clean rows"),
+        (lambda ls: ls.append({**ls[-1], "campaign_id": "c2"}), "2 campaigns"),
+        (lambda ls: ls.append({**ls[-1], "kind": "mystery"}), "is not one of"),
+        (lambda ls: ls.pop(), "no ['anti_vacuity'] row"),
+    ],
+)
+def test_exp61_campaign_structure_refusals(rig, edit, why) -> None:
+    rig.base(STALE_BOTH)
+    lines = _campaign61(rig)
+    edit(lines)
+    _assert_refused(_v61(rig, lines), why)
+
+
+def test_exp61_the_verdict_must_name_the_files_campaign(rig) -> None:
+    rig.base(STALE_BOTH)
+    _assert_refused(_v61(rig, _campaign61(rig), scope={"all_rows": True}, campaign="other"), "not the file's campaign")
+
+
+def test_exp62_a_campaign_needs_its_replay_and_apparatus_rows(rig) -> None:
+    rig.base(STALE_BOTH)
+    sets = REAL_TABLE["exp62_verdict"]["complete"]["sets"]
+    rows = [_row(rig, kind="row", campaign_id="c1", arm=a, seed=s, refusal=None) for a, ss in sets.items() for s in ss]
+    extra = [_row(rig, kind=k, campaign_id="c1", arm="cross", seed=600, refusal=None) for k in ("replay", "apparatus")]
+    ok = _verdict_over(rig, "e62.jsonl", rows + extra, "exp62_verdict", {"campaign_id": "c1"}, campaign_id="c1")
+    assert _complete(rig, ok).status == G.ESTABLISHED
+    bad = _verdict_over(rig, "e62b.jsonl", rows + extra[1:], "exp62_verdict", {"campaign_id": "c1"}, campaign_id="c1")
+    _assert_refused(_complete(rig, bad), "no ['replay'] row")
+
+
+# Exp 53: one gate-I phase-1 run and one complete primary run per file, pinned and alone in ok log groups.
+
+MANIFEST53 = REAL_TABLE["exp53_verdict"]["complete"]["manifest"]
+AGENTS53 = [  # (label, arm, seed, exploratory, nac, ec)
+    ("taught_seed42", "taught", 42, False, "n1", "e1"),
+    ("no_feed_seed42", "no_feed", 42, False, "n2", "e2"),
+    ("taught_seed48", "taught", 48, True, "n3", "e3"),
+]
+
+
+def _manifest53(rig: Rig) -> None:
+    agents = [{"label": lb, "arm": a, "seed": s, "exploratory": x, "nac_sha256": n, "ec_sha256": e}
+              for lb, a, s, x, n, e in AGENTS53]  # fmt: skip
+    rig.write(MANIFEST53, json.dumps({"experiment": "53_cross_context_readout", "agents": agents}))
+
+
+def _group53(rig: Rig, rid: str, phase: int, ts: float, *, start=None, gate_i="PASS", terminal="ok",
+             status="complete", relabel=None, dry_run=False) -> list[dict]:  # fmt: skip
+    from _provenance import provenance_digest
+
+    block, gid = _prov(rig), f"g-{rid}"
+    d = provenance_digest(block)
+
+    def ev(event, **kw):
+        return {"record_kind": "harness_event", "log_run_id": gid, "mock": False, "provenance": block,
+                "provenance_sha256": d, "ts": ts, "run_id": rid, "phase": phase, "dry_run": dry_run, "event": event,
+                **kw}  # fmt: skip
+
+    lines = [ev("start", **{**REAL_TABLE["exp53_verdict"]["complete"]["start"], **(start or {})})]
+    cond = {} if phase == 1 else {"condition": "primary"}
+    for lb, a, s, x, n, e in AGENTS53:
+        arm = relabel if relabel and lb == "taught_seed42" else a
+        lines.append(
+            ev("agent_load", agent=lb, arm=arm, seed=s, exploratory_agent=x, nac_sha256=n, ec_sha256=e, **cond)
+        )
+        lines.append(ev("probe" if phase == 1 else "trial", agent=lb, arm=arm, exploratory_agent=x, **cond))
+    if phase == 1:
+        lines.append(ev("gate_I", verdict=gate_i))
+    lines.append(ev("run_end", status=status))
+    term = {"record_kind": "harness_run_end", "log_run_id": gid, "status": terminal, "mock": False, "provenance": block,
+            "provenance_sha256": d, "end_code_tree_sha256": "a" * 64, "ts": ts + 1}  # fmt: skip
+    return lines + [term]
+
+
+def _v53(rig, lines, runs_used=None, name="e53.jsonl"):
+    used = runs_used or {"phase1": "P1", "primary": "P2", "secondary": None}
+    scope = {"run_ids": sorted(v for v in used.values() if v)}
+    return _complete(rig, _verdict_over(rig, name, lines, "exp53_verdict", scope, gate="T", verdict="PASS",
+                                        scoped_lines_stamped=True, runs_used=used))  # fmt: skip
+
+
+def _base53(rig: Rig) -> None:
+    _manifest53(rig)
+    rig.base(STALE_BOTH)
+
+
+def test_exp53_a_pinned_pair_of_runs_is_established(rig) -> None:
+    _base53(rig)
+    j = _v53(rig, _group53(rig, "P1", 1, 2e9) + _group53(rig, "P2", 2, 2e9 + 100))
+    assert j.status == G.ESTABLISHED, j.reasons
+
+
+@pytest.mark.parametrize(
+    ("extra", "why"),
+    [
+        ("second_primary", "2 complete primary run(s)"),
+        ("debug", "debug (--only) run"),
+        ("phase1_fail_then_pass", "2 gate-I phase-1 run(s)"),
+    ],
+)
+def test_exp53_the_file_cannot_hide_another_attempt(rig, extra, why) -> None:
+    _base53(rig)
+    lines = _group53(rig, "P1", 1, 2e9) + _group53(rig, "P2", 2, 2e9 + 100)
+    if extra == "second_primary":
+        lines += _group53(rig, "P3", 2, 2e9 + 200)
+    elif extra == "debug":
+        lines += _group53(rig, "D", 2, 2e9 + 200, start={"only": ["taught_seed42"]})
+    else:
+        lines = _group53(rig, "F", 1, 2e9 - 100, gate_i="FAIL", status="stopped") + lines
+    _assert_refused(_v53(rig, lines), why)
+
+
+@pytest.mark.parametrize(
+    ("kw", "why"),
+    [
+        ({"start": {"deltas": {"turn_left": 0.55, "turn_right": -0.55}}}, "start.deltas"),
+        ({"relabel": "no_feed"}, "unlike its merge-base manifest entry"),
+        ({"terminal": "failed"}, "exactly one log group that ended ok"),
+        ({"dry_run": True}, "dry-run line"),
+    ],
+)
+def test_exp53_each_scoped_run_is_pinned(rig, kw, why) -> None:
+    _base53(rig)
+    _assert_refused(_v53(rig, _group53(rig, "P1", 1, 2e9) + _group53(rig, "P2", 2, 2e9 + 100, **kw)), why)
+
+
+def test_exp53_runs_used_must_name_the_files_runs(rig) -> None:
+    _base53(rig)
+    lines = _group53(rig, "P1", 1, 2e9) + _group53(rig, "P2", 2, 2e9 + 100)
+    _assert_refused(_v53(rig, lines, runs_used={"phase1": "P1", "primary": "P1", "secondary": None}),
+                    "does not name the file's phase-1 and primary runs")  # fmt: skip
+
+
+def test_a_ruled_kind_without_its_complete_block_is_refused(rig) -> None:
+    rig.base(STALE_BOTH)
+    lines = _run60(rig, "A", "fear") + _run60(rig, "B", "ablated")
+    path = _verdict_over(rig, "e60.jsonl", lines, "exp60_verdict", {"all_rows": True})
+    table = {**REAL_TABLE, "exp60_verdict": {k: v for k, v in REAL_TABLE["exp60_verdict"].items() if k != "complete"}}
+    _assert_refused(_judge(rig, path, table=table), "carries no `seeds_per_run_arm` rule")
+
+
+# The table: shape, and pinned to each harness's FROZEN.
+
+
+@pytest.mark.parametrize(
+    ("kind", "complete", "why"),
+    [
+        ("exp60_verdict", None, "needs a `complete` block"),
+        ("exp57_verdict", {"rule": "seeds_per_run_arm", "sets": {"a": [1]}}, "no complete-run rule exists"),
+        ("exp60_verdict", {"rule": "seeds_per_run_arm", "sets": {"fear": [True]}}, "distinct integers"),
+        ("exp60_verdict", {"rule": "seeds_per_run_arm", "sets": {"fear": [1, 1]}}, "distinct integers"),
+        ("exp53_verdict", {"rule": "exp53_runs", "start": {}, "manifest": "/etc/x"}, "under the data root"),
+    ],
+)
+def test_the_pass_table_complete_block_shape(kind, complete, why) -> None:
+    entry = {"rows": ["T1-1"], "targets": {"EARNED": ["EARNED"]}}
+    if complete is not None:
+        entry["complete"] = complete
+    assert any(why in p for p in G.pass_table_problems({kind: entry}, "HEAD")), G.pass_table_problems(
+        {kind: entry}, "HEAD"
+    )
+
+
+def test_the_real_pass_table_is_well_formed_and_pinned_to_each_harness() -> None:
+    sys.path.insert(0, str(REPO / "scripts" / "survival_world"))
+    from survival_world import exp60_run, exp61_run, exp62_run
+
+    assert G.pass_table_problems(REAL_TABLE, "HEAD") == []
+    assert set(R.COMPLETE_RULES) <= set(REAL_TABLE)
+    sets = {k: REAL_TABLE[k]["complete"].get("sets") for k in R.COMPLETE_RULES}
+    assert sets["exp60_verdict"] == {
+        "fear": list(exp60_run.FROZEN["seeds"]),
+        "ablated": list(exp60_run.FROZEN["seeds"]),
+    }
+    f61 = exp61_run.FROZEN
+    want61: dict[str, list[int]] = {a: [] for a in f61["arms"]}
+    for idx, seed in enumerate(f61["pair_seeds"]):
+        arms, _ = exp61_run.pair_plan(idx, seed, n_full=f61["arms"]["transferred"], offset=f61["dangling_donor_offset"])
+        for a in arms:
+            want61[a].append(seed)
+    assert sets["exp61_verdict"] == want61 and all(len(v) == f61["arms"][a] for a, v in want61.items())
+    assert sets["exp62_verdict"] == {a: list(v) for a, v in exp62_run.FROZEN["seeds"].items()}
+    pins = REAL_TABLE["exp53_verdict"]["complete"]
+    manifest = json.loads((REPO / pins["manifest"]).read_text())
+    assert pins["start"]["experiment"] == manifest["experiment"]
+    assert pins["start"]["body_ref"] == manifest["frozen"]["body_ref"]
+    assert pins["start"]["deltas"] == {
+        "turn_left": 0.3,
+        "turn_right": -0.3,
+    }  # 53b's declared change (T1-10 rests on it)
+
+
+# Prereg exceptions: fields and pins.
+
+
+@pytest.mark.parametrize(
+    ("edit", "why"),
+    [
+        (lambda c: c.pop("sha256"), "exactly one pin"),
+        (lambda c: c.update(tree="t"), "exactly one pin"),
+        (lambda c: c.update(path="docs/experiments/data/a/b.jsonl"), "top-level data entry"),
+        (lambda c: c.pop("owner"), "lacks a required field"),
+        (lambda c: c.update(extra=1), "unknown fields"),
+    ],
+)
+def test_prereg_exception_clause_shape(edit, why) -> None:
+    clause = dict(PREREG_CLAUSE)
+    edit(clause)
+    assert any(why in p for p in G.exceptions_problems([], [clause])), G.exceptions_problems([], [clause])
+
+
+def test_prereg_exception_pin_form_must_match_the_entry(rig) -> None:
+    rig.base(STALE_BOTH)
+    tree_pin = {**{k: v for k, v in PREREG_CLAUSE.items() if k != "sha256"}, "tree": "t"}
+    assert any("pins a tree" in p for p in G.exceptions_problems([], [tree_pin], G.Repo(rig.root)))
+    assert G.exceptions_problems([], [PREREG_CLAUSE], G.Repo(rig.root)) == []
+
+
+@pytest.mark.parametrize("status", ["NON_GATED", "NOT_GOVERNED", "FAIL", "SOMETHING_NEW", None])
+def test_the_prereg_status_is_an_allow_list(rig, status) -> None:
+    rig.base(STALE_BOTH)
+    rig.write(f"{DATA}/r.jsonl", json.dumps(_row(rig)) + "\n")
+    rig.commit("rows", HEAD_DATE)
+    prereg = {} if status is None else {f"{DATA}/r.jsonl": status}
+    assert _judge(rig, f"{DATA}/r.jsonl", prereg=prereg).status == G.NOT_ESTABLISHED
+    assert _judge(rig, f"{DATA}/r.jsonl", prereg={f"{DATA}/r.jsonl": "EXCEPTED"}).status == G.ESTABLISHED
+
+
+def test_an_exp60_verdict_moves_its_row_end_to_end(rig) -> None:
+    """Through gate(): the merge-base table reaches the record judges, so a complete Exp 60 verdict supports T1-13."""
+    text = ledger([t1("T1-13", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    rig.base(text)
+    lines = _run60(rig, "A", "fear") + _run60(rig, "B", "ablated")
+    path = _verdict_over(rig, "e60.jsonl", lines, "exp60_verdict", {"run_ids": ["A", "B"]})
+    rig.head(
+        text.replace("**Status: STALE 2026-09-30**.", f"**Status: MAINTAINED 2026-10-02**. **Evidence:** `{path}`.", 1)
+    )
+    failures, _ = rig.run()
+    assert failures == [], failures
+
+
+def test_exp53_a_gate_c_phase1_run_is_not_a_gate_i_attempt(rig) -> None:
+    """A `--gate C` phase-1 run writes an `informative: true` gate_I event: it is not a gate-I attempt, so it does
+    not count against the one-phase-1-run rule (it stays unscoped)."""
+    _base53(rig)
+    gate_c = _group53(rig, "C", 1, 2e9 - 100, start={"gate": "C"})
+    for ln in gate_c:
+        if ln.get("event") == "gate_I":
+            ln["informative"] = True
+    j = _v53(rig, gate_c + _group53(rig, "P1", 1, 2e9) + _group53(rig, "P2", 2, 2e9 + 100))
+    assert j.status == G.ESTABLISHED, j.reasons
+
+
+def test_a_complete_block_with_another_kinds_rule_is_refused(rig) -> None:
+    rig.base(STALE_BOTH)
+    lines = _run60(rig, "A", "fear") + _run60(rig, "B", "ablated")
+    path = _verdict_over(rig, "e60.jsonl", lines, "exp60_verdict", {"all_rows": True})
+    wrong = {**REAL_TABLE["exp60_verdict"], "complete": {"rule": "campaign_seeds", "sets": {"fear": [11]}}}
+    _assert_refused(
+        _judge(rig, path, table={**REAL_TABLE, "exp60_verdict": wrong}), "carries no `seeds_per_run_arm` rule"
+    )
+
+
+# ── 5b-2 review folds ─────────────────────────────────────────────────────────────────────────────────────
+
+
+def test_exp61_a_default_verdict_names_no_campaign_over_all_rows(rig) -> None:
+    """`verdict` with no --campaign-id writes campaign_id null over all_rows: the file's single campaign is proven."""
+    rig.base(STALE_BOTH)
+    assert _v61(rig, _campaign61(rig), scope={"all_rows": True}, campaign=None).status == G.ESTABLISHED
+    _assert_refused(_v61(rig, _campaign61(rig), name="e61b.jsonl", campaign=None), "not the file's campaign")
+
+
+def _with_invalid(lines: list[dict], agent: str) -> list[dict]:
+    """Insert an invalid placement as the harness logs it: no arm, no exploratory flag."""
+    probe = next(ln for ln in lines if ln.get("event") in ("probe", "trial"))
+    bad = {k: v for k, v in probe.items() if k not in ("arm", "exploratory_agent")}
+    bad.update(agent=agent, invalid=True)
+    return lines[:-2] + [bad] + lines[-2:]
+
+
+def test_exp53_an_invalid_placement_without_arm_is_fine_for_a_loaded_agent(rig) -> None:
+    _base53(rig)
+    p1 = _with_invalid(_group53(rig, "P1", 1, 2e9), "taught_seed42")
+    assert _v53(rig, p1 + _group53(rig, "P2", 2, 2e9 + 100)).status == G.ESTABLISHED
+    p1 = _with_invalid(_group53(rig, "P1", 1, 2e9), "stranger_seed99")
+    _assert_refused(_v53(rig, p1 + _group53(rig, "P2", 2, 2e9 + 100), name="e53b.jsonl"), "unlike its load")
+
+
+def test_exp53_a_scoped_run_must_load_agents(rig) -> None:
+    _base53(rig)
+    p1 = [ln for ln in _group53(rig, "P1", 1, 2e9) if ln.get("event") not in ("agent_load", "probe")]
+    _assert_refused(_v53(rig, p1 + _group53(rig, "P2", 2, 2e9 + 100)), "loads no agent")
+
+
+def test_exp53_the_manifest_must_be_at_the_merge_base(rig) -> None:
+    rig.base(STALE_BOTH)  # no manifest on main
+    _manifest53(rig)
+    _assert_refused(_v53(rig, _group53(rig, "P1", 1, 2e9) + _group53(rig, "P2", 2, 2e9 + 100)), "not at the merge-base")
+
+
+def test_exp53_runs_used_secondary_must_be_a_complete_secondary_run(rig) -> None:
+    _base53(rig)
+    lines = _group53(rig, "P1", 1, 2e9) + _group53(rig, "P2", 2, 2e9 + 100)
+    _assert_refused(_v53(rig, lines, runs_used={"phase1": "P1", "primary": "P2", "secondary": "P1"}),
+                    "runs_used.secondary is not a complete phase-2 run")  # fmt: skip
+
+
+def test_a_ruled_kind_may_lack_its_block_at_the_merge_base_only() -> None:
+    entry = {"rows": ["T1-11"], "targets": {"RE-VALIDATED": ["PASS"]}}
+    assert G.pass_table_problems({"exp60_verdict": entry}, "the merge-base", at_base=True) == []
+    assert G.pass_table_problems({"exp60_verdict": entry}, "HEAD") != []
+    stray = {**entry, "complete": {"rule": "seeds_per_run_arm", "sets": {"a": [1]}}}
+    assert G.pass_table_problems({"exp57_verdict": stray}, "the merge-base", at_base=True) != []  # a dropped rule
+
+
+def test_an_inherited_prereg_clause_whose_entry_changed_shape_never_blocks(rig) -> None:
+    rig.base(STALE_BOTH)
+    tree_pin = {**{k: v for k, v in PREREG_CLAUSE.items() if k != "sha256"}, "tree": "t"}
+    assert G.exceptions_problems([tree_pin], [tree_pin], G.Repo(rig.root)) == []  # on main already: inert, not fatal
+    assert G.exceptions_problems([], [tree_pin], G.Repo(rig.root)) != []  # new: refused
+
+
+def test_the_exp53_pins_match_the_harness_constants(monkeypatch) -> None:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "_e53", REPO / "scripts/orient_backbone/exp53_cross_context_readout.py"
+    )
+    monkeypatch.syspath_prepend(str(REPO / "scripts/orient_backbone"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    start = REAL_TABLE["exp53_verdict"]["complete"]["start"]
+    assert start["targets"] == list(mod.TARGETS) and start["exploratory_targets"] == list(mod.EXPLORATORY_TARGETS)
