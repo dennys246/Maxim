@@ -1,0 +1,157 @@
+{
+  "session_id": "20261001_215255",
+  "timestamp": "2026-10-01 21:58:14",
+  "goal": "escape a dungeon with a sleeping guard",
+  "mode": "generative",
+  "language_model": "/tmp/o19-home-rx867_1i/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+  "language_provider": "lane-large",
+  "language_backend_class": "_MaximPeerBackend",
+  "language_endpoint": "http://127.0.0.1:8100/v1",
+  "aut_model": "",
+  "aut_provider": "",
+  "aut_backend_class": "",
+  "aut_endpoint": "",
+  "duration_s": 318.1,
+  "turns": 5,
+  "finish_reason": "planning_failed",
+  "total_actions": 5,
+  "blocked_actions": 0,
+  "tool_usage": {
+    "sense_tools": 3,
+    "sense_presence": 1,
+    "base_humanoid_move": 1
+  },
+  "tool_success_rates": {
+    "sense_tools": 1.0,
+    "sense_presence": 1.0,
+    "base_humanoid_move": 0.0
+  },
+  "response_texts": [],
+  "aut_memories_formed": 134,
+  "aut_causal_links": 14,
+  "aut_nac_summary": {
+    "total_links": 14,
+    "top_links": [
+      {
+        "event": "tool:sense_tools",
+        "outcome": "tool:sense_tools:positive",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "success:Found 2 capabilities:\n- base_humanoid_listen: Atte",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "plan:I need to understand the dungeon's layout before attempting to escape with the sleeping guard. I will use sense_tools to explore and discover any relevant actions or objects.:success",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "tool:sense_tools:positive",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "success:Your capabilities by category:\n- Head (base_humano",
+        "confidence": 0.475,
+        "observations": 1
+      }
+    ]
+  },
+  "cost_usd": 0.0,
+  "total_input_tokens": 76958,
+  "total_output_tokens": 2979,
+  "lane_breakdown": {
+    "large": {
+      "lane": "large",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    },
+    "small": {
+      "lane": "small",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    }
+  },
+  "latency_p50_ms": 0.0,
+  "latency_p99_ms": 0.0,
+  "pain_events_count": 0,
+  "fear_blocks_count": 0,
+  "learn_events_count": 19,
+  "provider_failures": {},
+  "llm_summary": "During the simulation, the robot assistant was unable to escape the dungeon with a sleeping guard due to planning failure. It successfully used sense_tools three times and detected the presence once. However, it failed to move the base_humanoid when attempting to do so. The assistant formed 134 episodic memories and learned 14 causal links, with the top link being between sense_tools and its positive effect on the assistant's actions.",
+  "llm_issues_found": [
+    "The robot assistant failed to move the base_humanoid during its escape attempt."
+  ],
+  "llm_recommendations": [
+    "Improve the base_humanoid_move function to ensure successful movement during escape attempts. Consider implementing a pathfinding algorithm or obstacle detection system to help the robot navigate around any potential barriers. Additionally, explore ways to improve the planning algorithm to better handle complex scenarios like escaping a dungeon with a sleeping guard."
+  ],
+  "llm_finish_status": "planning_failed",
+  "llm_finish_reason": "planning failures=4 (limit 3), transport failures=0 (limit 3); last=unregistered_tool_proposed \u2014 see bugs ledger D13",
+  "llm_finish_summary": "PLANNING LIVENESS EXHAUSTED [planning_failed] (bugs ledger D13): planning failures=4 (limit 3), transport failures=0 (limit 3); last=unregistered_tool_proposed \u2014 see bugs ledger D13",
+  "substrate_metrics": {},
+  "bio_telemetry_path": "/tmp/o19-home-rx867_1i/sim_reports/20261001_215255/bio_telemetry.jsonl",
+  "apparatus": {
+    "substrate_actions_per_turn": null
+  },
+  "ts": 1790913175.5177972,
+  "provenance": {
+    "executed_maxim_file": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "17ca6c56b533012f338986cb0aa0371916ec58ec",
+    "working_tree_dirty_src_scripts": false,
+    "code_tree_sha256": "e2297a99d30e520b1d91c6e82802b995a78045067eec4c48eaf9e04474fcfc6c",
+    "harness_run_id": "d520774f582146b9be6e40d64ce4221c",
+    "python": "/Users/dennys/RMSrv/scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages",
+    "maxim_version": "1.3.1",
+    "configured_n_ctx": 8192,
+    "configured_n_ctx_source": "config",
+    "language_profile": "mistral-7b-instruct-v0.2",
+    "language_router_n_ctx": 8192,
+    "language_budget_n_ctx": 8192,
+    "aut_profile": "mistral-7b-instruct-v0.2",
+    "aut_router_n_ctx": 8192,
+    "aut_budget_n_ctx": 8192,
+    "code_changed_during_run": false,
+    "end_executed_git_hash": "17ca6c56b533012f338986cb0aa0371916ec58ec",
+    "end_code_tree_sha256": "e2297a99d30e520b1d91c6e82802b995a78045067eec4c48eaf9e04474fcfc6c"
+  },
+  "record_kind": "sim_report",
+  "_format_version": "1.0"
+}
