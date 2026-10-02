@@ -30,6 +30,7 @@ from maxim.agents.llm_types import (  # noqa: F401
     LLMProposal,
     LLMRequest,
     ModeInfo,
+    PLANNING_LANE,
 )
 from maxim.agents.llm_context import (  # noqa: F401
     _COST_BRIDGE_DEFAULTS,
@@ -576,7 +577,7 @@ class LLMWorker:
 
         try:
             self._pool.submit(
-                lane="large",
+                lane=PLANNING_LANE,
                 job_id=job_id,
                 fn=_retry_fn,
                 priority=-request.priority,
@@ -700,6 +701,10 @@ class LLMWorker:
             # propagate across ThreadPoolExecutor boundaries — see the
             # regression test in tests/unit/test_cancellation.py.
             ctx = contextvars.copy_context()
+            # The time this call is allowed, stamped for the in-flight registry so the simulation stall detector
+            # judges a non-streaming call by the time IT was given (a timeout-retry's doubled allowance included).
+            if isinstance(request_context, dict):
+                request_context = {**request_context, "allowed_s": timeout_override or self._llm_timeout}
             future = executor.submit(
                 ctx.run,
                 self._llm.generate_json,
@@ -879,7 +884,7 @@ class LLMWorker:
             max_tokens,
         )
 
-        lane_name = lane or "large"
+        lane_name = lane or PLANNING_LANE
         if provider_hint and provider_hint in self._provider_semaphores:
             provider_semaphore = self._provider_semaphores[provider_hint]
 
@@ -1006,7 +1011,7 @@ class LLMWorker:
         )
 
         if self._pool is not None:
-            lane = "large"
+            lane = PLANNING_LANE
             request.lane = lane
             # D13: stash BEFORE the submit attempt. A submit rejected on
             # queue.Full is itself a lost planning turn, and the loop's
@@ -1150,7 +1155,7 @@ class LLMWorker:
             request_context = {
                 "request_id": request.request_id,
                 "agent": "llm_worker",
-                "lane": request.lane or "large",
+                "lane": request.lane or PLANNING_LANE,
                 "provider_hint": provider_hint or "",
                 "session_id": self._session_id,
             }
@@ -1229,7 +1234,7 @@ class LLMWorker:
                 response=response if isinstance(response, dict) else None,
                 latency_ms=latency_ms,
                 request_id=request.request_id,
-                lane=request.lane or "large",
+                lane=request.lane or PLANNING_LANE,
                 mode_name=request.mode.name if request.mode else "unknown",
             )
 

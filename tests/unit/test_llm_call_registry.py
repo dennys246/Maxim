@@ -108,9 +108,9 @@ def test_nested_dispatch_inner_end_restores_outer_call_id():
     became a silent no-op until the outer ended. Wedged-call detection would
     fire erroneously while the outer call was actually receiving bytes.
     """
-    outer = r.register_call_start(tier="large")
+    outer = r.register_call_start(tier="large", streams=True)
     assert r.current_call_id() == outer
-    inner = r.register_call_start(tier="medium")  # nested
+    inner = r.register_call_start(tier="medium", streams=True)  # nested
     assert r.current_call_id() == inner
     r.register_call_end(inner)
     # CRITICAL: contextvar restored to outer, NOT cleared
@@ -129,7 +129,7 @@ def test_nested_dispatch_inner_end_restores_outer_call_id():
 
 
 def test_register_byte_received_updates_last_byte_at():
-    r.register_call_start(tier="large")
+    r.register_call_start(tier="large", streams=True)
     time.sleep(0.05)  # accumulate some silence
     initial_silence = r.oldest_byte_silence_s(tier="large")
     assert initial_silence is not None and initial_silence >= 0.04
@@ -139,8 +139,8 @@ def test_register_byte_received_updates_last_byte_at():
 
 
 def test_register_byte_received_with_explicit_call_id():
-    cid1 = r.register_call_start(tier="large")
-    r.register_call_start(tier="large")  # second call shadows cid1's contextvar
+    cid1 = r.register_call_start(tier="large", streams=True)
+    r.register_call_start(tier="large", streams=True)  # second call shadows cid1's contextvar
     time.sleep(0.05)
     r.register_byte_received(call_id=cid1)  # update OLD call's byte clock explicitly
     # Both calls in flight; oldest_byte_silence_s returns the min (most recent)
@@ -163,9 +163,9 @@ def test_oldest_byte_silence_s_none_when_no_calls():
 
 
 def test_oldest_byte_silence_s_tier_filtered():
-    r.register_call_start(tier="large")
+    r.register_call_start(tier="large", streams=True)
     time.sleep(0.05)
-    r.register_call_start(tier="medium")  # younger
+    r.register_call_start(tier="medium", streams=True)  # younger
     # large tier: only one call, silence ~ 0.05s
     s_large = r.oldest_byte_silence_s(tier="large")
     assert s_large is not None and s_large >= 0.04
@@ -240,3 +240,80 @@ def test_concurrent_query_during_mutation():
 
     assert not errors, f"query loop errored: {errors!r}"
     assert not r.any_call_in_flight()
+
+
+# ─── The composition: the router registers what the stall detector asks for (#1042) ──
+
+
+def _dispatch_observing(lane: str | None) -> dict:
+    """Run one real ``LLMRouter._complete_text_locked`` dispatch whose provider attempt records what the registry
+    reports WHILE the call is in flight — the question the orchestrator's stall detector asks."""
+    import dataclasses
+    from unittest.mock import patch
+
+    from maxim.models.language.config import LLMConfig
+    from maxim.models.language.router import LLMRouter
+
+    cfg = dataclasses.replace(
+        LLMConfig(),
+        enabled=True,
+        providers={"a": {"type": "maxim_peer", "base_url": "http://127.0.0.1:1/v1", "model": "m"}},
+    )
+    router = LLMRouter(cfg)
+    seen: dict = {}
+
+    def fake_try_provider(**_kwargs):
+        seen["large"] = r.any_call_in_flight(tier="large")
+        seen["any"] = r.any_call_in_flight()
+        return "", None, "failed"
+
+    context = {"agent_id": "llm_worker", "request_id": "req-1", **({"lane": lane} if lane else {})}
+    with patch.object(router, "_try_provider", side_effect=fake_try_provider):
+        with patch.object(router, "_candidate_providers", return_value=(["a"], "normal", {})):
+            with router._inference_lock:
+                router._complete_text_locked("", "hi", temperature=0.0, max_tokens=1, request_context=context)
+    return seen
+
+
+def test_a_routed_call_is_in_flight_at_its_lane_tier() -> None:
+    """The orchestrator's stall detector suppresses nudges while ``any_call_in_flight(tier=<its lane>)``. The router
+    must register the request's LANE ("large"), not its cost-budget tier ("normal"): otherwise every nudge fires
+    during legitimate inference (O19 Exp 10 attempt 1)."""
+    seen = _dispatch_observing("large")
+    assert seen == {"large": True, "any": True}, seen
+
+
+def test_a_routed_call_without_a_lane_never_registers_a_cost_tier() -> None:
+    """No lane on the request: the call registers as "unknown" (in flight, but at no lane), never as a cost tier."""
+    import dataclasses
+    from unittest.mock import patch
+
+    from maxim.models.language.config import LLMConfig
+    from maxim.models.language.router import LLMRouter
+
+    cfg = dataclasses.replace(
+        LLMConfig(),
+        enabled=True,
+        providers={"a": {"type": "maxim_peer", "base_url": "http://127.0.0.1:1/v1", "model": "m"}},
+    )
+    router = LLMRouter(cfg)
+    seen: dict = {}
+
+    def fake_try_provider(**_kwargs):
+        seen.update({t: r.any_call_in_flight(tier=t) for t in ("unknown", "normal", "large")})
+        return "", None, "failed"
+
+    with patch.object(router, "_try_provider", side_effect=fake_try_provider):
+        with patch.object(router, "_candidate_providers", return_value=(["a"], "normal", {})):
+            with router._inference_lock:
+                router._complete_text_locked("", "hi", temperature=0.0, max_tokens=1, request_context={"agent_id": "x"})
+    assert seen == {"unknown": True, "normal": False, "large": False}, seen
+
+
+def test_a_non_streaming_call_reports_no_byte_silence():
+    """Only streaming calls receive bytes; a non-streaming call's silence is unknown, never a wedge signal (#1042)."""
+    r.register_call_start(tier="large")  # streams=False
+    time.sleep(0.02)
+    assert r.any_call_in_flight(tier="large") and r.oldest_byte_silence_s(tier="large") is None
+    r.register_call_start(tier="large", streams=True)
+    assert r.oldest_byte_silence_s(tier="large") is not None

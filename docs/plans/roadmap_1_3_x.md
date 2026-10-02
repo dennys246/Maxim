@@ -257,6 +257,13 @@ touching it have landed." Every batch below stays inside it. A ⟲ fix in best-e
 after decomposition work has started is discharged by its own rows' re-runs in its own PR, never by the
 closing walk.
 
+**Fence exception, #1042 (owner-approved 2026-10-01):** the simulation stall detector's suppression in
+`orchestrator.py::start_simulation_mode` was dead (it queried the lane, the router registered the cost tier), and
+O19 Exp 10 attempt 1 aborted on the stale nudges it let through. The touch moves the decision out to
+`runtime/stall_threshold.py::stall_suppression` (one call, fed by the bridge's new `turn_in_progress` flag and the
+lane timeout), restarts the idle clock while the agent's turn is in progress, reports a registry failure instead of
+swallowing it, and exempts ping-pong; the function shrinks (ceiling 3277 → 3265). Follow-ups: #1043, #1044.
+
 **Fence exception, #1042 PR B (owner-approved 2026-10-01, text only):** the narrator's stall-nudge and
 diversity-checkpoint strings in `orchestrator.py::start_simulation_mode` now label the agent-under-test's tool names
 as not the narrator's own (they were quoted unlabelled, and the narrator echoed them). No logic moves; the function's

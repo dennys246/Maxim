@@ -1,15 +1,19 @@
 """Cross-component in-flight LLM call registry.
 
 Single source of truth for "is there an LLM call in flight right now?"
-across the codebase. Three consumers query it:
+across the codebase. One consumer queries it today (the others are planned):
 - :mod:`maxim.simulation.orchestrator` :func:`_stall_detector` — suppresses
   spurious "REPEATED STALL" nudges during legitimate inference (the bug
   this module exists to close — see [docs/plans/deferred/stall_detector_timeout_awareness.md]).
 - :class:`maxim.runtime.heartbeat.HeartbeatMonitor` (Stage 2, pending) —
   will suppress agent-loop-idle warnings when an LLM call is the reason
   for silence. Tracked in the same plan doc.
-- `maxim doctor`'s Derived Config rows — exposes current in-flight state
-  for operator diagnostics.
+- (planned, not wired) operator diagnostics: no ``maxim doctor`` row reads
+  the registry today.
+
+The registered ``tier`` is the request's LANE (``PLANNING_LANE`` for every
+planning call — ``maxim.agents.llm_types.PLANNING_LANE``), and each entry records whether the call STREAMS: only a
+streaming call reports bytes, so only it can be judged byte-silent (#1042).
 
 The instrumentation site is
 :meth:`maxim.models.language.router.LLMRouter._complete_text_locked` —
@@ -55,12 +59,14 @@ consumers of the snapshot API.
 from __future__ import annotations
 
 import contextvars
+import dataclasses
 import threading
 import time
 import uuid
 from dataclasses import dataclass
 
 __all__ = [
+    "non_streaming_calls",
     "any_call_in_flight",
     "current_call_id",
     "oldest_byte_silence_s",
@@ -79,9 +85,15 @@ class _InFlightCall:
     """
 
     call_id: str
-    tier: str
+    tier: str  # the request's LANE ("large"/"medium"/"small"/"unknown") — never a cost-budget tier
     started_at: float
     last_byte_at: float
+    # Only a STREAMING call reports bytes (register_byte_received from the stream loops): a non-streaming call's
+    # "byte silence" would just be its age, so it never feeds the wedged-connection verdict (#1042).
+    streams: bool = False
+    # The time this call was ALLOWED (the worker's effective timeout, a per-request override included); ``None`` when
+    # the caller did not say. A non-streaming call is judged wedged by age against it (#1042).
+    allowed_s: float | None = None
 
 
 _registry: dict[str, _InFlightCall] = {}
@@ -115,7 +127,7 @@ def current_call_id() -> str | None:
 _STALE_ENTRY_TTL_S = 1800.0
 
 
-def register_call_start(*, tier: str) -> str:
+def register_call_start(*, tier: str, streams: bool = False, allowed_s: float | None = None) -> str:
     """Register the start of an LLM dispatch.
 
     Sets ``_active_call_id`` ContextVar so per-backend stream loops can
@@ -145,7 +157,9 @@ def register_call_start(*, tier: str) -> str:
     token = _active_call_id.set(cid)
     _entry_tokens[cid] = token  # remembered for stack-style reset on end
     with _lock:
-        _registry[cid] = _InFlightCall(call_id=cid, tier=tier, started_at=now, last_byte_at=now)
+        _registry[cid] = _InFlightCall(
+            call_id=cid, tier=tier, started_at=now, last_byte_at=now, streams=streams, allowed_s=allowed_s
+        )
     return cid
 
 
@@ -191,12 +205,7 @@ def register_byte_received(call_id: str | None = None) -> None:
         cur = _registry.get(cid)
         if cur is None:
             return
-        _registry[cid] = _InFlightCall(
-            call_id=cur.call_id,
-            tier=cur.tier,
-            started_at=cur.started_at,
-            last_byte_at=now,
-        )
+        _registry[cid] = dataclasses.replace(cur, last_byte_at=now)  # every other field carried (streams incl.)
 
 
 def _live_entries_snapshot(now: float) -> list[_InFlightCall]:
@@ -232,10 +241,27 @@ def oldest_byte_silence_s(*, tier: str | None = None) -> float | None:
     *minimum* byte-silence across the filtered set (the call with the
     most recent activity — if ANY call is recently active, the orchestrator
     should keep suppressing).
+
+    Only STREAMING calls count: a non-streaming call reports no bytes, so its silence is unknown, never evidence of
+    a wedged connection (#1042). ``None`` also when only non-streaming calls are in flight.
     """
     now = time.time()
-    candidates = [now - v.last_byte_at for v in _live_entries_snapshot(now) if tier is None or v.tier == tier]
+    candidates = [
+        now - v.last_byte_at for v in _live_entries_snapshot(now) if v.streams and (tier is None or v.tier == tier)
+    ]
     return min(candidates) if candidates else None
+
+
+def non_streaming_calls(*, tier: str | None = None) -> list[tuple[float, float | None]]:
+    """``(age_s, allowed_s)`` of every NON-streaming call in flight. Such a call reports no bytes, so its age —
+    against the time it was allowed — is the only evidence it has: the stall detector judges it wedged once it has
+    outlived that time (#1042)."""
+    now = time.time()
+    return [
+        (now - v.started_at, v.allowed_s)
+        for v in _live_entries_snapshot(now)
+        if not v.streams and (tier is None or v.tier == tier)
+    ]
 
 
 def _reset_for_tests() -> None:
