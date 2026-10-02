@@ -147,6 +147,7 @@ failure, missing ref, nothing governed).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -707,6 +708,37 @@ def _names_entry(text: str, name: str) -> list[str]:
     return [para for para in re.split(r"\n\s*\n", text) if pat.search(para)]
 
 
+def record_form_problems(ix: _Index, entry: Path, *, facts, fallback: bool, added, governing) -> list[str]:
+    """The records' own form (ts present and zoned, dirty stamps allowed and echoed): judged on every governed or
+    excepted entry, and never excused by an exceptions-file clause."""
+    out: list[str] = []
+    rerun = ix.is_rerun(entry.name)
+    if fallback and entry.suffix == ".jsonl" and facts.has_records and added is not None and added >= TS_REQUIRED_FROM:
+        out.append("a .jsonl record file committed after 2026-08-29 must carry epoch `ts` on its records")
+    if rerun and (added is None or added >= EXCEPTIONS_FROZEN) and (fallback or facts.missing_ts):
+        out.append("a re-run recorded after the M1b PR 4 freeze carries `ts` on every record (every report.json)")
+    if facts.naive:
+        out.append("`ts` is a naive ISO-8601 string (no UTC offset) — its zone is unknowable; write epoch seconds")
+    if facts.dirty_unallowed:
+        out.append(
+            f"{facts.dirty_unallowed} record(s) stamp working_tree_dirty_src_scripts: true without "
+            "allow_dirty: true — a gated record from a dirty tree is refused or explicitly allowed, never silent"
+        )
+    if facts.allow_dirty:
+        docs = set().union(*(ix.docs_by_prereg.get(p, set()) for p in governing))
+        echoed = False
+        for d in docs:
+            text = (ix.repo_root / d).read_text(errors="replace")
+            paras = _names_entry(text, entry.name) + [p for rid in facts.run_ids for p in _names_entry(text, rid)]
+            echoed |= any("allow_dirty" in para for para in paras)
+        if not echoed:
+            out.append(
+                "records carry allow_dirty: true but no result doc of this experiment names the entry (or its "
+                "harness_run_id) in a paragraph mentioning `allow_dirty` — the write-up must echo the allowance"
+            )
+    return out
+
+
 def classify(
     ix: _Index,
     entry: Path,
@@ -714,11 +746,15 @@ def classify(
     grandfathered: dict[str, str],
     not_governed: dict[str, str],
     ungoverned_reruns: dict[str, str],
+    excepted: dict[str, str] | None = None,
 ) -> dict:
     """One data entry's judgement: ``status`` PASS | FAIL | GRANDFATHERED | UNGOVERNED_RERUN | NOT_GOVERNED |
-    OUT_OF_SCOPE | NON_GATED, ``rerun``, ``problems`` and ``notes``. The surface M1b PR 5's evidence gate reads
+    OUT_OF_SCOPE | NON_GATED | EXCEPTED, ``rerun``, ``problems`` and ``notes``. ``excepted``: entry -> the reason of
+    an ACTIVE `kind: "prereg"` clause (:func:`active_prereg_exceptions`); it excuses only a SUBSTANTIVE failure
+    (the prereg missing, later than the data, a re-run undeclared), never a list-hygiene one. The surface M1b PR 5's evidence gate reads
     (also printed per entry by ``--json``)."""
     repo_root, ref = ix.repo_root, ix.ref
+    excepted = excepted or {}
     rel = entry.relative_to(repo_root)
     key, name = rel.as_posix(), entry.name
     out: dict = {"entry": key, "status": "PASS", "rerun": False, "problems": [], "notes": []}
@@ -742,6 +778,19 @@ def classify(
         if key in ungoverned_reruns:
             out["status"] = "UNGOVERNED_RERUN"
             out["notes"].append(f"UNGOVERNED RE-RUN (listed) — {ungoverned_reruns[key]}")
+        elif key in excepted:
+            # The clause excuses the missing pre-registration only: the records' own form is still judged.
+            facts = data_facts(entry)
+            _when, _how, fallback = data_time(repo_root, ref, rel, facts)
+            added = first_commit_time(repo_root, ref, rel)
+            hygiene = record_form_problems(ix, entry, facts=facts, fallback=fallback, added=added, governing=set())
+            if hygiene:
+                out["status"] = "FAIL"
+                out["problems"].extend(hygiene)
+                out["notes"].append("its exceptions-file clause does not apply: a record-form failure is present")
+            else:
+                out["status"] = "EXCEPTED"
+                out["notes"].append(f"EXCEPTED (exceptions file) — an ungoverned re-run: {excepted[key]}")
         else:
             out["status"] = "FAIL"
             out["problems"].append(
@@ -769,12 +818,6 @@ def classify(
     )
     if fallback:
         notes.append(f"no `ts` in any record — judged at commit granularity ({how})")
-        if entry.suffix == ".jsonl" and facts.has_records and added is not None and added >= TS_REQUIRED_FROM:
-            problems.append("a .jsonl record file committed after 2026-08-29 must carry epoch `ts` on its records")
-    if rerun and (added is None or added >= EXCEPTIONS_FROZEN) and (fallback or facts.missing_ts):
-        problems.append("a re-run recorded after the M1b PR 4 freeze carries `ts` on every record (every report.json)")
-    if facts.naive:
-        problems.append("`ts` is a naive ISO-8601 string (no UTC offset) — its zone is unknowable; write epoch seconds")
     declared = False
     for prereg in sorted(governing):
         if not (repo_root / prereg).exists():
@@ -826,33 +869,28 @@ def classify(
             "a re-run needs its own PRE-DATA declaration before its data: an amendment scoped to it "
             "(`**Amendment N — <date>, PRE-DATA, for \\`<entry>\\`, …**`) or a re-run pre-registration's `**Scope:**` line"
         )
-    if facts.dirty_unallowed:
-        problems.append(
-            f"{facts.dirty_unallowed} record(s) stamp working_tree_dirty_src_scripts: true without "
-            "allow_dirty: true — a gated record from a dirty tree is refused or explicitly allowed, never silent"
-        )
-    if facts.allow_dirty:
-        docs = set().union(*(ix.docs_by_prereg.get(p, set()) for p in governing))
-        echoed = False
-        for d in docs:
-            text = (repo_root / d).read_text(errors="replace")
-            paras = _names_entry(text, name) + [p for rid in facts.run_ids for p in _names_entry(text, rid)]
-            echoed |= any("allow_dirty" in para for para in paras)
-        if not echoed:
-            problems.append(
-                "records carry allow_dirty: true but no result doc of this experiment names the entry (or its "
-                "harness_run_id) in a paragraph mentioning `allow_dirty` — the write-up must echo the allowance"
-            )
+    hygiene = record_form_problems(ix, entry, facts=facts, fallback=fallback, added=added, governing=governing)
+    excusable = bool(problems) and not hygiene  # a clause excuses a SUBSTANTIVE failure only
+    if problems and hygiene and key in excepted:
+        notes.append("its exceptions-file clause does not apply: a record-form failure is present")
+    problems.extend(hygiene)
     if problems and key in grandfathered:
         out["status"] = "GRANDFATHERED"
         notes.append(f"GRANDFATHERED (still failing) — {grandfathered[key]}")
         notes.extend(f"    {p}" for p in problems)
         out["problems"] = []
+    elif excusable and key in excepted:
+        out["status"] = "EXCEPTED"
+        notes.append(f"EXCEPTED (exceptions file; still failing) — {excepted[key]}")
+        notes.extend(f"    {p}" for p in problems)
+        out["problems"] = []
     elif problems:
         out["status"] = "FAIL"
-    elif key in grandfathered:
+    elif key in grandfathered:  # list hygiene: never excused by a clause
         out["status"] = "FAIL"
         out["problems"] = ["listed as GRANDFATHERED but now PASSES — remove the stale entry"]
+    if key in excepted and out["status"] in ("PASS", "FAIL") and not problems:
+        notes.append("its exceptions-file clause is STALE: the entry passes without it")
     return out
 
 
@@ -910,7 +948,80 @@ def frozen_list_problems(
 JSON_FORMAT_VERSION = "1.0"
 # Every status classify() can return. A consumer (the M1b evidence gate) fails closed on any other value: the
 # set will grow (e.g. an EXCEPTED status once the exceptions file is read here).
-STATUSES = ("PASS", "FAIL", "GRANDFATHERED", "UNGOVERNED_RERUN", "NOT_GOVERNED", "OUT_OF_SCOPE", "NON_GATED")
+STATUSES = (
+    "PASS",
+    "FAIL",
+    "GRANDFATHERED",
+    "UNGOVERNED_RERUN",
+    "NOT_GOVERNED",
+    "OUT_OF_SCOPE",
+    "NON_GATED",
+    "EXCEPTED",
+)
+EXCEPTIONS_FILE = "docs/experiments/evidence_exceptions.json"
+PREREG_EXCEPTION_FIELDS = ("id", "kind", "path", "owner", "reason", "date")
+
+
+def prereg_exception_problem(c: dict, repo_root: Path | None) -> str | None:
+    """Why a `kind: "prereg"` clause is malformed (None: well-formed): a top-level data entry, pinned by EXACTLY one
+    of `sha256` (a file) or `tree` (a directory's git tree id). With ``repo_root`` the pin's form must match what the
+    entry IS at HEAD. The one owner of the clause shape: the evidence gate calls it, and this lint never applies a
+    clause it rejects."""
+    if any(not isinstance(c.get(f), str) or not c.get(f) for f in PREREG_EXCEPTION_FIELDS):
+        return "lacks a required field"
+    path, root = c["path"], DATA_DIR.as_posix()
+    if not path.startswith(root + "/") or "/" in path[len(root) + 1 :] or ".." in path.split("/"):
+        return f"path {path!r} is not a top-level data entry"
+    pins = [k for k in ("sha256", "tree") if k in c]
+    if len(pins) != 1 or not isinstance(c[pins[0]], str) or not c[pins[0]]:
+        return "needs exactly one pin: `sha256` (a file) or `tree` (a directory)"
+    if set(c) - set(PREREG_EXCEPTION_FIELDS) - {"sha256", "tree"}:
+        return "carries unknown fields"
+    if repo_root is not None:
+        want = "blob" if pins[0] == "sha256" else "tree"
+        if _git(repo_root, "cat-file", "-t", f"HEAD:{path}", check=False).strip() != want:
+            return f"pins a {want} but {path} is not one at HEAD"
+    return None
+
+
+def active_prereg_exceptions(repo_root: Path, ref: str) -> tuple[dict[str, str], list[str]]:
+    """The `kind: "prereg"` clauses of the exceptions file AS IT STANDS ON ``ref`` (main: a clause is reviewed
+    before it acts) whose pin still matches the entry at HEAD — a file by its sha256, a directory by its git tree id
+    — and whose working copy is clean. Returns (entry -> reason, notes about inert clauses). The evidence gate
+    also validates each clause on every PR; a malformed clause never acts here (a NOTE)."""
+    if _git(repo_root, "cat-file", "-t", f"{ref}:{EXCEPTIONS_FILE}", check=False).strip() != "blob":
+        return {}, []
+    try:
+        clauses = json.loads(_git(repo_root, "show", f"{ref}:{EXCEPTIONS_FILE}"))
+    except ValueError:
+        return {}, [f"{EXCEPTIONS_FILE} on {ref} is not JSON: no prereg exception acts"]
+    active: dict[str, str] = {}
+    notes: list[str] = []
+    for c in clauses if isinstance(clauses, list) else []:
+        if not isinstance(c, dict) or c.get("kind") != "prereg":
+            continue
+        problem = prereg_exception_problem(c, None)
+        if problem:
+            notes.append(f"exceptions-file clause {c.get('id')!r} is malformed ({problem}): it never acts")
+            continue
+        path, reason = c["path"], str(c.get("reason") or "")
+        kind = _git(repo_root, "cat-file", "-t", f"HEAD:{path}", check=False).strip()
+        if "sha256" in c and "tree" not in c and kind == "blob":
+            data = subprocess.run(
+                ["git", "cat-file", "blob", f"HEAD:{path}"], cwd=repo_root, capture_output=True
+            ).stdout
+            pinned = hashlib.sha256(data).hexdigest() == c["sha256"]
+        elif "tree" in c and "sha256" not in c and kind == "tree":
+            pinned = _git(repo_root, "rev-parse", f"HEAD:{path}", check=False).strip() == c["tree"]
+        else:
+            pinned = False
+        if not pinned:
+            notes.append(f"{path}: exceptions-file clause {c.get('id')!r} does not pin the entry at HEAD (inert)")
+        elif _git(repo_root, "status", "--porcelain", "--untracked-files=all", "--", path).strip():
+            notes.append(f"{path}: exceptions-file clause {c.get('id')!r} is inert: the working copy differs from HEAD")
+        else:
+            active[path] = reason
+    return active, notes
 
 
 def _envelope(results: list[dict], failures: list[str]) -> dict:
@@ -964,6 +1075,8 @@ def lint(
     try:
         ix = _Index(repo_root, ref)
         notes.extend(ix.notes)
+        excepted, inert = active_prereg_exceptions(repo_root, ref)
+        notes.extend(inert)
         failures.extend(ix.problems)
         data_root = repo_root / DATA_DIR
         names = {e.name for e in data_root.iterdir()} if data_root.exists() else set()
@@ -976,7 +1089,12 @@ def lint(
                     failures.append(f"{prereg}: declares `{e}`, which is not its experiment's data (token mismatch)")
         for entry in sorted(data_root.iterdir()) if data_root.exists() else []:
             r = classify(
-                ix, entry, grandfathered=grandfathered, not_governed=not_governed, ungoverned_reruns=ungoverned_reruns
+                ix,
+                entry,
+                grandfathered=grandfathered,
+                not_governed=not_governed,
+                ungoverned_reruns=ungoverned_reruns,
+                excepted=excepted,
             )
             results.append(r)
             if r["status"] not in ("NON_GATED", "OUT_OF_SCOPE", "NOT_GOVERNED", "UNGOVERNED_RERUN"):

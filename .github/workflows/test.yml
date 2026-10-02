@@ -1204,6 +1204,17 @@ jobs:
           git fetch --unshallow origin main 2>/dev/null || git fetch origin main
           python3 scripts/lint_prereg_precedes_data.py --ref origin/main
 
+      - name: Ledger evidence gate (M1b PR 5b-1)
+        run: |
+          # A ledger row raised, re-dated or moved between positive statuses
+          # needs a newly cited, stamped verdict that the merge-base pass table
+          # (docs/experiments/evidence_pass_table.json) lets support it; every
+          # record a triggered row cites must be established (stamped, not a
+          # typed abort, not mock, code on main, one code tree) or legacy.
+          # Spec: docs/plans/m1b_ledger_evidence_gate.md, "PR 5b build spec".
+          # Positive controls: tests/unit/test_lint_evidence_gate.py.
+          python3 scripts/lint_evidence_gate.py
+
       - name: A post-tag src/ commit declares itself (roadmap 1.1.x item 16.10)
         run: |
           # The versioning policy has two halves. "main is ahead of PyPI; the

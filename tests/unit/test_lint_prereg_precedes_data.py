@@ -794,3 +794,148 @@ def test_a_ref_without_the_lint_fails_the_lists_closed(repo: Repo, capsys) -> No
     repo.commit("squash", T0)  # no scripts/lint_prereg_precedes_data.py on the ref (moved or renamed)
     assert run(repo, grandfathered={"docs/experiments/data/61_results.jsonl": "x"}, frozen_at=T0 + 1) == 1
     assert "added to GRANDFATHERED after the freeze" in capsys.readouterr().err
+
+
+# ── M1b PR 5b-2: `kind: "prereg"` clauses of the exceptions file (EXCEPTED) ─────────────────────────────────
+
+
+def _clause(repo: Repo, name: str, **kw) -> dict:
+    import hashlib
+
+    data = (repo.root / "docs/experiments/data" / name).read_bytes()
+    return {"id": "p1", "kind": "prereg", "path": f"docs/experiments/data/{name}",
+            "sha256": hashlib.sha256(data).hexdigest(), "owner": "o", "reason": "owner-named", "date": "2026-10-01",
+            **kw}  # fmt: skip
+
+
+def _late_data(repo: Repo) -> None:
+    repo.result_doc("61", "exp61_preregistration.md")
+    repo.data("61_results.jsonl", [T0 - 3600])  # before the prereg: a substantive FAIL
+    repo.prereg("exp61_preregistration.md")
+    repo.commit("prereg + data", T0)
+
+
+def test_a_pinned_exceptions_clause_excuses_a_substantive_failure(repo: Repo, capsys) -> None:
+    _late_data(repo)
+    repo.write("docs/experiments/evidence_exceptions.json", json.dumps([_clause(repo, "61_results.jsonl")]))
+    repo.commit("clause", T0 + 10)
+    assert run(repo) == 0
+    assert "EXCEPTED (exceptions file; still failing)" in capsys.readouterr().out
+
+
+def test_a_clause_pinned_to_other_bytes_is_inert(repo: Repo, capsys) -> None:
+    _late_data(repo)
+    repo.write(
+        "docs/experiments/evidence_exceptions.json", json.dumps([_clause(repo, "61_results.jsonl", sha256="0" * 64)])
+    )
+    repo.commit("clause", T0 + 10)
+    assert run(repo) == 1
+    assert "does not pin the entry at HEAD (inert)" in capsys.readouterr().out
+
+
+def test_a_clause_never_excuses_list_hygiene(repo: Repo, capsys) -> None:
+    """A GRANDFATHERED listing of an entry that now passes is a list-hygiene FAIL; a clause cannot excuse it."""
+    repo.result_doc("61", "exp61_preregistration.md")
+    repo.prereg("exp61_preregistration.md")
+    repo.commit("prereg", T0)
+    repo.data("61_results.jsonl", [T0 + 3600])
+    repo.commit("data", T0 + 7200)
+    repo.write("docs/experiments/evidence_exceptions.json", json.dumps([_clause(repo, "61_results.jsonl")]))
+    repo.commit("clause", T0 + 7300)
+    assert run(repo, grandfathered={"docs/experiments/data/61_results.jsonl": "x"}) == 1
+    assert "listed as GRANDFATHERED but now PASSES" in capsys.readouterr().err
+
+
+def test_a_clause_on_a_passing_entry_is_noted_stale(repo: Repo, capsys) -> None:
+    repo.result_doc("61", "exp61_preregistration.md")
+    repo.prereg("exp61_preregistration.md")
+    repo.commit("prereg", T0)
+    repo.data("61_results.jsonl", [T0 + 3600])
+    repo.commit("data", T0 + 7200)
+    repo.write("docs/experiments/evidence_exceptions.json", json.dumps([_clause(repo, "61_results.jsonl")]))
+    repo.commit("clause", T0 + 7300)
+    assert run(repo) == 0
+    assert "clause is STALE" in capsys.readouterr().out
+
+
+def test_a_directory_entry_is_pinned_by_its_tree_id(repo: Repo, capsys) -> None:
+    repo.result_doc("61", "exp61_preregistration.md")
+    repo.data("61_runs/a.jsonl", [T0 - 3600])
+    repo.prereg("exp61_preregistration.md")
+    repo.commit("prereg + data", T0)
+    tree = _git(repo.root, "rev-parse", "HEAD:docs/experiments/data/61_runs").strip()
+    clause = {"id": "p1", "kind": "prereg", "path": "docs/experiments/data/61_runs", "tree": tree, "owner": "o",
+              "reason": "r", "date": "2026-10-01"}  # fmt: skip
+    repo.write("docs/experiments/evidence_exceptions.json", json.dumps([clause]))
+    repo.commit("clause", T0 + 10)
+    assert run(repo) == 0
+    repo.data("61_runs/b.jsonl", [T0 - 3500])  # a file added later changes the tree: the clause goes inert
+    repo.commit("more data", T0 + 20)
+    assert run(repo) == 1
+
+
+def test_a_clause_excuses_an_ungoverned_rerun(repo: Repo, capsys) -> None:
+    repo.result_doc("61", "exp61_preregistration.md")
+    repo.prereg("exp61_preregistration.md")
+    repo.commit("prereg", T0)
+    repo.data("rerun_exp99_x.jsonl", [T0 + 3600])  # a re-run whose experiment has no pre-registration
+    repo.commit("data", T0 + 7200)
+    assert run(repo) == 1
+    repo.write("docs/experiments/evidence_exceptions.json", json.dumps([_clause(repo, "rerun_exp99_x.jsonl")]))
+    repo.commit("clause", T0 + 7300)
+    assert run(repo) == 0
+    assert "EXCEPTED (exceptions file) — an ungoverned re-run" in capsys.readouterr().out
+
+
+def test_a_clause_is_inert_while_the_working_copy_differs(repo: Repo, capsys) -> None:
+    _late_data(repo)
+    repo.write("docs/experiments/evidence_exceptions.json", json.dumps([_clause(repo, "61_results.jsonl")]))
+    repo.commit("clause", T0 + 10)
+    repo.data("61_results.jsonl", [T0 - 3600, T0 - 3500])  # uncommitted change to the excused entry
+    assert run(repo) == 1
+    assert "working copy differs from HEAD" in capsys.readouterr().out
+
+
+def test_a_clause_never_excuses_a_record_form_failure(repo: Repo, capsys) -> None:
+    """Late data whose records also carry a naive ISO ts: the clause would excuse the lateness, never the ts."""
+    repo.result_doc("61", "exp61_preregistration.md")
+    repo.write("docs/experiments/data/61_results.jsonl", json.dumps({"ts": "2026-08-10T11:53:49", "event": "x"}) + "\n")
+    repo.prereg("exp61_preregistration.md")
+    repo.commit("prereg + data", T0)
+    repo.write("docs/experiments/evidence_exceptions.json", json.dumps([_clause(repo, "61_results.jsonl")]))
+    repo.commit("clause", T0 + 10)
+    assert run(repo) == 1
+    assert "naive ISO-8601" in capsys.readouterr().err
+
+
+def test_a_malformed_clause_never_acts(repo: Repo, capsys) -> None:
+    _late_data(repo)
+    bad = {k: v for k, v in _clause(repo, "61_results.jsonl").items() if k != "owner"}
+    repo.write("docs/experiments/evidence_exceptions.json", json.dumps([bad]))
+    repo.commit("clause", T0 + 10)
+    assert run(repo) == 1
+    assert "is malformed (lacks a required field): it never acts" in capsys.readouterr().out
+
+
+def test_a_clause_not_yet_on_main_never_acts(repo: Repo) -> None:
+    """Clauses are read from the ref (main): one on a branch ahead of main is reviewed before it acts."""
+    _late_data(repo)
+    _git(repo.root, "checkout", "-q", "-b", "feat")
+    repo.write("docs/experiments/evidence_exceptions.json", json.dumps([_clause(repo, "61_results.jsonl")]))
+    repo.commit("clause on a branch", T0 + 10)
+    assert run(repo) == 1
+
+
+def test_a_clause_on_an_ungoverned_rerun_still_judges_the_records_form(repo: Repo, capsys) -> None:
+    repo.result_doc("61", "exp61_preregistration.md")
+    repo.prereg("exp61_preregistration.md")
+    repo.commit("prereg", T0)
+    repo.write(
+        "docs/experiments/data/rerun_exp99_x.jsonl", json.dumps({"ts": "2026-08-10T11:53:49", "event": "x"}) + "\n"
+    )
+    repo.commit("data", T0 + 7200)
+    repo.write("docs/experiments/evidence_exceptions.json", json.dumps([_clause(repo, "rerun_exp99_x.jsonl")]))
+    repo.commit("clause", T0 + 7300)
+    assert run(repo) == 1
+    out = capsys.readouterr()
+    assert "naive ISO-8601" in out.err and "clause does not apply" in out.out
