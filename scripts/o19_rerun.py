@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
-"""The O19 re-run harness: ONE attempt of Exp 10 (T1-1) or Exp 09 (T3-9) per invocation.
+"""The O19 re-run harness: ONE attempt of an Exp 10 (T1-1) or Exp 09 (T3-9) campaign per invocation.
 
-Pre-registrations (this harness runs them and nothing else; the protocol constants live in ``o19_verdict.py``
-so the verdict binds what was run as well as how it was judged):
-  docs/experiments/protocols/exp10_rerun_2026-09-30_preregistration.md
-  docs/experiments/protocols/exp09_rerun_2026-09-30_preregistration.md
+Pre-registrations (this harness runs them and nothing else; the protocol constants and the campaign table live in
+``o19_verdict.py`` so the verdict binds what was run as well as how it was judged). ``--exp`` names a CAMPAIGN:
+  docs/experiments/protocols/exp10_rerun_2026-10-02_preregistration.md   (--exp 10c2; campaign "10" is closed)
+  docs/experiments/protocols/exp09_rerun_2026-09-30_preregistration.md   (--exp 09)
 
-    python scripts/o19_rerun.py preflight --exp 10      # every refusal below + a dry-run marker push; spawns nothing
-    python scripts/o19_rerun.py --exp 10 --write-experiment-results       # one attempt (`run` is the default)
+    python scripts/o19_rerun.py preflight --exp 10c2    # every refusal below + a dry-run marker push; spawns nothing
+    python scripts/o19_rerun.py --exp 10c2 --write-experiment-results     # one attempt (`run` is the default)
     python scripts/o19_rerun.py run --exp 10 --mock     # offline end to end: fabricated sims, a temp rows file
 
 An attempt, in order:
   1. Refusals, none of which is an attempt: the interpreter's ``maxim`` is not this repo's (3); the tree is dirty
      (3); HEAD is not on ``origin/main``'s history (2); the rows file is not ``origin/main``'s, or main's history of
      it is not append-only (2); it would mix code trees — keep the rig at the first attempt's commit (2); it already
-     holds a complete attempt, or 3 attempts are declared (2); the model config does not resolve to the prereg's
+     holds a complete attempt, or 3 attempts are declared (2); the campaign is closed, or a successor's predecessor
+     has no pinned ABORT closure verdict on main before now (2); the model config does not resolve to the prereg's
      (2); something already listens on the sim's port (2); another harness holds the lock (2); a git step fails (2).
-  2. The start marker: an annotated tag ``refs/tags/o19/<exp>/attempt-<k>-<run_id>`` on HEAD, pushed to ``origin``.
+  2. The start marker: an annotated tag ``refs/tags/o19/<campaign>/attempt-<k>-<run_id>`` on HEAD, pushed to ``origin``.
      A failed push is a refusal, not an attempt. From here on the attempt counts, whatever happens: every phase
      that starts writes a row, an interrupted one too.
   3. Each phase from ONE fresh ``MAXIM_DATA_HOME`` (models symlinked, no ``active_llm_model`` state, so the
@@ -402,7 +403,7 @@ def mock_phase(exp: str, index: int, *, home: Path, run_id: str, resume: str | N
         lines.append(
             {"t": t + 0.1, "e": "enrichment_trace", "goal": goal, "memories": 3, "hippocampus_size": len(prior)}
         )
-        if exp == "09":
+        if v.experiment_of(exp) == "09":
             for reflex, inten in (("attack_flinch", 0.15 - 0.01 * turn), ("impact_brace", 0.2)):
                 lines.append(
                     {
@@ -455,6 +456,27 @@ def append_row(rows_file: Path, row: dict) -> None:
         os.fsync(f.fileno())
 
 
+def check_campaign(exp: str) -> None:
+    """The campaign may start an attempt: the table is sound, the campaign is not closed, and a successor's
+    predecessor closed with a pinned ABORT verdict that, with this campaign's prereg, is already on ``origin/main``
+    (owner decisions 2026-10-02). Real attempts only: a mock attempt writes nothing."""
+    if problems := v.protocol_problems():
+        raise Refused(f"the campaign table is unsound: {problems}")
+    if exp in (closed := v.closed_keys()):
+        raise Refused(f"campaign {exp} is closed (superseded by {closed[exp]}): run --exp {closed[exp]}")
+    sup = v.PROTOCOL[exp].get("supersedes")
+    if sup is not None:
+        problems = v.successor_problems(
+            exp,
+            v._git_bytes("show", f"origin/main:{sup['verdict']}"),
+            v.landed_on_main(sup["verdict"], sup["verdict_sha256"]),
+            v.landed_on_main(v.PROTOCOL[exp]["prereg"]),
+            time.time(),
+        )
+        if problems:
+            raise Refused("; ".join(problems))
+
+
 def prepare(args: argparse.Namespace, exp: str, mock: bool):
     """Everything before the marker. Returns ``(rows_file, provenance, run_id, k, home, gguf, read_served,
     lock)``; raises :class:`Refused`, or ``_provenance.ProvenanceError`` (exit 3)."""
@@ -472,6 +494,7 @@ def prepare(args: argparse.Namespace, exp: str, mock: bool):
     try:
         if not mock:
             check_on_main(rows_file)
+            check_campaign(exp)
         attempts = v.attempts_from_rows(read_rows(rows_file))
         if any(attempt_complete(exp, rs) for rs in attempts.values()):
             raise Refused("the rows file already holds a complete attempt: the first complete attempt decides")

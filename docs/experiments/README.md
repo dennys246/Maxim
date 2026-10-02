@@ -47,6 +47,7 @@ Every experiment entry follows this structure:
 4. **Tie to git.** Every entry records the git hash it was run against. Results are only valid for that code version unless explicitly re-validated.
 5. **Living practice docs link here.** [behavioral_convergence_practice.md](../plans/deferred/behavioral_convergence_practice.md) and [memory_consolidation_practice.md](../plans/archive/memory_consolidation_practice.md) reference entries by filename when citing experimental evidence.
 6. **Plan decisions link here.** When a plan phase passes or fails, the decision entry in the plan links to the experiment that produced the evidence.
+7. **Re-running an experiment to re-validate a ledger row?** Read [reproduction.md](reproduction.md) first: pre-registration, pinned code, declared attempts, stamped verdicts, and what to do when the instrument itself broke.
 
 ---
 
