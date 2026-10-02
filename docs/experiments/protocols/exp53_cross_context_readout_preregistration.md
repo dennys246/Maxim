@@ -270,6 +270,13 @@ gated azimuth — needs ~1.3 s at a 0.62 flag rate. **Floor → 0.50 (H1's), pro
 30 s.** Invalid reads remain re-drawn and counted (S3). Gates, targets, δ, seeds and the
 stop rules are untouched.
 
+**Amendment 3 — 2026-10-01, POST-DATA, structural (analyzer correction; no recorded result changes).** In
+`scripts/orient_backbone/exp53_cross_context_readout.py` (gates T, I and C) the gates compared rates rounded for the report (or float differences of rates) with the frozen decimal
+thresholds, so an outcome sitting exactly on a threshold could read on the wrong side (taught 0.70 against satiated 0.50 read a 0.19999… margin, failing `>= 0.20`; 0.7996 rounded to 0.800, passing `>= 0.80`). The analyzer now
+decides every gate on exact rationals of the counts against the frozen thresholds; rounded rates stay in the
+report only. No gate, margin, seed count or stop rule changed. Re-running the corrected analyzer over every committed Exp 53 record file (53: APPARATUS; 53b, its replication and 53d53: PASS)
+gives the recorded verdicts unchanged.
+
 ## Amendment rule
 
 Structural, pre-data amendments only (a harness dry run may reveal a mechanical

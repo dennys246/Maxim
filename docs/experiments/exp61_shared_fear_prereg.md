@@ -497,9 +497,10 @@ survival want learned the hard way by one agent, exported through the shipped si
 lands on an independent agent and drives its FIRST loop-live submersion, never having felt the
 air-hunger pain. Ledger row: `docs/plans/behavioral_graduation_candidates.md` (Tier 1, beside Exp 60).
 
-## Analyzer correction (2026-10-01; no recorded result changes)
+## Amendments
 
-Two defects in `scripts/survival_world/exp61_run.py::compute_verdict` were fixed (test-first):
+**Amendment 1 — 2026-10-01, POST-DATA, structural (analyzer correction; no recorded result changes).** Two
+defects in `scripts/survival_world/exp61_run.py::compute_verdict` were fixed (test-first):
 
 - **A duplicate clean (arm, pair) row is INCOMPLETE.** The verdict section above names two clean rows for one key
   a duplicate but did not list it among the INCOMPLETE causes, and the analyzer only named it in `refused`. Which

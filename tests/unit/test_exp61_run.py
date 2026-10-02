@@ -489,6 +489,7 @@ def test_a_duplicate_clean_pair_makes_the_verdict_incomplete() -> None:
     v = E.compute_verdict(rows, campaign_id="c1")
     assert v["verdict"] == "INCOMPLETE", v["verdict"]
     assert "duplicate clean" in (v["incomplete_cause"] or "")
+    assert any("duplicate clean" in m for m in v["refused"])  # named in both lists, as Exp 62 does
 
 
 def test_both_halves_decides_on_exact_rates_at_the_band() -> None:
