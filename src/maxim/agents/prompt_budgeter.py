@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +18,13 @@ logger = logging.getLogger(__name__)
 # dynamic bucket's MANDATORY sections (the user request) even when the stable
 # set is unusually large. Fixed (not per-turn) so it never perturbs the prefix.
 _STABLE_BUDGET_FRACTION = 0.7
+
+
+# Who wrote a section's text (#1042). "builder": the prompt builder's own guidance, which names tools, so it passes
+# through the budgeter's ``builder_gate`` (an agent is told only about tools it has). "data": what the agent reads
+# (a tool result, a memory, an input, its own roster), which is never rewritten. Required on every ``add``: a new
+# section cannot skip the decision.
+SectionSource = Literal["builder", "data"]
 
 
 class SectionPriority(IntEnum):
@@ -69,7 +76,13 @@ class PromptBudgeter:
         response_reserve: int,
         token_counter: Any,
         template_overhead: int = 100,
+        *,
+        builder_gate: Callable[[str], str] | None,
     ) -> None:
+        """``builder_gate`` (required, #1042) rewrites every ``source="builder"`` section: the prompt builder passes
+        its roster gate. ``None`` must be said explicitly (a budgeter with no roster to gate on), so a new production
+        budgeter cannot skip the gate by omission."""
+        self._builder_gate = builder_gate
         self._total_budget = total_budget
         self._response_reserve = response_reserve
         self._template_overhead = template_overhead
@@ -92,8 +105,13 @@ class PromptBudgeter:
         truncate_fn: Callable[[str, int], str] | None = None,
         cacheable: bool = False,
         phase_scoped: bool = False,
+        *,
+        source: SectionSource,
     ) -> None:
         """Add a section to the budget. Empty content is silently ignored.
+
+        ``source`` (required, #1042) says who wrote the text: ``"builder"`` sections pass through the
+        ``builder_gate``; ``"data"`` sections are kept as written.
 
         ``phase_scoped=True`` is only meaningful on a cacheable section (it
         places the section at the END of the stable prefix); asking for it
@@ -102,6 +120,10 @@ class PromptBudgeter:
         """
         if phase_scoped and not cacheable:
             raise ValueError(f"prompt section {name!r}: phase_scoped=True requires cacheable=True")
+        if source not in ("builder", "data"):
+            raise ValueError(f"prompt section {name!r}: source must be 'builder' or 'data', not {source!r}")
+        if source == "builder" and self._builder_gate is not None and content:
+            content = self._builder_gate(content)
         if not content or not content.strip():
             return
         token_count = self._counter.count_tokens(content)

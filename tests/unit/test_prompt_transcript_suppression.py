@@ -64,6 +64,7 @@ def _budgeter() -> PromptBudgeter:
         response_reserve=512,
         token_counter=_WordTokenCounter(),
         template_overhead=100,
+        builder_gate=None,
     )
 
 
@@ -204,7 +205,7 @@ class TestMotorProgramTruncation:
         # motor_programs section + its truncate_fn.
         ctx = StructuredContext(timestamp=time.time())
         ctx = _dc_replace(ctx, motor_programs=programs)
-        PromptBuilder._add_memory_sections(b, ctx)
+        PromptBuilder._add_memory_sections(b, ctx, tools=set())
         return b
 
     def _section(self, b: PromptBudgeter, name: str):

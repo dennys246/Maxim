@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json as _json
 import logging
+import functools
 import re
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -66,10 +67,33 @@ SIMULATION_ENVIRONMENT_TEXT = (
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def build_planning_banner(autonomy_level: AutonomyLevel) -> str:
-    """Build the planning mode banner text."""
+def build_planning_banner(autonomy_level: AutonomyLevel, *, tools: set[str] | frozenset[str] | None = None) -> str:
+    """Build the planning mode banner text. Its worked examples use 'internet_search'; an agent without it gets the
+    same format with a placeholder tool (#1042: a prompt names only tools the agent has)."""
     if autonomy_level != AutonomyLevel.PLANNING:
         return ""
+    if tools is not None and "internet_search" not in tools:
+        return "\n".join(
+            [
+                "!" * 60,
+                "!!! CRITICAL: PLANNING MODE - YOU MUST ASK PERMISSION FIRST !!!",
+                "!" * 60,
+                "",
+                "DO NOT output raw JSON. You MUST follow this EXACT format:",
+                "",
+                "STEP 1: Write a proposal IN PLAIN ENGLISH asking for permission",
+                "STEP 2: Write the EXACT delimiter: <|action_json|>",
+                "STEP 3: Write the JSON object, naming one of YOUR tools",
+                "",
+                "=== CORRECT FORMAT ===",
+                "I'd like to <what you will do and why>. May I proceed?",
+                "<|action_json|>",
+                '{"action": {"tool_name": "<one of your tools>", "params": {...}}, "confidence": 0.9}',
+                "",
+                "YOUR RESPONSE MUST START WITH PLAIN TEXT, NOT JSON!",
+                "!" * 60,
+            ]
+        )
     lines = [
         "!" * 60,
         "!!! CRITICAL: PLANNING MODE - YOU MUST ASK PERMISSION FIRST !!!",
@@ -172,19 +196,31 @@ def build_identity_section(mode: ModeInfo, request: LLMRequest, date_str: str, t
 
         if get_interactive_mode() == InteractiveMode.ON:
             lines.append("")
+            # Each tool-naming sentence only for an agent that has the tool (#1042).
+            tools = set(request.available_tools)
             lines.append(
                 "INTERACTIVE MODE: A human user is present and watching. "
                 "ACT FIRST, ASK SECOND. Explore your environment, use your tools, "
                 "consult your memories and predictions, and take action based on "
-                "what you know. Only use request_interaction when you are genuinely "
-                "stuck, facing a meaningful choice that requires the user's preference, "
-                "or need information you cannot obtain through your own tools and "
-                "experience. Do NOT ask for guidance when you can reason through "
+                "what you know. "
+                + (
+                    "Only use request_interaction when you are genuinely "
+                    "stuck, facing a meaningful choice that requires the user's preference, "
+                    "or need information you cannot obtain through your own tools and "
+                    "experience. "
+                    if "request_interaction" in tools
+                    else ""
+                )
+                + "Do NOT ask for guidance when you can reason through "
                 "the situation yourself — your memories, causal predictions, and "
-                "available tools are your first resource. "
-                "Use set_scene to describe the current situation whenever the "
-                "location, objective, or context changes (e.g. new encounter, "
-                "new area, shift in tone). Keep titles short and evocative."
+                "available tools are your first resource."
+                + (
+                    " Use set_scene to describe the current situation whenever the "
+                    "location, objective, or context changes (e.g. new encounter, "
+                    "new area, shift in tone). Keep titles short and evocative."
+                    if "set_scene" in tools
+                    else ""
+                )
             )
     except ImportError:
         pass
@@ -291,13 +327,23 @@ def _sense_tools_hint(request: LLMRequest) -> str:
     return " If you need a capability not listed, call 'sense_tools' to discover what's actually available."
 
 
+def build_own_tools_section(tools: set[str] | frozenset[str]) -> str:
+    """The agent's own tools, on every "choose your next tool" follow-up (#1042, owner decision 2026-10-01; it
+    replaced #1029's retry-only choice): a follow-up reports another tool's result, so without its own list a weak
+    model echoes a name from the result (the narrator's first follow-ups were 0/3 valid without it, 2/2 with it).
+    Not on the respond/engage templates, which name the one tool to reply with."""
+    own = ", ".join(repr(n) for n in sorted(tools))
+    return f"=== Your Tools ===\nYour tools are: {own}. Choose one of these." if own else ""
+
+
 def build_followup_retry_correction(request: LLMRequest) -> str:
     """The correction a follow-up RETRY carries after its tool was rejected (#935, D13's retry rule).
 
-    The follow-up prompt does not list the agent's own tools, so a weak model echoes a tool name from the
-    result it just read (the narrator called the AUT's 'sense_tools') and, without this, every retry was
-    byte-identical until the planning-liveness budget aborted the run. Retry-only (owner decision
-    2026-09-30): "" when nothing was rejected, so a first follow-up attempt is unchanged. Retry-only holds
+    A weak model echoes a tool name from the result it just read (the narrator called the AUT's 'sense_tools')
+    and, without this, every retry was byte-identical until the planning-liveness budget aborted the run. The
+    correction is retry-only (owner decision 2026-09-30): "" when nothing was rejected. (Since #1042 a "choose
+    your next tool" follow-up lists the agent's own tools on its first attempt too; see
+    ``build_own_tools_section``.) Retry-only holds
     with ``MAXIM_TOOL_FAILURE_HINTS`` off (the default); with it on, the session-long list reaches every
     new request, so a first follow-up attempt carries the correction too — that knob's stated purpose.
     """
@@ -385,8 +431,11 @@ def has_file_tools(request: LLMRequest) -> bool:
     return any(name in FILE_TOOL_NAMES for name in request.available_tools)
 
 
-def build_workspace_manifest(mode_name: str = "passive", cwd: str | None = None) -> str:
-    """Build a file manifest that adapts to the operational mode."""
+def build_workspace_manifest(
+    mode_name: str = "passive", cwd: str | None = None, *, tools: set[str] | frozenset[str] | None = None
+) -> str:
+    """Build a file manifest that adapts to the operational mode. File names are data; the RULES / PLAN FIRST lines
+    are builder text, gated on ``tools`` (#1042), so the section goes in as source="data"."""
     import os
     from maxim.utils.filesystem_policy import (
         get_effective_cwd,
@@ -410,14 +459,18 @@ def build_workspace_manifest(mode_name: str = "passive", cwd: str | None = None)
         ws_entries = scan_workspace_entries(workspace)
         if ws_entries:
             sections.append(f"\n.maxim_workspace/ also available for scratch/drafts ({len(ws_entries)} files).")
-        sections.append("\nRULES:")
-        sections.append("  1. Use read_file FIRST to see current contents before editing")
-        sections.append("  2. Then write_file with overwrite=true to update")
-        sections.append("  3. NEVER write a brand-new file that duplicates an existing one")
+        rules = [
+            "RULES:",
+            "  1. Use read_file FIRST to see current contents before editing",
+            "  2. Then write_file with overwrite=true to update",
+            "  3. NEVER write a brand-new file that duplicates an existing one",
+        ]
         if n_entries >= 5:
-            sections.append(
+            rules.append(
                 "PLAN FIRST: With many project files, use 'respond' to outline your approach before making changes."
             )
+        if "\n" in (gated := gate_on_roster("\n".join(rules), tools)):  # a header with no rule left is dropped
+            sections.append("\n" + gated)
     else:
         ws_entries = scan_workspace_entries(workspace)
         if ws_entries:
@@ -427,15 +480,19 @@ def build_workspace_manifest(mode_name: str = "passive", cwd: str | None = None)
             sections.extend(ws_entries[:15])
             if n_files > 15:
                 sections.append(f"  ... and {n_files - 15} more files")
-            sections.append("RULES for existing files:")
-            sections.append("  1. Use read_file FIRST to see current contents")
-            sections.append("  2. Then write_file with overwrite=true to update")
-            sections.append("  3. NEVER write a brand-new file that duplicates an existing one")
+            rules = [
+                "RULES for existing files:",
+                "  1. Use read_file FIRST to see current contents",
+                "  2. Then write_file with overwrite=true to update",
+                "  3. NEVER write a brand-new file that duplicates an existing one",
+            ]
             if n_files >= 3:
-                sections.append(
+                rules.append(
                     "PLAN FIRST: With multiple existing files, use 'respond' to outline "
                     "your approach before making changes."
                 )
+            if "\n" in (gated := gate_on_roster("\n".join(rules), tools)):
+                sections.append(gated)
 
         cwd_entries = scan_cwd_tree(cwd, max_depth=1, max_entries=10)
         if cwd_entries:
@@ -449,7 +506,109 @@ def build_workspace_manifest(mode_name: str = "passive", cwd: str | None = None)
     return "\n".join(sections) if sections else ""
 
 
-def build_tool_guidance_core(mode_name: str = "passive", *, is_embodied: bool = False) -> str:
+def _tool_name_re(name: str) -> re.Pattern[str]:
+    """How the builder's own text MENTIONS a tool. A name with an underscore is unambiguous as a bare word; a plain
+    word ('respond', 'say', 'move', 'math') is a mention only when quoted, called (``think(...)``) or in a
+    ``- name:`` parameter line, so "respond in JSON" is not gated."""
+    escaped = re.escape(name)
+    if "_" in name:
+        return re.compile(rf"(?<![\w]){escaped}(?![\w])")
+    return re.compile(rf"['\"`]{escaped}['\"`]|(?<![\w]){escaped}\(|^\s*- {escaped}:", re.MULTILINE)
+
+
+@functools.lru_cache(maxsize=1)
+def _tool_name_res() -> dict[str, re.Pattern[str]]:
+    """Every known tool name (#1042: the real universe, not a hand list) -> its mention pattern."""
+    from maxim.modes.definitions import PROMPT_TOOL_NAMES  # noqa: PLC0415 -- lazy, as llm_types imports modes
+
+    return {name: _tool_name_re(name) for name in PROMPT_TOOL_NAMES}
+
+
+def names_tool_outside(text: str, tools: set[str] | frozenset[str]) -> list[str]:
+    """The known tools ``text`` mentions that are not in ``tools``."""
+    return sorted(name for name, rx in _tool_name_res().items() if name not in tools and rx.search(text))
+
+
+# A section that is only ABOUT tools the agent lacks is dropped whole, even its lines that name no tool.
+_SECTION_NEEDS = {
+    "=== File Operation Rules ===": {"read_file", "write_file"},
+    "=== Planning Rule ===": {"respond"},
+    "=== FILE WORKSPACE ===": {"read_file", "write_file"},
+}
+
+
+def gate_on_roster(text: str, tools: set[str] | frozenset[str] | None) -> str:
+    """The builder's own guidance ``text`` with every line that mentions a known tool the agent lacks removed (an
+    indented continuation line goes with its parent, and is checked itself), every section that is only about tools
+    it lacks removed, and headers left empty dropped (#1042: a prompt names only tools the agent has). Nothing
+    removed, or ``tools`` ``None`` (no roster known): ``text`` byte for byte. Only for the builder's own text, never
+    for data (a tool result or a memory may name another agent's tool)."""
+    if tools is None:
+        return text
+    sections: list[list[str]] = [[]]
+    for line in text.split("\n"):
+        if line.startswith("===") and sections[-1]:
+            sections.append([])
+        sections[-1].append(line)
+    out: list[str] = []
+    dropped = False
+    for section in sections:
+        header = section[0] if section and section[0].startswith("===") else None
+        needs = _SECTION_NEEDS.get(header or "")
+        if needs is not None and not needs & set(tools):
+            dropped = True
+            continue
+        kept: list[str] = []
+        keep_parent = True
+        for line in section[1:] if header else section:
+            ok = not names_tool_outside(line, tools)
+            if line.startswith("  ") and line.strip():
+                if keep_parent and ok:
+                    kept.append(line)
+                else:
+                    dropped = True
+                continue
+            keep_parent = ok
+            if ok:
+                kept.append(line)
+            else:
+                dropped = True
+        if header and not any(line.strip() for line in kept):
+            dropped = True
+            continue
+        out.extend(([header] if header else []) + kept)
+    if not dropped:
+        return text
+    while out and not out[-1].strip():
+        out.pop()
+    return "\n".join(out)
+
+
+def build_pfc_preamble(tools: set[str] | frozenset[str] | None = None) -> str:
+    """The PFC deliberation preamble, naming only tools the agent has (#1042). Its discovery lessons are for an agent
+    with all of 'sense_presence' / 'sense_tools' / 'sense' (their 'think' line is gated on its own), and its "ask the
+    user" clause for one with 'request_interaction'; ``tools`` ``None``: the full preamble, byte for byte."""
+    from maxim.agents import exec_prompts as ep  # noqa: PLC0415 -- as the section helper imported it
+
+    if tools is None:
+        return ep.PFC_PREAMBLE
+    act = (
+        ep.PFC_ACT if {"sense", "sense_tools"} <= set(tools) else "  → ready_to_act: true, action: one of your tools\n"
+    )
+    # The discovery lessons teach the sense_presence -> sense_tools -> sense sequence and its worked examples; they
+    # are for an agent with all three (a partial set leaves examples naming tools it lacks).
+    discovery = (
+        gate_on_roster(ep.PFC_DISCOVERY, tools).rstrip("\n") + "\n\n"
+        if {"sense", "sense_tools", "sense_presence"} <= set(tools)
+        else ""
+    )
+    ask = ep.PFC_EXPLORE_ASK if "request_interaction" in tools else ""
+    return ep.PFC_CORE + act + ep.PFC_PUSH + discovery + ep.PFC_SPEECH + ep.PFC_EXPLORE + ask
+
+
+def build_tool_guidance_core(
+    mode_name: str = "passive", *, is_embodied: bool = False, tools: set[str] | frozenset[str] | None = None
+) -> str:
     """Build compact essential tool guidance, adapted to operational mode.
 
     When ``is_embodied`` is True, suppress the conversational
@@ -470,8 +629,12 @@ def build_tool_guidance_core(mode_name: str = "passive", *, is_embodied: bool = 
                 "Body-prefixed tools (e.g. '<body>_respond', '<body>_use') are the only way "
                 "to vocalise or manipulate — there is no generic 'respond' or 'speak' in this "
                 "scene.",
-                "If no listed affordance fits, call 'sense_tools' to discover what is reachable.",
             ]
+            + (
+                ["If no listed affordance fits, call 'sense_tools' to discover what is reachable."]
+                if tools is None or "sense_tools" in tools
+                else []
+            )
         )
 
     lines = [
@@ -524,10 +687,12 @@ def build_tool_guidance_core(mode_name: str = "passive", *, is_embodied: bool = 
             "If request is unclear, use 'respond' to ask for clarification.",
         ]
     )
-    return "\n".join(lines)
+    return gate_on_roster("\n".join(lines), tools)
 
 
-def build_tool_guidance_extended(mode_name: str = "passive", *, is_embodied: bool = False) -> str:
+def build_tool_guidance_extended(
+    mode_name: str = "passive", *, is_embodied: bool = False, tools: set[str] | frozenset[str] | None = None
+) -> str:
     """Build extended tool selection guidance, adapted to operational mode.
 
     When ``is_embodied`` is True, return empty — the conversational
@@ -566,7 +731,7 @@ def build_tool_guidance_extended(mode_name: str = "passive", *, is_embodied: boo
             "Batch exploration with parallel_actions for efficiency.",
         ]
     )
-    return "\n".join(lines)
+    return gate_on_roster("\n".join(lines), tools)
 
 
 def build_entity_context_section(entity_spec: dict[str, Any]) -> str:
@@ -701,7 +866,8 @@ def is_realtime_request(question_text: str) -> bool:
         "yankees",
     ]
     q_lower = question_text.lower() if question_text else ""
-    return any(kw in q_lower for kw in realtime_keywords)
+    # A keyword starts a word: "now" inside "know" / "snow" is not a real-time request; "scores" / "nowcast" are.
+    return any(re.search(rf"(?<![a-z]){re.escape(kw)}", q_lower) for kw in realtime_keywords)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -834,7 +1000,7 @@ class PromptBuilder:
                     break
 
         if action_followup_input:
-            prompt = self._build_followup_prompt(action_followup_input)
+            prompt = self._build_followup_prompt(action_followup_input, tools=set(request.available_tools))
             correction = build_followup_retry_correction(request)
             return f"{prompt}\n\n{correction}" if correction else prompt
 
@@ -968,10 +1134,13 @@ class PromptBuilder:
         counter = self._token_counter
         response_reserve = mode.max_response_tokens
 
+        roster = frozenset(request.available_tools)
         budgeter = PromptBudgeter(
             total_budget=self._n_ctx,
             response_reserve=response_reserve,
             token_counter=counter,
+            # Every source="builder" section names only tools in the agent's roster (#1042).
+            builder_gate=lambda text: gate_on_roster(text, roster),
         )
 
         effective_cwd = get_effective_cwd()
@@ -991,7 +1160,7 @@ class PromptBuilder:
         self._add_perception_sections(budgeter, request)
         self._add_deliberation_transcript_section(budgeter, request.context, response_reserve)
         self._add_working_memory_section(budgeter, request.context)
-        self._add_memory_sections(budgeter, request.context)
+        self._add_memory_sections(budgeter, request.context, tools=set(request.available_tools))
 
         # Segment into a byte-stable cacheable prefix (class-(a)/(c) sections,
         # tagged cacheable=True at their add sites) + a dynamic remainder. The
@@ -1033,12 +1202,14 @@ class PromptBuilder:
             build_instructions_section(request),
             SectionPriority.MANDATORY,
             cacheable=True,
+            source="builder",
         )
         if question_text:
             budgeter.add(
                 "user_request",
                 f'=== User Request ===\n"{question_text}"',
                 SectionPriority.MANDATORY,
+                source="data",
             )
 
     def _add_critical_sections(
@@ -1058,21 +1229,24 @@ class PromptBuilder:
 
         budgeter.add(
             "planning_banner",
-            build_planning_banner(request.autonomy_level),
+            build_planning_banner(request.autonomy_level, tools=set(request.available_tools)),
             SectionPriority.CRITICAL,
             cacheable=True,
+            source="builder",
         )
         if request.pending_modification:
             budgeter.add(
                 "modification",
                 build_modification_section(request.pending_modification),
                 SectionPriority.CRITICAL,
+                source="data",
             )
         budgeter.add(
             "identity",
             build_identity_section(mode, request, date_str, time_str),
             SectionPriority.CRITICAL,
             cacheable=True,
+            source="builder",
         )
 
         # Tool section: opt-in learned relevance filter, declared per mode via
@@ -1101,6 +1275,7 @@ class PromptBuilder:
                 truncatable=True,
                 min_tokens=50,
                 truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter),
+                source="data",
             )
             if background:
                 bg_section = build_tools_section_filtered(request, background, mode_name)
@@ -1116,6 +1291,7 @@ class PromptBuilder:
                     truncatable=True,
                     min_tokens=50,
                     truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter),
+                    source="data",
                 )
         else:
             # Unfiltered manifest (autonomous modes incl. cradle). The scene
@@ -1139,6 +1315,7 @@ class PromptBuilder:
                 truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter),
                 cacheable=True,
                 phase_scoped=True,
+                source="data",
             )
 
         # EXPERIMENTAL — hallucination-hint section (empty when feature off
@@ -1149,6 +1326,7 @@ class PromptBuilder:
                 "failed_tools",
                 failed_section,
                 SectionPriority.CRITICAL,
+                source="data",
             )
 
         # The workspace/CWD manifest and the file-operation guidance (below,
@@ -1157,7 +1335,9 @@ class PromptBuilder:
         # gets neither: the manifest is a per-turn cache invalidator (it
         # re-scans the tree) and both are pure noise to a body in a world.
         workspace_manifest = (
-            build_workspace_manifest(mode_name=mode_name, cwd=effective_cwd) if has_file_tools(request) else ""
+            build_workspace_manifest(mode_name=mode_name, cwd=effective_cwd, tools=set(request.available_tools))
+            if has_file_tools(request)
+            else ""
         )
         if workspace_manifest:
             is_singularity = mode_name == "singularity"
@@ -1168,15 +1348,16 @@ class PromptBuilder:
                 truncatable=is_singularity,
                 min_tokens=80 if is_singularity else 0,
                 truncate_fn=((lambda c, m: _truncate_manifest(c, m, counter)) if is_singularity else None),
+                source="data",
             )
 
-        if is_rt:
+        if is_rt and "internet_search" in request.available_tools:  # a hint names only a tool the agent has
             hint = ">>> REAL-TIME DATA NEEDED <<<\n"
             if request.autonomy_level == AutonomyLevel.PLANNING:
                 hint += "Propose using 'internet_search' and ask for approval."
             else:
                 hint += "Use 'internet_search' tool directly."
-            budgeter.add("realtime_hint", hint, SectionPriority.CRITICAL)
+            budgeter.add("realtime_hint", hint, SectionPriority.CRITICAL, source="builder")
 
     @staticmethod
     def _add_pfc_preamble_section(
@@ -1209,9 +1390,13 @@ class PromptBuilder:
             or ctx.motor_programs
         )
         if has_bio_signal:
-            from maxim.agents.exec_prompts import PFC_PREAMBLE
-
-            budgeter.add("pfc_preamble", PFC_PREAMBLE, SectionPriority.IMPORTANT, cacheable=True)
+            budgeter.add(
+                "pfc_preamble",
+                build_pfc_preamble(set(request.available_tools)),
+                SectionPriority.IMPORTANT,
+                cacheable=True,
+                source="builder",
+            )
 
     @staticmethod
     def _add_acting_coach_section(
@@ -1241,6 +1426,7 @@ class PromptBuilder:
                 "acting_coach",
                 coach_text,
                 SectionPriority.CRITICAL,
+                source="data",
             )
 
     @staticmethod
@@ -1267,6 +1453,7 @@ class PromptBuilder:
                 text,
                 SectionPriority.IMPORTANT,
                 cacheable=True,
+                source="data",
             )
 
     @staticmethod
@@ -1310,6 +1497,7 @@ class PromptBuilder:
                 "cluster_bias_annotations",
                 text,
                 SectionPriority.IMPORTANT,
+                source="data",
             )
 
     @staticmethod
@@ -1347,6 +1535,7 @@ class PromptBuilder:
                 "grayscale_tools",
                 text,
                 SectionPriority.IMPORTANT,
+                source="data",
             )
 
     def _add_guidance_sections(
@@ -1363,21 +1552,27 @@ class PromptBuilder:
         # session) → cacheable prefix. datetime is per-call wall-clock → dynamic.
         budgeter.add(
             "tool_guidance_core",
-            build_tool_guidance_core(mode_name=mode_name, is_embodied=is_embodied),
+            build_tool_guidance_core(mode_name=mode_name, is_embodied=is_embodied, tools=set(request.available_tools)),
             SectionPriority.IMPORTANT,
             cacheable=True,
+            source="builder",
         )
         budgeter.add(
             "tool_guidance_extended",
-            build_tool_guidance_extended(mode_name=mode_name, is_embodied=is_embodied),
+            build_tool_guidance_extended(
+                mode_name=mode_name, is_embodied=is_embodied, tools=set(request.available_tools)
+            ),
             SectionPriority.NICE_TO_HAVE,
             cacheable=True,
+            source="builder",
         )
-        budgeter.add("datetime", build_datetime_section(date_str, time_str), SectionPriority.IMPORTANT)
+        budgeter.add(
+            "datetime", build_datetime_section(date_str, time_str), SectionPriority.IMPORTANT, source="builder"
+        )
 
         budget_context = self.build_budget_context()
         if budget_context:
-            budgeter.add("budget_context", budget_context, SectionPriority.NICE_TO_HAVE)
+            budgeter.add("budget_context", budget_context, SectionPriority.NICE_TO_HAVE, source="builder")
 
     def _add_context_sections(
         self,
@@ -1407,6 +1602,7 @@ class PromptBuilder:
                 truncatable=True,
                 min_tokens=50,
                 truncate_fn=lambda c, m: _truncate_conversation(c, m, counter),
+                source="data",
             )
 
         if request.context_pool_text:
@@ -1417,6 +1613,7 @@ class PromptBuilder:
                 truncatable=True,
                 min_tokens=30,
                 truncate_fn=lambda c, m: _truncate_context_pool(c, m, counter),
+                source="data",
             )
 
         if request.protocol_context:
@@ -1424,6 +1621,7 @@ class PromptBuilder:
                 "active_protocols",
                 "=== Active Protocols ===\n" + request.protocol_context,
                 SectionPriority.IMPORTANT,
+                source="data",
             )
 
         carryover_text = self._reasoning_carryover.get_prompt_text()
@@ -1435,21 +1633,23 @@ class PromptBuilder:
                 truncatable=True,
                 min_tokens=30,
                 truncate_fn=lambda c, m: _truncate_reasoning_carryover(c, m, counter),
+                source="data",
             )
 
         if request.prefetch_context:
             prefetch = request.prefetch_context
             if request.skip_exploration:
-                prefetch += (
-                    "\n\n"
-                    + "!" * 50
+                # Builder text appended to data: gated here, since the section is source="data" (#1042).
+                prefetch += "\n\n" + gate_on_roster(
+                    "!" * 50
                     + "\n!!! ONE-CALL MODE: WRITE DIRECTLY !!!\n"
                     + "!" * 50
-                    + "\n\nFile discovery is COMPLETE. Do NOT use glob or read_file."
+                    + "\n\nFile discovery is COMPLETE. Do NOT use 'glob' or 'read_file'."
                     + "\nProceed DIRECTLY to your action:"
                     + "\n- For EXISTING file: write_file with overwrite=True"
                     + "\n- For NEW file: write_file (no overwrite needed)"
-                    + "\n\nYour response should be the write_file action, NOT exploration."
+                    + "\n\nYour response should be the write_file action, NOT exploration.",
+                    set(request.available_tools),
                 )
             has_discovery = "DISCOVERY PLAN" in prefetch or "FILE DISCOVERY" in prefetch
             priority = SectionPriority.CRITICAL if has_discovery else SectionPriority.IMPORTANT
@@ -1460,6 +1660,7 @@ class PromptBuilder:
                 truncatable=True,
                 min_tokens=50,
                 truncate_fn=lambda c, m: _truncate_context_pool(c, m, counter),
+                source="data",
             )
 
         # Coding guidelines: prefer the user's question text, fall back to
@@ -1474,13 +1675,21 @@ class PromptBuilder:
         if guidelines_text and has_file_tools(request):
             coding_context = build_coding_context(guidelines_text, include_sandbox_reminder=True, max_guidelines=2)
             if coding_context:
-                budgeter.add("coding_guidelines", coding_context, SectionPriority.IMPORTANT)
+                budgeter.add("coding_guidelines", coding_context, SectionPriority.IMPORTANT, source="builder")
 
         # Foundational (Constitution/AGENTS, session-cached) and the mode's
         # static context_prompt are session-stable → cacheable prefix.
-        budgeter.add("foundational", _load_foundational_context(), SectionPriority.IMPORTANT, cacheable=True)
+        budgeter.add(
+            "foundational", _load_foundational_context(), SectionPriority.IMPORTANT, cacheable=True, source="data"
+        )
         if request.mode.context_prompt:
-            budgeter.add("mode_context", request.mode.context_prompt, SectionPriority.NICE_TO_HAVE, cacheable=True)
+            budgeter.add(
+                "mode_context",
+                request.mode.context_prompt,
+                SectionPriority.NICE_TO_HAVE,
+                cacheable=True,
+                source="builder",
+            )
 
     @staticmethod
     def _add_perception_sections(
@@ -1493,13 +1702,13 @@ class PromptBuilder:
         if context.current_percept:
             obs_text = build_observation_section(context.current_percept)
             if obs_text:
-                budgeter.add("observation", obs_text, SectionPriority.IMPORTANT)
+                budgeter.add("observation", obs_text, SectionPriority.IMPORTANT, source="data")
 
         if context.detected_speech:
             speech_lines = ["=== Recent Speech ==="]
             for speech in context.detected_speech[-3:]:
                 speech_lines.append(f'- "{speech[:100]}"')
-            budgeter.add("speech", "\n".join(speech_lines), SectionPriority.NICE_TO_HAVE)
+            budgeter.add("speech", "\n".join(speech_lines), SectionPriority.NICE_TO_HAVE, source="data")
 
         if request.agent_states:
             state_lines = ["=== Agent States ==="]
@@ -1508,7 +1717,7 @@ class PromptBuilder:
                 agent_state = state.get("state", "unknown")
                 goal = state.get("goal", "")
                 state_lines.append(f"- {agent_name}: {agent_state}" + (f" (goal: {goal})" if goal else ""))
-            budgeter.add("agent_states", "\n".join(state_lines), SectionPriority.NICE_TO_HAVE)
+            budgeter.add("agent_states", "\n".join(state_lines), SectionPriority.NICE_TO_HAVE, source="data")
 
         if request.recent_outcomes:
             outcome_lines = ["=== Recent Action Outcomes ==="]
@@ -1517,11 +1726,11 @@ class PromptBuilder:
                 success = "succeeded" if outcome.get("success") else "failed"
                 result = outcome.get("result", "")[:50] if outcome.get("result") else ""
                 outcome_lines.append(f"- {tool}: {success}" + (f" ({result})" if result else ""))
-            budgeter.add("recent_outcomes", "\n".join(outcome_lines), SectionPriority.IMPORTANT)
+            budgeter.add("recent_outcomes", "\n".join(outcome_lines), SectionPriority.IMPORTANT, source="data")
 
         # Body state (interoception — always present when embodied)
         if context.body_state:
-            budgeter.add("body_state", context.body_state, SectionPriority.CRITICAL)
+            budgeter.add("body_state", context.body_state, SectionPriority.CRITICAL, source="data")
 
         # Bio-enrichment (L1): focused bio-system associations for current percept.
         # Suppressed when a deliberation transcript is present — the current
@@ -1536,6 +1745,7 @@ class PromptBuilder:
                 truncatable=True,
                 min_tokens=30,
                 truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
+                source="data",
             )
 
         # Auto-sense: passive perception of surroundings + body state.
@@ -1549,6 +1759,7 @@ class PromptBuilder:
                 truncatable=True,
                 min_tokens=30,
                 truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
+                source="data",
             )
 
     def _add_deliberation_transcript_section(
@@ -1597,6 +1808,7 @@ class PromptBuilder:
             truncatable=True,
             min_tokens=50,
             truncate_fn=_truncate_transcript,
+            source="data",
         )
 
     @staticmethod
@@ -1631,12 +1843,15 @@ class PromptBuilder:
             truncatable=True,
             min_tokens=30,
             truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 20)]),
+            source="data",
         )
 
     @staticmethod
     def _add_memory_sections(
         budgeter: PromptBudgeter,
         context: Any,
+        *,
+        tools: set[str],
     ) -> None:
         """Episodic recalls, ATL concepts, semantic knowledge, causal predictions, motor programs, statistics."""
         if context.relevant_memories:
@@ -1671,6 +1886,7 @@ class PromptBuilder:
                 truncatable=True,
                 min_tokens=50,
                 truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 20)]),
+                source="data",
             )
 
         if context.concept_context:
@@ -1690,6 +1906,7 @@ class PromptBuilder:
                 truncatable=True,
                 min_tokens=30,
                 truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
+                source="data",
             )
 
         if context.knowledge_context:
@@ -1709,6 +1926,7 @@ class PromptBuilder:
                 truncatable=True,
                 min_tokens=30,
                 truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
+                source="data",
             )
 
         if context.causal_context:
@@ -1728,6 +1946,7 @@ class PromptBuilder:
                 truncatable=True,
                 min_tokens=30,
                 truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
+                source="data",
             )
 
         if context.valence_context:
@@ -1750,6 +1969,7 @@ class PromptBuilder:
                 truncatable=True,
                 min_tokens=30,
                 truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
+                source="data",
             )
 
         if context.motor_programs:
@@ -1796,6 +2016,7 @@ class PromptBuilder:
                 truncatable=True,
                 min_tokens=30,
                 truncate_fn=_truncate_motor_programs,
+                source="data",
             )
 
         if context.statistical_context and context.active_pattern_count > 0:
@@ -1803,7 +2024,10 @@ class PromptBuilder:
                 f"=== Statistical Patterns ({context.active_pattern_count} active) ===",
                 context.statistical_context,
             ]
-            suggestions = getattr(context, "statistical_suggestions", [])
+            # A suggestion names a tool call: only ones the agent has (#1042).
+            suggestions = [
+                sg for sg in getattr(context, "statistical_suggestions", []) if sg.get("tool_call", "math") in tools
+            ]
             if suggestions:
                 stat_lines.append("")
                 stat_lines.append("Recommended analyses (ranked by priority):")
@@ -1813,15 +2037,21 @@ class PromptBuilder:
                         f"on {s.get('metric', '?')} [{s.get('data_type', '?')}] — "
                         f"{s.get('rationale', '')}"
                     )
-            else:
+            elif "math" in tools:
                 stat_lines.append(
                     "Use 'math' tool to investigate patterns (assess_randomness, analyze, recall_memory)."
                 )
-            stat_lines.append("Use 'internet_search' to research unfamiliar patterns or analysis techniques.")
-            budgeter.add("statistical_patterns", "\n".join(stat_lines), SectionPriority.NICE_TO_HAVE)
+            if "internet_search" in tools:
+                stat_lines.append("Use 'internet_search' to research unfamiliar patterns or analysis techniques.")
+            # Data (the patterns) with builder lines gated inline above.
+            budgeter.add("statistical_patterns", "\n".join(stat_lines), SectionPriority.NICE_TO_HAVE, source="data")
 
-    def _build_followup_prompt(self, followup_input: str) -> str:
-        """Build a prompt to handle action followups based on followup_type."""
+    def _build_followup_prompt(self, followup_input: str, *, tools: set[str] | None = None) -> str:
+        """Build a prompt to handle action followups based on followup_type. With ``tools`` (the agent's roster,
+        #1042): the "choose your next tool" template lists them, a template that would tell the agent to use
+        'respond' is not used for an agent without 'respond', and an unparseable input is not described as an
+        internet search to an agent without 'internet_search'."""
+        respond_ok = tools is None or "respond" in tools
         new_format = re.match(
             r"\[ACTION_FOLLOWUP type=(\w+) tool=([\w_-]+) mode=([\w_-]+) query='(.*)'\]: (.*)",
             followup_input,
@@ -1852,6 +2082,8 @@ class PromptBuilder:
                 mode_name = "live"
                 original_query = legacy_format.group(1)
                 result = legacy_format.group(2)
+                if tools is not None and "internet_search" not in tools:
+                    followup_type, tool_name = "process", ""  # not this agent's search: "your last tool"
             else:
                 logger.warning(
                     f"Could not parse followup input format, using fallback. Input starts with: {followup_input[:100]}"
@@ -1861,6 +2093,8 @@ class PromptBuilder:
                 mode_name = "live"
                 original_query = ""
                 result = followup_input
+                if tools is not None and "internet_search" not in tools:
+                    followup_type, tool_name = "process", ""  # not a search: "your last tool"
 
         # State the frame rule ABOVE the (framed) tool output, in every follow-up template (#823).
         from maxim.utils.content_safety import TOOL_OUTPUT_RULE
@@ -1868,8 +2102,8 @@ class PromptBuilder:
         if "<<TOOL_OUTPUT id=" in result:  # only where there IS a frame (not the legacy branches)
             result = f"{TOOL_OUTPUT_RULE}\n{result}"
 
-        if followup_type == "process":
-            return self._build_process_prompt(tool_name, original_query, result)
+        if followup_type == "process" or not respond_ok:
+            return self._build_process_prompt(tool_name, original_query, result, tools=tools)
         elif followup_type == "respond":
             return self._build_respond_prompt(tool_name, original_query, result)
         elif followup_type == "engage":
@@ -1877,17 +2111,21 @@ class PromptBuilder:
         else:
             return self._build_respond_prompt(tool_name, original_query, result)
 
-    def _build_process_prompt(self, tool_name: str, query: str, result: str) -> str:
+    def _build_process_prompt(
+        self, tool_name: str, query: str, result: str, *, tools: set[str] | frozenset[str] | None = None
+    ) -> str:
+        """The "choose your next tool" follow-up. With ``tools`` (#1042): its instructions name only those tools and
+        it ends with the agent's own tool list; ``tool_name`` "" is an unparseable follow-up ("your last tool")."""
+        respond_ok = tools is None or "respond" in tools
+        done = "use 'respond' to inform the user" if respond_ok else "say so with one of your tools (listed below)"
+        done_batched = "Use 'respond'" if respond_ok else "Say so with one of your tools (listed below)"
+        ran = f"'{tool_name}'" if tool_name else "your last tool"
+        source = tool_name or "your last tool"
         is_batched = tool_name == "batched_exploration"  # never keyed on result text (#823: a page could forge it)
 
         if is_batched:
-            prompt = f"""You completed batched exploration. Now analyze ALL results and make your final action.
-
-Original request: "{query}"
-
-{result}
-
-=== Instructions ===
+            batched_instructions = gate_on_roster(
+                f"""=== Instructions ===
 You now have complete context from the batched exploration. Based on ALL the results above:
 
 1. If modifying a file: Use 'write_file' with the COMPLETE updated content
@@ -1896,30 +2134,40 @@ You now have complete context from the batched exploration. Based on ALL the res
 
 2. If creating a new file: Use 'write_file' with appropriate content
 
-3. If task is already complete or you need to inform the user: Use 'respond'
+3. If task is already complete or you need to inform the user: {done_batched}
 
-4. If you need more information: Request additional tools (but batching should have provided enough)
+4. If you need more information: Request additional tools (but batching should have provided enough)""",
+                tools,
+            )
+            prompt = f"""You completed batched exploration. Now analyze ALL results and make your final action.
+
+Original request: "{query}"
+
+{result}
+
+{batched_instructions}
 
 Respond with JSON:
 {{"action": {{"tool_name": "<tool>", "params": {{...}}}}, "confidence": 0.9, "reasoning": "your_reasoning"}}"""
         else:
-            prompt = f"""You just executed '{tool_name}'. Analyze the results and decide your next action.
+            prompt = f"""You just executed {ran}. Analyze the results and decide your next action.
 
 Original request: "{query}"
 
-Results from {tool_name}:
+Results from {source}:
 {result}
 
 === Instructions ===
 Based on these results, determine your next action:
-- If the task is complete, use 'respond' to inform the user
+- If the task is complete, {done}
 - If more steps are needed, choose the appropriate tool
 - Extract relevant information to inform your decision
 
 Respond with JSON:
 {{"action": {{"tool_name": "<next_tool>", "params": {{...}}}}, "confidence": 0.9, "reasoning": "your_reasoning"}}"""
 
-        return f"TOOL_PROMPT|{prompt}"
+        own = build_own_tools_section(tools) if tools is not None else ""
+        return f"TOOL_PROMPT|{prompt}\n\n{own}" if own else f"TOOL_PROMPT|{prompt}"
 
     def _build_respond_prompt(self, tool_name: str, query: str, result: str) -> str:
         prompt = f"""You completed an internet search. Synthesize the results into a helpful response.

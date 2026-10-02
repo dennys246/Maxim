@@ -46,6 +46,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   allowed: its own timeout as LLMWorker stamped it, a timeout-retry's doubled allowance included, else the worker's call
   timeout, default 300 s; or a longer lane timeout; plus the stall margin). Follow-ups: #1043, #1044. Suppression
   holds back only the idle nudge, never ping-pong; a registry failure in the detector is now reported.
+- **An agent's prompt names only tools it has** (#1042). The simulation narrator was shown `internet_search`,
+  `write_file`, `read_file`, `speak`, `respond` and more by the generic tool guidance, a "REAL-TIME DATA: use
+  internet_search" hint, the planning-mode examples, the PFC preamble and the follow-up templates. It proposed them
+  until the planning budget aborted the sim (O19 Exp 10 attempt 1). Every prompt section now declares whether the
+  builder wrote it or it is data (`PromptBudgeter.add(..., source=)`, required). Builder text is gated on the
+  agent's roster in one place, checked against every registered tool name; data is never rewritten. An agent whose
+  roster holds every tool a passage names sees it unchanged (one ONE-CALL prefetch line now quotes its tool names);
+  an agent missing some sees less text, including the active mode's context prompt. The executor's
+  unregistered-tool reply no longer suggests a decoy or hint tools the agent lacks, and the tool-call system prompt
+  sent to every backend no longer says "use 'respond'". A "choose your next tool" follow-up lists the
+  agent's own tools on its first attempt, not only on a retry. The narrator's decoy `respond` stays registered (a
+  stray call still gets its redirect) but is no longer advertised (`Tool.advertised`). A real-time keyword must
+  start a word ("know" no longer matches "now"). The narrator's stall and diversity messages label the agent under
+  test's tools as not its own, and its `inspect_aut` description labels the subsystems it queries as the agent under
+  test's. Ledger row T1-2 (Exp 37) is STALE: its "prompt construction change" trigger fired.
 - **Cloud auto-detect (C7a) no longer overrides config.json** (#1030). A solo run with a cloud key in the shell
   replaced a local `llm.profile` set through `maxim config` with a billed cloud profile, and `cloud.enabled false` (the
   documented off-switch) did nothing. It now stands down for a configured local or unknown profile, `cloud.enabled

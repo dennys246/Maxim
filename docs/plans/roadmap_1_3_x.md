@@ -264,6 +264,11 @@ O19 Exp 10 attempt 1 aborted on the stale nudges it let through. The touch moves
 lane timeout), restarts the idle clock while the agent's turn is in progress, reports a registry failure instead of
 swallowing it, and exempts ping-pong; the function shrinks (ceiling 3277 → 3265). Follow-ups: #1043, #1044.
 
+**Fence exception, #1042 PR B (owner-approved 2026-10-01, text only):** the narrator's stall-nudge and
+diversity-checkpoint strings in `orchestrator.py::start_simulation_mode` now label the agent-under-test's tool names
+as not the narrator's own (they were quoted unlabelled, and the narrator echoed them). No logic moves; the function's
+length is unchanged.
+
 *Commitment: batches 0–2.* These close in 1.3.2. Moving one to a later release takes an owner decision
 recorded in this plan.
 

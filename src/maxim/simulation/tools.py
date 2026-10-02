@@ -35,7 +35,7 @@ class SimToolRegistry:
     def register(self, tool: Tool) -> None:
         self._tools[tool.name] = tool
         # Keep _FallbackRedirectTool's tool list in sync
-        _FallbackRedirectTool._registered_tools = [n for n in self._tools if n != "respond"]
+        _FallbackRedirectTool._registered_tools = self.advertised()
 
     def get(self, name: str) -> Tool:
         if name in self._tools:
@@ -51,6 +51,10 @@ class SimToolRegistry:
 
     def list(self) -> list[str]:
         return list(self._tools.keys())
+
+    def advertised(self) -> list[str]:
+        """The tools the narrator's prompt may offer: all but ``advertised = False`` decoys (#1042, as ToolRegistry)."""
+        return [name for name, tool in self._tools.items() if getattr(tool, "advertised", True)]
 
     def list_all(self) -> list[str]:
         """Scene-scoped API compat — SimToolRegistry has no deactivated tools."""
@@ -986,7 +990,8 @@ class InspectAUTTool(Tool):
 
     name = "inspect_aut"
     description = (
-        "Query the agent-under-test's internal state. Supported queries: "
+        "Query the agent-under-test's internal state. The query names one of the AGENT UNDER TEST's "
+        "introspection subsystems (they are its tools, not yours; call them only as this tool's query): "
         "memory_recall, causal_links, predict_outcome, pain_history, "
         "energy_status, system_stats, concept_query, temporal_patterns. "
         "Returns the subsystem's response as structured data."
@@ -1091,6 +1096,7 @@ class SimRespondTool(Tool):
 
     name = "respond"
     description = "Do NOT use this tool. Use send_message instead to talk to the agent under test."
+    advertised = False  # registered to catch a stray call, never offered (#1042)
     input_schema = {
         "message": (str, ""),
     }

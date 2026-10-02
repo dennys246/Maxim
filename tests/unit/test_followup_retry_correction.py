@@ -6,9 +6,9 @@ model kept echoing the same unavailable name until the planning-liveness budget 
 on every Sim-Short re-run since August). The narrator, whose follow-up prompt never lists its own tools, echoed the
 AUT's `sense_tools` from the result it had just read.
 
-Owner decision (2026-09-30): retry-only. The FIRST follow-up attempt is unchanged byte for byte; only a retry after
-a rejected tool carries the correction plus the agent's own tool names. And the "call 'sense_tools'" hint appears
-only for an agent that has `sense_tools`.
+Owner decision (2026-09-30): the correction is retry-only; only a retry after a rejected tool carries it. (Since
+#1042, 2026-10-01, a "choose your next tool" follow-up lists the agent's own tools on its first attempt too.) And the
+"call 'sense_tools'" hint appears only for an agent that has `sense_tools`.
 """
 
 from __future__ import annotations
@@ -46,10 +46,13 @@ def _request(tools: set[str]) -> LLMRequest:
     )
 
 
-def test_the_first_follow_up_attempt_is_unchanged() -> None:
-    """Retry-only: with no rejected tool the prompt is exactly the follow-up template's."""
-    builder = _builder()
-    assert builder.build_prompt(_request(NARRATOR_TOOLS)) == builder._build_followup_prompt(FOLLOWUP)
+def test_the_first_follow_up_attempt_lists_the_agents_own_tools() -> None:
+    """Inverted 2026-10-01 (owner decision, #1042): every follow-up lists the agent's own tools, not only a retry.
+    With no rejected tool the prompt is the follow-up template plus that list, and no correction."""
+    first = _builder().build_prompt(_request(NARRATOR_TOOLS))
+    own = first[first.index("=== Your Tools ===") :]
+    assert all(repr(tool) in own for tool in NARRATOR_TOOLS)
+    assert "=== Correction ===" not in first
 
 
 def test_a_follow_up_retry_names_the_rejected_tool_and_the_agents_own_tools() -> None:

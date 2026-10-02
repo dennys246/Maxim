@@ -339,6 +339,11 @@ class Tool(ABC):
     # ``"sem-modulator-derived"``; ``SensePresenceTool`` to
     # ``"auto-discovery"``.
     kind: ToolKind = "core-universal"
+    # ``advertised`` — False keeps a registered tool dispatchable but out of
+    # the roster the prompt offers the model (#1042): a decoy such as the
+    # narrator's ``respond`` exists only to answer a stray call with a
+    # redirect, and naming it in the prompt invites that call.
+    advertised: bool = True
 
     def __init__(self) -> None:
         if not getattr(self, "name", ""):
