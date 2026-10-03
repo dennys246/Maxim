@@ -98,6 +98,7 @@ def test_the_worker_carries_the_loops_answer_into_the_prompt(in_sim, deliberatio
             use_tool_prompting=True,
             triggering_input="go",
             deliberation_available=deliberation_available,
+            deferred_inputs=[],
         )
         _wait_for_proposal(worker)
         assert llm.prompts
@@ -131,16 +132,17 @@ def test_a_resumed_session_gets_the_same_first_action_line_as_a_fresh_one(goal, 
     assert expect in line
     if "CAMPAIGN" in goal:  # a fresh campaign starts at its first turn
         assert "FIRST campaign turn" in kickoff_instruction(goal, observe_only=False)
-    resumed = build_resume_prompt({"goal": "escape a dungeon"}, goal, "generative", observe_only=observe_only)
+    resumed = build_resume_prompt(
+        {"goal": "escape a dungeon"}, goal, "generative", observe_only=observe_only, tools_block=""
+    )
     assert resumed.endswith(line)
     if observe_only:
         assert "send_message NOW" not in resumed and "continue probing" not in resumed
     src = inspect.getsource(orchestrator.start_simulation_mode)
-    assert "_kickoff_instruction(goal, observe_only=_is_observe_only)" in src
-    assert "_build_resume_prompt(resume_data, goal, mode, observe_only=_is_observe_only)" in src
-    assert src.count("_kickoff_instruction(goal, observe_only=_is_observe_only)") == 2, (
-        "fresh start and resume fallback"
-    )
+    # Every opening goes through sim_types (the fresh kickoff and the not-found fallback share build_kickoff_prompt,
+    # which calls kickoff_instruction; the resume prompt calls it with resumed=True).
+    assert "_build_kickoff_prompt(goal, tools_block=_tools_block, observe_only=_is_observe_only)" in src
+    assert "observe_only=_is_observe_only, tools_block=_tools_block" in src
     assert "OBSERVE ONLY" not in src, "the kickoff text lives in one place"
 
 

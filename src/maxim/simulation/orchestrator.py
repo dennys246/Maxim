@@ -77,7 +77,8 @@ from maxim.simulation.sim_types import (  # noqa: E402
     load_resume_context_at as _load_resume_context_at,
     build_resume_prompt as _build_resume_prompt,
     build_basic_analysis as _build_basic_analysis,
-    kickoff_instruction as _kickoff_instruction,
+    build_kickoff_prompt as _build_kickoff_prompt,
+    narrator_tools_block as _narrator_tools_block,
 )
 
 
@@ -565,6 +566,7 @@ def start_simulation_mode(
     goal: str,
     mode: str = "generative",
     max_turns: int = 50,
+    min_finish_turns: int = 0,
     response_timeout: float = 120.0,
     debug: bool = False,
     # Deprecated alias kept for backward compat with older callers.
@@ -599,6 +601,8 @@ def start_simulation_mode(
             recorded in reports/logs; flow behavior is driven by the dispatch
             path (campaign YAML, --research, ...), not by this label.
         max_turns: Maximum simulation turns before auto-finish
+        min_finish_turns: With --sim-run-full-turns, the cap; the narrator's finish_simulation is refused below it
+            (0: none; observe-only runs are always exempt)
         response_timeout: Default timeout for send_and_wait()
         debug: Enable verbose debug tracing (pipeline polling, loop
             heartbeats, lane activity).
@@ -1382,6 +1386,12 @@ def start_simulation_mode(
     # after the orch tool registry is built (the factory needs it).
     orch_agent = MaximAgent()
 
+    # True when a human drives the conversation (no specific goal).
+    # Stall detector and probing are disabled in this mode.
+    from maxim.simulation.sim_logger import InteractiveMode as _IM
+    from maxim.simulation.sim_logger import get_interactive_mode as _get_im
+
+    _is_observe_only = _get_im() == _IM.ON and goal.strip().lower() in ("interactive", "interactive mode", "")
     # Build a MINIMAL tool registry with ONLY simulation tools.
     # Using build_tool_registry() adds filesystem/bash/code tools that
     # confuse the LLM — it picks familiar tools (glob, bash) instead of
@@ -1417,6 +1427,7 @@ def start_simulation_mode(
             bridge=bridge,
             orchestrator_source=orchestrator_source,
             spawn_tool=spawn_tool,
+            min_turns=0 if _is_observe_only else min_finish_turns,  # an observer may always end the session
         )
     )
     orch_registry.register(SimRespondTool())
@@ -2208,12 +2219,6 @@ def start_simulation_mode(
     dm_rollup: dict[str, Any] = {}
     _dm_thread: threading.Thread | None = None
     _dm_error: list[Exception] = []
-    # True when a human drives the conversation (no specific goal).
-    # Stall detector and probing are disabled in this mode.
-    from maxim.simulation.sim_logger import InteractiveMode as _IM
-    from maxim.simulation.sim_logger import get_interactive_mode as _get_im
-
-    _is_observe_only = _get_im() == _IM.ON and goal.strip().lower() in ("interactive", "interactive mode", "")
     if dm_campaign is not None:
         from maxim.simulation.campaign_runner import run_dm_campaign as _run_dm
 
@@ -2285,48 +2290,25 @@ def start_simulation_mode(
         _finish_runner(bridge, stop_event, "fixture_runner", fixture_result)
 
     # ── Inject initial goal (or resume context) into orchestrator ────────
+    _tools_block = _narrator_tools_block(orch_registry)
+    resume_data = None
     if resume_session:
         resume_data, resume_dir = _load_resume_context_at(resume_session)
         resume_record.update(context_dir=str(resume_dir) if resume_dir else None, context_loaded=bool(resume_data))
-        if resume_data:
-            resume_prompt = _build_resume_prompt(resume_data, goal, mode, observe_only=_is_observe_only)
-            orchestrator_source.inject_cli(resume_prompt, salience=1.0, novelty=1.0)
-            display_status(f"Resuming session: {resume_session}")
-            display_status(
-                f"Previous turns: {resume_data.get('turns', '?')}, actions: {resume_data.get('total_actions', '?')}"
-            )
-        else:
-            # Fallback to fresh start if session not found
+        if not resume_data:
             logger.warning("Resume session '%s' not found, starting fresh", resume_session)
-            orchestrator_source.inject_cli(
-                f"SIMULATION GOAL: {goal}\n\n"
-                f"You are the simulation orchestrator. "
-                f"Use ONLY these tools: send_message, observe_actions, check_completion, "
-                f"analyze_results, inspect_aut, inject_pain, finish_simulation, "
-                f"spawn_sub_simulation, extend_simulation. No other tools exist.\n\n"
-                f"{_kickoff_instruction(goal, observe_only=_is_observe_only)}",
-                salience=1.0,
-                novelty=1.0,
-            )
-    else:
-        _orch_instruction = _kickoff_instruction(goal, observe_only=_is_observe_only)
-
+    if resume_data:
+        resume_prompt = _build_resume_prompt(
+            resume_data, goal, mode, observe_only=_is_observe_only, tools_block=_tools_block
+        )
+        orchestrator_source.inject_cli(resume_prompt, salience=1.0, novelty=1.0)
+        display_status(f"Resuming session: {resume_session}")
+        display_status(
+            f"Previous turns: {resume_data.get('turns', '?')}, actions: {resume_data.get('total_actions', '?')}"
+        )
+    else:  # a fresh start, or a resume whose session was not found
         orchestrator_source.inject_cli(
-            f"SIMULATION GOAL: {goal}\n\n"
-            f"You are a simulation orchestrator testing an AI agent. "
-            f"You MUST use ONLY these tools (no others exist):\n"
-            f"  - send_message: Talk to the agent (your PRIMARY tool)\n"
-            f"  - observe_actions: Review what the agent has done\n"
-            f"  - check_completion: Check if your goal is achieved\n"
-            f"  - analyze_results: Analyze patterns in agent behavior\n"
-            f"  - inspect_aut: Inspect agent's memory, causal links, pain\n"
-            f"  - inject_pain: Send a pain signal to test the agent\n"
-            f"  - finish_simulation: End the simulation\n"
-            f"  - spawn_sub_simulation: Run a sub-experiment\n"
-            f"  - extend_simulation: Add a new goal to the current sim\n\n"
-            f"Do NOT use respond, internet_search, bash, or any other tool. "
-            f"They do not exist and will fail.\n\n"
-            f"{_orch_instruction}",
+            _build_kickoff_prompt(goal, tools_block=_tools_block, observe_only=_is_observe_only),
             salience=1.0,
             novelty=1.0,
         )

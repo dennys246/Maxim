@@ -207,6 +207,17 @@ class LLMRequest:
     #     Phase 0/1 — see docs/plans/grounded_language_acquisition.md.
     failed_tools: list[str] = field(default_factory=list, compare=False)
 
+    # Why the previous attempt at THIS request was rejected, when the model itself erred (narrator reliability,
+    # 2026-10-02): reason codes from D13's planning-failure handler (`prompt_builder.PLANNING_CORRECTIONS`), set on
+    # the retry only (`LLMWorker.requeue_request(reason=)`), so a retry is never byte-identical to the answer that
+    # failed. Only loops that opt into planning liveness (the sim narrator) requeue, so no other agent sees it.
+    planning_corrections: list[str] = field(default_factory=list, compare=False)
+
+    # Inputs that arrived while this loop's previous planning request was in flight (one request in flight per
+    # narrator, #1048): a follow-up prompt renders them after the result, so they are not lost to the follow-up
+    # branch. Empty for every loop without planning liveness.
+    deferred_inputs: list[str] = field(default_factory=list, compare=False)
+
     def __post_init__(self):
         # Sort by negative priority (higher priority first), then by timestamp
         self.sort_index = (-self.priority, self.timestamp)

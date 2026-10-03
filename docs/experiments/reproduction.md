@@ -84,7 +84,7 @@ The short version: **a re-run is a new experiment, and its result counts only if
 
 ## 11. Disclose what you know is wrong, and say why the gates do not read it
 
-- **What happened.** The post-fix check showed the narrator sometimes executing a plan made before the agent's latest reply ([#1048](https://github.com/dennys246/Maxim/issues/1048)). Its fix is in code fenced until 1.3.2's decomposition.
+- **What happened.** The post-fix check showed the narrator sometimes executing a plan made before the agent's latest reply ([#1048](https://github.com/dennys246/Maxim/issues/1048)). It was disclosed in the campaign-2 prereg because its fix sat in code fenced until 1.3.2's decomposition. It is now fixed under an owner fence exception (the narrator keeps one planning request in flight and folds new inputs into the next follow-up), before campaign 3.
 - **Rule.** A known defect in the apparatus goes in the prereg, with the argument from structure for why no gate reads it and why it cannot by itself produce the outcome a gate counts. If an attempt fails anyway, it is an abort on the record, not an excuse.
 
 ## 12. Time checks catch forgetting, not evasion

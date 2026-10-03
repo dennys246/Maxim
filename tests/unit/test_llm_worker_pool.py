@@ -77,6 +77,7 @@ def _submit_test_context(worker, triggering_input: str = "maxim hello", priority
         available_tools={"respond"},
         tool_descriptions={"respond": "Send a message"},
         deliberation_available=True,
+        deferred_inputs=[],
     )
 
 

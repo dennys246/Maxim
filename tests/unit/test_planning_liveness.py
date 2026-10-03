@@ -101,6 +101,7 @@ def _submit_test_context(worker, triggering_input: str = "probe the AUT") -> boo
         available_tools={"respond"},
         tool_descriptions={"respond": "Send a message"},
         deliberation_available=True,
+        deferred_inputs=[],
     )
 
 
@@ -225,7 +226,7 @@ class TestHandlePlanningFailure:
         )
 
         assert exhausted is False
-        worker.requeue_request.assert_called_once_with(original)
+        worker.requeue_request.assert_called_once_with(original, failed_tool=None, reason="fallback_proposal_dropped")
         worker.requeue_last_request.assert_not_called()
         # The await window MUST re-open or the idle gate closes at 120s
         # and the loop falls back into the pre-fix livelock.
@@ -247,7 +248,9 @@ class TestHandlePlanningFailure:
         )
 
         assert exhausted is False
-        worker.requeue_last_request.assert_called_once_with()
+        worker.requeue_last_request.assert_called_once_with(
+            failed_tool=None, reason="planning_job_completed_without_proposal"
+        )
         worker.requeue_request.assert_not_called()
 
     def test_exhaustion_reports_abort_and_stops_requeueing(self):
@@ -305,7 +308,9 @@ class TestHandlePlanningFailure:
             )
             is False
         )
-        worker.requeue_request.assert_called_once_with(original, failed_tool="ghost_tool")
+        worker.requeue_request.assert_called_once_with(
+            original, failed_tool="ghost_tool", reason="unregistered_tool_proposed"
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -495,7 +500,10 @@ class TestLoopWiringPins:
         assert 'new_proposal.error != "shutdown"' in loop_src
 
     def test_stale_drop_calls_handler(self, loop_src):
-        assert "stale_proposal_dropped" in loop_src
+        from maxim.runtime import agent_loop
+
+        assert "_drop_stale_proposal(" in loop_src
+        assert "stale_proposal_dropped" in inspect.getsource(agent_loop._drop_stale_proposal)
 
     def test_idle_gate_has_terminal_job_backstop(self, loop_src):
         assert "planning_job_completed_without_proposal" in loop_src

@@ -36,6 +36,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The simulation narrator recovers from its own mistakes, and the openings it reads are coherent** (narrator
+  reliability before O19 campaign 3). A five-angle investigation found every remaining abort path in the
+  instrument, not the memory mechanism under test.
+  - A planning-failure retry now says why the last answer failed (no tool called, "not ready", "goal achieved"
+    without a tool, unreadable JSON). Byte-identical retries had recovered 0 times.
+  - The narrator keeps one planning request in flight. Inputs that arrive meanwhile (a diversity checkpoint)
+    ride the next follow-up instead of preempting or losing it (#1048).
+  - Its opening prompt lists exactly the tools in its registry, embodiment tools included. The "Do NOT use
+    respond, internet_search, bash" line is gone.
+  - A resumed session lists the tools and treats a previous session with a different goal as context only.
+  - New opt-in `--sim-run-full-turns`: `finish_simulation` is refused until `--sim-max-turns` is reached, so a
+    harness gets the session length it asked for. Without the flag nothing changes, and an observe-only narrator
+    is exempt.
+  - The AUT's prompt and loop are unchanged.
 - **An agent is offered "think first" only if its loop can continue the thought** (#1052). The simulation
   narrator's prompt invited `ready_to_act: false` ("false to keep thinking", and the PFC preamble, which reaches
   every sim agent). But its loop has no bio-enrichment pipeline, so no deliberation cycle could continue the thought,

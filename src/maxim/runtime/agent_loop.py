@@ -433,6 +433,9 @@ def _planning_liveness_enabled_via_env() -> bool:
     S5; mirrors ``MAXIM_SIM_HARD_ABORT`` for the D12 abort). Default ON;
     set to 0/false/no/off to fall back to pre-fix behavior (a dropped
     planning turn idles, which is the bug — use only to reproduce it).
+    It also gates the narrator-reliability pieces that ride on liveness:
+    the reason-specific retry corrections and the one-planning-request-
+    in-flight hold with its deferred-input fold.
     """
     # Deliberately the MAXIM_SIM_HARD_ABORT idiom, not the canonical
     # ``annotation_disabled_via_env``: that parser is for MAXIM_DISABLE_*
@@ -464,6 +467,69 @@ def _planning_attempt_is_active(state: LLMAttemptState) -> bool:
     how many control-loop ticks response parsing should take.
     """
     return state in _ACTIVE_PLANNING_ATTEMPT_STATES
+
+
+def _planning_submit_in_flight(llm_worker: Any, liveness_on: bool) -> bool:
+    """Whether this loop's previous planning job can still publish a proposal (one planning request in flight per
+    narrator, #1048). Only loops with planning liveness (the sim narrator) wait; the AUT is unaffected. Inputs that
+    arrive meanwhile ride the next submit (``_take_deferred_inputs``)."""
+    attempt_state = getattr(llm_worker, "latest_attempt_state", None)
+    return bool(liveness_on and callable(attempt_state) and _planning_attempt_is_active(attempt_state()))
+
+
+def _take_deferred_inputs(context: Any, processed_cli_inputs: Any, liveness_on: bool) -> list[str]:
+    """The inputs held back while a planning job was in flight, taken alongside the follow-up that is now being
+    submitted (#1048): without this the follow-up branch would drop them, or they would preempt the follow-up.
+    Marks them processed. Empty for a loop without planning liveness."""
+    if not liveness_on or context is None:
+        return []
+    taken = [
+        c
+        for c in (context.cli_inputs or [])
+        if c and c not in processed_cli_inputs and not c.startswith("[ACTION_FOLLOWUP")
+    ]
+    for c in taken:
+        processed_cli_inputs.append(c)
+    return taken
+
+
+def _release_unsent_deferred_inputs(processed_cli_inputs: Any, deferred: list[str], submitted: bool) -> None:
+    """A submit that failed (queue full, or raised) must not lose the inputs it carried: they become unprocessed
+    again and ride the next submit."""
+    if submitted:
+        return
+    for c in deferred:
+        try:
+            processed_cli_inputs.remove(c)
+        except ValueError:
+            continue  # already evicted from the bounded deque: it reads as unprocessed anyway
+
+
+# A completed proposal that waited longer than this is dropped (#1048's cutoff).
+_STALE_PROPOSAL_AGE_S = 35.0
+
+
+def _drop_stale_proposal(proposal: Any, *, ctrl: Any, llm_worker: Any, sim: Any, liveness_on: bool) -> tuple[Any, bool]:
+    """Discard a proposal that sat in the result queue too long. The worker's ``_stale_threshold`` governs
+    request freshness; this guards completed proposals. Returns ``(proposal or None, liveness_exhausted)``.
+
+    D13: a dropped stale proposal is a consumed planning turn with nothing executed, so it is rescheduled, never
+    idled. With one planning request in flight per narrator this is close to unreachable (#1057 tracks re-planning
+    from the current context)."""
+    age = time.time() - proposal.timestamp
+    if age <= _STALE_PROPOSAL_AGE_S:
+        return proposal, False
+    logger.warning("Skipping stale LLM proposal (age=%.1fs, request_id=%s)", age, proposal.request_id)
+    sim.log("EXEC", f"DROPPED: stale proposal (age={age:.1f}s)")
+    exhausted = liveness_on and _handle_planning_failure(
+        ctrl,
+        llm_worker,
+        sim,
+        reason="stale_proposal_dropped",
+        original_request=proposal.original_request,
+        exhausted_status="planning_failed",
+    )
+    return None, bool(exhausted)
 
 
 def _proposal_without_action_reason(proposal: Any) -> str | None:
@@ -530,16 +596,11 @@ def _handle_planning_failure(
         return _report_planning_exhaustion(ctrl, sim, reason=reason, kind="retry budget")
 
     # verdict == "retry"
+    # Every retry says why the last answer failed when the model erred (narrator reliability, 2026-10-02).
     if original_request is not None:
-        if failed_tool is None:
-            requeued = bool(llm_worker.requeue_request(original_request))
-        else:
-            requeued = bool(llm_worker.requeue_request(original_request, failed_tool=failed_tool))
+        requeued = bool(llm_worker.requeue_request(original_request, failed_tool=failed_tool, reason=reason))
     else:
-        if failed_tool is None:
-            requeued = bool(llm_worker.requeue_last_request())
-        else:
-            requeued = bool(llm_worker.requeue_last_request(failed_tool=failed_tool))
+        requeued = bool(llm_worker.requeue_last_request(failed_tool=failed_tool, reason=reason))
     attempt = ctrl.planning_failure_streak
     limit = ctrl.planning_retry_limit
     note = (
@@ -3344,31 +3405,10 @@ def run_agentic_loop(
                     f"Proposal received: tool={new_proposal.action.get('tool_name') if isinstance(new_proposal.action, dict) else None}",
                 )
 
-                # Staleness guard: discard proposals that sat in the result
-                # queue too long. The worker's _stale_threshold (default 5s)
-                # governs request freshness; this guards completed proposals.
-                _STALE_PROPOSAL_AGE_S = 35.0
-                proposal_age = time.time() - new_proposal.timestamp
-                if proposal_age > _STALE_PROPOSAL_AGE_S:
-                    logger.warning(
-                        "Skipping stale LLM proposal (age=%.1fs, request_id=%s)",
-                        proposal_age,
-                        new_proposal.request_id,
-                    )
-                    sim.log("EXEC", f"DROPPED: stale proposal (age={proposal_age:.1f}s)")
-                    _stale_original_request = new_proposal.original_request
-                    new_proposal = None
-                    # D13: a dropped stale proposal is a consumed planning
-                    # turn with nothing executed — reschedule, don't idle.
-                    if _planning_liveness_on and _handle_planning_failure(
-                        ctrl,
-                        llm_worker,
-                        sim,
-                        reason="stale_proposal_dropped",
-                        original_request=_stale_original_request,
-                        exhausted_status="planning_failed",
-                    ):
-                        _planning_liveness_exhausted = True
+                new_proposal, _stale_exhausted = _drop_stale_proposal(
+                    new_proposal, ctrl=ctrl, llm_worker=llm_worker, sim=sim, liveness_on=_planning_liveness_on
+                )
+                _planning_liveness_exhausted = _planning_liveness_exhausted or _stale_exhausted
             # In simulation mode, skip fallback proposals — wait for real LLM
             if new_proposal and sim.should_skip_fallback_proposal(new_proposal):
                 _consecutive_llm_fallbacks += 1
@@ -4559,7 +4599,8 @@ def run_agentic_loop(
                 except Exception:
                     logger.debug("substrate telemetry callback raised", exc_info=True)
 
-        if aut_mode != "substrate-primary" and llm_worker and ctrl.pending_proposal is None:
+        _submit_held = _planning_submit_in_flight(llm_worker, _planning_liveness_on)  # one in flight (#1048)
+        if aut_mode != "substrate-primary" and llm_worker and ctrl.pending_proposal is None and not _submit_held:
             now = time.time()
             if now - ctrl.last_llm_submit_time > llm_submit_interval:
                 # Cache tool registry snapshot for this submission (avoids 3 redundant traversals)
@@ -4740,6 +4781,7 @@ def run_agentic_loop(
                     is_sleeping = state.data.get("processing_state", "awake") == "sleep"
                     has_meaningful_input = False
                     new_cli_input = None
+                    _deferred_inputs: list[str] = []
 
                     # If a fresh percept arrived THIS iteration (cli_input from
                     # observation), it must be processed even if the same text was
@@ -4864,6 +4906,12 @@ def run_agentic_loop(
                                 context.cli_inputs.append(synthetic_input)
                             else:
                                 context.cli_inputs = [synthetic_input]
+                            _deferred_inputs = _take_deferred_inputs(
+                                context, processed_cli_inputs, _planning_liveness_on
+                            )
+                            # A fold submits the follow-up as itself (the trim keeps it); its original query stays
+                            # the request's triggering input. The held inputs are already marked processed.
+                            new_cli_input = None if _deferred_inputs else new_cli_input
                             logger.info(
                                 "Injected action followup into context: type=%s, tool=%s, result_len=%d",
                                 followup_type,
@@ -5329,31 +5377,36 @@ def run_agentic_loop(
                             # down to the base Executor where the list lives.
                             _failed_tools = list(getattr(executor, "_tools_hallucinated", []))
 
-                        submitted = llm_worker.submit_context(
-                            context=context,
-                            mode=mode_info,
-                            autonomy_level=autonomy_controller.current_level,
-                            internet_access=internet_access,
-                            internet_policy_summary=internet_policy_summary,
-                            available_tools=available_tools,
-                            tool_descriptions=tool_descriptions,
-                            failed_tools=_failed_tools,
-                            context_pool_text=context_pool_text,
-                            agent_states=agent_states,
-                            recent_outcomes=recent_outcomes,
-                            use_tool_prompting=use_tool_prompting and bool(available_tools),
-                            # Use modification text as triggering_input if no new input but pending modification
-                            triggering_input=new_cli_input
-                            or followup_original_query
-                            or (pending_modification.get("user_modification", "") if pending_modification else ""),
-                            conversation_history_text=conversation_history_text,
-                            pending_modification=pending_modification,
-                            prefetch_context=prefetch_context_text,
-                            skip_exploration=skip_exploration,
-                            is_sleeping=is_sleeping,
-                            protocol_context=_protocol_context,
-                            deliberation_available=bio_enrichment_pipeline is not None,
-                        )
+                        submitted = False
+                        try:
+                            submitted = llm_worker.submit_context(
+                                context=context,
+                                mode=mode_info,
+                                autonomy_level=autonomy_controller.current_level,
+                                internet_access=internet_access,
+                                internet_policy_summary=internet_policy_summary,
+                                available_tools=available_tools,
+                                tool_descriptions=tool_descriptions,
+                                failed_tools=_failed_tools,
+                                context_pool_text=context_pool_text,
+                                agent_states=agent_states,
+                                recent_outcomes=recent_outcomes,
+                                use_tool_prompting=use_tool_prompting and bool(available_tools),
+                                # Use modification text as triggering_input if no new input but pending modification
+                                triggering_input=new_cli_input
+                                or followup_original_query
+                                or (pending_modification.get("user_modification", "") if pending_modification else ""),
+                                conversation_history_text=conversation_history_text,
+                                pending_modification=pending_modification,
+                                prefetch_context=prefetch_context_text,
+                                skip_exploration=skip_exploration,
+                                is_sleeping=is_sleeping,
+                                protocol_context=_protocol_context,
+                                deliberation_available=bio_enrichment_pipeline is not None,
+                                deferred_inputs=_deferred_inputs,
+                            )
+                        finally:  # a refused or raising submit must not lose the inputs it carried
+                            _release_unsent_deferred_inputs(processed_cli_inputs, _deferred_inputs, submitted)
                         ctrl.last_llm_submit_time = now
                         # Log submission for both user input and followups
                         if submitted:
@@ -5417,6 +5470,7 @@ def run_agentic_loop(
                                         is_sleeping=is_sleeping,
                                         protocol_context=_protocol_context,
                                         deliberation_available=True,
+                                        deferred_inputs=[],
                                     )
 
                                     def _submit_fn(_ctx: Any, _kw: dict = _submit_kwargs) -> bool:

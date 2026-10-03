@@ -269,6 +269,20 @@ diversity-checkpoint strings in `orchestrator.py::start_simulation_mode` now lab
 as not the narrator's own (they were quoted unlabelled, and the narrator echoed them). No logic moves; the function's
 length is unchanged.
 
+**Fence exception, narrator reliability (owner-approved 2026-10-02, before O19 campaign 3):**
+- `agent_loop.py::run_agentic_loop` holds the next planning submit while the narrator's previous job is in flight
+  (`_submit_held`, from the module-level `_planning_submit_in_flight`). It folds inputs held meanwhile into the
+  follow-up it submits (`_take_deferred_inputs`, `deferred_inputs=`).
+  A refused or raising submit releases them (`_release_unsent_deferred_inputs`, in a `finally`).
+- The stale-proposal drop moved to the module-level `_drop_stale_proposal`; ceiling 3391 -> 3384.
+- `_handle_planning_failure` (module-level) passes its reason to the retry.
+- `orchestrator.py::start_simulation_mode` builds the narrator's openings with `sim_types.build_kickoff_prompt` /
+  `narrator_tools_block` from its registry, and takes `min_finish_turns` (the cap, only under the opt-in
+  `--sim-run-full-turns`; observe-only exempt) for `FinishSimulationTool`; ceiling 3248 -> 3229. The flag's caller
+  is owed by the O19 campaign-3 PR (the O19 scripts are frozen until campaign 2's verdict lands); a strict red gate,
+  `test_narrator_reliability.py::test_campaign_3_runs_every_turn_it_asks_for`, flips when it does.
+- All of it is gated on planning liveness, which only the narrator has, or lives in the narrator's own tools.
+
 **Fence exception, #1052 (owner-approved 2026-10-02):** `submit_context`'s `deliberation_available` is a REQUIRED
 keyword, so `agent_loop.py::run_agentic_loop` states it twice. The planning submit passes `bio_enrichment_pipeline is
 not None`, and the deliberation-cycle submit passes True (ceiling 3389 -> 3391). The fact "this loop can deliberate"
