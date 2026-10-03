@@ -112,6 +112,7 @@ def support_problem(j: Judgement, row_id: str, token: str, table: dict, after: f
 
 
 EXCEPTION_FIELDS = ("id", "kind", "row", "to", "to_date", "path", "sha256", "owner", "reason", "date")
+SUPERSEDED_FIELDS = ("id", "kind", "row", "by", "to_date", "owner", "reason", "date")  # lint_ledger_format's (D3)
 
 
 def pass_table_problems(table, where: str, *, at_base: bool = False) -> list[str]:
@@ -195,8 +196,14 @@ def exceptions_problems(base_list, head_list, repo: Repo | None = None) -> list[
             label = e.get("id") if isinstance(e, dict) else e
             out.append(f"{EXCEPTIONS}: an entry on main was edited or removed (append-only): {label!r}"[:200])
     for e in head_list:
-        if not isinstance(e, dict) or e.get("kind") not in ("ledger", "prereg"):
-            out.append(f"{EXCEPTIONS}: an entry is not a ledger/prereg exception: {e!r}"[:200])
+        if not isinstance(e, dict) or e.get("kind") not in ("ledger", "prereg", "superseded"):
+            out.append(f"{EXCEPTIONS}: an entry is not a ledger/prereg/superseded exception: {e!r}"[:200])
+        elif e["kind"] == "superseded" and (
+            any(not e.get(f) for f in SUPERSEDED_FIELDS) or "from" not in e  # `from: null` = a new row
+        ):
+            # Read by lint_ledger_format.py (D3): a row entering SUPERSEDED, or re-pointing it, without its successor
+            # reaching a positive status in the same diff.
+            out.append(f"{EXCEPTIONS}: superseded exception {e.get('id')!r} lacks a required field")
         elif e["kind"] == "ledger" and (
             any(not e.get(f) for f in EXCEPTION_FIELDS) or "from" not in e  # `from: null` = a new row
         ):

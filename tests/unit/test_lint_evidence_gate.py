@@ -412,6 +412,21 @@ def test_the_real_pass_table_names_the_o19_rows() -> None:
     assert not any(k.startswith(("exp54", "gate6")) for k in table)  # no ledger row / never support
 
 
+def test_the_real_pass_table_supports_exp63_earned_from_pass_only() -> None:
+    """Exp 63's prereg: ``exp63_verdict`` -> {PASS} supports EARNED on the new row T1-16 (NOT SHOWN supports nothing),
+    and only from an apparatus-checked verdict; it is an O19 kind, so its bound judge is re-run."""
+    table = json.loads((REPO / G.PASS_TABLE).read_text())
+    assert table["exp63_verdict"] == {
+        "rows": ["T1-16"],
+        "targets": {"EARNED": ["PASS"]},
+        "require": {"apparatus_checked": True},
+    }
+    assert G.pass_table_problems(table, "HEAD") == [] and "exp63_verdict" in R.O19_KINDS
+    import o19_verdict as v
+
+    assert {p["kind"] for p in v.PROTOCOL.values()} <= R.O19_KINDS  # every campaign's verdicts are re-judged
+
+
 def test_unknown_digests_never_match() -> None:
     assert R.unknown("unknown") and R.unknown("unknown: OSError") and R.unknown(None) and R.unknown("")
     assert not R.unknown("a" * 64)
@@ -978,6 +993,27 @@ def test_the_o19_judge_imports_only_the_standard_library() -> None:
     assert sys.path == before_path
     added = {m.split(".")[0] for m in set(sys.modules) - before_mods} - {"_o19_bound"}
     assert added <= set(sys.stdlib_module_names), added
+
+
+class _WorkingTreeJudge(R.Repo):
+    """The real repository, with HEAD's ``o19_verdict.py`` read from the working tree (the edit under test)."""
+
+    def blob(self, ref: str, path: str) -> bytes | None:
+        if ref == "HEAD" and path == R.O19_JUDGE:
+            return (self.root / path).read_bytes()
+        return super().blob(ref, path)
+
+
+def test_half_b_on_the_real_repo_every_o19_verdict_rejudges_the_same() -> None:
+    """#1050 half B on the REAL evidence: the judge in this tree (Exp 63's key added) re-judges every O19 verdict the
+    repository holds exactly as it was written. Exp 63's behaviour is scoped to its own campaign key."""
+    repo = _WorkingTreeJudge(REPO)
+    verdicts = [p for p in (REPO / DATA).glob("*/verdict.json") if '"kind": "exp' in p.read_text()]
+    if repo.kind("HEAD", f"{DATA}/rerun_exp10_o19c2/verdict.json") != "blob":
+        pytest.skip("this clone's HEAD holds no O19 verdict")
+    assert verdicts
+    ctx = R.Ctx(repo=repo, base="HEAD", ref="HEAD", legacy={}, prereg={}, table={})
+    assert R.o19_judge_edit_problems(ctx) == []
 
 
 @pytest.mark.parametrize("pin", ["file", "other_bytes"])
