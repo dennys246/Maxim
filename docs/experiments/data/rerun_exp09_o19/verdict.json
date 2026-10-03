@@ -1,0 +1,120 @@
+{
+  "attempts": [
+    {
+      "run_id": "a24bf0a20b4e48edbb8721e3df362df0",
+      "k": 1,
+      "complete": true,
+      "problems": []
+    }
+  ],
+  "experiment": "09",
+  "deciding_attempt": "a24bf0a20b4e48edbb8721e3df362df0",
+  "gates": {
+    "H1": {
+      "status": "PASS",
+      "attack_flinch_records": 8
+    },
+    "H2": {
+      "status": "PASS",
+      "components": [
+        "legs",
+        "torso"
+      ]
+    },
+    "H3": {
+      "status": "NOT MEASURED",
+      "why": "no committed byte carries a published pain signal's reflex source (#1026)"
+    },
+    "H4": {
+      "status": "PASS",
+      "attack_flinch_intensities": [
+        0.15,
+        0.133,
+        0.127,
+        0.116,
+        0.102,
+        0.09,
+        0.08,
+        0.073
+      ]
+    },
+    "H5": {
+      "status": "PASS",
+      "max_lower_bound": "1.498333",
+      "at": {
+        "reflex": "fire_burn",
+        "n": 7
+      }
+    },
+    "H6": {
+      "status": "PASS",
+      "occurrences": 0
+    },
+    "H7": {
+      "status": "PASS",
+      "records": 9
+    },
+    "verdict": "PARTIAL",
+    "not_passed": [
+      "H3"
+    ]
+  },
+  "verdict": "PARTIAL",
+  "apparatus_checked": true,
+  "apparatus": {
+    "markers": [
+      {
+        "k": 1,
+        "ref": "refs/tags/o19/09/attempt-1-a24bf0a20b4e48edbb8721e3df362df0",
+        "object": "d66bf59ee6b1d09a83c19ac6b2a76bb2e7be9d10",
+        "peeled": "d00ac87a37a18d980e0e9366e08fc9ee5be70162",
+        "tagger_date": 1791003724.0,
+        "run_id": "a24bf0a20b4e48edbb8721e3df362df0"
+      }
+    ],
+    "ruleset": {
+      "id": 24345734,
+      "created_at": "2026-10-01T21:27:48.500-06:00",
+      "updated_at": "2026-10-01T21:27:48.517-06:00",
+      "history_versions": [
+        51650702
+      ]
+    },
+    "rows_history": [
+      {
+        "commit": "ccd045bffa1c41db79e84aa33a82a8b6eaeb5500",
+        "committed_at": 1791006396.0
+      }
+    ],
+    "landed": {
+      "a24bf0a20b4e48edbb8721e3df362df0": 1791006396.0
+    },
+    "succession": null
+  },
+  "bound_files": {
+    "docs/experiments/protocols/exp09_rerun_2026-09-30_preregistration.md": "82008f77c92fcfbedc97b663a91b514890966049",
+    "scripts/o19_verdict.py": "54c0902c2705947c2ed4db681e09b9b4cee6aca5",
+    "scripts/o19_rerun.py": "87a02f3d528268b1d3a35d5c317200e921396920"
+  },
+  "verdict_commit": "ccd045bffa1c41db79e84aa33a82a8b6eaeb5500",
+  "verdict_source_sha256": "2a3ec52c03a6ce8967fd5f76f05072c53da10f0fe258c8cd27efc680ce54b2f5",
+  "record_kind": "verdict",
+  "kind": "exp09_verdict",
+  "data": "docs/experiments/data/rerun_exp09_o19/rows.jsonl",
+  "data_sha256": "73ea4de9947d7ded43e1bcf7f9b2b8750f04f625e3c7795024e0f676ba3e33dd",
+  "scope": {
+    "all_rows": true
+  },
+  "mock": false,
+  "provenance": {
+    "executed_maxim_file": "/Users/dennyschaedig/Scripts/Maxim/.worktrees/o19-exp09-verdict/src/maxim/__init__.py",
+    "executed_git_hash": "ccd045bffa1c41db79e84aa33a82a8b6eaeb5500",
+    "harness_run_id": "db21ec92a2984808b51b132e2e663705",
+    "harness_family": "in_process",
+    "working_tree_dirty_src_scripts": false,
+    "code_tree_sha256": "585c7bd9eb972eb25333d98d80e2f37be7caf1669cbdba30314b6b92d3a4507b",
+    "python": "/Users/dennyschaedig/Scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.worktrees/o19-exp09-verdict/src"
+  },
+  "_format_version": "1.0"
+}
