@@ -74,6 +74,8 @@ EXP10_PHASES = [
 ]
 # A campaign may be succeeded at most once per experiment (owner decision 2026-10-02: campaign 2 is the last before
 # the 1.3.2 cut; another ABORT leaves the row STALE and the cause is investigated). Raising it is an owner decision.
+# 2026-10-03 (owner, strict): Exp 10 opens no third campaign; a successor supports a row only on byte-identical
+# subject code (#1059; docs/experiments/reproduction.md §13).
 MAX_CAMPAIGNS = 2
 _KEY = re.compile(r"[0-9a-z]+")
 RESERVED_KEYS = frozenset({"preflight"})  # o19_rerun.py's dry-run marker namespace
@@ -113,7 +115,7 @@ PROTOCOL: dict[str, dict] = {
                 EXP09_GOAL,
                 8,
                 False,
-                ["--embodiment", "bodies/base_humanoid"],
+                ["--embodiment", "bodies/base_humanoid", "--sim-run-full-turns"],  # amended 2026-10-03, before data
                 {"MAXIM_SUBSTRATE_PATH": "1", "MAXIM_BACKEND_TRACE": "1"},
             ),
         ],

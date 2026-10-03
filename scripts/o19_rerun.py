@@ -233,14 +233,54 @@ def take_lock(exp: str):
 # ── one phase ────────────────────────────────────────────────────────────────────────────────────────────
 
 
+# llama_cpp.server answers /v1/models under the same model lock as a completion, so a read made mid-generation
+# waits for it. Campaigns 1-2 read with the backend's 4 s discovery budget and 26 of 36 reads came back null; their
+# completions took up to 24 s, and the narrator and the AUT share the server, so a read may wait for two.
+SERVED_READ_TIMEOUT = {"connect_s": 2.0, "read_s": 60.0, "total_s": 60.0}
+
+
+def check_argv_parses(exp: str) -> None:
+    """Every phase's argv parses on this build, BEFORE the marker: a flag the build lacks (e.g. a protocol merged
+    ahead of the code it needs) would otherwise end every phase at argparse and cost an attempt."""
+    from maxim.cli_parser import _build_parser  # noqa: PLC0415
+
+    for index, phase in enumerate(v.PROTOCOL[exp]["phases"]):
+        argv = v.phase_argv(exp, index, "preflight" if phase[3] else None)
+        try:
+            _build_parser().parse_args(argv)
+        except SystemExit as exc:
+            raise Refused(
+                f"phase {index}'s argv does not parse on this build (argparse's error above): {argv}"
+            ) from exc
+
+
 def served_reader():
-    """The served-model reader, imported BEFORE the marker (a failed import must not cost an attempt)."""
-    from maxim.runtime.llm_server import _read_served_model_id, _served_model_matches  # noqa: PLC0415
+    """The served-model reader, imported BEFORE the marker (a failed import must not cost an attempt). It reads
+    ``GET /v1/models`` the way the peer backend's discovery does (the first ``data[].id``), with a budget that
+    outlasts the completions it queues behind, and records why a read failed."""
+    from maxim.runtime.llm_server import _served_model_matches  # noqa: PLC0415
     from maxim.tunnel.keys import read_key  # noqa: PLC0415
+    from maxim.utils import http as _http  # noqa: PLC0415
 
     def read(port: int, gguf_path: str) -> dict:
-        served = _read_served_model_id(f"http://127.0.0.1:{port}/v1", read_key())
-        return {"served": served, "match": _served_model_matches(served, gguf_path, v.MODEL_PROFILE), "at": time.time()}
+        key = read_key()
+        served, error = None, None
+        try:
+            resp = _http.fetch_url(
+                f"http://127.0.0.1:{port}/v1/models",
+                headers={"Authorization": f"Bearer {key}"} if key else None,
+                timeout=_http.TimeoutPolicy(**SERVED_READ_TIMEOUT),
+            )
+            data = json.loads(resp.content or b"{}").get("data")
+            first = data[0] if isinstance(data, list) and data else None
+            served = (first.get("id") or None) if isinstance(first, dict) and isinstance(first.get("id"), str) else None
+            error = None if served else f"no data[].id in the response (HTTP {resp.status})"
+        except Exception as exc:  # noqa: BLE001 -- a failed read is recorded, and C4 judges the reads
+            error = f"{type(exc).__name__}: {str(exc)[:200]}"
+        row = {"served": served, "match": _served_model_matches(served, gguf_path, v.MODEL_PROFILE), "at": time.time()}
+        if error:
+            row["error"] = error
+        return row
 
     return read
 
@@ -326,8 +366,9 @@ def spawn_phase(
                     timed_out = True
                     break
                 if time.monotonic() - last_read >= SERVED_EVERY_S:
-                    last_read = time.monotonic()
                     reads.append(read_served(v.SIM_PORT, gguf))
+                    # after the read: a read that waited out a completion keeps the spacing
+                    last_read = time.monotonic()
                 time.sleep(POLL_S)
         finally:
             stop_sim(proc)  # a timeout or an interrupted harness must not leave the sim (and its server) running
@@ -492,6 +533,7 @@ def prepare(args: argparse.Namespace, exp: str, mock: bool):
     if refusal:
         raise Refused(refusal + " (keep the rig at the first attempt's commit)")
     try:
+        check_argv_parses(exp)
         if not mock:
             check_on_main(rows_file)
             check_campaign(exp)

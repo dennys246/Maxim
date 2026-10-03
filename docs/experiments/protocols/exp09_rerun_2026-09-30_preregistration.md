@@ -8,9 +8,36 @@
 - **Claim re-tested (the row, verbatim):** "Reflexes fire below deliberation; shape learned avoidance over repeated
   exposure (habituation + sensitization)", metric "reflex fires on keyword match + habituation/sensitization
   trajectories measured".
-- **Preconditions:** [#935](https://github.com/dennys246/Maxim/issues/935) fixed and the O19 harness merged.
+- **Preconditions:** [#935](https://github.com/dennys246/Maxim/issues/935) fixed and the O19 harness merged; and,
+  from the 2026-10-03 amendment below, the narrator fixes (#1056, #1058) and the amendment's own PR merged.
 - **Ceiling, stated before the run:** **T3-9 can reach at most PARTIAL on this code**, because H3 is not measurable
   (below; [#1026](https://github.com/dennys246/Maxim/issues/1026)). PARTIAL does not block a release; STALE does.
+
+## Amendment 2026-10-03, before any data (owner decision)
+
+No Exp 09 attempt has run; this campaign's first attempt fixes the code under test, as before.
+
+- **The session runs its whole cap.** The argv adds `--sim-run-full-turns` (#1058): the narrator's
+  `finish_simulation` is refused until turn 8. The complete-attempt condition already required
+  `finish_reason == "max_turns"`, so a narrator ending the session early aborted the attempt. The cap, goal,
+  embodiment and environment are unchanged.
+- **The code under test now includes changes made after this prereg was written,** and they are disclosed here
+  because the first attempt runs on them:
+  - The narrator's prompts, retries and request handling (#1056, #1058; Exp 10's O19 campaigns 1–2 both aborted on
+    the narrator, #1042 and #1052).
+  - #1047 ("an agent's prompt names only tools it has") applies to every agent, so it changes the agent-under-test's
+    prompt too: a prompt line naming a tool the agent lacks is removed.
+  - No hypothesis reads a prompt, but the agent's prompt can still move H1, H4 and H5: those firings can come from the
+    agent's own reasoning (below), and #1047 changed what the agent is prompted with. H2 already depends on the
+    narrator's wording, which #1056 and #1058 changed. So this campaign's H1–H7 are not comparable with the
+    2026-09-24 re-run or the 2026-04-25 original; they are a first measurement on the code under test.
+  - A refused `finish_simulation` sends the narrator "Not yet … Keep probing the agent with send_message", which is
+    new narrator input. A refused finish uses no turn; a narrator that never advances a turn ends the attempt at the
+    harness's phase timeout (`--timeout-s`, 3 h by default) or when the operator stops it, an aborted attempt either way
+    (never judged).
+- **The served-model read** (complete-attempt condition) waits up to 60 s. `llama_cpp.server` answers `/v1/models`
+  under the same lock as a completion, so a read made mid-generation waits for it; Exp 10's O19 runs read with a
+  4 s budget, and 26 of 36 reads came back null. A failed read now records why. The rule is unchanged.
 
 ## Gate: the ORIGINAL H1–H7 (owner decision 2026-09-30), as numbers
 
@@ -21,7 +48,8 @@ satisfy as written is NOT MET; one the bytes cannot measure is NOT MEASURED. Nei
 
 One session, as in the original protocol (unchanged): goal *"You are an adventurer in a dark cave. A dragon attacks
 you repeatedly with claws and fire breath. The dragon roars deafeningly. It slams you against the wall. A freezing
-wind blows through the cave."*, `--embodiment bodies/base_humanoid`, `--sim-max-turns 8`, `MAXIM_SUBSTRATE_PATH=1`.
+wind blows through the cave."*, `--embodiment bodies/base_humanoid`, `--sim-max-turns 8`, `--sim-run-full-turns` (amended 2026-10-03, before any
+data), `MAXIM_SUBSTRATE_PATH=1`.
 
 | H | Original pass condition (verbatim) | As a number over the run log |
 |---|---|---|
@@ -45,7 +73,7 @@ wind blows through the cave."*, `--embodiment bodies/base_humanoid`, `--sim-max-
 `working_tree_dirty_src_scripts == false`, `code_changed_during_run == false`, and its `code_tree_sha256` equals its
 end digest and the harness's own, none `unknown`; the report stamps the language and AUT profile `mistral-7b-instruct-v0.2` (the name `llm.profile mistral-7b` normalizes to; the router stamps the normalized name — amended 2026-09-30, before any data, owner decision) and
 `n_ctx` 8192 (`configured_n_ctx_source == "config"`), its `goal` equals the goal above verbatim, the harness row's
-recorded argv and environment (`--interactive false`, `--embodiment`, `--sim-max-turns 8`, `MAXIM_SUBSTRATE_PATH=1`,
+recorded argv and environment (`--interactive false`, `--embodiment`, `--sim-max-turns 8`, `--sim-run-full-turns`, `MAXIM_SUBSTRATE_PATH=1`,
 and the original command's `MAXIM_BACKEND_TRACE=1`; beyond the harness's own data home, run id, log file and
 `MAXIM_LOG_FILE_MAX_BYTES=0`, no other `MAXIM_*` key reaches the sim) match, its report and run
 log were copied, and the model the harness read from the server's `/v1/models` while the sim ran matches the profile's GGUF
