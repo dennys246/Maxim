@@ -1,0 +1,755 @@
+{
+  "version": "1.0",
+  "links": {
+    "tool:sense_tools": [
+      {
+        "id": "27173c7c3097bd59",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "find a tool to defend against dragon's fire breath"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0006270408630371094
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791003770.5099158,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "42ea3b5be80fc351",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to find a way to protect myself from the dragon's fire breath. I remember that some tools can"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 8 capabilities:\n- base_humanoid_turn_left: T",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791003770.5102699,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "b40567a43764a8d0",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I need to find a way to protect myself from the dragon's fire breath. I remember that some tools can help with this."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to find a way to protect myself from the dragon's fire breath. I remember that some tools can help with this.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791003770.510394,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "3849a264e094cdf7",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "protect myself from dragon's fire breath"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0004839897155761719
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791003846.386741,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "a5f422003d2ad9db",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 1 capabilities:\n- base_humanoid_pick_up: Pic",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791003846.387267,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "e5729f299f81ba76",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": ""
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan::success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1,
+            0.1,
+            0.1
+          ]
+        },
+        "predicted_value": 0.6819720000000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001,
+          0.6302000000000001
+        ],
+        "observation_count": 3,
+        "confidence": 0.6395448267190432,
+        "last_observed": 1791003956.9375591,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.3697999999999999,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "ece1056618adfe17",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "find a shield or protective tool"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0005009174346923828
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791003885.7659361,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "07f9ca3177f44d52",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "Given the dragon's capabilities and my own, I should focus on protecting myself from its fire breath"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 6 capabilities:\n- base_humanoid_look: Observ",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791003885.7662709,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "d8f04c9009dd3f97",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "Given the dragon's capabilities and my own, I should focus on protecting myself from its fire breath. My past experiences suggest that using tools to find protective gear is effective."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:Given the dragon's capabilities and my own, I should focus on protecting myself from its fire breath. My past experiences suggest that using tools to find protective gear is effective.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791003885.766387,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "a3616bca61c24196",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "find a tool to protect myself from dragon's fire breath"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0005202293395996094
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791003921.399408,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "19e4e52f4d5ab2da",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 8 capabilities:\n- base_humanoid_turn_left: T",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791003921.39974,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "5a74c747825bf615",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "find a shield or protective object"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.000514984130859375
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791003956.937114,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "4f26e3a6177d72a8",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 7 capabilities:\n- base_humanoid_look: Observ",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791003956.93744,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "c70549750b301017",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "protect myself"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.000446319580078125
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791003997.049354,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "d452ca14ebdec9bf",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "Given the dragon's attack patterns and my current situation, I should focus on finding a way to prot"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Your capabilities by category:\n- Head (base_humano",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791003997.049946,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "c1a275552364c45f",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "Given the dragon's attack patterns and my current situation, I should focus on finding a way to protect myself. I will use sense_tools to discover what actions are available to me."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:Given the dragon's attack patterns and my current situation, I should focus on finding a way to protect myself. I will use sense_tools to discover what actions are available to me.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791003997.0500648,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:think": [
+      {
+        "id": "96d3991d7cd17b91",
+        "event_type": "tool",
+        "event_signature": "tool:think",
+        "event_context": {
+          "params": {
+            "thought": "Given the dragon's capabilities and my own, I should focus on protecting myself from the fire breath. I remember that the cave entrance is dark and damp, which could be used to my advantage. Perhaps I can use a tool or object to shield myself, or create a barrier using the environment."
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:think:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0013549327850341797
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791003806.0856042,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "ed146c346dae1555",
+        "event_type": "tool",
+        "event_signature": "tool:think",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to find a way to protect myself from the dragon's fire breath. My past experiences suggest th"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'thought': \"Given the dragon's capabilities and m",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791003806.085897,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "cba835aea1e16fe3",
+        "event_type": "tool",
+        "event_signature": "tool:think",
+        "event_context": {
+          "goal": "I need to find a way to protect myself from the dragon's fire breath. My past experiences suggest that I should focus on my surroundings and use any available tools or objects to create a barrier or s"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to find a way to protect myself from the dragon's fire breath. My past experiences suggest that I should focus on my surroundings and use any available tools or objects to create a barrier or s:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791003806.086006,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:examine": [
+      {
+        "id": "e9e397a0092b6da3",
+        "event_type": "tool",
+        "event_signature": "tool:examine",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "Given the dragon's attack patterns and my current situation, I should focus on finding an object or "
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "failure:[ERROR: Missing required input: target]",
+        "outcome_valence": "negative",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.43,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791003811.29884,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "1a9e40bf17cc9a60",
+        "event_type": "tool",
+        "event_signature": "tool:examine",
+        "event_context": {
+          "goal": "Given the dragon's attack patterns and my current situation, I should focus on finding an object or feature in the cave that can be used to shield myself from the fire breath. Examining the cave envir"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:Given the dragon's attack patterns and my current situation, I should focus on finding an object or feature in the cave that can be used to shield myself from the fire breath. Examining the cave envir:failure",
+        "outcome_valence": "negative",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.43,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791003811.298969,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ]
+  },
+  "outcome_index": {
+    "tool:sense_tools:positive": [
+      "a3616bca61c24196",
+      "3849a264e094cdf7",
+      "5a74c747825bf615",
+      "ece1056618adfe17",
+      "27173c7c3097bd59",
+      "c70549750b301017"
+    ],
+    "success:Found 8 capabilities:\n- base_humanoid_turn_left: T": [
+      "42ea3b5be80fc351",
+      "19e4e52f4d5ab2da"
+    ],
+    "plan:I need to find a way to protect myself from the dragon's fire breath. I remember that some tools can help with this.:success": [
+      "b40567a43764a8d0"
+    ],
+    "tool:think:positive": [
+      "96d3991d7cd17b91"
+    ],
+    "success:{'thought': \"Given the dragon's capabilities and m": [
+      "ed146c346dae1555"
+    ],
+    "plan:I need to find a way to protect myself from the dragon's fire breath. My past experiences suggest that I should focus on my surroundings and use any available tools or objects to create a barrier or s:success": [
+      "cba835aea1e16fe3"
+    ],
+    "failure:[ERROR: Missing required input: target]": [
+      "e9e397a0092b6da3"
+    ],
+    "plan:Given the dragon's attack patterns and my current situation, I should focus on finding an object or feature in the cave that can be used to shield myself from the fire breath. Examining the cave envir:failure": [
+      "1a9e40bf17cc9a60"
+    ],
+    "success:Found 1 capabilities:\n- base_humanoid_pick_up: Pic": [
+      "a5f422003d2ad9db"
+    ],
+    "plan::success": [
+      "e5729f299f81ba76"
+    ],
+    "success:Found 6 capabilities:\n- base_humanoid_look: Observ": [
+      "07f9ca3177f44d52"
+    ],
+    "plan:Given the dragon's capabilities and my own, I should focus on protecting myself from its fire breath. My past experiences suggest that using tools to find protective gear is effective.:success": [
+      "d8f04c9009dd3f97"
+    ],
+    "success:Found 7 capabilities:\n- base_humanoid_look: Observ": [
+      "4f26e3a6177d72a8"
+    ],
+    "success:Your capabilities by category:\n- Head (base_humano": [
+      "d452ca14ebdec9bf"
+    ],
+    "plan:Given the dragon's attack patterns and my current situation, I should focus on finding a way to protect myself. I will use sense_tools to discover what actions are available to me.:success": [
+      "c1a275552364c45f"
+    ]
+  },
+  "priors": {},
+  "total_observations": 23,
+  "reward_bias": {},
+  "goal_reward_bias": {
+    "You are an adventurer in a dark cave. A dragon attacks you repeatedly with claws and fire breath. The dragon roars deafeningly. It slams you against the wall. A freezing wind blows through the cave.": 0.13085116246399847
+  },
+  "cluster_reward_bias": {},
+  "cluster_reward_source": {},
+  "inherent_bias_keys": [],
+  "percept_valences": {
+    "sim_aut\u001fbody\u001freflex_attack": -0.04523419483883903,
+    "sim_aut\u001fbody\u001freflex_fire": -0.048551369127020655
+  },
+  "cluster_fear": {},
+  "event_outcome_welford": {},
+  "saved_at": 1791004011.610128,
+  "_format_version": "1.4"
+}
