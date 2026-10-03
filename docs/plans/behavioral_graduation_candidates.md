@@ -231,6 +231,18 @@ update.
   ATL relations, and the survival harnesses use the ATL only through `activate_substrate_node` (#812's
   caller grep).
 
+### Trigger walk — 2026-10-02 (narrator reliability before O19 campaign 3)
+
+Every change is to the simulation narrator: its retries, its single request in flight, its opening and resume
+prompts, and its opt-in `finish_simulation` floor (`--sim-run-full-turns`; observe-only exempt). All of it is gated on planning liveness (the narrator only) or lives in
+the narrator's own tools and prompts. The AUT's prompt and loop are unchanged.
+
+- **Exp 37 (T1-2)** fires literally ("prompt construction change"; `prompt_builder` changed), but it is already
+  STALE.
+- **No other row fires.** No `Re-run on:` names the narrator, the orchestrator or the sim harness.
+- **T1-1 and T3-9** are STALE and are re-run by O19 on this code. The narrator is their instrument, recorded as
+  such in the campaign-3 prereg.
+
 ### Trigger walk — 2026-10-02 (#1052: an agent is offered "think first" only if its loop can deliberate)
 
 The change is to the sim narrator's prompt. It no longer carries the PFC preamble or the "false to keep

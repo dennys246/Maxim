@@ -349,6 +349,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "Default: 50.",
     )
     sim.add_argument(
+        "--sim-run-full-turns",
+        action="store_true",
+        dest="sim_run_full_turns",
+        help="Run every --sim-max-turns turn: the narrator's finish_simulation is refused before the cap (re-run "
+        "harnesses use this so a phase cannot end early; observe-only sessions are exempt).",
+    )
+    sim.add_argument(
         "--research",
         action="store_true",
         help="[experimental] Generate research report (Writer + Reviewer agents) "

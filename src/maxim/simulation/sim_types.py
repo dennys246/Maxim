@@ -162,7 +162,55 @@ def kickoff_instruction(goal: str, *, observe_only: bool, resumed: bool = False)
     )
 
 
-def build_resume_prompt(report_data: dict[str, Any], goal: str, mode: str, *, observe_only: bool) -> str:
+# One line per narrator tool in its opening prompt; a tool without one gets the first sentence of its description.
+_NARRATOR_TOOL_BLURBS = {
+    "send_message": "Talk to the agent (your PRIMARY tool)",
+    "observe_actions": "Review what the agent has done",
+    "check_completion": "Check if your goal is achieved",
+    "analyze_results": "Analyze patterns in agent behavior",
+    "inspect_aut": "Inspect agent's memory, causal links, pain",
+    "inject_pain": "Send a pain signal to test the agent",
+    "finish_simulation": "End the simulation",
+    "spawn_sub_simulation": "Run a sub-experiment",
+    "extend_simulation": "Add a new goal to the current sim",
+}
+
+
+def narrator_tools_block(registry: Any) -> str:
+    """The narrator's tool list for its opening prompt, from its REAL registry's advertised tools (owner decision
+    2026-10-02): the embodiment tools appear when registered, a decoy never does, and no tool it lacks is named,
+    not even as a prohibition. The curated tools come first, in their usual order, then the rest by name."""
+    names = list(registry.advertised())
+    ordered = [n for n in _NARRATOR_TOOL_BLURBS if n in names] + sorted(
+        n for n in names if n not in _NARRATOR_TOOL_BLURBS
+    )
+    lines = ["You MUST use ONLY these tools (no others exist):"]
+    for name in ordered:
+        blurb = _NARRATOR_TOOL_BLURBS.get(name)
+        if blurb is None:
+            description = str(getattr(registry.get(name), "description", "") or name)
+            blurb = description.split(". ")[0].rstrip(".").strip()
+            from maxim.agents.prompt_builder import names_tool_outside  # noqa: PLC0415 -- sim_types is a leaf
+
+            if names_tool_outside(blurb, set(names)):  # a description naming a tool the narrator lacks (#1042)
+                blurb = "see its description"
+        lines.append(f"  - {name}: {blurb}")
+    return "\n".join(lines)
+
+
+def build_kickoff_prompt(goal: str, *, tools_block: str, observe_only: bool) -> str:
+    """A fresh session's opening prompt for the narrator (also the resume-not-found fallback, a fresh start)."""
+    return (
+        f"SIMULATION GOAL: {goal}\n\n"
+        "You are a simulation orchestrator testing an AI agent. "
+        f"{tools_block}\n\n"
+        f"{kickoff_instruction(goal, observe_only=observe_only)}"
+    )
+
+
+def build_resume_prompt(
+    report_data: dict[str, Any], goal: str, mode: str, *, observe_only: bool, tools_block: str
+) -> str:
     """Build a context-rich prompt for resuming a previous simulation."""
     prev_goal = report_data.get("goal", "unknown")
     # Pre-1.1 reports persisted the mode under the legacy "persona" key.
@@ -206,11 +254,19 @@ def build_resume_prompt(report_data: dict[str, Any], goal: str, mode: str, *, ob
             lines.append(f"  {tool}: {count}")
 
     lines.append("")
-    lines.append(
-        "Continue the simulation from where it left off. "
-        "Build on the previous findings — don't repeat probes that already worked. "
-        "Focus on areas the previous session identified as needing more testing."
-    )
+    if prev_goal == goal:
+        lines.append(
+            "Continue the simulation from where it left off. "
+            "Build on the previous findings — don't repeat probes that already worked. "
+            "Focus on areas the previous session identified as needing more testing."
+        )
+    else:  # a changed goal: the past session must not read as the task (#1052's resumed garden phase)
+        lines.append(
+            f"This session has a NEW goal: {goal}. The previous session above is context only: "
+            "do not continue its probes; start probing this goal."
+        )
+    lines.append("")
+    lines.append(tools_block)
     lines.append("")
     lines.append(kickoff_instruction(goal, observe_only=observe_only, resumed=True))
 

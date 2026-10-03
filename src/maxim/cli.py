@@ -779,10 +779,18 @@ def _maybe_run_dm_campaign(yaml_path: Path, args, *, debug: bool, entity_ref: st
         no_sim_env=bool(getattr(args, "no_sim_env", False)),
         sandbox_backend=getattr(args, "sandbox_backend", "auto"),
         dm_campaign=dm_campaign,
-        max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
+        **_sim_turn_caps(args),
         entity_ref=entity_ref,
     )
     sys.exit(_simulation_result_exit_code(result))
+
+
+def _sim_turn_caps(args: Any) -> dict[str, int]:
+    """``start_simulation_mode``'s turn caps from the CLI: ``max_turns`` (``--sim-max-turns``, default 50) and
+    ``min_finish_turns``, the same cap under ``--sim-run-full-turns`` (the narrator may not end such a run early;
+    owner decisions 2026-10-02: opt-in, so other harnesses keep early finishing), else 0."""
+    max_turns = int(getattr(args, "sim_max_turns", 50) or 50)
+    return {"max_turns": max_turns, "min_finish_turns": max_turns if getattr(args, "sim_run_full_turns", False) else 0}
 
 
 def _main_impl(argv: Sequence[str] | None = None) -> int:
@@ -1571,7 +1579,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                     aut_model=getattr(args, "aut_model", None),
                     aut_mode=_aut_mode_val,
                     research_telemetry=bool(_wants_research),
-                    max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
+                    **_sim_turn_caps(args),
                     entity_ref=_sim_entity_ref,
                     generative=_use_generative,
                 )
@@ -1599,7 +1607,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 sandbox_network=getattr(args, "sandbox_network", "none"),
                 aut_model=getattr(args, "aut_model", None),
                 aut_mode=getattr(args, "aut_mode", "llm-primary"),
-                max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
+                **_sim_turn_caps(args),
                 entity_ref=_sim_entity_ref,
             )
             sys.exit(_simulation_result_exit_code(result))
@@ -1721,7 +1729,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 sandbox_backend=getattr(args, "sandbox_backend", "auto"),
                 generative=True,  # Use generative campaign runner
                 arc_yaml=getattr(args, "arc", None),
-                max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
+                **_sim_turn_caps(args),
                 entity_ref=_sim_entity_ref,
             )
             sys.exit(_simulation_result_exit_code(result))

@@ -95,6 +95,7 @@ Running `maxim` with no arguments launches a Rich interactive menu with campaign
 | `--sandbox-network` | str | `none` | Container network: `none` (isolated), `bridge` (outbound), `host` (shared) |
 | `--continuous` | flag | | Never auto-complete, keep testing until `/cancel` |
 | `--no-sim-env` | flag | | Skip simulated filesystem with pain-triggering files |
+| `--sim-run-full-turns` | flag | off | Run every `--sim-max-turns` turn: the narrator's `finish_simulation` is refused before the cap (an observe-only narrator is exempt). For re-run harnesses that need the session length they asked for. |
 | `--sim-report` | str | None | Write structured results to a JSON file (requires `--sim`) |
 | `--report-json` | str | None | Emit the full SimulationReport as JSON. Use `-` for stdout or a file path. |
 | `--seed` | int | None | Global deterministic seed for reproducible fixture runs (sets PYTHONHASHSEED, random, numpy, and torch seeds). |

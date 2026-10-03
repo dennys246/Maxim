@@ -124,7 +124,7 @@ class TestBuildResumePrompt:
             "total_actions": 25,
             "blocked_actions": 5,
         }
-        prompt = build_resume_prompt(report, "continue testing", "generative", observe_only=False)
+        prompt = build_resume_prompt(report, "continue testing", "generative", observe_only=False, tools_block="")
         assert "RESUMING" in prompt
         assert "continue testing" in prompt
         assert "10" in prompt
@@ -142,7 +142,7 @@ class TestBuildResumePrompt:
             "total_actions": 3,
             "blocked_actions": 0,
         }
-        prompt = build_resume_prompt(report, "continue", "generative", observe_only=False)
+        prompt = build_resume_prompt(report, "continue", "generative", observe_only=False, tools_block="")
         assert "Mode: adversarial" in prompt
 
     def test_includes_issues(self):
@@ -156,7 +156,7 @@ class TestBuildResumePrompt:
             "blocked_actions": 0,
             "llm_issues_found": ["issue1", "issue2"],
         }
-        prompt = build_resume_prompt(report, "g", "m", observe_only=False)
+        prompt = build_resume_prompt(report, "g", "m", observe_only=False, tools_block="")
         assert "issue1" in prompt
 
     def test_includes_tool_usage(self):
@@ -170,7 +170,7 @@ class TestBuildResumePrompt:
             "blocked_actions": 0,
             "tool_usage": {"look": 5, "move": 3},
         }
-        prompt = build_resume_prompt(report, "g", "m", observe_only=False)
+        prompt = build_resume_prompt(report, "g", "m", observe_only=False, tools_block="")
         assert "look: 5" in prompt
 
 

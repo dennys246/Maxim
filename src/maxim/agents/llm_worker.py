@@ -66,6 +66,7 @@ from maxim.agents.llm_fallback import (  # noqa: F401
     normalize_phrases,
 )
 from maxim.agents.prompt_builder import (  # noqa: F401
+    PLANNING_CORRECTIONS,
     PromptBuilder,
     build_datetime_section,
     build_identity_section,
@@ -479,7 +480,9 @@ class LLMWorker:
         logger.info("Retrying LLM request with timeout=%.0fs (was %.0fs)", timeout_s, old_timeout)
         return self._resubmit(request, job_suffix="retry")
 
-    def requeue_request(self, request: LLMRequest, *, failed_tool: str | None = None) -> bool:
+    def requeue_request(
+        self, request: LLMRequest, *, failed_tool: str | None = None, reason: str | None = None
+    ) -> bool:
         """Requeue a planning turn whose response was invalid or lost
         (bugs ledger D13). Parse-failure retries are byte-identical apart from
         freshness metadata. When ``failed_tool`` is supplied, the exact
@@ -489,16 +492,24 @@ class LLMWorker:
         Returns True if queued, False if queue full or the pool is gone.
         """
         self._add_failed_tool_feedback(request, failed_tool)
+        self._add_planning_correction(request, reason)
         return self._resubmit(request, job_suffix="liveness-retry")
 
-    def requeue_last_request(self, *, failed_tool: str | None = None) -> bool:
+    def requeue_last_request(self, *, failed_tool: str | None = None, reason: str | None = None) -> bool:
         """Requeue the most recently submitted request (D13 await-window
         backstop — the loop holds no LLMRequest of its own). False when
         nothing was ever submitted."""
         request = self._last_request
         if request is None:
             return False
-        return self.requeue_request(request, failed_tool=failed_tool)
+        return self.requeue_request(request, failed_tool=failed_tool, reason=reason)
+
+    @staticmethod
+    def _add_planning_correction(request: LLMRequest, reason: str | None) -> None:
+        """Record why the model's last answer to THIS request was rejected, when the reason has a correction
+        (``prompt_builder.PLANNING_CORRECTIONS``); infrastructure faults add nothing, so their retry is unchanged."""
+        if reason in PLANNING_CORRECTIONS and request.planning_corrections[-1:] != [reason]:
+            request.planning_corrections.append(reason)
 
     @staticmethod
     def _add_failed_tool_feedback(request: LLMRequest, failed_tool: str | None) -> None:
@@ -961,6 +972,7 @@ class LLMWorker:
         protocol_context: str = "",
         failed_tools: list[str] | None = None,
         deliberation_available: bool,
+        deferred_inputs: list[str],
     ) -> bool:
         """
         Submit context for LLM processing (non-blocking).
@@ -1010,6 +1022,7 @@ class LLMWorker:
             is_embodied=self.is_embodied,
             failed_tools=failed_tools or [],
             deliberation_available=deliberation_available,
+            deferred_inputs=list(deferred_inputs),
         )
 
         if self._pool is not None:

@@ -300,6 +300,34 @@ def build_failed_tools_section(request: LLMRequest) -> str:
 
 _MAX_ECHOED_TOOL_NAME = 64
 
+# The correction a retry carries after the model's OWN mistake (narrator reliability, 2026-10-02): D13 retries were
+# byte-identical, and a weak model at a fixed temperature repeated the same wrong answer (0 recoveries in the
+# data). Reasons that are not the model's fault (a stale or failed job, a transport error) get none. `{own}` is
+# the agent's own tools.
+PLANNING_CORRECTIONS = {
+    "proposal_without_action": "Your last answer called no tool. Every answer must call exactly one of your tools: {own}.",
+    "proposal_not_ready_to_act": (
+        "Your last answer set ready_to_act to false. You cannot keep thinking here: act now with one of your "
+        "tools: {own}."
+    ),
+    "proposal_completed_without_action": (
+        "Your last answer said the goal is achieved but called no tool. Every answer calls one of your tools: {own}."
+    ),
+    "fallback_proposal_dropped": (
+        "Your last answer could not be read. Reply with ONLY one JSON object in the response format above, naming "
+        "one of your tools: {own}."
+    ),
+}
+
+
+def build_planning_correction(request: LLMRequest) -> str:
+    """The latest planning correction for this retry, or "" (see ``PLANNING_CORRECTIONS``)."""
+    reasons = [r for r in request.planning_corrections if r in PLANNING_CORRECTIONS]
+    if not reasons:
+        return ""
+    own = ", ".join(repr(n) for n in sorted(request.available_tools)) or "the tools listed above"
+    return PLANNING_CORRECTIONS[reasons[-1]].format(own=own)
+
 
 def _recent_failed_tool_names(request: LLMRequest) -> list[str]:
     """The 5 most recent distinct rejected tool names, oldest first.
@@ -348,11 +376,15 @@ def build_followup_retry_correction(request: LLMRequest) -> str:
     new request, so a first follow-up attempt carries the correction too — that knob's stated purpose.
     """
     names = ", ".join(repr(n) for n in _recent_failed_tool_names(request))
-    if not names:
+    planning = build_planning_correction(request)
+    if not names and not planning:
         return ""
-    own = ", ".join(repr(n) for n in sorted(request.available_tools))
-    choose = f" Your tools are: {own}. Choose one of these." if own else ""
-    return "=== Correction ===\n" + f"You called {names}, which you do not have." + choose + _sense_tools_hint(request)
+    lines = ["=== Correction ==="] + ([planning] if planning else [])
+    if names:
+        own = ", ".join(repr(n) for n in sorted(request.available_tools))
+        choose = f" Your tools are: {own}. Choose one of these." if own else ""
+        lines.append(f"You called {names}, which you do not have." + choose + _sense_tools_hint(request))
+    return "\n".join(lines)
 
 
 def build_tools_section_filtered(
@@ -1010,8 +1042,12 @@ class PromptBuilder:
 
         if action_followup_input:
             prompt = self._build_followup_prompt(action_followup_input, tools=set(request.available_tools))
+            # Inputs held back while the previous planning request was in flight (#1048) follow the result.
+            deferred = (
+                "=== New Instructions ===\n" + "\n".join(request.deferred_inputs) if request.deferred_inputs else ""
+            )
             correction = build_followup_retry_correction(request)
-            return f"{prompt}\n\n{correction}" if correction else prompt
+            return "\n\n".join(part for part in (prompt, deferred, correction) if part)
 
         # Check for pending user input
         user_question = ""
@@ -1336,6 +1372,14 @@ class PromptBuilder:
                 failed_section,
                 SectionPriority.CRITICAL,
                 source="data",
+            )
+        planning_correction = build_planning_correction(request)
+        if planning_correction:  # a retry after the model's own mistake (narrator reliability)
+            budgeter.add(
+                "planning_correction",
+                "=== Correction ===\n" + planning_correction,
+                SectionPriority.CRITICAL,
+                source="builder",
             )
 
         # The workspace/CWD manifest and the file-operation guidance (below,

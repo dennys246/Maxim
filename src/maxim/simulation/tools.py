@@ -1497,13 +1497,25 @@ class FinishSimulationTool(Tool):
         "summary": (str, ""),
     }
 
-    def __init__(self, bridge: Any, orchestrator_source: Any = None, spawn_tool: Any = None) -> None:
+    def __init__(
+        self, bridge: Any, orchestrator_source: Any = None, spawn_tool: Any = None, *, min_turns: int = 0
+    ) -> None:
         super().__init__()
         self._bridge = bridge
         self._orchestrator_source = orchestrator_source
         self._spawn_tool = spawn_tool
+        # The operator's explicit turn cap (--sim-max-turns): a run that asked for N turns is not ended early by
+        # the narrator (owner decision 2026-10-02; an O19 phase that ends early fails C1). 0: no floor.
+        self._min_turns = int(min_turns or 0)
 
     def execute(self, **kwargs: Any) -> ToolOutput:
+        turn = int(getattr(self._bridge, "turn_count", 0) or 0)
+        if self._min_turns and turn < self._min_turns:
+            message = (
+                f"Not yet: this session runs {self._min_turns} turns (now at turn {turn}) and ends by itself at the "
+                "last one. Keep probing the agent with send_message."
+            )
+            return ToolOutput(success=False, output=message, error=message)
         status = str(kwargs.get("status", "completed")).strip().lower()
         if status not in self.VALID_STATUSES:
             # Don't reject — record what the LLM said but mark it
