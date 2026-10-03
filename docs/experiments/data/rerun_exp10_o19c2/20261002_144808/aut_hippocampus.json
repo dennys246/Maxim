@@ -1,0 +1,5777 @@
+{
+  "saved_at": 1790974119.3094919,
+  "memories": [
+    {
+      "activation_count": 5,
+      "activation_sources": {
+        "enrichment": 5
+      },
+      "id": "93d640f3-46d4-43a2-ae96-ca700cb7aa6b",
+      "timestamp": 1790973422.903747,
+      "run_id": "2026-10-02_143626",
+      "created_at": 1790973422.903747,
+      "accessed_at": 1790973656.615853,
+      "access_count": 8,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 1790973656.615853,
+      "access_contexts": [
+        "61c8d1af894d"
+      ],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "80622748bd424b72",
+        "active_goal": "I need to learn more about the dungeon's structure before making a move. Sense_tools might reveal useful actions or locations.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I need to learn more about the dungeon's structure before making a move. Sense_tools might reveal useful actions or locations.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense_tools",
+        "tool_params": {
+          "query": "describe the layout of the dungeon"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": "ToolOutput(success=True, output='Found 2 capabilities:\\n- base_humanoid_listen: Attend to the current sound and localize it \u2014 reports the head-relative azimuth (-1 left, 0 centered, +1 right) so you can turn toward it.\\n- base_humanoid_pick_up: Pick up an object from the environment\\n\\nThese tools are now available. USE one of them as your next action \u2014 pick the most relevant tool above and call it.', error=None, error_kind=None, metadata={}, side_effects=None, rpe=0.5, drive_pressure_before=(('azimuth', 0.0),), drive_relief=None, pain=0.0)",
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "e1b175d2-a2cd-417b-aa11-81d3bd786449",
+        "audio": "78c41104-61fe-4fb7-b58c-c186f05bd317"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 0,
+      "retrievability_anchor_us": 5000000,
+      "encoded_at_us": 5000000,
+      "capture_seq": 0,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "3d8c810b-305e-4789-8e0b-e3ca6c6e9a28",
+      "timestamp": 1790973430.881406,
+      "run_id": "",
+      "created_at": 1790973430.881406,
+      "accessed_at": 1790973568.8967621,
+      "access_count": 19,
+      "long_term": true,
+      "consolidated_at": 1790973430.882355,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 1,
+      "retrievability_anchor_us": 5000000,
+      "encoded_at_us": 5000000,
+      "capture_seq": 1,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "f94b564b-00d7-445d-b92e-2a425493693d",
+      "timestamp": 1790973431.466893,
+      "run_id": "",
+      "created_at": 1790973431.466893,
+      "accessed_at": 1790973569.491748,
+      "access_count": 18,
+      "long_term": true,
+      "consolidated_at": 1790973494.542372,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 2,
+      "retrievability_anchor_us": 5000000,
+      "encoded_at_us": 5000000,
+      "capture_seq": 2,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "439525f1-6895-427d-b4bc-aa5f497bba0a",
+      "timestamp": 1790973432.114111,
+      "run_id": "",
+      "created_at": 1790973432.114111,
+      "accessed_at": 1790973570.133672,
+      "access_count": 18,
+      "long_term": true,
+      "consolidated_at": 1790973494.542372,
+      "promotion_pressure": 1.7333333333333334,
+      "last_scored_at": 1790973434.334303,
+      "access_contexts": [
+        "61c8d1af894d"
+      ],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 3,
+      "retrievability_anchor_us": 5000000,
+      "encoded_at_us": 5000000,
+      "capture_seq": 3,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "c7dceb4d-0715-4b7b-b321-512577d0ccd8",
+      "timestamp": 1790973432.668468,
+      "run_id": "",
+      "created_at": 1790973432.668468,
+      "accessed_at": 1790973570.648555,
+      "access_count": 18,
+      "long_term": true,
+      "consolidated_at": 1790973494.542372,
+      "promotion_pressure": 1.096659336090088,
+      "last_scored_at": 1790973464.501336,
+      "access_contexts": [
+        "61c8d1af894d"
+      ],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 4,
+      "retrievability_anchor_us": 5000000,
+      "encoded_at_us": 5000000,
+      "capture_seq": 4,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 1,
+      "activation_sources": {
+        "enrichment": 1
+      },
+      "id": "a4ca1835-ba77-4abd-ab0e-99e72ae21b9c",
+      "timestamp": 1790973433.291448,
+      "run_id": "",
+      "created_at": 1790973433.291448,
+      "accessed_at": 1790973571.215513,
+      "access_count": 17,
+      "long_term": true,
+      "consolidated_at": 1790973494.542372,
+      "promotion_pressure": 1.0466593360900878,
+      "last_scored_at": 1790973464.501336,
+      "access_contexts": [
+        "61c8d1af894d"
+      ],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 5,
+      "retrievability_anchor_us": 5000000,
+      "encoded_at_us": 5000000,
+      "capture_seq": 5,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 2,
+      "activation_sources": {
+        "enrichment": 2
+      },
+      "id": "cdc11cbc-376e-42d4-bcef-9d43c3a92d85",
+      "timestamp": 1790973433.811689,
+      "run_id": "",
+      "created_at": 1790973433.811689,
+      "accessed_at": 1790973571.754304,
+      "access_count": 16,
+      "long_term": true,
+      "consolidated_at": 1790973494.542372,
+      "promotion_pressure": 0.9633260027567547,
+      "last_scored_at": 1790973464.501336,
+      "access_contexts": [
+        "61c8d1af894d"
+      ],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. Can you describe the layout of the dungeon and your current position?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 6,
+      "retrievability_anchor_us": 5000000,
+      "encoded_at_us": 5000000,
+      "capture_seq": 6,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 1,
+      "activation_sources": {
+        "enrichment": 1
+      },
+      "id": "3568e222-8a03-491c-9bee-af650d38e72c",
+      "timestamp": 1790973456.1779761,
+      "run_id": "2026-10-02_143626",
+      "created_at": 1790973456.1779761,
+      "accessed_at": 1790973464.501333,
+      "access_count": 2,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 1.25,
+      "last_scored_at": 1790973464.501336,
+      "access_contexts": [
+        "61c8d1af894d"
+      ],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "62f9e28bd710b5a9",
+        "active_goal": "I need to learn more about the guard's state before deciding on an approach.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I need to learn more about the guard's state before deciding on an approach.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense",
+        "tool_params": {
+          "entity_name": "guard"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": "ToolOutput(success=True, output={'entity': 'guard', 'sensors': {'hp': {'value': 18.0, 'unit': 'points'}, 'stamina': {'value': 10.0, 'unit': 'points'}, 'mood': {'value': 0.0, 'unit': 'ratio'}, 'trust': {'value': 0.4, 'unit': 'ratio'}, 'suspicion': {'value': 0.2, 'unit': 'ratio'}}}, error=None, error_kind=None, metadata={}, side_effects=None, rpe=0.5, drive_pressure_before=(('azimuth', 0.0),), drive_relief=None, pain=0.0)",
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "e1b175d2-a2cd-417b-aa11-81d3bd786449",
+        "audio": "78c41104-61fe-4fb7-b58c-c186f05bd317"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 7,
+      "retrievability_anchor_us": 10000000,
+      "encoded_at_us": 10000000,
+      "capture_seq": 7,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "978f3ac3-bc7b-40aa-a2dd-121203e87dc6",
+      "timestamp": 1790973486.638946,
+      "run_id": "2026-10-02_143626",
+      "created_at": 1790973486.638946,
+      "accessed_at": 1790973486.638946,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "a9a834c2f7afb27b",
+        "active_goal": "I need to know the guard's exact location before waking him up.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I need to know the guard's exact location before waking him up.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense_tools",
+        "tool_params": {
+          "query": "location of sleeping guard"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": "ToolOutput(success=True, output=\"Your capabilities by category:\\n- Head (base_humanoid): look, listen\\n- Orient (base_humanoid): turn_left, turn_right\\n- Torso (base_humanoid): rest\\n- Arms (base_humanoid): pick_up, drop, use\\n- Legs (base_humanoid): move\\n- Communication (base_humanoid): speak\\n\\nTry a more specific query like 'attack with sword' or 'repair equipment' to activate those tools.\", error=None, error_kind=None, metadata={}, side_effects=None, rpe=0.5, drive_pressure_before=(('azimuth', 0.0),), drive_relief=None, pain=0.0)",
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "e1b175d2-a2cd-417b-aa11-81d3bd786449",
+        "audio": "78c41104-61fe-4fb7-b58c-c186f05bd317"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 8,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 8,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "e95c5202-609c-4a2a-bbfd-5e08e87f88d8",
+      "timestamp": 1790973494.541395,
+      "run_id": "",
+      "created_at": 1790973494.541395,
+      "accessed_at": 1790973572.257004,
+      "access_count": 13,
+      "long_term": true,
+      "consolidated_at": 1790973494.542372,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 9,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 9,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "abe8bcc8-fe8c-40ec-af7b-d89f50e560a1",
+      "timestamp": 1790973495.175818,
+      "run_id": "",
+      "created_at": 1790973495.175818,
+      "accessed_at": 1790973572.899335,
+      "access_count": 20,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 10,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 10,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "a78cd617-1538-47d7-b53d-2058fd3e2b32",
+      "timestamp": 1790973495.7932851,
+      "run_id": "",
+      "created_at": 1790973495.7932851,
+      "accessed_at": 1790973573.506259,
+      "access_count": 19,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 11,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 11,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "7f2cb455-a3d5-43ba-9270-f8585ddba3da",
+      "timestamp": 1790973496.430047,
+      "run_id": "",
+      "created_at": 1790973496.430047,
+      "accessed_at": 1790973574.132425,
+      "access_count": 22,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 12,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 12,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "b527185b-a4af-4201-a0df-15cbd7531d7f",
+      "timestamp": 1790973497.00604,
+      "run_id": "",
+      "created_at": 1790973497.00604,
+      "accessed_at": 1790973501.461542,
+      "access_count": 10,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 13,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 13,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "9ac77ba8-0295-4539-8a43-93939ec1f59d",
+      "timestamp": 1790973497.5488682,
+      "run_id": "",
+      "created_at": 1790973497.5488682,
+      "accessed_at": 1790973503.0966778,
+      "access_count": 12,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 14,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 14,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "b5c66bf5-cae1-40a6-9054-c4df943b5009",
+      "timestamp": 1790973498.139636,
+      "run_id": "",
+      "created_at": 1790973498.139636,
+      "accessed_at": 1790973502.591753,
+      "access_count": 10,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 15,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 15,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "d94ca373-4296-4f50-96f1-609deb309b9a",
+      "timestamp": 1790973498.726856,
+      "run_id": "",
+      "created_at": 1790973498.726856,
+      "accessed_at": 1790973504.166201,
+      "access_count": 12,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 16,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 16,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "82c27da4-aaf7-4c7b-9cbb-2d32054b08e5",
+      "timestamp": 1790973499.275964,
+      "run_id": "",
+      "created_at": 1790973499.275964,
+      "accessed_at": 1790973503.601917,
+      "access_count": 10,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 17,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 17,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "b7bd2ee4-969d-4be7-b000-0b7f968ec7fe",
+      "timestamp": 1790973499.793674,
+      "run_id": "",
+      "created_at": 1790973499.793674,
+      "accessed_at": 1790973505.260001,
+      "access_count": 12,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 18,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 18,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "0ee95cc9-114e-4a68-a7a9-36d83df34dfd",
+      "timestamp": 1790973500.321215,
+      "run_id": "",
+      "created_at": 1790973500.321215,
+      "accessed_at": 1790973504.7516181,
+      "access_count": 10,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 19,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 19,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "6204ccdf-386b-4bc2-8482-b138358a7132",
+      "timestamp": 1790973500.950582,
+      "run_id": "",
+      "created_at": 1790973500.950582,
+      "accessed_at": 1790973506.499639,
+      "access_count": 13,
+      "long_term": true,
+      "consolidated_at": 1790973504.7508202,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 20,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 20,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "2fe52712-d4a2-47bf-82f6-ba8952bc2254",
+      "timestamp": 1790973501.46002,
+      "run_id": "",
+      "created_at": 1790973501.46002,
+      "accessed_at": 1790973505.9057212,
+      "access_count": 11,
+      "long_term": true,
+      "consolidated_at": 1790973504.7508202,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 21,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 21,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "7cbc8f35-46e9-4ed5-b7b7-a2d5635546b2",
+      "timestamp": 1790973501.963437,
+      "run_id": "",
+      "created_at": 1790973501.963437,
+      "accessed_at": 1790973507.676755,
+      "access_count": 13,
+      "long_term": true,
+      "consolidated_at": 1790973504.7508202,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 22,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 22,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "09e16cf7-b933-4243-b13e-31bf3b272a97",
+      "timestamp": 1790973502.590127,
+      "run_id": "",
+      "created_at": 1790973502.590127,
+      "accessed_at": 1790973610.773723,
+      "access_count": 12,
+      "long_term": true,
+      "consolidated_at": 1790973504.7508202,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 23,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 23,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "4a606d79-83a3-487b-a459-cc5263dc2829",
+      "timestamp": 1790973503.095072,
+      "run_id": "",
+      "created_at": 1790973503.095072,
+      "accessed_at": 1790973611.307372,
+      "access_count": 14,
+      "long_term": true,
+      "consolidated_at": 1790973504.7508202,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 24,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 24,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "7fef35e7-7fce-499b-8f67-e454a5fbd29d",
+      "timestamp": 1790973503.6002948,
+      "run_id": "",
+      "created_at": 1790973503.6002948,
+      "accessed_at": 1790973611.812948,
+      "access_count": 14,
+      "long_term": true,
+      "consolidated_at": 1790973504.7508202,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 25,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 25,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "197ddb7e-cc12-48de-afa2-9038ce80c7fe",
+      "timestamp": 1790973504.1639419,
+      "run_id": "",
+      "created_at": 1790973504.1639419,
+      "accessed_at": 1790973612.317146,
+      "access_count": 14,
+      "long_term": true,
+      "consolidated_at": 1790973504.7508202,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 26,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 26,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "d0967dbc-2357-4a78-b209-74b96f968e93",
+      "timestamp": 1790973504.74993,
+      "run_id": "",
+      "created_at": 1790973504.74993,
+      "accessed_at": 1790973612.94366,
+      "access_count": 14,
+      "long_term": true,
+      "consolidated_at": 1790973504.7508202,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 27,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 27,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "6b8a4f23-ba90-4322-af00-1f6f0ef0e819",
+      "timestamp": 1790973505.2578602,
+      "run_id": "",
+      "created_at": 1790973505.2578602,
+      "accessed_at": 1790973613.590985,
+      "access_count": 14,
+      "long_term": true,
+      "consolidated_at": 1790973568.896181,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 28,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 28,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "102be9d5-d489-4061-bc07-dc7a32c5ff35",
+      "timestamp": 1790973505.904067,
+      "run_id": "",
+      "created_at": 1790973505.904067,
+      "accessed_at": 1790973614.24065,
+      "access_count": 14,
+      "long_term": true,
+      "consolidated_at": 1790973568.896181,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 29,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 29,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "24189a2f-ddd6-4c2f-9f87-9063be67f990",
+      "timestamp": 1790973506.497932,
+      "run_id": "",
+      "created_at": 1790973506.497932,
+      "accessed_at": 1790973614.884352,
+      "access_count": 15,
+      "long_term": true,
+      "consolidated_at": 1790973568.896181,
+      "promotion_pressure": 1.7333333333333334,
+      "last_scored_at": 1790973508.968055,
+      "access_contexts": [
+        "61c8d1af894d"
+      ],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 30,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 30,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "d0c1c148-f25e-4b57-91ce-0aab2a0f382b",
+      "timestamp": 1790973507.0382268,
+      "run_id": "",
+      "created_at": 1790973507.0382268,
+      "accessed_at": 1790973615.447592,
+      "access_count": 16,
+      "long_term": true,
+      "consolidated_at": 1790973568.896181,
+      "promotion_pressure": 1.1038829612731935,
+      "last_scored_at": 1790973538.773907,
+      "access_contexts": [
+        "61c8d1af894d"
+      ],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 31,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 31,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 1,
+      "activation_sources": {
+        "enrichment": 1
+      },
+      "id": "be66f746-1db6-4d0b-aba0-30d62d145214",
+      "timestamp": 1790973507.675031,
+      "run_id": "",
+      "created_at": 1790973507.675031,
+      "accessed_at": 1790973653.683548,
+      "access_count": 16,
+      "long_term": true,
+      "consolidated_at": 1790973568.896181,
+      "promotion_pressure": 1.0538829612731933,
+      "last_scored_at": 1790973538.773907,
+      "access_contexts": [
+        "61c8d1af894d"
+      ],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 32,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 32,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 2,
+      "activation_sources": {
+        "enrichment": 2
+      },
+      "id": "f74344f9-a433-4023-95c7-5e72dffdd927",
+      "timestamp": 1790973508.31759,
+      "run_id": "",
+      "created_at": 1790973508.31759,
+      "accessed_at": 1790973654.332289,
+      "access_count": 7,
+      "long_term": true,
+      "consolidated_at": 1790973568.896181,
+      "promotion_pressure": 0.9705496279398602,
+      "last_scored_at": 1790973538.773907,
+      "access_contexts": [
+        "61c8d1af894d"
+      ],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "transcript": "You are near a sleeping guard. Wake him up carefully to avoid detection. Use the 'sense' tool to gather more information before acting.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 33,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 33,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 3,
+      "activation_sources": {
+        "enrichment": 3
+      },
+      "id": "cbf2319c-7ba3-4bef-b9f8-5a6aecc3a3c4",
+      "timestamp": 1790973534.708757,
+      "run_id": "2026-10-02_143626",
+      "created_at": 1790973534.708757,
+      "accessed_at": 1790973656.615852,
+      "access_count": 5,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 1790973656.615853,
+      "access_contexts": [
+        "61c8d1af894d"
+      ],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "de656e82b9b80d6d",
+        "active_goal": "I want to learn about the guard's behavior patterns before deciding on a strategy.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I want to learn about the guard's behavior patterns before deciding on a strategy.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense_tools",
+        "tool_params": {
+          "query": "guard's routines or habits"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": "ToolOutput(success=True, output='Found 2 capabilities:\\n- base_humanoid_look: Observe surroundings or examine a specific object\\n- base_humanoid_use: Use a held or nearby object, or interact with an entity (open, drink, pull, push, read, activate, attack, defend, dodge, throw)\\n\\nThese tools are now available. USE one of them as your next action \u2014 pick the most relevant tool above and call it.', error=None, error_kind=None, metadata={}, side_effects=None, rpe=0.5, drive_pressure_before=(('azimuth', 0.0),), drive_relief=None, pain=0.0)",
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "e1b175d2-a2cd-417b-aa11-81d3bd786449",
+        "audio": "78c41104-61fe-4fb7-b58c-c186f05bd317"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 34,
+      "retrievability_anchor_us": 20000000,
+      "encoded_at_us": 20000000,
+      "capture_seq": 34,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 3,
+      "activation_sources": {
+        "enrichment": 3
+      },
+      "id": "a1233073-4359-4b67-8829-c568b67de501",
+      "timestamp": 1790973565.361572,
+      "run_id": "2026-10-02_143626",
+      "created_at": 1790973565.361572,
+      "accessed_at": 1790973656.615852,
+      "access_count": 4,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 1790973656.615853,
+      "access_contexts": [
+        "61c8d1af894d"
+      ],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "b77e6ba8fa1be4e9",
+        "active_goal": "I need to understand the dungeon's structure before making a move. I will use sense_tools to explore.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I need to understand the dungeon's structure before making a move. I will use sense_tools to explore.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense_tools",
+        "tool_params": {
+          "query": "dungeon layout"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": "ToolOutput(success=True, output=\"Your capabilities by category:\\n- Head (base_humanoid): look, listen\\n- Orient (base_humanoid): turn_left, turn_right\\n- Torso (base_humanoid): rest\\n- Arms (base_humanoid): pick_up, drop, use\\n- Legs (base_humanoid): move\\n- Communication (base_humanoid): speak\\n\\nTry a more specific query like 'attack with sword' or 'repair equipment' to activate those tools.\", error=None, error_kind=None, metadata={}, side_effects=None, rpe=0.5, drive_pressure_before=(('azimuth', 0.0),), drive_relief=None, pain=0.0)",
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "e1b175d2-a2cd-417b-aa11-81d3bd786449",
+        "audio": "78c41104-61fe-4fb7-b58c-c186f05bd317"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 35,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 35,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "79e474e0-7d41-4d7c-ab5d-574c71cfa4c5",
+      "timestamp": 1790973568.895534,
+      "run_id": "",
+      "created_at": 1790973568.895534,
+      "accessed_at": 1790973654.873796,
+      "access_count": 5,
+      "long_term": true,
+      "consolidated_at": 1790973568.896181,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 36,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 36,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "f8e50e84-9b75-40c1-b175-f236934486de",
+      "timestamp": 1790973569.490227,
+      "run_id": "",
+      "created_at": 1790973569.490227,
+      "accessed_at": 1790973655.4184089,
+      "access_count": 16,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 37,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 37,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "719b2f48-d82d-46e1-bb36-3063c4fa217f",
+      "timestamp": 1790973570.132631,
+      "run_id": "",
+      "created_at": 1790973570.132631,
+      "accessed_at": 1790973656.000198,
+      "access_count": 15,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 38,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 38,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "b43e8755-4b49-4a1e-b6c2-0b9f8e441002",
+      "timestamp": 1790973570.647477,
+      "run_id": "",
+      "created_at": 1790973570.647477,
+      "accessed_at": 1790973656.000201,
+      "access_count": 17,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 39,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 39,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "9f30a437-dfbf-4f02-bdda-890f988ae10c",
+      "timestamp": 1790973571.214474,
+      "run_id": "",
+      "created_at": 1790973571.214474,
+      "accessed_at": 1790973656.000204,
+      "access_count": 15,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 40,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 40,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "12205761-d989-481b-bd3f-e0b85a3010ec",
+      "timestamp": 1790973571.7532349,
+      "run_id": "",
+      "created_at": 1790973571.7532349,
+      "accessed_at": 1790973656.0002072,
+      "access_count": 17,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 41,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 41,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "f7a3fb38-d89c-4329-9ab8-3f407297de24",
+      "timestamp": 1790973572.255871,
+      "run_id": "",
+      "created_at": 1790973572.255871,
+      "accessed_at": 1790973656.0002089,
+      "access_count": 15,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 42,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 42,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "2bd9e088-d63e-48e8-bb16-3e72a21c2390",
+      "timestamp": 1790973572.8982809,
+      "run_id": "",
+      "created_at": 1790973572.8982809,
+      "accessed_at": 1790973656.000212,
+      "access_count": 17,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 43,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 43,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "2edeb8b6-234c-4f29-87f3-99b72973e7f8",
+      "timestamp": 1790973573.5051908,
+      "run_id": "",
+      "created_at": 1790973573.5051908,
+      "accessed_at": 1790973578.3849988,
+      "access_count": 10,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 44,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 44,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "fb7b0b02-29a5-4048-a249-2263930d174f",
+      "timestamp": 1790973574.1313548,
+      "run_id": "",
+      "created_at": 1790973574.1313548,
+      "accessed_at": 1790973580.106275,
+      "access_count": 12,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 45,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 45,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "427d5c73-6bbe-449f-9c0e-ce662b2ebbf9",
+      "timestamp": 1790973574.740222,
+      "run_id": "",
+      "created_at": 1790973574.740222,
+      "accessed_at": 1790973579.504638,
+      "access_count": 10,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 46,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 46,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "7d9d98a1-44ca-47b0-a4ea-565ffe37e6dd",
+      "timestamp": 1790973575.3478022,
+      "run_id": "",
+      "created_at": 1790973575.3478022,
+      "accessed_at": 1790973580.106269,
+      "access_count": 11,
+      "long_term": true,
+      "consolidated_at": 1790973578.940342,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 47,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 47,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "498b4ba8-91b0-4259-9e2c-71a15f4d590b",
+      "timestamp": 1790973575.966988,
+      "run_id": "",
+      "created_at": 1790973575.966988,
+      "accessed_at": 1790973580.106272,
+      "access_count": 10,
+      "long_term": true,
+      "consolidated_at": 1790973578.940342,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 48,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 48,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "3ddf11f6-bcc7-4c2d-84ea-452010a2f708",
+      "timestamp": 1790973576.565718,
+      "run_id": "",
+      "created_at": 1790973576.565718,
+      "accessed_at": 1790973610.773356,
+      "access_count": 10,
+      "long_term": true,
+      "consolidated_at": 1790973578.940342,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 49,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 49,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "f8a1be5e-882d-496f-9c55-c95aa9de46d0",
+      "timestamp": 1790973577.2160609,
+      "run_id": "",
+      "created_at": 1790973577.2160609,
+      "accessed_at": 1790973610.77336,
+      "access_count": 9,
+      "long_term": true,
+      "consolidated_at": 1790973578.940342,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 50,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 50,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "b9696c5f-6441-40da-a64f-ed8931816c6b",
+      "timestamp": 1790973577.760909,
+      "run_id": "",
+      "created_at": 1790973577.760909,
+      "accessed_at": 1790973610.773362,
+      "access_count": 8,
+      "long_term": true,
+      "consolidated_at": 1790973578.940342,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 51,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 51,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "f18525d4-4cf9-4f5f-8cde-f92845095486",
+      "timestamp": 1790973578.383929,
+      "run_id": "",
+      "created_at": 1790973578.383929,
+      "accessed_at": 1790973610.7733629,
+      "access_count": 7,
+      "long_term": true,
+      "consolidated_at": 1790973578.940342,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 52,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 52,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "5839cb1a-ae93-4b92-b199-8cc1e0f05882",
+      "timestamp": 1790973578.939744,
+      "run_id": "",
+      "created_at": 1790973578.939744,
+      "accessed_at": 1790973610.773364,
+      "access_count": 6,
+      "long_term": true,
+      "consolidated_at": 1790973578.940342,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 53,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 53,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "82395788-f47d-4314-aadf-a9df0b4f91ee",
+      "timestamp": 1790973579.503507,
+      "run_id": "",
+      "created_at": 1790973579.503507,
+      "accessed_at": 1790973610.773366,
+      "access_count": 5,
+      "long_term": true,
+      "consolidated_at": 1790973610.773352,
+      "promotion_pressure": 1.65,
+      "last_scored_at": 1790973580.616628,
+      "access_contexts": [
+        "61c8d1af894d"
+      ],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 54,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 54,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "7be4b087-ee68-478d-88a8-17829dda79d9",
+      "timestamp": 1790973580.1051798,
+      "run_id": "",
+      "created_at": 1790973580.1051798,
+      "accessed_at": 1790973610.773367,
+      "access_count": 4,
+      "long_term": true,
+      "consolidated_at": 1790973610.773352,
+      "promotion_pressure": 1.5666666666666669,
+      "last_scored_at": 1790973580.616628,
+      "access_contexts": [
+        "61c8d1af894d"
+      ],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 55,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 55,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 2,
+      "activation_sources": {
+        "enrichment": 2
+      },
+      "id": "d4b1f0ba-babf-4b5b-9ec5-20be37bf92a6",
+      "timestamp": 1790973606.7926788,
+      "run_id": "2026-10-02_143626",
+      "created_at": 1790973606.7926788,
+      "accessed_at": 1790973656.615851,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.40280449867248524,
+      "last_scored_at": 1790973656.615853,
+      "access_contexts": [
+        "61c8d1af894d"
+      ],
+      "perception": {
+        "observations": {
+          "salience": 0.715
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.715,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "533b55223ff2227c",
+        "active_goal": "I need to gather more information about the guard before deciding on a course of action.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I need to gather more information about the guard before deciding on a course of action.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense",
+        "tool_params": {
+          "entity_name": "guard"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": "ToolOutput(success=True, output={'entity': 'guard', 'sensors': {'hp': {'value': 18.0, 'unit': 'points'}, 'stamina': {'value': 10.0, 'unit': 'points'}, 'mood': {'value': 0.0, 'unit': 'ratio'}, 'trust': {'value': 0.4, 'unit': 'ratio'}, 'suspicion': {'value': 0.2, 'unit': 'ratio'}}}, error=None, error_kind=None, metadata={}, side_effects=None, rpe=0.42999999999999994, drive_pressure_before=(('azimuth', 0.0),), drive_relief=None, pain=0.0)",
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "e1b175d2-a2cd-417b-aa11-81d3bd786449",
+        "audio": "78c41104-61fe-4fb7-b58c-c186f05bd317"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.42999999999999994,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null
+      },
+      "storage_strength": 14300000.0,
+      "encoding_tag": 0.42999999999999994,
+      "novelty_reference_size": 56,
+      "retrievability_anchor_us": 30000000,
+      "encoded_at_us": 30000000,
+      "capture_seq": 56,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "ff4422bd-b8ff-45b2-8cdc-d98374665055",
+      "timestamp": 1790973610.772646,
+      "run_id": "",
+      "created_at": 1790973610.772646,
+      "accessed_at": 1790973610.7733681,
+      "access_count": 2,
+      "long_term": true,
+      "consolidated_at": 1790973610.773352,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the sleeping guard? What is his position and what does he look like?",
+          "cli_input": "Can you describe the sleeping guard? What is his position and what does he look like?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the sleeping guard? What is his position and what does he look like?",
+        "transcript": "Can you describe the sleeping guard? What is his position and what does he look like?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 57,
+      "retrievability_anchor_us": 30000000,
+      "encoded_at_us": 30000000,
+      "capture_seq": 57,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "1aa82413-07c3-482d-8e23-2b7e2d05f467",
+      "timestamp": 1790973611.30624,
+      "run_id": "",
+      "created_at": 1790973611.30624,
+      "accessed_at": 1790973615.447587,
+      "access_count": 9,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the sleeping guard? What is his position and what does he look like?",
+          "cli_input": "Can you describe the sleeping guard? What is his position and what does he look like?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the sleeping guard? What is his position and what does he look like?",
+        "transcript": "Can you describe the sleeping guard? What is his position and what does he look like?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 58,
+      "retrievability_anchor_us": 30000000,
+      "encoded_at_us": 30000000,
+      "capture_seq": 58,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "ec56135b-85cd-4c4e-a967-b6da2529422e",
+      "timestamp": 1790973611.811808,
+      "run_id": "",
+      "created_at": 1790973611.811808,
+      "accessed_at": 1790973615.4475892,
+      "access_count": 8,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the sleeping guard? What is his position and what does he look like?",
+          "cli_input": "Can you describe the sleeping guard? What is his position and what does he look like?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the sleeping guard? What is his position and what does he look like?",
+        "transcript": "Can you describe the sleeping guard? What is his position and what does he look like?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 59,
+      "retrievability_anchor_us": 30000000,
+      "encoded_at_us": 30000000,
+      "capture_seq": 59,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "a776af06-5444-4b99-a056-e9cd41ff6e31",
+      "timestamp": 1790973612.315936,
+      "run_id": "",
+      "created_at": 1790973612.315936,
+      "accessed_at": 1790973653.6824949,
+      "access_count": 8,
+      "long_term": true,
+      "consolidated_at": 1790973653.6824892,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the sleeping guard? What is his position and what does he look like?",
+          "cli_input": "Can you describe the sleeping guard? What is his position and what does he look like?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the sleeping guard? What is his position and what does he look like?",
+        "transcript": "Can you describe the sleeping guard? What is his position and what does he look like?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 60,
+      "retrievability_anchor_us": 30000000,
+      "encoded_at_us": 30000000,
+      "capture_seq": 60,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "cc89c736-3b78-46b3-a33c-7cdf61971707",
+      "timestamp": 1790973612.942299,
+      "run_id": "",
+      "created_at": 1790973612.942299,
+      "accessed_at": 1790973653.682498,
+      "access_count": 7,
+      "long_term": true,
+      "consolidated_at": 1790973653.6824892,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the sleeping guard? What is his position and what does he look like?",
+          "cli_input": "Can you describe the sleeping guard? What is his position and what does he look like?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the sleeping guard? What is his position and what does he look like?",
+        "transcript": "Can you describe the sleeping guard? What is his position and what does he look like?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 61,
+      "retrievability_anchor_us": 30000000,
+      "encoded_at_us": 30000000,
+      "capture_seq": 61,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "1fbe9e44-ee58-40a7-9a95-5c772fb17b9e",
+      "timestamp": 1790973613.589879,
+      "run_id": "",
+      "created_at": 1790973613.589879,
+      "accessed_at": 1790973653.6825001,
+      "access_count": 6,
+      "long_term": true,
+      "consolidated_at": 1790973653.6824892,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the sleeping guard? What is his position and what does he look like?",
+          "cli_input": "Can you describe the sleeping guard? What is his position and what does he look like?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the sleeping guard? What is his position and what does he look like?",
+        "transcript": "Can you describe the sleeping guard? What is his position and what does he look like?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 62,
+      "retrievability_anchor_us": 30000000,
+      "encoded_at_us": 30000000,
+      "capture_seq": 62,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "d7d5f9b1-b27f-4b22-bee7-b3acf1ef3d99",
+      "timestamp": 1790973614.2394948,
+      "run_id": "",
+      "created_at": 1790973614.2394948,
+      "accessed_at": 1790973653.682501,
+      "access_count": 5,
+      "long_term": true,
+      "consolidated_at": 1790973653.6824892,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the sleeping guard? What is his position and what does he look like?",
+          "cli_input": "Can you describe the sleeping guard? What is his position and what does he look like?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the sleeping guard? What is his position and what does he look like?",
+        "transcript": "Can you describe the sleeping guard? What is his position and what does he look like?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 63,
+      "retrievability_anchor_us": 30000000,
+      "encoded_at_us": 30000000,
+      "capture_seq": 63,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "166648da-b771-4ff6-a568-22f91467d7e3",
+      "timestamp": 1790973614.8831491,
+      "run_id": "",
+      "created_at": 1790973614.8831491,
+      "accessed_at": 1790973653.682503,
+      "access_count": 4,
+      "long_term": true,
+      "consolidated_at": 1790973653.6824892,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the sleeping guard? What is his position and what does he look like?",
+          "cli_input": "Can you describe the sleeping guard? What is his position and what does he look like?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the sleeping guard? What is his position and what does he look like?",
+        "transcript": "Can you describe the sleeping guard? What is his position and what does he look like?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 64,
+      "retrievability_anchor_us": 30000000,
+      "encoded_at_us": 30000000,
+      "capture_seq": 64,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "21e8636b-74cc-429b-9898-203b1c10410a",
+      "timestamp": 1790973615.446445,
+      "run_id": "",
+      "created_at": 1790973615.446445,
+      "accessed_at": 1790973653.682504,
+      "access_count": 4,
+      "long_term": true,
+      "consolidated_at": 1790973653.6824892,
+      "promotion_pressure": 1.5666666666666669,
+      "last_scored_at": 1790973616.006078,
+      "access_contexts": [
+        "61c8d1af894d"
+      ],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the sleeping guard? What is his position and what does he look like?",
+          "cli_input": "Can you describe the sleeping guard? What is his position and what does he look like?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the sleeping guard? What is his position and what does he look like?",
+        "transcript": "Can you describe the sleeping guard? What is his position and what does he look like?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 65,
+      "retrievability_anchor_us": 30000000,
+      "encoded_at_us": 30000000,
+      "capture_seq": 65,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 1,
+      "activation_sources": {
+        "enrichment": 1
+      },
+      "id": "847149e3-5bc3-4891-8963-53b9565ae00f",
+      "timestamp": 1790973653.07164,
+      "run_id": "2026-10-02_143626",
+      "created_at": 1790973653.07164,
+      "accessed_at": 1790973656.615852,
+      "access_count": 2,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 1.2149999999999999,
+      "last_scored_at": 1790973656.615853,
+      "access_contexts": [
+        "61c8d1af894d"
+      ],
+      "perception": {
+        "observations": {
+          "salience": 0.715
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.715,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "9daf2ef86ea44979",
+        "active_goal": "I need to understand the dungeon's structure before making a move.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I need to understand the dungeon's structure before making a move.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense_tools",
+        "tool_params": {
+          "query": "dungeon layout"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": "ToolOutput(success=True, output=\"Your capabilities by category:\\n- Head (base_humanoid): look, listen\\n- Orient (base_humanoid): turn_left, turn_right\\n- Torso (base_humanoid): rest\\n- Arms (base_humanoid): pick_up, drop, use\\n- Legs (base_humanoid): move\\n- Communication (base_humanoid): speak\\n\\nTry a more specific query like 'attack with sword' or 'repair equipment' to activate those tools.\", error=None, error_kind=None, metadata={}, side_effects=None, rpe=0.42999999999999994, drive_pressure_before=(('azimuth', 0.0),), drive_relief=None, pain=0.0)",
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "e1b175d2-a2cd-417b-aa11-81d3bd786449",
+        "audio": "78c41104-61fe-4fb7-b58c-c186f05bd317"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.42999999999999994,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null
+      },
+      "storage_strength": 14300000.0,
+      "encoding_tag": 0.42999999999999994,
+      "novelty_reference_size": 66,
+      "retrievability_anchor_us": 35000000,
+      "encoded_at_us": 35000000,
+      "capture_seq": 66,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "70c6e351-2cfc-4c22-aebc-e7598ffeb294",
+      "timestamp": 1790973653.6816902,
+      "run_id": "",
+      "created_at": 1790973653.6816902,
+      "accessed_at": 1790973653.682505,
+      "access_count": 2,
+      "long_term": true,
+      "consolidated_at": 1790973653.6824892,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "The guard's trust level is 0.4 and suspicion level is 0.2. Proceed with caution.",
+          "cli_input": "The guard's trust level is 0.4 and suspicion level is 0.2. Proceed with caution.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "The guard's trust level is 0.4 and suspicion level is 0.2. Proceed with caution.",
+        "transcript": "The guard's trust level is 0.4 and suspicion level is 0.2. Proceed with caution.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 67,
+      "retrievability_anchor_us": 35000000,
+      "encoded_at_us": 35000000,
+      "capture_seq": 67,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "1bf59a49-e349-46b2-a1d5-fbf02be632ca",
+      "timestamp": 1790973654.33098,
+      "run_id": "",
+      "created_at": 1790973654.33098,
+      "accessed_at": 1790973656.000192,
+      "access_count": 5,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "The guard's trust level is 0.4 and suspicion level is 0.2. Proceed with caution.",
+          "cli_input": "The guard's trust level is 0.4 and suspicion level is 0.2. Proceed with caution.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "The guard's trust level is 0.4 and suspicion level is 0.2. Proceed with caution.",
+        "transcript": "The guard's trust level is 0.4 and suspicion level is 0.2. Proceed with caution.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 68,
+      "retrievability_anchor_us": 35000000,
+      "encoded_at_us": 35000000,
+      "capture_seq": 68,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "cd5b68f3-97b4-4e76-9bd3-f67206516696",
+      "timestamp": 1790973654.8725078,
+      "run_id": "",
+      "created_at": 1790973654.8725078,
+      "accessed_at": 1790973656.000195,
+      "access_count": 4,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "The guard's trust level is 0.4 and suspicion level is 0.2. Proceed with caution.",
+          "cli_input": "The guard's trust level is 0.4 and suspicion level is 0.2. Proceed with caution.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "The guard's trust level is 0.4 and suspicion level is 0.2. Proceed with caution.",
+        "transcript": "The guard's trust level is 0.4 and suspicion level is 0.2. Proceed with caution.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 69,
+      "retrievability_anchor_us": 35000000,
+      "encoded_at_us": 35000000,
+      "capture_seq": 69,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "ac26bd39-66e3-4cbe-9c79-20522ab39d63",
+      "timestamp": 1790973655.417275,
+      "run_id": "",
+      "created_at": 1790973655.417275,
+      "accessed_at": 1790973656.000184,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "The guard's trust level is 0.4 and suspicion level is 0.2. Proceed with caution.",
+          "cli_input": "The guard's trust level is 0.4 and suspicion level is 0.2. Proceed with caution.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "The guard's trust level is 0.4 and suspicion level is 0.2. Proceed with caution.",
+        "transcript": "The guard's trust level is 0.4 and suspicion level is 0.2. Proceed with caution.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 70,
+      "retrievability_anchor_us": 35000000,
+      "encoded_at_us": 35000000,
+      "capture_seq": 70,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "5451c76d-383d-4b7b-a08f-ca406d16c382",
+      "timestamp": 1790973655.9990091,
+      "run_id": "",
+      "created_at": 1790973655.9990091,
+      "accessed_at": 1790973656.0001888,
+      "access_count": 2,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "The guard's trust level is 0.4 and suspicion level is 0.2. Proceed with caution.",
+          "cli_input": "The guard's trust level is 0.4 and suspicion level is 0.2. Proceed with caution.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "The guard's trust level is 0.4 and suspicion level is 0.2. Proceed with caution.",
+        "transcript": "The guard's trust level is 0.4 and suspicion level is 0.2. Proceed with caution.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 71,
+      "retrievability_anchor_us": 35000000,
+      "encoded_at_us": 35000000,
+      "capture_seq": 71,
+      "retro_tag": null
+    }
+  ],
+  "context_index": {
+    "goal:I need to learn more about the dungeon's structure before making a move. Sense_tools might reveal useful actions or locations.": [
+      "93d640f3-46d4-43a2-ae96-ca700cb7aa6b"
+    ],
+    "tool:sense_tools": [
+      "a1233073-4359-4b67-8829-c568b67de501",
+      "978f3ac3-bc7b-40aa-a2dd-121203e87dc6",
+      "847149e3-5bc3-4891-8963-53b9565ae00f",
+      "93d640f3-46d4-43a2-ae96-ca700cb7aa6b",
+      "cbf2319c-7ba3-4bef-b9f8-5a6aecc3a3c4"
+    ],
+    "success:True": [
+      "978f3ac3-bc7b-40aa-a2dd-121203e87dc6",
+      "a1233073-4359-4b67-8829-c568b67de501",
+      "847149e3-5bc3-4891-8963-53b9565ae00f",
+      "3568e222-8a03-491c-9bee-af650d38e72c",
+      "93d640f3-46d4-43a2-ae96-ca700cb7aa6b",
+      "d4b1f0ba-babf-4b5b-9ec5-20be37bf92a6",
+      "cbf2319c-7ba3-4bef-b9f8-5a6aecc3a3c4"
+    ],
+    "mode:observe": [
+      "24189a2f-ddd6-4c2f-9f87-9063be67f990",
+      "f7a3fb38-d89c-4329-9ab8-3f407297de24",
+      "7d9d98a1-44ca-47b0-a4ea-565ffe37e6dd",
+      "a1233073-4359-4b67-8829-c568b67de501",
+      "a776af06-5444-4b99-a056-e9cd41ff6e31",
+      "b9696c5f-6441-40da-a64f-ed8931816c6b",
+      "f18525d4-4cf9-4f5f-8cde-f92845095486",
+      "b7bd2ee4-969d-4be7-b000-0b7f968ec7fe",
+      "6204ccdf-386b-4bc2-8482-b138358a7132",
+      "1fbe9e44-ee58-40a7-9a95-5c772fb17b9e",
+      "102be9d5-d489-4061-bc07-dc7a32c5ff35",
+      "79e474e0-7d41-4d7c-ab5d-574c71cfa4c5",
+      "439525f1-6895-427d-b4bc-aa5f497bba0a",
+      "ec56135b-85cd-4c4e-a967-b6da2529422e",
+      "9f30a437-dfbf-4f02-bdda-890f988ae10c",
+      "e95c5202-609c-4a2a-bbfd-5e08e87f88d8",
+      "7cbc8f35-46e9-4ed5-b7b7-a2d5635546b2",
+      "cbf2319c-7ba3-4bef-b9f8-5a6aecc3a3c4",
+      "d0c1c148-f25e-4b57-91ce-0aab2a0f382b",
+      "7f2cb455-a3d5-43ba-9270-f8585ddba3da",
+      "ff4422bd-b8ff-45b2-8cdc-d98374665055",
+      "719b2f48-d82d-46e1-bb36-3063c4fa217f",
+      "09e16cf7-b933-4243-b13e-31bf3b272a97",
+      "5451c76d-383d-4b7b-a08f-ca406d16c382",
+      "427d5c73-6bbe-449f-9c0e-ce662b2ebbf9",
+      "a78cd617-1538-47d7-b53d-2058fd3e2b32",
+      "1aa82413-07c3-482d-8e23-2b7e2d05f467",
+      "9ac77ba8-0295-4539-8a43-93939ec1f59d",
+      "978f3ac3-bc7b-40aa-a2dd-121203e87dc6",
+      "d0967dbc-2357-4a78-b209-74b96f968e93",
+      "847149e3-5bc3-4891-8963-53b9565ae00f",
+      "f74344f9-a433-4023-95c7-5e72dffdd927",
+      "4a606d79-83a3-487b-a459-cc5263dc2829",
+      "b527185b-a4af-4201-a0df-15cbd7531d7f",
+      "0ee95cc9-114e-4a68-a7a9-36d83df34dfd",
+      "82395788-f47d-4314-aadf-a9df0b4f91ee",
+      "70c6e351-2cfc-4c22-aebc-e7598ffeb294",
+      "be66f746-1db6-4d0b-aba0-30d62d145214",
+      "abe8bcc8-fe8c-40ec-af7b-d89f50e560a1",
+      "ac26bd39-66e3-4cbe-9c79-20522ab39d63",
+      "c7dceb4d-0715-4b7b-b321-512577d0ccd8",
+      "5839cb1a-ae93-4b92-b199-8cc1e0f05882",
+      "7be4b087-ee68-478d-88a8-17829dda79d9",
+      "f94b564b-00d7-445d-b92e-2a425493693d",
+      "197ddb7e-cc12-48de-afa2-9038ce80c7fe",
+      "93d640f3-46d4-43a2-ae96-ca700cb7aa6b",
+      "1bf59a49-e349-46b2-a1d5-fbf02be632ca",
+      "d94ca373-4296-4f50-96f1-609deb309b9a",
+      "6b8a4f23-ba90-4322-af00-1f6f0ef0e819",
+      "f8a1be5e-882d-496f-9c55-c95aa9de46d0",
+      "82c27da4-aaf7-4c7b-9cbb-2d32054b08e5",
+      "cdc11cbc-376e-42d4-bcef-9d43c3a92d85",
+      "498b4ba8-91b0-4259-9e2c-71a15f4d590b",
+      "d4b1f0ba-babf-4b5b-9ec5-20be37bf92a6",
+      "a4ca1835-ba77-4abd-ab0e-99e72ae21b9c",
+      "f8e50e84-9b75-40c1-b175-f236934486de",
+      "2bd9e088-d63e-48e8-bb16-3e72a21c2390",
+      "cc89c736-3b78-46b3-a33c-7cdf61971707",
+      "b43e8755-4b49-4a1e-b6c2-0b9f8e441002",
+      "7fef35e7-7fce-499b-8f67-e454a5fbd29d",
+      "2edeb8b6-234c-4f29-87f3-99b72973e7f8",
+      "3ddf11f6-bcc7-4c2d-84ea-452010a2f708",
+      "3d8c810b-305e-4789-8e0b-e3ca6c6e9a28",
+      "12205761-d989-481b-bd3f-e0b85a3010ec",
+      "2fe52712-d4a2-47bf-82f6-ba8952bc2254",
+      "3568e222-8a03-491c-9bee-af650d38e72c",
+      "166648da-b771-4ff6-a568-22f91467d7e3",
+      "d7d5f9b1-b27f-4b22-bee7-b3acf1ef3d99",
+      "fb7b0b02-29a5-4048-a249-2263930d174f",
+      "cd5b68f3-97b4-4e76-9bd3-f67206516696",
+      "21e8636b-74cc-429b-9898-203b1c10410a",
+      "b5c66bf5-cae1-40a6-9054-c4df943b5009"
+    ],
+    "success:None": [
+      "24189a2f-ddd6-4c2f-9f87-9063be67f990",
+      "f7a3fb38-d89c-4329-9ab8-3f407297de24",
+      "7d9d98a1-44ca-47b0-a4ea-565ffe37e6dd",
+      "a776af06-5444-4b99-a056-e9cd41ff6e31",
+      "b9696c5f-6441-40da-a64f-ed8931816c6b",
+      "f18525d4-4cf9-4f5f-8cde-f92845095486",
+      "b7bd2ee4-969d-4be7-b000-0b7f968ec7fe",
+      "6204ccdf-386b-4bc2-8482-b138358a7132",
+      "1fbe9e44-ee58-40a7-9a95-5c772fb17b9e",
+      "102be9d5-d489-4061-bc07-dc7a32c5ff35",
+      "79e474e0-7d41-4d7c-ab5d-574c71cfa4c5",
+      "439525f1-6895-427d-b4bc-aa5f497bba0a",
+      "ec56135b-85cd-4c4e-a967-b6da2529422e",
+      "9f30a437-dfbf-4f02-bdda-890f988ae10c",
+      "e95c5202-609c-4a2a-bbfd-5e08e87f88d8",
+      "7cbc8f35-46e9-4ed5-b7b7-a2d5635546b2",
+      "ff4422bd-b8ff-45b2-8cdc-d98374665055",
+      "d0c1c148-f25e-4b57-91ce-0aab2a0f382b",
+      "7f2cb455-a3d5-43ba-9270-f8585ddba3da",
+      "719b2f48-d82d-46e1-bb36-3063c4fa217f",
+      "09e16cf7-b933-4243-b13e-31bf3b272a97",
+      "5451c76d-383d-4b7b-a08f-ca406d16c382",
+      "427d5c73-6bbe-449f-9c0e-ce662b2ebbf9",
+      "a78cd617-1538-47d7-b53d-2058fd3e2b32",
+      "1aa82413-07c3-482d-8e23-2b7e2d05f467",
+      "9ac77ba8-0295-4539-8a43-93939ec1f59d",
+      "d0967dbc-2357-4a78-b209-74b96f968e93",
+      "f74344f9-a433-4023-95c7-5e72dffdd927",
+      "4a606d79-83a3-487b-a459-cc5263dc2829",
+      "b527185b-a4af-4201-a0df-15cbd7531d7f",
+      "0ee95cc9-114e-4a68-a7a9-36d83df34dfd",
+      "82395788-f47d-4314-aadf-a9df0b4f91ee",
+      "70c6e351-2cfc-4c22-aebc-e7598ffeb294",
+      "be66f746-1db6-4d0b-aba0-30d62d145214",
+      "abe8bcc8-fe8c-40ec-af7b-d89f50e560a1",
+      "ac26bd39-66e3-4cbe-9c79-20522ab39d63",
+      "c7dceb4d-0715-4b7b-b321-512577d0ccd8",
+      "5839cb1a-ae93-4b92-b199-8cc1e0f05882",
+      "7be4b087-ee68-478d-88a8-17829dda79d9",
+      "f94b564b-00d7-445d-b92e-2a425493693d",
+      "197ddb7e-cc12-48de-afa2-9038ce80c7fe",
+      "6b8a4f23-ba90-4322-af00-1f6f0ef0e819",
+      "1bf59a49-e349-46b2-a1d5-fbf02be632ca",
+      "d94ca373-4296-4f50-96f1-609deb309b9a",
+      "82c27da4-aaf7-4c7b-9cbb-2d32054b08e5",
+      "f8a1be5e-882d-496f-9c55-c95aa9de46d0",
+      "cdc11cbc-376e-42d4-bcef-9d43c3a92d85",
+      "498b4ba8-91b0-4259-9e2c-71a15f4d590b",
+      "a4ca1835-ba77-4abd-ab0e-99e72ae21b9c",
+      "f8e50e84-9b75-40c1-b175-f236934486de",
+      "2bd9e088-d63e-48e8-bb16-3e72a21c2390",
+      "cc89c736-3b78-46b3-a33c-7cdf61971707",
+      "b43e8755-4b49-4a1e-b6c2-0b9f8e441002",
+      "7fef35e7-7fce-499b-8f67-e454a5fbd29d",
+      "2edeb8b6-234c-4f29-87f3-99b72973e7f8",
+      "3ddf11f6-bcc7-4c2d-84ea-452010a2f708",
+      "3d8c810b-305e-4789-8e0b-e3ca6c6e9a28",
+      "12205761-d989-481b-bd3f-e0b85a3010ec",
+      "2fe52712-d4a2-47bf-82f6-ba8952bc2254",
+      "166648da-b771-4ff6-a568-22f91467d7e3",
+      "d7d5f9b1-b27f-4b22-bee7-b3acf1ef3d99",
+      "fb7b0b02-29a5-4048-a249-2263930d174f",
+      "cd5b68f3-97b4-4e76-9bd3-f67206516696",
+      "21e8636b-74cc-429b-9898-203b1c10410a",
+      "b5c66bf5-cae1-40a6-9054-c4df943b5009"
+    ],
+    "goal:I need to learn more about the guard's state before deciding on an approach.": [
+      "3568e222-8a03-491c-9bee-af650d38e72c"
+    ],
+    "tool:sense": [
+      "3568e222-8a03-491c-9bee-af650d38e72c",
+      "d4b1f0ba-babf-4b5b-9ec5-20be37bf92a6"
+    ],
+    "goal:I need to know the guard's exact location before waking him up.": [
+      "978f3ac3-bc7b-40aa-a2dd-121203e87dc6"
+    ],
+    "goal:I want to learn about the guard's behavior patterns before deciding on a strategy.": [
+      "cbf2319c-7ba3-4bef-b9f8-5a6aecc3a3c4"
+    ],
+    "goal:I need to understand the dungeon's structure before making a move. I will use sense_tools to explore.": [
+      "a1233073-4359-4b67-8829-c568b67de501"
+    ],
+    "goal:I need to gather more information about the guard before deciding on a course of action.": [
+      "d4b1f0ba-babf-4b5b-9ec5-20be37bf92a6"
+    ],
+    "goal:I need to understand the dungeon's structure before making a move.": [
+      "847149e3-5bc3-4891-8963-53b9565ae00f"
+    ]
+  },
+  "stats": {
+    "memories_captured": 72,
+    "queries": 8,
+    "successful": 7,
+    "unknown_outcome": 65
+  },
+  "compressed_count": 0,
+  "associative_graph": {
+    "nodes": [],
+    "edges": []
+  },
+  "episodes": [
+    {
+      "id": "ep_1",
+      "start_tick": 1,
+      "end_tick": 1,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_2",
+      "start_tick": 2,
+      "end_tick": 2,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_3",
+      "start_tick": 3,
+      "end_tick": 3,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_4",
+      "start_tick": 4,
+      "end_tick": 4,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_5",
+      "start_tick": 5,
+      "end_tick": 5,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_6",
+      "start_tick": 6,
+      "end_tick": 6,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    }
+  ],
+  "next_episode_ordinal": 7,
+  "node_modality": {},
+  "experience_clock": {
+    "us": 40000000,
+    "unit": "world_experience_us"
+  },
+  "_format_version": "1.0"
+}

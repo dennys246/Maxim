@@ -1,0 +1,1379 @@
+{
+  "version": "1.0",
+  "links": {
+    "tool:sense_tools": [
+      {
+        "id": "b04c82bf4385b18c",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "describe the layout of the dungeon"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0004611015319824219
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790973422.902804,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "070d24798646a7a3",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to learn more about the dungeon's structure before making a move. Sense_tools might reveal us"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 2 capabilities:\n- base_humanoid_listen: Atte",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790973422.903156,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "4b1e4cd56c722b9f",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I need to learn more about the dungeon's structure before making a move. Sense_tools might reveal useful actions or locations."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to learn more about the dungeon's structure before making a move. Sense_tools might reveal useful actions or locations.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790973422.903274,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "1bf44810ec60c312",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "location of sleeping guard"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.000125885009765625
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790973486.638151,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "3eb397fc120bc952",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to know the guard's exact location before waking him up."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Your capabilities by category:\n- Head (base_humano",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790973486.638485,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "b3934d1ec3276001",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I need to know the guard's exact location before waking him up."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to know the guard's exact location before waking him up.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790973486.638599,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "c7d399ca9293d412",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "guard's routines or habits"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0004563331604003906
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790973534.70793,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "a0cfe2de286d823b",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I want to learn about the guard's behavior patterns before deciding on a strategy."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 2 capabilities:\n- base_humanoid_look: Observ",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790973534.708247,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "2bb539b252f6cf64",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I want to learn about the guard's behavior patterns before deciding on a strategy."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I want to learn about the guard's behavior patterns before deciding on a strategy.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790973534.7083578,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "0cbbd1ac1603398e",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "dungeon layout"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.00040602684020996094,
+            0.00037980079650878906
+          ]
+        },
+        "predicted_value": 0.6302000000000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001
+        ],
+        "observation_count": 2,
+        "confidence": 0.5788827740041718,
+        "last_observed": 1790973653.070868,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.42999999999999994,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "7b0deed514c02015",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to understand the dungeon's structure before making a move. I will use sense_tools to explore"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Your capabilities by category:\n- Head (base_humano",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790973565.361074,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "2c8291a6811ec11d",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I need to understand the dungeon's structure before making a move. I will use sense_tools to explore."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to understand the dungeon's structure before making a move. I will use sense_tools to explore.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790973565.3611882,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "60cad145f9dbce9d",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to understand the dungeon's structure before making a move."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Your capabilities by category:\n- Head (base_humano",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790973653.071168,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "c1b2273ebceeccc1",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I need to understand the dungeon's structure before making a move."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to understand the dungeon's structure before making a move.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790973653.071288,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "2132abcebfc482f8",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "guard's status"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.000392913818359375
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790973770.609795,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "03008d65718ef4ad",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to understand the guard's current state before deciding on a course of action."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Your capabilities by category:\n- Head (base_humano",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790973770.6101172,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "9332a0cff89f23fe",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I need to understand the guard's current state before deciding on a course of action."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to understand the guard's current state before deciding on a course of action.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1,
+            0.1
+          ]
+        },
+        "predicted_value": 0.6302000000000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001
+        ],
+        "observation_count": 2,
+        "confidence": 0.609350288425444,
+        "last_observed": 1790973810.8304288,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.42999999999999994,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "4e3756749c8a0402",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "understand guard's current state"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0004818439483642578
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790973810.8299909,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "498ad7ece80a9fb7",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to understand the guard's current state before deciding on a course of action."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 1 capabilities:\n- base_humanoid_listen: Atte",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790973810.8303108,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "7e4e85e9b4de4dce",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "guard's duties and routines"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0005490779876708984
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790973889.669891,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "6e54181fe9ed082f",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to understand the guard's current duties and routines before deciding on a course of action."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 2 capabilities:\n- base_humanoid_listen: Atte",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790973889.670246,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "54b305d1545fcce9",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I need to understand the guard's current duties and routines before deciding on a course of action."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to understand the guard's current duties and routines before deciding on a course of action.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790973889.670363,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:sense": [
+      {
+        "id": "6426b5b14ab811e3",
+        "event_type": "tool",
+        "event_signature": "tool:sense",
+        "event_context": {
+          "params": {
+            "entity_name": "guard"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            7.796287536621094e-05,
+            5.412101745605469e-05
+          ]
+        },
+        "predicted_value": 0.6302000000000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001
+        ],
+        "observation_count": 2,
+        "confidence": 0.5788827740041718,
+        "last_observed": 1790973606.791841,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.42999999999999994,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "12a88f5aadf840c4",
+        "event_type": "tool",
+        "event_signature": "tool:sense",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to learn more about the guard's state before deciding on an approach."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'guard', 'sensors': {'hp': {'value': 18",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790973456.1774132,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "34d50fc70d3e6c5a",
+        "event_type": "tool",
+        "event_signature": "tool:sense",
+        "event_context": {
+          "goal": "I need to learn more about the guard's state before deciding on an approach."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to learn more about the guard's state before deciding on an approach.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790973456.177532,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "6dc54cd0eb5d8b87",
+        "event_type": "tool",
+        "event_signature": "tool:sense",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to gather more information about the guard before deciding on a course of action."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'guard', 'sensors': {'hp': {'value': 18",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790973606.792154,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "2f4f84f1a16e34c9",
+        "event_type": "tool",
+        "event_signature": "tool:sense",
+        "event_context": {
+          "goal": "I need to gather more information about the guard before deciding on a course of action."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to gather more information about the guard before deciding on a course of action.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1790973606.792278,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:memory_recall": [
+      {
+        "id": "89b48fd44cf2024b",
+        "event_type": "tool",
+        "event_signature": "tool:memory_recall",
+        "event_context": {
+          "params": {
+            "query": "guard interaction"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:memory_recall:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.000263214111328125
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790973735.0839932,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "18179a123f61ae66",
+        "event_type": "tool",
+        "event_signature": "tool:memory_recall",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to recall past interactions with guards for strategic planning."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'count': 5, 'memories': [{'id': 'd4b1f0ba-babf-4b",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790973735.0843751,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "494550c34bb6acac",
+        "event_type": "tool",
+        "event_signature": "tool:memory_recall",
+        "event_context": {
+          "goal": "I need to recall past interactions with guards for strategic planning."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to recall past interactions with guards for strategic planning.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790973735.084495,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:examine": [
+      {
+        "id": "0f8c151cbfb58c56",
+        "event_type": "tool",
+        "event_signature": "tool:examine",
+        "event_context": {
+          "params": {
+            "target": "guard"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:examine:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.00019288063049316406
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790973739.996709,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "098c172e20acdde6",
+        "event_type": "tool",
+        "event_signature": "tool:examine",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "The previous actions did not yield enough information about the guard. Examining him could provide a"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'target': 'guard', 'observation': 'I see we need ",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790973739.99698,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "b227d91294f099e7",
+        "event_type": "tool",
+        "event_signature": "tool:examine",
+        "event_context": {
+          "goal": "The previous actions did not yield enough information about the guard. Examining him could provide additional details to inform our next move."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:The previous actions did not yield enough information about the guard. Examining him could provide additional details to inform our next move.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790973739.997094,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:base_humanoid_listen": [
+      {
+        "id": "2e7e355214b03d70",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_listen",
+        "event_context": {
+          "params": {}
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:base_humanoid_listen:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0002460479736328125,
+            0.0002219676971435547
+          ]
+        },
+        "predicted_value": 0.6302000000000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001
+        ],
+        "observation_count": 2,
+        "confidence": 0.609350288425444,
+        "last_observed": 1790973977.6137578,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.42999999999999994,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "341b641c2e77fb02",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_listen",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to determine the guard's direction before planning my escape. Listening will help me locate h"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'base_humanoid', 'affordance': 'listen'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790973854.9242601,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "6796c96ccd8bf3b3",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_listen",
+        "event_context": {
+          "goal": "I need to determine the guard's direction before planning my escape. Listening will help me locate his position and face."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to determine the guard's direction before planning my escape. Listening will help me locate his position and face.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790973854.924408,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "f59b2fc7de312843",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_listen",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to determine the guard's direction before planning my escape."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'base_humanoid', 'affordance': 'listen'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0,
+            0.0
+          ]
+        },
+        "predicted_value": 0.6302000000000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001
+        ],
+        "observation_count": 2,
+        "confidence": 0.609350288425444,
+        "last_observed": 1790974028.501416,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.42999999999999994,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "dbfb36346fffd628",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_listen",
+        "event_context": {
+          "goal": "I need to determine the guard's direction before planning my escape."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to determine the guard's direction before planning my escape.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1,
+            0.1
+          ]
+        },
+        "predicted_value": 0.6302000000000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001
+        ],
+        "observation_count": 2,
+        "confidence": 0.609350288425444,
+        "last_observed": 1790974028.5015051,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.42999999999999994,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "b49a253723d7d57a",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_listen",
+        "event_context": {
+          "params": {
+            "target": "guard"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:base_humanoid_listen:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.00021600723266601562
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1790974028.501025,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ]
+  },
+  "outcome_index": {
+    "tool:sense_tools:positive": [
+      "c7d399ca9293d412",
+      "0cbbd1ac1603398e",
+      "7e4e85e9b4de4dce",
+      "1bf44810ec60c312",
+      "b04c82bf4385b18c",
+      "2132abcebfc482f8",
+      "4e3756749c8a0402"
+    ],
+    "success:Found 2 capabilities:\n- base_humanoid_listen: Atte": [
+      "070d24798646a7a3",
+      "6e54181fe9ed082f"
+    ],
+    "plan:I need to learn more about the dungeon's structure before making a move. Sense_tools might reveal useful actions or locations.:success": [
+      "4b1e4cd56c722b9f"
+    ],
+    "tool:sense:positive": [
+      "6426b5b14ab811e3"
+    ],
+    "success:{'entity': 'guard', 'sensors': {'hp': {'value': 18": [
+      "6dc54cd0eb5d8b87",
+      "12a88f5aadf840c4"
+    ],
+    "plan:I need to learn more about the guard's state before deciding on an approach.:success": [
+      "34d50fc70d3e6c5a"
+    ],
+    "success:Your capabilities by category:\n- Head (base_humano": [
+      "60cad145f9dbce9d",
+      "7b0deed514c02015",
+      "3eb397fc120bc952",
+      "03008d65718ef4ad"
+    ],
+    "plan:I need to know the guard's exact location before waking him up.:success": [
+      "b3934d1ec3276001"
+    ],
+    "success:Found 2 capabilities:\n- base_humanoid_look: Observ": [
+      "a0cfe2de286d823b"
+    ],
+    "plan:I want to learn about the guard's behavior patterns before deciding on a strategy.:success": [
+      "2bb539b252f6cf64"
+    ],
+    "plan:I need to understand the dungeon's structure before making a move. I will use sense_tools to explore.:success": [
+      "2c8291a6811ec11d"
+    ],
+    "plan:I need to gather more information about the guard before deciding on a course of action.:success": [
+      "2f4f84f1a16e34c9"
+    ],
+    "plan:I need to understand the dungeon's structure before making a move.:success": [
+      "c1b2273ebceeccc1"
+    ],
+    "tool:memory_recall:positive": [
+      "89b48fd44cf2024b"
+    ],
+    "success:{'count': 5, 'memories': [{'id': 'd4b1f0ba-babf-4b": [
+      "18179a123f61ae66"
+    ],
+    "plan:I need to recall past interactions with guards for strategic planning.:success": [
+      "494550c34bb6acac"
+    ],
+    "tool:examine:positive": [
+      "0f8c151cbfb58c56"
+    ],
+    "success:{'target': 'guard', 'observation': 'I see we need ": [
+      "098c172e20acdde6"
+    ],
+    "plan:The previous actions did not yield enough information about the guard. Examining him could provide additional details to inform our next move.:success": [
+      "b227d91294f099e7"
+    ],
+    "plan:I need to understand the guard's current state before deciding on a course of action.:success": [
+      "9332a0cff89f23fe"
+    ],
+    "success:Found 1 capabilities:\n- base_humanoid_listen: Atte": [
+      "498ad7ece80a9fb7"
+    ],
+    "tool:base_humanoid_listen:positive": [
+      "2e7e355214b03d70",
+      "b49a253723d7d57a"
+    ],
+    "success:{'entity': 'base_humanoid', 'affordance': 'listen'": [
+      "f59b2fc7de312843",
+      "341b641c2e77fb02"
+    ],
+    "plan:I need to determine the guard's direction before planning my escape. Listening will help me locate his position and face.:success": [
+      "6796c96ccd8bf3b3"
+    ],
+    "plan:I need to understand the guard's current duties and routines before deciding on a course of action.:success": [
+      "54b305d1545fcce9"
+    ],
+    "plan:I need to determine the guard's direction before planning my escape.:success": [
+      "dbfb36346fffd628"
+    ]
+  },
+  "priors": {},
+  "total_observations": 45,
+  "reward_bias": {},
+  "goal_reward_bias": {
+    "escape a dungeon with a sleeping guard": 0.03893517461607997
+  },
+  "cluster_reward_bias": {},
+  "cluster_reward_source": {},
+  "inherent_bias_keys": [],
+  "percept_valences": {},
+  "cluster_fear": {},
+  "event_outcome_welford": {},
+  "saved_at": 1790974077.742053,
+  "_format_version": "1.4"
+}
