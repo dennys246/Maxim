@@ -31,6 +31,12 @@ from _provenance import provenance_digest  # noqa: E402
 
 DATA_ROOT = L.DATA_ROOT
 O19_JUDGE = "scripts/o19_verdict.py"
+O19_RERUN = "scripts/o19_rerun.py"
+# What the gate calls on a loaded judge (any version on main's history; every gate run loads every one of them,
+# o19_history_problems). Every attribute _rejudge_with uses MUST be listed here, or that check cannot see a gate edit
+# that an old judge fails.
+# ``protocol_problems`` arrived with campaign succession: required only when the judge's table has a successor.
+O19_INTERFACE = ("PROTOCOL", "rows_path", "attempts_from_rows", "judge", "MARKER_NAMESPACE", "MAX_ATTEMPTS")
 O19_KINDS = frozenset({"exp10_verdict", "exp09_verdict"})
 # A run's finish reasons that are citable (pinned against simulation/sim_types.py's failure set by a test).
 FINISH_OK = frozenset({"completed", "max_turns", "complete", "all_encounters_complete"})
@@ -99,6 +105,19 @@ class Repo:
                 mode, _type, oid = meta.split()
                 files[path] = (mode, oid)
             self._cache[key] = files
+        return self._cache[key]  # type: ignore[return-value]
+
+    def blob_id(self, ref: str, path: str) -> str | None:
+        """The blob id at ``ref:path``; None when absent there or not a file."""
+        if self.kind(ref, path) != "blob":
+            return None
+        return self.git("rev-parse", f"{ref}:{path}").strip()
+
+    def first_parents(self, ref: str) -> frozenset[str]:
+        """Every commit on ``ref``'s first-parent history (what landed on main, not a merged branch's commits)."""
+        key = f"fp:{ref}"
+        if key not in self._cache:
+            self._cache[key] = frozenset(self.git("rev-list", "--first-parent", ref).split())
         return self._cache[key]  # type: ignore[return-value]
 
     def is_ancestor(self, commit: str, of: str) -> bool:
@@ -486,6 +505,9 @@ def judge_verdict(rec: dict, j: Judgement, ctx: Ctx) -> None:
     judge_provenance(rec.get("provenance"), j, ctx, "verdict provenance", allow_dirty_ok=False)
     judge_complete(rec, rows, scoped, j_counted, j, ctx)
     if str_field(rec, "kind") in O19_KINDS:
+        if j.path != data_rel.rsplit("/", 1)[0] + "/verdict.json":  # half B re-judges every one it can find (#1050)
+            j.fail(f"O19 verdict: {j.path} is not its rows' verdict.json ({data_rel.rsplit('/', 1)[0]}/verdict.json)")
+            return
         judge_o19(rec, rows, data_rel, j, ctx)
 
 
@@ -737,7 +759,8 @@ RULES = {
 
 
 def judge_o19(rec: dict, rows: list[dict], data_rel: str, j: Judgement, ctx: Ctx) -> None:
-    """The O19 re-run verdicts: the measured session files re-hashed, and the merge-base judge re-run."""
+    """The O19 re-run verdicts: the measured session files re-hashed, and the BOUND judge (the one bound to the
+    verdict's data, #1050) re-run."""
     data_dir = data_rel.rsplit("/", 1)[0]
     tree = ctx.repo.tree(ctx.ref)
     for i, r in enumerate(rows, 1):
@@ -768,35 +791,137 @@ def judge_o19(rec: dict, rows: list[dict], data_rel: str, j: Judgement, ctx: Ctx
     if rec.get("apparatus_checked") is not True:
         j.fail("O19 verdict: the apparatus (markers, ruleset, landing) was not checked")
         return
-    bound = as_dict(rec.get("bound_files")).get(O19_JUDGE)
-    source = ctx.repo.blob(ctx.base, O19_JUDGE)
-    base_blob = ctx.repo.git("rev-parse", f"{ctx.base}:{O19_JUDGE}").strip() if source is not None else None
-    if not bound or bound != base_blob or source is None or sha256(source) != rec.get("verdict_source_sha256"):
-        j.fail("O19 verdict: the merge-base judge is not the one that wrote the verdict")
+    source = bound_judge(rec, data_rel, rows, j, ctx)
+    if source is None:
         return
-    before = list(sys.path)
-    try:  # the merge-base module's later calls (attempts_from_rows, judge) run under a restored sys.path too
-        rejudged = rejudge_o19(source, rec, rows, data_dir, ctx)
-    finally:
-        sys.path[:] = before
+    rejudged = rejudge_o19(source, rec, rows, data_dir, ctx, bound_files=as_dict(rec.get("bound_files")))
     if isinstance(rejudged, str):
         j.fail(f"O19 verdict: re-judge refused: {rejudged}")
         return
+    diff = o19_difference(rejudged, rec)
+    if diff:
+        j.fail(f"O19 verdict: re-judging with the bound judge gives a different {diff}")
+
+
+def bound_judge(rec: dict, data_rel: str, rows: list[dict], j: Judgement, ctx: Ctx) -> bytes | None:
+    """The judge that wrote the verdict, bound to its DATA (#1050): the verdict was written at ``verdict_commit``, a
+    commit on the merge-base's first-parent history that is the verdict's own executed commit and holds the judged
+    rows bytes; at it and at every commit an attempt ran on, each bound path is its bound blob. Returns the bound
+    judge's bytes, or None after failing ``j`` (every miss is its own reason)."""
+    n = len(j.reasons)
+    bound = rec.get("bound_files")
+    if not isinstance(bound, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in bound.items()):
+        j.fail("O19 verdict: bound_files is not a path -> blob id mapping")
+        return None
+    if not isinstance(bound.get(O19_JUDGE), str) or not HEX40.match(bound[O19_JUDGE]):
+        j.fail(f"O19 verdict: bound_files names no {O19_JUDGE} blob")
+        return None
+    vc = rec.get("verdict_commit")
+    if not isinstance(vc, str) or not HEX40.match(vc):
+        j.fail(f"O19 verdict: verdict_commit {vc!r} is not a full commit id")
+        return None
+    if vc not in ctx.repo.first_parents(ctx.base):
+        j.fail(f"O19 verdict: verdict_commit {vc[:12]} is not on the merge-base's first-parent history")
+    if vc != as_dict(rec.get("provenance")).get("executed_git_hash"):
+        j.fail(f"O19 verdict: verdict_commit {vc[:12]} is not the verdict's own executed commit")
+    # Every commit an attempt ran on: each row's (a row without one is refused by the rows rules) and each start
+    # marker's peeled commit (an attempt that left no rows still ran there).
+    markers = as_dict(rec.get("apparatus")).get("markers")
+    marker_list = [m for m in (markers if isinstance(markers, list) else []) if isinstance(m, dict)]
+    peeled = {m.get("run_id"): m.get("peeled") for m in marker_list}
+    for m in marker_list:  # the writer stamps it on every marker; an attempt without rows is bound only through it
+        if not isinstance(m.get("peeled"), str) or not HEX40.match(m["peeled"]):
+            j.fail(f"O19 verdict: start marker {m.get('ref')!r} records no peeled commit")
+    for r in rows:
+        run_id = as_dict(r.get("provenance")).get("harness_run_id")
+        ran = as_dict(r.get("provenance")).get("executed_git_hash")
+        if run_id in peeled and ran != peeled[run_id]:
+            j.fail(f"O19 verdict: attempt {str(run_id)[:12]} ran on {str(ran)[:12]}, not its marker's commit")
+    executed = {as_dict(r.get("provenance")).get("executed_git_hash") for r in rows}
+    executed |= set(peeled.values())
+    executed.discard(None)
+    commits = [("verdict_commit", vc)]
+    for c in sorted(executed, key=str):
+        if not isinstance(c, str) or not HEX40.match(c):
+            j.fail(f"O19 verdict: executed commit {c!r} is not a full commit id")
+        elif not ctx.repo.is_ancestor(c, ctx.base):
+            j.fail(f"O19 verdict: executed commit {c[:12]} is not on main (an ancestor of the merge-base)")
+        else:
+            commits.append(("executed commit", c))
+    for path, want in sorted(bound.items()):
+        for label, c in commits:
+            have = ctx.repo.blob_id(c, path)
+            if have != want:
+                j.fail(f"O19 verdict: bound {path} is {have and have[:12]} at {label} {c[:12]}, not {want[:12]}")
+    data = ctx.repo.blob(vc, data_rel) if ctx.repo.kind(vc, data_rel) == "blob" else None
+    if data is None or sha256(data) != rec.get("data_sha256"):
+        j.fail(f"O19 verdict: {data_rel} at verdict_commit {vc[:12]} is not the data_sha256 bytes")
+    source = ctx.repo.blob(vc, O19_JUDGE) if ctx.repo.kind(vc, O19_JUDGE) == "blob" else None
+    if source is None or sha256(source) != rec.get("verdict_source_sha256"):
+        j.fail("O19 verdict: verdict_source_sha256 is not the bound judge's SHA-256")
+    return source if len(j.reasons) == n else None
+
+
+def o19_difference(rejudged: dict, rec: dict) -> str | None:
+    """The first field a re-judged O19 result disagrees with the record on (None = the same result)."""
 
     def projection(out: dict) -> list:
         attempts = out.get("attempts") if isinstance(out.get("attempts"), list) else []
         return [(as_dict(a).get("run_id"), as_dict(a).get("k"), as_dict(a).get("complete")) for a in attempts]
 
-    if (rejudged.get("verdict"), rejudged.get("deciding_attempt"), projection(rejudged)) != (
-        rec.get("verdict"),
-        rec.get("deciding_attempt"),
-        projection(rec),
+    def plain(value):  # the record went through JSON; the re-judged dict may hold tuples
+        return json.loads(json.dumps(value, sort_keys=True))
+
+    for name, get in (
+        ("verdict", lambda o: o.get("verdict")),
+        ("deciding_attempt", lambda o: o.get("deciding_attempt")),
+        ("attempts", projection),
+        ("gates", lambda o: plain(o.get("gates"))),
     ):
-        j.fail("O19 verdict: re-judging the bound bytes gives a different result")
+        if get(rejudged) != get(rec):
+            return name
+    return None
 
 
-def rejudge_o19(source: bytes, rec: dict, rows: list[dict], data_dir: str, ctx: Ctx):
-    """Run the MERGE-BASE ``o19_verdict.judge`` on the bound bytes. Returns its output dict, or a refusal reason."""
+def load_o19_judge(source: bytes):
+    """Load an ``o19_verdict.py`` blob from a temporary file (``sys.path`` restored after). Returns the module, or a
+    refusal reason when it does not load or lacks what the gate calls (``O19_INTERFACE``)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        mod_path = Path(tmp) / "o19_verdict_bound.py"
+        mod_path.write_bytes(source)
+        before = list(sys.path)
+        try:
+            spec = importlib.util.spec_from_file_location("_o19_bound", mod_path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+        except Exception as exc:  # noqa: BLE001 — a load failure is a refusal, never a crash
+            return f"load: {type(exc).__name__}: {exc}"
+        finally:
+            sys.path[:] = before
+    missing = [name for name in O19_INTERFACE if not hasattr(mod, name)]
+    if missing:
+        return f"the judge lacks {missing}"
+    if not isinstance(mod.PROTOCOL, dict):
+        return "the judge's PROTOCOL is not a campaign table"
+    has_successor = any(isinstance(p, dict) and "supersedes" in p for p in mod.PROTOCOL.values())
+    if has_successor and not callable(getattr(mod, "protocol_problems", None)):
+        return "the judge's campaign table has a successor but no protocol_problems"
+    return mod
+
+
+def rejudge_o19(
+    source: bytes,
+    rec: dict,
+    rows: list[dict],
+    data_dir: str,
+    ctx: Ctx,
+    *,
+    bound_files: dict | None = None,
+    ref: str | None = None,
+):
+    """Run the given ``o19_verdict`` bytes' ``judge`` on the record's bytes (half A: the bound judge; half B: an
+    edited HEAD judge). With ``bound_files``, they must be exactly the judge, the harness and the campaign's prereg
+    as this judge's table names it. Returns the judge's output dict, or a refusal reason."""
     markers = as_dict(rec.get("apparatus")).get("markers")
     if not isinstance(markers, list) or not markers or not all(isinstance(m, dict) for m in markers):
         return "the verdict records no start markers"
@@ -805,61 +930,138 @@ def rejudge_o19(source: bytes, rec: dict, rows: list[dict], data_dir: str, ctx: 
     ordered_markers = sorted(markers, key=lambda m: m["k"])  # stable over the stamped order
     if [m["k"] for m in ordered_markers] != list(range(1, len(ordered_markers) + 1)):
         return "marker k values are not 1..n"
-    with tempfile.TemporaryDirectory() as tmp:
-        mod_path = Path(tmp) / "o19_verdict_mergebase.py"
-        mod_path.write_bytes(source)
-        before = list(sys.path)
+    before = list(sys.path)
+    try:  # the module's later calls (attempts_from_rows, judge) run under a restored sys.path too
+        mod = load_o19_judge(source)
+        if isinstance(mod, str):
+            return mod
+        return _rejudge_with(mod, rec, rows, data_dir, ctx, ordered_markers, bound_files, ref or ctx.ref)
+    finally:
+        sys.path[:] = before
+
+
+def _rejudge_with(mod, rec: dict, rows: list[dict], data_dir: str, ctx: Ctx, ordered_markers, bound_files, ref: str):
+    # ``ref``: where the record's rows, session files and predecessor closure are read (half B: main's copy of a
+    # landed record, so a PR cannot edit the judge and its inputs together).
+    # The campaign the verdict judged (#1042 follow-up, campaign 2): the record's ``experiment`` names a key of
+    # the judge's campaign table, of the record's kind, whose rows file and markers the record must be.
+    exp = rec.get("experiment")
+    protocol = mod.PROTOCOL
+    if not isinstance(exp, str) or exp not in protocol or not isinstance(protocol[exp], dict):
+        return f"the verdict's campaign {exp!r} is not in the judge's campaign table"
+    if protocol[exp].get("kind") != rec.get("kind"):
+        return f"campaign {exp} is not of kind {rec.get('kind')!r}"
+    if bound_files is not None:
+        want = {O19_JUDGE, O19_RERUN, protocol[exp].get("prereg")}
+        if set(bound_files) != want:
+            return f"bound_files names {sorted(bound_files)}, not exactly {sorted(map(str, want))}"
+    if rec.get("data") != mod.rows_path(exp):
+        return f"the verdict's data {rec.get('data')!r} is not campaign {exp}'s rows file {mod.rows_path(exp)!r}"
+    if len(ordered_markers) > mod.MAX_ATTEMPTS:
+        return f"{len(ordered_markers)} start markers: more than {mod.MAX_ATTEMPTS} attempts"
+    for m in ordered_markers:
+        if m.get("ref") != f"{mod.MARKER_NAMESPACE}/{exp}/attempt-{m['k']}-{m['run_id']}":
+            return f"start marker {m.get('ref')!r} is not campaign {exp}'s attempt {m['k']}"
+    if callable(getattr(mod, "protocol_problems", None)) and (problems := mod.protocol_problems()):
+        return f"the judge's campaign table is unsound: {problems}"
+    sup = protocol[exp].get("supersedes")
+    if sup is not None:  # the closure's content; its timing against the markers is the verdict's check
+        closure = ctx.repo.blob(ref, sup["verdict"])
+        if closure is None or sha256(closure) != sup["verdict_sha256"]:
+            return f"campaign {exp}'s predecessor closure {sup['verdict']} is not the pinned verdict"
+        if as_dict(as_dict(rec.get("apparatus")).get("succession")).get("key") != sup["key"]:
+            return f"the verdict does not record campaign {exp}'s succession from {sup['key']}"
+    try:
+        attempts = mod.attempts_from_rows(rows)
+    except Exception as exc:  # noqa: BLE001 — the judge's own Refusal included
+        return f"{type(exc).__name__}: {exc}"
+    if set(attempts) - {m["run_id"] for m in ordered_markers}:
+        return "rows name attempts with no start marker"
+    ordered = [{"run_id": m["run_id"], "k": m["k"], "rows": attempts.get(m["run_id"], [])} for m in ordered_markers]
+    with tempfile.TemporaryDirectory() as root:
+        root_path = Path(root)
+        for path, (mode, _oid) in ctx.repo.tree(ref).items():
+            if path.startswith(data_dir + "/") and mode not in ("120000", "160000"):
+                dest = root_path / path[len(data_dir) + 1 :]
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(ctx.repo.blob(ref, path) or b"")
         try:
-            spec = importlib.util.spec_from_file_location("_o19_mergebase", mod_path)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-        except Exception as exc:  # noqa: BLE001 — a load failure is a refusal, never a crash
-            return f"load: {type(exc).__name__}: {exc}"
-        finally:
-            sys.path[:] = before
-        # The campaign the verdict judged (#1042 follow-up, campaign 2): the record's ``experiment`` names a key of
-        # the merge-base campaign table, of the record's kind, whose rows file and markers the record must be.
-        exp = rec.get("experiment")
-        protocol = getattr(mod, "PROTOCOL", None)
-        if not isinstance(exp, str) or not isinstance(protocol, dict) or exp not in protocol:
-            return f"the verdict's campaign {exp!r} is not in the merge-base campaign table"
-        if protocol[exp].get("kind") != rec.get("kind"):
-            return f"campaign {exp} is not of kind {rec.get('kind')!r}"
-        if rec.get("data") != mod.rows_path(exp):
-            return f"the verdict's data {rec.get('data')!r} is not campaign {exp}'s rows file {mod.rows_path(exp)!r}"
-        if len(ordered_markers) > mod.MAX_ATTEMPTS:
-            return f"{len(ordered_markers)} start markers: more than {mod.MAX_ATTEMPTS} attempts"
-        for m in ordered_markers:
-            if m.get("ref") != f"{mod.MARKER_NAMESPACE}/{exp}/attempt-{m['k']}-{m['run_id']}":
-                return f"start marker {m.get('ref')!r} is not campaign {exp}'s attempt {m['k']}"
-        if problems := mod.protocol_problems():
-            return f"the merge-base campaign table is unsound: {problems}"
-        sup = protocol[exp].get("supersedes")
-        if sup is not None:  # the closure's content; its timing against the markers is the verdict's check
-            closure = ctx.repo.blob(ctx.ref, sup["verdict"])
-            if closure is None or sha256(closure) != sup["verdict_sha256"]:
-                return f"campaign {exp}'s predecessor closure {sup['verdict']} is not the pinned verdict"
-            if as_dict(as_dict(rec.get("apparatus")).get("succession")).get("key") != sup["key"]:
-                return f"the verdict does not record campaign {exp}'s succession from {sup['key']}"
-        try:
-            attempts = mod.attempts_from_rows(rows)
+            out = mod.judge(exp, ordered, root_path)
         except Exception as exc:  # noqa: BLE001 — the judge's own Refusal included
             return f"{type(exc).__name__}: {exc}"
-        if set(attempts) - {m["run_id"] for m in ordered_markers}:
-            return "rows name attempts with no start marker"
-        ordered = [{"run_id": m["run_id"], "k": m["k"], "rows": attempts.get(m["run_id"], [])} for m in ordered_markers]
-        with tempfile.TemporaryDirectory() as root:
-            root_path = Path(root)
-            for path, (mode, _oid) in ctx.repo.tree(ctx.ref).items():
-                if path.startswith(data_dir + "/") and mode not in ("120000", "160000"):
-                    dest = root_path / path[len(data_dir) + 1 :]
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-                    dest.write_bytes(ctx.repo.blob(ctx.ref, path) or b"")
-            try:
-                out = mod.judge(exp, ordered, root_path)
-            except Exception as exc:  # noqa: BLE001 — the judge's own Refusal included
-                return f"{type(exc).__name__}: {exc}"
-            return out if isinstance(out, dict) else "the judge returned no result"
+        return out if isinstance(out, dict) else "the judge returned no result"
+
+
+def o19_judge_edit_problems(ctx: Ctx) -> list[str]:
+    """Half B of #1050: a diff touching ``scripts/o19_verdict.py`` re-judges EVERY O19 verdict in the HEAD tree with
+    the HEAD script; any different result, refusal, or a deleted script while one exists fails (strict, owner
+    decision 2026-10-03: no exception path; a judge change scopes new behaviour to new campaign keys)."""
+    out: list[str] = []
+    records: list[tuple[str, dict]] = []
+    # Every verdict.json main holds or this diff adds: one deleted or renamed in the same diff is still re-judged.
+    trees = {**ctx.repo.tree("HEAD"), **ctx.repo.tree(ctx.base)}
+    for path, (mode, _oid) in sorted(trees.items()):
+        if not path.startswith(DATA_ROOT + "/") or path.rsplit("/", 1)[-1] != "verdict.json":
+            continue
+        if mode in ("120000", "160000"):
+            out.append(f"{path}: not a file")
+            continue
+        # The record as main holds it when it is there (a PR may not edit the judge and rewrite a landed verdict to
+        # match); a verdict new in this diff is judged as HEAD holds it.
+        ref = ctx.base if ctx.repo.kind(ctx.base, path) == "blob" else "HEAD"
+        try:
+            rec = json.loads((ctx.repo.blob(ref, path) or b"").decode("utf-8"))
+        except (ValueError, UnicodeError):
+            out.append(f"{path}: not JSON, so not known to be a non-O19 record")
+            continue
+        if isinstance(rec, dict) and str_field(rec, "kind") in O19_KINDS:
+            records.append((path, ref, rec))
+    source = ctx.repo.blob("HEAD", O19_JUDGE)
+    if records and source is None:
+        out.append(f"{O19_JUDGE} is deleted while O19 verdicts exist ({[p for p, _, _ in records]})")
+        records = []
+    for path, ref, rec in records:
+        data_rel = rec.get("data")
+        if not isinstance(data_rel, str) or not data_rel.startswith(DATA_ROOT + "/") or ".." in data_rel.split("/"):
+            out.append(f"{path}: its data {data_rel!r} is not under {DATA_ROOT}/")
+            continue
+        try:
+            rows = json_lines(decompressed(data_rel, ctx.repo.blob(ref, data_rel) or b""))
+            rejudged = rejudge_o19(source, rec, rows, data_rel.rsplit("/", 1)[0], ctx, ref=ref)
+            diff = None if isinstance(rejudged, str) else o19_difference(rejudged, rec)
+        except (GateError, TypeError, *MALFORMED) as exc:
+            out.append(f"{path}: {type(exc).__name__}: {exc}"[:300])
+            continue
+        if isinstance(rejudged, str):
+            out.append(f"{path}: the edited judge refuses it: {rejudged}"[:300])
+        elif diff:
+            out.append(f"{path}: {diff} was {rec.get(diff)!r}, the edited judge gives {rejudged.get(diff)!r}"[:400])
+    return [
+        f"a judge edit changes an existing O19 verdict: {p} (strict, #1050: scope new judge behaviour to a new"
+        " campaign key; there is no exception path)"
+        for p in out
+    ]
+
+
+def o19_history_problems(repo: Repo, base: str) -> list[str]:
+    """Every ``o19_verdict.py`` the merge-base's first-parent history ever held still loads through the gate with
+    the interface it calls (#1050 N2): the gate re-judges a verdict with the judge that wrote it, so a GATE edit that
+    an old judge cannot satisfy would strand that judge's verdicts. Needs the full history (the lint job has it)."""
+    if repo.git("rev-parse", "--is-shallow-repository").strip() != "false":
+        return [f"{O19_JUDGE}'s history cannot be checked in a shallow clone (#1050: fetch the full history)"]
+    out = []
+    for commit in repo.git("log", "--first-parent", "--format=%H", base, "--", O19_JUDGE).split():
+        source = repo.blob(commit, O19_JUDGE)
+        if source is None:
+            continue  # the commit that deleted it (a deleted judge while verdicts exist fails half B)
+        before = list(sys.path)
+        try:
+            mod = load_o19_judge(source)
+        finally:
+            sys.path[:] = before
+        if isinstance(mod, str):
+            out.append(f"{O19_JUDGE} at {commit[:12]} no longer loads through the gate: {mod}")
+    return out
 
 
 def unjudged(j: Judgement) -> bool:

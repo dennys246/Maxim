@@ -64,6 +64,11 @@ class Rig:
         _git(root, "init", "-q", "-b", "main")
         (root / "scripts").mkdir()
         shutil.copy(REPO / "scripts" / "o19_verdict.py", root / "scripts" / "o19_verdict.py")
+        shutil.copy(REPO / "scripts" / "o19_rerun.py", root / "scripts" / "o19_rerun.py")
+        import o19_verdict as v
+
+        for p in v.PROTOCOL.values():  # every campaign's prereg: a verdict binds its own
+            self.write(p["prereg"], (REPO / p["prereg"]).read_bytes())
         self.write(G.EXCEPTIONS, "[]\n")
         self.write(G.LEGACY_SNAPSHOT, "{}\n")
         self.write(G.PASS_TABLE, (REPO / G.PASS_TABLE).read_text())
@@ -98,8 +103,11 @@ class Rig:
 # ── an O19 attempt as the harness writes it, stamped as the verdict writer would ─────────────────────────
 
 
-def o19_attempt(rig: Rig, exp: str, executed: str, *, monkeypatch) -> dict:
-    """Write a complete O19 attempt for ``exp`` under the rig's data dir and return its verdict record."""
+def o19_attempt(rig: Rig, exp: str, executed: str, *, monkeypatch, rows_edit=None, side_branch: bool = False) -> dict:
+    """Write a complete O19 attempt for ``exp`` (run on ``executed``), land its rows and session files on main's
+    first-parent history (``rig.base_sha`` moves to the landing), and write (uncommitted) the verdict the writer
+    stamps AT that landing commit: ``verdict_commit`` = its executed commit = the landing, each bound blob read there.
+    ``rows_edit(rig)`` changes the data before it lands; ``side_branch`` lands it on a branch merged ``--no-ff``."""
     import o19_rerun as h
     import o19_verdict as v
     from _provenance import stamp_verdict
@@ -116,18 +124,32 @@ def o19_attempt(rig: Rig, exp: str, executed: str, *, monkeypatch) -> dict:
         for sim in r.get("sims") or []:
             sim.update(executed_git_hash=executed, working_tree_dirty_src_scripts=False, ts=sim.get("ts") or r["ts"])
     rows_path.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in rows))
+    if rows_edit:
+        rows_edit(rig)
+    if side_branch:
+        _git(rig.root, "checkout", "-q", "-b", "side")
+    landed = rig.commit(f"o19 {exp}: the attempt's rows land", BASE_DATE)
+    rig.base_sha = landed
+    if side_branch:
+        _git(rig.root, "checkout", "-q", "main")
+        _git(rig.root, "merge", "-q", "--no-ff", "-m", "merge the attempt", "side")
+        rig.base_sha = _git(rig.root, "rev-parse", "HEAD")
+    rows = [json.loads(ln) for ln in rows_path.read_text().splitlines()]
     attempts = v.attempts_from_rows(rows)
     rid = next(iter(attempts))
     out = v.judge(exp, [{"run_id": rid, "k": 1, "rows": attempts[rid]}], data_dir)
-    source = (rig.root / R.O19_JUDGE).read_bytes()
-    blob = _git(rig.root, "hash-object", R.O19_JUDGE)
+    bound = {
+        p: _git(rig.root, "rev-parse", f"{landed}:{p}") for p in (R.O19_JUDGE, R.O19_RERUN, v.PROTOCOL[exp]["prereg"])
+    }
+    marker = {"run_id": rid, "k": 1, "ref": f"{v.MARKER_NAMESPACE}/{exp}/attempt-1-{rid}", "peeled": executed}
     out.update(
         apparatus_checked=True,
-        apparatus={"markers": [{"run_id": rid, "k": 1, "ref": f"{v.MARKER_NAMESPACE}/{exp}/attempt-1-{rid}"}]},
-        bound_files={R.O19_JUDGE: blob},
-        verdict_source_sha256=hashlib.sha256(source).hexdigest(),
+        apparatus={"markers": [marker]},
+        bound_files=bound,
+        verdict_commit=landed,
+        verdict_source_sha256=hashlib.sha256(_git_bytes(rig.root, f"{landed}:{R.O19_JUDGE}")).hexdigest(),
         provenance={
-            "executed_git_hash": executed,
+            "executed_git_hash": landed,
             "code_tree_sha256": "t" * 64,
             "working_tree_dirty_src_scripts": False,
         },
@@ -135,8 +157,13 @@ def o19_attempt(rig: Rig, exp: str, executed: str, *, monkeypatch) -> dict:
     data_bytes = rows_path.read_bytes()
     stamp_verdict(out, repo_root=rig.root, kind=v.PROTOCOL[exp]["kind"], data=rows_path, data_bytes=data_bytes,
                   scope={"all_rows": True}, mock=False)  # fmt: skip
+    out = json.loads(json.dumps(out))  # as the writer's JSON file holds it
     (data_dir / "verdict.json").write_text(json.dumps(out, indent=1))
     return out
+
+
+def _git_bytes(root: Path, spec: str) -> bytes:
+    return subprocess.run(["git", "cat-file", "blob", spec], cwd=root, capture_output=True, check=True).stdout
 
 
 @pytest.fixture
@@ -144,12 +171,23 @@ def rig(tmp_path) -> Rig:
     return Rig(tmp_path / "repo")
 
 
-def _t39_move(rig: Rig, monkeypatch, *, verdict_edit=None, rows_edit=None, ledger_token="PARTIAL", row="T3-9"):
-    """BASE: T3-9 STALE. HEAD: an O19 Exp 09 attempt + verdict, and ``row`` moved to ``ledger_token`` citing it."""
+def _t39_move(
+    rig: Rig,
+    monkeypatch,
+    *,
+    verdict_edit=None,
+    rows_edit=None,
+    head_edit=None,
+    ledger_token="PARTIAL",
+    row="T3-9",
+    side_branch=False,
+):
+    """BASE: T3-9 STALE, then an O19 Exp 09 attempt's rows landed (``rows_edit`` before they land). HEAD: its
+    verdict (``verdict_edit``), any ``head_edit`` to the tree, and ``row`` moved to ``ledger_token`` citing it."""
     rig.base(ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")]))
-    record = o19_attempt(rig, "09", rig.base_sha, monkeypatch=monkeypatch)
-    if rows_edit:
-        rows_edit(rig)
+    record = o19_attempt(rig, "09", rig.base_sha, monkeypatch=monkeypatch, rows_edit=rows_edit, side_branch=side_branch)
+    if head_edit:
+        head_edit(rig)
     if verdict_edit:
         verdict_edit(record)
         (rig.root / DATA / "rerun_exp09_o19" / "verdict.json").write_text(json.dumps(record, indent=1))
@@ -205,7 +243,7 @@ def test_a_tampered_session_file_is_refused(rig, monkeypatch) -> None:
         report = sessions[0] / "report.json"
         report.write_text(report.read_text() + " ")
 
-    _t39_move(rig, monkeypatch, rows_edit=tamper)
+    _t39_move(rig, monkeypatch, head_edit=tamper)  # in the PR, after the verdict was written
     failures, _ = rig.run()
     assert any("differs from its row's SHA-256" in f for f in failures), failures
 
@@ -218,7 +256,7 @@ def test_a_session_file_present_plain_and_gz_is_refused(rig, monkeypatch) -> Non
 
         (sessions[0] / "run_log.jsonl").write_bytes(gzip.decompress(gz.read_bytes()))
 
-    _t39_move(rig, monkeypatch, rows_edit=both)
+    _t39_move(rig, monkeypatch, head_edit=both)
     failures, _ = rig.run()
     assert any("present both plain and .gz" in f for f in failures), failures
 
@@ -226,18 +264,22 @@ def test_a_session_file_present_plain_and_gz_is_refused(rig, monkeypatch) -> Non
 def test_the_judge_must_be_the_one_that_wrote_the_verdict(rig, monkeypatch) -> None:
     _t39_move(rig, monkeypatch, verdict_edit=lambda r: r.update(verdict_source_sha256="0" * 64))
     failures, _ = rig.run()
-    assert any("merge-base judge is not the one" in f for f in failures), failures
+    assert any("verdict_source_sha256 is not the bound judge's" in f for f in failures), failures
 
 
 def test_a_verdict_the_judge_does_not_reproduce_is_refused(rig, monkeypatch) -> None:
     _t39_move(rig, monkeypatch, verdict_edit=lambda r: r.update(verdict="PASS"))
     failures, _ = rig.run()
-    assert any("gives a different result" in f for f in failures), failures
+    assert any("bound judge gives a different verdict" in f for f in failures), failures
 
 
 def test_rows_without_a_marker_are_refused(rig, monkeypatch) -> None:
     marker = {"run_id": "f" * 32, "k": 1, "ref": f"refs/tags/o19/09/attempt-1-{'f' * 32}"}  # well formed, not the rows'
-    _t39_move(rig, monkeypatch, verdict_edit=lambda r: r.update(apparatus={"markers": [marker]}))
+
+    def swap(r):
+        r["apparatus"] = {"markers": [{**marker, "peeled": r["apparatus"]["markers"][0]["peeled"]}]}
+
+    _t39_move(rig, monkeypatch, verdict_edit=swap)
     failures, _ = rig.run()
     assert any("no start marker" in f for f in failures), failures
 
@@ -249,14 +291,7 @@ def test_mock_rows_sink_the_verdict(rig, monkeypatch) -> None:
         rows[0]["mock"] = True
         p.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in rows))
 
-    record_holder = {}
-
-    def restamp(r):  # keep data_sha256 honest so the mock rule is what refuses
-        p = rig.root / DATA / "rerun_exp09_o19" / "rows.jsonl"
-        r["data_sha256"] = hashlib.sha256(p.read_bytes()).hexdigest()
-        record_holder["r"] = r
-
-    _t39_move(rig, monkeypatch, rows_edit=mock, verdict_edit=restamp)
+    _t39_move(rig, monkeypatch, rows_edit=mock)  # mock rows landed and were judged: data_sha256 is honest
     failures, _ = rig.run()
     assert any("verdict over mock" in f for f in failures), failures
 
@@ -407,15 +442,14 @@ def _restamp(rig: Rig, exp: str):
 def test_runs_older_than_the_previous_status_are_not_new_support(rig, monkeypatch) -> None:
     # Inside the clock-skew window of the commit it ran on, but not after the base set the row's STALE status.
     ts = rig_epoch(BASE_DATE) - 100
-    _t39_move(rig, monkeypatch, rows_edit=lambda rg: _edit_rows(rg, "09", lambda r: r.update(ts=ts)),
-              verdict_edit=_restamp(rig, "09"))  # fmt: skip
+    _t39_move(rig, monkeypatch, rows_edit=lambda rg: _edit_rows(rg, "09", lambda r: r.update(ts=ts)))
     failures, _ = rig.run()
     assert any("not after the previous status was set" in f for f in failures), failures
 
 
 def test_code_not_on_main_is_refused(rig, monkeypatch) -> None:
     _t39_move(rig, monkeypatch, rows_edit=lambda rg: _edit_rows(rg, "09", lambda r: r["provenance"].update(
-        executed_git_hash="f" * 40)), verdict_edit=_restamp(rig, "09"))  # fmt: skip
+        executed_git_hash="f" * 40)))  # fmt: skip
     failures, _ = rig.run()
     assert any("is not on main" in f for f in failures), failures
 
@@ -425,7 +459,7 @@ def test_an_o19_sim_whose_code_changed_is_refused(rig, monkeypatch) -> None:
         for sim in r.get("sims") or []:
             sim["code_changed_during_run"] = True
 
-    _t39_move(rig, monkeypatch, rows_edit=lambda rg: _edit_rows(rg, "09", changed), verdict_edit=_restamp(rig, "09"))
+    _t39_move(rig, monkeypatch, rows_edit=lambda rg: _edit_rows(rg, "09", changed))
     failures, _ = rig.run()
     assert any("code_changed_during_run" in f for f in failures), failures
 
@@ -439,7 +473,7 @@ def test_removing_established_evidence_keeps_one(rig, monkeypatch) -> None:
         LEDGER, ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
     )
     first = rig.commit("main before the run", BASE_DATE)
-    o19_attempt(rig, "10", first, monkeypatch=monkeypatch)
+    o19_attempt(rig, "10", first, monkeypatch=monkeypatch)  # lands the rows; the base below commits the verdict
     cite_v = f"**Evidence:** `{DATA}/rerun_exp10_o19/verdict.json`."
     rig.base(
         ledger(
@@ -915,14 +949,12 @@ def test_changed_sees_both_names_of_a_rename(rig) -> None:
     assert {f"{DATA}/legacy_old.jsonl", f"{DATA}/renamed.jsonl"} <= G.Repo(rig.root).changed(rig.base_sha)
 
 
-def test_the_o19_judge_imports_only_the_standard_library() -> None:
-    """The gate executes the merge-base ``o19_verdict.judge``: outside the CLI's ``main`` it imports nothing but
-    the standard library, so re-judging cannot run repo code beyond the bound file."""
+def _assert_stdlib_only(text: str) -> None:
     import ast
 
-    tree = ast.parse((REPO / R.O19_JUDGE).read_text())
-    main = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "main")
-    in_main = {id(n) for n in ast.walk(main)}
+    tree = ast.parse(text)
+    main = next((n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "main"), None)
+    in_main = {id(n) for n in ast.walk(main)} if main else set()
     for node in ast.walk(tree):
         if id(node) in in_main:
             continue
@@ -932,6 +964,20 @@ def test_the_o19_judge_imports_only_the_standard_library() -> None:
         for name in names:
             top = name.split(".")[0]
             assert top == "__future__" or top in sys.stdlib_module_names, name
+
+
+def test_the_o19_judge_imports_only_the_standard_library() -> None:
+    """The gate executes the BOUND ``o19_verdict.judge`` (#1050): outside the CLI's ``main`` it imports nothing but
+    the standard library, so re-judging cannot run repo code beyond the bound file (N3). Statically, and by loading
+    the bytes through the gate's own loader: every module the load adds is standard library, and sys.path is kept."""
+    source = (REPO / R.O19_JUDGE).read_bytes()
+    _assert_stdlib_only(source.decode())
+    before_mods, before_path = set(sys.modules), list(sys.path)
+    mod = R.load_o19_judge(source)
+    assert not isinstance(mod, str), mod
+    assert sys.path == before_path
+    added = {m.split(".")[0] for m in set(sys.modules) - before_mods} - {"_o19_bound"}
+    assert added <= set(sys.stdlib_module_names), added
 
 
 @pytest.mark.parametrize("pin", ["file", "other_bytes"])
@@ -1593,13 +1639,18 @@ def test_the_exp53_pins_match_the_harness_constants(monkeypatch) -> None:
 @pytest.mark.parametrize(
     "edit, expected",
     [
-        (lambda r: r.update(experiment="zz"), "not in the merge-base campaign table"),
+        (lambda r: r.update(experiment="zz"), "not in the judge's campaign table"),
         (lambda r: r.update(experiment="10c2"), "is not of kind"),
         (lambda r: r["apparatus"]["markers"][0].update(ref="refs/tags/o19/10/attempt-1-x"), "is not campaign 09's"),
         (
             lambda r: r["apparatus"].update(
                 markers=[
-                    {"run_id": f"{k:032x}", "k": k, "ref": f"refs/tags/o19/09/attempt-{k}-{k:032x}"}
+                    {
+                        "run_id": f"{k:032x}",
+                        "k": k,
+                        "ref": f"refs/tags/o19/09/attempt-{k}-{k:032x}",
+                        "peeled": r["apparatus"]["markers"][0]["peeled"],
+                    }
                     for k in range(1, 5)
                 ]  # fmt: skip
             ),
@@ -1652,7 +1703,7 @@ def test_a_campaign_2_verdict_that_records_no_succession_is_refused(rig, monkeyp
 
 def test_an_o19_verdict_naming_another_rows_file_is_refused(rig, monkeypatch) -> None:
     """Same bytes, matching data_sha256, another path: the hash check passes, the campaign binding refuses."""
-    other = f"{DATA}/rerun_exp09_o19/copy/rows.jsonl"
+    other = f"{DATA}/rerun_exp09_o19/rows_copy.jsonl"  # beside the verdict, so only the campaign binding refuses
 
     def copy_rows(rg):
         rg.write(other, (rg.root / DATA / "rerun_exp09_o19" / "rows.jsonl").read_bytes())
@@ -1660,3 +1711,225 @@ def test_an_o19_verdict_naming_another_rows_file_is_refused(rig, monkeypatch) ->
     _t39_move(rig, monkeypatch, rows_edit=copy_rows, verdict_edit=lambda r: r.update(data=other))
     failures, _ = rig.run()
     assert any("is not campaign 09's rows file" in f for f in failures), failures
+
+
+# ── #1050: the judge is the BOUND blob, bound to the data; a judge edit keeps every old verdict ──────────
+
+
+def _o19_reasons(rig: Rig) -> list[str]:
+    return rig.run()[0]
+
+
+def test_a_verdict_commit_off_the_first_parent_history_is_refused(rig, monkeypatch) -> None:
+    _t39_move(rig, monkeypatch, side_branch=True)  # vc is reachable from main, but only through a merged branch
+    assert any("is not on the merge-base's first-parent history" in f for f in _o19_reasons(rig))
+
+
+def test_a_verdict_commit_that_is_not_its_executed_commit_is_refused(rig, monkeypatch) -> None:
+    def other(r):  # the commit the attempt ran on: on main, but not where the verdict was written
+        r["provenance"]["executed_git_hash"] = r["apparatus"]["markers"][0]["peeled"]
+
+    _t39_move(rig, monkeypatch, verdict_edit=other)
+    assert any("is not the verdict's own executed commit" in f for f in _o19_reasons(rig))
+
+
+@pytest.mark.parametrize("path", ["scripts/o19_verdict.py", "scripts/o19_rerun.py", "prereg"])
+def test_a_bound_file_that_changed_after_the_run_is_refused(rig, monkeypatch, path) -> None:
+    import o19_verdict as v
+
+    rel = v.PROTOCOL["09"]["prereg"] if path == "prereg" else path
+
+    def change(rg):  # lands with the rows: the verdict commit's blob is not the one the attempt ran with
+        rg.write(rel, (rg.root / rel).read_bytes() + b"\n# changed after the run\n")
+
+    _t39_move(rig, monkeypatch, rows_edit=change)
+    assert any(f"bound {rel} is" in f and "at executed commit" in f for f in _o19_reasons(rig))
+
+
+def test_a_bound_blob_that_is_not_the_verdict_commits_is_refused(rig, monkeypatch) -> None:
+    other = "1" * 40  # a blob id no commit holds at that path
+
+    _t39_move(rig, monkeypatch, verdict_edit=lambda r: r["bound_files"].update({R.O19_RERUN: other}))
+    failures = _o19_reasons(rig)
+    assert any(f"bound {R.O19_RERUN} is" in f and "at verdict_commit" in f for f in failures), failures
+
+
+def test_rows_at_the_verdict_commit_must_be_the_judged_bytes(rig, monkeypatch) -> None:
+    def append(rg):  # in the PR: a blank line (the rows parse the same), restamped below
+        p = rg.root / DATA / "rerun_exp09_o19" / "rows.jsonl"
+        p.write_bytes(p.read_bytes() + b"\n")
+
+    _t39_move(rig, monkeypatch, head_edit=append, verdict_edit=_restamp(rig, "09"))
+    failures = _o19_reasons(rig)
+    assert any("at verdict_commit" in f and "is not the data_sha256 bytes" in f for f in failures), failures
+
+
+def test_gates_the_bound_judge_does_not_reproduce_are_refused(rig, monkeypatch) -> None:
+    _t39_move(rig, monkeypatch, verdict_edit=lambda r: r["gates"]["H1"].update(status="FAIL"))
+    assert any("bound judge gives a different gates" in f for f in _o19_reasons(rig))
+
+
+@pytest.mark.parametrize("edit", ["missing", "extra"])
+def test_bound_files_are_exactly_the_judge_the_harness_and_the_prereg(rig, monkeypatch, edit) -> None:
+    import o19_verdict as v
+
+    def change(r):
+        if edit == "missing":
+            del r["bound_files"][v.PROTOCOL["09"]["prereg"]]
+        else:  # a real, unchanged file: its blob checks pass, the set does not
+            r["bound_files"][G.PASS_TABLE] = _git(rig.root, "rev-parse", f"{r['verdict_commit']}:{G.PASS_TABLE}")
+
+    _t39_move(rig, monkeypatch, verdict_edit=change)
+    assert any("bound_files names" in f and "not exactly" in f for f in _o19_reasons(rig))
+
+
+def test_an_older_judge_chosen_by_hand_is_refused(rig, monkeypatch) -> None:
+    """A1: main once held a looser judge (it says PASS). The attempt ran after the fix; the author points
+    verdict_commit / executed / bound_files / the source hash at the old commit so the old judge re-judges."""
+    current = (rig.root / R.O19_JUDGE).read_text()
+    old = current.replace('out["verdict"] = gates["verdict"]', 'out["verdict"] = "PASS"')
+    assert old != current
+    rig.write(R.O19_JUDGE, old)
+    rig.base(ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")]))
+    old_commit = rig.base_sha
+    rig.write(R.O19_JUDGE, current)
+    fixed = rig.commit("the judge is fixed", BASE_DATE)
+    record = o19_attempt(rig, "09", fixed, monkeypatch=monkeypatch)
+    record.update(
+        verdict="PASS",
+        verdict_commit=old_commit,
+        verdict_source_sha256=hashlib.sha256(old.encode()).hexdigest(),
+    )
+    record["provenance"]["executed_git_hash"] = old_commit
+    record["bound_files"][R.O19_JUDGE] = _git(rig.root, "rev-parse", f"{old_commit}:{R.O19_JUDGE}")
+    (rig.root / DATA / "rerun_exp09_o19" / "verdict.json").write_text(json.dumps(record, indent=1))
+    cite = f"**Evidence:** `{DATA}/rerun_exp09_o19/verdict.json`."
+    rig.head(
+        ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", f"**Status: PARTIAL 2026-10-02**. {cite}")])
+    )
+    failures = _o19_reasons(rig)
+    assert any(f"bound {R.O19_JUDGE} is" in f and "at executed commit" in f for f in failures), failures
+    assert any("at verdict_commit" in f and "not the data_sha256 bytes" in f for f in failures), failures
+    assert not any("different verdict" in f for f in failures), failures  # the binding refuses, not the re-judge
+
+
+def _verdict_on_main_then(rig: Rig, monkeypatch, edit) -> list[str]:
+    """BASE: an Exp 09 O19 verdict on main (no row cites it). HEAD: only ``edit`` to the judge."""
+    text = ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    rig.base(text)
+    o19_attempt(rig, "09", rig.base_sha, monkeypatch=monkeypatch)
+    rig.base(text)  # the verdict lands
+    edit(rig)
+    rig.commit("edit the judge", HEAD_DATE)
+    return rig.run()[0]
+
+
+def _judge_text(rig: Rig, old: str, new: str) -> None:
+    text = (rig.root / R.O19_JUDGE).read_text()
+    assert old in text
+    rig.write(R.O19_JUDGE, text.replace(old, new))
+
+
+def test_a_judge_edit_that_keeps_every_verdict_passes(rig, monkeypatch) -> None:
+    assert (
+        _verdict_on_main_then(rig, monkeypatch, lambda rg: _judge_text(rg, "MAX_ATTEMPTS = 3", "MAX_ATTEMPTS = 3  # x"))
+        == []
+    )
+
+
+def test_a_judge_edit_that_flips_an_existing_verdict_fails(rig, monkeypatch) -> None:
+    failures = _verdict_on_main_then(
+        rig, monkeypatch, lambda rg: _judge_text(rg, 'out["verdict"] = gates["verdict"]', 'out["verdict"] = "FAIL"')
+    )
+    assert any("a judge edit changes an existing O19 verdict" in f and "verdict was 'PARTIAL'" in f for f in failures)
+
+
+def test_deleting_the_judge_while_verdicts_exist_fails(rig, monkeypatch) -> None:
+    failures = _verdict_on_main_then(rig, monkeypatch, lambda rg: (rg.root / R.O19_JUDGE).unlink())
+    assert any("is deleted while O19 verdicts exist" in f for f in failures), failures
+
+
+def _history_blobs() -> list[tuple[str, bytes]]:
+    """Every ``o19_verdict.py`` blob on the real ``origin/main``'s first-parent history."""
+
+    def git(*a):
+        return subprocess.run(["git", *a], cwd=REPO, capture_output=True).stdout
+
+    if git("rev-parse", "--is-shallow-repository").strip() != b"false" or not git(
+        "rev-parse", "--verify", "-q", "origin/main"
+    ):
+        return []
+    commits = git("log", "--first-parent", "--format=%H", "origin/main", "--", R.O19_JUDGE).decode().split()
+    return [
+        (c, git("show", f"{c}:{R.O19_JUDGE}")) for c in commits if git("cat-file", "-e", f"{c}:{R.O19_JUDGE}") == b""
+    ]
+
+
+@pytest.mark.skipif(not _history_blobs(), reason="needs origin/main's full history (the unit-test job is depth 1)")
+def test_every_judge_on_mains_history_loads_through_the_gate() -> None:
+    """N2: the gate re-judges a verdict with the judge that wrote it, so every judge main ever held must still load
+    through ``load_o19_judge`` with the interface ``rejudge_o19`` calls (N3: and import only the standard library)."""
+    for commit, source in _history_blobs():
+        mod = R.load_o19_judge(source)
+        assert not isinstance(mod, str), (commit[:12], mod)
+        assert all(hasattr(mod, name) for name in R.O19_INTERFACE), commit[:12]
+        _assert_stdlib_only(source.decode())
+
+
+def test_a_marker_without_its_commit_is_refused(rig, monkeypatch) -> None:
+    _t39_move(rig, monkeypatch, verdict_edit=lambda r: r["apparatus"]["markers"][0].pop("peeled"))
+    assert any("records no peeled commit" in f for f in _o19_reasons(rig))
+
+
+def test_an_attempt_that_ran_off_its_markers_commit_is_refused(rig, monkeypatch) -> None:
+    other = "1" * 40
+    _t39_move(rig, monkeypatch, verdict_edit=lambda r: r["apparatus"]["markers"][0].update(peeled=other))
+    assert any("not its marker's commit" in f for f in _o19_reasons(rig))
+
+
+def test_an_o19_verdict_cited_under_another_name_is_refused(rig, monkeypatch) -> None:
+    """Half B finds O19 verdicts by their place beside the rows, so half A accepts them only there."""
+    _t39_move(rig, monkeypatch)
+    src = rig.root / DATA / "rerun_exp09_o19" / "verdict.json"
+    (src.parent / "verdict_v2.json").write_text(src.read_text())
+    cite = f"**Evidence:** `{DATA}/rerun_exp09_o19/verdict_v2.json`."
+    rig.head(
+        ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", f"**Status: PARTIAL 2026-10-02**. {cite}")])
+    )
+    assert any("is not its rows' verdict.json" in f for f in _o19_reasons(rig))
+
+
+def test_a_judge_edit_cannot_rewrite_a_landed_verdict_to_match(rig, monkeypatch) -> None:
+    """Half B re-judges the verdict as MAIN holds it: rewriting it in the same diff hides nothing."""
+
+    def edit(rg):
+        _judge_text(rg, 'out["verdict"] = gates["verdict"]', 'out["verdict"] = "FAIL"')
+        path = rg.root / DATA / "rerun_exp09_o19" / "verdict.json"
+        rec = json.loads(path.read_text())
+        rec["verdict"] = "FAIL"
+        path.write_text(json.dumps(rec, indent=1))
+
+    failures = _verdict_on_main_then(rig, monkeypatch, edit)
+    assert any("a judge edit changes an existing O19 verdict" in f and "verdict was" in f for f in failures), failures
+
+
+def test_a_judge_main_once_held_must_still_load_through_the_gate(rig, monkeypatch) -> None:
+    """N2, enforced on every gate run (the lint job has the full history): an old judge the gate can no longer load
+    would strand its verdicts."""
+    good = (rig.root / R.O19_JUDGE).read_text()
+    rig.write(R.O19_JUDGE, good.replace("MARKER_NAMESPACE = ", "OLD_NAMESPACE = ", 1))
+    rig.base(ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")]))
+    rig.write(R.O19_JUDGE, good)
+    rig.base(ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")]))
+    rig.write("README.md", "an unrelated change\n")
+    rig.head(ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")]))
+    assert any("no longer loads through the gate" in f and "MARKER_NAMESPACE" in f for f in rig.run()[0])
+
+
+def test_a_judge_edit_cannot_delete_a_landed_verdict_to_escape(rig, monkeypatch) -> None:
+    def edit(rg):
+        _judge_text(rg, 'out["verdict"] = gates["verdict"]', 'out["verdict"] = "FAIL"')
+        (rg.root / DATA / "rerun_exp09_o19" / "verdict.json").unlink()
+
+    failures = _verdict_on_main_then(rig, monkeypatch, edit)
+    assert any("a judge edit changes an existing O19 verdict" in f and "verdict was" in f for f in failures), failures

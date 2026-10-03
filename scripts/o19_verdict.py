@@ -715,6 +715,11 @@ def _is_ancestor(commit: str, of: str) -> bool:
     return subprocess.run(["git", "merge-base", "--is-ancestor", commit, of], cwd=REPO_ROOT).returncode == 0
 
 
+def _on_first_parent(commit: str, ref: str) -> bool:
+    """Whether ``commit`` landed on ``ref`` itself (its first-parent history), not only on a branch merged into it."""
+    return commit in _git("rev-list", "--first-parent", ref).split()
+
+
 def _gh_json(path: str):
     out = subprocess.run(["gh", "api", path], cwd=REPO_ROOT, capture_output=True, text=True)
     if out.returncode != 0:
@@ -926,8 +931,8 @@ def check_bound(exp: str, rows: list[dict]) -> dict:
     """The verdict runs on ``main``, and the prereg and both O19 scripts are byte-identical at every executed commit,
     on ``origin/main`` and at the verdict's own commit. Returns what the verdict stamps; raises :class:`Refusal`."""
     head = _git("rev-parse", "HEAD").strip()
-    if not _is_ancestor(head, "origin/main"):
-        raise Refusal(f"the verdict runs at {head}, which is not on origin/main")
+    if not _on_first_parent(head, "origin/main"):  # as the evidence gate requires (#1050)
+        raise Refusal(f"the verdict runs at {head}, which is not on origin/main's first-parent history")
     executed = sorted({(r.get("provenance") or {}).get("executed_git_hash") for r in rows} - {None})
     blobs = bound_blobs(exp, [*executed, "origin/main", head])
     for path, by_commit in blobs.items():
