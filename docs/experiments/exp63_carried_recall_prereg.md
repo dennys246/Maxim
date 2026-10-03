@@ -1,7 +1,5 @@
 # Exp 63: carried memory takes part in recall across sessions (pre-registered 2026-10-03)
 
-**Scope:** `63_carried_recall`
-
 > The design review (confounding + bio-faithful lenses, `docs/experiments/DESIGN_REVIEW.md`, a derivative of Exp 10)
 > and its delta round are in [rationale/exp63-carried-recall/](rationale/exp63-carried-recall/); their findings are
 > folded below with the owner's decisions of 2026-10-03. This prereg lands on `main` before any harness code or data.
