@@ -41,7 +41,8 @@ def test_goals_caps_and_scope_are_the_preregs() -> None:
         assert f"`{v.EXP10_GOAL_DUNGEON}` | 8 | none" in p10 and f"`{v.EXP10_GOAL_DUNGEON}` | 8 | phase 1" in p10
         assert f"`{v.EXP10_GOAL_GARDEN}` | 5 | phase 1" in p10
     assert f'*"{v.EXP09_GOAL}"*' in p09
-    assert "`--embodiment bodies/base_humanoid`, `--sim-max-turns 8`, `MAXIM_SUBSTRATE_PATH=1`" in p09
+    assert "`--embodiment bodies/base_humanoid`, `--sim-max-turns 8`, `--sim-run-full-turns`" in p09
+    assert v.PROTOCOL["09"]["phases"][0][4] == ["--embodiment", "bodies/base_humanoid", "--sim-run-full-turns"]
     for exp in v.PROTOCOL:
         assert f"**Scope:** `{v.PROTOCOL[exp]['scope']}`" in PREREG[exp]
         assert f"--data {v.rows_path(exp)}" in _squash(PREREG[exp]).replace("\\ ", "")
@@ -59,7 +60,7 @@ def test_phase_argv_is_the_original_command() -> None:
     assert v.phase_argv("10", 1, "S1") == [
         "--sim", v.EXP10_GOAL_DUNGEON, "--interactive", "false", "--sim-max-turns", "8", "--resume-sim", "S1"
     ]  # fmt: skip
-    assert v.phase_argv("09", 0, None)[-2:] == ["--embodiment", "bodies/base_humanoid"]
+    assert v.phase_argv("09", 0, None)[-3:] == ["--embodiment", "bodies/base_humanoid", "--sim-run-full-turns"]
     with pytest.raises(ValueError):
         v.phase_argv("10", 2, None)
 
@@ -1113,3 +1114,58 @@ def test_a_closed_campaigns_verdict_is_not_recomputable_after_a_script_change() 
     now = subprocess.run(["git", "hash-object", v.BOUND_FILES[0]], cwd=REPO, capture_output=True, text=True)
     assert then.stdout.strip() != now.stdout.strip()
     assert closure["bound_files"][v.BOUND_FILES[0]] == then.stdout.strip()  # the closure bound the old script
+
+
+# ── the served-model reader ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_the_served_reader_waits_out_a_completion_and_records_why_a_read_failed(monkeypatch) -> None:
+    from maxim.utils import http as _http
+
+    calls: list = []
+
+    class _Resp:
+        content = json.dumps({"data": [{"id": v.MODEL_GGUF}]}).encode()
+
+    def fetch(url, **kw):
+        calls.append((url, kw["timeout"], kw["headers"]))
+        if len(calls) == 2:
+            raise TimeoutError("read timed out")  # a read still queued behind the model lock
+        return _Resp()
+
+    monkeypatch.setattr(_http, "fetch_url", fetch)
+    monkeypatch.setattr("maxim.tunnel.keys.read_key", lambda: "k")
+    read = h.served_reader()
+    ok, failed = read(v.SIM_PORT, v.MODEL_GGUF), read(v.SIM_PORT, v.MODEL_GGUF)
+    assert ok["served"] == v.MODEL_GGUF and ok["match"] is True and "error" not in ok
+    assert failed["served"] is None and failed["match"] is None and failed["error"] == "TimeoutError: read timed out"
+    url, timeout, headers = calls[0]
+    assert url == f"http://127.0.0.1:{v.SIM_PORT}/v1/models" and headers == {"Authorization": "Bearer k"}
+    # campaigns 1-2's completions took up to 24 s and the narrator and the AUT share the server
+    assert timeout.read_s >= 48 and timeout.total_s >= 48
+
+
+@pytest.mark.parametrize("exp", sorted(v.PROTOCOL))
+def test_every_phase_argv_parses_on_this_build(exp) -> None:
+    h.check_argv_parses(exp)  # refuses before the marker when a protocol needs a flag this build lacks
+
+
+def test_an_unparseable_phase_argv_refuses_before_the_marker(monkeypatch) -> None:
+    phases = [
+        (n, g, cap, r, [*extra, "--no-such-flag"], env) for n, g, cap, r, extra, env in v.PROTOCOL["09"]["phases"]
+    ]
+    monkeypatch.setitem(v.PROTOCOL, "09", {**v.PROTOCOL["09"], "phases": phases})
+    with pytest.raises(h.Refused, match="does not parse"):
+        h.check_argv_parses("09")
+
+
+def test_the_harness_refuses_an_unparseable_argv_before_any_attempt(tmp_path, monkeypatch) -> None:
+    phases = [
+        (n, g, cap, r, [*extra, "--no-such-flag"], env) for n, g, cap, r, extra, env in v.PROTOCOL["09"]["phases"]
+    ]
+    monkeypatch.setitem(v.PROTOCOL, "09", {**v.PROTOCOL["09"], "phases": phases})
+    monkeypatch.setattr(h._provenance, "_RUN_ID", {})
+    rows = tmp_path / "rows_09.jsonl"
+    monkeypatch.setattr(h._provenance, "evidence_out_path", lambda *a, **k: rows)
+    assert h.main(["run", "--exp", "09", "--mock"]) != 0
+    assert not rows.exists() or not rows.read_text().strip(), "a refusal before the marker writes no attempt"

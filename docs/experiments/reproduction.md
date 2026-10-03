@@ -91,6 +91,12 @@ The short version: **a re-run is a new experiment, and its result counts only if
 
 The orderings above compare the rig's clock (row `ts`, tagger dates) with GitHub's merge times. They catch a forgotten step, such as an attempt started before the last one landed, or a prereg merged late. They do not stop an operator who sets the clock. The preregs say so, and so does this page.
 
+## 13. A fix to the instrument can touch the subject: check before calling the next campaign a re-run
+
+- **What happened.** Exp 10's campaign 2 aborted on the narrator (#1052), and the investigation found every remaining abort path in the narrator. A third campaign on the fixed code looked like a re-run of the same claim. The design review of a REPRODUCED label (a successor's PASS after support-only fixes) then diffed campaign 1's executed commit against the fixed code. #1047, the campaign-2 fix "an agent's prompt names only tools it has", applies to every agent, so it changed the agent-under-test's prompt too. A pinned test of what the gates read cannot rule that out: a prompt change can make the agent act more, store more memories, and pass P0 and R2 while every contract test still passes.
+- **Owner decision 2026-10-03 (strict).** The agent-under-test's prompt and tool dispatch count as the mechanism. A successor campaign's PASS is evidence for the row only if that code is byte-identical to the root campaign's executed commit. So Exp 10 gets no third campaign; T1-1's claim is re-tested by a new pre-registered experiment on current code ([#1060](https://github.com/dennys246/Maxim/issues/1060)), with the confounding and bio-faithful design review a derivative gets. The gate that enforces this for every successor is [#1059](https://github.com/dennys246/Maxim/issues/1059). Exp 09 is not a successor: it had no attempt yet, so its first campaign is a root on the current code (which #1047 also changed; its amended prereg says so).
+- **Rule.** Before opening a successor campaign, diff the root campaign's executed commit against the successor's code and name every changed file on the subject's path, not only the files the fix was meant to touch. If any changed, the successor is a new experiment, not a re-run.
+
 ## Checklist for the next re-run
 
 1. The re-run prereg is merged to `main` from the template, with its Scope line, numeric gates and the stop rule.
@@ -99,4 +105,4 @@ The orderings above compare the rig's clock (row `ts`, tagger dates) with GitHub
 4. Run a smoke check on the protocol's own goal, then read its log for the instrument: the narrator's proposals, nudges, `finish_reason`.
 5. Run `o19_rerun.py preflight --exp <campaign>`, then one attempt at a time. Each attempt goes to `main` in a merge-committed data PR before the next.
 6. Write the verdict with `--write-experiment-results`, and cite it on the ledger row. The evidence gate re-judges it.
-7. If the instrument broke: close the campaign with its own verdict, record the cause issue and the owner decision, and open a successor only after an ABORT.
+7. If the instrument broke: close the campaign with its own verdict, record the cause issue and the owner decision, and open a successor only after an ABORT, and only if the subject's code is unchanged since the root campaign (§13).

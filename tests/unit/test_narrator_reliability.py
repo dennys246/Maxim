@@ -316,13 +316,10 @@ def test_the_release_runs_even_when_the_submit_raises() -> None:
     assert len(guarded) == 1, "the narrator's submit releases its carried inputs in a finally"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=KeyError,  # only "no 10c3 yet" is the expected failure; an import error or a 10c3 without the flag fails
-    reason="caller owed: the O19 scripts are frozen until campaign 2's verdict lands (#1055); the campaign-3 PR "
-    "adds --sim-run-full-turns to every 10c3 phase and removes this marker",
-)
-def test_campaign_3_runs_every_turn_it_asks_for() -> None:
+def test_every_open_o19_campaign_runs_every_turn_it_asks_for() -> None:
+    """The flag's caller (#1058). It replaced a red gate keyed on an Exp 10 campaign 3, which the owner dropped on
+    2026-10-03 (strict: no successor on changed subject code; T1-1 goes to #1060): every O19 campaign but the two closed before the flag existed runs
+    each phase to its cap, so C1 is not lost to a narrator that finishes early."""
     import importlib.util
     import pathlib
 
@@ -330,5 +327,8 @@ def test_campaign_3_runs_every_turn_it_asks_for() -> None:
     spec = importlib.util.spec_from_file_location("o19_verdict_for_caller", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    phases = module.PROTOCOL["10c3"]["phases"]
-    assert all("--sim-run-full-turns" in phase[4] for phase in phases)
+    pre_flag = {"10", "10c2"}  # closed before #1058 shipped the flag; every other campaign, future ones too, needs it
+    keys = [k for k in module.PROTOCOL if k not in pre_flag]
+    assert "09" in keys, "Exp 09's campaign is the flag's caller"
+    for key in keys:
+        assert all("--sim-run-full-turns" in phase[4] for phase in module.PROTOCOL[key]["phases"]), key

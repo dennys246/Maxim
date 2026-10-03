@@ -279,8 +279,8 @@ length is unchanged.
 - `orchestrator.py::start_simulation_mode` builds the narrator's openings with `sim_types.build_kickoff_prompt` /
   `narrator_tools_block` from its registry, and takes `min_finish_turns` (the cap, only under the opt-in
   `--sim-run-full-turns`; observe-only exempt) for `FinishSimulationTool`; ceiling 3248 -> 3229. The flag's caller
-  is owed by the O19 campaign-3 PR (the O19 scripts are frozen until campaign 2's verdict lands); a strict red gate,
-  `test_narrator_reliability.py::test_campaign_3_runs_every_turn_it_asks_for`, flips when it does.
+  is Exp 09's O19 protocol (amended before data, 2026-10-03; the owner dropped an Exp 10 campaign 3, #1060), pinned by
+  `test_narrator_reliability.py::test_every_open_o19_campaign_runs_every_turn_it_asks_for`.
 - All of it is gated on planning liveness, which only the narrator has, or lives in the narrator's own tools.
 
 **Fence exception, #1052 (owner-approved 2026-10-02):** `submit_context`'s `deliberation_available` is a REQUIRED
