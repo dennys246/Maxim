@@ -720,6 +720,31 @@ def test_check_bound(tmp_path, monkeypatch) -> None:
         v.check_bound("10", rows)
 
 
+def test_check_bound_needs_the_first_parent_history(tmp_path, monkeypatch) -> None:
+    """A branch tip merged into main is an ancestor of main but never landed on it: the gate refuses a verdict
+    written there (#1050), so the writer does too."""
+    rig = Rig(tmp_path)
+    _bound_files(rig)
+    _git(rig.work, "add", ".")
+    _git(rig.work, "commit", "-q", "-m", "o19", date="2026-10-01T10:01:00Z")
+    executed = _git(rig.work, "rev-parse", "HEAD")
+    _git(rig.work, "checkout", "-q", "-b", "data")
+    (rig.work / "rows.txt").write_text("x")
+    _git(rig.work, "add", ".")
+    _git(rig.work, "commit", "-q", "-m", "the data", date="2026-10-01T11:00:00Z")
+    tip = _git(rig.work, "rev-parse", "HEAD")
+    _git(rig.work, "checkout", "-q", "main")
+    _git(rig.work, "merge", "-q", "--no-ff", "-m", "merge the data", "data", date="2026-10-01T11:30:00Z")
+    _git(rig.work, "push", "-q", "origin", "main")
+    monkeypatch.setattr(v, "REPO_ROOT", rig.work)
+    _git(rig.work, "fetch", "-q", "origin")
+    rows = [{"provenance": {"executed_git_hash": executed}}]
+    assert v.check_bound("10", rows)["verdict_commit"] != tip  # on main's merge commit: accepted
+    _git(rig.work, "checkout", "-q", tip)
+    with pytest.raises(v.Refusal, match="first-parent history"):
+        v.check_bound("10", rows)
+
+
 def test_a_full_page_refuses(monkeypatch) -> None:
     monkeypatch.setattr(v, "_gh_json", lambda path: [{"id": i} for i in range(100)])
     with pytest.raises(v.Refusal, match="unpaginated"):

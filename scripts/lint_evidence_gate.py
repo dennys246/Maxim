@@ -41,6 +41,7 @@ from _evidence_records import (  # noqa: E402  (re-exported: the gate's record v
     EXCEPTED,
     LEGACY,
     NOT_ESTABLISHED,
+    O19_JUDGE,
     SUPPORT_KINDS,
     Ctx,
     COMPLETE_RULES,
@@ -50,6 +51,8 @@ from _evidence_records import (  # noqa: E402  (re-exported: the gate's record v
     Repo,
     decompressed,
     judge_entry,
+    o19_history_problems,
+    o19_judge_edit_problems,
     sha256,
     str_field,
     unjudged,
@@ -376,6 +379,11 @@ def gate(
         prereg = {e["entry"]: e["status"] for e in envelope.get("entries") or []}
     ctx = Ctx(repo=repo, base=base, ref="HEAD", legacy=head_snap, prereg=prereg, table=table)
     changed = repo.changed(base)
+    # #1050 half B: a judge edit may not change any existing O19 verdict, cited by a row or not (strict).
+    if O19_JUDGE in changed:
+        failures += o19_judge_edit_problems(ctx)
+    # #1050 N2: every judge main ever held still loads through this (possibly edited) gate.
+    failures += o19_history_problems(repo, base)
     results = []
     for row in head_rows:
         old = base_rows.get(row.id)
