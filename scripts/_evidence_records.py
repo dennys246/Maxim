@@ -37,7 +37,7 @@ O19_RERUN = "scripts/o19_rerun.py"
 # that an old judge fails.
 # ``protocol_problems`` arrived with campaign succession: required only when the judge's table has a successor.
 O19_INTERFACE = ("PROTOCOL", "rows_path", "attempts_from_rows", "judge", "MARKER_NAMESPACE", "MAX_ATTEMPTS")
-O19_KINDS = frozenset({"exp10_verdict", "exp09_verdict"})
+O19_KINDS = frozenset({"exp10_verdict", "exp09_verdict", "exp63_verdict"})
 # A run's finish reasons that are citable (pinned against simulation/sim_types.py's failure set by a test).
 FINISH_OK = frozenset({"completed", "max_turns", "complete", "all_encounters_complete"})
 FINISH_OK_PREFIX = "campaign_end:"

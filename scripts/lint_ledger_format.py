@@ -24,6 +24,15 @@ Against the merge-base (diff-scoped, like the other ``_lint_git`` lints):
 - No ID vanishes. A row's date never decreases.
 - A raise (a higher rank), or a move between positive tokens, needs a later date. A lowering may keep it.
 - LEGACY can be kept but never entered.
+- A row ENTERING SUPERSEDED (from any other token, or new), or changing its ``by`` target, names a successor that
+  REACHES a positive status (EARNED / MAINTAINED / RE-VALIDATED) IN THE SAME DIFF (positive at HEAD, not at the
+  base, or new) and whose row names the superseded row's id. SUPERSEDED is rank 0 like STALE and BROKEN but does
+  not block a release, so retiring a row behind an unearned successor would clear the block with no evidence, and
+  pointing at an already-earned row would let an old verdict retire a new claim (owner decision 2026-10-03, D3).
+  Any other case needs a ``superseded`` clause already on main in ``docs/experiments/evidence_exceptions.json``
+  (the evidence gate's file and semantics: append-only, only clauses on the base act) naming exactly this
+  transition: ``{"id", "kind": "superseded", "row", "from": <base token or null>, "by", "to_date", "owner",
+  "reason", "date"}``. Checked at the transition only: a successor that later goes STALE is its own row's problem.
 - A new row's date is no earlier than the branch point's date (on a PR merge ref, the fork point of the PR head).
 - A ledger absent at the base fails.
 - A base from before this format (no ``**Status: `` line anywhere) skips only these checks.
@@ -37,6 +46,8 @@ Exits: 0 clean; 1 violations; 2 the base could not be read on a pull request (``
 from __future__ import annotations
 
 import datetime as _dt
+import json
+import re
 import sys
 from pathlib import Path
 
@@ -70,7 +81,51 @@ def row_problems(row: L.Row, rows_by_id: dict[str, L.Row], tracked: dict[str, st
     return out
 
 
-def base_problems(rows: list[L.Row], base_text: str | None, base_date: str) -> list[str]:
+EXCEPTIONS = "docs/experiments/evidence_exceptions.json"
+SUPERSEDED_CLAUSE_FIELDS = ("id", "kind", "row", "by", "to_date", "owner", "reason", "date")
+
+
+def superseded_clause(base_exceptions: list, row: L.Row, old: L.Row | None) -> dict | None:
+    """The base's ``superseded`` exception clause naming exactly this transition, or None."""
+    for e in base_exceptions:
+        if not isinstance(e, dict) or e.get("kind") != "superseded" or "from" not in e:
+            continue
+        if any(not e.get(f) for f in SUPERSEDED_CLAUSE_FIELDS):
+            continue  # malformed: never acts (the evidence gate reports it)
+        if (e["row"], e["from"], e["by"], e["to_date"]) == (row.id, old.token if old else None, row.superseded_by,
+                                                            row.date):  # fmt: skip
+            return e
+    return None
+
+
+def superseded_entry_problems(
+    row: L.Row, now: dict[str, L.Row], base_rows: dict[str, L.Row], old: L.Row | None, base_exceptions: list
+) -> list[str]:
+    """A row entering SUPERSEDED, or re-pointing it: its successor reaches a positive status in this diff, or a clause
+    on main excepts exactly this transition (D3)."""
+    target = now.get(row.superseded_by or "")
+    before = base_rows.get(row.superseded_by or "")
+    names_row = target is not None and re.search(
+        rf"(?<![\w-]){re.escape(row.id)}(?![\w-])", " ".join(target.cells.values())
+    )
+    reached = target is not None and target.token in L.POSITIVE and (before is None or before.token not in L.POSITIVE)
+    if reached and names_row:
+        return []
+    if superseded_clause(base_exceptions, row, old) is not None:
+        return []
+    have = None if target is None else target.token
+    was = old.token if old else "a new row"
+    return [
+        f"{row.id}: {was} -> SUPERSEDED by {row.superseded_by} needs that successor to REACH a positive status "
+        f"({', '.join(sorted(L.POSITIVE))}) in this same diff (it is {have}"
+        f"{'' if before is None else f', was {before.token}'}) and its row naming {row.id} "
+        f"({'it does' if names_row else 'it does not'}), or a `superseded` clause on main in {EXCEPTIONS}"
+    ]
+
+
+def base_problems(
+    rows: list[L.Row], base_text: str | None, base_date: str, base_exceptions: list | None = None
+) -> list[str]:
     """The diff-scoped rules. ``base_text`` None = the ledger did not exist at the base."""
     if base_text is None:
         return [f"{L.LEDGER_PATH} does not exist at the merge-base (renamed or moved?)"]
@@ -84,6 +139,7 @@ def base_problems(rows: list[L.Row], base_text: str | None, base_date: str) -> l
     if "**Status: " not in base_text:
         return out  # the base predates this format: nothing to compare dates or tokens against
     base_rows = {r.id: r for r in L.parse(base_text)[0] if r.token and r.date}
+    exceptions = base_exceptions or []
     for rid, row in now.items():
         if not (row.token and row.date):
             continue
@@ -93,9 +149,13 @@ def base_problems(rows: list[L.Row], base_text: str | None, base_date: str) -> l
                 out.append(f"{rid}: a new row's date {row.date} is before the branch point ({base_date})")
             if row.token == "LEGACY":
                 out.append(f"{rid}: LEGACY can be kept, never entered")
+            if row.token == "SUPERSEDED":
+                out += superseded_entry_problems(row, now, base_rows, None, exceptions)
             continue
         if row.date < old.date:
             out.append(f"{rid}: date moved back from {old.date} to {row.date}")
+        if row.token == "SUPERSEDED" and (old.token != "SUPERSEDED" or old.superseded_by != row.superseded_by):
+            out += superseded_entry_problems(row, now, base_rows, old, exceptions)
         if row.token != old.token:
             if row.token == "LEGACY":
                 out.append(f"{rid}: LEGACY can be kept, never entered (was {old.token})")
@@ -134,6 +194,7 @@ def lint(repo_root: Path = REPO_ROOT, *, base: str | None = None, today: str | N
     try:
         base = base or _lint_git.base_ref(repo_root)
         base_text = _lint_git.show(repo_root, base, L.LEDGER_PATH) or None
+        base_exc_text = _lint_git.show(repo_root, base, EXCEPTIONS)
         epoch = int(_lint_git.git(repo_root, "show", "-s", "--format=%ct", _branch_point(repo_root, base)).strip())
         base_date = _dt.datetime.fromtimestamp(epoch, _dt.timezone.utc).date().isoformat()
     except _lint_git.GitUnavailable as exc:
@@ -141,7 +202,14 @@ def lint(repo_root: Path = REPO_ROOT, *, base: str | None = None, today: str | N
             return failures, 2
         print(f"SKIP ledger base checks (no merge-base: {exc})", file=sys.stderr)
         return failures, 0
-    failures.extend(f"{L.LEDGER_PATH}: {p}" for p in base_problems(rows, base_text, base_date))
+    try:
+        base_exceptions = json.loads(base_exc_text) if base_exc_text else []
+    except ValueError:
+        base_exceptions = None
+    if not isinstance(base_exceptions, list):
+        failures.append(f"{EXCEPTIONS} at the base is not a JSON list: no exception clause can act")
+        base_exceptions = []
+    failures.extend(f"{L.LEDGER_PATH}: {p}" for p in base_problems(rows, base_text, base_date, base_exceptions))
     return failures, 0
 
 

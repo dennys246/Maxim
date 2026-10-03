@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""The O19 re-run verdict: Exp 10 (T1-1) and Exp 09 (T3-9), computed from committed bytes only.
+"""The O19 re-run verdict: Exp 10 (T1-1), Exp 09 (T3-9) and Exp 63 (T1-16), computed from committed bytes only.
 
 Pre-registrations (read them first; this module implements them and nothing else):
   docs/experiments/protocols/exp10_rerun_2026-09-30_preregistration.md   (Exp 10 campaign 1, key "10": CLOSED)
   docs/experiments/protocols/exp10_rerun_2026-10-02_preregistration.md   (Exp 10 campaign 2, key "10c2")
   docs/experiments/protocols/exp09_rerun_2026-09-30_preregistration.md   (Exp 09, key "09")
+  docs/experiments/exp63_carried_recall_prereg.md                        (Exp 63, key "63": a new experiment, not a
+                                                                          re-run; its gates are ``exp63_*`` below)
 
 A PROTOCOL key is a CAMPAIGN: its own prereg, data directory and marker namespace (``refs/tags/o19/<key>/``). Its
-``experiment`` ("10"/"09") decides the phases' gates; every gate choice goes through :func:`experiment_of`. A
+``experiment`` ("10"/"09"/"63") decides the phases' gates; every gate choice goes through :func:`experiment_of`. A
 successor campaign (``supersedes``) opens only after its predecessor's stamped ABORT verdict, pinned by SHA-256, and
 at most ``MAX_CAMPAIGNS`` campaigns exist per experiment (owner decisions 2026-10-02; :func:`protocol_problems`,
 :func:`successor_problems`).
@@ -27,7 +29,8 @@ What the verdict reads, and how each input could lie:
   A failure of any of these REFUSES (exit 2, no verdict written): no status change, the row stays STALE. Rig-clock
   times (row ``ts``, tagger dates) are trusted as the prereg says: the gate catches forgetting, not evasion.
 
-Exits: 0 PASS; 1 FAIL; 4 PARTIAL (Exp 09) or ABORT; 2 refused; 3 provenance (the imported maxim is not this repo's).
+Exits: 0 PASS; 1 FAIL; 4 PARTIAL (Exp 09), NOT SHOWN (Exp 63: complete and conforming, but no decisive turn) or
+ABORT -- 4 is every "no status change" outcome; 2 refused; 3 provenance (the imported maxim is not this repo's).
 """
 
 from __future__ import annotations
@@ -120,11 +123,25 @@ PROTOCOL: dict[str, dict] = {
             ),
         ],
     },
+    # Exp 63 (T1-16): a NEW experiment on current code (#1060), not a successor of Exp 10's campaigns: it supersedes
+    # nothing. Two phases from one fresh data home, both with --sim-run-full-turns; phase 3 dropped (owner decision
+    # 2026-10-03).
+    "63": {
+        "experiment": "63",
+        "scope": "63_carried_recall",
+        "kind": "exp63_verdict",
+        "prereg": "docs/experiments/exp63_carried_recall_prereg.md",
+        "phases": [
+            ("baseline", EXP10_GOAL_DUNGEON, 8, False, ["--sim-run-full-turns"], {}),
+            ("gate", EXP10_GOAL_DUNGEON, 8, True, ["--sim-run-full-turns"], {}),
+        ],
+    },
 }
+EXPERIMENTS = frozenset({"10", "09", "63"})
 
 
 def experiment_of(key: str) -> str:
-    """The experiment a campaign key runs ("10" or "09"): every gate choice goes through this, never the key."""
+    """The experiment a campaign key runs ("10", "09" or "63"): every gate choice goes through this, never the key."""
     return PROTOCOL[key]["experiment"]
 
 
@@ -145,8 +162,8 @@ def protocol_problems(protocol: dict[str, dict] | None = None) -> list[str]:
     for key, p in protocol.items():
         if not _KEY.fullmatch(key) or key in RESERVED_KEYS:
             problems.append(f"campaign key {key!r} is not [0-9a-z]+ or is reserved")
-        if p.get("experiment") not in {"10", "09"}:
-            problems.append(f"campaign {key}: experiment {p.get('experiment')!r} is not 10 or 09")
+        if p.get("experiment") not in EXPERIMENTS:
+            problems.append(f"campaign {key}: experiment {p.get('experiment')!r} is not 10, 09 or 63")
         sup = p.get("supersedes")
         if sup is None:
             continue
@@ -190,7 +207,9 @@ def successor_problems(key: str, closure: bytes | None, closure_landed: float | 
     """Why campaign ``key`` may not run or be judged ([] = it may, or it supersedes nothing). ``closure`` is the
     predecessor's verdict as ``origin/main`` holds it, ``*_landed`` when that verdict and this campaign's prereg
     first reached ``origin/main`` (None = never), ``first_marker`` this campaign's first marker's tagger date (or
-    now, before one is pushed). Only an ABORT may be succeeded: a PASS or FAIL is terminal."""
+    now, before one is pushed). Only an ABORT may be succeeded: a PASS, a FAIL and Exp 63's NOT SHOWN are terminal
+    (owner decision 2026-10-03, D2: NOT SHOWN is a complete attempt that could not test the claim; the next route is
+    a changed ranker and a new experiment, never a successor campaign)."""
     sup = PROTOCOL[key].get("supersedes")
     if sup is None:
         return []
@@ -213,7 +232,7 @@ def successor_problems(key: str, closure: bytes | None, closure_landed: float | 
         problems.append(
             f"campaign {key}: {sup['key']}'s closure verdict is not a real ABORT of {sup['key']} "
             f"({verdict.get('verdict')!r}, {verdict.get('experiment')!r}, mock={verdict.get('mock')!r}); "
-            "only an ABORT may be succeeded"
+            "only an ABORT may be succeeded (PASS, FAIL and NOT SHOWN are terminal)"
         )
     if verdict.get("apparatus_checked") is not True:
         problems.append(f"campaign {key}: {sup['key']}'s closure verdict did not check its apparatus")
@@ -234,8 +253,11 @@ HARNESS_ENV = {"MAXIM_LOG_FILE_MAX_BYTES": "0"}
 
 
 def required_files(exp: str) -> tuple[str, ...]:
-    """The copied files a phase must carry: its report and run log, and Exp 10's hippocampus store (its C2)."""
-    return ("report.json", RUN_LOG, "aut_hippocampus.json") if experiment_of(exp) == "10" else ("report.json", RUN_LOG)
+    """The copied files a phase must carry: its report and run log, and Exp 10's and Exp 63's hippocampus store
+    (their C2)."""
+    if experiment_of(exp) in ("10", "63"):
+        return ("report.json", RUN_LOG, "aut_hippocampus.json")
+    return ("report.json", RUN_LOG)
 
 
 def expected_env(exp: str, index: int) -> dict[str, str]:
@@ -409,6 +431,9 @@ def complete_problems(
     endpoint = str(report.get("language_endpoint") or "").rstrip("/")
     if not endpoint or str(served.get("url") or "").rstrip("/") != endpoint:
         p.append(f"C4 {name}: served model read at {served.get('url')!r}, but the sim used {endpoint!r}")
+    # C4' (Exp 63 only): the retention model the harness read at preflight in the attempt's fresh data home.
+    if experiment_of(exp) == "63" and row.get("memory_strategy") != EXP63_MEMORY_STRATEGY:
+        p.append(f"C4' {name}: memory_strategy {row.get('memory_strategy')!r}, not {EXP63_MEMORY_STRATEGY!r}")
     return p
 
 
@@ -553,6 +578,519 @@ def exp09_gates(phase: dict, log_bytes: bytes) -> dict:
     else:
         out["verdict"] = "PARTIAL"
     out["not_passed"] = [h for h in ("H1", "H2", "H3", "H4", "H5", "H6", "H7") if out[h]["status"] != "PASS"]
+    return out
+
+
+# ── Exp 63: carried memory takes part in recall (docs/experiments/exp63_carried_recall_prereg.md) ──────────
+
+EXP63_TURNS = 8
+EXP63_TOP = 3  # what _query_hippocampus keeps and the formatter renders (memory_ids[:3])
+EXP63_GOAL_LIMIT = 5  # recall(query=goal, limit=5)
+SIM_AUT_AGENT_ID = "sim_aut"  # config_loader.SIM_AUT_AGENT_ID (a test pins the two together)
+EXP63_MEMORY_STRATEGY = "access_based"  # C4': memory.strategy read at preflight in the attempt's fresh data home
+# P3: the access bookkeeping a resume may move; every other field of a carried record is byte-equal.
+EXP63_MUTABLE_FIELDS = frozenset(
+    {
+        "access_count",
+        "accessed_at",
+        "last_scored_at",
+        "activation_count",
+        "activation_sources",
+        "promotion_pressure",
+        "access_contexts",
+        "long_term",
+        "consolidated_at",
+    }
+)
+EXP63_PATHS = ("graph", "goal", "substring")
+
+
+def _seq(rec: dict) -> int | None:
+    s = rec.get("capture_seq")
+    return s if isinstance(s, int) and not isinstance(s, bool) else None
+
+
+def store_records(store) -> dict[str, dict]:
+    """A saved Hippocampus store's records by id, in file order (a malformed store reads as empty, never a crash)."""
+    memories = store.get("memories") if isinstance(store, dict) else None
+    return {
+        str(m["id"]): m for m in (memories if isinstance(memories, list) else []) if isinstance(m, dict) and m.get("id")
+    }
+
+
+def _dict(x) -> dict:
+    return x if isinstance(x, dict) else {}
+
+
+def _list(x) -> list:
+    return x if isinstance(x, list) else []
+
+
+# The FROZEN ranker: a stdlib copy of ``maxim.memory.hippocampus_retrieval._rank_by_relevance`` and of
+# ``recall(query=...)``'s candidate rule (every record a candidate, compressed included), over the saved store's
+# JSON dicts (field names per ``maxim.memory.types`` ``to_dict``). The judge must re-judge the same long after #1064
+# changes ``src/``, so it carries its own copy; tests/unit/test_o19_rerun.py pins it behaviourally to the shipped
+# ranker (when #1064 lands, that pin is re-pointed at the executed commit's ranker, never deleted).
+
+
+def ranker_tokens(rec: dict) -> set[str]:
+    """The tokens ``_rank_by_relevance`` scores a record by, read from its saved dict."""
+    tokens: set[str] = set()
+    if rec.get("_compressed", False):  # CompressedMemory (hippocampus_persistence.load_state's marker)
+        tokens.update((rec.get("goal") or "").lower().split())
+        tokens.add((rec.get("tool_name") or "").lower())
+        return tokens
+    context = rec.get("context") or {}
+    if context.get("active_goal"):
+        tokens.update(context["active_goal"].lower().split())
+    tokens.add((((rec.get("action") or {}).get("tool_name", "")) or "").lower())
+    perception = rec.get("perception") or {}
+    for obj in perception.get("detected_objects", []) or []:
+        tokens.update(obj.lower().split())
+    for person in perception.get("detected_people", []) or []:
+        tokens.update(person.lower().split())
+    obs_text = perception.get("observations", {}).get("text", "")
+    if isinstance(obs_text, str):
+        tokens.update(obs_text.lower().split()[:50])
+    rationale = perception.get("decision_rationale", "")
+    if rationale:
+        tokens.update(rationale.lower().split())
+    return tokens
+
+
+def ranker_key(rec: dict, query: str) -> tuple:
+    """The sort key ``_rank_by_relevance`` orders by, descending: ``(score, timestamp)``, or ``(timestamp,)`` for a
+    query with no tokens (it then sorts by recency alone)."""
+    query_tokens = set(query.lower().split())
+    if not query_tokens:
+        return (rec["timestamp"],)
+    return (len(query_tokens & ranker_tokens(rec)) / len(query_tokens), rec["timestamp"])
+
+
+def rank_by_relevance(records: list[dict], query: str, limit: int) -> list[dict]:
+    """The frozen ranker itself, for a given input order (Python's sort is stable, as the shipped one's)."""
+    return sorted(records, key=lambda r: ranker_key(r, query), reverse=True)[:limit]
+
+
+def ranked_groups(records: list[dict], query: str) -> list[list[str]]:
+    """The candidates' ids in rank order, as TIE GROUPS: records whose sort key is exactly equal. ``recall`` builds
+    its candidates from a set, whose order is not reproducible, so within a group any order is the ranker's."""
+    groups: list[list[str]] = []
+    last = None
+    for rec in sorted(records, key=lambda r: ranker_key(r, query), reverse=True):
+        key = ranker_key(rec, query)
+        if groups and key == last:
+            groups[-1].append(str(rec["id"]))
+        else:
+            groups.append([str(rec["id"])])
+        last = key
+    return groups
+
+
+def top_slots(groups: list[list[str]], n: int) -> tuple[list[list[str]], list[str], int]:
+    """The first ``n`` ranks as ``(whole groups, the boundary group, its slots)``: every whole group lies inside the
+    first ``n`` in any order; ``slots`` members of the boundary group (any of them) fill the rest."""
+    whole: list[list[str]] = []
+    left = n
+    for group in groups:
+        if left == 0:
+            break
+        if len(group) <= left:
+            whole.append(group)
+            left -= len(group)
+        else:
+            return whole, group, left
+    return whole, [], 0
+
+
+def goal_ids_conform(logged_goal: list[str], groups: list[list[str]], seen: set[str], need: int) -> bool:
+    """Whether ``logged_goal`` is ``[m for m in top3 if m not in seen][:need]`` for SOME linearisation of the
+    ranking (``top3`` = its first ``EXP63_TOP``; ``seen`` = the graph-path ids the goal path dedups against)."""
+    if len(set(logged_goal)) != len(logged_goal) or set(logged_goal) & seen:
+        return False
+    whole, boundary, slots = top_slots(groups, EXP63_TOP)
+    i = produced = 0
+    for group in whole:
+        if produced == need:
+            break
+        fresh = set(group) - seen
+        k = min(len(fresh), need - produced)
+        chunk = logged_goal[i : i + k]
+        if len(chunk) != k or not set(chunk) <= fresh:
+            return False
+        i, produced = i + k, produced + k
+    if produced < need and boundary:
+        fresh = set(boundary) - seen
+        rest = logged_goal[i:]
+        c, left = len(rest), need - produced
+        # ``slots`` boundary members are chosen; s of them are not in ``seen``, for any s in
+        # [max(0, slots - |boundary & seen|), min(slots, |fresh|)]; the goal path then keeps min(s, left).
+        if not set(rest) <= fresh or c > left or c > min(slots, len(fresh)):
+            return False
+        if c != left and c < slots - (len(boundary) - len(fresh)):
+            return False
+        i += c
+    return i == len(logged_goal)
+
+
+def forces_carried(groups: list[list[str]], carried: set[str]) -> bool:
+    """R3d: EVERY linearisation's goal top 3 holds a carried id, so the top 3 with the carried ids removed differs
+    from all of them (a recall that dropped carried records gives a different answer). Ties are exact only: a
+    carried id that only MAY be chosen at the boundary is not decisive."""
+    whole, boundary, slots = top_slots(groups, EXP63_TOP)
+    if any(set(g) & carried for g in whole):
+        return True
+    return bool(boundary) and len(set(boundary) - carried) < slots
+
+
+def _aut_traces(lines: list[dict]) -> list[tuple[int, dict]]:
+    """``(line index, record)`` of the AUT's enrichment traces (C5(a): the gates read only ``sim_aut``'s)."""
+    return [
+        (i, r)
+        for i, r in enumerate(lines)
+        if r.get("e") == "enrichment_trace" and r.get("agent_id") == SIM_AUT_AGENT_ID
+    ]
+
+
+def turn_starts(lines: list[dict]) -> dict[int, int]:
+    """``turn -> `` the line index of its first ``sim_exec`` ``Bridge.send_and_wait ENTER turn=N`` line. Exp 63
+    attributes by LINE ORDER (the log's ``t`` is rounded to 0.01 s)."""
+    starts: dict[int, int] = {}
+    for i, rec in enumerate(lines):
+        if rec.get("e") != "sim_exec":
+            continue
+        m = _TURN_ENTER.search(str(rec.get("message", "")))
+        if m and int(m.group(1)) not in starts:
+            starts[int(m.group(1))] = i
+    return starts
+
+
+def turn_of(index: int, starts: dict[int, int]) -> int:
+    """The turn whose window holds line ``index`` (0 = before any turn entered)."""
+    turn, at = 0, -1
+    for t, start in starts.items():
+        if at < start <= index:
+            turn, at = t, start
+    return turn
+
+
+def turn_traces(lines: list[dict]) -> dict[int, tuple[int, dict] | None]:
+    """``turn -> `` its trace: the first AUT ``enrichment_trace`` with a non-empty goal in its window."""
+    starts = turn_starts(lines)
+    out: dict[int, tuple[int, dict] | None] = {t: None for t in range(1, EXP63_TURNS + 1)}
+    for i, r in _aut_traces(lines):
+        if not str(r.get("goal") or "").strip():
+            continue
+        t = turn_of(i, starts)
+        if t in out and out[t] is None:
+            out[t] = (i, r)
+    return out
+
+
+def _holes(trace: dict) -> set[int]:
+    return {s for a, b in trace.get("goal_path_holes") or [] for s in range(a, b + 1)}
+
+
+def visible_ids(trace: dict, records: dict[str, dict]) -> set[str]:
+    """V0: phase 2's saved records with ``capture_seq <= horizon`` and not in the trace's holes (C5(d) makes every
+    carried record carry its capture_seq; a record without one is never visible here)."""
+    h, holes = trace.get("goal_path_horizon"), _holes(trace)
+    return {
+        i
+        for i, rec in records.items()
+        if _seq(rec) is not None and _is_int(h) and _seq(rec) <= h and _seq(rec) not in holes
+    }
+
+
+def _is_int(x) -> bool:
+    return isinstance(x, int) and not isinstance(x, bool)
+
+
+def _seq_c(base_records: dict[str, dict]) -> int:
+    return max((s for s in map(_seq, base_records.values()) if s is not None), default=-1)
+
+
+def exp63_r3a_trace(lines: list[dict], seq_c: int) -> tuple[int, dict] | None:
+    """R3a's view: the first GOAL-BEARING phase-2 AUT trace whose horizon is seq_C and whose holes are empty (no new
+    memory). An empty-goal trace never ran the goal path, so it is never R3a's (E3)."""
+    return next(
+        (
+            (i, r)
+            for i, r in _aut_traces(lines)
+            if str(r.get("goal") or "").strip()
+            and _is_int(r.get("goal_path_horizon"))
+            and r.get("goal_path_horizon") == seq_c
+            and r.get("goal_path_holes") == []
+        ),
+        None,
+    )
+
+
+def _p1(gate: dict, n1: int) -> tuple[object, bool]:
+    """P1: phase 2's first AUT trace's hippocampus_size, and whether it holds at least N1."""
+    traces = _aut_traces(gate["lines"])
+    size = traces[0][1].get("hippocampus_size") if traces else None
+    return size, _is_int(size) and size >= n1
+
+
+def exp63_c5_problems(phases: list[dict], *, goal: str) -> list[str]:
+    """C5 (the instrument reads true) and R3a's observability: every failure makes the attempt INCOMPLETE (an
+    aborted attempt, never a FAIL). ``phases`` = [baseline, gate], each ``{report, store, lines}``; ``goal`` the
+    gate phase's protocol goal."""
+    base, gate = phases
+    found: dict[str, str] = {}  # the first problem per check (one bad trace is enough to abort)
+    # Every read below is type-guarded (E5): a corrupt trace or store makes the attempt incomplete, never a crash.
+
+    def problem(check: str, text: str) -> None:
+        found.setdefault(check, f"C5{check} {text}")
+
+    records = store_records(gate["store"])
+    base_records = store_records(base["store"])
+    carried = set(base_records)
+    # (a) the agent: every trace names one; the AUT is sim_aut, as its own deliberation lines say.
+    for label, phase in (("baseline", base), ("gate", gate)):
+        for r in phase["lines"]:
+            if r.get("e") == "enrichment_trace" and not (isinstance(r.get("agent_id"), str) and r["agent_id"]):
+                problem("(a)", f"{label}: an enrichment_trace carries no agent_id")
+    if not any(r.get("e") == "sim_deliberation" and r.get("agent_id") == SIM_AUT_AGENT_ID for r in gate["lines"]):
+        problem("(a)", f"gate: no sim_deliberation line names the AUT {SIM_AUT_AGENT_ID!r}")
+    traces = _aut_traces(gate["lines"])
+    if not traces:
+        problem("(a)", f"gate: no enrichment_trace of {SIM_AUT_AGENT_ID!r}")
+    # (b) the shape of every phase-2 AUT trace.
+    shaped: list[tuple[int, dict]] = []
+    for i, tr in traces:
+        ids, paths = tr.get("memory_ids"), tr.get("memory_paths")
+        where = f"gate line {i + 1}"
+        if not (isinstance(ids, list) and isinstance(paths, list) and all(isinstance(x, str) for x in ids)):
+            problem("(b)", f"{where}: memory_ids / memory_paths are not lists of ids")
+            continue
+        if not (len(ids) == len(paths) == tr.get("memories")) or not all(
+            isinstance(p, str) and p in EXP63_PATHS for p in paths
+        ):
+            problem("(b)", f"{where}: {len(ids)} ids, {len(paths)} paths, memories {tr.get('memories')!r}")
+            continue
+        if not set(ids) <= set(records):
+            problem("(b)", f"{where}: ids {sorted(set(ids) - set(records))} are not in phase 2's saved store")
+            continue
+        holes = tr.get("goal_path_holes")
+        if not _is_int(tr.get("goal_path_horizon")) or not (
+            isinstance(holes, list)
+            and all(isinstance(h, list) and len(h) == 2 and all(map(_is_int, h)) and h[0] <= h[1] for h in holes)
+        ):
+            problem("(b)", f"{where}: goal_path_horizon {tr.get('goal_path_horizon')!r} / holes {holes!r} unreadable")
+            continue
+        if not _is_int(tr.get("hippocampus_size")):
+            # on EVERY AUT trace (Arch SF2): P1 reads the first one, so an unreadable size must abort, never FAIL P1
+            problem("(b)", f"{where}: hippocampus_size {tr.get('hippocampus_size')!r} is not an integer")
+            continue
+        if not isinstance(tr.get("goal") or "", str) or (str(tr.get("goal") or "").strip() and tr.get("goal") != goal):
+            problem("(b)", f"{where}: goal {tr.get('goal')!r} is not the protocol goal")
+            continue
+        shaped.append((i, tr))
+    # (L) liveness: each turn's trace surfaced min(3, the store) memories.
+    for turn, hit in turn_traces(gate["lines"]).items():
+        if hit is not None:
+            tr = hit[1]
+            size = tr.get("hippocampus_size")
+            if not _is_int(size) or tr.get("memories") != min(EXP63_TOP, size):
+                problem("(L)", f"turn {turn}: memories {tr.get('memories')!r} with hippocampus_size {size!r}")
+    # (d) record shape: no compressed record; observations.text a string or absent; every carried record carries its
+    # capture_seq (Amendment 1: strict; without it V0 and seq_C are undefined).
+    for rid, rec in records.items():
+        if rec.get("_compressed", False):
+            problem("(d)", f"phase 2's store holds a compressed record ({rid})")
+            continue
+        perception = rec.get("perception", {})
+        obs = perception.get("observations", {}) if isinstance(perception, dict) else None
+        if not isinstance(obs, dict) or ("text" in obs and not isinstance(obs["text"], str)):
+            problem("(d)", f"record {rid}: perception.observations.text is not a string")
+        elif not isinstance(rec.get("timestamp"), (int, float)) or isinstance(rec.get("timestamp"), bool):
+            problem("(d)", f"record {rid}: timestamp {rec.get('timestamp')!r} is not a number")
+    for rid, rec in base_records.items():
+        if _seq(rec) is None:
+            problem("(d)", f"carried record {rid} has no integer capture_seq")
+    # (c) rendering identity: each id's enrichment activations in phase 2 = its appearances in memory_ids[:3].
+    rendered: dict[str, int] = {}
+    for _i, tr in traces:
+        ids = tr.get("memory_ids") if isinstance(tr.get("memory_ids"), list) else []
+        for mid in ids[:EXP63_TOP]:
+            rendered[str(mid)] = rendered.get(str(mid), 0) + 1
+
+    def enrichment(rec: dict | None) -> int:
+        n = _dict(_dict(rec).get("activation_sources")).get("enrichment", 0)
+        return n if _is_int(n) else -(10**9)
+
+    # Over phase 2's records (and anything rendered): a carried id missing from phase 2 is P2's FAIL, not C5's.
+    for rid in sorted(set(records) | set(rendered)):
+        delta = enrichment(records.get(rid)) - enrichment(base_records.get(rid))
+        if delta != rendered.get(rid, 0):
+            problem("(c)", f"{rid}: enrichment activations moved {delta}, but it was rendered {rendered.get(rid, 0)}x")
+    # (g) graph ids: an object-bearing record (in the saved store: (b); one that landed after the horizon read is
+    # allowed, as a goal id is, and joins L, E4); (s) no substring id on a goal-bearing trace.
+    for i, tr in shaped:
+        for mid, path in zip(tr["memory_ids"], tr["memory_paths"]):
+            if path == "graph":
+                objects = _list(_dict(records[mid].get("perception")).get("detected_objects"))
+                if not objects:
+                    problem("(g)", f"gate line {i + 1}: graph id {mid} has no detected_objects")
+            if path == "substring" and str(tr.get("goal") or "").strip():
+                problem("(s)", f"gate line {i + 1}: a goal-bearing trace carries substring id {mid}")
+    # R3a's observability: a goal-bearing phase-2 AUT trace saw the store before any new memory. Only when P1 and P2
+    # hold (A2): after a total restore failure no trace can see seq_C, and P1/P2 (independent bytes) FAIL instead.
+    restored = _p1(gate, len(carried))[1] and carried <= set(records)
+    r3a = exp63_r3a_trace(gate["lines"], _seq_c(base_records))
+    if restored and r3a is None:
+        problem(
+            "(R3a)", "no goal-bearing phase-2 AUT trace has horizon seq_C with no holes: reachability is not observable"
+        )
+    elif restored and r3a is not None and set(_list(r3a[1].get("memory_ids"))) - set(base_records):
+        # Only carried records were visible at its horizon read, so an id outside C landed between that read and the
+        # recall: the view is contaminated by the capture race, an instrument fault, never the claim's FAIL.
+        problem("(R3a)", f"gate line {r3a[0] + 1}: R3a's trace surfaced an id that landed during the query")
+    return list(found.values())
+
+
+def _qualifying_carried(groups: list[list[str]], carried: set[str], records: dict[str, dict], goal: str) -> set[str]:
+    """The carried ids that rank STRICTLY above at least one visible non-carried record (D1): a carried id that only
+    fills a slot because fewer than 3 new records are visible does not qualify."""
+    new = [m for g in groups for m in g if m not in carried]
+    if not new:
+        return set()
+    lowest_new = min(ranker_key(records[m], goal) for m in new)
+    return {m for g in groups for m in g if m in carried and ranker_key(records[m], goal) > lowest_new}
+
+
+def shown_goal_ids(groups: list[list[str]], seen: set[str], need: int, last: set[str]) -> list[str]:
+    """The goal-path ids shown under ONE linearisation: within each tie group the ids in ``last`` go last (and are
+    left out of a boundary group whenever its slots allow), then ``[m for m in top3 if m not in seen][:need]``. With
+    ``last`` = the qualifying carried ids this is the ordering that shows as few of them as any ordering can."""
+    whole, boundary, slots = top_slots(groups, EXP63_TOP)
+    top = [m for g in whole for m in sorted(g, key=lambda m: m in last)]
+    top += sorted(boundary, key=lambda m: m in last)[:slots]
+    return [m for m in top if m not in seen][:need]
+
+
+def exp63_decisive(
+    groups: list[list[str]], graph: list[str], carried: set[str], records: dict[str, dict], goal: str
+) -> bool:
+    """R3d (D1): in EVERY valid tie ordering, a carried id is among the 3 memories SHOWN
+    (``dedup(graph ids + goal top 3)[:3]``) from the goal path AND ranks strictly above a visible non-carried record.
+    Graph ids that fill the slots (the goal path never ran) are not decisive: no goal id is then shown (``need``
+    is 0); a carried graph id is cue-dependent, not the ranking, and does not count."""
+    q = _qualifying_carried(groups, carried, records, goal)
+    return bool(set(shown_goal_ids(groups, set(graph), max(0, EXP63_TOP - len(graph)), q)) & q)
+
+
+def exp63_turn(tr: dict, records: dict[str, dict], carried: set[str], goal: str) -> dict:
+    """R3' and R3d for one turn's trace (C5 has held: its shape is sound)."""
+    ids, paths = list(tr.get("memory_ids") or []), list(tr.get("memory_paths") or [])
+    v0 = visible_ids(tr, records)
+    # L: logged ids (goal or graph, E4) outside V0 that are in the saved store: they landed between the horizon read
+    # and the recall.
+    late = [m for m in ids if m not in v0 and m in records]
+    pool = [records[m] for m in records if m in v0 or m in late]
+    groups = ranked_groups(pool, goal)
+    graph = [m for m, p in zip(ids, paths) if p == "graph"]
+    logged_goal = [m for m, p in zip(ids, paths) if p == "goal"]
+    order_ok = paths == ["graph"] * len(graph) + ["goal"] * len(logged_goal)  # the path order: graph, then goal
+    if len(graph) >= EXP63_TOP:
+        conforms = order_ok and len(ids) == EXP63_TOP and not logged_goal  # the goal path never ran
+    else:
+        conforms = order_ok and goal_ids_conform(logged_goal, groups, set(graph), EXP63_TOP - len(graph))
+    canonical = [m for g in groups for m in sorted(g)][:EXP63_TOP]  # one linearisation, for the descriptive counts
+    recomputed = list(dict.fromkeys(graph + canonical))[:EXP63_TOP]
+    scores = {m: ranker_key(records[m], goal)[0] for m in v0 | set(late)}
+    best_carried = max((scores[m] for m in scores if m in carried), default=None)
+    whole, boundary, slots = top_slots(groups, EXP63_TOP)
+    possible = any(set(g) & carried for g in whole) or bool(slots and set(boundary) & carried)
+    return {
+        "conforms": conforms,
+        "decisive": exp63_decisive(groups, graph, carried, records, goal),
+        "visible": len(v0),
+        "late": late,
+        "observed_carried": len(set(ids) & carried),
+        "recomputed_carried_canonical": len(set(recomputed) & carried),
+        # A8: whether the goal top 3 holds a carried id in every tie ordering ("forced"), in some ("possible"), or none.
+        "carried_in_goal_top3": "forced" if forces_carried(groups, carried) else "possible" if possible else "none",
+        "best_carried_score": best_carried,
+        "new_at_or_above_best_carried": None
+        if best_carried is None
+        else sum(1 for m, s in scores.items() if m not in carried and s >= best_carried),
+        "graph_ids": len(graph),
+    }
+
+
+def exp63_gates(phases: list[dict], *, goal: str) -> dict:
+    """P0–P3, R1, R3a, R3' and R3d over one COMPLETE attempt's two phases (C5 has held), and the verdict."""
+    base, gate = phases
+    base_records, records = store_records(base["store"]), store_records(gate["store"])
+    carried = set(base_records)
+    n1, seq_c = len(carried), _seq_c(base_records)
+    out: dict = {"N1": n1, "seq_C": seq_c}
+    out["P0"] = {"pass": n1 >= 3, "N1": n1}
+    size, p1 = _p1(gate, n1)
+    out["P1"] = {"first_trace_hippocampus_size": size, "pass": p1}
+    missing = sorted(carried - set(records))
+    out["P2"] = {"missing": missing, "pass": not missing}
+
+    def fields(rec: dict) -> dict[str, str]:
+        return {k: json.dumps(x, sort_keys=True) for k, x in rec.items() if k not in EXP63_MUTABLE_FIELDS}
+
+    changed = {
+        rid: sorted(set(fields(base_records[rid]).items()) ^ set(fields(records[rid]).items()))
+        for rid in sorted(carried & set(records))
+    }
+    changed = {rid: sorted({k for k, _x in diff}) for rid, diff in changed.items() if diff}
+    early = sorted(
+        rid for rid, rec in records.items() if rid not in carried and (_seq(rec) is None or _seq(rec) <= seq_c)
+    )
+    out["P3"] = {"changed": changed, "new_not_after_seq_C": early, "pass": not changed and not early}
+
+    starts = turn_starts(gate["lines"])
+    per_turn = turn_traces(gate["lines"])
+    out["R1"] = {
+        "pass": all(hit is not None for hit in per_turn.values()),
+        "turns": sorted(t for t, h in per_turn.items() if h),
+    }
+    r3a = exp63_r3a_trace(gate["lines"], seq_c)
+    r3a_turn = None if r3a is None else turn_of(r3a[0], starts)
+    r3a_ids = [] if r3a is None else list(r3a[1].get("memory_ids") or [])
+    out["R3a"] = {
+        "turn": r3a_turn,
+        "ids": r3a_ids,
+        "pass": r3a is not None and len(r3a_ids) == min(EXP63_TOP, n1) and set(r3a_ids) <= carried,
+    }
+    turns = {t: None if hit is None else exp63_turn(hit[1], records, carried, goal) for t, hit in per_turn.items()}
+    out["R3prime"] = {
+        "pass": all(x is not None and x["conforms"] for x in turns.values()),
+        "nonconforming": [t for t, x in turns.items() if x is None or not x["conforms"]],
+    }
+    decisive = [
+        t for t, x in turns.items() if x is not None and x["decisive"] and r3a_turn is not None and t > r3a_turn
+    ]
+    out["R3d"] = {"decisive_turns": decisive, "pass": bool(decisive)}
+    # A8: the first turn whose goal top 3 no longer MUST hold a carried id, and the first where it no longer CAN.
+    leave = {
+        level: next((t for t, x in sorted(turns.items()) if x is not None and x["carried_in_goal_top3"] in below), None)
+        for level, below in (("forced", ("possible", "none")), ("possible", ("none",)))
+    }
+    recall_calls = 0
+    for r in gate["lines"]:
+        text = json.dumps(r)
+        recall_calls += "memory_recall" in text and any(m in text for m in carried)
+    out["descriptive"] = {
+        "status": "DESCRIPTIVE (never gating)",
+        "turns": turns,
+        "carried_leave_goal_top3_turn": leave,
+        "memory_recall_lines_naming_carried_ids": recall_calls,
+    }
+    gating = ("P0", "P1", "P2", "P3", "R1", "R3a", "R3prime")
+    if not all(out[g]["pass"] for g in gating):
+        out["verdict"] = "FAIL"
+    else:
+        out["verdict"] = "PASS" if out["R3d"]["pass"] else "NOT SHOWN"
+    out["not_passed"] = [g for g in (*gating, "R3d") if not out[g]["pass"]]
     return out
 
 
@@ -893,6 +1431,9 @@ def judge(exp: str, attempts_in_order: list[dict], data_root: Path) -> dict:
             )
         if len(phases) != len(PROTOCOL[exp]["phases"]) and not entry["problems"]:
             entry["problems"].append(f"{len(phases)} of {len(PROTOCOL[exp]['phases'])} phases recorded")
+        if experiment_of(exp) == "63" and len(phases) == len(PROTOCOL[exp]["phases"]):
+            # C5 and R3a's observability, from the committed traces and stores: an instrument fault is not data.
+            entry["problems"] += exp63_c5_problems(phases, goal=PROTOCOL[exp]["phases"][1][1])
         entry["complete"] = not entry["problems"]
         if entry["complete"]:
             deciding = (entry, phases)  # the first complete attempt decides
@@ -903,7 +1444,10 @@ def judge(exp: str, attempts_in_order: list[dict], data_root: Path) -> dict:
         return out
     entry, phases = deciding
     out["deciding_attempt"] = entry["run_id"]
-    gates = exp10_gates(phases) if experiment_of(exp) == "10" else exp09_gates(phases[0], phases[0]["log_bytes"])
+    if experiment_of(exp) == "63":
+        gates = exp63_gates(phases, goal=PROTOCOL[exp]["phases"][1][1])
+    else:
+        gates = exp10_gates(phases) if experiment_of(exp) == "10" else exp09_gates(phases[0], phases[0]["log_bytes"])
     out["gates"] = gates
     out["verdict"] = gates["verdict"]
     return out
@@ -913,7 +1457,7 @@ def judge(exp: str, attempts_in_order: list[dict], data_root: Path) -> dict:
 # at the verdict's own commit, or the verdict refuses (a post-data change to the gate is a new experiment).
 BOUND_FILES = ("scripts/o19_verdict.py", "scripts/o19_rerun.py")
 
-EXIT = {"PASS": 0, "FAIL": 1, "PARTIAL": 4, "ABORT": 4}
+EXIT = {"PASS": 0, "FAIL": 1, "PARTIAL": 4, "NOT SHOWN": 4, "ABORT": 4}
 
 
 def bound_blobs(exp: str, commits: list[str]) -> dict[str, dict[str, str | None]]:

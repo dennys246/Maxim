@@ -261,6 +261,107 @@ def test_legacy_is_kept_never_entered(tmp_path: Path) -> None:
     _one(_base_then(tmp_path / "c", [OK_T1], [OK_T1, legacy.replace("T1-1", "T1-2")]), "never entered")
 
 
+STALE_1 = "| T1-1 | claim | mech | **Status: STALE 2026-09-01**. |"
+SETUP_2 = "| T1-2 | new claim | mech | **Status: SETUP 2026-09-01**. |"
+EARNED_2 = (
+    f"| T1-2 | new claim (replaces T1-1 and T1-3) | mech | **Status: EARNED 2026-09-29**. "
+    f"**Evidence:** [r.jsonl]({DATA}r.jsonl).{GUARD} |"
+)
+RETIRED_1 = "| T1-1 | claim | mech | **Status: SUPERSEDED 2026-09-29** by T1-2. |"
+
+
+def _exceptions_then(tmp_path: Path, clauses: list, base_rows: list[str], new_rows: list[str]) -> list[str]:
+    """``clauses`` are committed on the base (only clauses on main act)."""
+    import json
+
+    files = {"docs/experiments/evidence_exceptions.json": json.dumps(clauses)}
+    return _lint(_repo(tmp_path, _ledger(base_rows), files), _ledger(new_rows))
+
+
+@pytest.mark.parametrize("was", ["STALE", "BROKEN", "PARTIAL"])
+def test_a_successor_earned_in_the_same_diff_retires_a_row(tmp_path: Path, was: str) -> None:
+    """D3: the verdict PR raises the new row and retires the old one together (Exp 63's PASS row)."""
+    old = STALE_1.replace("STALE", was)
+    assert _base_then(tmp_path, [old, SETUP_2], [RETIRED_1, EARNED_2]) == []
+
+
+@pytest.mark.parametrize(
+    "successor_base, successor_head",
+    [
+        ("SETUP", "SETUP"),  # never earned
+        ("SETUP", "STALE"),  # not positive
+        ("EARNED", "EARNED"),  # positive, but already at the base: an old verdict cannot retire a new claim
+    ],
+)
+def test_superseded_needs_its_successor_to_reach_positive_in_the_same_diff(
+    tmp_path: Path, successor_base: str, successor_head: str
+) -> None:
+    def row(token: str) -> str:
+        return EARNED_2 if token == "EARNED" else SETUP_2.replace("SETUP 2026-09-01", f"{token} 2026-09-01")
+
+    failures = _base_then(tmp_path, [STALE_1, row(successor_base)], [RETIRED_1, row(successor_head)])
+    _one(failures, "T1-1: STALE -> SUPERSEDED by T1-2 needs that successor to REACH a positive status")
+
+
+def test_the_successor_must_name_the_row_it_supersedes(tmp_path: Path) -> None:
+    """Arch NIT: an earned successor that does not name the retired row cannot retire it (T1-16 names T1-1); a
+    longer id (T1-16) is not a mention of T1-1."""
+    silent = EARNED_2.replace("(replaces T1-1 and T1-3)", "(replaces T1-16)")
+    _one(_base_then(tmp_path, [STALE_1, SETUP_2], [RETIRED_1, silent]), "its row naming T1-1 (it does not)")
+
+
+def test_a_new_row_entering_superseded_needs_a_successor_earned_in_the_diff(tmp_path: Path) -> None:
+    new = "| T1-3 | claim | mech | **Status: SUPERSEDED 2026-09-29** by T1-2. |"
+    _one(_base_then(tmp_path, [OK_T1, SETUP_2], [OK_T1, SETUP_2, new]), "a new row -> SUPERSEDED by T1-2")
+    assert _base_then(tmp_path / "b", [OK_T1, SETUP_2], [OK_T1, EARNED_2, new]) == []
+
+
+def test_re_pointing_a_superseded_row_is_checked_too(tmp_path: Path) -> None:
+    sup = "| T1-3 | old | mech | **Status: SUPERSEDED 2026-08-25** by T1-1. |"
+    moved = "| T1-3 | old | mech | **Status: SUPERSEDED 2026-09-29** by T1-2. |"
+    _one(_base_then(tmp_path, [OK_T1, SETUP_2, sup], [OK_T1, SETUP_2, moved]), "SUPERSEDED -> SUPERSEDED by T1-2")
+    assert _base_then(tmp_path / "b", [OK_T1, SETUP_2, sup], [OK_T1, EARNED_2, moved]) == []
+
+
+def test_a_kept_superseded_row_is_not_rejudged(tmp_path: Path) -> None:
+    """Legitimate history (T1-8 -> T1-9): unchanged, it passes; a successor that later goes STALE is its own row's
+    problem."""
+    sup = "| T1-2 | old | mech | **Status: SUPERSEDED 2026-08-25** by T1-1. |"
+    assert _base_then(tmp_path, [OK_T1, sup], [OK_T1, sup]) == []
+    assert _base_then(tmp_path / "b", [OK_T1, sup], [STALE_1.replace("2026-09-01", "2026-09-29"), sup]) == []
+
+
+def _clause(**change) -> dict:
+    clause = {"id": "s1", "kind": "superseded", "row": "T1-1", "from": "STALE", "by": "T1-2",
+              "to_date": "2026-09-29", "owner": "o", "reason": "r", "date": "2026-09-28"}  # fmt: skip
+    return {**clause, **change}
+
+
+def test_a_superseded_clause_on_main_excepts_exactly_its_transition(tmp_path: Path) -> None:
+    assert _exceptions_then(tmp_path, [_clause()], [STALE_1, SETUP_2], [RETIRED_1, SETUP_2]) == []
+    for i, change in enumerate(
+        ({"by": "T1-3"}, {"from": "BROKEN"}, {"to_date": "2026-09-28"}, {"row": "T1-4"}, {"reason": ""})
+    ):
+        failures = _exceptions_then(tmp_path / str(i), [_clause(**change)], [STALE_1, SETUP_2], [RETIRED_1, SETUP_2])
+        _one(failures, "needs that successor to REACH a positive status")
+
+
+def test_a_superseded_clause_added_in_the_same_diff_does_not_act(tmp_path: Path) -> None:
+    import json
+
+    repo = _repo(tmp_path, _ledger([STALE_1, SETUP_2]))
+    (repo / "docs/experiments/evidence_exceptions.json").write_text(json.dumps([_clause()]))
+    _one(_lint(repo, _ledger([RETIRED_1, SETUP_2])), "needs that successor to REACH a positive status")
+
+
+def test_the_clause_fields_are_the_evidence_gates() -> None:
+    from scripts import lint_evidence_gate as G
+
+    assert F.SUPERSEDED_CLAUSE_FIELDS == G.SUPERSEDED_FIELDS and F.EXCEPTIONS == G.EXCEPTIONS
+    assert G.exceptions_problems([], [_clause()]) == []
+    assert G.exceptions_problems([], [_clause(by="")]) and G.exceptions_problems([], [_clause(kind="other")])
+
+
 def test_a_new_row_is_not_backdated(tmp_path: Path) -> None:
     new = OK_T1.replace("T1-1", "T1-2").replace("2026-09-01", "2026-09-28")
     _one(_base_then(tmp_path, [OK_T1], [OK_T1, new]), "before the branch point (2026-09-29)")

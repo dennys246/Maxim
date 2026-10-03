@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""The O19 re-run harness: ONE attempt of an Exp 10 (T1-1) or Exp 09 (T3-9) campaign per invocation.
+"""The O19 re-run harness: ONE attempt of an Exp 10 (T1-1), Exp 09 (T3-9) or Exp 63 (T1-16) campaign per invocation.
 
 Pre-registrations (this harness runs them and nothing else; the protocol constants and the campaign table live in
 ``o19_verdict.py`` so the verdict binds what was run as well as how it was judged). ``--exp`` names a CAMPAIGN:
   docs/experiments/protocols/exp10_rerun_2026-10-02_preregistration.md   (--exp 10c2; campaign "10" is closed)
   docs/experiments/protocols/exp09_rerun_2026-09-30_preregistration.md   (--exp 09)
+  docs/experiments/exp63_carried_recall_prereg.md                        (--exp 63)
 
     python scripts/o19_rerun.py preflight --exp 10c2    # every refusal below + a dry-run marker push; spawns nothing
     python scripts/o19_rerun.py --exp 10c2 --write-experiment-results     # one attempt (`run` is the default)
@@ -16,7 +17,9 @@ An attempt, in order:
      it is not append-only (2); it would mix code trees — keep the rig at the first attempt's commit (2); it already
      holds a complete attempt, or 3 attempts are declared (2); the campaign is closed, or a successor's predecessor
      has no pinned ABORT closure verdict on main before now (2); the model config does not resolve to the prereg's
-     (2); something already listens on the sim's port (2); another harness holds the lock (2); a git step fails (2).
+     (2); something already listens on the sim's port (2); another harness holds the lock (2); a git step fails (2);
+     Exp 63 only: ``memory.strategy`` does not resolve to ``access_based`` in the attempt's fresh data home (2; the
+     value read is stamped as ``memory_strategy`` in every row, C4').
   2. The start marker: an annotated tag ``refs/tags/o19/<campaign>/attempt-<k>-<run_id>`` on HEAD, pushed to ``origin``.
      A failed push is a refusal, not an attempt. From here on the attempt counts, whatever happens: every phase
      that starts writes a row, an interrupted one too.
@@ -132,6 +135,25 @@ def check_on_main(rows_file: Path) -> None:
         )
 
 
+def run_probe(probe: str, env: dict[str, str], label: str) -> dict:
+    """Run a preflight probe under ``env``; its last stdout line is a JSON object. Every way it can fail (a non-zero
+    exit, a timeout, no output, not JSON, not an object) is a refusal, never a crash (E2)."""
+    try:
+        out = subprocess.run([sys.executable, "-c", probe], env=env, capture_output=True, text=True, timeout=120)
+    except subprocess.TimeoutExpired as exc:
+        raise Refused(f"{label} probe timed out after {exc.timeout}s") from exc
+    if out.returncode != 0:
+        raise Refused(f"{label} probe failed: {out.stderr.strip()[-400:]}")
+    lines = (out.stdout or "").strip().splitlines()
+    try:
+        got = json.loads(lines[-1]) if lines else None
+    except ValueError:
+        got = None
+    if not isinstance(got, dict):
+        raise Refused(f"{label} probe printed no JSON object: {(out.stdout or '')[-200:]!r}")
+    return got
+
+
 def check_model_config(home: Path, exp: str) -> dict:
     """The profile and context the sims will resolve, read by THIS repo's maxim under the sims' environment."""
     # The sim's own startup order (cli.main): role detection, then the C7a cloud auto-detect, which may switch a
@@ -152,17 +174,14 @@ def check_model_config(home: Path, exp: str) -> dict:
     ) % json.dumps(v.phase_argv(exp, 0, None))
     env, _dropped = base_env()
     env["MAXIM_DATA_HOME"] = str(home)
-    out = subprocess.run([sys.executable, "-c", probe], env=env, capture_output=True, text=True, timeout=120)
-    if out.returncode != 0:
-        raise Refused(f"model config probe failed: {out.stderr.strip()[-400:]}")
-    got = json.loads(out.stdout.strip().splitlines()[-1])
+    got = run_probe(probe, env, "model config")
     problems = []
-    if got["profile"] != v.MODEL_PROFILE or got["profile_source"] != "config":
-        problems.append(f"llm.profile resolves to {got['profile']!r} from {got['profile_source']!r}")
-    if got["stamped_profile"] != v.MODEL_PROFILE_STAMPED:
-        problems.append(f"the profile normalizes to {got['stamped_profile']!r}")
-    if got["n_ctx"] != v.N_CTX or got["n_ctx_source"] != "config":
-        problems.append(f"llm.n_ctx resolves to {got['n_ctx']!r} from {got['n_ctx_source']!r}")
+    if got.get("profile") != v.MODEL_PROFILE or got.get("profile_source") != "config":
+        problems.append(f"llm.profile resolves to {got.get('profile')!r} from {got.get('profile_source')!r}")
+    if got.get("stamped_profile") != v.MODEL_PROFILE_STAMPED:
+        problems.append(f"the profile normalizes to {got.get('stamped_profile')!r}")
+    if got.get("n_ctx") != v.N_CTX or got.get("n_ctx_source") != "config":
+        problems.append(f"llm.n_ctx resolves to {got.get('n_ctx')!r} from {got.get('n_ctx_source')!r}")
     path = got.get("model_path") or ""
     if Path(path).name != v.MODEL_GGUF or not Path(path).is_file():
         problems.append(f"the profile's GGUF is {path!r}")
@@ -172,6 +191,23 @@ def check_model_config(home: Path, exp: str) -> dict:
             "`maxim config set llm.n_ctx 8192`): " + "; ".join(problems)
         )
     return got
+
+
+def check_memory_strategy(home: Path) -> str:
+    """Exp 63's C4': the retention model the sims will run, read by THIS repo's maxim through its own resolver
+    (``config_loader.resolve_memory_strategy``) in the attempt's fresh data home, under the sims' environment (every
+    operator ``MAXIM_*`` key dropped). Run before the marker: a failed import or read is a refusal, not an attempt."""
+    probe = (
+        "import json\n"
+        "from maxim.runtime.config_loader import resolve_memory_strategy\n"
+        "print(json.dumps({'memory_strategy': resolve_memory_strategy()}))\n"
+    )
+    env, _dropped = base_env()
+    env["MAXIM_DATA_HOME"] = str(home)
+    strategy = run_probe(probe, env, "memory strategy").get("memory_strategy")
+    if strategy != v.EXP63_MEMORY_STRATEGY:
+        raise Refused(f"memory.strategy resolves to {strategy!r}, not {v.EXP63_MEMORY_STRATEGY!r} (C4')")
+    return strategy
 
 
 def check_port_free(port: int) -> None:
@@ -430,6 +466,32 @@ def mock_phase(exp: str, index: int, *, home: Path, run_id: str, resume: str | N
         "provenance": prov,
     }
     (sdir / "report.json").write_text(json.dumps(report))
+    if v.experiment_of(exp) == "63":
+        lines = mock63_session(home, session, index, goal, cap, resume)
+    else:
+        lines = _mock_stores_and_lines(exp, sdir, home, session, name, goal, cap, resumes, resume)
+    log = Path(tempfile.mkdtemp(prefix="o19-mocklog-")) / v.RUN_LOG
+    log.write_text("".join(json.dumps(x) + "\n" for x in lines))
+    now = time.time()
+    fields = {
+        "sim_argv": v.phase_argv(exp, index, resume),
+        "sim_env": recorded_env(
+            sim_environment(exp, index, home=home, run_id=run_id, run_log=Path(tempfile.gettempdir()) / "mock.log")
+        ),
+        "dropped_operator_env": [],
+        "hostname": "mock",
+        "ts": now,
+        "end_ts": now,
+        "returncode": 0,
+        "served_model": {"url": endpoint, "reads": [{"served": v.MODEL_GGUF, "match": True, "at": now}]},
+        "depends_on": [],
+        "sims": [_provenance.sim_evidence(sdir, report)],
+    }
+    return sdir, report, fields, log, None, None
+
+
+def _mock_stores_and_lines(exp, sdir, home, session, name, goal, cap, resumes, resume) -> list[dict]:
+    """Exp 10's and Exp 09's mock stores (written) and run-log lines (returned)."""
     prior = []
     if resumes:
         prior = json.loads((home / "sim_reports" / resume / "aut_hippocampus.json").read_text())["memories"]
@@ -466,27 +528,119 @@ def mock_phase(exp: str, index: int, *, home: Path, run_id: str, resume: str | N
                 )
             lines.append({"t": t + 0.4, "e": "sim_enrichment", "system": "reflex", "agent_id": "sim_aut"})
         t += 10.0
-    log = Path(tempfile.mkdtemp(prefix="o19-mocklog-")) / v.RUN_LOG
-    log.write_text("".join(json.dumps(x) + "\n" for x in lines))
-    now = time.time()
-    fields = {
-        "sim_argv": v.phase_argv(exp, index, resume),
-        "sim_env": recorded_env(
-            sim_environment(exp, index, home=home, run_id=run_id, run_log=Path(tempfile.gettempdir()) / "mock.log")
-        ),
-        "dropped_operator_env": [],
-        "hostname": "mock",
-        "ts": now,
-        "end_ts": now,
-        "returncode": 0,
-        "served_model": {"url": endpoint, "reads": [{"served": v.MODEL_GGUF, "match": True, "at": now}]},
-        "depends_on": [],
-        "sims": [_provenance.sim_evidence(sdir, report)],
-    }
-    return sdir, report, fields, log, None, None
+    return lines
+
+
+# Which Exp 63 mock the harness fabricates (tests set it): "pass" -- carried memories outrank the new ones, every
+# turn decisive; "not_shown" -- three new, better-ranked memories land per turn, so after turn 1 no turn is decisive;
+# "unrendered" -- a C5(c) instrument fault (one rendered id's enrichment activation was never counted).
+MOCK63_VARIANT = "pass"
+
+
+def _mock63_memory(mid: str, seq: int, ts: float, goal: str, tool: str, objects: list[str], text: str) -> dict:
+    """One record as the real store saves it (``EpisodicMemory.to_dict``)."""
+    from maxim.memory.types import Action, Context, EpisodicMemory, Perception  # noqa: PLC0415
+
+    memory = EpisodicMemory(
+        id=mid,
+        timestamp=ts,
+        run_id="mock",
+        created_at=ts,
+        accessed_at=ts,
+        perception=Perception(observations={"text": text}, detected_objects=objects),
+        context=Context(active_goal=goal),
+        action=Action(tool_name=tool),
+        capture_seq=seq,
+    )
+    return memory.to_dict()
+
+
+def mock63_session(home: Path, session: str, index: int, goal: str, cap: int, resume: str | None) -> list[dict]:
+    """An Exp 63 phase as the instrumented sim writes it: ``aut_*.json`` stores (the Hippocampus with
+    ``capture_seq``s, shared timestamps and enrichment activations that match the renders) and a run log of turn
+    markers, the AUT's deliberation and traces (ids chosen by the judge's frozen ranker over what each trace could
+    see), plus a narrator trace the gates must ignore."""
+    sdir = home / "sim_reports" / session
+    records: dict[str, dict] = {}
+    if resume is not None:
+        prior = json.loads((home / "sim_reports" / resume / "aut_hippocampus.json").read_text())["memories"]
+        records = {m["id"]: m for m in prior}
+    loaded = set(records)
+    seq = max((m["capture_seq"] for m in records.values()), default=-1) + 1
+    t0 = 1_790_000_000.0 + 1000.0 * index
+    variant = MOCK63_VARIANT if index == 1 else "pass"
+    per_turn = 3 if variant == "not_shown" else 1
+    lines: list[dict] = []
+    rendered: list[str] = []
+    for turn in range(1, cap + 1):
+        t = t0 + 10.0 * turn
+        lines.append({"t": t, "e": "sim_exec", "message": f"Bridge.send_and_wait ENTER turn={turn} text_len=9",
+                      "agent_id": "sim_orchestrator"})  # fmt: skip
+        lines.append({"t": t, "e": "sim_deliberation", "message": "deliberation cycle 1/3", "agent_id": "sim_aut"})
+        horizon = max((m["capture_seq"] for m in records.values()), default=-1)
+        ranked = v.rank_by_relevance(list(records.values()), goal, v.EXP63_GOAL_LIMIT)[: v.EXP63_TOP]
+        ids = [m["id"] for m in ranked]
+        rendered += ids
+        lines.append(
+            {"t": t, "e": "enrichment_trace", "agent_id": "sim_aut", "query_text": "where is the guard",
+             "goal": goal, "memories": len(ids), "memory_ids": ids, "memory_paths": ["goal"] * len(ids),
+             "goal_path_horizon": horizon, "goal_path_holes": [], "hippocampus_size": len(records)}
+        )  # fmt: skip
+        lines.append({"t": t, "e": "enrichment_trace", "agent_id": "sim_orchestrator", "goal": "",
+                      "memories": 1, "memory_ids": ["narrator-1"], "memory_paths": ["substring"]})  # fmt: skip
+        # Captures land after the trace: phase 1's share a timestamp per pair; carried ones rank on the goal.
+        for k in range(per_turn):
+            outranks = index == 0 or variant == "not_shown"
+            mid = f"{session}-m{seq}"
+            records[mid] = _mock63_memory(
+                mid,
+                seq,
+                t0 + 10.0 * (turn - turn % 2) + 1.0 + (k if index else 0),
+                goal if outranks else "look around the cell",
+                "examine" if outranks else "look",
+                ["door"] if turn % 3 == 0 else [],
+                "the guard sleeps by the door" if outranks else "a damp stone cell",
+            )
+            seq += 1
+    for mid in rendered:  # _activate_rendered: one enrichment activation per id rendered in memory_ids[:3]
+        rec = records[mid]
+        rec["activation_sources"]["enrichment"] = rec["activation_sources"].get("enrichment", 0) + 1
+        rec["activation_count"] += 1
+        rec["access_count"] += 1  # recall touches what it returns (mutable bookkeeping P3 ignores)
+        rec["accessed_at"] = t0 + 99.0
+    if variant == "unrendered" and rendered:
+        rec = records[rendered[0]]
+        rec["activation_sources"]["enrichment"] -= 1
+    store = {"_format_version": "1.0", "saved_at": t0 + 100.0, "memories": list(records.values())}
+    (sdir / "aut_hippocampus.json").write_text(json.dumps(store))
+    for name in v.RESUME_STORES:
+        if name != "hippocampus":
+            (sdir / f"aut_{name}.json").write_text(json.dumps({}))
+    assert loaded <= set(records)
+    return lines
 
 
 # ── the attempt ──────────────────────────────────────────────────────────────────────────────────────────
+
+
+def exp63_attempt_problems(exp: str, data_root: Path, sessions: list) -> list[str]:
+    """Exp 63's C5 and R3a observability, read from the COPIED phases once the last one is in: the harness's own
+    reading of completeness then matches the verdict's (an attempt C5 makes incomplete is an aborted attempt, and
+    the next one may start)."""
+    try:
+        phases = []
+        for session in sessions:
+            sdir = data_root / str(session)
+            phases.append(
+                {
+                    "report": json.loads(v.read_copied(sdir, "report.json")),
+                    "store": json.loads(v.read_copied(sdir, "aut_hippocampus.json")),
+                    "lines": v.log_lines(v.read_copied(sdir, v.RUN_LOG), strict=True),
+                }
+            )
+        return v.exp63_c5_problems(phases, goal=v.PROTOCOL[exp]["phases"][-1][1])
+    except (OSError, ValueError, v.Refusal) as exc:
+        return [f"C5 the copied phases could not be read: {type(exc).__name__}: {exc}"]
 
 
 def append_row(rows_file: Path, row: dict) -> None:
@@ -520,7 +674,8 @@ def check_campaign(exp: str) -> None:
 
 def prepare(args: argparse.Namespace, exp: str, mock: bool):
     """Everything before the marker. Returns ``(rows_file, provenance, run_id, k, home, gguf, read_served,
-    lock)``; raises :class:`Refused`, or ``_provenance.ProvenanceError`` (exit 3)."""
+    lock, stamps)`` (``stamps``: what every row of the attempt carries beyond its phase, Exp 63's
+    ``memory_strategy``); raises :class:`Refused`, or ``_provenance.ProvenanceError`` (exit 3)."""
     if mock:
         rows_file = _provenance.evidence_out_path(REPO_ROOT, v.rows_path(exp), write_experiment_results=False)
     else:
@@ -556,15 +711,18 @@ def prepare(args: argparse.Namespace, exp: str, mock: bool):
     if models.is_dir():
         (home / "models").symlink_to(models)
     gguf, read_served = "", None
-    if not mock:
-        try:
+    stamps: dict = {}
+    try:
+        if v.experiment_of(exp) == "63":  # mock or not: the mock runs the same read in its own fresh home
+            stamps["memory_strategy"] = check_memory_strategy(home)
+        if not mock:
             gguf = check_model_config(home, exp)["model_path"]
             check_port_free(v.SIM_PORT)
             read_served = served_reader()
-        except Refused:
-            shutil.rmtree(home, ignore_errors=True)
-            raise
-    return rows_file, provenance, run_id, k, home, gguf, read_served, lock
+    except BaseException:  # any refusal or failure before the marker: the fresh home goes too (E2)
+        shutil.rmtree(home, ignore_errors=True)
+        raise
+    return rows_file, provenance, run_id, k, home, gguf, read_served, lock, stamps
 
 
 def run(args: argparse.Namespace) -> int:
@@ -577,7 +735,7 @@ def run(args: argparse.Namespace) -> int:
         print("REFUSED: a real attempt writes committed evidence: pass --write-experiment-results", file=sys.stderr)
         return 2
     try:
-        rows_file, provenance, run_id, k, home, gguf, read_served, lock = prepare(args, exp, mock)
+        rows_file, provenance, run_id, k, home, gguf, read_served, lock, stamps = prepare(args, exp, mock)
     except _provenance.ProvenanceError as exc:
         print(f"[FAIL] {exc}", file=sys.stderr)
         return 3
@@ -600,25 +758,27 @@ def run(args: argparse.Namespace) -> int:
         if args.command == "preflight":
             shutil.rmtree(home, ignore_errors=True)
     try:
-        return run_attempt(args, exp, mock, rows_file, provenance, run_id, k, home, gguf, read_served, marker)
+        return run_attempt(args, exp, mock, rows_file, provenance, run_id, k, home, gguf, read_served, marker, stamps)
     finally:
         shutil.rmtree(home, ignore_errors=True)
         if lock is not None:
             lock.close()
 
 
-def run_attempt(args, exp, mock, rows_file, provenance, run_id, k, home, gguf, read_served, marker) -> int:
+def run_attempt(args, exp, mock, rows_file, provenance, run_id, k, home, gguf, read_served, marker, stamps=None) -> int:
     import signal  # noqa: PLC0415
 
     saved = {sig: signal.signal(sig, _raise_signal) for sig in (signal.SIGTERM, signal.SIGHUP)}
     try:
-        return _run_phases(args, exp, mock, rows_file, provenance, run_id, k, home, gguf, read_served, marker)
+        return _run_phases(
+            args, exp, mock, rows_file, provenance, run_id, k, home, gguf, read_served, marker, stamps or {}
+        )
     finally:
         for sig, handler in saved.items():
             signal.signal(sig, handler)  # only while this attempt runs (a test process must get its own back)
 
 
-def _run_phases(args, exp, mock, rows_file, provenance, run_id, k, home, gguf, read_served, marker) -> int:
+def _run_phases(args, exp, mock, rows_file, provenance, run_id, k, home, gguf, read_served, marker, stamps) -> int:
     data_root = rows_file.parent
     print(f"attempt {k} of Exp {exp}: run {run_id}, marker {marker}, rows {rows_file}")
     phase1_session: str | None = None
@@ -627,7 +787,7 @@ def _run_phases(args, exp, mock, rows_file, provenance, run_id, k, home, gguf, r
     for index in range(len(v.PROTOCOL[exp]["phases"])):
         resume = phase1_session if v.PROTOCOL[exp]["phases"][index][3] else None
         base = {"harness": HARNESS, "exp": exp, "attempt_k": k, "phase_index": index, "marker": marker}
-        row: dict = {**base, "ts": time.time(), "provenance": provenance}
+        row: dict = {**base, **stamps, "ts": time.time(), "provenance": provenance}
         problems: list[str] = []
         try:
             if index == 2 and phase1_session and tree_digests(home / "sim_reports" / phase1_session) != phase1_source:
@@ -652,6 +812,9 @@ def _run_phases(args, exp, mock, rows_file, provenance, run_id, k, home, gguf, r
                     problems += v.complete_problems(exp, index, row, report, phase1_session, phase1_stores)
                 elif not error:
                     problems.append("no report")
+                last = index == len(v.PROTOCOL[exp]["phases"]) - 1
+                if not problems and last and v.experiment_of(exp) == "63" and sdir is not None:
+                    problems += exp63_attempt_problems(exp, data_root, [phase1_session, sdir.name])
         except BaseException as exc:
             # The attempt counts once its marker is pushed: an interrupted or crashed phase still writes its row.
             reason = f"harness interrupted: {type(exc).__name__}: {exc}"[:500]
