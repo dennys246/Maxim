@@ -160,6 +160,7 @@ class BioEnrichmentPipeline:
         reflex_registry: ReflexRegistry | None = None,
         novelty_threshold: float = 0.4,
         agent_id: str = "",
+        trace_agent_id: str = "",
     ) -> None:
         self._scorer = scorer
         self._hippocampus = hippocampus
@@ -172,6 +173,9 @@ class BioEnrichmentPipeline:
         self._reflex_registry = reflex_registry
         self._novelty_threshold = novelty_threshold
         self._agent_id = agent_id
+        # Logging only (Exp 63's trace attribution): ``agent_id`` above switches on per-agent reads (aversions,
+        # reward bias), so the trace's label is kept apart from it and changes no behaviour.
+        self._trace_agent_id = trace_agent_id
 
     def enrich(
         self,
@@ -241,7 +245,9 @@ class BioEnrichmentPipeline:
         keywords = self._extract_keywords(text)
 
         # Query bio-systems (each handles None gracefully)
-        memories = self._query_hippocampus(text, keywords, context=ctx)
+        memories, memory_paths, goal_path_horizon, goal_path_holes = self._query_hippocampus_traced(
+            text, keywords, context=ctx
+        )
         predictions = self._query_nac(keywords)
         concepts = self._query_atl(keywords)
         affordances = self._query_component_index(text, resolved_entities=ctx.resolved_entities)
@@ -254,10 +260,18 @@ class BioEnrichmentPipeline:
             extra={
                 "event": "enrichment_trace",
                 "data": {
+                    "agent_id": self._trace_agent_id,
                     "query_text": text[:120],
                     "keywords": keywords[:8],
                     "goal": (getattr(ctx, "active_goal", "") or "")[:80] if ctx else "",
                     "memories": len(memories),
+                    # Exp 63: which memories surfaced, by which path, and what the store held at the query's entry
+                    # (its highest stored capture_seq and the unstored numbers below it; a None horizon means the
+                    # read failed, and the JSONL drops the key; docs/experiments/exp63_carried_recall_prereg.md).
+                    "memory_ids": [m.memory_id for m in memories],
+                    "memory_paths": memory_paths,
+                    "goal_path_horizon": goal_path_horizon,
+                    "goal_path_holes": goal_path_holes,
                     "predictions": len(predictions),
                     "concepts": len(concepts),
                     "affordances": len(affordances),
@@ -663,6 +677,14 @@ class BioEnrichmentPipeline:
         keywords: list[str],
         context: "EnrichmentContext | None" = None,
     ) -> list[EpisodicSummary]:
+        return self._query_hippocampus_traced(text, keywords, context=context)[0]
+
+    def _query_hippocampus_traced(
+        self,
+        text: str,
+        keywords: list[str],
+        context: "EnrichmentContext | None" = None,
+    ) -> tuple[list[EpisodicSummary], list[str], int | None, list[list[int]]]:
         """Search hippocampus for episodes matching the text.
 
         Three retrieval paths, tried in order:
@@ -674,12 +696,15 @@ class BioEnrichmentPipeline:
         3. **Substring path**: legacy full-text search (fallback).
         """
         if self._hippocampus is None:
-            return []
+            return [], [], None, []
 
         summaries: list[EpisodicSummary] = []
+        paths: list[str] = []  # parallel to ``summaries`` (appended with it): which retrieval path surfaced each
         seen_ids: set[str] = set()
+        horizon: int | None = None
+        holes: list[list[int]] = []
 
-        def _add_memory(mem: Any, relevance: float) -> None:
+        def _add_memory(mem: Any, relevance: float, path: str) -> None:
             if mem.id in seen_ids:
                 return
             seen_ids.add(mem.id)
@@ -697,6 +722,14 @@ class BioEnrichmentPipeline:
                     relevance=relevance,
                 )
             )
+            paths.append(path)
+
+        try:  # what the store held at entry (Exp 63): a failed read loses only the trace's horizon, never recall
+            horizon, holes = self._hippocampus.stored_capture_seqs()
+            horizon, holes = int(horizon), [[int(a), int(b)] for a, b in holes]
+        except Exception:  # noqa: BLE001 -- logged; the trace then has no horizon, which Exp 63's C5 aborts on
+            horizon, holes = None, []
+            log_swallowed_exception()
 
         try:
             # Path 1: Graph-based retrieval via spreading activation.
@@ -741,7 +774,7 @@ class BioEnrichmentPipeline:
                                     if name:
                                         mems = self._hippocampus.recall(object_detected=name, limit=2)
                                         for mem in mems:
-                                            _add_memory(mem, relevance=float(activation))
+                                            _add_memory(mem, relevance=float(activation), path="graph")
                 except Exception as e:
                     log.debug("Graph-based hippocampus query failed: %s", e)
 
@@ -755,18 +788,18 @@ class BioEnrichmentPipeline:
                 if goal:
                     goal_results = self._hippocampus.recall(query=goal, limit=5)
                     for mem in goal_results[:3]:
-                        _add_memory(mem, relevance=0.7)
+                        _add_memory(mem, relevance=0.7, path="goal")
 
             # Path 3: Substring fallback
             if len(summaries) < 3:
                 results = self._hippocampus.search_by_content(text, limit=5)
                 for mem in results[:3]:
-                    _add_memory(mem, relevance=0.5)
+                    _add_memory(mem, relevance=0.5, path="substring")
 
-            return summaries[:3]
+            return summaries[:3], paths[:3], horizon, holes
         except Exception as e:
             log.debug("Bio-enrichment hippocampus query failed: %s", e)
-            return []
+            return [], [], horizon, holes
 
     def _query_nac(self, keywords: list[str]) -> list[CausalPrediction]:
         """Query NAc for causal predictions matching keywords.

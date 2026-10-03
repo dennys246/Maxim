@@ -54,9 +54,16 @@
   its pipeline today; nothing structural guarantees that).
 - `memory_ids`: the ids `_query_hippocampus` returned, in order.
 - `memory_paths`: a parallel list, each `"graph"`, `"goal"` or `"substring"`.
-- `goal_path_horizon`: the store's highest `capture_seq`, read at entry to `_query_hippocampus` and logged on every
-  trace (the goal path is skipped when the graph path already returns 3, and the memory-agent thread can capture
-  between the query and the `hippocampus_size` read).
+- `goal_path_horizon`: the store's highest stored `capture_seq` (-1 when empty), read at entry to
+  `_query_hippocampus` and logged on every trace (the goal path is skipped when the graph path already returns 3, and
+  the memory-agent thread can capture between the query and the `hippocampus_size` read).
+- `goal_path_holes` (amended 2026-10-03, before any data; the instrumentation's review): the numbers from the
+  process's first reservable one (the store's load watermark) up to the horizon that were not stored at that moment,
+  read with the horizon (the floor moves only at a load, which precedes every capture), as inclusive `[start, end]`
+  ranges. Numbers below the watermark were loaded or are gone
+  for good, and are never in a later save either. A capture reserves its number before it
+  lands (the loop's async capture at enqueue, a direct capture at insert), so a later number can be stored while an
+  earlier one is in flight; dropped and evicted numbers are holes too.
 
 The trace is logged at enrich time; rendering activates the first 3 ids (`_activate_rendered`).
 
@@ -77,7 +84,8 @@ for two phases, with `--sim-run-full-turns` in the recorded argv, plus:
 - **C5 (the instrument reads true).** Each failure aborts the attempt: an instrument fault is not data.
   - **(a) Agent.** Every phase-2 trace the gates read has `agent_id` equal to the AUT's.
   - **(b) Shape.** Every phase-2 AUT trace has `memory_ids` and `memory_paths` of equal length, equal to its
-    `memories` count, and every id is in phase 2's saved store.
+    `memories` count, and every id is in phase 2's saved store. It carries `goal_path_horizon` and `goal_path_holes` (a missing
+    horizon means its read failed: amended 2026-10-03, before any data).
   - **(L) Liveness.** Each turn's trace (below) reads `memories == min(3, hippocampus_size)`. It can fail only when
     `_query_hippocampus` swallows an exception to `[]`, an instrument fault.
   - **(d) No compressed record.** Phase 2's saved store holds no `CompressedMemory` (compression would change the
@@ -111,10 +119,14 @@ its first AUT `enrichment_trace` with a non-empty `goal`.
 - **R3′ (conformance, owner decision 2026-10-03).** For each turn's trace, recompute
   `dedup(the logged graph-path ids + the goal-path top 3 + the logged substring ids)[:3]`, where the goal-path
   top 3 is the executed commit's own `_rank_by_relevance(candidates, goal, 5)[:3]` over the phase-2 saved-store
-  records with `capture_seq ≤ goal_path_horizon` (tolerance: any horizon in `[goal_path_horizon, goal_path_horizon + 2]`
+  records with `capture_seq ≤ goal_path_horizon` and not in `goal_path_holes` (amended 2026-10-03, before any data;
+  a logged hole whose record is in the saved store may also be included, for a capture that landed between the
+  holes read and the recall; tolerance: any horizon in `[goal_path_horizon, goal_path_horizon + 2]`
   that reproduces the logged ids, for the capture race). Substring ids cannot be recomputed (the path matches the full
   percept text, and the trace logs 120 characters), so each logged substring id must only be a candidate
-  (`capture_seq ≤ goal_path_horizon + 2`), and they must appear in recency order. The logged `memory_ids` must equal the recomputation, in
+  (`capture_seq ≤ goal_path_horizon + 2`, permissive: holes are not subtracted there), and they must appear in recency
+  order. A record visible at a trace but evicted before the save would make R3′ unreproducible; no eviction happens
+  at this run's store size (the cap is 10,000 records). The logged `memory_ids` must equal the recomputation, in
   order, on **8 of 8** turns. A FAIL means a carried record did not take part in recall as its saved bytes say it
   should (an index or field not restored, a compressed form treated differently): the persistence-into-recall defect
   P2 cannot see.

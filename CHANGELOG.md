@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **An enrichment trace says whose recall it was and which memories it surfaced** (Exp 63 instrumentation,
+  `docs/experiments/exp63_carried_recall_prereg.md`). `enrichment_trace` gains `agent_id` (a logging-only label the
+  bio stack sets; the pipeline's own `agent_id`, which switches on per-agent reads, is unchanged), `memory_ids`,
+  `memory_paths` (`graph` / `goal` / `substring`), `goal_path_horizon` (the store's highest stored `capture_seq` at
+  the query's entry, -1 when empty) and `goal_path_holes` (the numbers at or below it not yet stored: a capture
+  reserves its number before it lands), read together by the new `Hippocampus.stored_capture_seqs()`. Recall itself
+  is unchanged.
 - **config.json format 1.2: the file holds exactly the settings you chose.** `maxim config set` pins a value even when
   it equals the default (`llm.n_ctx 8192` now reads back as source `config`, which the O19 re-runs require);
   `maxim config unset <field>` (or `set <field> null`) returns a field to its default. A 1.1/1.0 full-dump file reads as
