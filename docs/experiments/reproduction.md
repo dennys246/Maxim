@@ -47,9 +47,9 @@ The short version: **a re-run is a new experiment, and its result counts only if
 
 ## 6. Only a stamped verdict is new evidence, and the gate re-judges it
 
-- **Rule.** A status change cites a **verdict record**: stamped with its data's SHA-256, its judge's source SHA-256 and its provenance, and written by `o19_verdict.py --write-experiment-results`. The ledger's evidence gate re-runs the merge-base judge on the committed bytes and refuses a record it cannot reproduce. Raw rows, logs and sim reports are judged, never cited alone.
-- **Enforced by** [scripts/lint_evidence_gate.py](../../scripts/lint_evidence_gate.py) and `scripts/_evidence_records.py::judge_o19`.
-- **Known gap ([#1050](https://github.com/dennys246/Maxim/issues/1050)).** The gate re-judges only with the merge-base judge, so any edit to `o19_verdict.py` strands every existing O19 verdict. That is why the O19 scripts are frozen while a campaign is in flight (§10).
+- **Rule.** A status change cites a **verdict record**: stamped with its data's SHA-256, its judge's source SHA-256 and its provenance, and written by `o19_verdict.py --write-experiment-results`. The ledger's evidence gate re-runs the judge that wrote the verdict, bound to its data (the same script at the verdict's commit and at every commit an attempt ran on), on the committed bytes, and refuses a record it cannot reproduce. Raw rows, logs and sim reports are judged, never cited alone.
+- **Enforced by** [scripts/lint_evidence_gate.py](../../scripts/lint_evidence_gate.py) and `scripts/_evidence_records.py::judge_o19`, `::o19_judge_edit_problems` and `::o19_history_problems`.
+- **A judge edit keeps every old verdict ([#1050](https://github.com/dennys246/Maxim/issues/1050), fixed 2026-10-03).** The gate used to re-judge only with the merge-base judge, so any edit to `o19_verdict.py` stranded every existing O19 verdict. Now each verdict is re-judged with the judge bound to its data, and a PR that edits the judge must re-judge every existing O19 verdict to the same result (strict: new behaviour goes to a new campaign key). The scripts are still frozen while a campaign is in flight (§10), because the writer requires the same scripts at every executed commit and on `main`.
 
 ## 7. Verify the instrument before you read the subject
 
@@ -75,7 +75,7 @@ The short version: **a re-run is a new experiment, and its result counts only if
 
 - **What happened.** Campaign 1 for Exp 10 could not continue on the fix: its prereg pins every attempt to the first attempt's code tree. Retrying on new code would have mixed two code trees in one campaign. Quietly starting over would have hidden the abort.
 - **Rule** (owner decisions 2026-10-01 and 2026-10-02).
-  - Close the campaign with its own stamped verdict, written *before* any O19 script changes: after that change it can never be recomputed (`check_bound` refuses), so what survives is the committed verdict, pinned by SHA-256 in its successor.
+  - Close the campaign with its own stamped verdict, written *before* any O19 script changes: after that change the writer cannot write it again (`check_bound` refuses), so what survives is the committed verdict, pinned by SHA-256 in its successor. The gate can still re-judge it with its bound judge (#1050).
   - Open a successor campaign with its own prereg, data directory and marker namespace. A campaign may be succeeded **only after an ABORT**: a PASS or FAIL is terminal, so a failed result cannot be discarded by opening another campaign.
   - The successor pins its predecessor's closure verdict by SHA-256 and names the owner decision and the fixed cause issue. The closure (dated by when its pinned bytes reached `main`) and the successor's prereg must reach `main` before the successor's first marker.
   - At most one open campaign per experiment, and at most two campaigns. Another ABORT leaves the row STALE.

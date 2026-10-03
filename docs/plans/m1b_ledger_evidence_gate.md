@@ -540,12 +540,32 @@ name; unknown → NOT-ESTABLISHED. Outcomes: ESTABLISHED / LEGACY (in the snapsh
 - `unknown` / `unknown:…` digests never match anything; every executed hash must be an ancestor of the merge-base.
 
 ### O19 verdicts (`exp10_verdict`, `exp09_verdict`)
-- The merge-base blob of `scripts/o19_verdict.py` must equal `bound_files["scripts/o19_verdict.py"]` and its
-  sha256 `verdict_source_sha256`; the merge-base copy is loaded from a temporary file (`sys.path` restored
-  after), and its pure `judge()` re-run on the bound bytes with attempts built by its own `attempts_from_rows`,
-  ordered by a stable sort of `apparatus.markers` on k; the markers must cover every row's `harness_run_id`; the
-  re-judged `verdict`, `deciding_attempt` and `[(run_id, k, complete)]` must equal the verdict's. Any load or
-  judge exception → NOT-ESTABLISHED.
+- **An O19 verdict is cited only as its rows' `verdict.json`** (`dirname(data)/verdict.json`), so half B below can
+  find every one.
+- **The judge is the one bound to the verdict's data (#1050, 2026-10-03).** `verdict_commit` is on the merge-base's
+  FIRST-PARENT history and equals `provenance.executed_git_hash`; `bound_files` is exactly `scripts/o19_verdict.py`,
+  `scripts/o19_rerun.py` and the campaign's prereg (as the bound judge's table names it), each the same blob at
+  `verdict_commit` and at every commit an attempt ran on (each row's executed commit and each marker's `peeled`
+  commit, all ancestors of the merge-base; every marker carries a 40-hex `peeled`, and each row ran on its marker's
+  commit); the rows file at `verdict_commit` hashes to `data_sha256`; and the bound
+  judge's bytes hash to `verdict_source_sha256`. (Before #1050 the gate loaded the MERGE-BASE judge, so any later
+  edit to the script stranded every existing O19 verdict.) The bound judge is loaded from a temporary file
+  (`sys.path` restored after; it must carry `O19_INTERFACE`), and its pure `judge()` re-run on the bound bytes with
+  attempts built by its own `attempts_from_rows`, ordered by a stable sort of `apparatus.markers` on k; the markers
+  must cover every row's `harness_run_id`; the re-judged `verdict`, `deciding_attempt`, `[(run_id, k, complete)]`
+  and `gates` must equal the verdict's. Any load or judge exception → NOT-ESTABLISHED.
+- **A judge edit may not change an existing verdict (strict, owner decision 2026-10-03).** When the diff touches
+  `scripts/o19_verdict.py`, every O19 `verdict.json` the merge-base or HEAD holds (cited or not, closures pinned by
+  `supersedes` included, one deleted or renamed in the same diff too) is re-judged with the HEAD script, reading the
+  record, its rows, its session files and its predecessor closure as MAIN holds them when the record is there (as
+  HEAD holds it when the diff adds it), and must give the same `verdict`, `deciding_attempt`, attempts and `gates`;
+  a deleted script while such verdicts exist fails. No exception path: new judge behaviour is scoped to new campaign
+  keys.
+- **Every judge main ever held still loads through the gate** (`o19_history_problems`, on every gate run): each
+  `scripts/o19_verdict.py` blob on the merge-base's first-parent history must load through `load_o19_judge` with
+  `O19_INTERFACE` (every attribute the re-judge calls). A gate edit an old judge cannot satisfy would strand that
+  judge's verdicts. The check needs the full history: a shallow clone fails (the lint job checks out at
+  `fetch-depth: 0`).
 - Each `status: ok` row's `files` re-hashed under `dirname(data)/<session_id>/` (plain or `.gz`,
   uncompressed bytes; both forms present → refused); `session_id` one plain path component inside
   `dirname(data)`; file names without `/` or `..`; no symlinks. The `sims[]` check runs over ok rows only
