@@ -36,6 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An agent is offered "think first" only if its loop can continue the thought** (#1052). The simulation
+  narrator's prompt invited `ready_to_act: false` ("false to keep thinking", and the PFC preamble, which reaches
+  every sim agent). But its loop has no bio-enrichment pipeline, so no deliberation cycle could continue the thought,
+  and each such answer counted as a planning failure (D13) until the sim aborted `planning_failed`. That is how O19
+  Exp 10 campaign 2 attempt 1 ended, in the resumed garden phase. The planning loop now says whether it can
+  deliberate (`LLMRequest.deliberation_available`, set from "has a pipeline"). For a loop that cannot, the prompt
+  drops the "keep thinking" option and the PFC preamble. The AUT, which has a pipeline, sees its prompt unchanged.
+  A resumed session's narrator now gets the same first-action line a fresh one does, in every mode: one chooser
+  (`sim_types.kickoff_instruction`) serves observe-only, campaign-protocol and generative sessions alike.
 - **The simulation's stall detector no longer nudges a narrator that is busy** (#1042). Two defects made its
   suppression dead: the in-flight call registry recorded each routed call under its cost-budget tier (`normal`, ...)
   while the detector asks for the request's lane (`large`), and it only counted moments when an LLM call was running.

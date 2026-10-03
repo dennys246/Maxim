@@ -824,10 +824,19 @@ def build_instructions_section(request: LLMRequest) -> str:
             ]
         )
     else:
+        # "false to keep thinking" only for a loop that can continue the thought (#1052): elsewhere a not-ready
+        # answer can only be dropped, so every answer acts.
+        ready = (
+            []
+            if request.deliberation_available is False
+            else [
+                '  "ready_to_act": true/false (true when you need to call a tool, speak, or move; false to keep thinking)'
+            ]
+        )
         lines.extend(
             [
                 "Respond with a compact JSON object. IMPORTANT: Put fields in this order:",
-                '  "ready_to_act": true/false (true when you need to call a tool, speak, or move; false to keep thinking)',
+                *ready,
                 '  "action": {"tool_name": "<tool>", "params": {...}}',
                 '  "confidence": 0.0-1.0',
                 '  "reasoning": "Brief inner thought (1 sentence, first person — observe/wonder/hypothesize/commit)"',
@@ -1372,6 +1381,8 @@ class PromptBuilder:
         nothing — otherwise the agent defaults to generic task-mode reasoning
         ("I need to...") without the inner monologue structure.
         """
+        if request.deliberation_available is False:  # nothing would continue the thought (#1052)
+            return
         ctx = request.context
         # Check for any bio-stack signal, including sim mode
         in_sim = False

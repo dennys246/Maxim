@@ -231,6 +231,22 @@ update.
   ATL relations, and the survival harnesses use the ATL only through `activate_substrate_node` (#812's
   caller grep).
 
+### Trigger walk — 2026-10-02 (#1052: an agent is offered "think first" only if its loop can deliberate)
+
+The change is to the sim narrator's prompt. It no longer carries the PFC preamble or the "false to keep
+thinking" option, and a resumed session's narrator gets the same first-action line a fresh one does, chosen by
+mode (`sim_types.kickoff_instruction`). The AUT's prompt is unchanged: its loop has a pipeline, so `deliberation_available` is True
+and the prompt is byte-identical (pinned by `test_a_loop_that_deliberates_sees_the_prompt_unchanged`).
+
+**Exp 37 (T1-2) fires literally ("prompt construction change"; `prompt_builder` changed). It is already STALE
+(#1047's walk), so nothing moves, and its AUT's prompt is byte-identical here.**
+
+**No other row fires.**
+- A grep of every `Re-run on:` finds none that names the narrator, the orchestrator, the PFC preamble,
+  deliberation or resume. Exp 60/62 name their own apparatus.
+- T1-1 (Exp 10) and T3-9 (Exp 09) are STALE. The narrator's messages are a changed stimulus that reaches their
+  data only through the O19 re-runs, which run on this code.
+
 ### Trigger walk — 2026-10-02 (#1042 PR B: a prompt names only tools the agent has)
 
 PR B changes what every LLM agent reads (owner decision 2026-10-01: every agent, with this walk). The prompt

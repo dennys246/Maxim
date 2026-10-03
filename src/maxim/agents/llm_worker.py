@@ -960,6 +960,7 @@ class LLMWorker:
         is_sleeping: bool = False,
         protocol_context: str = "",
         failed_tools: list[str] | None = None,
+        deliberation_available: bool,
     ) -> bool:
         """
         Submit context for LLM processing (non-blocking).
@@ -1008,6 +1009,7 @@ class LLMWorker:
             entity_spec=self.entity_spec,
             is_embodied=self.is_embodied,
             failed_tools=failed_tools or [],
+            deliberation_available=deliberation_available,
         )
 
         if self._pool is not None:

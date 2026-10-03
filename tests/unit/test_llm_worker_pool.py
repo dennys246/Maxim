@@ -76,6 +76,7 @@ def _submit_test_context(worker, triggering_input: str = "maxim hello", priority
         use_tool_prompting=True,
         available_tools={"respond"},
         tool_descriptions={"respond": "Send a message"},
+        deliberation_available=True,
     )
 
 

@@ -95,6 +95,7 @@ def test_the_worker_retry_carries_the_correction_into_the_next_prompt() -> None:
             internet_policy_summary="",
             use_tool_prompting=True,
             available_tools=set(NARRATOR_TOOLS),
+            deliberation_available=False,  # the narrator's loop (#1052)
         )
         first = _wait_for_proposal(worker)
         assert first is not None and first.original_request is not None

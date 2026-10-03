@@ -100,6 +100,7 @@ def _submit_test_context(worker, triggering_input: str = "probe the AUT") -> boo
         use_tool_prompting=True,
         available_tools={"respond"},
         tool_descriptions={"respond": "Send a message"},
+        deliberation_available=True,
     )
 
 

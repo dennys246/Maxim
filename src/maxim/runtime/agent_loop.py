@@ -5352,6 +5352,7 @@ def run_agentic_loop(
                             skip_exploration=skip_exploration,
                             is_sleeping=is_sleeping,
                             protocol_context=_protocol_context,
+                            deliberation_available=bio_enrichment_pipeline is not None,
                         )
                         ctrl.last_llm_submit_time = now
                         # Log submission for both user input and followups
@@ -5415,6 +5416,7 @@ def run_agentic_loop(
                                         skip_exploration=False,
                                         is_sleeping=is_sleeping,
                                         protocol_context=_protocol_context,
+                                        deliberation_available=True,
                                     )
 
                                     def _submit_fn(_ctx: Any, _kw: dict = _submit_kwargs) -> bool:
