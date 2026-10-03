@@ -456,6 +456,15 @@ only on a conservative reading, as `roadmap_1_3_x.md` item 2 records.
   prompt no longer carry "succeeded", and prediction confidence ignores unknown outcomes.
 - The row makes no EARNED claim and blocks no release. A re-fire of it runs on the new prompt.
 
+### Trigger walk — 2026-10-03, Exp 63's trace instrumentation
+
+`integration/bio_enrichment.py`, `memory/hippocampus.py` and `runtime/bio_stack.py` changed: the enrichment trace logs
+`agent_id` (a separate logging-only label), the surfaced `memory_ids`, their `memory_paths` and the store's highest
+stored `capture_seq` with the unstored numbers below it; `Hippocampus` gains a read-locked `stored_capture_seqs()`. Recall's inputs, order and output
+are unchanged (the query returns the same summaries; `_query_hippocampus` wraps the traced version). No row's
+`Re-run on:` names enrichment, retrieval or the trace, and no gate reads the new fields until Exp 63's verdict.
+**No row fires.**
+
 ### Trigger walk — 2026-09-29, #818 (NAc wall-clock decay of `cluster_reward_bias`)
 
 #818 makes `NAc.apply_wall_clock_decay` skip inherent-class cluster biases (`_inherent_bias_keys`), as the

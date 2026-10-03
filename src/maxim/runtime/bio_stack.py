@@ -584,6 +584,7 @@ def build_bio_stack(
             atl=atl,
             ec=ec,
             encoder=getattr(memory_hub, "_encoder", None),
+            trace_agent_id=agent_id,  # logging only: the trace says whose recall it was (Exp 63)
         )
         thought_gate = ThoughtGate(scorer=_text_scorer)
         logger.info("ThoughtGate + BioEnrichmentPipeline constructed in bio-stack")

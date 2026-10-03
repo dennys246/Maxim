@@ -434,6 +434,9 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         self._over_capacity_next_warning = 1
         self._captures_this_process = 0
         self._capture_seq_next = 0  # Phase 2d-1; guarded by _work_lock; resumed past the saved max on load
+        # The first number this process can reserve (guarded by _work_lock): every lower number is loaded or gone
+        # for good, so stored_capture_seqs reports holes only from here (Exp 63).
+        self._capture_seq_floor = 0
         self._activations_this_process = 0
 
         # Deletion callbacks for subsystem cleanup
@@ -726,6 +729,30 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         with self._work_lock:
             return (self._captures_this_process, self._activations_this_process)
 
+    def stored_capture_seqs(self) -> tuple[int, list[list[int]]]:
+        """``(horizon, holes)``: the highest ``capture_seq`` stored now (-1 when none is; the stored set is read under
+        one lock, the floor under the work lock, and the floor moves only at a load), and
+        the numbers from this process's first reservable one up to the horizon that are not stored, as inclusive
+        ``[start, end]`` ranges (Exp 63's ``goal_path_horizon`` / ``goal_path_holes``). Numbers are reserved before
+        their memory lands (the loop's async capture reserves at enqueue, a direct capture at insert), so a later
+        number can be stored while an earlier one is in flight: what a recall can see is ``capture_seq <= horizon``
+        minus the holes. Numbers below the floor were loaded or are gone for good (never in a later save either),
+        assuming the load precedes the first reservation (it does: a store loads at construction)."""
+        with self._rwlock.read():
+            stored = {s for m in self._memories.values() if isinstance(s := getattr(m, "capture_seq", None), int)}
+        with self._work_lock:
+            floor = self._capture_seq_floor
+        horizon = max(stored) if stored else -1
+        holes: list[list[int]] = []
+        for s in range(floor, horizon + 1):
+            if s in stored:
+                continue
+            if holes and holes[-1][1] == s - 1:
+                holes[-1][1] = s
+            else:
+                holes.append([s, s])
+        return horizon, holes
+
     def next_capture_seq(self) -> int:
         """Reserve the next capture sequence number (Phase 2d-1). Monotonic per store, across loads --
         ordered, not contiguous: a capture the full queue drops has already taken its number. The clock
@@ -797,6 +824,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         saved = [s for m in self._memories.values() if (s := getattr(m, "capture_seq", None)) is not None]
         with self._work_lock:
             self._capture_seq_next = max(self._capture_seq_next, max(saved) + 1 if saved else 0)
+            self._capture_seq_floor = self._capture_seq_next
 
     def _stamp_encoding_strength(
         self, memory: "EpisodicMemory", *, experience_us: int | None = None, capture_seq: int | None = None
