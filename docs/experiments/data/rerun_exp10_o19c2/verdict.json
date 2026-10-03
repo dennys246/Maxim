@@ -1,0 +1,80 @@
+{
+  "attempts": [
+    {
+      "run_id": "fa34886976b5435e8abb05b5a8becefb",
+      "k": 1,
+      "complete": false,
+      "problems": [
+        "phase 2 row ended 'failed': SimRunFailed: sub-sim exited 4 (finish_reason='planning_failed')"
+      ]
+    }
+  ],
+  "experiment": "10c2",
+  "verdict": "ABORT",
+  "deciding_attempt": null,
+  "apparatus_checked": true,
+  "apparatus": {
+    "markers": [
+      {
+        "k": 1,
+        "ref": "refs/tags/o19/10c2/attempt-1-fa34886976b5435e8abb05b5a8becefb",
+        "object": "357ac3b649f0ecfa134a5eec8dd36daed992c33d",
+        "peeled": "c11843753210c9edb6d3b2f9025293e2ed29370a",
+        "tagger_date": 1790973351.0,
+        "run_id": "fa34886976b5435e8abb05b5a8becefb"
+      }
+    ],
+    "ruleset": {
+      "id": 24345734,
+      "created_at": "2026-10-01T21:27:48.500-06:00",
+      "updated_at": "2026-10-01T21:27:48.517-06:00",
+      "history_versions": [
+        51650702
+      ]
+    },
+    "rows_history": [
+      {
+        "commit": "c1ab99741d53820b7632ced3c2df870ef8bec4b8",
+        "committed_at": 1790977986.0
+      }
+    ],
+    "landed": {
+      "fa34886976b5435e8abb05b5a8becefb": 1790977986.0
+    },
+    "succession": {
+      "key": "10",
+      "verdict": "docs/experiments/data/rerun_exp10_o19/verdict.json",
+      "verdict_sha256": "5da2128968bb4516350aa26680294d9f79966424a518fc37b3dd68c0bf826fbe",
+      "owner_decision": "2026-10-01",
+      "cause_issue": 1042,
+      "closure_landed": 1790969644.0,
+      "prereg_landed": 1790972793.0
+    }
+  },
+  "bound_files": {
+    "docs/experiments/protocols/exp10_rerun_2026-10-02_preregistration.md": "1de5f2dd69da33497c07525b22798bc3c4d202f4",
+    "scripts/o19_verdict.py": "802aa93d6e4dcd8a4794e5653736e0eea0e860a0",
+    "scripts/o19_rerun.py": "ca291d2b69615e1c08d4d3d9120f06edefe6107c"
+  },
+  "verdict_commit": "c1ab99741d53820b7632ced3c2df870ef8bec4b8",
+  "verdict_source_sha256": "61aeeed932a819579b2822edacd99eb4518859aad5b3230553a3468113ccbced",
+  "record_kind": "verdict",
+  "kind": "exp10_verdict",
+  "data": "docs/experiments/data/rerun_exp10_o19c2/rows.jsonl",
+  "data_sha256": "e28eec572ad3dcdef5c0ea34b89d8ef873b780328a215abf18c86b70b4161bc1",
+  "scope": {
+    "all_rows": true
+  },
+  "mock": false,
+  "provenance": {
+    "executed_maxim_file": "/Users/dennyschaedig/Scripts/Maxim/.worktrees/o19-c2-closure/src/maxim/__init__.py",
+    "executed_git_hash": "c1ab99741d53820b7632ced3c2df870ef8bec4b8",
+    "harness_run_id": "01d7e95d92964e92b9d269a8febbfb69",
+    "harness_family": "in_process",
+    "working_tree_dirty_src_scripts": false,
+    "code_tree_sha256": "5fcac0a8857bd015e02edfcfaa6049282b40d8e79cfb4bf60ce0026d11cc0e5f",
+    "python": "/Users/dennyschaedig/Scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.worktrees/o19-c2-closure/src"
+  },
+  "_format_version": "1.0"
+}
