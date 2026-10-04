@@ -25,6 +25,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Coverage is a CI gate** (roadmap 1.3.2 item 5, the gate half). The required fast suite now runs under
+  coverage in its one run (`coverage==7.13.3` and `pytest-cov==7.0.0`, pinned exactly), and
+  `scripts/lint_coverage.py` checks the result. There is an overall floor and one per package, measured in CI
+  and pinned rounded down to 0.1 pt. A run fails below a floor, and also more than 1.0 pt above one, until the
+  floor is raised. At least 80% of a pull request's changed executable `src/maxim` statements must be
+  covered, and moved code counts as changed (owner decisions 2026-10-04). `scripts/coverage_exclusions.json`
+  is a reviewed exclusion list: every entry has a reason, and a new one needs a ref. It also holds an
+  append-only ledger of excluded files' statement counts and each file's coverage-exclusion matches
+  (`pragma: no cover`, `if TYPE_CHECKING:` and the rest). **Packaging config:** `[tool.coverage.run] omit` in
+  `pyproject.toml` now lists exact paths taken from that file: `embodied_runtime/selfy.py`, which was a
+  `*/embodied_runtime/selfy.py` glob before. The rest of the `[tool.coverage]` table is fixed by the lint.
+  `pyproject.toml` is in the evidence gate's `SUBJECT_PATHS`, so that `omit` edit is an O19 subject change;
+  later floor and ledger edits live in `scripts/`, outside the subject.
+
 - **One function-length ratchet** (roadmap 1.3.2 item 6, #940 item 1). It replaces the two mismatched checks (a
   lint with three stale pins and a strict test on the same three functions) with `scripts/lint_function_length.py`
   and one baseline, `src/maxim/utils/function_length_baseline.json` (format v2). All 53 functions over 200 lines are

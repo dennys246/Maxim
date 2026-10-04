@@ -300,7 +300,10 @@ source = ["src/maxim"]
 omit = [
     "*/tests/*",
     "*/__pycache__/*",
-    "*/embodied_runtime/selfy.py",  # Too coupled for unit testing currently
+    # Below this line: EXACTLY the paths in scripts/coverage_exclusions.json (reason, ref and a
+    # statement-count ratchet per entry live there). scripts/lint_coverage.py fails on any other
+    # entry, on any other [tool.coverage] change, and on a coverage config file anywhere else.
+    "src/maxim/embodied_runtime/selfy.py",
 ]
 branch = true
 

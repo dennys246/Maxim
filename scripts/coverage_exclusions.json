@@ -1,0 +1,39 @@
+{
+  "exclusions_format_version": 1,
+  "exclusions": [
+    {"path": "src/maxim/embodied_runtime/selfy.py", "reason": "The `Maxim` robot-runtime class: its constructor sets the process-wide multiprocessing start method, probes the GPU, builds a segmentation model and connects to a robot through the hardware registry, and it composes the six embodied_runtime mixins that are measured on their own. Omitted since 2b77c3d6 (2026-02-07, 'too coupled for unit testing'); four unit tests reach parts of it (operational-mode launch, workspace safety, robots.yaml connect config, swallowed-log) but its lines are not counted. Not covered by the model-cache nightly.", "covered_by": null, "ref": null}
+  ],
+  "ledger": [
+    {"kind": "excluded_statements", "file": "src/maxim/embodied_runtime/selfy.py", "count": 514, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/agents/prompt_builder.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/cli.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/console/server.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/default_network/gaze_manager.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/doctor/checks.py", "count": 2, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/embodied_runtime/connection.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/embodied_runtime/selfy.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/hardware/reachy/controller.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/hivemind/substrate_client.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/inference/transcribe_audio.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/memory/hippocampus_persistence.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/models/download.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/models/language/maxim_peer_backend.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/models/language/openai_backend.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/models/language/router.py", "count": 2, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/modes/definitions.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/peer/admin_core.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/peer/cli.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/peer/install_core.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/peer/mesh_setup.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/retrieval/signals.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/runtime/executor.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/runtime/lane_backends.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/tools/http_fetch.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/tools/internet_search.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/utils/audit.py", "count": 2, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/utils/coding_guidelines.py", "count": 2, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/utils/http.py", "count": 10, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/utils/reachy_diagnostics.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
+    {"kind": "pragma", "file": "src/maxim/utils/response_output.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null}
+  ]
+}
