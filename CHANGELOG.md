@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **FearCircuitBridge and plan_manager's replan hint are marked Dormant, and their silent failures now log**
+  (#840, #841, owner decision 2026-10-04). Neither was ever live. The bridge's NAc calls never matched NAc's API
+  and nothing calls it. The replan hint passed a string where a perception was expected, and no plan is ever
+  created. Both stay constructed and wired ("Dormancy over deletion"), though nothing reaches either. Their
+  silent `except Exception` handlers now report through `log_swallowed_exception`. Follow-up plans: `docs/plans/fear_learning.md` (#1072) and
+  `docs/plans/executive_function.md` (#1073).
 - **An enrichment trace says whose recall it was and which memories it surfaced** (Exp 63 instrumentation,
   `docs/experiments/exp63_carried_recall_prereg.md`). `enrichment_trace` gains `agent_id` (a logging-only label the
   bio stack sets; the pipeline's own `agent_id`, which switches on per-agent reads, is unchanged), `memory_ids`,

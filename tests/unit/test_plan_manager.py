@@ -628,3 +628,19 @@ class TestBuildReplanContext:
         assert ctx.original_objective == "Test"
         assert ctx.similar_past_failures == []
         assert ctx.alternative_approaches == []
+
+
+def test_the_dormant_replan_hint_reports_its_failure_rather_than_swallowing_it(tmp_path, monkeypatch) -> None:
+    """#841 (Dormant since 2026-10-04): the recall_similar call has never worked. It stays wired, but its failure
+    reports through log_swallowed_exception instead of a bare pass."""
+    import maxim.planning.plan_manager as pm
+    from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
+
+    reported: list[bool] = []
+    monkeypatch.setattr(pm, "log_swallowed_exception", lambda *a, **k: reported.append(True))
+    mgr = make_plan_manager(
+        tmp_path, services=PlanServices(hippocampus=Hippocampus(HippocampusConfig(auto_save_after_sleep=False)))
+    )
+    mgr.create_plan("p-1", "Test", [make_phase(index=0, status="ACTIVE")])
+    ctx = mgr._build_replan_context(mgr.active_plan, mgr.active_plan.phases[0], "boom", 0)
+    assert ctx.similar_past_failures == [] and reported == [True]
