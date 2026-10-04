@@ -615,6 +615,7 @@ Status cell opens with a machine-readable line:
 | Token | Rank | Meaning |
 |---|---|---|
 | `EARNED`, `MAINTAINED`, `RE-VALIDATED` | 3 | Positive: backed by a committed, gated experiment record (the evidence gate judges these) |
+| `REPRODUCED` | 3 | Positive, O19 only ([#1059](https://github.com/dennys246/Maxim/issues/1059)): a **successor** campaign's verdict, on subject code byte-identical to the root campaign's executed commits. It means "the subject's code is unchanged since the root campaign", not that a judged result was reproduced (the root may hold only aborts). A successor never supports `MAINTAINED`; a root never supports `REPRODUCED` |
 | `PARTIAL` | 2 | Part of the claim stands; the rest was pulled from release framing |
 | `RE-VALIDATED-BY-TESTS` | 2 | Re-validated by tests, not a run; named as unchecked by the evidence gate |
 | `LEGACY` | 2 | Earned, but its records are not recoverable; can be kept, never entered, and never backs a raise |
@@ -625,15 +626,16 @@ Status cell opens with a machine-readable line:
 A raise is a move to a higher rank. `scripts/lint_ledger_format.py` (CI lint job, through the shared parser
 `scripts/_ledger.py`) enforces the format:
 - **Every run:** the vocabulary, the dates, the evidence shape, and a `Regression guard:` field in the Status
-  cell of every `EARNED`, `MAINTAINED`, `RE-VALIDATED`, `RE-VALIDATED-BY-TESTS` and `LEGACY` row.
+  cell of every `EARNED`, `MAINTAINED`, `RE-VALIDATED`, `REPRODUCED`, `RE-VALIDATED-BY-TESTS` and `LEGACY` row.
 - **Against the merge-base:**
   - no ID vanishes and no date moves back;
   - a raise, or a move between positive tokens, needs a later date;
   - `LEGACY` cannot be entered;
-  - a row entering `SUPERSEDED` names a successor at a positive status (an unearned successor cannot retire a `STALE` or `BROKEN` row);
+  - a row entering `SUPERSEDED` names a successor at a positive status, `REPRODUCED` included (an unearned successor cannot retire a `STALE` or `BROKEN` row). This is a ledger ROW's successor; an O19 *campaign's* successor (`supersedes` in `scripts/o19_verdict.py::PROTOCOL`) is a different thing, and the `superseded` clause kind in `evidence_exceptions.json` belongs to the former;
   - a new row's date is no earlier than the branch point.
 
 Whether a cited record is the right one is M1b PR 5's evidence gate ([m1b_ledger_evidence_gate.md](m1b_ledger_evidence_gate.md)).
+For an O19 verdict it also applies the campaign-succession rules ([#1059](https://github.com/dennys246/Maxim/issues/1059); [reproduction.md §13](../experiments/reproduction.md)): whether the campaign has a predecessor comes from the merge-base campaign table, a successor supports only `REPRODUCED` (or `PARTIAL`), and only with no FAILED gate leaked into a predecessor's committed phases, byte-identical subject code at every executed commit of the chain, and the root's argv and `MAXIM_*` env. A `ledger` exception clause stays the visible override (the design pass's recommendation, adopted 2026-10-04).
 
 ### Tier 1 — Thesis-load-bearing (MUST graduate, or 1.0 is dishonest)
 

@@ -42,6 +42,7 @@ from _evidence_records import (  # noqa: E402  (re-exported: the gate's record v
     LEGACY,
     NOT_ESTABLISHED,
     O19_JUDGE,
+    O19_KINDS,
     SUPPORT_KINDS,
     Ctx,
     COMPLETE_RULES,
@@ -53,6 +54,9 @@ from _evidence_records import (  # noqa: E402  (re-exported: the gate's record v
     judge_entry,
     o19_history_problems,
     o19_judge_edit_problems,
+    o19_closed_data_problems,
+    o19_succession_problems,
+    o19_table_problems,
     sha256,
     str_field,
     unjudged,
@@ -83,8 +87,9 @@ def require_met(record: dict, require: dict) -> bool:
     return True
 
 
-def support_problem(j: Judgement, row_id: str, token: str, table: dict, after: float) -> str | None:
-    """Why this newly cited record does NOT supply new support for moving ``row_id`` to ``token`` (None = it does)."""
+def support_problem(j: Judgement, row_id: str, token: str, table: dict, after: float, *, ctx: Ctx) -> str | None:
+    """Why this newly cited record does NOT supply new support for moving ``row_id`` to ``token`` (None = it does).
+    An O19 verdict additionally obeys the campaign-succession rules (#1059), read through the gate's ``ctx``."""
     if j.status != ESTABLISHED:
         return f"{j.path} is {j.status}"
     if j.kind not in SUPPORT_KINDS or j.record is None:
@@ -108,6 +113,10 @@ def support_problem(j: Judgement, row_id: str, token: str, table: dict, after: f
         return f"{j.path}: allowed-dirty data is never the sole new support"
     if j.time is None or j.time <= after:
         return f"{j.path}: its runs (ts {j.time}) are not after the previous status was set ({after})"
+    if kind in O19_KINDS:
+        problems = o19_succession_problems(j, token, ctx)
+        if problems:
+            return f"{j.path}: " + "; ".join(problems)
     return None
 
 
@@ -137,6 +146,9 @@ def pass_table_problems(table, where: str, *, at_base: bool = False) -> list[str
             or set(entry) - {"rows", "targets", "require", "note", "complete"}
         ):
             out.append(f"{PASS_TABLE} at {where}: entry {kind!r} is malformed (rows / targets / require)")
+        elif "REPRODUCED" in targets and kind not in O19_KINDS:
+            # #1059 S5: REPRODUCED is a successor O19 campaign's label; no other kind has campaigns.
+            out.append(f"{PASS_TABLE} at {where}: entry {kind!r} targets REPRODUCED, which only an O19 kind may")
         elif complete_problem(kind, entry.get("complete"), at_base=at_base):
             problem = complete_problem(kind, entry.get("complete"), at_base=at_base)
             out.append(f"{PASS_TABLE} at {where}: entry {kind!r}: {problem}")
@@ -389,6 +401,10 @@ def gate(
     # #1050 half B: a judge edit may not change any existing O19 verdict, cited by a row or not (strict).
     if O19_JUDGE in changed:
         failures += o19_judge_edit_problems(ctx)
+        # #1059 D1/S3: the kind -> experiment map and every frozen campaign entry are append-only.
+        failures += o19_table_problems(repo, base)
+    # #1059: a closed campaign's data directory is immutable (every diff, whatever else it touches).
+    failures += o19_closed_data_problems(ctx, changed)
     # #1050 N2: every judge main ever held still loads through this (possibly edited) gate.
     failures += o19_history_problems(repo, base)
     results = []
@@ -437,7 +453,7 @@ def gate(
             base_paths = {e.path for e in old.evidence} if old else set()
             after = status_set_time(repo, base, row.id, old.token, old.date) if old else float(repo.commit_time(base))
             new = [j for j in judgements if j.path not in base_paths]
-            problems_new = [support_problem(j, row.id, row.token, table, after) for j in new]
+            problems_new = [support_problem(j, row.id, row.token, table, after, ctx=ctx) for j in new]
             cited = {e.path for e in row.evidence}
             supporting = [e for e in active if e.get("from") == (old.token if old else None) and e.get("path") in cited]
             excepted |= {e.get("id") for e in supporting}

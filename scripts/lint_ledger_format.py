@@ -9,7 +9,7 @@ gate shares):
 - **Status line:** ``**Status: <TOKEN> <YYYY-MM-DD>**``. The token comes from the closed vocabulary, and the
   date is a real calendar date no later than today (UTC).
 - **Evidence:**
-  - A positive status (EARNED / MAINTAINED / RE-VALIDATED) cites at least one record under
+  - A positive status (EARNED / MAINTAINED / RE-VALIDATED / REPRODUCED) cites a record under
     ``docs/experiments/data/``.
   - Each record is tracked by git and is not a symlink. It is a file, or a session directory holding a
     ``report.json``. It is not a script, a README or markdown, the data root, or anything named
@@ -25,7 +25,7 @@ Against the merge-base (diff-scoped, like the other ``_lint_git`` lints):
 - A raise (a higher rank), or a move between positive tokens, needs a later date. A lowering may keep it.
 - LEGACY can be kept but never entered.
 - A row ENTERING SUPERSEDED (from any other token, or new), or changing its ``by`` target, names a successor that
-  REACHES a positive status (EARNED / MAINTAINED / RE-VALIDATED) IN THE SAME DIFF (positive at HEAD, not at the
+  REACHES a positive status (EARNED / MAINTAINED / RE-VALIDATED / REPRODUCED) IN THE SAME DIFF (positive at HEAD, not at the
   base, or new) and whose row names the superseded row's id. SUPERSEDED is rank 0 like STALE and BROKEN but does
   not block a release, so retiring a row behind an unearned successor would clear the block with no evidence, and
   pointing at an already-earned row would let an old verdict retire a new claim (owner decision 2026-10-03, D3).

@@ -213,6 +213,9 @@ class Judgement:
     record: dict | None = None  # a verdict's own JSON (support candidates)
     prereg: str | None = None
     data_prereg: str | None = None  # a verdict's data entry's prereg status
+    # An O19 verdict re-judged by its bound judge: {"rejudged": its output, "protocol": its PROTOCOL, "harness_env":
+    # its HARNESS_ENV, "model": its model pins} (JSON-plain), what the succession rules read (#1059). None until the re-judge agrees.
+    o19: dict | None = None
 
     def fail(self, why: str) -> Judgement:
         self.status = NOT_ESTABLISHED
@@ -794,13 +797,21 @@ def judge_o19(rec: dict, rows: list[dict], data_rel: str, j: Judgement, ctx: Ctx
     source = bound_judge(rec, data_rel, rows, j, ctx)
     if source is None:
         return
-    rejudged = rejudge_o19(source, rec, rows, data_dir, ctx, bound_files=as_dict(rec.get("bound_files")))
+    capture: dict = {}
+    rejudged = rejudge_o19(
+        source, rec, rows, data_dir, ctx, bound_files=as_dict(rec.get("bound_files")), capture=capture
+    )
     if isinstance(rejudged, str):
         j.fail(f"O19 verdict: re-judge refused: {rejudged}")
         return
     diff = o19_difference(rejudged, rec)
     if diff:
         j.fail(f"O19 verdict: re-judging with the bound judge gives a different {diff}")
+        return
+    try:
+        j.o19 = {"rejudged": _plain(rejudged), **capture}
+    except (TypeError, ValueError) as exc:  # a bound judge's output JSON cannot hold supports nothing (j.o19 None)
+        j.reasons.append(f"O19 verdict: the bound judge's output is not plain JSON ({exc})")
 
 
 def bound_judge(rec: dict, data_rel: str, rows: list[dict], j: Judgement, ctx: Ctx) -> bytes | None:
@@ -918,10 +929,12 @@ def rejudge_o19(
     *,
     bound_files: dict | None = None,
     ref: str | None = None,
+    capture: dict | None = None,
 ):
     """Run the given ``o19_verdict`` bytes' ``judge`` on the record's bytes (half A: the bound judge; half B: an
     edited HEAD judge). With ``bound_files``, they must be exactly the judge, the harness and the campaign's prereg
-    as this judge's table names it. Returns the judge's output dict, or a refusal reason."""
+    as this judge's table names it. Returns the judge's output dict, or a refusal reason. ``capture`` receives the
+    loaded judge's ``protocol`` and ``harness_env`` (JSON-plain; None when it has none), for the succession rules."""
     markers = as_dict(rec.get("apparatus")).get("markers")
     if not isinstance(markers, list) or not markers or not all(isinstance(m, dict) for m in markers):
         return "the verdict records no start markers"
@@ -935,6 +948,13 @@ def rejudge_o19(
         mod = load_o19_judge(source)
         if isinstance(mod, str):
             return mod
+        if capture is not None:
+            try:
+                capture["protocol"] = _plain(mod.PROTOCOL)
+                capture["harness_env"] = _plain(getattr(mod, "HARNESS_ENV", None))
+                capture["model"] = _model_of(mod)
+            except (TypeError, ValueError) as exc:
+                return f"the judge's campaign table is not plain JSON ({exc})"
         return _rejudge_with(mod, rec, rows, data_dir, ctx, ordered_markers, bound_files, ref or ctx.ref)
     finally:
         sys.path[:] = before
@@ -966,7 +986,7 @@ def _rejudge_with(mod, rec: dict, rows: list[dict], data_dir: str, ctx: Ctx, ord
         return f"the judge's campaign table is unsound: {problems}"
     sup = protocol[exp].get("supersedes")
     if sup is not None:  # the closure's content; its timing against the markers is the verdict's check
-        closure = ctx.repo.blob(ref, sup["verdict"])
+        closure = ctx.repo.blob(ctx.base, sup["verdict"])  # one trust root with the predecessor data: main's copy
         if closure is None or sha256(closure) != sup["verdict_sha256"]:
             return f"campaign {exp}'s predecessor closure {sup['verdict']} is not the pinned verdict"
         if as_dict(as_dict(rec.get("apparatus")).get("succession")).get("key") != sup["key"]:
@@ -978,18 +998,384 @@ def _rejudge_with(mod, rec: dict, rows: list[dict], data_dir: str, ctx: Ctx, ord
     if set(attempts) - {m["run_id"] for m in ordered_markers}:
         return "rows name attempts with no start marker"
     ordered = [{"run_id": m["run_id"], "k": m["k"], "rows": attempts.get(m["run_id"], [])} for m in ordered_markers]
+    # The data root mirrors the data directory's parent: the campaign's own directory, and each campaign it succeeds
+    # (a successor's judge reads its predecessors' committed phases beside its own, #1059). A judge that reads only
+    # its own directory sees the same bytes as before.
+    dirs = [data_dir]
+    seen, cur = {exp}, protocol[exp].get("supersedes")
+    while isinstance(cur, dict) and cur.get("key") in protocol and cur["key"] not in seen:
+        seen.add(cur["key"])
+        dirs.append(mod.rows_path(cur["key"]).rsplit("/", 1)[0])
+        cur = protocol[cur["key"]].get("supersedes")
+    # The campaign's own directory is read at ``ref``; every predecessor's at the MERGE-BASE (main's copy of a closed
+    # campaign: a PR cannot edit a predecessor's rows to empty a leak), and the judge checks those bytes against the
+    # pinned closure besides.
     with tempfile.TemporaryDirectory() as root:
         root_path = Path(root)
-        for path, (mode, _oid) in ctx.repo.tree(ref).items():
-            if path.startswith(data_dir + "/") and mode not in ("120000", "160000"):
-                dest = root_path / path[len(data_dir) + 1 :]
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                dest.write_bytes(ctx.repo.blob(ref, path) or b"")
+        (root_path / data_dir.rsplit("/", 1)[-1]).mkdir()
+        for directory in dirs:
+            at = ref if directory == data_dir else ctx.base
+            for path, (mode, _oid) in ctx.repo.tree(at).items():
+                if path.startswith(directory + "/") and mode not in ("120000", "160000"):
+                    dest = root_path / directory.rsplit("/", 1)[-1] / path[len(directory) + 1 :]
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    dest.write_bytes(ctx.repo.blob(at, path) or b"")
         try:
-            out = mod.judge(exp, ordered, root_path)
+            out = mod.judge(exp, ordered, root_path / data_dir.rsplit("/", 1)[-1])
         except Exception as exc:  # noqa: BLE001 — the judge's own Refusal included
             return f"{type(exc).__name__}: {exc}"
         return out if isinstance(out, dict) else "the judge returned no result"
+
+
+def _plain(value):
+    """``value`` as JSON holds it (tuples read as lists), for comparing a judge's tables across versions."""
+    return json.loads(json.dumps(value, sort_keys=True))
+
+
+# ── #1059: a successor campaign supports REPRODUCED only on byte-identical subject code (strict gate) ─────────
+# The subject (owner decision 2026-10-04): what the sim runs and reads. Compared as `git ls-tree` listings (mode, type,
+# object id, path) at every executed commit of the campaign chain; literal pathspecs, so no rename, textconv or
+# attribute magic applies. Installed library versions, llama.cpp, the model and encoder weights and `.python-version`
+# lie outside it: a disclosed gap (mechanization backlog M28). scripts/exp44/capture_paired_prompts.py is not subject:
+# the orchestrator loads it only under MAXIM_EXP44_CAPTURE_LOG, which no O19 sim gets (C4 pins its env).
+SUBJECT_PATHS = (
+    "src/maxim",
+    "pyproject.toml",
+    "uv.lock",
+    "poetry.lock",
+    "pdm.lock",
+    "Pipfile.lock",
+    "scenarios",
+    "data",
+)
+SUBJECT_EXCLUDED = frozenset({"src/maxim/utils/function_length_baseline.json"})  # non-runtime lint data
+RESUME_FLAG = "--resume-sim"  # the one argv pair that legitimately differs between campaigns (a session id)
+
+
+MODEL_FIELDS = ("MODEL_PROFILE", "MODEL_PROFILE_STAMPED", "MODEL_GGUF", "N_CTX")  # set via `maxim config`: no argv/env
+
+
+def _model_of(mod) -> dict:
+    """A judge's model pins (absent ones as None): compared across a campaign chain like its phases (S6)."""
+    return _plain({name: getattr(mod, name, None) for name in MODEL_FIELDS})
+
+
+def base_o19_judge(ctx: Ctx):
+    """The merge-base's ``o19_verdict.py``, loaded (cached per gate run); a refusal string when absent or unloadable."""
+    key = f"o19-base:{ctx.base}"
+    if key not in ctx.repo._cache:
+        source = ctx.repo.blob(ctx.base, O19_JUDGE)
+        before = list(sys.path)
+        try:
+            ctx.repo._cache[key] = "no judge at the merge-base" if source is None else load_o19_judge(source)
+        finally:
+            sys.path[:] = before
+    return ctx.repo._cache[key]
+
+
+def subject_listing(repo: Repo, commit: str) -> list[str] | None:
+    """The subject's ``mode type oid\tpath`` entries at ``commit`` (exclusions dropped), or None when unreadable."""
+    out = subprocess.run(
+        ["git", "--literal-pathspecs", "ls-tree", "-r", "-z", "--full-tree", commit, "--", *SUBJECT_PATHS],
+        cwd=repo.root,
+        capture_output=True,
+    )
+    if out.returncode != 0:
+        return None
+    entries = out.stdout.decode("utf-8", errors="surrogateescape").split("\0")
+    return sorted(e for e in entries if e and e.partition("\t")[2] not in SUBJECT_EXCLUDED)
+
+
+def _argv_key(argv) -> str:
+    """A recorded argv with only the ``--resume-sim <session>`` pair dropped, as comparable JSON."""
+    if not isinstance(argv, list):
+        return json.dumps(argv)
+    out, i = [], 0
+    while i < len(argv):
+        if argv[i] == RESUME_FLAG:
+            i += 2
+            continue
+        out.append(argv[i])
+        i += 1
+    return json.dumps(out)
+
+
+def _campaign_record(ctx: Ctx, path: str, pin: str | None) -> tuple[dict, list[dict]] | str:
+    """A campaign's verdict (as main holds it, pinned by SHA-256 when ``pin``) and its data's rows, or a refusal."""
+    raw = ctx.repo.blob(ctx.base, path) if ctx.repo.kind(ctx.base, path) == "blob" else None
+    if raw is None or (pin is not None and sha256(raw) != pin):
+        return f"{path} is not the pinned verdict on main"
+    try:
+        rec = json.loads(raw.decode("utf-8"))
+        data_rel = rec.get("data")
+        data = ctx.repo.blob(ctx.base, data_rel) if isinstance(data_rel, str) else None
+        if data is None or sha256(data) != rec.get("data_sha256"):
+            return f"{path}: its rows are not its data_sha256 bytes on main"
+        return rec, json_lines(decompressed(data_rel, data))
+    except (GateError, *MALFORMED) as exc:
+        return f"{path} cannot be read ({type(exc).__name__})"
+
+
+def _executed(rec: dict, rows: list[dict]) -> set:
+    """Every commit a campaign's attempts ran on: its rows' executed commits and its markers' peeled commits (never
+    the verdict writer's own ``provenance.executed_git_hash``, #1059 S1)."""
+    found = {as_dict(r.get("provenance")).get("executed_git_hash") for r in rows if kind_of(r) == "harness_row"}
+    markers = as_dict(rec.get("apparatus")).get("markers")
+    found |= {as_dict(m).get("peeled") for m in (markers if isinstance(markers, list) else [])}
+    found.discard(None)
+    return found
+
+
+def o19_succession_problems(j: Judgement, token: str, ctx: Ctx) -> list[str]:
+    """Why this O19 verdict may not support ``token`` under the campaign-succession rules (#1059; [] = it may).
+
+    - S2: whether the campaign HAS a predecessor is read from the BOUND judge's table, whose entry for the campaign
+      must equal the merge-base table's (never the record's own fields).
+    - A ROOT campaign's verdict never supports REPRODUCED; a SUCCESSOR's supports no positive token but REPRODUCED
+      (owner decision 2026-10-02), and for every token it supports (PARTIAL included):
+    - D2: its bound judge emits the leaked-gate bar, and it is empty (a bound judge without it: supports nothing);
+    - S1/S4: every commit any campaign of the chain ran on (each predecessor's pinned closure verdict's rows and
+      markers, the successor's own, aborted attempts included) exists, is on main, and holds one subject listing;
+    - S6: the bound judges' phases, HARNESS_ENV and model pins (``MODEL_FIELDS``), and every recorded sim argv (less ``--resume-sim <id>``) and
+      MAXIM_* env per phase, are the root's."""
+    rec = j.record or {}
+    if str_field(rec, "kind") not in O19_KINDS:
+        return []
+    cap = j.o19
+    if not isinstance(cap, dict) or not isinstance(cap.get("protocol"), dict):
+        return ["the O19 verdict was not re-judged by its bound judge, so its campaign cannot be placed"]
+    key = rec.get("experiment")
+    entry = cap["protocol"].get(key)
+    base_mod = base_o19_judge(ctx)
+    if isinstance(base_mod, str):
+        return [f"the merge-base campaign table cannot be read: {base_mod}"]
+    base_protocol = _plain(base_mod.PROTOCOL)
+    if not isinstance(entry, dict) or base_protocol.get(key) != entry:
+        return [f"campaign {key}'s entry in the merge-base campaign table is not its bound judge's (S2)"]
+    if not isinstance(entry.get("supersedes"), dict):
+        if token == "REPRODUCED":
+            return [f"campaign {key} is a root campaign: only a successor campaign's verdict supports REPRODUCED"]
+        return []
+    if token in L.POSITIVE and token != "REPRODUCED":
+        return [f"campaign {key} is a successor campaign: its verdict supports REPRODUCED, never {token}"]
+    leaked = as_dict(cap.get("rejudged")).get("leaked_gates")
+    if not isinstance(leaked, list):
+        return [
+            f"campaign {key}'s bound judge does not compute the leaked-gate bar: a successor verdict supports nothing"
+        ]
+    if leaked:
+        return [f"a FAILED gate leaked into a predecessor campaign's committed phases: {leaked[:3]}"[:400]]
+    # The chain, from the merge-base table: (campaign, its verdict path, the pin) from the successor to the root.
+    chain: list[tuple[str, str, str | None]] = [(key, j.path, None)]
+    seen, cur = {key}, entry
+    while isinstance(cur.get("supersedes"), dict):
+        sup = cur["supersedes"]
+        pred = sup.get("key")
+        if pred in seen or not isinstance(base_protocol.get(pred), dict):
+            return [f"campaign {key}'s succession chain is broken at {pred!r}"]
+        seen.add(pred)
+        chain.append((pred, sup.get("verdict"), sup.get("verdict_sha256")))
+        cur = base_protocol[pred]
+    problems: list[str] = []
+    commits: dict[str, str] = {}  # commit -> the campaign that ran on it
+    argv: dict[object, set[str]] = {}
+    env: dict[object, set[str]] = {}
+    tables: dict[str, tuple[str, str]] = {}  # campaign -> (its bound phases, its bound HARNESS_ENV)
+    for campaign, path, pin in chain:
+        if campaign == key:
+            rows = json_lines(decompressed(rec["data"], ctx.repo.blob(ctx.ref, rec["data"]) or b""))
+            got: tuple[dict, list[dict]] | str = (rec, rows)
+            bound = {"protocol": cap["protocol"], "harness_env": cap.get("harness_env"), "model": cap.get("model")}
+        else:
+            # The pinned closure must be the one in the campaign's own data directory: that is the directory the
+            # freeze (o19_closed_data_problems), the history check and the leaked-gate bar read (#1059 delta review).
+            own = f"{base_mod.rows_path(campaign).rsplit('/', 1)[0]}/verdict.json"
+            if path != own:
+                got = f"its pinned closure {path!r} is not its own data directory's {own!r}"
+            else:
+                got = _campaign_record(ctx, path, pin)
+            history = closed_history_problem(ctx, campaign)
+            if history and not isinstance(got, str):
+                got = history
+            bound = None
+        if isinstance(got, str):
+            problems.append(f"campaign {campaign}: {got}")
+            continue
+        crec, crows = got
+        if bound is None:  # a predecessor's own bound judge: what IT ran
+            oid = as_dict(crec.get("bound_files")).get(O19_JUDGE)
+            out = subprocess.run(["git", "cat-file", "blob", str(oid)], cwd=ctx.repo.root, capture_output=True)
+            mod = load_o19_judge(out.stdout) if out.returncode == 0 and isinstance(oid, str) else "absent"
+            if isinstance(mod, str):
+                problems.append(f"campaign {campaign}: its bound judge cannot be loaded ({mod})"[:300])
+                continue
+            bound = {
+                "protocol": _plain(mod.PROTOCOL),
+                "harness_env": _plain(getattr(mod, "HARNESS_ENV", None)),
+                "model": _model_of(mod),
+            }
+        phases = as_dict(bound["protocol"].get(campaign)).get("phases")
+        tables[campaign] = (
+            json.dumps(phases, sort_keys=True),
+            json.dumps(bound["harness_env"], sort_keys=True),
+            json.dumps(bound["model"], sort_keys=True),
+        )
+        executed = _executed(crec, crows)
+        if not executed:
+            problems.append(f"campaign {campaign}: no executed commit is recorded")
+        for c in executed:
+            commits.setdefault(c, campaign)
+        for r in crows:
+            if kind_of(r) == "harness_row" and "sim_argv" in r:
+                argv.setdefault(r.get("phase_index"), set()).add(_argv_key(r.get("sim_argv")))
+                env.setdefault(r.get("phase_index"), set()).add(json.dumps(r.get("sim_env"), sort_keys=True))
+    if problems:
+        return problems
+    root = chain[-1][0]
+    for campaign, table in tables.items():
+        if table != tables[root]:
+            problems.append(
+                f"campaign {campaign}'s bound phases, HARNESS_ENV or model pins are not root campaign {root}'s (S6)"
+            )
+    for index in sorted(set(argv) | set(env), key=str):
+        if len(argv.get(index, set())) > 1 or len(env.get(index, set())) > 1:
+            problems.append(f"phase {index}: the recorded sim argv or MAXIM_* env differs across the campaigns (S6)")
+    listings: dict[str, list[str]] = {}
+    for c, campaign in sorted(commits.items(), key=lambda kv: str(kv[0])):
+        if not isinstance(c, str) or not HEX40.match(c):
+            problems.append(f"campaign {campaign}: executed commit {c!r} is not a full commit id")
+            continue
+        exists = subprocess.run(["git", "cat-file", "-e", f"{c}^{{commit}}"], cwd=ctx.repo.root, capture_output=True)
+        if exists.returncode != 0:
+            problems.append(f"campaign {campaign}: executed commit {c[:12]} does not exist here")
+            continue
+        if not ctx.repo.is_ancestor(c, ctx.base):
+            problems.append(f"campaign {campaign}: executed commit {c[:12]} is not on main")
+            continue
+        listing = subject_listing(ctx.repo, c)
+        if listing is None:
+            problems.append(f"campaign {campaign}: the subject at {c[:12]} cannot be listed")
+            continue
+        listings[c] = listing
+    distinct = {json.dumps(v) for v in listings.values()}
+    if len(distinct) > 1:
+        first, *rest = sorted(listings.items())
+        for c, listing in rest:
+            if listing != first[1]:
+                path = sorted(set(listing) ^ set(first[1]))[0].partition("\t")[2]
+                problems.append(
+                    f"the subject differs between executed commits {first[0][:12]} ({commits[first[0]]}) and "
+                    f"{c[:12]} ({commits[c]}), first at {path}: REPRODUCED needs byte-identical subject code"
+                )
+                break
+    return problems
+
+
+def o19_table_problems(repo: Repo, base: str) -> list[str]:
+    """A HEAD ``o19_verdict.py`` against the merge-base's (#1059): D1, each verdict kind belongs to one experiment
+    and that map is append-only; S3, a campaign entry is FROZEN (kept, unedited) once its rows or verdict exist on
+    main or another entry names it in ``supersedes``, so "has a predecessor" cannot be laundered by an edit; and an
+    entry's ``supersedes`` object, once on main, is frozen itself (no re-pin to a rewritten closure)."""
+    base_src, head_src = repo.blob(base, O19_JUDGE), repo.blob("HEAD", O19_JUDGE)
+    if base_src is None or head_src is None:
+        return []  # no table on one side: a deleted judge while verdicts exist fails half B
+    before = list(sys.path)
+    try:
+        base_mod, head_mod = load_o19_judge(base_src), load_o19_judge(head_src)
+    finally:
+        sys.path[:] = before
+    if isinstance(head_mod, str):
+        return [f"{O19_JUDGE} at HEAD does not load through the gate: {head_mod}"]
+    if isinstance(base_mod, str):
+        return []  # the history check names a base judge that does not load
+    base_p, head_p = _plain(base_mod.PROTOCOL), _plain(head_mod.PROTOCOL)
+    out: list[str] = []
+
+    def kinds(protocol: dict) -> dict[str, set]:
+        found: dict[str, set] = {}
+        for p in protocol.values():
+            found.setdefault(str(as_dict(p).get("kind")), set()).add(as_dict(p).get("experiment"))
+        return found
+
+    head_kinds, base_kinds = kinds(head_p), kinds(base_p)
+    for kind, exps in sorted(head_kinds.items()):
+        if len(exps) != 1:
+            out.append(f"{O19_JUDGE}: verdict kind {kind} belongs to {len(exps)} experiments (D1: exactly one)")
+        elif kind in base_kinds and exps != base_kinds[kind]:
+            out.append(f"{O19_JUDGE}: verdict kind {kind} moved to another experiment (D1: the map is append-only)")
+    named = {as_dict(as_dict(p).get("supersedes")).get("key") for table in (base_p, head_p) for p in table.values()}
+    tree = repo.tree(base)
+    for key, entry in sorted(base_p.items()):
+        rows_rel = base_mod.rows_path(key)
+        landed = rows_rel in tree or rows_rel.rsplit("/", 1)[0] + "/verdict.json" in tree
+        if (landed or key in named) and head_p.get(key) != entry:
+            out.append(
+                f"{O19_JUDGE}: campaign {key} is frozen (its data is on main or a successor names it) and was "
+                "removed or edited (S3: the campaign table is append-only)"
+            )
+        # #1059 delta review: a successor's pin chain is immutable once on main. Only the `supersedes` object is
+        # frozen (a not-yet-run successor's prereg and phases may still be amended before data, as Exp 09's were).
+        sup = as_dict(entry).get("supersedes")
+        if sup is not None and as_dict(head_p.get(key)).get("supersedes") != sup:
+            out.append(
+                f"{O19_JUDGE}: campaign {key}'s `supersedes` (its predecessor and the pinned closure SHA-256) is on "
+                "main and was removed or edited: a re-pin could point a successor at a rewritten closure (frozen)"
+            )
+    return out
+
+
+def closed_campaign_dir(ctx: Ctx, key: str) -> str | None:
+    """Campaign ``key``'s data directory when the merge-base holds its verdict (the campaign is CLOSED), else None."""
+    base_mod = base_o19_judge(ctx)
+    if isinstance(base_mod, str):
+        return None
+    directory = base_mod.rows_path(key).rsplit("/", 1)[0]
+    return directory if ctx.repo.kind(ctx.base, f"{directory}/verdict.json") == "blob" else None
+
+
+def o19_closed_data_problems(ctx: Ctx, changed: set[str]) -> list[str]:
+    """#1059 delta review: a CLOSED campaign's data directory (its verdict on main) is immutable: any add, edit,
+    delete or rename under it fails, with no exception path (the owner's strict stance on O19). Its rows and closure
+    are what a successor's leaked-gate bar and subject check read."""
+    base_mod = base_o19_judge(ctx)
+    if isinstance(base_mod, str):
+        return []
+    out = []
+    for key in sorted(base_mod.PROTOCOL):
+        directory = closed_campaign_dir(ctx, key)
+        hits = sorted(c for c in changed if directory and c.startswith(directory + "/"))
+        if hits:
+            out.append(
+                f"{directory}: campaign {key} is closed (its verdict is on main), so its data directory is immutable;"
+                f" this change touches {hits[:3]} (a successor's leaked-gate bar and subject check read these bytes)"
+            )
+    return out
+
+
+def closed_history_problem(ctx: Ctx, key: str) -> str | None:
+    """Why campaign ``key``'s data directory on main is not as its closure left it (None = untouched since): no
+    first-parent commit after the one that added its ``verdict.json`` may touch the directory. Catches a rewrite that
+    reached main before the immutability rule ran (or around it). Runs only when a successor verdict is newly cited
+    (through ``support_problem``); rows already citing one are held by ``o19_closed_data_problems`` from then on.
+    Needs git >= 2.31 for first-parent ``--diff-filter=A`` on merges; on older git ``added`` is empty and this
+    refuses (fail closed)."""
+    base_mod = base_o19_judge(ctx)
+    if isinstance(base_mod, str):
+        return f"campaign {key}: the merge-base campaign table cannot be read"
+    directory = base_mod.rows_path(key).rsplit("/", 1)[0]
+    touched = ctx.repo.git("log", "--first-parent", "--format=%H", ctx.base, "--", directory).split()
+    added = ctx.repo.git(
+        "log", "--first-parent", "--diff-filter=A", "--format=%H", ctx.base, "--", f"{directory}/verdict.json"
+    ).split()
+    if not added:
+        return f"campaign {key}: its closure verdict never landed on main"
+    after = touched[: touched.index(added[-1])] if added[-1] in touched else touched
+    if after:
+        return (
+            f"campaign {key}: {directory} changed on main after its closure landed ({after[0][:12]}); a closed "
+            "campaign's data is immutable, so this chain supports nothing"
+        )
+    return None
 
 
 def o19_judge_edit_problems(ctx: Ctx) -> list[str]:

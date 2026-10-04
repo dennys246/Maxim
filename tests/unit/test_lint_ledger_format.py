@@ -211,9 +211,9 @@ def test_by_tests_cites_test_files(tmp_path: Path) -> None:
 # ── the guard field, SUPERSEDED ──────────────────────────────────────────
 
 
-@pytest.mark.parametrize("token", ["EARNED", "LEGACY"])
+@pytest.mark.parametrize("token", ["EARNED", "REPRODUCED", "LEGACY"])
 def test_claims_need_a_regression_guard(tmp_path: Path, token: str) -> None:
-    ev = f" **Evidence:** [r.jsonl]({DATA}r.jsonl)." if token == "EARNED" else ""
+    ev = f" **Evidence:** [r.jsonl]({DATA}r.jsonl)." if token != "LEGACY" else ""
     row = f"| T1-1 | claim | mech | **Status: {token} 2026-09-01**.{ev} history |"
     _one(_lint(_repo(tmp_path, _ledger([OK_T1])), _ledger([row])), "no 'Regression guard:' field")
 
@@ -483,3 +483,12 @@ def test_a_new_row_is_dated_against_the_branch_point_not_mains_tip(tmp_path: Pat
 def test_an_indented_or_quoted_base_row_cannot_vanish(tmp_path: Path, prefix: str) -> None:
     row2 = prefix + OK_T1.replace("T1-1", "T1-2")
     _one(_base_then(tmp_path, [OK_T1, row2], [OK_T1]), "T1-2: a row ID in the base is gone")
+
+
+def test_reproduced_is_a_positive_token_and_the_ledger_documents_every_token() -> None:
+    """#1059: REPRODUCED (a successor O19 campaign's label) is rank 3, needs a guard, and the ledger's vocabulary
+    table names every token the parser accepts."""
+    assert L.RANK["REPRODUCED"] == 3 and "REPRODUCED" in L.POSITIVE and "REPRODUCED" in L.NEEDS_GUARD
+    text = (REPO / L.LEDGER_PATH).read_text()
+    table = text[text.index("| Token | Rank | Meaning |") :].split("\n\n", 1)[0]
+    assert all(f"`{token}`" in table for token in L.RANK), [t for t in L.RANK if f"`{t}`" not in table]

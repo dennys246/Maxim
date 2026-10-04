@@ -414,11 +414,12 @@ def test_the_real_pass_table_names_the_o19_rows() -> None:
 
 def test_the_real_pass_table_supports_exp63_earned_from_pass_only() -> None:
     """Exp 63's prereg: ``exp63_verdict`` -> {PASS} supports EARNED on the new row T1-16 (NOT SHOWN supports nothing),
-    and only from an apparatus-checked verdict; it is an O19 kind, so its bound judge is re-run."""
+    and only from an apparatus-checked verdict; it is an O19 kind, so its bound judge is re-run. REPRODUCED (#1059)
+    is for a successor campaign's PASS only: Exp 63 has none, and the gate refuses it from its root campaign."""
     table = json.loads((REPO / G.PASS_TABLE).read_text())
     assert table["exp63_verdict"] == {
         "rows": ["T1-16"],
-        "targets": {"EARNED": ["PASS"]},
+        "targets": {"EARNED": ["PASS"], "REPRODUCED": ["PASS"]},
         "require": {"apparatus_checked": True},
     }
     assert G.pass_table_problems(table, "HEAD") == [] and "exp63_verdict" in R.O19_KINDS
@@ -831,7 +832,7 @@ def test_an_allowance_establishes_but_never_supports(rig) -> None:
                             prereg="PASS", data_prereg="PASS",
                             record={"kind": "exp57_verdict", "verdict": "PASS"})  # fmt: skip
     table = {"exp57_verdict": {"rows": ["T1-12"], "targets": {"EARNED": ["PASS"]}}}
-    assert "allowed-dirty" in (G.support_problem(candidate, "T1-12", "EARNED", table, 1.0) or "")
+    assert "allowed-dirty" in (G.support_problem(candidate, "T1-12", "EARNED", table, 1.0, ctx=_ctx(rig)) or "")
 
 
 def test_runs_cannot_predate_the_commit_they_ran_on(rig) -> None:
@@ -1723,8 +1724,10 @@ def _t11_from_campaign_2(rig: Rig, monkeypatch, *, closure: bool = True, success
     return failures
 
 
-def test_a_campaign_2_pass_moves_t1_1(rig, monkeypatch) -> None:
-    assert _t11_from_campaign_2(rig, monkeypatch) == []
+def test_a_campaign_2_pass_never_supports_maintained(rig, monkeypatch) -> None:
+    """#1059 (owner decision 2026-10-02): a successor campaign's verdict supports REPRODUCED, never MAINTAINED."""
+    failures = _t11_from_campaign_2(rig, monkeypatch)
+    assert any("campaign 10c2 is a successor campaign" in f and "never MAINTAINED" in f for f in failures), failures
 
 
 def test_a_campaign_2_verdict_without_its_pinned_closure_is_refused(rig, monkeypatch) -> None:
@@ -1969,3 +1972,414 @@ def test_a_judge_edit_cannot_delete_a_landed_verdict_to_escape(rig, monkeypatch)
 
     failures = _verdict_on_main_then(rig, monkeypatch, edit)
     assert any("a judge edit changes an existing O19 verdict" in f and "verdict was" in f for f in failures), failures
+
+
+# ── #1059: a successor campaign supports REPRODUCED only on byte-identical subject code ─────────────────────
+# The rig closes its own Exp 10 campaign 1 (an ABORT on the garden phase, phases 1-2 committed ok), pins that closure
+# in its judge's campaign-2 entry, then runs a campaign-2 attempt; HEAD moves T1-1 citing campaign 2's verdict.
+
+REAL_C1_PIN = "5da2128968bb4516350aa26680294d9f79966424a518fc37b3dd68c0bf826fbe"
+STALE_BOTH_ROWS = ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+
+
+def _stored(session_dir: Path, name: str) -> Path:
+    return next(p for p in (session_dir / name, session_dir / f"{name}.gz") if p.exists())
+
+
+def _close_campaign_1(rig: Rig, monkeypatch, *, rows_edit=None, record_edit=None) -> str:
+    """Land campaign 1's aborted attempt (garden phase failed) and its stamped ABORT closure; returns its SHA-256."""
+    import o19_rerun as h
+    import o19_verdict as v
+    from _provenance import stamp_verdict
+
+    data_dir = rig.root / v.data_dir("10")
+    rows_path = data_dir / "rows.jsonl"
+    monkeypatch.setattr(h._provenance, "_RUN_ID", {})
+    monkeypatch.setattr(h._provenance, "evidence_out_path", lambda *a, **k: rows_path)
+    assert h.main(["run", "--exp", "10", "--mock"]) == 0
+    executed = rig.base_sha
+    rows = [json.loads(ln) for ln in rows_path.read_text().splitlines()]
+    for r in rows:
+        r["mock"] = False
+        r["provenance"].update(executed_git_hash=executed, working_tree_dirty_src_scripts=False)
+    rows[-1].update(status="failed", reason="SimRunFailed: planning_failed")
+    if rows_edit:
+        rows_edit(rows, data_dir)
+    rows_path.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in rows))
+    landed = rig.commit("campaign 1's attempt lands", BASE_DATE)
+    attempts = v.attempts_from_rows(rows)
+    rid = next(iter(attempts))
+    out = v.judge("10", [{"run_id": rid, "k": 1, "rows": attempts[rid]}], data_dir)
+    assert out["verdict"] == "ABORT"
+    out.update(
+        apparatus_checked=True,
+        apparatus={
+            "markers": [{"run_id": rid, "k": 1, "ref": f"{v.MARKER_NAMESPACE}/10/attempt-1-{rid}", "peeled": executed}]
+        },  # fmt: skip
+        bound_files={
+            p: _git(rig.root, "rev-parse", f"{landed}:{p}")
+            for p in (R.O19_JUDGE, R.O19_RERUN, v.PROTOCOL["10"]["prereg"])
+        },  # fmt: skip
+        verdict_commit=landed,
+    )
+    stamp_verdict(out, repo_root=rig.root, kind="exp10_verdict", data=rows_path, data_bytes=rows_path.read_bytes(),
+                  scope={"all_rows": True}, mock=False)  # fmt: skip
+    if record_edit:
+        record_edit(out)
+    raw = json.dumps(out, indent=1).encode()
+    (data_dir / "verdict.json").write_bytes(raw)
+    rig.commit("campaign 1 closes", BASE_DATE)
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _reproduce(rig: Rig, monkeypatch, *, token="REPRODUCED", rows_edit=None, record_edit=None, before_c2=None,
+               after_c2=None) -> list[str]:  # fmt: skip
+    """BASE: T1-1 STALE, campaign 1 closed, the judge pinning that closure, ``before_c2(rig)`` (lands with the pin),
+    a campaign-2 attempt landed, then ``after_c2(rig)`` on main. HEAD: T1-1 -> ``token`` citing campaign 2."""
+    import o19_verdict as v
+
+    rig.prereg[f"{DATA}/rerun_exp10_o19c2"] = "PASS"
+    rig.base(STALE_BOTH_ROWS)
+    pin = _close_campaign_1(rig, monkeypatch, rows_edit=rows_edit, record_edit=record_edit)
+    _judge_text(rig, REAL_C1_PIN, pin)
+    if before_c2:
+        before_c2(rig)
+    rig.base_sha = rig.commit("the judge pins campaign 1's closure", BASE_DATE)
+    record = o19_attempt(rig, "10c2", rig.base_sha, monkeypatch=monkeypatch)
+    record["apparatus"]["succession"] = {**v.PROTOCOL["10c2"]["supersedes"], "verdict_sha256": pin,
+                                         "closure_landed": 1.0, "prereg_landed": 1.0}  # fmt: skip
+    verdict = rig.root / DATA / "rerun_exp10_o19c2" / "verdict.json"
+    verdict.unlink()  # o19_attempt wrote it uncommitted: the verdict arrives in HEAD, after anything main does next
+    if after_c2:
+        after_c2(rig)
+    verdict.write_text(json.dumps(record, indent=1))
+    cite = f"**Evidence:** `{DATA}/rerun_exp10_o19c2/verdict.json`."
+    rig.head(ledger([t1("T1-1", f"**Status: {token} 2026-10-02**. {cite}")],
+                    [t3("T3-9", "**Status: STALE 2026-09-30**.")]))  # fmt: skip
+    return rig.run()[0]
+
+
+def test_a_successor_on_identical_subject_code_supports_reproduced(rig, monkeypatch) -> None:
+    assert _reproduce(rig, monkeypatch) == []
+
+
+def test_a_successor_never_supports_maintained_even_on_identical_code(rig, monkeypatch) -> None:
+    failures = _reproduce(rig, monkeypatch, token="MAINTAINED")
+    assert any("supports REPRODUCED, never MAINTAINED" in f for f in failures), failures
+
+
+def test_a_root_campaign_never_supports_reproduced(rig, monkeypatch) -> None:
+    rig.base(STALE_BOTH_ROWS)
+    o19_attempt(rig, "10", rig.base_sha, monkeypatch=monkeypatch)  # campaign 1 as a root: a PASS
+    cite = f"**Evidence:** `{DATA}/rerun_exp10_o19/verdict.json`."
+    for token, refused in (("REPRODUCED", True), ("MAINTAINED", False)):
+        rig.head(ledger([t1("T1-1", f"**Status: {token} 2026-10-02**. {cite}")],
+                        [t3("T3-9", "**Status: STALE 2026-09-30**.")]))  # fmt: skip
+        failures = rig.run()[0]
+        if refused:
+            assert any("is a root campaign: only a successor" in f for f in failures), failures
+        else:
+            assert failures == [], failures
+
+
+def _src_change(path: str):
+    def change(rg: Rig) -> None:
+        rg.write(path, "changed = True\n")
+
+    return change
+
+
+def test_a_successor_on_changed_subject_code_supports_nothing(rig, monkeypatch) -> None:
+    failures = _reproduce(rig, monkeypatch, before_c2=_src_change("src/maxim/runtime/agent_loop.py"))
+    assert any("the subject differs between executed commits" in f and "src/maxim/runtime/agent_loop.py" in f
+               for f in failures), failures  # fmt: skip
+
+
+@pytest.mark.parametrize("path", ["pyproject.toml", "scenarios/campaigns/x.yaml", "data/motion/x.json", "uv.lock"])
+def test_the_subject_is_more_than_src(rig, monkeypatch, path) -> None:
+    failures = _reproduce(rig, monkeypatch, before_c2=_src_change(path))
+    assert any("the subject differs" in f and path in f for f in failures), failures
+
+
+def test_the_standing_exclusion_is_not_subject(rig, monkeypatch) -> None:
+    assert _reproduce(rig, monkeypatch, before_c2=_src_change("src/maxim/utils/function_length_baseline.json")) == []
+
+
+def test_a_mode_change_is_a_subject_change(rig, monkeypatch) -> None:
+    def exec_bit(rg: Rig) -> None:
+        os.chmod(rg.root / "src/maxim/run.py", 0o755)
+
+    rig.write("src/maxim/run.py", "x = 1\n")
+    failures = _reproduce(rig, monkeypatch, before_c2=exec_bit)
+    assert any("the subject differs" in f and "src/maxim/run.py" in f for f in failures), failures
+
+
+def test_a_successor_after_a_leaked_failed_gate_supports_nothing(rig, monkeypatch) -> None:
+    """Campaign 1 committed phases 1-2 ok; phase 1's store held 2 memories, so P0 FAILED there (D2)."""
+
+    def thin_store(rows, data_dir):
+        sdir = data_dir / rows[0]["session_id"]
+        store = _stored(sdir, "aut_hippocampus.json")
+        data = json.dumps({"memories": [{"id": "a"}, {"id": "b"}]}).encode()
+        store.write_bytes(data)
+        rows[0]["files"]["aut_hippocampus.json"] = hashlib.sha256(data).hexdigest()
+
+    failures = _reproduce(rig, monkeypatch, rows_edit=thin_store)
+    assert any("a FAILED gate leaked into a predecessor" in f and "P0" in f for f in failures), failures
+
+
+def test_a_successor_whose_bound_judge_lacks_the_bar_supports_nothing(rig, monkeypatch) -> None:
+    def no_bar(rg: Rig) -> None:
+        _judge_text(rg, 'out["leaked_gates"] = chain_leaked_gate_problems(exp, data_root.parent)', "pass")
+
+    failures = _reproduce(rig, monkeypatch, before_c2=no_bar)
+    assert any("does not compute the leaked-gate bar" in f for f in failures), failures
+
+
+def test_a_successor_with_another_argv_supports_nothing(rig, monkeypatch) -> None:
+    def flag(rows, _data_dir):
+        rows[0]["sim_argv"] = [*rows[0]["sim_argv"], "--some-mechanism-flag"]
+
+    failures = _reproduce(rig, monkeypatch, rows_edit=flag)
+    assert any("phase 0: the recorded sim argv or MAXIM_* env differs" in f for f in failures), failures
+
+
+def test_a_successor_with_another_env_supports_nothing(rig, monkeypatch) -> None:
+    def env(rows, _data_dir):
+        rows[1]["sim_env"] = {**rows[1]["sim_env"], "MAXIM_SUBSTRATE_PATH": "1"}
+
+    failures = _reproduce(rig, monkeypatch, rows_edit=env)
+    assert any("phase 1: the recorded sim argv or MAXIM_* env differs" in f for f in failures), failures
+
+
+def test_a_successor_whose_table_phases_differ_from_the_roots_supports_nothing(rig, monkeypatch) -> None:
+    """S6 on the bound tables: campaign 1's own (bound) judge names other phases than campaign 2's judge does."""
+    text = (rig.root / R.O19_JUDGE).read_text()
+    old = '    ("baseline", EXP10_GOAL_DUNGEON, 8, False, [], {}),'
+    assert old in text
+    alt = rig.root.parent / "alt_judge.py"
+    alt.write_text(text.replace(old, '    ("baseline", EXP10_GOAL_DUNGEON, 8, False, [], {"MAXIM_X": "1"}),'))
+    oid = _git(rig.root, "hash-object", "-w", str(alt))
+
+    def other_judge(record):
+        record["bound_files"][R.O19_JUDGE] = oid
+
+    failures = _reproduce(rig, monkeypatch, record_edit=other_judge)
+    assert any("bound phases, HARNESS_ENV or model pins are not root campaign 10's" in f for f in failures), failures
+
+
+@pytest.mark.parametrize(
+    "old, new",
+    [
+        ("N_CTX = 8192", "N_CTX = 4096"),
+        ('MODEL_GGUF = "mistral-7b-instruct-v0.2.Q4_K_M.gguf"', 'MODEL_GGUF = "other.gguf"'),
+    ],
+)
+def test_a_successor_whose_model_pins_differ_from_the_roots_supports_nothing(rig, monkeypatch, old, new) -> None:
+    """S6 (review): the model is configured through `maxim config`, so argv and env never show it; the bound judges'
+    model pins are compared across the chain."""
+    text = (rig.root / R.O19_JUDGE).read_text()
+    assert old in text
+    alt = rig.root.parent / "alt_judge.py"
+    alt.write_text(text.replace(old, new))
+    oid = _git(rig.root, "hash-object", "-w", str(alt))
+
+    def other_judge(record):
+        record["bound_files"][R.O19_JUDGE] = oid
+
+    failures = _reproduce(rig, monkeypatch, record_edit=other_judge)
+    assert any("model pins are not root campaign 10's" in f for f in failures), failures
+    assert R.MODEL_FIELDS == ("MODEL_PROFILE", "MODEL_PROFILE_STAMPED", "MODEL_GGUF", "N_CTX")
+
+
+def _launder(rg: Rig) -> None:
+    """Mark campaign 1's committed phases failed in its rows: the ok prefix empties, so nothing would leak."""
+    import o19_verdict as v
+
+    path = rg.root / v.rows_path("10")
+    rows = [json.loads(ln) for ln in path.read_text().splitlines()]
+    for r in rows:
+        r["status"] = "failed"
+    path.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in rows))
+
+
+def _thin_store(rows, data_dir):
+    sdir = data_dir / rows[0]["session_id"]
+    data = json.dumps({"memories": [{"id": "a"}, {"id": "b"}]}).encode()
+    _stored(sdir, "aut_hippocampus.json").write_bytes(data)
+    rows[0]["files"]["aut_hippocampus.json"] = hashlib.sha256(data).hexdigest()
+
+
+def test_a_leak_cannot_be_laundered_by_editing_a_predecessors_rows_in_the_pr(rig, monkeypatch) -> None:
+    """#1059 review (DO-NOT-MERGE probe): the PR edits campaign 1's rows; the bar reads main's copy, pinned."""
+    failures = _reproduce(rig, monkeypatch, rows_edit=_thin_store, after_c2=_launder)
+    assert any("FAILED gate leaked" in f or "cannot be ruled out" in f for f in failures), failures
+
+
+def test_a_leak_cannot_be_laundered_by_editing_a_predecessors_rows_on_main(rig, monkeypatch) -> None:
+    """The same edit landed on main after the closure: the rows are not the bytes the pinned closure judged."""
+
+    def on_main(rg: Rig) -> None:
+        _launder(rg)
+        rg.base_sha = rg.commit("campaign 1's rows edited on main", BASE_DATE)
+
+    failures = _reproduce(rig, monkeypatch, rows_edit=_thin_store, after_c2=on_main)
+    assert any("are not the bytes its pinned closure judged" in f for f in failures), failures
+
+
+def test_a_predecessor_is_read_as_main_holds_it(rig, monkeypatch) -> None:
+    """A PR-only change to a predecessor's rows (a byte that parses the same) and closure (a trailing space) reaches
+    neither the bar nor the closure pin (both read main's copy); the PR fails only because a closed campaign's data
+    directory is immutable."""
+
+    def touch(rg: Rig) -> None:
+        import o19_verdict as v
+
+        for rel in (v.rows_path("10"), v.data_dir("10") + "/verdict.json"):
+            path = rg.root / rel
+            path.write_bytes(path.read_bytes() + b"\n")
+
+    failures = _reproduce(rig, monkeypatch, after_c2=touch)
+    assert failures and all("campaign 10 is closed (its verdict is on main)" in f for f in failures), failures
+
+
+def _pr_x(rg: Rig) -> None:
+    """PR-X (#1059 delta review): mark campaign 1's rows failed, rewrite its closure's data_sha256 to match and re-pin
+    campaign 2's `supersedes`: main stays self-consistent, and the leaked-gate bar would read nothing."""
+    import o19_verdict as v
+
+    _launder(rg)
+    vpath = rg.root / v.data_dir("10") / "verdict.json"
+    old_raw = vpath.read_bytes()
+    rec = json.loads(old_raw)
+    rec["data_sha256"] = hashlib.sha256((rg.root / v.rows_path("10")).read_bytes()).hexdigest()
+    raw = json.dumps(rec, indent=1).encode()
+    vpath.write_bytes(raw)
+    _judge_text(rg, hashlib.sha256(old_raw).hexdigest(), hashlib.sha256(raw).hexdigest())
+
+
+def test_pr_x_rewriting_a_closed_campaign_and_its_pin_fails_the_gate(rig, monkeypatch) -> None:
+    """Each half catches PR-X alone: the frozen `supersedes` pin, and the closed campaign's immutable data."""
+    rig.prereg[f"{DATA}/rerun_exp10_o19c2"] = "PASS"
+    rig.base(STALE_BOTH_ROWS)
+    pin = _close_campaign_1(rig, monkeypatch, rows_edit=_thin_store)
+    _judge_text(rig, REAL_C1_PIN, pin)
+    rig.base_sha = rig.commit("the judge pins campaign 1's closure", BASE_DATE)
+    _pr_x(rig)
+    rig.head(STALE_BOTH_ROWS)
+    failures = rig.run()[0]
+    assert any("campaign 10c2's `supersedes`" in f and "was removed or edited" in f for f in failures), failures
+    assert any("campaign 10 is closed (its verdict is on main)" in f for f in failures), failures
+
+
+def test_a_two_pr_launder_already_on_main_supports_nothing(rig, monkeypatch) -> None:
+    """PR-X reached main before campaign 2 ran (here: before these rules existed): the successor's gate reads main's
+    history, and a closed campaign's directory touched after its closure landed supports nothing."""
+    failures = _reproduce(rig, monkeypatch, rows_edit=_thin_store, before_c2=_pr_x)
+    assert any("changed on main after its closure landed" in f for f in failures), failures
+
+
+def test_the_control_leak_is_detected(rig, monkeypatch) -> None:
+    failures = _reproduce(rig, monkeypatch, rows_edit=_thin_store)
+    assert any("FAILED gate leaked" in f for f in failures), failures
+
+
+def test_a_pinned_closure_outside_the_predecessors_own_directory_supports_nothing(rig, monkeypatch) -> None:
+    """#1059 delta review 2: the gate itself requires the pinned closure to be the predecessor's own data directory's
+    (the directory the freeze, the history check and the bar read), not only the judge's ``protocol_problems``."""
+    real = f"{DATA}/rerun_exp10_o19/verdict.json"
+    elsewhere = "docs/elsewhere/verdict.json"
+
+    def relocate(rg: Rig) -> None:
+        rg.write(elsewhere, (rg.root / real).read_text())
+        _judge_text(rg, f'"verdict": "{real}"', f'"verdict": "{elsewhere}"')
+        _judge_text(rg, "problems.append(f\"campaign {key}: the closure verdict is not {sup['key']}'s own\")", "pass")
+
+    failures = _reproduce(rig, monkeypatch, before_c2=relocate)
+    assert any("is not its own data directory's" in f for f in failures), failures
+
+
+def test_amending_a_successor_entry_other_than_its_supersedes_is_not_the_pin_rule(rig, monkeypatch) -> None:
+    """Only `supersedes` is frozen by the pin rule: a not-yet-run successor's prereg may still be amended."""
+    rig.base(STALE_BOTH_ROWS)
+    _judge_text(rig, '"scope": "rerun_exp10_o19c2",', '"scope": "rerun_exp10_o19c2b",')  # an entry field, not the pin
+    rig.write("README.md", "x\n")
+    rig.head(STALE_BOTH_ROWS)
+    assert not any("`supersedes`" in f for f in rig.run()[0])
+
+
+def test_a_missing_executed_commit_refuses(rig, monkeypatch) -> None:
+    def ghost(record):
+        record["apparatus"]["markers"][0]["peeled"] = "1" * 40
+
+    failures = _reproduce(rig, monkeypatch, record_edit=ghost)
+    assert any("executed commit 111111111111 does not exist here" in f for f in failures), failures
+
+
+def test_has_a_predecessor_is_read_from_the_merge_base_table(rig, monkeypatch) -> None:
+    """S2: after the verdict, main's table edits campaign 2's entry: the bound judge and main disagree."""
+
+    def edit(rg: Rig) -> None:
+        _judge_text(rg, '"cause_issue": 1042,', '"cause_issue": 1043,')
+        rg.base_sha = rg.commit("main edits the campaign-2 entry", BASE_DATE)
+
+    failures = _reproduce(rig, monkeypatch, after_c2=edit)
+    assert any("is not its bound judge's (S2)" in f for f in failures), failures
+
+
+def test_a_successor_partial_obeys_the_identity_check_too(rig, monkeypatch) -> None:
+    """PARTIAL is not refused by the token rule, but the identity check applies (owner decision 2026-10-02)."""
+    import o19_verdict as v
+
+    sup = v.PROTOCOL["10c2"]["supersedes"]
+    assert sup["key"] == "10"
+    rig.write(G.PASS_TABLE, json.dumps({**json.loads((REPO / G.PASS_TABLE).read_text()),
+              "exp10_verdict": {"rows": ["T1-1"], "targets": {"PARTIAL": ["PASS"]},
+                                "require": {"apparatus_checked": True}}}))  # fmt: skip
+    failures = _reproduce(rig, monkeypatch, token="PARTIAL", before_c2=_src_change("src/maxim/x.py"))
+    assert any("the subject differs" in f for f in failures), failures
+
+
+def test_the_gate_and_the_harness_name_one_subject() -> None:
+    import o19_verdict as v
+
+    assert v.SUBJECT_PATHS == R.SUBJECT_PATHS and v.SUBJECT_EXCLUDED == R.SUBJECT_EXCLUDED
+    assert "src/maxim" in R.SUBJECT_PATHS and "src/maxim/utils/function_length_baseline.json" in R.SUBJECT_EXCLUDED
+
+
+def test_reproduced_is_an_o19_kinds_target_only() -> None:
+    entry = {"rows": ["T1-12"], "targets": {"REPRODUCED": ["PASS"]}}
+    assert any("only an O19 kind may" in p for p in G.pass_table_problems({"exp57_verdict": entry}, "HEAD"))
+    assert G.pass_table_problems({"exp10_verdict": entry | {"rows": ["T1-1"]}}, "HEAD") == []
+
+
+def _edit_table_in_pr(rig: Rig, monkeypatch, old: str, new: str) -> list[str]:
+    rig.base(STALE_BOTH_ROWS)
+    _judge_text(rig, old, new)
+    rig.write("README.md", "x\n")
+    rig.head(STALE_BOTH_ROWS)
+    return rig.run()[0]
+
+
+def test_a_named_predecessor_entry_is_frozen(rig, monkeypatch) -> None:
+    """S3: campaign 10 is named by 10c2's `supersedes`: editing its entry (here its scope) fails."""
+    failures = _edit_table_in_pr(rig, monkeypatch, '"scope": "rerun_exp10_o19",', '"scope": "rerun_exp10_o19x",')
+    assert any("campaign 10 is frozen" in f for f in failures), failures
+
+
+def test_a_campaign_with_data_on_main_is_frozen(rig, monkeypatch) -> None:
+    """S3: rows on main freeze an entry nobody names (here Exp 09's)."""
+    rig.write(f"{DATA}/rerun_exp09_o19/rows.jsonl", "\n")
+    failures = _edit_table_in_pr(rig, monkeypatch, '"scope": "rerun_exp09_o19",', '"scope": "rerun_exp09_o19x",')
+    assert any("campaign 09 is frozen" in f for f in failures), failures
+
+
+def test_an_unfrozen_entry_may_still_be_edited(rig, monkeypatch) -> None:
+    failures = _edit_table_in_pr(rig, monkeypatch, '"scope": "rerun_exp09_o19",', '"scope": "rerun_exp09_o19x",')
+    assert not any("frozen" in f for f in failures), failures
+
+
+def test_a_verdict_kind_belongs_to_one_experiment(rig, monkeypatch) -> None:
+    """D1: Exp 63's campaign may not take Exp 10's kind (a fresh root for a claim another experiment owns)."""
+    failures = _edit_table_in_pr(rig, monkeypatch, '"kind": "exp63_verdict",', '"kind": "exp10_verdict",')
+    assert any("belongs to 2 experiments (D1" in f for f in failures), failures
