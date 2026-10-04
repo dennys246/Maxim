@@ -315,8 +315,11 @@ def push_base(repo_root: Path, *, api: Callable[[str], Any] | None = None) -> st
 
 
 def _accepted(repo_root: Path, repo: str, api: Callable[[str], Any]) -> dict[str, str]:
-    """{sha: "owner, date: reason"} for every honoured entry of :data:`ACCEPTS_REL` at HEAD. Fails closed on a
-    malformed record, an entry that is not a first-parent commit of HEAD, or one that arrived without a merged PR."""
+    """{sha: "owner, date: reason"} for every entry of :data:`ACCEPTS_REL` at HEAD. Fails closed on a malformed
+    record, an entry that is not a first-parent commit of HEAD, or ANY first-parent commit that touched the record
+    without a merged PR: checking only the commit that introduced a sha let a direct push re-add a removed entry or
+    rewrite an existing entry's text (review fold). An accepted sha further back than
+    :data:`PUSH_BASE_SEARCH_LIMIT` is never reached; accept a newer commit instead."""
     path = repo_root / ACCEPTS_REL
     if not path.exists():
         return {}
@@ -326,6 +329,15 @@ def _accepted(repo_root: Path, repo: str, api: Callable[[str], Any]) -> dict[str
         raise GitUnavailable(f"{ACCEPTS_REL} unreadable ({exc})") from exc
     if not isinstance(entries, list):
         raise GitUnavailable(f"{ACCEPTS_REL} must be a list")
+    touched = git(
+        repo_root, "log", "--first-parent", "--diff-merges=first-parent", "--format=%H", "HEAD", "--", ACCEPTS_REL
+    ).split()
+    for sha in touched:
+        if _merged_pr(repo, sha, api) is None:
+            raise GitUnavailable(
+                f"{ACCEPTS_REL} was changed by {sha[:12]}, which did not arrive through a merged PR (a direct push "
+                "cannot write an acceptance)"
+            )
     chain = set(git(repo_root, "rev-list", "--first-parent", "HEAD").split())
     out: dict[str, str] = {}
     for e in entries:
@@ -334,23 +346,6 @@ def _accepted(repo_root: Path, repo: str, api: Callable[[str], Any]) -> dict[str
             raise GitUnavailable(f"{ACCEPTS_REL}: malformed entry {e!r} (needs exactly {sorted(_ACCEPT_KEYS)})")
         if e["sha"] not in chain:
             raise GitUnavailable(f"{ACCEPTS_REL}: {e['sha'][:12]} is not a first-parent commit of main")
-        introduced = git(
-            repo_root,
-            "log",
-            "--first-parent",
-            "--diff-merges=first-parent",
-            "--reverse",
-            "--format=%H",
-            f"-S{e['sha']}",
-            "HEAD",
-            "--",
-            ACCEPTS_REL,
-        ).split()
-        if not introduced or _merged_pr(repo, introduced[0], api) is None:
-            raise GitUnavailable(
-                f"{ACCEPTS_REL}: the entry for {e['sha'][:12]} did not arrive through a merged PR (a direct push cannot "
-                "accept itself)"
-            )
         out[e["sha"]] = f"{e['owner']}, {e['date']}: {e['reason']}"
     return out
 

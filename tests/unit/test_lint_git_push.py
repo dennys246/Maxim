@@ -370,6 +370,25 @@ def test_a_direct_push_cannot_accept_itself(main_repo, monkeypatch):
         _lint_git.base_ref(main_repo)
 
 
+@pytest.mark.parametrize("second", ["re-add", "rewrite"])
+def test_a_direct_push_cannot_rewrite_or_re_add_an_accepted_entry(main_repo, monkeypatch, second):
+    """A merged PR added the entry first; a later direct push re-adds it after removal, or rewrites its reason.
+    Checking only the commit that introduced the sha honoured both (architecture delta round)."""
+    _c1, c2, _c3 = _shas(main_repo)
+    adder = _accept(main_repo, c2)
+    pr = {adder: {"number": 5, "title": "t", "body": ""}}
+    if second == "re-add":
+        remover = _commit(main_repo, "scripts/push_base_accepts.json", "[]", "remove")
+        pr[remover] = {"number": 6, "title": "t", "body": ""}
+        _accept(main_repo, c2, "direct re-add")
+    else:
+        entry = {"sha": c2, "reason": "forged", "owner": "someone", "date": "2026-10-05"}
+        _commit(main_repo, "scripts/push_base_accepts.json", json.dumps([entry]), "direct rewrite")
+    fake_push(monkeypatch, main_repo, green=set(), prs=pr)
+    with pytest.raises(_lint_git.GitUnavailable, match="did not arrive through a merged PR"):
+        _lint_git.base_ref(main_repo)
+
+
 def test_an_accepted_sha_off_mains_first_parent_chain_fails_closed(main_repo, monkeypatch):
     _c1, _c2, c3 = _shas(main_repo)
     adder = _accept(main_repo, "2" * 40)
@@ -381,7 +400,7 @@ def test_an_accepted_sha_off_mains_first_parent_chain_fails_closed(main_repo, mo
 @pytest.mark.parametrize("entry", [{"sha": "x"}, {"sha": "a" * 40, "reason": "", "owner": "o", "date": "2026-10-04"}])
 def test_a_malformed_acceptance_fails_closed(main_repo, monkeypatch, entry):
     _c1, _c2, c3 = _shas(main_repo)
-    _commit(main_repo, "scripts/push_base_accepts.json", json.dumps([entry]))
-    fake_push(monkeypatch, main_repo, before=c3, green={c3})
+    adder = _commit(main_repo, "scripts/push_base_accepts.json", json.dumps([entry]))
+    fake_push(monkeypatch, main_repo, before=c3, green={c3}, prs={adder: {"number": 5, "title": "t", "body": ""}})
     with pytest.raises(_lint_git.GitUnavailable, match="malformed entry"):
         _lint_git.base_ref(main_repo)
