@@ -1,0 +1,157 @@
+{
+  "session_id": "20261003_173039",
+  "timestamp": "2026-10-03 17:35:45",
+  "goal": "escape a dungeon with a sleeping guard",
+  "mode": "generative",
+  "language_model": "/tmp/o19-home-k5qgjcs9/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+  "language_provider": "lane-large",
+  "language_backend_class": "_MaximPeerBackend",
+  "language_endpoint": "http://127.0.0.1:8100/v1",
+  "aut_model": "",
+  "aut_provider": "",
+  "aut_backend_class": "",
+  "aut_endpoint": "",
+  "duration_s": 306.2,
+  "turns": 8,
+  "finish_reason": "max_turns",
+  "total_actions": 7,
+  "blocked_actions": 0,
+  "tool_usage": {
+    "sense_tools": 4,
+    "base_humanoid_turn_left": 1,
+    "sense": 2
+  },
+  "tool_success_rates": {
+    "sense_tools": 1.0,
+    "base_humanoid_turn_left": 1.0,
+    "sense": 1.0
+  },
+  "response_texts": [],
+  "aut_memories_formed": 84,
+  "aut_causal_links": 20,
+  "aut_nac_summary": {
+    "total_links": 20,
+    "top_links": [
+      {
+        "event": "tool:sense",
+        "outcome": "tool:sense:positive",
+        "confidence": 0.609,
+        "observations": 2
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "tool:sense_tools:positive",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "success:Found 7 capabilities:\n- base_humanoid_listen: Atte",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "plan:I need to find a way to escape without waking the guard. I remember that moving quietly is an option for such situations.:success",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "tool:sense_tools:positive",
+        "confidence": 0.475,
+        "observations": 1
+      }
+    ]
+  },
+  "cost_usd": 0.0,
+  "total_input_tokens": 63038,
+  "total_output_tokens": 2933,
+  "lane_breakdown": {
+    "large": {
+      "lane": "large",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    },
+    "small": {
+      "lane": "small",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    }
+  },
+  "latency_p50_ms": 0.0,
+  "latency_p99_ms": 0.0,
+  "pain_events_count": 0,
+  "fear_blocks_count": 0,
+  "learn_events_count": 32,
+  "provider_failures": {},
+  "llm_summary": "During the simulation, the robot assistant successfully completed the task of escaping a dungeon with a sleeping guard in 8 turns. It used sense tools and base_humanoid_turn_left action to navigate and interact with its environment. The robot formed 84 episodic memories and learned 20 causal links during this process.",
+  "llm_issues_found": [
+    "The simulation was terminated prematurely due to reaching the maximum number of turns."
+  ],
+  "llm_recommendations": [
+    "Consider increasing the maximum number of turns allowed in the simulation to allow for more complex problem solving. Also, evaluate the possibility of adding more diverse tasks and obstacles to challenge the robot's abilities and encourage learning."
+  ],
+  "llm_finish_status": "max_turns",
+  "llm_finish_reason": "reached max_turns=8",
+  "llm_finish_summary": "Simulation stopped after 8 turns because the configured max_turns cap (8) was reached without an LLM-initiated finish. Raise --sim-max-turns or add finish_simulation calls to the orchestrator's decision policy if more turns are expected.",
+  "substrate_metrics": {},
+  "bio_telemetry_path": "/tmp/o19-home-k5qgjcs9/sim_reports/20261003_173039/bio_telemetry.jsonl",
+  "apparatus": {
+    "substrate_actions_per_turn": null
+  },
+  "ts": 1791070238.8955252,
+  "provenance": {
+    "executed_maxim_file": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "526538480566b9a1bc1d72910da6f634fad61423",
+    "working_tree_dirty_src_scripts": false,
+    "code_tree_sha256": "fdf46c39f1345a90aaafe2b78cae931ac7b683c2844bc5a891ae757c99c76446",
+    "harness_run_id": "20875d5793134d4b80f2524817f0d4e9",
+    "python": "/Users/dennys/RMSrv/scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/src",
+    "maxim_version": "1.3.1",
+    "configured_n_ctx": 8192,
+    "configured_n_ctx_source": "config",
+    "language_profile": "mistral-7b-instruct-v0.2",
+    "language_router_n_ctx": 8192,
+    "language_budget_n_ctx": 8192,
+    "aut_profile": "mistral-7b-instruct-v0.2",
+    "aut_router_n_ctx": 8192,
+    "aut_budget_n_ctx": 8192,
+    "code_changed_during_run": false,
+    "end_executed_git_hash": "526538480566b9a1bc1d72910da6f634fad61423",
+    "end_code_tree_sha256": "fdf46c39f1345a90aaafe2b78cae931ac7b683c2844bc5a891ae757c99c76446"
+  },
+  "record_kind": "sim_report",
+  "_format_version": "1.0"
+}

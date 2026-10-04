@@ -1,0 +1,722 @@
+{
+  "version": "1.0",
+  "links": {
+    "tool:sense_tools": [
+      {
+        "id": "2cad3ed866ae8656",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "find actions to move quietly past the sleeping guard"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.00048279762268066406
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791070310.133373,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "94e09a7dc1d0d026",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to find a way to escape without waking the guard. I remember that moving quietly is an option"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 7 capabilities:\n- base_humanoid_listen: Atte",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791070310.133826,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "f128ca9d260f253b",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I need to find a way to escape without waking the guard. I remember that moving quietly is an option for such situations."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to find a way to escape without waking the guard. I remember that moving quietly is an option for such situations.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791070310.133961,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "0977caa01898c8e1",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "find a way to escape without waking the guard"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.00030517578125
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791070373.343046,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "585753eced0ae864",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to find a tool or action that allows me to escape without waking the guard. I will use sense_"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 8 capabilities:\n- base_humanoid_listen: Atte",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791070373.343362,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "b42e74d3c4c31af4",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I need to find a tool or action that allows me to escape without waking the guard. I will use sense_tools to discover what actions are available."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to find a tool or action that allows me to escape without waking the guard. I will use sense_tools to discover what actions are available.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791070373.3434749,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "9bbe7aef71fec709",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "escape the dungeon with a sleeping guard"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0002758502960205078
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791070478.726474,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "702d62aa9e644b07",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to find a tool or action that allows me to escape without waking the guard. I will use sense_"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 8 capabilities:\n- base_humanoid_use: Use a h",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791070478.7268312,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "bd711138998dcb76",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I need to find a tool or action that allows me to escape without waking the guard. I will use sense_tools to explore my options."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to find a tool or action that allows me to escape without waking the guard. I will use sense_tools to explore my options.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791070478.7269518,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "e5e803d3ff441eba",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "escape with sleeping guard"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0001971721649169922
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791070517.240932,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "5d3f6aa682574406",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "Given the situation and my recent observations, I need to find a tool or action that allows me to es"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 1 capabilities:\n- base_humanoid_use: Use a h",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791070517.2412648,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "0f21430be2e14f09",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "Given the situation and my recent observations, I need to find a tool or action that allows me to escape with the sleeping guard. Sense_tools should reveal suitable options."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:Given the situation and my recent observations, I need to find a tool or action that allows me to escape with the sleeping guard. Sense_tools should reveal suitable options.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791070517.241376,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:base_humanoid_turn_left": [
+      {
+        "id": "ab0ca247db990ee3",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_turn_left",
+        "event_context": {
+          "params": {}
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:base_humanoid_turn_left:negative",
+        "outcome_valence": "negative",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0004839897155761719
+          ]
+        },
+        "predicted_value": 0.43,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791070341.12235,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "d796e867fb9f2718",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_turn_left",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to investigate the sleeping guard from a safer angle."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "failure:{'entity': 'base_humanoid', 'affordance': 'turn_le",
+        "outcome_valence": "negative",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.43,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791070341.12322,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "8ceb48119a645f24",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_turn_left",
+        "event_context": {
+          "goal": "I need to investigate the sleeping guard from a safer angle."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to investigate the sleeping guard from a safer angle.:failure",
+        "outcome_valence": "negative",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.43,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791070341.123599,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:sense": [
+      {
+        "id": "6426b5b14ab811e3",
+        "event_type": "tool",
+        "event_signature": "tool:sense",
+        "event_context": {
+          "params": {
+            "entity_name": "guard"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            5.817413330078125e-05,
+            6.604194641113281e-05
+          ]
+        },
+        "predicted_value": 0.6302000000000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001
+        ],
+        "observation_count": 2,
+        "confidence": 0.609350288425444,
+        "last_observed": 1791070446.368423,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.42999999999999994,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "92262ce8c668da54",
+        "event_type": "tool",
+        "event_signature": "tool:sense",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to gather more information about the guard's state before deciding on an action."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'guard', 'sensors': {'hp': {'value': 18",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791070411.860564,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "af445e5043ddb870",
+        "event_type": "tool",
+        "event_signature": "tool:sense",
+        "event_context": {
+          "goal": "I need to gather more information about the guard's state before deciding on an action."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to gather more information about the guard's state before deciding on an action.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791070411.860681,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "23051a867ba1a913",
+        "event_type": "tool",
+        "event_signature": "tool:sense",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to gather more information about the guard's appearance before deciding on an escape strategy"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'guard', 'sensors': {'hp': {'value': 18",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791070446.368763,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "b4bc62370f030841",
+        "event_type": "tool",
+        "event_signature": "tool:sense",
+        "event_context": {
+          "goal": "I need to gather more information about the guard's appearance before deciding on an escape strategy."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to gather more information about the guard's appearance before deciding on an escape strategy.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1791070446.368887,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ]
+  },
+  "outcome_index": {
+    "tool:sense_tools:positive": [
+      "2cad3ed866ae8656",
+      "e5e803d3ff441eba",
+      "0977caa01898c8e1",
+      "9bbe7aef71fec709"
+    ],
+    "success:Found 7 capabilities:\n- base_humanoid_listen: Atte": [
+      "94e09a7dc1d0d026"
+    ],
+    "plan:I need to find a way to escape without waking the guard. I remember that moving quietly is an option for such situations.:success": [
+      "f128ca9d260f253b"
+    ],
+    "tool:base_humanoid_turn_left:negative": [
+      "ab0ca247db990ee3"
+    ],
+    "failure:{'entity': 'base_humanoid', 'affordance': 'turn_le": [
+      "d796e867fb9f2718"
+    ],
+    "plan:I need to investigate the sleeping guard from a safer angle.:failure": [
+      "8ceb48119a645f24"
+    ],
+    "success:Found 8 capabilities:\n- base_humanoid_listen: Atte": [
+      "585753eced0ae864"
+    ],
+    "plan:I need to find a tool or action that allows me to escape without waking the guard. I will use sense_tools to discover what actions are available.:success": [
+      "b42e74d3c4c31af4"
+    ],
+    "tool:sense:positive": [
+      "6426b5b14ab811e3"
+    ],
+    "success:{'entity': 'guard', 'sensors': {'hp': {'value': 18": [
+      "92262ce8c668da54",
+      "23051a867ba1a913"
+    ],
+    "plan:I need to gather more information about the guard's state before deciding on an action.:success": [
+      "af445e5043ddb870"
+    ],
+    "plan:I need to gather more information about the guard's appearance before deciding on an escape strategy.:success": [
+      "b4bc62370f030841"
+    ],
+    "success:Found 8 capabilities:\n- base_humanoid_use: Use a h": [
+      "702d62aa9e644b07"
+    ],
+    "plan:I need to find a tool or action that allows me to escape without waking the guard. I will use sense_tools to explore my options.:success": [
+      "bd711138998dcb76"
+    ],
+    "success:Found 1 capabilities:\n- base_humanoid_use: Use a h": [
+      "5d3f6aa682574406"
+    ],
+    "plan:Given the situation and my recent observations, I need to find a tool or action that allows me to escape with the sleeping guard. Sense_tools should reveal suitable options.:success": [
+      "0f21430be2e14f09"
+    ]
+  },
+  "priors": {},
+  "total_observations": 21,
+  "reward_bias": {},
+  "goal_reward_bias": {
+    "escape a dungeon with a sleeping guard": 0.08057557285468504
+  },
+  "cluster_reward_bias": {
+    "sim_aut\u001f82fae4ba-bf29-40b3-a445-4485ca1228e5\u001ftool:base_humanoid_turn_left": -0.09029863118112805
+  },
+  "cluster_reward_source": {
+    "sim_aut\u001f82fae4ba-bf29-40b3-a445-4485ca1228e5\u001ftool:base_humanoid_turn_left": "drive_relief"
+  },
+  "inherent_bias_keys": [],
+  "percept_valences": {},
+  "cluster_fear": {},
+  "event_outcome_welford": {},
+  "saved_at": 1791070545.675061,
+  "_format_version": "1.4"
+}

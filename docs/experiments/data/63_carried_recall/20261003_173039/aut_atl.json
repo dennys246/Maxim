@@ -1,0 +1,2477 @@
+{
+  "version": "1.0",
+  "concepts": {
+    "82fae4ba-bf29-40b3-a445-4485ca1228e5": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "82fae4ba-bf29-40b3-a445-4485ca1228e5",
+      "timestamp": 1791070310.1319208,
+      "created_at": 1791070310.131933,
+      "accessed_at": 1791070517.242814,
+      "access_count": 17,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "sensors:azimuth=0.00",
+      "definition": "sensors:azimuth=0.00",
+      "category": "substrate",
+      "properties": {},
+      "provenance": "AGENT_INFERENCE",
+      "source_episode_ids": [
+        "82fae4ba-bf29-40b3-a445-4485ca1228e5"
+      ],
+      "source_document": null,
+      "confidence": 0.5707106781186547,
+      "reinforcement_count": 2,
+      "embedding_text": "sensors:azimuth=0.00",
+      "substrate_modality": "interoception",
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+          "1bda74c9-975e-41ce-adfb-d61c4a82aa9b",
+          "63e6006f-0563-4357-93b2-f552fd6a9da9",
+          "724d6bb3-eeb8-4725-b0ec-f4e7883c5352",
+          "78e968eb-ac03-4de4-8ec6-ac7184133221",
+          "8a22c7f9-5ca5-4bc8-97f0-a45dfa1209e0",
+          "f595a72c-d0e9-4202-8263-4e3d24cca38a"
+        ]
+      }
+    },
+    "b9da370c-c79e-4bcf-9e5c-d19f84323c73": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "b9da370c-c79e-4bcf-9e5c-d19f84323c73",
+      "timestamp": 1791070310.1321821,
+      "created_at": 1791070310.132183,
+      "accessed_at": 1791070517.242817,
+      "access_count": 17,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "sensors:azimuth=0.00",
+      "definition": "sensors:azimuth=0.00",
+      "category": "substrate",
+      "properties": {},
+      "provenance": "AGENT_INFERENCE",
+      "source_episode_ids": [
+        "b9da370c-c79e-4bcf-9e5c-d19f84323c73"
+      ],
+      "source_document": null,
+      "confidence": 0.5707106781186547,
+      "reinforcement_count": 2,
+      "embedding_text": "sensors:azimuth=0.00",
+      "substrate_modality": "audio",
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+          "1bda74c9-975e-41ce-adfb-d61c4a82aa9b",
+          "63e6006f-0563-4357-93b2-f552fd6a9da9",
+          "724d6bb3-eeb8-4725-b0ec-f4e7883c5352",
+          "78e968eb-ac03-4de4-8ec6-ac7184133221",
+          "8a22c7f9-5ca5-4bc8-97f0-a45dfa1209e0",
+          "f595a72c-d0e9-4202-8263-4e3d24cca38a"
+        ]
+      }
+    },
+    "bcf0e126-0bd6-449c-a018-4be4ddb9c750": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "bcf0e126-0bd6-449c-a018-4be4ddb9c750",
+      "timestamp": 1791070310.134806,
+      "created_at": 1791070310.134808,
+      "accessed_at": 1791070517.242777,
+      "access_count": 12,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "sense_tools",
+      "definition": "action: sense_tools",
+      "category": "action",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "724d6bb3-eeb8-4725-b0ec-f4e7883c5352",
+        "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+        "f595a72c-d0e9-4202-8263-4e3d24cca38a",
+        "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+      ],
+      "source_document": null,
+      "confidence": 0.7,
+      "reinforcement_count": 4,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+          "1bda74c9-975e-41ce-adfb-d61c4a82aa9b",
+          "724d6bb3-eeb8-4725-b0ec-f4e7883c5352",
+          "f595a72c-d0e9-4202-8263-4e3d24cca38a"
+        ]
+      }
+    },
+    "64a8d09b-9af9-4478-ab27-feea9046da08": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "64a8d09b-9af9-4478-ab27-feea9046da08",
+      "timestamp": 1791070341.122837,
+      "created_at": 1791070341.1228411,
+      "accessed_at": 1791070341.122869,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "base",
+      "definition": "goal: base",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "db76a90c-27a9-42aa-9866-b4f5b163e160"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "db76a90c-27a9-42aa-9866-b4f5b163e160"
+        ]
+      }
+    },
+    "d127991b-a65b-4d8e-900e-d15bbea90ae7": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "d127991b-a65b-4d8e-900e-d15bbea90ae7",
+      "timestamp": 1791070341.123094,
+      "created_at": 1791070341.123095,
+      "accessed_at": 1791070341.123104,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "humanoid",
+      "definition": "goal: humanoid",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "db76a90c-27a9-42aa-9866-b4f5b163e160"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "db76a90c-27a9-42aa-9866-b4f5b163e160"
+        ]
+      }
+    },
+    "78138a59-9b0f-4061-b584-e3530fe9e784": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "78138a59-9b0f-4061-b584-e3530fe9e784",
+      "timestamp": 1791070341.123307,
+      "created_at": 1791070341.123308,
+      "accessed_at": 1791070341.123316,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "turn",
+      "definition": "goal: turn",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "db76a90c-27a9-42aa-9866-b4f5b163e160"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "db76a90c-27a9-42aa-9866-b4f5b163e160"
+        ]
+      }
+    },
+    "1fbeed63-83fb-4b22-a083-925d6207189e": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "1fbeed63-83fb-4b22-a083-925d6207189e",
+      "timestamp": 1791070341.1234372,
+      "created_at": 1791070341.1234372,
+      "accessed_at": 1791070341.123444,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "left",
+      "definition": "goal: left",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "db76a90c-27a9-42aa-9866-b4f5b163e160"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "db76a90c-27a9-42aa-9866-b4f5b163e160"
+        ]
+      }
+    },
+    "2d3f8204-d9e4-4a60-a9b5-a13a58d2c975": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "2d3f8204-d9e4-4a60-a9b5-a13a58d2c975",
+      "timestamp": 1791070341.1235478,
+      "created_at": 1791070341.1235478,
+      "accessed_at": 1791070341.1245,
+      "access_count": 6,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "base_humanoid_turn_left",
+      "definition": "action: base_humanoid_turn_left",
+      "category": "action",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "db76a90c-27a9-42aa-9866-b4f5b163e160",
+        "78e968eb-ac03-4de4-8ec6-ac7184133221"
+      ],
+      "source_document": null,
+      "confidence": 0.5707106781186547,
+      "reinforcement_count": 2,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "78e968eb-ac03-4de4-8ec6-ac7184133221",
+          "db76a90c-27a9-42aa-9866-b4f5b163e160"
+        ]
+      }
+    },
+    "00c6032e-9112-4fd9-b799-bf6a6da8947c": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "00c6032e-9112-4fd9-b799-bf6a6da8947c",
+      "timestamp": 1791070341.123772,
+      "created_at": 1791070341.1237729,
+      "accessed_at": 1791070341.1237729,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "base humanoid",
+      "definition": "Co-occurring: base + humanoid",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "1deb6c47-3229-4b01-9802-49833637d21a": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "1deb6c47-3229-4b01-9802-49833637d21a",
+      "timestamp": 1791070341.123801,
+      "created_at": 1791070341.123801,
+      "accessed_at": 1791070341.123801,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "base turn",
+      "definition": "Co-occurring: base + turn",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "bf018975-211f-4517-886d-b6692a9e70d3": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "bf018975-211f-4517-886d-b6692a9e70d3",
+      "timestamp": 1791070341.12382,
+      "created_at": 1791070341.123821,
+      "accessed_at": 1791070341.123821,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "base left",
+      "definition": "Co-occurring: base + left",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "987c6019-30e2-4c47-919c-cb6524b13b56": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "987c6019-30e2-4c47-919c-cb6524b13b56",
+      "timestamp": 1791070341.1238348,
+      "created_at": 1791070341.1238358,
+      "accessed_at": 1791070341.1238358,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "base base_humanoid_turn_left",
+      "definition": "Co-occurring: base + base_humanoid_turn_left",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "882f048d-166c-487f-be1d-21f894ea8634": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "882f048d-166c-487f-be1d-21f894ea8634",
+      "timestamp": 1791070341.123851,
+      "created_at": 1791070341.123851,
+      "accessed_at": 1791070341.123851,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "humanoid turn",
+      "definition": "Co-occurring: humanoid + turn",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "5a97b3ec-20b6-4714-9d84-c471645c4cb7": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "5a97b3ec-20b6-4714-9d84-c471645c4cb7",
+      "timestamp": 1791070341.1238651,
+      "created_at": 1791070341.1238651,
+      "accessed_at": 1791070341.1238651,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "humanoid left",
+      "definition": "Co-occurring: humanoid + left",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "c50192e2-7ca4-4e4b-925a-bc02d0270a5f": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+      "timestamp": 1791070373.344297,
+      "created_at": 1791070373.3443,
+      "accessed_at": 1791070517.242214,
+      "access_count": 9,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "need",
+      "definition": "goal: need",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+        "f595a72c-d0e9-4202-8263-4e3d24cca38a",
+        "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+      ],
+      "source_document": null,
+      "confidence": 0.6732050807568877,
+      "reinforcement_count": 3,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+          "1bda74c9-975e-41ce-adfb-d61c4a82aa9b",
+          "f595a72c-d0e9-4202-8263-4e3d24cca38a"
+        ]
+      }
+    },
+    "4c8a9175-3207-466d-bff6-338e9a4e8e9b": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "4c8a9175-3207-466d-bff6-338e9a4e8e9b",
+      "timestamp": 1791070373.3443918,
+      "created_at": 1791070373.344393,
+      "accessed_at": 1791070517.24228,
+      "access_count": 9,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "find",
+      "definition": "goal: find",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+        "f595a72c-d0e9-4202-8263-4e3d24cca38a",
+        "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+      ],
+      "source_document": null,
+      "confidence": 0.6732050807568877,
+      "reinforcement_count": 3,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+          "1bda74c9-975e-41ce-adfb-d61c4a82aa9b",
+          "f595a72c-d0e9-4202-8263-4e3d24cca38a"
+        ]
+      }
+    },
+    "261eec10-49bc-463d-bcb4-aafd45586154": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "261eec10-49bc-463d-bcb4-aafd45586154",
+      "timestamp": 1791070373.344449,
+      "created_at": 1791070373.344449,
+      "accessed_at": 1791070517.242603,
+      "access_count": 18,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "tool",
+      "definition": "goal: tool",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+        "f595a72c-d0e9-4202-8263-4e3d24cca38a",
+        "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+      ],
+      "source_document": null,
+      "confidence": 0.7449489742783177,
+      "reinforcement_count": 6,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+          "1bda74c9-975e-41ce-adfb-d61c4a82aa9b",
+          "f595a72c-d0e9-4202-8263-4e3d24cca38a"
+        ]
+      }
+    },
+    "12e5b8d6-c686-4d8d-abb6-7fdd44df541c": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "12e5b8d6-c686-4d8d-abb6-7fdd44df541c",
+      "timestamp": 1791070373.344501,
+      "created_at": 1791070373.344502,
+      "accessed_at": 1791070517.242361,
+      "access_count": 12,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "action",
+      "definition": "goal: action",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+        "f595a72c-d0e9-4202-8263-4e3d24cca38a",
+        "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+      ],
+      "source_document": null,
+      "confidence": 0.7,
+      "reinforcement_count": 4,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+          "1bda74c9-975e-41ce-adfb-d61c4a82aa9b",
+          "f595a72c-d0e9-4202-8263-4e3d24cca38a"
+        ]
+      }
+    },
+    "ce2ec306-1a20-447d-be17-3a5eceeb3dcf": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "ce2ec306-1a20-447d-be17-3a5eceeb3dcf",
+      "timestamp": 1791070373.344548,
+      "created_at": 1791070373.344548,
+      "accessed_at": 1791070517.242398,
+      "access_count": 9,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "allow",
+      "definition": "goal: allow",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+        "f595a72c-d0e9-4202-8263-4e3d24cca38a",
+        "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+      ],
+      "source_document": null,
+      "confidence": 0.6732050807568877,
+      "reinforcement_count": 3,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+          "1bda74c9-975e-41ce-adfb-d61c4a82aa9b",
+          "f595a72c-d0e9-4202-8263-4e3d24cca38a"
+        ]
+      }
+    },
+    "95ddde90-c351-45dc-85ce-2c6044d9518f": {
+      "activation_count": 1,
+      "activation_sources": {
+        "enrichment": 1
+      },
+      "id": "95ddde90-c351-45dc-85ce-2c6044d9518f",
+      "timestamp": 1791070373.344596,
+      "created_at": 1791070373.344597,
+      "accessed_at": 1791070517.2424378,
+      "access_count": 9,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "escape",
+      "definition": "goal: escape",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+        "f595a72c-d0e9-4202-8263-4e3d24cca38a",
+        "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+      ],
+      "source_document": null,
+      "confidence": 0.6732050807568877,
+      "reinforcement_count": 3,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+          "1bda74c9-975e-41ce-adfb-d61c4a82aa9b",
+          "f595a72c-d0e9-4202-8263-4e3d24cca38a"
+        ]
+      }
+    },
+    "1099102a-f230-438e-9903-9a3000b27aaf": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "1099102a-f230-438e-9903-9a3000b27aaf",
+      "timestamp": 1791070373.344644,
+      "created_at": 1791070373.344644,
+      "accessed_at": 1791070478.727824,
+      "access_count": 6,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "without",
+      "definition": "goal: without",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+        "f595a72c-d0e9-4202-8263-4e3d24cca38a"
+      ],
+      "source_document": null,
+      "confidence": 0.5707106781186547,
+      "reinforcement_count": 2,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+          "f595a72c-d0e9-4202-8263-4e3d24cca38a"
+        ]
+      }
+    },
+    "018afb1b-be43-4668-9065-afcb2ef04a12": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "018afb1b-be43-4668-9065-afcb2ef04a12",
+      "timestamp": 1791070373.344694,
+      "created_at": 1791070373.344694,
+      "accessed_at": 1791070478.72786,
+      "access_count": 6,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "waking",
+      "definition": "goal: waking",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+        "f595a72c-d0e9-4202-8263-4e3d24cca38a"
+      ],
+      "source_document": null,
+      "confidence": 0.5707106781186547,
+      "reinforcement_count": 2,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+          "f595a72c-d0e9-4202-8263-4e3d24cca38a"
+        ]
+      }
+    },
+    "0388ca7f-9632-498d-b283-4012bfc5f91e": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "0388ca7f-9632-498d-b283-4012bfc5f91e",
+      "timestamp": 1791070373.344741,
+      "created_at": 1791070373.344741,
+      "accessed_at": 1791070517.242527,
+      "access_count": 9,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "guard",
+      "definition": "goal: guard",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+        "f595a72c-d0e9-4202-8263-4e3d24cca38a",
+        "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+      ],
+      "source_document": null,
+      "confidence": 0.6732050807568877,
+      "reinforcement_count": 3,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+          "1bda74c9-975e-41ce-adfb-d61c4a82aa9b",
+          "f595a72c-d0e9-4202-8263-4e3d24cca38a"
+        ]
+      }
+    },
+    "12c53370-450a-490c-8aa1-1a170b336637": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "12c53370-450a-490c-8aa1-1a170b336637",
+      "timestamp": 1791070373.3448892,
+      "created_at": 1791070373.34489,
+      "accessed_at": 1791070478.727932,
+      "access_count": 6,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "use",
+      "definition": "goal: use",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+        "f595a72c-d0e9-4202-8263-4e3d24cca38a"
+      ],
+      "source_document": null,
+      "confidence": 0.5707106781186547,
+      "reinforcement_count": 2,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+          "f595a72c-d0e9-4202-8263-4e3d24cca38a"
+        ]
+      }
+    },
+    "0365e4fb-bcc9-450b-b26a-14bcf988af31": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "0365e4fb-bcc9-450b-b26a-14bcf988af31",
+      "timestamp": 1791070373.344942,
+      "created_at": 1791070373.344942,
+      "accessed_at": 1791070517.2425652,
+      "access_count": 9,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "sense",
+      "definition": "goal: sense",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+        "f595a72c-d0e9-4202-8263-4e3d24cca38a",
+        "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+      ],
+      "source_document": null,
+      "confidence": 0.6732050807568877,
+      "reinforcement_count": 3,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "09389d81-2372-4345-8c0d-8b11b2e8eb56",
+          "1bda74c9-975e-41ce-adfb-d61c4a82aa9b",
+          "f595a72c-d0e9-4202-8263-4e3d24cca38a"
+        ]
+      }
+    },
+    "5c50c28d-68df-47c3-870f-b9b29d468584": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "5c50c28d-68df-47c3-870f-b9b29d468584",
+      "timestamp": 1791070373.345031,
+      "created_at": 1791070373.345032,
+      "accessed_at": 1791070373.3450382,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "discover",
+      "definition": "goal: discover",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "09389d81-2372-4345-8c0d-8b11b2e8eb56"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "09389d81-2372-4345-8c0d-8b11b2e8eb56"
+        ]
+      }
+    },
+    "14d50e29-97e9-4eeb-952e-3d364091933c": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "14d50e29-97e9-4eeb-952e-3d364091933c",
+      "timestamp": 1791070373.345116,
+      "created_at": 1791070373.345116,
+      "accessed_at": 1791070373.345124,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "available",
+      "definition": "goal: available",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "09389d81-2372-4345-8c0d-8b11b2e8eb56"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "09389d81-2372-4345-8c0d-8b11b2e8eb56"
+        ]
+      }
+    },
+    "b200f356-b848-4447-bc98-fecd068220d7": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "b200f356-b848-4447-bc98-fecd068220d7",
+      "timestamp": 1791070373.3452349,
+      "created_at": 1791070373.345236,
+      "accessed_at": 1791070373.345236,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "need find",
+      "definition": "Co-occurring: need + find",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "435b9855-9d6e-401e-bbf9-5b0f5635cd80": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "435b9855-9d6e-401e-bbf9-5b0f5635cd80",
+      "timestamp": 1791070373.3452559,
+      "created_at": 1791070373.3452559,
+      "accessed_at": 1791070373.3452559,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "need tool",
+      "definition": "Co-occurring: need + tool",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "f5d52e69-3382-4e78-a4e5-14c8fd640bbb": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "f5d52e69-3382-4e78-a4e5-14c8fd640bbb",
+      "timestamp": 1791070373.34527,
+      "created_at": 1791070373.34527,
+      "accessed_at": 1791070373.34527,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "need action",
+      "definition": "Co-occurring: need + action",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "c347d328-52a1-46b6-a102-06f05a96cb73": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "c347d328-52a1-46b6-a102-06f05a96cb73",
+      "timestamp": 1791070373.345284,
+      "created_at": 1791070373.345284,
+      "accessed_at": 1791070373.345284,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "need allow",
+      "definition": "Co-occurring: need + allow",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "1aa6b272-b413-4a17-825e-bf07ae2383b1": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "1aa6b272-b413-4a17-825e-bf07ae2383b1",
+      "timestamp": 1791070373.3452978,
+      "created_at": 1791070373.3452978,
+      "accessed_at": 1791070373.3452978,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "need escape",
+      "definition": "Co-occurring: need + escape",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "84b87ca5-a117-4bde-bf40-88617555cddd": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "84b87ca5-a117-4bde-bf40-88617555cddd",
+      "timestamp": 1791070373.345312,
+      "created_at": 1791070373.345312,
+      "accessed_at": 1791070373.345312,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "need without",
+      "definition": "Co-occurring: need + without",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "b29a6637-99a2-45dd-81da-e4cc318101e2": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "b29a6637-99a2-45dd-81da-e4cc318101e2",
+      "timestamp": 1791070411.8613162,
+      "created_at": 1791070411.86132,
+      "accessed_at": 1791070446.369566,
+      "access_count": 6,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "sense",
+      "definition": "action: sense",
+      "category": "action",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "63e6006f-0563-4357-93b2-f552fd6a9da9",
+        "8a22c7f9-5ca5-4bc8-97f0-a45dfa1209e0"
+      ],
+      "source_document": null,
+      "confidence": 0.5707106781186547,
+      "reinforcement_count": 2,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "63e6006f-0563-4357-93b2-f552fd6a9da9",
+          "8a22c7f9-5ca5-4bc8-97f0-a45dfa1209e0"
+        ]
+      }
+    },
+    "0918c157-c4dd-48ac-9762-b76402136378": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "0918c157-c4dd-48ac-9762-b76402136378",
+      "timestamp": 1791070478.728043,
+      "created_at": 1791070478.728045,
+      "accessed_at": 1791070478.7280588,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "explore",
+      "definition": "goal: explore",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "f595a72c-d0e9-4202-8263-4e3d24cca38a"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "f595a72c-d0e9-4202-8263-4e3d24cca38a"
+        ]
+      }
+    },
+    "14919271-680a-443c-987e-ce203b17dba6": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "14919271-680a-443c-987e-ce203b17dba6",
+      "timestamp": 1791070478.728105,
+      "created_at": 1791070478.728106,
+      "accessed_at": 1791070517.2427351,
+      "access_count": 6,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "option",
+      "definition": "goal: option",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "f595a72c-d0e9-4202-8263-4e3d24cca38a",
+        "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+      ],
+      "source_document": null,
+      "confidence": 0.5707106781186547,
+      "reinforcement_count": 2,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "1bda74c9-975e-41ce-adfb-d61c4a82aa9b",
+          "f595a72c-d0e9-4202-8263-4e3d24cca38a"
+        ]
+      }
+    },
+    "f3146f5c-e5bf-4228-ae51-c7eb5642e03d": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "f3146f5c-e5bf-4228-ae51-c7eb5642e03d",
+      "timestamp": 1791070517.241952,
+      "created_at": 1791070517.241954,
+      "accessed_at": 1791070517.2419698,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "given",
+      "definition": "goal: given",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+        ]
+      }
+    },
+    "de1c1bde-e182-4d33-8024-dd1decc27c75": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "de1c1bde-e182-4d33-8024-dd1decc27c75",
+      "timestamp": 1791070517.2420459,
+      "created_at": 1791070517.242047,
+      "accessed_at": 1791070517.242055,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "situation",
+      "definition": "goal: situation",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+        ]
+      }
+    },
+    "45f083be-2ebd-4f83-9e9c-faf68bd9ecd3": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "45f083be-2ebd-4f83-9e9c-faf68bd9ecd3",
+      "timestamp": 1791070517.242107,
+      "created_at": 1791070517.242107,
+      "accessed_at": 1791070517.242114,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "recent",
+      "definition": "goal: recent",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+        ]
+      }
+    },
+    "701a282c-e5ac-4744-bdcb-aa570d0814fe": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "701a282c-e5ac-4744-bdcb-aa570d0814fe",
+      "timestamp": 1791070517.2421591,
+      "created_at": 1791070517.24216,
+      "accessed_at": 1791070517.242166,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "observation",
+      "definition": "goal: observation",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+        ]
+      }
+    },
+    "baf7e48a-83ac-4eb3-a42f-ac5ab19482f5": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "baf7e48a-83ac-4eb3-a42f-ac5ab19482f5",
+      "timestamp": 1791070517.242476,
+      "created_at": 1791070517.242477,
+      "accessed_at": 1791070517.2424839,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "sleep",
+      "definition": "goal: sleep",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+        ]
+      }
+    },
+    "f5773262-210e-44c7-ae01-301876dcaf6f": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "f5773262-210e-44c7-ae01-301876dcaf6f",
+      "timestamp": 1791070517.2426398,
+      "created_at": 1791070517.242641,
+      "accessed_at": 1791070517.242647,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "reveal",
+      "definition": "goal: reveal",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+        ]
+      }
+    },
+    "5d023b09-b806-40b8-8017-c0ba2af49243": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "5d023b09-b806-40b8-8017-c0ba2af49243",
+      "timestamp": 1791070517.242688,
+      "created_at": 1791070517.242688,
+      "accessed_at": 1791070517.242696,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "suitable",
+      "definition": "goal: suitable",
+      "category": "goal",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [
+        "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+      ],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {
+        "hippocampus": [
+          "1bda74c9-975e-41ce-adfb-d61c4a82aa9b"
+        ]
+      }
+    },
+    "7dba981a-ef86-48c4-b5c4-cc2c8467bfaa": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "7dba981a-ef86-48c4-b5c4-cc2c8467bfaa",
+      "timestamp": 1791070517.242843,
+      "created_at": 1791070517.2428439,
+      "accessed_at": 1791070517.2428439,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "given situation",
+      "definition": "Co-occurring: given + situation",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "e5cdfeb8-8149-47b7-8778-12ecd9bf9363": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "e5cdfeb8-8149-47b7-8778-12ecd9bf9363",
+      "timestamp": 1791070517.2428641,
+      "created_at": 1791070517.2428641,
+      "accessed_at": 1791070517.2428641,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "given recent",
+      "definition": "Co-occurring: given + recent",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "f354cfce-0504-443e-93e1-d6d1463ab96a": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "f354cfce-0504-443e-93e1-d6d1463ab96a",
+      "timestamp": 1791070517.242879,
+      "created_at": 1791070517.242879,
+      "accessed_at": 1791070517.242879,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "given observation",
+      "definition": "Co-occurring: given + observation",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "655be7ff-a2bb-4d99-94ff-2e1ddfa17a0f": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "655be7ff-a2bb-4d99-94ff-2e1ddfa17a0f",
+      "timestamp": 1791070517.2428942,
+      "created_at": 1791070517.2428951,
+      "accessed_at": 1791070517.2428951,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "given need",
+      "definition": "Co-occurring: given + need",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "1bd8c612-86e1-4ade-9310-6f423bbc4f07": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "1bd8c612-86e1-4ade-9310-6f423bbc4f07",
+      "timestamp": 1791070517.2429068,
+      "created_at": 1791070517.242908,
+      "accessed_at": 1791070517.242908,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "given find",
+      "definition": "Co-occurring: given + find",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    },
+    "0104111d-f391-4c8b-b6f8-521a8be675b4": {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "0104111d-f391-4c8b-b6f8-521a8be675b4",
+      "timestamp": 1791070517.242924,
+      "created_at": 1791070517.242924,
+      "accessed_at": 1791070517.242924,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "name": "given tool",
+      "definition": "Co-occurring: given + tool",
+      "category": "compound_alias",
+      "properties": {},
+      "provenance": "EPISODIC_CONSOLIDATION",
+      "source_episode_ids": [],
+      "source_document": null,
+      "confidence": 0.5,
+      "reinforcement_count": 1,
+      "embedding_text": "",
+      "substrate_modality": null,
+      "metadata": {},
+      "_concept": true,
+      "memory_refs": {}
+    }
+  },
+  "graph": {
+    "nodes": [
+      "82fae4ba-bf29-40b3-a445-4485ca1228e5",
+      "b9da370c-c79e-4bcf-9e5c-d19f84323c73",
+      "bcf0e126-0bd6-449c-a018-4be4ddb9c750",
+      "64a8d09b-9af9-4478-ab27-feea9046da08",
+      "d127991b-a65b-4d8e-900e-d15bbea90ae7",
+      "78138a59-9b0f-4061-b584-e3530fe9e784",
+      "1fbeed63-83fb-4b22-a083-925d6207189e",
+      "2d3f8204-d9e4-4a60-a9b5-a13a58d2c975",
+      "00c6032e-9112-4fd9-b799-bf6a6da8947c",
+      "1deb6c47-3229-4b01-9802-49833637d21a",
+      "bf018975-211f-4517-886d-b6692a9e70d3",
+      "987c6019-30e2-4c47-919c-cb6524b13b56",
+      "882f048d-166c-487f-be1d-21f894ea8634",
+      "5a97b3ec-20b6-4714-9d84-c471645c4cb7",
+      "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+      "4c8a9175-3207-466d-bff6-338e9a4e8e9b",
+      "261eec10-49bc-463d-bcb4-aafd45586154",
+      "12e5b8d6-c686-4d8d-abb6-7fdd44df541c",
+      "ce2ec306-1a20-447d-be17-3a5eceeb3dcf",
+      "95ddde90-c351-45dc-85ce-2c6044d9518f",
+      "1099102a-f230-438e-9903-9a3000b27aaf",
+      "018afb1b-be43-4668-9065-afcb2ef04a12",
+      "0388ca7f-9632-498d-b283-4012bfc5f91e",
+      "12c53370-450a-490c-8aa1-1a170b336637",
+      "0365e4fb-bcc9-450b-b26a-14bcf988af31",
+      "5c50c28d-68df-47c3-870f-b9b29d468584",
+      "14d50e29-97e9-4eeb-952e-3d364091933c",
+      "b200f356-b848-4447-bc98-fecd068220d7",
+      "435b9855-9d6e-401e-bbf9-5b0f5635cd80",
+      "f5d52e69-3382-4e78-a4e5-14c8fd640bbb",
+      "c347d328-52a1-46b6-a102-06f05a96cb73",
+      "1aa6b272-b413-4a17-825e-bf07ae2383b1",
+      "84b87ca5-a117-4bde-bf40-88617555cddd",
+      "b29a6637-99a2-45dd-81da-e4cc318101e2",
+      "0918c157-c4dd-48ac-9762-b76402136378",
+      "14919271-680a-443c-987e-ce203b17dba6",
+      "f3146f5c-e5bf-4228-ae51-c7eb5642e03d",
+      "de1c1bde-e182-4d33-8024-dd1decc27c75",
+      "45f083be-2ebd-4f83-9e9c-faf68bd9ecd3",
+      "701a282c-e5ac-4744-bdcb-aa570d0814fe",
+      "baf7e48a-83ac-4eb3-a42f-ac5ab19482f5",
+      "f5773262-210e-44c7-ae01-301876dcaf6f",
+      "5d023b09-b806-40b8-8017-c0ba2af49243",
+      "7dba981a-ef86-48c4-b5c4-cc2c8467bfaa",
+      "e5cdfeb8-8149-47b7-8778-12ecd9bf9363",
+      "f354cfce-0504-443e-93e1-d6d1463ab96a",
+      "655be7ff-a2bb-4d99-94ff-2e1ddfa17a0f",
+      "1bd8c612-86e1-4ade-9310-6f423bbc4f07",
+      "0104111d-f391-4c8b-b6f8-521a8be675b4"
+    ],
+    "edges": [
+      {
+        "source": "64a8d09b-9af9-4478-ab27-feea9046da08",
+        "target": "d127991b-a65b-4d8e-900e-d15bbea90ae7",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "64a8d09b-9af9-4478-ab27-feea9046da08",
+        "target": "78138a59-9b0f-4061-b584-e3530fe9e784",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "64a8d09b-9af9-4478-ab27-feea9046da08",
+        "target": "1fbeed63-83fb-4b22-a083-925d6207189e",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "64a8d09b-9af9-4478-ab27-feea9046da08",
+        "target": "2d3f8204-d9e4-4a60-a9b5-a13a58d2c975",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "HAS_PART"
+        }
+      },
+      {
+        "source": "d127991b-a65b-4d8e-900e-d15bbea90ae7",
+        "target": "64a8d09b-9af9-4478-ab27-feea9046da08",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "d127991b-a65b-4d8e-900e-d15bbea90ae7",
+        "target": "78138a59-9b0f-4061-b584-e3530fe9e784",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "d127991b-a65b-4d8e-900e-d15bbea90ae7",
+        "target": "1fbeed63-83fb-4b22-a083-925d6207189e",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "00c6032e-9112-4fd9-b799-bf6a6da8947c",
+        "target": "64a8d09b-9af9-4478-ab27-feea9046da08",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "00c6032e-9112-4fd9-b799-bf6a6da8947c",
+        "target": "d127991b-a65b-4d8e-900e-d15bbea90ae7",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "78138a59-9b0f-4061-b584-e3530fe9e784",
+        "target": "64a8d09b-9af9-4478-ab27-feea9046da08",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "78138a59-9b0f-4061-b584-e3530fe9e784",
+        "target": "d127991b-a65b-4d8e-900e-d15bbea90ae7",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "1deb6c47-3229-4b01-9802-49833637d21a",
+        "target": "64a8d09b-9af9-4478-ab27-feea9046da08",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "1deb6c47-3229-4b01-9802-49833637d21a",
+        "target": "78138a59-9b0f-4061-b584-e3530fe9e784",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "1fbeed63-83fb-4b22-a083-925d6207189e",
+        "target": "64a8d09b-9af9-4478-ab27-feea9046da08",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "1fbeed63-83fb-4b22-a083-925d6207189e",
+        "target": "d127991b-a65b-4d8e-900e-d15bbea90ae7",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "bf018975-211f-4517-886d-b6692a9e70d3",
+        "target": "64a8d09b-9af9-4478-ab27-feea9046da08",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "bf018975-211f-4517-886d-b6692a9e70d3",
+        "target": "1fbeed63-83fb-4b22-a083-925d6207189e",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "987c6019-30e2-4c47-919c-cb6524b13b56",
+        "target": "64a8d09b-9af9-4478-ab27-feea9046da08",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "987c6019-30e2-4c47-919c-cb6524b13b56",
+        "target": "2d3f8204-d9e4-4a60-a9b5-a13a58d2c975",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "882f048d-166c-487f-be1d-21f894ea8634",
+        "target": "d127991b-a65b-4d8e-900e-d15bbea90ae7",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "882f048d-166c-487f-be1d-21f894ea8634",
+        "target": "78138a59-9b0f-4061-b584-e3530fe9e784",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "5a97b3ec-20b6-4714-9d84-c471645c4cb7",
+        "target": "d127991b-a65b-4d8e-900e-d15bbea90ae7",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "5a97b3ec-20b6-4714-9d84-c471645c4cb7",
+        "target": "1fbeed63-83fb-4b22-a083-925d6207189e",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+        "target": "4c8a9175-3207-466d-bff6-338e9a4e8e9b",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.35,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+        "target": "261eec10-49bc-463d-bcb4-aafd45586154",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.35,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+        "target": "12e5b8d6-c686-4d8d-abb6-7fdd44df541c",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.35,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+        "target": "ce2ec306-1a20-447d-be17-3a5eceeb3dcf",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.35,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+        "target": "95ddde90-c351-45dc-85ce-2c6044d9518f",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.35,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+        "target": "1099102a-f230-438e-9903-9a3000b27aaf",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.35,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+        "target": "f3146f5c-e5bf-4228-ae51-c7eb5642e03d",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "4c8a9175-3207-466d-bff6-338e9a4e8e9b",
+        "target": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.35,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "4c8a9175-3207-466d-bff6-338e9a4e8e9b",
+        "target": "f3146f5c-e5bf-4228-ae51-c7eb5642e03d",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "b200f356-b848-4447-bc98-fecd068220d7",
+        "target": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "b200f356-b848-4447-bc98-fecd068220d7",
+        "target": "4c8a9175-3207-466d-bff6-338e9a4e8e9b",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "261eec10-49bc-463d-bcb4-aafd45586154",
+        "target": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.35,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "261eec10-49bc-463d-bcb4-aafd45586154",
+        "target": "f3146f5c-e5bf-4228-ae51-c7eb5642e03d",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "435b9855-9d6e-401e-bbf9-5b0f5635cd80",
+        "target": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "435b9855-9d6e-401e-bbf9-5b0f5635cd80",
+        "target": "261eec10-49bc-463d-bcb4-aafd45586154",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "12e5b8d6-c686-4d8d-abb6-7fdd44df541c",
+        "target": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.35,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "f5d52e69-3382-4e78-a4e5-14c8fd640bbb",
+        "target": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "f5d52e69-3382-4e78-a4e5-14c8fd640bbb",
+        "target": "12e5b8d6-c686-4d8d-abb6-7fdd44df541c",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "ce2ec306-1a20-447d-be17-3a5eceeb3dcf",
+        "target": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.35,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "c347d328-52a1-46b6-a102-06f05a96cb73",
+        "target": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "c347d328-52a1-46b6-a102-06f05a96cb73",
+        "target": "ce2ec306-1a20-447d-be17-3a5eceeb3dcf",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "95ddde90-c351-45dc-85ce-2c6044d9518f",
+        "target": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.35,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "1aa6b272-b413-4a17-825e-bf07ae2383b1",
+        "target": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "1aa6b272-b413-4a17-825e-bf07ae2383b1",
+        "target": "95ddde90-c351-45dc-85ce-2c6044d9518f",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "1099102a-f230-438e-9903-9a3000b27aaf",
+        "target": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.35,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "84b87ca5-a117-4bde-bf40-88617555cddd",
+        "target": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "84b87ca5-a117-4bde-bf40-88617555cddd",
+        "target": "1099102a-f230-438e-9903-9a3000b27aaf",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "f3146f5c-e5bf-4228-ae51-c7eb5642e03d",
+        "target": "de1c1bde-e182-4d33-8024-dd1decc27c75",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "f3146f5c-e5bf-4228-ae51-c7eb5642e03d",
+        "target": "45f083be-2ebd-4f83-9e9c-faf68bd9ecd3",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "f3146f5c-e5bf-4228-ae51-c7eb5642e03d",
+        "target": "701a282c-e5ac-4744-bdcb-aa570d0814fe",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "f3146f5c-e5bf-4228-ae51-c7eb5642e03d",
+        "target": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "f3146f5c-e5bf-4228-ae51-c7eb5642e03d",
+        "target": "4c8a9175-3207-466d-bff6-338e9a4e8e9b",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "f3146f5c-e5bf-4228-ae51-c7eb5642e03d",
+        "target": "261eec10-49bc-463d-bcb4-aafd45586154",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "de1c1bde-e182-4d33-8024-dd1decc27c75",
+        "target": "f3146f5c-e5bf-4228-ae51-c7eb5642e03d",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "7dba981a-ef86-48c4-b5c4-cc2c8467bfaa",
+        "target": "f3146f5c-e5bf-4228-ae51-c7eb5642e03d",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "7dba981a-ef86-48c4-b5c4-cc2c8467bfaa",
+        "target": "de1c1bde-e182-4d33-8024-dd1decc27c75",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "45f083be-2ebd-4f83-9e9c-faf68bd9ecd3",
+        "target": "f3146f5c-e5bf-4228-ae51-c7eb5642e03d",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "e5cdfeb8-8149-47b7-8778-12ecd9bf9363",
+        "target": "f3146f5c-e5bf-4228-ae51-c7eb5642e03d",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "e5cdfeb8-8149-47b7-8778-12ecd9bf9363",
+        "target": "45f083be-2ebd-4f83-9e9c-faf68bd9ecd3",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "701a282c-e5ac-4744-bdcb-aa570d0814fe",
+        "target": "f3146f5c-e5bf-4228-ae51-c7eb5642e03d",
+        "type": "ASSOCIATES",
+        "weight": 0.3,
+        "metadata": {
+          "confidence": 0.3,
+          "relationship_type": "ASSOCIATES"
+        }
+      },
+      {
+        "source": "f354cfce-0504-443e-93e1-d6d1463ab96a",
+        "target": "f3146f5c-e5bf-4228-ae51-c7eb5642e03d",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "f354cfce-0504-443e-93e1-d6d1463ab96a",
+        "target": "701a282c-e5ac-4744-bdcb-aa570d0814fe",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "655be7ff-a2bb-4d99-94ff-2e1ddfa17a0f",
+        "target": "f3146f5c-e5bf-4228-ae51-c7eb5642e03d",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "655be7ff-a2bb-4d99-94ff-2e1ddfa17a0f",
+        "target": "c50192e2-7ca4-4e4b-925a-bc02d0270a5f",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "1bd8c612-86e1-4ade-9310-6f423bbc4f07",
+        "target": "f3146f5c-e5bf-4228-ae51-c7eb5642e03d",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "1bd8c612-86e1-4ade-9310-6f423bbc4f07",
+        "target": "4c8a9175-3207-466d-bff6-338e9a4e8e9b",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "0104111d-f391-4c8b-b6f8-521a8be675b4",
+        "target": "f3146f5c-e5bf-4228-ae51-c7eb5642e03d",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      },
+      {
+        "source": "0104111d-f391-4c8b-b6f8-521a8be675b4",
+        "target": "261eec10-49bc-463d-bcb4-aafd45586154",
+        "type": "ASSOCIATES",
+        "weight": 0.8,
+        "metadata": {
+          "confidence": 0.5,
+          "relationship_type": "ALIAS_OF"
+        }
+      }
+    ]
+  },
+  "registry": {
+    "types": {
+      "IS_A": {
+        "description": "Subsumption / taxonomy",
+        "symmetric": false,
+        "builtin": true
+      },
+      "HAS_PART": {
+        "description": "Part-whole relationship",
+        "symmetric": false,
+        "builtin": true
+      },
+      "CAUSES": {
+        "description": "Causal relationship",
+        "symmetric": false,
+        "builtin": true
+      },
+      "PROPERTY_OF": {
+        "description": "Property attribution",
+        "symmetric": false,
+        "builtin": true
+      },
+      "RELATED_TO": {
+        "description": "Generic association",
+        "symmetric": true,
+        "builtin": true
+      },
+      "ASSOCIATES": {
+        "description": "Associative link",
+        "symmetric": true,
+        "builtin": true
+      },
+      "EXECUTES_WITH": {
+        "description": "Skill executes in context of this concept",
+        "symmetric": false,
+        "builtin": true
+      },
+      "ALIAS_OF": {
+        "description": "Compound alias referencing component concepts",
+        "symmetric": false,
+        "builtin": true
+      },
+      "IS_PROPORTIONAL_TO": {
+        "description": "Two metrics scale together",
+        "symmetric": true,
+        "builtin": true
+      },
+      "CORRELATES_WITH": {
+        "description": "Statistical correlation confirmed by AG",
+        "symmetric": true,
+        "builtin": true
+      },
+      "IS_INVERSE_OF": {
+        "description": "Inverse relationship",
+        "symmetric": true,
+        "builtin": true
+      },
+      "TRANSFORMS_TO": {
+        "description": "Value transforms via known operation",
+        "symmetric": false,
+        "builtin": true
+      },
+      "TRENDS_WITH": {
+        "description": "Two metrics trend same/opposite direction",
+        "symmetric": true,
+        "builtin": true
+      },
+      "PHASE_LOCKED_TO": {
+        "description": "Activity phase-locked to SCN oscillator",
+        "symmetric": false,
+        "builtin": true
+      },
+      "PREDICTS": {
+        "description": "One pattern predicts another",
+        "symmetric": false,
+        "builtin": true
+      }
+    }
+  },
+  "stats": {
+    "concepts_stored": 49,
+    "queries": 516
+  },
+  "compressed_count": 0,
+  "_format_version": "1.0"
+}
