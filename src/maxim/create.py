@@ -59,10 +59,15 @@ def _refuse_existing_store(persistence_path: str | None, store: str, *, overwrit
 
     path = store_file_path(persistence_path)
     if os.path.exists(path):
-        what = "a directory is" if os.path.isdir(path) else "a store already exists"
+        if os.path.isdir(path):
+            message = f"{store}: a directory is at {path}; choose a file path for the store"
+        else:
+            message = (
+                f"{store}: a store already exists at {path}; open it with maxim.load.{store}({persistence_path!r}), "
+                "or pass overwrite=True to replace it on purpose"
+            )
         raise StoreOverwriteRefused(
-            f"{store}: {what} at {path}; open a store with maxim.load.{store}({persistence_path!r}), "
-            "or pass overwrite=True to replace it on purpose",
+            message,
             path=path,
             store=store,
         )

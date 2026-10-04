@@ -71,7 +71,7 @@ def test_overwrite_on_atl_and_its_declared_warning(tmp_path, caplog) -> None:
         a = maxim.create.atl(persistence_path=str(path), overwrite=True)
     assert any("without reading it (declared)" in r.getMessage() for r in caplog.records)
     a.save()
-    assert maxim.load.atl(str(path)) is not None
+    assert len(maxim.load.atl(str(path))) == 0  # the declared replace dropped the old concept
 
 
 def test_a_directory_at_the_path_is_named_as_one(tmp_path) -> None:
