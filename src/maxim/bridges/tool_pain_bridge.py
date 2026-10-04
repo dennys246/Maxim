@@ -247,6 +247,21 @@ class ToolPainBridge:
                     self._pain_by_invocation.popitem(last=False)
         return event_signature
 
+    def finish_invocation(self, tool_name: str, invocation_id: str) -> None:
+        """Retire an invocation's pending entry however the executor's ``execute()`` exits (#851).
+
+        The completion, embodiment-failure and failure-pain paths each pop the entry when they run,
+        but a failure whose pain never reaches this bridge (the PainDetector cooldown, the PainBus
+        refractory gate, no detector wired) ran none of them. Its entry stayed pending for the rest
+        of the session, and ``_on_embodiment_pain``'s any-pending guard then skipped every
+        world-driven body pain. The executor owns the invocation's lifecycle, so it closes it here
+        whatever happened to the pain signal. Pain dispatch is synchronous, so every attribution path
+        for this invocation has already run; a no-op when one of them popped the entry.
+        """
+        with self._lock:
+            self._pending_tools.pop((tool_name, invocation_id), None)
+            self._pending_contexts.pop((tool_name, invocation_id), None)
+
     def record_tool_complete(
         self,
         tool_name: str,
@@ -582,6 +597,11 @@ class ToolPainBridge:
         problem in practice, the remedy is a future stage that enriches
         the pending-event context on the non-tool path, not another
         band-aid here.
+
+        The guard is only as good as the pending map: it relies on the executor retiring every
+        invocation it started (``finish_invocation``, from ``Executor.execute``'s ``finally``,
+        #851). A new caller of ``record_tool_start`` must retire its invocations the same way, or
+        one stale entry switches this path off for the rest of the session.
 
         The guard reads ``self._pending_tools`` under the existing lock
         — no new threadlocal, no new ContextVar, no re-entrancy hazard

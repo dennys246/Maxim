@@ -174,11 +174,6 @@
       "lines": 269
     },
     {
-      "file": "src/maxim/runtime/executor.py",
-      "qualname": "Executor.execute",
-      "lines": 219
-    },
-    {
       "file": "src/maxim/runtime/lane_backends.py",
       "qualname": "_apply_lane_config_to_env",
       "lines": 217

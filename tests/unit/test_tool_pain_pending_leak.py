@@ -14,8 +14,6 @@ import time
 from typing import Any
 from unittest.mock import MagicMock
 
-import pytest
-
 from maxim.bridges.tool_pain_bridge import ToolPainBridge
 from maxim.decisions.nac import NAc
 from maxim.proprioception.pain import PainConfig, PainDetector, PainSignal, PainType
@@ -49,9 +47,6 @@ class _Raises(Tool):
         raise RuntimeError("motor stalled")
 
 
-_RED_851 = pytest.mark.xfail(strict=True, reason="#851: a dropped failure pain leaves its pending entry behind")
-
-
 def _world_pain() -> PainSignal:
     """Out-of-band body pain: a joint strains while no tool is running."""
     return PainSignal(
@@ -81,7 +76,6 @@ def _rig(
     return executor, bridge, spy
 
 
-@_RED_851
 def test_a_cooldown_dropped_failure_does_not_disable_world_pain_attribution():
     """The issue's red test: the second failure lands inside the detector's cooldown, so its pain never
     reaches the bridge. World pain afterwards must still be attributed through NAc."""
@@ -92,7 +86,6 @@ def test_a_cooldown_dropped_failure_does_not_disable_world_pain_attribution():
     assert _world_pain_attributions(spy) == 1
 
 
-@_RED_851
 def test_a_failure_with_no_pain_detector_leaves_nothing_pending():
     executor, bridge, spy = _rig(detector=None)
     executor.execute({"tool_name": "grab", "params": {}})
@@ -102,7 +95,6 @@ def test_a_failure_with_no_pain_detector_leaves_nothing_pending():
     assert _world_pain_attributions(spy) == 1
 
 
-@_RED_851
 def test_a_refractory_dropped_failure_leaves_nothing_pending():
     """The PainBus refractory gate drops the second failure's signal before any subscriber sees it."""
     bus = PainBus(pain_refractory_s=60.0, _allow_raw=True)
@@ -116,7 +108,6 @@ def test_a_refractory_dropped_failure_leaves_nothing_pending():
     assert _world_pain_attributions(spy) == 1
 
 
-@_RED_851
 def test_a_tool_that_raises_leaves_nothing_pending():
     executor, bridge, _ = _rig(detector=None)
     out = executor.execute({"tool_name": "lift", "params": {}})
@@ -124,7 +115,6 @@ def test_a_tool_that_raises_leaves_nothing_pending():
     assert bridge._pending_tools == {}
 
 
-@_RED_851
 def test_an_unregistered_tool_leaves_nothing_pending():
     executor, bridge, _ = _rig(detector=None)
     assert executor.execute({"tool_name": "fly", "params": {}}).success is False
@@ -143,7 +133,6 @@ def test_the_failure_whose_pain_arrives_is_still_attributed_to_its_tool():
     assert record.call_args.kwargs["event_id"] == "tool:grab"
 
 
-@_RED_851
 def test_an_inactive_scene_tool_leaves_nothing_pending():
     executor, bridge, _ = _rig(detector=None)
 
@@ -157,10 +146,11 @@ def test_an_inactive_scene_tool_leaves_nothing_pending():
     assert bridge._pending_tools == {}
 
 
-@_RED_851
 def test_an_exception_escaping_execute_still_retires_the_invocation(monkeypatch):
     """The retire is a ``finally``, not a step after the call: an exception that escapes ``execute()`` (here a
     failure report that raises) must not leave the entry pending."""
+    import pytest
+
     executor, bridge, _ = _rig(detector=None)
 
     def _boom(*_a: Any, **_k: Any) -> None:
