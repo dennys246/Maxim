@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **FearCircuitBridge and plan_manager's replan hint are marked Dormant, and their silent failures now log**
+  (#840, #841, owner decision 2026-10-04). Neither was ever live. The bridge's NAc calls never matched NAc's API
+  and nothing calls it. The replan hint passed a string where a perception was expected, and no plan is ever
+  created. Both stay constructed and wired ("Dormancy over deletion"), though nothing reaches either. Their
+  silent `except Exception` handlers now report through `log_swallowed_exception`. Follow-up plans: `docs/plans/fear_learning.md` (#1072) and
+  `docs/plans/executive_function.md` (#1073).
 - **Breaking, to stable surfaces: `create.hippocampus` / `create.atl` refuse an existing store at construction**
   (#1071, owner decision 2026-10-04). `create.*` makes a NEW store. On a path that already holds one, it raised only
   at `save()` (#939), after the caller had worked against a store that opened silently empty; now construction raises

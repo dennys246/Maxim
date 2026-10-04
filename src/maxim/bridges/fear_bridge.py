@@ -9,6 +9,16 @@ Solution: Learn risk patterns from historical outcomes:
 - Track which code patterns led to actual problems
 - Adjust risk thresholds based on context and history
 - Remember false positive patterns to reduce unnecessary blocks
+
+Dormant since 2026-10-04: no producer and no consumer (#840). The hub's façades it serves
+(``MemoryHub.record_risk_outcome`` / ``should_block_action`` / ``get_risk_adjustment``) have never had a
+non-test caller, its NAc write (``record_event`` with a float and ``metadata=``) and read
+(``NAc.predict_outcome``, which NAc never had) both fail, and its write and read keys differ
+(``pattern_hash[:8]`` vs ``pattern``). It was never live (2026-02-06 onward). Its jobs are covered elsewhere:
+learned tool aversion by ``ToolPainBridge`` / ``ToolHarmPredictor`` → ``FearAgent``, situation fear by NAc
+Wire 4 (Exp 60/61/62). The one idea nothing covers -- learning from false alarms -- is extinction, planned
+with fear-relief credit in ``docs/plans/fear_learning.md``. Per CLAUDE.md "Dormancy over deletion": it stays
+constructed and wired; no new features build on it; reviving it needs an experiment that earns it.
 """
 
 from __future__ import annotations
@@ -23,6 +33,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from maxim.memory.types import record_success
+from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
     from maxim.decisions.nac import NAc
@@ -380,7 +391,7 @@ class FearCircuitBridge:
                         adjustment += assoc_factor * 0.1  # Max ±0.1 from associations
                         adjustment = max(-self.max_adjustment, min(self.max_adjustment, adjustment))
                 except Exception:
-                    pass  # Associative recall is best-effort
+                    log_swallowed_exception()  # associative recall (dormant: nothing calls this path, #840); never silent
 
             return adjustment
 
@@ -458,6 +469,7 @@ class FearCircuitBridge:
             return 1.0
 
         except Exception:
+            log_swallowed_exception()  # NAc has no predict_outcome (#840): the factor stays 1.0, loudly
             return 1.0
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -626,7 +638,7 @@ class FearCircuitBridge:
                     },
                 )
         except Exception:
-            pass  # Non-critical, don't record as error
+            log_swallowed_exception()  # #840: record_event has no such signature; dormant, but never silent
 
     # ─────────────────────────────────────────────────────────────────────────
     # Analysis and Reporting
