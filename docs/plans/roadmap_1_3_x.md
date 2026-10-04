@@ -78,7 +78,7 @@ Grouped by the axis each item lifts; the "to reach" conditions come from the car
 | item | guard |
 |---|---|
 | **[→ 1.3.2]** **Extend the function-length ratchet to every function over 300 lines** (18 today, one of 921; the ratchet covers 3). Pin at current length, shrink-only. | `scripts/lint_function_length.py` + the baseline file |
-| **[→ 1.3.2]** **A repo-wide mypy error-count ratchet** starting at today's measurement (1,050 errors in 141 files over all of `src/maxim`; CI's typed set stays at 18 files). | a new lint in CI, shrink-only |
+| **[→ 1.3.2]** **A repo-wide mypy error-count ratchet** starting at today's measurement (1,050 errors in 141 files over all of `src/maxim` — a different, earlier invocation, superseded: the ratchet's own invocation is the only count that binds; CI's typed set stays at 18 files). **Built 2026-10-04** as a per-file ratchet against the merge-base (item 4 below; 1,096 cold at the build, 1,075 at `v1.3.1` the same way). | `scripts/lint_mypy_ratchet.py` (lint job) + `tests/unit/test_lint_mypy_ratchet.py` |
 
 ### Research integrity + documentation honesty (both B+, cheap items)
 
@@ -174,16 +174,29 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
 4. **The silent seams #840 and #841, and type-checking the composition layer.** Both are an argument
    mismatch swallowed by a broad `except` — exactly what mypy catches. Extend CI's mypy set to `runtime/executor.py`,
    `runtime/agent_loop.py`, `bridges/`, `planning/`, and start the repo-wide error-count ratchet carried from
-   1.3.1 (1,071 at the tag; it may only fall). Guard: CI mypy on those modules + the ratchet.
-   **CI-set half as built (PR pending, [#1083](https://github.com/dennys246/Maxim/issues/1083)):** the four
+   1.3.1 (1,071 at the tag; it may only fall — per file, against each PR's merge-base, not as a repo
+   total: errors cross files, so two PRs that each pass can together raise the total; see the residuals in
+   `scripts/lint_mypy_ratchet.py`'s docstring). Guard: CI mypy on those modules + the ratchet.
+   **Ratchet half BUILT 2026-10-04** (owner decision 2026-10-04: per file, pinned at today's counts, no
+   file may rise, new files start at 0): `scripts/lint_mypy_ratchet.py` in the lint job, positive control
+   `tests/unit/test_lint_mypy_ratchet.py` (every mechanism deletion-proven). No committed baseline: each
+   PR measures its HEAD and its merge-base (`git archive`) in the same job with one fixed invocation
+   (empty `--config-file`, `--no-site-packages`, `--check-untyped-defs`, cold cache), and a separate
+   per-file suppression counter (`type: ignore`, `# mypy:`, `@no_type_check`, any test mentioning `TYPE_CHECKING`/`MYPY`)
+   may not rise either. The count lives in that step's CI output; cold-run numbers at the build, for the
+   record: **1,096 errors in 142 files, 87 suppressions** at merge-base `4bf1fe7d` (identical on a dev
+   venv and on a bare lint-job venv, because `--no-site-packages` removes the environment; without it a
+   full dev venv reads 1,105), and **1,075 in 141 files at `v1.3.1`** measured the same way (the "1,071"
+   above came from a different invocation). The +21 since the tag: `cli.py` +17, `orchestrator.py` +4,
+   seven files +1, four files falling. About 16 s per run (two mypy runs of ~5 s each plus the scans).
+   **CI-set half BUILT 2026-10-04 (PR [#1087](https://github.com/dennys246/Maxim/pull/1087), [#1083](https://github.com/dennys246/Maxim/issues/1083)):** the four
    paths join CI's mypy step at 0 errors (37 before). The extension found a real crash: an approved
    PLANNING proposal had no `cluster_id`/`clusters`, so its outcome record raised after the tool ran
    (#1083, fixed: the queued `Proposal` references its `LLMProposal` and credit keys to proposal time, owner
    decision 2026-10-04; full parity with the autonomous path is #1085). `fear_bridge.py`'s three dead
    calls carry line-level ignores (Dormant, #840); `AdaptivePlanner.set_mesh_context` is marked Dormant
    ([#1084](https://github.com/dennys246/Maxim/issues/1084): no non-test caller). The other 33 were
-   behaviour-neutral annotation and narrowing fixes. **The ratchet half stays open:** it ships separately,
-   after a gate design pass.
+   behaviour-neutral annotation and narrowing fixes.
 5. **Coverage as a ratchet — and a coverage push where the risk is** (widened 2026-09-27, owner). Baseline:
    the Codex card's whole-suite run at `v1.3.1` — **61.9% of 90,416 statements**, 31,797 uncovered
    ([evidence](../limits/score_cards/evidence/2026-09-27-codex/)). Three mechanisms, all in CI:
