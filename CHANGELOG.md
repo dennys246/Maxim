@@ -75,6 +75,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`damage_component` aimed at a part the body does not have now fails instead of reporting damage that never
+  landed** (#873, the no-silent-fallback half). The tool used to subtract the damage from the root
+  `vital_metrics["health"]`, publish pain and return `success=True`. On a derived-health body the same call's
+  `evaluate_failures()` re-derived health from the parts, so the damage vanished; on a flat-`hp` body (`wolf`) it
+  landed on an orphan `health` key. It now returns a retryable `INVALID_INPUT` error naming the parts that can
+  take damage, and writes nothing and publishes no pain. A reflex aimed at a missing part is therefore booked
+  `failed`, not `acted`. The bodies whose archetype reflexes target parts they lack now fail every damage reflex.
+  Their damage never landed there before either, but they published pain and counted as a response. Humanoid
+  (`torso`/`legs`): the `reachy_mini` bodies (incl. the Exp 54 cradle body `reachy_mini_infant`), the `minecraft_*`
+  bodies, `creatures/revenant`, `creatures/skeleton_warrior` and the `npcs/*`. Quadruped (`torso`/`wing`/`combat`):
+  wolf, `vehicles/horse`, cyberdog, giant_spider, alien_xenomorph. None of these has a damageable part, so on them
+  `damage_component` cannot land at all, from the narrator or a reflex: a narrative sim on one of them (e.g. a cradle
+  sim with `--embodiment bodies/reachy_mini_infant`) now books those reflexes `failed`, and they re-dispatch where
+  they used to act. Exp 54's Phase B/C readout harness builds no reflex registry and is unaffected.
+  `bodies/base_humanoid` (the default), the infant bodies and `creatures/dragon` have every targeted part.
+  The output's `fallback_to_entity` key is gone. Failing a missing part is the roadmap's interim; whether to resolve
+  it to a default or nearest part stays open, with the other three design points (sum vs weighted mean, partless
+  bodies, archetype reflex sets), in `docs/plans/deferred/reflex_layering.md`. The narrator prompt still suggests
+  parts the default body lacks (#1093, Session A's file). Ledger: T3-9 (Exp 09)'s "SEM body change" trigger fired
+  and is discharged by its evidence run, which never took the fallback (see `behavioral_graduation_candidates.md`).
+  Guard: `tests/unit/test_damage_component_no_fallback.py`.
+
 - **An approved PLANNING proposal no longer ends the run, and is credited to the situation it was proposed in**
   (#1083, owner decision 2026-10-04). The autonomy `Proposal` the loop queues for approval had no
   `cluster_id`/`clusters`, so recording an approved action's outcome raised `AttributeError` after the tool had

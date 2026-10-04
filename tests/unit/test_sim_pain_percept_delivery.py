@@ -212,15 +212,26 @@ def test_inject_pain_still_accepts_the_valid_forms(raw, expected):
     assert bridge.calls[0]["intensity"] == pytest.approx(expected)
 
 
+class _FakePart:
+    def __init__(self) -> None:
+        self.vital_metrics = {"integrity": 1.0}
+
+    def apply_damage(self, amount, _damage_type=None):
+        self.vital_metrics["integrity"] -= amount
+        return self.vital_metrics["integrity"]
+
+
 class _FakeRoot:
+    name = "body"
     full_path = "body"
     entity_type = "body"
 
     def __init__(self) -> None:
         self.vital_metrics = {"health": 1.0}
+        self.modulators = {"torso": _FakePart()}
 
-    def get_component(self, _name):
-        return None
+    def get_component(self, name):
+        return self.modulators.get(name)
 
 
 class _FailingPainBus:
@@ -247,5 +258,5 @@ def test_a_failed_damage_pain_publish_is_reported_not_silently_passed(caplog):
     with caplog.at_level("WARNING"):
         out = DamageComponentTool(embodiment=emb, entity_map=None).execute(component="torso", amount="0.2")
     assert out.success is True
-    assert emb.root.vital_metrics["health"] == pytest.approx(0.8)  # the damage itself still applied
+    assert emb.root.modulators["torso"].vital_metrics["integrity"] == pytest.approx(0.8)  # the damage still applied
     assert any(r.levelname == "WARNING" for r in caplog.records)

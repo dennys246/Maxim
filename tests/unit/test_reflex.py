@@ -659,6 +659,7 @@ class TestSensorReflexDelta:
             ("humanoid", "bodies/base_humanoid"),  # the Exp 09 body
             ("humanoid", "bodies/infant_humanoid"),
             ("infant", "bodies/infant_humanoid"),
+            ("quadruped", "creatures/dragon"),  # the one shipped quadruped with every targeted part
         ],
     )
     def test_every_shipped_reflex_acts_on_a_real_body(self, archetype, body_ref):
@@ -696,12 +697,10 @@ class TestSensorReflexDelta:
                 return outputs[-1]
 
             [f] = reg.evaluate(text, execute_tool=_dispatch)
+            # A reflex aimed at a part the body does not have fails since #873
+            # (it used to fall back to root ``health`` and still succeed), so
+            # "acted" now proves the part exists.
             assert f.outcome == "acted", (spec.name, f.error)
-            if spec.response.tool == "damage_component":
-                # DamageComponentTool falls back to root ``health`` (and still
-                # succeeds) when the part is missing — "acted" alone would pass
-                # for a reflex aimed at a part the body does not have.
-                assert outputs[-1].output["fallback_to_entity"] is False, spec.name
             if sensor is not None:
                 # Moved by exactly the DELTA — not set to an absolute value. The
                 # shipped bodies start these sensors healthy and the deltas are

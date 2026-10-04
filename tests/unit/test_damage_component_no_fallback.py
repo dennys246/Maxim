@@ -20,9 +20,6 @@ from maxim.simulation.tools import DamageComponentTool
 from maxim.tools.base import ToolErrorKind
 
 
-_RED_873 = pytest.mark.xfail(strict=True, reason="#873: damage_component falls back to root health and reports success")
-
-
 class _Bus:
     def __init__(self) -> None:
         self.published: list[Any] = []
@@ -48,7 +45,6 @@ def _tool(body_ref: str) -> tuple[DamageComponentTool, _Embodiment]:
     return DamageComponentTool(embodiment=emb, entity_map=None), emb
 
 
-@_RED_873
 @pytest.mark.parametrize("body_ref", ["bodies/base_humanoid", "creatures/wolf"])
 def test_a_missing_part_fails_and_changes_nothing(body_ref):
     tool, emb = _tool(body_ref)
@@ -61,7 +57,6 @@ def test_a_missing_part_fails_and_changes_nothing(body_ref):
     assert emb._pain_bus.published == []  # no pain for damage that did not land
 
 
-@_RED_873
 def test_the_error_names_the_parts_that_can_take_damage():
     """A retryable error for the LLM: it says what it COULD have aimed at."""
     tool, emb = _tool("bodies/base_humanoid")
