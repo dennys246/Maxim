@@ -390,7 +390,10 @@ def test_the_downgrade_backup_advice_names_every_run_directory() -> None:
     from maxim.utils.paths import RUN_DIR_KINDS
 
     text = (REPO / "docs" / "user" / "upgrading.md").read_text()
-    sentence = next(line for line in text.splitlines() if line.startswith("If you anticipate a possible downgrade"))
+    sentence = next(
+        (line for line in text.splitlines() if line.startswith("If you anticipate a possible downgrade")), None
+    )
+    assert sentence is not None, "upgrading.md: the downgrade backup sentence is gone or reworded; re-point this pin"
     advice = sentence.split("*(Corrected", 1)[0]
     for directory in RUN_DIR_KINDS.values():
         assert f"`~/.maxim/{directory}/`" in advice, directory

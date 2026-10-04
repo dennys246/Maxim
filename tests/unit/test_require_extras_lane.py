@@ -132,3 +132,39 @@ def test_a_reasonless_importorskip_of_a_required_extra_fails_the_lane(tmp_path):
     assert required.returncode == 1 and "the 'sign' extra is required on this lane" in required.stdout, required.stdout
     optional = subprocess.run(args, cwd=REPO, capture_output=True, text=True, check=False)
     assert optional.returncode == 0 and "1 skipped" in optional.stdout, optional.stdout
+
+
+def _configure_only(tmp_path: Path, *flags: str, block: str | None = None) -> subprocess.CompletedProcess[str]:
+    """Run pytest on a trivial test; ``block`` makes that module unimportable before conftest configures."""
+    (tmp_path / "test_trivial.py").write_text("def test_ok():\n    pass\n")
+    plugins: list[str] = []
+    env = None
+    if block is not None:
+        (tmp_path / "block_extra_module.py").write_text(f"import sys\nsys.modules[{block!r}] = None\n")
+        plugins = ["-p", "block_extra_module"]
+        import os
+
+        env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(tmp_path), os.environ.get("PYTHONPATH", "")])}
+    return subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", *plugins, "-p", "tests.conftest", "-p", "no:cacheprovider"]
+        + [str(tmp_path / "test_trivial.py"), *flags],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+
+def test_a_lane_whose_required_extra_does_not_import_refuses_to_start(tmp_path):
+    """The positive half: whatever shape a test's skip takes, the lane cannot run without the extra."""
+    refused = _configure_only(tmp_path, "--require-extras=sign", block="rfc8785")
+    assert refused.returncode == 4, refused.stdout + refused.stderr  # pytest's UsageError exit
+    assert "the 'sign' extra is required on this lane, but 'rfc8785' does not import" in refused.stderr
+    # the control: the same blocked module without the flag is not the lane's business
+    assert _configure_only(tmp_path, block="rfc8785").returncode == 0
+
+
+def test_an_undeclared_extra_is_refused(tmp_path):
+    refused = _configure_only(tmp_path, "--require-extras=sing")
+    assert refused.returncode == 4 and "pyproject.toml declares no 'sing' extra" in refused.stderr, refused.stderr

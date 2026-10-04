@@ -240,7 +240,14 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
 7. **CI escape paths ([#940](https://github.com/dennys246/Maxim/issues/940))**: the `|| echo` optional install,
    the reason-less `importorskip`, the slow lane's expected roster, the network guard at the process-tree
    boundary. Guard: each lane fails on the escape.
-8. **One source of truth for claims** (mechanization backlog M2). Guard: the claims-registry lint.
+   **The importorskip half built 2026-10-04, PR pending:** `--require-extras` now refuses to start unless every
+   module of each named extra imports (`tests/conftest.py::_require_extras_importable`), and also reads pytest's
+   own "could not import" message for those modules. Owner decisions 2026-10-04 for the rest: the slow lane
+   installs and runs its tests (16 of 58 ran on the 2026-10-04 nightly) against an exact roster with reasoned
+   skips only; the unit-tests pytest step runs in a loopback-only network namespace, with no OS-level exception.
+8. **One source of truth for claims** (mechanization backlog M2). Guard: the claims-registry lint. It also
+   owes [#940](https://github.com/dennys246/Maxim/issues/940) item 2's guard: the README results table's Exp 10
+   row was corrected on 2026-09-27 with nothing to stop it drifting again.
 
 **Engram integrity (pulled in from 1.4's parallel line, 2026-09-27).** Its four engineering items gate
 1.4.0 (release threshold T7), touch no survival rung's path and run off the rig

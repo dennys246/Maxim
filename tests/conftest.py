@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from maxim.memory.encoding import EncodingSignals
 import atexit
+import functools
 import os
 import shutil
 import sys
@@ -112,6 +113,15 @@ _EXTRA_SKIP_REASONS: dict[str, tuple[str, ...]] = {
 }
 
 
+@functools.cache
+def _optional_dependencies() -> "dict[str, list[str]]":
+    import tomllib
+
+    return tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text())["project"][
+        "optional-dependencies"
+    ]
+
+
 def extra_import_names(extra: str) -> tuple[str, ...]:
     """The top-level import names of ``extra``'s requirements, read from ``pyproject.toml``.
 
@@ -119,15 +129,12 @@ def extra_import_names(extra: str) -> tuple[str, ...]:
     ("could not import 'cryptography': ..."), which names no extra, so it used to evade
     ``--require-extras`` (#940 item 4). Reading the names from the extras themselves keeps the
     contract from drifting when an extra gains a package. Every console/sign requirement's
-    distribution name is its import name; ``test_require_extras_lane`` pins that."""
+    distribution name is its import name; ``test_require_extras_lane`` pins that (a dotted or
+    renamed distribution, e.g. ``PyYAML``, would need a mapping here)."""
     import re
-    import tomllib
 
-    extras = tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text())["project"][
-        "optional-dependencies"
-    ]
     names = []
-    for requirement in extras.get(extra, ()):
+    for requirement in _optional_dependencies().get(extra, ()):
         match = re.match(r"[A-Za-z0-9._-]+", requirement)
         if match:
             names.append(re.sub(r"[-.]", "_", match.group(0).lower()))
@@ -135,7 +142,12 @@ def extra_import_names(extra: str) -> tuple[str, ...]:
 
 
 def required_extra_skip(reason: str, required: "set[str]") -> str | None:
-    """The required extra a skip reason names, or ``None``. Pure, so the lane's contract is unit-testable."""
+    """The required extra a skip reason names, or ``None``. Pure, so the lane's contract is unit-testable.
+
+    String inference from the reason, so a skip that names neither the extra nor one of its modules
+    (``except ImportError: pytest.skip("<anything>")``, an unrelated ``skipif`` reason, an importorskip of a
+    transitive module such as ``starlette``, or ``minversion=``'s message) still reads as an ordinary skip.
+    ``_require_extras_importable`` closes that class from the other side: the lane cannot start without them."""
     for extra in sorted(required):
         if any(marker in reason for marker in _EXTRA_SKIP_REASONS.get(extra, ())):
             return extra
@@ -162,6 +174,31 @@ def _fail_required_extra_skip(config: pytest.Config, report: "pytest.TestReport 
         report.longrepr = (
             f"--require-extras: the '{extra}' extra is required on this lane, but a test skipped for it: {reason}"
         )
+
+
+def _require_extras_importable(config: pytest.Config) -> None:
+    """``--require-extras``: every module of every named extra imports, or the run refuses to start.
+
+    The positive half of the lane's contract (#940 item 4): a skip matcher can only see the skips it
+    recognises, but a lane where the extra imports cannot skip for its absence at all. An extra that
+    ``pyproject.toml`` does not declare is a typo, and refused too."""
+    import importlib
+
+    required = sorted({e.strip() for e in (config.getoption("--require-extras") or "").split(",") if e.strip()})
+    for extra in required:
+        if extra not in _optional_dependencies():
+            raise pytest.UsageError(f"--require-extras: pyproject.toml declares no '{extra}' extra")
+        for name in extra_import_names(extra):
+            try:
+                importlib.import_module(name)
+            except ImportError as exc:
+                raise pytest.UsageError(
+                    f"--require-extras: the '{extra}' extra is required on this lane, but '{name}' does not import: {exc}"
+                ) from exc
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    _require_extras_importable(config)
 
 
 @pytest.hookimpl(hookwrapper=True)
