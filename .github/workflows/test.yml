@@ -418,6 +418,8 @@ jobs:
         # typing pays (the 5 hivemind files; repo-wide is not worth it).
         # Pinned so a mypy release can't break CI on its own. Runs before
         # the test suite for faster failure feedback.
+        # NOT the lint job's "mypy per-file ratchet" invocation (that one: --no-site-packages,
+        # --check-untyped-defs, all of src/maxim): neither step green implies the other.
         run: |
           pip install "mypy==1.20.0"
           mypy src/maxim/__init__.py src/maxim/api.py src/maxim/session.py \
@@ -468,6 +470,7 @@ jobs:
         run: |
           pip install "ruff==0.14.14"
           pip install "pyyaml>=6.0,<7.0"  # scripts/lint_body_rest_neutral.py reads body YAML
+          pip install "mypy==1.20.0"  # scripts/lint_mypy_ratchet.py; same pin as unit-tests' mypy step
           ruff check src/ tests/
           ruff format --check src/ tests/
 
@@ -1121,6 +1124,19 @@ jobs:
           # fails if any file's count rose vs origin/main (grandfathered
           # per-file; new files start at zero; burn-down is free).
           python3 scripts/lint_atomic_io_ratchet.py
+
+      - name: mypy per-file ratchet (roadmap 1.3.2 item 4)
+        # Repo-wide, per file: no src/maxim/ file's mypy error count, nor its suppression count
+        # (type: ignore, # mypy:, @no_type_check, tests mentioning TYPE_CHECKING/MYPY), may rise above its
+        # merge-base count; new files start at zero; a new .pyi or file-level ignore fails outright.
+        # Measures BOTH trees here (base via git archive), one fixed invocation with an empty
+        # --config-file and --no-site-packages, so there is no committed baseline to edit. Fails
+        # closed (exit 2) on any mypy output it cannot parse. Prints both totals every run.
+        # About 16 s. Positive control: tests/unit/test_lint_mypy_ratchet.py.
+        # NOT the unit-tests job's targeted mypy step (site-packages, --follow-imports=silent, its own
+        # flags): neither step green implies the other.
+        run: |
+          python3 scripts/lint_mypy_ratchet.py
 
       - name: '[Unreleased] entry on a src change (versioning policy, roadmap 16.10)'
         # The owed half of the versioning policy: lint_version_sync enforces "main
