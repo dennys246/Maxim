@@ -1,23 +1,302 @@
 {
-  "_comment": "Reviewed no-growth ceilings for the god functions (roadmap 1.1.x item 16.4; score card 2026-08-27 Maintainability 'Upgrade to C+', of which this file is HALF — the other half is one merged extraction, which is 1.1.2 item 7). `lines` is the AST span (end_lineno - lineno + 1, decorators excluded) measured at tag v1.1.0. tests/unit/test_function_length_baseline.py (fast suite) fails when a function GROWS past its ceiling AND when it SHRINKS below it — shrinkage must tighten the ceiling in the same commit so the baseline never overstates the debt. There is no writer: edit this file by hand with the measured value. It is NOT package data (unlike architecture_baseline.json, which maxim --audit-architecture reads at runtime): only the test reads it, so shipping it in the wheel would be a packaging requirement nothing consumes. Note the strict equality: a pure reformat that shortens a function reddens the fast suite with a 'it shrank' message — deliberate, so a ceiling can never quietly overstate the debt. HISTORY: run_agentic_loop tightened 3546 -> 3512 on 2026-08-30 (1.1.2 Cluster B, the first extraction) when sections 7 (CALL STEP CALLBACK) and 8.5 (BIO-SYSTEM PER-TICK MAINTENANCE) moved to the module-level _loop_step_callback / _loop_bio_tick_maintenance in agent_loop.py; mechanical move, section order preserved. start_simulation_mode tightened 3336 -> 3329 on 2026-09-03 (sandbox-launch blockers) when the CWD-relative sim workspace block moved to the module-level _prepare_sim_workspace in orchestrator.py (data-home resolution; the dead data/agents/MaximAgent/runtime mkdir was dropped). start_simulation_mode tightened 3329 -> 3324 the same day when the sim AUT's subprocess-tool opt-in (bash + the new git_diff/run_tests gates) moved to the module-level _arm_sandboxed_aut_subprocess_tools in orchestrator.py. run_agentic_loop tightened 3495 -> 3488 on 2026-09-04 (P21 prompt budget) when the prompt tool-description collection moved to the module-level _describe_tools_for_prompt in agent_loop.py, paying for the roster permission filter, the ModeInfo reserve override and the deliberation-cap override added in the same change. run_agentic_loop tightened 3488 -> 3484 on 2026-09-16 (Exp 60: substrate-primary wake source) when the idle gate's disjunction moved to the module-level _loop_is_idle and the new substrate-cadence wake term to _substrate_tick_due in agent_loop.py, paying for the wake term added in the same change. _main_impl tightened 1747 -> 1743 on 2026-09-21 (#822) when the CLI's inline internet-policy closure was replaced by a call to utils/internet_access.py::live_internet_policy_getter. run_agentic_loop tightened 3484 -> 3453 on 2026-09-21 (#823) when both tool-result text blocks moved to the module-level _followup_result_text and the follow-up input construction to _followup_synthetic_input (which frames the result as data) in agent_loop.py. _main_impl tightened 1743 -> 1696 on 2026-09-23 (#863 review round) when the DM-campaign auto-detect moved to the module-level _maybe_run_dm_campaign / _is_dm_campaign_yaml and the interactive-mode decision to _resolve_interactive_mode in cli.py, fixing a swallowed DM failure and an ignored --interactive=false in the same change. run_agentic_loop tightened 3453 -> 3429 on 2026-09-24 (memory-strength Phase 2S-b, #848) when the two duplicated capture-and-observe blocks moved to the module-level _loop_capture_action in agent_loop.py, paying for the required situation= argument added in the same change. run_agentic_loop tightened 3429 -> 3416 on 2026-09-24 (memory-strength Phase 2S-c, #848) when the llm-primary outcome-time encode moved to the module-level _attach_live_situation in agent_loop.py, which also records the clusters' EC margins for the capture's novelty. run_agentic_loop tightened 3416 -> 3393 on 2026-09-25 (memory-strength Phase 2S-d, #848) when the loop's sensor-encoder construction moved to the module-level _build_loop_sensor_encoder and the new situation-cue resolution to _resolve_situation_cue in agent_loop.py, paying for the required situation_cue= argument added in the same change. run_agentic_loop tightened 3393 -> 3389 on 2026-09-26 (#826) when the executor instrumentation wrap moved to the module-level _prepare_executor in agent_loop.py, paying for the dispatch mode gate wired in the same change. start_simulation_mode tightened 3324 -> 3322 on 2026-09-27 (1.3.1 public API correctness, D40) when the AUT prompt-handler selection moved to the module-level _select_aut_prompt_handler in orchestrator.py, paying for the prompt_handler parameter and its adopted-agent refusal added in the same change. _main_impl tightened 1696 -> 1679 on 2026-09-28 (#829) when the runtime mode-switch tail moved to the module-level _after_run_mode_request and the registry operational-mode choice to _registry_operational_mode in cli.py, paying for the --operational-mode launch grant (validation via _validate_operational_grant) added in the same change. start_simulation_mode RAISED 3322 -> 3323 on 2026-09-28 (#832, a reviewed exception): build_tool_registry's internet_launch_enabled became a REQUIRED keyword-only argument (owner decision: forgetting the internet decision is a TypeError), so the AUT registry call states it (False, today's behaviour: no internet tools) on its own line; the fence on orchestrator.py forbids the extraction that would pay for it. _main_impl tightened 1679 -> 1678 the same day when the CLI's getter construction moved into build_tool_registry. start_simulation_mode RAISED 3323 -> 3326 on 2026-09-29 (M1, a reviewed owner-approved exception): every sim's report.json stamps the code, interpreter and context it ran under, and the code half is captured at sim start (one line) and handed to build_report, whose started_at/provenance are REQUIRED keyword-only (two lines); the fence on orchestrator.py forbids the extraction that would pay for it. start_simulation_mode tightened 3326 -> 3313 on 2026-09-29 (#1002) when the finish-reason resolution moved to the module-level _resolve_finish_reason in orchestrator.py, paying for the operator-stop event added in the same change (a finished run now reports completed, not cancel). start_simulation_mode tightened 3313 -> 3277 on 2026-09-29 (#1003, an owner-approved fenced touch) when the AUT resume restore moved to the module-level _restore_aut_from_session in orchestrator.py, which now reports each store's outcome so the report can say whether a resume loaded (M1b PR 2). start_simulation_mode tightened 3277 -> 3265 on 2026-10-01 (#1042, an owner-approved fence touch) when the stall detector's suppression decision moved to the module-level runtime/stall_threshold.py::stall_suppression, paying for the reported registry failure and the ping-pong exemption added in the same change. run_agentic_loop RAISED 3389 -> 3391 on 2026-10-02 (#1052, a reviewed owner-approved fence exception): submit_context's deliberation_available is a REQUIRED keyword (owner decision: forgetting it is a TypeError, not a silent return of #1052), so the planning submit states it (bio_enrichment_pipeline is not None, a fact only the loop holds) and the deliberation-cycle submit states True; the fence on agent_loop.py forbids the extraction that would pay for them. start_simulation_mode tightened 3265 -> 3248 the same day (#1052, the same fence exception) when the narrator's three-way kickoff instruction moved to the module-level simulation/sim_types.py::kickoff_instruction, which the resume prompt now shares. start_simulation_mode tightened 3248 -> 3229 the same day (narrator reliability before O19 campaign 3, owner-approved fence touch) when the narrator's opening prompts moved to the module-level sim_types.py::build_kickoff_prompt / narrator_tools_block (the tool list now comes from the narrator's real registry) and the fresh start and the resume-not-found fallback became one branch, paying for the min_finish_turns parameter (finish_simulation refused below an explicit cap) added in the same change. run_agentic_loop tightened 3391 -> 3384 in the same change when the stale-proposal drop moved to the module-level _drop_stale_proposal, paying for one planning request in flight per narrator (_planning_submit_in_flight, _take_deferred_inputs) and the reason-carrying retry. run_agentic_loop tightened 3384 -> 3381 on 2026-10-04 (roadmap 1.3.2 item 4, #1083) when the approved-proposal situation read moved to the module-level _approved_situation in agent_loop.py (the queued Proposal now references its LLMProposal as source), paying for the mypy annotations and narrowings added to the loop in the same change.",
-  "baseline_format_version": 1,
-  "measured_at": "v1.1.0",
-  "reviewed": "2026-09-04",
+  "_comment": "Function-length ratchet baseline, read only by scripts/lint_function_length.py (its docstring is the rule). Every function in src/maxim/**/*.py over `threshold` (200) lines is pinned in `entries` at its exact AST span (end_lineno - lineno + 1, decorators excluded) by (file, qualname). Strict equality: lower the pin when a function shrinks, remove the entry when it drops to 200 or below. A pin may only rise, or a new function over 200 be pinned, through a NEW record in `exceptions` (append-only; file, qualname, from, to, date, ref, reason, optional split_from / moved_from). `history` is the pre-v2 prose record and is not read. No writer: edit by hand with the lint's printed span. Not package data.",
+  "baseline_format_version": 2,
+  "threshold": 200,
   "entries": [
     {
-      "file": "maxim/runtime/agent_loop.py",
-      "function": "run_agentic_loop",
+      "file": "src/maxim/agents/llm_worker.py",
+      "qualname": "LLMWorker._process_request",
+      "lines": 259
+    },
+    {
+      "file": "src/maxim/api.py",
+      "qualname": "run",
+      "lines": 276
+    },
+    {
+      "file": "src/maxim/cli.py",
+      "qualname": "_main_impl",
+      "lines": 1678
+    },
+    {
+      "file": "src/maxim/cli_parser.py",
+      "qualname": "_build_parser",
+      "lines": 652
+    },
+    {
+      "file": "src/maxim/console/server.py",
+      "qualname": "build_app",
+      "lines": 362
+    },
+    {
+      "file": "src/maxim/decisions/nac.py",
+      "qualname": "NAc.__init__",
+      "lines": 304
+    },
+    {
+      "file": "src/maxim/decisions/nac.py",
+      "qualname": "NAc.recommend_action",
+      "lines": 462
+    },
+    {
+      "file": "src/maxim/doctor/checks.py",
+      "qualname": "check_env_config",
+      "lines": 205
+    },
+    {
+      "file": "src/maxim/doctor/checks.py",
+      "qualname": "check_resolved_config",
+      "lines": 249
+    },
+    {
+      "file": "src/maxim/embodied_runtime/agentic_runtime.py",
+      "qualname": "AgenticRuntimeMixin._start_agentic_runtime",
+      "lines": 924
+    },
+    {
+      "file": "src/maxim/embodied_runtime/agentic_runtime.py",
+      "qualname": "AgenticRuntimeMixin._stop_agentic_runtime",
+      "lines": 207
+    },
+    {
+      "file": "src/maxim/embodied_runtime/media_loop.py",
+      "qualname": "MediaLoopMixin.live",
+      "lines": 587
+    },
+    {
+      "file": "src/maxim/embodied_runtime/selfy.py",
+      "qualname": "Maxim.__init__",
+      "lines": 329
+    },
+    {
+      "file": "src/maxim/embodiment/body.py",
+      "qualname": "Embodiment.evaluate_failures",
+      "lines": 241
+    },
+    {
+      "file": "src/maxim/embodiment/spec.py",
+      "qualname": "_parse_entity",
+      "lines": 210
+    },
+    {
+      "file": "src/maxim/embodiment/tool_bridge.py",
+      "qualname": "ModulatorAffordanceTool.execute",
+      "lines": 502
+    },
+    {
+      "file": "src/maxim/hivemind/bundle.py",
+      "qualname": "compose_bundle",
+      "lines": 262
+    },
+    {
+      "file": "src/maxim/hivemind/cli.py",
+      "qualname": "_build_parser",
+      "lines": 300
+    },
+    {
+      "file": "src/maxim/hivemind/ingest.py",
+      "qualname": "_validate_nac_payload",
+      "lines": 270
+    },
+    {
+      "file": "src/maxim/hivemind/ingest.py",
+      "qualname": "ingest_bundle",
+      "lines": 437
+    },
+    {
+      "file": "src/maxim/imagination/trigger.py",
+      "qualname": "ImaginationTrigger.process_manifest",
+      "lines": 203
+    },
+    {
+      "file": "src/maxim/inference/transcribe_audio.py",
+      "qualname": "watch_and_transcribe",
+      "lines": 226
+    },
+    {
+      "file": "src/maxim/models/language/config.py",
+      "qualname": "load_llm_config",
+      "lines": 269
+    },
+    {
+      "file": "src/maxim/models/language/maxim_peer_backend.py",
+      "qualname": "_MaximPeerBackend._stream_response",
+      "lines": 225
+    },
+    {
+      "file": "src/maxim/models/language/router.py",
+      "qualname": "LLMRouter._try_provider",
+      "lines": 212
+    },
+    {
+      "file": "src/maxim/peer/admin_core.py",
+      "qualname": "update_on_target",
+      "lines": 209
+    },
+    {
+      "file": "src/maxim/runtime/agent_factory.py",
+      "qualname": "AgentFactory.create_full_agent",
+      "lines": 204
+    },
+    {
+      "file": "src/maxim/runtime/agent_loop.py",
+      "qualname": "_run_deliberation_cycles",
+      "lines": 235
+    },
+    {
+      "file": "src/maxim/runtime/agent_loop.py",
+      "qualname": "propose_via_substrate",
+      "lines": 250
+    },
+    {
+      "file": "src/maxim/runtime/agent_loop.py",
+      "qualname": "run_agent_loop",
+      "lines": 233
+    },
+    {
+      "file": "src/maxim/runtime/agent_loop.py",
+      "qualname": "run_agentic_loop",
       "lines": 3381
     },
     {
-      "file": "maxim/simulation/orchestrator.py",
-      "function": "start_simulation_mode",
+      "file": "src/maxim/runtime/bio_stack.py",
+      "qualname": "build_bio_stack",
+      "lines": 527
+    },
+    {
+      "file": "src/maxim/runtime/bootstrap.py",
+      "qualname": "build_executor",
+      "lines": 250
+    },
+    {
+      "file": "src/maxim/runtime/bootstrap.py",
+      "qualname": "build_tool_registry",
+      "lines": 269
+    },
+    {
+      "file": "src/maxim/runtime/executor.py",
+      "qualname": "Executor.execute",
+      "lines": 219
+    },
+    {
+      "file": "src/maxim/runtime/lane_backends.py",
+      "qualname": "_apply_lane_config_to_env",
+      "lines": 217
+    },
+    {
+      "file": "src/maxim/runtime/lane_backends.py",
+      "qualname": "_maybe_auto_spawn_server",
+      "lines": 311
+    },
+    {
+      "file": "src/maxim/runtime/lane_backends.py",
+      "qualname": "build_primary_router",
+      "lines": 262
+    },
+    {
+      "file": "src/maxim/runtime/leader_proxy.py",
+      "qualname": "_ProxyHandler._proxy_request",
+      "lines": 324
+    },
+    {
+      "file": "src/maxim/runtime/tool_dispatch.py",
+      "qualname": "record_outcome",
+      "lines": 415
+    },
+    {
+      "file": "src/maxim/similarity/encoder.py",
+      "qualname": "SensorEncoder.encode_sensors",
+      "lines": 262
+    },
+    {
+      "file": "src/maxim/simulation/fixture_orchestrator.py",
+      "qualname": "FixtureDrivenOrchestrator.run",
+      "lines": 218
+    },
+    {
+      "file": "src/maxim/simulation/generative_runner.py",
+      "qualname": "run_generative_campaign",
+      "lines": 313
+    },
+    {
+      "file": "src/maxim/simulation/interactive.py",
+      "qualname": "run_interactive_sim",
+      "lines": 260
+    },
+    {
+      "file": "src/maxim/simulation/orchestrator.py",
+      "qualname": "start_simulation_mode",
       "lines": 3229
     },
     {
-      "file": "maxim/cli.py",
-      "function": "_main_impl",
-      "lines": 1678
+      "file": "src/maxim/simulation/orchestrator.py",
+      "qualname": "start_simulation_mode.<locals>._stall_detector",
+      "lines": 405
+    },
+    {
+      "file": "src/maxim/simulation/report.py",
+      "qualname": "build_report",
+      "lines": 228
+    },
+    {
+      "file": "src/maxim/simulation/research_orchestrator.py",
+      "qualname": "start_research_mode",
+      "lines": 276
+    },
+    {
+      "file": "src/maxim/simulation/roy_runner.py",
+      "qualname": "run_roy_iteration",
+      "lines": 223
+    },
+    {
+      "file": "src/maxim/tools/http_fetch.py",
+      "qualname": "HttpFetchTool.execute",
+      "lines": 243
+    },
+    {
+      "file": "src/maxim/tools/math_tool.py",
+      "qualname": "MathTool.execute",
+      "lines": 352
+    },
+    {
+      "file": "src/maxim/tools/reachy.py",
+      "qualname": "FocusOnSoundTool.execute",
+      "lines": 237
+    },
+    {
+      "file": "src/maxim/utils/response_config.py",
+      "qualname": "load_phrase_responses",
+      "lines": 221
     }
+  ],
+  "exceptions": [],
+  "history": [
+    "2026-08-29 (#570, roadmap 1.1.x item 16.4): v1 baseline created, pinning run_agentic_loop / start_simulation_mode / _main_impl at their v1.1.0 AST spans (3546 / 3342 / 1752), reviewed 2026-09-04; strict equality in tests/unit/test_function_length_baseline.py, alongside a separate growth-only CI lint (scripts/lint_function_length.py) whose own pins went stale.",
+    "run_agentic_loop tightened 3546 -> 3512 on 2026-08-30 (1.1.2 Cluster B, the first extraction) when sections 7 (CALL STEP CALLBACK) and 8.5 (BIO-SYSTEM PER-TICK MAINTENANCE) moved to the module-level _loop_step_callback / _loop_bio_tick_maintenance in agent_loop.py; mechanical move, section order preserved.",
+    "start_simulation_mode tightened 3336 -> 3329 on 2026-09-03 (sandbox-launch blockers) when the CWD-relative sim workspace block moved to the module-level _prepare_sim_workspace in orchestrator.py (data-home resolution; the dead data/agents/MaximAgent/runtime mkdir was dropped).",
+    "start_simulation_mode tightened 3329 -> 3324 the same day when the sim AUT's subprocess-tool opt-in (bash + the new git_diff/run_tests gates) moved to the module-level _arm_sandboxed_aut_subprocess_tools in orchestrator.py.",
+    "run_agentic_loop tightened 3495 -> 3488 on 2026-09-04 (P21 prompt budget) when the prompt tool-description collection moved to the module-level _describe_tools_for_prompt in agent_loop.py, paying for the roster permission filter, the ModeInfo reserve override and the deliberation-cap override added in the same change.",
+    "run_agentic_loop tightened 3488 -> 3484 on 2026-09-16 (Exp 60: substrate-primary wake source) when the idle gate's disjunction moved to the module-level _loop_is_idle and the new substrate-cadence wake term to _substrate_tick_due in agent_loop.py, paying for the wake term added in the same change.",
+    "_main_impl tightened 1747 -> 1743 on 2026-09-21 (#822) when the CLI's inline internet-policy closure was replaced by a call to utils/internet_access.py::live_internet_policy_getter.",
+    "run_agentic_loop tightened 3484 -> 3453 on 2026-09-21 (#823) when both tool-result text blocks moved to the module-level _followup_result_text and the follow-up input construction to _followup_synthetic_input (which frames the result as data) in agent_loop.py.",
+    "_main_impl tightened 1743 -> 1696 on 2026-09-23 (#863 review round) when the DM-campaign auto-detect moved to the module-level _maybe_run_dm_campaign / _is_dm_campaign_yaml and the interactive-mode decision to _resolve_interactive_mode in cli.py, fixing a swallowed DM failure and an ignored --interactive=false in the same change.",
+    "run_agentic_loop tightened 3453 -> 3429 on 2026-09-24 (memory-strength Phase 2S-b, #848) when the two duplicated capture-and-observe blocks moved to the module-level _loop_capture_action in agent_loop.py, paying for the required situation= argument added in the same change.",
+    "run_agentic_loop tightened 3429 -> 3416 on 2026-09-24 (memory-strength Phase 2S-c, #848) when the llm-primary outcome-time encode moved to the module-level _attach_live_situation in agent_loop.py, which also records the clusters' EC margins for the capture's novelty.",
+    "run_agentic_loop tightened 3416 -> 3393 on 2026-09-25 (memory-strength Phase 2S-d, #848) when the loop's sensor-encoder construction moved to the module-level _build_loop_sensor_encoder and the new situation-cue resolution to _resolve_situation_cue in agent_loop.py, paying for the required situation_cue= argument added in the same change.",
+    "run_agentic_loop tightened 3393 -> 3389 on 2026-09-26 (#826) when the executor instrumentation wrap moved to the module-level _prepare_executor in agent_loop.py, paying for the dispatch mode gate wired in the same change.",
+    "start_simulation_mode tightened 3324 -> 3322 on 2026-09-27 (1.3.1 public API correctness, D40) when the AUT prompt-handler selection moved to the module-level _select_aut_prompt_handler in orchestrator.py, paying for the prompt_handler parameter and its adopted-agent refusal added in the same change.",
+    "_main_impl tightened 1696 -> 1679 on 2026-09-28 (#829) when the runtime mode-switch tail moved to the module-level _after_run_mode_request and the registry operational-mode choice to _registry_operational_mode in cli.py, paying for the --operational-mode launch grant (validation via _validate_operational_grant) added in the same change.",
+    "start_simulation_mode RAISED 3322 -> 3323 on 2026-09-28 (#832, a reviewed exception): build_tool_registry's internet_launch_enabled became a REQUIRED keyword-only argument (owner decision: forgetting the internet decision is a TypeError), so the AUT registry call states it (False, today's behaviour: no internet tools) on its own line; the fence on orchestrator.py forbids the extraction that would pay for it.",
+    "_main_impl tightened 1679 -> 1678 the same day when the CLI's getter construction moved into build_tool_registry.",
+    "start_simulation_mode RAISED 3323 -> 3326 on 2026-09-29 (M1, a reviewed owner-approved exception): every sim's report.json stamps the code, interpreter and context it ran under, and the code half is captured at sim start (one line) and handed to build_report, whose started_at/provenance are REQUIRED keyword-only (two lines); the fence on orchestrator.py forbids the extraction that would pay for it.",
+    "start_simulation_mode tightened 3326 -> 3313 on 2026-09-29 (#1002) when the finish-reason resolution moved to the module-level _resolve_finish_reason in orchestrator.py, paying for the operator-stop event added in the same change (a finished run now reports completed, not cancel).",
+    "start_simulation_mode tightened 3313 -> 3277 on 2026-09-29 (#1003, an owner-approved fenced touch) when the AUT resume restore moved to the module-level _restore_aut_from_session in orchestrator.py, which now reports each store's outcome so the report can say whether a resume loaded (M1b PR 2).",
+    "start_simulation_mode tightened 3277 -> 3265 on 2026-10-01 (#1042, an owner-approved fence touch) when the stall detector's suppression decision moved to the module-level runtime/stall_threshold.py::stall_suppression, paying for the reported registry failure and the ping-pong exemption added in the same change.",
+    "run_agentic_loop RAISED 3389 -> 3391 on 2026-10-02 (#1052, a reviewed owner-approved fence exception): submit_context's deliberation_available is a REQUIRED keyword (owner decision: forgetting it is a TypeError, not a silent return of #1052), so the planning submit states it (bio_enrichment_pipeline is not None, a fact only the loop holds) and the deliberation-cycle submit states True; the fence on agent_loop.py forbids the extraction that would pay for them.",
+    "start_simulation_mode tightened 3265 -> 3248 the same day (#1052, the same fence exception) when the narrator's three-way kickoff instruction moved to the module-level simulation/sim_types.py::kickoff_instruction, which the resume prompt now shares.",
+    "start_simulation_mode tightened 3248 -> 3229 the same day (narrator reliability before O19 campaign 3, owner-approved fence touch) when the narrator's opening prompts moved to the module-level sim_types.py::build_kickoff_prompt / narrator_tools_block (the tool list now comes from the narrator's real registry) and the fresh start and the resume-not-found fallback became one branch, paying for the min_finish_turns parameter (finish_simulation refused below an explicit cap) added in the same change.",
+    "run_agentic_loop tightened 3391 -> 3384 in the same change when the stale-proposal drop moved to the module-level _drop_stale_proposal, paying for one planning request in flight per narrator (_planning_submit_in_flight, _take_deferred_inputs) and the reason-carrying retry.",
+    "run_agentic_loop tightened 3384 -> 3381 on 2026-10-04 (roadmap 1.3.2 item 4, #1083) when the approved-proposal situation read moved to the module-level _approved_situation in agent_loop.py (the queued Proposal now references its LLMProposal as source), paying for the mypy annotations and narrowings added to the loop in the same change.",
+    "2026-10-04 (roadmap 1.3.2 item 6, #940 item 1): v2 — one ratchet. Every function in src/maxim over 200 lines (53, 19 of them over 300) pinned at its span on that day; scripts/lint_function_length.py is the only checker (strict equality, raises only via `exceptions`); test_function_length_baseline.py deleted."
   ]
 }

@@ -25,6 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **One function-length ratchet** (roadmap 1.3.2 item 6, #940 item 1). It replaces the two mismatched checks (a
+  lint with three stale pins and a strict test on the same three functions) with `scripts/lint_function_length.py`
+  and one baseline, `src/maxim/utils/function_length_baseline.json` (format v2). All 53 functions over 200 lines are
+  pinned at their current spans. None may grow, and no new function may exceed 200 lines. A function that shrinks
+  fails until its pin is lowered in the same commit. A raise passes only with a committed, machine-readable
+  exception entry (owner decisions 2026-10-04). On pull requests, moves and splits must say where the code came
+  from (`moved_from` / `split_from`). The lint docstring has the per-slice baseline edits for the coming
+  decomposition. Follow-ups: #1089.
+
 - **CI type-checks the composition layer** (roadmap 1.3.2 item 4, CI-set half; the #840/#841 silent-seam class).
   The mypy step now also covers `runtime/executor.py`, `runtime/agent_loop.py`, `bridges/` and `planning/`, at
   0 errors (37 before). Besides #1083 (Fixed, below), the fixes are annotations and narrowings with no behaviour

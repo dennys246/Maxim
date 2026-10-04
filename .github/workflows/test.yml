@@ -1166,12 +1166,14 @@ jobs:
         run: |
           python3 scripts/lint_config_schema_append_only.py
 
-      - name: God-function length ratchet (Maintainability score-card mechanization)
-        # The 2026-08-27 card's standing complaint: "CI does not bound any
-        # function's length" and all three god-functions had GROWN. Pins
-        # run_agentic_loop / start_simulation_mode / _main_impl at their current
-        # spans; fails if any grows (ratchet-down only — decomposition lowers the
-        # pin). Positive control: tests/unit/test_lint_function_length.py.
+      - name: Function-length ratchet (roadmap 1.3.2 item 6, #940)
+        # ONE ratchet: every src/maxim function over 200 lines is pinned in
+        # src/maxim/utils/function_length_baseline.json at its exact span (strict
+        # equality: a shrink fails until the pin is lowered); nothing new may
+        # exceed 200. On a PR, a raised pin or a new entry over 200 needs a NEW,
+        # used, append-only exception record (merge-base diff; needs the job's
+        # fetch-depth: 0). Prints every pinned span + the totals each run.
+        # Positive control: tests/unit/test_lint_function_length.py.
         run: |
           python3 scripts/lint_function_length.py
 

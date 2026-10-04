@@ -77,7 +77,7 @@ Grouped by the axis each item lifts; the "to reach" conditions come from the car
 
 | item | guard |
 |---|---|
-| **[→ 1.3.2]** **Extend the function-length ratchet to every function over 300 lines** (18 today, one of 921; the ratchet covers 3). Pin at current length, shrink-only. | `scripts/lint_function_length.py` + the baseline file |
+| **[→ 1.3.2 — SUPERSEDED by item 6]** ~~**Extend the function-length ratchet to every function over 300 lines** (18 today, one of 921; the ratchet covers 3). Pin at current length, shrink-only.~~ Item 6 below replaces it with one ratchet at **200** lines (53 functions pinned, 19 of them over 300, measured 2026-10-04). **Built 2026-10-04, PR pending.** | `scripts/lint_function_length.py` + `src/maxim/utils/function_length_baseline.json` + `tests/unit/test_lint_function_length.py` |
 | **[→ 1.3.2]** **A repo-wide mypy error-count ratchet** starting at today's measurement (1,050 errors in 141 files over all of `src/maxim` — a different, earlier invocation, superseded: the ratchet's own invocation is the only count that binds; CI's typed set stays at 18 files). **Built 2026-10-04** as a per-file ratchet against the merge-base (item 4 below; 1,096 cold at the build, 1,075 at `v1.3.1` the same way). | `scripts/lint_mypy_ratchet.py` (lint job) + `tests/unit/test_lint_mypy_ratchet.py` |
 
 ### Research integrity + documentation honesty (both B+, cheap items)
@@ -226,6 +226,17 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
 6. **One function-length ratchet** — nothing over 200 lines may grow, nothing new may exceed 200 — replacing
    the two mismatched mechanisms ([#940](https://github.com/dennys246/Maxim/issues/940)). Guard: the lint, with
    a per-function baseline.
+   **Built 2026-10-04, PR pending (#940 item 1).** `scripts/lint_function_length.py` is now the only checker
+   (`tests/unit/test_function_length_baseline.py` is deleted) and covers all of `src/maxim`: every function
+   over 200 lines is pinned in `src/maxim/utils/function_length_baseline.json` (format 2) at its exact span,
+   **53 at the build, 19 of them over 300**. Owner decisions 2026-10-04: threshold 200; strict equality (a
+   shrink fails until the pin is lowered in the same commit); a raise, or a new entry over 200, only through a
+   committed exception record that is new in the same diff. Exceptions are append-only against the
+   merge-base, and an unused new one fails. A move is free only when the body's AST is identical; any other
+   move carries `moved_from`. A decomposition piece still over 200 carries `split_from`, and the lint checks
+   that the source's pin dropped in the same diff, so each slice of the decomposition below records the debt
+   it transfers. The prose HISTORY of earlier raises survives as the file's `history` list. Every pinned span
+   and the totals print on each run.
 7. **CI escape paths ([#940](https://github.com/dennys246/Maxim/issues/940))**: the `|| echo` optional install,
    the reason-less `importorskip`, the slow lane's expected roster, the network guard at the process-tree
    boundary. Guard: each lane fails on the escape.
@@ -419,6 +430,13 @@ recorded-but-unused memory system. That is 1.4's work ([roadmap_1_4.md](roadmap_
 
 The "kicked down the road" worry that kept this to one target is answered by the rule in **Sizing**: if a
 slice stalls, 1.3.2 ships the slices that landed and the ratchet records the new ceiling.
+
+**Baseline edits per slice (the function-length ratchet, item 6).** In the same commit as the extraction:
+lower the source function's pin to the span the lint prints (or remove its entry if it is now 200 lines or
+fewer); for each extracted piece over 200, add an entry at its printed span plus a new exception
+`{file, qualname, from: null, to: <span>, split_from: {file, qualname: <source>}, date, ref, reason}`;
+pieces of 200 or fewer need nothing. A bare `from: null` is refused in a diff that lowers or removes a pin. Full rule:
+`scripts/lint_function_length.py`'s docstring.
 
 **Coverage first, then extract (2026-09-27).** No slice moves code its tests do not pin. Each slice
 adds characterization tests for the code it will move, in its own commit BEFORE the extraction, and
