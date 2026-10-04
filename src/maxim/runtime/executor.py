@@ -7,7 +7,7 @@ import time
 import uuid
 from typing import TYPE_CHECKING, Any, Callable
 
-from maxim.tools.base import ToolOutput
+from maxim.tools.base import Tool, ToolOutput
 from maxim.tools.registry import ToolRegistry
 
 if TYPE_CHECKING:
@@ -255,7 +255,8 @@ class Executor:
         experiment analysis.
         """
         tool_name = action.get("tool_name")
-        params = action.get("params") if isinstance(action.get("params"), dict) else {}
+        raw_params = action.get("params")
+        params: dict[str, Any] = raw_params if isinstance(raw_params, dict) else {}
         if not isinstance(tool_name, str) or not tool_name:
             return ToolOutput(success=False, error=f"Invalid action: {action!r}")
 
@@ -483,7 +484,7 @@ class Executor:
                 },
             )
 
-    def generate_entity_tools(self, entity: Any) -> dict[str, Any]:
+    def generate_entity_tools(self, entity: Any) -> list[Tool]:
         """Generate + register an entity's affordance tools with EVERY collaborator.
 
         THE single (re)generation seam for this executor (D79 fix (b)):

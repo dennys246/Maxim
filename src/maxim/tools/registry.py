@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins  # ToolRegistry.list() shadows the builtin in its own annotations: they say builtins.list
 import logging
 import threading
 import time
@@ -117,7 +118,7 @@ class ToolRegistry:
 
     # ── Listing ─────────────────────────────────────────────────────────
 
-    def list(self) -> list[str]:
+    def list(self) -> builtins.list[str]:
         """Return names of all **active** tools.
 
         Tools deactivated by scene transition are excluded.  Core tools
@@ -126,7 +127,7 @@ class ToolRegistry:
         with self._lock:
             return [name for name in self._tools if name not in self._scene_meta or self._scene_meta[name].active]
 
-    def advertised(self) -> list[str]:
+    def advertised(self) -> builtins.list[str]:
         """Active tools the prompt may offer the model: :meth:`list` minus ``advertised = False`` decoys (#1042).
 
         A decoy stays registered, so a stray call still dispatches to it and gets its redirect.
@@ -134,7 +135,7 @@ class ToolRegistry:
         with self._lock:
             return [name for name in self.list() if getattr(self._tools[name], "advertised", True)]
 
-    def list_all(self) -> list[str]:
+    def list_all(self) -> builtins.list[str]:
         """Return names of ALL tools, including deactivated scene tools."""
         with self._lock:
             return list(self._tools.keys())
@@ -143,9 +144,9 @@ class ToolRegistry:
 
     def register_scene_tools(
         self,
-        tools: list[Tool],
+        tools: builtins.list[Tool],
         scene_id: str,
-    ) -> list[str]:
+    ) -> builtins.list[str]:
         """Register tools under a scene scope.
 
         All tools are marked active.  If the active *scene* tool count
@@ -181,7 +182,7 @@ class ToolRegistry:
                 return True
             return False
 
-    def activate_scene(self, scene_id: str) -> list[str]:
+    def activate_scene(self, scene_id: str) -> builtins.list[str]:
         """Re-activate all tools belonging to *scene_id*.
 
         Enforces the active tool cap — if re-activation would exceed the
@@ -222,7 +223,7 @@ class ToolRegistry:
 
             return deactivated
 
-    def get_active_tools(self) -> list[Tool]:
+    def get_active_tools(self) -> builtins.list[Tool]:
         """Return Tool objects for all active tools."""
         with self._lock:
             return [
@@ -231,12 +232,12 @@ class ToolRegistry:
                 if name not in self._scene_meta or self._scene_meta[name].active
             ]
 
-    def get_scene_tools(self, scene_id: str) -> list[str]:
+    def get_scene_tools(self, scene_id: str) -> builtins.list[str]:
         """Return tool names belonging to a specific scene."""
         with self._lock:
             return [name for name, meta in self._scene_meta.items() if meta.scene_id == scene_id]
 
-    def get_active_scenes(self) -> list[str]:
+    def get_active_scenes(self) -> builtins.list[str]:
         """Return scene IDs that have at least one active tool."""
         with self._lock:
             scenes: set[str] = set()
@@ -261,7 +262,7 @@ class ToolRegistry:
 
     # ── Metadata-aware enumeration (W1 sense_tool_registry MVP) ─────────
 
-    def get_auto_fire_tools(self) -> list[Tool]:
+    def get_auto_fire_tools(self) -> builtins.list[Tool]:
         """Return all registered tools with ``auto_fire=True``.
 
         Used by the agent loop's auto-sense dispatch to drive tools
@@ -275,7 +276,7 @@ class ToolRegistry:
         with self._lock:
             return [t for t in self._tools.values() if getattr(t, "auto_fire", False)]
 
-    def get_tools_by_kind(self, kind: str) -> list[Tool]:
+    def get_tools_by_kind(self, kind: str) -> builtins.list[Tool]:
         """Return all registered tools whose ``kind`` matches.
 
         Includes both active and deactivated tools — the caller decides
@@ -288,7 +289,7 @@ class ToolRegistry:
 
     # ── Search ──────────────────────────────────────────────────────────
 
-    def find_similar(self, name: str, limit: int = 2) -> list[str]:
+    def find_similar(self, name: str, limit: int = 2) -> builtins.list[str]:
         """Find registered tools with names similar to *name*.
 
         Searches ALL tools (including deactivated) so the agent can get
@@ -313,7 +314,7 @@ class ToolRegistry:
 
     # ── Private helpers ─────────────────────────────────────────────────
 
-    def _register_scene_locked(self, tools: list[Tool], scene_id: str) -> list[str]:
+    def _register_scene_locked(self, tools: builtins.list[Tool], scene_id: str) -> builtins.list[str]:
         """Register scene tools with cap enforcement. Caller MUST hold self._lock."""
         deactivated_scenes: list[str] = []
 

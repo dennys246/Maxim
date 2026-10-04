@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **CI type-checks the composition layer** (roadmap 1.3.2 item 4, CI-set half; the #840/#841 silent-seam class).
+  The mypy step now also covers `runtime/executor.py`, `runtime/agent_loop.py`, `bridges/` and `planning/`, at
+  0 errors (37 before). Besides #1083 (Fixed, below), the fixes are annotations and narrowings with no behaviour
+  change: `ToolRegistry`'s signatures name `builtins.list` (its `list` method shadowed the type);
+  `Executor.generate_entity_tools` is annotated with what it returns (`list[Tool]`); `available_tools` is a
+  `Collection[str]` on `LLMWorker.submit_context`, `LLMRequest` and the acting coach (the loop has long passed
+  a list); `Planner.propose_plans` returns a `Sequence`. `FearCircuitBridge`'s three dead NAc calls carry
+  line-level ignores (Dormant, #840; not revived), and the step runs `--warn-unused-ignores` so they cannot go
+  stale silently. `AdaptivePlanner.set_mesh_context` is marked Dormant (#1084):
+  nothing outside the tests calls it, so mesh delegation tagging never runs. The repo-wide mypy ratchet is
+  separate and not in this change.
 - **FearCircuitBridge and plan_manager's replan hint are marked Dormant, and their silent failures now log**
   (#840, #841, owner decision 2026-10-04). Neither was ever live. The bridge's NAc calls never matched NAc's API
   and nothing calls it. The replan hint passed a string where a perception was expected, and no plan is ever
@@ -55,6 +66,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An approved PLANNING proposal no longer ends the run, and is credited to the situation it was proposed in**
+  (#1083, owner decision 2026-10-04). The autonomy `Proposal` the loop queues for approval had no
+  `cluster_id`/`clusters`, so recording an approved action's outcome raised `AttributeError` after the tool had
+  run: a false "Approved action failed" ERROR, then the handler's own record raised and ended the run. The
+  `Proposal` now references the `LLMProposal` it was queued from (`source`), and the approved path reads the
+  proposal-time situation from it, so its credit is keyed to the same situation as the autonomous path. That is
+  the key, not full parity: the approved path still skips the tool's learning side effects (drive relief,
+  embodiment failure), the Hippocampus capture (`_loop_capture_action`: the situation trace and its novelty) and
+  `_record_plan_outcome`, all of which the autonomous path runs. In-tree, only an external
+  `proposal_queue.approve` call reaches this path: the loop's non-interactive auto-approve never fires, because
+  `plan_approval` always prompts, so queued proposals expire silently. Both gaps are
+  [#1085](https://github.com/dennys246/Maxim/issues/1085) (owner decision 2026-10-04: wait for a human; one
+  shared execute-and-learn function). Guard: `tests/unit/test_approved_proposal_situation_1083.py`.
 - **The simulation narrator recovers from its own mistakes, and the openings it reads are coherent** (narrator
   reliability before O19 campaign 3). A five-angle investigation found every remaining abort path in the
   instrument, not the memory mechanism under test.

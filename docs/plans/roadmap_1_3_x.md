@@ -189,6 +189,14 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
    full dev venv reads 1,105), and **1,075 in 141 files at `v1.3.1`** measured the same way (the "1,071"
    above came from a different invocation). The +21 since the tag: `cli.py` +17, `orchestrator.py` +4,
    seven files +1, four files falling. About 16 s per run (two mypy runs of ~5 s each plus the scans).
+   **CI-set half BUILT 2026-10-04 (PR [#1087](https://github.com/dennys246/Maxim/pull/1087), [#1083](https://github.com/dennys246/Maxim/issues/1083)):** the four
+   paths join CI's mypy step at 0 errors (37 before). The extension found a real crash: an approved
+   PLANNING proposal had no `cluster_id`/`clusters`, so its outcome record raised after the tool ran
+   (#1083, fixed: the queued `Proposal` references its `LLMProposal` and credit keys to proposal time, owner
+   decision 2026-10-04; full parity with the autonomous path is #1085). `fear_bridge.py`'s three dead
+   calls carry line-level ignores (Dormant, #840); `AdaptivePlanner.set_mesh_context` is marked Dormant
+   ([#1084](https://github.com/dennys246/Maxim/issues/1084): no non-test caller). The other 33 were
+   behaviour-neutral annotation and narrowing fixes.
 5. **Coverage as a ratchet — and a coverage push where the risk is** (widened 2026-09-27, owner). Baseline:
    the Codex card's whole-suite run at `v1.3.1` — **61.9% of 90,416 statements**, 31,797 uncovered
    ([evidence](../limits/score_cards/evidence/2026-09-27-codex/)). Three mechanisms, all in CI:
