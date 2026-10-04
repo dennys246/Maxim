@@ -86,7 +86,7 @@ A user's memories were lost silently: the documented examples did it when run tw
 
 - A corrupt Hippocampus/ATL file that a store starts fresh from is copied to `<name>.corrupt-<UTC timestamp>`, and then the store saves in its place (owner decision at review). Preserving it untouched instead would have left the agent half-persisted: its memories session-only while NAc/EC kept saving, the mixed state #939 prevents. The evidence is kept either way; if the copy fails, the original stays and saves over it are refused.
 - The write-but-don't-read orchestrator still restores its ATL at session start (#972, pre-existing): its overwrite declaration only matters when that read fails.
-- Running a script that calls `create.agent("scout")` twice now fails the second time, with a message naming `load.agent`. The same holds for `create.hippocampus(persistence_path=P)` followed by `save()`.
+- Running a script that calls `create.agent("scout")` twice now fails the second time, with a message naming `load.agent`. The same holds for `create.hippocampus(persistence_path=P)` followed by `save()`. (Superseded in part by #1071, 2026-10-04: `create.hippocampus` / `create.atl` now refuse an existing `P` at construction, not at `save()`.)
 - NAc, EC, SCN, AngularGyrus and the cross-layer index are not guarded yet (#971). `create.agent`'s up-front refusal covers the public entry point meanwhile.
 
 
