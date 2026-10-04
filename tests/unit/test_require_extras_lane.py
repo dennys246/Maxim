@@ -158,14 +158,14 @@ def test_a_reasonless_importorskip_of_a_required_extra_fails_the_lane(tmp_path):
 def _configure_only(tmp_path: Path, *flags: str, block: str | None = None) -> subprocess.CompletedProcess[str]:
     """Run pytest on a trivial test; ``block`` makes that module unimportable before conftest configures."""
     (tmp_path / "test_trivial.py").write_text("def test_ok():\n    pass\n")
+    import os
+
     plugins: list[str] = []
-    env = None
+    env = _extras_importable(tmp_path)  # every other extra module imports, so only ``block`` can be the miss
     if block is not None:
         (tmp_path / "block_extra_module.py").write_text(f"import sys\nsys.modules[{block!r}] = None\n")
         plugins = ["-p", "block_extra_module"]
-        import os
-
-        env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(tmp_path), os.environ.get("PYTHONPATH", "")])}
+        env["PYTHONPATH"] = os.pathsep.join([str(tmp_path), env["PYTHONPATH"]])
     return subprocess.run(
         [sys.executable, "-m", "pytest", "-q", *plugins, "-p", "tests.conftest", "-p", "no:cacheprovider"]
         + [str(tmp_path / "test_trivial.py"), *flags],
