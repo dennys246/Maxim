@@ -329,12 +329,18 @@ infrastructure the review located, and the full four-lens review.
   review:* `_reward_bias` **is** read by selection for `tool:*` keys (a ≤0.20 nudge, cluster-blind); it
   is the cluster-keyed credit that selection never sees. The path is live on the EARNED survival loop
   but **unfingerprinted**.
+  *Candidate consumer (2026-10-04, PROPOSED):* [executive_function.md](executive_function.md) Stage 1, a gated goal
+  slot. It enters only if this routing audit shows routed credit fails for lack of a stable key across a dive
+  ([#1073](https://github.com/dennys246/Maxim/issues/1073)).
 - **A cluster-keyed relief store (needed by E2).** New: a positive, world-keyed write from measured
   relief, beside the fear-only store. Front-gate against `credit_operant_reward` (teacher) and the
   trace. Enters BEFORE Phase 3. **Its review also reserves the opposite sign on the same seam** (schema
   and front-gate answer only) for the coding world's pain producer ([coding_world.md](coding_world.md) C3),
   so no second store is ever created; that producer is designed later in its own review, off by default
   and never set in an E-rung arm — it adds no scope to this review beyond the reservation.
+  *Second candidate consumer (2026-10-04, PROPOSED):* [fear_learning.md](fear_learning.md) Experiment A's
+  fear-relief credit (two-factor avoidance) is a positive, situation-keyed relief write. It front-gates against
+  this store ([#1072](https://github.com/dennys246/Maxim/issues/1072)).
 - **A graded predictor (anticipation).** Audit first: `anticipatory_pre_activate` + drive
   TemporalEvents (dormant on both ends) and `embodiment/cerebellum.py` (write live, read dormant —
   and, until [#908](https://github.com/dennys246/Maxim/issues/908) lands, never SAVED: the audit must

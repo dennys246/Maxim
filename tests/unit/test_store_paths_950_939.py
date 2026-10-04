@@ -117,11 +117,9 @@ def test_create_hippocampus_over_an_existing_store_refuses_to_clobber_it(tmp_pat
 
     path = tmp_path / "memory.json"
     _store_three(path)
-    hippo = maxim.create.hippocampus(persistence_path=str(path), auto_save_after_sleep=False)
-    hippo.store_observation("a new note")
-
+    # #1071: create.* now refuses at construction (before, at save(), after work against an empty store).
     with pytest.raises(StoreOverwriteRefused, match="load"):
-        hippo.save()
+        maxim.create.hippocampus(persistence_path=str(path), auto_save_after_sleep=False)
     assert _count_on_disk(path) == 3  # was 1: two memories lost without a word
 
 
@@ -130,11 +128,8 @@ def test_create_atl_over_an_existing_store_refuses_to_clobber_it(tmp_path: Path)
 
     path = tmp_path / "atl.json"
     _store_concepts(path)
-    atl = maxim.create.atl(persistence_path=str(path))
-    atl.find_or_create("river", "object")
-
-    with pytest.raises(StoreOverwriteRefused):
-        atl.save()
+    with pytest.raises(StoreOverwriteRefused):  # #1071: at construction
+        maxim.create.atl(persistence_path=str(path))
     assert _concepts_on_disk(path) == 2
 
 

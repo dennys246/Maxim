@@ -74,7 +74,8 @@ This page lists what is **stable** in pymaxim 1.0 and what is **experimental**. 
 `maxim.exceptions` — catch the category, or import the leaf explicitly). The leaves
 exported directly are `MemoryCorruptionError`, because `load.agent()` and `load.hippocampus/nac/atl()`
 document it as their raise type, `StoreOverwriteRefused` (#939), which a store's `save()` raises
-over a file it never read (also catchable as `MaximMemoryError` or `FileExistsError`), and
+over a file it never read and `create.hippocampus` / `create.atl` raise at construction over an existing file
+(#1071) (also catchable as `MaximMemoryError` or `FileExistsError`), and
 `RunDirAmbiguous` (#932), which `load.session()` raises for an ID or prefix naming more than one session
 (also catchable as `MaximMemoryError` or `ValueError`):
 
@@ -100,9 +101,9 @@ over a file it never read (also catchable as `MaximMemoryError` or `FileExistsEr
 
 | Symbol | Stable | Notes |
 |---|---|---|
-| `create.hippocampus(...)` | ✅ | Always empty. Its `save()` raises `StoreOverwriteRefused` over an existing file it never read (#939); open that file with `load.hippocampus`. |
+| `create.hippocampus(...)` | ✅ | A NEW, empty store. An existing file at `persistence_path` raises `StoreOverwriteRefused` at construction (#1071): open it with `load.hippocampus`, or pass `overwrite=True` to replace it on purpose. A plain constructor's `save()` still refuses an existing file it never read (#939). |
 | `create.nac(...)` | ✅ | |
-| `create.atl(...)` | ✅ | Always empty; `save()` refuses an existing unread file, as for `create.hippocampus`. |
+| `create.atl(...)` | ✅ | A NEW, empty store; refuses an existing file at construction, as for `create.hippocampus` (`overwrite=True` to replace it). |
 | `create.scn()` | ✅ | |
 | `create.angular_gyrus(...)` | ✅ | |
 | `create.agent(name, ...) -> AgentInstance` | ✅ | Raises `FileExistsError` when the agent's home already holds persisted state (#939); continue it with `load.agent(name)`. |
