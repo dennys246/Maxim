@@ -1,0 +1,237 @@
+{
+  "attempts": [
+    {
+      "run_id": "20875d5793134d4b80f2524817f0d4e9",
+      "k": 1,
+      "complete": true,
+      "problems": []
+    }
+  ],
+  "experiment": "63",
+  "deciding_attempt": "20875d5793134d4b80f2524817f0d4e9",
+  "gates": {
+    "N1": 84,
+    "seq_C": 83,
+    "P0": {
+      "pass": true,
+      "N1": 84
+    },
+    "P1": {
+      "first_trace_hippocampus_size": 84,
+      "pass": true
+    },
+    "P2": {
+      "missing": [],
+      "pass": true
+    },
+    "P3": {
+      "changed": {},
+      "new_not_after_seq_C": [],
+      "pass": true
+    },
+    "R1": {
+      "pass": true,
+      "turns": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ]
+    },
+    "R3a": {
+      "turn": 1,
+      "ids": [
+        "1bda74c9-975e-41ce-adfb-d61c4a82aa9b",
+        "78e968eb-ac03-4de4-8ec6-ac7184133221",
+        "f595a72c-d0e9-4202-8263-4e3d24cca38a"
+      ],
+      "pass": true
+    },
+    "R3prime": {
+      "pass": true,
+      "nonconforming": []
+    },
+    "R3d": {
+      "decisive_turns": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "pass": true
+    },
+    "descriptive": {
+      "status": "DESCRIPTIVE (never gating)",
+      "turns": {
+        "1": {
+          "conforms": true,
+          "decisive": false,
+          "visible": 84,
+          "late": [],
+          "observed_carried": 3,
+          "recomputed_carried_canonical": 3,
+          "carried_in_goal_top3": "forced",
+          "best_carried_score": 0.6666666666666666,
+          "new_at_or_above_best_carried": 0,
+          "graph_ids": 0
+        },
+        "2": {
+          "conforms": true,
+          "decisive": true,
+          "visible": 99,
+          "late": [],
+          "observed_carried": 2,
+          "recomputed_carried_canonical": 2,
+          "carried_in_goal_top3": "forced",
+          "best_carried_score": 0.6666666666666666,
+          "new_at_or_above_best_carried": 0,
+          "graph_ids": 0
+        },
+        "3": {
+          "conforms": true,
+          "decisive": true,
+          "visible": 147,
+          "late": [],
+          "observed_carried": 2,
+          "recomputed_carried_canonical": 2,
+          "carried_in_goal_top3": "forced",
+          "best_carried_score": 0.6666666666666666,
+          "new_at_or_above_best_carried": 0,
+          "graph_ids": 0
+        },
+        "4": {
+          "conforms": true,
+          "decisive": true,
+          "visible": 168,
+          "late": [],
+          "observed_carried": 2,
+          "recomputed_carried_canonical": 2,
+          "carried_in_goal_top3": "forced",
+          "best_carried_score": 0.6666666666666666,
+          "new_at_or_above_best_carried": 1,
+          "graph_ids": 0
+        },
+        "5": {
+          "conforms": true,
+          "decisive": true,
+          "visible": 243,
+          "late": [],
+          "observed_carried": 1,
+          "recomputed_carried_canonical": 1,
+          "carried_in_goal_top3": "forced",
+          "best_carried_score": 0.6666666666666666,
+          "new_at_or_above_best_carried": 2,
+          "graph_ids": 0
+        },
+        "6": {
+          "conforms": true,
+          "decisive": true,
+          "visible": 253,
+          "late": [],
+          "observed_carried": 1,
+          "recomputed_carried_canonical": 1,
+          "carried_in_goal_top3": "forced",
+          "best_carried_score": 0.6666666666666666,
+          "new_at_or_above_best_carried": 2,
+          "graph_ids": 0
+        },
+        "7": {
+          "conforms": true,
+          "decisive": true,
+          "visible": 273,
+          "late": [],
+          "observed_carried": 1,
+          "recomputed_carried_canonical": 1,
+          "carried_in_goal_top3": "forced",
+          "best_carried_score": 0.6666666666666666,
+          "new_at_or_above_best_carried": 2,
+          "graph_ids": 0
+        },
+        "8": {
+          "conforms": true,
+          "decisive": true,
+          "visible": 356,
+          "late": [],
+          "observed_carried": 1,
+          "recomputed_carried_canonical": 1,
+          "carried_in_goal_top3": "forced",
+          "best_carried_score": 0.6666666666666666,
+          "new_at_or_above_best_carried": 2,
+          "graph_ids": 0
+        }
+      },
+      "carried_leave_goal_top3_turn": {
+        "forced": null,
+        "possible": null
+      },
+      "memory_recall_lines_naming_carried_ids": 0
+    },
+    "verdict": "PASS",
+    "not_passed": []
+  },
+  "verdict": "PASS",
+  "apparatus_checked": true,
+  "apparatus": {
+    "markers": [
+      {
+        "k": 1,
+        "ref": "refs/tags/o19/63/attempt-1-20875d5793134d4b80f2524817f0d4e9",
+        "object": "b68fceac57e729128941d7ff93d769a178cfe1ab",
+        "peeled": "526538480566b9a1bc1d72910da6f634fad61423",
+        "tagger_date": 1791070237.0,
+        "run_id": "20875d5793134d4b80f2524817f0d4e9"
+      }
+    ],
+    "ruleset": {
+      "id": 24345734,
+      "created_at": "2026-10-01T21:27:48.500-06:00",
+      "updated_at": "2026-10-01T21:27:48.517-06:00",
+      "history_versions": [
+        51650702
+      ]
+    },
+    "rows_history": [
+      {
+        "commit": "e54848c2047edb0633ca4451903f7b0a24402438",
+        "committed_at": 1791073543.0
+      }
+    ],
+    "landed": {
+      "20875d5793134d4b80f2524817f0d4e9": 1791073543.0
+    },
+    "succession": null
+  },
+  "bound_files": {
+    "docs/experiments/exp63_carried_recall_prereg.md": "a751870226cdc69bd01e89b7ced9c60ec7438db4",
+    "scripts/o19_verdict.py": "7ca64a2d6bd10c987601ee24aeefc6e4e241579f",
+    "scripts/o19_rerun.py": "0cfa4f14dde667160e5ed8c4c6bc10d07d6e3cd3"
+  },
+  "verdict_commit": "e54848c2047edb0633ca4451903f7b0a24402438",
+  "verdict_source_sha256": "f623ab354c7787bbc86eea21862b4c359dbe2e8f510bddeb70d4af9fb054eb67",
+  "record_kind": "verdict",
+  "kind": "exp63_verdict",
+  "data": "docs/experiments/data/63_carried_recall/rows.jsonl",
+  "data_sha256": "a7310e1a41ba2ceb6963fcbbc17e61379c38b48e1ab3edc5e67ae6ba00bb11ab",
+  "scope": {
+    "all_rows": true
+  },
+  "mock": false,
+  "provenance": {
+    "executed_maxim_file": "/Users/dennyschaedig/Scripts/Maxim/.worktrees/exp63-verdict/src/maxim/__init__.py",
+    "executed_git_hash": "e54848c2047edb0633ca4451903f7b0a24402438",
+    "harness_run_id": "aa36acf033fc4b829a2537ae8876dca3",
+    "harness_family": "in_process",
+    "working_tree_dirty_src_scripts": false,
+    "code_tree_sha256": "fdf46c39f1345a90aaafe2b78cae931ac7b683c2844bc5a891ae757c99c76446",
+    "python": "/Users/dennyschaedig/Scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.worktrees/exp63-verdict/src"
+  },
+  "_format_version": "1.0"
+}
