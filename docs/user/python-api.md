@@ -176,9 +176,9 @@ hippo.store_observation("The wolf was near the cave entrance")
 hippo.store_observation("The key was under the mat")
 memories = hippo.recall(query="wolf", limit=3)
 hippo.save()  # Persist to disk
-# Run it again? create.* is always empty, so saving over /tmp/memory.json would destroy the first
-# run's memories: save() refuses (StoreOverwriteRefused). Reopen it with
-# maxim.load.hippocampus("/tmp/memory.json") to keep them, or pass save(overwrite=True) to replace them.
+# Run it again? create.* makes a NEW store, so on an existing /tmp/memory.json it raises
+# StoreOverwriteRefused at once (#1071). Reopen it with maxim.load.hippocampus("/tmp/memory.json")
+# to keep its memories, or pass create.hippocampus(..., overwrite=True) to replace them on purpose.
 
 # Causal learning
 nac = maxim.create.nac()

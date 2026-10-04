@@ -198,7 +198,8 @@ class MemoryCorruptionError(MaximMemoryError):
 
 
 class StoreOverwriteRefused(MaximMemoryError, FileExistsError):
-    """A memory store refused to save over an existing file it never read (#939).
+    """A memory store refused to save over an existing file it never read (#939), or ``create.hippocampus`` /
+    ``create.atl`` refused to start a new store over an existing file (#1071).
 
     Saving would replace memories this instance never loaded. Open the file with ``maxim.load.*`` (or
     the store's ``load()``) to keep them, save elsewhere, or declare the overwrite with
