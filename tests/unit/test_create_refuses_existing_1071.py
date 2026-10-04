@@ -62,6 +62,24 @@ def test_overwrite_declares_a_deliberate_replace(tmp_path) -> None:
     assert len(maxim.load.hippocampus(str(path)).recall(limit=10)) == 0
 
 
+def test_overwrite_on_atl_and_its_declared_warning(tmp_path, caplog) -> None:
+    import logging
+
+    path = tmp_path / "atl.json"
+    _atl_file(path)
+    with caplog.at_level(logging.WARNING):
+        a = maxim.create.atl(persistence_path=str(path), overwrite=True)
+    assert any("without reading it (declared)" in r.getMessage() for r in caplog.records)
+    a.save()
+    assert maxim.load.atl(str(path)) is not None
+
+
+def test_a_directory_at_the_path_is_named_as_one(tmp_path) -> None:
+    (tmp_path / "d").mkdir()
+    with pytest.raises(StoreOverwriteRefused, match="a directory is at"):
+        maxim.create.hippocampus(persistence_path=str(tmp_path / "d"))
+
+
 def test_a_new_path_and_no_path_still_create(tmp_path) -> None:
     assert maxim.create.hippocampus(persistence_path=str(tmp_path / "new.json")) is not None
     assert maxim.create.hippocampus() is not None

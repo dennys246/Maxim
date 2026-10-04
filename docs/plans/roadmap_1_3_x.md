@@ -358,9 +358,10 @@ from the plan that owns it:
 - Each of batches 3–4 is closed, or moved as recorded above.
 - The slice-bound items have landed with their slices, or stay open with them.
 - **Breaking changes in a patch release (owner, at the cut).** The release PR asks the owner whether the
-  `[Unreleased]` breaking entries fit a patch: #939/#950 (`create.*`/`load.*` store guards), #971/#972/#980
-  (`load_persisted=`, run-directory resolution) and #1071 (`create.*` refuses an existing store at construction).
-  Recorded here when #939 closed (2026-10-04) so the question is not lost.
+  `[Unreleased]` breaking entries fit a patch: #939/#950 (`create.*`/`load.*` store guards), #932 (run-directory
+  resolution, PR #980), #971 (the save guard on NAc, EC, SCN, AngularGyrus and the cross-layer graph) and #1071
+  (`create.*` refuses an existing store at construction); #972 (`build_memory_hub(load_persisted=)`) breaks only an
+  internal builder. Recorded here when #939 closed (2026-10-04 UTC) so the question is not lost.
 - The release PR lists the open-issue count at `v1.3.1` and at the cut, and names each open issue with
   its home.
 

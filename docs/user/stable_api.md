@@ -74,7 +74,8 @@ This page lists what is **stable** in pymaxim 1.0 and what is **experimental**. 
 `maxim.exceptions` — catch the category, or import the leaf explicitly). The leaves
 exported directly are `MemoryCorruptionError`, because `load.agent()` and `load.hippocampus/nac/atl()`
 document it as their raise type, `StoreOverwriteRefused` (#939), which a store's `save()` raises
-over a file it never read (also catchable as `MaximMemoryError` or `FileExistsError`), and
+over a file it never read and `create.hippocampus` / `create.atl` raise at construction over an existing file
+(#1071) (also catchable as `MaximMemoryError` or `FileExistsError`), and
 `RunDirAmbiguous` (#932), which `load.session()` raises for an ID or prefix naming more than one session
 (also catchable as `MaximMemoryError` or `ValueError`):
 

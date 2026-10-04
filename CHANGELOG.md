@@ -23,15 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Breaking
-
-- **`create.hippocampus` / `create.atl` refuse an existing store at construction** (#1071, owner decision 2026-10-04).
-  `create.*` makes a NEW store. On a path that already holds one, it raised only at `save()` (#939), after the caller
-  had worked against a store that opened silently empty; now construction raises `StoreOverwriteRefused` naming
-  `maxim.load.*`. `overwrite=True` declares a deliberate replace.
-
 ### Changed
 
+- **Breaking, to stable surfaces: `create.hippocampus` / `create.atl` refuse an existing store at construction**
+  (#1071, owner decision 2026-10-04). `create.*` makes a NEW store. On a path that already holds one, it raised only
+  at `save()` (#939), after the caller had worked against a store that opened silently empty; now construction raises
+  `StoreOverwriteRefused` naming `maxim.load.*`. **Migration:** the documented "create, then `save(overwrite=True)`"
+  replace now raises at `create`; pass `create.hippocampus(..., overwrite=True)` (or `create.atl`) instead. To keep
+  the stored memories, open the file with `maxim.load.hippocampus` / `maxim.load.atl`.
 - **An enrichment trace says whose recall it was and which memories it surfaced** (Exp 63 instrumentation,
   `docs/experiments/exp63_carried_recall_prereg.md`). `enrichment_trace` gains `agent_id` (a logging-only label the
   bio stack sets; the pipeline's own `agent_id`, which switches on per-agent reads, is unchanged), `memory_ids`,
@@ -637,8 +636,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Not covered: machine-wide learned state outside any agent home (escalation thresholds, semantic
     embeddings) is still shared by every agent, the orchestrator included (#984).
 
-- **No memory store saves over a file it never read, and none replaces an unreadable file without
-  keeping a copy** (#971; owner decisions 2026-09-28). #939 guarded Hippocampus and ATL; the other
+- **Breaking, to store saves: no memory store saves over a file it never read, and none replaces an
+  unreadable file without keeping a copy** (#971; owner decisions 2026-09-28). #939 guarded Hippocampus and ATL; the other
   stores still started empty and saved over their file.
   - NAc, EC, SCN, AngularGyrus and the cross-layer graph now raise `StoreOverwriteRefused` on a save
     over an existing file they neither read nor created (`save(overwrite=True)` / `allow_overwrite()`
