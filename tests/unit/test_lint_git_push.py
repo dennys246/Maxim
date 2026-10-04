@@ -191,7 +191,14 @@ def test_units_split_a_range_into_merges_squashes_and_direct_pushes(main_repo, m
     squash = _commit(main_repo, "b.txt", "1\n", "feat: squashed (#8)")
     direct = _commit(main_repo, "c.txt", "1\n", "direct push")
     prs = {merge: {"number": 7, "title": "t7", "body": ""}, squash: {"number": 8, "title": "t8", "body": ""}}
-    fake_push(monkeypatch, main_repo, before=squash, green={c3}, prs=prs, pr_commit_dates={8: "2026-01-02T00:00:00Z"})
+    fake_push(
+        monkeypatch,
+        main_repo,
+        before=squash,
+        green={c3},
+        prs=prs,
+        pr_commit_dates={8: ["2026-01-02T00:00:00Z", "2026-03-01T00:00:00Z"]},
+    )
     base = _lint_git.base_ref(main_repo)
     assert base == c3
     units = _lint_git.push_units(main_repo, base)
@@ -282,7 +289,7 @@ def test_the_ledger_branch_point_on_a_squash_push_is_the_prs_first_commit(main_r
         before=c3,
         green={c3},
         prs={squash: {"number": 8, "title": "t", "body": ""}},
-        pr_commit_dates={8: "2026-01-02T00:00:00Z"},
+        pr_commit_dates={8: ["2026-01-02T00:00:00Z", "2026-03-01T00:00:00Z"]},
     )
     assert LF._branch_epoch(main_repo, c3) == 1767312000
     monkeypatch.delenv("GITHUB_EVENT_NAME")  # off a push: the git-only branch point (the base commit itself)
@@ -311,3 +318,70 @@ def test_a_test_never_inherits_the_runners_push_event(tmp_path):
         check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_the_green_run_may_be_on_a_later_page(main_repo, monkeypatch):
+    c1, c2, _c3 = _shas(main_repo)
+    fake_push(monkeypatch, main_repo, before=c2, green={c1}, paginate=True)
+    assert _lint_git.base_ref(main_repo) == c1
+
+
+def test_fix_touches_tests_reads_a_rebase_merged_prs_aggregate_diff(tmp_path, monkeypatch, capsys):
+    """A rebase merge lands PR #10 as two first-parent commits: src first, its test second. The PR title rule
+    reads the PR's whole diff, so the fix is not red for the commit that only touched src."""
+    from scripts import lint_fix_touches_tests as F
+
+    root, base = _fix_repo(tmp_path, monkeypatch)
+    one = _commit(root, "src/maxim/x.py", "a = 2\n", "refactor: the change")
+    two = _commit(root, "tests/test_x.py", "def test_x(): pass\n", "test: its test")
+    pr = {"number": 10, "title": "fix: x", "body": ""}
+    monkeypatch.setattr(F, "REPO_ROOT", root)
+    fake_push(monkeypatch, root, green={base}, prs={one: pr, two: pr})
+    assert F.main() == 0, capsys.readouterr().err
+
+
+# ── the acceptance record (owner decision 2026-10-04) ─────────────────────────
+
+
+def _accept(root: Path, sha: str, msg: str = "accept") -> str:
+    entry = {"sha": sha, "reason": "the #1090 format migration", "owner": "owner", "date": "2026-10-04"}
+    return _commit(root, "scripts/push_base_accepts.json", json.dumps([entry]), msg)
+
+
+def test_an_accepted_commit_is_a_push_base_when_no_push_is_green(main_repo, monkeypatch):
+    c1, c2, _c3 = _shas(main_repo)
+    adder = _accept(main_repo, c2)
+    fake_push(
+        monkeypatch,
+        main_repo,
+        before=_shas(main_repo)[2],
+        green=set(),
+        prs={adder: {"number": 5, "title": "t", "body": ""}},
+    )
+    assert _lint_git.base_ref(main_repo) == c2
+    del c1
+
+
+def test_a_direct_push_cannot_accept_itself(main_repo, monkeypatch):
+    _c1, c2, c3 = _shas(main_repo)
+    _accept(main_repo, c2)
+    fake_push(monkeypatch, main_repo, before=c3, green=set())
+    with pytest.raises(_lint_git.GitUnavailable, match="did not arrive through a merged PR"):
+        _lint_git.base_ref(main_repo)
+
+
+def test_an_accepted_sha_off_mains_first_parent_chain_fails_closed(main_repo, monkeypatch):
+    _c1, _c2, c3 = _shas(main_repo)
+    adder = _accept(main_repo, "2" * 40)
+    fake_push(monkeypatch, main_repo, before=c3, green={c3}, prs={adder: {"number": 5, "title": "t", "body": ""}})
+    with pytest.raises(_lint_git.GitUnavailable, match="not a first-parent commit"):
+        _lint_git.base_ref(main_repo)
+
+
+@pytest.mark.parametrize("entry", [{"sha": "x"}, {"sha": "a" * 40, "reason": "", "owner": "o", "date": "2026-10-04"}])
+def test_a_malformed_acceptance_fails_closed(main_repo, monkeypatch, entry):
+    _c1, _c2, c3 = _shas(main_repo)
+    _commit(main_repo, "scripts/push_base_accepts.json", json.dumps([entry]))
+    fake_push(monkeypatch, main_repo, before=c3, green={c3})
+    with pytest.raises(_lint_git.GitUnavailable, match="malformed entry"):
+        _lint_git.base_ref(main_repo)

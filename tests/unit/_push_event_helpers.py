@@ -31,11 +31,14 @@ def fake_push(
     after: str | None = None,
     green: set[str] | None = None,
     prs: dict[str, dict[str, Any]] | None = None,
-    pr_commit_dates: dict[int, str] | None = None,
+    pr_commit_dates: dict[int, list[str]] | None = None,
+    paginate: bool = False,
 ) -> list[str]:
     """Make ``root``'s HEAD a push to main. ``before`` defaults to ``HEAD^``; ``green`` (default: ``{before}``)
     are the commits whose push run's lint job succeeded; ``prs`` maps a landed commit to its merged PR
-    ({number, title, body}). Returns the API paths requested, in order."""
+    ({number, title, body}); ``pr_commit_dates`` lists a PR's commits' committer dates, oldest first, as the real
+    API orders them; ``paginate`` serves a full first page of unrelated runs so the green ones are on page 2.
+    Returns the API paths requested, in order."""
     before = before or rev(root, "HEAD^")
     after = after or rev(root, "HEAD")
     green = {before} if green is None else green
@@ -53,7 +56,12 @@ def fake_push(
     def api(path: str) -> Any:
         calls.append(path)
         if "/actions/workflows/test.yml/runs" in path:
-            return {"workflow_runs": [{"id": rid, "head_sha": sha} for sha, rid in run_ids.items()]}
+            real = [{"id": rid, "head_sha": sha} for sha, rid in run_ids.items()]
+            if not paginate:
+                return {"workflow_runs": real}
+            if path.endswith("&page=1"):
+                return {"workflow_runs": [{"id": 1, "head_sha": f"{i:040x}"} for i in range(100)]}
+            return {"workflow_runs": real if path.endswith("&page=2") else []}
         if "/actions/runs/" in path and path.endswith("/jobs?per_page=100"):
             return {"jobs": [{"name": "lint", "conclusion": "success"}]}
         if path.startswith(f"repos/{REPO}/commits/") and path.endswith("/pulls"):
@@ -62,8 +70,8 @@ def fake_push(
             return [] if pr is None else [{**pr, "merged_at": "2026-10-04T00:00:00Z", "base": {"ref": "main"}}]
         if "/pulls/" in path and "/commits" in path:
             number = int(path.split("/pulls/")[1].split("/")[0])
-            date = (pr_commit_dates or {}).get(number, "2026-10-04T00:00:00Z")
-            return [{"commit": {"committer": {"date": date}}}]
+            dates = (pr_commit_dates or {}).get(number, ["2026-10-04T00:00:00Z"])
+            return [{"commit": {"committer": {"date": d}}} for d in dates]
         raise AssertionError(f"unexpected API path {path}")
 
     # The lints import the helper as top-level ``_lint_git`` (scripts/ on sys.path) and the tests as

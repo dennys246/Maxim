@@ -34,7 +34,12 @@ squash, a rebase, or a direct push), each with its merged PR when one exists, fo
 whose rules read the PR (the ``[no-tests]`` opt-out, the ledger's branch point).
 
 Residuals: a red push cannot be blocked, only flagged; it stays red until fixed forward,
-because the next push's base is still the last green one. A push's ranges are found
+because the next push's base is still the last green one. Some violations cannot be fixed
+forward (a direct ``fix:`` push without tests, an edited append-only exception list, a format
+migration), so the way out is an owner-approved, committed acceptance record,
+``scripts/push_base_accepts.json`` (owner decision 2026-10-04): an entry ``{sha, reason, owner,
+date}`` makes that first-parent commit count as green. An entry counts only when it reached main
+through a merged PR, so a direct push cannot accept itself. A push's ranges are found
 through the GitHub API (``gh api``, ``actions: read`` + ``pull-requests: read``); when it
 cannot answer, the lint fails closed rather than guessing.
 
@@ -210,6 +215,10 @@ _SHA_RE = re.compile(r"[0-9a-f]{40}")
 _ZERO_SHA = "0" * 40
 #: How far back along main's first-parent chain push_base looks for a green lint run before failing closed.
 PUSH_BASE_SEARCH_LIMIT = 50
+#: The committed acceptance record: first-parent commits of main the owner accepted as a push base (#1089).
+ACCEPTS_REL = "scripts/push_base_accepts.json"
+_ACCEPT_KEYS = {"sha", "reason", "owner", "date"}
+_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 def gh_api(path: str) -> Any:
@@ -288,7 +297,11 @@ def push_base(repo_root: Path, *, api: Callable[[str], Any] | None = None) -> st
                 runs_by_sha.setdefault(run["head_sha"], []).append(run["id"])
         if len(runs) < 100:
             break
+    accepted = _accepted(repo_root, repo, api)
     for sha in candidates:
+        if sha in accepted:
+            print(f"push base: {sha[:12]} by acceptance ({accepted[sha]})")
+            return sha
         for run_id in runs_by_sha.get(sha, ()):
             data = api(f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=100")
             jobs = data.get("jobs") if isinstance(data, dict) else None
@@ -299,6 +312,47 @@ def push_base(repo_root: Path, *, api: Callable[[str], Any] | None = None) -> st
     raise GitUnavailable(
         f"no push run with a green `{job}` job among the last {len(candidates)} first-parent commits of main"
     )
+
+
+def _accepted(repo_root: Path, repo: str, api: Callable[[str], Any]) -> dict[str, str]:
+    """{sha: "owner, date: reason"} for every honoured entry of :data:`ACCEPTS_REL` at HEAD. Fails closed on a
+    malformed record, an entry that is not a first-parent commit of HEAD, or one that arrived without a merged PR."""
+    path = repo_root / ACCEPTS_REL
+    if not path.exists():
+        return {}
+    try:
+        entries = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise GitUnavailable(f"{ACCEPTS_REL} unreadable ({exc})") from exc
+    if not isinstance(entries, list):
+        raise GitUnavailable(f"{ACCEPTS_REL} must be a list")
+    chain = set(git(repo_root, "rev-list", "--first-parent", "HEAD").split())
+    out: dict[str, str] = {}
+    for e in entries:
+        ok = isinstance(e, dict) and set(e) == _ACCEPT_KEYS and all(isinstance(e[k], str) and e[k].strip() for k in e)
+        if not ok or not _SHA_RE.fullmatch(e["sha"]) or not _DATE_RE.fullmatch(e["date"]):
+            raise GitUnavailable(f"{ACCEPTS_REL}: malformed entry {e!r} (needs exactly {sorted(_ACCEPT_KEYS)})")
+        if e["sha"] not in chain:
+            raise GitUnavailable(f"{ACCEPTS_REL}: {e['sha'][:12]} is not a first-parent commit of main")
+        introduced = git(
+            repo_root,
+            "log",
+            "--first-parent",
+            "--diff-merges=first-parent",
+            "--reverse",
+            "--format=%H",
+            f"-S{e['sha']}",
+            "HEAD",
+            "--",
+            ACCEPTS_REL,
+        ).split()
+        if not introduced or _merged_pr(repo, introduced[0], api) is None:
+            raise GitUnavailable(
+                f"{ACCEPTS_REL}: the entry for {e['sha'][:12]} did not arrive through a merged PR (a direct push cannot "
+                "accept itself)"
+            )
+        out[e["sha"]] = f"{e['owner']}, {e['date']}: {e['reason']}"
+    return out
 
 
 @dataclass(frozen=True)
@@ -324,7 +378,10 @@ def _merged_pr(repo: str, sha: str, api: Callable[[str], Any]) -> dict[str, Any]
 
 
 def push_units(repo_root: Path, base: str, *, api: Callable[[str], Any] | None = None) -> list[PushUnit]:
-    """Split ``base..HEAD`` along main's first-parent chain into what landed, oldest first."""
+    """Split ``base..HEAD`` along main's first-parent chain into what landed, oldest first.
+
+    A rebase-merged PR lands as several first-parent commits; GitHub lands them as one contiguous block, which
+    the fix->tests title rule relies on when it reads that PR's aggregate diff."""
     api = api or gh_api
     repo = _env("GITHUB_REPOSITORY")
     units = []
