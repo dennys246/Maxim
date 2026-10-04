@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- **`create.hippocampus` / `create.atl` refuse an existing store at construction** (#1071, owner decision 2026-10-04).
+  `create.*` makes a NEW store. On a path that already holds one, it raised only at `save()` (#939), after the caller
+  had worked against a store that opened silently empty; now construction raises `StoreOverwriteRefused` naming
+  `maxim.load.*`. `overwrite=True` declares a deliberate replace.
+
 ### Changed
 
 - **An enrichment trace says whose recall it was and which memories it surfaced** (Exp 63 instrumentation,

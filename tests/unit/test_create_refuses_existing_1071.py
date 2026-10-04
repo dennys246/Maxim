@@ -30,7 +30,6 @@ def _atl_file(path) -> None:
     a.save()
 
 
-@pytest.mark.xfail(strict=True, reason="#1071 red gate: create.* opens an existing store silently empty")
 @pytest.mark.parametrize(
     "make,create,load",
     [
@@ -48,7 +47,6 @@ def test_create_refuses_an_existing_store_at_construction(tmp_path, make, create
     assert load(str(path)) is not None  # the store is still there to load
 
 
-@pytest.mark.xfail(strict=True, reason="#1071 red gate: create.* opens an existing store silently empty")
 def test_a_tilde_path_is_checked_where_it_points(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     _hippocampus_file(tmp_path / "mem.json")
@@ -56,7 +54,6 @@ def test_a_tilde_path_is_checked_where_it_points(tmp_path, monkeypatch) -> None:
         maxim.create.hippocampus(persistence_path="~/mem.json")
 
 
-@pytest.mark.xfail(strict=True, reason="#1071 red gate: create.* opens an existing store silently empty")
 def test_overwrite_declares_a_deliberate_replace(tmp_path) -> None:
     path = tmp_path / "store.json"
     _hippocampus_file(path)
