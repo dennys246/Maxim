@@ -192,8 +192,20 @@ def test_missing_merge_base_locally_skips_with_totals(wired, capsys):
     assert "HEAD: 1 error(s)" in out and "INFO: no base ref" in out
 
 
-def test_a_push_prints_head_totals_only(wired, monkeypatch, capsys):
-    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+def test_a_push_is_judged_against_the_last_green_push(wired, monkeypatch, capsys):
+    """Was totals-only on push (#1089): a change that reached main without a PR went unjudged."""
+    from tests.unit._push_event_helpers import fake_push
+
+    _write(wired, "src/maxim/b.py", "w: str = 1\n")  # a new error in b.py
+    _commit(wired)
+    fake_push(monkeypatch, wired)
+    assert L.main() == 1
+    out = capsys.readouterr()
+    assert "totals only" not in out.out and "b.py" in out.err
+
+
+def test_another_ci_event_prints_head_totals_only(wired, monkeypatch, capsys):
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "schedule")
     _write(wired, "src/maxim/b.py", "w: str = 1\n")  # would fail a PR
     _commit(wired)
     assert L.main() == 0

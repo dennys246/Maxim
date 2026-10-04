@@ -346,11 +346,22 @@ def test_without_a_merge_base_locally_only_rules_1_to_3_run(repo, capsys):
     assert run(repo, capsys)[0] == 1
 
 
-def test_a_push_event_runs_rules_1_to_3_only(repo, monkeypatch, capsys):
-    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+def test_a_push_runs_the_diff_rules_against_the_last_green_push(repo, monkeypatch, capsys):
+    """Was rules 1-3 only on push (#1089): an unrecorded raise that reached main without a PR passed."""
+    from tests.unit._push_event_helpers import fake_push
+
+    head(repo, fn("big", 310), {A: 310})
+    _commit(repo)
+    fake_push(monkeypatch, repo)
+    rc, out = run(repo, capsys, commit=False)
+    assert rc == 1 and "pin raised 300 -> 310 without a new exception" in out
+
+
+def test_another_ci_event_runs_rules_1_to_3_only(repo, monkeypatch, capsys):
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "schedule")
     head(repo, fn("big", 310), {A: 310})
     rc, out = run(repo, capsys)
-    assert rc == 0 and "push event — rules 1-3 only" in out
+    assert rc == 0 and "schedule event — rules 1-3 only" in out
 
 
 # ── the merge-base baseline must be format 2 (#1089 item 1) ───────────────────

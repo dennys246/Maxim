@@ -57,9 +57,11 @@ at ``BASELINE_REL`` (it moved or was deleted) or with any other format fails the
 v1 migration path was deleted with #1089.
 
 **When the diff rules run:** on ``pull_request`` they are the gate, and a missing merge-base
-(or a base file git cannot read) is an error (``_lint_git.must_not_skip``; exit 2). Locally
-they run when a merge-base exists and are skipped with an INFO line otherwise. A ``push`` or
-any other CI event runs rules 1-3 only: the diff checks rely on ``main``'s PR protection.
+(or a base file git cannot read) is an error (``_lint_git.must_not_skip``; exit 2). On a
+``push`` to main they run against the last push whose lint job passed (``_lint_git.push_base``,
+#1089), with the same exit-2 rule, so a change that reached main without a PR is still judged.
+Locally they run when a merge-base exists and are skipped with an INFO line otherwise. Any
+other CI event (schedule, dispatch) runs rules 1-3 only.
 The lint prints every pinned span and the totals on every run, so the count lives in CI output.
 
 The baseline is CI lint data, not runtime persistence: ``_format_version``/CC3 do not apply
@@ -512,7 +514,7 @@ def main() -> int:
             f"{sum(b.entries.values())} pinned lines, {m.n_defs} defs measured, {len(b.exceptions)} exceptions"
         )
 
-    if b is not None and m is not None and event in (None, "", "pull_request"):
+    if b is not None and m is not None and event in (None, "", "pull_request", "push"):
         try:
             base = base_ref(root)
             base_text = show(root, base, BASELINE_REL)
