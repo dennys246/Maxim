@@ -138,7 +138,8 @@ it did *not* read. Maintained references (plans, briefs, lessons) do get relinke
   shipped in #571, 16.2–16.4 in #570, 16.7–16.9 in #569, and **16.10** as
   `scripts/lint_unreleased_on_src_change.py` — in the CI lint job, with a unit test, and it blocked
   PR #788 the same day it was still being described as a gap. Artifacts spot-checked for 16.4
-  (`lint_function_length.py` + `test_function_length_baseline.py` + its CI step) and 16.10.
+  (`lint_function_length.py` + `test_function_length_baseline.py` + its CI step) and 16.10. (16.4's two
+  mechanisms became one on 2026-10-04, roadmap 1.3.2 item 6: the test was deleted and the lint covers all of `src/maxim`.)
   CLAUDE.md's two stale `KNOWN GAP` sentences corrected in #793.
 
 ## Not in this file
