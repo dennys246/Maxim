@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import required_extra_skip
+from tests.conftest import extra_import_names, required_extra_skip
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -27,6 +27,12 @@ REPO = Path(__file__).resolve().parents[2]
         ("signed bundles need the [sign] extra (cryptography)", {"console", "sign"}, "sign"),
         ("signed bundles need the [sign] extra (cryptography)", {"console"}, None),  # not required here
         ("requires pretrained model/dataset assets", {"console", "sign"}, None),  # a different skip
+        # pytest's own importorskip message, for a call with no reason= (#940 item 4)
+        ("could not import 'cryptography': No module named 'cryptography'", {"sign"}, "sign"),
+        ("could not import 'cryptography.hazmat': No module named 'cryptography'", {"sign"}, "sign"),
+        ("could not import 'fastapi': No module named 'fastapi'", {"console", "sign"}, "console"),
+        ("could not import 'cryptography': No module named 'cryptography'", {"console"}, None),
+        ("could not import 'cryptographyx': No module named 'cryptographyx'", {"sign"}, None),
     ],
 )
 def test_the_reasons_the_lane_reads(reason, required, expected):
@@ -77,6 +83,47 @@ def test_a_skipif_marker_for_a_required_extra_fails_the_lane_too(tmp_path):
             @pytest.mark.skipif(True, reason="signed bundles need the [sign] extra (cryptography)")
             def test_signed():
                 pass
+            """
+        )
+    )
+    args = [sys.executable, "-m", "pytest", "-q", "-p", "tests.conftest", "-p", "no:cacheprovider", str(test)]
+    required = subprocess.run([*args, "--require-extras=sign"], cwd=REPO, capture_output=True, text=True, check=False)
+    assert required.returncode == 1 and "the 'sign' extra is required on this lane" in required.stdout, required.stdout
+    optional = subprocess.run(args, cwd=REPO, capture_output=True, text=True, check=False)
+    assert optional.returncode == 0 and "1 skipped" in optional.stdout, optional.stdout
+
+
+def test_the_extras_import_names_come_from_pyproject():
+    """Known answer: today's console/sign requirements. A distribution whose import name differs from its
+    requirement name would need a mapping, and installed ones are checked against their real top-level modules."""
+    from importlib.metadata import packages_distributions
+
+    assert extra_import_names("console") == ("fastapi", "uvicorn")
+    assert extra_import_names("sign") == ("cryptography", "rfc8785")
+    modules_of: dict[str, set[str]] = {}
+    for module, dists in packages_distributions().items():
+        for dist in dists:
+            modules_of.setdefault(dist.lower().replace("-", "_"), set()).add(module)
+    for name in extra_import_names("console") + extra_import_names("sign"):
+        if name in modules_of:  # installed: the requirement's own distribution provides the derived module
+            assert name in modules_of[name], (name, modules_of[name])
+
+
+def test_a_reasonless_importorskip_of_a_required_extra_fails_the_lane(tmp_path):
+    """The escape #940 item 4 named: ``pytest.importorskip("cryptography")`` with no reason= skipped with
+    pytest's own message and slipped past ``--require-extras``. ``sys.modules[...] = None`` makes the import
+    fail here whether or not the extra is installed."""
+    test = tmp_path / "test_reasonless.py"
+    test.write_text(
+        textwrap.dedent(
+            """
+            import sys
+            import pytest
+
+            sys.modules["rfc8785"] = None
+
+            def test_signed():
+                pytest.importorskip("rfc8785")
             """
         )
     )

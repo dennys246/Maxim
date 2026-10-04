@@ -112,11 +112,36 @@ _EXTRA_SKIP_REASONS: dict[str, tuple[str, ...]] = {
 }
 
 
+def extra_import_names(extra: str) -> tuple[str, ...]:
+    """The top-level import names of ``extra``'s requirements, read from ``pyproject.toml``.
+
+    A reason-less ``pytest.importorskip("cryptography")`` skips with pytest's own message
+    ("could not import 'cryptography': ..."), which names no extra, so it used to evade
+    ``--require-extras`` (#940 item 4). Reading the names from the extras themselves keeps the
+    contract from drifting when an extra gains a package. Every console/sign requirement's
+    distribution name is its import name; ``test_require_extras_lane`` pins that."""
+    import re
+    import tomllib
+
+    extras = tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text())["project"][
+        "optional-dependencies"
+    ]
+    names = []
+    for requirement in extras.get(extra, ()):
+        match = re.match(r"[A-Za-z0-9._-]+", requirement)
+        if match:
+            names.append(re.sub(r"[-.]", "_", match.group(0).lower()))
+    return tuple(names)
+
+
 def required_extra_skip(reason: str, required: "set[str]") -> str | None:
     """The required extra a skip reason names, or ``None``. Pure, so the lane's contract is unit-testable."""
     for extra in sorted(required):
         if any(marker in reason for marker in _EXTRA_SKIP_REASONS.get(extra, ())):
             return extra
+        for name in extra_import_names(extra):
+            if f"could not import '{name}'" in reason or f"could not import '{name}." in reason:
+                return extra
     return None
 
 

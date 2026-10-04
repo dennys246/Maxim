@@ -381,3 +381,17 @@ def test_run_dir_errors_are_maxim_errors_and_value_errors(data_home) -> None:
     _sim(data_home, "20260408_180000")
     with pytest.raises(maxim.MaximError):
         maxim.load.session("20260408")
+
+
+def test_the_downgrade_backup_advice_names_every_run_directory() -> None:
+    """``docs/user/upgrading.md`` told users to back up ``~/.maxim/sessions/``, which no simulation writes
+    (#940 item 3). Known answer: the backup sentence names each directory ``resolve_run_dir`` searches,
+    and the sentence before its correction note does not name ``sessions``."""
+    from maxim.utils.paths import RUN_DIR_KINDS
+
+    text = (REPO / "docs" / "user" / "upgrading.md").read_text()
+    sentence = next(line for line in text.splitlines() if line.startswith("If you anticipate a possible downgrade"))
+    advice = sentence.split("*(Corrected", 1)[0]
+    for directory in RUN_DIR_KINDS.values():
+        assert f"`~/.maxim/{directory}/`" in advice, directory
+    assert "sessions" not in advice
