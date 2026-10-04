@@ -39,6 +39,20 @@ def test_the_reasons_the_lane_reads(reason, required, expected):
     assert required_extra_skip(reason, required) == expected
 
 
+def _extras_importable(tmp_path: Path) -> dict[str, str]:
+    """An env where every console/sign module imports, whatever this box has installed.
+
+    ``--require-extras`` refuses to start when an extra's modules do not import, so the skip-matcher tests
+    below would otherwise test the box (exit 4 without the extras) instead of the matcher."""
+    import os
+
+    stubs = tmp_path / "extra_stubs"
+    stubs.mkdir(exist_ok=True)
+    for name in extra_import_names("console") + extra_import_names("sign"):
+        (stubs / f"{name}.py").write_text("")
+    return {**os.environ, "PYTHONPATH": os.pathsep.join([str(stubs), os.environ.get("PYTHONPATH", "")])}
+
+
 def _run(tmp_path: Path, *flags: str) -> subprocess.CompletedProcess[str]:
     test = tmp_path / "test_needs_sign.py"
     test.write_text(
@@ -58,6 +72,7 @@ def _run(tmp_path: Path, *flags: str) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
         check=False,
+        env=_extras_importable(tmp_path),
     )
 
 
@@ -87,9 +102,12 @@ def test_a_skipif_marker_for_a_required_extra_fails_the_lane_too(tmp_path):
         )
     )
     args = [sys.executable, "-m", "pytest", "-q", "-p", "tests.conftest", "-p", "no:cacheprovider", str(test)]
-    required = subprocess.run([*args, "--require-extras=sign"], cwd=REPO, capture_output=True, text=True, check=False)
+    env = _extras_importable(tmp_path)
+    required = subprocess.run(
+        [*args, "--require-extras=sign"], cwd=REPO, capture_output=True, text=True, check=False, env=env
+    )
     assert required.returncode == 1 and "the 'sign' extra is required on this lane" in required.stdout, required.stdout
-    optional = subprocess.run(args, cwd=REPO, capture_output=True, text=True, check=False)
+    optional = subprocess.run(args, cwd=REPO, capture_output=True, text=True, check=False, env=env)
     assert optional.returncode == 0 and "1 skipped" in optional.stdout, optional.stdout
 
 
@@ -128,9 +146,12 @@ def test_a_reasonless_importorskip_of_a_required_extra_fails_the_lane(tmp_path):
         )
     )
     args = [sys.executable, "-m", "pytest", "-q", "-p", "tests.conftest", "-p", "no:cacheprovider", str(test)]
-    required = subprocess.run([*args, "--require-extras=sign"], cwd=REPO, capture_output=True, text=True, check=False)
+    env = _extras_importable(tmp_path)
+    required = subprocess.run(
+        [*args, "--require-extras=sign"], cwd=REPO, capture_output=True, text=True, check=False, env=env
+    )
     assert required.returncode == 1 and "the 'sign' extra is required on this lane" in required.stdout, required.stdout
-    optional = subprocess.run(args, cwd=REPO, capture_output=True, text=True, check=False)
+    optional = subprocess.run(args, cwd=REPO, capture_output=True, text=True, check=False, env=env)
     assert optional.returncode == 0 and "1 skipped" in optional.stdout, optional.stdout
 
 
