@@ -654,20 +654,27 @@ def append_row(rows_file: Path, row: dict) -> None:
 def check_campaign(exp: str) -> None:
     """The campaign may start an attempt: the table is sound, the campaign is not closed, and a successor's
     predecessor closed with a pinned ABORT verdict that, with this campaign's prereg, is already on ``origin/main``
-    (owner decisions 2026-10-02). Real attempts only: a mock attempt writes nothing."""
+    (owner decisions 2026-10-02), no predecessor leaked a FAILED gate and the subject is unchanged (#1059). Real
+    attempts only: a mock attempt writes nothing."""
     if problems := v.protocol_problems():
         raise Refused(f"the campaign table is unsound: {problems}")
     if exp in (closed := v.closed_keys()):
         raise Refused(f"campaign {exp} is closed (superseded by {closed[exp]}): run --exp {closed[exp]}")
     sup = v.PROTOCOL[exp].get("supersedes")
     if sup is not None:
-        problems = v.successor_problems(
-            exp,
-            v._git_bytes("show", f"origin/main:{sup['verdict']}"),
-            v.landed_on_main(sup["verdict"], sup["verdict_sha256"]),
-            v.landed_on_main(v.PROTOCOL[exp]["prereg"]),
-            time.time(),
-        )
+        # #1059 S7: the preflight half of the strict successor gate (the evidence gate stays the authority): no FAILED
+        # gate leaked into a predecessor's committed phases, and the subject this attempt runs on is byte-identical
+        # to every predecessor's executed commits.
+        with tempfile.TemporaryDirectory() as tmp:
+            problems = v.successor_problems(
+                exp,
+                v._git_bytes("show", f"origin/main:{sup['verdict']}"),
+                v.landed_on_main(sup["verdict"], sup["verdict_sha256"]),
+                v.landed_on_main(v.PROTOCOL[exp]["prereg"]),
+                time.time(),
+                data_root=v.materialize("origin/main", v.predecessors(exp), Path(tmp)),
+            )
+        problems += v.subject_problems(exp, v._git("rev-parse", "HEAD").strip())
         if problems:
             raise Refused("; ".join(problems))
 

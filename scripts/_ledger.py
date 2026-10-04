@@ -45,6 +45,11 @@ RANK: dict[str, int] = {
     "EARNED": 3,
     "MAINTAINED": 3,
     "RE-VALIDATED": 3,
+    # #1059: a SUCCESSOR O19 campaign's verdict (``supersedes`` in o19_verdict.PROTOCOL) supports this, never
+    # MAINTAINED, and only when the subject's code is byte-identical to the root campaign's executed commits (the
+    # evidence gate checks it). It means "the subject's code is unchanged since the root campaign", not that a
+    # judged result was reproduced: the root may hold only aborts.
+    "REPRODUCED": 3,
 }
 POSITIVE = frozenset(t for t, r in RANK.items() if r == 3)
 BY_TESTS = "RE-VALIDATED-BY-TESTS"

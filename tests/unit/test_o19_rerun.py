@@ -22,6 +22,7 @@ import o19_rerun as h  # noqa: E402
 import o19_verdict as v  # noqa: E402
 
 PREREG = {exp: (REPO / v.PROTOCOL[exp]["prereg"]).read_text() for exp in v.PROTOCOL}
+DATA_ROOT = REPO / "docs/experiments/data"  # every campaign's committed data directory (the leaked-gate bar reads it)
 _EVIDENCE_OUT_PATH = (
     h._provenance.evidence_out_path
 )  # the fixture redirects the harness's rows; the verdict needs the real one
@@ -994,7 +995,7 @@ def test_the_campaign_table_is_sound_and_10_is_closed() -> None:
 def test_the_pinned_closure_is_campaign_1s_real_abort() -> None:
     sup = v.PROTOCOL["10c2"]["supersedes"]
     closure = (REPO / sup["verdict"]).read_bytes()
-    assert v.successor_problems("10c2", closure, 1.0, 1.0, 2.0) == []
+    assert v.successor_problems("10c2", closure, 1.0, 1.0, 2.0, data_root=DATA_ROOT) == []
 
 
 def _table(**changes) -> dict:
@@ -1056,7 +1057,11 @@ def test_the_harness_checks_the_campaign_before_any_marker(monkeypatch, capsys) 
 def test_the_apparatus_checks_a_successors_closure(tmp_path, monkeypatch) -> None:
     sup = v.PROTOCOL["10c2"]["supersedes"]
     closure, prereg = (REPO / sup["verdict"]).read_bytes(), (REPO / v.PROTOCOL["10c2"]["prereg"]).read_bytes()
+    c1_rows = (
+        REPO / v.rows_path("10")
+    ).read_bytes()  # the leaked-gate bar reads them (one failed phase: nothing leaked)
     rig = Rig(tmp_path, key="10c2")
+    rig.put(v.rows_path("10"), c1_rows, "2026-10-02T08:00:00Z")
     rig.put(sup["verdict"], closure, "2026-10-02T09:00:00Z")
     rig.put(v.PROTOCOL["10c2"]["prereg"], prereg, "2026-10-02T09:30:00Z")
     rig.marker(1, RID[0], "2026-10-02T10:05:00Z")
@@ -1066,6 +1071,7 @@ def test_the_apparatus_checks_a_successors_closure(tmp_path, monkeypatch) -> Non
         "2026-10-02T10:05:00Z"
     )
     late = Rig(tmp_path / "late", key="10c2")
+    late.put(v.rows_path("10"), c1_rows, "2026-10-02T08:00:00Z")
     late.put(v.PROTOCOL["10c2"]["prereg"], prereg, "2026-10-02T09:30:00Z")
     late.marker(1, RID[0], "2026-10-02T10:05:00Z")
     late.put(sup["verdict"], closure, "2026-10-02T10:30:00Z")  # the closure landed after the first marker
@@ -1073,6 +1079,7 @@ def test_the_apparatus_checks_a_successors_closure(tmp_path, monkeypatch) -> Non
     with pytest.raises(v.Refusal, match="closure verdict reached origin/main after its first marker"):
         late.check(monkeypatch)
     swapped = Rig(tmp_path / "swapped", key="10c2")
+    swapped.put(v.rows_path("10"), c1_rows, "2026-10-02T08:00:00Z")
     swapped.put(sup["verdict"], b"{}", "2026-10-02T09:00:00Z")  # another file at the path, early
     swapped.put(v.PROTOCOL["10c2"]["prereg"], prereg, "2026-10-02T09:30:00Z")
     swapped.marker(1, RID[0], "2026-10-02T10:05:00Z")
@@ -1090,16 +1097,18 @@ def test_only_a_pinned_real_abort_landed_before_the_first_marker_may_be_succeede
     def edited(**fields) -> bytes:
         return json.dumps({**record, **fields}).encode()
 
-    assert v.successor_problems("10c2", None, None, 1.0, 2.0)  # not on main
-    assert v.successor_problems("10c2", real + b" ", 1.0, 1.0, 2.0)  # not the pinned bytes
+    assert v.successor_problems("10c2", None, None, 1.0, 2.0, data_root=DATA_ROOT)  # not on main
+    assert v.successor_problems("10c2", real + b" ", 1.0, 1.0, 2.0, data_root=DATA_ROOT)  # not the pinned bytes
     for change in ({"verdict": "PASS"}, {"verdict": "FAIL"}, {"verdict": "NOT SHOWN"}, {"mock": True}, {"experiment": "10c2"},
                    {"apparatus_checked": False}):  # fmt: skip
-        problems = v.successor_problems("10c2", edited(**change), 1.0, 1.0, 2.0)
+        problems = v.successor_problems("10c2", edited(**change), 1.0, 1.0, 2.0, data_root=DATA_ROOT)
         assert any("not a real ABORT" in p or "did not check" in p for p in problems), change
-    assert v.successor_problems("10c2", real, 3.0, 1.0, 2.0)  # the closure landed after the first marker
-    assert v.successor_problems("10c2", real, 1.0, None, 2.0)  # the prereg never reached main
-    assert v.successor_problems("10c2", real, 1.0, 3.0, 2.0)  # ...or after the first marker
-    assert v.successor_problems("09", None, None, None, 2.0) == []  # supersedes nothing
+    assert v.successor_problems(
+        "10c2", real, 3.0, 1.0, 2.0, data_root=DATA_ROOT
+    )  # the closure landed after the first marker
+    assert v.successor_problems("10c2", real, 1.0, None, 2.0, data_root=DATA_ROOT)  # the prereg never reached main
+    assert v.successor_problems("10c2", real, 1.0, 3.0, 2.0, data_root=DATA_ROOT)  # ...or after the first marker
+    assert v.successor_problems("09", None, None, None, 2.0, data_root=DATA_ROOT) == []  # supersedes nothing
 
 
 def test_the_harness_refuses_a_closed_or_unclosed_campaign(monkeypatch) -> None:
@@ -1112,6 +1121,7 @@ def test_the_harness_refuses_a_closed_or_unclosed_campaign(monkeypatch) -> None:
     real = (REPO / v.PROTOCOL["10c2"]["supersedes"]["verdict"]).read_bytes()
     monkeypatch.setattr(v, "_git_bytes", lambda *a: real)
     monkeypatch.setattr(v, "landed_on_main", lambda path, want=None: 1.0)
+    monkeypatch.setattr(v, "subject_problems", lambda key, head: [])  # its own test below
     h.check_campaign("10c2")  # landed before now: may start
     h.check_campaign("09")
 
@@ -1921,3 +1931,199 @@ class _nullcontext:
 
     def __exit__(self, *exc):
         return False
+
+
+# ── #1059: the leaked-gate bar and the subject preflight (the evidence gate is the authority) ────────────────
+
+
+def _mock_campaign(tmp_path: Path, monkeypatch, exp: str, *, failed_from: int | None = None, edit=None) -> list[dict]:
+    """One mock attempt of ``exp`` with its data directory at ``tmp_path/<scope>`` (as a data root holds it); phases
+    from ``failed_from`` on are marked failed (an aborted attempt), then ``edit(rows, data_dir)``."""
+    data_dir = tmp_path / v.PROTOCOL[exp]["scope"]
+    data_dir.mkdir(parents=True, exist_ok=True)
+    rows_file = data_dir / "rows.jsonl"
+    monkeypatch.setattr(h._provenance, "_RUN_ID", {})
+    monkeypatch.setattr(h._provenance, "evidence_out_path", lambda *a, **k: rows_file)
+    import contextlib
+    import io
+
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        code = h.main(["run", "--exp", exp, "--mock"])
+    assert code == 0, f"the mock harness exited {code}: {err.getvalue()}"  # a flaky exit 2 shows its refusal here
+    rows = [json.loads(ln) for ln in rows_file.read_text().splitlines()]
+    for r in rows[failed_from:] if failed_from is not None else []:
+        r["status"] = "failed"
+    if edit:
+        edit(rows, data_dir)
+    rows_file.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    return rows
+
+
+def _thin_phase_0(rows: list[dict], data_dir: Path) -> None:
+    """Phase 1's saved store holds 2 memories: Exp 10's P0 (N1 >= 3) fails on it."""
+    sdir = data_dir / rows[0]["session_id"]
+    data = json.dumps({"memories": [{"id": "a"}, {"id": "b"}]}).encode()
+    (sdir / "aut_hippocampus.json").write_bytes(data)
+    rows[0]["files"]["aut_hippocampus.json"] = v.sha256_bytes(data)
+
+
+def test_a_clean_aborted_prefix_leaks_nothing(tmp_path, monkeypatch) -> None:
+    for failed_from in (None, 2, 1, 0):
+        rows = _mock_campaign(tmp_path / str(failed_from), monkeypatch, "10", failed_from=failed_from)
+        assert v.leaked_gate_problems("10", rows, tmp_path / str(failed_from) / "rerun_exp10_o19") == []
+
+
+@pytest.mark.parametrize("failed_from, gates", [(1, ["P0"]), (2, ["P0", "P2.gate"]), (None, ["P0", "P2"])])
+def test_a_failed_gate_in_committed_phases_is_a_leak(tmp_path, monkeypatch, failed_from, gates) -> None:
+    rows = _mock_campaign(tmp_path, monkeypatch, "10", failed_from=failed_from, edit=_thin_phase_0)
+    problems = v.leaked_gate_problems("10", rows, tmp_path / "rerun_exp10_o19")
+    assert len(problems) == 1 and f"a FAILED gate leaked into its committed phases: {gates}" in problems[0], problems
+
+
+def test_an_exp09_not_met_hypothesis_is_a_leak(tmp_path, monkeypatch) -> None:
+    def no_flinch(rows, data_dir):
+        import gzip
+
+        sdir = data_dir / rows[0]["session_id"]
+        log = gzip.decompress((sdir / f"{v.RUN_LOG}.gz").read_bytes()).replace(b"attack_flinch", b"other_reflex")
+        (sdir / f"{v.RUN_LOG}.gz").write_bytes(gzip.compress(log))
+        rows[0]["files"][v.RUN_LOG] = v.sha256_bytes(log)
+        rows[0]["status"] = "ok"
+
+    rows = _mock_campaign(tmp_path, monkeypatch, "09", edit=no_flinch)
+    problems = v.leaked_gate_problems("09", rows, tmp_path / "rerun_exp09_o19")
+    assert problems and "'H1'" in problems[0] and "'H3'" not in problems[0], problems
+
+
+@pytest.mark.parametrize("edit, expected", [
+    (lambda rows, d: rows[0]["files"].update({"report.json": "0" * 64}), "cannot be judged"),
+    (lambda rows, d: rows[0].update(session_id="../x"), "cannot be judged"),
+    (lambda rows, d: (d / rows[0]["session_id"] / "report.json").unlink(), "cannot be judged"),
+])  # fmt: skip
+def test_a_leaked_phase_that_cannot_be_judged_bars(tmp_path, monkeypatch, edit, expected) -> None:
+    rows = _mock_campaign(tmp_path, monkeypatch, "10", failed_from=2, edit=edit)
+    problems = v.leaked_gate_problems("10", rows, tmp_path / "rerun_exp10_o19")
+    assert problems and expected in problems[0], problems
+
+
+def test_a_prefix_with_no_known_gate_set_bars(tmp_path, monkeypatch) -> None:
+    rows = _mock_campaign(tmp_path, monkeypatch, "10", failed_from=2)
+    monkeypatch.setitem(v.LEAK_GATES, "10", {1: ("P0",), 3: ("P0",)})
+    problems = v.leaked_gate_problems("10", rows, tmp_path / "rerun_exp10_o19")
+    assert problems and "decide no known gate set" in problems[0], problems
+
+
+def test_the_leak_bar_covers_every_experiment_and_phase_count() -> None:
+    for key, p in v.PROTOCOL.items():
+        assert set(v.LEAK_GATES[v.experiment_of(key)]) == set(range(1, len(p["phases"]) + 1)), key
+
+
+def test_a_successor_with_unreadable_predecessor_rows_is_barred(tmp_path) -> None:
+    problems = v.chain_leaked_gate_problems("10c2", tmp_path)
+    assert problems and "cannot be ruled out" in problems[0], problems
+
+
+def _pin_closure(data_root: Path, monkeypatch) -> bytes:
+    """Close the mock campaign 1 under ``data_root`` with a verdict binding its rows, pinned in campaign 2's entry."""
+    import copy as _copy
+
+    pdir = data_root / v.PROTOCOL["10"]["scope"]
+    closure = json.dumps({"data": v.rows_path("10"), "data_sha256": v.sha256_bytes((pdir / "rows.jsonl").read_bytes())})
+    (pdir / "verdict.json").write_text(closure)
+    table = _copy.deepcopy(v.PROTOCOL)
+    table["10c2"]["supersedes"]["verdict_sha256"] = v.sha256_bytes(closure.encode())
+    monkeypatch.setattr(v, "PROTOCOL", table)
+    return closure.encode()
+
+
+def test_successor_problems_and_the_judge_carry_the_bar(tmp_path, monkeypatch) -> None:
+    real = (REPO / v.PROTOCOL["10c2"]["supersedes"]["verdict"]).read_bytes()
+    _mock_campaign(tmp_path, monkeypatch, "10", failed_from=2, edit=_thin_phase_0)
+    _pin_closure(tmp_path, monkeypatch)
+    problems = v.successor_problems("10c2", real, 1.0, 1.0, 2.0, data_root=tmp_path)
+    assert any("FAILED gate leaked" in p for p in problems), problems
+    rows = _mock_campaign(tmp_path, monkeypatch, "10c2")
+    attempts = v.attempts_from_rows(rows)
+    rid = next(iter(attempts))
+    out = v.judge("10c2", [{"run_id": rid, "k": 1, "rows": attempts[rid]}], tmp_path / "rerun_exp10_o19c2")
+    assert out["verdict"] == "PASS" and any("FAILED gate leaked" in p for p in out["leaked_gates"]), out
+    root = v.judge("10", [{"run_id": rid, "k": 1, "rows": attempts[rid]}], tmp_path / "rerun_exp10_o19c2")
+    assert "leaked_gates" not in root  # a root campaign's output is unchanged (half B)
+
+
+def test_the_harness_refuses_a_successor_on_a_leak_or_another_subject(monkeypatch) -> None:
+    real = (REPO / v.PROTOCOL["10c2"]["supersedes"]["verdict"]).read_bytes()
+    monkeypatch.setattr(v, "_git_bytes", lambda *a: real)
+    monkeypatch.setattr(v, "landed_on_main", lambda path, want=None: 1.0)
+    monkeypatch.setattr(v, "materialize", lambda ref, keys, dest: dest)  # an empty data root: nothing readable
+    monkeypatch.setattr(v, "subject_problems", lambda key, head: [])
+    with pytest.raises(h.Refused, match="cannot be ruled out"):
+        h.check_campaign("10c2")
+    monkeypatch.setattr(v, "chain_leaked_gate_problems", lambda key, root: [])
+    h.check_campaign("10c2")
+    monkeypatch.setattr(v, "subject_problems", lambda key, head: ["the subject differs"])
+    with pytest.raises(h.Refused, match="the subject differs"):
+        h.check_campaign("10c2")
+
+
+def test_subject_problems_compare_every_predecessor_commit_with_head(tmp_path, monkeypatch) -> None:
+    import copy as _copy
+
+    rig = Rig(tmp_path)
+    rows = json.dumps({"record_kind": "harness_row", "provenance": {"executed_git_hash": rig.code}}) + "\n"
+    # A header is not an attempt (the gate's _executed reads harness rows only): its commit is never compared.
+    rows += json.dumps({"record_kind": "harness_header", "provenance": {"executed_git_hash": "f" * 40}}) + "\n"
+    closure = {"data": v.rows_path("10"), "data_sha256": v.sha256_bytes(rows.encode()),
+               "apparatus": {"markers": [{"peeled": rig.code}]}}  # fmt: skip
+    rig.put(v.rows_path("10"), rows.encode(), "2026-10-01T11:00:00Z")
+    raw = json.dumps(closure).encode()
+    rig.put(v.PROTOCOL["10c2"]["supersedes"]["verdict"], raw, "2026-10-01T12:00:00Z")
+    table = _copy.deepcopy(v.PROTOCOL)
+    table["10c2"]["supersedes"]["verdict_sha256"] = v.sha256_bytes(raw)
+    monkeypatch.setattr(v, "PROTOCOL", table)
+    monkeypatch.setattr(v, "REPO_ROOT", rig.work)
+    head = _git(rig.work, "rev-parse", "HEAD")
+    assert v.subject_problems("10c2", head) == []  # only data and the closure changed: not subject
+    assert v.subject_problems("10", head) == []  # a root supersedes nothing
+    rig.put("src/maxim/utils/function_length_baseline.json", b"{}", "2026-10-01T13:00:00Z")
+    assert v.subject_problems("10c2", _git(rig.work, "rev-parse", "HEAD")) == []  # the standing exclusion
+    rig.put("src/maxim/agent.py", b"x = 2\n", "2026-10-01T14:00:00Z")
+    problems = v.subject_problems("10c2", _git(rig.work, "rev-parse", "HEAD"))
+    assert problems and "src/maxim/agent.py" in problems[0], problems
+    table["10c2"]["supersedes"]["verdict_sha256"] = "0" * 64
+    assert any("pinned closure verdict is not on origin/main" in p for p in v.subject_problems("10c2", head))
+
+
+def test_the_campaign_table_refuses_a_successor_with_other_phases_or_a_shared_kind() -> None:
+    c2 = v.PROTOCOL["10c2"]
+    other = [*c2["phases"][:2], ("negative_transfer", v.EXP10_GOAL_GARDEN, 5, True, ["--x"], {})]
+    assert any(
+        "phases (argv, env) are not 10's" in p for p in v.protocol_problems(_table(**{"10c2": {**c2, "phases": other}}))
+    )
+    shared = _table(**{"63": {**v.PROTOCOL["63"], "kind": "exp09_verdict"}})
+    assert any("belongs to more than one experiment" in p for p in v.protocol_problems(shared))
+
+
+@pytest.mark.parametrize("tamper, expected", [
+    ("unpinned", "is not the pinned closure"),
+    ("rows", "are not the bytes its pinned closure judged"),
+    ("no_closure", "cannot be read as its pinned closure judged"),
+])  # fmt: skip
+def test_the_bar_reads_a_predecessor_only_as_its_pinned_closure_judged_it(tmp_path, monkeypatch, tamper, expected):
+    """#1059 review: rows edited after the closure (here: phase 1 marked failed, which would empty the leaked prefix)
+    cannot launder a leak; the bar refuses instead."""
+    _mock_campaign(tmp_path, monkeypatch, "10", failed_from=2, edit=_thin_phase_0)
+    _pin_closure(tmp_path, monkeypatch)
+    assert any("FAILED gate leaked" in p for p in v.chain_leaked_gate_problems("10c2", tmp_path))
+    pdir = tmp_path / v.PROTOCOL["10"]["scope"]
+    if tamper == "unpinned":
+        (pdir / "verdict.json").write_text((pdir / "verdict.json").read_text() + " ")
+    elif tamper == "rows":
+        rows = [json.loads(ln) for ln in (pdir / "rows.jsonl").read_text().splitlines()]
+        rows[0]["status"] = "failed"
+        (pdir / "rows.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    else:
+        (pdir / "verdict.json").unlink()
+    problems = v.chain_leaked_gate_problems("10c2", tmp_path)
+    assert len(problems) == 1 and expected in problems[0] and "cannot be ruled out" in problems[0], problems

@@ -42,6 +42,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 from collections.abc import Callable
 from fractions import Fraction
 from pathlib import Path
@@ -153,6 +154,22 @@ def closed_keys() -> dict[str, str]:
     return {p["supersedes"]["key"]: k for k, p in PROTOCOL.items() if "supersedes" in p}
 
 
+def predecessors(key: str, protocol: dict[str, dict] | None = None) -> list[str]:
+    """Every campaign ``key`` succeeds, nearest first, ending at the ROOT campaign ([] for a root)."""
+    protocol = PROTOCOL if protocol is None else protocol
+    out: list[str] = []
+    sup = protocol[key].get("supersedes")
+    while isinstance(sup, dict) and sup.get("key") in protocol and sup["key"] not in out and sup["key"] != key:
+        out.append(sup["key"])
+        sup = protocol[sup["key"]].get("supersedes")
+    return out
+
+
+def _plain(value):
+    """``value`` as JSON holds it (a phase tuple reads as a list), for comparing campaign entries."""
+    return json.loads(json.dumps(value, sort_keys=True))
+
+
 def protocol_problems(protocol: dict[str, dict] | None = None) -> list[str]:
     """The structural campaign rules ([] = sound): plain keys, one experiment per chain, a successor names an
     existing predecessor of its own experiment and kind, each campaign is succeeded at most once, at most one open
@@ -178,6 +195,18 @@ def protocol_problems(protocol: dict[str, dict] | None = None) -> list[str]:
                 problems.append(f"campaign {key}: supersedes.{field} is missing")
         if sup.get("verdict") != f"docs/experiments/data/{prev.get('scope')}/verdict.json":
             problems.append(f"campaign {key}: the closure verdict is not {sup['key']}'s own")
+        # #1059 S6: a successor re-runs its predecessor's argv and env exactly (a mechanism switched by a flag or an
+        # env var counts as a change of subject; a successor needing a new harness flag is a new experiment).
+        if _plain(prev.get("phases")) != _plain(p.get("phases")):
+            problems.append(f"campaign {key}'s phases (argv, env) are not {sup['key']}'s")
+    # #1059 D1: each verdict kind belongs to exactly one experiment (the gate also holds the map append-only against
+    # the merge-base table), so a new experiment id cannot reuse a kind to get a fresh root.
+    experiments_of_kind: dict[str, set] = {}
+    for p in protocol.values():
+        experiments_of_kind.setdefault(p.get("kind"), set()).add(p.get("experiment"))
+    for kind, exps in sorted(experiments_of_kind.items(), key=lambda kv: str(kv[0])):
+        if len(exps) > 1:
+            problems.append(f"verdict kind {kind!r} belongs to more than one experiment: {sorted(map(str, exps))}")
     for field in ("scope", "prereg"):  # each campaign its own data directory and prereg
         values = [p.get(field) for p in protocol.values()]
         if len(set(values)) != len(values):
@@ -203,19 +232,21 @@ def protocol_problems(protocol: dict[str, dict] | None = None) -> list[str]:
 
 
 def successor_problems(key: str, closure: bytes | None, closure_landed: float | None, prereg_landed: float | None,
-                       first_marker: float) -> list[str]:  # fmt: skip
+                       first_marker: float, *, data_root: Path) -> list[str]:  # fmt: skip
     """Why campaign ``key`` may not run or be judged ([] = it may, or it supersedes nothing). ``closure`` is the
     predecessor's verdict as ``origin/main`` holds it, ``*_landed`` when that verdict and this campaign's prereg
     first reached ``origin/main`` (None = never), ``first_marker`` this campaign's first marker's tagger date (or
     now, before one is pushed). Only an ABORT may be succeeded: a PASS, a FAIL and Exp 63's NOT SHOWN are terminal
     (owner decision 2026-10-03, D2: NOT SHOWN is a complete attempt that could not test the claim; the next route is
-    a changed ranker and a new experiment, never a successor campaign)."""
+    a changed ranker and a new experiment, never a successor campaign). ``data_root`` holds every predecessor's data
+    directory as ``origin/main`` holds it (``materialize``): a FAILED gate leaked into a predecessor's committed
+    phases bars the successor (#1059, :func:`chain_leaked_gate_problems`)."""
     sup = PROTOCOL[key].get("supersedes")
     if sup is None:
         return []
     if closure is None or closure_landed is None:
         return [f"campaign {key}: {sup['key']}'s closure verdict {sup['verdict']} is not on origin/main"]
-    problems = []
+    problems = chain_leaked_gate_problems(key, data_root)
     if sha256_bytes(closure) != sup["verdict_sha256"]:
         problems.append(f"campaign {key}: {sup['verdict']} is not the pinned closure verdict")
     try:
@@ -1094,6 +1125,224 @@ def exp63_gates(phases: list[dict], *, goal: str) -> dict:
     return out
 
 
+# ── #1059: a FAILED gate leaked into an aborted predecessor's committed phases bars its successor ───────────
+# D2 (the design pass's fix): the gates a committed PREFIX of an attempt's phases decides, per experiment: the number of
+# leading ``ok`` phase rows -> the gates computable from them. A prefix of another length cannot be judged, and a
+# leaked phase that cannot be judged BARS the successor (strict: the design pass's recommendation, adopted
+# 2026-10-04). ``P1.gate`` / ``P2.gate``: Exp 10's P1 and P2 over the gate phase only (the garden phase never ran).
+# Deliberately stricter than the preregs' FAIL lines: Exp 09's H2/H7 and Exp 63's R3d decide PARTIAL / NOT SHOWN, not
+# FAIL, yet a leak of any of them bars the successor too (fail closed, intentional: a leaked non-PASS is still a
+# result seen before the successor was opened).
+LEAK_GATES: dict[str, dict[int, tuple[str, ...]]] = {
+    "10": {1: ("P0",), 2: ("P0", "P1.gate", "P2.gate", "R1", "R2"), 3: ("P0", "P1", "P2", "R1", "R2")},
+    "09": {1: ("H1", "H2", "H4", "H5", "H6", "H7")},  # H3 is NOT MEASURED by design (#1026), never a leak
+    "63": {1: ("P0",), 2: ("P0", "P1", "P2", "P3", "R1", "R3a", "R3prime", "R3d")},
+}
+# What reading or gating a committed phase may raise: each is "cannot be judged", which bars (never a crash).
+_UNJUDGEABLE = (Refusal, ValueError, KeyError, TypeError, IndexError, AttributeError, OSError, ZeroDivisionError)
+
+
+def _gate_passes(key: str, phases: list[dict]) -> dict[str, bool]:
+    """``gate -> passed`` for every gate a prefix of ``phases`` (1..all of the experiment's phases) can decide."""
+    experiment = experiment_of(key)
+    if experiment == "10":
+        g = exp10_gates([*phases, *[phases[-1]] * (3 - len(phases))])  # padding: only LEAK_GATES' names are read
+        out = {name: g[name]["pass"] for name in ("P0", "P1", "P2", "R1", "R2")}
+        out.update({"P1.gate": g["P1"]["gate"]["pass"], "P2.gate": g["P2"]["gate"]["pass"]})
+        return out
+    if experiment == "09":
+        g = exp09_gates(phases[0], phases[0]["log_bytes"])
+        return {name: g[name]["status"] == "PASS" for name in ("H1", "H2", "H3", "H4", "H5", "H6", "H7")}
+    if len(phases) == 1:
+        return {"P0": len(store_records(phases[0]["store"])) >= 3}
+    g = exp63_gates(phases, goal=PROTOCOL[key]["phases"][1][1])
+    return {name: g[name]["pass"] for name in LEAK_GATES["63"][2]}
+
+
+def _committed_phase(data_root: Path, row: dict) -> dict:
+    """One committed ``ok`` phase's bytes as the gates read them, each copied file re-hashed against its row."""
+    session, files = row.get("session_id"), row.get("files")
+    if not isinstance(session, str) or not session or "/" in session or session in (".", ".."):
+        raise Refusal(f"session_id {session!r} is not one plain path component")
+    if not isinstance(files, dict):
+        raise Refusal("files is not a mapping")
+    sdir = data_root / session
+    for name, digest in files.items():
+        if sha256_bytes(read_copied(sdir, name)) != digest:
+            raise Refusal(f"{session}/{name}: SHA-256 differs from its row")
+    log_bytes = read_copied(sdir, RUN_LOG)
+    store = json.loads(read_copied(sdir, "aut_hippocampus.json")) if "aut_hippocampus.json" in files else {}
+    report = json.loads(read_copied(sdir, "report.json"))
+    return {"report": report, "store": store, "lines": log_lines(log_bytes, strict=True), "log_bytes": log_bytes}
+
+
+def leaked_gate_problems(pred_key: str, rows: list[dict], data_root: Path) -> list[str]:
+    """Why campaign ``pred_key``'s committed rows bar a successor ([] = they do not): over each attempt's leading
+    ``ok`` phases (``data_root`` = its data directory), every gate :data:`LEAK_GATES` says they decide must pass. A
+    prefix that cannot be judged bars too. Pure over the bytes (no git, no network)."""
+    try:
+        attempts = attempts_from_rows(rows)
+    except Refusal as exc:
+        return [f"campaign {pred_key}: its rows cannot be read ({exc}), so a leaked phase cannot be ruled out"]
+    problems = []
+    for run_id, attempt_rows in attempts.items():
+        prefix = []
+        for i, row in enumerate(attempt_rows):
+            if row.get("phase_index") != i or row.get("status") != "ok":
+                break
+            prefix.append(row)
+        if not prefix:
+            continue
+        label = f"campaign {pred_key}, attempt {str(run_id)[:12]}"
+        names = LEAK_GATES[experiment_of(pred_key)].get(len(prefix))
+        if names is None:
+            problems.append(f"{label}: {len(prefix)} committed phases decide no known gate set (cannot be judged)")
+            continue
+        try:
+            passes = _gate_passes(pred_key, [_committed_phase(data_root, row) for row in prefix])
+            failed = [name for name in names if passes[name] is not True]
+        except _UNJUDGEABLE as exc:
+            problems.append(f"{label}: its committed phases cannot be judged ({type(exc).__name__}: {exc})"[:300])
+            continue
+        if failed:
+            problems.append(f"{label}: a FAILED gate leaked into its committed phases: {failed}")
+    return problems
+
+
+def chain_leaked_gate_problems(key: str, data_root: Path) -> list[str]:
+    """:func:`leaked_gate_problems` over every campaign ``key`` succeeds, read from ``data_root/<scope>/``. Each
+    predecessor's ``verdict.json`` there must be the closure its successor pins by SHA-256, and its ``rows.jsonl`` the
+    bytes that closure judged (``data_sha256``): a predecessor's rows edited after its closure cannot launder a leak."""
+    problems = []
+    succ = key
+    for pred in predecessors(key):
+        sup, succ = PROTOCOL[succ]["supersedes"], pred
+        pdir = data_root / PROTOCOL[pred]["scope"]
+        try:
+            closure = (pdir / "verdict.json").read_bytes()
+            raw = (pdir / "rows.jsonl").read_bytes()
+            if sha256_bytes(closure) != sup["verdict_sha256"]:
+                raise ValueError("its verdict.json is not the pinned closure")
+            pinned = json.loads(closure)
+            if pinned.get("data") != rows_path(pred) or sha256_bytes(raw) != pinned.get("data_sha256"):
+                raise ValueError("its rows are not the bytes its pinned closure judged")
+            rows = [json.loads(ln) for ln in raw.decode("utf-8").splitlines() if ln.strip()]
+        except (OSError, ValueError, AttributeError) as exc:
+            problems.append(f"campaign {pred}: its rows cannot be read as its pinned closure judged them "
+                            f"({str(exc)[:120]}), so a leaked phase cannot be ruled out")  # fmt: skip
+            continue
+        problems += leaked_gate_problems(pred, rows, pdir)
+    return problems
+
+
+# ── #1059: the subject (owner decision 2026-10-04) -- byte-identical between a root and its successors ───────────
+# The harness's preflight copy (o19_rerun.check_campaign); the evidence gate holds its own constants
+# (_evidence_records.SUBJECT_PATHS / SUBJECT_EXCLUDED: a test pins the two equal) and is the authority. Installed
+# library versions, llama.cpp, the model and encoder weights and ``.python-version`` are outside it: a disclosed gap
+# (mechanization backlog M28). Not subject: ``scripts/exp44/capture_paired_prompts.py``, which
+# ``simulation/orchestrator.py`` loads only when ``MAXIM_EXP44_CAPTURE_LOG`` is set; an O19 sim never has it (the
+# harness drops every MAXIM_* key but HARNESS_ENV and the protocol's, and C4 pins the recorded env to exactly those).
+SUBJECT_PATHS = (
+    "src/maxim",
+    "pyproject.toml",
+    "uv.lock",
+    "poetry.lock",
+    "pdm.lock",
+    "Pipfile.lock",
+    "scenarios",
+    "data",
+)
+SUBJECT_EXCLUDED = frozenset({"src/maxim/utils/function_length_baseline.json"})  # non-runtime lint data
+
+
+def subject_listing(commit: str) -> list[str]:
+    """``mode type oid\tpath`` for every subject entry at ``commit`` (literal paths, no rename or attribute magic)."""
+    out = _git("--literal-pathspecs", "ls-tree", "-r", "-z", "--full-tree", commit, "--", *SUBJECT_PATHS)
+    return sorted(e for e in out.split("\0") if e and e.partition("\t")[2] not in SUBJECT_EXCLUDED)
+
+
+def campaign_commits_on_main(key: str) -> tuple[set[str], list[str]]:
+    """Every commit an attempt of a campaign ``key`` succeeds ran on (its pinned closure verdict's rows' executed
+    commits and its markers' peeled commits, as ``origin/main`` holds them), and the problems reading them."""
+    commits: set[str] = set()
+    problems: list[str] = []
+    succ = key
+    for pred in predecessors(key):
+        sup = PROTOCOL[succ]["supersedes"]
+        succ = pred
+        closure = _git_bytes("show", f"origin/main:{sup['verdict']}")
+        if closure is None or sha256_bytes(closure) != sup["verdict_sha256"]:
+            problems.append(f"campaign {pred}: its pinned closure verdict is not on origin/main")
+            continue
+        try:
+            verdict = json.loads(closure)
+            rows = _git_bytes("show", f"origin/main:{verdict.get('data')}")
+            if rows is None or sha256_bytes(rows) != verdict.get("data_sha256"):
+                problems.append(f"campaign {pred}: its closure verdict's rows are not on origin/main")
+                continue
+            lines = [json.loads(ln) for ln in rows.splitlines() if ln.strip()]
+            found = {
+                (r.get("provenance") or {}).get("executed_git_hash")
+                for r in lines
+                if r.get("record_kind") == "harness_row"  # as the gate's _executed reads them
+            }
+            found |= {m.get("peeled") for m in (verdict.get("apparatus") or {}).get("markers") or []}
+        except (ValueError, AttributeError, TypeError) as exc:
+            problems.append(f"campaign {pred}: its closure records cannot be read ({type(exc).__name__})")
+            continue
+        found.discard(None)
+        if not found:
+            problems.append(f"campaign {pred}: no executed commit is recorded")
+        commits |= found
+    return commits, problems
+
+
+def subject_problems(key: str, head: str) -> list[str]:
+    """Why an attempt of successor ``key`` at ``head`` would run on another subject than its predecessors' ([] = the
+    subject is byte-identical, or ``key`` supersedes nothing). Harness preflight only: the evidence gate decides."""
+    if not predecessors(key):
+        return []
+    commits, problems = campaign_commits_on_main(key)
+    try:
+        want = subject_listing(head)
+    except subprocess.CalledProcessError:
+        return [*problems, f"the subject at {head[:12]} cannot be listed"]
+    for commit in sorted(commits, key=str):
+        try:
+            have = subject_listing(commit)
+        except subprocess.CalledProcessError:
+            problems.append(f"a predecessor's executed commit {str(commit)[:12]} cannot be read")
+            continue
+        if have != want:
+            first = sorted(set(have) ^ set(want))[0].partition("\t")[2]
+            problems.append(
+                f"campaign {key}: the subject at {head[:12]} differs from a predecessor's executed commit "
+                f"{commit[:12]} (first: {first}); a successor needs byte-identical subject code (#1059)"
+            )
+    return problems
+
+
+def materialize(ref: str, keys: list[str], dest: Path) -> Path:
+    """Write each campaign's data directory as ``ref`` holds it under ``dest/<scope>/`` (no symlinks); returns
+    ``dest``, the ``data_root`` :func:`successor_problems` reads."""
+    for key in keys:
+        rel = data_dir(key)
+        out = subprocess.run(["git", "ls-tree", "-r", "-z", "--full-tree", ref, "--", rel],
+                             cwd=REPO_ROOT, capture_output=True, check=True).stdout  # fmt: skip
+        for entry in out.split(b"\0"):
+            if not entry:
+                continue
+            meta, _, path = entry.partition(b"\t")
+            mode, kind, oid = meta.split()
+            if kind != b"blob" or mode == b"120000":
+                continue
+            target = dest / PROTOCOL[key]["scope"] / path.decode()[len(rel) + 1 :]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(subprocess.run(["git", "cat-file", "blob", oid.decode()], cwd=REPO_ROOT,
+                                              capture_output=True, check=True).stdout)  # fmt: skip
+    return dest
+
+
 # ── attempts, markers, the ruleset, ordering ─────────────────────────────────────────────────────────────
 
 
@@ -1338,9 +1587,15 @@ def check_apparatus(exp: str, rel_rows: str, judged: bytes, attempts: dict[str, 
     if sup is not None:
         closure_landed = landed_on_main(sup["verdict"], sup["verdict_sha256"])
         prereg_landed = landed_on_main(PROTOCOL[exp]["prereg"])
-        problems += successor_problems(
-            exp, _git_bytes("show", f"origin/main:{sup['verdict']}"), closure_landed, prereg_landed, first_marker
-        )
+        with tempfile.TemporaryDirectory() as tmp:
+            problems += successor_problems(
+                exp,
+                _git_bytes("show", f"origin/main:{sup['verdict']}"),
+                closure_landed,
+                prereg_landed,
+                first_marker,
+                data_root=materialize("origin/main", predecessors(exp), Path(tmp)),
+            )
         succession = {**sup, "closure_landed": closure_landed, "prereg_landed": prereg_landed}
     rows_hist = rows_history(rel_rows)
     problems += history_problems([data for _s, _w, data in rows_hist], judged)
@@ -1438,6 +1693,10 @@ def judge(exp: str, attempts_in_order: list[dict], data_root: Path) -> dict:
         if entry["complete"]:
             deciding = (entry, phases)  # the first complete attempt decides
     out: dict = {"attempts": listing, "experiment": exp}  # the CAMPAIGN key ("10c2"), as the gate and successor read it
+    if predecessors(exp):
+        # #1059 D2: emitted so the gate's re-judge with this (bound) judge reproduces the bar; a successor verdict
+        # whose bound judge does not emit it supports nothing. Never compared with the record (o19_difference).
+        out["leaked_gates"] = chain_leaked_gate_problems(exp, data_root.parent)
     if deciding is None:
         out["verdict"] = "ABORT"
         out["deciding_attempt"] = None
