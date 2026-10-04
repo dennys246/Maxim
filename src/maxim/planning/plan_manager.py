@@ -2,6 +2,11 @@
 
 Single owner of the active plan under RLock. All plan mutations go
 through PlanManager — no other component holds a mutable reference.
+
+Dormant since 2026-10-04 (#841): no plan is ever created (``create_plan`` has no non-test caller, #1075), so the
+whole lifecycle is constructed but never reached; and its replan hint (``_build_replan_context``'s recall) has
+never worked. Kept wired per CLAUDE.md "Dormancy over deletion"; docs/plans/executive_function.md (#1073) decides
+its future.
 """
 
 from __future__ import annotations
@@ -36,6 +41,7 @@ from maxim.planning.plan_document import (
     classify_failure_type,
     _sg_to_dict,
 )
+from maxim.utils.logging import log_swallowed_exception
 
 logger = logging.getLogger(__name__)
 
@@ -492,7 +498,12 @@ class PlanManager:
                     for m in similar
                 ]
             except Exception:
-                pass
+                # Dormant since 2026-10-04 (#841): this replan hint has never worked -- recall_similar takes a
+                # Perception, not a string, EpisodicMemory has no .content, and nothing writes
+                # metadata["resolution"]; and no plan is ever created (create_plan has no caller). Kept wired
+                # per "Dormancy over deletion"; the executive-function plan (docs/plans/executive_function.md)
+                # decides its future. Never silent.
+                log_swallowed_exception()
 
         alternative_approaches: list[str] = []
         if svc.plan_history:

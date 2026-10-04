@@ -49,23 +49,50 @@ __all__ = [
 # ── Bio-subsystems ─────────────────────────────────────────────────────
 
 
-def hippocampus(*, persistence_path: str | None = None, **config_kw: Any) -> "Hippocampus":
-    """Create a standalone Hippocampus (episodic memory).
+def _refuse_existing_store(persistence_path: str | None, store: str, *, overwrite: bool) -> None:
+    """``create.*`` makes a NEW store (#1071, owner decision 2026-10-04): an existing file at the path is refused here,
+    at construction, not discovered at ``save()`` after the caller has worked against an empty store."""
+    if persistence_path is None or overwrite:
+        return
+    from maxim.exceptions import StoreOverwriteRefused
+    from maxim.utils.paths import store_file_path
+
+    path = store_file_path(persistence_path)
+    if os.path.exists(path):
+        if os.path.isdir(path):
+            message = f"{store}: a directory is at {path}; choose a file path for the store"
+        else:
+            message = (
+                f"{store}: a store already exists at {path}; open it with maxim.load.{store}({persistence_path!r}), "
+                "or pass overwrite=True to replace it on purpose"
+            )
+        raise StoreOverwriteRefused(
+            message,
+            path=path,
+            store=store,
+        )
+
+
+def hippocampus(*, persistence_path: str | None = None, overwrite: bool = False, **config_kw: Any) -> "Hippocampus":
+    """Create a NEW standalone Hippocampus (episodic memory).
 
     Args:
-        persistence_path: Path for saving/loading memory state.
-            If ``None``, memory is ephemeral (not persisted).
+        persistence_path: Where this new store is saved. If ``None``, memory is ephemeral (not persisted).
+        overwrite: Replace an existing file at ``persistence_path`` on purpose. Without it, an existing file raises
+            :class:`~maxim.exceptions.StoreOverwriteRefused` here (#1071): open it with ``maxim.load.hippocampus``.
+            Ignored without a ``persistence_path`` (nothing to replace).
 
     Returns:
         ``Hippocampus`` instance with capture/recall/save/load methods.
 
     Example::
 
-        hippo = maxim.create.hippocampus(persistence_path="/tmp/memory.json")
+        hippo = maxim.create.hippocampus(persistence_path="/tmp/memory.json")  # a second run: maxim.load.hippocampus
         hippo.store_observation("saw a wolf near the cave")
         memories = hippo.recall(query="wolf", limit=3)
         hippo.save()
     """
+    _refuse_existing_store(persistence_path, "hippocampus", overwrite=overwrite)
     from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
 
     from maxim.runtime.config_loader import resolve_hippocampus_memory_kwargs
@@ -73,7 +100,10 @@ def hippocampus(*, persistence_path: str | None = None, **config_kw: Any) -> "Hi
     for key, value in resolve_hippocampus_memory_kwargs().items():
         config_kw.setdefault(key, value)
     config = HippocampusConfig(persistence_path=persistence_path, **config_kw)
-    return Hippocampus(config)
+    store = Hippocampus(config)
+    if overwrite and persistence_path is not None:
+        store.allow_overwrite()  # declared: the next save replaces the file it never read
+    return store
 
 
 def nac(**config_kw: Any) -> "NAc":
@@ -93,27 +123,34 @@ def nac(**config_kw: Any) -> "NAc":
     return NAc(NACConfig(**config_kw))
 
 
-def atl(*, persistence_path: str | None = None, **config_kw: Any) -> "ATL":
-    """Create a standalone ATL (semantic concept memory).
+def atl(*, persistence_path: str | None = None, overwrite: bool = False, **config_kw: Any) -> "ATL":
+    """Create a NEW standalone ATL (semantic concept memory).
 
     Args:
-        persistence_path: Path for saving/loading concept state.
+        persistence_path: Where this new store is saved.
+        overwrite: Replace an existing file at ``persistence_path`` on purpose. Without it, an existing file raises
+            :class:`~maxim.exceptions.StoreOverwriteRefused` here (#1071): open it with ``maxim.load.atl``.
+            Ignored without a ``persistence_path`` (nothing to replace).
 
     Returns:
         ``ATL`` instance with store/recall/find_or_create methods.
 
     Example::
 
-        atl = maxim.create.atl(persistence_path="/tmp/concepts.json")
+        atl = maxim.create.atl(persistence_path="/tmp/concepts.json")  # a second run: maxim.load.atl
         concept = atl.find_or_create("wolf", category="creature")
     """
+    _refuse_existing_store(persistence_path, "atl", overwrite=overwrite)
     from maxim.memory.atl import ATL, ATLConfig
 
     from maxim.runtime.config_loader import resolve_memory_strategy
 
     config_kw.setdefault("memory_strategy", resolve_memory_strategy())
     config = ATLConfig(persistence_path=persistence_path, **config_kw)
-    return ATL(config)
+    store = ATL(config)
+    if overwrite and persistence_path is not None:
+        store.allow_overwrite()  # declared: the next save replaces the file it never read
+    return store
 
 
 def scn() -> "SCN":
