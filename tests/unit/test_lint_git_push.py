@@ -397,10 +397,35 @@ def test_an_accepted_sha_off_mains_first_parent_chain_fails_closed(main_repo, mo
         _lint_git.base_ref(main_repo)
 
 
-@pytest.mark.parametrize("entry", [{"sha": "x"}, {"sha": "a" * 40, "reason": "", "owner": "o", "date": "2026-10-04"}])
+_GOOD = {"reason": "r", "owner": "o", "date": "2026-10-04"}
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"sha": "x"},
+        {"sha": "SHA", **_GOOD, "reason": ""},
+        {"sha": "SHA", **_GOOD, "date": "4 Oct 2026"},  # a valid sha and keys: only the date check catches it
+        {"sha": "SHA", **_GOOD, "approved_by": "o"},  # an extra key: only the exact-keys check catches it
+    ],
+)
 def test_a_malformed_acceptance_fails_closed(main_repo, monkeypatch, entry):
-    _c1, _c2, c3 = _shas(main_repo)
+    _c1, c2, c3 = _shas(main_repo)
+    entry = {k: (c2 if v == "SHA" else v) for k, v in entry.items()}
     adder = _commit(main_repo, "scripts/push_base_accepts.json", json.dumps([entry]))
     fake_push(monkeypatch, main_repo, before=c3, green={c3}, prs={adder: {"number": 5, "title": "t", "body": ""}})
     with pytest.raises(_lint_git.GitUnavailable, match="malformed entry"):
         _lint_git.base_ref(main_repo)
+
+
+def test_an_acceptance_merged_by_a_merge_commit_is_honoured(main_repo, monkeypatch):
+    """House rule (3) merge-commits data/protocol PRs. `git log --diff-merges=first-parent --format=%H` prints the
+    merge's PATCH too, and its tokens reached the PR lookup as shas (architecture delta round 2)."""
+    _c1, c2, _c3 = _shas(main_repo)
+    _git(main_repo, "checkout", "-q", "-b", "accept")
+    _accept(main_repo, c2)
+    _git(main_repo, "checkout", "-q", "main")
+    _git(main_repo, "merge", "-q", "--no-ff", "-m", "Merge pull request #11", "accept")
+    merge = rev(main_repo, "HEAD")
+    fake_push(monkeypatch, main_repo, green=set(), prs={merge: {"number": 11, "title": "t", "body": ""}})
+    assert _lint_git.base_ref(main_repo) == c2

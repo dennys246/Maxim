@@ -329,9 +329,22 @@ def _accepted(repo_root: Path, repo: str, api: Callable[[str], Any]) -> dict[str
         raise GitUnavailable(f"{ACCEPTS_REL} unreadable ({exc})") from exc
     if not isinstance(entries, list):
         raise GitUnavailable(f"{ACCEPTS_REL} must be a list")
-    touched = git(
-        repo_root, "log", "--first-parent", "--diff-merges=first-parent", "--format=%H", "HEAD", "--", ACCEPTS_REL
-    ).split()
+    # --no-patch: --diff-merges=first-parent prints a merge's patch despite --format=%H, and its tokens are not shas
+    touched = [
+        t
+        for t in git(
+            repo_root,
+            "log",
+            "--first-parent",
+            "--diff-merges=first-parent",
+            "--no-patch",
+            "--format=%H",
+            "HEAD",
+            "--",
+            ACCEPTS_REL,
+        ).split()
+        if _SHA_RE.fullmatch(t)
+    ]
     for sha in touched:
         if _merged_pr(repo, sha, api) is None:
             raise GitUnavailable(
