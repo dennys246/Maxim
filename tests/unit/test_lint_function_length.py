@@ -607,3 +607,20 @@ def test_G2_one_source_cannot_be_both_moved_and_split(repo600, capsys):
     )
     rc, out = run(repo600, capsys)
     assert rc == 1 and "split_from src/maxim/a.py::big, but that base entry's pin did not drop" in out
+
+
+@pytest.mark.xfail(strict=True, reason="#1089 item 3: drops compares against the base pin, not min(pin, span)")
+def test_K3_repairing_a_drifted_pin_is_not_a_drop_a_split_can_claim(tmp_path, monkeypatch, capsys):
+    """Main's pin (610) drifted above the function's span (600). Lowering it to 600 repairs the pin; the
+    function lost no lines, so a new piece may not claim ``split_from`` against it."""
+    root = make_repo(
+        tmp_path, monkeypatch, {"src/maxim/a.py": fn("big", 600)}, baseline({("src/maxim/a.py", "big"): 610})
+    )
+    head(
+        root,
+        fn("big", 600) + "\n\n" + fn("piece", 250),
+        {("src/maxim/a.py", "big"): 600, ("src/maxim/a.py", "piece"): 250},
+        [exc("piece", None, 250, split_from={"file": "src/maxim/a.py", "qualname": "big"})],
+    )
+    rc, out = run(root, capsys)
+    assert rc == 1 and "split_from src/maxim/a.py::big, but that base entry's pin did not drop" in out
