@@ -113,7 +113,6 @@ def _run_loop_once(monkeypatch: pytest.MonkeyPatch, tmp_path) -> tuple[list[dict
     return outcomes, executed
 
 
-@pytest.mark.xfail(strict=True, reason="#1083")
 @pytest.mark.timeout(60)
 def test_approved_proposal_is_credited_to_its_proposal_time_situation(monkeypatch, tmp_path):
     """(a) The approved outcome reaches the recorder with the proposal's clusters, and the run ends normally."""
@@ -125,7 +124,6 @@ def test_approved_proposal_is_credited_to_its_proposal_time_situation(monkeypatc
     assert outcomes[0]["clusters"] == _CLUSTERS
 
 
-@pytest.mark.xfail(strict=True, reason="#1083")
 @pytest.mark.timeout(60)
 def test_a_successful_approved_action_logs_no_failure(monkeypatch, tmp_path, caplog):
     """(b) A tool that succeeded is not reported as "Approved action failed"."""

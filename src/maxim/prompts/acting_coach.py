@@ -17,6 +17,7 @@ explore — the bio-systems inform *how cautiously*.
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Any
 
@@ -76,7 +77,7 @@ def acting_coach_config_from_env() -> ActingCoachConfig:
 def compose_acting_coach_section(
     config: ActingCoachConfig,
     *,
-    available_tools: set[str] | None = None,
+    available_tools: Collection[str] | None = None,
     causal_context: list[dict[str, Any]] | None = None,
     body_state: str = "",
     motor_programs: list[dict[str, Any]] | None = None,
@@ -178,7 +179,7 @@ def compose_acting_coach_section(
     return "\n".join(lines)
 
 
-def _has_entity_tools(available_tools: set[str] | None) -> bool:
+def _has_entity_tools(available_tools: Collection[str] | None) -> bool:
     """Check if any available tools look like SEM entity tools.
 
     Detection: ``sense_tools`` present (SEM discovery mode, S2) OR
@@ -223,7 +224,7 @@ def _has_entity_tools(available_tools: set[str] | None) -> bool:
 
 def _compose_nac_annotations(
     causal_context: list[dict[str, Any]] | None,
-    available_tools: set[str] | None,
+    available_tools: Collection[str] | None,
 ) -> list[str]:
     """Annotate available affordance tools with NAc learned valence.
 

@@ -12,7 +12,10 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
+
+if TYPE_CHECKING:  # llm_types imports this module at runtime: a runtime import here would be circular
+    from maxim.agents.llm_types import LLMProposal
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +94,11 @@ class Proposal:
     status: str = "pending"  # "pending", "approved", "rejected", "expired"
     approved_by: str | None = None
     rejected_reason: str | None = None
+    # The ``LLMProposal`` this was queued from (#1083, owner decision 2026-10-04: credit keys to
+    # PROPOSAL time). The approved path reads the situation (``cluster_id``/``clusters``, and
+    # ``cluster_margins`` for #1085) from it, so nothing is copied and nothing can drift.
+    # ``None`` for a Proposal built outside the loop. Not persisted (``to_dict`` omits the queue).
+    source: LLMProposal | None = None
 
 
 @dataclass

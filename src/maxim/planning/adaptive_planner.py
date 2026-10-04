@@ -98,7 +98,7 @@ class PlanningContext:
                 ref_text = None
                 if isinstance(outcome, dict):
                     ref_text = outcome.get("reflection")
-                elif hasattr(outcome, "result") and isinstance(outcome.result, dict):
+                elif outcome is not None and hasattr(outcome, "result") and isinstance(outcome.result, dict):
                     ref_text = outcome.result.get("reflection")
                 if ref_text:
                     parts.append(f"  - {ref_text}")
@@ -196,10 +196,12 @@ class AdaptivePlanner(Planner):
 
         Called when the mesh layer starts. Without this, _decompose()
         skips delegation tagging — the planner works purely locally.
+
+        Dormant since 2026-10-04 (#1084): no non-test caller, so mesh delegation tagging never runs.
         """
         self._peer_registry = peer_registry
         self._admission = admission
-        self._local_tools: set[str] = set(local_tools) if local_tools else set()
+        self._local_tools = set(local_tools) if local_tools else set()
 
     # ── Public interface ──────────────────────────────────────
 

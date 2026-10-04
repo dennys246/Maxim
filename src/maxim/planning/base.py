@@ -5,6 +5,8 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from maxim.planning.adaptive_planner import PlanCandidate
 
 
@@ -22,7 +24,7 @@ class Planner(ABC):
         goal: dict | str,
         state: Any,
         memory: Any,
-    ) -> list[PlanCandidate | list[dict[str, Any]]]:
+    ) -> Sequence[PlanCandidate | list[dict[str, Any]]]:
         """Return candidate plans.
 
         May return ``PlanCandidate`` instances (AdaptivePlanner) or raw

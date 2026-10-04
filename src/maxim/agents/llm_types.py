@@ -7,6 +7,7 @@ types without pulling in the full LLM machinery.
 from __future__ import annotations
 
 import time
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Protocol
@@ -130,7 +131,7 @@ class LLMRequest:
     priority: int = field(default=0, compare=False)  # Higher = more urgent
 
     # Tool information for tool-aware prompts
-    available_tools: set[str] = field(default_factory=set, compare=False)
+    available_tools: Collection[str] = field(default_factory=set, compare=False)  # a set or the loop's filtered list
     tool_descriptions: dict[str, str] = field(default_factory=dict, compare=False)
     surfaced_tools: list[str] = field(
         default_factory=list, compare=False
