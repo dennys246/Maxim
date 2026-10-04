@@ -409,13 +409,20 @@ jobs:
           # -c: pin the contract GENERATOR (see the file for why and how to move it)
           pip install -r extras-reqs.txt -c .github/constraints/console.txt
 
-      - name: mypy public API surface + hivemind
+      - name: mypy public API surface + hivemind + composition layer
         # CLAUDE.md required check, promoted to CI (1.0 guard promotion).
         # --follow-imports=silent scopes error reporting to the checked
         # files; the rest of the codebase is not mypy-clean yet.
         # hivemind/ added per 1.2 gate 8 (roadmap): the bundle format is a
         # wire boundary and 1.2 rewrites its merge path — that is where
         # typing pays (the 5 hivemind files; repo-wide is not worth it).
+        # The composition layer (executor, agent_loop, bridges/, planning/)
+        # added per roadmap 1.3.2 item 4: the #840/#841 silent seams were
+        # argument mismatches swallowed by a broad except, which mypy
+        # catches; adding it found #1083 (an approved proposal's outcome
+        # record raised). #840's dead calls remain line-ignored while Dormant;
+        # --warn-unused-ignores keeps those ignores from going stale silently.
+        # The repo-wide error-count ratchet is separate.
         # Pinned so a mypy release can't break CI on its own. Runs before
         # the test suite for faster failure feedback.
         run: |
@@ -423,7 +430,9 @@ jobs:
           mypy src/maxim/__init__.py src/maxim/api.py src/maxim/session.py \
                src/maxim/create.py src/maxim/load.py \
                src/maxim/hivemind/ \
-               --ignore-missing-imports --follow-imports=silent
+               src/maxim/runtime/executor.py src/maxim/runtime/agent_loop.py \
+               src/maxim/bridges/ src/maxim/planning/ \
+               --ignore-missing-imports --follow-imports=silent --warn-unused-ignores
 
       - name: Run required fast suite
         run: >-

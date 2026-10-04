@@ -14,6 +14,7 @@ import os
 import queue
 import threading
 import time
+from collections.abc import Collection
 from typing import TYPE_CHECKING, Any
 
 from maxim.agents.autonomy import AutonomyLevel
@@ -957,7 +958,7 @@ class LLMWorker:
         internet_policy_summary: str,
         priority: int = 0,
         *,
-        available_tools: set[str] | None = None,
+        available_tools: Collection[str] | None = None,
         tool_descriptions: dict[str, str] | None = None,
         context_pool_text: str = "",
         agent_states: list[dict[str, Any]] | None = None,
@@ -987,7 +988,7 @@ class LLMWorker:
             internet_access: Whether internet is available
             internet_policy_summary: Summary of internet policy
             priority: Request priority (higher = more urgent)
-            available_tools: Set of tool names available in current mode
+            available_tools: Tool names available in current mode (the loop passes a set or a list)
             tool_descriptions: Dict of tool name -> description for prompts
             context_pool_text: Accumulated context/observations summary
             agent_states: List of agent state snapshots

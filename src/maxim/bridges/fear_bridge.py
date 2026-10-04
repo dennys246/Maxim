@@ -460,7 +460,7 @@ class FearCircuitBridge:
         try:
             # Query NAc for outcomes of similar events
             event_key = f"fear:{category}:{pattern}"
-            prediction = self.nac.predict_outcome(event_key)
+            prediction = self.nac.predict_outcome(event_key)  # type: ignore[attr-defined]  # Dormant #840: known dead call, not revived
 
             if prediction and hasattr(prediction, "probability"):
                 # Invert: high harm probability = higher risk factor
@@ -629,9 +629,9 @@ class FearCircuitBridge:
 
             # Only report if outcome is known
             if event.actual_harm is not None:
-                self.nac.record_event(
+                self.nac.record_event(  # type: ignore[call-arg]  # Dormant #840: known dead call, not revived
                     event_key,
-                    outcome,
+                    outcome,  # type: ignore[arg-type]  # Dormant #840: known dead call, not revived
                     metadata={
                         "was_blocked": event.was_blocked,
                         "severity": event.severity,

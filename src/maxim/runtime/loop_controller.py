@@ -162,6 +162,10 @@ class LoopController:
         self.max_recent_outcomes: int = 10
         self.agent_states: list[dict[str, Any]] = []
         self.last_surfaced_tools: list[str] = []
+        # Assigned by ``run_agentic_loop`` right after construction (it builds both from the
+        # loop's own config); declared here so the attributes exist on the type.
+        self.context_pool: Any = None
+        self.prefetcher: Any = None
 
         # ── Memory hub / hippocampus ─────────────────────────────────────
         self.memory_hub_enabled = memory_hub is not None

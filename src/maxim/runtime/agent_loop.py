@@ -235,26 +235,27 @@ def run_agent_loop(
                     except Exception as e:
                         log_swallowed_exception(e, operation="record_command", context={"text_len": len(cli_text)})
 
-            intent = None
+            proposed_intent: dict[str, Any] | None = None
             try:
                 if hasattr(agent, "propose_intent"):
-                    intent = agent.propose_intent(state, memory)
+                    proposed_intent = agent.propose_intent(state, memory)
                 elif hasattr(agent, "decide"):
                     # Legacy fallback: treat `decide()` as a goal provider.
                     out = agent.decide(state, memory)
                     if isinstance(out, dict):
-                        intent = out
+                        proposed_intent = out
                     elif isinstance(out, str) and out:
-                        intent = {"goal": out, "confidence": 1.0}
+                        proposed_intent = {"goal": out, "confidence": 1.0}
             except Exception as e:
                 warn("Agent propose_intent/decide failed: %s", e)
-                intent = None
+                proposed_intent = None
 
-            if not isinstance(intent, dict) or not intent:
+            if not isinstance(proposed_intent, dict) or not proposed_intent:
                 if break_on_no_intent:
                     break
                 _idle_sleep(idle_sleep_s)
                 continue
+            intent = proposed_intent
 
             goal = intent.get("goal") or intent.get("intent")
             if goal is None:
@@ -278,7 +279,7 @@ def run_agent_loop(
             _idle_sleep(idle_sleep_s)
             continue
 
-        ctx = {
+        ctx: dict[str, Any] = {
             "intent": intent,
             "plan": decision.get("plan"),
             "registered_tools": getattr(getattr(executor, "registry", None), "list", lambda: [])(),
@@ -1661,7 +1662,9 @@ def propose_via_substrate(
         logger.warning("note_active_clusters raised — pain this tick cannot key to a situation", exc_info=True)
 
     # Memory 2S-d: a situation CHANGE recalls the memories formed in it (recall only until 2S-e).
-    if situation_cue is not NO_SITUATION_CUE:
+    # isinstance, not identity, so mypy narrows: the guard at the top admits only the
+    # NO_SITUATION_CUE sentinel or a callable, so the two tests select the same calls.
+    if not isinstance(situation_cue, _NoSituationCue):
         try:
             situation_cue(agent_id, clusters or None)
         except Exception:
@@ -2114,6 +2117,20 @@ def resolve_llm_loop_overrides() -> tuple[int | None, int | None]:
     )
 
 
+def _approved_situation(proposal: Any) -> dict[str, Any]:
+    """The situation an APPROVED proposal was proposed in, as ``record_outcome`` kwargs (#1083).
+
+    Keyed to PROPOSAL time (owner decision 2026-10-04): read from the ``LLMProposal`` the queued
+    ``Proposal`` references, so the approved path credits the same ``(agent, cluster, tool)`` key as
+    the autonomous path. A ``Proposal`` with no source credits no situation.
+    """
+    source = getattr(proposal, "source", None)
+    return {
+        "cluster_id": getattr(source, "cluster_id", None),
+        "clusters": getattr(source, "clusters", None),
+    }
+
+
 def _substrate_tick_due(aut_mode: str, ctrl: Any, llm_submit_interval: float) -> bool:
     """Is the substrate-primary branch due to propose? (Its OWN wake source.)
 
@@ -2321,6 +2338,7 @@ def run_agentic_loop(
     # Create simulation adapter (Phase 4: isolate sim concerns)
     from maxim.runtime.sim_adapter import SimulationAdapter, NullSimulationAdapter
 
+    sim: SimulationAdapter | NullSimulationAdapter
     if percept_source is not None:
         sim = SimulationAdapter(percept_source, action_sink, pain_bus)
         # Wire tool registry for deregistered-tool filtering in should_skip_fallback_proposal
@@ -2398,7 +2416,6 @@ def run_agentic_loop(
     )
     ctrl.context_pool = context_pool
     ctrl.prefetcher = prefetcher
-    ctrl.result_cache = result_cache
 
     # Thought novelty tracker: deque of recent thought word-sets for
     # cross-turn novelty gating.  Thoughts with >= 75% word overlap with
@@ -2643,7 +2660,7 @@ def run_agentic_loop(
         # state machine is deliberately scoped to the orchestrator opt-in;
         # it must not alter unrelated agent-loop lifecycle policy.
         _planning_attempt_state = LLMAttemptState.NONE
-        if _planning_liveness_on:
+        if _planning_liveness_on and llm_worker is not None:  # implied by _planning_liveness_on
             try:
                 _planning_attempt_state = llm_worker.latest_attempt_state()
             except Exception as e:
@@ -4211,8 +4228,7 @@ def run_agentic_loop(
                     # (e.g. sim orchestrator's catch-all 'respond' rejects →
                     # LLM should immediately re-think, not stall for 60s).
                     # Note: Use 'is not None' to handle empty lists [] which are falsy but still valid output
-                    should_followup = followup_type and ((success and output is not None) or followup_type == "process")
-                    if should_followup:
+                    if followup_type and ((success and output is not None) or followup_type == "process"):
                         triggering_input = getattr(ctrl.pending_proposal, "triggering_input", "")
                         ctrl.pending_action_followup = ActionFollowup(
                             tool=tool_name,
@@ -4339,6 +4355,7 @@ def run_agentic_loop(
                     confidence=confidence,
                     strategy_used=ctrl.pending_proposal.strategy_used,
                     citations=ctrl.pending_proposal.citations,
+                    source=ctrl.pending_proposal,  # its situation is credited at approval (#1083)
                 )
                 autonomy_controller.proposal_queue.submit(proposal)
                 autonomy_controller.log_action(
@@ -4480,8 +4497,7 @@ def run_agentic_loop(
                             context_pool=context_pool,
                             nac=_loop_nac,
                             active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
-                            cluster_id=proposal.cluster_id,
-                            clusters=proposal.clusters,
+                            **_approved_situation(proposal),
                         )
 
                         # L2: Reset deliberation state on non-think tool execution
@@ -4493,10 +4509,7 @@ def run_agentic_loop(
 
                         current_mode = state.data.get("mode", "live")
                         followup_type = get_tool_followup_type(tool_name, current_mode)
-                        should_followup = followup_type and (
-                            (success and output is not None) or followup_type == "process"
-                        )
-                        if should_followup:
+                        if followup_type and ((success and output is not None) or followup_type == "process"):
                             ctrl.pending_action_followup = ActionFollowup(
                                 tool=tool_name,
                                 result=result_str,
@@ -4522,8 +4535,7 @@ def run_agentic_loop(
                             context_pool=context_pool,
                             nac=_loop_nac,
                             active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
-                            cluster_id=proposal.cluster_id,
-                            clusters=proposal.clusters,
+                            **_approved_situation(proposal),
                         )
 
         # ─────────────────────────────────────────────────────────────────
@@ -4967,6 +4979,13 @@ def run_agentic_loop(
                         if mode_def and _all_tools:
                             available_tools_for_mode = mode_def.get_available_tools(_all_tools)
 
+                        # Both the budgeter's response reserve and the request's max_tokens
+                        # read this one field; unset = ModeInfo's own default.
+                        _mode_info_overrides: dict[str, Any] = (
+                            {"max_response_tokens": _max_response_tokens_override}
+                            if _max_response_tokens_override is not None
+                            else {}
+                        )
                         mode_info = ModeInfo(
                             name=mode_name,
                             goal=mode_def.goal if mode_def else "Respond to user requests",
@@ -4976,13 +4995,7 @@ def run_agentic_loop(
                             can_access_filesystem=mode_def.can_access_filesystem if mode_def else True,
                             can_access_network=mode_def.can_access_network if mode_def else True,
                             uses_tool_relevance_filter=(mode_def.uses_tool_relevance_filter if mode_def else False),
-                            # Both the budgeter's response reserve and the
-                            # request's max_tokens read this one field.
-                            **(
-                                {"max_response_tokens": _max_response_tokens_override}
-                                if _max_response_tokens_override is not None
-                                else {}
-                            ),
+                            **_mode_info_overrides,
                         )
 
                         # Get internet access status
@@ -5003,7 +5016,8 @@ def run_agentic_loop(
                             else:
                                 context.cli_inputs = new_inputs[-1:] if new_inputs else []
 
-                        # Get available tools for this mode
+                        # Get available tools for this mode (a set; the filters below rebind it to a list)
+                        available_tools: set[str] | list[str]
                         available_tools = mode_info.get_available_tools(_all_tools)
 
                         # Body ownership is not a mode privilege
@@ -5137,7 +5151,7 @@ def run_agentic_loop(
                         # never enter this loop, so the only way to
                         # have an annotation present is via a prior
                         # Wire 3 pass.
-                        if _wire3_degraded:
+                        if _wire3_degraded and _wire3_embodiment is not None:  # only filled when embodied
                             for name, integrity in _wire3_degraded.items():
                                 entry = tool_descriptions.get(name)
                                 if not isinstance(entry, dict):

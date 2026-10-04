@@ -175,6 +175,15 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
    mismatch swallowed by a broad `except` — exactly what mypy catches. Extend CI's mypy set to `runtime/executor.py`,
    `runtime/agent_loop.py`, `bridges/`, `planning/`, and start the repo-wide error-count ratchet carried from
    1.3.1 (1,071 at the tag; it may only fall). Guard: CI mypy on those modules + the ratchet.
+   **CI-set half as built (PR pending, [#1083](https://github.com/dennys246/Maxim/issues/1083)):** the four
+   paths join CI's mypy step at 0 errors (37 before). The extension found a real crash: an approved
+   PLANNING proposal had no `cluster_id`/`clusters`, so its outcome record raised after the tool ran
+   (#1083, fixed: the queued `Proposal` references its `LLMProposal` and credit keys to proposal time, owner
+   decision 2026-10-04; full parity with the autonomous path is #1085). `fear_bridge.py`'s three dead
+   calls carry line-level ignores (Dormant, #840); `AdaptivePlanner.set_mesh_context` is marked Dormant
+   ([#1084](https://github.com/dennys246/Maxim/issues/1084): no non-test caller). The other 33 were
+   behaviour-neutral annotation and narrowing fixes. **The ratchet half stays open:** it ships separately,
+   after a gate design pass.
 5. **Coverage as a ratchet — and a coverage push where the risk is** (widened 2026-09-27, owner). Baseline:
    the Codex card's whole-suite run at `v1.3.1` — **61.9% of 90,416 statements**, 31,797 uncovered
    ([evidence](../limits/score_cards/evidence/2026-09-27-codex/)). Three mechanisms, all in CI:
