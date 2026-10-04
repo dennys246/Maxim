@@ -96,6 +96,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parts the default body lacks (#1093, Session A's file). Ledger: T3-9 (Exp 09)'s "SEM body change" trigger fired
   and is discharged by its evidence run, which never took the fallback (see `behavioral_graduation_candidates.md`).
   Guard: `tests/unit/test_damage_component_no_fallback.py`.
+- **A tool failure whose pain was dropped no longer switches off world-driven body-pain learning for the rest of
+  the session** (#851). `ToolPainBridge` kept each running invocation pending until its completion, embodiment
+  failure or failure pain arrived. A failure whose pain never reached the bridge (a repeat failure inside the
+  PainDetector cooldown, the PainBus refractory gate, or no detector wired, which is every failed call in the
+  Minecraft harness) stayed pending forever, and `_on_embodiment_pain` skips attribution while anything is pending,
+  so out-of-band embodiment pain stopped reaching NAc without a word. `Executor.execute` now retires the invocation
+  (`ToolPainBridge.finish_invocation`) in a `finally` around the started invocation (`Executor._run_started`), so every
+  exit retires it, raises included; `_pending_tools`/`_pending_contexts` no longer grow without bound. Ledger: the
+  trigger walk fired T1-4, T1-13, T1-14, T1-15 and T3-9 and discharged each structurally (the out-of-band path
+  creates no causal link and cannot move `_reward_bias`; see `behavioral_graduation_candidates.md`). Guard:
+  `tests/unit/test_tool_pain_pending_leak.py`.
 
 - **An approved PLANNING proposal no longer ends the run, and is credited to the situation it was proposed in**
   (#1083, owner decision 2026-10-04). The autonomy `Proposal` the loop queues for approval had no
