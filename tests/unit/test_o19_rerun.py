@@ -1114,6 +1114,9 @@ def test_only_a_pinned_real_abort_landed_before_the_first_marker_may_be_succeede
 def test_the_harness_refuses_a_closed_or_unclosed_campaign(monkeypatch) -> None:
     with pytest.raises(h.Refused, match="closed"):
         h.check_campaign("10")
+    # The leaked-gate bar reads origin/main (absent in CI's unit-test checkout): its own tests below.
+    monkeypatch.setattr(v, "materialize", lambda ref, keys, root: root)
+    monkeypatch.setattr(v, "chain_leaked_gate_problems", lambda key, data_root: [])
     monkeypatch.setattr(v, "_git_bytes", lambda *a: None)
     monkeypatch.setattr(v, "landed_on_main", lambda path, want=None: None)
     with pytest.raises(h.Refused, match="not on origin/main"):
