@@ -219,6 +219,7 @@ class TestScriptsEvidenceWritePolicy:
         (or explain itself) — the scan that keeps the D27 encoder half closed."""
         known = set(self.SEMANTIC_MEASUREMENT_SCRIPTS) | {
             "exp_d8_read_mutation.py",  # calls require_semantic_encoder itself (checked below)
+            "e4_text_widening_drift.py",  # likewise (#911; checked below)
         }
         builders = {
             str(p.relative_to(self.SCRIPTS))
@@ -231,6 +232,7 @@ class TestScriptsEvidenceWritePolicy:
             "add require_semantic_encoder to the measurement entry point and list the file."
         )
         assert "require_semantic_encoder" in (self.SCRIPTS / "exp_d8_read_mutation.py").read_text()
+        assert "require_semantic_encoder" in (self.SCRIPTS / "e4_text_widening_drift.py").read_text()
 
 
 class TestEvidenceOutPathsHelper:

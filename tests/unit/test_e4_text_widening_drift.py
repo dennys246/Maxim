@@ -162,7 +162,14 @@ def test_importing_the_harness_imports_nothing_heavy_and_changes_no_environment(
     assert json.loads(out.stdout.strip().splitlines()[-1]) == {"heavy": [], "env_same": True, "path_same": True}
 
 
+def _clear_maxim_env(monkeypatch) -> None:
+    """Other tests leave MAXIM_* trace toggles set; clear every one (monkeypatch restores them afterwards)."""
+    for key in [k for k in os.environ if k.startswith("MAXIM_")]:
+        monkeypatch.delenv(key)
+
+
 def test_an_unexpected_maxim_toggle_is_reported(monkeypatch):
+    _clear_maxim_env(monkeypatch)
     monkeypatch.setenv("MAXIM_NAC_REWARD_BIAS_DISABLED", "1")
     for key in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "MAXIM_DATA_HOME"):
         monkeypatch.setenv(key, "placeholder")  # recorded, so monkeypatch restores it after pin_environment
@@ -171,6 +178,7 @@ def test_an_unexpected_maxim_toggle_is_reported(monkeypatch):
 
 
 def test_main_refuses_an_unexpected_toggle_with_a_failed_record(monkeypatch):
+    _clear_maxim_env(monkeypatch)
     monkeypatch.setenv("MAXIM_NAC_REWARD_BIAS_DISABLED", "1")
     for key in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "MAXIM_DATA_HOME"):
         monkeypatch.setenv(key, "placeholder")
