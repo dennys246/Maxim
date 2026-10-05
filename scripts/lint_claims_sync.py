@@ -130,7 +130,7 @@ def display_problems(where: str, text: str, row: L.Row) -> list[str]:
         if token != row.token and _token_re(token).search(norm):
             out.append(f"{where}: shows `{token}`, but {row.id}'s ledger status is `{shown}`")
     if row.qualifier:
-        head = re.split(r"[:;,]", row.qualifier, maxsplit=1)[0].strip()
+        head = L.qualifier_head(row.qualifier)
         pattern = rf"{re.escape(shown)}\W{{0,6}}{re.escape(head)}(?![\w-])"  # whole word: `narrow-ish` is not `narrow`
         if head and not re.search(pattern, norm, re.IGNORECASE):
             out.append(f"{where}: {row.id} is scoped `({head} …)` in the ledger; show `{head}` right after `{shown}`")
