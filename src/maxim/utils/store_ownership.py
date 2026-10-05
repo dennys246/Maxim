@@ -1,7 +1,7 @@
 """A persisted store never writes over a file it did not read (#939, #971).
 
 ``StoreFileOwnership`` is mixed into every store that persists to one JSON file: Hippocampus, ATL,
-NAc, EC, SCN, AngularGyrus and the cross-layer graph. It lives in this leaf module, not in
+NAc, EC, SCN, AngularGyrus, the cross-layer graph and the Cerebellum (#908). It lives in this leaf module, not in
 ``memory/store.py`` (which re-exports it), because importing the ``maxim.memory`` package runs its
 ``__init__``, which imports the Hippocampus, which imports NAc: NAc could not inherit from anything
 inside that package. Keep this module's imports to the standard library; everything else is imported
@@ -55,7 +55,7 @@ _COPIES_MADE_THIS_PROCESS: set[str] = set()
 
 class StoreFileOwnership:
     """Mixin for a memory store that persists to one JSON file (Hippocampus, ATL, NAc, EC, SCN,
-    AngularGyrus, the cross-layer graph; #939, #971).
+    AngularGyrus, the cross-layer graph, the Cerebellum; #939, #971, #908).
 
     A store may write a file it READ, a file that did not exist when it first wrote it (it created
     it), or a file it was explicitly told to overwrite (``save(overwrite=True)`` /

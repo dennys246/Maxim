@@ -23,7 +23,7 @@ Mental model of the substrate chain: [docs/agents/bio-memory.md](../agents/bio-m
 | **Episodic engram** — Hippocampus trace | ✅ honest encoding | ✅ per-situation key (2S-b) | ✅ built (2S-d cue) — **result discarded** | LLM prompt text only | Exp 10 (cross-session persistence) |
 | **Semantic engram** — ATL concept | ✅ by NAME | n/a | ✅ by name | LLM prompt text only | none |
 | **Motor engram** — Cerebellum program ↔ Hippocampus trace | ❌ no production caller (#909) | — | — | ❌ | none |
-| *(Cerebellum forward model — a prediction, not an engram)* | ✅ trains on real readings | — | — | ❌ read side dormant; **never saved** (#908) | none |
+| *(Cerebellum forward model — a prediction, not an engram)* | ✅ trains on real readings | — | — | ❌ read side dormant (#909, `Dormant since` + caller scan); saved at session end since #908 | none |
 
 The one family that is an engram on all four counts **without the LLM** is the situation engram —
 and it is exactly as good as the world channel's geometry lets it be.
@@ -130,9 +130,11 @@ Designed as a Hippocampus trace (`site="engram"`, `tool_name="motor_program:<nam
 `cerebellum:program:<name>` graph node, formed when pain / RPE > 0.3, novelty > 0.7 or program
 confidence < 0.3. **Nothing in production forms, reads or strengthens one** (#909); no engram decay
 exists despite the guide's "~2 days". The forward model **does** train on real readings through
-`tool_bridge.py`, but its predictions have no consumer and its state is **never written** —
-`build_bio_stack` gives it no `persistence_path`, so `save_cerebellum()` is a no-op at all three
-call sites (#908). Resurrection path: roadmap 1.4 Phase 5 "graded predictor" audit.
+`tool_bridge.py`, but its predictions have no consumer. Its state was **never written** until #908
+(2026-10-04): `build_bio_stack` now binds `<home>/cerebellum.json` on the config it loads and saves
+through (guard: `tests/unit/test_cerebellum_persist_908.py`). The read side carries `Dormant since
+2026-10-04` docstrings, pinned by `tests/unit/test_cerebellum_dormant_909.py`. Resurrection path:
+roadmap 1.4 Phase 5 "graded predictor" audit.
 
 ## 7. How to measure an engram claim (so this page stays honest)
 

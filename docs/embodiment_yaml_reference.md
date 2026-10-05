@@ -100,7 +100,7 @@ sensors:
 
 Sensors with `range` are **scalar** — they participate in:
 - Pain-proximity warnings in prompts
-- Entity state similarity for engram matching (Phase 1b)
+- Entity state similarity for engram matching (designed; motor engrams are dormant, #909)
 - Failure trigger evaluation
 - Vital metric tracking
 

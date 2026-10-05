@@ -198,7 +198,7 @@ ThoughtGate.should_think(goal_reward_bias=nac.get_goal_reward_bias(goal))
   │ (refractory → energy → salience → adaptive threshold - goal_bias)
   ▼
 BioEnrichmentPipeline.enrich(percept_text)
-  │ (hippocampus recall, NAc predictions, EC concepts, cerebellum motor programs)
+  │ (hippocampus recall, NAc predictions, EC concepts, latent body-modulator programs)
   ▼
 _compute_thought_salience(n_sections, n_memories, jaccard)
   │

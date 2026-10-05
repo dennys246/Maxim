@@ -25,14 +25,15 @@ engram** — an EC sensor cluster carrying NAc fear or want — and it has seven
 Its limit is geometric (cosine sees direction; one daily wrap boundary). Episodic and semantic
 traces form honestly and are recalled, but reach behaviour only through LLM prompt text; the
 substrate-native cue is built and its result discarded. Motor engrams are fully implemented and have
-no production caller; the Cerebellum's forward model trains live and is silently never saved.
+no production caller; the Cerebellum's forward model trains live and was silently never saved
+(fixed 2026-10-04, E1/#908 — it now saves to `<home>/cerebellum.json` at session end).
 
 ## Items
 
 | # | Issue | What | Kind | Gates 1.4.0? | Ledger triggers fired |
 |---|---|---|---|---|---|
-| E1 | [#908](https://github.com/dennys246/Maxim/issues/908) | Cerebellum state never saved | bug, `src/` | **yes (T7)** | none |
-| E2 | [#909](https://github.com/dennys246/Maxim/issues/909) | Motor-engram read side: docs overclaim, dormancy undeclared | docs + docstrings | **yes (T7)** | none |
+| E1 | [#908](https://github.com/dennys246/Maxim/issues/908) | Cerebellum state never saved — **DONE 2026-10-04** | bug, `src/` | **yes (T7)** | none |
+| E2 | [#909](https://github.com/dennys246/Maxim/issues/909) | Motor-engram read side: docs overclaim, dormancy undeclared — **DONE 2026-10-04** | docs + docstrings | **yes (T7)** | none |
 | E3 | [#910](https://github.com/dennys246/Maxim/issues/910) | `[DANGEROUS]` annotation unreachable | dead branch, `src/` | **yes (T7)** | none (branch never fires) |
 | E4 | [#911](https://github.com/dennys246/Maxim/issues/911) | Recognition widening text-only; text drift hazard | scope doc + offline measurement | **yes (T7)** — the measurement, not a fix | none (offline) |
 | E5 | [#899](https://github.com/dennys246/Maxim/issues/899) | `time_of_day` linear → daily wrap boundary | substrate geometry | no — Phase 5 keying / Rung B | **Exp 53b, 56, 60, 61, 62** |
@@ -41,6 +42,13 @@ no production caller; the Cerebellum's forward model trains live and is silently
 | — | R4 (roadmap Phase 5) | node-keyed `reward_bias` not read by selection | credit routing | owned by R4 | per R4 |
 
 ### E1 — save the Cerebellum where it loads from (#908)
+
+**Status: DONE 2026-10-04.** `build_bio_stack` binds `<home>/cerebellum.json` (the bio-stack
+persistence dir, i.e. the agent home), loads it at session start unless `load_persisted=False`, and
+`BioStack.on_session_end` saves it (refusals and write failures logged at ERROR, never raised). It
+carries the #971 store guard: it never saves over a file it did not read, and an unreadable file is
+kept as `cerebellum.json.corrupt-<UTC>`. The Reachy embodied runtime neither trains nor saves it.
+The text below is the plan as written.
 
 **Root cause.** Two sources of truth for one path: `build_bio_stack` hard-codes
 `p / "cerebellum.json"` for `load`, while `BioStack.save_cerebellum` reads
@@ -63,6 +71,14 @@ exclude it (they do today). No behaviour change: predictions have no consumer (E
 `[Unreleased]` line required (`src/` change).
 
 ### E2 — say what runs, mark what doesn't (#909)
+
+**Status: DONE 2026-10-04.** Forward-model training is documented as live (SEM affordances →
+`observe_from_action`, confidence in `sim_cerebellum` telemetry). `predict`, program crystallization
+and the rest of the motor-engram path (`query_engrams`, `cleanup_program`, `engrams.py`) are marked
+`Dormant since 2026-10-04 (#909)`, beside the earlier markers on `CerebellumModulator` /
+`cerebellum_modulator_factory` (2026-05-26) and `form_engram` (2026-09-22);
+there is no program executor in `src/`. An always-empty motor-programs prompt section is expected.
+The text below is the plan as written.
 
 **Docs.** Rewrite `docs/embodiment_guide.md` §Motor Engrams, §Program Executor, §Cerebellum
 activation in production and the persistence line; `docs/skills.md` lines 3–8;
@@ -147,7 +163,7 @@ checkpoint with no reviver, the motor-engram docs move to a "designed, never wir
 
 ```
 PR 1  docs only (this plan, the tracker, roadmap, brief pointers)        ← now
-PR 2  E1 + E2 (small src + docs + caller-scan guard)                      ← 1.3.x window, off the rig
+PR 2  E1 + E2 (small src + docs + caller-scan guard)                      ← DONE 2026-10-04
 PR 3  E3 (dead branch + swallow narrowed)                                 ← with PR 2 or after
 PR 4  E4 measurement script + result; code only if the tree says so      ← offline, any time
 E5    Phase 5 keying plan → four-lens → re-runs                           ← after Phase 0 instrument

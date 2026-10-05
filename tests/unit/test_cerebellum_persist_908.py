@@ -16,9 +16,6 @@ import pytest
 from maxim.exceptions import StoreOverwriteRefused
 
 
-_RED_908 = pytest.mark.xfail(strict=True, reason="#908: the Cerebellum is never saved, and has no store guard")
-
-
 def _stack(home: Path, **kw):
     from maxim.runtime.bio_stack import build_bio_stack
 
@@ -39,7 +36,6 @@ def _models(cerebellum) -> dict:
     return cerebellum.export_state()["models"]
 
 
-@_RED_908
 def test_forward_models_survive_a_session_through_the_real_bio_stack(tmp_path: Path) -> None:
     first = _stack(tmp_path)
     _train(first.cerebellum)
@@ -67,7 +63,6 @@ def test_a_write_but_dont_read_stack_restores_nothing(tmp_path: Path) -> None:
         _close(fresh)
 
 
-@_RED_908
 def test_an_unreadable_file_is_kept_as_a_copy_and_the_stack_starts_empty(tmp_path: Path) -> None:
     (tmp_path / "cerebellum.json").write_text('{"models": {"a|b|c|d": "not-a-model"}}')
     stack = _stack(tmp_path)
@@ -80,7 +75,6 @@ def test_an_unreadable_file_is_kept_as_a_copy_and_the_stack_starts_empty(tmp_pat
         _close(stack)
 
 
-@_RED_908
 def test_a_cerebellum_never_saves_over_a_file_it_did_not_read(tmp_path: Path) -> None:
     from maxim.embodiment.cerebellum import Cerebellum, CerebellumConfig
 
@@ -100,7 +94,6 @@ def test_a_cerebellum_never_saves_over_a_file_it_did_not_read(tmp_path: Path) ->
     reader.save()  # it read the file, so it may write it
 
 
-@_RED_908
 def test_a_refused_session_end_save_logs_at_error_and_still_cleans_up(tmp_path: Path, monkeypatch, caplog) -> None:
     """A load that hit an OSError leaves the file unowned; the session-end save is then refused. That must be
     loud (ERROR, like every auto-save site) and must not skip the distributor's cleanup."""
@@ -127,7 +120,6 @@ def test_a_refused_session_end_save_logs_at_error_and_still_cleans_up(tmp_path: 
     assert (tmp_path / "cerebellum.json").read_text() == "{}"
 
 
-@_RED_908
 def test_a_failed_session_end_write_is_logged_and_does_not_abort_the_session_end(
     tmp_path: Path, monkeypatch, caplog
 ) -> None:
@@ -154,7 +146,6 @@ def test_a_failed_session_end_write_is_logged_and_does_not_abort_the_session_end
         stack.memory_hub.shutdown()
 
 
-@_RED_908
 def test_a_defect_in_the_session_end_save_still_runs_the_cleanup(tmp_path: Path, monkeypatch) -> None:
     """A defect (not a refusal or an OSError) propagates, but never skips the distributor's cleanup."""
     from maxim.embodiment.cerebellum import Cerebellum

@@ -77,17 +77,28 @@ class BioStack:
     distributor: Any  # TemporalCreditDistributor | None — temporal credit
 
     def save_cerebellum(self) -> None:
-        """Save cerebellum state to its persistence path, if configured.
+        """Save cerebellum state to ``<home>/cerebellum.json``, where ``build_bio_stack`` loads it from.
 
-        Call at session end alongside hippocampus/NAc persistence.
-        Pre-merge Arch review critical #1: without this, learned
-        forward models are lost every session.
+        Call at session end alongside hippocampus/NAc persistence. The builder binds the path on the
+        config (#908): this used to read a path nothing set, so every call here was a silent no-op. A
+        stack built without a home has no Cerebellum, so there is nothing to skip.
+
+        Never raises on a refusal or an ``OSError``: nothing reads the forward models yet (#909), and a session
+        end must not abort the work around it (a harness staging its measured NAc/EC after this call). A
+        defect (e.g. a ``RuntimeError`` from a concurrent write during export) still propagates. A refusal (the store guard,
+        #971: this instance never read the file, e.g. its load hit an ``OSError``) leaves the file as it
+        is; it and a failed write are logged at ERROR, like every auto-save site.
         """
-        if self.cerebellum is not None:
-            config = getattr(self.cerebellum, "config", None)
-            path = getattr(config, "persistence_path", None)
-            if path:
-                self.cerebellum.save(path)
+        if self.cerebellum is None:
+            return
+        from maxim.exceptions import StoreOverwriteRefused
+
+        try:
+            self.cerebellum.save()
+        except StoreOverwriteRefused as e:  # forward models unsaved, file kept
+            logger.error("Cerebellum not saved: %s", e)
+        except OSError as e:  # the write failed; the session end carries on
+            logger.error("Cerebellum not saved (write failed): %s", e, exc_info=True)
 
     def on_session_end(self) -> None:
         """Centralized session-end cleanup.
@@ -96,12 +107,14 @@ class BioStack:
         Single call site prevents the N-sites-forget-to-call bug class.
         Idempotent — safe to call multiple times.
         """
-        self.save_cerebellum()
-        if self.distributor is not None:
-            try:
-                self.distributor.cleanup_session()
-            except Exception as e:
-                logger.debug("distributor.cleanup_session failed: %s", e)
+        try:
+            self.save_cerebellum()
+        finally:  # even a defect in the save must not skip the distributor's cleanup (#908 review)
+            if self.distributor is not None:
+                try:
+                    self.distributor.cleanup_session()
+                except Exception as e:
+                    logger.debug("distributor.cleanup_session failed: %s", e)
 
 
 def build_bio_stack(
@@ -467,14 +480,24 @@ def build_bio_stack(
         except ImportError:
             logger.debug("Cerebellum not available (optional dep)")
         else:
-            cerebellum = Cerebellum(config=CerebellumConfig())
+            # One path for load AND save, bound at construction (#908): the load used a hard-coded
+            # path while save read the config's, which nothing set, so nothing was ever saved.
             _cerebellum_path = p / "cerebellum.json"
-            if _cerebellum_path.exists():
+            cerebellum = Cerebellum(config=CerebellumConfig(persistence_path=str(_cerebellum_path)))
+            if load_persisted:
+                # An unreadable file is kept as a copy and replaced by the fresh store (#908, #971).
                 try:
-                    cerebellum.load(str(_cerebellum_path))
-                    logger.info("Loaded Cerebellum state from %s", _cerebellum_path)
-                except Exception as _ce:
-                    logger.warning("Failed to load Cerebellum state: %s", _ce)
+                    ok, err = cerebellum.load_safe()
+                    if not ok:
+                        logger.warning("Cerebellum restore fell back to no forward models: %s", err)
+                    elif _cerebellum_path.exists():
+                        logger.info("Loaded Cerebellum state from %s", _cerebellum_path)
+                except OSError as e:  # unreachable, not unreadable: left untouched, saves over it refused
+                    logger.error(
+                        "Cerebellum state at %s could not be read (%s); it is left untouched", _cerebellum_path, e
+                    )
+            else:
+                cerebellum.allow_overwrite()  # write-but-don't-read, declared (#972)
             if memory_hub is not None:
                 memory_hub.cerebellum = cerebellum
             logger.info("Cerebellum initialized in bio-stack")
