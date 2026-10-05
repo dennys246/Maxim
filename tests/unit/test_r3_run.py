@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -388,6 +389,35 @@ def test_idle_tick_period_ignores_proposing_ticks() -> None:
     assert R.idle_tick_period_median_s({"ticks": [{"t": 0.0}, {"t": 0.7, "proposal": "x"}]}) is None
 
 
+def _equal_to_float_precision(a, b, rel: float = 1e-9) -> bool:
+    """Exact equality for everything but floats, which must agree to ``rel`` (relative).
+
+    The reproduction gates recompute statistics with scipy, whose last-ulp results differ across
+    versions and platforms (CI's Linux scipy 1.18 vs a local 1.15: a Mann-Whitney p of
+    ...0530618 vs ...0530624, 4e-17 relative). Verdicts, statuses, counts, keys and every
+    non-float stay exact; a real change in a statistic is far above 1e-9."""
+    if isinstance(a, bool) or isinstance(b, bool):
+        return a is b
+    if isinstance(a, float) or isinstance(b, float):
+        return (
+            isinstance(a, (int, float)) and isinstance(b, (int, float)) and math.isclose(a, b, rel_tol=rel, abs_tol=0.0)
+        )
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(_equal_to_float_precision(a[k], b[k], rel) for k in a)
+    if isinstance(a, list) and isinstance(b, list):
+        return len(a) == len(b) and all(_equal_to_float_precision(x, y, rel) for x, y in zip(a, b))
+    return a == b
+
+
+def test_float_precision_comparison_is_exact_except_for_float_ulps() -> None:
+    assert _equal_to_float_precision({"p": 0.00014348670002530624}, {"p": 0.00014348670002530618})
+    assert not _equal_to_float_precision({"p": 0.000143486700}, {"p": 0.000143486701})  # 7e-9 relative: a real change
+    assert not _equal_to_float_precision({"verdict": "EARNED"}, {"verdict": "NULL"})
+    assert not _equal_to_float_precision({"n": 12}, {"n": 13})
+    assert not _equal_to_float_precision({"ok": True}, {"ok": 1})
+    assert not _equal_to_float_precision({"a": 1.0}, {"a": 1.0, "b": 2})
+
+
 def _committed_r3(name: str):
     root = Path(__file__).resolve().parents[2]
     return json.loads((root / "docs/experiments/data" / name).read_text())
@@ -437,7 +467,7 @@ def test_report_over_the_committed_r3_bench_matches_the_committed_amended_report
     assert rep["status"] == committed["status"] == "COMPLETE"
     assert set(rep) == set(committed) - {"amended"}
     for field in rep:
-        assert rep[field] == committed[field], field
+        assert _equal_to_float_precision(rep[field], committed[field]), field
     assert [
         {"arm": r["arm"], "seed": r["seed"], "tick_period_median_s": r["amended"]["tick_period_median_s"]}
         for r in recounted
@@ -466,4 +496,4 @@ def test_report_over_the_committed_r3_bench_matches_the_committed_unamended_repo
     assert rep["status"] == committed["status"] == "INCOMPLETE"
     assert set(rep) == set(committed)
     for field in rep:
-        assert rep[field] == committed[field], field
+        assert _equal_to_float_precision(rep[field], committed[field]), field
