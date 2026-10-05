@@ -333,6 +333,26 @@ class Executor:
         if self._tool_pain_bridge is not None and not _suppress_nac:
             self._tool_pain_bridge.record_tool_start(tool_name, invocation_id, context={"params": params})
 
+        try:
+            return self._run_started(tool_name, original_name, params, invocation_id, suppress_nac=_suppress_nac)
+        finally:
+            # Retire the invocation on EVERY exit, raises included (#851). The completion, embodiment-failure
+            # and failure-pain paths each retire it when they run, but a failure whose pain never reached the
+            # bridge ran none of them, and its pending entry switched off world-driven body-pain attribution
+            # for the rest of the session. Pain dispatch is synchronous, so every one of those paths has run.
+            if self._tool_pain_bridge is not None:
+                self._tool_pain_bridge.finish_invocation(tool_name, invocation_id)
+
+    def _run_started(
+        self,
+        tool_name: str,
+        original_name: str,
+        params: dict[str, Any],
+        invocation_id: str,
+        *,
+        suppress_nac: bool,
+    ) -> ToolOutput:
+        """Run an invocation ``execute`` has started; ``execute`` retires it however this exits (#851)."""
         # Gate on active status — deactivated scene tools must not execute
         # even if the LLM hallucinates a remembered name from a prior scene.
         # Only check for tools that ARE registered but inactive (scene tools).
@@ -394,7 +414,7 @@ class Executor:
         if result.success:
             self._tools_succeeded.append(tool_name)
             self._consecutive_failures = 0
-            if self._tool_pain_bridge is not None and not _suppress_nac:
+            if self._tool_pain_bridge is not None and not suppress_nac:
                 # Embodiment-failure side channel: the tool ran, but
                 # the body produced SEM failures (e.g., rusty_sword
                 # shattered on slash). Route to direct-attribution
