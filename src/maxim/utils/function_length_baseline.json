@@ -161,7 +161,7 @@
     {
       "file": "src/maxim/runtime/bio_stack.py",
       "qualname": "build_bio_stack",
-      "lines": 527
+      "lines": 510
     },
     {
       "file": "src/maxim/runtime/bootstrap.py",

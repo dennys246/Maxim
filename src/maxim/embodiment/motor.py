@@ -347,6 +347,10 @@ class ProgramRegistry:
     ) -> MotorProgram | None:
         """Observe an action sequence. Crystallize if seen 3+ times.
 
+        Dormant since 2026-10-04: no production caller (#909). The read side of the Cerebellum is unwired;
+        resurrection goes through roadmap 1.4 Phase 5's graded-predictor audit (engram_formation.md E7).
+        Callers stay; nothing new builds on it (tests/unit/test_cerebellum_dormant_909.py).
+
         Parameters
         ----------
         goal : str

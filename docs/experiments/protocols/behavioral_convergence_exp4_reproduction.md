@@ -38,7 +38,7 @@ PYTHONPATH=src python scripts/behavioral_convergence_exp4_tier3.py --model qwen2
 
 1. **Agent never tries different vials:** Check that the scenario forces multiple turns and multiple poisoning events. The agent may need to experience failure before exploring alternatives.
 
-2. **No valence differentiation after sessions:** Check that CerebellumModulator is wired into the executor and that reaction_bus subscribers are active. Verify `bio.cerebellum is not None` in `build_bio_stack`.
+2. **No valence differentiation after sessions:** Check that CerebellumModulator is wired into the executor and that reaction_bus subscribers are active. Verify `bio.cerebellum is not None` in `build_bio_stack`. *(2026-10-04: the CerebellumModulator check cannot pass on today's `src/`; see the note under Key invariants.)*
 
 3. **LLM ignores valence context in later sessions:** Check that `StructuredContext.valence_context` is populated and that `PromptAssembler.compose_memory_section()` includes it. Run with `--json` to inspect the prompt.
 
@@ -53,6 +53,7 @@ PYTHONPATH=src python scripts/behavioral_convergence_exp4_tier3.py --model qwen2
 - **Session persistence.** Bio-state saved after each session and reloaded for the next.
 - **Fresh control isolation.** Fresh agent has zero bio-state -- no hippocampus, no NAc, no cerebellum history.
 - **CerebellumModulator in production.** `BioStack.cerebellum` wired through `build_executor(cerebellum=...)`. Reactions flow through ReactionBus to hippocampus + NAc.
+  *Note 2026-10-04 (#909):* this invariant is no longer true of `src/` — no SEM tool is backed by a `CerebellumModulator`, and it is Dormant with no production caller. The Cerebellum forward model still trains from SEM affordance executions (`embodiment/tool_bridge.py`) and saves to `<home>/cerebellum.json`. A reproduction must establish which reaction path it is exercising before citing this protocol.
 
 ## Experimental controls
 

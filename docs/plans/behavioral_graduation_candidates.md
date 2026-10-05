@@ -231,6 +231,32 @@ update.
   ATL relations, and the survival harnesses use the ATL only through `activate_substrate_node` (#812's
   caller grep).
 
+### Trigger walk — 2026-10-04, #908 + #909 (the Cerebellum is saved; its read side is marked Dormant)
+
+#908 makes `build_bio_stack` bind `<home>/cerebellum.json` on the Cerebellum's config, so
+`BioStack.on_session_end` now saves the forward models it always trained and `build_bio_stack` loads them
+(when `load_persisted`). The Cerebellum also gains the #971 store guard. #909 adds `Dormant since` markers
+and a caller scan; it changes no code path. **No row fires**, because no ledger metric reads Cerebellum state:
+
+- The one live read is `embodiment/tool_bridge.py`: `Cerebellum.get_confidence` goes to `sim_cerebellum`
+  display telemetry, which no verdict, scorer or `scripts/` analysis consumes. A restored model only changes
+  that confidence number.
+- Programs are read by `agents/memory_agent.py`, `planning/adaptive_planner.py` and
+  `prompts/acting_coach.py::_compose_cerebellum_predictions`, and always get `[]`: `observe_sequence` has no
+  caller, so nothing crystallizes, persisted or not.
+- `Cerebellum.predict` and `CerebellumModulator` have no production caller, so a loaded model predicts
+  nothing on any path.
+- The Minecraft rows (Exp 60/61/62 rung A, R3) use `minecraft_modulator_factory`, not `CerebellumModulator`.
+  Their homes now gain a `cerebellum.json`, but `exp61_run`/`exp56` stage only `nac.json`/`ec.json`, and
+  hivemind bundles pack only those two (`hivemind/bundle.py`). A cerebellum save never raises out of
+  `on_session_end` (`BioStack.save_cerebellum` logs refusals and write failures at ERROR), so the staging
+  that follows it is unaffected.
+- Exp 09 (T3-9)'s "Cradle / drive / SEM body change": no body, drive or cradle file changed. Exp 10's gates
+  count Hippocampus/ATL/NAc stores.
+
+If E7 (roadmap 1.4 Phase 5's graded predictor) ever wires a reader, every row whose path it touches fires
+then, and that PR walks them.
+
 ### Trigger walk — 2026-10-02 (narrator reliability before O19 campaign 3)
 
 Every change is to the simulation narrator: its retries, its single request in flight, its opening and resume

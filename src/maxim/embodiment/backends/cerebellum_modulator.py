@@ -29,6 +29,9 @@ log = logging.getLogger(__name__)
 class CerebellumModulator:
     """Modulator that uses Cerebellum for prediction, with LLM fallback.
 
+    Dormant since 2026-05-26: built only by the dormant ``cerebellum_modulator_factory``, which has no
+    production caller (#909). Generated SEM tools train the Cerebellum; none predicts through this class.
+
     Parameters
     ----------
     entity : Entity
