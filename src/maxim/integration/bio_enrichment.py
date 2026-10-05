@@ -898,7 +898,7 @@ class BioEnrichmentPipeline:
         by ImaginationTrigger), loads their specs from ComponentRegistry
         and surfaces ALL affordance names with NAc valence annotations.
         This gives the agent a complete view of what the scene entities can
-        do — "fire_breath [DANGEROUS]", "claw_strike [effective]" — instead
+        do — "claw_strike [effective — worked well before]" (no danger label, #910) — instead
         of relying on text-similarity guesswork.
 
         Falls back to the text-similarity path when no resolved entities
@@ -908,9 +908,10 @@ class BioEnrichmentPipeline:
         valence from substrate concept nodes. Decomposes affordance names
         into components (e.g., "fire_breath" → "fire", "breath") and
         checks NAc reward_bias on their substrate nodes. This is the
-        "last mile" for cross-entity knowledge transfer — the agent sees
-        [DANGEROUS] or [effective] annotations from prior experience with
-        similar affordances on different entities.
+        "last mile" for cross-entity knowledge transfer — the agent sees an
+        [effective] annotation from prior success with similar affordances on
+        different entities. There is no danger label (#910): every writer clamps
+        reward_bias to [0, max], so harm can only remove the label.
         """
         affordances: list[str] = []
         seen: set[str] = set()
@@ -948,11 +949,13 @@ class BioEnrichmentPipeline:
         return affordances
 
     def _annotate_affordance_valence(self, affordance_name: str) -> str:
-        """Annotate an affordance name with learned valence from substrate.
+        """Annotate an affordance as ``[effective]`` when a component substrate node was rewarded.
 
-        Decomposes the affordance name, looks up component substrate nodes
-        in ATL, checks NAc reward_bias. Returns the original name with
-        an annotation suffix if bias exists, otherwise returns unchanged.
+        Decomposes the affordance name, looks up component substrate nodes in ATL and reads NAc
+        ``reward_bias``. Effective or unlabeled, never "dangerous" (#910): every writer clamps
+        ``reward_bias`` to ``[0, max]`` (load does not yet, #1102), so harm can only remove the label.
+        Harm lives in ``percept_valences`` / ``cluster_fear`` and causal links, which this does not read
+        (engram plan E3, option 1 deferred). Tier: learned (positive reward_bias only).
         """
         if self._nac is None or self._atl is None:
             return affordance_name
@@ -966,13 +969,9 @@ class BioEnrichmentPipeline:
             for chunk in chunks:
                 concepts = self._atl.recall(name=chunk.text, category="substrate", limit=1)
                 for concept in concepts:
-                    bias = self._nac.reward_bias(self._agent_id, concept.id)
-                    if abs(bias) > abs(max_bias):
-                        max_bias = bias
+                    max_bias = max(max_bias, self._nac.reward_bias(self._agent_id, concept.id))
 
-            if max_bias < -0.01:
-                return f"{affordance_name} [DANGEROUS — learned from prior experience]"
-            elif max_bias > 0.01:
+            if max_bias > 0.01:
                 return f"{affordance_name} [effective — worked well before]"
         except Exception as e:
             log.debug("Affordance valence annotation failed for '%s': %s", affordance_name, e)

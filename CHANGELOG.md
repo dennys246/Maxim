@@ -75,6 +75,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The affordance annotators no longer promise a danger label they cannot produce** (#910, engram plan E3).
+  `SensePresenceTool._annotate_aff`, `BioEnrichmentPipeline._annotate_affordance_valence` and
+  `SenseToolsTool._nac_annotation`'s substrate fallback printed a danger label when `NAc.reward_bias` was
+  negative, but every writer clamps `reward_bias` to `[0, max]`, so an affordance that hurt the agent read the
+  same as one it never tried. The unreachable branches and the docstrings that advertised them are gone (owner
+  decisions 2026-10-04): these annotations are `[effective]` (`sense_tools`: "similar affordance worked well") or nothing, and harm can
+  only remove that label.
+  `sense_tools` still shows learned harm from negative causal links (`caution: …`). No behaviour changes for any
+  state a writer produces; `NAc.load_state` does not re-clamp yet (#1102). `discovery.py`'s two
+  `except Exception: pass` now report through `log_swallowed_exception`. Reading the stores that do hold harm
+  is deferred, with a strict-xfail revive marker. Guard: `tests/unit/test_affordance_danger_label_910.py` plus
+  the injected-negative-bias tests in `test_tool_discovery.py` / `test_bio_enrichment.py`.
+
 - **`damage_component` aimed at a part the body does not have now fails instead of reporting damage that never
   landed** (#873, the no-silent-fallback half). The tool used to subtract the damage from the root
   `vital_metrics["health"]`, publish pain and return `success=True`. On a derived-health body the same call's

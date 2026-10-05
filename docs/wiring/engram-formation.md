@@ -82,8 +82,13 @@ creates a `reward_bias`**, it can only erase one.
   surface is roadmap 1.4 Phase 5's R4 item, not this tracker's.
 - **Drift hazard (#911).** Widening + running mean = a rewarded node accepts looser matches and
   averages them in. Unmeasured.
-- **Dead danger label (#910).** Both affordance annotators print `[DANGEROUS]` for `reward_bias <
-  −0.01`, which the clamp makes impossible.
+- **Danger label removed (#910, 2026-10-04).** Three affordance annotators (`_annotate_aff`,
+  `_annotate_affordance_valence`, `SenseToolsTool._nac_annotation`'s substrate fallback) used to print a
+  danger label for `reward_bias < −0.01`, which the clamp makes impossible. The dead branches are gone
+  (owner decision: option 2); they now say `[effective]` or nothing. `sense_tools` still shows learned harm
+  from NEGATIVE causal links (`caution: …`). Reading the stores that hold harm
+  (`percept_valences` / `cluster_fear`) is option 1, deferred, with a strict-xfail revive marker in
+  `tests/unit/test_affordance_danger_label_910.py`.
 - **Transfer.** Node-keyed `reward_bias` is **dropped at ingest by design** (it cannot be re-keyed
   onto a receiver situation — `ingest.py`, `keep_agent_rows`); making it transfer is the deferred
   [transfer_non_situation_nac_rows.md](../plans/deferred/transfer_non_situation_nac_rows.md). Not a

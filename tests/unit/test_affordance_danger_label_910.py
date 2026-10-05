@@ -82,7 +82,6 @@ def test_a_rewarded_affordance_is_still_labeled_effective(substrate):
     assert _sense_tools(nac, atl)._nac_annotation(f"dragon_{AFFORDANCE}") == "similar affordance worked well"
 
 
-@pytest.mark.xfail(strict=True, reason="#910: the annotation swallows every fault with except Exception: pass")
 def test_a_fault_in_the_sense_annotation_is_reported_not_swallowed(substrate, monkeypatch):
     """``_annotate_aff`` wrapped everything in ``except Exception: pass``."""
     import maxim.tools.discovery as discovery
@@ -99,7 +98,6 @@ def test_a_fault_in_the_sense_annotation_is_reported_not_swallowed(substrate, mo
     assert reported == [True]  # ...and the fault is reported
 
 
-@pytest.mark.xfail(strict=True, reason="#910: the annotation swallows every fault with except Exception: pass")
 def test_a_fault_in_the_sense_tools_annotation_is_reported_not_swallowed(substrate, monkeypatch):
     """``_nac_annotation``'s substrate fallback wrapped everything in ``except Exception: pass``."""
     import maxim.tools.discovery as discovery

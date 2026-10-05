@@ -85,17 +85,25 @@ plan's E7 to be revisited in the same PR.
 **Root cause.** The annotators were written against the pre-clamp `reward_bias`; negative experience
 now lives in `percept_valences` / `cluster_fear` / edge valence, none of which the annotators read.
 
-**Fix (recommended now).** Option 2 in the issue: delete the unreachable branch in
-`tools/discovery.py::_annotate_aff` and `integration/bio_enrichment.py::_annotate_affordance_valence`,
-correct both docstrings, and narrow `discovery.py`'s `except Exception: pass` to handle-and-log
-(Stage-1 `log_swallowed_exception`). No behaviour change — the branch never fired.
+**Status: DONE 2026-10-04 (option 2, owner decision; extended to a third site found in review).**
+The unreachable branch is deleted in `tools/discovery.py::SensePresenceTool._annotate_aff`,
+`integration/bio_enrichment.py::_annotate_affordance_valence` and the substrate fallback of
+`tools/discovery.py::SenseToolsTool._nac_annotation`; the docstrings say "effective or unlabeled", and
+`discovery.py`'s two `except Exception: pass` report through Stage-1 `log_swallowed_exception` (handle-and-log,
+not a narrower type). No behaviour change for any state a writer produces: every writer clamps
+`reward_bias` to ≥ 0. `NAc.load_state` does not re-clamp: [#1102](https://github.com/dennys246/Maxim/issues/1102).
 
-**Deferred.** Option 1 (read the store that holds the danger) needs an affordance → entity-class
-join and changes the LLM path; open it only if a measurement shows the LLM needs a learned-danger
-cue. Revive trigger: a sim/experiment where the LLM repeats a harmful affordance the substrate has
-negative valence for.
+**Deferred.** Option 1 (read the store that holds the danger) changes the LLM path; open it only if a
+measurement shows the LLM needs a learned-danger cue. Revive trigger: a sim/experiment where the LLM
+repeats a harmful affordance the substrate has negative valence for. It may be cheaper than "an
+affordance → entity-class join" suggests: `SenseToolsTool._nac_annotation` already reaches harm through
+the `tool:{entity}_{affordance}` causal links (`caution: …`), a keyed store an affordance can reach.
 
-**Guard.** A node with only negative experience annotates as unlabeled — the honest contract.
+**Guard.** `tests/unit/test_affordance_danger_label_910.py` (negative experience annotates as unlabeled;
+harm after reward removes `[effective]`; both swallows report) and the injected-negative-bias tests in
+`test_tool_discovery.py` / `test_bio_enrichment.py`, which fail if a danger branch returns. The
+strict-xfail `test_learned_harm_in_the_percept_store_reaches_a_danger_label` is option 1's revive marker:
+it seeds harm in `percept_valences`, never through `reward_bias`.
 
 ### E4 — widening scope, and measure the text hazard (#911)
 
