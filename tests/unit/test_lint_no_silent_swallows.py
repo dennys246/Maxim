@@ -10,6 +10,7 @@ de-instrumenting one raises it.
 from __future__ import annotations
 
 import ast
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -283,6 +284,7 @@ def _rebase(root: Path, files: dict[str, str]) -> None:
     """Commit `files` to MAIN and fast-forward the feature branch, so they become the BASE."""
     _git(root, "checkout", "-q", "main")
     for rel, text in files.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
         (root / rel).write_text(text)
     _git(root, "add", "-A")
     _git(root, "commit", "-q", "-m", "new base")
@@ -337,3 +339,208 @@ def test_check_4_passes_a_pure_extraction(wired):
     root, mp, other, commit = wired
     commit({mp: _DELETED, other: _REPORTED})
     assert L.main() == 0
+
+
+# ── move credit + check 5 (approach note v3; owner decisions 2026-10-04) ──────
+
+_X = "src/maxim/tools/x.py"
+_Y = "src/maxim/tools/y.py"
+_SWALLOW_TRY = "    try:\n        g()\n    except Exception:\n        pass\n"
+_DEFAULT_TRY = "    try:\n        v = g()\n    except Exception:\n        v = None\n"
+
+
+def test_check5_counts_a_silent_default_but_not_a_surfacing_or_reporting_one():
+    def n(body: str) -> int:
+        return sum(len(v) for v in L.keyed_handlers(f"def f():\n    try:\n        g()\n{body}", "silent").values())
+
+    assert n("    except Exception:\n        return None\n") == 1
+    assert n("    except Exception:\n        x = 1\n") == 1
+    assert n("    except Exception as e:\n        return ToolResult(error=str(e))\n") == 0  # surfaces e
+    assert n("    except Exception:\n        logger.warning('x')\n        return None\n") == 0
+    assert n("    except Exception as e:\n        log_swallowed_exception(e, operation='x')\n") == 0
+    assert n("    except Exception:\n        pass\n") == 1  # check 2's shape, counted once
+    assert n("    except KeyError:\n        return None\n") == 0  # narrow: out of scope
+    assert n("    except Exception:\n        cleanup = 1\n        raise\n") == 0  # re-raises: not a swallow
+
+
+def test_a_verbatim_extraction_out_of_a_function_that_stays_put_is_free(wired):
+    """The DO-NOT-BUILD of adversarial pass 1: checks 2/3 failed exactly this, the 1.3.2 decomposition step."""
+    root, _, _, commit = wired
+    _rebase(root, {_X: "def big():\n    a = 1\n" + _SWALLOW_TRY})
+    commit({_X: "def big():\n    a = 1\n    helper()\n\n\ndef helper():\n" + _SWALLOW_TRY})
+    assert L.main() == 0
+
+
+def test_a_verbatim_move_into_a_new_module_is_free(wired):
+    root, _, _, commit = wired
+    _rebase(root, {_X: "def big():\n" + _SWALLOW_TRY})
+    commit({_X: "def big():\n    helper()\n", _Y: "def helper():\n" + _SWALLOW_TRY})
+    assert L.main() == 0
+
+
+def test_a_new_silent_default_FAILS(wired, capsys):
+    root, _, _, commit = wired
+    _rebase(root, {_X: "def f():\n    return 1\n"})
+    commit({_X: "def f():\n" + _DEFAULT_TRY + "    return v\n"})
+    assert L.main() == 1
+    assert "silent broad-handler count rose 0 → 1" in capsys.readouterr().err
+
+
+def test_an_in_place_edit_inside_a_try_is_free(wired):
+    """The key changes (the whole `try` is keyed), but the function's count does not: third pass."""
+    root, _, _, commit = wired
+    _rebase(root, {_X: "def f():\n" + _SWALLOW_TRY})
+    commit({_X: "def f():\n" + _SWALLOW_TRY.replace("g()", "g(1)")})
+    assert L.main() == 0
+
+
+def test_deleting_a_swallow_here_does_not_pay_for_a_different_one_there(wired, capsys):
+    """Masking stays closed: the keys differ, so the deletion is no credit."""
+    root, _, _, commit = wired
+    _rebase(root, {_X: "def f():\n" + _SWALLOW_TRY, _Y: "def h():\n    return 2\n"})
+    commit({_X: "def f():\n    g()\n", _Y: "def h():\n" + _SWALLOW_TRY.replace("g()", "other()")})
+    assert L.main() == 1
+    assert "tools/y.py::h: silent broad-handler count rose 0 → 1" in capsys.readouterr().err
+
+
+def _record(qualname="helper", file=_Y, src=("src/maxim/tools/x.py", "big"), pool="silent", **kw):
+    return {
+        "pool": pool,
+        "file": file,
+        "qualname": qualname,
+        "moved_from": {"file": src[0], "qualname": src[1]},
+        "date": "2026-10-04",
+        "ref": "#1",
+        "reason": "edited on the way",
+        **kw,
+    }
+
+
+def test_an_edited_move_needs_a_record_whose_source_dropped(wired, capsys):
+    root, _, _, commit = wired
+    _rebase(root, {_X: "def big():\n" + _SWALLOW_TRY})
+    edited = {_X: "def big():\n    helper()\n", _Y: "def helper():\n" + _SWALLOW_TRY.replace("g()", "g(2)")}
+    commit(edited)
+    assert L.main() == 1
+    capsys.readouterr()
+    commit({L.MOVES_REL: json.dumps([_record()])})
+    assert L.main() == 0, capsys.readouterr().err
+
+
+def test_one_drop_cannot_pay_for_two_records(wired, capsys):
+    root, _, _, commit = wired
+    _rebase(root, {_X: "def big():\n" + _SWALLOW_TRY})
+    commit(
+        {
+            _X: "def big():\n    a()\n",
+            _Y: "def a():\n"
+            + _SWALLOW_TRY.replace("g()", "g(1)")
+            + "\n\ndef b():\n"
+            + _SWALLOW_TRY.replace("g()", "g(2)"),
+            L.MOVES_REL: json.dumps([_record("a"), _record("b")]),
+        }
+    )
+    assert L.main() == 1
+    err = capsys.readouterr().err
+    assert "unused move record" in err and "count rose 0 → 1" in err
+
+
+def test_move_records_are_append_only_and_validated(wired, capsys):
+    root, _, _, commit = wired
+    _rebase(root, {L.MOVES_REL: json.dumps([_record()])})
+    commit({L.MOVES_REL: json.dumps([_record(reason="rewritten")])})
+    assert L.main() == 1
+    assert "append-only" in capsys.readouterr().err
+    commit({L.MOVES_REL: json.dumps([_record(), {"pool": "silent"}])})
+    assert L.main() == 1
+    assert "malformed record" in capsys.readouterr().err
+
+
+def test_a_silent_handler_moved_INTO_the_measurement_path_is_a_rise_there(wired, capsys):
+    """Credit for check 3 comes only from the listed files: a move in from elsewhere is new on the path."""
+    root, mp, _, commit = wired
+    _rebase(root, {_X: "def f():\n    try:\n        g()\n    except Exception:\n        logger.debug('x')\n"})
+    commit(
+        {
+            _X: "def f():\n    return 1\n",
+            mp: _REPORTED + "\n\ndef f2():\n    try:\n        g()\n    except Exception:\n        logger.debug('x')\n",
+        }
+    )
+    assert L.main() == 1
+    assert "unreported broad-swallow count rose" in capsys.readouterr().err
+
+
+def test_a_mid_run_git_failure_is_an_error_on_a_pull_request(wired, monkeypatch):
+    """Was a silent INFO skip returning 0 (#1098)."""
+    root, _, _, commit = wired
+    commit({_X: "def f():\n    return 1\n"})
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
+
+    def boom(*_a, **_k):
+        raise L.GitUnavailable("git show: broken")
+
+    monkeypatch.setattr(L, "keyed_ratchet", boom)
+    assert L.main() == 2
+
+
+def test_editing_a_try_in_place_donates_no_credit_to_a_copy_elsewhere(wired, capsys):
+    """Copy a block into a helper, then edit the original: the original's count did not drop, so the copy is a rise
+    (architecture review: credit came from lost KEYS, not from count drops)."""
+    root, _, _, commit = wired
+    _rebase(root, {_X: "def big():\n" + _SWALLOW_TRY})
+    commit({_X: "def big():\n" + _SWALLOW_TRY.replace("g()", "g(9)"), _Y: "def helper():\n" + _SWALLOW_TRY})
+    assert L.main() == 1
+    assert "tools/y.py::helper: silent broad-handler count rose 0 → 1" in capsys.readouterr().err
+
+
+def test_a_free_move_and_a_record_cannot_spend_the_same_drop(wired, capsys):
+    root, _, _, commit = wired
+    _rebase(root, {_X: "def big():\n" + _SWALLOW_TRY})
+    commit(
+        {
+            _X: "def big():\n    helper()\n",
+            _Y: "def helper():\n" + _SWALLOW_TRY + "\n\ndef other():\n" + _SWALLOW_TRY.replace("g()", "h()"),
+            L.MOVES_REL: json.dumps([_record("other")]),
+        }
+    )
+    assert L.main() == 1
+    err = capsys.readouterr().err
+    assert "unused move record" in err and "y.py::helper" not in err  # helper moved free; other has no budget left
+
+
+def test_a_renamed_source_has_one_budget_whichever_path_a_record_names(wired, capsys):
+    """Drop was credited under the base AND the new path, so two records (one per path) spent one drop."""
+    root, _, _, commit = wired
+    renamed = "src/maxim/tools/x_core.py"
+    pad = "".join(f"\n\ndef keep{i}():\n    return {i}\n" for i in range(40))  # so `git diff -M` pairs the rename
+    _rebase(root, {_X: "def big():\n" + _SWALLOW_TRY + pad})
+    commit(
+        {
+            _X: None,
+            renamed: "def big():\n    a()\n" + pad,
+            _Y: "def a():\n"
+            + _SWALLOW_TRY.replace("g()", "g(1)")
+            + "\n\ndef b():\n"
+            + _SWALLOW_TRY.replace("g()", "g(2)"),
+            L.MOVES_REL: json.dumps([_record("a", src=(_X, "big")), _record("b", src=(renamed, "big"))]),
+        }
+    )
+    assert L.main() == 1
+    assert "unused move record" in capsys.readouterr().err
+
+
+def test_a_record_may_name_a_renamed_source_by_its_base_path(wired, capsys):
+    """The other half of one budget per source: the base path resolves to the same function as the new path."""
+    root, _, _, commit = wired
+    renamed = "src/maxim/tools/x_core.py"
+    pad = "".join(f"\n\ndef keep{i}():\n    return {i}\n" for i in range(40))  # so `git diff -M` pairs the rename
+    _rebase(root, {_X: "def big():\n" + _SWALLOW_TRY + pad})
+    commit(
+        {
+            _X: None,
+            renamed: "def big():\n    a()\n" + pad,
+            _Y: "def a():\n" + _SWALLOW_TRY.replace("g()", "g(1)"),
+            L.MOVES_REL: json.dumps([_record("a", src=(_X, "big"))]),
+        }
+    )
+    assert L.main() == 0, capsys.readouterr().err
