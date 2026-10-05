@@ -1,6 +1,6 @@
 # The four-lens experiment-design review (run BEFORE building the harness)
 
-**Why.** Our two-lens *code* review catches implementation bugs, but it reads the harness *after*
+**Why.** Our three-lens *code* review ([../CODE_REVIEW.md](../CODE_REVIEW.md)) catches implementation bugs, but it reads the harness *after*
 the design is set. The deepest failures — the causal-link confound, cluster-generalization, the
 floor-into-cluster contamination (R2 learned-bias, 2026-09-12) — were **design** flaws, understood
 only *after* building v1, reviewing it twice, and running a dry-run. A **pre-build design review**
@@ -10,7 +10,7 @@ retraction; four cheap review agents up front is a great trade.
 This is a DISTINCT gate from the code review. The full experiment pipeline:
 
     design review (4 lenses, reads the PREREG)  →  build harness  →
-    code review (execution + architecture, reads the CODE)  →  dry-run / pilot  →
+    code review (executor + architecture + wire integrity, reads the CODE)  →  dry-run / pilot  →
     confirmatory run  →  data PR
 
 ## The four lenses
@@ -64,7 +64,7 @@ all four, resolves/folds the findings into the prereg, and presents the **cohesi
 — what changed, what was dismissed and why, the go/no-go. Only then do we build the harness.
 
 A DO-NOT-BUILD from any lens blocks the build until folded or explicitly overruled with a recorded
-reason (the same posture as a code-review DO-NOT-SHIP).
+reason (the same posture as a code-review BLOCKER).
 
 ## Regression guard
 

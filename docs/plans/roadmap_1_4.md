@@ -24,7 +24,7 @@ earn; §Release thresholds).
 
 Every rung inherits 1.3's disciplines: D1 (game-native pressure and relief only), verify the
 instrument first, prereg frozen on main before the first data timestamp, refusal rows never fudged
-rows, the four-lens design review before a harness, the two-lens code review before merge, offline on
+rows, the four-lens design review before a harness, the code review before merge (three lenses since 2026-10-05, [CODE_REVIEW.md](../CODE_REVIEW.md)), offline on
 the scripted bridge before the rig, and the divergence trigger.
 
 ---
@@ -138,7 +138,7 @@ regeneration–hunger coupling (food/saturation before and after one drowning; r
 
 The R3 process layer carries unchanged. Instrument increments enter WITH their consuming rung, never
 before it (a per-step ledger with no experiment is the harness analogue of a function with no caller
-— the D43 family, one level up). Each is a two-lens code-reviewed PR run offline before the rig.
+— the D43 family, one level up). Each is a code-reviewed PR (three lenses since 2026-10-05) run offline before the rig.
 
 **Shipped already, consumed by Rung B's entry condition (2026-09-20):** the EC match MARGIN
 (`PatternResult.best_similarity`, `SensorEncoder.last_encode_margin`, issue #786). The EC computed

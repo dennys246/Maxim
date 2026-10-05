@@ -180,7 +180,7 @@ E6    memory line 2S-e plan → four-lens                                    ←
 E7    Phase 5 graded-predictor audit                                       ← when a rung names it
 ```
 
-Each `src/` PR needs a pre-merge two-lens review round and an `[Unreleased]` CHANGELOG line.
+Each `src/` PR needs a pre-merge three-lens review round ([../CODE_REVIEW.md](../CODE_REVIEW.md)) and an `[Unreleased]` CHANGELOG line.
 
 ## Done when
 

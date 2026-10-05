@@ -311,7 +311,7 @@ never worked. Every issue open on 2026-09-27 (39) has a home: the ten already sc
   its precondition, the issue stays open.
 - **Guard by deletion**, and **a caller, not a capability** (M3). Same bar as the rest of 1.3.2.
 - **Batch by concern**, one PR per batch. **Exception:** an issue that changes a format contract, owes
-  a decision, or is marked ⟲ gets its own PR. Each PR gets a two-lens review round.
+  a decision, or is marked ⟲ gets its own PR. Each PR gets a review round (three lenses since 2026-10-05: [CODE_REVIEW.md](../CODE_REVIEW.md)).
 - **⟲ marks a fix that changes what an EARNED ledger row's path computes.** Each ⟲ fix:
   - names its rows;
   - adds each row's own `Re-run on:` trigger to the walk;

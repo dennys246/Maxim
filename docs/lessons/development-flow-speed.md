@@ -75,7 +75,7 @@ merges if they touch the same files.
 
 A follow-up review round gets exactly the delta since the last round ("check only this"), the findings it
 is meant to verify, and the stop rule from §1. It reads the rest only to judge the delta. First rounds
-keep the full two-lens brief.
+keep the full three-lens brief ([../CODE_REVIEW.md](../CODE_REVIEW.md); the third lens, wire integrity, since 2026-10-05).
 
 ## `scripts/suite_at_commit.sh`
 
