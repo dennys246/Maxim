@@ -20,6 +20,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from maxim.tools.base import Tool, ToolOutput
+from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
     from maxim.decisions.nac import NAc
@@ -242,7 +243,13 @@ class SensePresenceTool(Tool):
         return ToolOutput(success=True, output="\n".join(lines))
 
     def _annotate_aff(self, aff_name: str) -> str:
-        """Annotate an affordance name with valence from substrate concepts."""
+        """Annotate an affordance as ``[effective]`` when a substrate concept it decomposes into was rewarded.
+
+        Effective or unlabeled, never "dangerous" (#910): every writer clamps ``NAc.reward_bias`` to
+        ``[0, max]`` (load does not yet, #1102), so harm can only remove the label, never set a danger one.
+        Harm lives in ``percept_valences`` / ``cluster_fear`` and causal links, which this does not read
+        (engram plan E3, option 1 deferred). Tier: learned (positive reward_bias only).
+        """
         if self._nac is None or self._atl is None:
             return aff_name
         try:
@@ -252,13 +259,10 @@ class SensePresenceTool(Tool):
             for chunk in chunks:
                 concepts = self._atl.recall(name=chunk.text, category="substrate", limit=1)
                 for concept in concepts:
-                    bias = self._nac.reward_bias(self._agent_id, concept.id)
-                    if bias < -0.01:
-                        return f"{aff_name} [DANGEROUS]"
-                    elif bias > 0.01:
+                    if self._nac.reward_bias(self._agent_id, concept.id) > 0.01:
                         return f"{aff_name} [effective]"
         except Exception:
-            pass
+            log_swallowed_exception()  # the annotation is optional; the tool still answers, unlabeled
         return aff_name
 
 
@@ -499,8 +503,13 @@ class SenseToolsTool(Tool):
         """Generate a short annotation from NAc valence for a tool.
 
         Two-level lookup:
-        1. Entity-specific causal link (existing, e.g., "dragon_fire_breath")
-        2. Substrate concept bias fallback (new, e.g., "fire" node reward_bias)
+        1. Entity-specific causal link (e.g., "dragon_fire_breath"): learned harm shows here, as
+           ``caution: <outcome>`` from a NEGATIVE link.
+        2. Substrate concept bias fallback (e.g., "fire" node reward_bias): ``similar affordance worked
+           well`` or nothing. ``reward_bias`` is clamped to ``[0, max]`` by every writer, so harm can only
+           remove this label, never set a danger one (#910; load is unclamped, #1102).
+
+        Tier: learned (causal links; positive reward_bias only).
         """
         if self._nac is None:
             return ""
@@ -532,20 +541,17 @@ class SenseToolsTool(Tool):
                     aff_name = getattr(tool_obj, "_affordance_name", None)
                     if aff_name:
                         decompose_target = aff_name
-                except (KeyError, Exception):
-                    pass  # Fall back to full tool name
+                except KeyError:
+                    pass  # not registered: fall back to the full tool name
 
                 chunks = AFFORDANCE_STRATEGY.extract(decompose_target)
                 for chunk in chunks:
                     concepts = self._atl.recall(name=chunk.text, category="substrate", limit=1)
                     for concept in concepts:
-                        bias = self._nac.reward_bias(self._agent_id, concept.id)
-                        if bias < -0.01:
-                            return "caution: similar affordance was dangerous"
-                        elif bias > 0.01:
+                        if self._nac.reward_bias(self._agent_id, concept.id) > 0.01:
                             return "similar affordance worked well"
             except Exception:
-                pass
+                log_swallowed_exception()  # the annotation is optional; the tool line stays unlabeled
 
         return ""
 

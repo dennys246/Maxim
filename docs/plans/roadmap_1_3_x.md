@@ -71,7 +71,7 @@ Grouped by the axis each item lifts; the "to reach" conditions come from the car
 | **[1.3.1 — SHIPPED (#930)]** **`AgentInstance.export_memories()` always reports 0** — it reads `self.hippocampus.memories`, which does not exist, and an `except Exception` turns the error into `0`; `AgentPool.export_all_memories` propagates it; the documented example in `docs/user/python-api.md` prints "0 memories" beside a hippocampus holding one. | a test asserting the COUNT (both current tests are vacuous: one checks the key exists, the other that it is a dict) |
 | **[1.3.1 — SHIPPED (#930)]** **`create.agent`'s docstring example crashes** — `capture(perception="dark cave ahead")` raises `AttributeError`; `capture` does not validate its argument. | argument validation + a doctest-style test that runs the documented example |
 | **[1.3.1 — SHIPPED (#930)]** **`maxim.diagnose()` and `maxim doctor --json` disagree** (diagnose reports all-passed while the CLI exits 1 on a probe diagnose never runs). | a test pinning one probe set for both entry points |
-| **[→ 1.3.2]** **The silent-default swallow shape** — a handler that ASSIGNS a fallback instead of `pass`, which is what hid `export_memories` and which `lint_no_silent_swallows.py` cannot see. | extend the lint to that shape, as a ratchet on today's count (430 bare sites, 1,788 `except Exception` total) |
+| **[→ 1.3.2]** **The silent-default swallow shape** — a handler that ASSIGNS a fallback instead of `pass`, which is what hid `export_memories` and which `lint_no_silent_swallows.py` cannot see. | extend the lint to that shape, as a ratchet on today's count (430 bare sites, 1,788 `except Exception` total) *(Built 2026-10-04 in 1.3.2, PR pending: check 5 of `scripts/lint_no_silent_swallows.py`, 298 silent-default sites at the build, sharing one per-function pool with check 2's 415; checks 2, 3 and 5 credit verbatim moves and recorded edited moves (`scripts/swallow_moves.json`), so the decomposition slices do not trip them.)* |
 
 ### Maintainability (C → C+, the cheap half)
 
@@ -240,7 +240,14 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
 7. **CI escape paths ([#940](https://github.com/dennys246/Maxim/issues/940))**: the `|| echo` optional install,
    the reason-less `importorskip`, the slow lane's expected roster, the network guard at the process-tree
    boundary. Guard: each lane fails on the escape.
-8. **One source of truth for claims** (mechanization backlog M2). Guard: the claims-registry lint.
+   **The importorskip half built 2026-10-04, PR pending:** `--require-extras` now refuses to start unless each
+   requirement's top-level module imports (`tests/conftest.py::_require_extras_importable`), and also reads pytest's
+   own "could not import" message for those modules. Owner decisions 2026-10-04 for the rest: the slow lane
+   installs and runs its tests (16 of 58 ran on the 2026-10-04 nightly) against an exact roster with reasoned
+   skips only; the unit-tests pytest step runs in a loopback-only network namespace, with no OS-level exception.
+8. **One source of truth for claims** (mechanization backlog M2). Guard: the claims-registry lint. It also
+   owes [#940](https://github.com/dennys246/Maxim/issues/940) item 2's guard: the README results table's Exp 10
+   row was corrected on 2026-09-27 with nothing to stop it drifting again.
 
 **Engram integrity (pulled in from 1.4's parallel line, 2026-09-27).** Its four engineering items gate
 1.4.0 (release threshold T7), touch no survival rung's path and run off the rig

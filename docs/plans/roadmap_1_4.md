@@ -617,10 +617,9 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   engram family forms found the situation engram (EC sensor cluster + NAc fear/want) is the only one
   that reaches behaviour without the LLM; episodic/semantic traces reach it only as prompt text, and
   motor engrams have no production caller. **Four engineering items gate 1.4.0 (T7)**: the Cerebellum
-  is never saved ([#908](https://github.com/dennys246/Maxim/issues/908), done 2026-10-04), the
-  motor-engram docs overclaim and its read side is undeclared-dormant
-  ([#909](https://github.com/dennys246/Maxim/issues/909), done 2026-10-04),
-  the `[DANGEROUS]` annotation is unreachable ([#910](https://github.com/dennys246/Maxim/issues/910)),
+  is never saved ([#908](https://github.com/dennys246/Maxim/issues/908)), the motor-engram docs
+  overclaim and its read side is undeclared-dormant ([#909](https://github.com/dennys246/Maxim/issues/909)),
+  the unreachable `[DANGEROUS]` annotation is removed ([#910](https://github.com/dennys246/Maxim/issues/910), 2026-10-04),
   and reward widening is text-only with an unmeasured drift hazard
   ([#911](https://github.com/dennys246/Maxim/issues/911) — an offline measurement, not a fix). None
   touches a survival rung's path; all run off the rig. **Scheduled into 1.3.2 (2026-09-27).** Its three larger items ride on owners that
