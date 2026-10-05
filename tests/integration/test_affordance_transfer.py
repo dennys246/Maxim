@@ -249,7 +249,7 @@ class TestIT2NoFalseTransfer:
         assert water_bias >= 0, f"Water node got negative bias {water_bias} — false transfer!"
 
     def test_water_has_no_dangerous_annotation(self, bio_stack):
-        """Water affordance should have no [DANGEROUS] annotation."""
+        """Water should carry no learned harm from the fire node (reward_bias is never negative; #910)."""
         ec, atl, nac, scn, encoder = bio_stack
         _require_semantic_encoder(encoder)
         agent_id = "test_agent"
@@ -265,8 +265,8 @@ class TestIT2NoFalseTransfer:
         water_concepts = atl.recall(name="water", category="substrate", limit=1)
         assert water_concepts, "no water substrate concept was formed — nothing to test"
         bias = nac.reward_bias(agent_id, water_concepts[0].id)
-        # No negative bias → no [DANGEROUS] annotation
-        assert bias >= -0.01, f"Water has bias {bias} — would show [DANGEROUS]"
+        # Harm on "fire" must not leak a negative bias onto "water"
+        assert bias >= -0.01, f"Water has bias {bias} — harm leaked across concepts"
 
 
 # ---------------------------------------------------------------------------

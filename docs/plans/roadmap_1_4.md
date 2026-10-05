@@ -343,8 +343,9 @@ infrastructure the review located, and the full four-lens review.
   this store ([#1072](https://github.com/dennys246/Maxim/issues/1072)).
 - **A graded predictor (anticipation).** Audit first: `anticipatory_pre_activate` + drive
   TemporalEvents (dormant on both ends) and `embodiment/cerebellum.py` (write live, read dormant —
-  and, until [#908](https://github.com/dennys246/Maxim/issues/908) lands, never SAVED: the audit must
-  not read a fresh-each-session forward model as "cannot learn"; motor engrams are its E7 disposition
+  and, until [#908](https://github.com/dennys246/Maxim/issues/908) landed 2026-10-04, never SAVED: the
+  audit must not read a pre-#908 fresh-each-session forward model as "cannot learn"; motor engrams are
+  its E7 disposition
   in [engram_formation.md](engram_formation.md)).
   Only if neither can carry "how far pain is" does a new plan (`latent_forward_model.md`) open — and
   that is where the §JEPA predictive idea and the §Pressure candidate input would live.
@@ -618,7 +619,7 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   motor engrams have no production caller. **Four engineering items gate 1.4.0 (T7)**: the Cerebellum
   is never saved ([#908](https://github.com/dennys246/Maxim/issues/908)), the motor-engram docs
   overclaim and its read side is undeclared-dormant ([#909](https://github.com/dennys246/Maxim/issues/909)),
-  the `[DANGEROUS]` annotation is unreachable ([#910](https://github.com/dennys246/Maxim/issues/910)),
+  the unreachable `[DANGEROUS]` annotation is removed ([#910](https://github.com/dennys246/Maxim/issues/910), 2026-10-04),
   and reward widening is text-only with an unmeasured drift hazard
   ([#911](https://github.com/dennys246/Maxim/issues/911) — an offline measurement, not a fix). None
   touches a survival rung's path; all run off the rig. **Scheduled into 1.3.2 (2026-09-27).** Its three larger items ride on owners that

@@ -19,11 +19,11 @@ Mental model of the substrate chain: [docs/agents/bio-memory.md](../agents/bio-m
 | Engram family | Forms | Specific | Recalled from a cue | Changes behaviour | Evidence (ledger) |
 |---|---|---|---|---|---|
 | **Situation engram** — EC sensor cluster + NAc `cluster_fear` / `cluster_reward_bias` | ✅ | ⚠️ neutral→extreme swings only; daily wrap boundary (#899) | ✅ EC completion | ✅ **substrate-primary, no LLM** | **EARNED** ×7 (Exp 45, 52, 53b, 56, 60, 61, 62 rung A) |
-| **Recognition engram** — EC text node + node-keyed `reward_bias` | ✅ | ⚠️ running-mean drift; reward widening compounds it (#911) | ✅ text only | LLM prompt text + `tool:*` nudge ≤ 0.20 | PARTIAL / pulled from 1.0 framing |
+| **Recognition engram** — EC text node + node-keyed `reward_bias` | ✅ | ⚠️ running-mean drift; reward widening compounds it (#911) | ✅ text + vision (LinguisticEncoder; sensor never) | LLM prompt text + `tool:*` nudge ≤ 0.20 | PARTIAL / pulled from 1.0 framing |
 | **Episodic engram** — Hippocampus trace | ✅ honest encoding | ✅ per-situation key (2S-b) | ✅ built (2S-d cue) — **result discarded** | LLM prompt text only | Exp 10 (cross-session persistence) |
 | **Semantic engram** — ATL concept | ✅ by NAME | n/a | ✅ by name | LLM prompt text only | none |
 | **Motor engram** — Cerebellum program ↔ Hippocampus trace | ❌ no production caller (#909) | — | — | ❌ | none |
-| *(Cerebellum forward model — a prediction, not an engram)* | ✅ trains on real readings | — | — | ❌ read side dormant; **never saved** (#908) | none |
+| *(Cerebellum forward model — a prediction, not an engram)* | ✅ trains on real readings | — | — | ❌ read side dormant (#909, `Dormant since` + caller scan); saved at session end since #908 | none |
 
 The one family that is an engram on all four counts **without the LLM** is the situation engram —
 and it is exactly as good as the world channel's geometry lets it be.
@@ -82,8 +82,13 @@ creates a `reward_bias`**, it can only erase one.
   surface is roadmap 1.4 Phase 5's R4 item, not this tracker's.
 - **Drift hazard (#911).** Widening + running mean = a rewarded node accepts looser matches and
   averages them in. Unmeasured.
-- **Dead danger label (#910).** Both affordance annotators print `[DANGEROUS]` for `reward_bias <
-  −0.01`, which the clamp makes impossible.
+- **Danger label removed (#910, 2026-10-04).** Three affordance annotators (`_annotate_aff`,
+  `_annotate_affordance_valence`, `SenseToolsTool._nac_annotation`'s substrate fallback) used to print a
+  danger label for `reward_bias < −0.01`, which the clamp makes impossible. The dead branches are gone
+  (owner decision: option 2); they now say `[effective]` or nothing. `sense_tools` still shows learned harm
+  from NEGATIVE causal links (`caution: …`). Reading the stores that hold harm
+  (`percept_valences` / `cluster_fear`) is option 1, deferred, with a strict-xfail revive marker in
+  `tests/unit/test_affordance_danger_label_910.py`.
 - **Transfer.** Node-keyed `reward_bias` is **dropped at ingest by design** (it cannot be re-keyed
   onto a receiver situation — `ingest.py`, `keep_agent_rows`); making it transfer is the deferred
   [transfer_non_situation_nac_rows.md](../plans/deferred/transfer_non_situation_nac_rows.md). Not a
@@ -130,9 +135,11 @@ Designed as a Hippocampus trace (`site="engram"`, `tool_name="motor_program:<nam
 `cerebellum:program:<name>` graph node, formed when pain / RPE > 0.3, novelty > 0.7 or program
 confidence < 0.3. **Nothing in production forms, reads or strengthens one** (#909); no engram decay
 exists despite the guide's "~2 days". The forward model **does** train on real readings through
-`tool_bridge.py`, but its predictions have no consumer and its state is **never written** —
-`build_bio_stack` gives it no `persistence_path`, so `save_cerebellum()` is a no-op at all three
-call sites (#908). Resurrection path: roadmap 1.4 Phase 5 "graded predictor" audit.
+`tool_bridge.py`, but its predictions have no consumer. Its state was **never written** until #908
+(2026-10-04): `build_bio_stack` now binds `<home>/cerebellum.json` on the config it loads and saves
+through (guard: `tests/unit/test_cerebellum_persist_908.py`). The read side carries `Dormant since
+2026-10-04` docstrings, pinned by `tests/unit/test_cerebellum_dormant_909.py`. Resurrection path:
+roadmap 1.4 Phase 5 "graded predictor" audit.
 
 ## 7. How to measure an engram claim (so this page stays honest)
 

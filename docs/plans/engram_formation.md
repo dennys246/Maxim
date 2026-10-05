@@ -25,14 +25,15 @@ engram** — an EC sensor cluster carrying NAc fear or want — and it has seven
 Its limit is geometric (cosine sees direction; one daily wrap boundary). Episodic and semantic
 traces form honestly and are recalled, but reach behaviour only through LLM prompt text; the
 substrate-native cue is built and its result discarded. Motor engrams are fully implemented and have
-no production caller; the Cerebellum's forward model trains live and is silently never saved.
+no production caller; the Cerebellum's forward model trains live and was silently never saved
+(fixed 2026-10-04, E1/#908 — it now saves to `<home>/cerebellum.json` at session end).
 
 ## Items
 
 | # | Issue | What | Kind | Gates 1.4.0? | Ledger triggers fired |
 |---|---|---|---|---|---|
-| E1 | [#908](https://github.com/dennys246/Maxim/issues/908) | Cerebellum state never saved | bug, `src/` | **yes (T7)** | none |
-| E2 | [#909](https://github.com/dennys246/Maxim/issues/909) | Motor-engram read side: docs overclaim, dormancy undeclared | docs + docstrings | **yes (T7)** | none |
+| E1 | [#908](https://github.com/dennys246/Maxim/issues/908) | Cerebellum state never saved — **DONE 2026-10-04** | bug, `src/` | **yes (T7)** | none |
+| E2 | [#909](https://github.com/dennys246/Maxim/issues/909) | Motor-engram read side: docs overclaim, dormancy undeclared — **DONE 2026-10-04** | docs + docstrings | **yes (T7)** | none |
 | E3 | [#910](https://github.com/dennys246/Maxim/issues/910) | `[DANGEROUS]` annotation unreachable | dead branch, `src/` | **yes (T7)** | none (branch never fires) |
 | E4 | [#911](https://github.com/dennys246/Maxim/issues/911) | Recognition widening text-only; text drift hazard | scope doc + offline measurement | **yes (T7)** — the measurement, not a fix | none (offline) |
 | E5 | [#899](https://github.com/dennys246/Maxim/issues/899) | `time_of_day` linear → daily wrap boundary | substrate geometry | no — Phase 5 keying / Rung B | **Exp 53b, 56, 60, 61, 62** |
@@ -41,6 +42,13 @@ no production caller; the Cerebellum's forward model trains live and is silently
 | — | R4 (roadmap Phase 5) | node-keyed `reward_bias` not read by selection | credit routing | owned by R4 | per R4 |
 
 ### E1 — save the Cerebellum where it loads from (#908)
+
+**Status: DONE 2026-10-04.** `build_bio_stack` binds `<home>/cerebellum.json` (the bio-stack
+persistence dir, i.e. the agent home), loads it at session start unless `load_persisted=False`, and
+`BioStack.on_session_end` saves it (refusals and write failures logged at ERROR, never raised). It
+carries the #971 store guard: it never saves over a file it did not read, and an unreadable file is
+kept as `cerebellum.json.corrupt-<UTC>`. The Reachy embodied runtime neither trains nor saves it.
+The text below is the plan as written.
 
 **Root cause.** Two sources of truth for one path: `build_bio_stack` hard-codes
 `p / "cerebellum.json"` for `load`, while `BioStack.save_cerebellum` reads
@@ -64,6 +72,14 @@ exclude it (they do today). No behaviour change: predictions have no consumer (E
 
 ### E2 — say what runs, mark what doesn't (#909)
 
+**Status: DONE 2026-10-04.** Forward-model training is documented as live (SEM affordances →
+`observe_from_action`, confidence in `sim_cerebellum` telemetry). `predict`, program crystallization
+and the rest of the motor-engram path (`query_engrams`, `cleanup_program`, `engrams.py`) are marked
+`Dormant since 2026-10-04 (#909)`, beside the earlier markers on `CerebellumModulator` /
+`cerebellum_modulator_factory` (2026-05-26) and `form_engram` (2026-09-22);
+there is no program executor in `src/`. An always-empty motor-programs prompt section is expected.
+The text below is the plan as written.
+
 **Docs.** Rewrite `docs/embodiment_guide.md` §Motor Engrams, §Program Executor, §Cerebellum
 activation in production and the persistence line; `docs/skills.md` lines 3–8;
 `docs/embodiment_yaml_reference.md` "engram matching (Phase 1b)". State: forward-model training is
@@ -85,33 +101,42 @@ plan's E7 to be revisited in the same PR.
 **Root cause.** The annotators were written against the pre-clamp `reward_bias`; negative experience
 now lives in `percept_valences` / `cluster_fear` / edge valence, none of which the annotators read.
 
-**Fix (recommended now).** Option 2 in the issue: delete the unreachable branch in
-`tools/discovery.py::_annotate_aff` and `integration/bio_enrichment.py::_annotate_affordance_valence`,
-correct both docstrings, and narrow `discovery.py`'s `except Exception: pass` to handle-and-log
-(Stage-1 `log_swallowed_exception`). No behaviour change — the branch never fired.
+**Status: DONE 2026-10-04 (option 2, owner decision; extended to a third site found in review).**
+The unreachable branch is deleted in `tools/discovery.py::SensePresenceTool._annotate_aff`,
+`integration/bio_enrichment.py::_annotate_affordance_valence` and the substrate fallback of
+`tools/discovery.py::SenseToolsTool._nac_annotation`; the docstrings say "effective or unlabeled", and
+`discovery.py`'s two `except Exception: pass` report through Stage-1 `log_swallowed_exception` (handle-and-log,
+not a narrower type). No behaviour change for any state a writer produces: every writer clamps
+`reward_bias` to ≥ 0. `NAc.load_state` does not re-clamp: [#1102](https://github.com/dennys246/Maxim/issues/1102).
 
-**Deferred.** Option 1 (read the store that holds the danger) needs an affordance → entity-class
-join and changes the LLM path; open it only if a measurement shows the LLM needs a learned-danger
-cue. Revive trigger: a sim/experiment where the LLM repeats a harmful affordance the substrate has
-negative valence for.
+**Deferred.** Option 1 (read the store that holds the danger) changes the LLM path; open it only if a
+measurement shows the LLM needs a learned-danger cue. Revive trigger: a sim/experiment where the LLM
+repeats a harmful affordance the substrate has negative valence for. It may be cheaper than "an
+affordance → entity-class join" suggests: `SenseToolsTool._nac_annotation` already reaches harm through
+the `tool:{entity}_{affordance}` causal links (`caution: …`), a keyed store an affordance can reach.
 
-**Guard.** A node with only negative experience annotates as unlabeled — the honest contract.
+**Guard.** `tests/unit/test_affordance_danger_label_910.py` (negative experience annotates as unlabeled;
+harm after reward removes `[effective]`; both swallows report) and the injected-negative-bias tests in
+`test_tool_discovery.py` / `test_bio_enrichment.py`, which fail if a danger branch returns. The
+strict-xfail `test_learned_harm_in_the_percept_store_reaches_a_danger_label` is option 1's revive marker:
+it seeds harm in `percept_valences`, never through `reward_bias`.
 
 ### E4 — widening scope, and measure the text hazard (#911)
 
-**Docs.** The brief's `_reward_bias` invariant and the tracker say widening is **text-only**;
-sensor engrams never widen.
+**Docs.** The brief's `_reward_bias` invariant and the tracker say sensor engrams never widen. Widening reaches
+every `LinguisticEncoder` modality: `"text"` and `"vision"` (both running-mean), including affordance-name chunks
+that share the `"text"` matrix (found by the E4 design review's wiring lens); the measurement covers `"text"`
+percepts only.
 
-**Measurement (offline, no rig).** A script under `docs/experiments/data/` (the
-`*_cosine_check.py` pattern): a rewarded-node text fixture, bias ∈ {0, 0.1, 0.2}, isolated vs
-sequential EC, cluster purity per arm. Committed with its output.
-
-**Decision tree.**
-- Sequential ≈ isolated at bias 0.2 → close #911 with the numbers; no code.
-- Sequential collapses → a design entry in this plan: count override-widened matches without
-  averaging them into the centroid, or freeze text centroids on override matches. Either is a
-  change to `pattern_complete_or_separate` and fires the "EC threshold / centroid-update change"
-  trigger on the EC completion ledger row — re-run that row's guard in the same PR.
+**Measurement (offline, no rig).** Pre-registered and frozen on `main` before any data:
+[e4_text_widening_drift_preregistration.md](../experiments/protocols/e4_text_widening_drift_preregistration.md)
+(owner decisions 2026-10-05, four-lens design review in
+[rationale/e4-text-widening-drift/](../experiments/rationale/e4-text-widening-drift/)). It is a latent-hazard
+upper bound: no live path gives a text node positive reward today. The harness is
+`scripts/e4_text_widening_drift.py` (a second PR); its record lands in
+`docs/experiments/data/e4_text_widening_drift/`. The prereg's frozen rule decides (COLLAPSE → a design entry
+here whose EC change lands with or before the first positive text-credit producer; NO HEADROOM → #911 stays open
+for an owner decision; NO COLLAPSE → close #911 with the numbers).
 
 **Sensor widening** — no action; recorded as an input to the Rung B keying design (it would pull
 neighbouring situations into a node that carries fear or want: a generalization mechanism).
@@ -147,7 +172,7 @@ checkpoint with no reviver, the motor-engram docs move to a "designed, never wir
 
 ```
 PR 1  docs only (this plan, the tracker, roadmap, brief pointers)        ← now
-PR 2  E1 + E2 (small src + docs + caller-scan guard)                      ← 1.3.x window, off the rig
+PR 2  E1 + E2 (small src + docs + caller-scan guard)                      ← DONE 2026-10-04
 PR 3  E3 (dead branch + swallow narrowed)                                 ← with PR 2 or after
 PR 4  E4 measurement script + result; code only if the tree says so      ← offline, any time
 E5    Phase 5 keying plan → four-lens → re-runs                           ← after Phase 0 instrument

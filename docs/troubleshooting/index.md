@@ -14,7 +14,7 @@ In-depth troubleshooting docs for specific subsystems. For quick-reference table
 | [Mesh Debug](mesh_debug.md) | **Plan 4 Stage C operator runbook.** `mesh.yml` declarative config + `init-mesh` / `add-node` / `remove-node` setup verbs + `drain` / `resume` / `list-drained` runtime state. First place to look for "I added a node and it isn't routing" or "I drained a peer and it didn't come back." |
 | [Agent Mesh (historical)](mesh.md) | Post-mortem of the deleted R0 mesh scaffolding (`PeerRegistry`, `PeerChannel`, `TaskDelegator`, `ExperienceBroker`). Read this if you arrived from a stale link — current surface is in [Mesh Debug](mesh_debug.md). |
 | [Benchmarks](benchmarks.md) | Benchmark runner issues, metric comparison failures, scenario validation |
-| [Embodiment](embodiment.md) | YAML loading, SEM entity issues, motor program failures, pain bus, cerebellum |
+| [Embodiment](embodiment.md) | YAML loading, SEM entity issues, pain bus, cerebellum (motor programs/engrams dormant) |
 | [Bio-Systems](biosystems.md) | Diagnosing bio-inspired subsystem issues using DM campaigns. Hippocampus recall, NAc learning, SCN temporal bins, ATL concepts, PainBus, Cerebellum, SensoryGate, ChooseTool. Pipeline audit script usage. |
 | [HTTP Debugging](http_debugging.md) | Outbound HTTP issues after Plan 1 R1. All calls route through `utils/http.py`; structured events + metrics. First stop when peer → leader calls fail. |
 | [Leader Proxy Debug](leader_proxy_debug.md) | LeaderProxy not reachable (404 / connection refused). Cloudflare tunnel routing to wrong port (8099 vs 8100). |

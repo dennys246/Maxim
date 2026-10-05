@@ -172,10 +172,10 @@ YAML Spec ──→ Entity Tree ──→ Auto-Generated Tools ──→ Agent
 | `embodiment/body.py` | Embodiment runtime (failure eval, vital drift, prompt state) |
 | `embodiment/percepts.py` | EmbodimentPerceptSource (1Hz polling, demand mode) |
 | `embodiment/reflex.py` | Innate reflex system (percept-pattern → pain/reaction) |
-| `embodiment/cerebellum.py` | Cerebellum forward models + motor program registry + engram formation/recall |
-| `embodiment/motor.py` | MotorProgram, MotorStep, ProgramRegistry, entity_state_similarity |
-| `embodiment/engrams.py` | MotorEngram, salience computation, formation decision logic |
-| `embodiment/backends/cerebellum_modulator.py` | CerebellumModulator (predict/fallback/train loop) |
+| `embodiment/cerebellum.py` | Cerebellum forward models (training live, persisted) + motor program registry + engram formation/recall (dormant) |
+| `embodiment/motor.py` | MotorProgram, MotorStep, ProgramRegistry, entity_state_similarity (dormant) |
+| `embodiment/engrams.py` | MotorEngram, salience computation, formation decision logic (dormant) |
+| `embodiment/backends/cerebellum_modulator.py` | CerebellumModulator (predict/fallback/train loop; dormant) |
 | `embodiment/component_registry.py` | ComponentRegistry — discover, load, instantiate entity templates |
 | `embodiment/component_index.py` | ComponentIndex — two-layer semantic discovery (alias + embedding) |
 
@@ -297,15 +297,32 @@ Two entities with the same name get progressively prefixed:
 
 ### Virtual Entities (Beyond Robotics)
 
-SEM works for any interactive entity. A sword, NPC, or door is just an Entity with sensors and modulators backed by `SpecModulator` stubs (or a `CerebellumModulator` with LLM fallback) instead of hardware. The cognitive stack (Cerebellum, NAc, engrams) learns from these interactions exactly as it learns from robot joints.
+SEM works for any interactive entity. A sword, NPC, or door is just an Entity with sensors and modulators backed by `SpecModulator` stubs instead of hardware. The cognitive stack learns from these interactions exactly as it learns from robot joints. (A `CerebellumModulator` backend with LLM fallback exists but is dormant: see below.)
 
-## Cerebellum (Phase 1a — Shipped)
+## Cerebellum: what runs and what is dormant
 
-The Cerebellum stores learned forward models: after observing that `rotate_angle(degrees=45)` on a shoulder consistently produces `angle=45.0`, it caches this prediction and skips the LLM entirely for future calls.
+**Runs:** forward-model *training*. After each SEM affordance executes, `embodiment/tool_bridge.py` calls
+`Cerebellum.observe_from_action` with the real `sensor.read()` values, and the model learns what that action
+does to the body. `build_bio_stack` builds the Cerebellum with its path bound to `<home>/cerebellum.json`, loads
+it at session start (unless the stack is write-but-don't-read) and saves it at session end. It was never written
+before [#908](https://github.com/dennys246/Maxim/issues/908). Like every other store, it never saves over a file
+it did not read, and an unreadable file is kept as `cerebellum.json.corrupt-<UTC>`.
+
+**Dormant (no production caller, [#909](https://github.com/dennys246/Maxim/issues/909)):** everything that
+*reads* the Cerebellum, that is prediction, the `CerebellumModulator` backend, motor-program crystallization and
+motor engrams. Each carries a `Dormant since` docstring; `tests/unit/test_cerebellum_dormant_909.py` fails the
+moment one gains a caller. Resurrection goes through roadmap 1.4 Phase 5's graded-predictor audit
+(`docs/plans/engram_formation.md` E7). The design below is what exists in code, not what runs.
+
+### Forward models
+
+A forward model learns, for example, that `rotate_angle(degrees=45)` on a shoulder consistently produces
+`angle=45.0`. The designed consumer, the dormant `CerebellumModulator`, would return that prediction and skip the
+LLM:
 
 ```python
 from maxim.embodiment.cerebellum import Cerebellum
-from maxim.embodiment.backends.cerebellum_modulator import cerebellum_modulator_factory
+from maxim.embodiment.backends.cerebellum_modulator import cerebellum_modulator_factory  # dormant
 
 cb = Cerebellum()
 factory = cerebellum_modulator_factory(cb, fallback_factory=llm_mod_factory)
@@ -313,53 +330,42 @@ attach_backends(root, modulator_factory=factory)
 ```
 
 Key properties:
-- **Rescorla-Wagner learning**: `expected += lr * (actual - expected)`
-- **Confidence threshold**: below 0.3 → LLM fallback, above 0.3 → cached prediction
-- **High-variance fallback**: uncertain models fall back to LLM
+- **Rescorla-Wagner learning**: `expected += lr * (actual - expected)` (live)
+- **Confidence threshold**: below 0.3 → LLM fallback, above 0.3 → cached prediction (dormant: no caller predicts)
+- **High-variance fallback**: uncertain models fall back to LLM (dormant)
 - **Per-key locks**: thread-safe concurrent predict/observe
 - **Param bucketing**: similar params (within 10% of range) share a model
-- **Persistence**: `<persistence_dir>/cerebellum.json` (default: `~/.maxim/memory/cerebellum.json`)
+- **Persistence**: `<home>/cerebellum.json`, bound by `build_bio_stack` and saved by `BioStack.on_session_end` (#908)
 
-## Motor Programs (Phase 1b — Shipped)
+### Motor programs (dormant)
 
-Motor programs are learned SEM action sequences. When the agent repeats the same sequence 3+ times for the same goal, the Cerebellum crystallizes it as a reusable program.
-
-The `ProgramRegistry` indexes programs in three directions:
-- **By goal**: "I want to reach forward" → matching programs
-- **By entity**: "I'm holding a sword" → programs involving swords
-- **By affordance**: "I want to slash" → programs with slash steps
+Designed: when the agent repeats the same sequence 3+ times for the same goal, the Cerebellum crystallizes it as a
+reusable program, indexed by goal, entity and affordance. Today nothing calls `observe_action_sequence`, so no
+program ever crystallizes, and the program read sites (`find_programs_for_*`, the memory agent, the adaptive
+planner, the acting coach's cerebellum layer) always receive `[]`.
 
 ```python
-# Query by entity → get all programs for that entity
-programs = cb.find_programs_for_entity("sword")
-
-# Query by affordance → get all entities that can do it
-programs = cb.find_programs_for_affordance("slash")
-
-# Unified search
-programs = cb.find_related_programs("attack")
+programs = cb.find_programs_for_entity("sword")       # always [] today
+programs = cb.find_programs_for_affordance("slash")   # always [] today
+programs = cb.find_related_programs("attack")         # always [] today
 ```
 
-### Motor Engrams
+### Motor engrams (dormant)
 
-Engrams are ephemeral hippocampal memories linked to motor programs via the associative graph. They form on significant outcomes (pain, surprise, novelty) and decay after ~2 days unless reinforced.
+Designed: a hippocampal memory linked to a motor program through the associative graph, formed on a significant
+outcome (pain, surprise, novelty), so that context could modulate how a program runs. Neither `form_engram` nor
+`query_engrams` has a production caller, no engram-specific decay exists, and nothing modulates motor execution.
 
-- Cerebellum stores the **how** (motor program steps)
-- Hippocampus stores the **when/where/what** (contextual episode)
-- The engram links them so context modulates future motor execution
+### Program executor (not built)
 
-### Program Executor
-
-Executes motor programs step by step with:
-- **Pain gate checks** before each step (abort if sensor near threshold)
-- **PainBus subscription** for mid-sequence interrupts
-- **Gate tightening** after painful executions (10% per failure)
+There is no program executor in `src/`. Pain-gate checks per step, PainBus mid-sequence interrupts and gate
+tightening after painful runs were designed, not built; `EngramConfig.gate_tightening_factor` has no reader.
 
 ## SEM Learning Loop (Phase 2 -- Shipped)
 
 When a SEM entity interaction produces a reaction (pain on failure, satisfaction on confident prediction), the signal flows through the full bio-pipeline:
 
-1. **CerebellumModulator** executes affordance -- emits failure reaction (NEGATIVE) or success reaction (POSITIVE)
+1. **The body** publishes pain when an affordance trips a failure mode (`embodiment/body.py` → PainBus). (The dormant `CerebellumModulator` was designed to emit failure/success reactions here; it has no production caller.)
 2. **ReactionBus** dispatches to subscribers:
    - `hippocampus.capture_reaction` -- episode valence annotation
    - `nac.distribute_reward` -- EC threshold adjustment
@@ -367,9 +373,9 @@ When a SEM entity interaction produces a reaction (pain on failure, satisfaction
 4. **Pain spike** -- `salience_spike_rule` closes the episode boundary
 5. **Future retrieval** -- `spreading_activation(propagate_valence=True)` carries affective memory
 
-### Success reactions (negativity bias)
+### Success reactions (negativity bias, dormant)
 
-CerebellumModulator emits `_emit_success_reaction` when confident enough to skip LLM fallback. Intensity is lower than failure (0.1-0.3 vs 0.3-0.5) -- biologically motivated negativity bias.
+The dormant `CerebellumModulator` would emit `_emit_success_reaction` when confident enough to skip LLM fallback. Intensity is lower than failure (0.1-0.3 vs 0.3-0.5) -- biologically motivated negativity bias.
 
 ### NAc reward distribution
 
@@ -377,7 +383,11 @@ CerebellumModulator emits `_emit_success_reaction` when confident enough to skip
 
 ### Cerebellum activation in production
 
-`BioStack.cerebellum` is now constructed by `build_bio_stack` and forwarded via `build_executor(cerebellum=...)` to `generate_tools_for_entity`, which creates `CerebellumModulator` instances with a wired `reaction_bus`. This means every SEM affordance tool now has a live Cerebellum backing it -- predictions, training, and reaction emission all happen automatically.
+`build_bio_stack` constructs `BioStack.cerebellum` and `build_executor(cerebellum=...)` forwards it to
+`generate_tools_for_entity`. The generated affordance tools *train* it after each execution
+(`observe_from_action`, real sensor readings) and report its confidence to `sim_cerebellum_train` telemetry.
+They do not create `CerebellumModulator` instances, so nothing predicts from it and it emits no reactions. Its
+state is saved at session end (#908).
 
 ### Behavioral convergence wiring (shipped 2026-04-17)
 

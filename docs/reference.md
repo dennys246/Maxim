@@ -141,7 +141,7 @@ Maxim uses neuroscience-inspired names. Here is the translation:
 | SCN | Internal clock | `time/` | Tracks circadian-like temporal patterns and rhythms. Kuramoto oscillator learns event-type co-occurrence for anticipatory temporal credit (B2) |
 | EC | Memory indexing + substrate recognition | `similarity/` | Routes queries via similarity; pattern_complete_or_separate for substrate nodes (P1) |
 | Angular Gyrus | Cross-modal algebra | `math/` | Combines memories across different modalities |
-| Cerebellum | Motor prediction | `embodiment/` | Predicts outcomes of physical actions, learns motor programs. Now activated in production via `BioStack.cerebellum` and `build_executor(cerebellum=...)` |
+| Cerebellum | Motor prediction | `embodiment/` | Forward model of physical actions: trains live from SEM affordance outcomes (`observe_from_action` in `embodiment/tool_bridge.py`) via `BioStack.cerebellum`, saved to `<home>/cerebellum.json` at session end (#908). `predict`, motor-program crystallization and motor engrams (Dormant since 2026-10-04, #909) and `CerebellumModulator` (since 2026-05-26) have no production caller |
 | Amygdala / Fear | Threat detection | `proprioception/` | Detects harm, triggers pain signals, gates risky actions |
 | Default Network | Reactive behavior | `default_network/` | Background processing, idle behaviors, spontaneous thoughts |
 | Valence | Affective edge signal | `memory/episode.py` | Affective signal on Hebbian edges (`Edge.metadata["valence"]`), computed from Reactions at episode close via `apply_hebbian_on_close`. Propagated by `spreading_activation(propagate_valence=True)` |
@@ -215,7 +215,7 @@ Observe state -> Agents propose intents -> Planners propose plans
 | SMS/Voice Comms | Send and receive texts/calls via Twilio |
 | Generative Campaigns | LLM-driven narrative arcs, bridge-and-compress for long campaigns |
 | Research Protocol | Multi-agent research: Researcher + Writer + Reviewer agents, dual-LLM, experiment tracking |
-| Embodiment | SEM protocol (Sensor-Entity-Modulator) for body definition, Cerebellum forward models, motor programs with engrams, ComponentIndex semantic discovery |
+| Embodiment | SEM protocol (Sensor-Entity-Modulator) for body definition, Cerebellum forward models (motor programs + engrams dormant, #909), ComponentIndex semantic discovery |
 | Imagination | Real-time entity design from novel percept mentions: entity extraction → ComponentIndex lookup → LLM design → ephemeral registration. DN arousal-gated, energy-budgeted. Imagined entities carry provenance tags on Episodes and CausalLinks |
 | Agent Mesh | Cooperative peer-to-peer network: knowledge sharing, task delegation, distributed planning, SCN clock sync |
 | Multi-LLM Scaling | Local + remote + cloud LLM backends, Cloudflare tunnel, per-tier model routing, hot-swap |

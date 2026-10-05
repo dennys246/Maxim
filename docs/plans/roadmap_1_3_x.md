@@ -71,7 +71,7 @@ Grouped by the axis each item lifts; the "to reach" conditions come from the car
 | **[1.3.1 — SHIPPED (#930)]** **`AgentInstance.export_memories()` always reports 0** — it reads `self.hippocampus.memories`, which does not exist, and an `except Exception` turns the error into `0`; `AgentPool.export_all_memories` propagates it; the documented example in `docs/user/python-api.md` prints "0 memories" beside a hippocampus holding one. | a test asserting the COUNT (both current tests are vacuous: one checks the key exists, the other that it is a dict) |
 | **[1.3.1 — SHIPPED (#930)]** **`create.agent`'s docstring example crashes** — `capture(perception="dark cave ahead")` raises `AttributeError`; `capture` does not validate its argument. | argument validation + a doctest-style test that runs the documented example |
 | **[1.3.1 — SHIPPED (#930)]** **`maxim.diagnose()` and `maxim doctor --json` disagree** (diagnose reports all-passed while the CLI exits 1 on a probe diagnose never runs). | a test pinning one probe set for both entry points |
-| **[→ 1.3.2]** **The silent-default swallow shape** — a handler that ASSIGNS a fallback instead of `pass`, which is what hid `export_memories` and which `lint_no_silent_swallows.py` cannot see. | extend the lint to that shape, as a ratchet on today's count (430 bare sites, 1,788 `except Exception` total) |
+| **[→ 1.3.2]** **The silent-default swallow shape** — a handler that ASSIGNS a fallback instead of `pass`, which is what hid `export_memories` and which `lint_no_silent_swallows.py` cannot see. | extend the lint to that shape, as a ratchet on today's count (430 bare sites, 1,788 `except Exception` total) *(Built 2026-10-04 in 1.3.2, PR pending: check 5 of `scripts/lint_no_silent_swallows.py`, 298 silent-default sites at the build, sharing one per-function pool with check 2's 415; checks 2, 3 and 5 credit verbatim moves and recorded edited moves (`scripts/swallow_moves.json`), so the decomposition slices do not trip them.)* |
 
 ### Maintainability (C → C+, the cheap half)
 
@@ -200,7 +200,9 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
 5. **Coverage as a ratchet — and a coverage push where the risk is** (widened 2026-09-27, owner). Baseline:
    the Codex card's whole-suite run at `v1.3.1` — **61.9% of 90,416 statements**, 31,797 uncovered
    ([evidence](../limits/score_cards/evidence/2026-09-27-codex/)). Three mechanisms, all in CI:
-   - **An overall floor and per-package floors** that only rise, set from that baseline.
+   - **An overall floor and per-package floors** that only rise, set from that baseline. *(Superseded
+     2026-10-04, owner: the floors are measured in CI's own environment on the gate PR, not taken from
+     this card baseline; see "Gate half built" below.)*
    - **Changed-line coverage ≥ 80% on every PR** (diff coverage), so new and moved code arrives tested
      whatever the file's history.
    - **A reviewed exclusion list** for code that needs a model or hardware (vision engines,
@@ -223,6 +225,30 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
    raises coverage without asserting behaviour does not count. Guard: the three CI checks above; the
    floors, the changed-line threshold and the exclusion list are committed files, and the lint fails
    on a floor that drops or an exclusion without a reason.
+   **Gate half built 2026-10-04, PR pending; floors bootstrapped from CI.** `scripts/lint_coverage.py`
+   runs in the `unit-tests` job after the fast suite, which now carries `--cov` in its single run
+   (`coverage==7.13.3`, `pytest-cov==7.0.0` pinned exactly; `fetch-depth: 0`; timeout 60). Owner decisions
+   2026-10-04: floors measured in CI's own environment on the gate PR and pinned rounded down to 0.1 pt
+   (not the v1.3.1 card number), as the minimum of two CI runs (`--merge-floors`); a new or changed floor
+   is verified against the measurement: a floor is lowered only to round_down(measured) and only when
+   uncovered statements did not grow, and its pinned `missing` never rises, so no PR chain can walk a floor
+   down; a scope fails below its floor or more than 1.0 pt above it; diff coverage
+   ≥ 80% of changed executable `src/maxim` statements against the merge-base, with moved code counted as
+   changed. `scripts/coverage_floors.json` holds an overall floor and one per package (first path
+   component; top-level modules as `maxim/<root>`; 200 statements or more, kept while the directory
+   exists), each with its pinned `missing` count: a floor drops only when `missing` does not rise (a
+   deletion of covered code). It is committed with `null` values: the gate PR's first CI run prints
+   the measured floors, and they are committed on the same branch. `scripts/coverage_exclusions.json` is
+   the reviewed exclusion list (today only `embodied_runtime/selfy.py`, with its reason) plus an
+   append-only ledger: each excluded file's statement count, and every file's count of `exclude_lines`
+   matches (`pragma: no cover`, `if TYPE_CHECKING:` and the rest, except an imports-only `TYPE_CHECKING`
+   block and a lone `raise NotImplementedError`), seeded at today's counts. A rise needs a new entry with
+   a `ref`. `pyproject.toml`'s `omit` is derived from the list exactly, and the whole
+   `[tool.coverage]` table, a second coverage config, banned pytest options, `COVERAGE_*` env and the
+   coverage API in tests are checked. **Open:** the model/hardware files named above are not omitted
+   today, so they are measured and counted; whether any join the list is an owner decision.
+   `covered_by` must be null until the model-cache nightly produces coverage data the lint can read. Guard: `tests/unit/test_lint_coverage.py` (each mechanism
+   deletion-proven).
 6. **One function-length ratchet** — nothing over 200 lines may grow, nothing new may exceed 200 — replacing
    the two mismatched mechanisms ([#940](https://github.com/dennys246/Maxim/issues/940)). Guard: the lint, with
    a per-function baseline.
@@ -240,15 +266,29 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
 7. **CI escape paths ([#940](https://github.com/dennys246/Maxim/issues/940))**: the `|| echo` optional install,
    the reason-less `importorskip`, the slow lane's expected roster, the network guard at the process-tree
    boundary. Guard: each lane fails on the escape.
+   **The importorskip half built 2026-10-04, PR pending:** `--require-extras` now refuses to start unless each
+   requirement's top-level module imports (`tests/conftest.py::_require_extras_importable`), and also reads pytest's
+   own "could not import" message for those modules. Owner decisions 2026-10-04 for the rest: the slow lane
+   installs and runs its tests (16 of 58 ran on the 2026-10-04 nightly) against an exact roster with reasoned
+   skips only; the unit-tests pytest step runs in a loopback-only network namespace, with no OS-level exception.
 8. **One source of truth for claims** (mechanization backlog M2). Guard: the claims-registry lint.
+   **Built 2026-10-04, PR pending** (owner decisions 2026-10-04: the ledger is the single source; the surfaces are linted,
+   not generated; v1 covers the README results table and the experiments index): `scripts/lint_claims_sync.py`. Each
+   README results row and each index row citing a ledger row carries `<!-- claim: T1-n -->` and must show that row's
+   status token and date verbatim, its scope word, a SUPERSEDED row's successor, and no other uppercase status token.
+   Every Tier 1 row is cited by the index; the one reasoned exemption is T1-5, which has no experiment doc. The README's
+   memory row now claims Exp 63 (T1-16, EARNED narrow), with Exp 10 named as superseded. It counts as a guard once its
+   CI lint step lands, with Session B's `test.yml` batch after #1092; then it also discharges
+   [#940](https://github.com/dennys246/Maxim/issues/940) item 2's guard (the README's Exp 10 row, corrected on 2026-09-27
+   with nothing to stop it drifting). Remaining surfaces: backlog M36.
 
 **Engram integrity (pulled in from 1.4's parallel line, 2026-09-27).** Its four engineering items gate
 1.4.0 (release threshold T7), touch no survival rung's path and run off the rig
 ([engram_formation.md](engram_formation.md)), so they fit the hardening line:
 [#908](https://github.com/dennys246/Maxim/issues/908) the Cerebellum is never saved (guard: a round trip
-that fails on today's default config); [#909](https://github.com/dennys246/Maxim/issues/909) the
+that fails on today's default config; done 2026-10-04); [#909](https://github.com/dennys246/Maxim/issues/909) the
 motor-engram docs overclaim and the read side is undeclared-dormant (guard: the Dormant docstring + a
-caller-grep test); [#910](https://github.com/dennys246/Maxim/issues/910) the `[DANGEROUS]` annotation is
+caller-grep test; done 2026-10-04); [#910](https://github.com/dennys246/Maxim/issues/910) the `[DANGEROUS]` annotation is
 unreachable (guard: a test that reaches it through the real annotator); [#911](https://github.com/dennys246/Maxim/issues/911)
 the text-only reward-widening drift hazard (an offline measurement committed as a record, not a fix).
 

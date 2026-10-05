@@ -797,8 +797,8 @@ class TestAffordanceTransferAnnotations:
         atl.store(concept)
         return atl
 
-    def test_sense_presence_annotates_dangerous(self):
-        """SensePresenceTool adds [DANGEROUS] for negative bias affordances."""
+    def test_sense_presence_leaves_a_negative_bias_unlabeled(self):
+        """No danger label, even for a negative bias no writer produces (#910): re-adding one fails here."""
         entity_map = MagicMock()
         entity = _make_entity(
             "dragon",
@@ -819,7 +819,8 @@ class TestAffordanceTransferAnnotations:
         )
         result = tool.execute()
         assert result.success
-        assert "DANGEROUS" in str(result.output)
+        assert "fire_breath" in str(result.output)
+        assert "DANGEROUS" not in str(result.output)
 
     def test_sense_presence_no_annotation_without_bias(self):
         """SensePresenceTool shows plain names when no bias exists."""
@@ -861,10 +862,12 @@ class TestAffordanceTransferAnnotations:
         assert result.success
         assert "fire_breath" in str(result.output)
 
-    def test_sense_tools_substrate_fallback_annotation(self):
-        """SenseToolsTool falls back to substrate concept bias."""
+    @pytest.mark.parametrize(("bias", "expected"), [(0.5, "similar affordance worked well"), (-0.1, "")])
+    def test_sense_tools_substrate_fallback_annotation(self, bias, expected):
+        """SenseToolsTool falls back to substrate concept bias: a rewarded concept reads "worked well"; a
+        negative bias (no writer produces one) reads as nothing, never "dangerous" (#910)."""
         # Store concepts for individual words — the ATL lookup is by exact name
-        nac = self._make_nac_with_bias("aut-1", "node-fire", -0.1)
+        nac = self._make_nac_with_bias("aut-1", "node-fire", bias)
         atl = self._make_atl_with_concept("fire", "node-fire")
 
         entity_map = MagicMock()
@@ -891,7 +894,5 @@ class TestAffordanceTransferAnnotations:
             atl=atl,
             agent_id="aut-1",
         )
-        # The tool name "rusty_sword_fire_slash" decomposes, and "fire"
-        # matches the ATL concept with negative bias → annotation
-        annotation = tool._nac_annotation("rusty_sword_fire_slash")
-        assert "caution" in annotation or "similar" in annotation
+        # The affordance "fire_slash" decomposes, and "fire" matches the ATL concept.
+        assert tool._nac_annotation("rusty_sword_fire_slash") == expected

@@ -25,6 +25,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Coverage is a CI gate** (roadmap 1.3.2 item 5, the gate half). The required fast suite now runs under
+  coverage in its one run (`coverage==7.13.3` and `pytest-cov==7.0.0`, pinned exactly), and
+  `scripts/lint_coverage.py` checks the result. There is an overall floor and one per package, measured in CI
+  and pinned rounded down to 0.1 pt. A run fails below a floor, and also more than 1.0 pt above one, until the
+  floor is raised. At least 80% of a pull request's changed executable `src/maxim` statements must be
+  covered, and moved code counts as changed (owner decisions 2026-10-04). `scripts/coverage_exclusions.json`
+  is a reviewed exclusion list: every entry has a reason, and a new one needs a ref. It also holds an
+  append-only ledger of excluded files' statement counts and each file's coverage-exclusion matches
+  (`pragma: no cover`, `if TYPE_CHECKING:` and the rest). **Packaging config:** `[tool.coverage.run] omit` in
+  `pyproject.toml` now lists exact paths taken from that file: `embodied_runtime/selfy.py`, which was a
+  `*/embodied_runtime/selfy.py` glob before. The rest of the `[tool.coverage]` table is fixed by the lint.
+  `pyproject.toml` is in the evidence gate's `SUBJECT_PATHS`, so that `omit` edit is an O19 subject change;
+  later floor and ledger edits live in `scripts/`, outside the subject.
+
 - **One function-length ratchet** (roadmap 1.3.2 item 6, #940 item 1). It replaces the two mismatched checks (a
   lint with three stale pins and a strict test on the same three functions) with `scripts/lint_function_length.py`
   and one baseline, `src/maxim/utils/function_length_baseline.json` (format v2). All 53 functions over 200 lines are
@@ -74,6 +88,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (DECISIONS.md, 2026-10-01).
 
 ### Fixed
+
+- **The Cerebellum's forward models are saved at session end, where they are loaded from** (#908, engram plan E1).
+  `build_bio_stack` loaded `<home>/cerebellum.json` by a hard-coded path, while `BioStack.save_cerebellum` saved
+  only to `CerebellumConfig.persistence_path`, which nothing set. So the three session-end callers each called a
+  no-op and every session's forward-model learning was thrown away; the brief's invariant cited the call as its
+  own guard. The builder now binds the path on the config that both `load` and `save` use, honours
+  `load_persisted` like NAc (#972), and the Cerebellum carries the #971 store guard (owner decision 2026-10-04):
+  it never saves over a file it did not read, and an unreadable file is kept as `cerebellum.json.corrupt-<UTC>`
+  (`Cerebellum.load_safe`). A session-end save never raises: a refusal or a failed write is logged at ERROR, and
+  the distributor cleanup and any harness staging after it carry on. The hand-rolled fallback writer in
+  `Cerebellum.save` is gone, and `save()`/`load()`/`load_safe()` on a Cerebellum with no path given or configured
+  now raise `ValueError` (they returned/no-op'd before; no production caller does this). No behaviour changes:
+  nothing but `sim_cerebellum` telemetry reads the forward models (#909), and that confidence now carries across
+  sessions in a reused home. Saved on the AgentInstance, bio-stack and Minecraft-harness session ends; the Reachy
+  runtime neither trains nor saves it. Hivemind bundles still exclude the Cerebellum (the exporter packs only
+  `nac.json` and `ec.json`). Trigger walk: no row fires (`behavioral_graduation_candidates.md`, 2026-10-04).
+  Guard: `tests/unit/test_cerebellum_persist_908.py`.
+- **The Cerebellum's read side is marked Dormant, and the docs say what runs** (#909, engram plan E2).
+  `Cerebellum.predict`, `query_engrams`, `observe_action_sequence` and `ProgramRegistry.observe_sequence` carry
+  `Dormant since 2026-10-04: no production caller`, as do `cleanup_program` and the `embodiment/engrams.py`
+  module (beside the existing markers on `form_engram`, `cerebellum_modulator_factory` and now the
+  `CerebellumModulator` class); `EngramConfig.gate_tightening_factor` is marked unread.
+  `docs/embodiment_guide.md`, `docs/skills.md` and `docs/embodiment_yaml_reference.md` no longer describe motor
+  engrams, program crystallization, a program executor or a live `CerebellumModulator` as running: only
+  forward-model training runs. The same correction runs through the troubleshooting guides, `reference.md`,
+  `index.md`, the wiring README and the roadmaps. Guard: `tests/unit/test_cerebellum_dormant_909.py` fails when a dormant symbol
+  gains a caller.
+- **The affordance annotators no longer promise a danger label they cannot produce** (#910, engram plan E3).
+  `SensePresenceTool._annotate_aff`, `BioEnrichmentPipeline._annotate_affordance_valence` and
+  `SenseToolsTool._nac_annotation`'s substrate fallback printed a danger label when `NAc.reward_bias` was
+  negative, but every writer clamps `reward_bias` to `[0, max]`, so an affordance that hurt the agent read the
+  same as one it never tried. The unreachable branches and the docstrings that advertised them are gone (owner
+  decisions 2026-10-04): these annotations are `[effective]` (`sense_tools`: "similar affordance worked well") or nothing, and harm can
+  only remove that label.
+  `sense_tools` still shows learned harm from negative causal links (`caution: …`). No behaviour changes for any
+  state a writer produces; `NAc.load_state` does not re-clamp yet (#1102). `discovery.py`'s two
+  `except Exception: pass` now report through `log_swallowed_exception`. Reading the stores that do hold harm
+  is deferred, with a strict-xfail revive marker. Guard: `tests/unit/test_affordance_danger_label_910.py` plus
+  the injected-negative-bias tests in `test_tool_discovery.py` / `test_bio_enrichment.py`.
+
+- **`damage_component` aimed at a part the body does not have now fails instead of reporting damage that never
+  landed** (#873, the no-silent-fallback half). The tool used to subtract the damage from the root
+  `vital_metrics["health"]`, publish pain and return `success=True`. On a derived-health body the same call's
+  `evaluate_failures()` re-derived health from the parts, so the damage vanished; on a flat-`hp` body (`wolf`) it
+  landed on an orphan `health` key. It now returns a retryable `INVALID_INPUT` error naming the parts that can
+  take damage, and writes nothing and publishes no pain. A reflex aimed at a missing part is therefore booked
+  `failed`, not `acted`. The bodies whose archetype reflexes target parts they lack now fail every damage reflex.
+  Their damage never landed there before either, but they published pain and counted as a response. Humanoid
+  (`torso`/`legs`): the `reachy_mini` bodies (incl. the Exp 54 cradle body `reachy_mini_infant`), the `minecraft_*`
+  bodies, `creatures/revenant`, `creatures/skeleton_warrior` and the `npcs/*`. Quadruped (`torso`/`wing`/`combat`):
+  wolf, `vehicles/horse`, cyberdog, giant_spider, alien_xenomorph. None of these has a damageable part, so on them
+  `damage_component` cannot land at all, from the narrator or a reflex: a narrative sim on one of them (e.g. a cradle
+  sim with `--embodiment bodies/reachy_mini_infant`) now books those reflexes `failed`, and they re-dispatch where
+  they used to act. Exp 54's Phase B/C readout harness builds no reflex registry and is unaffected.
+  `bodies/base_humanoid` (the default), the infant bodies and `creatures/dragon` have every targeted part.
+  The output's `fallback_to_entity` key is gone. Failing a missing part is the roadmap's interim; whether to resolve
+  it to a default or nearest part stays open, with the other three design points (sum vs weighted mean, partless
+  bodies, archetype reflex sets), in `docs/plans/deferred/reflex_layering.md`. The narrator prompt still suggests
+  parts the default body lacks (#1093, Session A's file). Ledger: T3-9 (Exp 09)'s "SEM body change" trigger fired
+  and is discharged by its evidence run, which never took the fallback (see `behavioral_graduation_candidates.md`).
+  Guard: `tests/unit/test_damage_component_no_fallback.py`.
+- **A tool failure whose pain was dropped no longer switches off world-driven body-pain learning for the rest of
+  the session** (#851). `ToolPainBridge` kept each running invocation pending until its completion, embodiment
+  failure or failure pain arrived. A failure whose pain never reached the bridge (a repeat failure inside the
+  PainDetector cooldown, the PainBus refractory gate, or no detector wired, which is every failed call in the
+  Minecraft harness) stayed pending forever, and `_on_embodiment_pain` skips attribution while anything is pending,
+  so out-of-band embodiment pain stopped reaching NAc without a word. `Executor.execute` now retires the invocation
+  (`ToolPainBridge.finish_invocation`) in a `finally` around the started invocation (`Executor._run_started`), so every
+  exit retires it, raises included; `_pending_tools`/`_pending_contexts` no longer grow without bound. Ledger: the
+  trigger walk fired T1-4, T1-13, T1-14, T1-15 and T3-9 and discharged each structurally (the out-of-band path
+  creates no causal link and cannot move `_reward_bias`; see `behavioral_graduation_candidates.md`). Guard:
+  `tests/unit/test_tool_pain_pending_leak.py`.
 
 - **An approved PLANNING proposal no longer ends the run, and is credited to the situation it was proposed in**
   (#1083, owner decision 2026-10-04). The autonomy `Proposal` the loop queues for approval had no

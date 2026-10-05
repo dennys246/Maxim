@@ -132,6 +132,10 @@ def main() -> int:
             ),
         )
     except GitUnavailable as exc:
+        # The base resolved, then git failed inside the ratchet: no verdict. On a pull request or push that is an
+        # error, not a pass (it was a silent INFO + return 0, #1098).
+        if must_not_skip(f"git failed mid-run: {exc}"):
+            return 2
         print(f"INFO: diff-scoped ratchet skipped mid-run ({exc})")
         return 0
     if fails:

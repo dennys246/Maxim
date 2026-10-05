@@ -211,7 +211,7 @@ This is normal between poll intervals. The source only produces percepts at the 
 source = EmbodimentPerceptSource(emb, poll_hz=10)  # 10 Hz
 ```
 
-Or enable demand mode during motor program execution:
+Or enable demand mode for a burst of high-rate reads:
 
 ```python
 source.set_demand_mode(True, hz=30)  # 30 Hz during demand
@@ -229,7 +229,7 @@ The `EmbodimentPerceptSource` reads sensors at the configured poll rate and appl
 
 ### NPC trust/mood not changing
 
-Virtual entity sensors read from `entity.vital_metrics`. If you're using `SpecModulator` stubs (no LLM backend), they return success but don't modify state. Attach backends:
+Virtual entity sensors read from `entity.vital_metrics`. If you're using `SpecModulator` stubs (no LLM backend), they return success but don't modify state. Attach a backend that applies changes. A `CerebellumModulator` backend exists, but it is **Dormant since 2026-05-26** (#909 records it) — no production path or SEM tool uses it, and nothing new should build on it:
 
 ```python
 from maxim.embodiment.backends.cerebellum_modulator import cerebellum_modulator_factory
@@ -241,17 +241,17 @@ factory = cerebellum_modulator_factory(cb, fallback_factory=None)
 attach_backends(root, modulator_factory=factory)
 ```
 
-Without a LLM fallback the `CerebellumModulator` returns a no-op result, which is the same behaviour as the raw `SpecModulator` stubs — but it enables Cerebellum learning once observations accumulate.
+Without a LLM fallback the `CerebellumModulator` returns a no-op result, which is the same behaviour as the raw `SpecModulator` stubs. You do not need it for Cerebellum learning: the live forward model trains from every SEM affordance execution via `embodiment/tool_bridge.py` (`observe_from_action`), whatever backend applied the change.
 
 ### Item durability not degrading
 
-Same issue — without a backend, modulator execution is a no-op. See above for attaching a `CerebellumModulator` backend which applies learned or heuristic changes to sensor values.
+Same issue — without a backend, modulator execution is a no-op. Attach a backend that applies changes to sensor values (see above; the `CerebellumModulator` shown there is dormant and is not used by any production path).
 
 ## Cerebellum Issues
 
-### Cerebellum not caching predictions
+### Cerebellum confidence not rising
 
-The Cerebellum needs enough observations to build confidence. Predictions require `confidence >= 0.3` (default), which takes ~2 observations. Check:
+The forward model trains live (`observe_from_action` after each SEM affordance; confidence is reported in the `sim_cerebellum` telemetry). Note that `Cerebellum.predict` is **Dormant since 2026-10-04 (#909)** — nothing in production reads predictions, so "no predictions" is expected; what you can check is confidence. A model needs `confidence >= 0.3` (default) before `predict` would return it, which takes ~2 observations. Check:
 
 ```python
 cb.get_confidence("arm.shoulder", "motor", "rotate_angle", {"degrees": 45})
@@ -274,32 +274,34 @@ If you need wider buckets, increase `range_fraction` in `bucket_params()` or red
 
 ### Cerebellum state not persisting
 
-Check that `persistence_path` is set:
+`build_bio_stack(persistence_dir=...)` binds the Cerebellum to `<persistence_dir>/cerebellum.json` — the agent home, **not** `~/.maxim/memory/` — loads it at session start (unless `load_persisted=False`) and saves it in `BioStack.on_session_end` (#908). A stack built without a persistence dir has no Cerebellum. If the file does not appear:
+
+1. **Session never ended cleanly** — the save happens only in `on_session_end`; a killed process saves nothing.
+2. **Save refused** — look for `Cerebellum not saved: ...` at ERROR. The #971 store guard never saves over a file the store did not read; if the load failed, the unreadable file was kept as `cerebellum.json.corrupt-<UTC>` and the fresh store saves in its place.
+3. **Reachy embodied runtime** — `embodied_runtime/agentic_runtime.py` neither trains nor saves a Cerebellum, so it writes no file. It does build a bio stack on `user_memory()`, so it loads `~/.maxim/memory/cerebellum.json` if one exists there, and an unreadable one there is copied aside like anywhere else.
+
+Standalone use binds the path yourself:
 
 ```python
 from maxim.embodiment.cerebellum import Cerebellum, CerebellumConfig
 
-cb = Cerebellum(CerebellumConfig(persistence_path="~/.maxim/memory/cerebellum.json"))
+cb = Cerebellum(CerebellumConfig(persistence_path="/path/to/home/cerebellum.json"))
 cb.save()  # Explicit save
 cb.load()  # Explicit load
 ```
 
-When using `build_bio_stack(persistence_dir=...)`, Cerebellum state is saved automatically to `<persistence_dir>/cerebellum.json` (default: `~/.maxim/memory/cerebellum.json`).
-
 ## Motor Program Issues
+
+**Motor programs are Dormant since 2026-10-04 (#909).** Program crystallization (`observe_action_sequence` / `ProgramRegistry.observe_sequence`) has no production caller, so no program ever forms and every `find_programs_*` / `find_related` read returns `[]`. There is no program executor in `src/`. The entries below describe the dormant code for anyone reviving it (see [docs/plans/engram_formation.md](../plans/engram_formation.md) E7); in a normal run they are not applicable.
 
 ### Programs not crystallizing
 
-Motor programs need the same SEM sequence (same entity paths, modulators, affordances in the same order) to recur 3+ times. Params can vary — they're bucketed and averaged. Check:
+Expected today — nothing calls the crystallization path. When called directly, motor programs need the same SEM sequence (same entity paths, modulators, affordances in the same order) to recur 3+ times. Params can vary — they're bucketed and averaged. Check:
 
 ```python
 cb.programs.stats()
 # Look at "pending_observations" — if > 0, sequences are being tracked but haven't hit 3 yet
 ```
-
-### Program executor hangs
-
-If using `PainBus`, ensure you're not holding any locks that the pain callback also needs. The executor subscribes to PainBus during execution and unsubscribes after. If execution raises an exception, unsubscribe still happens (finally block).
 
 ### Pain gate not triggering
 
@@ -311,13 +313,15 @@ entity.vital_metrics["angle"] = 176  # Must be set for gate to check
 
 ### Motor program not appearing in prompt
 
-The `StructuredContext.motor_programs` field must be populated by the MemoryAgent or the code that assembles the context. Currently the AdaptivePlanner checks `cerebellum.find_related_programs()` during `propose_plans()`. For prompt injection, the motor programs need to be added to the context before the PromptBuilder runs.
+Expected — not a wiring bug. `MemoryAgent.build_context()` fills `StructuredContext.motor_programs` from `cerebellum.programs.find_related()`, and the AdaptivePlanner checks `cerebellum.find_related_programs()` during `propose_plans()`, but with crystallization dormant both always return `[]`, so the motor-programs prompt section is always empty.
 
 ## Engram Issues
 
+**Motor engrams are Dormant** (`form_engram` since 2026-09-22, the rest since 2026-10-04; #909). `form_engram`, `query_engrams` and `cleanup_program` (`embodiment/engrams.py`) have no production caller: no engram forms or is recalled in a normal run. The entries below describe the dormant code for anyone reviving it.
+
 ### Engrams not forming
 
-Engrams only form on significant outcomes:
+Expected today — nothing calls `form_engram`. When called directly, engrams only form on significant outcomes:
 - Pain intensity > 0.3
 - RPE magnitude > 0.3
 - Novelty > 0.7
@@ -327,7 +331,7 @@ Routine successes on confident programs do NOT create engrams. This is intention
 
 ### Engrams not affecting behavior
 
-Engrams modulate behavior through the Cerebellum's `query_engrams()` method. This requires:
+Expected today — `query_engrams()` has no production caller, so engrams affect nothing. When called directly, recall requires:
 1. A hippocampus instance passed to the Cerebellum
 2. Engram graph nodes (`cerebellum:program:{name}`) in the hippocampal graph
 3. Context similarity > 0.3 between remembered and current entity states

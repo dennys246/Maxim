@@ -15,7 +15,7 @@
 
 The temporal credit integration (Phases 1-7) enables three capabilities not present before:
 
-1. **Cross-session affordance transfer**: negative reward bias on fire-related substrate nodes persists across sessions, causing `[DANGEROUS]` annotations on novel fire affordances without direct experience
+1. **Cross-session affordance transfer**: negative reward bias on fire-related substrate nodes persists across sessions, causing `[DANGEROUS]` annotations on novel fire affordances without direct experience. **(2026-10-04: this criterion cannot pass. `reward_bias` is clamped to ≥ 0, so the label never fired, and it was removed in [#910](https://github.com/dennys246/Maxim/issues/910); a re-run must not report its absence as a finding. Reading the stores that hold harm is #910's deferred option 1.)**
 2. **Goal-level deliberation learning**: `_goal_reward_bias` accumulates across turns, modulating ThoughtGate threshold bidirectionally (positive = deliberate more, negative = act faster)
 3. **Temporal credit fallback**: after fast-decay eligibility traces expire, phase-similarity anchors still enable credit distribution via `TemporalCreditDistributor`
 

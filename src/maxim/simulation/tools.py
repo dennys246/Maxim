@@ -12,7 +12,7 @@ import math
 import time
 from typing import TYPE_CHECKING, Any
 
-from maxim.tools.base import Tool, ToolOutput
+from maxim.tools.base import Tool, ToolErrorKind, ToolOutput
 from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
@@ -422,6 +422,13 @@ def _unit_interval_arg(kwargs: dict[str, Any], key: str, default: float) -> tupl
     return value, None
 
 
+def _takes_damage(component: Any) -> bool:
+    """A body part ``damage_component`` can land on: it applies damage and has sensors to carry it."""
+    return (
+        component is not None and hasattr(component, "apply_damage") and bool(getattr(component, "vital_metrics", None))
+    )
+
+
 class DamageComponentTool(Tool):
     """Apply SEM damage to a specific body component (modulator).
 
@@ -441,11 +448,11 @@ class DamageComponentTool(Tool):
     name = "damage_component"
     description = (
         "Apply damage to a specific body part of the agent. Specify which "
-        "component (e.g., 'head', 'wing', 'torso', 'leg') and the damage "
+        "component the body has (e.g., 'torso', 'legs', 'arms' on a humanoid) and the damage "
         "amount (0.0 to 1.0). Use when a scene entity attacks or the "
         "environment causes harm. The agent will feel pain proportional to "
-        "the damage. If no matching component exists, damage falls back to "
-        "entity-level health."
+        "the damage. Naming a part the body does not have fails, and the "
+        "error lists the parts that can take damage."
     )
     input_schema = {
         "component": (str, "torso"),  # modulator name
@@ -474,26 +481,23 @@ class DamageComponentTool(Tool):
         if root is None:
             return ToolOutput(success=False, error="No root entity")
 
-        # Try to find the target component (modulator)
+        # Damage lands on a part or not at all (#873). A missing or sensorless part used to fall back to
+        # decrementing the root ``health`` and report success: on a derived-health body the same call's
+        # evaluate_failures() re-derived health from the parts and the damage vanished; on a flat-``hp``
+        # body it landed on an orphan ``health`` key. How a partless body should take damage is
+        # docs/plans/deferred/reflex_layering.md's open question, not a silent default here.
         component = root.get_component(component_name)
-        new_integrity = None
-        fallback = False
-
-        if (
-            component is not None
-            and hasattr(component, "apply_damage")
-            and hasattr(component, "vital_metrics")
-            and component.vital_metrics
-        ):
-            # Component has sub-sensors — apply component-level damage
-            new_integrity = component.apply_damage(amount, damage_type)
-        else:
-            # Fallback: no component sensors or unknown component name.
-            # Apply to entity-level health (backward compat with old specs).
-            fallback = True
-            old_health = root.vital_metrics.get("health", 1.0)
-            new_health = max(0.0, old_health - amount)
-            root.vital_metrics["health"] = new_health
+        if not _takes_damage(component):
+            parts = sorted(name for name, mod in getattr(root, "modulators", {}).items() if _takes_damage(mod))
+            return ToolOutput(
+                success=False,
+                error=(
+                    f"Body {root.name!r} has no part {component_name!r} that can take damage. "
+                    + (f"Parts that can: {', '.join(parts)}." if parts else "It has no parts that can take damage.")
+                ),
+                error_kind=ToolErrorKind.INVALID_INPUT,
+            )
+        new_integrity = component.apply_damage(amount, damage_type)
 
         # Publish pain IMMEDIATELY — proportional to damage amount.
         pain_bus = getattr(self._embodiment, "_pain_bus", None)
@@ -516,11 +520,8 @@ class DamageComponentTool(Tool):
                 }
                 if damage_type:
                     context["damage_type"] = damage_type
-                if new_integrity is not None:
-                    context["component_integrity"] = new_integrity
-                    context["sensor_readings"] = {f"{component_name}.integrity": new_integrity}
-                else:
-                    context["sensor_readings"] = {"health": root.vital_metrics.get("health", 0.0)}
+                context["component_integrity"] = new_integrity
+                context["sensor_readings"] = {f"{component_name}.integrity": new_integrity}
 
                 signal = PainSignal(
                     pain_type=PainType.EXTERNAL_SIGNAL,
@@ -539,19 +540,11 @@ class DamageComponentTool(Tool):
         try:
             from maxim.simulation.sim_logger import sim_log
 
-            if fallback:
-                sim_log(
-                    "SEM_DAMAGE",
-                    f"component damage (fallback to entity health): "
-                    f"health → {root.vital_metrics.get('health', 0.0):.2f} "
-                    f"(source={source}, amount={amount:.2f})",
-                )
-            else:
-                sim_log(
-                    "SEM_DAMAGE",
-                    f"component damage: {component_name}.integrity → {new_integrity:.2f} "
-                    f"(source={source}, amount={amount:.2f}" + (f", type={damage_type}" if damage_type else "") + ")",
-                )
+            sim_log(
+                "SEM_DAMAGE",
+                f"component damage: {component_name}.integrity → {new_integrity:.2f} "
+                f"(source={source}, amount={amount:.2f}" + (f", type={damage_type}" if damage_type else "") + ")",
+            )
         except Exception:
             pass
 
@@ -559,12 +552,10 @@ class DamageComponentTool(Tool):
             "component": component_name,
             "damage": round(amount, 2),
             "source": source,
-            "fallback_to_entity": fallback,
             "pain_triggered": len(failures) > 0,
             "failure_modes": [f.failure_name for f in failures],
+            "integrity": round(new_integrity, 2),
         }
-        if new_integrity is not None:
-            output["integrity"] = round(new_integrity, 2)
         if damage_type:
             output["damage_type"] = damage_type
 

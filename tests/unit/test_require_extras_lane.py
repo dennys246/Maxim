@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import required_extra_skip
+from tests.conftest import extra_import_names, required_extra_skip
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -27,10 +27,30 @@ REPO = Path(__file__).resolve().parents[2]
         ("signed bundles need the [sign] extra (cryptography)", {"console", "sign"}, "sign"),
         ("signed bundles need the [sign] extra (cryptography)", {"console"}, None),  # not required here
         ("requires pretrained model/dataset assets", {"console", "sign"}, None),  # a different skip
+        # pytest's own importorskip message, for a call with no reason= (#940 item 4)
+        ("could not import 'cryptography': No module named 'cryptography'", {"sign"}, "sign"),
+        ("could not import 'cryptography.hazmat': No module named 'cryptography'", {"sign"}, "sign"),
+        ("could not import 'fastapi': No module named 'fastapi'", {"console", "sign"}, "console"),
+        ("could not import 'cryptography': No module named 'cryptography'", {"console"}, None),
+        ("could not import 'cryptographyx': No module named 'cryptographyx'", {"sign"}, None),
     ],
 )
 def test_the_reasons_the_lane_reads(reason, required, expected):
     assert required_extra_skip(reason, required) == expected
+
+
+def _extras_importable(tmp_path: Path) -> dict[str, str]:
+    """An env where every console/sign module imports, whatever this box has installed.
+
+    ``--require-extras`` refuses to start when an extra's modules do not import, so the skip-matcher tests
+    below would otherwise test the box (exit 4 without the extras) instead of the matcher."""
+    import os
+
+    stubs = tmp_path / "extra_stubs"
+    stubs.mkdir(exist_ok=True)
+    for name in extra_import_names("console") + extra_import_names("sign"):
+        (stubs / f"{name}.py").write_text("")
+    return {**os.environ, "PYTHONPATH": os.pathsep.join([str(stubs), os.environ.get("PYTHONPATH", "")])}
 
 
 def _run(tmp_path: Path, *flags: str) -> subprocess.CompletedProcess[str]:
@@ -52,6 +72,7 @@ def _run(tmp_path: Path, *flags: str) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
         check=False,
+        env=_extras_importable(tmp_path),
     )
 
 
@@ -81,7 +102,90 @@ def test_a_skipif_marker_for_a_required_extra_fails_the_lane_too(tmp_path):
         )
     )
     args = [sys.executable, "-m", "pytest", "-q", "-p", "tests.conftest", "-p", "no:cacheprovider", str(test)]
-    required = subprocess.run([*args, "--require-extras=sign"], cwd=REPO, capture_output=True, text=True, check=False)
+    env = _extras_importable(tmp_path)
+    required = subprocess.run(
+        [*args, "--require-extras=sign"], cwd=REPO, capture_output=True, text=True, check=False, env=env
+    )
     assert required.returncode == 1 and "the 'sign' extra is required on this lane" in required.stdout, required.stdout
-    optional = subprocess.run(args, cwd=REPO, capture_output=True, text=True, check=False)
+    optional = subprocess.run(args, cwd=REPO, capture_output=True, text=True, check=False, env=env)
     assert optional.returncode == 0 and "1 skipped" in optional.stdout, optional.stdout
+
+
+def test_the_extras_import_names_come_from_pyproject():
+    """Known answer: today's console/sign requirements. A distribution whose import name differs from its
+    requirement name would need a mapping, and installed ones are checked against their real top-level modules."""
+    from importlib.metadata import packages_distributions
+
+    assert extra_import_names("console") == ("fastapi", "uvicorn")
+    assert extra_import_names("sign") == ("cryptography", "rfc8785")
+    modules_of: dict[str, set[str]] = {}
+    for module, dists in packages_distributions().items():
+        for dist in dists:
+            modules_of.setdefault(dist.lower().replace("-", "_"), set()).add(module)
+    for name in extra_import_names("console") + extra_import_names("sign"):
+        if name in modules_of:  # installed: the requirement's own distribution provides the derived module
+            assert name in modules_of[name], (name, modules_of[name])
+
+
+def test_a_reasonless_importorskip_of_a_required_extra_fails_the_lane(tmp_path):
+    """The escape #940 item 4 named: ``pytest.importorskip("cryptography")`` with no reason= skipped with
+    pytest's own message and slipped past ``--require-extras``. ``sys.modules[...] = None`` makes the import
+    fail here whether or not the extra is installed."""
+    test = tmp_path / "test_reasonless.py"
+    test.write_text(
+        textwrap.dedent(
+            """
+            import sys
+            import pytest
+
+            sys.modules["rfc8785"] = None
+
+            def test_signed():
+                pytest.importorskip("rfc8785")
+            """
+        )
+    )
+    args = [sys.executable, "-m", "pytest", "-q", "-p", "tests.conftest", "-p", "no:cacheprovider", str(test)]
+    env = _extras_importable(tmp_path)
+    required = subprocess.run(
+        [*args, "--require-extras=sign"], cwd=REPO, capture_output=True, text=True, check=False, env=env
+    )
+    assert required.returncode == 1 and "the 'sign' extra is required on this lane" in required.stdout, required.stdout
+    optional = subprocess.run(args, cwd=REPO, capture_output=True, text=True, check=False, env=env)
+    assert optional.returncode == 0 and "1 skipped" in optional.stdout, optional.stdout
+
+
+def _configure_only(tmp_path: Path, *flags: str, block: str | None = None) -> subprocess.CompletedProcess[str]:
+    """Run pytest on a trivial test; ``block`` makes that module unimportable before conftest configures."""
+    (tmp_path / "test_trivial.py").write_text("def test_ok():\n    pass\n")
+    import os
+
+    plugins: list[str] = []
+    env = _extras_importable(tmp_path)  # every other extra module imports, so only ``block`` can be the miss
+    if block is not None:
+        (tmp_path / "block_extra_module.py").write_text(f"import sys\nsys.modules[{block!r}] = None\n")
+        plugins = ["-p", "block_extra_module"]
+        env["PYTHONPATH"] = os.pathsep.join([str(tmp_path), env["PYTHONPATH"]])
+    return subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", *plugins, "-p", "tests.conftest", "-p", "no:cacheprovider"]
+        + [str(tmp_path / "test_trivial.py"), *flags],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+
+def test_a_lane_whose_required_extra_does_not_import_refuses_to_start(tmp_path):
+    """The positive half: whatever shape a test's skip takes, the lane cannot run without the extra."""
+    refused = _configure_only(tmp_path, "--require-extras=sign", block="rfc8785")
+    assert refused.returncode == 4, refused.stdout + refused.stderr  # pytest's UsageError exit
+    assert "the 'sign' extra is required on this lane, but 'rfc8785' does not import" in refused.stderr
+    # the control: the same blocked module without the flag is not the lane's business
+    assert _configure_only(tmp_path, block="rfc8785").returncode == 0
+
+
+def test_an_undeclared_extra_is_refused(tmp_path):
+    refused = _configure_only(tmp_path, "--require-extras=sing")
+    assert refused.returncode == 4 and "pyproject.toml declares no 'sing' extra" in refused.stderr, refused.stderr

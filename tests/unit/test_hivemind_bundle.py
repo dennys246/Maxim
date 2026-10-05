@@ -162,7 +162,7 @@ def test_an_unsigned_bundle_names_no_signer(tmp_path: Path) -> None:
 def test_a_release_signer_identity_round_trips(tmp_path: Path) -> None:
     """A release's ``signer_identity`` (now inside the signature) survives compose → extract →
     read_bundle_manifest unchanged, and the detached signature member does not break extract."""
-    pytest.importorskip("cryptography")
+    pytest.importorskip("cryptography", reason="signed bundles need the [sign] extra (cryptography)")
     from maxim.hivemind.signing import BundleSigner
     from tests.unit._signed_bundle_helpers import release
 

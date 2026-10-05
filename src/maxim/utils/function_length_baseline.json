@@ -161,7 +161,7 @@
     {
       "file": "src/maxim/runtime/bio_stack.py",
       "qualname": "build_bio_stack",
-      "lines": 527
+      "lines": 510
     },
     {
       "file": "src/maxim/runtime/bootstrap.py",
@@ -172,11 +172,6 @@
       "file": "src/maxim/runtime/bootstrap.py",
       "qualname": "build_tool_registry",
       "lines": 269
-    },
-    {
-      "file": "src/maxim/runtime/executor.py",
-      "qualname": "Executor.execute",
-      "lines": 219
     },
     {
       "file": "src/maxim/runtime/lane_backends.py",
