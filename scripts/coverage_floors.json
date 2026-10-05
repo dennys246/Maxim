@@ -4,168 +4,168 @@
   "min_package_statements": 200,
   "overall": {
     "percent": 65.8,
-    "missing": 31516
+    "missing": 31407
   },
   "packages": {
     "maxim/<root>": {
       "percent": 52.5,
-      "missing": 1524
+      "missing": 1520
     },
     "maxim/agents": {
       "percent": 67.3,
-      "missing": 2192
+      "missing": 2185
     },
     "maxim/analysis": {
       "percent": 86.9,
-      "missing": 86
+      "missing": 85
     },
     "maxim/attention": {
       "percent": 32.5,
-      "missing": 595
+      "missing": 594
     },
     "maxim/bridges": {
       "percent": 50.6,
-      "missing": 730
+      "missing": 728
     },
     "maxim/comms": {
       "percent": 25.1,
-      "missing": 220
+      "missing": 219
     },
     "maxim/console": {
       "percent": 86.2,
-      "missing": 178
+      "missing": 176
     },
     "maxim/data": {
       "percent": 11.1,
-      "missing": 286
+      "missing": 285
     },
     "maxim/decisions": {
       "percent": 91.7,
-      "missing": 148
+      "missing": 146
     },
     "maxim/default_network": {
       "percent": 40.6,
-      "missing": 1322
+      "missing": 1319
     },
     "maxim/doctor": {
       "percent": 69.9,
-      "missing": 500
+      "missing": 498
     },
     "maxim/embodied_runtime": {
       "percent": 31.7,
-      "missing": 2051
+      "missing": 2047
     },
     "maxim/embodiment": {
       "percent": 81.3,
-      "missing": 709
+      "missing": 705
     },
     "maxim/energy": {
       "percent": 52.7,
-      "missing": 140
+      "missing": 139
     },
     "maxim/hardware": {
       "percent": 78.0,
-      "missing": 349
+      "missing": 347
     },
     "maxim/harm": {
       "percent": 40.2,
-      "missing": 260
+      "missing": 259
     },
     "maxim/hivemind": {
       "percent": 90.6,
-      "missing": 338
+      "missing": 334
     },
     "maxim/imagination": {
       "percent": 86.5,
-      "missing": 82
+      "missing": 81
     },
     "maxim/inference": {
       "percent": 22.3,
-      "missing": 544
+      "missing": 543
     },
     "maxim/integration": {
       "percent": 68.3,
-      "missing": 438
+      "missing": 436
     },
     "maxim/interactive": {
       "percent": 33.7,
-      "missing": 485
+      "missing": 484
     },
     "maxim/math": {
       "percent": 45.1,
-      "missing": 605
+      "missing": 603
     },
     "maxim/memory": {
       "percent": 85.5,
-      "missing": 760
+      "missing": 754
     },
     "maxim/models": {
       "percent": 56.2,
-      "missing": 2431
+      "missing": 2425
     },
     "maxim/modes": {
       "percent": 79.2,
-      "missing": 64
+      "missing": 63
     },
     "maxim/peer": {
       "percent": 73.3,
-      "missing": 668
+      "missing": 665
     },
     "maxim/planning": {
       "percent": 74.4,
-      "missing": 373
+      "missing": 371
     },
     "maxim/prompts": {
       "percent": 88.4,
-      "missing": 41
+      "missing": 40
     },
     "maxim/proprioception": {
       "percent": 77.2,
-      "missing": 238
+      "missing": 236
     },
     "maxim/provenance": {
       "percent": 88.1,
-      "missing": 48
+      "missing": 47
     },
     "maxim/retrieval": {
       "percent": 79.3,
-      "missing": 61
+      "missing": 60
     },
     "maxim/runtime": {
       "percent": 68.6,
-      "missing": 3923
+      "missing": 3898
     },
     "maxim/salience": {
       "percent": 68.6,
-      "missing": 226
+      "missing": 225
     },
     "maxim/similarity": {
       "percent": 71.2,
-      "missing": 449
+      "missing": 447
     },
     "maxim/simulation": {
-      "percent": 63.5,
-      "missing": 3706
+      "percent": 63.4,
+      "missing": 3694
     },
     "maxim/spatial": {
       "percent": 29.9,
-      "missing": 377
+      "missing": 376
     },
     "maxim/time": {
       "percent": 81.4,
-      "missing": 110
+      "missing": 109
     },
     "maxim/tools": {
       "percent": 61.7,
-      "missing": 1532
+      "missing": 1527
     },
     "maxim/tunnel": {
       "percent": 70.5,
-      "missing": 195
+      "missing": 194
     },
     "maxim/utils": {
       "percent": 60.2,
-      "missing": 2219
+      "missing": 2213
     }
   }
 }
