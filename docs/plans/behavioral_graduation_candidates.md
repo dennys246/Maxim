@@ -630,7 +630,7 @@ Status cell opens with a machine-readable line:
 
 - **The date** is when that status was SET. A trigger that fired and was discharged is an annotation, never
   the token, and never moves the date.
-- **The qualifier** (optional, one parenthesised group) carries the claim's SCOPE only: it opens with a scope word (`narrow`, `rung <X>`; `scripts/_ledger.py::SCOPE_HEAD`, checked by `lint_ledger_format.py`), and any detail after a `:` narrows it further, e.g. `(narrow: H3 not measured)`, `(rung A)`. A reason goes in the prose. T1-5's `(reframed)` predates the rule and is grandfathered until the row is re-judged.
+- **The qualifier** (optional, one parenthesised group) carries the claim's SCOPE only: it opens with a scope word (`narrow`, `rung <X>`; `scripts/_ledger.py::SCOPE_HEAD`), and any detail after the first `:`, `;` or `,` narrows it further, e.g. `(narrow: H3 not measured)`, `(rung A)`. A reason goes in the prose. `lint_ledger_format.py` checks the opening word only; the detail is review's to keep to scope. T1-5's `(reframed)` predates the rule and is grandfathered until the row is re-judged.
 - **A reclassification** (e.g. to `STALE`) is dated the day it was made; `SUPERSEDED` names its successor right after the status line (`… SUPERSEDED 2026-08-25** by T1-9`).
 - **Evidence** entries are links or code spans, separated by `,` or `;`, ending with `.` (or the cell's end); the field sits straight after the status line and holds no prose.
   - A positive status cites committed records under `docs/experiments/data/`: files, or session directories

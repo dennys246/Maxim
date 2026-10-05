@@ -212,6 +212,11 @@ def lint(repo_root: Path = REPO_ROOT, *, base: str | None = None, today: str | N
     failures = [f"{L.LEDGER_PATH}: {p}" for p in problems]
     for row in rows:
         failures.extend(f"{L.LEDGER_PATH}:{row.line} {row.id}: {p}" for p in row_problems(row, by_id, tracked, today))
+    failures.extend(
+        f"{L.LEDGER_PATH}: the GRANDFATHERED_QUALIFIERS entry for {rid} names no ledger row; remove it"
+        for rid in GRANDFATHERED_QUALIFIERS
+        if rid not in by_id
+    )
     try:
         base = base or _lint_git.base_ref(repo_root)
         base_text = _lint_git.show(repo_root, base, L.LEDGER_PATH) or None

@@ -73,7 +73,8 @@ EVIDENCE_MARK = "**Evidence:**"
 SUPERSEDED_BY = re.compile(r"^\s*by (T\d-\d+)\b")  # right after the status line: `**Status: SUPERSEDED d** by T1-9`
 GUARD = re.compile(r"regression\s+guards?\s*:", re.IGNORECASE)
 #: A qualifier carries SCOPE only and opens with one of these words (#1105); detail after `:`/`;`/`,` narrows it
-#: further, and a reason belongs in the prose. Shared by lint_ledger_format (the check) and lint_claims_sync (R3).
+#: further, and a reason belongs in the prose. lint_ledger_format checks it; lint_claims_sync's R3 shares
+#: ``qualifier_head``.
 SCOPE_HEAD = re.compile(r"^(narrow|rung [A-Z])$")
 
 
@@ -236,7 +237,7 @@ def parse(text: str) -> tuple[list[Row], list[str]]:
             if len(cells) != len(header):
                 row.problems.append(
                     f"{len(cells)} cells, header has {len(header)} (escape a '|' in code as '\\|'; a line directly under "
-                    "the table, with no blank line, is read as a row, as GitHub reads it)"
+                    "the table, with no blank line, is read as a row; GitHub may read it as one too)"
                 )
             else:
                 row.cells = dict(zip(header, cells))

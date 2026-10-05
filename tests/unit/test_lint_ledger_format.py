@@ -28,6 +28,14 @@ OK_T3 = "| T3-1 | L1 | mech | bio | pred | **Status: DROPPED 2026-08-30**. histo
 TODAY = "2026-09-30"
 
 
+@pytest.fixture(autouse=True)
+def _no_real_pins_on_synthetic_ledgers(request, monkeypatch):
+    """GRANDFATHERED_QUALIFIERS pins rows of the REAL ledger; a synthetic one has none of them, so the pin-orphan check
+    would fire in every fixture test. Tests reading the real ledger keep the real pins."""
+    if "real_ledger" not in request.node.name:
+        monkeypatch.setattr(F, "GRANDFATHERED_QUALIFIERS", {})
+
+
 def _git(repo: Path, *args: str, date: str = "2026-09-29T12:00:00Z") -> str:
     env = {**os.environ, "GIT_AUTHOR_DATE": date, "GIT_COMMITTER_DATE": date}
     return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=True, env=env).stdout
@@ -532,3 +540,9 @@ def test_the_grandfathered_qualifier_is_pinned(tmp_path: Path, monkeypatch) -> N
     assert not any("scope word" in f or "stale" in f for f in _lint(repo))
     moved = row.replace("(reframed)", "(narrow)")
     assert any("GRANDFATHERED_QUALIFIERS entry for T1-1" in f and "stale" in f for f in _lint(repo, _ledger([moved])))
+
+
+def test_a_grandfather_pin_without_its_row_is_stale(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(F, "GRANDFATHERED_QUALIFIERS", {"T1-9": ("EARNED", "2026-09-01", "reframed")})
+    repo = _repo(tmp_path, _ledger([OK_T1]))
+    assert any("GRANDFATHERED_QUALIFIERS entry for T1-9 names no ledger row" in f for f in _lint(repo))
