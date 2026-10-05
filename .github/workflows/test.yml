@@ -48,9 +48,13 @@ on:
 # predecessor's run alive, so N pushes to one branch competed for N times the
 # slots.
 #
-# `cancel-in-progress` is deliberately FALSE on main: a superseded main run
-# must still complete, because main's CI result is what the release gate and
-# the post-merge verification read. Only PR-branch runs are cancellable.
+# `cancel-in-progress` is deliberately FALSE on main: a RUNNING main run is never
+# cancelled, because main's CI result is what the release gate and the post-merge
+# verification read. Only PR-branch runs are cancellable. Note that GitHub still
+# cancels a PENDING run in the group when a newer one queues, whatever this says,
+# so with pushes A, B, C the run for B may never execute: the diff-scoped lints
+# therefore judge a push against the last push whose job PASSED, not against
+# `before` (scripts/_lint_git.py::push_base, #1089).
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -369,6 +373,15 @@ jobs:
     # 18:26 for the fast suite in CI without coverage (run 37217982246); 26:46 locally with --cov.
     # The CI figure with coverage is recorded on the gate PR.
     timeout-minutes: 60
+    # On a push to main the diff-scoped lints judge the range since the last push whose job passed
+    # (scripts/_lint_git.py::push_base, #1089): they read the Actions runs and each landed commit's merged PR through
+    # `gh api`, so the job needs those read scopes and a token. Pinned by tests/unit/test_lint_git_push.py.
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
 
     steps:
       - uses: actions/checkout@v4
@@ -479,6 +492,15 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # On a push to main the diff-scoped lints judge the range since the last push whose job passed
+    # (scripts/_lint_git.py::push_base, #1089): they read the Actions runs and each landed commit's merged PR through
+    # `gh api`, so the job needs those read scopes and a token. Pinned by tests/unit/test_lint_git_push.py.
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
 
     steps:
       - uses: actions/checkout@v4
@@ -1256,7 +1278,8 @@ jobs:
           # Positive control: tests/unit/test_lint_prereg_precedes_data.py
           # builds a fixture repo with the order wrong and asserts the fail.
           git fetch --unshallow origin main 2>/dev/null || git fetch origin main
-          python3 scripts/lint_prereg_precedes_data.py --ref origin/main
+          # On a push, judge the pushed commit itself: origin/main can already be NEWER than HEAD when pushes queue.
+          python3 scripts/lint_prereg_precedes_data.py --ref "${{ github.event_name == 'push' && 'HEAD' || 'origin/main' }}"
 
       - name: Ledger evidence gate (M1b PR 5b-1)
         run: |

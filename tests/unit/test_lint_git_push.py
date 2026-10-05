@@ -429,3 +429,27 @@ def test_an_acceptance_merged_by_a_merge_commit_is_honoured(main_repo, monkeypat
     merge = rev(main_repo, "HEAD")
     fake_push(monkeypatch, main_repo, green=set(), prs={merge: {"number": 11, "title": "t", "body": ""}})
     assert _lint_git.base_ref(main_repo) == c2
+
+
+def test_every_job_running_a_diff_lint_can_read_its_push_base():
+    """The merge-order guard both review lenses asked for: push_base reads the Actions runs and the merged PRs through
+    `gh api`, so a job that runs a diff-scoped lint without these scopes and a token would exit 2 on every push to
+    main. Every job whose steps run a `_lint_git`-based lint must carry them."""
+    import yaml
+
+    repo = Path(__file__).resolve().parents[2]
+    wf = yaml.safe_load((repo / ".github/workflows/test.yml").read_text())
+    diff_lints = sorted(
+        p.name for p in (repo / "scripts").glob("lint_*.py") if "_lint_git" in p.read_text(encoding="utf-8")
+    )
+    assert "lint_function_length.py" in diff_lints and "lint_coverage.py" in diff_lints
+    checked = []
+    for name, job in wf["jobs"].items():
+        runs = " ".join(str(s.get("run", "")) for s in job.get("steps", []))
+        if not any(f"scripts/{lint}" in runs for lint in diff_lints):
+            continue
+        checked.append(name)
+        perms = job.get("permissions") or {}
+        assert perms.get("actions") == "read" and perms.get("pull-requests") == "read", (name, perms)
+        assert (job.get("env") or {}).get("GH_TOKEN") == "${{ github.token }}", name
+    assert set(checked) >= {"lint", "unit-tests"}, checked

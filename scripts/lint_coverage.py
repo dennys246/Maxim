@@ -135,8 +135,9 @@ matched by its run line, so nothing can rewrite ``coverage.json``; no ``continue
 **When rules run:** every event runs 1, 3 and the head half of 4. On ``pull_request`` the
 diff rules are the gate and any git failure is an error (``_lint_git.must_not_skip``,
 exit 2) — the job checks out with ``fetch-depth: 0``. Locally they run when a merge-base
-exists (the diff is against the working tree, so untracked files are not seen). A push
-runs the head rules only. Every run prints overall + per-package statement and branch
+exists (the diff is against the working tree, so untracked files are not seen). A push to main
+runs them too, against the last push whose ``unit-tests`` job passed (``_lint_git.push_base``,
+#1089), with the same exit-2 rule. Other events run the head rules only. Every run prints overall + per-package statement and branch
 coverage, so the numbers live in the CI log.
 
 **Residuals (not mechanized):**
@@ -1214,7 +1215,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"coverage: measured floors for {FLOORS_REL} (rounded down to 0.1; review before committing):")
             print(json.dumps(suggested_floors(fl, overall, pkgs), indent=2))
 
-    if event in (None, "", "pull_request"):
+    if event in (None, "", "pull_request", "push"):  # push: against the last green push (_lint_git.push_base, #1089)
         try:
             base = base_ref(root)
         except GitUnavailable as e:

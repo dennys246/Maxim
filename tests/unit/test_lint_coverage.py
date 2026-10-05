@@ -724,15 +724,28 @@ def test_no_merge_base_on_a_pull_request_FAILS(repo, capsys, monkeypatch):
     assert rc == 2 and "diff-scoped check cannot run on a pull request" in err
 
 
-def test_a_push_runs_the_head_rules_only(repo, capsys, monkeypatch):
+def test_a_push_is_judged_against_the_last_green_push(repo, capsys, monkeypatch):
+    """Was head rules only on push (#1089): uncovered code that reached main without a PR passed."""
+    from tests.unit._push_event_helpers import fake_push
+
+    _write(repo, A, _lines(10, "a") + "n0 = 0\nn1 = 1\nn2 = 2\n")  # fails diff coverage
+    _commit(repo)
+    _cov(repo, missing={A: {9, 10, 11, 12, 13}, B: {6, 7, 8, 9, 10}})
+    _write(repo, L.FLOORS_REL, _floors(overall=(56.5, 10), alpha=(61.5, 5)))
+    fake_push(monkeypatch, repo)
+    rc, out, err = _run(capsys)
+    assert rc == 1 and "diff coverage" in err and "head rules only" not in out, (out, err)
+
+
+def test_another_ci_event_runs_the_head_rules_only(repo, capsys, monkeypatch):
     _write(repo, A, _lines(10, "a") + "n0 = 0\nn1 = 1\nn2 = 2\n")  # would fail diff coverage
     _commit(repo)
     _cov(repo, missing={A: {9, 10, 11, 12, 13}, B: {6, 7, 8, 9, 10}})
     _write(repo, L.FLOORS_REL, _floors(overall=(56.5, 10), alpha=(61.5, 5)))
-    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "schedule")
     rc, out, err = _run(capsys)
     assert rc == 0, err
-    assert "push event — head rules only" in out
+    assert "schedule event — head rules only" in out
 
 
 def test_the_committed_files_parse_and_match_pyproject():
