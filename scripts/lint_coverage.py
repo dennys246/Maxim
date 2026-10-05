@@ -132,6 +132,9 @@ cleanup and the exact ``--cov`` arguments; exactly one later step runs exactly
 ``shell:``, ``with:``, ``|| true``); the only step allowed between the two is the MemoryHub step,
 matched by its run line, so nothing can rewrite ``coverage.json``; no ``continue-on-error``.
 
+**"The merge-base" below means the base:** on a pull request the merge-base with ``main``; on a push to main the
+last push whose ``unit-tests`` job passed (``_lint_git.push_base``, #1089).
+
 **When rules run:** every event runs 1, 3 and the head half of 4. On ``pull_request`` the
 diff rules are the gate and any git failure is an error (``_lint_git.must_not_skip``,
 exit 2) — the job checks out with ``fetch-depth: 0``. Locally they run when a merge-base
@@ -1221,7 +1224,7 @@ def main(argv: list[str] | None = None) -> int:
         except GitUnavailable as e:
             if must_not_skip(str(e)):
                 return 2
-            print(f"INFO: no merge-base available; diff-scoped rules skipped ({e})")
+            print(f"INFO: no base available; diff-scoped rules skipped ({e})")
         else:
             try:
                 if fl is not None:
@@ -1230,11 +1233,11 @@ def main(argv: list[str] | None = None) -> int:
                         try:
                             base_fl = parse_floors(base_text)
                         except FileFormatError as e:
-                            failures.append(f"{FLOORS_REL} at the merge-base: {e}")
+                            failures.append(f"{FLOORS_REL} at the base: {e}")
                         else:
                             failures += floor_diff_rules(root, base_fl, fl, overall, pkgs, package_renames(root, base))
                     else:
-                        print(f"coverage: {FLOORS_REL} absent at the merge-base — bootstrap, every floor is new")
+                        print(f"coverage: {FLOORS_REL} absent at the base — bootstrap, every floor is new")
                         empty = Floors(fl.band, fl.min_statements, fl.version, Floor(None, None))
                         failures += floor_diff_rules(root, empty, fl, overall, pkgs, {})
                 if ex is not None:
@@ -1242,7 +1245,7 @@ def main(argv: list[str] | None = None) -> int:
                     try:
                         base_ex = parse_exclusions(base_text) if base_text else None
                     except FileFormatError as e:
-                        failures.append(f"{EXCLUSIONS_REL} at the merge-base: {e}")
+                        failures.append(f"{EXCLUSIONS_REL} at the base: {e}")
                     else:
                         failures += exclusion_diff_rules(root, base, ex, base_ex)
                     dfails, report = diff_coverage(root, base, cov, set(ex.paths))

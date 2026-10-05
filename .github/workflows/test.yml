@@ -1279,7 +1279,9 @@ jobs:
           # builds a fixture repo with the order wrong and asserts the fail.
           git fetch --unshallow origin main 2>/dev/null || git fetch origin main
           # On a push, judge the pushed commit itself: origin/main can already be NEWER than HEAD when pushes queue.
-          python3 scripts/lint_prereg_precedes_data.py --ref "${{ github.event_name == 'push' && 'HEAD' || 'origin/main' }}"
+          ref=origin/main
+          if [ "${GITHUB_EVENT_NAME:-}" = push ]; then ref=HEAD; fi
+          python3 scripts/lint_prereg_precedes_data.py --ref "$ref"
 
       - name: Ledger evidence gate (M1b PR 5b-1)
         run: |

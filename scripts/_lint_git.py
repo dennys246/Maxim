@@ -25,7 +25,8 @@ whenever the run IS a pull request, so this can never silently return.
 **On a push to main** (#1089, owner decisions 2026-10-04) the merge-base with origin/main
 is HEAD itself, so every diff-scoped lint compared HEAD with HEAD and passed vacuously. On
 ``push``, :func:`base_ref` returns :func:`push_base` instead: the newest first-parent
-ancestor of HEAD whose ``lint`` job SUCCEEDED on a push run. Not the event's ``before``:
+ancestor of HEAD whose job named ``$GITHUB_JOB`` (the job running the lint: ``lint``, or ``unit-tests`` for the
+coverage ratchet) SUCCEEDED on a push run. Not the event's ``before``:
 GitHub cancels a PENDING run in the concurrency group when a newer push queues, so with
 pushes A, B, C the A..B range would otherwise never be diffed. Every input is validated and
 any doubt raises :class:`GitUnavailable`, which :func:`must_not_skip` turns into exit 2 on a
@@ -271,7 +272,7 @@ def _is_ancestor(repo_root: Path, ancestor: str, of: str) -> bool:
 
 
 def push_base(repo_root: Path, *, api: Callable[[str], Any] | None = None) -> str:
-    """The newest first-parent ancestor of the pushed commit whose ``lint`` job succeeded on a push run.
+    """The newest first-parent ancestor of the pushed commit whose ``$GITHUB_JOB`` job succeeded on a push run.
 
     The pushed ``before`` must exist and be an ancestor of HEAD (a non-fast-forward push fails), and the search
     starts there. Raises :class:`GitUnavailable` when no green run is found within
