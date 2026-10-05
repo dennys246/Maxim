@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stage 4 of measurement_path_fail_loud.md — the no-silent-swallows lock.
 
-Two checks, both comment-tolerant (the PR #487 review found the comment-blind
+Five checks, comment-tolerant (the PR #487 review found the comment-blind
 pattern missed 10 ``pass  # best-effort`` swallows):
 
 1. **Zero-total over the measurement path.** The 16 scoped files from the
@@ -9,12 +9,12 @@ pattern missed 10 ``pass  # best-effort`` swallows):
    ``log_swallowed_exception``); this lock keeps them at zero bare
    ``except Exception:`` → ``pass``/``continue`` swallows forever.
 
-2. **No-new-swallows, diff-scoped, repo-wide.** Every other ``src/maxim/``
-   file is grandfathered at its origin/main swallow COUNT; a branch may not
-   increase any file's count. (Count-based, so moving code within a file
-   stays free; adding a swallow anywhere fails.) The motivating incident:
-   the SCN drive path was dead for months behind exactly one
-   bare-except-swallowed TypeError.
+2. **No-new-swallows, diff-scoped, repo-wide.** Per FUNCTION, the count of
+   bare ``except Exception: pass/continue`` swallows may not rise against the
+   base (moves credited, below). The motivating incident: the SCN drive path
+   was dead for months behind exactly one bare-except-swallowed TypeError.
+   (Per file until 2026-10-04; netting between functions of one file is no
+   longer free, a stated tightening.)
 
 3. **No de-instrumentation on the measurement path, diff-scoped.** Per
    measurement-path file, the number of broad swallows that do NOT report
@@ -42,7 +42,32 @@ pattern missed 10 ``pass  # best-effort`` swallows):
    Covers what check 3's listed-files scope cannot: a function moved into a new
    module and de-instrumented on the way.
 
-Both compare PER ENCLOSING FUNCTION, not per file (review round 2). Per file, a
+5. **The silent-default shape, diff-scoped, repo-wide** (roadmap 1.3.2, the
+   carried §1.3.1 row). A broad handler that ASSIGNS or RETURNS a fallback
+   swallows as silently as ``pass`` and hid ``export_memories``; check 2's
+   regex cannot see it. ``is_silent_default``: no re-raise, no call named in
+   ``REPORT_VERBS``, and the bound exception name is never read. Checks 2 and
+   5 share ONE per-function pool of silent handlers (``keyed_handlers``), so
+   a site moving between the two shapes is neutral. Unlike check 2's
+   regex history, check 5 also covers the 16 measurement-path files.
+
+**Move credit (checks 2, 3, 5; owner decision 2026-10-04).** The gate is a
+count per function; a rising function is credited by its NEW handler keys
+matching keys another function LOST in the same diff (``keyed_ratchet``). A
+key is the enclosing ``try`` statement's ``ast.dump`` plus the handler index,
+so a verbatim extraction or module move (the 1.3.2 decomposition) is free and
+a different new handler never matches a deleted one. A handler moved AND
+edited needs a new, append-only ``scripts/swallow_moves.json`` record whose
+source function's count dropped by at least the number of records naming it;
+an unused new record fails. Check 3's credit comes only from the listed files.
+Credit is greedy in diff order, so two claims competing for ONE drop can fail the second (a false
+failure, never a false pass; split the diff or record the move).
+Designed through three adversarial passes (approach note v3).
+
+Check 4 needs no credit model: a verbatim move of a reporting handler drops
+reports and handlers together at the source and adds both at the destination.
+
+Checks 3 and 4 compare PER ENCLOSING FUNCTION, not per file (review round 2). Per file, a
 #863 burn-down that deletes one silent swallow nets against a de-instrumentation
 anywhere else in the same file, and both checks passed it. Remaining blind spots,
 stated: masking inside a single function, and — for check 4 — a handler moved OUT
@@ -61,12 +86,14 @@ Exits: 0 clean; 1 violations (details on stderr); 2 unexpected error.
 from __future__ import annotations
 
 import ast
+import json
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _lint_git import GitUnavailable, base_ref, changed_files, count_ratchet, must_not_skip, show  # noqa: E402
+from _lint_git import GitUnavailable, base_ref, changed_files, must_not_skip, show  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -223,30 +250,6 @@ def _split(old: dict[str, list[bool]], new: dict[str, list[bool]]):
     return both, residual_old, residual_new
 
 
-def check3_failures(repo_root: Path, base: str, listed: frozenset[str]) -> list[str]:
-    """Check 3 — per listed file, per FUNCTION: unreported broad swallows may not rise."""
-    out: list[str] = []
-    for rel, rel_at_base, old, new in _per_function_changes(repo_root, base):
-        if rel not in listed and rel_at_base not in listed:
-            continue
-        both, r_old, r_new = _split(old, new)
-        for key in both:
-            a, b = old[key].count(False), new[key].count(False)
-            if b > a:
-                out.append(
-                    f"{rel}::{key}: unreported broad-swallow count rose {a} → {b} on this branch — a swallow "
-                    "on the measurement path swallows without a Stage-1 report; keep log_swallowed_exception() "
-                    "(or site=...) in the handler, or delete the try/except"
-                )
-        if r_new.count(False) > r_old.count(False):
-            out.append(
-                f"{rel} (functions added, removed or renamed in this diff): unreported broad-swallow count "
-                f"rose {r_old.count(False)} → {r_new.count(False)} — a new swallow on the measurement path "
-                "must be Stage-1"
-            )
-    return out
-
-
 def unreported_swallow_hits(text: str) -> list[int]:
     """Line numbers of broad handlers that swallow WITHOUT a Stage-1 report (check 3's count).
 
@@ -314,6 +317,219 @@ def conservation_failure(repo_root: Path, base: str, scope: str = "src/maxim/") 
     )
 
 
+# ── Move credit + check 5: the keyed ratchet (approach note v3, owner decisions 2026-10-04) ───────────
+
+#: Committed records for a handler moved AND edited on the way (a verbatim move is free). Append-only.
+MOVES_REL = "scripts/swallow_moves.json"
+_MOVE_KEYS = {"pool", "file", "qualname", "moved_from", "date", "ref", "reason"}
+_POOLS = ("silent", "measurement")
+_REF_RE = re.compile(r"(#\d+|https://github\.com/[\w.-]+/[\w.-]+/(pull|issues)/\d+)")
+_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+#: Check 5's "somebody is told": a call whose function name is one of these. By NAME, not receiver (so
+#: `console.print` and any `.warn` count: a stated blind spot; `traceback.print_exc` / `sys.stderr.write` are
+#: unmatched). Deliberately wider than check 3's Stage-1 definition: check 3 asks "does the Stage-2 gate see
+#: it", check 5 asks "does ANYONE see it", so `log_swallowed_exception(e, operation=...)` reports here.
+REPORT_VERBS = frozenset(
+    "debug info warning warn error exception critical log print log_swallowed_exception log_structured "
+    "log_exception user_warn sim_log display_status _record_error _note_corruption _mark_corrupt".split()
+)
+
+
+def _call_name(call: ast.Call) -> str | None:
+    fn = call.func
+    return fn.id if isinstance(fn, ast.Name) else getattr(fn, "attr", None)
+
+
+def is_silent_default(handler: ast.ExceptHandler) -> bool:
+    """Check 5's shape: a broad handler that neither re-raises, nor reports, nor surfaces its exception.
+
+    "Surfaces" = reads the bound name (``except Exception as e`` with ``e`` loaded in the local body:
+    ``ToolResult(error=str(e))``). Callers exclude check 2's ``swallow_hits`` lines so no site counts twice."""
+    if not _is_broad(handler):
+        return False
+    local = list(_walk_local(handler.body))
+    if any(isinstance(x, ast.Raise) for x in local):
+        return False
+    if any(isinstance(x, ast.Call) and _call_name(x) in REPORT_VERBS for x in local):
+        return False
+    if handler.name and any(
+        isinstance(x, ast.Name) and x.id == handler.name and isinstance(x.ctx, ast.Load) for x in local
+    ):
+        return False
+    return True
+
+
+def keyed_handlers(text: str, pool: str) -> dict[str, list[str]]:
+    """``{enclosing qualname: [key, ...]}`` for every handler in ``pool``.
+
+    ``silent`` = check 2's ``swallow_hits`` shape plus check 5's silent-default (ONE pool, so a comment that moves
+    a site from the regex's shape to check 5's is neutral). ``measurement`` = check 3's unreported broad swallows.
+    A key is ``ast.dump`` of the ENCLOSING ``try`` (no positions) plus the handler's index: keying the handler alone
+    collapsed check 2's 415 sites to two keys (``pass``/``continue``), so any deleted swallow paid for a new one
+    anywhere (adversarial pass 2). Every function gets an entry, handlers or not. Unparsable text → ``{}``."""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return {}
+    hits = set(swallow_hits(text))
+    out: dict[str, list[str]] = {"<module>": []}
+
+    def visit(node: ast.AST, scope: str) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                name = f"{scope}.{child.name}" if scope else child.name
+                out.setdefault(name, [])
+                visit(child, name)
+                continue
+            if isinstance(child, (ast.Try, getattr(ast, "TryStar", ast.Try))):
+                dump = ast.dump(child)
+                for i, h in enumerate(child.handlers):
+                    if not _is_broad(h):
+                        continue
+                    local = list(_walk_local(h.body))
+                    if pool == "silent":
+                        # one append per handler: check 2's regex shape, else check 5's silent default
+                        counted = h.body[0].lineno in hits or is_silent_default(h)
+                    else:
+                        counted = not any(isinstance(x, ast.Raise) for x in local) and not any(
+                            isinstance(x, ast.Call) and is_stage1_report(x) for x in local
+                        )
+                    if counted:
+                        out.setdefault(scope or "<module>", []).append(f"{dump}#{i}")
+            visit(child, scope)
+
+    visit(tree, "")
+    return out
+
+
+class MoveRecords:
+    """``scripts/swallow_moves.json`` against the base: append-only, and only NEW records can credit."""
+
+    def __init__(self, head_text: str, base_text: str) -> None:
+        self.problems: list[str] = []
+        head, base = self._parse(head_text, "HEAD"), self._parse(base_text, "base")
+        if head[: len(base)] != base:
+            self.problems.append(f"{MOVES_REL} is append-only: the base list is not an exact prefix of HEAD's")
+            head = base
+        self.new = head[len(base) :]
+        self.used = [False] * len(self.new)
+
+    def _parse(self, text: str, where: str) -> list[dict]:
+        if not text.strip():
+            return []
+        try:
+            data = json.loads(text)
+        except ValueError as exc:
+            self.problems.append(f"{MOVES_REL} at {where} is not JSON ({exc})")
+            return []
+        if not isinstance(data, list):
+            self.problems.append(f"{MOVES_REL} at {where} must be a list")
+            return []
+        good = []
+        for r in data:
+            src = r.get("moved_from") if isinstance(r, dict) else None
+            ok = (
+                isinstance(r, dict)
+                and set(r) == _MOVE_KEYS
+                and r["pool"] in _POOLS
+                and all(isinstance(r[k], str) and r[k].strip() for k in ("file", "qualname", "reason"))
+                and isinstance(src, dict)
+                and set(src) == {"file", "qualname"}
+                and all(isinstance(v, str) and v for v in src.values())
+                and isinstance(r["date"], str)
+                and _DATE_RE.fullmatch(r["date"])
+                and isinstance(r["ref"], str)
+                and _REF_RE.fullmatch(r["ref"])
+            )
+            if not ok:
+                self.problems.append(
+                    f"{MOVES_REL} at {where}: malformed record {r!r} (needs exactly {sorted(_MOVE_KEYS)})"
+                )
+                continue
+            good.append(r)
+        return good
+
+    def claim(self, pool: str, file: str, qualname: str, budget: Counter, alias: dict[str, str]) -> bool:
+        """Use one unused new record for ``(pool, file, qualname)`` whose source still has drop budget (a renamed
+        source may be named by either path; both resolve to one budget)."""
+        for i, r in enumerate(self.new):
+            src = (alias.get(r["moved_from"]["file"], r["moved_from"]["file"]), r["moved_from"]["qualname"])
+            if not self.used[i] and (r["pool"], r["file"], r["qualname"]) == (pool, file, qualname) and budget[src] > 0:
+                self.used[i] = True
+                budget[src] -= 1
+                return True
+        return False
+
+    def unused(self) -> list[str]:
+        return [
+            f"{MOVES_REL}: unused move record for {r['file']}::{r['qualname']} ({r['pool']}) — no matching rise "
+            "with a dropping source in this diff"
+            for i, r in enumerate(self.new)
+            if not self.used[i]
+        ]
+
+
+def keyed_ratchet(
+    repo_root: Path, base: str, pool: str, records: MoveRecords, *, listed: frozenset[str] | None = None
+) -> list[str]:
+    """Per function, ``pool``'s count may not rise, unless the rise is a MOVE.
+
+    The gate is a COUNT (an in-place edit inside a ``try`` changes its key and must stay free; third adversarial
+    pass). Keys only CREDIT a rising function: its NEW keys may match keys that disappeared elsewhere in the diff
+    (each pays once: a verbatim extraction or module move is free), and any remainder needs a new record whose
+    source function's count DROPPED by at least as many records as name it. ``listed`` restricts the check (and
+    its credit) to those files: a silent handler moved INTO the measurement path is a rise there, not a move."""
+    changes = []
+    for rel, rel_at_base in changed_files(repo_root, base, "src/maxim/"):
+        if listed is not None and rel not in listed and rel_at_base not in listed:
+            continue
+        path = repo_root / rel
+        new = keyed_handlers(path.read_text(errors="replace"), pool) if path.exists() else {}
+        old = keyed_handlers(show(repo_root, base, rel_at_base), pool)
+        changes.append((rel, rel_at_base, old, new))
+    # ONE budget per source function = its count DROP. Every credit, free or recorded, debits it, so a function that
+    # only edits a `try` in place (its key changes, its count does not) donates nothing, and one drop never pays
+    # twice (architecture review). A free match is a NEW key equal to a key a dropping function lost.
+    budget: Counter = Counter()
+    lost: dict[str, list[tuple[str, str]]] = {}
+    alias: dict[str, str] = {}
+    for rel, rel_at_base, old, new in changes:
+        alias[rel_at_base or rel] = rel
+        for q, keys in old.items():
+            d = len(keys) - len(new.get(q, []))
+            if d > 0:
+                budget[(rel, q)] += d
+            for k, n in (Counter(keys) - Counter(new.get(q, []))).items():
+                lost.setdefault(k, []).extend([(rel, q)] * n)
+    out = []
+    for rel, _rab, old, new in changes:
+        for q in sorted(new):
+            a, b = len(old.get(q, [])), len(new[q])
+            if b <= a:
+                continue
+            need = b - a
+            for k, n in (Counter(new[q]) - Counter(old.get(q, []))).items():
+                for _ in range(n):
+                    src = next((x for x in lost.get(k, []) if budget[x] > 0), None)
+                    if not need or src is None:
+                        break
+                    lost[k].remove(src)
+                    budget[src] -= 1
+                    need -= 1
+            while need and records.claim(pool, rel, q, budget, alias):
+                need -= 1
+            if need:
+                what = "silent broad-handler" if pool == "silent" else "unreported broad-swallow"
+                out.append(
+                    f"{rel}::{q}: {what} count rose {a} → {b} ({need} not a move) — narrow the exception "
+                    "(ImportError/OSError/KeyError), use optional_dependency_available for an optional dependency, or "
+                    "report it (log_swallowed_exception() or a logger call). A handler MOVED here and edited on the "
+                    f"way needs a {MOVES_REL} record naming its source."
+                )
+    return out
+
+
 def main() -> int:
     failures: list[str] = []
 
@@ -344,7 +560,7 @@ def main() -> int:
     print(
         f"no-silent-swallows: {repo_total} bare `except Exception: pass/continue` site(s) in {repo_files} "
         f"file(s) across src/maxim/ ({len(MEASUREMENT_PATH)} measurement-path files held at zero; "
-        "every other file grandfathered at its origin/main count)"
+        "every other function grandfathered at its base count)"
     )
 
     # Check 2 — diff-scoped no-new-swallows across src/maxim/, on the shared
@@ -360,25 +576,6 @@ def main() -> int:
             return 2
         print(f"INFO: no base ref available; skipping diff-scoped check 2 ({e})")
         base = None
-    if base is not None:
-        try:
-            failures.extend(
-                count_ratchet(
-                    REPO_ROOT,
-                    base,
-                    "src/maxim/",
-                    swallow_hits,
-                    exclude=frozenset(MEASUREMENT_PATH),
-                    what="bare-swallow count",
-                    advice=(
-                        "no NEW bare `except Exception: pass/continue`; use log_swallowed_exception() "
-                        "or narrow the exception type"
-                    ),
-                )
-            )
-        except GitUnavailable as e:
-            print(f"INFO: diff-scoped check 2 skipped mid-run ({e})")
-
     # Check 3 — no de-instrumentation on the measurement path (see the module docstring).
     unreported = sum(
         len(unreported_swallow_hits((REPO_ROOT / rel).read_text(errors="replace")))
@@ -387,13 +584,32 @@ def main() -> int:
     )
     print(
         f"no-silent-swallows: {unreported} broad swallow(s) on the measurement path do not report "
-        "through log_swallowed_exception (ratcheted per file; may fall, may not rise)"
+        "through log_swallowed_exception (ratcheted per function; may fall, may not rise)"
+    )
+    silent_total = sum(
+        sum(len(v) for v in keyed_handlers(p.read_text(errors="replace"), "silent").values())
+        for p in sorted((REPO_ROOT / "src" / "maxim").rglob("*.py"))
+    )
+    print(
+        f"no-silent-swallows: {silent_total} silent broad handler(s) across src/maxim/ (checks 2 + 5: pass/continue "
+        "plus silent defaults; ratcheted per function, moves credited)"
     )
     if base is not None:
+        # Checks 2 + 5 (one silent pool) and 3, with move credit. A mid-run git failure is an error on a pull
+        # request or push (it was a silent INFO skip, #1098).
         try:
-            failures.extend(check3_failures(REPO_ROOT, base, frozenset(MEASUREMENT_PATH)))
+            records = MoveRecords(
+                (REPO_ROOT / MOVES_REL).read_text() if (REPO_ROOT / MOVES_REL).exists() else "",
+                show(REPO_ROOT, base, MOVES_REL),
+            )
+            failures.extend(records.problems)
+            failures.extend(keyed_ratchet(REPO_ROOT, base, "silent", records))
+            failures.extend(keyed_ratchet(REPO_ROOT, base, "measurement", records, listed=frozenset(MEASUREMENT_PATH)))
+            failures.extend(records.unused())
         except GitUnavailable as e:
-            print(f"INFO: diff-scoped check 3 skipped mid-run ({e})")
+            if must_not_skip(f"git failed mid-run in checks 2/3/5: {e}"):
+                return 2
+            print(f"INFO: diff-scoped checks 2/3/5 skipped mid-run ({e})")
 
         # Check 4 — repo-wide conservation (see conservation_failure).
         try:
@@ -401,6 +617,8 @@ def main() -> int:
             if problem:
                 failures.append(problem)
         except GitUnavailable as e:
+            if must_not_skip(f"git failed mid-run in check 4: {e}"):
+                return 2
             print(f"INFO: diff-scoped check 4 skipped mid-run ({e})")
 
     if failures:

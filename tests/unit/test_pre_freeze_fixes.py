@@ -370,7 +370,7 @@ def test_an_overflowing_float_is_refused_by_the_strict_reader():
 def test_a_signer_outside_the_public_grammar_cannot_be_constructed(identity):
     from maxim.hivemind.signing import BundleSigner
 
-    pytest.importorskip("cryptography")
+    pytest.importorskip("cryptography", reason="signed bundles need the [sign] extra (cryptography)")
     with pytest.raises(ValueError, match="public identity"):
         BundleSigner.generate(signer_identity=identity)
 
