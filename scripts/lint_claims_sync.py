@@ -3,7 +3,8 @@
 
 The ledger (``docs/plans/behavioral_graduation_candidates.md``, parsed by ``scripts/_ledger.py``) is the single
 source of a claim's status (owner decision 2026-10-04). Public surfaces cite a ledger row with a marker,
-``<!-- claim: T<n>-<m> -->`` (an HTML comment: GitHub hides it, and PyPI's sanitizer, nh3, strips it), and this
+``<!-- claim: T<n>-<m> -->`` (an HTML comment: GitHub hides it, and PyPI's readme_renderer + nh3 drop it; verified by
+rendering the README, 2026-10-04 review, not by a test), and this
 lint checks that each cited surface says what the ledger says. Linted, not generated: the prose stays curated.
 
 The motivating errors (2026-09-27 score cards): the README's Exp 10 row said "re-run pending" after the re-run,
@@ -17,14 +18,16 @@ least one row):
 - when the ledger row has a scope qualifier, its head (text before the first ``:``/``;``/``,``) follows the date
   as a whole word (R3);
 - a ``SUPERSEDED`` row names its successor's ID; ``DROPPED``, ``DORMANT``, ``TIER-2``, ``SETUP`` and
-  ``BORDERLINE`` are barred from the table "what it has shown" (R4). ``STALE``/``BROKEN`` may stand, displayed.
+  ``BORDERLINE`` are barred from the table "what it has shown" (R4). ``STALE``/``BROKEN`` may stand, displayed
+  (owner decision 2026-10-04: honest, and both already block the next release).
 
 **Experiments index** (``docs/experiments/README.md``): a marker may sit only in a table whose header has a
 ``Status`` column, and that row's Status cell obeys R2–R3 and the successor rule (R5). Every Tier 1 row except
 ``DROPPED``/``TIER-2`` (and the reasoned ``NO_INDEX_ENTRY`` list) is cited by at least one index row (R6). Unmarked index rows are unconstrained.
 
 **Both:** a malformed marker, two markers in one row, a marker outside its allowed tables (R7), or an unknown ID
-fails. Fenced code blocks are skipped. A ledger parse problem fails the run.
+fails. Fenced code blocks are skipped; a table runs until a blank line, as in GFM, so a row without a
+leading ``|`` is still a row. A ledger parse problem fails the run.
 
 Stated limits: the lint checks status, date and scope words, never the truth of the prose (the 2026-09-27
 "accumulate" error was claim content, and this cannot see it); a displayed token elsewhere in the row passes
@@ -50,8 +53,15 @@ INDEX = "docs/experiments/README.md"
 README_HEADER = ("Result", "What was measured")
 BARRED_FROM_README = frozenset({"DROPPED", "DORMANT", "TIER-2", "SETUP", "BORDERLINE"})
 EXEMPT_FROM_INDEX = frozenset({"DROPPED", "TIER-2"})
-#: Tier 1 rows with no experiment entry to cite, each with its reason (reviewed; R6).
-NO_INDEX_ENTRY = {"T1-5": "a mechanism PoC with no experiment doc; its behavioural claim was pulled (ledger)"}
+#: Tier 1 rows with no experiment entry to cite (R6), pinned to the ledger status they were granted at: when the row
+#: moves, or an index row starts citing it, the exemption is stale and fails.
+NO_INDEX_ENTRY = {
+    "T1-5": (
+        "PARTIAL",
+        "2026-06-15",
+        "a mechanism PoC with no experiment doc; its behavioural claim was pulled (ledger)",
+    )
+}
 
 _ANY_MARKER = re.compile(r"<!--\s*claim\b[^>]*-->")
 _MARKER = re.compile(r"<!-- claim: (T\d-\d+) -->")
@@ -85,17 +95,18 @@ def scan(text: str) -> tuple[list[Table], list[tuple[int, str]]]:
             continue
         markers.extend((i + 1, m.group(0)) for m in _ANY_MARKER.finditer(line))
         stripped = line.strip()
-        if stripped.startswith("|"):
-            if current is None and i + 1 < len(lines) and _SEPARATOR.match(lines[i + 1].strip()):
-                current = Table(tuple(L.split_cells(stripped)))
-                tables.append(current)
-                i += 2
-                continue
-            if current is not None:
-                current.rows.append((i + 1, stripped, L.split_cells(stripped)))
-                i += 1
-                continue
+        if current is not None and stripped:
+            # GFM keeps a table open until a blank line: a row needs no leading `|` (executor review: a pipe-less row
+            # rendered as a results row and escaped every rule).
+            current.rows.append((i + 1, stripped, L.split_cells(stripped)))
+            i += 1
+            continue
         current = None
+        if stripped.startswith("|") and i + 1 < len(lines) and _SEPARATOR.match(lines[i + 1].strip()):
+            current = Table(tuple(L.split_cells(stripped)))
+            tables.append(current)
+            i += 2
+            continue
         i += 1
     return tables, markers
 
@@ -203,6 +214,12 @@ def lint(readme: str, index: str, ledger: str) -> list[str]:
     out.extend(
         f"{INDEX}:{ln}: claim marker outside a table with a Status column" for ln, _m in markers if ln not in allowed
     )
+    for rid, (token, date, _reason) in NO_INDEX_ENTRY.items():
+        row = by_id.get(rid)
+        if row is None or (row.token, row.date) != (token, date) or rid in cited_ids:
+            out.append(
+                f"{INDEX}: the NO_INDEX_ENTRY exemption for {rid} ({token} {date}) is stale; remove or re-grant it"
+            )
     for r in rows:
         if (
             r.id.startswith("T1-")

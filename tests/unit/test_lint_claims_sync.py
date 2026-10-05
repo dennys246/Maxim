@@ -56,7 +56,7 @@ def test_lowercase_prose_is_not_a_status_token():
 
 
 def test_a_scoped_claim_must_show_its_scope_word_after_the_status():
-    out = _fails(readme=_swap(README, "**EARNED 2026-10-04 (narrow**:", "**EARNED 2026-10-04**: narrow-ish"))
+    out = _fails(readme=_swap(README, "**EARNED 2026-10-04** (narrow:", "**EARNED 2026-10-04**: narrow-ish ("))
     assert any("scoped `(narrow …)`" in f for f in out), out
 
 
@@ -129,7 +129,7 @@ def test_an_index_marker_outside_a_status_table_FAILS():
 
 
 def test_the_reasoned_exemption_is_the_only_uncited_tier1_row():
-    assert set(C.NO_INDEX_ENTRY) == {"T1-5"} and all(C.NO_INDEX_ENTRY.values())
+    assert set(C.NO_INDEX_ENTRY) == {"T1-5"} and all(reason for *_, reason in C.NO_INDEX_ENTRY.values())
 
 
 # ── the ledger ────────────────────────────────────────────────────────────────────────────────────────
@@ -143,3 +143,17 @@ def test_a_ledger_parse_problem_fails_the_run():
 def test_main_is_clean_on_this_checkout(capsys):
     assert C.main() == 0
     assert "agree with the ledger" in capsys.readouterr().out
+
+
+def test_a_results_row_without_a_leading_pipe_is_still_a_row():
+    """GFM keeps the table open until a blank line; a pipe-less fake claim rendered as a results row (executor)."""
+    anchor = "| <!-- claim: T1-14 -->"
+    i = README.index(anchor)
+    j = README.index("\n", i)
+    readme = README[: j + 1] + "**Fake claim** (Exp 99; **EARNED 2026-01-01**) | made up\n" + README[j + 1 :]
+    assert any("must cite its ledger row" in f for f in _fails(readme=readme))
+
+
+def test_a_stale_exemption_FAILS():
+    ledger = _swap(LEDGER, "**Status: PARTIAL 2026-06-15** (reframed)", "**Status: PARTIAL 2026-06-16** (reframed)")
+    assert any("NO_INDEX_ENTRY exemption for T1-5" in f for f in _fails(ledger=ledger))
