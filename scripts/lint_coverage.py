@@ -18,10 +18,11 @@ floor and one per package: the first path component under ``src/maxim``, with to
 modules grouped as ``maxim/<root>``. Each floor is ``{percent, missing}``: ``missing`` is the
 uncovered statement count pinned with it.
 
-- every run: measured more than k statements under ``percent`` fails (``k = ceil(statements ×
-  0.001)``, i.e. measured < percent − 100·k/statements); measured > percent + ``band`` fails
+- every run: measured more than k statements under ``percent`` fails (``k = max(ceil(statements
+  × 0.001), K_MIN)``, ``K_MIN = 5``, i.e. measured < percent − 100·k/statements); measured > percent + ``band`` fails
   ("raise it"). **The k tolerance below a floor** (owner decision 2026-10-04, "tolerance below
-  floor"): CI coverage moves by a few statements between runs with no code change (maxim/memory
+  floor"; minimum ``K_MIN = 5`` statements, owner decision 2026-10-05, because the observed CI
+  noise is about ±2 statements whatever the package size, so ``K_MIN`` is twice that): CI coverage moves by a few statements between runs with no code change (maxim/memory
   measured 760 then 762 missing, 85.59% under an 85.6 floor), and a floor rounded down to 0.1
   leaves only 0–0.1 pt of random slack. It is bounded and NON-cumulative: it applies only to this
   HEAD comparison against the committed pin, never to the pin rules below, and pins never move
@@ -91,7 +92,7 @@ entry for that file in the same diff; every new entry must equal the measured co
 entry above the base count needs a ``ref``. A newly excluded file's base count is 0.
 
 **Every new or changed floor is verified data** (pull requests; base pin ``b``, head pin ``h``,
-measurement ``m``; ``k = ceil(statements × 0.001)`` statements of run-to-run noise, at least 1):
+measurement ``m``; ``k = max(ceil(statements × 0.001), K_MIN)`` statements of run-to-run noise):
 
 - a NEW floor (bootstrap, a new package): ``h.percent >= round_down(100 × (covered − k) /
   statements)`` and ``h.missing <= m.missing``;
@@ -211,7 +212,12 @@ COVERAGE_JSON = "coverage.json"
 
 COVERAGE_VERSION = "7.13.3"  # == the `coverage==` pin in the unit-tests job
 BAND = 1.0
-TICK = 0.1  # a floor's resolution; k = ceil(statements * TICK / 100) statements of two-run noise
+TICK = 0.1  # a floor's resolution; k = max(ceil(statements * TICK / 100), K_MIN) statements of run-to-run noise
+# The minimum k (owner decision 2026-10-05). CI coverage noise is ABSOLUTE, about ±2 statements whatever a package's
+# size (maxim/retrieval, 296 statements: 59 missing in CI run 5 against 61 in earlier runs), so a size-proportional k
+# of 1 made small floors unpinnable. K_MIN is twice the observed noise. Fixed here: the floors file cannot carry it
+# (its keys are exact), so no PR can change it short of editing the lint, which review reads.
+K_MIN = 5
 MIN_PACKAGE_STATEMENTS = 200
 DIFF_THRESHOLD = 80.0
 FLOORS_FORMAT_VERSION = 1
@@ -365,10 +371,10 @@ def round_down(pct: float) -> float:
 
 
 def missing_slack(m: ScopeCov) -> int:
-    """k: the run-to-run noise a new/changed floor's ``percent`` may sit below the measurement, in STATEMENTS
-    (one 0.1-pt tick, rounded UP, so at least 1 for any non-empty scope), so a small package's one-line flake does
-    not make the two-run minimum unpinnable."""
-    return math.ceil(m.statements * TICK / 100)
+    """k: run-to-run coverage noise in STATEMENTS — one 0.1-pt tick of the scope rounded up, but never under
+    ``K_MIN`` (noise is absolute, about ±2 statements). Used by the below-floor HEAD tolerance and the new/raised
+    floor tolerance; bounded per scope and non-cumulative, because pins never move with it."""
+    return max(math.ceil(m.statements * TICK / 100), K_MIN)
 
 
 # ── floors ────────────────────────────────────────────────────────────────────

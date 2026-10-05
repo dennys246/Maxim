@@ -204,9 +204,9 @@ def test_untouched_branch_is_clean_and_prints_totals(repo, capsys):
 
 
 def test_measured_below_a_floor_FAILS(repo, capsys):
-    _cov(repo, missing={A: {7, 8, 9, 10}, B: {6, 7, 8, 9, 10}})  # 2 statements under: beyond k = 1
+    _cov(repo, missing={A: set(range(2, 11)), B: {6, 7, 8, 9, 10}})  # 7 statements under: beyond k = K_MIN = 5
     rc, _, err = _run(capsys)
-    assert rc == 1 and "maxim/alpha: 60.00% is below its floor 80.0% by more than the 1-statement" in err
+    assert rc == 1 and "maxim/alpha: 10.00% is below its floor 80.0% by more than the 5-statement" in err
 
 
 def test_a_floor_more_than_the_band_below_the_measurement_FAILS(repo, capsys):
@@ -760,25 +760,25 @@ def test_a_floors_only_PR_cannot_lower_a_floor_at_all(repo, capsys, overall):
 
 def test_a_package_rename_cannot_carry_a_floor_lowered_by_a_fraction(repo, capsys):
     _git(repo, "mv", "src/maxim/beta", "src/maxim/gamma")
-    _write(repo, L.FLOORS_REL, _floors(overall=(90.0, 2), beta="drop", **{"maxim/gamma": (89.9, 0)}))
+    _write(repo, L.FLOORS_REL, _floors(overall=(90.0, 2), beta="drop", **{"maxim/gamma": (49.9, 0)}))
     _write(repo, L.EXCLUSIONS_REL, _exclusions(ledger=BASE_LEDGER + [_ledger("pragma", "src/maxim/gamma/b.py", 1)]))
     _commit(repo)
     _cov(repo, missing={A: {9, 10}})
     rc, _, err = _run(capsys)
-    assert (
-        rc == 1
-        and "maxim/gamma (carrying maxim/beta): changed floor 89.9% is below the measured 100.00% less 1 statement(s)"
-        in err
-    )
+    assert rc == 1 and "maxim/gamma (carrying maxim/beta): floor lowered to 49.9%, below the measurement 100.00%" in err
 
 
 def test_a_new_floor_cannot_start_low(repo, capsys):
-    _write(repo, "src/maxim/gamma/g.py", _lines(5, "g"))
-    _write(repo, L.FLOORS_REL, _floors(overall=(72.0, 7), **{"maxim/gamma": (79.9, 0)}))
+    _write(repo, "src/maxim/gamma/g.py", _lines(1000, "g"))  # k = 5 statements = 0.5 pt
+    _write(repo, L.FLOORS_REL, _floors(overall=(99.3, 7), **{"maxim/gamma": (99.4, 0)}))
     _commit(repo)
     _cov(repo)
     rc, _, err = _run(capsys)
-    assert rc == 1 and "maxim/gamma: new floor 79.9% is below" in err
+    assert (
+        rc == 1
+        and "maxim/gamma: new floor 99.4% is below the measured 100.00% less 5 statement(s) of run-to-run noise (99.5%)"
+        in err
+    )
 
 
 def test_merge_floors_takes_the_per_scope_minimum(tmp_path, capsys):
@@ -1101,7 +1101,7 @@ def test_a_blocked_lowering_names_the_statements_to_cover(repo, capsys):
 
 
 def _gamma_1000(repo: Path) -> None:
-    """A 1000-statement package at 99.0% (k = 1 statement = 0.1 pt), committed on main as the base."""
+    """A 1000-statement package at 99.0% (k = K_MIN = 5 statements = 0.5 pt), committed on main as the base."""
     _write(repo, "src/maxim/gamma/g.py", _lines(1000, "g"))
     _write(repo, L.FLOORS_REL, _floors(overall=(98.3, 17), **{"maxim/gamma": (99.0, 10)}))
     _commit(repo)
@@ -1117,22 +1117,22 @@ def _gamma_cov(repo: Path, covered: int) -> None:
 def test_a_drop_of_k_statements_below_a_floor_passes(repo, capsys):
     """Owner decision 2026-10-04 ("tolerance below floor"): CI noise of a few statements is not a failure."""
     _gamma_1000(repo)
-    _gamma_cov(repo, 989)  # 98.9% under a 99.0 floor: exactly k = 1 statement
+    _gamma_cov(repo, 985)  # 98.5% under a 99.0 floor: exactly k = 5 statements
     rc, _, err = _run(capsys)
     assert rc == 0, err
 
 
 def test_a_drop_of_k_plus_1_statements_below_a_floor_FAILS(repo, capsys):
     _gamma_1000(repo)
-    _gamma_cov(repo, 988)
+    _gamma_cov(repo, 984)
     rc, _, err = _run(capsys)
-    assert rc == 1 and "maxim/gamma: 98.80% is below its floor 99.0% by more than the 1-statement" in err
+    assert rc == 1 and "maxim/gamma: 98.40% is below its floor 99.0% by more than the 5-statement" in err
 
 
 def test_the_below_floor_tolerance_does_not_accumulate_across_PRs(repo, capsys):
-    """Each PR drops one statement and changes no pin: the second link is k + 1 under the unchanged floor."""
+    """Each PR drops statements and changes no pin: link 1 uses up k = 5, link 2's one more is k + 1 under."""
     _gamma_1000(repo)
-    _gamma_cov(repo, 989)
+    _gamma_cov(repo, 985)
     _write(repo, "src/maxim/alpha/note.py", "")  # a no-op change so the PR has a commit
     _commit(repo)
     rc, _, err = _run(capsys)
@@ -1140,6 +1140,24 @@ def test_the_below_floor_tolerance_does_not_accumulate_across_PRs(repo, capsys):
     _git(repo, "checkout", "-q", "main")
     _git(repo, "merge", "-q", "--ff-only", "feature")
     _git(repo, "checkout", "-q", "feature")
-    _gamma_cov(repo, 988)
+    _gamma_cov(repo, 984)
     rc, _, err = _run(capsys)
-    assert rc == 1 and "maxim/gamma: 98.80% is below its floor 99.0%" in err
+    assert rc == 1 and "maxim/gamma: 98.40% is below its floor 99.0%" in err
+
+
+def test_a_small_scope_gets_the_K_MIN_tolerance(repo, capsys):
+    """Owner decision 2026-10-05: CI noise is absolute (~±2 statements; maxim/retrieval, 296 statements, measured
+    59 then 61 missing). ceil(296 × 0.001) = 1 would fail this 5-statement drop; K_MIN = 5 admits it."""
+    small = "src/maxim/gamma/r.py"
+    _write(repo, small, _lines(296, "r"))
+    _write(repo, L.FLOORS_REL, _floors(overall=(78.4, 68), **{"maxim/gamma": (79.3, 61)}))
+    _commit(repo)
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "merge", "-q", "--ff-only", "feature")
+    _git(repo, "checkout", "-q", "feature")
+    _cov(repo, missing={A: {9, 10}, B: {6, 7, 8, 9, 10}, small: set(range(231, 297))})  # 230 covered: 77.70%
+    rc, _, err = _run(capsys)
+    assert rc == 0, err
+    _cov(repo, missing={A: {9, 10}, B: {6, 7, 8, 9, 10}, small: set(range(229, 297))})  # 228: beyond k
+    rc, _, err = _run(capsys)
+    assert rc == 1 and "maxim/gamma: 77.03% is below its floor 79.3% by more than the 5-statement" in err
