@@ -108,9 +108,9 @@ def test_the_worker_carries_the_loops_answer_into_the_prompt(in_sim, deliberatio
 
 
 def test_the_loop_says_it_deliberates_only_when_it_has_a_pipeline() -> None:
-    from maxim.runtime import agent_loop
+    from tests.unit._loop_source import loop_source
 
-    src = inspect.getsource(agent_loop.run_agentic_loop)
+    src = loop_source()  # the loop's modules (1.3.2 decomposition)
     planning_submit = src[src.index("submitted = llm_worker.submit_context(") :][:2500]
     assert "deliberation_available=bio_enrichment_pipeline is not None" in planning_submit
 
@@ -160,11 +160,12 @@ def test_every_submit_in_the_loop_states_the_deliberation_fact() -> None:
     submit_context call in agent_loop states it, directly or in the kwargs dict it unpacks."""
     import ast
 
-    from maxim.runtime import agent_loop
+    from tests.unit._loop_source import loop_source_trees
 
-    tree = ast.parse(inspect.getsource(agent_loop))
+    trees = loop_source_trees()  # every loop module (1.3.2 decomposition): a moved submit is still checked
     dicts = {
         t.id: node.value
+        for tree in trees
         for node in ast.walk(tree)
         if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call)
         and getattr(node.value.func, "id", None) == "dict"
@@ -172,7 +173,7 @@ def test_every_submit_in_the_loop_states_the_deliberation_fact() -> None:
         if isinstance(t, ast.Name)
     }  # fmt: skip
     calls = [
-        n for n in ast.walk(tree)
+        n for tree in trees for n in ast.walk(tree)
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "submit_context"
     ]  # fmt: skip
     assert len(calls) >= 2

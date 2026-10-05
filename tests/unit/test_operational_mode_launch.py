@@ -186,7 +186,6 @@ def test_singularity_is_granted_loudly_on_every_honoured_path(caplog, capsys) ->
 def test_what_the_model_is_shown_follows_the_grant() -> None:
     """The prompt roster, context prompt and Default Network read `_effective_mode` -- the same
     precedence dispatch applies -- so a raising grant is not a silent no-op at the prompt."""
-    import inspect
 
     from maxim.runtime import agent_loop
 
@@ -197,7 +196,9 @@ def test_what_the_model_is_shown_follows_the_grant() -> None:
     assert agent_loop._effective_mode(executor, _State(), "observe") == "observe"
     executor.set_operational_override("active")
     assert agent_loop._effective_mode(executor, _State(), "observe") == "active"
-    loop = inspect.getsource(agent_loop.run_agentic_loop)
+    from tests.unit._loop_source import loop_source
+
+    loop = loop_source()  # the loop's modules, wherever the block lives (1.3.2 decomposition)
     assert 'mode_name = _effective_mode(executor, state, "observe")' in loop  # the roster + context prompt
     assert "_dn_mode := _effective_mode(executor, state, current_mode)" in loop  # the Default Network
 

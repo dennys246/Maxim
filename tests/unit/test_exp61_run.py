@@ -498,3 +498,40 @@ def test_both_halves_decides_on_exact_rates_at_the_band() -> None:
     v = E.compute_verdict(_campaign(isolated=25, i_rate=0.2, dangling=30, d_rate=0.3), campaign_id="c1")
     assert v["rates"]["dangling"]["rate"] == 0.3 and v["rates"]["isolated"]["rate"] == 0.2
     assert v["checks"]["both_halves"] is False, v["checks"]
+
+
+def test_verdict_over_the_committed_exp61_record_matches_the_committed_verdict() -> None:
+    """The decomposition's preservation gate (1.3.2 slice 0, roadmap_1_3_x.md §"The decomposition"): the
+    real `compute_verdict` over the committed Exp 61 pair rows, for the committed campaign id, must
+    reproduce the committed verdict on every field that is a pure function of the rows. Mirrors
+    `test_exp60_run.py::test_verdict_over_the_committed_exp60_record_matches_the_committed_verdict`.
+
+    Not compared: `data` and `provenance` (stamped by the runner's CLI, not the pure function) and
+    `record_kind` (added by M1b, #1003, after the verdict was committed)."""
+    root = Path(__file__).resolve().parents[2]
+    rows = [
+        json.loads(ln)
+        for ln in (root / "docs/experiments/data/exp61_pairs.jsonl").read_text().splitlines()
+        if ln.strip()
+    ]
+    committed = json.loads((root / "docs/experiments/data/exp61_verdict.json").read_text())
+    assert committed["campaign_id"] == "exp61-campaign-1"
+    v = E.compute_verdict(rows, campaign_id=committed["campaign_id"])
+    assert v["verdict"] == committed["verdict"] == "EARNED"
+    pure_fields = (
+        "_format_version",
+        "kind",
+        "campaign_id",
+        "refused",
+        "n_clean",
+        "rates",
+        "permutation",
+        "checks",
+        "gates",
+        "verdict",
+        "incomplete_cause",
+    )
+    for field in pure_fields:
+        assert v[field] == committed[field], field
+    # every committed field is either compared or named above as runner-stamped
+    assert set(committed) - set(pure_fields) == {"data", "provenance"}

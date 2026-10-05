@@ -231,7 +231,9 @@ def test_both_runtimes_record_the_effective_state(rel: str) -> None:
 
 def test_the_loop_reads_the_recorded_state_with_one_default() -> None:
     """The reads defaulted to True in two places and False in a third."""
-    source = (REPO / "src/maxim/runtime/agent_loop.py").read_text()
+    from tests.unit._loop_source import loop_source
+
+    source = loop_source()  # the loop's modules (1.3.2 decomposition)
     assert 'state.data.get("internet_access", True)' not in source
     assert source.count('state.data.get("internet_access", False)') == 3
 

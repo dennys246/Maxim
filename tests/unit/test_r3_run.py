@@ -386,3 +386,84 @@ def test_idle_tick_period_ignores_proposing_ticks() -> None:
     }
     assert R.idle_tick_period_median_s(ev) == 0.5  # the 0.8 s tie-break dispatch is excluded
     assert R.idle_tick_period_median_s({"ticks": [{"t": 0.0}, {"t": 0.7, "proposal": "x"}]}) is None
+
+
+def _committed_r3(name: str):
+    root = Path(__file__).resolve().parents[2]
+    return json.loads((root / "docs/experiments/data" / name).read_text())
+
+
+def _committed_r3_rows() -> list[dict]:
+    root = Path(__file__).resolve().parents[2]
+    return [
+        json.loads(ln) for ln in (root / "docs/experiments/data/r3_bench.jsonl").read_text().splitlines() if ln.strip()
+    ]
+
+
+def test_report_over_the_committed_r3_bench_matches_the_committed_amended_report() -> None:
+    """The decomposition's preservation gate (1.3.2 slice 0, roadmap_1_3_x.md §"The decomposition"): the
+    committed amended R3 report (`r3_report_amended.json`, written by `r3_run.py report --amended`) is
+    reproduced offline from the committed bench rows and gauntlet, by the same composition `_report` runs:
+    Amendment 2's `reclassify_under_amendments` (pure), then `report(...)` with the hash rule satisfied
+    by ancestry. Amendment 1's ancestry check reads git history, which a shallow CI clone does not have,
+    so this test takes its RECORDED outcome from the committed report (all True) — the check itself is
+    re-proven against real history by `test_amendment_1_holds_for_the_real_r3_cal_and_bench_hashes`.
+    Compared through a JSON round-trip (the committed file stores `median_ci95` tuples as lists)."""
+    committed = _committed_r3("r3_report_amended.json")
+    gauntlet = _committed_r3("r3_gauntlet.json")
+    a1 = committed["amended"]["amendment_1"]
+    assert a1["cal_code_hash"] == gauntlet["cal_code_hash"]
+    assert all(a1["harness_unchanged"].values())
+    rows, recounted = R.reclassify_under_amendments(_committed_r3_rows())
+    bench_hashes = sorted(
+        {
+            str((r.get("provenance") or {}).get("executed_git_hash"))
+            for r in rows
+            if r.get("campaign_id") == committed["campaign_id"]
+        }
+    )
+    assert bench_hashes == a1["bench_hashes"]
+    rep = json.loads(
+        json.dumps(
+            R.report(
+                rows,
+                campaign_id=committed["campaign_id"],
+                gauntlet=gauntlet,
+                hash_rule_satisfied_by_ancestry=True,
+            ),
+            default=str,
+        )
+    )
+    assert rep["status"] == committed["status"] == "COMPLETE"
+    assert set(rep) == set(committed) - {"amended"}
+    for field in rep:
+        assert rep[field] == committed[field], field
+    assert [
+        {"arm": r["arm"], "seed": r["seed"], "tick_period_median_s": r["amended"]["tick_period_median_s"]}
+        for r in recounted
+    ] == committed["amended"]["amendment_2"]["recounted"]
+
+
+def test_report_over_the_committed_r3_bench_matches_the_committed_unamended_report() -> None:
+    """The pre-amendment report (`r3_report.json`, INCOMPLETE under the literal hash rule) is reproduced
+    from the same committed inputs with no amendment applied. It was written by the code BEFORE the
+    amendment commit (19daa6b4), which renamed each arm's `tick_period_median_s` to
+    `tick_period_median_s_in_window` and added `idle_tick_period_median_s`; the rename is applied here,
+    explicitly, and the added field is the only one not compared."""
+    committed = _committed_r3("r3_report.json")
+    for arm in committed["arms"].values():
+        arm["tick_period_median_s_in_window"] = arm.pop("tick_period_median_s")
+    rep = json.loads(
+        json.dumps(
+            R.report(
+                _committed_r3_rows(), campaign_id=committed["campaign_id"], gauntlet=_committed_r3("r3_gauntlet.json")
+            ),
+            default=str,
+        )
+    )
+    for arm in rep["arms"].values():
+        del arm["idle_tick_period_median_s"]
+    assert rep["status"] == committed["status"] == "INCOMPLETE"
+    assert set(rep) == set(committed)
+    for field in rep:
+        assert rep[field] == committed[field], field
