@@ -151,10 +151,9 @@ def violations(repo_root: Path, base: str) -> list[str]:
 
     # (b) the [Unreleased] accumulator gained a content line.
     head_text = (repo_root / CHANGELOG).read_text(encoding="utf-8")
-    try:
-        base_text = show(repo_root, base, CHANGELOG)
-    except GitUnavailable:
-        base_text = ""
+    # `show` already returns "" for a file ABSENT at base; a raised GitUnavailable is a failed read, and reading it as
+    # empty made every non-empty [Unreleased] look grown (fail open, #1098). It propagates to main()'s must_not_skip.
+    base_text = show(repo_root, base, CHANGELOG)
     before_lines = unreleased_lines(base_text)
     after_lines = unreleased_lines(head_text)
     if len(after_lines) > len(before_lines):

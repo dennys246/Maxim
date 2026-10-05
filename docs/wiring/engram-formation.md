@@ -19,7 +19,7 @@ Mental model of the substrate chain: [docs/agents/bio-memory.md](../agents/bio-m
 | Engram family | Forms | Specific | Recalled from a cue | Changes behaviour | Evidence (ledger) |
 |---|---|---|---|---|---|
 | **Situation engram** — EC sensor cluster + NAc `cluster_fear` / `cluster_reward_bias` | ✅ | ⚠️ neutral→extreme swings only; daily wrap boundary (#899) | ✅ EC completion | ✅ **substrate-primary, no LLM** | **EARNED** ×7 (Exp 45, 52, 53b, 56, 60, 61, 62 rung A) |
-| **Recognition engram** — EC text node + node-keyed `reward_bias` | ✅ | ⚠️ running-mean drift; reward widening compounds it (#911) | ✅ text only | LLM prompt text + `tool:*` nudge ≤ 0.20 | PARTIAL / pulled from 1.0 framing |
+| **Recognition engram** — EC text node + node-keyed `reward_bias` | ✅ | ⚠️ running-mean drift; reward widening compounds it (#911) | ✅ text + vision (LinguisticEncoder; sensor never) | LLM prompt text + `tool:*` nudge ≤ 0.20 | PARTIAL / pulled from 1.0 framing |
 | **Episodic engram** — Hippocampus trace | ✅ honest encoding | ✅ per-situation key (2S-b) | ✅ built (2S-d cue) — **result discarded** | LLM prompt text only | Exp 10 (cross-session persistence) |
 | **Semantic engram** — ATL concept | ✅ by NAME | n/a | ✅ by name | LLM prompt text only | none |
 | **Motor engram** — Cerebellum program ↔ Hippocampus trace | ❌ no production caller (#909) | — | — | ❌ | none |

@@ -123,19 +123,20 @@ it seeds harm in `percept_valences`, never through `reward_bias`.
 
 ### E4 — widening scope, and measure the text hazard (#911)
 
-**Docs.** The brief's `_reward_bias` invariant and the tracker say widening is **text-only**;
-sensor engrams never widen.
+**Docs.** The brief's `_reward_bias` invariant and the tracker say sensor engrams never widen. Widening reaches
+every `LinguisticEncoder` modality: `"text"` and `"vision"` (both running-mean), including affordance-name chunks
+that share the `"text"` matrix (found by the E4 design review's wiring lens); the measurement covers `"text"`
+percepts only.
 
-**Measurement (offline, no rig).** A script under `docs/experiments/data/` (the
-`*_cosine_check.py` pattern): a rewarded-node text fixture, bias ∈ {0, 0.1, 0.2}, isolated vs
-sequential EC, cluster purity per arm. Committed with its output.
-
-**Decision tree.**
-- Sequential ≈ isolated at bias 0.2 → close #911 with the numbers; no code.
-- Sequential collapses → a design entry in this plan: count override-widened matches without
-  averaging them into the centroid, or freeze text centroids on override matches. Either is a
-  change to `pattern_complete_or_separate` and fires the "EC threshold / centroid-update change"
-  trigger on the EC completion ledger row — re-run that row's guard in the same PR.
+**Measurement (offline, no rig).** Pre-registered and frozen on `main` before any data:
+[e4_text_widening_drift_preregistration.md](../experiments/protocols/e4_text_widening_drift_preregistration.md)
+(owner decisions 2026-10-05, four-lens design review in
+[rationale/e4-text-widening-drift/](../experiments/rationale/e4-text-widening-drift/)). It is a latent-hazard
+upper bound: no live path gives a text node positive reward today. The harness is
+`scripts/e4_text_widening_drift.py` (a second PR); its record lands in
+`docs/experiments/data/e4_text_widening_drift/`. The prereg's frozen rule decides (COLLAPSE → a design entry
+here whose EC change lands with or before the first positive text-credit producer; NO HEADROOM → #911 stays open
+for an owner decision; NO COLLAPSE → close #911 with the numbers).
 
 **Sensor widening** — no action; recorded as an input to the Rung B keying design (it would pull
 neighbouring situations into a node that carries fear or want: a generalization mechanism).
