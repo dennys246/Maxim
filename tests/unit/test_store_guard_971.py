@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time as _real_time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -127,15 +128,8 @@ def _cl_fill(cl):
 
 
 SPECS = [
-    # Rounded: NAc.load() applies its wall-clock decay-on-load, which nudges 0.5 by a few nanoseconds.
-    Spec(
-        "nac",
-        "nac.json",
-        _nac,
-        _nac_fill,
-        lambda s: {k: round(v, 6) for k, v in s.dump()["reward_bias"].items()},
-        _nac_break,
-    ),
+    # Exact: the frozen clock below makes NAc.load()'s wall-clock decay-on-load a no-op.
+    Spec("nac", "nac.json", _nac, _nac_fill, lambda s: s.dump()["reward_bias"], _nac_break),
     Spec("ec", "ec.json", _ec, _ec_fill, lambda s: sorted(s._substrate_nodes), _ec_break),
     Spec("scn", "scn.json", _scn, _scn_fill, lambda s: s.dump()["signatures"], _scn_break),
     Spec(
@@ -148,6 +142,29 @@ SPECS = [
     ),
     Spec("cross_layer", "cross_layer_graph.json", _cl, _cl_fill, lambda s: s.dump(), _cl_break),
 ]
+
+
+class _FrozenWallClock:
+    """``time`` as NAc sees it, with ``time()`` stopped: every other attribute is the real module's."""
+
+    def __init__(self, now: float) -> None:
+        self._now = now
+
+    def time(self) -> float:
+        return self._now
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(_real_time, name)
+
+
+@pytest.fixture(autouse=True)
+def _nac_wall_clock_stopped(monkeypatch):
+    """NAc decays its biases on load by ``time.time() - saved_at`` (#818). These tests are about which file a
+    store may write, not about decay, so no wall-clock time passes between a save and a load: the round trip
+    is exact on any runner. (Rounding the compared value only moved the threshold a slow CI box crossed.)"""
+    import maxim.decisions.nac as nac_module
+
+    monkeypatch.setattr(nac_module, "time", _FrozenWallClock(1_800_000_000.0))
 
 
 @pytest.fixture(params=SPECS, ids=lambda s: s.name)
