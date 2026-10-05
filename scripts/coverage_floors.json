@@ -3,8 +3,8 @@
   "band": 1.0,
   "min_package_statements": 200,
   "overall": {
-    "percent": 65.8,
-    "missing": 31404
+    "percent": 65.9,
+    "missing": 31324
   },
   "packages": {
     "maxim/<root>": {
@@ -56,8 +56,8 @@
       "missing": 2046
     },
     "maxim/embodiment": {
-      "percent": 81.3,
-      "missing": 704
+      "percent": 83.2,
+      "missing": 633
     },
     "maxim/energy": {
       "percent": 52.7,
@@ -84,8 +84,8 @@
       "missing": 539
     },
     "maxim/integration": {
-      "percent": 68.3,
-      "missing": 433
+      "percent": 68.4,
+      "missing": 430
     },
     "maxim/interactive": {
       "percent": 33.7,
@@ -132,8 +132,8 @@
       "missing": 54
     },
     "maxim/runtime": {
-      "percent": 68.6,
-      "missing": 3898
+      "percent": 68.8,
+      "missing": 3893
     },
     "maxim/salience": {
       "percent": 68.6,
@@ -156,8 +156,8 @@
       "missing": 105
     },
     "maxim/tools": {
-      "percent": 61.7,
-      "missing": 1527
+      "percent": 61.9,
+      "missing": 1518
     },
     "maxim/tunnel": {
       "percent": 70.5,
