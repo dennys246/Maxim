@@ -329,8 +329,8 @@ class TestResolvedEntityAffordances:
         assert result is not None
         assert any(a.startswith("dragon:") for a in result.affordances)
 
-    def test_resolved_entities_with_nac_valence_annotation(self):
-        """Affordances get NAc valence annotations when NAc + ATL are available."""
+    def test_resolved_entities_with_a_negative_bias_stay_unlabeled(self):
+        """No danger label, even for a negative bias no writer produces (#910): re-adding one fails here."""
         registry = _make_registry({"creatures/dragon": _DRAGON_SPEC})
 
         # Mock ATL that returns a concept for "fire"
@@ -341,7 +341,7 @@ class TestResolvedEntityAffordances:
         concept.category = "substrate"
         atl.recall.return_value = [concept]
 
-        # Mock NAc that returns negative reward_bias for fire
+        # Mock NAc that returns a negative reward_bias for fire (every writer clamps to >= 0; #1102 is load)
         nac = MagicMock()
         nac.reward_bias.return_value = -0.5
         nac.get_links_for_event.return_value = []
@@ -350,9 +350,9 @@ class TestResolvedEntityAffordances:
         ctx = EnrichmentContext(resolved_entities=("creatures/dragon",))
         result = pipeline.enrich("a dragon", bypass_gate=True, context=ctx)
         assert result is not None
-        # fire_breath should be annotated as DANGEROUS
         aff_text = " ".join(result.affordances)
-        assert "DANGEROUS" in aff_text
+        assert "fire_breath" in aff_text
+        assert "DANGEROUS" not in aff_text and "[" not in aff_text
 
     def test_no_resolved_entities_falls_back_to_text_similarity(self):
         """Without resolved_entities, falls back to text-similarity search."""

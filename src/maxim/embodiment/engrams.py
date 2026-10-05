@@ -1,8 +1,11 @@
 """Motor engrams — ephemeral Cerebellum ↔ Hippocampus cross-system traces.
 
-Engrams are short-lived episodic memories that link motor programs to
-situational context.  They form on significant outcomes (pain, surprise,
-novelty) and decay after ~2 days unless reinforced.
+Dormant since 2026-10-04: no production caller (#909). Every entry point (``Cerebellum.form_engram``,
+``query_engrams``, ``cleanup_program``) is unwired, so no engram forms or is read; no engram-specific decay
+exists. Resurrection goes through roadmap 1.4 Phase 5's graded-predictor audit (engram_formation.md E7).
+
+Designed: engrams are short-lived episodic memories that link motor programs to
+situational context, formed on significant outcomes (pain, surprise, novelty).
 
 The Cerebellum stores the **how** (motor program steps).
 The Hippocampus stores the **when/where/what** (contextual episode).
@@ -40,6 +43,7 @@ class EngramConfig:
     spreading_activation_threshold: float = 0.1
 
     # Gate modulation
+    # Dormant since 2026-10-04 (#909): nothing reads this; no ProgramExecutor applies gate tightening.
     gate_tightening_factor: float = 0.1  # 10% gate reduction per negative engram
 
 

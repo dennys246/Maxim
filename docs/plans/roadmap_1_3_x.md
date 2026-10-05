@@ -279,9 +279,9 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
 1.4.0 (release threshold T7), touch no survival rung's path and run off the rig
 ([engram_formation.md](engram_formation.md)), so they fit the hardening line:
 [#908](https://github.com/dennys246/Maxim/issues/908) the Cerebellum is never saved (guard: a round trip
-that fails on today's default config); [#909](https://github.com/dennys246/Maxim/issues/909) the
+that fails on today's default config; done 2026-10-04); [#909](https://github.com/dennys246/Maxim/issues/909) the
 motor-engram docs overclaim and the read side is undeclared-dormant (guard: the Dormant docstring + a
-caller-grep test); [#910](https://github.com/dennys246/Maxim/issues/910) the `[DANGEROUS]` annotation is
+caller-grep test; done 2026-10-04); [#910](https://github.com/dennys246/Maxim/issues/910) the `[DANGEROUS]` annotation is
 unreachable (guard: a test that reaches it through the real annotator); [#911](https://github.com/dennys246/Maxim/issues/911)
 the text-only reward-widening drift hazard (an offline measurement committed as a record, not a fix).
 

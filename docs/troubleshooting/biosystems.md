@@ -128,12 +128,11 @@ Check that `create_pain_nac_subscriber(nac)` is subscribed to the PainBus. Look 
 ### Symptom: No forward models forming
 
 1. **Cerebellum not initialized** — Cerebellum is constructed inside `build_bio_stack` (via `AgentFactory.create_full_agent`). Check `simulation/orchestrator.py` around line 547 to confirm `create_full_agent` is called. The cerebellum instance is available at `_aut_instance.bio_stack.cerebellum`.
-2. **Motor programs not in prompt** — `memory_agent.py build_context()` should populate `context.motor_programs` from `cerebellum.programs.find_related()`. Check this wiring exists.
-3. **No embodiment tools** — Cerebellum learns from `ModulatorAffordanceTool` executions. Without SEM entities in the campaign, there are no embodiment tools to observe.
+2. **No embodiment tools** — Cerebellum learns from SEM affordance executions (`embodiment/tool_bridge.py` calls `observe_from_action` after each one). Without SEM entities in the campaign, there are no embodiment tools to observe. Training shows up as `get_confidence` in the `sim_cerebellum` telemetry.
 
-### Symptom: Forward models exist but not in LLM prompt
+### Symptom: Motor-programs section of the LLM prompt is always empty
 
-Check `prompt_builder.py` around line 1625 — the motor programs section renders if `context.motor_programs` is non-empty. If empty, the `build_context()` wiring to Cerebellum is missing.
+**Expected — not a wiring bug.** The prompt renders the motor-programs section only when `context.motor_programs` is non-empty, and `memory_agent.py build_context()` fills it from `cerebellum.programs.find_related()`. Motor-program crystallization (`observe_action_sequence` / `ProgramRegistry.observe_sequence`) has had no production caller since it was written (Dormant since 2026-10-04, #909), so every `find_programs_*` / `find_related` read returns `[]`. The forward model itself still trains and persists; it just has no prompt consumer (`Cerebellum.predict` is dormant too). See [docs/plans/engram_formation.md](../plans/engram_formation.md) E7 for the resurrect-or-retire decision.
 
 ---
 

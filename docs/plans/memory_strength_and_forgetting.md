@@ -229,8 +229,9 @@ writer-priority and not re-entrant), taking the read lock once and then per-reco
 *Counting rule — two criteria:* the LLM paths count at the consumer's **render cap** (enrichment,
 the memory/concept tools, the replan prompt, the adaptive planner's decomposition prompt); pattern
 completion counts at **completion** (CA3 reactivation, whether or not a consumer reads the
-prediction), completed episodes only, never the cue concepts. `tools/discovery.py`'s `[DANGEROUS]`
-tag is not a use: it renders an NAc verdict keyed by the concept, not the concept's content.
+prediction), completed episodes only, never the cue concepts. `tools/discovery.py`'s `[effective]` /
+"similar affordance worked well" tags (their danger branches were unreachable and are gone, #910) are not
+a use: they render an NAc verdict keyed by the concept, not the concept's content.
 Consumers that retrieve and never deliver are #845 (the replan site is wired but dead until
 #845(1); the adaptive planner is live only in `embodied_runtime/agentic_runtime.py`).
 
