@@ -97,8 +97,9 @@ if [[ "$SETS" == *"1"* ]]; then
     # Analyze results
     echo ""
     echo "  ── Set 1 Analysis ──"
-    DANGEROUS_COUNT=$(grep -c "DANGEROUS" "$RESULTS_DIR/sim1b_stdout.txt" 2>/dev/null || echo "0")
-    echo "  [DANGEROUS] annotations in session 2: $DANGEROUS_COUNT"
+    # The [DANGEROUS] affordance label never fired (reward_bias is clamped >= 0) and was removed (#910):
+    # criterion 1 below cannot pass as written. Option 1 (read the stores that hold harm) is deferred.
+    echo "  [DANGEROUS] annotations in session 2: n/a (label removed, #910)"
     GOAL_BIAS_COUNT=$(grep -c "credit_goal" "$RESULTS_DIR/sim1a_stdout.txt" 2>/dev/null || echo "0")
     echo "  credit_goal calls in session 1: $GOAL_BIAS_COUNT"
     echo ""

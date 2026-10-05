@@ -118,7 +118,7 @@ maxim --sim scenarios/campaigns/darkened_cavern_v1.yaml \
 
 | Set | Pass condition |
 |-----|---------------|
-| 1 | Session 2 shows `[DANGEROUS]` on mage fire affordances without direct experience |
+| 1 | Session 2 shows `[DANGEROUS]` on mage fire affordances without direct experience (**cannot pass: the label never fired and was removed, #910, 2026-10-04**) |
 | 2 | `_goal_reward_bias` has non-zero entries for recurring goals by end of campaign |
 | 3 | Imagination instantiates 3+ diverse entity types, affordance substrate nodes form |
 | 4 | PainBus fires on sensory threshold crossings, bio-systems continue functioning under degradation |

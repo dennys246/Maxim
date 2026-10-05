@@ -256,7 +256,9 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
 that fails on today's default config); [#909](https://github.com/dennys246/Maxim/issues/909) the
 motor-engram docs overclaim and the read side is undeclared-dormant (guard: the Dormant docstring + a
 caller-grep test); [#910](https://github.com/dennys246/Maxim/issues/910) the `[DANGEROUS]` annotation is
-unreachable (guard: a test that reaches it through the real annotator); [#911](https://github.com/dennys246/Maxim/issues/911)
+unreachable (owner decision 2026-10-04: delete the dead branch; guard: negative experience annotates as
+unlabeled through all three real annotators, extended to a third site by owner decision, and a strict xfail
+reaching a danger label through them is option 1's revive marker); [#911](https://github.com/dennys246/Maxim/issues/911)
 the text-only reward-widening drift hazard (an offline measurement committed as a record, not a fix).
 
 **Issue burn-down (added 2026-09-27, owner).** 1.3.2 spends a solid share of its time closing open
