@@ -365,10 +365,17 @@ jobs:
 
   unit-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # 60, not 45: the fast suite now runs under coverage (roadmap 1.3.2 item 5). Figures so far:
+    # 18:26 for the fast suite in CI without coverage (run 37217982246); 26:46 locally with --cov.
+    # The CI figure with coverage is recorded on the gate PR.
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The coverage ratchet's diff rules need the merge-base: a depth-1 checkout has none, and
+          # on a pull request scripts/lint_coverage.py then fails (_lint_git.must_not_skip).
+          fetch-depth: 0
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -388,7 +395,13 @@ jobs:
           # infrastructure stall rather than as that defect. Without the
           # plugin the @pytest.mark.timeout marker is silently ignored and the
           # guard goes back to being unfalsifiable.
-          pip install pytest pytest-cov pytest-xdist pytest-timeout
+          #
+          # coverage + pytest-cov are pinned EXACTLY: the coverage ratchet's floors are measured by
+          # this version, and the coverage ratchet refuses a coverage.json written by any other
+          # (the version constant there must move with this pin).
+          # pyyaml here (not only in the guarded optional line below): the coverage ratchet reads
+          # this workflow structurally to verify its own step.
+          pip install pytest "pytest-cov==7.0.0" "coverage==7.13.3" pytest-xdist pytest-timeout "pyyaml>=6.0,<7.0"
           # Install without deps first (reachy-mini requires robot hardware SDK),
           # then install available deps separately
           pip install --no-deps -e .
@@ -437,10 +450,15 @@ jobs:
                --ignore-missing-imports --follow-imports=silent --warn-unused-ignores
 
       - name: Run required fast suite
-        run: >-
-          python -m pytest tests/ -x -q -m "not slow" --tb=short
-          --ignore=tests/integration/test_memory_hub.py
-          --require-extras=console,sign
+        # Measured under coverage in this ONE run (roadmap 1.3.2 item 5, owner decision 2026-10-04):
+        # no second pass. Configuration comes only from pyproject.toml [tool.coverage]. Stale data
+        # from an earlier run is deleted first so the ratchet can only read this run's numbers.
+        run: |
+          rm -f .coverage coverage.json coverage.xml
+          python -m pytest tests/ -x -q -m "not slow" --tb=short \
+            --ignore=tests/integration/test_memory_hub.py \
+            --require-extras=console,sign \
+            --cov=src/maxim --cov-branch --cov-report=json:coverage.json --cov-report=
 
       # The project's required-checks block is TWO commands, and the fast suite
       # above excludes this file. Without this step the MemoryHub gate is
@@ -448,6 +466,15 @@ jobs:
       # not the executed suite" defect D20 exists to close. It runs in ~1s.
       - name: MemoryHub integration gate
         run: python -m pytest tests/integration/test_memory_hub.py -q
+
+      - name: Coverage ratchet (roadmap 1.3.2 item 5)
+        # Floors (overall + per package, 1.0-pt band), diff coverage >= 80% of changed executable
+        # src/maxim lines vs the merge-base, the fixed [tool.coverage] table, and the reviewed
+        # exclusion list + ledger (scripts/coverage_floors.json, scripts/coverage_exclusions.json).
+        # Deliberately NOT `if: always()`: after a failed `-x` run the data is partial.
+        # Prints overall + per-package coverage every run. Positive control:
+        # tests/unit/test_lint_coverage.py.
+        run: python scripts/lint_coverage.py
 
   lint:
     runs-on: ubuntu-latest
