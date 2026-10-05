@@ -74,9 +74,11 @@ that generalizes belongs here.
 - [engram-formation.md](engram-formation.md) — **the living scorecard of how every engram family
   forms** (situation cluster + fear/want, text recognition node, Hippocampus episode, ATL concept,
   Cerebellum motor engram), each scored on forms / specific / recalled / changes behaviour. Only the
-  situation engram acts without the LLM; motor engrams have no production caller and the Cerebellum
-  is never saved. Gaps → [../plans/engram_formation.md](../plans/engram_formation.md) (#908–#911,
-  #899, #848). (Four-path audit, 2026-09-25.)
+  situation engram acts without the LLM; motor engrams have no production caller (Dormant since
+  2026-10-04, #909), and the Cerebellum's forward model trains live and is saved to
+  `<home>/cerebellum.json` at session end (#908). Gaps →
+  [../plans/engram_formation.md](../plans/engram_formation.md) (#910, #911, #899, #848). (Four-path
+  audit, 2026-09-25; E1/E2 done 2026-10-04.)
 
 - [experiment-catalog-candidates.md](experiment-catalog-candidates.md) — a prioritized **backlog** of
   11 reusable wiring lessons harvested from all 92 past experiments (catalog workflow, 2026-09-13);

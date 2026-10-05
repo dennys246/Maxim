@@ -343,8 +343,9 @@ infrastructure the review located, and the full four-lens review.
   this store ([#1072](https://github.com/dennys246/Maxim/issues/1072)).
 - **A graded predictor (anticipation).** Audit first: `anticipatory_pre_activate` + drive
   TemporalEvents (dormant on both ends) and `embodiment/cerebellum.py` (write live, read dormant —
-  and, until [#908](https://github.com/dennys246/Maxim/issues/908) lands, never SAVED: the audit must
-  not read a fresh-each-session forward model as "cannot learn"; motor engrams are its E7 disposition
+  and, until [#908](https://github.com/dennys246/Maxim/issues/908) landed 2026-10-04, never SAVED: the
+  audit must not read a pre-#908 fresh-each-session forward model as "cannot learn"; motor engrams are
+  its E7 disposition
   in [engram_formation.md](engram_formation.md)).
   Only if neither can carry "how far pain is" does a new plan (`latent_forward_model.md`) open — and
   that is where the §JEPA predictive idea and the §Pressure candidate input would live.

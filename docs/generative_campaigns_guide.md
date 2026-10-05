@@ -155,7 +155,7 @@ maxim --benchmark all --models mistral-7b,qwen2.5   # All tiers
 |------|------|------|
 | Tier 1: Cognitive | Memory, causal learning, safety | ~$0.05, ~2min |
 | Tier 2: Bio-system | Hippocampus, NAc, ATL, pain | ~$0.15, ~5min |
-| Tier 3: Embodiment | SEM tools, Cerebellum, motor programs | ~$0.30, ~10min |
+| Tier 3: Embodiment | SEM tools, Cerebellum forward model | ~$0.30, ~10min |
 
 ## Module Map
 

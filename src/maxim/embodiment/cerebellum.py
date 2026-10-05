@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from typing import Any, NamedTuple
 
 from maxim.utils.logging import log_swallowed_exception
+from maxim.utils.store_ownership import StoreFileOwnership, is_unreadable_store_error
 from maxim.embodiment.sem import Entity
 
 log = logging.getLogger(__name__)
@@ -213,7 +214,7 @@ class CerebellumConfig:
     persistence_path: str | None = None
 
 
-class Cerebellum:
+class Cerebellum(StoreFileOwnership):
     """Forward models for predicting sensory consequences of actions.
 
     Stores lightweight predictors per ``(entity_path, modulator, affordance,
@@ -227,6 +228,9 @@ class Cerebellum:
     exclusively.  Global operations (``prune``, ``export``) acquire all
     locks sequentially.
     """
+
+    # StoreFileOwnership (#908, #971): never saves over a file it did not read.
+    _store_name = "cerebellum"
 
     def __init__(self, config: CerebellumConfig | None = None) -> None:
         self.config = config or CerebellumConfig()
@@ -281,6 +285,10 @@ class Cerebellum:
         sensor_ranges: dict[str, tuple[float, float]] | None = None,
     ) -> dict[str, float] | None:
         """Return predicted sensor values, or None if no confident model.
+
+        Dormant since 2026-10-04: no production caller (#909). The read side of the Cerebellum is unwired;
+        resurrection goes through roadmap 1.4 Phase 5's graded-predictor audit (engram_formation.md E7).
+        Callers stay; nothing new builds on it (tests/unit/test_cerebellum_dormant_909.py).
 
         Returns
         -------
@@ -508,47 +516,71 @@ class Cerebellum:
             self.programs.stats()["program_count"],
         )
 
-    def save(self, path: str | None = None) -> None:
-        """Save state to JSON file."""
-        path = path or self.config.persistence_path
-        if path is None:
-            return
+    def _reset_store_state(self) -> None:
+        """Empty every surface ``import_state`` fills (models, counters, motor programs): it has no
+        ``dump``/``load_state`` pair, and ``import_state`` keeps the programs when a file carries none."""
+        from maxim.embodiment.motor import ProgramRegistry
 
-        from pathlib import Path
+        with self._global_lock:
+            self._models.clear()
+            self._locks.clear()
+            self._total_predictions = 0
+            self._total_observations = 0
+            self._llm_fallbacks = 0
+            self.programs = ProgramRegistry()
 
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        state = self.export_state()
+    def save(self, path: str | None = None, *, overwrite: bool = False) -> None:
+        """Save state to JSON (default: ``config.persistence_path``; a store with neither raises ValueError).
 
-        try:
-            from maxim.utils.atomic_io import atomic_write_json
-            from maxim.utils.format_version import with_format_version
+        ``overwrite`` replaces an existing file this instance never read; without it such a save raises
+        ``StoreOverwriteRefused`` (#908, #971).
+        """
+        from maxim.utils.atomic_io import atomic_write_json
+        from maxim.utils.format_version import with_format_version
 
-            atomic_write_json(path, with_format_version(state))
-        except ImportError:
-            with open(path, "w") as f:
-                json.dump(state, f, indent=2)
-
+        path = self._default_store_path(path)  # `~` means home
+        self._check_store_write(path, overwrite=overwrite)
+        atomic_write_json(path, with_format_version(self.export_state()))
+        self._claim_store_file(path)
         log.debug("Saved Cerebellum state to %s (%d models)", path, len(self._models))
 
     def load(self, path: str | None = None) -> bool:
-        """Load state from JSON file. Returns True if loaded."""
-        path = path or self.config.persistence_path
-        if path is None:
-            return False
-
+        """Load state from JSON (default: ``config.persistence_path``). Returns False when the file is missing."""
         from pathlib import Path
 
+        path = self._default_store_path(path)  # `~` means home
         if not Path(path).exists():
             return False
 
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
 
         from maxim.utils.format_version import check_format_version
 
         check_format_version(data, "cerebellum", log=log)
         self.import_state(data)
+        self._claim_store_file(path)
         return True
+
+    def load_safe(self, path: str | None = None) -> tuple[bool, str | None]:
+        """Load with recovery on failure. Returns (success, error_message).
+
+        A missing file is a fresh start. An UNREADABLE one (``is_unreadable_store_error``) is copied to
+        ``<name>.corrupt-<UTC timestamp>``, the Cerebellum is emptied, and the next save replaces the
+        original (#908, the #971 rule). An ``OSError`` propagates: it never licenses replacing the file.
+        A store with no path given or configured raises ``ValueError`` before anything is read.
+        """
+        path = self._default_store_path(path)  # no path is a caller error, never "corrupt"
+        try:
+            self.load(path)
+            return True, None
+        except Exception as e:
+            if not is_unreadable_store_error(e):
+                raise
+            error_msg = f"Corrupt Cerebellum file ({type(e).__name__}): {e}"
+            log.warning("%s — starting with no forward models", error_msg)
+            self.start_fresh_keeping_copy(path)
+            return False, error_msg
 
     # -- motor programs (Phase 1b) ------------------------------------------
 
@@ -560,6 +592,10 @@ class Cerebellum:
         duration_s: float,
     ) -> Any:
         """Observe an action sequence, crystallize if recurring.
+
+        Dormant since 2026-10-04: no production caller (#909). The read side of the Cerebellum is unwired;
+        resurrection goes through roadmap 1.4 Phase 5's graded-predictor audit (engram_formation.md E7).
+        Callers stay; nothing new builds on it (tests/unit/test_cerebellum_dormant_909.py).
 
         Delegates to ProgramRegistry.observe_sequence().
         Returns a MotorProgram if crystallized, None otherwise.
@@ -705,6 +741,10 @@ class Cerebellum:
     ) -> list[Any]:
         """Retrieve contextual engrams relevant to executing a program now.
 
+        Dormant since 2026-10-04: no production caller (#909). The read side of the Cerebellum is unwired;
+        resurrection goes through roadmap 1.4 Phase 5's graded-predictor audit (engram_formation.md E7).
+        Callers stay; nothing new builds on it (tests/unit/test_cerebellum_dormant_909.py).
+
         Returns a list of MotorEngram objects sorted by relevance.
         """
         from maxim.embodiment.engrams import EngramConfig, MotorEngram, program_graph_node
@@ -775,6 +815,8 @@ class Cerebellum:
 
     def cleanup_program(self, program_name: str, hippocampus: Any = None) -> None:
         """Remove a motor program and its orphan graph nodes.
+
+        Dormant since 2026-10-04: no production caller (#909); no program ever crystallizes to remove.
 
         Deletes the synthetic anchor node and all associated edges
         from the hippocampal graph.

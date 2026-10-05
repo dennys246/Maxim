@@ -93,7 +93,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 |----------|-------------|
 | [Publication Guide](publication_guide.md) | PyPI release checklist, including the canonical website and package-link audit |
 | [Reference](reference.md) | Module layout, bio-system mappings, configuration |
-| [Skills (tombstone)](skills.md) | Removed module — replaced by Cerebellum/motor programs |
+| [Skills (tombstone)](skills.md) | Removed module — superseded by the Cerebellum (motor programs dormant since 2026-10-04) |
 | [Legacy HTML guides (archived)](archive/html-guides/README.md) | The pre-pymaxim.bio documentation set, frozen 2026-06-17; 11 guides still have no Markdown/site equivalent |
 
 ### Experiments
@@ -328,7 +328,7 @@ Maxim's architecture draws inspiration from neuroscience:
 | Amygdala | FearAgent, PainDetector |
 | Thalamus | ThalamicGate (DefaultNetwork) |
 | Superior Colliculus | AttentionNetwork |
-| Cerebellum | Cerebellum forward models, motor programs |
+| Cerebellum | Cerebellum forward models (motor programs / engrams dormant) |
 | Default Mode Network | DefaultNetwork behaviors |
 | Anterior Temporal Lobe | ATL semantic memory, concept extraction, grounding |
 | Angular Gyrus | AngularGyrus mathematical cognition |
