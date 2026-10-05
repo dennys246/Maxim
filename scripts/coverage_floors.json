@@ -4,7 +4,7 @@
   "min_package_statements": 200,
   "overall": {
     "percent": 65.8,
-    "missing": 31507
+    "missing": 31516
   },
   "packages": {
     "maxim/<root>": {
@@ -24,7 +24,7 @@
       "missing": 595
     },
     "maxim/bridges": {
-      "percent": 50.5,
+      "percent": 50.6,
       "missing": 730
     },
     "maxim/comms": {
@@ -96,7 +96,7 @@
       "missing": 605
     },
     "maxim/memory": {
-      "percent": 85.6,
+      "percent": 85.5,
       "missing": 760
     },
     "maxim/models": {
@@ -132,8 +132,8 @@
       "missing": 61
     },
     "maxim/runtime": {
-      "percent": 68.7,
-      "missing": 3917
+      "percent": 68.6,
+      "missing": 3923
     },
     "maxim/salience": {
       "percent": 68.6,

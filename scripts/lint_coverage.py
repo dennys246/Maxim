@@ -18,7 +18,17 @@ floor and one per package: the first path component under ``src/maxim``, with to
 modules grouped as ``maxim/<root>``. Each floor is ``{percent, missing}``: ``missing`` is the
 uncovered statement count pinned with it.
 
-- every run: measured < percent fails; measured > percent + ``band`` fails ("raise it");
+- every run: measured more than k statements under ``percent`` fails (``k = ceil(statements ×
+  0.001)``, i.e. measured < percent − 100·k/statements); measured > percent + ``band`` fails
+  ("raise it"). **The k tolerance below a floor** (owner decision 2026-10-04, "tolerance below
+  floor"): CI coverage moves by a few statements between runs with no code change (maxim/memory
+  measured 760 then 762 missing, 85.59% under an 85.6 floor), and a floor rounded down to 0.1
+  leaves only 0–0.1 pt of random slack. It is bounded and NON-cumulative: it applies only to this
+  HEAD comparison against the committed pin, never to the pin rules below, and pins never move
+  with it — so any number of PRs together can drop at most k statements under an unchanged
+  floor, and a PR that changes a floor is held to the measurement by the CHANGED/NEW rules. No
+  HEAD rule compares measured ``missing`` with a pinned ``missing`` (those comparisons are pin
+  rules), so none needed the tolerance;
   ``band`` must be 1.0 and ``min_package_statements`` (N) 200; a package with >= N
   statements needs a floor; a ``null`` floor fails closed printing
   ``floor missing: measured X`` (the bootstrap: the file is committed with nulls, CI prints
@@ -433,8 +443,13 @@ def floor_head_rules(root: Path, fl: Floors, overall: ScopeCov, pkgs: dict[str, 
                 f"floor missing: {name} measured {_fmt_pct(m.percent)} (missing {m.missing}) — pin "
                 f'{{"percent": {round_down(m.percent)}, "missing": {m.missing}}}'
             )
-        elif m.percent < f.percent - 1e-9:
-            out.append(f"{name}: {_fmt_pct(m.percent)} is below its floor {f.percent}% (missing {m.missing})")
+        elif m.percent < f.percent - below_tolerance(m) - 1e-9:
+            # Owner decision 2026-10-04 ("tolerance below floor"): fail only beyond k statements under the floor.
+            out.append(
+                f"{name}: {_fmt_pct(m.percent)} is below its floor {f.percent}% by more than the "
+                f"{missing_slack(m)}-statement noise tolerance ({_fmt_pct(f.percent - below_tolerance(m))}; "
+                f"missing {m.missing})"
+            )
         elif m.percent > f.percent + BAND + 1e-9:
             out.append(
                 f"{name}: {_fmt_pct(m.percent)} is more than {BAND} pt above its floor {f.percent}% — raise it to "
@@ -585,6 +600,12 @@ def floor_diff_rules(
         if k not in carried:
             changed_entry(k, None, fl.packages[k], pkgs.get(k))
     return out
+
+
+def below_tolerance(m: ScopeCov) -> float:
+    """The HEAD check's allowance under a floor, in percentage points: k statements of the scope (k as in
+    ``missing_slack``). Pins never move with it, so it does not accumulate across PRs."""
+    return 100.0 * missing_slack(m) / m.statements if m.statements else 0.0
 
 
 def suggested_floors(fl: Floors, overall: ScopeCov, pkgs: dict[str, ScopeCov]) -> dict:
