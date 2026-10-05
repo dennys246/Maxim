@@ -157,14 +157,20 @@ def test_show_distinguishes_absent_from_failed(repo) -> None:
         _lint_git.show(root, "not-a-ref", "src/maxim/old.py")
 
 
-@pytest.mark.xfail(strict=True, reason="#1098: a mid-run git failure returns 0 on a pull request")
 def test_a_mid_run_git_failure_is_an_error_on_a_pull_request(monkeypatch, capsys) -> None:
-    """The base resolved, then git failed inside the ratchet: on a pull request that is no verdict, so exit 2."""
+    """The base resolved, then git failed inside the ratchet: on a pull request that is no verdict, so exit 2.
+
+    The lint imports the top-level ``_lint_git`` (scripts/ on sys.path); this file imports ``scripts._lint_git``.
+    They are two modules with two ``GitUnavailable`` classes, so a test must raise ``L.GitUnavailable`` (raising the
+    other made this gate's first version xfail on an uncaught exception, not on the bug)."""
+    assert L.GitUnavailable is not _lint_git.GitUnavailable
     monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
     monkeypatch.setattr(L, "base_ref", lambda _root: "deadbeef")
 
     def broken(*_a, **_k):
-        raise _lint_git.GitUnavailable("git show: broken")
+        raise L.GitUnavailable(
+            "git show: broken"
+        )  # the lint's own (top-level `_lint_git`) class, not scripts._lint_git
 
     monkeypatch.setattr(L, "count_ratchet", broken)
     assert L.main() == 2

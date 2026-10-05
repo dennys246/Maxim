@@ -225,7 +225,6 @@ def test_version_is_published_reads_the_tag(tmp_path: Path) -> None:
     assert L.version_is_published(repo, "1.1.2") is True
 
 
-@pytest.mark.xfail(strict=True, reason="#1098: an unreadable base CHANGELOG reads as empty, so any [Unreleased] passes")
 def test_an_unreadable_base_changelog_is_not_an_empty_one(tmp_path: Path, monkeypatch) -> None:
     """`show` already returns "" for a file absent at base; a RAISED GitUnavailable is a failed read. Treating it as
     empty made every non-empty [Unreleased] look grown, so the check passed (fail open)."""
