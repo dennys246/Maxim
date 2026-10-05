@@ -155,3 +155,16 @@ def test_show_distinguishes_absent_from_failed(repo) -> None:
     assert _lint_git.show(root, base, "src/maxim/never.py") == ""
     with pytest.raises(_lint_git.GitUnavailable):
         _lint_git.show(root, "not-a-ref", "src/maxim/old.py")
+
+
+@pytest.mark.xfail(strict=True, reason="#1098: a mid-run git failure returns 0 on a pull request")
+def test_a_mid_run_git_failure_is_an_error_on_a_pull_request(monkeypatch, capsys) -> None:
+    """The base resolved, then git failed inside the ratchet: on a pull request that is no verdict, so exit 2."""
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
+    monkeypatch.setattr(L, "base_ref", lambda _root: "deadbeef")
+
+    def broken(*_a, **_k):
+        raise _lint_git.GitUnavailable("git show: broken")
+
+    monkeypatch.setattr(L, "count_ratchet", broken)
+    assert L.main() == 2
