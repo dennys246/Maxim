@@ -111,6 +111,38 @@ Steps, in dependency order:
 4. **3d: consumers.** `EnrichmentResult.reflexes_fired` has no reader today. Either wire it (tell the
    agent it flinched, and put the efference copy into the deliberative context) or mark it dormant.
 
+## How damage lands on a body: the open design points from #873
+
+[#873](https://github.com/dennys246/Maxim/issues/873) found that `damage_component` aimed at a part the body
+lacks fell back to the root `health` and reported success. 1.3.2 shipped only the no-silent-fallback half (the
+roadmap's burn-down row 4): such a call now fails with a retryable `INVALID_INPUT` error that names the parts
+that can take damage. The owner's direction (2026-09-24) is that damage hits **both** the part **and** the
+whole body, and the whole body is the **sum of its parts**, not a separate number to decrement. Four points
+stay open here:
+
+1. **"Sum" vs today's weighted mean.** `Entity.derive_health()` is a weighted *mean* of modulator integrities
+   (`metadata["health_weights"]`), applied only to bodies that declare or inherit `health: derived` (`base_humanoid` and the
+   `infant_*` bodies that extend it, `host_machine`, `creatures/dragon`). A literal sum, or a mean weighted by part size or criticality, changes
+   the numbers.
+2. **A named part that does not exist.** Failing the call is the **interim** the roadmap mandated, not a
+   decision against resolving to a default or nearest part. It fails closed, so either answer stays open.
+3. **Partless bodies.** On every body with no damageable part, `damage_component` cannot land at all since
+   #873 (in the narrative sim, where this registry is built; a Minecraft body is affected only when run there
+   via `--embodiment`). These are `creatures/wolf`'s flat `hp` and the other quadrupeds except the dragon, the `reachy_mini`
+   bodies (incl. Exp 54's `reachy_mini_infant`), the `minecraft_*` bodies, `creatures/revenant`,
+   `creatures/skeleton_warrior` and the `npcs/*`. Either give them parts, or make `hp`/`health` the derived
+   quantity of a single implicit part.
+4. **Archetype reflex sets** should target parts every body of that archetype has. Today the humanoid set
+   (`torso`, `legs`) and the quadruped set (`torso`, `wing`, `combat`) fail on the bodies in point 3. A failed
+   reflex consumes no cooldown, so it re-dispatches on every matching percept, warning once per reflex.
+   Row 9's body (`base_humanoid`) has every targeted part and is unaffected (see T3-9's #873 note), so #873
+   does not break "What it must not do" below, which scopes this plan's routes.
+
+Related, same class: `SpecModulator.apply_damage` returns `1.0` silently when the part has no sensors (now
+dead behind the tool's `_takes_damage` check), and `orchestrator.py::_get_component_integrity` returns `1.0`
+for a missing part. The orchestrator prompt names parts the default body lacks:
+[#1093](https://github.com/dennys246/Maxim/issues/1093).
+
 ## What it must not do
 
 - Change what the body **experiences** in any shipped scenario before row 9 is re-run. Route 1 was
