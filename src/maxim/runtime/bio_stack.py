@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
     from maxim.decisions.nac import NAc
+    from maxim.embodiment.cerebellum import Cerebellum
     from maxim.default_network import DefaultNetworkConfig
     from maxim.integration.memory_hub import MemoryHub
     from maxim.math.angular_gyrus import AngularGyrus
@@ -115,6 +116,39 @@ class BioStack:
                     self.distributor.cleanup_session()
                 except Exception as e:
                     logger.debug("distributor.cleanup_session failed: %s", e)
+
+
+def _build_cerebellum(p: Path, *, load_persisted: bool) -> "Cerebellum | None":
+    """The bio-stack's Cerebellum, bound to ``<p>/cerebellum.json`` for load AND save (#908), or None when the
+    optional dependency is missing.
+
+    The load used to read a hard-coded path while ``save_cerebellum`` read the config's, which nothing set, so
+    nothing was ever saved. An unreadable file is kept as a copy and replaced by the fresh store (#908, #971);
+    an ``OSError`` leaves the file untouched and saves over it refused. A write-but-don't-read stack declares
+    its overwrite (#972).
+    """
+    # Pre-merge review fold: split ImportError (optional dep missing)
+    # from config/load errors (which should surface, not be swallowed).
+    try:
+        from maxim.embodiment.cerebellum import Cerebellum, CerebellumConfig
+    except ImportError:
+        logger.debug("Cerebellum not available (optional dep)")
+        return None
+    path = p / "cerebellum.json"
+    cerebellum = Cerebellum(config=CerebellumConfig(persistence_path=str(path)))
+    if not load_persisted:
+        cerebellum.allow_overwrite()
+    else:
+        try:
+            ok, err = cerebellum.load_safe()
+            if not ok:
+                logger.warning("Cerebellum restore fell back to no forward models: %s", err)
+            elif path.exists():
+                logger.info("Loaded Cerebellum state from %s", path)
+        except OSError as e:  # unreachable, not unreadable
+            logger.error("Cerebellum state at %s could not be read (%s); it is left untouched", path, e)
+    logger.info("Cerebellum initialized in bio-stack")
+    return cerebellum
 
 
 def build_bio_stack(
@@ -471,36 +505,9 @@ def build_bio_stack(
     reaction_bus.subscribe_all(hippocampus.capture_reaction)
 
     # -- Step 4c: Cerebellum (forward models + motor learning) -------------
-    # Pre-merge review fold: split ImportError (optional dep missing)
-    # from config/load errors (which should surface, not be swallowed).
-    cerebellum = None
-    if p is not None:
-        try:
-            from maxim.embodiment.cerebellum import Cerebellum, CerebellumConfig
-        except ImportError:
-            logger.debug("Cerebellum not available (optional dep)")
-        else:
-            # One path for load AND save, bound at construction (#908): the load used a hard-coded
-            # path while save read the config's, which nothing set, so nothing was ever saved.
-            _cerebellum_path = p / "cerebellum.json"
-            cerebellum = Cerebellum(config=CerebellumConfig(persistence_path=str(_cerebellum_path)))
-            if load_persisted:
-                # An unreadable file is kept as a copy and replaced by the fresh store (#908, #971).
-                try:
-                    ok, err = cerebellum.load_safe()
-                    if not ok:
-                        logger.warning("Cerebellum restore fell back to no forward models: %s", err)
-                    elif _cerebellum_path.exists():
-                        logger.info("Loaded Cerebellum state from %s", _cerebellum_path)
-                except OSError as e:  # unreachable, not unreadable: left untouched, saves over it refused
-                    logger.error(
-                        "Cerebellum state at %s could not be read (%s); it is left untouched", _cerebellum_path, e
-                    )
-            else:
-                cerebellum.allow_overwrite()  # write-but-don't-read, declared (#972)
-            if memory_hub is not None:
-                memory_hub.cerebellum = cerebellum
-            logger.info("Cerebellum initialized in bio-stack")
+    cerebellum = _build_cerebellum(p, load_persisted=load_persisted) if p is not None else None
+    if cerebellum is not None and memory_hub is not None:
+        memory_hub.cerebellum = cerebellum
 
     # -- Step 4d: TemporalCreditDistributor + reward subscriber -------------
     # Construct the distributor (composes NAc + SCN for temporal-phase-aware

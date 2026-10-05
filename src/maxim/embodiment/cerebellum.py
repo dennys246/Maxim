@@ -26,7 +26,7 @@ import math
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, ClassVar, NamedTuple
+from typing import Any, NamedTuple
 
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.store_ownership import StoreFileOwnership, is_unreadable_store_error
@@ -229,8 +229,8 @@ class Cerebellum(StoreFileOwnership):
     locks sequentially.
     """
 
-    # StoreFileOwnership (#908, #971): never saves over a file it did not read. ClassVar, so not a field.
-    _store_name: ClassVar[str] = "cerebellum"
+    # StoreFileOwnership (#908, #971): never saves over a file it did not read.
+    _store_name = "cerebellum"
 
     def __init__(self, config: CerebellumConfig | None = None) -> None:
         self.config = config or CerebellumConfig()
