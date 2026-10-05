@@ -1174,6 +1174,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         cov = load_coverage(root)
     except MeasurementError as e:
+        sys.stdout.flush()  # stdout and stderr interleave in CI logs: keep the printed report readable
         for f in failures:
             print(f"  - {f}", file=sys.stderr)
         print(f"coverage: ERROR — failing closed: {e}", file=sys.stderr)
@@ -1227,6 +1228,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"coverage: {time.monotonic() - started:.1f}s")
     if failures:
+        sys.stdout.flush()  # the paste-ready floors JSON (stdout) must not split around this list (stderr)
         print("coverage ratchet FAILED:", file=sys.stderr)
         for f in failures:
             print(f"  - {f}", file=sys.stderr)

@@ -2,47 +2,170 @@
   "floors_format_version": 1,
   "band": 1.0,
   "min_package_statements": 200,
-  "overall": {"percent": null, "missing": null},
+  "overall": {
+    "percent": 65.8,
+    "missing": 31507
+  },
   "packages": {
-    "maxim/<root>": {"percent": null, "missing": null},
-    "maxim/agents": {"percent": null, "missing": null},
-    "maxim/analysis": {"percent": null, "missing": null},
-    "maxim/attention": {"percent": null, "missing": null},
-    "maxim/bridges": {"percent": null, "missing": null},
-    "maxim/comms": {"percent": null, "missing": null},
-    "maxim/console": {"percent": null, "missing": null},
-    "maxim/data": {"percent": null, "missing": null},
-    "maxim/decisions": {"percent": null, "missing": null},
-    "maxim/default_network": {"percent": null, "missing": null},
-    "maxim/doctor": {"percent": null, "missing": null},
-    "maxim/embodied_runtime": {"percent": null, "missing": null},
-    "maxim/embodiment": {"percent": null, "missing": null},
-    "maxim/energy": {"percent": null, "missing": null},
-    "maxim/hardware": {"percent": null, "missing": null},
-    "maxim/harm": {"percent": null, "missing": null},
-    "maxim/hivemind": {"percent": null, "missing": null},
-    "maxim/imagination": {"percent": null, "missing": null},
-    "maxim/inference": {"percent": null, "missing": null},
-    "maxim/integration": {"percent": null, "missing": null},
-    "maxim/interactive": {"percent": null, "missing": null},
-    "maxim/math": {"percent": null, "missing": null},
-    "maxim/memory": {"percent": null, "missing": null},
-    "maxim/models": {"percent": null, "missing": null},
-    "maxim/modes": {"percent": null, "missing": null},
-    "maxim/peer": {"percent": null, "missing": null},
-    "maxim/planning": {"percent": null, "missing": null},
-    "maxim/prompts": {"percent": null, "missing": null},
-    "maxim/proprioception": {"percent": null, "missing": null},
-    "maxim/provenance": {"percent": null, "missing": null},
-    "maxim/retrieval": {"percent": null, "missing": null},
-    "maxim/runtime": {"percent": null, "missing": null},
-    "maxim/salience": {"percent": null, "missing": null},
-    "maxim/similarity": {"percent": null, "missing": null},
-    "maxim/simulation": {"percent": null, "missing": null},
-    "maxim/spatial": {"percent": null, "missing": null},
-    "maxim/time": {"percent": null, "missing": null},
-    "maxim/tools": {"percent": null, "missing": null},
-    "maxim/tunnel": {"percent": null, "missing": null},
-    "maxim/utils": {"percent": null, "missing": null}
+    "maxim/<root>": {
+      "percent": 52.5,
+      "missing": 1524
+    },
+    "maxim/agents": {
+      "percent": 67.3,
+      "missing": 2192
+    },
+    "maxim/analysis": {
+      "percent": 86.9,
+      "missing": 86
+    },
+    "maxim/attention": {
+      "percent": 32.5,
+      "missing": 595
+    },
+    "maxim/bridges": {
+      "percent": 50.5,
+      "missing": 730
+    },
+    "maxim/comms": {
+      "percent": 25.1,
+      "missing": 220
+    },
+    "maxim/console": {
+      "percent": 86.2,
+      "missing": 178
+    },
+    "maxim/data": {
+      "percent": 11.1,
+      "missing": 286
+    },
+    "maxim/decisions": {
+      "percent": 91.7,
+      "missing": 148
+    },
+    "maxim/default_network": {
+      "percent": 40.6,
+      "missing": 1322
+    },
+    "maxim/doctor": {
+      "percent": 69.9,
+      "missing": 500
+    },
+    "maxim/embodied_runtime": {
+      "percent": 31.7,
+      "missing": 2051
+    },
+    "maxim/embodiment": {
+      "percent": 81.3,
+      "missing": 709
+    },
+    "maxim/energy": {
+      "percent": 52.7,
+      "missing": 140
+    },
+    "maxim/hardware": {
+      "percent": 78.0,
+      "missing": 349
+    },
+    "maxim/harm": {
+      "percent": 40.2,
+      "missing": 260
+    },
+    "maxim/hivemind": {
+      "percent": 90.6,
+      "missing": 338
+    },
+    "maxim/imagination": {
+      "percent": 86.5,
+      "missing": 82
+    },
+    "maxim/inference": {
+      "percent": 22.3,
+      "missing": 544
+    },
+    "maxim/integration": {
+      "percent": 68.3,
+      "missing": 438
+    },
+    "maxim/interactive": {
+      "percent": 33.7,
+      "missing": 485
+    },
+    "maxim/math": {
+      "percent": 45.1,
+      "missing": 605
+    },
+    "maxim/memory": {
+      "percent": 85.6,
+      "missing": 760
+    },
+    "maxim/models": {
+      "percent": 56.2,
+      "missing": 2431
+    },
+    "maxim/modes": {
+      "percent": 79.2,
+      "missing": 64
+    },
+    "maxim/peer": {
+      "percent": 73.3,
+      "missing": 668
+    },
+    "maxim/planning": {
+      "percent": 74.4,
+      "missing": 373
+    },
+    "maxim/prompts": {
+      "percent": 88.4,
+      "missing": 41
+    },
+    "maxim/proprioception": {
+      "percent": 77.2,
+      "missing": 238
+    },
+    "maxim/provenance": {
+      "percent": 88.1,
+      "missing": 48
+    },
+    "maxim/retrieval": {
+      "percent": 79.3,
+      "missing": 61
+    },
+    "maxim/runtime": {
+      "percent": 68.7,
+      "missing": 3917
+    },
+    "maxim/salience": {
+      "percent": 68.6,
+      "missing": 226
+    },
+    "maxim/similarity": {
+      "percent": 71.2,
+      "missing": 449
+    },
+    "maxim/simulation": {
+      "percent": 63.5,
+      "missing": 3706
+    },
+    "maxim/spatial": {
+      "percent": 29.9,
+      "missing": 377
+    },
+    "maxim/time": {
+      "percent": 81.4,
+      "missing": 110
+    },
+    "maxim/tools": {
+      "percent": 61.7,
+      "missing": 1532
+    },
+    "maxim/tunnel": {
+      "percent": 70.5,
+      "missing": 195
+    },
+    "maxim/utils": {
+      "percent": 60.2,
+      "missing": 2219
+    }
   }
 }
