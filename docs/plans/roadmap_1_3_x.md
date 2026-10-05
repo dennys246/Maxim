@@ -200,7 +200,9 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
 5. **Coverage as a ratchet — and a coverage push where the risk is** (widened 2026-09-27, owner). Baseline:
    the Codex card's whole-suite run at `v1.3.1` — **61.9% of 90,416 statements**, 31,797 uncovered
    ([evidence](../limits/score_cards/evidence/2026-09-27-codex/)). Three mechanisms, all in CI:
-   - **An overall floor and per-package floors** that only rise, set from that baseline.
+   - **An overall floor and per-package floors** that only rise, set from that baseline. *(Superseded
+     2026-10-04, owner: the floors are measured in CI's own environment on the gate PR, not taken from
+     this card baseline; see "Gate half built" below.)*
    - **Changed-line coverage ≥ 80% on every PR** (diff coverage), so new and moved code arrives tested
      whatever the file's history.
    - **A reviewed exclusion list** for code that needs a model or hardware (vision engines,
@@ -223,6 +225,30 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
    raises coverage without asserting behaviour does not count. Guard: the three CI checks above; the
    floors, the changed-line threshold and the exclusion list are committed files, and the lint fails
    on a floor that drops or an exclusion without a reason.
+   **Gate half built 2026-10-04, PR pending; floors bootstrapped from CI.** `scripts/lint_coverage.py`
+   runs in the `unit-tests` job after the fast suite, which now carries `--cov` in its single run
+   (`coverage==7.13.3`, `pytest-cov==7.0.0` pinned exactly; `fetch-depth: 0`; timeout 60). Owner decisions
+   2026-10-04: floors measured in CI's own environment on the gate PR and pinned rounded down to 0.1 pt
+   (not the v1.3.1 card number), as the minimum of two CI runs (`--merge-floors`); a new or changed floor
+   is verified against the measurement: a floor is lowered only to round_down(measured) and only when
+   uncovered statements did not grow, and its pinned `missing` never rises, so no PR chain can walk a floor
+   down; a scope fails below its floor or more than 1.0 pt above it; diff coverage
+   ≥ 80% of changed executable `src/maxim` statements against the merge-base, with moved code counted as
+   changed. `scripts/coverage_floors.json` holds an overall floor and one per package (first path
+   component; top-level modules as `maxim/<root>`; 200 statements or more, kept while the directory
+   exists), each with its pinned `missing` count: a floor drops only when `missing` does not rise (a
+   deletion of covered code). It is committed with `null` values: the gate PR's first CI run prints
+   the measured floors, and they are committed on the same branch. `scripts/coverage_exclusions.json` is
+   the reviewed exclusion list (today only `embodied_runtime/selfy.py`, with its reason) plus an
+   append-only ledger: each excluded file's statement count, and every file's count of `exclude_lines`
+   matches (`pragma: no cover`, `if TYPE_CHECKING:` and the rest, except an imports-only `TYPE_CHECKING`
+   block and a lone `raise NotImplementedError`), seeded at today's counts. A rise needs a new entry with
+   a `ref`. `pyproject.toml`'s `omit` is derived from the list exactly, and the whole
+   `[tool.coverage]` table, a second coverage config, banned pytest options, `COVERAGE_*` env and the
+   coverage API in tests are checked. **Open:** the model/hardware files named above are not omitted
+   today, so they are measured and counted; whether any join the list is an owner decision.
+   `covered_by` must be null until the model-cache nightly produces coverage data the lint can read. Guard: `tests/unit/test_lint_coverage.py` (each mechanism
+   deletion-proven).
 6. **One function-length ratchet** — nothing over 200 lines may grow, nothing new may exceed 200 — replacing
    the two mismatched mechanisms ([#940](https://github.com/dennys246/Maxim/issues/940)). Guard: the lint, with
    a per-function baseline.
