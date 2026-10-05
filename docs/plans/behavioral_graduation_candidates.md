@@ -660,6 +660,8 @@ A raise is a move to a higher rank. `scripts/lint_ledger_format.py` (CI lint job
   - a row entering `SUPERSEDED` names a successor at a positive status, `REPRODUCED` included (an unearned successor cannot retire a `STALE` or `BROKEN` row). This is a ledger ROW's successor; an O19 *campaign's* successor (`supersedes` in `scripts/o19_verdict.py::PROTOCOL`) is a different thing, and the `superseded` clause kind in `evidence_exceptions.json` belongs to the former;
   - a new row's date is no earlier than the branch point.
 
+**A status change updates its public citations in the same diff:** the README results row and every experiments-index row that cite the row (`<!-- claim: T1-n -->`) must show the new token and date, which `scripts/lint_claims_sync.py` checks on every run (roadmap 1.3.2 item 8).
+
 Whether a cited record is the right one is M1b PR 5's evidence gate ([m1b_ledger_evidence_gate.md](m1b_ledger_evidence_gate.md)).
 For an O19 verdict it also applies the campaign-succession rules ([#1059](https://github.com/dennys246/Maxim/issues/1059); [reproduction.md §13](../experiments/reproduction.md)): whether the campaign has a predecessor comes from the merge-base campaign table, a successor supports only `REPRODUCED` (or `PARTIAL`), and only with no FAILED gate leaked into a predecessor's committed phases, byte-identical subject code at every executed commit of the chain, and the root's argv and `MAXIM_*` env. A `ledger` exception clause stays the visible override (the design pass's recommendation, adopted 2026-10-04).
 

@@ -271,9 +271,16 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
    own "could not import" message for those modules. Owner decisions 2026-10-04 for the rest: the slow lane
    installs and runs its tests (16 of 58 ran on the 2026-10-04 nightly) against an exact roster with reasoned
    skips only; the unit-tests pytest step runs in a loopback-only network namespace, with no OS-level exception.
-8. **One source of truth for claims** (mechanization backlog M2). Guard: the claims-registry lint. It also
-   owes [#940](https://github.com/dennys246/Maxim/issues/940) item 2's guard: the README results table's Exp 10
-   row was corrected on 2026-09-27 with nothing to stop it drifting again.
+8. **One source of truth for claims** (mechanization backlog M2). Guard: the claims-registry lint.
+   **Built 2026-10-04, PR pending** (owner decisions 2026-10-04: the ledger is the single source; the surfaces are linted,
+   not generated; v1 covers the README results table and the experiments index): `scripts/lint_claims_sync.py`. Each
+   README results row and each index row citing a ledger row carries `<!-- claim: T1-n -->` and must show that row's
+   status token and date verbatim, its scope word, a SUPERSEDED row's successor, and no other uppercase status token.
+   Every Tier 1 row is cited by the index; the one reasoned exemption is T1-5, which has no experiment doc. The README's
+   memory row now claims Exp 63 (T1-16, EARNED narrow), with Exp 10 named as superseded. It counts as a guard once its
+   CI lint step lands, with Session B's `test.yml` batch after #1092; then it also discharges
+   [#940](https://github.com/dennys246/Maxim/issues/940) item 2's guard (the README's Exp 10 row, corrected on 2026-09-27
+   with nothing to stop it drifting). Remaining surfaces: backlog M36.
 
 **Engram integrity (pulled in from 1.4's parallel line, 2026-09-27).** Its four engineering items gate
 1.4.0 (release threshold T7), touch no survival rung's path and run off the rig
