@@ -50,7 +50,8 @@ else:
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
 # No test reaches the network (roadmap 1.3.1): outbound TCP and non-loopback DNS raise; loopback,
-# IP-literal lookups and UDP connect stay allowed. `@pytest.mark.allow_network` is the escape hatch.
+# IP-literal lookups and UDP connect stay allowed. `@pytest.mark.allow_network` lifts this in-process guard only;
+# CI also runs the suite in a loopback-only network namespace the marker cannot lift (scripts/ci_netns.sh, #940).
 from tests import network_guard as _network_guard  # noqa: E402
 
 _network_guard.install()
@@ -234,7 +235,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 @pytest.fixture(autouse=True)
 def _network_guard_for_marked_tests(request: pytest.FixtureRequest):
-    """``@pytest.mark.allow_network`` lifts the network guard for that one test."""
+    """``@pytest.mark.allow_network`` lifts the in-process network guard for that one test (not CI's namespace)."""
     if request.node.get_closest_marker("allow_network") is None:
         yield
         return

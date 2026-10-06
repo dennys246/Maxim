@@ -229,9 +229,10 @@ jobs:
           HF_HUB_OFFLINE: "1"
           TRANSFORMERS_OFFLINE: "1"
         run: |
-          python -m pytest tests/ -q -m "requires_model_cache" --tb=short \
+          # Inside the loopback-only network namespace (scripts/ci_netns.sh, #940): the models are warmed above.
+          bash scripts/ci_netns.sh '"$PY" -m pytest tests/ -q -m "requires_model_cache" --tb=short \
             --require-extras=console,sign \
-            --junitxml=model-cache-results.xml
+            --junitxml=model-cache-results.xml'
           # Every skipped test must be on the EXPLICIT allow-list in
           # scripts/check_model_cache_lane.py with a reason (dataset-gated
           # or missing-dependency-path tests); anything else skipping is
@@ -263,17 +264,54 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgstreamer1.0-dev gstreamer1.0-plugins-base
+      # The lane INSTALLS what its tests need and RUNS them (roadmap 1.3.2 item 7, #940; owner decision
+      # 2026-10-04). On the 2026-10-05 nightly 46 slow tests were selected and 16 ran: the rest skipped for the
+      # semantic extra and the model cache this lane never installed, and an `executed > 0` floor called it green.
+      # The model-cache lane's install and cache steps, plus the optional backends; no `||` anywhere.
       - name: Install package and test dependencies
         run: |
-          pip install pytest pytest-cov pytest-xdist pytest-timeout
-          pip install --no-deps -e .
-          pip install faster-whisper ctranslate2 onnxruntime av numpy opencv-python scipy llama-cpp-python ddgs pyyaml || echo "Some optional deps unavailable on CI"
-      - name: Run the slow lane
+          python -m pip install --upgrade pip
+          python -m pip install pytest pytest-cov pytest-xdist pytest-timeout
+          python -m pip install -e ".[semantic,test,console,sign]" torchvision Pillow spacy \
+            -c .github/constraints/console.txt
+          python -m spacy download en_core_web_sm
+          pip install faster-whisper ctranslate2 onnxruntime av numpy opencv-python scipy llama-cpp-python ddgs pyyaml
+      - name: Derive the required model list
+        run: python3 scripts/model_cache_names.py > warm-list.txt && cat warm-list.txt
+      - name: Restore model cache
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/huggingface
+          key: hf-${{ runner.os }}-${{ hashFiles('warm-list.txt', 'pyproject.toml', 'src/maxim/similarity/encoder.py', 'src/maxim/models/vision/clip_encoder.py') }}
+          restore-keys: hf-${{ runner.os }}-
+      - name: Warm the cache
+        env:
+          HF_HOME: /home/runner/.cache/huggingface
         run: |
-          python -m pytest tests/ -q -m "slow" --tb=short --junitxml=slow-results.xml
-      - name: Assert the lane executed something
-        # Runs even when the lane itself failed: "0 executed" and "3 failed"
-        # are different diagnoses and the second must not hide the first.
+          python - <<'PYWARM'
+          from sentence_transformers import SentenceTransformer
+
+          names = open("warm-list.txt").read().split()
+          if not names:
+              raise SystemExit("FAIL: warm list is empty")
+          for name in names:
+              SentenceTransformer(name)
+              print(f"cached {name}")
+          PYWARM
+      - name: Run the slow lane
+        env:
+          MAXIM_RUN_MODEL_TESTS: "1"
+          HF_HOME: /home/runner/.cache/huggingface
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+        # Inside the loopback-only network namespace too (scripts/ci_netns.sh): the models are warmed above.
+        run: |
+          bash scripts/ci_netns.sh '"$PY" -m pytest tests/ -q -m "slow" --tb=short --require-extras=console,sign \
+            --junitxml=slow-results.xml'
+      - name: Assert the lane ran its exact roster
+        # Runs even when the lane itself failed: "not its roster" and "3 failed" are different diagnoses and the
+        # second must not hide the first. scripts/slow_lane_roster.json is the roster; only its listed skips
+        # (each with a reason) may skip. The PR-time twin: tests/unit/test_slow_lane_roster.py.
         if: always()
         run: python3 scripts/check_slow_lane.py slow-results.xml
 
@@ -418,7 +456,9 @@ jobs:
           # Install without deps first (reachy-mini requires robot hardware SDK),
           # then install available deps separately
           pip install --no-deps -e .
-          pip install faster-whisper ctranslate2 onnxruntime av numpy opencv-python scipy llama-cpp-python ddgs pyyaml || echo "Some optional deps unavailable on CI"
+          # No `|| echo`: a failed install fails here (roadmap 1.3.2 item 7, #940). Every package installed on
+          # the 2026-10-05 main run; a skip for a missing backend would otherwise pass as green.
+          pip install faster-whisper ctranslate2 onnxruntime av numpy opencv-python scipy llama-cpp-python ddgs pyyaml
 
       - name: Install the console + sign extras (the extras lane)
         # roadmap 1.3.x "Test/CI truthfulness" / public_oasis Phase 0 item 1: without these the
@@ -466,12 +506,17 @@ jobs:
         # Measured under coverage in this ONE run (roadmap 1.3.2 item 5, owner decision 2026-10-04):
         # no second pass. Configuration comes only from pyproject.toml [tool.coverage]. Stale data
         # from an earlier run is deleted first so the ratchet can only read this run's numbers.
+        #
+        # Inside a loopback-only network namespace (roadmap 1.3.2 item 7, #940; owner decision 2026-10-04, no
+        # OS-level exception; scripts/ci_netns.sh says how): the in-process guard cannot see a SUBPROCESS a test
+        # spawns, the kernel can. MAXIM_EXPECT_NETNS=1 arms the positive control, tests/unit/test_network_boundary.py.
         run: |
           rm -f .coverage coverage.json coverage.xml
-          python -m pytest tests/ -x -q -m "not slow" --tb=short \
+          SUITE='"$PY" -m pytest tests/ -x -q -m "not slow" --tb=short \
             --ignore=tests/integration/test_memory_hub.py \
             --require-extras=console,sign \
-            --cov=src/maxim --cov-branch --cov-report=json:coverage.json --cov-report=
+            --cov=src/maxim --cov-branch --cov-report=json:coverage.json --cov-report='
+          bash scripts/ci_netns.sh "$SUITE"
 
       # The project's required-checks block is TWO commands, and the fast suite
       # above excludes this file. Without this step the MemoryHub gate is
@@ -1123,6 +1168,11 @@ jobs:
           # back, a raise needs a later date, LEGACY cannot be entered.
           # Parser shared with M1b PR 5's evidence gate: scripts/_ledger.py.
           python3 scripts/lint_ledger_format.py
+
+      - name: Public claims agree with the ledger (roadmap 1.3.2 item 8, backlog M2)
+        # README results table + experiments-index status cells cite ledger rows (`<!-- claim: T1-n -->`) and must
+        # show the row's token, date and scope word. Positive control: tests/unit/test_lint_claims_sync.py.
+        run: python3 scripts/lint_claims_sync.py
 
       - name: Multi-agent marker lint (Stage 3 of structural invariant tests)
         # The `git fetch origin main --depth=1` that used to precede every

@@ -140,7 +140,10 @@ def _require_semantic_encoder(encoder) -> None:
     passing test. The real remedy is to pre-seed the model into the isolated
     `HF_HOME` so the nightly `-m slow` lane can actually run these (D61).
     """
-    if getattr(encoder, "_using_fallback", False) or encoder._model is None:
+    # `using_fallback` LOADS the model before answering. The old check read `encoder._model is None` before anything had
+    # loaded it (the model is lazy), so it was true on every run and these tests skipped even with the model cached:
+    # the slow lane's first real run (#940) showed it. D61's remedy, pre-seeding the cache, could never have worked.
+    if encoder.using_fallback:
         pytest.skip(
             "semantic encoder unavailable (conftest forces HF offline) — the hash fallback "
             "cannot express paraphrase similarity, so this assertion is untestable here, and "
@@ -224,6 +227,10 @@ class TestIT1FireTransfer:
 class TestIT2NoFalseTransfer:
     """Fire danger does NOT contaminate semantically dissimilar affordances."""
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason="#1120: with the real encoder no water substrate concept forms, so this control has nothing to test",
+    )
     def test_water_does_not_share_fire_node(self, bio_stack):
         """'water_jet' does NOT pattern-complete to the 'fire' node."""
         ec, atl, nac, scn, encoder = bio_stack
@@ -248,6 +255,10 @@ class TestIT2NoFalseTransfer:
         water_bias = nac.reward_bias(agent_id, water_concepts[0].id)
         assert water_bias >= 0, f"Water node got negative bias {water_bias} — false transfer!"
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason="#1120: with the real encoder no water substrate concept forms, so this control has nothing to test",
+    )
     def test_water_has_no_dangerous_annotation(self, bio_stack):
         """Water should carry no learned harm from the fire node (reward_bias is never negative; #910)."""
         ec, atl, nac, scn, encoder = bio_stack
