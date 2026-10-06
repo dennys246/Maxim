@@ -3,6 +3,11 @@
 ``build_loop_run`` is the setup block of ``agent_loop.run_agentic_loop``, moved verbatim: everything
 the loop builds and starts before its first tick, in the same order. It returns a frozen ``LoopRun``
 holding the run's handles; the loop unpacks them into the local names its body has always read.
+One textual difference: the loop's three timing lines (``target_period``, ``max_steps_i``,
+``step_iter``), which sat inside the block, now run in ``run_agentic_loop`` after it, i.e. after the
+Default Network and bio-session starts. The behaviour is the same: ``LoopController.__init__`` (built
+early in the block) already refuses a zero ``target_hz`` or a non-numeric ``max_steps`` before any
+thread starts, pinned by ``tests/unit/test_loop_setup.py::test_bad_timing_args_are_refused_before_any_thread_starts``.
 
 Owner decisions 2026-10-05 (the decomposition's layout): flat ``runtime/loop_<concern>.py`` modules;
 a FROZEN ``LoopRun`` carries the per-run handles, and ``ctrl`` (the ``LoopController``) stays the

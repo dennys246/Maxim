@@ -186,3 +186,19 @@ def _unpack_map() -> dict[str, list[str]]:
 def test_the_loop_unpacks_every_field_into_its_own_local():
     assert _unpack_map() == {local: [field] for local, field in _UNPACK.items()}
     assert set(_UNPACK.values()) == {f.name for f in dataclasses.fields(LoopRun)}
+
+
+@pytest.mark.parametrize("bad", [{"target_hz": 0.0}, {"max_steps": "x"}])
+def test_bad_timing_args_are_refused_before_any_thread_starts(monkeypatch, tmp_path, bad):
+    """The loop's three timing lines (``target_period``, ``max_steps_i``, ``step_iter``) sat inside the
+    setup block and now run after ``build_loop_run``, i.e. after the Default Network and bio-session
+    starts (wire-integrity review, slice 1). The behaviour is unchanged only because
+    ``LoopController.__init__``, built early in setup, refuses these values first: this pins that, so a
+    bad timing argument never leaves a started Default Network or capture worker without its stop."""
+    from tests.unit.test_loop_setup_characterization import _DN, _Hub, _run
+
+    events: list[str] = []
+    with pytest.raises((ValueError, TypeError, ZeroDivisionError)):
+        _run(monkeypatch, tmp_path, events=events, default_network=_DN(events), memory_hub=_Hub(events), **bad)
+    assert "dn.start" not in events, events
+    assert not any(e.startswith("hub.on_session_start") for e in events), events
