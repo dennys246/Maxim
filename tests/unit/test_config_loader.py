@@ -1342,6 +1342,11 @@ class TestAgentLoopReadsThePromptBudgetKnobs:
         from tests.unit._loop_source import loop_source
 
         src = loop_source()  # the loop's modules (1.3.2 decomposition)
-        assert "= resolve_llm_loop_overrides()" in src  # the call site, not the def
+        from tests.unit._loop_source import loop_call_count
+
+        # An AST call count replaced the text pin "= resolve_llm_loop_overrides()" in 1.3.2 slice 1: the setup now
+        # calls it as ``_al.resolve_llm_loop_overrides()`` (a patch seam read through agent_loop), and a call
+        # count matches either spelling while never matching the ``def`` line.
+        assert loop_call_count("resolve_llm_loop_overrides") >= 1
         assert '{"max_response_tokens": _max_response_tokens_override}' in src
         assert "_max_cycles_override" in src and "else (3 if percept_source is not None else 2)" in src

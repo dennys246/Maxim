@@ -534,8 +534,15 @@ class TestLoopWiringPins:
         """All outcome sites consult ONE precomputed gate, so none can drift
         (arch lens S7: the substrate-primary exclusion was previously only
         incidental — an aut_llm_worker IS built in substrate-primary runs)."""
+        from maxim.runtime import loop_setup
+
         assert loop_src.count("_planning_liveness_on") >= 5
-        gate_def = loop_src.split("_planning_liveness_on = (", 1)[1].split("\n    )", 1)[0]
+        # FUNCTION-SPECIFIC (slice 1 moved the gate's definition into the setup): the loop reads the ONE
+        # value the setup computed, and the setup computes it in ONE helper.
+        assert "_planning_liveness_on = run.planning_liveness_on" in loop_src
+        assert "_planning_liveness_gate(" in inspect.getsource(loop_setup.build_loop_run)
+        gate_src = inspect.getsource(loop_setup._planning_liveness_gate)
+        gate_def = gate_src.split("_planning_liveness_on = (", 1)[1].split("\n    )", 1)[0]
         assert "planning_liveness" in gate_def
         assert 'aut_mode != "substrate-primary"' in gate_def
         assert "llm_worker is not None" in gate_def
@@ -865,13 +872,13 @@ class TestEnvOptOut:
     experiment-visible and disableable (mirrors MAXIM_SIM_HARD_ABORT)."""
 
     def test_default_on(self, monkeypatch):
-        from maxim.runtime.agent_loop import _planning_liveness_enabled_via_env
+        from maxim.runtime.loop_setup import _planning_liveness_enabled_via_env
 
         monkeypatch.delenv("MAXIM_SIM_PLANNING_LIVENESS", raising=False)
         assert _planning_liveness_enabled_via_env() is True
 
     def test_opt_out_values(self, monkeypatch):
-        from maxim.runtime.agent_loop import _planning_liveness_enabled_via_env
+        from maxim.runtime.loop_setup import _planning_liveness_enabled_via_env
 
         for raw in ("0", "false", "no", "off", "OFF", " False "):
             monkeypatch.setenv("MAXIM_SIM_PLANNING_LIVENESS", raw)

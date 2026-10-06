@@ -23,11 +23,14 @@ ordering, a region split, an AST of that function) and are NOT routed through th
     (gate before propose inside §6b) -- slice 3.
   - ``test_planning_liveness.py::test_idle_gate_uses_exact_worker_state`` and
     ``::test_completed_state_is_active_until_proposal_poll`` (§0.6 idle gate) -- slice 2.
-  - ``test_experience_clock.py::_loop_calls`` (AST of ``run_agentic_loop``: one ``_loop_bio_handles``,
-    one ``_loop_live_tick``) -- slice 1 (setup) / slice 2 (pre-tick).
+  - ``test_experience_clock.py::_loop_calls`` / ``_setup_calls`` (ASTs of ``run_agentic_loop`` and
+    ``loop_setup.build_loop_run``: one ``_loop_bio_handles``, in the setup since slice 1; one
+    ``_loop_live_tick`` in the loop) -- slice 2 (pre-tick) moves the live tick.
   - ``test_planning_liveness.py::TestLoopWiringPins`` ``loop_src`` pins: ``test_single_gate_covers_every_failure_site``
-    (the gate definition) -- slice 1; ``test_exhaustion_raises_after_teardown`` (raise after
-    ``_end_bio_session``) -- slice 1; ``test_proposal_time_stamped_on_any_proposal`` -- slice 4.
+    (the gate definition, read from ``loop_setup._planning_liveness_gate`` since slice 1, the loop's
+    use of ``run.planning_liveness_on``); ``test_exhaustion_raises_after_teardown`` (raise after
+    ``_end_bio_session``; the teardown stayed in the loop in slice 1, so the pin is unchanged);
+    ``test_proposal_time_stamped_on_any_proposal`` -- slice 4.
   - ``test_planning_liveness.py::test_bad_tool_name_is_recorded_for_correction`` (§2 region) -- §2 is
     LLM-primary, outside phase 1.
   - ``test_console_tool_allowlist.py::TestRosterAdvertisesOnlyPermittedTools::test_agent_loop_filters_the_advertised_roster_through_permits``,
