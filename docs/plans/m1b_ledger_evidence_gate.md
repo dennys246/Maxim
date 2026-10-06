@@ -492,8 +492,9 @@ the per-experiment "complete run" rules for Exp 53/60/61/62, whose pass-table en
 ### Triggers (per row ID, base ledger vs HEAD ledger)
 A row is JUDGED when its HEAD token is positive (EARNED/MAINTAINED/RE-VALIDATED) or PARTIAL (on every change,
 not only a raise into it: owner decision 2026-10-01; a re-date then needs a PARTIAL-target verdict), AND any of: a raise (`is_raise`, a new row included); a move between positive tokens; a date change; an
-Evidence entry added or removed; a claim cell changed; a qualifier removed or rewritten (old text not contained in
-the new; adding text is free); a changed file under one of its Evidence paths, under a cited verdict's `data`, or
+Evidence entry added or removed; a claim cell changed; any qualifier change but an exact raw match (added, removed or
+changed; #1108, owner decision 2026-10-06: the old "old text not contained in the new" rule let `(rung A)` → `(rung A and B)`
+pass unjudged); a changed file under one of its Evidence paths, under a cited verdict's `data`, or
 under a cited O19 verdict's data directory (prefix `dirname(data)/`, its session files included). RE-VALIDATED-BY-TESTS is
 named unchecked (a NOTE). Raises into rank ≤ 1 claim nothing and are not gated. A row leaving STALE or BROKEN for
 a token that is not judged (e.g. DROPPED) is NOTED, not judged: review decides (owner decision 2026-10-01). A judged
@@ -574,13 +575,18 @@ name; unknown → NOT-ESTABLISHED. Outcomes: ESTABLISHED / LEGACY (in the snapsh
   directory is judged as a sim_report and is never support.
 
 ### New support
-A judged row's raise, move between positives, or date change needs ≥ 1 NEWLY cited (absent from the base
+A judged row's raise, move between positives, date change, or WIDENED qualifier (removed, or its scope word —
+`_ledger.qualifier_head` — changed; #1108, owner decision 2026-10-06) needs ≥ 1 NEWLY cited (absent from the base
 Evidence) record that is a verdict, in the merge-base pass table with this row in `rows`, whose `verdict` is in
 `targets[<new token>]`, whose `require` predicates hold (dotted from the verdict's top level; missing key or
 non-dict on the way = unmet; type-strict equality), ESTABLISHED, prereg-PASS (the verdict and its data entry), clean, and whose time (min `ts` over
 its scoped units; never a terminal's or its own) is after the commit time of the base commit that set the row's
 previous status line (a new row: the merge-base's). LEGACY / GRANDFATHERED / UNGOVERNED / allowed-dirty never
 count; an ACTIVE exception (first clause: this PR performs its exact from→to with HEAD's date == to_date) may.
+Residuals of the widening rule (stated, #1108 design pass): appended detail under the same scope word (`rung A, and
+rung B`) is judged but needs no new support, since text cannot prove a clause narrows; and the pass table has no
+notion of scope, so a widening is met by any newer verdict of the right kind for the row's token, even one that
+re-supports only the old scope (follow-up #1141: key pass-table targets by scope head).
 
 ### Exceptions (ledger kind)
 Only clauses already on main act (one added by this change is reviewed first, used after). A clause is ACTIVE
@@ -588,7 +594,11 @@ for a row when HEAD's token and date are its `to` / `to_date` and this change pe
 null` = a new row) or the base already sits there; a clause for a transition no longer current is inert history.
 An active clause pinned by `sha256` to the cited bytes turns that record's NOT-ESTABLISHED into EXCEPTED; a
 pinned clause neither excepting a record nor supplying support is NOTED stale, and a cited clause that no longer
-pins the bytes is NOTED inert. A clause pins a FILE: one naming a session directory never acts. Every entry needs a
+pins the bytes is NOTED inert. A clause pins a FILE: one naming a session directory never acts. A WIDENED
+qualifier is supported only by a clause carrying `to_qualifier` equal to HEAD's qualifier (`null` = the qualifier
+removed): for a pure widening the token and date do not move, so every clause at that status reads as settled, and
+a re-date clause would otherwise support every later widening (#1108 design pass). `to_qualifier`, when present,
+is a non-empty string or null. Every entry needs a
 unique string `id`.
 Removing Evidence: a row with ≥ 1 ESTABLISHED entry at base keeps one (a base entry that cannot be judged keeps the
 ratchet on, with a NOTE; a record with corrupt bytes or an unexpected shape is simply NOT-ESTABLISHED there).

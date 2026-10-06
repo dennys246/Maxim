@@ -506,16 +506,92 @@ def test_removing_established_evidence_keeps_one(rig, monkeypatch) -> None:
     assert any("keeps none" in f for f in failures), failures
 
 
-def test_a_rewritten_qualifier_triggers_and_an_added_one_does_not() -> None:
+def _qrow(q):
     import _ledger as L
 
-    def row(q):
-        r = L.Row(id="T1-1", table="T1", line=1, cells={})
-        r.token, r.date, r.qualifier = "MAINTAINED", "2026-10-01", q
-        return r
+    r = L.Row(id="T1-1", table="T1", line=1, cells={})
+    r.token, r.date, r.qualifier = "MAINTAINED", "2026-10-01", q
+    return r
 
-    assert "qualifier removed or rewritten" in G.triggers_for(row("broad"), row("narrow"), set(), [])
-    assert G.triggers_for(row("narrow, one model"), row("narrow"), set(), []) == []
+
+@pytest.mark.parametrize(
+    ("old", "new", "expect"),
+    [
+        # #1108: the old substring test fired on none of the first three
+        ("rung A", "rung A and B", ["qualifier changed", "qualifier widened"]),
+        ("narrow", "narrow-ish", ["qualifier changed", "qualifier widened"]),
+        ("narrow", "narrowly true in general", ["qualifier changed", "qualifier widened"]),
+        ("narrow", "narrow, one model", ["qualifier changed"]),  # appended detail, same scope word: judged only
+        ("rung A", "rung A, and rung B", ["qualifier changed"]),  # the stated residual: judged, not a widening
+        ("narrow", "rung A", ["qualifier changed", "qualifier widened"]),
+        ("narrow", None, ["qualifier removed", "qualifier widened"]),
+        (None, "narrow", ["qualifier added"]),
+        ("narrow", "narrow ", ["qualifier changed"]),  # raw compare: one table line, so whitespace is an edit
+        ("narrow", "narrow", []),
+        (None, None, []),
+    ],
+)
+def test_every_qualifier_change_but_an_exact_match_triggers(old, new, expect) -> None:
+    assert G.triggers_for(_qrow(new), _qrow(old), set(), []) == expect
+    assert G.qualifier_widens(_qrow(old), _qrow(new)) == ("qualifier widened" in expect)
+
+
+def _qualifier_case(rig, monkeypatch, old_q, new_q, exceptions=None):
+    """T1-13 EARNED on LEGACY evidence, same token and date; only the qualifier changes."""
+    monkeypatch.setattr(G, "M1A_CUTOFF", 4_000_000_000)
+    _legacy_snapshot(rig)
+    cite = f"**Evidence:** `{DATA}/legacy_old.jsonl`."
+    digest = hashlib.sha256((rig.root / DATA / "legacy_old.jsonl").read_bytes()).hexdigest()
+    if exceptions is not None:
+        rig.write(G.EXCEPTIONS, json.dumps([
+            {"id": f"x{i}", "kind": "ledger", "row": "T1-13", "from": "EARNED", "to": "EARNED",
+             "to_date": "2026-09-16", "path": f"{DATA}/legacy_old.jsonl", "sha256": digest, "owner": "owner",
+             "reason": "r", "date": "2026-10-01", **extra}
+            for i, extra in enumerate(exceptions)
+        ]))  # fmt: skip
+
+    def status(q):
+        return f"**Status: EARNED 2026-09-16**{f' ({q})' if q else ''}. {cite}"
+
+    stale = [t3("T3-9", "**Status: STALE 2026-09-30**.")]
+    rig.base(ledger([t1("T1-13", status(old_q))], stale))
+    rig.head(ledger([t1("T1-13", status(new_q))], stale))
+    return rig.run()[0]
+
+
+@pytest.mark.parametrize(("old_q", "new_q"), [("rung A", None), ("rung A", "rung B"), ("narrow", "narrow-ish")])
+def test_a_widened_qualifier_needs_new_support(rig, monkeypatch, old_q, new_q) -> None:
+    failures = _qualifier_case(rig, monkeypatch, old_q, new_q)
+    assert any("T1-13: no NEW support" in f for f in failures), failures
+
+
+@pytest.mark.parametrize(("old_q", "new_q"), [("rung A", "rung A, seed 42"), (None, "narrow")])
+def test_a_narrowed_or_added_qualifier_is_judged_only(rig, monkeypatch, old_q, new_q) -> None:
+    assert _qualifier_case(rig, monkeypatch, old_q, new_q) == []
+
+
+def test_only_an_exception_bound_to_the_new_qualifier_supports_a_widening(rig, monkeypatch) -> None:
+    """Design pass: for a pure widening every clause at the current (to, to_date) reads as settled, so a re-date
+    clause would support every later widening. Only a clause naming THIS qualifier does."""
+    failures = _qualifier_case(rig, monkeypatch, "rung A", "rung B", exceptions=[{}])
+    assert any("no NEW support" in f for f in failures), failures
+
+
+def test_an_exception_naming_the_widened_qualifier_supplies_the_support(rig, monkeypatch) -> None:
+    assert _qualifier_case(rig, monkeypatch, "rung A", "rung B", exceptions=[{"to_qualifier": "rung B"}]) == []
+
+
+def test_an_exception_naming_another_qualifier_does_not(rig, monkeypatch) -> None:
+    failures = _qualifier_case(rig, monkeypatch, "rung A", None, exceptions=[{"to_qualifier": "rung B"}])
+    assert any("no NEW support" in f for f in failures), failures
+
+
+@pytest.mark.parametrize("bad", ["", 3, ["rung B"]])
+def test_to_qualifier_must_be_a_string_or_null(bad) -> None:
+    clause = {"id": "x", "kind": "ledger", "row": "T1-1", "from": "EARNED", "to": "EARNED", "to_date": "2026-10-01",
+              "path": "p", "sha256": "s", "owner": "o", "reason": "r", "date": "2026-10-01", "to_qualifier": bad}  # fmt: skip
+    assert any("to_qualifier" in p for p in G.exceptions_problems([], [clause]))
+    assert not any("to_qualifier" in p for p in G.exceptions_problems([], [{**clause, "to_qualifier": None}]))
 
 
 def test_uncommitted_gated_files_fail(rig) -> None:
