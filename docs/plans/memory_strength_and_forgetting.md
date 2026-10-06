@@ -238,6 +238,9 @@ captures are skipped, so re-reading the present is not counted); `MemoryAgent`'s
 PromptBuilder's memory sections and ExecAgent's own LLM path (incl. `recall_deep`) are Dormant.
 The replan site is wired but dead until #845(1); the adaptive planner is live only in
 `embodied_runtime/agentic_runtime.py`. #1128: the Dormant queries still bump `access_count`.
+[#1137](https://github.com/dennys246/Maxim/issues/1137) (homed here, 2026-10-06): compression keeps only a record's
+intent goal, so a `CompressedMemory` loses the active goal; trigger: the first path that compresses in a sim, or
+any sleep/consolidation work in the loop.
 
 **Phase 2 — the strength model.** `S`, `R`, the typed `EncodingSignals` at all seven capture sites,
 the look-back over the Hippocampus record by enqueue-time experience µs (decision 6), the retrieval update, the persisted experience clock with its advanced-clock assert.
