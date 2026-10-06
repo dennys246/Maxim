@@ -128,7 +128,7 @@ Owner decisions, three at the design step and one at review:
    reflection). `--operational-mode passive|active|singularity` is the operator's launch grant for
    capability.
    - It sets the mode dispatch enforces (`Executor.set_operational_override`), what the model is shown
-     (`agent_loop._effective_mode`: roster, context prompt, Default Network) and the registry's file
+     (`loop_state._effective_mode`: roster, context prompt, Default Network) and the registry's file
      containment.
    - It is honoured by the CLI agent loop (`--mode agentic`) and the robot runtime.
    - It needs an explicit `--mode`. It is refused (exit 2) with `--sim`/`--research`/`--benchmark`/

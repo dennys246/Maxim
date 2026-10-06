@@ -5,6 +5,7 @@ import os
 import time
 from typing import Any
 
+from maxim.agents.llm_types import LLMAttemptState
 from maxim.utils.atomic_io import atomic_write_json
 
 logger = logging.getLogger(__name__)
@@ -156,3 +157,60 @@ def _build_replan_context(
         prior_attempt_actions=prior_attempt_actions,
         prior_attempt_summaries=prior_attempt_summaries,
     )
+
+
+def _effective_mode(executor: Any, state: Any, default: str) -> str:
+    """The operational mode the prompt roster, context prompt and Default Network use: the operator's
+    launch grant when one is set (``Executor.operational_override``, #829), else the loop's own state
+    mode -- the SAME precedence the executor's dispatch gate applies, so what the model is shown matches
+    what dispatch enforces. (A deliberate, owner-approved exception to the 1.3.2 decomposition fence.)"""
+    granted = getattr(executor, "operational_override", None)
+    if isinstance(granted, str) and granted:
+        return granted
+    mode = state.data.get("mode", default) or default
+    return str(mode) if mode else ""
+
+
+# ── the loop's wake predicates (1.3.2 slice 2): read by loop_gates.pre_tick_gate AND by the loop body ──
+
+
+def _substrate_tick_due(aut_mode: str, ctrl: Any, llm_submit_interval: float) -> bool:
+    """Is the substrate-primary branch due to propose? (Its OWN wake source.)
+
+    Substrate-primary is a SENSOR-driven mode: it proposes from the sensed world
+    (synced into the body), never from text percepts, so the percept/event queue is
+    not its wake source — its submit cadence is. Without this term a live bridge that
+    emits no chat/death events left the loop idling after step 0 (Exp 60, 2026-09-16:
+    120 probe windows, ONE substrate tick each; the fake bridge's periodic "wind
+    shifts" event masked it offline and produced the "one tick per five snapshots"
+    cadence). Scope: the Minecraft HARNESS path passes no LLM worker; the orchestrator
+    does construct one for substrate-primary runs, where ``_submitted_recently`` wakes
+    the loop every iteration by accident (left as-is — NAc decay runs per non-idle
+    iteration, so changing it would change what Exp 56/57 re-runs measure). The same
+    predicate gates the substrate branch itself — ONE site, no drift.
+    Guard: tests/unit/test_substrate_primary_wake.py (RED on the pre-fix loop).
+    """
+    return (
+        aut_mode == "substrate-primary"
+        and ctrl.pending_proposal is None
+        and (time.time() - ctrl.last_llm_submit_time) > llm_submit_interval
+    )
+
+
+_ACTIVE_PLANNING_ATTEMPT_STATES = frozenset(
+    {
+        LLMAttemptState.PENDING,
+        LLMAttemptState.RUNNING,
+        LLMAttemptState.COMPLETED,
+    }
+)
+
+
+def _planning_attempt_is_active(state: LLMAttemptState) -> bool:
+    """Whether the exact worker job can still publish a proposal.
+
+    ``COMPLETED`` remains active until the loop consumes the queued result.
+    That closes the provider-return/result-publication race without guessing
+    how many control-loop ticks response parsing should take.
+    """
+    return state in _ACTIVE_PLANNING_ATTEMPT_STATES

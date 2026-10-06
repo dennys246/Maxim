@@ -105,6 +105,7 @@ MEASUREMENT_PATH = [
     "src/maxim/runtime/bio_integration.py",
     "src/maxim/runtime/agent_loop.py",
     "src/maxim/runtime/loop_setup.py",  # the setup block's measurement-path code (1.3.2 slice 1)
+    "src/maxim/runtime/loop_gates.py",  # the pre-tick gate, moved from agent_loop.py (1.3.2 slice 2)
     "src/maxim/similarity/encoder.py",
     "src/maxim/similarity/ec.py",
     "src/maxim/bridges/tool_pain_bridge.py",
