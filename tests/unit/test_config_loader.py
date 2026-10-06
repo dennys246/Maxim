@@ -1339,11 +1339,9 @@ class TestAgentLoopReadsThePromptBudgetKnobs:
             resolve_llm_loop_overrides()
 
     def test_loop_wires_both_overrides(self):
-        import inspect
+        from tests.unit._loop_source import loop_source
 
-        from maxim.runtime import agent_loop
-
-        src = inspect.getsource(agent_loop.run_agentic_loop)
-        assert "resolve_llm_loop_overrides()" in src
+        src = loop_source()  # the loop's modules (1.3.2 decomposition)
+        assert "= resolve_llm_loop_overrides()" in src  # the call site, not the def
         assert '{"max_response_tokens": _max_response_tokens_override}' in src
         assert "_max_cycles_override" in src and "else (3 if percept_source is not None else 2)" in src

@@ -234,14 +234,15 @@ def test_only_the_loop_capture_path_stamps_a_situation():
     import ast
     import pathlib
 
-    import maxim
+    from tests.unit._loop_source import loop_source_relpaths
 
-    root = pathlib.Path(maxim.__file__).parent
+    root = pathlib.Path(__file__).resolve().parents[2] / "src" / "maxim"  # THIS checkout, as the helper reads
     capture_calls = {"capture", "capture_from_loop", "capture_from_loop_async", "_capture_episodic"}
+    loop_files = loop_source_relpaths()  # agent_loop.py + runtime/loop_*.py (1.3.2 decomposition)
     allowed = {
         "memory/hippocampus.py",  # the capture doors threading the argument through
         "runtime/bio_integration.py",  # the loop capture: _capture_episodic -> capture_from_loop_async
-        "runtime/agent_loop.py",  # hands the loop proposal's clusters to _capture_episodic
+        *loop_files,  # the loop hands its proposal's clusters to _capture_episodic
     }
     found = set()
     for path in root.rglob("*.py"):
@@ -255,7 +256,7 @@ def test_only_the_loop_capture_path_stamps_a_situation():
                 if kw.arg == "situation" and not (isinstance(kw.value, ast.Constant) and kw.value.value is None):
                     found.add(path.relative_to(root).as_posix())
     assert found <= allowed, f"a new capture site stamps a situation: {sorted(found - allowed)}"
-    assert {"runtime/bio_integration.py", "runtime/agent_loop.py"} <= found  # the scan still sees the loop
+    assert "runtime/bio_integration.py" in found and found & loop_files  # the scan still sees the loop
 
 
 def test_a_trace_without_a_capture_seq_takes_no_part(tmp_path):
