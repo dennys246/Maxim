@@ -67,6 +67,10 @@ class FakeMemory:
     outcome: Any = None
     action: Any = None
 
+    @property
+    def tool_name(self) -> str:  # the view a real EpisodicMemory has (#995)
+        return self.action.tool_name if self.action is not None else ""
+
 
 @dataclass
 class FakeAction:

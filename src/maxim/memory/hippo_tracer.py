@@ -162,8 +162,7 @@ class HippocampusTracer:
 
             for mem in results[:3]:
                 mid = _short_id(mem.id)
-                tool = getattr(mem, "action", None)
-                tool_name = tool.tool_name if tool else "?"
+                tool_name = getattr(mem, "tool_name", "") or "?"  # both record kinds (#995)
                 self._print(f"  {_DIM}  └ {mid} {tool_name}{_RESET}")
 
             return results
@@ -182,8 +181,7 @@ class HippocampusTracer:
 
             for mem, score in results[:5]:
                 mid = _short_id(mem.id)
-                tool = getattr(mem, "action", None)
-                tool_name = tool.tool_name if tool else "?"
+                tool_name = getattr(mem, "tool_name", "") or "?"  # both record kinds (#995)
                 self._print(f"  {_DIM}  └ {mid} score={score:.4f} {tool_name}{_RESET}")
 
             return results

@@ -924,6 +924,8 @@ def config_rules(root: Path, ex_paths: list[str]) -> list[str]:
             sources.append((name, (root / name).read_text(errors="replace")))
     wf = root / ".github" / "workflows"
     workflows = sorted(wf.glob("*.yml")) + sorted(wf.glob("*.yaml")) if wf.is_dir() else []
+    # Composite actions run inside a workflow's job, so they are read too (#1117 review: the setup steps moved there).
+    workflows += sorted((root / ".github" / "actions").glob("**/action.y*ml"))
     for p in workflows:
         text = p.read_text(errors="replace")
         sources.append((p.relative_to(root).as_posix(), text))

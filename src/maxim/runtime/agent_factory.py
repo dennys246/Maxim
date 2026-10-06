@@ -478,13 +478,17 @@ class AgentInstance:
         result: dict[str, Any] = {"agent_id": self.agent_id, "role": self.role}
 
         if self.hippocampus is not None:
+            from maxim.memory.types import outcome_label, record_success
+
             memories = list(self.hippocampus)
             result["episodic_memories"] = len(memories)
             result["memory_summaries"] = [
                 {
                     "id": str(getattr(m, "id", "?")),
-                    "tool": getattr(getattr(m, "action", None), "tool_name", "?"),
-                    "valence": getattr(getattr(m, "outcome", None), "valence", 0),
+                    # Both record kinds answer ``tool_name`` (#995). No per-episode valence is stored:
+                    # ``valence`` read Outcome.valence, which does not exist, so it was always 0 (#993).
+                    "tool": m.tool_name or "",
+                    "outcome": outcome_label(record_success(m)),
                 }
                 for m in memories[-20:]  # the 20 newest (the store iterates oldest first)
             ]

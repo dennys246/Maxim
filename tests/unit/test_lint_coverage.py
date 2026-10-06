@@ -555,6 +555,9 @@ def test_a_second_coverage_config_file_FAILS(repo, capsys, rel, text):
             "--cov-" + "fail-under",
         ),
         (".github/workflows/test.yml", WORKFLOW + f"env:\n  {ENV_COV}: x\n", ENV_COV),
+        # a composite action runs inside a job, so it is read too (#1117 review)
+        (".github/actions/setup/action.yml", f"runs:\n  using: composite\nenv:\n  {ENV_COV}: x\n", ENV_COV),
+        (".github/actions/setup/action.yml", "runs:\n  steps:\n    - run: pytest --no-" + "cov\n", "--no-" + "cov"),
         ("tests/test_y.py", f"{IMPORT_COV}\n", "imports or drives the coverage API"),
         ("src/maxim/alpha/sneaky.py", "def f(c):\n    return c.Coverage" + ".current()\n", "imports or drives"),
     ],

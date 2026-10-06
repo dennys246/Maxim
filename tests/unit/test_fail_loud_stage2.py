@@ -189,8 +189,8 @@ def test_repo_inventory_is_nonempty(stage2):
 #
 # The executor lens proved that before this fold, `check` exited 0 on an EMPTY
 # capture and on a wholly-unparsable one. A merge gate that measures nothing
-# and reports "no new firings" is the vacuous-guard shape check_slow_lane.py
-# was written for in the very same PR.
+# and reports "no new firings" is the vacuous-guard shape the slow-lane roster check
+# (now scripts/check_lane_roster.py) was written for in the very same PR.
 
 # A synthetic baseline for exercising `check`. Its `instrumented_site_count` is informational only
 # since the de-instrumentation guard moved into `lint_no_silent_swallows.py` check 3 (CI, per file):
