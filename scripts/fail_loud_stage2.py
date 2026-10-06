@@ -246,7 +246,7 @@ def usable_capture_problems(metas: dict[str, dict], *, min_lines: int, max_unpar
 
     A gate that reads an EMPTY capture and reports "no new firings" has
     measured nothing and says it passed — the same vacuous-guard shape
-    `check_slow_lane.py` exists to prevent for the slow lane. The failure modes
+    `check_lane_roster.py` exists to prevent for the nightly lanes. The failure modes
     are ordinary: `MAXIM_LOG_FILE` unset, pointed at a rotated-away path, or a
     sim that died before logging.
     """

@@ -158,65 +158,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      # `semantic` brings sentence-transformers + torch; torchvision and Pillow
-      # are NOT in any extra but several marked tests importorskip them, and a
-      # skipped test in a lane built to run them is exactly the vacuous-guard
-      # problem this job exists to prevent.
-      - name: Install package with model-test dependencies
-        run: |
-          python -m pip install --upgrade pip
-          # console + sign too (1.3.1): `pytest tests/` COLLECTS every module before `-m` deselects, and
-          # a module whose extra is absent skips at collection. That used to be excused module by module
-          # in an allow-list that grew every time a console test file was added (16 red nights); now the
-          # lane installs what it collects and --require-extras below fails any skip for them.
-          python -m pip install -e ".[semantic,test,console,sign]" torchvision Pillow spacy \
-            -c .github/constraints/console.txt
-          # test_concept_decomposition_validation is a PRIMARY substrate validation; it
-          # was going to be allow-listed as "a dataset-class dependency" while the lane's
-          # own comment says a skipped test here is the vacuous-guard problem. en_core_web_sm
-          # is ~15 MB and pip-installable, so the lane runs it instead of excusing it.
-          python -m spacy download en_core_web_sm
+      # Install, warm-list, cache and warm: shared with the slow lane (#1117).
+      - uses: ./.github/actions/model-cache-setup
 
-      # The warm list is part of the cache KEY. Without this the key ignores
-      # which models the lane needs: the 2026-08-21 → 08-29 failures were an
-      # EXACT key hit on a cache built before all-MiniLM-L6-v2 was required, so
-      # the warm step was skipped and every run failed offline on a model the
-      # cache did not hold. Deriving the list into a file first makes the key
-      # change the moment the required set changes.
-      - name: Derive the required model list
-        run: python3 scripts/model_cache_names.py > warm-list.txt && cat warm-list.txt
-
-      - name: Restore model cache
-        id: model-cache
-        uses: actions/cache@v4
-        with:
-          path: /home/runner/.cache/huggingface
-          key: hf-${{ runner.os }}-${{ hashFiles('warm-list.txt', 'pyproject.toml', 'src/maxim/similarity/encoder.py', 'src/maxim/models/vision/clip_encoder.py') }}
-          restore-keys: hf-${{ runner.os }}-
-
-      # First run (or after an encoder change) populates the cache; later runs
-      # are offline. Downloads are confined to this step so a network failure
-      # here is distinguishable from a real test failure below.
-      # Runs UNCONDITIONALLY, not `if: cache-hit != 'true'`: a restore-keys
-      # partial hit (or the exact-hit-on-a-stale-cache above) leaves models
-      # missing, and loading an already-cached model is a no-op. Fail here and
-      # the cause is "HF unreachable", distinguishable from a test failure.
-      - name: Warm the cache
-        env:
-          HF_HOME: /home/runner/.cache/huggingface
-        run: |
-          python - <<'PY'
-          from sentence_transformers import SentenceTransformer
-
-          names = open("warm-list.txt").read().split()
-          if not names:
-              raise SystemExit("FAIL: warm list is empty — scripts/model_cache_names.py found no models")
-          for name in names:
-              SentenceTransformer(name)
-              print(f"cached {name}")
-          PY
-
-      # Assert the lane actually EXECUTED its tests (skip allow-list below).
+      # Assert the lane actually EXECUTED its tests (its exact roster, checked below).
       # Without this, a missing dependency or a renamed marker turns the
       # whole job into a green no-op — the failure mode that let these
       # guards rot in the first place.
@@ -238,22 +183,22 @@ jobs:
           bash scripts/ci_netns.sh '"$PY" -m pytest tests/ -q -m "requires_model_cache" --tb=short \
             --require-extras=console,sign \
             --junitxml=model-cache-results.xml'
-          # Every skipped test must be on the EXPLICIT allow-list in
-          # scripts/check_model_cache_lane.py with a reason (dataset-gated
-          # or missing-dependency-path tests); anything else skipping is
-          # the vacuous-guard failure this lane exists to catch. Replaces
-          # the old `executed >= 12` floor, which could not see WHICH tests
-          # were vacuous.
-          python3 scripts/check_model_cache_lane.py model-cache-results.xml
+      - name: Assert the lane ran its exact roster
+        # Its own step with always() (#1117): inside the run step, a pytest failure skipped it, so a red hid "not its
+        # roster". scripts/lane_rosters/model-cache.json is the roster (it replaced the `executed >= 12` floor and
+        # then a skip allow-list with no exact set); only its listed skips, each dataset-gated with a reason, may skip.
+        # The PR-time twin: tests/unit/test_lane_rosters.py.
+        if: always()
+        run: python3 scripts/check_lane_roster.py --lane model-cache model-cache-results.xml
 
   # ── The slow lane ─────────────────────────────────────────────────────────
   # `@pytest.mark.slow` has been a registered marker applied across ~10 files
   # for months, and until 2026-08-30 the ONLY occurrence of the word in this
   # workflow was the fast suite's `-m "not slow"` — a deselection. Nothing ever
-  # ran them. Nightly, because they are slow; with an executed>0 assert,
-  # because `pytest -m slow` exits 0 both when it collects nothing and when
-  # everything skips, and a lane that cannot go red for the reason it exists is
-  # decoration (same reasoning as model-cache-tests' allow-list check).
+  # ran them. Nightly, because they are slow; held to its exact roster (it began
+  # with an executed>0 floor), because `pytest -m slow` exits 0 both when it
+  # collects nothing and when everything skips, and a lane that cannot go red for
+  # the reason it exists is decoration (the model-cache lane has the same check).
   slow-tests:
     name: Slow tests (nightly)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -272,37 +217,11 @@ jobs:
       # The lane INSTALLS what its tests need and RUNS them (roadmap 1.3.2 item 7, #940; owner decision
       # 2026-10-04). On the 2026-10-05 nightly 46 slow tests were selected and 16 ran: the rest skipped for the
       # semantic extra and the model cache this lane never installed, and an `executed > 0` floor called it green.
-      # The model-cache lane's install and cache steps, plus the optional backends; no `||` anywhere.
-      - name: Install package and test dependencies
+      # The model-cache lane's setup (shared action, #1117), then the optional backends over it; no `||` anywhere.
+      - uses: ./.github/actions/model-cache-setup
+      - name: Install the optional backends
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install pytest pytest-cov pytest-xdist pytest-timeout
-          python -m pip install -e ".[semantic,test,console,sign]" torchvision Pillow spacy \
-            -c .github/constraints/console.txt
-          python -m spacy download en_core_web_sm
           pip install faster-whisper ctranslate2 onnxruntime av numpy opencv-python scipy llama-cpp-python ddgs pyyaml
-      - name: Derive the required model list
-        run: python3 scripts/model_cache_names.py > warm-list.txt && cat warm-list.txt
-      - name: Restore model cache
-        uses: actions/cache@v4
-        with:
-          path: /home/runner/.cache/huggingface
-          key: hf-${{ runner.os }}-${{ hashFiles('warm-list.txt', 'pyproject.toml', 'src/maxim/similarity/encoder.py', 'src/maxim/models/vision/clip_encoder.py') }}
-          restore-keys: hf-${{ runner.os }}-
-      - name: Warm the cache
-        env:
-          HF_HOME: /home/runner/.cache/huggingface
-        run: |
-          python - <<'PYWARM'
-          from sentence_transformers import SentenceTransformer
-
-          names = open("warm-list.txt").read().split()
-          if not names:
-              raise SystemExit("FAIL: warm list is empty")
-          for name in names:
-              SentenceTransformer(name)
-              print(f"cached {name}")
-          PYWARM
       - name: Run the slow lane
         env:
           MAXIM_RUN_MODEL_TESTS: "1"
@@ -315,10 +234,10 @@ jobs:
             --junitxml=slow-results.xml'
       - name: Assert the lane ran its exact roster
         # Runs even when the lane itself failed: "not its roster" and "3 failed" are different diagnoses and the
-        # second must not hide the first. scripts/slow_lane_roster.json is the roster; only its listed skips
-        # (each with a reason) may skip. The PR-time twin: tests/unit/test_slow_lane_roster.py.
+        # second must not hide the first. scripts/lane_rosters/slow.json is the roster; only its listed skips
+        # (each with a reason) may skip. The PR-time twin: tests/unit/test_lane_rosters.py.
         if: always()
-        run: python3 scripts/check_slow_lane.py slow-results.xml
+        run: python3 scripts/check_lane_roster.py --lane slow slow-results.xml
 
   # ── The merge gate's settings (M6 / D63; owner decisions 2026-10-06) ─────────
   # GitHub refuses a merge while a required check is absent, given the settings pinned in

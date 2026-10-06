@@ -1,4 +1,4 @@
-"""scripts/check_slow_lane.py — the nightly slow lane runs EXACTLY its roster (roadmap 1.3.2 item 7, #940).
+"""scripts/check_lane_roster.py — a nightly lane runs EXACTLY its roster (roadmap 1.3.2 item 7, #940; #1117).
 
 The old check was `executed > 0`: on the 2026-10-05 nightly 46 slow tests were selected, 16 ran, and the lane was
 green. These tests pin each way the roster check fails, against a synthetic JUnit report and roster.
@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts import check_slow_lane as C
+from scripts import check_lane_roster as C
 
 A = "tests/unit/test_a.py::test_one"
 B = "tests/substrate/test_b.py::TestB::test_two[seed-1]"
@@ -26,7 +26,7 @@ def _case(nodeid: str, outcome: str = "ran", message: str = "") -> str:
 
 def _run(tmp_path: Path, cases: list[str], *, expected=(A, B, SMOKE), allowed=None) -> int:
     allowed = {SMOKE: "needs a live LLM"} if allowed is None else allowed
-    roster = tmp_path / "roster.json"
+    roster = tmp_path / "slow.json"
     roster.write_text(json.dumps({"expected": list(expected), "allowed_skips": allowed}))
     xml = tmp_path / "r.xml"
     xml.write_text(f'<testsuites><testsuite name="pytest">{"".join(cases)}</testsuite></testsuites>')
@@ -82,7 +82,7 @@ def test_an_errored_test_counts_as_reported_not_skipped(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("name", ["absent.xml", "bad.xml"])
 def test_an_unreadable_report_is_exit_2(tmp_path: Path, name: str) -> None:
-    roster = tmp_path / "roster.json"
+    roster = tmp_path / "slow.json"
     roster.write_text(json.dumps({"expected": [A], "allowed_skips": {}}))
     if name == "bad.xml":
         (tmp_path / name).write_text("<not xml")
@@ -94,8 +94,29 @@ def test_junit_keys_match_pytests_own_writer() -> None:
     assert C.junit_key("tests/unit/x.py::test_y[a/b.py-c]") == ("tests.unit.x", "test_y[a/b.py-c]")
 
 
-def test_bad_usage_returns_2() -> None:
-    assert C.main([]) == 2
+@pytest.mark.parametrize(
+    "argv",
+    [[], ["r.xml"], ["--lane", "nope", "r.xml"], ["--lane", "slow"], ["--generate"], ["--lane", "slow", "a", "b"]],
+)
+def test_bad_usage_returns_2(argv) -> None:
+    assert C.main(argv) == 2
+
+
+def test_a_roster_with_another_key_is_unreadable(tmp_path: Path) -> None:
+    """No module-level allow-list may come back through the roster (1.3.1: it grew to 16 red nights)."""
+    roster = tmp_path / "model-cache.json"
+    roster.write_text(json.dumps({"expected": [A], "allowed_skips": {}, "allowed_module_skips": {}}))
+    (tmp_path / "r.xml").write_text(f"<testsuite>{_case(A)}</testsuite>")
+    assert C.check(tmp_path / "r.xml", roster) == 2
+
+
+def test_the_lane_is_named_in_the_verdict(tmp_path: Path, capsys) -> None:
+    roster = tmp_path / "model-cache.json"
+    roster.write_text(json.dumps({"expected": [A, B], "allowed_skips": {}}))
+    (tmp_path / "r.xml").write_text(f"<testsuite>{_case(A)}</testsuite>")
+    assert C.check(tmp_path / "r.xml", roster) == 1
+    out = capsys.readouterr()
+    assert "model-cache lane: 1 of 2" in out.out and "the model-cache lane did not run its roster" in out.err
 
 
 def test_an_xfail_is_a_run_not_a_skip(tmp_path: Path) -> None:

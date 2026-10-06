@@ -1,0 +1,31 @@
+{
+  "expected": [
+    "tests/substrate/baselines/test_baselines.py::TestEmbeddingBaseline::test_deterministic_across_seeds",
+    "tests/substrate/baselines/test_baselines.py::TestEmbeddingBaseline::test_different_seeds_same_result",
+    "tests/substrate/baselines/test_baselines.py::TestEmbeddingBaseline::test_full_baseline_run",
+    "tests/substrate/test_concept_decomposition_validation.py::TestDecompositionValidation::test_decomposition_improves_cross_modal_recall",
+    "tests/substrate/test_p1_recognition.py::TestP1RecognitionSweep::test_degenerate_control",
+    "tests/substrate/test_p1_recognition.py::TestP1RecognitionSweep::test_model_comparison",
+    "tests/substrate/test_p1_recognition.py::TestP1RecognitionSweep::test_persistence_round_trip",
+    "tests/substrate/test_p1_recognition.py::TestP1RecognitionSweep::test_shuffle_check",
+    "tests/substrate/test_p1_recognition.py::TestP1RecognitionSweep::test_single_seed",
+    "tests/substrate/test_p1_recognition.py::TestP1RecognitionSweep::test_sweep_10_seeds",
+    "tests/substrate/test_p1_recognition.py::TestP1RecognitionSweep::test_threshold_sweep",
+    "tests/substrate/test_p2_reward_modulation.py::TestP2ValidationSweep::test_single_seed",
+    "tests/substrate/test_p2_reward_modulation.py::TestP2ValidationSweep::test_sweep_10_seeds",
+    "tests/substrate/test_p4_fixture_validation.py::TestFixtureImageLoader::test_fixture_loader_image_count_matches_descriptor",
+    "tests/substrate/test_p4_fixture_validation.py::TestFixtureImageLoader::test_fixture_loader_raises_on_class_index_drift",
+    "tests/substrate/test_p4_fixture_validation.py::TestFixtureRetrievalGate::test_canonical_fixture_meets_forward_and_reverse_gate",
+    "tests/substrate/test_p4_mug_test_roundtrip.py::TestP4MugTestRoundTrip::test_real_clip_mug_test_survives_session_snapshot_round_trip",
+    "tests/unit/test_clip_encoder.py::test_encode_image_and_text_share_embedding_space",
+    "tests/unit/test_clip_encoder.py::test_encode_image_returns_512d_numpy_array",
+    "tests/unit/test_clip_encoder.py::test_encode_text_returns_512d_numpy_array",
+    "tests/unit/test_clip_encoder.py::test_singleton_cache_reuses_model_across_instances"
+  ],
+  "allowed_skips": {
+    "tests/substrate/test_p4_fixture_validation.py::TestFixtureImageLoader::test_fixture_loader_image_count_matches_descriptor": "needs the Flowers102 dataset cache (scripts/p4_clip_calibration_sweep.py), not a model weight",
+    "tests/substrate/test_p4_fixture_validation.py::TestFixtureImageLoader::test_fixture_loader_raises_on_class_index_drift": "needs the Flowers102 dataset cache",
+    "tests/substrate/test_p4_fixture_validation.py::TestFixtureRetrievalGate::test_canonical_fixture_meets_forward_and_reverse_gate": "needs the Flowers102 dataset cache",
+    "tests/substrate/test_p4_mug_test_roundtrip.py::TestP4MugTestRoundTrip::test_real_clip_mug_test_survives_session_snapshot_round_trip": "needs the Flowers102 dataset cache"
+  }
+}
