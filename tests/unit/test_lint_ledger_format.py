@@ -28,6 +28,14 @@ OK_T3 = "| T3-1 | L1 | mech | bio | pred | **Status: DROPPED 2026-08-30**. histo
 TODAY = "2026-09-30"
 
 
+@pytest.fixture(autouse=True)
+def _no_real_pins_on_synthetic_ledgers(request, monkeypatch):
+    """GRANDFATHERED_QUALIFIERS pins rows of the REAL ledger; a synthetic one has none of them, so the pin-orphan check
+    would fire in every fixture test. Tests reading the real ledger keep the real pins."""
+    if "real_ledger" not in request.node.name:
+        monkeypatch.setattr(F, "GRANDFATHERED_QUALIFIERS", {})
+
+
 def _git(repo: Path, *args: str, date: str = "2026-09-29T12:00:00Z") -> str:
     env = {**os.environ, "GIT_AUTHOR_DATE": date, "GIT_COMMITTER_DATE": date}
     return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=True, env=env).stdout
@@ -492,3 +500,49 @@ def test_reproduced_is_a_positive_token_and_the_ledger_documents_every_token() -
     text = (REPO / L.LEDGER_PATH).read_text()
     table = text[text.index("| Token | Rank | Meaning |") :].split("\n\n", 1)[0]
     assert all(f"`{token}`" in table for token in L.RANK), [t for t in L.RANK if f"`{t}`" not in table]
+
+
+# ── #1105: pipe-less rows and the scope vocabulary ─────────────────────────────────────────────────────
+
+
+def test_a_row_without_a_leading_pipe_is_still_parsed(tmp_path: Path) -> None:
+    """GFM keeps a table open until a blank line: a pipe-less row renders as a ledger row and must be linted."""
+    bad = "T1-2 | claim | mech | **Status: EARNED 2099-01-01**. **Evidence:** [r.jsonl](../experiments/data/r.jsonl). |"
+    rows, problems = L.parse(_ledger([OK_T1, bad]))
+    assert [r.id for r in rows if r.table == "T1"] == ["T1-1", "T1-2"], problems
+    repo = _repo(tmp_path, _ledger([OK_T1]))
+    assert any("T1-2" in f and "after today" in f for f in _lint(repo, _ledger([OK_T1, bad])))
+
+
+@pytest.mark.parametrize(
+    ("qualifier", "ok"),
+    [
+        ("(narrow)", True),
+        ("(narrow: H3 not measured)", True),
+        ("(rung A)", True),
+        ("(rung AB)", False),
+        ("(narrow-ish)", False),
+        ("(reframed)", False),
+        ("(because the run was short)", False),
+    ],
+)
+def test_a_qualifier_opens_with_a_scope_word(tmp_path: Path, qualifier: str, ok: bool) -> None:
+    row = OK_T1.replace("**Status: EARNED 2026-09-01**.", f"**Status: EARNED 2026-09-01** {qualifier}.")
+    repo = _repo(tmp_path, _ledger([row]))
+    hit = any("must open with a scope word" in f for f in _lint(repo))
+    assert hit is not ok
+
+
+def test_the_grandfathered_qualifier_is_pinned(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(F, "GRANDFATHERED_QUALIFIERS", {"T1-1": ("EARNED", "2026-09-01", "reframed")})
+    row = OK_T1.replace("**Status: EARNED 2026-09-01**.", "**Status: EARNED 2026-09-01** (reframed).")
+    repo = _repo(tmp_path, _ledger([row]))
+    assert not any("scope word" in f or "stale" in f for f in _lint(repo))
+    moved = row.replace("(reframed)", "(narrow)")
+    assert any("GRANDFATHERED_QUALIFIERS entry for T1-1" in f and "stale" in f for f in _lint(repo, _ledger([moved])))
+
+
+def test_a_grandfather_pin_without_its_row_is_stale(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(F, "GRANDFATHERED_QUALIFIERS", {"T1-9": ("EARNED", "2026-09-01", "reframed")})
+    repo = _repo(tmp_path, _ledger([OK_T1]))
+    assert any("GRANDFATHERED_QUALIFIERS entry for T1-9 names no ledger row" in f for f in _lint(repo))

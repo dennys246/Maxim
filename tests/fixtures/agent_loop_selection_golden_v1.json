@@ -1,0 +1,2692 @@
+{
+ "arms": {
+  "fear_water": {
+   "arm": "fear_water",
+   "end_submerged": false,
+   "end_t": 9.3,
+   "executor_calls": [
+    {
+     "after_tick": 0,
+     "order": 0,
+     "params": {},
+     "success": false,
+     "t": 0.25,
+     "tool": "minecraft_player_flee"
+    },
+    {
+     "after_tick": 1,
+     "order": 1,
+     "params": {},
+     "success": true,
+     "t": 0.8,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "after_tick": 2,
+     "order": 2,
+     "params": {},
+     "success": true,
+     "t": 1.35,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "after_tick": 3,
+     "order": 3,
+     "params": {},
+     "success": true,
+     "t": 1.9,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "after_tick": 4,
+     "order": 4,
+     "params": {},
+     "success": true,
+     "t": 2.45,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "after_tick": 5,
+     "order": 5,
+     "params": {},
+     "success": true,
+     "t": 3.0,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "after_tick": 7,
+     "order": 6,
+     "params": {},
+     "success": true,
+     "t": 4.1,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "after_tick": 8,
+     "order": 7,
+     "params": {},
+     "success": true,
+     "t": 4.65,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "after_tick": 9,
+     "order": 8,
+     "params": {},
+     "success": true,
+     "t": 5.2,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "after_tick": 10,
+     "order": 9,
+     "params": {},
+     "success": true,
+     "t": 5.75,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "after_tick": 11,
+     "order": 10,
+     "params": {},
+     "success": true,
+     "t": 6.3,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "after_tick": 13,
+     "order": 11,
+     "params": {},
+     "success": true,
+     "t": 7.4,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "after_tick": 14,
+     "order": 12,
+     "params": {},
+     "success": true,
+     "t": 7.95,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "after_tick": 15,
+     "order": 13,
+     "params": {},
+     "success": true,
+     "t": 8.5,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "after_tick": 16,
+     "order": 14,
+     "params": {},
+     "success": true,
+     "t": 9.05,
+     "tool": "minecraft_player_escape_water"
+    }
+   ],
+   "lifecycle": {
+    "capture_worker_started": 1,
+    "captures": [
+     {
+      "after_tick": 0,
+      "situation": {
+       "interoception": "c0",
+       "world": "c1"
+      },
+      "tool": "minecraft_player_flee"
+     },
+     {
+      "after_tick": 1,
+      "situation": {
+       "interoception": "c0",
+       "world": "c1"
+      },
+      "tool": "minecraft_player_escape_water"
+     },
+     {
+      "after_tick": 2,
+      "situation": {
+       "interoception": "c0",
+       "world": "c1"
+      },
+      "tool": "minecraft_player_escape_water"
+     },
+     {
+      "after_tick": 3,
+      "situation": {
+       "interoception": "c0",
+       "world": "c2"
+      },
+      "tool": "minecraft_player_escape_water"
+     },
+     {
+      "after_tick": 4,
+      "situation": {
+       "interoception": "c0",
+       "world": "c2"
+      },
+      "tool": "minecraft_player_escape_water"
+     },
+     {
+      "after_tick": 5,
+      "situation": {
+       "interoception": "c0",
+       "world": "c2"
+      },
+      "tool": "minecraft_player_escape_water"
+     },
+     {
+      "after_tick": 7,
+      "situation": {
+       "interoception": "c0",
+       "world": "c2"
+      },
+      "tool": "minecraft_player_escape_water"
+     },
+     {
+      "after_tick": 8,
+      "situation": {
+       "interoception": "c3",
+       "world": "c2"
+      },
+      "tool": "minecraft_player_escape_water"
+     },
+     {
+      "after_tick": 9,
+      "situation": {
+       "interoception": "c3",
+       "world": "c2"
+      },
+      "tool": "minecraft_player_escape_water"
+     },
+     {
+      "after_tick": 10,
+      "situation": {
+       "interoception": "c3",
+       "world": "c2"
+      },
+      "tool": "minecraft_player_escape_water"
+     },
+     {
+      "after_tick": 11,
+      "situation": {
+       "interoception": "c3",
+       "world": "c2"
+      },
+      "tool": "minecraft_player_escape_water"
+     },
+     {
+      "after_tick": 13,
+      "situation": {
+       "interoception": "c3",
+       "world": "c2"
+      },
+      "tool": "minecraft_player_escape_water"
+     },
+     {
+      "after_tick": 14,
+      "situation": {
+       "interoception": "c3",
+       "world": "c2"
+      },
+      "tool": "minecraft_player_escape_water"
+     },
+     {
+      "after_tick": 15,
+      "situation": {
+       "interoception": "c3",
+       "world": "c2"
+      },
+      "tool": "minecraft_player_escape_water"
+     },
+     {
+      "after_tick": 16,
+      "situation": {
+       "interoception": "c3",
+       "world": "c2"
+      },
+      "tool": "minecraft_player_escape_water"
+     }
+    ],
+    "cue_calls": [
+     {
+      "after_tick": -1,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 0,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 1,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 2,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c2"
+      }
+     },
+     {
+      "after_tick": 3,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c2"
+      }
+     },
+     {
+      "after_tick": 4,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c2"
+      }
+     },
+     {
+      "after_tick": 5,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c2"
+      }
+     },
+     {
+      "after_tick": 6,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c2"
+      }
+     },
+     {
+      "after_tick": 7,
+      "clusters": {
+       "interoception": "c3",
+       "world": "c2"
+      }
+     },
+     {
+      "after_tick": 8,
+      "clusters": {
+       "interoception": "c3",
+       "world": "c2"
+      }
+     },
+     {
+      "after_tick": 9,
+      "clusters": {
+       "interoception": "c3",
+       "world": "c2"
+      }
+     },
+     {
+      "after_tick": 10,
+      "clusters": {
+       "interoception": "c3",
+       "world": "c2"
+      }
+     },
+     {
+      "after_tick": 11,
+      "clusters": {
+       "interoception": "c3",
+       "world": "c2"
+      }
+     },
+     {
+      "after_tick": 12,
+      "clusters": {
+       "interoception": "c3",
+       "world": "c2"
+      }
+     },
+     {
+      "after_tick": 13,
+      "clusters": {
+       "interoception": "c3",
+       "world": "c2"
+      }
+     },
+     {
+      "after_tick": 14,
+      "clusters": {
+       "interoception": "c3",
+       "world": "c2"
+      }
+     },
+     {
+      "after_tick": 15,
+      "clusters": {
+       "interoception": "c3",
+       "world": "c2"
+      }
+     }
+    ],
+    "persists": 5,
+    "session_end": [
+     "full"
+    ],
+    "session_start": 1
+   },
+   "max_steps": 60,
+   "seed_clusters": {
+    "interoception": "c0",
+    "world": "c1"
+   },
+   "ticks": [
+    {
+     "clusters": {
+      "interoception": "c0",
+      "world": "c1"
+     },
+     "confidence": 0.7,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.7,
+       "best_tool": "minecraft_player_flee",
+       "cluster_reward_bias_consulted": 0.0,
+       "consulted_bias_by_modality": {
+        "interoception": 0.0,
+        "world": 0.0
+       },
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": 0.0,
+       "min_confidence": 0.3,
+       "n_candidates": 2,
+       "passed_gate": true,
+       "runner_up_score": 0.7,
+       "score_components": {
+        "causal": 0.0,
+        "drive": 0.7,
+        "explore": 0.0,
+        "learned_bias": 0.0,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 0,
+     "t": 0.0,
+     "tick": 0,
+     "tool": "minecraft_player_flee"
+    },
+    {
+     "clusters": {
+      "interoception": "c0",
+      "world": "c1"
+     },
+     "confidence": 0.7,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.7,
+       "best_tool": "minecraft_player_escape_water",
+       "cluster_reward_bias_consulted": 0.0,
+       "consulted_bias_by_modality": {
+        "interoception": 0.0,
+        "world": 0.0
+       },
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": 0.1495,
+       "min_confidence": 0.3,
+       "n_candidates": 2,
+       "passed_gate": true,
+       "runner_up_score": 0.3005,
+       "score_components": {
+        "causal": 0.0,
+        "drive": 0.7,
+        "explore": 0.0,
+        "learned_bias": 0.0,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 3,
+     "t": 0.55,
+     "tick": 1,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "clusters": {
+      "interoception": "c0",
+      "world": "c1"
+     },
+     "confidence": 1.0,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 1.3495,
+       "best_tool": "minecraft_player_escape_water",
+       "cluster_reward_bias_consulted": 0.1495,
+       "consulted_bias_by_modality": {
+        "interoception": 0.1495,
+        "world": 0.0
+       },
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": 0.298004994,
+       "min_confidence": 0.3,
+       "n_candidates": 2,
+       "passed_gate": true,
+       "runner_up_score": 0.301495006,
+       "score_components": {
+        "causal": 0.5,
+        "drive": 0.7,
+        "explore": 0.0,
+        "learned_bias": 0.1495,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 6,
+     "t": 1.1,
+     "tick": 2,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "clusters": {
+      "interoception": "c0",
+      "world": "c2"
+     },
+     "confidence": 0.939426351,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.939426351,
+       "best_tool": "minecraft_player_escape_water",
+       "cluster_reward_bias_consulted": 0.298004994,
+       "consulted_bias_by_modality": {
+        "interoception": 0.298004994,
+        "world": 0.0
+       },
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c2"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.641421356,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.298004994,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 9,
+     "t": 1.65,
+     "tick": 3,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "clusters": {
+      "interoception": "c0",
+      "world": "c2"
+     },
+     "confidence": 1.0,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 1.118726686,
+       "best_tool": "minecraft_player_escape_water",
+       "cluster_reward_bias_consulted": 0.445521606,
+       "consulted_bias_by_modality": {
+        "interoception": 0.445521606,
+        "world": 0.0
+       },
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c2"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.673205081,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.445521606,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 12,
+     "t": 2.2,
+     "tick": 4,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "clusters": {
+      "interoception": "c0",
+      "world": "c2"
+     },
+     "confidence": 1.0,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 1.292056412,
+       "best_tool": "minecraft_player_escape_water",
+       "cluster_reward_bias_consulted": 0.592056412,
+       "consulted_bias_by_modality": {
+        "interoception": 0.592056412,
+        "world": 0.0
+       },
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c2"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.7,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.592056412,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 15,
+     "t": 2.75,
+     "tick": 5,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "clusters": {
+      "interoception": "c0",
+      "world": "c2"
+     },
+     "confidence": 1.0,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 1.461222745,
+       "best_tool": "minecraft_player_escape_water",
+       "cluster_reward_bias_consulted": 0.737615948,
+       "consulted_bias_by_modality": {
+        "interoception": 0.737615948,
+        "world": 0.0
+       },
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c2"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.723606798,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.737615948,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 18,
+     "t": 3.3,
+     "tick": 6,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "clusters": {
+      "interoception": "c0",
+      "world": "c2"
+     },
+     "confidence": 1.0,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 1.458764025,
+       "best_tool": "minecraft_player_escape_water",
+       "cluster_reward_bias_consulted": 0.735157228,
+       "consulted_bias_by_modality": {
+        "interoception": 0.735157228,
+        "world": 0.0
+       },
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c2"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.723606798,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.735157228,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 26,
+     "t": 3.85,
+     "tick": 7,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "clusters": {
+      "interoception": "c3",
+      "world": "c2"
+     },
+     "confidence": 0.744948974,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.744948974,
+       "best_tool": "minecraft_player_escape_water",
+       "cluster_reward_bias_consulted": 0.0,
+       "consulted_bias_by_modality": {
+        "interoception": 0.0,
+        "world": 0.0
+       },
+       "current_cluster_id": "c3",
+       "current_clusters": {
+        "interoception": "c3",
+        "world": "c2"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.744948974,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.0,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 29,
+     "t": 4.4,
+     "tick": 8,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "clusters": {
+      "interoception": "c3",
+      "world": "c2"
+     },
+     "confidence": 0.914075131,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.914075131,
+       "best_tool": "minecraft_player_escape_water",
+       "cluster_reward_bias_consulted": 0.1495,
+       "consulted_bias_by_modality": {
+        "interoception": 0.1495,
+        "world": 0.0
+       },
+       "current_cluster_id": "c3",
+       "current_clusters": {
+        "interoception": "c3",
+        "world": "c2"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.764575131,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.1495,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 32,
+     "t": 4.95,
+     "tick": 9,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "clusters": {
+      "interoception": "c3",
+      "world": "c2"
+     },
+     "confidence": 1.0,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 1.080847707,
+       "best_tool": "minecraft_player_escape_water",
+       "cluster_reward_bias_consulted": 0.298004994,
+       "consulted_bias_by_modality": {
+        "interoception": 0.298004994,
+        "world": 0.0
+       },
+       "current_cluster_id": "c3",
+       "current_clusters": {
+        "interoception": "c3",
+        "world": "c2"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.782842712,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.298004994,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 35,
+     "t": 5.5,
+     "tick": 10,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "clusters": {
+      "interoception": "c3",
+      "world": "c2"
+     },
+     "confidence": 1.0,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 1.245521606,
+       "best_tool": "minecraft_player_escape_water",
+       "cluster_reward_bias_consulted": 0.445521606,
+       "consulted_bias_by_modality": {
+        "interoception": 0.445521606,
+        "world": 0.0
+       },
+       "current_cluster_id": "c3",
+       "current_clusters": {
+        "interoception": "c3",
+        "world": "c2"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.8,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.445521606,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 38,
+     "t": 6.05,
+     "tick": 11,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "clusters": {
+      "interoception": "c3",
+      "world": "c2"
+     },
+     "confidence": 1.0,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 1.408284178,
+       "best_tool": "minecraft_player_escape_water",
+       "cluster_reward_bias_consulted": 0.592056412,
+       "consulted_bias_by_modality": {
+        "interoception": 0.592056412,
+        "world": 0.0
+       },
+       "current_cluster_id": "c3",
+       "current_clusters": {
+        "interoception": "c3",
+        "world": "c2"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.816227766,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.592056412,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 41,
+     "t": 6.6,
+     "tick": 12,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "clusters": {
+      "interoception": "c3",
+      "world": "c2"
+     },
+     "confidence": 1.0,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 1.406310656,
+       "best_tool": "minecraft_player_escape_water",
+       "cluster_reward_bias_consulted": 0.59008289,
+       "consulted_bias_by_modality": {
+        "interoception": 0.59008289,
+        "world": 0.0
+       },
+       "current_cluster_id": "c3",
+       "current_clusters": {
+        "interoception": "c3",
+        "world": "c2"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.816227766,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.59008289,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 49,
+     "t": 7.15,
+     "tick": 13,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "clusters": {
+      "interoception": "c3",
+      "world": "c2"
+     },
+     "confidence": 1.0,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 1.56731804,
+       "best_tool": "minecraft_player_escape_water",
+       "cluster_reward_bias_consulted": 0.735655561,
+       "consulted_bias_by_modality": {
+        "interoception": 0.735655561,
+        "world": 0.0
+       },
+       "current_cluster_id": "c3",
+       "current_clusters": {
+        "interoception": "c3",
+        "world": "c2"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.831662479,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.735655561,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 52,
+     "t": 7.7,
+     "tick": 14,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "clusters": {
+      "interoception": "c3",
+      "world": "c2"
+     },
+     "confidence": 1.0,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 1.726669526,
+       "best_tool": "minecraft_player_escape_water",
+       "cluster_reward_bias_consulted": 0.880259365,
+       "consulted_bias_by_modality": {
+        "interoception": 0.880259365,
+        "world": 0.0
+       },
+       "current_cluster_id": "c3",
+       "current_clusters": {
+        "interoception": "c3",
+        "world": "c2"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.846410162,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.880259365,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 55,
+     "t": 8.25,
+     "tick": 15,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "clusters": {
+      "interoception": "c3",
+      "world": "c2"
+     },
+     "confidence": 1.0,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 1.857221794,
+       "best_tool": "minecraft_player_escape_water",
+       "cluster_reward_bias_consulted": 0.996666667,
+       "consulted_bias_by_modality": {
+        "interoception": 0.996666667,
+        "world": 0.0
+       },
+       "current_cluster_id": "c3",
+       "current_clusters": {
+        "interoception": "c3",
+        "world": "c2"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.860555128,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.996666667,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 58,
+     "t": 8.8,
+     "tick": 16,
+     "tool": "minecraft_player_escape_water"
+    }
+   ],
+   "world_actions": [
+    "flee",
+    "escape_water",
+    "escape_water",
+    "escape_water",
+    "escape_water",
+    "escape_water",
+    "escape_water",
+    "escape_water",
+    "escape_water",
+    "escape_water",
+    "escape_water",
+    "escape_water",
+    "escape_water",
+    "escape_water",
+    "escape_water"
+   ]
+  },
+  "shore": {
+   "arm": "shore",
+   "end_submerged": false,
+   "end_t": 15.9,
+   "executor_calls": [
+    {
+     "after_tick": 0,
+     "order": 0,
+     "params": {},
+     "success": false,
+     "t": 0.25,
+     "tool": "minecraft_player_mine_block"
+    },
+    {
+     "after_tick": 17,
+     "order": 1,
+     "params": {},
+     "success": true,
+     "t": 9.6,
+     "tool": "minecraft_player_eat"
+    },
+    {
+     "after_tick": 18,
+     "order": 2,
+     "params": {},
+     "success": true,
+     "t": 10.15,
+     "tool": "minecraft_player_eat"
+    },
+    {
+     "after_tick": 19,
+     "order": 3,
+     "params": {},
+     "success": true,
+     "t": 10.7,
+     "tool": "minecraft_player_eat"
+    },
+    {
+     "after_tick": 20,
+     "order": 4,
+     "params": {},
+     "success": true,
+     "t": 11.25,
+     "tool": "minecraft_player_eat"
+    },
+    {
+     "after_tick": 21,
+     "order": 5,
+     "params": {},
+     "success": true,
+     "t": 11.8,
+     "tool": "minecraft_player_eat"
+    },
+    {
+     "after_tick": 23,
+     "order": 6,
+     "params": {},
+     "success": true,
+     "t": 12.9,
+     "tool": "minecraft_player_eat"
+    },
+    {
+     "after_tick": 24,
+     "order": 7,
+     "params": {},
+     "success": true,
+     "t": 13.45,
+     "tool": "minecraft_player_eat"
+    },
+    {
+     "after_tick": 25,
+     "order": 8,
+     "params": {},
+     "success": true,
+     "t": 14.0,
+     "tool": "minecraft_player_eat"
+    },
+    {
+     "after_tick": 26,
+     "order": 9,
+     "params": {},
+     "success": true,
+     "t": 14.55,
+     "tool": "minecraft_player_eat"
+    },
+    {
+     "after_tick": 27,
+     "order": 10,
+     "params": {},
+     "success": true,
+     "t": 15.1,
+     "tool": "minecraft_player_eat"
+    }
+   ],
+   "lifecycle": {
+    "capture_worker_started": 1,
+    "captures": [
+     {
+      "after_tick": 0,
+      "situation": {
+       "interoception": "c0",
+       "world": "c1"
+      },
+      "tool": "minecraft_player_mine_block"
+     },
+     {
+      "after_tick": 17,
+      "situation": {
+       "interoception": "c2",
+       "world": "c1"
+      },
+      "tool": "minecraft_player_eat"
+     },
+     {
+      "after_tick": 18,
+      "situation": {
+       "interoception": "c0",
+       "world": "c1"
+      },
+      "tool": "minecraft_player_eat"
+     },
+     {
+      "after_tick": 19,
+      "situation": {
+       "interoception": "c0",
+       "world": "c1"
+      },
+      "tool": "minecraft_player_eat"
+     },
+     {
+      "after_tick": 20,
+      "situation": {
+       "interoception": "c0",
+       "world": "c1"
+      },
+      "tool": "minecraft_player_eat"
+     },
+     {
+      "after_tick": 21,
+      "situation": {
+       "interoception": "c0",
+       "world": "c1"
+      },
+      "tool": "minecraft_player_eat"
+     },
+     {
+      "after_tick": 23,
+      "situation": {
+       "interoception": "c0",
+       "world": "c1"
+      },
+      "tool": "minecraft_player_eat"
+     },
+     {
+      "after_tick": 24,
+      "situation": {
+       "interoception": "c0",
+       "world": "c1"
+      },
+      "tool": "minecraft_player_eat"
+     },
+     {
+      "after_tick": 25,
+      "situation": {
+       "interoception": "c0",
+       "world": "c1"
+      },
+      "tool": "minecraft_player_eat"
+     },
+     {
+      "after_tick": 26,
+      "situation": {
+       "interoception": "c0",
+       "world": "c1"
+      },
+      "tool": "minecraft_player_eat"
+     },
+     {
+      "after_tick": 27,
+      "situation": {
+       "interoception": "c0",
+       "world": "c1"
+      },
+      "tool": "minecraft_player_eat"
+     }
+    ],
+    "cue_calls": [
+     {
+      "after_tick": -1,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 0,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 1,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 2,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 3,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 4,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 5,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 6,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 7,
+      "clusters": {
+       "interoception": "c2",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 8,
+      "clusters": {
+       "interoception": "c2",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 9,
+      "clusters": {
+       "interoception": "c2",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 10,
+      "clusters": {
+       "interoception": "c2",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 11,
+      "clusters": {
+       "interoception": "c2",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 12,
+      "clusters": {
+       "interoception": "c2",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 13,
+      "clusters": {
+       "interoception": "c2",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 14,
+      "clusters": {
+       "interoception": "c2",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 15,
+      "clusters": {
+       "interoception": "c2",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 16,
+      "clusters": {
+       "interoception": "c2",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 17,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 18,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 19,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 20,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 21,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 22,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 23,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 24,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 25,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 26,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     },
+     {
+      "after_tick": 27,
+      "clusters": {
+       "interoception": "c0",
+       "world": "c1"
+      }
+     }
+    ],
+    "persists": 6,
+    "session_end": [
+     "full"
+    ],
+    "session_start": 1
+   },
+   "max_steps": 160,
+   "seed_clusters": {
+    "interoception": "c0",
+    "world": "c1"
+   },
+   "ticks": [
+    {
+     "clusters": {
+      "interoception": "c0",
+      "world": "c1"
+     },
+     "confidence": 0.3,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.3,
+       "best_tool": "minecraft_player_mine_block",
+       "cluster_reward_bias_consulted": 0.3,
+       "consulted_bias_by_modality": {
+        "interoception": 0.0,
+        "world": 0.3
+       },
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.0,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.3,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 0,
+     "t": 0.0,
+     "tick": 0,
+     "tool": "minecraft_player_mine_block"
+    },
+    {
+     "clusters": null,
+     "confidence": null,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.0,
+       "best_tool": null,
+       "cluster_reward_bias_consulted": 0.0,
+       "consulted_bias_by_modality": null,
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": null,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 0,
+       "passed_gate": false,
+       "runner_up_score": null,
+       "score_components": null,
+       "visit_count": null
+      }
+     ],
+     "step": 3,
+     "t": 0.55,
+     "tick": 1,
+     "tool": null
+    },
+    {
+     "clusters": null,
+     "confidence": null,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.0,
+       "best_tool": null,
+       "cluster_reward_bias_consulted": 0.0,
+       "consulted_bias_by_modality": null,
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": null,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 0,
+       "passed_gate": false,
+       "runner_up_score": null,
+       "score_components": null,
+       "visit_count": null
+      }
+     ],
+     "step": 10,
+     "t": 1.1,
+     "tick": 2,
+     "tool": null
+    },
+    {
+     "clusters": null,
+     "confidence": null,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.0,
+       "best_tool": null,
+       "cluster_reward_bias_consulted": 0.0,
+       "consulted_bias_by_modality": null,
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": null,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 0,
+       "passed_gate": false,
+       "runner_up_score": null,
+       "score_components": null,
+       "visit_count": null
+      }
+     ],
+     "step": 17,
+     "t": 1.65,
+     "tick": 3,
+     "tool": null
+    },
+    {
+     "clusters": null,
+     "confidence": null,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.0,
+       "best_tool": null,
+       "cluster_reward_bias_consulted": 0.0,
+       "consulted_bias_by_modality": null,
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": null,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 0,
+       "passed_gate": false,
+       "runner_up_score": null,
+       "score_components": null,
+       "visit_count": null
+      }
+     ],
+     "step": 24,
+     "t": 2.2,
+     "tick": 4,
+     "tool": null
+    },
+    {
+     "clusters": null,
+     "confidence": null,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.0,
+       "best_tool": null,
+       "cluster_reward_bias_consulted": 0.0,
+       "consulted_bias_by_modality": null,
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": null,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 0,
+       "passed_gate": false,
+       "runner_up_score": null,
+       "score_components": null,
+       "visit_count": null
+      }
+     ],
+     "step": 31,
+     "t": 2.75,
+     "tick": 5,
+     "tool": null
+    },
+    {
+     "clusters": null,
+     "confidence": null,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.0,
+       "best_tool": null,
+       "cluster_reward_bias_consulted": 0.0,
+       "consulted_bias_by_modality": null,
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": null,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 0,
+       "passed_gate": false,
+       "runner_up_score": null,
+       "score_components": null,
+       "visit_count": null
+      }
+     ],
+     "step": 38,
+     "t": 3.3,
+     "tick": 6,
+     "tool": null
+    },
+    {
+     "clusters": null,
+     "confidence": null,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.0,
+       "best_tool": null,
+       "cluster_reward_bias_consulted": 0.0,
+       "consulted_bias_by_modality": null,
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": null,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 0,
+       "passed_gate": false,
+       "runner_up_score": null,
+       "score_components": null,
+       "visit_count": null
+      }
+     ],
+     "step": 45,
+     "t": 3.85,
+     "tick": 7,
+     "tool": null
+    },
+    {
+     "clusters": null,
+     "confidence": null,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.041119071,
+       "best_tool": "minecraft_player_mine_block",
+       "cluster_reward_bias_consulted": 0.291119071,
+       "consulted_bias_by_modality": {
+        "interoception": 0.0,
+        "world": 0.291119071
+       },
+       "current_cluster_id": "c2",
+       "current_clusters": {
+        "interoception": "c2",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": false,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": -0.25,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.291119071,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 52,
+     "t": 4.4,
+     "tick": 8,
+     "tool": null
+    },
+    {
+     "clusters": null,
+     "confidence": null,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.040148674,
+       "best_tool": "minecraft_player_mine_block",
+       "cluster_reward_bias_consulted": 0.290148674,
+       "consulted_bias_by_modality": {
+        "interoception": 0.0,
+        "world": 0.290148674
+       },
+       "current_cluster_id": "c2",
+       "current_clusters": {
+        "interoception": "c2",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": false,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": -0.25,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.290148674,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 59,
+     "t": 4.95,
+     "tick": 9,
+     "tool": null
+    },
+    {
+     "clusters": null,
+     "confidence": null,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.039181512,
+       "best_tool": "minecraft_player_mine_block",
+       "cluster_reward_bias_consulted": 0.289181512,
+       "consulted_bias_by_modality": {
+        "interoception": 0.0,
+        "world": 0.289181512
+       },
+       "current_cluster_id": "c2",
+       "current_clusters": {
+        "interoception": "c2",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": false,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": -0.25,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.289181512,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 66,
+     "t": 5.5,
+     "tick": 10,
+     "tool": null
+    },
+    {
+     "clusters": null,
+     "confidence": null,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.038217574,
+       "best_tool": "minecraft_player_mine_block",
+       "cluster_reward_bias_consulted": 0.288217574,
+       "consulted_bias_by_modality": {
+        "interoception": 0.0,
+        "world": 0.288217574
+       },
+       "current_cluster_id": "c2",
+       "current_clusters": {
+        "interoception": "c2",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": false,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": -0.25,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.288217574,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 73,
+     "t": 6.05,
+     "tick": 11,
+     "tool": null
+    },
+    {
+     "clusters": null,
+     "confidence": null,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.037256849,
+       "best_tool": "minecraft_player_mine_block",
+       "cluster_reward_bias_consulted": 0.287256849,
+       "consulted_bias_by_modality": {
+        "interoception": 0.0,
+        "world": 0.287256849
+       },
+       "current_cluster_id": "c2",
+       "current_clusters": {
+        "interoception": "c2",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": false,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": -0.25,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.287256849,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 80,
+     "t": 6.6,
+     "tick": 12,
+     "tool": null
+    },
+    {
+     "clusters": null,
+     "confidence": null,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.036299326,
+       "best_tool": "minecraft_player_mine_block",
+       "cluster_reward_bias_consulted": 0.286299326,
+       "consulted_bias_by_modality": {
+        "interoception": 0.0,
+        "world": 0.286299326
+       },
+       "current_cluster_id": "c2",
+       "current_clusters": {
+        "interoception": "c2",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": false,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": -0.25,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.286299326,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 87,
+     "t": 7.15,
+     "tick": 13,
+     "tool": null
+    },
+    {
+     "clusters": null,
+     "confidence": null,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.035344995,
+       "best_tool": "minecraft_player_mine_block",
+       "cluster_reward_bias_consulted": 0.285344995,
+       "consulted_bias_by_modality": {
+        "interoception": 0.0,
+        "world": 0.285344995
+       },
+       "current_cluster_id": "c2",
+       "current_clusters": {
+        "interoception": "c2",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": false,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": -0.25,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.285344995,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 94,
+     "t": 7.7,
+     "tick": 14,
+     "tool": null
+    },
+    {
+     "clusters": null,
+     "confidence": null,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.034393845,
+       "best_tool": "minecraft_player_mine_block",
+       "cluster_reward_bias_consulted": 0.284393845,
+       "consulted_bias_by_modality": {
+        "interoception": 0.0,
+        "world": 0.284393845
+       },
+       "current_cluster_id": "c2",
+       "current_clusters": {
+        "interoception": "c2",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": false,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": -0.25,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.284393845,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 101,
+     "t": 8.25,
+     "tick": 15,
+     "tool": null
+    },
+    {
+     "clusters": null,
+     "confidence": null,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.033445865,
+       "best_tool": "minecraft_player_mine_block",
+       "cluster_reward_bias_consulted": 0.283445865,
+       "consulted_bias_by_modality": {
+        "interoception": 0.0,
+        "world": 0.283445865
+       },
+       "current_cluster_id": "c2",
+       "current_clusters": {
+        "interoception": "c2",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": false,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": -0.25,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.283445865,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 108,
+     "t": 8.8,
+     "tick": 16,
+     "tool": null
+    },
+    {
+     "clusters": {
+      "interoception": "c2",
+      "world": "c1"
+     },
+     "confidence": 0.3745,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.3745,
+       "best_tool": "minecraft_player_eat",
+       "cluster_reward_bias_consulted": 0.0,
+       "consulted_bias_by_modality": {
+        "interoception": 0.0,
+        "world": 0.0
+       },
+       "current_cluster_id": "c2",
+       "current_clusters": {
+        "interoception": "c2",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": -0.282501046,
+       "min_confidence": 0.3,
+       "n_candidates": 2,
+       "passed_gate": true,
+       "runner_up_score": 0.032501046,
+       "score_components": {
+        "causal": 0.0,
+        "drive": 0.3745,
+        "explore": 0.0,
+        "learned_bias": 0.0,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 115,
+     "t": 9.35,
+     "tick": 17,
+     "tool": "minecraft_player_eat"
+    },
+    {
+     "clusters": {
+      "interoception": "c0",
+      "world": "c1"
+     },
+     "confidence": 0.5,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.5,
+       "best_tool": "minecraft_player_eat",
+       "cluster_reward_bias_consulted": 0.0,
+       "consulted_bias_by_modality": {
+        "interoception": 0.0,
+        "world": 0.0
+       },
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.5,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.0,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 118,
+     "t": 9.9,
+     "tick": 18,
+     "tool": "minecraft_player_eat"
+    },
+    {
+     "clusters": {
+      "interoception": "c0",
+      "world": "c1"
+     },
+     "confidence": 0.790921356,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.790921356,
+       "best_tool": "minecraft_player_eat",
+       "cluster_reward_bias_consulted": 0.1495,
+       "consulted_bias_by_modality": {
+        "interoception": 0.1495,
+        "world": 0.0
+       },
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.641421356,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.1495,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 121,
+     "t": 10.45,
+     "tick": 19,
+     "tool": "minecraft_player_eat"
+    },
+    {
+     "clusters": {
+      "interoception": "c0",
+      "world": "c1"
+     },
+     "confidence": 0.971210075,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 0.971210075,
+       "best_tool": "minecraft_player_eat",
+       "cluster_reward_bias_consulted": 0.298004994,
+       "consulted_bias_by_modality": {
+        "interoception": 0.298004994,
+        "world": 0.0
+       },
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.673205081,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.298004994,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 124,
+     "t": 11.0,
+     "tick": 20,
+     "tool": "minecraft_player_eat"
+    },
+    {
+     "clusters": {
+      "interoception": "c0",
+      "world": "c1"
+     },
+     "confidence": 1.0,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 1.145521606,
+       "best_tool": "minecraft_player_eat",
+       "cluster_reward_bias_consulted": 0.445521606,
+       "consulted_bias_by_modality": {
+        "interoception": 0.445521606,
+        "world": 0.0
+       },
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.7,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.445521606,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 127,
+     "t": 11.55,
+     "tick": 21,
+     "tool": "minecraft_player_eat"
+    },
+    {
+     "clusters": {
+      "interoception": "c0",
+      "world": "c1"
+     },
+     "confidence": 1.0,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 1.31566321,
+       "best_tool": "minecraft_player_eat",
+       "cluster_reward_bias_consulted": 0.592056412,
+       "consulted_bias_by_modality": {
+        "interoception": 0.592056412,
+        "world": 0.0
+       },
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.723606798,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.592056412,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 130,
+     "t": 12.1,
+     "tick": 22,
+     "tool": "minecraft_player_eat"
+    },
+    {
+     "clusters": {
+      "interoception": "c0",
+      "world": "c1"
+     },
+     "confidence": 1.0,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 1.313689688,
+       "best_tool": "minecraft_player_eat",
+       "cluster_reward_bias_consulted": 0.59008289,
+       "consulted_bias_by_modality": {
+        "interoception": 0.59008289,
+        "world": 0.0
+       },
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.723606798,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.59008289,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 138,
+     "t": 12.65,
+     "tick": 23,
+     "tool": "minecraft_player_eat"
+    },
+    {
+     "clusters": {
+      "interoception": "c0",
+      "world": "c1"
+     },
+     "confidence": 1.0,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 1.480604535,
+       "best_tool": "minecraft_player_eat",
+       "cluster_reward_bias_consulted": 0.735655561,
+       "consulted_bias_by_modality": {
+        "interoception": 0.735655561,
+        "world": 0.0
+       },
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.744948974,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.735655561,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 141,
+     "t": 13.2,
+     "tick": 24,
+     "tool": "minecraft_player_eat"
+    },
+    {
+     "clusters": {
+      "interoception": "c0",
+      "world": "c1"
+     },
+     "confidence": 1.0,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 1.644834496,
+       "best_tool": "minecraft_player_eat",
+       "cluster_reward_bias_consulted": 0.880259365,
+       "consulted_bias_by_modality": {
+        "interoception": 0.880259365,
+        "world": 0.0
+       },
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.764575131,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.880259365,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 144,
+     "t": 13.75,
+     "tick": 25,
+     "tool": "minecraft_player_eat"
+    },
+    {
+     "clusters": {
+      "interoception": "c0",
+      "world": "c1"
+     },
+     "confidence": 1.0,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 1.779509379,
+       "best_tool": "minecraft_player_eat",
+       "cluster_reward_bias_consulted": 0.996666667,
+       "consulted_bias_by_modality": {
+        "interoception": 0.996666667,
+        "world": 0.0
+       },
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.782842712,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.996666667,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 147,
+     "t": 14.3,
+     "tick": 26,
+     "tool": "minecraft_player_eat"
+    },
+    {
+     "clusters": {
+      "interoception": "c0",
+      "world": "c1"
+     },
+     "confidence": 1.0,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 1.796666667,
+       "best_tool": "minecraft_player_eat",
+       "cluster_reward_bias_consulted": 0.996666667,
+       "consulted_bias_by_modality": {
+        "interoception": 0.996666667,
+        "world": 0.0
+       },
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.8,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.996666667,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 150,
+     "t": 14.85,
+     "tick": 27,
+     "tool": "minecraft_player_eat"
+    },
+    {
+     "clusters": {
+      "interoception": "c0",
+      "world": "c1"
+     },
+     "confidence": 1.0,
+     "gated": false,
+     "params": {},
+     "recommend": [
+      {
+       "best_score": 1.812894433,
+       "best_tool": "minecraft_player_eat",
+       "cluster_reward_bias_consulted": 0.996666667,
+       "consulted_bias_by_modality": {
+        "interoception": 0.996666667,
+        "world": 0.0
+       },
+       "current_cluster_id": "c0",
+       "current_clusters": {
+        "interoception": "c0",
+        "world": "c1"
+       },
+       "explore_decisive": false,
+       "learned_margin": null,
+       "min_confidence": 0.3,
+       "n_candidates": 1,
+       "passed_gate": true,
+       "runner_up_score": null,
+       "score_components": {
+        "causal": 0.816227766,
+        "drive": 0.0,
+        "explore": 0.0,
+        "learned_bias": 0.996666667,
+        "reward_bias": 0.0
+       },
+       "visit_count": 0.0
+      }
+     ],
+     "step": 153,
+     "t": 15.4,
+     "tick": 28,
+     "tool": "minecraft_player_eat"
+    }
+   ],
+   "world_actions": [
+    "eat",
+    "eat",
+    "eat",
+    "eat",
+    "eat",
+    "eat",
+    "eat",
+    "eat",
+    "eat",
+    "eat"
+   ]
+  }
+ },
+ "float_decimals": 9,
+ "generated_at_commit": "a3360583944d"
+}

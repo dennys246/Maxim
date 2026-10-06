@@ -59,10 +59,31 @@ import _lint_git  # noqa: E402
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
+#: Qualifiers that predate the scope-vocabulary rule (#1105), pinned to the exact status they were granted at: the
+#: entry goes stale, and fails, once the row's token, date or qualifier changes (re-judge the row and fix it then).
+GRANDFATHERED_QUALIFIERS = {"T1-5": ("PARTIAL", "2026-06-15", "reframed")}
+
+
+def qualifier_problems(row: L.Row) -> list[str]:
+    """A qualifier opens with a scope word (``_ledger.SCOPE_HEAD``); a reason goes in the prose (#1105)."""
+    pin = GRANDFATHERED_QUALIFIERS.get(row.id)
+    if pin is not None:
+        if (row.token, row.date, row.qualifier) != pin:
+            return [f"the GRANDFATHERED_QUALIFIERS entry for {row.id} {pin} is stale; remove it and fix the qualifier"]
+        return []
+    if row.qualifier and not L.SCOPE_HEAD.match(L.qualifier_head(row.qualifier)):
+        return [
+            f"qualifier ({row.qualifier}) must open with a scope word (`narrow`, `rung <X>`); a reason goes in the "
+            "prose (the format spec: the qualifier carries SCOPE only)"
+        ]
+    return []
+
+
 def row_problems(row: L.Row, rows_by_id: dict[str, L.Row], tracked: dict[str, str], today: str) -> list[str]:
     out = list(row.problems)
     if row.token is None:
         return out
+    out += qualifier_problems(row)
     if row.token not in L.RANK:
         out.append(f"status token {row.token!r} is not in the vocabulary ({', '.join(L.RANK)})")
     if not L.valid_date(row.date or ""):
@@ -205,6 +226,11 @@ def lint(repo_root: Path = REPO_ROOT, *, base: str | None = None, today: str | N
     failures = [f"{L.LEDGER_PATH}: {p}" for p in problems]
     for row in rows:
         failures.extend(f"{L.LEDGER_PATH}:{row.line} {row.id}: {p}" for p in row_problems(row, by_id, tracked, today))
+    failures.extend(
+        f"{L.LEDGER_PATH}: the GRANDFATHERED_QUALIFIERS entry for {rid} names no ledger row; remove it"
+        for rid in GRANDFATHERED_QUALIFIERS
+        if rid not in by_id
+    )
     try:
         base = base or _lint_git.base_ref(repo_root)
         base_text = _lint_git.show(repo_root, base, L.LEDGER_PATH) or None

@@ -64,12 +64,10 @@ class TestDisplayAutoRevert:
 
     def test_agent_loop_tick_wired(self):
         # The producer only exists if the loop actually ticks it.
-        import inspect
+        from tests.unit._loop_source import loop_call_count
 
-        from maxim.runtime import agent_loop
-
-        src = inspect.getsource(agent_loop.run_agentic_loop)
-        assert "_maybe_auto_revert_display()" in src
+        # a CALL in the loop's modules (1.3.2 decomposition) -- a text match would also hit the def
+        assert loop_call_count("_maybe_auto_revert_display") >= 1
 
 
 class TestPlacementResolvable:

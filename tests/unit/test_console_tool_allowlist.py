@@ -175,8 +175,11 @@ class TestRosterAdvertisesOnlyPermittedTools:
 
         from maxim.runtime import agent_loop
 
+        from tests.unit._loop_source import loop_source
+
+        assert "available_tools = [t for t in available_tools if executor.permits(t)]" in loop_source()
+        # FUNCTION-SPECIFIC (kept on run_agentic_loop's body; a slice that moves either line updates it):
         src = inspect.getsource(agent_loop.run_agentic_loop)
-        assert "available_tools = [t for t in available_tools if executor.permits(t)]" in src
         # The filter runs AFTER the roster is final (SEM union + Wire 3) and
         # BEFORE the descriptions are collected for the prompt.
         assert src.index("executor.permits(t)") < src.index("last_surfaced_tools = list(available_tools)")

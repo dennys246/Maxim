@@ -192,9 +192,9 @@ def test_a_planning_job_in_flight_holds_the_next_submit_for_the_narrator_only() 
 
 
 def test_the_loops_submit_gate_waits_for_the_job_in_flight() -> None:
-    from maxim.runtime import agent_loop
+    from tests.unit._loop_source import loop_source
 
-    src = inspect.getsource(agent_loop.run_agentic_loop)
+    src = loop_source()  # the loop's modules (1.3.2 decomposition)
     assert "_submit_held = _planning_submit_in_flight(llm_worker, _planning_liveness_on)" in src
     assert "ctrl.pending_proposal is None and not _submit_held:" in src
 
@@ -227,9 +227,9 @@ def test_the_worker_records_the_reason_on_the_retry_it_sends(monkeypatch) -> Non
 
 
 def test_the_loop_folds_held_inputs_into_the_follow_up_it_submits() -> None:
-    from maxim.runtime import agent_loop
+    from tests.unit._loop_source import loop_source
 
-    src = "".join(inspect.getsource(agent_loop.run_agentic_loop).split())  # whitespace-insensitive (ruff wraps)
+    src = "".join(loop_source().split())  # whitespace-insensitive (ruff wraps); the loop's modules
     for line in (
         "_deferred_inputs=_take_deferred_inputs(context,processed_cli_inputs,_planning_liveness_on)",
         "new_cli_input=Noneif_deferred_inputselsenew_cli_input",  # the follow-up keeps its original query
@@ -301,13 +301,12 @@ def test_a_tool_description_naming_a_tool_the_narrator_lacks_is_not_shown() -> N
 
 def test_the_release_runs_even_when_the_submit_raises() -> None:
     import ast
-    import inspect
 
-    from maxim.runtime import agent_loop
+    from tests.unit._loop_source import loop_source_trees
 
-    tree = ast.parse(inspect.getsource(agent_loop.run_agentic_loop).lstrip())
-    guarded = [
+    guarded = [  # across the loop's modules (1.3.2 decomposition): the try may move, it may not split
         node
+        for tree in loop_source_trees()
         for node in ast.walk(tree)
         if isinstance(node, ast.Try)
         and "submit_context" in ast.unparse(ast.Module(body=node.body, type_ignores=[]))

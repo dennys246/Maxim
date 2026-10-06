@@ -272,6 +272,8 @@ def test_the_live_tick_drifts_the_body_and_advances_the_world_clock(monkeypatch)
 
 
 def _loop_calls(name: str) -> list[ast.Call]:
+    # FUNCTION-SPECIFIC (an AST of run_agentic_loop's own body): the 1.3.2 decomposition's slice that
+    # moves the live tick or the bio-handle build updates this consciously (tests/unit/_loop_source.py).
     # Parse the FILE, not the live attribute: other tests replace ``agent_loop.run_agentic_loop``.
     import maxim.runtime.agent_loop as agent_loop
 

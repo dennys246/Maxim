@@ -485,10 +485,35 @@ the extraction commit must keep them green unchanged. Extracted modules arrive a
 value in the same PR. The orchestrator (11%) and `cli.py` (14%) get their characterization pass as the
 first slice of their decomposition, not after.
 
-**Behaviour preservation is the gate, not an aspiration.** Every slice must keep green, in the same
-PR: the byte-identical-selection provenance test, the encoder golden pin, and an offline
-reproduction of the committed Exp 60, Exp 61 and R3 verdicts from their data. A slice that cannot
-show all three does not merge.
+**Behaviour preservation is the gate, not an aspiration.** Every slice must keep these green,
+UNCHANGED, in the same PR (built in slice 0, owner decisions 2026-10-05):
+- `tests/unit/test_agent_loop_selection_golden.py`, **the loop-level selection gate**: the real
+  `run_agentic_loop` on a step clock (substrate-primary, a plain arm and a Wire-4 fear-on-water arm that
+  must select `escape_water`), pinning every tick's decision, every executor call and the loop's
+  lifecycle (session start/end, captures, persists, the 2S-d cue) against
+  `tests/fixtures/agent_loop_selection_golden_v1.json`. Driver: `tests/unit/_loop_harness.py`.
+- `tests/unit/test_decision_provenance.py`, the NAc-level byte-identical selection test (kept).
+- `tests/unit/test_encoder_golden_v1.py`, the encoder golden pin.
+- The offline verdict reproductions from committed data:
+  `test_exp60_run.py::test_verdict_over_the_committed_exp60_record_matches_the_committed_verdict`,
+  `test_exp61_run.py::test_verdict_over_the_committed_exp61_record_matches_the_committed_verdict` and
+  `test_r3_run.py::test_report_over_the_committed_r3_bench_matches_the_committed_amended_report`.
+
+A slice that cannot show all of them does not merge. **A golden is regenerated only from the
+pre-slice commit, in its own commit** with the diff justified (the `--regen` entry point refuses a
+dirty `src/`), never by pasting a slice's output. A source pin that says "the loop's code contains
+X" reads `tests/unit/_loop_source.py` (`agent_loop.py` plus every `runtime/loop_*.py`), so it survives
+an extraction. **Function-specific pins** (an ordering or region inside one function) are listed by
+owning slice in that module's docstring and are updated consciously by that slice: slice 1
+(`test_planning_liveness` gate definition and raise-after-teardown, `test_experience_clock` AST),
+slice 2 (`test_planning_liveness` idle-gate pins), slice 3 (`test_substrate_action_budget` §6b
+ordering), slice 4 (`test_planning_liveness` proposal-time stamp).
+
+**Characterization owed before slices 4 and 5** (no gate pins this code today; the executor lens,
+slice 0): **slice 4** needs a PLANNING arm, or an extended `test_approved_proposal_situation_1083.py`,
+pinning §5's `pending_action_followup`, `log_action` and `_reset_deliberation` (skipped for `think`).
+**Slice 5** needs a transcript-bearing or scripted-percept arm that runs §1.1 imagination, §1.15
+auto-sense, §1.16 audio and `state.update(observation)`; only text pins touch them now.
 
 **Typing rides along, scoped:** every module the decomposition creates enters CI's mypy set. The
 repo-wide ratchet from 1.3.1 holds the rest. Full coverage is not promised.
