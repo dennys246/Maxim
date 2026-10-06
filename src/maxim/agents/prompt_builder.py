@@ -1908,7 +1908,8 @@ class PromptBuilder:
         *,
         tools: set[str],
     ) -> None:
-        """Episodic recalls, ATL concepts, semantic knowledge, causal predictions, motor programs, statistics."""
+        """Episodic recalls, ATL concepts, semantic knowledge, causal predictions, motor programs, statistics.
+        Dormant since 2026-10-06 (memory sections unfed; see MemoryAgent._run_parallel_memory_queries, #845)."""
         if context.relevant_memories:
             mem_lines = ["=== Relevant Memories ==="]
             for mem in context.relevant_memories[:8]:
