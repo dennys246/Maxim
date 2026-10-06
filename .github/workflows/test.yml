@@ -4,7 +4,12 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # No `branches:` filter (D63, 2026-10-06): a PR against a sibling branch gets Tests at OPEN, not only after it is
+    # retargeted to main. The diff-scoped lints judge it against the merge-base with origin/main, so a stacked PR's
+    # verdict includes its parent's commits (e.g. the fix->tests title rule sees parent+child) and can differ from the
+    # verdict after retarget; the required checks on the final PR to main are the gate. Cost: a stacked PR runs at open,
+    # on each push and again on retarget. CodeQL default setup analyses PRs to the default branch only.
+    #
     # `edited` is here for ONE reason: retargeting a PR's base branch.
     #
     # The default activity set is [opened, synchronize, reopened]. Changing a
@@ -12,9 +17,9 @@ on:
     # 1.1.2 stack sat with THREE open PRs and zero CI runs, and the PR pages
     # showed no failing checks because there were no checks at all. An absent
     # check reads exactly like a passing one (docs/lessons/green-pr-with-no-tests-run.md).
-    # A PR created against a sibling branch is filtered out by `branches: [main]`
-    # at open time, and retargeting it to main never re-triggers; the only
-    # workarounds were close+reopen or an empty commit.
+    # A PR created against a sibling branch used to be filtered out by
+    # `branches: [main]` at open time, and retargeting it to main never
+    # re-triggered; the only workarounds were close+reopen or an empty commit.
     #
     # KNOWN COST, accepted deliberately: `edited` also fires on title and body
     # edits, so those now cost a CI run. The `concurrency` block below cancels
@@ -314,6 +319,33 @@ jobs:
         # (each with a reason) may skip. The PR-time twin: tests/unit/test_slow_lane_roster.py.
         if: always()
         run: python3 scripts/check_slow_lane.py slow-results.xml
+
+  # ── The merge gate's settings (M6 / D63; owner decisions 2026-10-06) ─────────
+  # GitHub refuses a merge while a required check is absent, given the settings pinned in
+  # scripts/repo_settings_expected.json; this job catches those settings DRIFTING (a removed required check, admins
+  # un-enforced, a new ruleset, CodeQL losing a language, a ruleset bypass USED). "(nightly)" in the name means the
+  # release gate (scripts/check_nightlies.py) refuses to publish while it is red. The token (Administration:
+  # Read-only, this repo only) lives in the `settings-check` environment, deployable from `main` only, so no PR run
+  # can read it; without it the check exits 2, never passes. GitHub auto-creates a missing environment UNFENCED the
+  # first time a job names it, so the owner creates it (main only) first, and the check pins that fence too.
+  repo-settings:
+    name: Repo settings (nightly)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: settings-check
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the checker's one dependency
+        run: pip install "pyyaml>=6.0,<7.0"
+      - name: The merge gate's settings are as committed
+        env:
+          GH_TOKEN: ${{ secrets.SETTINGS_READ_TOKEN }}
+        run: python3 scripts/check_repo_settings.py
 
   # ── Release truth ─────────────────────────────────────────────────────────
   # Not a PR gate: it needs PyPI + the GitHub API, and a network flake must not
@@ -1173,6 +1205,12 @@ jobs:
         # README results table + experiments-index status cells cite ledger rows (`<!-- claim: T1-n -->`) and must
         # show the row's token, date and scope word. Positive control: tests/unit/test_lint_claims_sync.py.
         run: python3 scripts/lint_claims_sync.py
+
+      - name: Required checks map to unconditional jobs (M6 / D63, static half)
+        # Each required context in scripts/repo_settings_expected.json is exactly one job's name and that job has no
+        # job-level `if:` (a skipped required check counts as passing). Positive control:
+        # tests/unit/test_check_repo_settings.py.
+        run: python3 scripts/check_repo_settings.py --static
 
       - name: Multi-agent marker lint (Stage 3 of structural invariant tests)
         # The `git fetch origin main --depth=1` that used to precede every
