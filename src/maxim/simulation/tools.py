@@ -798,15 +798,19 @@ class OrchestratorActorTool(Tool):
 class SetEntitySensorTool(Tool):
     """Set an AUT body sensor to a specific value, or adjust it by a delta.
 
-    ``value`` SETS the sensor (the LLM-facing use). ``delta`` ADJUSTS it through
-    ``embodiment/tool_bridge.py::_apply_sensor_deltas`` — the one path shared
-    by ``self_effect``/``target_effect`` — which resolves qualified modulator
-    sub-sensors (``arms.thermal``) and clamps to the sensor's declared range.
-    Sensor reflexes use ``delta`` (#871: they used to pass a negative "delta"
-    as ``value`` and zero the sensor).
+    ``value`` SETS the sensor (the LLM-facing use); ``delta`` ADJUSTS it, the
+    same resolve/write path ``self_effect``/``target_effect`` use via
+    ``embodiment/tool_bridge.py::_apply_sensor_deltas``. Both modes resolve the sensor with
+    ``tool_bridge._resolve_sensor_slot`` (qualified modulator sub-sensors such
+    as ``arms.thermal``) and clamp to its declared range, and both fail the call
+    for a sensor the body does not have. Value mode used to write every name to
+    the root, so ``arms.thermal`` became an orphan root key that shadowed the
+    arm (#874). Sensor reflexes use ``delta`` (#871: they used to pass a
+    negative "delta" as ``value`` and zero the sensor).
 
     General-purpose complement to DamageComponentTool. Use for:
-    - Healing: set health back toward 1.0
+    - Healing: raise a body's own ``health`` sensor (a ``health: derived``
+      body's health follows its components and cannot be set; it fails)
     - Hunger/thirst satisfaction: set hunger toward 0.0
     - Environmental effects: set visibility, temperature
     - Any sensor state change that isn't combat damage
@@ -819,9 +823,12 @@ class SetEntitySensorTool(Tool):
     name = "set_entity_sensor"
     description = (
         "Set an agent body sensor to a specific value, or adjust it by a delta "
-        "(pass exactly one of value / delta). Use for healing, feeding (reduce "
-        "hunger), resting (restore stamina), environmental changes (visibility), "
-        "or any non-combat sensor modification."
+        "(pass exactly one of value / delta). Use for feeding (reduce hunger), "
+        "resting (restore stamina), temperature, environmental changes "
+        "(visibility), or any non-combat sensor modification. A body part's "
+        "sensor is named part.sensor (e.g. arms.thermal). A body whose health is "
+        "derived from its parts cannot have health set; a failed call lists the "
+        "sensors the body has."
     )
     input_schema = {
         "sensor": (str, "health"),
@@ -849,14 +856,35 @@ class SetEntitySensorTool(Tool):
         if root is None:
             return ToolOutput(success=False, error="No root entity")
 
+        if _is_derived(root, sensor):
+            # evaluate_failures re-derives it from the components on every call, so a
+            # write would report success and change nothing (the #870 shape).
+            return ToolOutput(
+                success=False,
+                error=f"sensor {sensor!r} is derived from the body's component integrity and cannot be set; "
+                "use damage_component to change it",
+            )
         if delta_raw is not None:
             return self._adjust(root, sensor, delta_raw, source)
 
-        value = float(kwargs.get("value", 1.0))
+        from maxim.embodiment.tool_bridge import _resolve_sensor_slot, _write_sensor
 
-        old_val = root.vital_metrics.get(sensor, 0.0)
-        new_val = max(0.0, min(1.0, value))
-        root.vital_metrics[sensor] = new_val
+        raw_value = kwargs.get("value", 1.0)
+        if isinstance(raw_value, bool):
+            return ToolOutput(success=False, error=f"value must be a number, got {raw_value!r}")
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            return ToolOutput(success=False, error=f"value must be a number, got {kwargs.get('value')!r}")
+        if not math.isfinite(value):
+            return ToolOutput(success=False, error=f"value must be finite, got {kwargs.get('value')!r}")
+
+        slot = _resolve_sensor_slot(root, sensor)
+        if slot is None:
+            return ToolOutput(success=False, error=_missing_sensor_error(root, sensor))
+        metrics, key, _, _ = slot
+        old_val = metrics[key]
+        new_val = _write_sensor(root, sensor, slot, value)
 
         # Evaluate failure modes (recovery detection)
         self._embodiment.evaluate_failures()
@@ -885,9 +913,9 @@ class SetEntitySensorTool(Tool):
         )
 
     def _adjust(self, root: Any, sensor: str, delta_raw: Any, source: str) -> ToolOutput:
-        """Apply ``delta`` through the canonical sensor-delta path (#871)."""
-        from maxim.embodiment.tool_bridge import _apply_sensor_deltas
-
+        """Apply ``delta`` through the shared sensor resolve/write path (#871, #874)."""
+        if isinstance(delta_raw, bool):
+            return ToolOutput(success=False, error=f"delta must be a number, got {delta_raw!r}")
         try:
             delta = float(delta_raw)
         except (TypeError, ValueError):
@@ -895,15 +923,16 @@ class SetEntitySensorTool(Tool):
         if not math.isfinite(delta):
             return ToolOutput(success=False, error=f"delta must be finite, got {delta_raw!r}")
 
-        metrics, key = _sensor_slot(root, sensor)
-        if metrics is None or key not in metrics:
-            # _apply_sensor_deltas only WARNS on a missing sensor and applies
-            # nothing; returning success would report a response that did not
-            # happen (the #870 shape). Fail the call instead.
-            return ToolOutput(success=False, error=f"sensor {sensor!r} not found on body {root.name}")
+        from maxim.embodiment.tool_bridge import _resolve_sensor_slot, _write_sensor
+
+        slot = _resolve_sensor_slot(root, sensor)
+        if slot is None:
+            # Returning success would report a response that did not happen
+            # (the #870 shape). Fail the call instead.
+            return ToolOutput(success=False, error=_missing_sensor_error(root, sensor))
+        metrics, key, _, _ = slot
         old_val = metrics[key]
-        _apply_sensor_deltas(root, {sensor: delta}, delta_kind="set_entity_sensor")
-        new_val = metrics[key]
+        new_val = _write_sensor(root, sensor, slot, old_val + delta)
         self._embodiment.evaluate_failures()
         return ToolOutput(
             success=True,
@@ -918,17 +947,21 @@ class SetEntitySensorTool(Tool):
         )
 
 
-def _sensor_slot(root: Any, sensor: str) -> tuple[dict[str, float] | None, str]:
-    """The metrics dict and key a (possibly qualified) sensor name lives in.
+def _is_derived(root: Any, sensor: str) -> bool:
+    """Whether ``evaluate_failures`` re-derives this root sensor on every call (``health: derived``)."""
+    metadata = getattr(root, "metadata", None) or {}
+    return sensor == "health" and metadata.get("health") == "derived" and root.derive_health() is not None
 
-    Mirrors ``_apply_sensor_deltas``'s resolution: ``"arms.thermal"`` is the
-    ``thermal`` sub-sensor of the ``arms`` modulator; a bare name is on the root.
-    """
-    if "." in sensor:
-        mod_name, sub_name = sensor.split(".", 1)
-        mod = root.modulators.get(mod_name)
-        return (getattr(mod, "vital_metrics", None) if mod is not None else None), sub_name
-    return root.vital_metrics, sensor
+
+def _missing_sensor_error(root: Any, sensor: str) -> str:
+    """The error for a sensor the body lacks, naming the sensors it can set (so the orchestrator can correct itself)."""
+    names = sorted(
+        k for k, v in root.vital_metrics.items() if v is not None and "." not in k and not _is_derived(root, k)
+    )
+    for mod_name, mod in root.modulators.items():
+        metrics = getattr(mod, "vital_metrics", None) or {}
+        names.extend(sorted(f"{mod_name}.{k}" for k, v in metrics.items() if v is not None))
+    return f"sensor {sensor!r} not found on body {root.name}; it has: {', '.join(names)}"
 
 
 class InjectPainTool(Tool):

@@ -99,6 +99,62 @@ def _emit_motor_credit_trace(
 # ---------------------------------------------------------------------------
 
 
+def _resolve_sensor_slot(body: Entity, sensor_name: str) -> tuple[dict[str, float], str, float, float] | None:
+    """Where a (possibly qualified) sensor lives on ``body``, and its declared range.
+
+    The one resolution tool and affordance writes use (#874: ``set_entity_sensor``
+    in both modes, ``self_effect``/``target_effect``). Other writers (DM cascade,
+    cerebellum predictions, vital drift, the derived ``<mod>.integrity`` keys in
+    ``evaluate_failures``) do not go through it. ``"arms.thermal"`` is
+    the ``thermal`` sub-sensor of the ``arms`` modulator, a bare name is an
+    entity-level sensor. Returns ``(metrics, key, lo, hi)``, the range being the
+    sensor's schema range or ``[0, 1]``, or ``None`` when the body has no such
+    sensor (a caller must not write it: a qualified name written to the root is
+    an orphan key that shadows the real sub-sensor in ``evaluate_failures``).
+    """
+    lo, hi = 0.0, 1.0
+    if "." in sensor_name:
+        mod_name, sub_name = sensor_name.split(".", 1)
+        mod = body.modulators.get(mod_name)
+        metrics = getattr(mod, "vital_metrics", None) if mod is not None else None
+        if metrics is None or metrics.get(sub_name) is None:
+            return None
+        sub_spec = getattr(mod, "_sensors", {}).get(sub_name, {})
+        if isinstance(sub_spec, dict) and "range" in sub_spec:
+            lo, hi = sub_spec["range"]
+        return metrics, sub_name, lo, hi
+    if body.vital_metrics.get(sensor_name) is None:
+        return None
+    sensor = body.sensors.get(sensor_name)
+    if sensor is not None:
+        rng = sensor.reading_schema.get("range")
+        if rng and len(rng) == 2:
+            lo, hi = rng
+    return body.vital_metrics, sensor_name, lo, hi
+
+
+def _write_sensor(
+    body: Entity, sensor_name: str, slot: tuple[dict[str, float], str, float, float], value: float
+) -> float:
+    """Write ``value`` clamped to the slot's range, log it via ``sim_sensor``, return the stored value."""
+    metrics, key, lo, hi = slot
+    old_val = metrics[key]
+    new_val = max(lo, min(hi, value))
+    metrics[key] = new_val
+    try:
+        from maxim.simulation.sim_logger import sim_sensor
+
+        sim_sensor(
+            body.full_path,
+            sensor_name,
+            new_val,
+            baseline=old_val,
+        )
+    except Exception:
+        log_swallowed_exception()
+    return new_val
+
+
 def _apply_sensor_deltas(
     body: Entity,
     deltas: dict[str, float],
@@ -111,7 +167,9 @@ def _apply_sensor_deltas(
     ``target_effect`` (writes to the resolved target body).  Handles
     entity-level sensors (``"hunger"``) and qualified modulator
     sub-sensors (``"arms.thermal"``), range clamping (sensor schema
-    range or ``[0, 1]`` fallback), and ``sim_sensor`` logging.
+    range or ``[0, 1]`` fallback), and ``sim_sensor`` logging, through
+    ``_resolve_sensor_slot`` / ``_write_sensor`` (shared with
+    ``set_entity_sensor``'s value mode, #874).
 
     Missing sensors emit a warning rather than raising so a partially-
     valid delta map applies what it can.
@@ -130,23 +188,8 @@ def _apply_sensor_deltas(
         return
 
     for sensor_name, delta in deltas.items():
-        old_val: float | None = None
-        target_metrics: dict[str, float] | None = None
-        target_key: str = sensor_name
-
-        if "." in sensor_name:
-            # Qualified modulator sub-sensor: "arms.thermal"
-            mod_name, sub_name = sensor_name.split(".", 1)
-            mod = body.modulators.get(mod_name)
-            if mod is not None and hasattr(mod, "vital_metrics"):
-                target_metrics = mod.vital_metrics
-                target_key = sub_name
-                old_val = target_metrics.get(sub_name)
-        else:
-            target_metrics = body.vital_metrics
-            old_val = target_metrics.get(sensor_name)
-
-        if old_val is None or target_metrics is None:
+        slot = _resolve_sensor_slot(body, sensor_name)
+        if slot is None:
             log.warning(
                 "%s target %r not found on body %s",
                 delta_kind,
@@ -154,36 +197,8 @@ def _apply_sensor_deltas(
                 body.name,
             )
             continue
-
-        # Clamp to sensor range if available, else [0, 1]
-        lo, hi = 0.0, 1.0
-        if "." in sensor_name:
-            mod_name, sub_name = sensor_name.split(".", 1)
-            mod = body.modulators.get(mod_name)
-            if mod is not None and hasattr(mod, "_sensors"):
-                sub_spec = mod._sensors.get(sub_name, {})
-                if isinstance(sub_spec, dict) and "range" in sub_spec:
-                    lo, hi = sub_spec["range"]
-        else:
-            sensor = body.sensors.get(sensor_name)
-            if sensor is not None:
-                rng = sensor.reading_schema.get("range")
-                if rng and len(rng) == 2:
-                    lo, hi = rng
-
-        new_val = max(lo, min(hi, old_val + delta))
-        target_metrics[target_key] = new_val
-        try:
-            from maxim.simulation.sim_logger import sim_sensor
-
-            sim_sensor(
-                body.full_path,
-                sensor_name,
-                new_val,
-                baseline=old_val,
-            )
-        except Exception:
-            log_swallowed_exception()
+        metrics, key, _, _ = slot
+        _write_sensor(body, sensor_name, slot, metrics[key] + delta)
 
 
 def _drive_potential_diff(

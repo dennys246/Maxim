@@ -108,8 +108,8 @@ class ReflexSpec:
         # with a single WARNING. ``load_reflex_specs`` raises. Tests read the
         # shipped files through ``load_reflex_specs``.
         # A sensor reflex's response is a DELTA scaled by intensity. It used
-        # to declare ``value``, which set_entity_sensor SETS (clamped to
-        # [0, 1]): every shipped sensor reflex wrote a negative "delta" as an
+        # to declare ``value``, which set_entity_sensor SETS (then clamped
+        # to [0, 1]): every shipped sensor reflex wrote a negative "delta" as an
         # absolute value and zeroed its sensor at any intensity (#871).
         if self.response.tool == "set_entity_sensor":
             if "value" in self.response.params:

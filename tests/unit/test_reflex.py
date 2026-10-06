@@ -681,14 +681,14 @@ class TestSensorReflexDelta:
         }
         specs = load_archetype_reflexes(archetype)
         assert specs
-        from maxim.simulation.tools import _sensor_slot
+        from maxim.embodiment.tool_bridge import _resolve_sensor_slot
 
         for spec in specs:
             reg = ReflexRegistry((spec,), clock=_Clock())
             text = f"it {spec.detect_keywords[0]} here"
             sensor = spec.response.params.get("sensor")
             if sensor is not None:
-                metrics, key = _sensor_slot(root, sensor)
+                metrics, key, _, _ = _resolve_sensor_slot(root, sensor)
                 before = metrics[key]
             outputs: list = []
 
