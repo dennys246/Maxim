@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import dataclasses
 import math
-import functools
 import itertools
 import logging
 import os
@@ -17,7 +16,7 @@ from maxim.utils.structured_logging import log_agentic
 # Extracted to tool_dispatch.py
 from maxim.runtime.tool_dispatch import (
     safe_agent_name as _safe_agent_name,
-    record_outcome as _record_outcome,
+    record_outcome as _record_outcome,  # noqa: F401 -- a seam: loop_setup reads agent_loop._record_outcome
     execute_parallel_actions as _execute_parallel,
     read_learning_side_effects,
 )
@@ -26,10 +25,10 @@ from maxim.runtime.tool_dispatch import (
 from maxim.runtime.bio_integration import (
     capture_episodic_memory as _capture_episodic,
     record_plan_outcome as _record_plan_outcome,
-    start_bio_session as _start_bio_session,
     end_bio_session as _end_bio_session,
 )
 import maxim.runtime.bio_integration as _bio_integration
+from maxim.runtime.loop_setup import build_loop_run
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -423,32 +422,6 @@ def _wait_for_proposal(
         time.sleep(0.1)
     logger.warning("_wait_for_proposal timed out after %.0fs", timeout)
     return None
-
-
-def _planning_liveness_enabled_via_env() -> bool:
-    """Operator opt-OUT for the D13 planning-liveness abort.
-
-    The abort terminates a campaign, and it lives inside the measurement
-    instrument — apparatus standard S5/S6 say such a control must be
-    experiment-visible and disableable (pre-merge review, architecture lens
-    S5; mirrors ``MAXIM_SIM_HARD_ABORT`` for the D12 abort). Default ON;
-    set to 0/false/no/off to fall back to pre-fix behavior (a dropped
-    planning turn idles, which is the bug — use only to reproduce it).
-    It also gates the narrator-reliability pieces that ride on liveness:
-    the reason-specific retry corrections and the one-planning-request-
-    in-flight hold with its deferred-input fold.
-    """
-    # Deliberately the MAXIM_SIM_HARD_ABORT idiom, not the canonical
-    # ``annotation_disabled_via_env``: that parser is for MAXIM_DISABLE_*
-    # style vars where a TRUTHY value means "disable". This is an
-    # enable-with-opt-out control, so it mirrors its sibling abort toggle
-    # exactly — same file family, same falsy-set, same default-ON meaning.
-    return os.environ.get("MAXIM_SIM_PLANNING_LIVENESS", "1").strip().lower() not in (
-        "0",
-        "false",
-        "no",
-        "off",
-    )
 
 
 _ACTIVE_PLANNING_ATTEMPT_STATES = frozenset(
@@ -1442,51 +1415,6 @@ class _NoSituationCue:
 NO_SITUATION_CUE = _NoSituationCue()
 
 
-def _build_loop_sensor_encoder(memory_hub: Any, nac: Any) -> Any | None:
-    """The loop's Phase 0 sensor encoder, built once per loop when EC is reachable through the hub.
-
-    Without it, substrate-primary bypasses the LinguisticEncoder text path and EC node_count stays
-    at zero forever (which is what blocked the Phase 0 smoke run from being a measurement). See
-    docs/plans/grounded_language_acquisition.md Phase 0 + the SensorEncoder docstring in
-    similarity/encoder.py. Built in ALL modes (Phase 1, substrate_learns_from_experience.md), not
-    just substrate-primary: llm-primary / real-hardware actions also encode the current
-    interoception cluster at outcome time (section 4) so their real drive-relief outcomes reinforce
-    the cluster-reward substrate. Harmless when unused (an unembodied chat agent never calls
-    encode); cheap to construct.
-    """
-    if memory_hub is None:
-        return None
-    ec = getattr(memory_hub, "ec", None)
-    if ec is None:
-        return None
-    try:
-        from maxim.similarity.encoder import SensorEncoder
-
-        return SensorEncoder(ec=ec, atl=getattr(memory_hub, "atl", None), nac=nac)
-    except Exception:
-        # Stage-1 (measurement path): without an encoder the substrate records no situation at all,
-        # so a failed build is reported, not left at DEBUG as it was when this lived inline.
-        log_swallowed_exception()
-        return None
-
-
-def _resolve_situation_cue(memory_hub: Any) -> Any:
-    """The loop's memory 2S-d situation cue, resolved once per loop.
-
-    No hub = no episodic memory: the explicit opt-out, ``NO_SITUATION_CUE``. A hub WITHOUT a cue
-    (its ATL failed to build) is a degraded memory: said loudly here, once, and the loop runs on
-    with the opt-out (fail-soft, like the rest of the loop) -- where the survival harnesses, which
-    read ``MemoryHub.situation_cue`` directly, stop instead.
-    """
-    if memory_hub is None:
-        return NO_SITUATION_CUE
-    try:
-        return memory_hub.situation_cue
-    except RuntimeError as e:
-        logger.warning("memory 2S-d: no situation cue this run (%s)", e)
-        return NO_SITUATION_CUE
-
-
 def propose_via_substrate(
     *,
     nac: Any,
@@ -1912,30 +1840,6 @@ def _loop_step_callback(ctrl: Any, *, step_num: int) -> None:
         logger.debug("on_step callback failed", exc_info=True)
 
 
-def _loop_bio_handles(memory_hub: Any, hippocampus: Any, sim: Any, autonomy_controller: Any) -> tuple[Any, Any]:
-    """The loop's bio handles, bound once before the loop: ``(nac, experience_clock_driver)``.
-
-    The clock is the Hippocampus's the loop CAPTURES into (the ``hippocampus`` argument), falling
-    back to the hub's, so a caller that passes a Hippocampus without a hub still gets a clock that
-    moves. The driver reads the world's kind from the percept source (real-time vs turn-based; see
-    ``runtime/experience_time.py``) and subtracts the autonomy controller's paused time. With no
-    Hippocampus there is no clock and the driver is inert.
-    """
-    from maxim.runtime.experience_time import ExperienceClockDriver
-
-    nac = getattr(memory_hub, "nac", None) if memory_hub is not None else None
-    hub_hippocampus = getattr(memory_hub, "hippocampus", None) if memory_hub is not None else None
-    owner = hippocampus if hippocampus is not None else hub_hippocampus
-    if hippocampus is not None and hub_hippocampus is not None and hub_hippocampus is not hippocampus:
-        logger.warning("agent loop: hippocampus argument is not the hub's; the experience clock follows the argument")
-    clock = getattr(owner, "experience_clock", None)
-    return nac, ExperienceClockDriver(
-        clock,
-        percept_source=getattr(sim, "percept_source", None),
-        paused_seconds=getattr(autonomy_controller, "paused_seconds_total", None),
-    )
-
-
 def _loop_capture_action(
     hippocampus: Any,
     executor: Any,
@@ -2216,20 +2120,6 @@ def _loop_is_idle(*wake_sources: object) -> bool:
     return not any(wake_sources)
 
 
-def _prepare_executor(executor: Any, action_sink: Any, state: Any) -> Any:
-    """The loop's executor: wrapped with instrumentation when an action sink is given, and reading the
-    loop's LIVE mode at every dispatch (#826) -- the same ``state.data["mode"]`` the prompt roster reads
-    each tick, so a tool the mode refuses is refused when it runs, not merely left unadvertised.
-    Every wrapper delegates ``set_mode_source`` to the inner Executor."""
-    if action_sink is not None:
-        from maxim.simulation.instrumented_executor import InstrumentedExecutor  # noqa: PLC0415
-
-        executor = InstrumentedExecutor(executor, action_sink)
-    if executor is not None:
-        executor.set_mode_source(lambda: state.data.get("mode", "observe"))
-    return executor
-
-
 def _effective_mode(executor: Any, state: Any, default: str) -> str:
     """The operational mode the prompt roster, context prompt and Default Network use: the operator's
     launch grant when one is set (``Executor.operational_override``, #829), else the loop's own state
@@ -2316,78 +2206,16 @@ def run_agentic_loop(
     """
     from maxim.agents.autonomy import (
         AutonomyLevel,
-        AutonomyController,
         Proposal,
         check_hard_stop,
     )
-    from maxim.agents.context_pool import ContextPool, ContextPoolConfig
     from maxim.agents.llm_worker import ModeInfo
     from maxim.modes.definitions import get_mode, TOOL_DESCRIPTIONS
-    from maxim.runtime.loop_controller import LoopController
     from maxim.runtime.loop_types import ActionFollowup
-    from maxim.runtime.prefetch import (
-        init_prefetcher,
-        get_result_cache,
-    )
 
-    if evaluators is None:
-        evaluators = []
-
-    executor = _prepare_executor(executor, action_sink, state)
-
-    # Create simulation adapter (Phase 4: isolate sim concerns)
-    from maxim.runtime.sim_adapter import SimulationAdapter, NullSimulationAdapter
-
-    sim: SimulationAdapter | NullSimulationAdapter
-    if percept_source is not None:
-        sim = SimulationAdapter(percept_source, action_sink, pain_bus)
-        # Wire tool registry for deregistered-tool filtering in should_skip_fallback_proposal
-        if executor is not None and hasattr(executor, "registry"):
-            sim._tool_registry = executor.registry
-    else:
-        # Stage 3 (live_audio_orient_wiring.md): a caller-held adapter lets a
-        # live producer carry_percept() into the side-channel; is_sim_mode
-        # stays False either way. A sim-mode adapter smuggled through this
-        # kwarg would flip the 12 is_sim_mode consumer sites without a
-        # percept_source — fail loud instead (pre-merge review fold).
-        if sim_adapter is not None and getattr(sim_adapter, "is_sim_mode", True) is not False:
-            raise ValueError(
-                "sim_adapter= must be a non-sim adapter (is_sim_mode False); "
-                "sim mode is entered via percept_source=, never this kwarg"
-            )
-        sim = sim_adapter if sim_adapter is not None else NullSimulationAdapter()
-
-    if not run_id:
-        run_id = time.strftime("%Y-%m-%d_%H%M%S")
-    agent_name = _safe_agent_name(agent)
-    state_path = os.path.join("data", "agents", agent_name, "runtime", f"state_{run_id}.json")
-    _persist_state_json(state, state_path, meta={"run_id": run_id, "agent_name": agent_name})
-
-    # Initialize autonomy controller if not provided
-    if autonomy_controller is None:
-        autonomy_controller = AutonomyController()
-
-    # Initialize context pool for accumulated observations
-    pool_config = ContextPoolConfig()
-    if context_pool_config:
-        pool_config = ContextPoolConfig(
-            max_tokens=context_pool_config.get("max_tokens", 2000),
-            summary_target_tokens=context_pool_config.get("summary_target_tokens", 500),
-            max_entries=context_pool_config.get("max_entries", 50),
-            keep_recent=context_pool_config.get("keep_recent", 5),
-            include_agent_states=context_pool_config.get("include_agent_states", True),
-            include_outcomes=context_pool_config.get("include_outcomes", True),
-            include_abstractions=context_pool_config.get("include_abstractions", True),
-            persistence_path=context_pool_config.get("persistence_path"),
-        )
-    context_pool = ContextPool(config=pool_config)
-
-    # Initialize speculative pre-fetcher for efficient context gathering
-    prefetcher = init_prefetcher(executor=executor, base_path=os.getcwd())
-    result_cache = get_result_cache()
-
-    # ── LoopController holds all transient state (Phase 1+2) ─────────────
-    ctrl = LoopController(
+    # The setup block (1.3.2 decomposition, slice 1): built once, unpacked into the local names the
+    # body below has always read. ``ctrl`` stays the only mutable carrier (runtime/loop_setup.py).
+    run = build_loop_run(
         agent=agent,
         environment=environment,
         state=state,
@@ -2408,37 +2236,26 @@ def run_agentic_loop(
         idle_sleep_s=idle_sleep_s,
         persist_every_n_steps=persist_every_n_steps,
         target_hz=target_hz,
+        context_pool_config=context_pool_config,
         use_tool_prompting=use_tool_prompting,
         protocol_registry=protocol_registry,
         percept_source=percept_source,
         action_sink=action_sink,
         pain_bus=pain_bus,
+        aut_mode=aut_mode,
+        planning_liveness=planning_liveness,
+        sim_adapter=sim_adapter,
     )
-    ctrl.context_pool = context_pool
-    ctrl.prefetcher = prefetcher
-
-    # Thought novelty tracker: deque of recent thought word-sets for
-    # cross-turn novelty gating.  Thoughts with >= 75% word overlap with
-    # any recent entry are suppressed from the display (they're redundant).
-    from collections import deque as _deque
-
-    _recent_thought_words: _deque[set[str]] = _deque(maxlen=8)
-
-    def _is_novel_thought(text: str, min_novelty: float = 0.40) -> bool:
-        """Check if a thought is sufficiently novel vs recent thoughts.
-
-        Returns True if the thought should be shown (novel enough).
-        Side effect: appends the thought's words to the tracker if novel.
-        """
-        words = set(text.lower().split())
-        if not words:
-            return False
-        for recent in _recent_thought_words:
-            union = len(words | recent)
-            if union and len(words & recent) / union >= (1.0 - min_novelty):
-                return False  # Too similar to a recent thought
-        _recent_thought_words.append(words)
-        return True
+    executor, sim, ctrl, autonomy_controller = run.executor, run.sim, run.ctrl, run.autonomy_controller
+    run_id, agent_name, state_path = run.run_id, run.agent_name, run.state_path
+    context_pool, prefetcher, result_cache = run.context_pool, run.prefetcher, run.result_cache
+    _is_novel_thought = run.is_novel_thought
+    _max_response_tokens_override, _max_cycles_override = run.max_response_tokens_override, run.max_cycles_override
+    dn_enabled, memory_hub_enabled = run.dn_enabled, run.memory_hub_enabled
+    _loop_nac, _loop_xclock, _loop_agent_id = run.nac, run.xclock, run.agent_id
+    _drive_relief_only, _rec_outcome = run.drive_relief_only, run.rec_outcome
+    _loop_sensor_encoder, _loop_situation_cue = run.sensor_encoder, run.situation_cue
+    _planning_liveness_on = run.planning_liveness_on
 
     # Mutable-container aliases — safe because in-place mutation is shared.
     # State variables (pending_proposal, pending_action_followup, etc.) use
@@ -2463,51 +2280,10 @@ def run_agentic_loop(
     def _get_all_tools() -> set[str]:
         return ctrl.get_all_tools()
 
-    # Operator overrides for the per-call response reserve and the PFC
-    # deliberation cap (``llm.max_response_tokens`` / ``llm.deliberation_
-    # max_cycles``, P21 of the sandbox plan). Resolved ONCE per loop — the
-    # precedence chain logs on every call and the value cannot change
-    # mid-session anyway.
-    _max_response_tokens_override, _max_cycles_override = resolve_llm_loop_overrides()
-
     # Loop timing
     target_period = 1.0 / target_hz
     max_steps_i = int(max_steps or 0)
     step_iter = itertools.count() if max_steps_i <= 0 else range(max_steps_i)
-
-    # Default Network lifecycle — managed by controller
-    dn_enabled = ctrl.dn_enabled
-    if dn_enabled:
-        if not ctrl.dn_ctrl.start():
-            dn_enabled = False
-            ctrl.dn_enabled = False
-
-    # Extract NAc reference for causal learning (passed to _record_outcome)
-    _loop_nac, _loop_xclock = _loop_bio_handles(memory_hub, hippocampus, sim, autonomy_controller)
-
-    # P4 multi-agent attribution: per-agent stash key.  Producer
-    # (MemoryHub.on_percept_received) writes substrate nodes keyed by
-    # the hub's owning agent_id; the consumer here must use the same
-    # key or the stash leaks (consumer never finds the producer's
-    # write).  Prefer memory_hub.agent_id (canonical per-agent
-    # identifier from AgentFactory.create_agent) and fall back to
-    # the loop's filesystem-safe agent_name for raw-loop callers
-    # that don't construct a MemoryHub.
-    _loop_agent_id: str = (getattr(memory_hub, "agent_id", None) if memory_hub is not None else None) or agent_name
-
-    # Phase 1 (substrate_learns_from_experience.md): outside substrate-primary the
-    # LLM issues a broad always-succeed action stream, so the tool-success floor in
-    # record_outcome would flood the interoception cluster with "this tool ran".
-    # Credit the cluster surface from the body's real drive signal ONLY.
-    _drive_relief_only: bool = aut_mode != "substrate-primary"
-    # Bind the flag once so every outcome site inherits it (no per-call threading).
-    _rec_outcome = functools.partial(_record_outcome, drive_relief_only=_drive_relief_only)
-
-    _loop_sensor_encoder = _build_loop_sensor_encoder(memory_hub, _loop_nac)
-    _loop_situation_cue = _resolve_situation_cue(memory_hub)
-
-    # Initialize bio-system session (MemoryHub + hippocampus capture worker)
-    memory_hub_enabled = _start_bio_session(memory_hub=memory_hub, hippocampus=hippocampus)
 
     # Diagnostic heartbeat: log once per agent on first iteration + every
     # ~10s thereafter so we can see if a loop is alive but stuck. Silent
@@ -2521,25 +2297,6 @@ def run_agentic_loop(
     # and raises PlanningLivenessExhausted afterwards, so the sim aborts
     # loudly instead of idling forever on a dropped planning turn.
     _planning_liveness_exhausted = False
-    # ONE gate for every planning-liveness failure site, computed once so no
-    # site can drift
-    # (pre-merge review, architecture lens S7: the substrate-primary exclusion
-    # was previously only incidental — an aut_llm_worker IS constructed in
-    # substrate-primary runs, so `if llm_worker:` does run there).
-    # Substrate-primary proposals never flow through get_latest_proposal.
-    _planning_liveness_on = (
-        bool(planning_liveness)
-        and aut_mode != "substrate-primary"
-        and llm_worker is not None
-        and _planning_liveness_enabled_via_env()
-    )
-    if planning_liveness and not _planning_liveness_on:
-        logger.info(
-            "planning liveness requested but inactive (aut_mode=%s, llm_worker=%s, env_opt_out=%s)",
-            aut_mode,
-            "yes" if llm_worker is not None else "no",
-            "yes" if not _planning_liveness_enabled_via_env() else "no",
-        )
 
     for step_num in step_iter:
         loop_start = time.time()

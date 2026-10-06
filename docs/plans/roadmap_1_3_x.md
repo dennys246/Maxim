@@ -472,6 +472,8 @@ recorded-but-unused memory system. That is 1.4's work ([roadmap_1_4.md](roadmap_
 
 1. **`agent_loop.py`** (5,543 lines; `run_agentic_loop` 3,389 at `v1.3.1`) — first, because 1.4's Phase 0
    instrument is built on it.
+   *(Slice 0, the gates, merged as #1114. Slice 1, the setup → `runtime/loop_setup.py::build_loop_run`,
+   built 2026-10-05, PR pending: `run_agentic_loop` 3,381 → 3,248 lines.)*
 2. **`start_simulation_mode`** (`simulation/orchestrator.py`, 3,322). Its tests cover **11%** of its lines
    (the Codex card's measurement at `v1.3.1`), so it is NOT decomposed blind: characterization tests
    first, then an orchestrator coverage floor set from them (item 5 above), then slices under the same
@@ -487,6 +489,18 @@ fewer); for each extracted piece over 200, add an entry at its printed span plus
 `{file, qualname, from: null, to: <span>, split_from: {file, qualname: <source>}, date, ref, reason}`;
 pieces of 200 or fewer need nothing. A bare `from: null` is refused in a diff that lowers or removes a pin. Full rule:
 `scripts/lint_function_length.py`'s docstring.
+
+**Import direction (slice 1 review, 2026-10-05).** Extracted modules must not keep reaching back into
+`agent_loop`. (a) When a slice extracts code that calls an `agent_loop` module-level helper, the helper
+moves to a leaf module in the same slice if only the extracted code calls it, and to a leaf both import
+if both do. (b) A patch seam stays readable on `agent_loop` only for tests that already patch it there;
+new tests patch the new location. (c) The tests that patch `agent_loop._record_outcome` and
+`agent_loop.resolve_llm_loop_overrides` are retargeted in the slice that removes the last `_al.`
+back-reference (slice 5 at the latest), which also deletes `loop_setup`'s lazy `agent_loop` import.
+Slice 1 applied (a): `_prepare_executor`, `_loop_bio_handles`, `_build_loop_sensor_encoder`,
+`_resolve_situation_cue` and `_planning_liveness_enabled_via_env` moved into `loop_setup.py`, so its only
+`_al.` reads are the two seams. (d) Extracted functions take
+individual fields (or `ctrl`) as explicit keyword arguments, never the whole `LoopRun`.
 
 **Coverage first, then extract (2026-09-27).** No slice moves code its tests do not pin. Each slice
 adds characterization tests for the code it will move, in its own commit BEFORE the extraction, and
