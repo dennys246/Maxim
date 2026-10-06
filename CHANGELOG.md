@@ -114,6 +114,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Memory consumers that never delivered: one wired, the rest declared Dormant**
+  ([#845](https://github.com/dennys246/Maxim/issues/845), items 2–5; item 1 rides the agent_loop decomposition).
+  `ExamineTool` (offered in every `--sim`) read `context.goal`, a field `Context` does not have, inside an
+  `except: pass`, so it never recalled anything; it now returns the sentence of a matching memory that mentions the
+  target ("You recall: …") and counts each shown memory as used (`source="tool"`). Only genuinely past memories: a
+  sim captures each percept, so the current scene window's own captures are skipped (re-reading the present is not
+  recall). The sentence comes from `Hippocampus.matching_sentence`, next to the search's own matcher. A memory-only
+  examine now records an NAc outcome that starts "You recall: …", so its causal link is keyed by the recalled text. `MemoryAgent`'s cross-layer
+  knowledge lookup passed an ATL/Angular Gyrus **id** as a **name**; it now looks ids up with `recall_by_ids` (no
+  access tracking). `ExecAgent.recall_deep`'s fallback passed a `str` where a `Perception` is required; it now uses
+  `search_by_content`. Owner decisions 2026-10-06: `MemoryAgent`'s parallel bio queries (their result is discarded),
+  `PromptBuilder`'s memory sections (unfed on every production path; memory reaches the LLM through
+  `BioEnrichmentPipeline`) and ExecAgent's own LLM path including `recall_deep` (unreachable) are marked Dormant.
+  Test fakes that had fields the real types lack (`Context.goal`, `Action.tool_used`) now match them.
+
 - **`set_entity_sensor` value mode now writes the sensor it names** ([#874](https://github.com/dennys246/Maxim/issues/874)).
   It wrote every name onto the body's root, so cradle Act 1's `arms.thermal` (the fire's heat) became an orphan root
   key: the arm's own `thermal` never moved, and because `evaluate_failures` reads root keys first, the arm's drive

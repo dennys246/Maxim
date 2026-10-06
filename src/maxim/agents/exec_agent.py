@@ -924,7 +924,14 @@ class ExecAgent(Agent):
         asking "what do I know about X?" not "what happened recently?"
 
         Search strategy: LSH seeds → recall_associated() spreading
-        activation → recall_similar fallback.
+        activation → a text-content fallback (``search_by_content``; the old
+        ``recall_similar(query)`` passed a str where a ``Perception`` is
+        required, raised, and was swallowed, #845).
+
+        Dormant since 2026-10-06: no dispatcher. It is not a registered tool,
+        and the only prompt that advertises it (``exec_prompts.SYSTEM_PROMPT``)
+        is read only by ExecAgent's own LLM path, which is unreachable (see
+        ``_invoke_llm_for_goal``). Behaviour tier: n/a. Owner decision on #845.
         """
         if self._hippocampus is None:
             return []
@@ -969,10 +976,10 @@ class ExecAgent(Agent):
             except Exception:
                 pass
 
-        # 3. Fall back to recall_similar if still under limit
+        # 3. Fall back to a text-content search if still under limit
         if len(scored) < limit:
             try:
-                similar = self._hippocampus.recall_similar(query, limit=limit - len(scored))
+                similar = self._hippocampus.search_by_content(query, limit=limit - len(scored))
                 for mem in similar:
                     if mem.id not in scored:
                         scored[mem.id] = (mem, 0.3)
@@ -1464,6 +1471,14 @@ Based on this context, what goal should be proposed?"""
         Returns ``(response_dict_or_None, thinking_cfg_or_None)``. The
         ``thinking_cfg`` is needed by the contemplation step to decide whether
         to wrap with critique+refine.
+
+        Dormant since 2026-10-06: ExecAgent's own LLM path (this method,
+        ``_build_llm_context``, contemplation and ``exec_prompts.SYSTEM_PROMPT``)
+        is unreachable in production. It runs only from ``_propose_goal``, whose
+        callers are ``_worker_loop`` (started only by ``ExecAgent.on_start``, which
+        only ``MaximAgent.on_start`` calls, and no production code calls that) and
+        ``deliberate`` (no callers). The live LLM prompt is built by ``PromptBuilder`` from
+        ``run_agentic_loop``. Behaviour tier: n/a. Found by #845.
         """
         budget_context = llm_worker.get_budget_context() if llm_worker else ""
         prompt = self._build_llm_context(ctx, budget_context=budget_context)

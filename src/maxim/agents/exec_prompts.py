@@ -85,6 +85,8 @@ PFC_EXPLORE_ASK = (
 PFC_PREAMBLE = PFC_CORE + PFC_ACT + PFC_PUSH + PFC_DISCOVERY + PFC_SPEECH + PFC_EXPLORE + PFC_EXPLORE_ASK
 
 
+# Dormant since 2026-10-06: read only by ExecAgent's own LLM path, which is unreachable (see
+# ``ExecAgent._invoke_llm_for_goal``); its ``recall_deep`` entry has no dispatcher (#845).
 SYSTEM_PROMPT = """You are Maxim, an intelligent agent with the root goal:
 "Understand reality and help people."
 

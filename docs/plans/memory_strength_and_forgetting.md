@@ -232,8 +232,12 @@ completion counts at **completion** (CA3 reactivation, whether or not a consumer
 prediction), completed episodes only, never the cue concepts. `tools/discovery.py`'s `[effective]` /
 "similar affordance worked well" tags (their danger branches were unreachable and are gone, #910) are not
 a use: they render an NAc verdict keyed by the concept, not the concept's content.
-Consumers that retrieve and never deliver are #845 (the replan site is wired but dead until
-#845(1); the adaptive planner is live only in `embodied_runtime/agentic_runtime.py`).
+#845's consumers that retrieved and never delivered (2026-10-06): `ExamineTool` now delivers and
+counts as a `tool` use at its render cap (genuinely past memories only: the current scene's own
+captures are skipped, so re-reading the present is not counted); `MemoryAgent`'s bio queries,
+PromptBuilder's memory sections and ExecAgent's own LLM path (incl. `recall_deep`) are Dormant.
+The replan site is wired but dead until #845(1); the adaptive planner is live only in
+`embodied_runtime/agentic_runtime.py`. #1128: the Dormant queries still bump `access_count`.
 
 **Phase 2 — the strength model.** `S`, `R`, the typed `EncodingSignals` at all seven capture sites,
 the look-back over the Hippocampus record by enqueue-time experience µs (decision 6), the retrieval update, the persisted experience clock with its advanced-clock assert.
