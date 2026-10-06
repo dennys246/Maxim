@@ -100,6 +100,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _lint_git import GitUnavailable, base_ref, must_not_skip, show  # noqa: E402
+from _lint_ledger import append_only_problem, ref_ok  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCOPE = "src/maxim"
@@ -111,7 +112,6 @@ _TOP_KEYS = {"_comment", "baseline_format_version", "threshold", "entries", "exc
 _ENTRY_KEYS = {"file", "qualname", "lines"}
 _EXC_REQUIRED = {"file", "qualname", "from", "to", "date", "ref", "reason"}
 _EXC_OPTIONAL = {"split_from", "moved_from"}
-_REF_RE = re.compile(r"#\d+|https://github\.com/[\w.-]+/[\w.-]+/(?:pull|issues)/\d+")
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 Key = tuple[str, str]  # (file, qualname)
@@ -272,7 +272,7 @@ def _check_exception(x: object) -> None:
         raise BaselineError(f"exception `to` must be a positive int: {x!r}")
     if not (isinstance(x["date"], str) and _DATE_RE.fullmatch(x["date"])):
         raise BaselineError(f"exception `date` must be YYYY-MM-DD: {x!r}")
-    if not (isinstance(x["ref"], str) and _REF_RE.fullmatch(x["ref"])):
+    if not ref_ok(x["ref"]):
         raise BaselineError(f"exception `ref` must be '#NNN' or a github.com PR/issue URL: {x!r}")
     if not (isinstance(x["reason"], str) and x["reason"].strip()):
         raise BaselineError(f"exception `reason` must be non-empty: {x!r}")
@@ -353,10 +353,8 @@ def diff_rules(root: Path, base: str, m: Measure, head: Baseline, base_text: str
     if head.threshold != bb.threshold:
         out.append(f"threshold changed {bb.threshold} -> {head.threshold} (owner-set; may not change)")
     n_old = len(bb.exceptions)
-    if head.exceptions[:n_old] != bb.exceptions:
-        out.append(
-            "exceptions are append-only: the merge-base list is not an exact prefix of this one (edited, reordered or removed)"
-        )
+    if problem := append_only_problem(bb.exceptions, head.exceptions, "exceptions are"):
+        out.append(problem)
         return out
     new_exc = head.exceptions[n_old:]
     used = [False] * len(new_exc)
