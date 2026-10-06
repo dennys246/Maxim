@@ -596,9 +596,12 @@ An active clause pinned by `sha256` to the cited bytes turns that record's NOT-E
 pinned clause neither excepting a record nor supplying support is NOTED stale, and a cited clause that no longer
 pins the bytes is NOTED inert. A clause pins a FILE: one naming a session directory never acts. A WIDENED
 qualifier is supported only by a clause carrying `to_qualifier` equal to HEAD's qualifier (`null` = the qualifier
-removed): for a pure widening the token and date do not move, so every clause at that status reads as settled, and
-a re-date clause would otherwise support every later widening (#1108 design pass). `to_qualifier`, when present,
-is a non-empty string or null. Every entry needs a
+removed), whether or not the change also re-dates: for a pure widening the token and date do not move, so every
+clause at that status reads as settled, and a re-date clause would otherwise support every later widening (#1108
+design pass); a clause covering a re-date shows the owner approved the date, not the new scope. When nothing
+widens, `to_qualifier` is ignored. When present it is a non-empty string or null. Known friction: T1-5's
+grandfathered `(reframed)` carries no scope word, so fixing it to `(narrow)` reads as a widening and needs new
+support or such a clause. Every entry needs a
 unique string `id`.
 Removing Evidence: a row with ≥ 1 ESTABLISHED entry at base keeps one (a base entry that cannot be judged keeps the
 ratchet on, with a NOTE; a record with corrupt bytes or an unexpected shape is simply NOT-ESTABLISHED there).

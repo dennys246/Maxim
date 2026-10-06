@@ -562,7 +562,7 @@ def _qualifier_case(rig, monkeypatch, old_q, new_q, exceptions=None):
 @pytest.mark.parametrize(("old_q", "new_q"), [("rung A", None), ("rung A", "rung B"), ("narrow", "narrow-ish")])
 def test_a_widened_qualifier_needs_new_support(rig, monkeypatch, old_q, new_q) -> None:
     failures = _qualifier_case(rig, monkeypatch, old_q, new_q)
-    assert any("T1-13: no NEW support" in f for f in failures), failures
+    assert any("T1-13: no NEW support" in f and "`to_qualifier`" in f for f in failures), failures
 
 
 @pytest.mark.parametrize(("old_q", "new_q"), [("rung A", "rung A, seed 42"), (None, "narrow")])
@@ -584,6 +584,17 @@ def test_an_exception_naming_the_widened_qualifier_supplies_the_support(rig, mon
 def test_an_exception_naming_another_qualifier_does_not(rig, monkeypatch) -> None:
     failures = _qualifier_case(rig, monkeypatch, "rung A", None, exceptions=[{"to_qualifier": "rung B"}])
     assert any("no NEW support" in f for f in failures), failures
+
+
+def test_the_widening_hint_is_absent_from_a_plain_re_date(rig, monkeypatch) -> None:
+    monkeypatch.setattr(G, "M1A_CUTOFF", 4_000_000_000)
+    _legacy_snapshot(rig)
+    cite = f"**Evidence:** `{DATA}/legacy_old.jsonl`."
+    stale = [t3("T3-9", "**Status: STALE 2026-09-30**.")]
+    rig.base(ledger([t1("T1-13", f"**Status: EARNED 2026-09-16**. {cite}")], stale))
+    rig.head(ledger([t1("T1-13", f"**Status: EARNED 2026-10-02**. {cite}")], stale))
+    failures = rig.run()[0]
+    assert any("no NEW support" in f for f in failures) and not any("to_qualifier" in f for f in failures), failures
 
 
 @pytest.mark.parametrize("bad", ["", 3, ["rung B"]])

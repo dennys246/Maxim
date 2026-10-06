@@ -491,8 +491,13 @@ def gate(
                 supporting = [e for e in supporting if "to_qualifier" in e and e["to_qualifier"] == row.qualifier]
             excepted |= {e.get("id") for e in supporting}
             if not any(p is None for p in problems_new) and not supporting:
+                hint = (
+                    " (a widened qualifier: an owner exception supplies it only with `to_qualifier` naming the new one)"
+                    if widened
+                    else ""
+                )
                 res.failures.append(
-                    "no NEW support: " + ("; ".join(p for p in problems_new if p) or "no newly cited record")
+                    "no NEW support: " + ("; ".join(p for p in problems_new if p) or "no newly cited record") + hint
                 )
         cited_paths = {j.path for j in judgements}
         for e in active:
