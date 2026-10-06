@@ -207,7 +207,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import yaml  # noqa: E402  (pyyaml: pinned in the unit-tests job's first install, not the guarded one)
 from _lint_git import GitUnavailable, base_ref, changed_files, git, must_not_skip, show  # noqa: E402
-from _lint_ledger import append_only_problem, ref_ok  # noqa: E402
+from _lint_allowance import append_only_problem, ref_ok  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCOPE = "src/maxim"
@@ -784,7 +784,7 @@ def exclusion_diff_rules(root: Path, base: str, ex: Exclusions, base_ex: Exclusi
     else:
         base_excluded = set(base_ex.paths)
         base_ledger = base_ex.ledger
-        if problem := append_only_problem(base_ledger, ex.ledger, "ledger is"):
+        if problem := append_only_problem(base=base_ledger, head=ex.ledger, what="ledger is"):
             return [problem]
     for e in ex.entries:
         if e["path"] not in base_excluded:
@@ -994,7 +994,7 @@ def _code_lines(text: str) -> set[int]:
 
 
 def _is_tc(node: ast.expr) -> bool:
-    """``TYPE_CHECKING`` only, as coverage.py's ``exclude_lines``; NOT mypy's set (see ``_lint_ledger.py``)."""
+    """Reached only on a line coverage.py's ``if TYPE_CHECKING:`` regex excluded; NOT mypy's set (see ``_lint_allowance.py``)."""
     return (isinstance(node, ast.Name) and node.id == "TYPE_CHECKING") or (
         isinstance(node, ast.Attribute) and node.attr == "TYPE_CHECKING"
     )

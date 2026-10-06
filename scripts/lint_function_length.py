@@ -100,7 +100,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _lint_git import GitUnavailable, base_ref, must_not_skip, show  # noqa: E402
-from _lint_ledger import append_only_problem, ref_ok  # noqa: E402
+from _lint_allowance import append_only_problem, ref_ok  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCOPE = "src/maxim"
@@ -353,7 +353,7 @@ def diff_rules(root: Path, base: str, m: Measure, head: Baseline, base_text: str
     if head.threshold != bb.threshold:
         out.append(f"threshold changed {bb.threshold} -> {head.threshold} (owner-set; may not change)")
     n_old = len(bb.exceptions)
-    if problem := append_only_problem(bb.exceptions, head.exceptions, "exceptions are"):
+    if problem := append_only_problem(base=bb.exceptions, head=head.exceptions, what="exceptions are"):
         out.append(problem)
         return out
     new_exc = head.exceptions[n_old:]

@@ -138,7 +138,7 @@ class InstrumentError(RuntimeError):
 
 
 def _is_tc(node: ast.expr) -> bool:
-    """``TYPE_CHECKING`` and ``MYPY``, as mypy; NOT coverage.py's set (see ``_lint_ledger.py``)."""
+    """``TYPE_CHECKING`` and ``MYPY``, as mypy treats them; NOT the coverage lint's question (see ``_lint_allowance.py``)."""
     if isinstance(node, ast.Name):
         return node.id in _TC_NAMES
     return isinstance(node, ast.Attribute) and node.attr in _TC_NAMES
