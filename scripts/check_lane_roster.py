@@ -6,9 +6,7 @@ The model-cache lane used to have its own checker, ``check_model_cache_lane.py``
 set, so a marked test that dropped out of the lane (a renamed marker, broken collection) passed. Now both lanes
 are held to the rules below.
 
-The slow lane's history:
-
-History: until 2026-08-30 nothing ran `@pytest.mark.slow` tests at all; then a nightly lane with an
+The slow lane's history: until 2026-08-30 nothing ran `@pytest.mark.slow` tests at all; then a nightly lane with an
 `executed > 0` floor. The floor was too weak: on the 2026-10-05 nightly, 46 tests were selected and 16 ran.
 The other 30 skipped, mostly for the semantic extra and the model cache the lane never installed. The lane
 was green, and the 2026-09-27 Codex card named it ("the slow lane's execution floor is only one test, not its

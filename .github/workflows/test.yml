@@ -161,7 +161,7 @@ jobs:
       # Install, warm-list, cache and warm: shared with the slow lane (#1117).
       - uses: ./.github/actions/model-cache-setup
 
-      # Assert the lane actually EXECUTED its tests (skip allow-list below).
+      # Assert the lane actually EXECUTED its tests (its exact roster, checked below).
       # Without this, a missing dependency or a renamed marker turns the
       # whole job into a green no-op — the failure mode that let these
       # guards rot in the first place.
@@ -195,10 +195,10 @@ jobs:
   # `@pytest.mark.slow` has been a registered marker applied across ~10 files
   # for months, and until 2026-08-30 the ONLY occurrence of the word in this
   # workflow was the fast suite's `-m "not slow"` — a deselection. Nothing ever
-  # ran them. Nightly, because they are slow; with an executed>0 assert,
-  # because `pytest -m slow` exits 0 both when it collects nothing and when
-  # everything skips, and a lane that cannot go red for the reason it exists is
-  # decoration (same reasoning as model-cache-tests' allow-list check).
+  # ran them. Nightly, because they are slow; held to its exact roster (it began
+  # with an executed>0 floor), because `pytest -m slow` exits 0 both when it
+  # collects nothing and when everything skips, and a lane that cannot go red for
+  # the reason it exists is decoration (the model-cache lane has the same check).
   slow-tests:
     name: Slow tests (nightly)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -221,7 +221,6 @@ jobs:
       - uses: ./.github/actions/model-cache-setup
       - name: Install the optional backends
         run: |
-          python -m pip install pytest pytest-cov pytest-xdist pytest-timeout
           pip install faster-whisper ctranslate2 onnxruntime av numpy opencv-python scipy llama-cpp-python ddgs pyyaml
       - name: Run the slow lane
         env:
