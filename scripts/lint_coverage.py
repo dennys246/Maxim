@@ -207,6 +207,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import yaml  # noqa: E402  (pyyaml: pinned in the unit-tests job's first install, not the guarded one)
 from _lint_git import GitUnavailable, base_ref, changed_files, git, must_not_skip, show  # noqa: E402
+from _lint_allowance import append_only_problem, ref_ok  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCOPE = "src/maxim"
@@ -250,7 +251,6 @@ CANONICAL_CONFIG: dict = {
 COVERED_BY = {None}
 LEDGER_KINDS = ("pragma", "excluded_statements")
 
-_REF_RE = re.compile(r"#\d+|https://github\.com/[\w.-]+/[\w.-]+/(?:pull|issues)/\d+")
 _BANNED_OPTS_RE = re.compile(r"--cov-config\b|--no-cov(?![\w-])|--cov-fail-under\b|--cov-append\b|no:(?:pytest_)?cov\b")
 _BANNED_ENV_RE = re.compile(r"\b(?:COVERAGE|COV_CORE)_[A-Z_]+")
 _BANNED_IMPORT_RE = re.compile(
@@ -654,10 +654,6 @@ class Exclusions:
         return n
 
 
-def _ref_ok(ref: object) -> bool:
-    return isinstance(ref, str) and bool(_REF_RE.fullmatch(ref))
-
-
 def parse_exclusions(text: str) -> Exclusions:
     try:
         d = json.loads(text)
@@ -681,7 +677,7 @@ def parse_exclusions(text: str) -> Exclusions:
             raise FileFormatError(f"exclusion needs a non-empty reason: {e['path']}")
         if e["covered_by"] not in COVERED_BY:
             raise FileFormatError(f"exclusion covered_by must be null (no lane measures it): {e!r}")
-        if e["ref"] is not None and not _ref_ok(e["ref"]):
+        if e["ref"] is not None and not ref_ok(e["ref"]):
             raise FileFormatError(f"exclusion ref must be '#NNN', a github.com PR/issue URL or null: {e!r}")
     for x in d["ledger"]:
         if not isinstance(x, dict) or set(x) != {"kind", "file", "count", "reason", "ref"}:
@@ -692,7 +688,7 @@ def parse_exclusions(text: str) -> Exclusions:
             raise FileFormatError(f"ledger count must be a non-negative int: {x!r}")
         if not (isinstance(x["reason"], str) and x["reason"].strip()):
             raise FileFormatError(f"ledger entry needs a non-empty reason: {x!r}")
-        if x["ref"] is not None and not _ref_ok(x["ref"]):
+        if x["ref"] is not None and not ref_ok(x["ref"]):
             raise FileFormatError(f"ledger ref must be '#NNN', a github.com PR/issue URL or null: {x!r}")
     return Exclusions(list(d["exclusions"]), list(d["ledger"]))
 
@@ -788,14 +784,12 @@ def exclusion_diff_rules(root: Path, base: str, ex: Exclusions, base_ex: Exclusi
     else:
         base_excluded = set(base_ex.paths)
         base_ledger = base_ex.ledger
-        if ex.ledger[: len(base_ledger)] != base_ledger:
-            return [
-                "ledger is append-only: the merge-base list is not an exact prefix of this one (edited, reordered or removed)"
-            ]
+        if problem := append_only_problem(base=base_ledger, head=ex.ledger, what="ledger is"):
+            return [problem]
     for e in ex.entries:
         if e["path"] not in base_excluded:
             print(f"coverage: NEW EXCLUSION {e['path']} (ref {e['ref']}): {e['reason']}")
-            if not _ref_ok(e["ref"]):
+            if not ref_ok(e["ref"]):
                 out.append(f"exclusion {e['path']}: a new exclusion needs a ref ('#NNN' or a github.com PR/issue URL)")
 
     renamed = {new: old for new, old in changed_files(root, base, SCOPE)}
@@ -820,7 +814,7 @@ def exclusion_diff_rules(root: Path, base: str, ex: Exclusions, base_ex: Exclusi
                 "no pre-approving a later rise"
             )
             continue
-        if x["count"] > base_count(x["kind"], x["file"]) and not _ref_ok(x["ref"]):
+        if x["count"] > base_count(x["kind"], x["file"]) and not ref_ok(x["ref"]):
             out.append(f"new ledger entry {x['kind']} {x['file']} = {x['count']} raises the count: it needs a ref")
     granted = {(x["kind"], x["file"]) for x in new_entries}
     checks = [("pragma", rel) for rel in sorted(renamed) if (root / rel).is_file()]
@@ -1002,6 +996,7 @@ def _code_lines(text: str) -> set[int]:
 
 
 def _is_tc(node: ast.expr) -> bool:
+    """Reached only on a line coverage.py's ``if TYPE_CHECKING:`` regex excluded; NOT mypy's set (see ``_lint_allowance.py``)."""
     return (isinstance(node, ast.Name) and node.id == "TYPE_CHECKING") or (
         isinstance(node, ast.Attribute) and node.attr == "TYPE_CHECKING"
     )

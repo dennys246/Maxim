@@ -187,15 +187,15 @@ def test_what_the_model_is_shown_follows_the_grant() -> None:
     """The prompt roster, context prompt and Default Network read `_effective_mode` -- the same
     precedence dispatch applies -- so a raising grant is not a silent no-op at the prompt."""
 
-    from maxim.runtime import agent_loop
+    from maxim.runtime import loop_state  # _effective_mode's home since the 1.3.2 decomposition's slice 2
 
     class _State:
         data = {"mode": "observe"}
 
     executor = _executor(lambda: "observe")
-    assert agent_loop._effective_mode(executor, _State(), "observe") == "observe"
+    assert loop_state._effective_mode(executor, _State(), "observe") == "observe"
     executor.set_operational_override("active")
-    assert agent_loop._effective_mode(executor, _State(), "observe") == "active"
+    assert loop_state._effective_mode(executor, _State(), "observe") == "active"
     from tests.unit._loop_source import loop_source
 
     loop = loop_source()  # the loop's modules, wherever the block lives (1.3.2 decomposition)

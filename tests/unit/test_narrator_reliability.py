@@ -131,7 +131,7 @@ def test_a_retry_after_an_infrastructure_fault_is_unchanged(reason) -> None:
 def test_the_planning_failure_handler_passes_its_reason_to_the_retry() -> None:
     from unittest.mock import MagicMock
 
-    from maxim.runtime.agent_loop import _handle_planning_failure
+    from maxim.runtime.loop_controller import _handle_planning_failure
 
     ctrl = SimpleNamespace(
         record_planning_failure=lambda **k: "retry", planning_failure_streak=1, planning_retry_limit=3

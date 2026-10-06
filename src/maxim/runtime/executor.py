@@ -155,7 +155,7 @@ class Executor:
     @property
     def operational_override(self) -> str | None:
         """The operator's launch grant, or None (#829). The agent loop's prompt roster, context prompt
-        and Default Network read it through ``agent_loop._effective_mode``, so what the model is SHOWN
+        and Default Network read it through ``loop_state._effective_mode``, so what the model is SHOWN
         matches what dispatch ENFORCES."""
         return self._operational_override
 
