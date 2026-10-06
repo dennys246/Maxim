@@ -41,7 +41,7 @@ def _rank_by_relevance(
             tokens.update((mem.goal or "").lower().split())
             tokens.add((mem.tool_name or "").lower())
         else:
-            # Full EpisodicMemory
+            # Full EpisodicMemory. # active goal on purpose, not ``.goal`` (intent-first): the two differ for pain/reflexion/motor records (#1137)
             if mem.context and mem.context.active_goal:
                 tokens.update(mem.context.active_goal.lower().split())
             if mem.action:
@@ -75,7 +75,9 @@ def _memory_summary(mem: EpisodicMemory | CompressedMemory) -> str:
     if isinstance(mem, CompressedMemory):
         outcome = outcome_label(mem.success)
         return f"[recalled] {mem.goal or 'unknown goal'} → {mem.tool_name} ({outcome})"
-    goal = mem.context.active_goal or mem.decision.intent.get("goal", "")
+    goal = mem.context.active_goal or mem.decision.intent.get(
+        "goal", ""
+    )  # active goal on purpose, not ``.goal`` (intent-first): the two differ for pain/reflexion/motor records (#1137)
     outcome = outcome_label(mem.outcome.success)
     tool = mem.action.tool_name or "none"
     return f"[recalled] {goal} → {tool} ({outcome})"
@@ -534,7 +536,7 @@ class RetrievalMixin:
         """
         weight = similarity_score * 0.6  # Base: perceptual overlap
 
-        # Boost for shared goal
+        # Boost for shared goal. # active goal on purpose, not ``.goal`` (intent-first): the two differ for pain/reflexion/motor records (#1137)
         new_goal = new_memory.context.active_goal or ""
         if isinstance(recalled_memory, CompressedMemory):
             old_goal = recalled_memory.goal or ""

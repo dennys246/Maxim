@@ -462,6 +462,18 @@ class Action:
         )
 
 
+def record_active_goal(record: Any) -> str | None:
+    """A memory record's ACTIVE goal (the context it served), whichever kind it is (#995, #1137).
+
+    An ``EpisodicMemory`` keeps it on ``context.active_goal``. A ``CompressedMemory`` has lost it and keeps
+    only ``goal`` (intent-first), which is the closest it can answer until #1137. Not the same fact as
+    ``record.goal`` for pain, reflexion and motor episodes."""
+    context = getattr(record, "context", None)
+    if context is not None:
+        return context.active_goal
+    return getattr(record, "goal", None)
+
+
 def outcome_label(success: bool | None) -> str:
     """``"success"``, ``"failure"`` or ``"unknown"`` -- the one rendering of an outcome's tri-state (#843).
     ``None`` is not a failure: it is a memory that was never an action outcome (a percept)."""
@@ -701,6 +713,8 @@ class CompressedMemory(CompressedRecord):
     run_id: str = ""
 
     # Essential decision data (for queries)
+    # The intent goal, else the active goal (from_episodic). NOT the active goal itself: a compressed record
+    # has lost that (#1137); ``EpisodicMemory.goal`` answers the same way.
     goal: str | None = None
     tool_name: str = ""
     success: bool | None = None  # None: not an action outcome (#843)
@@ -748,8 +762,8 @@ class CompressedMemory(CompressedRecord):
             access_count=memory.access_count,
             long_term=memory.long_term,
             consolidated_at=memory.consolidated_at,
-            goal=memory.decision.intent.get("goal") or memory.context.active_goal,
-            tool_name=memory.action.tool_name,
+            goal=memory.goal,
+            tool_name=memory.tool_name,
             success=memory.outcome.success,
             had_user_input=bool(memory.perception.cli_input or memory.perception.transcript),
             object_count=len(memory.perception.detected_objects),
@@ -858,6 +872,24 @@ class EpisodicMemory(MemoryRecord):
         makes any such read correct for both. Read-only: an outcome is set on ``outcome``."""
         return self.outcome.success
 
+    @property
+    def tool_name(self) -> str:
+        """The tool this episode used, named as on ``CompressedMemory.tool_name`` (#995). Readers took it from
+        ``action`` and missed a compressed record, or probed a name neither kind has (``tool_used``). Read-only:
+        the tool is set on ``action``."""
+        return self.action.tool_name
+
+    @property
+    def goal(self) -> str | None:
+        """The goal this episode served, named and chosen as on ``CompressedMemory.goal`` (#995): the decision's
+        intent goal, else the context's active goal. Compression stores exactly this, so both kinds answer the
+        same. Read-only: the goal is set on ``decision`` / ``context``.
+
+        NOT the active goal: for pain, reflexion and motor records the intent goal (``pain_response``,
+        ``learn_from_failure``) differs from ``context.active_goal`` (the tool, a program's signature). A
+        reader that means the active goal reads ``context.active_goal`` (#1137)."""
+        return self.decision.intent.get("goal") or self.context.active_goal
+
     # Extensible metadata bag — used by Mother Maxim for domain_tags,
     # contribution_source, witness_count, tenant_id, deidentification_model.
     # Adding this pre-publication avoids migration for persisted memories.
@@ -916,7 +948,7 @@ class EpisodicMemory(MemoryRecord):
         kws.update(o.lower() for o in self.perception.detected_objects)
         kws.update(p.lower() for p in self.perception.detected_people)
         # Goal
-        goal = self.decision.intent.get("goal") or self.context.active_goal
+        goal = self.goal
         if goal:
             kws.update(w.lower() for w in goal.split() if len(w) > 2)
         # Tool
@@ -934,7 +966,7 @@ class EpisodicMemory(MemoryRecord):
             "type": "episodic",
             "detected_objects": self.perception.detected_objects,
             "detected_people": self.perception.detected_people,
-            "goal": self.decision.intent.get("goal") or self.context.active_goal,
+            "goal": self.goal,
             "tool": self.action.tool_name,
             "success": self.outcome.success,
             "salience": self.perception.salience,

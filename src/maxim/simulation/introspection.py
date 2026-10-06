@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from maxim.memory.types import record_success
+from maxim.memory.types import record_active_goal, record_success
 
 logger = logging.getLogger(__name__)
 
@@ -73,8 +73,11 @@ class Observer:
             "memories": [
                 {
                     "id": getattr(m, "id", "?"),
-                    "goal": getattr(getattr(m, "context", None), "goal", ""),
-                    "tool": getattr(getattr(m, "action", None), "tool_used", ""),
+                    # This read Context.goal and Action.tool_used, which no record has, so both were
+                    # always "" (#993). Both kinds answer ``tool_name`` (#995). Goal: an episode's ACTIVE
+                    # goal (what ``Context.goal`` meant), a compressed record's ``goal`` (#1137).
+                    "goal": record_active_goal(m) or "",
+                    "tool": m.tool_name or "",
                     "success": record_success(m),
                     "timestamp": getattr(m, "timestamp", 0),
                 }

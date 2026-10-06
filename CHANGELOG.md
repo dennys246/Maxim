@@ -114,6 +114,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A memory's tool and goal read the same on both record kinds; public recall returns episodes again**
+  ([#993](https://github.com/dennys246/Maxim/issues/993), [#995](https://github.com/dennys246/Maxim/issues/995),
+  [#1129](https://github.com/dennys246/Maxim/issues/1129); #994 declared Dormant). `EpisodicMemory` gains read-only
+  `tool_name` and `goal` (the intent goal, else the active goal: exactly what compression stores), as #991 did for
+  `success`, and either-kind readers use them: a compressed record's context item, enrichment summary,
+  introspection tool and tracer lines now keep its tool (and, where the reader means it, its goal);
+  `SituationSignature.from_memory` does too, but it has no production caller, so that is capability, not a fix.
+  `EpisodicRecallSource` (behind `maxim.recall()` and the Console MemoryView) read `cli_input` / `transcript` /
+  `salience` off the record instead of its `perception`, and `Context.goal`, so it skipped every real episode; it
+  now returns them. `Observer.memory_recall` (the LLM's `inspect_aut`) read `Context.goal` and `Action.tool_used`,
+  neither of which exists, so goal and tool were always empty; it now shows an episode's active goal.
+  **Breaking, to a returned shape:** `export_memories()["memory_summaries"]` items drop `valence` (it read
+  `Outcome.valence`, which does not exist, so it was always 0) for `outcome` (`success` / `failure` / `unknown`);
+  a reader of `["valence"]` gets a `KeyError` (no in-tree reader). "Goal" is two facts that differ for
+  pain, reflexion and motor records; readers that mean the active goal keep it (owner decision 2026-10-06; a
+  compressed record losing it is #1137). `ExecAgent`'s pre-deliberation enrichment branch has no caller and is
+  marked Dormant (#994), with its signed-valence-as-salience defect noted for any revival.
+
 - **Memory consumers that never delivered: one wired, the rest declared Dormant**
   ([#845](https://github.com/dennys246/Maxim/issues/845), items 2–5; item 1 rides the agent_loop decomposition).
   `ExamineTool` (offered in every `--sim`) read `context.goal`, a field `Context` does not have, inside an

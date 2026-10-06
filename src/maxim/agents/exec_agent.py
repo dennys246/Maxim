@@ -651,6 +651,11 @@ class ExecAgent(Agent):
         ATL concepts, and SEM affordances BEFORE the LLM call.  The
         enriched context is injected into the prompt so the LLM's first
         proposal already reflects bio-system associations.
+
+        Dormant since 2026-10-06: no caller in ``src/``, ``scripts/`` or ``tests/``
+        (the orchestrator's calls were removed), so ``_run_pre_deliberation``'s
+        enrichment branch never runs; the live loop enriches on its own path.
+        Behaviour tier: n/a. Owner decision on #994.
         """
         self._bio_enrichment_pipeline = pipeline
 
@@ -1316,6 +1321,11 @@ Based on this context, what goal should be proposed?"""
 
         Returns formatted enrichment text, or empty string if gate rejects
         or enrichment is unavailable.
+
+        Dormant since 2026-10-06 (the enrichment branch; see ``wire_bio_enrichment``,
+        #994). If revived: it writes ``salience=result.valence`` on the working-memory
+        THOUGHT entry, but valence is signed (-1..+1) and salience is a non-negative
+        ranking score, so a negative entry would be dropped by ``min_salience >= 0``.
         """
         if self._thought_gate is None and self._bio_enrichment_pipeline is None:
             return ""
