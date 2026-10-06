@@ -84,6 +84,9 @@ cards' deciding gaps are named where they apply.
 | M29 | A successor campaign cap counted from the merge-base ([#1077](https://github.com/dennys246/Maxim/issues/1077)) | `o19_verdict.py::MAX_CAMPAIGNS` is read from the HEAD judge, so a PR can raise the cap and open another campaign in one diff. The evidence gate should read the cap from the merge-base judge (a raise is an owner decision, reviewed first, used after). | Research integrity |
 | M30 | The predecessor's closure verdict is judged at the gate ([#1078](https://github.com/dennys246/Maxim/issues/1078)) | The gate checks a successor's pinned closure by SHA-256 and its data binding, but does not judge it (`judge_entry`: an apparatus-checked, stamped ABORT of that campaign). `successor_problems` checks it only in the harness and the verdict writer. | Research integrity |
 | M31 | The leaked-gate bar within one campaign's attempts, for new campaign keys ([#1079](https://github.com/dennys246/Maxim/issues/1079)) | #1059's bar reads a predecessor CAMPAIGN's committed phases; an aborted attempt's leaked FAILED gate inside the same campaign does not yet bar the next attempt. Scoped to new campaign keys (a judge change never moves an existing verdict, #1050). | Research integrity |
+| M32 | A push that breaks a diff lint is blocked, not just flagged (#1089) | Since #1089 every diff-scoped lint judges a push to main against the last green push (`scripts/_lint_git.py::push_base`), so a change that bypasses PR protection turns `main` red, but it has already landed. A merge queue (`merge_group` trigger, handled as a gate in every lint) would judge the merge result before it lands. | Test/CI truthfulness |
+| M33 | The ledger's branch-point rule on a push range holding several PRs (#1089) | On a push, `scripts/lint_ledger_format.py::_branch_epoch` uses the EARLIEST fork among the landed units, so a backdated row in a later PR of a multi-PR range passes on push (it was judged on its own PR). Exact per-row attribution needs the row's introducing unit. | Research integrity |
+| M35 | A push-base acceptance is the owner's, not any merger's (#1089) | `scripts/push_base_accepts.json` entries count only if every commit that touched the file came through a merged PR, but the `owner` field is unchecked: anyone who can merge can accept. A CODEOWNERS entry for the file plus required code-owner review, or a check of the merging PR's approver, would enforce it. | Test/CI truthfulness |
 | M36 | Every public claim surface agrees with the ledger, not only the README table and the index (roadmap 1.3.2 item 8) | `scripts/lint_claims_sync.py` (v1, owner scope 2026-10-04) checks the README results table and the experiments index against `behavioral_graduation_candidates.md`. Still by attention: CHANGELOG release-claim lines (e.g. `- **Exp 10 re-run: MAINTAINED (narrow).**`, for `[Unreleased]` and new releases), CLAUDE.md "Active initiatives" and docs/index.md prose, and Tier 3 rows' index coverage. It checks status, date and scope words, never the truth of the prose ("accumulate", 2026-09-27). | Documentation honesty |
 
 ## Where a thing goes — issue, plan, or here
@@ -122,6 +125,9 @@ it did *not* read. Maintained references (plans, briefs, lessons) do get relinke
 
 ## Closed — recorded so they are not re-audited
 
+- **M34 — a diff lint never returns 0 on a mid-run git failure**, closed 2026-10-05: #1098 fixed by #1109
+  (`lint_atomic_io_ratchet`, `lint_unreleased_declared`), the swallow lint's checks 2–5 by #1099, and
+  `lint_fix_touches_tests` on #1089.
 - **O11 — the security cluster**, closed 2026-09-27: #800, #801, #802, #824, #826, #827 and #828 all
   closed, shipped in 1.3.1 (#920, #923, #925). The follow-ups it filed are O18.
 - **O14 — the two ingest defects the format freeze surfaced**, closed 2026-09-27: #914 (#917) and #913

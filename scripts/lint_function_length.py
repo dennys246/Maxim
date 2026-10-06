@@ -31,7 +31,8 @@ pinned ``outer.<locals>.inner`` raises both pins and needs an exception for each
 
 - a pin raised ``a -> b`` needs a NEW exception ``{file, qualname, from: a, to: b}``, where ``a``
   is the lower of the base pin and the def's measured span at the merge-base (so repairing a
-  drifted pin needs nothing); a kept pin whose key was NOT one def at the merge-base
+  drifted pin needs nothing, and is not a pin DROP a ``split_from`` can claim); a kept pin
+  whose key was NOT one def at the merge-base
   (ambiguous or missing) is accepted only by a bare ``{from: null, to: pin}`` exception;
 - an entry with no base counterpart is one of:
 
@@ -51,16 +52,16 @@ pinned ``outer.<locals>.inner`` raises both pins and needs an exception for each
   exception" otherwise — no pre-approving a later raise);
 - ``threshold`` may not change from base.
 
-**Migration from v1** (the PR that introduced this format): when the base baseline is v1 (or
-absent) there are no comparable pins, so every HEAD entry must be at most the function's
-span measured in the merge-base TREE — the migration pins the status quo — and a key not
-over the threshold at base fails, as does any exception. Growth on the migrating PR
-therefore fails exactly as it would with a v2 base.
+**The merge-base baseline must be format 2** (on ``main`` since #1090): a base with no baseline
+at ``BASELINE_REL`` (it moved or was deleted) or with any other format fails the diff rules; the
+v1 migration path was deleted with #1089.
 
 **When the diff rules run:** on ``pull_request`` they are the gate, and a missing merge-base
-(or a base file git cannot read) is an error (``_lint_git.must_not_skip``; exit 2). Locally
-they run when a merge-base exists and are skipped with an INFO line otherwise. A ``push`` or
-any other CI event runs rules 1-3 only: the diff checks rely on ``main``'s PR protection.
+(or a base file git cannot read) is an error (``_lint_git.must_not_skip``; exit 2). On a
+``push`` to main they run against the last push whose lint job passed (``_lint_git.push_base``,
+#1089), with the same exit-2 rule, so a change that reached main without a PR is still judged.
+Locally they run when a merge-base exists and are skipped with an INFO line otherwise. Any
+other CI event (schedule, dispatch) runs rules 1-3 only.
 The lint prints every pinned span and the totals on every run, so the count lives in CI output.
 
 The baseline is CI lint data, not runtime persistence: ``_format_version``/CC3 do not apply
@@ -215,11 +216,8 @@ def _key_obj(v: object, what: str) -> Key:
     return (v["file"], v["qualname"])
 
 
-def parse_baseline(text: str, *, strict: bool = True) -> Baseline:
-    """Parse the baseline. A v1 file (only legal at the merge-base) yields empty entries.
-
-    ``strict`` (HEAD) rejects anything but v2; the base copy may be v1.
-    """
+def parse_baseline(text: str) -> Baseline:
+    """Parse the baseline; anything but format 2 is refused, at HEAD and at the merge-base alike."""
     try:
         data = json.loads(text)
     except json.JSONDecodeError as e:
@@ -228,8 +226,6 @@ def parse_baseline(text: str, *, strict: bool = True) -> Baseline:
         raise BaselineError("root must be an object")
     version = data.get("baseline_format_version")
     if version != FORMAT_VERSION:
-        if not strict and version == 1:
-            return Baseline(1, None, {}, [])
         raise BaselineError(f"baseline_format_version must be {FORMAT_VERSION}, got {version!r}")
     unknown = set(data) - _TOP_KEYS
     if unknown or not {"threshold", "entries", "exceptions"} <= set(data):
@@ -346,24 +342,13 @@ def _same(x: dict, k: Key, frm: int | None, to: int, kind: str | None, src: Key 
 
 def diff_rules(root: Path, base: str, m: Measure, head: Baseline, base_text: str) -> list[str]:
     out: list[str] = []
+    if not base_text:
+        # v2 has been on main since #1090, so a merge-base without the baseline means it moved or was deleted.
+        return [f"{BASELINE_REL} is absent at the merge-base (moved or deleted?) — cannot verify pin changes"]
     try:
-        bb = parse_baseline(base_text, strict=False) if base_text else Baseline(1, None, {}, [])
+        bb = parse_baseline(base_text)
     except BaselineError as e:
         return [f"merge-base baseline unreadable ({e}) — cannot verify pin changes"]
-
-    if bb.version == 1:
-        # DEAD once v2 is on main (every merge-base will then be v2); deleting this branch is a follow-up.
-        # Migration: no comparable pins at base, so pin the status quo measured in the base TREE.
-        at_base = measure_at_base(root, base, {k[0] for k in head.entries})
-        for k, pin in sorted(head.entries.items()):
-            bs = at_base.spans.get(k)
-            if bs is None or bs <= THRESHOLD:
-                out.append(f"{_fmt(k)}: v1->v2 migration may pin only functions over {THRESHOLD} at the merge-base")
-            elif pin > bs:
-                out.append(f"{_fmt(k)}: v1->v2 migration pins {pin}, above its merge-base span {bs} (it grew)")
-        if head.exceptions:
-            out.append("v1->v2 migration may not carry exceptions; raise in a follow-up PR")
-        return out
 
     if head.threshold != bb.threshold:
         out.append(f"threshold changed {bb.threshold} -> {head.threshold} (owner-set; may not change)")
@@ -449,10 +434,16 @@ def diff_rules(root: Path, base: str, m: Measure, head: Baseline, base_text: str
 
     # Pass 2: splits and new functions. When this diff lowers or removes any pin (other than by a move), a new
     # entry over the threshold must say where its debt came from: a bare `from: null` is refused (fail closed).
+    # A pin lowered only to repair drift (base pin above the function's measured base span) lost no lines, so it
+    # is judged against min(base pin, base span), like a raise is (#1089 item 3).
+    def _base_floor(r: Key) -> int:
+        bs = base_nodes.spans.get(r)
+        return bb.entries[r] if bs is None else min(bb.entries[r], bs)
+
     drops = sorted(
         r
         for r in bb.entries
-        if (r in head.entries and head.entries[r] < bb.entries[r]) or r in (removed - consumed) | shrunk_moves
+        if (r in head.entries and head.entries[r] < _base_floor(r)) or r in (removed - consumed) | shrunk_moves
     )
     for k, pin in sorted(unresolved.items()):
         split = next(
@@ -523,7 +514,7 @@ def main() -> int:
             f"{sum(b.entries.values())} pinned lines, {m.n_defs} defs measured, {len(b.exceptions)} exceptions"
         )
 
-    if b is not None and m is not None and event in (None, "", "pull_request"):
+    if b is not None and m is not None and event in (None, "", "pull_request", "push"):
         try:
             base = base_ref(root)
             base_text = show(root, base, BASELINE_REL)

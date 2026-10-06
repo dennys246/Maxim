@@ -346,49 +346,50 @@ def test_without_a_merge_base_locally_only_rules_1_to_3_run(repo, capsys):
     assert run(repo, capsys)[0] == 1
 
 
-def test_a_push_event_runs_rules_1_to_3_only(repo, monkeypatch, capsys):
-    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+def test_a_push_runs_the_diff_rules_against_the_last_green_push(repo, monkeypatch, capsys):
+    """Was rules 1-3 only on push (#1089): an unrecorded raise that reached main without a PR passed."""
+    from tests.unit._push_event_helpers import fake_push
+
+    head(repo, fn("big", 310), {A: 310})
+    _commit(repo)
+    fake_push(monkeypatch, repo)
+    rc, out = run(repo, capsys, commit=False)
+    assert rc == 1 and "pin raised 300 -> 310 without a new exception" in out
+
+
+def test_another_ci_event_runs_rules_1_to_3_only(repo, monkeypatch, capsys):
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "schedule")
     head(repo, fn("big", 310), {A: 310})
     rc, out = run(repo, capsys)
-    assert rc == 0 and "push event — rules 1-3 only" in out
+    assert rc == 0 and "schedule event — rules 1-3 only" in out
 
 
-# ── the v1 -> v2 migration ───────────────────────────────────────────────────
+# ── the merge-base baseline must be format 2 (#1089 item 1) ───────────────────
 
 _V1 = json.dumps({"baseline_format_version": 1, "entries": [{"file": "maxim/a.py", "function": "big", "lines": 300}]})
 
 
-@pytest.fixture
-def v1_repo(tmp_path: Path, monkeypatch) -> Path:
-    return make_repo(tmp_path, monkeypatch, {"src/maxim/a.py": _BASE_A}, _V1)
+def test_a_v1_baseline_at_the_merge_base_FAILS(tmp_path, monkeypatch, capsys):
+    root = make_repo(tmp_path, monkeypatch, {"src/maxim/a.py": _BASE_A}, _V1)
+    head(root)
+    rc, out = run(root, capsys)
+    assert rc == 1 and "merge-base baseline unreadable (baseline_format_version must be 2" in out
 
 
-def test_migration_pinning_the_status_quo_passes(v1_repo, capsys):
-    head(v1_repo)
-    rc, out = run(v1_repo, capsys)
-    assert rc == 0, out
+def test_a_merge_base_without_the_baseline_FAILS(tmp_path, monkeypatch, capsys):
+    root = make_repo(tmp_path, monkeypatch, {"src/maxim/a.py": _BASE_A}, baseline({A: 300}))
+    _git(root, "checkout", "-q", "main")
+    _git(root, "rm", "-q", _BASELINE)
+    _commit(root)
+    _git(root, "checkout", "-q", "-b", "feature2")
+    head(root)
+    rc, out = run(root, capsys)
+    assert rc == 1 and "absent at the merge-base (moved or deleted?)" in out
 
 
-def test_migration_that_also_grows_a_function_FAILS(v1_repo, capsys):
-    head(v1_repo, fn("big", 310), {A: 310})
-    rc, out = run(v1_repo, capsys)
-    assert rc == 1 and "above its merge-base span 300" in out
-
-
-def test_migration_pinning_a_function_not_over_200_at_base_FAILS(v1_repo, capsys):
-    head(v1_repo, _BASE_A + "\n\n" + fn("fresh", 210), {A: 300, ("src/maxim/a.py", "fresh"): 210})
-    rc, out = run(v1_repo, capsys)
-    assert rc == 1 and "a.py::fresh: v1->v2 migration may pin only functions over 200" in out
-
-
-def test_migration_carrying_an_exception_FAILS(v1_repo, capsys):
-    head(v1_repo, exceptions=[exc("big", None, 300)])
-    rc, out = run(v1_repo, capsys)
-    assert rc == 1 and "migration may not carry exceptions" in out
-
-
-def test_head_may_not_be_v1(v1_repo, capsys):
-    rc, out = run(v1_repo, capsys, commit=False)
+def test_head_may_not_be_v1(repo, capsys):
+    _write(repo, _BASELINE, _V1)
+    rc, out = run(repo, capsys, commit=False)
     assert rc == 1 and "baseline_format_version must be 2" in out
 
 
@@ -606,4 +607,20 @@ def test_G2_one_source_cannot_be_both_moved_and_split(repo600, capsys):
         [exc("part", 600, 300, moved_from=_S), exc("part2", None, 300, split_from=_S)],
     )
     rc, out = run(repo600, capsys)
+    assert rc == 1 and "split_from src/maxim/a.py::big, but that base entry's pin did not drop" in out
+
+
+def test_K3_repairing_a_drifted_pin_is_not_a_drop_a_split_can_claim(tmp_path, monkeypatch, capsys):
+    """Main's pin (610) drifted above the function's span (600). Lowering it to 600 repairs the pin; the
+    function lost no lines, so a new piece may not claim ``split_from`` against it."""
+    root = make_repo(
+        tmp_path, monkeypatch, {"src/maxim/a.py": fn("big", 600)}, baseline({("src/maxim/a.py", "big"): 610})
+    )
+    head(
+        root,
+        fn("big", 600) + "\n\n" + fn("piece", 250),
+        {("src/maxim/a.py", "big"): 600, ("src/maxim/a.py", "piece"): 250},
+        [exc("piece", None, 250, split_from={"file": "src/maxim/a.py", "qualname": "big"})],
+    )
+    rc, out = run(root, capsys)
     assert rc == 1 and "split_from src/maxim/a.py::big, but that base entry's pin did not drop" in out

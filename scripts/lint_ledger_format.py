@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -199,6 +200,19 @@ def _branch_point(repo_root: Path, base: str) -> str:
     return base
 
 
+def _branch_epoch(repo_root: Path, base: str) -> int:
+    """When the change being judged forked from main. On a push (#1089) the range from the last green push can hold
+    several merged PRs, and a squash or rebase merge keeps no fork point in git: each unit's own fork comes from
+    ``_lint_git.push_units`` (its PR's first commit when git cannot say), and the EARLIEST is used. That is lenient
+    for a row in a later unit of a multi-PR range (a stated residual; the row was judged on its PR), and exact for a
+    single-unit push, which is the direct push this half of the gate exists to catch."""
+    if os.environ.get("GITHUB_EVENT_NAME") == "push":
+        units = _lint_git.push_units(repo_root, base)
+        if units:
+            return min(u.fork_epoch for u in units)
+    return int(_lint_git.git(repo_root, "show", "-s", "--format=%ct", _branch_point(repo_root, base)).strip())
+
+
 def lint(repo_root: Path = REPO_ROOT, *, base: str | None = None, today: str | None = None) -> tuple[list[str], int]:
     """(violations, exit_code_if_the_base_was_unreadable_or_0)."""
     today = today or _dt.datetime.now(_dt.timezone.utc).date().isoformat()
@@ -221,7 +235,7 @@ def lint(repo_root: Path = REPO_ROOT, *, base: str | None = None, today: str | N
         base = base or _lint_git.base_ref(repo_root)
         base_text = _lint_git.show(repo_root, base, L.LEDGER_PATH) or None
         base_exc_text = _lint_git.show(repo_root, base, EXCEPTIONS)
-        epoch = int(_lint_git.git(repo_root, "show", "-s", "--format=%ct", _branch_point(repo_root, base)).strip())
+        epoch = _branch_epoch(repo_root, base)
         base_date = _dt.datetime.fromtimestamp(epoch, _dt.timezone.utc).date().isoformat()
     except _lint_git.GitUnavailable as exc:
         if _lint_git.must_not_skip(f"no merge-base for the ledger's diff-scoped checks: {exc}"):

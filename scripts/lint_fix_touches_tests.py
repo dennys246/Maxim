@@ -24,8 +24,11 @@ accepted with the reason echoed to stdout and to ``$GITHUB_STEP_SUMMARY`` when s
 escape hatch must not be quieter than the rule it exempts. Merge commits on the branch
 are skipped with a printed note (their ``diff-tree`` output is empty by default).
 
-Exits: 0 clean; 1 violations (stderr); 2 unexpected error. No base ref (a shallow clone
-without origin/main) SKIPS with an INFO — this is a PR gate, not a fail-closed guard.
+**On a push to main** (#1089) there is no PR title or body: each unit that landed is judged
+against its own merged PR, read through the GitHub API (``_lint_git.push_units``).
+
+Exits: 0 clean; 1 violations (stderr); 2 unexpected error, or no base / a mid-run git failure on
+a pull request or push. Locally, no base ref (a clone without origin/main) SKIPS with an INFO.
 """
 
 from __future__ import annotations
@@ -36,7 +39,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _lint_git import GitUnavailable, base_ref, git, must_not_skip  # noqa: E402
+from _lint_git import GitUnavailable, base_ref, git, must_not_skip, push_units  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIX_SUBJECT = re.compile(r"^fix\b", re.IGNORECASE)
@@ -63,66 +66,98 @@ def _split(files: list[str]) -> tuple[bool, bool]:
     return any(f.startswith("src/") for f in files), any(f.startswith("tests/") for f in files)
 
 
+def _title_violation(cwd: Path, diff_range: str, pr_title: str | None, pr_body: str) -> str | None:
+    """The PR-title rule: a ``fix`` title whose aggregate ``diff_range`` touches src/ without tests/."""
+    if not (pr_title and FIX_SUBJECT.match(pr_title.strip())):
+        return None
+    files = git(cwd, "diff", "--name-only", diff_range).split()
+    touches_src, touches_tests = _split(files)
+    if not touches_src or touches_tests:
+        return None
+    inline = OPT_OUT_INLINE.search(pr_title) or OPT_OUT_INLINE.search(pr_body)
+    if inline:
+        _note(f"PR title `{pr_title[:60]}` touches src/ without tests/ — declared: {inline.group(1).strip()}")
+        return None
+    return (
+        f"PR title `{pr_title[:72]}` — the squash-merged subject on main — touches src/ "
+        f"({sum(f.startswith('src/') for f in files)} file(s)) without tests/: {ADVICE}"
+    )
+
+
+def _commit_violation(cwd: Path, sha: str, pr_title: str | None, pr_body: str) -> str | None:
+    """The per-commit rule for one commit; merge commits are skipped with a note."""
+    if len(git(cwd, "rev-list", "--parents", "-n", "1", sha).split()) > 2:
+        _note(f"{sha[:8]} is a merge commit — skipped (its own diff-tree is empty)")
+        return None
+    subject = git(cwd, "log", "-1", "--format=%s", sha).strip()
+    if not FIX_SUBJECT.match(subject):
+        return None
+    files = git(cwd, "diff-tree", "--no-commit-id", "--name-only", "-r", sha).split()
+    touches_src, touches_tests = _split(files)
+    if not touches_src or touches_tests:
+        return None
+    body = git(cwd, "log", "-1", "--format=%b", sha)
+    # The PR title/body counts here too. The docstring above has always
+    # promised "a `No-Tests-Reason:` trailer in the commit body, OR
+    # `[no-tests: <why>]` in the PR title/body" — but the marker was only
+    # ever read for the PR-title population, so the documented escape did
+    # not work for the population that actually fails (found 2026-08-31,
+    # PR #579). A promised escape that silently does not apply is worse
+    # than no escape: the author reads the advice, follows it, and the gate
+    # stays red with the same message.
+    #
+    # This does NOT weaken the rule. The marker still demands a written
+    # reason and is still echoed to stdout and $GITHUB_STEP_SUMMARY, and the
+    # PR body is a REVIEWED artifact — more visible to a reviewer than a
+    # trailer buried in one commit of a stack. House convention stands: this
+    # lint catches forgetting, not evasion.
+    m = (
+        OPT_OUT_TRAILER.search(body)
+        or OPT_OUT_INLINE.search(body)
+        or OPT_OUT_INLINE.search(pr_title or "")
+        or OPT_OUT_INLINE.search(pr_body)
+    )
+    if m:
+        _note(f"{sha[:8]} `{subject[:60]}` touches src/ without tests/ — declared: {m.group(1).strip()}")
+        return None
+    return (
+        f"{sha[:8]} `{subject[:72]}` touches src/ ({sum(f.startswith('src/') for f in files)} file(s)) "
+        f"without tests/: {ADVICE}"
+    )
+
+
 def violations(
     cwd: Path = REPO_ROOT, base: str | None = None, *, pr_title: str | None = None, pr_body: str = ""
 ) -> list[str]:
     """Violation messages for the PR title (when given) and for each branch commit."""
     base = base or base_ref(cwd)
-    out: list[str] = []
+    found = [_title_violation(cwd, f"{base}...HEAD", pr_title, pr_body)]
+    found += [
+        _commit_violation(cwd, sha, pr_title, pr_body)
+        for sha in git(cwd, "rev-list", "--reverse", f"{base}..HEAD").split()
+    ]
+    return [v for v in found if v]
 
-    if pr_title and FIX_SUBJECT.match(pr_title.strip()):
-        files = git(cwd, "diff", "--name-only", f"{base}...HEAD").split()
-        touches_src, touches_tests = _split(files)
-        inline = OPT_OUT_INLINE.search(pr_title) or OPT_OUT_INLINE.search(pr_body)
-        if touches_src and not touches_tests:
-            if inline:
-                _note(f"PR title `{pr_title[:60]}` touches src/ without tests/ — declared: {inline.group(1).strip()}")
-            else:
-                out.append(
-                    f"PR title `{pr_title[:72]}` — the squash-merged subject on main — touches src/ "
-                    f"({sum(f.startswith('src/') for f in files)} file(s)) without tests/: {ADVICE}"
-                )
 
-    for sha in git(cwd, "rev-list", "--reverse", f"{base}..HEAD").split():
-        if len(git(cwd, "rev-list", "--parents", "-n", "1", sha).split()) > 2:
-            _note(f"{sha[:8]} is a merge commit — skipped (its own diff-tree is empty)")
-            continue
-        subject = git(cwd, "log", "-1", "--format=%s", sha).strip()
-        if not FIX_SUBJECT.match(subject):
-            continue
-        files = git(cwd, "diff-tree", "--no-commit-id", "--name-only", "-r", sha).split()
-        touches_src, touches_tests = _split(files)
-        if not touches_src or touches_tests:
-            continue
-        body = git(cwd, "log", "-1", "--format=%b", sha)
-        # The PR title/body counts here too. The docstring above has always
-        # promised "a `No-Tests-Reason:` trailer in the commit body, OR
-        # `[no-tests: <why>]` in the PR title/body" — but the marker was only
-        # ever read for the PR-title population, so the documented escape did
-        # not work for the population that actually fails (found 2026-08-31,
-        # PR #579). A promised escape that silently does not apply is worse
-        # than no escape: the author reads the advice, follows it, and the gate
-        # stays red with the same message.
-        #
-        # This does NOT weaken the rule. The marker still demands a written
-        # reason and is still echoed to stdout and $GITHUB_STEP_SUMMARY, and the
-        # PR body is a REVIEWED artifact — more visible to a reviewer than a
-        # trailer buried in one commit of a stack. House convention stands: this
-        # lint catches forgetting, not evasion.
-        m = (
-            OPT_OUT_TRAILER.search(body)
-            or OPT_OUT_INLINE.search(body)
-            or OPT_OUT_INLINE.search(pr_title or "")
-            or OPT_OUT_INLINE.search(pr_body)
-        )
-        if m:
-            _note(f"{sha[:8]} `{subject[:60]}` touches src/ without tests/ — declared: {m.group(1).strip()}")
-            continue
-        out.append(
-            f"{sha[:8]} `{subject[:72]}` touches src/ ({sum(f.startswith('src/') for f in files)} file(s)) "
-            f"without tests/: {ADVICE}"
-        )
-    return out
+def push_violations(cwd: Path, base: str) -> list[str]:
+    """On a push to main there is no PR_TITLE/PR_BODY: each unit that landed is judged against ITS merged PR's
+    title and body (#1089, owner decision 2026-10-04), so the ``[no-tests]`` opt-out keeps working; a direct push
+    has no PR and so no opt-out but a commit's own trailer. A rebase-merged PR lands as several first-parent
+    commits, so the title rule reads that PR's aggregate diff."""
+    units = push_units(cwd, base)
+    found: list[str | None] = []
+    seen: set[object] = set()
+    for i, unit in enumerate(units):
+        title = unit.pr["title"] if unit.pr else None
+        body = unit.pr["body"] if unit.pr else ""
+        number = unit.pr["number"] if unit.pr else None
+        if number is not None and number not in seen:
+            seen.add(number)
+            mine = [u for u in units if u.pr and u.pr["number"] == number]
+            first_parent = git(cwd, "rev-parse", f"{mine[0].sha}^1").strip()
+            found.append(_title_violation(cwd, f"{first_parent}..{mine[-1].sha}", title, body))
+        found += [_commit_violation(cwd, sha, title, body) for sha in unit.commits]
+    return [v for v in found if v]
 
 
 def main() -> int:
@@ -134,14 +169,20 @@ def main() -> int:
         print(f"INFO: no base ref (origin/main) available; skipping fix→tests lint ({exc})")
         return 0
     try:
-        fails = violations(
-            REPO_ROOT,
-            base,
-            pr_title=os.environ.get("PR_TITLE") or None,
-            pr_body=os.environ.get("PR_BODY", ""),
-        )
+        if os.environ.get("GITHUB_EVENT_NAME") == "push":
+            fails = push_violations(REPO_ROOT, base)
+        else:
+            fails = violations(
+                REPO_ROOT,
+                base,
+                pr_title=os.environ.get("PR_TITLE") or None,
+                pr_body=os.environ.get("PR_BODY", ""),
+            )
         n_commits = len(git(REPO_ROOT, "rev-list", f"{base}..HEAD").split())
     except GitUnavailable as exc:
+        # Was a silent `return 0`: a fail-open path that a push gate would make reachable (#1089 review).
+        if must_not_skip(f"git failed mid-run: {exc}"):
+            return 2
         print(f"INFO: fix→tests lint skipped mid-run ({exc})")
         return 0
     except OSError as exc:
