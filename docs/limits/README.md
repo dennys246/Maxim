@@ -9,7 +9,7 @@
 > axes in a THROWAWAY WORKTREE AT THE TAG with the earlier cards, the burndown and every
 > grade-quoting passage physically removed — instructions alone are not a firewall, because grades
 > leak through ordinary evidence (a `_comment` in `utils/function_length_baseline.json`, comments
-> in `scripts/check_slow_lane.py` and `test.yml`, the cards link in `docs/index.md`). The
+> in `scripts/check_lane_roster.py` and `test.yml`, the cards link in `docs/index.md`). The
 > assembler is usually NOT blind and therefore does not adjust the agents' grades; every contact is
 > disclosed in the card, the evidence reports are committed beside it, and letter grades stay out
 > of any file auto-loaded into an agent's context.
