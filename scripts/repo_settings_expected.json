@@ -1,0 +1,112 @@
+{
+  "acknowledged_bypasses": [],
+  "codeql_default_setup": {
+    "languages": [
+      "actions",
+      "javascript",
+      "javascript-typescript",
+      "python",
+      "typescript"
+    ],
+    "query_suite": "default",
+    "state": "configured"
+  },
+  "default_branch": "main",
+  "effective_rules": [
+    {
+      "parameters": {
+        "code_scanning_tools": [
+          {
+            "alerts_threshold": "all",
+            "security_alerts_threshold": "high_or_higher",
+            "tool": "CodeQL"
+          }
+        ]
+      },
+      "ruleset_id": 13705164,
+      "type": "code_scanning"
+    },
+    {
+      "parameters": null,
+      "ruleset_id": 13705164,
+      "type": "deletion"
+    },
+    {
+      "parameters": null,
+      "ruleset_id": 13705164,
+      "type": "non_fast_forward"
+    }
+  ],
+  "protection": {
+    "allow_deletions": {
+      "enabled": false
+    },
+    "allow_force_pushes": {
+      "enabled": false
+    },
+    "allow_fork_syncing": {
+      "enabled": false
+    },
+    "block_creations": {
+      "enabled": false
+    },
+    "enforce_admins": {
+      "enabled": true
+    },
+    "lock_branch": {
+      "enabled": false
+    },
+    "required_conversation_resolution": {
+      "enabled": false
+    },
+    "required_linear_history": {
+      "enabled": false
+    },
+    "required_pull_request_reviews": {
+      "dismiss_stale_reviews": false,
+      "require_code_owner_reviews": false,
+      "require_last_push_approval": false,
+      "required_approving_review_count": 0
+    },
+    "required_signatures": {
+      "enabled": false
+    },
+    "required_status_checks": {
+      "checks": [
+        {
+          "app_id": 15368,
+          "context": "unit-tests"
+        },
+        {
+          "app_id": 15368,
+          "context": "lint"
+        },
+        {
+          "app_id": 15368,
+          "context": "Release build (wheel contents + version)"
+        }
+      ],
+      "contexts": [
+        "unit-tests",
+        "lint",
+        "Release build (wheel contents + version)"
+      ],
+      "strict": true
+    }
+  },
+  "ruleset_enforcement": {
+    "13705164": "active"
+  },
+  "token_environment": {
+    "branch_policies": [
+      {
+        "name": "main",
+        "type": "branch"
+      }
+    ],
+    "deployment_branch_policy": {
+      "custom_branch_policies": true,
+      "protected_branches": false
+    }
+  }
+}
