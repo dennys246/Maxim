@@ -1,0 +1,2712 @@
+{
+  "experiment": "e4_text_widening_drift",
+  "issue": 911,
+  "prereg": "docs/experiments/protocols/e4_text_widening_drift_preregistration.md",
+  "fixture": {
+    "path": "data/roy_paraphrase_pairs.json",
+    "sha256": "9b83311986a4a17ba7815d2e389aab755d436be3bcfcc663b9ecb4fddce345a6"
+  },
+  "scope": "latent_hazard_upper_bound",
+  "environment": {
+    "MAXIM_DATA_HOME": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-e4-home-ftcsr9ht",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "base_threshold": 0.44,
+  "verdict": {
+    "outcome": "NO COLLAPSE",
+    "collapse_strings": [],
+    "collapse_margins": {},
+    "headroom_strings": [
+      "two people are arguing in the next room."
+    ],
+    "headroom_count": 1,
+    "A(0.0)": [
+      "heat blooms across your fingertips.",
+      "soft fabric brushes your cheek.",
+      "something soft drapes against your cheek.",
+      "warmth spreads through your fingers."
+    ],
+    "A(0.2)": [
+      "a faint tremor runs beneath your back.",
+      "a low vibration hums beneath your back.",
+      "a voice nearby asks if you understand.",
+      "an abrupt chill grips your shoulders.",
+      "firm weight rests on your chest.",
+      "heat blooms across your fingertips.",
+      "soft fabric brushes your cheek.",
+      "someone close by asks if you follow.",
+      "something soft drapes against your cheek.",
+      "steady pressure presses against your chest.",
+      "sudden cold seizes your shoulders.",
+      "the room grows quiet.",
+      "warmth spreads through your fingers."
+    ],
+    "I(0.2)": [
+      "a faint tremor runs beneath your back.",
+      "a low vibration hums beneath your back.",
+      "a voice nearby asks if you understand.",
+      "an abrupt chill grips your shoulders.",
+      "firm weight rests on your chest.",
+      "heat blooms across your fingertips.",
+      "soft fabric brushes your cheek.",
+      "someone close by asks if you follow.",
+      "something soft drapes against your cheek.",
+      "steady pressure presses against your chest.",
+      "sudden cold seizes your shoulders.",
+      "the room grows quiet.",
+      "warmth spreads through your fingers."
+    ],
+    "widening_overreach": [
+      "a voice nearby asks if you understand.",
+      "an abrupt chill grips your shoulders.",
+      "someone close by asks if you follow.",
+      "steady pressure presses against your chest.",
+      "sudden cold seizes your shoulders.",
+      "the room grows quiet."
+    ],
+    "E(0.2)": []
+  },
+  "R1_sequential": [
+    {
+      "bias": 0.0,
+      "reward": "seed",
+      "stored_reward_bias": 0.0,
+      "realised_override": 0.44,
+      "override_passed_after_credit": null,
+      "rows": [
+        {
+          "text": "you sense food nearby.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": -1.0,
+          "override_passed": null,
+          "cos_rewarded": null,
+          "rewarded_threshold": null,
+          "rewarded_members_before": null
+        },
+        {
+          "text": "the smell of food fills the air.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.7543004718012012,
+          "best_similarity": 0.7543004718012012,
+          "override_passed": null,
+          "cos_rewarded": 0.7543004718012006,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 1
+        },
+        {
+          "text": "a portion of food rests within reach.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6003113455332455,
+          "best_similarity": 0.6003113455332455,
+          "override_passed": null,
+          "cos_rewarded": 0.6003113455332455,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 2
+        },
+        {
+          "text": "a fresh portion sits beside you.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6821180408502874,
+          "best_similarity": 0.6821180408502874,
+          "override_passed": null,
+          "cos_rewarded": 0.6821180408502874,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 3
+        },
+        {
+          "text": "warm food rises in your belly.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.7029812102150034,
+          "best_similarity": 0.7029812102150034,
+          "override_passed": null,
+          "cos_rewarded": 0.7029812102150034,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 4
+        },
+        {
+          "text": "fullness settles in your belly.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.49414077936013745,
+          "best_similarity": 0.49414077936013745,
+          "override_passed": null,
+          "cos_rewarded": 0.4941407793601373,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 5
+        },
+        {
+          "text": "fullness eases the pull of hunger.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.573662248780554,
+          "best_similarity": 0.573662248780554,
+          "override_passed": null,
+          "cos_rewarded": 0.5736622487805539,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 6
+        },
+        {
+          "text": "your stomach feels satisfied.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6238757234865383,
+          "best_similarity": 0.6238757234865383,
+          "override_passed": null,
+          "cos_rewarded": 0.6238757234865383,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 7
+        },
+        {
+          "text": "heat blooms across your fingertips.",
+          "cls": "matching_thermal_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.46156615843205184,
+          "best_similarity": 0.46156615843205184,
+          "override_passed": null,
+          "cos_rewarded": 0.4615661584320519,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 8
+        },
+        {
+          "text": "warmth spreads through your fingers.",
+          "cls": "matching_thermal_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.598244676533555,
+          "best_similarity": 0.598244676533555,
+          "override_passed": null,
+          "cos_rewarded": 0.5982446765335548,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 9
+        },
+        {
+          "text": "an abrupt chill grips your shoulders.",
+          "cls": "novel_cold_shock_roy1",
+          "node": "an abrupt chill grips your shoulders.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": 0.42543110643149407,
+          "override_passed": null,
+          "cos_rewarded": 0.4254311064314939,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 10
+        },
+        {
+          "text": "sudden cold seizes your shoulders.",
+          "cls": "novel_cold_shock_roy1",
+          "node": "an abrupt chill grips your shoulders.",
+          "is_new": false,
+          "winner_similarity": 0.898485259404594,
+          "best_similarity": 0.898485259404594,
+          "override_passed": null,
+          "cos_rewarded": 0.3634406631494029,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 10
+        },
+        {
+          "text": "something soft drapes against your cheek.",
+          "cls": "matching_texture_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.5980292601839634,
+          "best_similarity": 0.5980292601839634,
+          "override_passed": null,
+          "cos_rewarded": 0.5980292601839633,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 10
+        },
+        {
+          "text": "soft fabric brushes your cheek.",
+          "cls": "matching_texture_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.5992846177027559,
+          "best_similarity": 0.5992846177027559,
+          "override_passed": null,
+          "cos_rewarded": 0.5992846177027559,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 11
+        },
+        {
+          "text": "steady pressure presses against your chest.",
+          "cls": "novel_pressure_roy1",
+          "node": "steady pressure presses against your chest.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": 0.4343227450685402,
+          "override_passed": null,
+          "cos_rewarded": 0.4091562245156558,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 12
+        },
+        {
+          "text": "firm weight rests on your chest.",
+          "cls": "novel_pressure_roy1",
+          "node": "steady pressure presses against your chest.",
+          "is_new": false,
+          "winner_similarity": 0.7166515241289642,
+          "best_similarity": 0.7166515241289642,
+          "override_passed": null,
+          "cos_rewarded": 0.515717125119963,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 12
+        },
+        {
+          "text": "a low vibration hums beneath your back.",
+          "cls": "novel_vibration_roy1",
+          "node": "steady pressure presses against your chest.",
+          "is_new": false,
+          "winner_similarity": 0.48833926017009593,
+          "best_similarity": 0.48833926017009593,
+          "override_passed": null,
+          "cos_rewarded": 0.45402401028911854,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 12
+        },
+        {
+          "text": "a faint tremor runs beneath your back.",
+          "cls": "novel_vibration_roy1",
+          "node": "steady pressure presses against your chest.",
+          "is_new": false,
+          "winner_similarity": 0.6127843053338707,
+          "best_similarity": 0.6127843053338707,
+          "override_passed": null,
+          "cos_rewarded": 0.4914659873519231,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 12
+        },
+        {
+          "text": "a voice nearby asks if you understand.",
+          "cls": "unrelated_social_roy1",
+          "node": "a voice nearby asks if you understand.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": 0.43014220408598625,
+          "override_passed": null,
+          "cos_rewarded": 0.3487006934936609,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 12
+        },
+        {
+          "text": "someone close by asks if you follow.",
+          "cls": "unrelated_social_roy1",
+          "node": "a voice nearby asks if you understand.",
+          "is_new": false,
+          "winner_similarity": 0.6060098506554981,
+          "best_similarity": 0.6060098506554981,
+          "override_passed": null,
+          "cos_rewarded": 0.34082180701931986,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 12
+        },
+        {
+          "text": "two people are arguing in the next room.",
+          "cls": "cross_modality_distractor",
+          "node": "two people are arguing in the next room.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": 0.34383671631858403,
+          "override_passed": null,
+          "cos_rewarded": 0.07966499681295224,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 12
+        },
+        {
+          "text": "the room grows quiet.",
+          "cls": "cross_class_distractor",
+          "node": "the room grows quiet.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": 0.32536169834499407,
+          "override_passed": null,
+          "cos_rewarded": 0.2799030630762902,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 12
+        }
+      ],
+      "absorbed_by_class": {
+        "food_overlap_2pc": [
+          "a fresh portion sits beside you.",
+          "a portion of food rests within reach.",
+          "fullness eases the pull of hunger.",
+          "fullness settles in your belly.",
+          "the smell of food fills the air.",
+          "warm food rises in your belly.",
+          "your stomach feels satisfied."
+        ],
+        "matching_thermal_roy1": [
+          "heat blooms across your fingertips.",
+          "warmth spreads through your fingers."
+        ],
+        "matching_texture_roy1": [
+          "soft fabric brushes your cheek.",
+          "something soft drapes against your cheek."
+        ]
+      },
+      "eligible_but_lost": [
+        "firm weight rests on your chest.",
+        "a low vibration hums beneath your back.",
+        "a faint tremor runs beneath your back."
+      ],
+      "pair_purity_delta": 0,
+      "distractor_collapse_delta": 0,
+      "rewarded_drift_delta": 0.0,
+      "rewarded_final_members": 12
+    },
+    {
+      "bias": 0.1,
+      "reward": "seed",
+      "stored_reward_bias": 0.1,
+      "realised_override": 0.33999999999999997,
+      "override_passed_after_credit": {
+        "you sense food nearby.": 0.33999999999999997
+      },
+      "rows": [
+        {
+          "text": "you sense food nearby.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": -1.0,
+          "override_passed": null,
+          "cos_rewarded": null,
+          "rewarded_threshold": null,
+          "rewarded_members_before": null
+        },
+        {
+          "text": "the smell of food fills the air.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.7543004718012012,
+          "best_similarity": 0.7543004718012012,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.7543004718012006,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 1
+        },
+        {
+          "text": "a portion of food rests within reach.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6003113455332455,
+          "best_similarity": 0.6003113455332455,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.6003113455332455,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 2
+        },
+        {
+          "text": "a fresh portion sits beside you.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6821180408502874,
+          "best_similarity": 0.6821180408502874,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.6821180408502874,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 3
+        },
+        {
+          "text": "warm food rises in your belly.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.7029812102150034,
+          "best_similarity": 0.7029812102150034,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.7029812102150034,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 4
+        },
+        {
+          "text": "fullness settles in your belly.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.49414077936013745,
+          "best_similarity": 0.49414077936013745,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.4941407793601373,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 5
+        },
+        {
+          "text": "fullness eases the pull of hunger.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.573662248780554,
+          "best_similarity": 0.573662248780554,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.5736622487805539,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 6
+        },
+        {
+          "text": "your stomach feels satisfied.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6238757234865383,
+          "best_similarity": 0.6238757234865383,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.6238757234865383,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 7
+        },
+        {
+          "text": "heat blooms across your fingertips.",
+          "cls": "matching_thermal_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.46156615843205184,
+          "best_similarity": 0.46156615843205184,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.4615661584320519,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 8
+        },
+        {
+          "text": "warmth spreads through your fingers.",
+          "cls": "matching_thermal_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.598244676533555,
+          "best_similarity": 0.598244676533555,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.5982446765335548,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 9
+        },
+        {
+          "text": "an abrupt chill grips your shoulders.",
+          "cls": "novel_cold_shock_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.42543110643149407,
+          "best_similarity": 0.42543110643149407,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.4254311064314939,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 10
+        },
+        {
+          "text": "sudden cold seizes your shoulders.",
+          "cls": "novel_cold_shock_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.45780911508879396,
+          "best_similarity": 0.45780911508879396,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.4578091150887938,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 11
+        },
+        {
+          "text": "something soft drapes against your cheek.",
+          "cls": "matching_texture_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6154597774565527,
+          "best_similarity": 0.6154597774565527,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.6154597774565526,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 12
+        },
+        {
+          "text": "soft fabric brushes your cheek.",
+          "cls": "matching_texture_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6091525035047468,
+          "best_similarity": 0.6091525035047468,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.6091525035047467,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 13
+        },
+        {
+          "text": "steady pressure presses against your chest.",
+          "cls": "novel_pressure_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.45517902960734286,
+          "best_similarity": 0.45517902960734286,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.455179029607343,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 14
+        },
+        {
+          "text": "firm weight rests on your chest.",
+          "cls": "novel_pressure_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6047932202448686,
+          "best_similarity": 0.6047932202448686,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.6047932202448686,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 15
+        },
+        {
+          "text": "a low vibration hums beneath your back.",
+          "cls": "novel_vibration_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.5289377959540571,
+          "best_similarity": 0.5289377959540571,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.5289377959540572,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 16
+        },
+        {
+          "text": "a faint tremor runs beneath your back.",
+          "cls": "novel_vibration_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6041034696221952,
+          "best_similarity": 0.6041034696221952,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.6041034696221951,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 17
+        },
+        {
+          "text": "a voice nearby asks if you understand.",
+          "cls": "unrelated_social_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.4256113896958353,
+          "best_similarity": 0.4256113896958353,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.42561138969583523,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 18
+        },
+        {
+          "text": "someone close by asks if you follow.",
+          "cls": "unrelated_social_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.45509305900747316,
+          "best_similarity": 0.45509305900747316,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.455093059007473,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 19
+        },
+        {
+          "text": "two people are arguing in the next room.",
+          "cls": "cross_modality_distractor",
+          "node": "two people are arguing in the next room.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": 0.1744079144791868,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.17440791447918674,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 20
+        },
+        {
+          "text": "the room grows quiet.",
+          "cls": "cross_class_distractor",
+          "node": "the room grows quiet.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": 0.3335776381159219,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.33357763811592184,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 20
+        }
+      ],
+      "absorbed_by_class": {
+        "novel_vibration_roy1": [
+          "a faint tremor runs beneath your back.",
+          "a low vibration hums beneath your back."
+        ],
+        "food_overlap_2pc": [
+          "a fresh portion sits beside you.",
+          "a portion of food rests within reach.",
+          "fullness eases the pull of hunger.",
+          "fullness settles in your belly.",
+          "the smell of food fills the air.",
+          "warm food rises in your belly.",
+          "your stomach feels satisfied."
+        ],
+        "unrelated_social_roy1": [
+          "a voice nearby asks if you understand.",
+          "someone close by asks if you follow."
+        ],
+        "novel_cold_shock_roy1": [
+          "an abrupt chill grips your shoulders.",
+          "sudden cold seizes your shoulders."
+        ],
+        "novel_pressure_roy1": [
+          "firm weight rests on your chest.",
+          "steady pressure presses against your chest."
+        ],
+        "matching_thermal_roy1": [
+          "heat blooms across your fingertips.",
+          "warmth spreads through your fingers."
+        ],
+        "matching_texture_roy1": [
+          "soft fabric brushes your cheek.",
+          "something soft drapes against your cheek."
+        ]
+      },
+      "eligible_but_lost": [],
+      "pair_purity_delta": -2,
+      "distractor_collapse_delta": 3,
+      "rewarded_drift_delta": -0.053289261086822304,
+      "rewarded_final_members": 20
+    },
+    {
+      "bias": 0.2,
+      "reward": "seed",
+      "stored_reward_bias": 0.2,
+      "realised_override": 0.24,
+      "override_passed_after_credit": {
+        "you sense food nearby.": 0.24
+      },
+      "rows": [
+        {
+          "text": "you sense food nearby.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": -1.0,
+          "override_passed": null,
+          "cos_rewarded": null,
+          "rewarded_threshold": null,
+          "rewarded_members_before": null
+        },
+        {
+          "text": "the smell of food fills the air.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.7543004718012012,
+          "best_similarity": 0.7543004718012012,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.7543004718012006,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 1
+        },
+        {
+          "text": "a portion of food rests within reach.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6003113455332455,
+          "best_similarity": 0.6003113455332455,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.6003113455332455,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 2
+        },
+        {
+          "text": "a fresh portion sits beside you.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6821180408502874,
+          "best_similarity": 0.6821180408502874,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.6821180408502874,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 3
+        },
+        {
+          "text": "warm food rises in your belly.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.7029812102150034,
+          "best_similarity": 0.7029812102150034,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.7029812102150034,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 4
+        },
+        {
+          "text": "fullness settles in your belly.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.49414077936013745,
+          "best_similarity": 0.49414077936013745,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.4941407793601373,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 5
+        },
+        {
+          "text": "fullness eases the pull of hunger.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.573662248780554,
+          "best_similarity": 0.573662248780554,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.5736622487805539,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 6
+        },
+        {
+          "text": "your stomach feels satisfied.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6238757234865383,
+          "best_similarity": 0.6238757234865383,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.6238757234865383,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 7
+        },
+        {
+          "text": "heat blooms across your fingertips.",
+          "cls": "matching_thermal_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.46156615843205184,
+          "best_similarity": 0.46156615843205184,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.4615661584320519,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 8
+        },
+        {
+          "text": "warmth spreads through your fingers.",
+          "cls": "matching_thermal_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.598244676533555,
+          "best_similarity": 0.598244676533555,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.5982446765335548,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 9
+        },
+        {
+          "text": "an abrupt chill grips your shoulders.",
+          "cls": "novel_cold_shock_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.42543110643149407,
+          "best_similarity": 0.42543110643149407,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.4254311064314939,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 10
+        },
+        {
+          "text": "sudden cold seizes your shoulders.",
+          "cls": "novel_cold_shock_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.45780911508879396,
+          "best_similarity": 0.45780911508879396,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.4578091150887938,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 11
+        },
+        {
+          "text": "something soft drapes against your cheek.",
+          "cls": "matching_texture_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6154597774565527,
+          "best_similarity": 0.6154597774565527,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.6154597774565526,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 12
+        },
+        {
+          "text": "soft fabric brushes your cheek.",
+          "cls": "matching_texture_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6091525035047468,
+          "best_similarity": 0.6091525035047468,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.6091525035047467,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 13
+        },
+        {
+          "text": "steady pressure presses against your chest.",
+          "cls": "novel_pressure_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.45517902960734286,
+          "best_similarity": 0.45517902960734286,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.455179029607343,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 14
+        },
+        {
+          "text": "firm weight rests on your chest.",
+          "cls": "novel_pressure_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6047932202448686,
+          "best_similarity": 0.6047932202448686,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.6047932202448686,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 15
+        },
+        {
+          "text": "a low vibration hums beneath your back.",
+          "cls": "novel_vibration_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.5289377959540571,
+          "best_similarity": 0.5289377959540571,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.5289377959540572,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 16
+        },
+        {
+          "text": "a faint tremor runs beneath your back.",
+          "cls": "novel_vibration_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6041034696221952,
+          "best_similarity": 0.6041034696221952,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.6041034696221951,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 17
+        },
+        {
+          "text": "a voice nearby asks if you understand.",
+          "cls": "unrelated_social_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.4256113896958353,
+          "best_similarity": 0.4256113896958353,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.42561138969583523,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 18
+        },
+        {
+          "text": "someone close by asks if you follow.",
+          "cls": "unrelated_social_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.45509305900747316,
+          "best_similarity": 0.45509305900747316,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.455093059007473,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 19
+        },
+        {
+          "text": "two people are arguing in the next room.",
+          "cls": "cross_modality_distractor",
+          "node": "two people are arguing in the next room.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": 0.1744079144791868,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.17440791447918674,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 20
+        },
+        {
+          "text": "the room grows quiet.",
+          "cls": "cross_class_distractor",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.3335776381159219,
+          "best_similarity": 0.3335776381159219,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.33357763811592184,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 20
+        }
+      ],
+      "absorbed_by_class": {
+        "novel_vibration_roy1": [
+          "a faint tremor runs beneath your back.",
+          "a low vibration hums beneath your back."
+        ],
+        "food_overlap_2pc": [
+          "a fresh portion sits beside you.",
+          "a portion of food rests within reach.",
+          "fullness eases the pull of hunger.",
+          "fullness settles in your belly.",
+          "the smell of food fills the air.",
+          "warm food rises in your belly.",
+          "your stomach feels satisfied."
+        ],
+        "unrelated_social_roy1": [
+          "a voice nearby asks if you understand.",
+          "someone close by asks if you follow."
+        ],
+        "novel_cold_shock_roy1": [
+          "an abrupt chill grips your shoulders.",
+          "sudden cold seizes your shoulders."
+        ],
+        "novel_pressure_roy1": [
+          "firm weight rests on your chest.",
+          "steady pressure presses against your chest."
+        ],
+        "matching_thermal_roy1": [
+          "heat blooms across your fingertips.",
+          "warmth spreads through your fingers."
+        ],
+        "matching_texture_roy1": [
+          "soft fabric brushes your cheek.",
+          "something soft drapes against your cheek."
+        ],
+        "cross_class_distractor": [
+          "the room grows quiet."
+        ]
+      },
+      "eligible_but_lost": [],
+      "pair_purity_delta": -2,
+      "distractor_collapse_delta": 4,
+      "rewarded_drift_delta": -0.05952622729829515,
+      "rewarded_final_members": 21
+    }
+  ],
+  "RA_sequential": [
+    {
+      "bias": 0.0,
+      "reward": "all",
+      "stored_reward_bias": 0.0,
+      "realised_override": 0.44,
+      "override_passed_after_credit": null,
+      "rows": [
+        {
+          "text": "you sense food nearby.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": -1.0,
+          "override_passed": null,
+          "cos_rewarded": null,
+          "rewarded_threshold": null,
+          "rewarded_members_before": null
+        },
+        {
+          "text": "the smell of food fills the air.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.7543004718012012,
+          "best_similarity": 0.7543004718012012,
+          "override_passed": null,
+          "cos_rewarded": 0.7543004718012006,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 1
+        },
+        {
+          "text": "a portion of food rests within reach.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6003113455332455,
+          "best_similarity": 0.6003113455332455,
+          "override_passed": null,
+          "cos_rewarded": 0.6003113455332455,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 2
+        },
+        {
+          "text": "a fresh portion sits beside you.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6821180408502874,
+          "best_similarity": 0.6821180408502874,
+          "override_passed": null,
+          "cos_rewarded": 0.6821180408502874,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 3
+        },
+        {
+          "text": "warm food rises in your belly.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.7029812102150034,
+          "best_similarity": 0.7029812102150034,
+          "override_passed": null,
+          "cos_rewarded": 0.7029812102150034,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 4
+        },
+        {
+          "text": "fullness settles in your belly.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.49414077936013745,
+          "best_similarity": 0.49414077936013745,
+          "override_passed": null,
+          "cos_rewarded": 0.4941407793601373,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 5
+        },
+        {
+          "text": "fullness eases the pull of hunger.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.573662248780554,
+          "best_similarity": 0.573662248780554,
+          "override_passed": null,
+          "cos_rewarded": 0.5736622487805539,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 6
+        },
+        {
+          "text": "your stomach feels satisfied.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6238757234865383,
+          "best_similarity": 0.6238757234865383,
+          "override_passed": null,
+          "cos_rewarded": 0.6238757234865383,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 7
+        },
+        {
+          "text": "heat blooms across your fingertips.",
+          "cls": "matching_thermal_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.46156615843205184,
+          "best_similarity": 0.46156615843205184,
+          "override_passed": null,
+          "cos_rewarded": 0.4615661584320519,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 8
+        },
+        {
+          "text": "warmth spreads through your fingers.",
+          "cls": "matching_thermal_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.598244676533555,
+          "best_similarity": 0.598244676533555,
+          "override_passed": null,
+          "cos_rewarded": 0.5982446765335548,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 9
+        },
+        {
+          "text": "an abrupt chill grips your shoulders.",
+          "cls": "novel_cold_shock_roy1",
+          "node": "an abrupt chill grips your shoulders.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": 0.42543110643149407,
+          "override_passed": null,
+          "cos_rewarded": 0.4254311064314939,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 10
+        },
+        {
+          "text": "sudden cold seizes your shoulders.",
+          "cls": "novel_cold_shock_roy1",
+          "node": "an abrupt chill grips your shoulders.",
+          "is_new": false,
+          "winner_similarity": 0.898485259404594,
+          "best_similarity": 0.898485259404594,
+          "override_passed": null,
+          "cos_rewarded": 0.3634406631494029,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 10
+        },
+        {
+          "text": "something soft drapes against your cheek.",
+          "cls": "matching_texture_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.5980292601839634,
+          "best_similarity": 0.5980292601839634,
+          "override_passed": null,
+          "cos_rewarded": 0.5980292601839633,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 10
+        },
+        {
+          "text": "soft fabric brushes your cheek.",
+          "cls": "matching_texture_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.5992846177027559,
+          "best_similarity": 0.5992846177027559,
+          "override_passed": null,
+          "cos_rewarded": 0.5992846177027559,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 11
+        },
+        {
+          "text": "steady pressure presses against your chest.",
+          "cls": "novel_pressure_roy1",
+          "node": "steady pressure presses against your chest.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": 0.4343227450685402,
+          "override_passed": null,
+          "cos_rewarded": 0.4091562245156558,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 12
+        },
+        {
+          "text": "firm weight rests on your chest.",
+          "cls": "novel_pressure_roy1",
+          "node": "steady pressure presses against your chest.",
+          "is_new": false,
+          "winner_similarity": 0.7166515241289642,
+          "best_similarity": 0.7166515241289642,
+          "override_passed": null,
+          "cos_rewarded": 0.515717125119963,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 12
+        },
+        {
+          "text": "a low vibration hums beneath your back.",
+          "cls": "novel_vibration_roy1",
+          "node": "steady pressure presses against your chest.",
+          "is_new": false,
+          "winner_similarity": 0.48833926017009593,
+          "best_similarity": 0.48833926017009593,
+          "override_passed": null,
+          "cos_rewarded": 0.45402401028911854,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 12
+        },
+        {
+          "text": "a faint tremor runs beneath your back.",
+          "cls": "novel_vibration_roy1",
+          "node": "steady pressure presses against your chest.",
+          "is_new": false,
+          "winner_similarity": 0.6127843053338707,
+          "best_similarity": 0.6127843053338707,
+          "override_passed": null,
+          "cos_rewarded": 0.4914659873519231,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 12
+        },
+        {
+          "text": "a voice nearby asks if you understand.",
+          "cls": "unrelated_social_roy1",
+          "node": "a voice nearby asks if you understand.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": 0.43014220408598625,
+          "override_passed": null,
+          "cos_rewarded": 0.3487006934936609,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 12
+        },
+        {
+          "text": "someone close by asks if you follow.",
+          "cls": "unrelated_social_roy1",
+          "node": "a voice nearby asks if you understand.",
+          "is_new": false,
+          "winner_similarity": 0.6060098506554981,
+          "best_similarity": 0.6060098506554981,
+          "override_passed": null,
+          "cos_rewarded": 0.34082180701931986,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 12
+        },
+        {
+          "text": "two people are arguing in the next room.",
+          "cls": "cross_modality_distractor",
+          "node": "two people are arguing in the next room.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": 0.34383671631858403,
+          "override_passed": null,
+          "cos_rewarded": 0.07966499681295224,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 12
+        },
+        {
+          "text": "the room grows quiet.",
+          "cls": "cross_class_distractor",
+          "node": "the room grows quiet.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": 0.32536169834499407,
+          "override_passed": null,
+          "cos_rewarded": 0.2799030630762902,
+          "rewarded_threshold": 0.44,
+          "rewarded_members_before": 12
+        }
+      ],
+      "absorbed_by_class": {
+        "food_overlap_2pc": [
+          "a fresh portion sits beside you.",
+          "a portion of food rests within reach.",
+          "fullness eases the pull of hunger.",
+          "fullness settles in your belly.",
+          "the smell of food fills the air.",
+          "warm food rises in your belly.",
+          "your stomach feels satisfied."
+        ],
+        "matching_thermal_roy1": [
+          "heat blooms across your fingertips.",
+          "warmth spreads through your fingers."
+        ],
+        "matching_texture_roy1": [
+          "soft fabric brushes your cheek.",
+          "something soft drapes against your cheek."
+        ]
+      },
+      "eligible_but_lost": [
+        "firm weight rests on your chest.",
+        "a low vibration hums beneath your back.",
+        "a faint tremor runs beneath your back."
+      ],
+      "pair_purity_delta": 0,
+      "distractor_collapse_delta": 0,
+      "rewarded_drift_delta": 0.0,
+      "rewarded_final_members": 12
+    },
+    {
+      "bias": 0.1,
+      "reward": "all",
+      "stored_reward_bias": 0.1,
+      "realised_override": 0.33999999999999997,
+      "override_passed_after_credit": {
+        "you sense food nearby.": 0.33999999999999997
+      },
+      "rows": [
+        {
+          "text": "you sense food nearby.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": -1.0,
+          "override_passed": null,
+          "cos_rewarded": null,
+          "rewarded_threshold": null,
+          "rewarded_members_before": null
+        },
+        {
+          "text": "the smell of food fills the air.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.7543004718012012,
+          "best_similarity": 0.7543004718012012,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.7543004718012006,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 1
+        },
+        {
+          "text": "a portion of food rests within reach.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6003113455332455,
+          "best_similarity": 0.6003113455332455,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.6003113455332455,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 2
+        },
+        {
+          "text": "a fresh portion sits beside you.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6821180408502874,
+          "best_similarity": 0.6821180408502874,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.6821180408502874,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 3
+        },
+        {
+          "text": "warm food rises in your belly.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.7029812102150034,
+          "best_similarity": 0.7029812102150034,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.7029812102150034,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 4
+        },
+        {
+          "text": "fullness settles in your belly.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.49414077936013745,
+          "best_similarity": 0.49414077936013745,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.4941407793601373,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 5
+        },
+        {
+          "text": "fullness eases the pull of hunger.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.573662248780554,
+          "best_similarity": 0.573662248780554,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.5736622487805539,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 6
+        },
+        {
+          "text": "your stomach feels satisfied.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6238757234865383,
+          "best_similarity": 0.6238757234865383,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.6238757234865383,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 7
+        },
+        {
+          "text": "heat blooms across your fingertips.",
+          "cls": "matching_thermal_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.46156615843205184,
+          "best_similarity": 0.46156615843205184,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.4615661584320519,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 8
+        },
+        {
+          "text": "warmth spreads through your fingers.",
+          "cls": "matching_thermal_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.598244676533555,
+          "best_similarity": 0.598244676533555,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.5982446765335548,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 9
+        },
+        {
+          "text": "an abrupt chill grips your shoulders.",
+          "cls": "novel_cold_shock_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.42543110643149407,
+          "best_similarity": 0.42543110643149407,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.4254311064314939,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 10
+        },
+        {
+          "text": "sudden cold seizes your shoulders.",
+          "cls": "novel_cold_shock_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.45780911508879396,
+          "best_similarity": 0.45780911508879396,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.4578091150887938,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 11
+        },
+        {
+          "text": "something soft drapes against your cheek.",
+          "cls": "matching_texture_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6154597774565527,
+          "best_similarity": 0.6154597774565527,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.6154597774565526,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 12
+        },
+        {
+          "text": "soft fabric brushes your cheek.",
+          "cls": "matching_texture_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6091525035047468,
+          "best_similarity": 0.6091525035047468,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.6091525035047467,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 13
+        },
+        {
+          "text": "steady pressure presses against your chest.",
+          "cls": "novel_pressure_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.45517902960734286,
+          "best_similarity": 0.45517902960734286,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.455179029607343,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 14
+        },
+        {
+          "text": "firm weight rests on your chest.",
+          "cls": "novel_pressure_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6047932202448686,
+          "best_similarity": 0.6047932202448686,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.6047932202448686,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 15
+        },
+        {
+          "text": "a low vibration hums beneath your back.",
+          "cls": "novel_vibration_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.5289377959540571,
+          "best_similarity": 0.5289377959540571,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.5289377959540572,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 16
+        },
+        {
+          "text": "a faint tremor runs beneath your back.",
+          "cls": "novel_vibration_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6041034696221952,
+          "best_similarity": 0.6041034696221952,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.6041034696221951,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 17
+        },
+        {
+          "text": "a voice nearby asks if you understand.",
+          "cls": "unrelated_social_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.4256113896958353,
+          "best_similarity": 0.4256113896958353,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.42561138969583523,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 18
+        },
+        {
+          "text": "someone close by asks if you follow.",
+          "cls": "unrelated_social_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.45509305900747316,
+          "best_similarity": 0.45509305900747316,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.455093059007473,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 19
+        },
+        {
+          "text": "two people are arguing in the next room.",
+          "cls": "cross_modality_distractor",
+          "node": "two people are arguing in the next room.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": 0.1744079144791868,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.17440791447918674,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 20
+        },
+        {
+          "text": "the room grows quiet.",
+          "cls": "cross_class_distractor",
+          "node": "the room grows quiet.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": 0.3335776381159219,
+          "override_passed": {
+            "you sense food nearby.": 0.33999999999999997,
+            "two people are arguing in the next room.": 0.33999999999999997
+          },
+          "cos_rewarded": 0.33357763811592184,
+          "rewarded_threshold": 0.33999999999999997,
+          "rewarded_members_before": 20
+        }
+      ],
+      "absorbed_by_class": {
+        "novel_vibration_roy1": [
+          "a faint tremor runs beneath your back.",
+          "a low vibration hums beneath your back."
+        ],
+        "food_overlap_2pc": [
+          "a fresh portion sits beside you.",
+          "a portion of food rests within reach.",
+          "fullness eases the pull of hunger.",
+          "fullness settles in your belly.",
+          "the smell of food fills the air.",
+          "warm food rises in your belly.",
+          "your stomach feels satisfied."
+        ],
+        "unrelated_social_roy1": [
+          "a voice nearby asks if you understand.",
+          "someone close by asks if you follow."
+        ],
+        "novel_cold_shock_roy1": [
+          "an abrupt chill grips your shoulders.",
+          "sudden cold seizes your shoulders."
+        ],
+        "novel_pressure_roy1": [
+          "firm weight rests on your chest.",
+          "steady pressure presses against your chest."
+        ],
+        "matching_thermal_roy1": [
+          "heat blooms across your fingertips.",
+          "warmth spreads through your fingers."
+        ],
+        "matching_texture_roy1": [
+          "soft fabric brushes your cheek.",
+          "something soft drapes against your cheek."
+        ]
+      },
+      "eligible_but_lost": [],
+      "pair_purity_delta": -2,
+      "distractor_collapse_delta": 3,
+      "rewarded_drift_delta": -0.053289261086822304,
+      "rewarded_final_members": 20
+    },
+    {
+      "bias": 0.2,
+      "reward": "all",
+      "stored_reward_bias": 0.2,
+      "realised_override": 0.24,
+      "override_passed_after_credit": {
+        "you sense food nearby.": 0.24
+      },
+      "rows": [
+        {
+          "text": "you sense food nearby.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": -1.0,
+          "override_passed": null,
+          "cos_rewarded": null,
+          "rewarded_threshold": null,
+          "rewarded_members_before": null
+        },
+        {
+          "text": "the smell of food fills the air.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.7543004718012012,
+          "best_similarity": 0.7543004718012012,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.7543004718012006,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 1
+        },
+        {
+          "text": "a portion of food rests within reach.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6003113455332455,
+          "best_similarity": 0.6003113455332455,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.6003113455332455,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 2
+        },
+        {
+          "text": "a fresh portion sits beside you.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6821180408502874,
+          "best_similarity": 0.6821180408502874,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.6821180408502874,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 3
+        },
+        {
+          "text": "warm food rises in your belly.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.7029812102150034,
+          "best_similarity": 0.7029812102150034,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.7029812102150034,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 4
+        },
+        {
+          "text": "fullness settles in your belly.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.49414077936013745,
+          "best_similarity": 0.49414077936013745,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.4941407793601373,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 5
+        },
+        {
+          "text": "fullness eases the pull of hunger.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.573662248780554,
+          "best_similarity": 0.573662248780554,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.5736622487805539,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 6
+        },
+        {
+          "text": "your stomach feels satisfied.",
+          "cls": "food_overlap_2pc",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6238757234865383,
+          "best_similarity": 0.6238757234865383,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.6238757234865383,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 7
+        },
+        {
+          "text": "heat blooms across your fingertips.",
+          "cls": "matching_thermal_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.46156615843205184,
+          "best_similarity": 0.46156615843205184,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.4615661584320519,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 8
+        },
+        {
+          "text": "warmth spreads through your fingers.",
+          "cls": "matching_thermal_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.598244676533555,
+          "best_similarity": 0.598244676533555,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.5982446765335548,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 9
+        },
+        {
+          "text": "an abrupt chill grips your shoulders.",
+          "cls": "novel_cold_shock_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.42543110643149407,
+          "best_similarity": 0.42543110643149407,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.4254311064314939,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 10
+        },
+        {
+          "text": "sudden cold seizes your shoulders.",
+          "cls": "novel_cold_shock_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.45780911508879396,
+          "best_similarity": 0.45780911508879396,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.4578091150887938,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 11
+        },
+        {
+          "text": "something soft drapes against your cheek.",
+          "cls": "matching_texture_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6154597774565527,
+          "best_similarity": 0.6154597774565527,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.6154597774565526,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 12
+        },
+        {
+          "text": "soft fabric brushes your cheek.",
+          "cls": "matching_texture_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6091525035047468,
+          "best_similarity": 0.6091525035047468,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.6091525035047467,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 13
+        },
+        {
+          "text": "steady pressure presses against your chest.",
+          "cls": "novel_pressure_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.45517902960734286,
+          "best_similarity": 0.45517902960734286,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.455179029607343,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 14
+        },
+        {
+          "text": "firm weight rests on your chest.",
+          "cls": "novel_pressure_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6047932202448686,
+          "best_similarity": 0.6047932202448686,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.6047932202448686,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 15
+        },
+        {
+          "text": "a low vibration hums beneath your back.",
+          "cls": "novel_vibration_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.5289377959540571,
+          "best_similarity": 0.5289377959540571,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.5289377959540572,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 16
+        },
+        {
+          "text": "a faint tremor runs beneath your back.",
+          "cls": "novel_vibration_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.6041034696221952,
+          "best_similarity": 0.6041034696221952,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.6041034696221951,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 17
+        },
+        {
+          "text": "a voice nearby asks if you understand.",
+          "cls": "unrelated_social_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.4256113896958353,
+          "best_similarity": 0.4256113896958353,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.42561138969583523,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 18
+        },
+        {
+          "text": "someone close by asks if you follow.",
+          "cls": "unrelated_social_roy1",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.45509305900747316,
+          "best_similarity": 0.45509305900747316,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.455093059007473,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 19
+        },
+        {
+          "text": "two people are arguing in the next room.",
+          "cls": "cross_modality_distractor",
+          "node": "two people are arguing in the next room.",
+          "is_new": true,
+          "winner_similarity": 0.0,
+          "best_similarity": 0.1744079144791868,
+          "override_passed": {
+            "you sense food nearby.": 0.24
+          },
+          "cos_rewarded": 0.17440791447918674,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 20
+        },
+        {
+          "text": "the room grows quiet.",
+          "cls": "cross_class_distractor",
+          "node": "you sense food nearby.",
+          "is_new": false,
+          "winner_similarity": 0.3335776381159219,
+          "best_similarity": 0.3335776381159219,
+          "override_passed": {
+            "you sense food nearby.": 0.24,
+            "two people are arguing in the next room.": 0.24
+          },
+          "cos_rewarded": 0.33357763811592184,
+          "rewarded_threshold": 0.24,
+          "rewarded_members_before": 20
+        }
+      ],
+      "absorbed_by_class": {
+        "novel_vibration_roy1": [
+          "a faint tremor runs beneath your back.",
+          "a low vibration hums beneath your back."
+        ],
+        "food_overlap_2pc": [
+          "a fresh portion sits beside you.",
+          "a portion of food rests within reach.",
+          "fullness eases the pull of hunger.",
+          "fullness settles in your belly.",
+          "the smell of food fills the air.",
+          "warm food rises in your belly.",
+          "your stomach feels satisfied."
+        ],
+        "unrelated_social_roy1": [
+          "a voice nearby asks if you understand.",
+          "someone close by asks if you follow."
+        ],
+        "novel_cold_shock_roy1": [
+          "an abrupt chill grips your shoulders.",
+          "sudden cold seizes your shoulders."
+        ],
+        "novel_pressure_roy1": [
+          "firm weight rests on your chest.",
+          "steady pressure presses against your chest."
+        ],
+        "matching_thermal_roy1": [
+          "heat blooms across your fingertips.",
+          "warmth spreads through your fingers."
+        ],
+        "matching_texture_roy1": [
+          "soft fabric brushes your cheek.",
+          "something soft drapes against your cheek."
+        ],
+        "cross_class_distractor": [
+          "the room grows quiet."
+        ]
+      },
+      "eligible_but_lost": [],
+      "pair_purity_delta": -2,
+      "distractor_collapse_delta": 4,
+      "rewarded_drift_delta": -0.05952622729829515,
+      "rewarded_final_members": 21
+    }
+  ],
+  "R1_replay_isolated": {
+    "0.0": {
+      "a portion of food rests within reach.": {
+        "cos": 0.6003113455332455,
+        "admitted": true
+      },
+      "a fresh portion sits beside you.": {
+        "cos": 0.6821180408502874,
+        "admitted": true
+      },
+      "warm food rises in your belly.": {
+        "cos": 0.7029812102150034,
+        "admitted": true
+      },
+      "fullness settles in your belly.": {
+        "cos": 0.4941407793601373,
+        "admitted": true
+      },
+      "fullness eases the pull of hunger.": {
+        "cos": 0.5736622487805539,
+        "admitted": true
+      },
+      "your stomach feels satisfied.": {
+        "cos": 0.6238757234865383,
+        "admitted": true
+      },
+      "heat blooms across your fingertips.": {
+        "cos": 0.4615661584320519,
+        "admitted": true
+      },
+      "warmth spreads through your fingers.": {
+        "cos": 0.5982446765335548,
+        "admitted": true
+      },
+      "an abrupt chill grips your shoulders.": {
+        "cos": 0.4254311064314939,
+        "admitted": false
+      },
+      "sudden cold seizes your shoulders.": {
+        "cos": 0.3634406631494029,
+        "admitted": false
+      },
+      "something soft drapes against your cheek.": {
+        "cos": 0.5980292601839633,
+        "admitted": true
+      },
+      "soft fabric brushes your cheek.": {
+        "cos": 0.5992846177027559,
+        "admitted": true
+      },
+      "steady pressure presses against your chest.": {
+        "cos": 0.4091562245156558,
+        "admitted": false
+      },
+      "firm weight rests on your chest.": {
+        "cos": 0.515717125119963,
+        "admitted": true
+      },
+      "a low vibration hums beneath your back.": {
+        "cos": 0.45402401028911854,
+        "admitted": true
+      },
+      "a faint tremor runs beneath your back.": {
+        "cos": 0.4914659873519231,
+        "admitted": true
+      },
+      "a voice nearby asks if you understand.": {
+        "cos": 0.3487006934936609,
+        "admitted": false
+      },
+      "someone close by asks if you follow.": {
+        "cos": 0.34082180701931986,
+        "admitted": false
+      },
+      "two people are arguing in the next room.": {
+        "cos": 0.07966499681295224,
+        "admitted": false
+      },
+      "the room grows quiet.": {
+        "cos": 0.2799030630762902,
+        "admitted": false
+      }
+    },
+    "0.1": {
+      "a portion of food rests within reach.": {
+        "cos": 0.6003113455332455,
+        "admitted": true
+      },
+      "a fresh portion sits beside you.": {
+        "cos": 0.6821180408502874,
+        "admitted": true
+      },
+      "warm food rises in your belly.": {
+        "cos": 0.7029812102150034,
+        "admitted": true
+      },
+      "fullness settles in your belly.": {
+        "cos": 0.4941407793601373,
+        "admitted": true
+      },
+      "fullness eases the pull of hunger.": {
+        "cos": 0.5736622487805539,
+        "admitted": true
+      },
+      "your stomach feels satisfied.": {
+        "cos": 0.6238757234865383,
+        "admitted": true
+      },
+      "heat blooms across your fingertips.": {
+        "cos": 0.4615661584320519,
+        "admitted": true
+      },
+      "warmth spreads through your fingers.": {
+        "cos": 0.5982446765335548,
+        "admitted": true
+      },
+      "an abrupt chill grips your shoulders.": {
+        "cos": 0.4254311064314939,
+        "admitted": true
+      },
+      "sudden cold seizes your shoulders.": {
+        "cos": 0.3634406631494029,
+        "admitted": true
+      },
+      "something soft drapes against your cheek.": {
+        "cos": 0.5980292601839633,
+        "admitted": true
+      },
+      "soft fabric brushes your cheek.": {
+        "cos": 0.5992846177027559,
+        "admitted": true
+      },
+      "steady pressure presses against your chest.": {
+        "cos": 0.4091562245156558,
+        "admitted": true
+      },
+      "firm weight rests on your chest.": {
+        "cos": 0.515717125119963,
+        "admitted": true
+      },
+      "a low vibration hums beneath your back.": {
+        "cos": 0.45402401028911854,
+        "admitted": true
+      },
+      "a faint tremor runs beneath your back.": {
+        "cos": 0.4914659873519231,
+        "admitted": true
+      },
+      "a voice nearby asks if you understand.": {
+        "cos": 0.3487006934936609,
+        "admitted": true
+      },
+      "someone close by asks if you follow.": {
+        "cos": 0.34082180701931986,
+        "admitted": true
+      },
+      "two people are arguing in the next room.": {
+        "cos": 0.07966499681295224,
+        "admitted": false
+      },
+      "the room grows quiet.": {
+        "cos": 0.2799030630762902,
+        "admitted": false
+      }
+    },
+    "0.2": {
+      "a portion of food rests within reach.": {
+        "cos": 0.6003113455332455,
+        "admitted": true
+      },
+      "a fresh portion sits beside you.": {
+        "cos": 0.6821180408502874,
+        "admitted": true
+      },
+      "warm food rises in your belly.": {
+        "cos": 0.7029812102150034,
+        "admitted": true
+      },
+      "fullness settles in your belly.": {
+        "cos": 0.4941407793601373,
+        "admitted": true
+      },
+      "fullness eases the pull of hunger.": {
+        "cos": 0.5736622487805539,
+        "admitted": true
+      },
+      "your stomach feels satisfied.": {
+        "cos": 0.6238757234865383,
+        "admitted": true
+      },
+      "heat blooms across your fingertips.": {
+        "cos": 0.4615661584320519,
+        "admitted": true
+      },
+      "warmth spreads through your fingers.": {
+        "cos": 0.5982446765335548,
+        "admitted": true
+      },
+      "an abrupt chill grips your shoulders.": {
+        "cos": 0.4254311064314939,
+        "admitted": true
+      },
+      "sudden cold seizes your shoulders.": {
+        "cos": 0.3634406631494029,
+        "admitted": true
+      },
+      "something soft drapes against your cheek.": {
+        "cos": 0.5980292601839633,
+        "admitted": true
+      },
+      "soft fabric brushes your cheek.": {
+        "cos": 0.5992846177027559,
+        "admitted": true
+      },
+      "steady pressure presses against your chest.": {
+        "cos": 0.4091562245156558,
+        "admitted": true
+      },
+      "firm weight rests on your chest.": {
+        "cos": 0.515717125119963,
+        "admitted": true
+      },
+      "a low vibration hums beneath your back.": {
+        "cos": 0.45402401028911854,
+        "admitted": true
+      },
+      "a faint tremor runs beneath your back.": {
+        "cos": 0.4914659873519231,
+        "admitted": true
+      },
+      "a voice nearby asks if you understand.": {
+        "cos": 0.3487006934936609,
+        "admitted": true
+      },
+      "someone close by asks if you follow.": {
+        "cos": 0.34082180701931986,
+        "admitted": true
+      },
+      "two people are arguing in the next room.": {
+        "cos": 0.07966499681295224,
+        "admitted": false
+      },
+      "the room grows quiet.": {
+        "cos": 0.2799030630762902,
+        "admitted": true
+      }
+    }
+  },
+  "R1_bare_isolated": {
+    "0.0": {
+      "the smell of food fills the air.": true,
+      "a portion of food rests within reach.": true,
+      "a fresh portion sits beside you.": true,
+      "warm food rises in your belly.": true,
+      "fullness settles in your belly.": false,
+      "fullness eases the pull of hunger.": false,
+      "your stomach feels satisfied.": false,
+      "heat blooms across your fingertips.": false,
+      "warmth spreads through your fingers.": false,
+      "an abrupt chill grips your shoulders.": false,
+      "sudden cold seizes your shoulders.": false,
+      "something soft drapes against your cheek.": false,
+      "soft fabric brushes your cheek.": false,
+      "steady pressure presses against your chest.": false,
+      "firm weight rests on your chest.": false,
+      "a low vibration hums beneath your back.": false,
+      "a faint tremor runs beneath your back.": false,
+      "a voice nearby asks if you understand.": false,
+      "someone close by asks if you follow.": false,
+      "two people are arguing in the next room.": false,
+      "the room grows quiet.": false
+    },
+    "0.1": {
+      "the smell of food fills the air.": true,
+      "a portion of food rests within reach.": true,
+      "a fresh portion sits beside you.": true,
+      "warm food rises in your belly.": true,
+      "fullness settles in your belly.": true,
+      "fullness eases the pull of hunger.": true,
+      "your stomach feels satisfied.": true,
+      "heat blooms across your fingertips.": true,
+      "warmth spreads through your fingers.": true,
+      "an abrupt chill grips your shoulders.": false,
+      "sudden cold seizes your shoulders.": false,
+      "something soft drapes against your cheek.": true,
+      "soft fabric brushes your cheek.": false,
+      "steady pressure presses against your chest.": false,
+      "firm weight rests on your chest.": false,
+      "a low vibration hums beneath your back.": false,
+      "a faint tremor runs beneath your back.": true,
+      "a voice nearby asks if you understand.": true,
+      "someone close by asks if you follow.": true,
+      "two people are arguing in the next room.": false,
+      "the room grows quiet.": false
+    },
+    "0.2": {
+      "the smell of food fills the air.": true,
+      "a portion of food rests within reach.": true,
+      "a fresh portion sits beside you.": true,
+      "warm food rises in your belly.": true,
+      "fullness settles in your belly.": true,
+      "fullness eases the pull of hunger.": true,
+      "your stomach feels satisfied.": true,
+      "heat blooms across your fingertips.": true,
+      "warmth spreads through your fingers.": true,
+      "an abrupt chill grips your shoulders.": true,
+      "sudden cold seizes your shoulders.": true,
+      "something soft drapes against your cheek.": true,
+      "soft fabric brushes your cheek.": true,
+      "steady pressure presses against your chest.": false,
+      "firm weight rests on your chest.": true,
+      "a low vibration hums beneath your back.": true,
+      "a faint tremor runs beneath your back.": true,
+      "a voice nearby asks if you understand.": true,
+      "someone close by asks if you follow.": true,
+      "two people are arguing in the next room.": false,
+      "the room grows quiet.": false
+    }
+  },
+  "foreign_A(0.1)_subset_of_A(0.2)": true,
+  "baseline": {
+    "pair_purity": 2,
+    "distractor_collapse": 0,
+    "rewarded_drift": 0.7353148086128865
+  },
+  "replay_centroid_drift": 0.7353148086128865,
+  "pre_ec_cos_to_seed": {
+    "you sense food nearby.": 1.0,
+    "the smell of food fills the air.": 0.7543004718012006,
+    "a portion of food rests within reach.": 0.6023333145971005,
+    "a fresh portion sits beside you.": 0.5932462331438941,
+    "warm food rises in your belly.": 0.6230941215789478,
+    "fullness settles in your belly.": 0.35236414540836153,
+    "fullness eases the pull of hunger.": 0.4193749677541414,
+    "your stomach feels satisfied.": 0.3764973767654456,
+    "heat blooms across your fingertips.": 0.39724005099207954,
+    "warmth spreads through your fingers.": 0.3892196906624313,
+    "an abrupt chill grips your shoulders.": 0.297423373881751,
+    "sudden cold seizes your shoulders.": 0.2636064405477334,
+    "something soft drapes against your cheek.": 0.39119761870992537,
+    "soft fabric brushes your cheek.": 0.3097041274438647,
+    "steady pressure presses against your chest.": 0.19010220771579778,
+    "firm weight rests on your chest.": 0.24605476187026018,
+    "a low vibration hums beneath your back.": 0.30057638439196116,
+    "a faint tremor runs beneath your back.": 0.3592005779992882,
+    "a voice nearby asks if you understand.": 0.40657493043236237,
+    "someone close by asks if you follow.": 0.4006826667968648,
+    "two people are arguing in the next room.": 0.02890718603573425,
+    "the room grows quiet.": 0.16819021991250954
+  },
+  "controls": {
+    "replay_known_answer": {
+      "max_abs_delta": 0.0,
+      "tolerance": 1e-09
+    },
+    "identity": "pass (near-tautological: a zero credit stores nothing)",
+    "drift_positive_control": {
+      "threshold": 0.4,
+      "drifted": [
+        "a faint tremor runs beneath your back.",
+        "a low vibration hums beneath your back.",
+        "an abrupt chill grips your shoulders.",
+        "firm weight rests on your chest.",
+        "heat blooms across your fingertips.",
+        "soft fabric brushes your cheek.",
+        "something soft drapes against your cheek.",
+        "steady pressure presses against your chest.",
+        "sudden cold seizes your shoulders.",
+        "warmth spreads through your fingers."
+      ]
+    },
+    "negative_control": {
+      "frozen_text": true,
+      "collapse_strings": [],
+      "A(0.0)": [],
+      "A(0.2)": [
+        "a faint tremor runs beneath your back.",
+        "a low vibration hums beneath your back.",
+        "a voice nearby asks if you understand.",
+        "an abrupt chill grips your shoulders.",
+        "heat blooms across your fingertips.",
+        "soft fabric brushes your cheek.",
+        "someone close by asks if you follow.",
+        "something soft drapes against your cheek.",
+        "sudden cold seizes your shoulders.",
+        "warmth spreads through your fingers."
+      ],
+      "I(0.2)": [
+        "a faint tremor runs beneath your back.",
+        "a low vibration hums beneath your back.",
+        "a voice nearby asks if you understand.",
+        "an abrupt chill grips your shoulders.",
+        "firm weight rests on your chest.",
+        "heat blooms across your fingertips.",
+        "soft fabric brushes your cheek.",
+        "someone close by asks if you follow.",
+        "something soft drapes against your cheek.",
+        "sudden cold seizes your shoulders.",
+        "warmth spreads through your fingers."
+      ]
+    }
+  },
+  "encoder": {
+    "model": "paraphrase-mpnet-base-v2",
+    "snapshot_revision": "6cc9279c672dc57f94445ef259b28a1b736fec8f",
+    "production_device": "mps:0",
+    "measurement_device": "cpu",
+    "sentence_transformers": "5.4.0",
+    "torch": "2.10.0",
+    "transformers": "5.5.4",
+    "torch_num_threads": 4,
+    "measurement_device_after": "cpu"
+  },
+  "configs": {
+    "ECConfig": "ECConfig(num_lsh_tables=4, bits_per_table=8, default_k=10, min_similarity=0.3, enable_semantic=False, semantic_model='all-MiniLM-L6-v2', async_embedding=True, require_gpu=False, semantic_hash_bits=16, pattern_complete_threshold=0.44, frozen_centroid_modalities=frozenset({'world', 'interoception', 'audio'}), persistence_path=None)",
+    "NACConfig": "NACConfig(max_links=10000, min_confidence_threshold=0.3, decay_interval_hours=24.0, context_similarity_threshold=0.5, temporal_window_seconds=300.0, max_pending_events=100, enable_hippocampus_queries=True, base_learning_rate=0.2, use_ec_similarity=False, persistence_path=None, bias_wall_decay_half_life_s=604800.0, cluster_bias_wall_decay_half_life_s=86400.0, reward_bias_alpha=0.15, reward_bias_decay_tau=50.0, max_reward_bias=0.2, max_cluster_reward_bias=1.0, cluster_fear_alpha=0.5, max_cluster_fear=1.0, cluster_fear_threshold=0.5, cluster_fear_failure_modes=frozenset({'drive:oxygen', 'drive:health'}), max_percept_valence=1.0, percept_valence_alpha=0.35, percept_valence_decay_tau=200.0, cluster_reward_bias_decay_tau=300.0, percept_aversion_floor=0.05, substrate_explore_bonus_weight=0.0, substrate_explore_decay_tau=50.0, drive_gate_enabled=False, drive_gate_threshold=0.5, temporal_credit_weight=0.3)"
+  },
+  "embeddings": {
+    "dtype": "float32-le",
+    "dim": 768,
+    "order": [
+      "you sense food nearby.",
+      "the smell of food fills the air.",
+      "a portion of food rests within reach.",
+      "a fresh portion sits beside you.",
+      "warm food rises in your belly.",
+      "fullness settles in your belly.",
+      "fullness eases the pull of hunger.",
+      "your stomach feels satisfied.",
+      "heat blooms across your fingertips.",
+      "warmth spreads through your fingers.",
+      "an abrupt chill grips your shoulders.",
+      "sudden cold seizes your shoulders.",
+      "something soft drapes against your cheek.",
+      "soft fabric brushes your cheek.",
+      "steady pressure presses against your chest.",
+      "firm weight rests on your chest.",
+      "a low vibration hums beneath your back.",
+      "a faint tremor runs beneath your back.",
+      "a voice nearby asks if you understand.",
+      "someone close by asks if you follow.",
+      "two people are arguing in the next room.",
+      "the room grows quiet."
+    ],
+    "sha256": "004afeceda63cd5221435117c83746e9158d1b6a41d9b1715697c89e4e1cc442",
+    "base64": "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"
+  },
+  "walk": [
+    {
+      "text": "you sense food nearby.",
+      "cls": "food_overlap_2pc",
+      "entry": "pair_01_food_detect",
+      "kind": "pairs"
+    },
+    {
+      "text": "the smell of food fills the air.",
+      "cls": "food_overlap_2pc",
+      "entry": "pair_01_food_detect",
+      "kind": "pairs"
+    },
+    {
+      "text": "a portion of food rests within reach.",
+      "cls": "food_overlap_2pc",
+      "entry": "pair_02_food_within_reach",
+      "kind": "pairs"
+    },
+    {
+      "text": "a fresh portion sits beside you.",
+      "cls": "food_overlap_2pc",
+      "entry": "pair_02_food_within_reach",
+      "kind": "pairs"
+    },
+    {
+      "text": "warm food rises in your belly.",
+      "cls": "food_overlap_2pc",
+      "entry": "pair_03_satiety_belly",
+      "kind": "pairs"
+    },
+    {
+      "text": "fullness settles in your belly.",
+      "cls": "food_overlap_2pc",
+      "entry": "pair_03_satiety_belly",
+      "kind": "pairs"
+    },
+    {
+      "text": "fullness eases the pull of hunger.",
+      "cls": "food_overlap_2pc",
+      "entry": "pair_04_hunger_satiation",
+      "kind": "pairs"
+    },
+    {
+      "text": "your stomach feels satisfied.",
+      "cls": "food_overlap_2pc",
+      "entry": "pair_04_hunger_satiation",
+      "kind": "pairs"
+    },
+    {
+      "text": "heat blooms across your fingertips.",
+      "cls": "matching_thermal_roy1",
+      "entry": "pair_05_hand_warmth",
+      "kind": "pairs"
+    },
+    {
+      "text": "warmth spreads through your fingers.",
+      "cls": "matching_thermal_roy1",
+      "entry": "pair_05_hand_warmth",
+      "kind": "pairs"
+    },
+    {
+      "text": "an abrupt chill grips your shoulders.",
+      "cls": "novel_cold_shock_roy1",
+      "entry": "pair_06_cold_shock_shoulder",
+      "kind": "pairs"
+    },
+    {
+      "text": "sudden cold seizes your shoulders.",
+      "cls": "novel_cold_shock_roy1",
+      "entry": "pair_06_cold_shock_shoulder",
+      "kind": "pairs"
+    },
+    {
+      "text": "something soft drapes against your cheek.",
+      "cls": "matching_texture_roy1",
+      "entry": "pair_07_cheek_soft",
+      "kind": "pairs"
+    },
+    {
+      "text": "soft fabric brushes your cheek.",
+      "cls": "matching_texture_roy1",
+      "entry": "pair_07_cheek_soft",
+      "kind": "pairs"
+    },
+    {
+      "text": "steady pressure presses against your chest.",
+      "cls": "novel_pressure_roy1",
+      "entry": "pair_08_chest_pressure",
+      "kind": "pairs"
+    },
+    {
+      "text": "firm weight rests on your chest.",
+      "cls": "novel_pressure_roy1",
+      "entry": "pair_08_chest_pressure",
+      "kind": "pairs"
+    },
+    {
+      "text": "a low vibration hums beneath your back.",
+      "cls": "novel_vibration_roy1",
+      "entry": "pair_09_back_vibration",
+      "kind": "pairs"
+    },
+    {
+      "text": "a faint tremor runs beneath your back.",
+      "cls": "novel_vibration_roy1",
+      "entry": "pair_09_back_vibration",
+      "kind": "pairs"
+    },
+    {
+      "text": "a voice nearby asks if you understand.",
+      "cls": "unrelated_social_roy1",
+      "entry": "pair_10_social_question",
+      "kind": "pairs"
+    },
+    {
+      "text": "someone close by asks if you follow.",
+      "cls": "unrelated_social_roy1",
+      "entry": "pair_10_social_question",
+      "kind": "pairs"
+    },
+    {
+      "text": "two people are arguing in the next room.",
+      "cls": "cross_modality_distractor",
+      "entry": "dist_01_thermal_vs_social",
+      "kind": "distractors"
+    },
+    {
+      "text": "the room grows quiet.",
+      "cls": "cross_class_distractor",
+      "entry": "dist_05_satiety_vs_ambient",
+      "kind": "distractors"
+    }
+  ],
+  "determinism": {
+    "runs": 2,
+    "matrix_digest": "8f842dcc617001078dd86c3dcf68a04d66062259280350084699f6db4150290b"
+  },
+  "record_kind": "diagnosis",
+  "status": "ok",
+  "mock": false,
+  "code_provenance": {
+    "executed_maxim_file": "/Users/dennyschaedig/Scripts/Maxim/.worktrees/e4-run/src/maxim/__init__.py",
+    "executed_git_hash": "a8302db1dc9d2a1b487f3c41266f99a07bcef809",
+    "harness_run_id": "cc3841c369094bf7ab95591a92210986",
+    "harness_family": "in_process",
+    "working_tree_dirty_src_scripts": false,
+    "code_tree_sha256": "ac7bd07ee5251c64c0a9f8c8d3e28f92263f6487bca433c6198b41fcdd1e1283",
+    "python": "/Users/dennyschaedig/Scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennyschaedig/Scripts/Maxim/.worktrees/e4-run/src"
+  },
+  "ts": 1791256232.4408598,
+  "_format_version": "1.0"
+}

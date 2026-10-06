@@ -34,8 +34,8 @@ no production caller; the Cerebellum's forward model trains live and was silentl
 |---|---|---|---|---|---|
 | E1 | [#908](https://github.com/dennys246/Maxim/issues/908) | Cerebellum state never saved — **DONE 2026-10-04** | bug, `src/` | **yes (T7)** | none |
 | E2 | [#909](https://github.com/dennys246/Maxim/issues/909) | Motor-engram read side: docs overclaim, dormancy undeclared — **DONE 2026-10-04** | docs + docstrings | **yes (T7)** | none |
-| E3 | [#910](https://github.com/dennys246/Maxim/issues/910) | `[DANGEROUS]` annotation unreachable | dead branch, `src/` | **yes (T7)** | none (branch never fires) |
-| E4 | [#911](https://github.com/dennys246/Maxim/issues/911) | Recognition widening text-only; text drift hazard | scope doc + offline measurement | **yes (T7)** — the measurement, not a fix | none (offline) |
+| E3 | [#910](https://github.com/dennys246/Maxim/issues/910) | `[DANGEROUS]` annotation unreachable — **DONE 2026-10-05** | dead branch, `src/` | **yes (T7)** | none (branch never fires) |
+| E4 | [#911](https://github.com/dennys246/Maxim/issues/911) | Recognition widening text-only; text drift hazard — **DONE 2026-10-06: NO COLLAPSE** | scope doc + offline measurement | **yes (T7)** — the measurement, not a fix | none (offline) |
 | E5 | [#899](https://github.com/dennys246/Maxim/issues/899) | `time_of_day` linear → daily wrap boundary | substrate geometry | no — Phase 5 keying / Rung B | **Exp 53b, 56, 60, 61, 62** |
 | E6 | [#848](https://github.com/dennys246/Maxim/issues/848) | Episodic engrams never reach action (2S-e) | new consumer | no — memory line | Exp 60–62 if it touches selection |
 | E7 | #909 (read side) | Motor engrams / forward-model predictions unread | resurrection | no — Phase 5 graded predictor | per its own plan |
@@ -137,6 +137,27 @@ upper bound: no live path gives a text node positive reward today. The harness i
 `docs/experiments/data/e4_text_widening_drift/`. The prereg's frozen rule decides (COLLAPSE → a design entry
 here whose EC change lands with or before the first positive text-credit producer; NO HEADROOM → #911 stays open
 for an owner decision; NO COLLAPSE → close #911 with the numbers).
+
+**Result (2026-10-06): NO COLLAPSE**, record
+[diagnosis.json](../experiments/data/e4_text_widening_drift/diagnosis.json) (`status: ok`, `mock: false`, clean
+tree at a8302db1 on `main`; every instrument check passed, two runs bit-identical). In R1 SEQUENTIAL the rewarded
+node (`"you sense food nearby."`, override 0.44 → 0.24 at the cap) holds 12 of the 22 strings at bias 0 and 21 at
+bias 0.2, but every foreign string it gains at 0.2 is also admitted by the replay-isolated arm, so the gain is the
+radius at the cap, not reward-driven centroid drift; `E(0.2)` is empty. **Headroom was one string** (`"two people are arguing in
+the next room."`, sequential cosine 0.17 to the rewarded centroid against a 0.24 threshold), so the meter could see drift in
+one place only; this is the thin headroom the owner chose to keep the rule for and disclose. **Widening overreach**, every foreign string in `I(0.2)` as the prereg defines it (the input to whoever builds
+the first positive text-credit producer), is 13 strings. Six are admitted only because of the reward (the record's
+`widening_overreach` field, which is `I(0.2)` minus `I(0.0)`; the field is narrower than the prereg's term, and
+the verdict reads `I(0.2)` itself): `"a voice nearby asks if you understand."`, `"someone close by asks if you
+follow."`, `"an abrupt chill grips your shoulders."`, `"sudden cold seizes your shoulders."`, `"steady pressure
+presses against your chest."`, `"the room grows quiet."`. Seven are admitted already at the base threshold 0.44,
+so the 0.44 radius around the within-concept running-mean centroid already spans concepts (none
+clears 0.44 against the seed alone): the thermal and texture pairs (`"heat blooms across your fingertips."`,
+`"warmth spreads through your fingers."`, `"soft fabric brushes your cheek."`, `"something soft drapes against
+your cheek."`, which also sit in the sequential node at bias 0), `"a faint tremor runs beneath your back."`, `"a low
+vibration hums beneath your back."` and `"firm weight rests on your chest."`. Reported, never
+deciding: RA SEQUENTIAL (every node rewarded) merges the 22 strings into 2 nodes at bias 0.2. The bound covers this
+fixture, walk order, node and encoder only (prereg, "What this does not claim").
 
 **Sensor widening** — no action; recorded as an input to the Rung B keying design (it would pull
 neighbouring situations into a node that carries fear or want: a generalization mechanism).
