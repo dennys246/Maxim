@@ -284,7 +284,8 @@ def test_the_session_end_reports_what_the_cue_found(tmp_path):
 
 
 def test_the_loop_resolves_its_cue_once_and_degrades_loudly(tmp_path, caplog):
-    from maxim.runtime.agent_loop import NO_SITUATION_CUE, _resolve_situation_cue
+    from maxim.runtime.agent_loop import NO_SITUATION_CUE
+    from maxim.runtime.loop_setup import _resolve_situation_cue
     from maxim.runtime.bio_stack import build_bio_stack
 
     assert _resolve_situation_cue(None) is NO_SITUATION_CUE  # no memory at all: the explicit opt-out
@@ -299,7 +300,7 @@ def test_the_loop_resolves_its_cue_once_and_degrades_loudly(tmp_path, caplog):
 def test_the_loop_sensor_encoder_is_built_only_with_an_ec(tmp_path):
     from types import SimpleNamespace
 
-    from maxim.runtime.agent_loop import _build_loop_sensor_encoder
+    from maxim.runtime.loop_setup import _build_loop_sensor_encoder
     from maxim.runtime.bio_stack import build_bio_stack
     from maxim.similarity.encoder import SensorEncoder
 
@@ -313,7 +314,7 @@ def test_a_sensor_encoder_that_fails_to_build_is_reported_not_hidden(monkeypatch
     from types import SimpleNamespace
 
     import maxim.similarity.encoder as encoder_module
-    from maxim.runtime.agent_loop import _build_loop_sensor_encoder
+    from maxim.runtime.loop_setup import _build_loop_sensor_encoder
 
     def broken(**_kw):
         raise ValueError("encoder boom")

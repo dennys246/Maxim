@@ -459,6 +459,7 @@ jobs:
                src/maxim/create.py src/maxim/load.py \
                src/maxim/hivemind/ \
                src/maxim/runtime/executor.py src/maxim/runtime/agent_loop.py \
+               src/maxim/runtime/loop_setup.py \
                src/maxim/bridges/ src/maxim/planning/ \
                --ignore-missing-imports --follow-imports=silent --warn-unused-ignores
 

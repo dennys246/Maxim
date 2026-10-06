@@ -156,7 +156,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "run_agentic_loop",
-      "lines": 3381
+      "lines": 3248
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -292,6 +292,7 @@
     "start_simulation_mode tightened 3248 -> 3229 the same day (narrator reliability before O19 campaign 3, owner-approved fence touch) when the narrator's opening prompts moved to the module-level sim_types.py::build_kickoff_prompt / narrator_tools_block (the tool list now comes from the narrator's real registry) and the fresh start and the resume-not-found fallback became one branch, paying for the min_finish_turns parameter (finish_simulation refused below an explicit cap) added in the same change.",
     "run_agentic_loop tightened 3391 -> 3384 in the same change when the stale-proposal drop moved to the module-level _drop_stale_proposal, paying for one planning request in flight per narrator (_planning_submit_in_flight, _take_deferred_inputs) and the reason-carrying retry.",
     "run_agentic_loop tightened 3384 -> 3381 on 2026-10-04 (roadmap 1.3.2 item 4, #1083) when the approved-proposal situation read moved to the module-level _approved_situation in agent_loop.py (the queued Proposal now references its LLMProposal as source), paying for the mypy annotations and narrowings added to the loop in the same change.",
-    "2026-10-04 (roadmap 1.3.2 item 6, #940 item 1): v2 — one ratchet. Every function in src/maxim over 200 lines (53, 19 of them over 300) pinned at its span on that day; scripts/lint_function_length.py is the only checker (strict equality, raises only via `exceptions`); test_function_length_baseline.py deleted."
+    "2026-10-04 (roadmap 1.3.2 item 6, #940 item 1): v2 — one ratchet. Every function in src/maxim over 200 lines (53, 19 of them over 300) pinned at its span on that day; scripts/lint_function_length.py is the only checker (strict equality, raises only via `exceptions`); test_function_length_baseline.py deleted.",
+    "run_agentic_loop tightened 3381 -> 3248 on 2026-10-05 (roadmap 1.3.2 decomposition, slice 1) when the setup block moved to runtime/loop_setup.py::build_loop_run (the frozen LoopRun of per-run handles, unpacked into the loop's existing local names) with its helpers _build_sim_adapter / _context_pool_config / _novelty_gate / _planning_liveness_gate, all under 200 lines; a pure move."
   ]
 }

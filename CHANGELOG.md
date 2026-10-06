@@ -25,6 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`agent_loop` decomposition, slice 1: the loop's setup moves to `runtime/loop_setup.py`** (roadmap 1.3.2
+  §"The decomposition"). Everything `run_agentic_loop` builds and starts before its first tick (the simulation
+  adapter, the first state persist, the context pool and prefetcher, the `LoopController`, the LLM loop
+  overrides, the Default Network start, the bio handles, the bio session start and the planning-liveness gate)
+  is now `build_loop_run(...)`, which returns a frozen `LoopRun` of per-run handles that the loop unpacks into
+  the names its body already read. A pure move, with no behaviour change: the slice-0 gates stay green
+  unchanged, and `tests/unit/test_loop_setup_characterization.py` (written before the move) pins the setup
+  through the public entry. `run_agentic_loop` shrinks 3,381 → 3,248 lines; `loop_setup.py` joins CI's mypy
+  set.
+
 - **Coverage is a CI gate** (roadmap 1.3.2 item 5, the gate half). The required fast suite now runs under
   coverage in its one run (`coverage==7.13.3` and `pytest-cov==7.0.0`, pinned exactly), and
   `scripts/lint_coverage.py` checks the result. There is an overall floor and one per package, measured in CI
