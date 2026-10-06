@@ -331,11 +331,9 @@ class TestNullAdapterPerceptCarry:
 def test_agent_loop_1_16_gate_reads_current_percept_not_is_sim_mode():
     """Source pin: the §1.16 gate must key on the side-channel, not the
     is_sim_mode proxy — reverting it silently re-darkens the live path."""
-    import inspect
+    from tests.unit._loop_source import loop_source
 
-    import maxim.runtime.agent_loop as agent_loop
-
-    src = inspect.getsource(agent_loop)
+    src = loop_source()  # the loop's modules, wherever the gate lives (1.3.2 decomposition)
     assert 'if getattr(sim, "current_percept", None) is not None and aut_mode != "substrate-primary":' in src, (
         "§1.16 gate no longer keys on sim.current_percept (Stage 3 re-gate reverted?)"
     )
@@ -377,10 +375,8 @@ class TestIdleGateSeesCarriedPercept:
     def test_agent_loop_idle_gate_consults_the_peek(self):
         """Source pin, mirroring the §1.16 pin: reverting the idle-gate term
         silently re-deafens the live path."""
-        import inspect
+        from tests.unit._loop_source import loop_source
 
-        import maxim.runtime.agent_loop as agent_loop
-
-        src = inspect.getsource(agent_loop)
+        src = loop_source()  # the loop's modules, wherever the gate lives (1.3.2 decomposition)
         assert '_has_carried_percept = bool(getattr(sim, "has_carried_percept", lambda: False)())' in src
         assert "or _has_carried_percept" in src

@@ -99,7 +99,9 @@ def test_the_follow_up_input_is_built_in_exactly_one_place() -> None:
         for p in (REPO / "src" / "maxim").rglob("*.py")
         if "[ACTION_FOLLOWUP type={" in p.read_text()
     ]
-    assert hits == ["src/maxim/runtime/agent_loop.py"]
+    from tests.unit._loop_source import loop_source_relpaths
+
+    assert len(hits) == 1 and hits[0].removeprefix("src/maxim/") in loop_source_relpaths(), hits
 
 
 # -- end to end through the real follow-up prompt --------------------------------------------
@@ -156,10 +158,12 @@ def test_the_loop_builds_its_follow_up_only_through_the_consumer() -> None:
 
     from maxim.runtime import agent_loop
 
-    source = (REPO / "src/maxim/runtime/agent_loop.py").read_text()
+    from tests.unit._loop_source import loop_source
+
+    source = loop_source()  # the loop's modules (1.3.2 decomposition)
     assert source.count("[ACTION_FOLLOWUP type={") == 1
     assert "[ACTION_FOLLOWUP type={" in inspect.getsource(agent_loop._followup_synthetic_input)
-    assert "_followup_synthetic_input(ctrl.pending_action_followup)" in inspect.getsource(agent_loop.run_agentic_loop)
+    assert "_followup_synthetic_input(ctrl.pending_action_followup)" in source
 
 
 def test_every_control_character_except_tab_and_newline_is_stripped() -> None:

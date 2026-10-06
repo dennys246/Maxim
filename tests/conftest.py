@@ -336,6 +336,17 @@ def _isolate_maxim_memory_strategy_env():
 
 
 @pytest.fixture(autouse=True)
+def _scrub_ci_event_env(monkeypatch):
+    """A test never inherits the runner's GitHub event (#1089).
+
+    On a push to main the diff-scoped lints read ``GITHUB_EVENT_PATH`` and ask the Actions API for their base; a
+    lint test running in that job would otherwise judge its fixture repo against the REAL push. Tests that want an
+    event set it themselves (``tests/unit/_push_event_helpers.py::fake_push``)."""
+    for name in ("GITHUB_EVENT_NAME", "GITHUB_EVENT_PATH", "GITHUB_BASE_REF", "PR_TITLE", "PR_BODY"):
+        monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_auto_download_env():
     """Scrub ``MAXIM_AUTO_DOWNLOAD_MODELS`` across every test.
 

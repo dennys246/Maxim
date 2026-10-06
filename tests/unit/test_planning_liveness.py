@@ -463,6 +463,7 @@ class TestSlowCallIsNotALostTurn:
         """A running or completed-unconsumed job keeps section 2 reachable."""
         from maxim.runtime import agent_loop
 
+        # FUNCTION-SPECIFIC (a region/ordering inside run_agentic_loop): slice 2 (idle gate) updates it consciously.
         src = inspect.getsource(agent_loop.run_agentic_loop)
         gate = src.split("if not (", 1)[0]
         assert "llm_worker.latest_attempt_state()" in gate
@@ -473,6 +474,7 @@ class TestSlowCallIsNotALostTurn:
         """The backstop cannot race the result queue publication."""
         from maxim.runtime import agent_loop
 
+        # FUNCTION-SPECIFIC (a region/ordering inside run_agentic_loop): slice 2 (idle gate) updates it consciously.
         src = inspect.getsource(agent_loop.run_agentic_loop)
         gate_idx = src.index("_planning_attempt_is_active(_planning_attempt_state)")
         backstop_idx = src.index("planning_job_completed_without_proposal")
@@ -488,32 +490,44 @@ class TestSlowCallIsNotALostTurn:
 class TestLoopWiringPins:
     @pytest.fixture(scope="class")
     def loop_src(self):
+        """``run_agentic_loop``'s own body: for the FUNCTION-SPECIFIC pins (a region split, an ordering).
+        A decomposition slice that moves that code updates them consciously."""
         from maxim.runtime import agent_loop
 
         return inspect.getsource(agent_loop.run_agentic_loop)
 
-    def test_fallback_drop_calls_handler(self, loop_src):
-        assert "fallback_proposal_dropped" in loop_src
+    @pytest.fixture(scope="class")
+    def loop_text(self):
+        """Every loop module (``tests/unit/_loop_source.py``): for the "the loop contains X" pins, which
+        must survive a 1.3.2 decomposition slice moving X into a ``runtime/loop_*.py`` module."""
+        from tests.unit._loop_source import loop_source
 
-    def test_error_drop_calls_handler_and_excludes_shutdown(self, loop_src):
-        assert "proposal_error:" in loop_src
-        assert 'new_proposal.error != "shutdown"' in loop_src
+        return loop_source()
 
-    def test_stale_drop_calls_handler(self, loop_src):
+    def test_fallback_drop_calls_handler(self, loop_text):
+        assert "fallback_proposal_dropped" in loop_text
+
+    def test_error_drop_calls_handler_and_excludes_shutdown(self, loop_text):
+        assert "proposal_error:" in loop_text
+        assert 'new_proposal.error != "shutdown"' in loop_text
+
+    def test_stale_drop_calls_handler(self, loop_text):
         from maxim.runtime import agent_loop
 
-        assert "_drop_stale_proposal(" in loop_src
+        from tests.unit._loop_source import loop_call_count
+
+        assert loop_call_count("_drop_stale_proposal") >= 1  # a call, not the def
         assert "stale_proposal_dropped" in inspect.getsource(agent_loop._drop_stale_proposal)
 
-    def test_idle_gate_has_terminal_job_backstop(self, loop_src):
-        assert "planning_job_completed_without_proposal" in loop_src
+    def test_idle_gate_has_terminal_job_backstop(self, loop_text):
+        assert "planning_job_completed_without_proposal" in loop_text
         # The backstop keys on "nothing came back since the last submit".
-        assert "ctrl.last_proposal_time < ctrl.last_llm_submit_time" in loop_src
+        assert "ctrl.last_proposal_time < ctrl.last_llm_submit_time" in loop_text
 
-    def test_no_action_no_error_proposal_calls_handler(self, loop_src):
+    def test_no_action_no_error_proposal_calls_handler(self, loop_text):
         from maxim.runtime.agent_loop import _proposal_without_action_reason
 
-        assert "_proposal_without_action_reason(new_proposal)" in loop_src
+        assert "_proposal_without_action_reason(new_proposal)" in loop_text
         assert "proposal_without_action" in inspect.getsource(_proposal_without_action_reason)
 
     def test_single_gate_covers_every_failure_site(self, loop_src):
@@ -556,10 +570,12 @@ class TestLoopWiringPins:
         assert raise_idx > teardown_idx
 
     def test_proposal_time_stamped_on_any_proposal(self, loop_src):
+        # FUNCTION-SPECIFIC: the same line also lives in a module-level helper, so the loop's own stamp
+        # is only visible in run_agentic_loop's body; a slice that moves it updates this pin.
         assert "ctrl.last_proposal_time = time.time()" in loop_src
 
-    def test_global_call_registry_does_not_control_loop_liveness(self, loop_src):
-        assert "any_call_in_flight" not in loop_src
+    def test_global_call_registry_does_not_control_loop_liveness(self, loop_text):
+        assert "any_call_in_flight" not in loop_text
 
     def test_streak_reset_is_enforced_by_the_type(self):
         """Reset used to live at ONE install site while three others bypassed
@@ -736,9 +752,9 @@ class TestParseFailureVsBadToolChoice:
     byte-identical requeue just reproduces the same name."""
 
     def test_reasons_are_distinguished_at_the_call_site(self):
-        from maxim.runtime import agent_loop
+        from tests.unit._loop_source import loop_source
 
-        src = inspect.getsource(agent_loop.run_agentic_loop)
+        src = loop_source()  # the loop's modules (1.3.2 decomposition)
         assert '_is_parse_failure = getattr(new_proposal, "reasoning", "") == "llm_fallback"' in src
         assert "unregistered_tool_proposed" in src
         assert "fallback_proposal_dropped" in src
@@ -746,6 +762,7 @@ class TestParseFailureVsBadToolChoice:
     def test_bad_tool_name_is_recorded_for_correction(self):
         from maxim.runtime import agent_loop
 
+        # FUNCTION-SPECIFIC (a region/ordering inside run_agentic_loop): the slice that moves §2 (LLM-primary; outside phase 1) updates it consciously.
         src = inspect.getsource(agent_loop.run_agentic_loop)
         block = src.split("_is_parse_failure = ", 1)[1].split("new_proposal = None", 1)[0]
         assert "_tools_hallucinated" in block, (
@@ -800,11 +817,11 @@ class TestExactJobStateClosesPublicationRace:
     COMPLETED stays active until get_latest_proposal consumes the queued job."""
 
     def test_backstop_has_no_timing_heuristic(self):
-        from maxim.runtime import agent_loop
+        from tests.unit._loop_source import loop_source
 
-        src = inspect.getsource(agent_loop.run_agentic_loop)
+        src = loop_source()  # the loop's modules (1.3.2 decomposition)
         assert "_lost_turn_observations" not in src
-        assert "LLMAttemptState.COMPLETED" in src
+        assert "is LLMAttemptState.COMPLETED" in src  # the loop's read, not the helper's state set
         assert "planning_job_completed_without_proposal" in src
 
 

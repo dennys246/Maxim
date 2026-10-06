@@ -126,14 +126,18 @@ def test_real_tree_counts_every_spelling() -> None:
 # ── the vacuous-guard blocker: a skipped diff-scoped check on a PR is an ERROR ──
 
 
-def test_must_not_skip_is_true_only_on_a_pull_request(monkeypatch, capsys) -> None:
+def test_must_not_skip_is_true_on_a_pull_request_and_a_push(monkeypatch, capsys) -> None:
+    """A push to main is a gate surface too (#1089): skipping there would leave the push unchecked."""
     monkeypatch.delenv("GITHUB_EVENT_NAME", raising=False)
     assert _lint_git.must_not_skip("no base") is False
-    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "schedule")
     assert _lint_git.must_not_skip("no base") is False
     monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
     assert _lint_git.must_not_skip("no base") is True
     assert "fetch-depth: 0" in capsys.readouterr().err
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+    assert _lint_git.must_not_skip("no base") is True
+    assert "cannot run on this push" in capsys.readouterr().err
 
 
 def test_ratchet_follows_renames(repo) -> None:

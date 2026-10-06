@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -386,3 +387,113 @@ def test_idle_tick_period_ignores_proposing_ticks() -> None:
     }
     assert R.idle_tick_period_median_s(ev) == 0.5  # the 0.8 s tie-break dispatch is excluded
     assert R.idle_tick_period_median_s({"ticks": [{"t": 0.0}, {"t": 0.7, "proposal": "x"}]}) is None
+
+
+def _equal_to_float_precision(a, b, rel: float = 1e-9) -> bool:
+    """Exact equality for everything but floats, which must agree to ``rel`` (relative).
+
+    The reproduction gates recompute statistics with scipy, whose last-ulp results differ across
+    versions and platforms (CI's Linux scipy 1.18 vs a local 1.15: a Mann-Whitney p of
+    ...0530618 vs ...0530624, 4e-17 relative). Verdicts, statuses, counts, keys and every
+    non-float stay exact; a real change in a statistic is far above 1e-9."""
+    if isinstance(a, bool) or isinstance(b, bool):
+        return a is b
+    if isinstance(a, float) or isinstance(b, float):
+        return (
+            isinstance(a, (int, float)) and isinstance(b, (int, float)) and math.isclose(a, b, rel_tol=rel, abs_tol=0.0)
+        )
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(_equal_to_float_precision(a[k], b[k], rel) for k in a)
+    if isinstance(a, list) and isinstance(b, list):
+        return len(a) == len(b) and all(_equal_to_float_precision(x, y, rel) for x, y in zip(a, b))
+    return a == b
+
+
+def test_float_precision_comparison_is_exact_except_for_float_ulps() -> None:
+    assert _equal_to_float_precision({"p": 0.00014348670002530624}, {"p": 0.00014348670002530618})
+    assert not _equal_to_float_precision({"p": 0.000143486700}, {"p": 0.000143486701})  # 7e-9 relative: a real change
+    assert not _equal_to_float_precision({"verdict": "EARNED"}, {"verdict": "NULL"})
+    assert not _equal_to_float_precision({"n": 12}, {"n": 13})
+    assert not _equal_to_float_precision({"ok": True}, {"ok": 1})
+    assert not _equal_to_float_precision({"a": 1.0}, {"a": 1.0, "b": 2})
+
+
+def _committed_r3(name: str):
+    root = Path(__file__).resolve().parents[2]
+    return json.loads((root / "docs/experiments/data" / name).read_text())
+
+
+def _committed_r3_rows() -> list[dict]:
+    root = Path(__file__).resolve().parents[2]
+    return [
+        json.loads(ln) for ln in (root / "docs/experiments/data/r3_bench.jsonl").read_text().splitlines() if ln.strip()
+    ]
+
+
+def test_report_over_the_committed_r3_bench_matches_the_committed_amended_report() -> None:
+    """The decomposition's preservation gate (1.3.2 slice 0, roadmap_1_3_x.md §"The decomposition"): the
+    committed amended R3 report (`r3_report_amended.json`, written by `r3_run.py report --amended`) is
+    reproduced offline from the committed bench rows and gauntlet, by the same composition `_report` runs:
+    Amendment 2's `reclassify_under_amendments` (pure), then `report(...)` with the hash rule satisfied
+    by ancestry. Amendment 1's ancestry check reads git history, which a shallow CI clone does not have,
+    so this test takes its RECORDED outcome from the committed report (all True) — the check itself is
+    re-proven against real history by `test_amendment_1_holds_for_the_real_r3_cal_and_bench_hashes`.
+    Compared through a JSON round-trip (the committed file stores `median_ci95` tuples as lists)."""
+    committed = _committed_r3("r3_report_amended.json")
+    gauntlet = _committed_r3("r3_gauntlet.json")
+    a1 = committed["amended"]["amendment_1"]
+    assert a1["cal_code_hash"] == gauntlet["cal_code_hash"]
+    assert all(a1["harness_unchanged"].values())
+    rows, recounted = R.reclassify_under_amendments(_committed_r3_rows())
+    bench_hashes = sorted(
+        {
+            str((r.get("provenance") or {}).get("executed_git_hash"))
+            for r in rows
+            if r.get("campaign_id") == committed["campaign_id"]
+        }
+    )
+    assert bench_hashes == a1["bench_hashes"]
+    rep = json.loads(
+        json.dumps(
+            R.report(
+                rows,
+                campaign_id=committed["campaign_id"],
+                gauntlet=gauntlet,
+                hash_rule_satisfied_by_ancestry=True,
+            ),
+            default=str,
+        )
+    )
+    assert rep["status"] == committed["status"] == "COMPLETE"
+    assert set(rep) == set(committed) - {"amended"}
+    for field in rep:
+        assert _equal_to_float_precision(rep[field], committed[field]), field
+    assert [
+        {"arm": r["arm"], "seed": r["seed"], "tick_period_median_s": r["amended"]["tick_period_median_s"]}
+        for r in recounted
+    ] == committed["amended"]["amendment_2"]["recounted"]
+
+
+def test_report_over_the_committed_r3_bench_matches_the_committed_unamended_report() -> None:
+    """The pre-amendment report (`r3_report.json`, INCOMPLETE under the literal hash rule) is reproduced
+    from the same committed inputs with no amendment applied. It was written by the code BEFORE the
+    amendment commit (19daa6b4), which renamed each arm's `tick_period_median_s` to
+    `tick_period_median_s_in_window` and added `idle_tick_period_median_s`; the rename is applied here,
+    explicitly, and the added field is the only one not compared."""
+    committed = _committed_r3("r3_report.json")
+    for arm in committed["arms"].values():
+        arm["tick_period_median_s_in_window"] = arm.pop("tick_period_median_s")
+    rep = json.loads(
+        json.dumps(
+            R.report(
+                _committed_r3_rows(), campaign_id=committed["campaign_id"], gauntlet=_committed_r3("r3_gauntlet.json")
+            ),
+            default=str,
+        )
+    )
+    for arm in rep["arms"].values():
+        del arm["idle_tick_period_median_s"]
+    assert rep["status"] == committed["status"] == "INCOMPLETE"
+    assert set(rep) == set(committed)
+    for field in rep:
+        assert _equal_to_float_precision(rep[field], committed[field]), field

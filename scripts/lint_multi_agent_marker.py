@@ -86,14 +86,16 @@ def _run_git(args: list[str]) -> str:
     return out.stdout
 
 
-def _resolve_base_ref() -> str | None:
-    """Pick a base ref to diff against — origin/main, then main, then None."""
-    for ref in ("origin/main", "main"):
-        if _run_git(["rev-parse", "--verify", "--quiet", ref]).strip():
-            mb = _run_git(["merge-base", ref, "HEAD"]).strip()
-            if mb:
-                return mb
-    return None
+def _resolve_base_ref() -> tuple[str | None, str]:
+    """(base, why-not): ``_lint_git.base_ref`` — the merge-base with origin/main, or on a push the last green push
+    (#1089). This lint had its own copy of the resolver, which on a push resolved to HEAD and checked nothing."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    from _lint_git import GitUnavailable, base_ref
+
+    try:
+        return base_ref(REPO_ROOT), ""
+    except GitUnavailable as exc:
+        return None, str(exc)
 
 
 def _changed_test_files(base_ref: str) -> list[Path]:
@@ -225,7 +227,7 @@ def _lint_file(
 
 
 def main() -> int:
-    base_ref = _resolve_base_ref()
+    base_ref, why_not = _resolve_base_ref()
     if base_ref is None:
         # No diff base — a fresh clone without origin/main, or an out-of-tree run.
         # On a PULL REQUEST this lint IS the gate, so skipping is a vacuous guard:
@@ -234,7 +236,7 @@ def main() -> int:
         sys.path.insert(0, str(REPO_ROOT / "scripts"))
         from _lint_git import must_not_skip
 
-        if must_not_skip("no origin/main or main to diff against"):
+        if must_not_skip(why_not or "no origin/main or main to diff against"):
             return 2
         print("INFO: no base ref (origin/main) available; skipping multi-agent marker lint")
         return 0

@@ -242,6 +242,9 @@ class TestWiringPins:
         block, BEFORE propose_via_substrate — pinned at source level."""
         import maxim.runtime.agent_loop as al
 
+        # FUNCTION-SPECIFIC (an ordering inside §6b, kept on run_agentic_loop's body): the 1.3.2
+        # decomposition's slice 3 moves this block and updates this pin consciously
+        # (tests/unit/_loop_source.py lists every such pin).
         src = inspect.getsource(al.run_agentic_loop)
         # The branch head is the shared cadence predicate (2026-09-16, substrate wake source):
         # substrate-primary AND no pending proposal AND cadence elapsed, in ONE helper.

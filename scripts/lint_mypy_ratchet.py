@@ -409,10 +409,11 @@ def compare(head: TreeMeasure, base: TreeMeasure, renamed_from: dict[str, str]) 
 def main() -> int:
     started = time.monotonic()
     event = os.environ.get("GITHUB_EVENT_NAME")
-    # Every event except pull_request is totals-only and exits 0. If the workflow ever gains a
-    # `merge_group` trigger (a merge queue), it must be handled here as a gate, or the queue merges ungated.
+    # pull_request and push (against the last green push, _lint_git.push_base, #1089) are gates; every other
+    # event is totals-only and exits 0. If the workflow ever gains a `merge_group` trigger (a merge queue), it must
+    # be handled here as a gate, or the queue merges ungated.
     try:
-        if event and event != "pull_request":
+        if event and event not in ("pull_request", "push"):
             head = measure(REPO_ROOT)
             print(_totals("HEAD", head))
             print(f"mypy-ratchet: {event} event — totals only ({time.monotonic() - started:.1f}s)")
