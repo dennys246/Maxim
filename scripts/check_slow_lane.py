@@ -85,6 +85,8 @@ def check(xml_path: Path, roster: Path = ROSTER) -> int:
     for case in root.iter("testcase"):
         classname, name = case.get("classname", ""), case.get("name", "")
         skipped, errored = case.find("skipped"), case.find("error")
+        if skipped is not None and skipped.get("type") == "pytest.xfail":
+            skipped = None  # an xfail RAN (a strict red gate, e.g. #1120); JUnit only files it under <skipped>
         outcome = "skipped" if skipped is not None else "error" if errored is not None else "ran"
         if not classname:
             problems.append(f"module-level collection {outcome}: {name}")

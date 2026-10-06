@@ -96,3 +96,10 @@ def test_junit_keys_match_pytests_own_writer() -> None:
 
 def test_bad_usage_returns_2() -> None:
     assert C.main([]) == 2
+
+
+def test_an_xfail_is_a_run_not_a_skip(tmp_path: Path) -> None:
+    """A strict red gate (#1120) runs and fails as expected; JUnit files it under <skipped type="pytest.xfail">."""
+    classname, name = C.junit_key(B)
+    xfail = f'<testcase classname="{classname}" name="{name}"><skipped type="pytest.xfail" message="#1120"/></testcase>'
+    assert _run(tmp_path, [_case(A), xfail, _case(SMOKE, "skipped", "x")]) == 0
