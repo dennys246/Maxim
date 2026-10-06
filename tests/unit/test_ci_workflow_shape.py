@@ -76,3 +76,17 @@ def test_the_slow_lane_installs_runs_and_checks_its_roster():
 
 def test_the_claims_lint_runs_in_the_lint_job():
     assert any(_run(s).strip() == "python3 scripts/lint_claims_sync.py" for s in _steps("lint"))
+
+
+def test_tests_run_on_prs_to_any_base():
+    """D63: a stacked PR (base = a sibling branch) gets Tests at open, not only after retarget."""
+    on = WF.get("on") or WF.get(True)  # PyYAML reads the bare key `on` as True
+    assert "branches" not in (on["pull_request"] or {})
+
+
+def test_the_settings_drift_check_runs_nightly_from_the_protected_environment():
+    job = WF["jobs"]["repo-settings"]
+    assert "(nightly)" in job["name"] and job["environment"] == "settings-check"
+    step = next(s for s in job["steps"] if "check_repo_settings.py" in _run(s))
+    assert step["env"]["GH_TOKEN"] == "${{ secrets.SETTINGS_READ_TOKEN }}" and "--static" not in _run(step)
+    assert any(_run(s).strip() == "python3 scripts/check_repo_settings.py --static" for s in _steps("lint"))
