@@ -13,7 +13,13 @@ from __future__ import annotations
 import threading
 from typing import TYPE_CHECKING, Any
 
+from maxim.memory.layer import activate_after_use
 from maxim.tools.base import Tool, ToolResult
+from maxim.utils.logging import log_swallowed_exception
+
+# ExamineTool recall: search this many matches, show at most this many past ones (#845).
+_RECALL_SEARCH_LIMIT = 10
+_RECALL_SHOWN_LIMIT = 3
 
 if TYPE_CHECKING:
     from maxim.simulation.bridge import SimulationBridge
@@ -309,6 +315,7 @@ class ExamineTool(Tool):
         target_lower = target.lower()
 
         # Stage 1: scan latest bridge percept for target mentions
+        scene: set[str] = set()  # the percept texts Stage 1 reads: the present, not memory
         if self._bridge is not None:
             transcript = self._bridge.percept_source._transcript_percepts
             if transcript:
@@ -317,21 +324,40 @@ class ExamineTool(Tool):
                     text = entry.get("cli_input", "") or entry.get("content", "")
                     if not text:
                         continue
+                    scene.add(text.strip())
                     # Find sentences mentioning the target
                     for sentence in text.replace("\n", " ").split(". "):
                         if target_lower in sentence.lower():
                             observations.append(sentence.strip().rstrip(".") + ".")
 
-        # Stage 2: enrich from hippocampus if available
+        # Stage 2: recall what matching memories hold. It used to read ``context.goal``, a field
+        # ``Context`` does not have, so it never recalled anything (#845). Only genuinely PAST
+        # content: a sim captures each percept into the hippocampus, so the newest matches are
+        # usually the scene Stage 1 just read; recalling those would re-read the present and
+        # count it as a use (owner decision 2026-10-06). Behaviour tier: innate prior (a
+        # hard-coded recall rule: up to 3 of the newest matches, one sentence each).
+        recalled: dict[str, str] = {}  # observation line -> the memory it came from
         if self._hippocampus is not None:
+            from maxim.memory.hippocampus import Hippocampus
+
             try:
-                memories = self._hippocampus.search_by_content(target, limit=3)
-                for m in memories:
-                    goal = getattr(getattr(m, "context", None), "goal", "")
-                    if goal:
-                        observations.append(f"You recall: {goal}")
+                memories = self._hippocampus.search_by_content(target, limit=_RECALL_SEARCH_LIMIT)
             except Exception:
-                pass
+                log_swallowed_exception()
+                memories = []
+            shown_now = {line.lower() for line in observations}
+            for m in memories:
+                if len(recalled) >= _RECALL_SHOWN_LIMIT:
+                    break
+                if any(text.strip() in scene for text in Hippocampus.memory_texts(m)):
+                    continue  # a trace of a percept in the current scene window
+                text = Hippocampus.matching_sentence(m, target)
+                if not text or text.lower() in shown_now:
+                    continue
+                line = f"You recall: {text}"
+                shown_now.add(text.lower())  # one line per sentence, whatever its case
+                observations.append(line)
+                recalled[line] = m.id
 
         if not observations:
             return ToolResult(
@@ -350,10 +376,13 @@ class ExamineTool(Tool):
                 seen.add(obs)
                 unique.append(obs)
 
+        shown = unique[:5]
+        # What reaches the LLM is a use (memory-strength Phase 1); the search itself is not.
+        activate_after_use(self._hippocampus, (recalled[line] for line in shown if line in recalled), source="tool")
         return ToolResult(
             success=True,
             output={
                 "target": target,
-                "observation": " ".join(unique[:5]),
+                "observation": " ".join(shown),
             },
         )
