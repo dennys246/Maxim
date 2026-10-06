@@ -1,5 +1,7 @@
 # Plan review round runs BEFORE PR merge, not after
 
+**2026-10-05: the round has three lenses**, Executor, Architecture and Wire integrity. The third maps the diff's neighbours by contract type, because in the 2026-10-05 history audit all eight sampled breaking changes that had a recorded two-lens round missed the de-wiring in their scope (a sample of incidents, not a catch rate). Charter: [../CODE_REVIEW.md](../CODE_REVIEW.md); evidence: [wire-integrity-review.md](wire-integrity-review.md).
+
 **Archived from CLAUDE.md on 2026-08-13** (claude_md_diet Stage 1). The enforced rule
 survives as a compressed stub — in the slim CLAUDE.md core or in the owning
 `docs/agents/<subsystem>.md` brief (see CLAUDE.md's routing table). This file preserves

@@ -103,3 +103,5 @@ Most of these are the same shape: **a subsystem does something reasonable in iso
 interacts surprisingly once a world drives it.** The fix is almost never "change the subsystem" —
 it's "understand the interaction and design the wiring/experiment around it." When in doubt,
 **run the smallest experiment that measures the interaction** rather than reasoning from the code.
+
+**Read and fed by two reviews.** The experiment design review's wiring lens ([../experiments/DESIGN_REVIEW.md](../experiments/DESIGN_REVIEW.md)) and, since 2026-10-05, the code review's wire-integrity lens ([../CODE_REVIEW.md](../CODE_REVIEW.md)) read these entries before reviewing, and a wiring finding that generalises (a new contract type, a recurring shape, a seam that keeps breaking) adds or updates one.

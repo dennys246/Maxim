@@ -64,16 +64,17 @@ python -m pytest tests/integration/test_memory_hub.py -q
 5. Commit with a descriptive message (see format below)
 6. Push to your fork and open a PR
 
-## Pre-merge two-lens review
+## Pre-merge three-lens review
 
-**For any change that touches ≥~500 lines of `src/` (a new mechanism, a bus/bridge/builder, a bio-system, a routing layer, a CLI subcommand), run a two-lens review *before* opening the PR — not after.**
+**Every sub-plan and every change to `src/` (and any `scripts/` change that imports `maxim.*` or reads records `src/` writes) gets a three-lens review *before* the PR opens — not after.** The charter, with each lens's scope and the wire-integrity method, is [docs/CODE_REVIEW.md](docs/CODE_REVIEW.md).
 
-Spawn two independent reviews of the branch:
+Spawn three independent reviews of the branch:
 
-- **Executor lens** — does each code path do what it claims under the inputs it will actually see? Checks for silent no-ops, swallowed exceptions, env-var races, wrong-direction comparisons, and call sites that diverge from the contract they advertise.
+- **Executor lens** — does each code path inside the diff do what it claims under the inputs it will actually see, on the real path to the entry point? Checks for silent no-ops, swallowed exceptions, env-var races, wrong-direction comparisons, and refusals that never fire.
 - **Architecture lens** — does the change fit the layer graph and the existing invariants? Checks for band-aids (special cases, flags that toggle around broken behavior), duplicated source-of-truth, and mechanisms that should ride on existing infrastructure instead of being their own thing.
+- **Wire-integrity lens** — what does every producer and consumer *outside* the diff, of each contract the diff touches, get before and after? It writes a producer → consumer table and runs the charter's ten probes (connected, every site, call contract, outcomes stay distinct, persistence symmetry, gates, round trips, identity, one seam, paired lifecycle).
 
-Fold the findings into the **same branch** with a follow-up commit before the PR opens. **Fold cross-confirmed findings first** — when both lenses flag the same issue independently, that is the strongest signal the finding is real and should be trusted even when it feels minor.
+Fold the findings into the **same branch** with a follow-up commit before the PR opens. **Fold cross-confirmed findings first** — when two or more lenses flag the same issue independently, that is the strongest signal the finding is real and should be trusted even when it feels minor.
 
 Why this is non-optional and not ceremony: across the LLM-path refinement rounds (R1/R2/R3) the review surfaced correctness bugs (an env-var race, a probe mis-classification, a canonical-shim bypass) that **the test suite caught zero of** — they were correctness issues in input spaces tests didn't cover. Do *not* merge first and ship a `fix/<feature>-loose-ends` PR after; that splits the bisect surface and leaves known-buggy code on `main`.
 
