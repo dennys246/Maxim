@@ -1385,35 +1385,57 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             return results[:limit]
 
     @staticmethod
+    def _searchable_values(memory: Any) -> list[Any]:
+        """The fields ``search_by_content`` matches on: perception observations, outcome result,
+        decision reasoning, and a compressed record's summary. One list for the matcher and for
+        ``matching_sentence`` (#845: a consumer kept its own copy, and the two drifted)."""
+        perception = getattr(memory, "perception", None)
+        outcome = getattr(memory, "outcome", None)
+        decision = getattr(memory, "decision", None)
+        return [
+            getattr(perception, "observations", None) if perception is not None else None,
+            getattr(outcome, "result", None) if outcome is not None else None,
+            getattr(decision, "reasoning", None) if decision is not None else None,
+            getattr(memory, "summary", None),
+        ]
+
+    @staticmethod
     def _memory_matches_query(memory: Any, query_lower: str) -> bool:
         """Check if a memory's text content matches the query."""
-        # Check perception observations
-        perception = getattr(memory, "perception", None)
-        if perception is not None:
-            obs = getattr(perception, "observations", {})
-            if obs and query_lower in str(obs).lower():
-                return True
+        return any(value and query_lower in str(value).lower() for value in Hippocampus._searchable_values(memory))
 
-        # Check outcome result
-        outcome = getattr(memory, "outcome", None)
-        if outcome is not None:
-            result = getattr(outcome, "result", None)
-            if result and query_lower in str(result).lower():
-                return True
+    @staticmethod
+    def memory_texts(memory: Any) -> list[str]:
+        """The readable text a memory holds: the string values of the searchable fields (a dict
+        field's string values, not its repr)."""
+        texts: list[str] = []
+        for value in Hippocampus._searchable_values(memory):
+            if isinstance(value, str):
+                texts.append(value)
+            elif isinstance(value, dict):
+                texts.extend(v for v in value.values() if isinstance(v, str))
+        return texts
 
-        # Check decision reasoning
-        decision = getattr(memory, "decision", None)
-        if decision is not None:
-            reasoning = getattr(decision, "reasoning", None)
-            if reasoning and query_lower in reasoning.lower():
-                return True
+    @staticmethod
+    def matching_sentence(memory: Any, query: str, *, max_chars: int = 200) -> str:
+        """The sentence of ``memory``'s text that mentions ``query`` (case-insensitive), or "".
 
-        # Check compressed summary
-        summary = getattr(memory, "summary", None)
-        if summary and query_lower in summary.lower():
-            return True
-
-        return False
+        A sentence longer than ``max_chars`` is cut to a window around the match, so the shown
+        text still contains it. A memory that matched only through a non-text value or a dict key
+        has no such sentence.
+        """
+        query_lower = query.lower()
+        for text in Hippocampus.memory_texts(memory):
+            for sentence in text.replace("\n", " ").split(". "):
+                sentence = sentence.strip().rstrip(".")
+                at = sentence.lower().find(query_lower)
+                if at < 0:
+                    continue
+                if len(sentence) > max_chars:
+                    start = max(0, min(at - (max_chars - len(query)) // 2, len(sentence) - max_chars))
+                    sentence = sentence[start : start + max_chars].strip()
+                return sentence + "."
+        return ""
 
     def get_state(self, state_ref: str) -> dict[str, Any] | None:
         """Retrieve a full state snapshot from the StateStore.

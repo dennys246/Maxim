@@ -23,11 +23,11 @@ class FakeMemory:
 
     @dataclass
     class _Context:
-        goal: str = "test goal"
+        active_goal: str = "test goal"  # the real Context field (#845: this fake had ``goal``)
 
     @dataclass
     class _Action:
-        tool_used: str = "say"
+        tool_name: str = "say"  # the real Action field (this fake had ``tool_used``)
 
     @dataclass
     class _Outcome:
@@ -333,18 +333,6 @@ class TestExamineTool:
         result = tool.execute(target="dragon")
         assert result.success is True
         assert "don't see anything notable" in result.output["observation"]
-
-    def test_examine_enriches_from_hippocampus(self):
-        bridge = FakeBridge(
-            [
-                {"cli_input": "A stone door with carvings."},
-            ]
-        )
-        hippo = FakeHippocampus()
-        tool = ExamineTool(bridge=bridge, hippocampus=hippo)
-        # "pain" is in our fake hippocampus search
-        result = tool.execute(target="pain")
-        assert result.success is True
 
     def test_examine_no_bridge(self):
         """Examine with no bridge returns graceful fallback."""

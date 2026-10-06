@@ -1221,6 +1221,21 @@ class MemoryAgent(Agent, AgentOutputMixin):
 
         Each call acquires its own subsystem lock internally; running them in
         parallel collapses ~4x15ms sequential into ~15ms wall-clock.
+
+        Dormant since 2026-10-06: these queries fill ``relevant_memories``,
+        ``concept_context``, ``knowledge_context``, ``valence_context`` and
+        ``causal_context``, and no production path reads them (``SkillMatcher.match``
+        reads ``knowledge_context`` but has no caller). ``MemoryAgent.build_context`` is reached via
+        ``ExecAgent.propose_intent``, which uses only ``current_percept``, ``mode``
+        and ``detected_people``; the live prompt's ``StructuredContext`` comes from
+        ``InMemoryMemory.build_context``, which sets none of the four. Memory
+        content reaches the LLM through ``BioEnrichmentPipeline`` instead. They
+        still run on every throttled tick, on this pool, and two of their reads
+        count accesses (``Hippocampus.get`` in ``_get_relevant_memories``, the
+        ``atl.recall`` fallback in ``_build_knowledge_context``), so they move
+        default retention for results nothing reads (#1128). Behaviour tier: n/a. Owner decision
+        on #845 (the knowledge lookup itself was fixed so the code is correct if
+        revived).
         """
         from concurrent.futures import ThreadPoolExecutor
 
@@ -1377,7 +1392,9 @@ class MemoryAgent(Agent, AgentOutputMixin):
                     if atl is None:
                         continue
                     try:
-                        concepts = atl.recall(name=record_id, limit=1)
+                        # An id lookup, uncounted: recall(name=...) took the id as a NAME and found
+                        # nothing (#845), and get() would count an access for a result nothing reads.
+                        concepts = atl.recall_by_ids([record_id])
                         if not concepts:
                             continue
                         concept = concepts[0]
@@ -1405,7 +1422,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
                     if ag is None:
                         continue
                     try:
-                        records = ag.recall(name=record_id, limit=1)
+                        records = ag.recall_by_ids([record_id])  # an id lookup, as for the ATL above (#845)
                         if not records:
                             continue
                         record = records[0]
