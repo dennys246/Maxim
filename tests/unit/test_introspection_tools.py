@@ -60,6 +60,10 @@ class FakeMemory:
     action: FakeAction = field(default_factory=FakeAction)
     outcome: FakeOutcome = field(default_factory=FakeOutcome)
 
+    @property
+    def tool_name(self) -> str:  # the view a real EpisodicMemory has (#995)
+        return self.action.tool_name
+
 
 @dataclass
 class FakeValence:
