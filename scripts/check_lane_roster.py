@@ -1,14 +1,20 @@
 #!/usr/bin/env python
-"""Assert the scheduled `-m slow` lane ran EXACTLY its roster (roadmap 1.3.2 item 7, #940).
+"""Assert a scheduled test lane ran EXACTLY its roster (roadmap 1.3.2 item 7, #940; one checker for both lanes, #1117).
 
-History: until 2026-08-30 nothing ran `@pytest.mark.slow` tests at all; then a nightly lane with an
+Lanes (``LANES``, lane → pytest marker): ``slow`` (``-m slow``) and ``model-cache`` (``-m requires_model_cache``).
+The model-cache lane used to have its own checker, ``check_model_cache_lane.py``: a skip allow-list with no exact
+set, so a marked test that dropped out of the lane (a renamed marker, broken collection) passed. Now both lanes
+are held to the rules below.
+
+The slow lane's history: until 2026-08-30 nothing ran `@pytest.mark.slow` tests at all; then a nightly lane with an
 `executed > 0` floor. The floor was too weak: on the 2026-10-05 nightly, 46 tests were selected and 16 ran.
 The other 30 skipped, mostly for the semantic extra and the model cache the lane never installed. The lane
 was green, and the 2026-09-27 Codex card named it ("the slow lane's execution floor is only one test, not its
 expected roster"). Owner decision 2026-10-04: the lane INSTALLS and RUNS its tests, and this check holds it
 to the exact roster.
 
-``scripts/slow_lane_roster.json`` = ``{"expected": [nodeid, …], "allowed_skips": {nodeid: reason}}``.
+``scripts/lane_rosters/<lane>.json`` = ``{"expected": [nodeid, …], "allowed_skips": {nodeid: reason}}`` and no
+other key (there is no module-level allow-list: a module skipped at collection always fails).
 Each roster nodeid is mapped FORWARD to JUnit's ``(classname, name)`` with pytest's own
 ``mangle_test_address`` (never the reverse, which needs a guess about classes vs paths). Fails when:
 
@@ -22,10 +28,10 @@ Each roster nodeid is mapped FORWARD to JUnit's ``(classname, name)`` with pytes
 - nothing executed.
 
 Exit 0 clean; 1 the lane did not run its roster; 2 the report or roster is unreadable.
-``--generate`` rewrites ``expected`` from ``pytest --collect-only -m slow`` (keeping ``allowed_skips``) and
-refuses while collection reports a module-level skip or error. The PR-time twin of the roster comparison is
-``tests/unit/test_slow_lane_roster.py``, which compares collection with ``expected`` in the fast suite, so a PR
-adding or removing a slow test fails before the nightly does.
+``--lane <lane> --generate`` rewrites ``expected`` from ``pytest --collect-only -m <marker>`` (keeping
+``allowed_skips``) and refuses while collection reports a module-level skip or error. The PR-time twin of the roster
+comparison is ``tests/unit/test_lane_rosters.py``, which compares collection with ``expected`` in the fast suite, so
+a PR adding or removing a lane's test fails before the nightly does.
 """
 
 from __future__ import annotations
@@ -39,7 +45,13 @@ from xml.etree import ElementTree
 from _pytest.junitxml import mangle_test_address
 
 REPO = Path(__file__).resolve().parent.parent
-ROSTER = REPO / "scripts" / "slow_lane_roster.json"
+ROSTERS = REPO / "scripts" / "lane_rosters"
+LANES = {"slow": "slow", "model-cache": "requires_model_cache"}  # lane -> the pytest marker that selects it
+_ROSTER_KEYS = {"expected", "allowed_skips"}
+
+
+def roster_path(lane: str) -> Path:
+    return ROSTERS / f"{lane}.json"
 
 
 def junit_key(nodeid: str) -> tuple[str, str]:
@@ -48,8 +60,10 @@ def junit_key(nodeid: str) -> tuple[str, str]:
     return ".".join(parts[:-1]), parts[-1]
 
 
-def load_roster(path: Path = ROSTER) -> tuple[list[str], dict[str, str]]:
+def load_roster(path: Path) -> tuple[list[str], dict[str, str]]:
     data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or set(data) != _ROSTER_KEYS:
+        raise ValueError(f"a roster holds exactly {sorted(_ROSTER_KEYS)}")
     expected, allowed = data["expected"], data["allowed_skips"]
     if not isinstance(expected, list) or not all(isinstance(n, str) for n in expected):
         raise ValueError("expected must be a list of nodeids")
@@ -58,7 +72,7 @@ def load_roster(path: Path = ROSTER) -> tuple[list[str], dict[str, str]]:
     return expected, allowed
 
 
-def check(xml_path: Path, roster: Path = ROSTER) -> int:
+def check(xml_path: Path, roster: Path) -> int:
     try:
         expected, allowed = load_roster(roster)
     except (OSError, ValueError, KeyError, TypeError) as exc:
@@ -104,35 +118,43 @@ def check(xml_path: Path, roster: Path = ROSTER) -> int:
     problems += [f"ran, not in the roster: {n}" for n in extra]
     executed = sum(1 for o in got.values() if o != "skipped")
     skipped_n = sum(1 for o in got.values() if o == "skipped")
-    print(f"slow lane: {len(got)} of {len(expected)} roster tests reported, {executed} executed, {skipped_n} skipped")
+    lane = roster.stem
+    print(f"{lane} lane: {len(got)} of {len(expected)} roster tests reported, {executed} executed, {skipped_n} skipped")
     if not executed:
         problems.append("nothing executed: a green lane that ran nothing verifies nothing")
     if problems:
-        print("FAIL: the slow lane did not run its roster:", file=sys.stderr)
+        print(
+            f"FAIL: the {lane} lane did not run its roster ({roster.relative_to(REPO) if roster.is_relative_to(REPO) else roster}):",
+            file=sys.stderr,
+        )
         for p in problems:
             print(f"  - {p}", file=sys.stderr)
         return 1
     return 0
 
 
-def slow_files(repo: Path = REPO) -> list[str]:
-    """Test files (``test_*.py``, the configured pattern) that apply the ``slow`` marker themselves. No conftest applies
-    it, so collection can be scoped to these: a module-level skip ELSEWHERE (the console modules without the extra)
-    is not this lane's business, and must not fail the fast suite on a machine without that extra (wire review)."""
+def marked_files(marker: str, repo: Path = REPO) -> list[str]:
+    """Test files (``test_*.py``, the configured pattern) that apply ``marker`` themselves (``mark.<marker>``, as a
+    decorator or in ``pytestmark``). No conftest applies either lane's marker (tests/conftest.py only adds a SKIP to
+    items already carrying ``requires_model_cache``), so collection can be scoped to these: a module-level skip
+    ELSEWHERE (the console modules without the extra) is not the lane's business, and must not fail the fast suite
+    on a machine without that extra (wire review)."""
     return sorted(
         str(p.relative_to(repo))
         for p in (repo / "tests").rglob("test_*.py")
-        if "mark.slow" in p.read_text(encoding="utf-8", errors="replace")
+        if f"mark.{marker}" in p.read_text(encoding="utf-8", errors="replace")
     )
 
 
-def collect_slow(repo: Path = REPO) -> tuple[list[str], list[str]]:
-    """(nodeids, problems) from ``pytest --collect-only -q -m slow`` over :func:`slow_files`: a module-level skip or
-    error in one of THOSE files is a problem (its slow tests would vanish from both the roster and the lane). A test
-    marked slow some other way (a conftest hook) is missed here and caught by the nightly as "not in the roster"."""
-    files = slow_files(repo)
+def collect(lane: str, repo: Path = REPO) -> tuple[list[str], list[str]]:
+    """(nodeids, problems) from ``pytest --collect-only -q -m <marker>`` over :func:`marked_files`: a module-level
+    skip or error in one of THOSE files is a problem (its tests would vanish from both the roster and the lane). A
+    test marked some other way (a conftest hook, ``getattr(pytest.mark, ...)``) is missed here and caught by the
+    nightly as "ran, not in the roster"."""
+    marker = LANES[lane]
+    files = marked_files(marker, repo)
     if not files:
-        return [], ["no test file applies the slow marker"]
+        return [], [f"no test file applies the {marker} marker"]
     r = subprocess.run(
         # -o addopts="": pyproject's `-v` would print a tree instead of one nodeid per line.
         [
@@ -145,7 +167,7 @@ def collect_slow(repo: Path = REPO) -> tuple[list[str], list[str]]:
             "-o",
             "addopts=",
             "-m",
-            "slow",
+            marker,
             "-p",
             "no:cacheprovider",
             *files,
@@ -160,7 +182,7 @@ def collect_slow(repo: Path = REPO) -> tuple[list[str], list[str]]:
     # Under -q the summary line leaves the skip count out (executor review), so read the short summary -rsE prints:
     # one `SKIPPED [n] path: reason` / `ERROR path` line per module skipped or broken at collection.
     problems = [
-        f"a slow-test module skipped or errored at collection: {ln.strip()} (on a box without an extra one of them "
+        f"a {lane}-lane module skipped or errored at collection: {ln.strip()} (on a box without an extra one of them "
         "needs, install it; the nightly installs semantic/console/sign)"
         for ln in lines
         if ln.startswith(("SKIPPED [", "ERROR "))
@@ -170,27 +192,35 @@ def collect_slow(repo: Path = REPO) -> tuple[list[str], list[str]]:
     return nodeids, problems
 
 
+USAGE = f"usage: check_lane_roster.py --lane {{{'|'.join(LANES)}}} (<junit.xml> | --generate)"
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    if argv == ["--generate"]:
-        nodeids, problems = collect_slow()
+    if len(argv) != 3 or argv[0] != "--lane" or argv[1] not in LANES:
+        print(USAGE, file=sys.stderr)
+        return 2
+    lane, arg = argv[1], argv[2]
+    roster = roster_path(lane)
+    if arg == "--generate":
+        nodeids, problems = collect(lane)
         if problems or not nodeids:
             print(
-                "refusing to write the roster:", *(problems or ["no slow tests collected"]), sep="\n  ", file=sys.stderr
+                "refusing to write the roster:",
+                *(problems or [f"no {lane} tests collected"]),
+                sep="\n  ",
+                file=sys.stderr,
             )
             return 1
-        _expected, allowed = load_roster() if ROSTER.exists() else ([], {})
+        _expected, allowed = load_roster(roster) if roster.exists() else ([], {})
         payload = {
             "expected": sorted(nodeids),
             "allowed_skips": {k: allowed[k] for k in sorted(allowed) if k in nodeids},
         }
-        ROSTER.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-        print(f"wrote {len(nodeids)} slow tests to {ROSTER.relative_to(REPO)}")
+        roster.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        print(f"wrote {len(nodeids)} {lane} tests to {roster.relative_to(REPO)}")
         return 0
-    if len(argv) != 1:
-        print("usage: check_slow_lane.py <junit.xml> | --generate", file=sys.stderr)
-        return 2
-    return check(Path(argv[0]))
+    return check(Path(arg), roster)
 
 
 if __name__ == "__main__":

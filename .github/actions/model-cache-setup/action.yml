@@ -1,0 +1,59 @@
+# The model-cache setup both nightly lanes share (#1117): `model-cache-tests` and `slow-tests` each `uses:` this after
+# `actions/checkout`, then keep their own run and roster-check steps, so a red still names its lane. The slow lane
+# adds its apt step BEFORE this and its optional backends AFTER it (so they install over the `-e` install).
+name: Model-cache setup
+description: Install the package with the model-test extras, then restore and warm the Hugging Face model cache.
+runs:
+  using: composite
+  steps:
+    # `semantic` brings sentence-transformers + torch; torchvision and Pillow are NOT in any extra but several marked
+    # tests importorskip them, and a skipped test in a lane built to run them is exactly the vacuous-guard problem the
+    # lanes exist to prevent.
+    - name: Install package with model-test dependencies
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        # console + sign too (1.3.1): `pytest tests/` COLLECTS every module before `-m` deselects, and a module whose
+        # extra is absent skips at collection. That used to be excused module by module in an allow-list that grew
+        # every time a console test file was added (16 red nights); now the lanes install what they collect and
+        # --require-extras fails any skip for them.
+        python -m pip install -e ".[semantic,test,console,sign]" torchvision Pillow spacy \
+          -c .github/constraints/console.txt
+        # test_concept_decomposition_validation is a PRIMARY substrate validation; en_core_web_sm is ~15 MB and
+        # pip-installable, so the lanes run it instead of excusing it.
+        python -m spacy download en_core_web_sm
+
+    # The warm list is part of the cache KEY. Without this the key ignores which models the lanes need: the
+    # 2026-08-21 → 08-29 failures were an EXACT key hit on a cache built before all-MiniLM-L6-v2 was required, so the
+    # warm step was skipped and every run failed offline on a model the cache did not hold. Deriving the list into a
+    # file first makes the key change the moment the required set changes.
+    - name: Derive the required model list
+      shell: bash
+      run: python3 scripts/model_cache_names.py > warm-list.txt && cat warm-list.txt
+
+    - name: Restore model cache
+      uses: actions/cache@v4
+      with:
+        path: /home/runner/.cache/huggingface
+        key: hf-${{ runner.os }}-${{ hashFiles('warm-list.txt', 'pyproject.toml', 'src/maxim/similarity/encoder.py', 'src/maxim/models/vision/clip_encoder.py') }}
+        restore-keys: hf-${{ runner.os }}-
+
+    # First run (or after an encoder change) populates the cache; later runs are offline. Downloads are confined to
+    # this step so a network failure here is distinguishable from a real test failure. Runs UNCONDITIONALLY, not
+    # `if: cache-hit != 'true'`: a restore-keys partial hit (or the exact-hit-on-a-stale-cache above) leaves models
+    # missing, and loading an already-cached model is a no-op.
+    - name: Warm the cache
+      shell: bash
+      env:
+        HF_HOME: /home/runner/.cache/huggingface
+      run: |
+        python - <<'PY'
+        from sentence_transformers import SentenceTransformer
+
+        names = open("warm-list.txt").read().split()
+        if not names:
+            raise SystemExit("FAIL: warm list is empty — scripts/model_cache_names.py found no models")
+        for name in names:
+            SentenceTransformer(name)
+            print(f"cached {name}")
+        PY
