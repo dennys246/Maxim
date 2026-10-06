@@ -11,9 +11,12 @@ once for the session by ``tests/conftest.py``:
 - loopback, IP-literal lookups and UDP ``connect`` (which sends no packet -- the "find my LAN address"
   idiom) stay allowed, so local test servers work.
 
-``@pytest.mark.allow_network`` is the reviewed escape hatch for a test that genuinely needs the network.
+``@pytest.mark.allow_network`` lifts THIS guard for one test. It does not lift CI's: the fast suite and the nightly
+lanes run inside a loopback-only network namespace with no OS-level exception (``scripts/ci_netns.sh``, #940), so
+in CI a marked test still cannot reach the network, and a test that truly needs it belongs in its own lane.
 
-Scope: IN-PROCESS only. A subprocess a test spawns (git, pip, curl) is not guarded, nor are the rarely
+Scope: IN-PROCESS only (CI's namespace covers the process tree). A subprocess a test spawns (git, pip, curl) is not
+guarded here, nor are the rarely
 used resolver calls ``gethostbyname_ex`` / ``gethostbyaddr`` / ``getnameinfo`` (none is used in
 ``src/maxim``). ``attempts`` records every blocked call; the terminal summary prints the count.
 """

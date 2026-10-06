@@ -59,7 +59,7 @@ Grouped by the axis each item lifts; the "to reach" conditions come from the car
 |---|---|
 | **[shipped #894]** **A gating lane that installs the `console` extra and the crypto dependency**, so the console, bundle-signing, hive-pull and Oasis-exchange tests run on every PR. Today **no lane installs fastapi or cryptography**, so those tests are skipped everywhere — and the 1.2 and 1.3 headlines both travel the signed-bundle path. | the lane itself, required in branch protection; a positive control asserting the previously-skipped modules now execute (count > 0), so the lane cannot go quietly vacuous. *Built 2026-09-25: `unit-tests` (already required) installs `console` + `sign` from `pyproject.toml`; `--require-extras=console,sign` fails any skip for a missing required extra (`tests/conftest.py`, pinned by `tests/unit/test_require_extras_lane.py`).* |
 | **[1.3.1 — SHIPPED (#926); first green scheduled run 2026-09-27]** **The nightly model-cache lane green** (red 16 nights running, 25 of the last 30 scheduled runs; new console modules missing from its skip allow-list). Fix by making a missing module FAIL rather than by extending the allow-list. | the lane's own red/green + a check that the allow-list cannot grow silently *(Built: the lane installs the console + sign extras and runs with `--require-extras`; `ALLOWED_MODULE_SKIPS` is gone, and `ALLOWED_SKIPS` is ratcheted in `tests/unit/test_model_cache_names.py`.)* |
-| **[→ 1.3.2]** **A slow lane that runs**: install `sentence-transformers` so the 24 substrate sweeps execute; replace "executed > 0" with a pinned minimum. | `scripts/check_slow_lane.py` asserting the minimum |
+| **[→ 1.3.2; built 2026-10-05, see item 7]** **A slow lane that runs**: install `sentence-transformers` so the 24 substrate sweeps execute; replace "executed > 0" with an exact roster (owner decision 2026-10-04; it was a pinned minimum). | `scripts/check_slow_lane.py` asserting the minimum |
 | **[1.3.1 — SHIPPED (#928)]** **Network blocked in tests** (hermeticity is HOME/HF isolation + ~48 env scrubs today, with no block). | a conftest socket guard + a test that asserts an outbound call raises |
 | **[→ 1.3.2; owner settings partly done]** **`release-build` required**, `enforce_admins` on, and a required-checks-present gate (`pr_merge_readiness.py` is manual today; the ruleset grants an always-bypass admin role). | branch-protection settings — **owner action**, not a PR |
 | **[1.3.1 — SHIPPED (#926)]** **The release procedure reads the nightlies**: refuse to publish while a nightly lane is red. | a step in `audit_release_build.py` or the release PR checklist, mechanized *(Built as `scripts/check_nightlies.py`, not inside the offline `audit_release_build.py`: it needs the network. Runs `--only-when-releasing` in the `release-build` job; blocking needs `release-build` required, row above. Guard: `tests/unit/test_check_nightlies.py`.)* |
@@ -269,8 +269,18 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
    **The importorskip half built 2026-10-04, PR pending:** `--require-extras` now refuses to start unless each
    requirement's top-level module imports (`tests/conftest.py::_require_extras_importable`), and also reads pytest's
    own "could not import" message for those modules. Owner decisions 2026-10-04 for the rest: the slow lane
-   installs and runs its tests (16 of 58 ran on the 2026-10-04 nightly) against an exact roster with reasoned
+   installs and runs its tests (46 selected and 16 ran on the 2026-10-05 nightly) against an exact roster with reasoned
    skips only; the unit-tests pytest step runs in a loopback-only network namespace, with no OS-level exception.
+   **The rest built 2026-10-05, PR pending:**
+   - `|| echo` is gone from both install steps.
+   - The slow lane installs the semantic/console/sign extras and the model cache, runs with
+     `--require-extras`, and is held to the exact roster in `scripts/slow_lane_roster.json`
+     (`scripts/check_slow_lane.py`). Its PR-time twin is `tests/unit/test_slow_lane_roster.py`.
+   - The fast suite runs in a loopback-only network namespace; its positive control is
+     `tests/unit/test_network_boundary.py`.
+   - Structural pins: `tests/unit/test_ci_workflow_shape.py`.
+   The namespace wraps the fast suite and both nightly lanes (`scripts/ci_netns.sh`). Stated limit: the MemoryHub step
+   keeps the in-process guard only, because the coverage gate pins its exact form.
 8. **One source of truth for claims** (mechanization backlog M2). Guard: the claims-registry lint.
    **Built 2026-10-04, PR pending** (owner decisions 2026-10-04: the ledger is the single source; the surfaces are linted,
    not generated; v1 covers the README results table and the experiments index): `scripts/lint_claims_sync.py`. Each

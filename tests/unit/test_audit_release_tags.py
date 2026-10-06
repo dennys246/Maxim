@@ -68,9 +68,25 @@ def test_relative_links_in_notes_are_a_problem(gh) -> None:
     assert any("repo-relative link" in p and "404" in p for p in problems)
 
 
+def _remote(returncode: int, stdout: str = "", stderr: str = ""):
+    import subprocess
+
+    return lambda tag: subprocess.CompletedProcess(("git", "ls-remote"), returncode, stdout, stderr)
+
+
 def test_missing_tag_is_a_problem(gh, monkeypatch) -> None:
+    """The local tag is absent, so the audit asks the remote. This test used to ask the REAL remote (github.com) in a
+    subprocess the in-process network guard could not see; CI's network namespace caught it (#940)."""
     monkeypatch.setattr(A, "_git", lambda *args: "")
+    monkeypatch.setattr(A, "_ls_remote_tag", _remote(0, stdout=""))
     assert any("there is no v1.2.3 tag" in p for p in A.release_problems("1.2.3", PYPI))
+
+
+def test_a_failed_remote_probe_is_an_error_not_a_missing_tag(gh, monkeypatch) -> None:
+    monkeypatch.setattr(A, "_git", lambda *args: "")
+    monkeypatch.setattr(A, "_ls_remote_tag", _remote(128, stderr="Could not resolve host: github.com"))
+    with pytest.raises(A.AuditError, match="Could not resolve host"):
+        A.release_problems("1.2.3", PYPI)
 
 
 def test_notes_source_file_is_checked(gh, monkeypatch, tmp_path: Path) -> None:

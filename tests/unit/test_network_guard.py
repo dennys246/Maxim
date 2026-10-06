@@ -66,8 +66,19 @@ def test_loopback_still_works() -> None:
 
 
 def test_udp_connect_sends_nothing_and_is_allowed() -> None:
-    """The "find my LAN address" idiom connects a UDP socket to a public IP; no packet leaves."""
+    """The "find my LAN address" idiom connects a UDP socket to a public IP; no packet leaves, and the in-process
+    guard allows it. Inside CI's loopback-only network namespace (MAXIM_EXPECT_NETNS=1, #940) the KERNEL refuses
+    the route instead (ENETUNREACH): the guard still did not raise NetworkBlocked, which is what this pins."""
+    import errno
+    import os
+
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        if os.environ.get("MAXIM_EXPECT_NETNS") == "1":
+            with pytest.raises(OSError) as exc:
+                sock.connect(("8.8.8.8", 80))
+            assert not isinstance(exc.value, network_guard.NetworkBlocked)
+            assert exc.value.errno == errno.ENETUNREACH
+            return
         sock.connect(("8.8.8.8", 80))
         assert sock.getsockname()[0]
 
