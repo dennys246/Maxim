@@ -22,14 +22,17 @@ ordering, a region split, an AST of that function) and are NOT routed through th
   - ``test_substrate_action_budget.py::TestWiringPins::test_substrate_branch_consults_gate_before_proposing``
     (gate before propose inside §6b) -- slice 3.
   - ``test_planning_liveness.py::test_idle_gate_uses_exact_worker_state`` and
-    ``::test_completed_state_is_active_until_proposal_poll`` (§0.6 idle gate) -- slice 2.
-  - ``test_experience_clock.py::_loop_calls`` / ``_setup_calls`` (ASTs of ``run_agentic_loop`` and
-    ``loop_setup.build_loop_run``: one ``_loop_bio_handles``, in the setup since slice 1; one
-    ``_loop_live_tick`` in the loop) -- slice 2 (pre-tick) moves the live tick.
+    ``::test_completed_state_is_active_until_proposal_poll`` (§0.6 idle gate): read
+    ``loop_gates.pre_tick_gate`` since slice 2 (the first also pins one ``pre_tick_gate(`` call in the loop).
+  - ``test_experience_clock.py::_loop_calls`` / ``_setup_calls`` / ``_gate_calls`` (ASTs of
+    ``run_agentic_loop``, ``loop_setup.build_loop_run`` and ``loop_gates.pre_tick_gate``: one
+    ``_loop_bio_handles``, in the setup since slice 1; one ``_loop_live_tick`` carrying the setup's driver,
+    in the pre-tick gate since slice 2, which the loop calls with ``experience_driver=_loop_xclock``).
   - ``test_planning_liveness.py::TestLoopWiringPins`` ``loop_src`` pins: ``test_single_gate_covers_every_failure_site``
     (the gate definition, read from ``loop_setup._planning_liveness_gate`` since slice 1, the loop's
     use of ``run.planning_liveness_on``); ``test_exhaustion_raises_after_teardown`` (raise after
-    ``_end_bio_session``; the teardown stayed in the loop in slice 1, so the pin is unchanged);
+    ``_end_bio_session``; the teardown and the raise stayed in the loop in slices 1 and 2 -- the gate
+    returns ``GateOutcome.EXHAUSTED`` and the loop sets its flag -- so the pin is unchanged);
     ``test_proposal_time_stamped_on_any_proposal`` -- slice 4.
   - ``test_planning_liveness.py::test_bad_tool_name_is_recorded_for_correction`` (§2 region) -- §2 is
     LLM-primary, outside phase 1.

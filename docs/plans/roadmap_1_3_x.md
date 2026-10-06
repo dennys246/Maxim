@@ -473,7 +473,9 @@ recorded-but-unused memory system. That is 1.4's work ([roadmap_1_4.md](roadmap_
 1. **`agent_loop.py`** (5,543 lines; `run_agentic_loop` 3,389 at `v1.3.1`) — first, because 1.4's Phase 0
    instrument is built on it.
    *(Slice 0, the gates, merged as #1114. Slice 1, the setup → `runtime/loop_setup.py::build_loop_run`,
-   built 2026-10-05, PR pending: `run_agentic_loop` 3,381 → 3,248 lines.)*
+   built 2026-10-05, merged as #1127: `run_agentic_loop` 3,381 → 3,248 lines. Slice 2, §0–0.6 the pre-tick
+   gate → `runtime/loop_gates.py::pre_tick_gate -> GateOutcome`, built 2026-10-06, PR pending: 3,248 → 3,125
+   lines; the helpers the body shares with the gate moved to `loop_state.py` and `loop_controller.py`.)*
 2. **`start_simulation_mode`** (`simulation/orchestrator.py`, 3,322). Its tests cover **11%** of its lines
    (the Codex card's measurement at `v1.3.1`), so it is NOT decomposed blind: characterization tests
    first, then an orchestrator coverage floor set from them (item 5 above), then slices under the same
@@ -499,7 +501,12 @@ new tests patch the new location. (c) The tests that patch `agent_loop._record_o
 back-reference (slice 5 at the latest), which also deletes `loop_setup`'s lazy `agent_loop` import.
 Slice 1 applied (a): `_prepare_executor`, `_loop_bio_handles`, `_build_loop_sensor_encoder`,
 `_resolve_situation_cue` and `_planning_liveness_enabled_via_env` moved into `loop_setup.py`, so its only
-`_al.` reads are the two seams. (d) Extracted functions take
+`_al.` reads are the two seams. Slice 2 applied (a): `tick_embodiment_drift`, `_loop_live_tick`,
+`_maybe_auto_revert_display` and `_loop_is_idle` (only the gate called them) moved into `loop_gates.py`; the
+helpers the gate shares with the loop body went to existing leaves, `_effective_mode`, `_substrate_tick_due`
+and `_planning_attempt_is_active` to `loop_state.py` and the D13 handlers (`_handle_planning_failure`,
+`_handle_planning_transport_failure`, `_report_planning_exhaustion`) to `loop_controller.py`, beside the
+counters they drive; `loop_gates` reads nothing through `agent_loop`. (d) Extracted functions take
 individual fields (or `ctrl`) as explicit keyword arguments, never the whole `LoopRun`.
 
 **Coverage first, then extract (2026-09-27).** No slice moves code its tests do not pin. Each slice
