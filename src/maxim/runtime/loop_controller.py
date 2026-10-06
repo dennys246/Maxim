@@ -704,3 +704,128 @@ class LoopController:
     def configure_dn_for_mode(self, mode_name: str) -> None:
         """Delegate to DefaultNetworkController."""
         self.dn_ctrl.configure_for_mode(mode_name)
+
+
+# ── The D13 planning-liveness handlers (1.3.2 decomposition, slice 2) ──
+# Module functions beside the LoopController counters they drive (record_planning_failure /
+# record_planning_transport_failure), moved from agent_loop.py with their bodies unchanged except that
+# they log through ``_loop_logger`` (this module's own ``logger`` is ``maxim.runtime.loop_controller``).
+# Callers: loop_gates.pre_tick_gate (the idle-gate backstop: both handlers) and agent_loop (section 2's
+# failure sites and _drop_stale_proposal: _handle_planning_failure).
+#
+# Kept for log continuity; a later slice may adopt the module's own logger. The handlers' records keep
+# the ``maxim.runtime.agent_loop`` name they have always had (the SAME object as agent_loop.logger).
+_loop_logger = logging.getLogger("maxim.runtime.agent_loop")
+
+
+def _report_planning_exhaustion(ctrl: Any, sim: Any, *, reason: str, kind: str) -> bool:
+    """Emit one terminal planning/transport failure and tell the loop to stop."""
+    status = ctrl.planning_exhausted_status
+    msg = (
+        f"planning {kind} exhausted: planning_failures={ctrl.planning_failure_streak}, "
+        f"transport_failures={ctrl.planning_transport_failure_streak} "
+        f"(last: {reason}, status: {status}) — aborting sim (bugs ledger D13)"
+    )
+    _loop_logger.error(msg)
+    sim.log("EXEC", f"🛑 {msg}")
+    log_agentic(
+        "agent_loop",
+        "planning_liveness_exhausted",
+        {
+            "planning_streak": ctrl.planning_failure_streak,
+            "transport_streak": ctrl.planning_transport_failure_streak,
+            "reason": reason,
+            "status": status,
+        },
+        level="ERROR",
+    )
+    return True
+
+
+def _handle_planning_failure(
+    ctrl: Any,
+    llm_worker: Any,
+    sim: Any,
+    *,
+    reason: str,
+    original_request: Any | None,
+    failed_tool: str | None = None,
+    exhausted_status: str = "llm_wedged",
+) -> bool:
+    """Planning-liveness handler (bugs ledger D13): a planning submit ended
+    without an executable proposal — parse failure, invalid response, a
+    dropped proposal, or an await window that expired with nothing back.
+
+    LOUDLY reschedules the turn with bounded retries (byte-identical requeue
+    of the original request — no fabricated percepts) or, when the budget is
+    spent, tells the caller to abort. Never silent, never a fall-through to
+    idle.
+
+    Returns True when planning liveness is exhausted (caller breaks the loop
+    and raises ``PlanningLivenessExhausted`` after normal teardown).
+    """
+    verdict = ctrl.record_planning_failure(reason=reason, exhausted_status=exhausted_status)
+    if verdict == "already_exhausted":
+        return True
+    if verdict == "exhausted":
+        return _report_planning_exhaustion(ctrl, sim, reason=reason, kind="retry budget")
+
+    # verdict == "retry"
+    # Every retry says why the last answer failed when the model erred (narrator reliability, 2026-10-02).
+    if original_request is not None:
+        requeued = bool(llm_worker.requeue_request(original_request, failed_tool=failed_tool, reason=reason))
+    else:
+        requeued = bool(llm_worker.requeue_last_request(failed_tool=failed_tool, reason=reason))
+    attempt = ctrl.planning_failure_streak
+    limit = ctrl.planning_retry_limit
+    note = (
+        f"rescheduled (attempt {attempt}/{limit})"
+        if requeued
+        else "REQUEUE REJECTED — bounded worker-transport recovery will retry"
+    )
+    _loop_logger.warning("planning turn failed (%s) — %s", reason, note)
+    sim.log("EXEC", f"⚠ planning turn failed ({reason}) — {note}")
+    log_agentic(
+        "agent_loop",
+        "planning_retry",
+        {"reason": reason, "attempt": attempt, "limit": limit, "requeued": requeued},
+        level="WARNING",
+    )
+    # Retained for diagnostics and for non-liveness callers' legacy await
+    # window. The liveness-enabled orchestrator uses exact WorkerPool state.
+    ctrl.last_llm_submit_time = time.time()
+    return False
+
+
+def _handle_planning_transport_failure(
+    ctrl: Any,
+    llm_worker: Any,
+    sim: Any,
+    *,
+    reason: str,
+) -> bool:
+    """Bound retries for a worker attempt that failed before publication."""
+    verdict = ctrl.record_planning_transport_failure(reason=reason)
+    if verdict == "already_exhausted":
+        return True
+    if verdict == "exhausted":
+        return _report_planning_exhaustion(ctrl, sim, reason=reason, kind="transport budget")
+
+    requeued = bool(llm_worker.requeue_last_request())
+    attempt = ctrl.planning_transport_failure_streak
+    limit = ctrl.planning_transport_retry_limit
+    note = (
+        f"worker retry accepted (attempt {attempt}/{limit})"
+        if requeued
+        else f"worker retry rejected (attempt {attempt}/{limit})"
+    )
+    _loop_logger.warning("planning transport failed (%s) — %s", reason, note)
+    sim.log("EXEC", f"⚠ planning transport failed ({reason}) — {note}")
+    log_agentic(
+        "agent_loop",
+        "planning_transport_retry",
+        {"reason": reason, "attempt": attempt, "limit": limit, "requeued": requeued},
+        level="WARNING",
+    )
+    ctrl.last_llm_submit_time = time.time()
+    return False

@@ -25,6 +25,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`agent_loop` decomposition, slice 2: each pass's pre-tick gate moves to `runtime/loop_gates.py`** (roadmap
+  1.3.2 §"The decomposition"). Sections 0-0.6 of `run_agentic_loop` (the stop checks, the Default Network's
+  mode, the pause sleep, the live tick and display revert, the percept-source exhaustion check, and the idle
+  gate with its D13 planning-liveness backstop) are now `pre_tick_gate(...)`, which returns a `GateOutcome`
+  (`RUN`, `IDLE`, `BREAK`, `EXHAUSTED`) that the loop maps to the `continue`/`break` the inline block had. The
+  helpers the loop body shares with the gate moved to existing leaves: `loop_state.py` (`_effective_mode`, the
+  substrate cadence, the worker-job state check) and `loop_controller.py` (the D13 handlers, beside the
+  counters they drive). A pure move with no behaviour change: the slice-0 gates and the slice-1
+  characterization stay green unchanged, and `tests/unit/test_loop_gates_characterization.py` (written before
+  the move) pins every wake source, each terminal worker-job state through to `PlanningLivenessExhausted`, the
+  pause, the stop checks, the live tick and exhaustion through the public entry. `run_agentic_loop` shrinks
+  3,248 → 3,125 lines; `loop_gates.py` joins CI's mypy set and the swallow lint's measurement path. **Import
+  change:** the public `tick_embodiment_drift` is now `maxim.runtime.loop_gates.tick_embodiment_drift` and is
+  no longer importable from `maxim.runtime.agent_loop`.
+
 - **`agent_loop` decomposition, slice 1: the loop's setup moves to `runtime/loop_setup.py`** (roadmap 1.3.2
   §"The decomposition"). Everything `run_agentic_loop` builds and starts before its first tick (the simulation
   adapter, the first state persist, the context pool and prefetcher, the `LoopController`, the LLM loop
