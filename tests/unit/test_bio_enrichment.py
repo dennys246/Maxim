@@ -54,6 +54,7 @@ def _make_hippocampus(memories: list | None = None) -> MagicMock:
         mem.action.tool_name = "rusty_sword_slash"
         mem.decision = MagicMock()
         mem.decision.intent = {"goal": "test combat"}
+        mem.goal = "test combat"  # the real record answers .goal (#995)
         mem.outcome = MagicMock()
         mem.outcome.result = "Hit the target"
         mem.outcome.success = True

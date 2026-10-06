@@ -38,7 +38,6 @@ def _episode(*, intent_goal: str | None = "fetch water", active_goal: str | None
 # -- #995: one answer per fact on the type ------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="#995: EpisodicMemory has no tool_name / goal")
 @pytest.mark.parametrize(
     ("intent_goal", "active_goal", "expected"),
     [("fetch water", "stay warm", "fetch water"), (None, "stay warm", "stay warm"), (None, None, None)],
@@ -50,7 +49,6 @@ def test_an_episode_answers_tool_and_goal_as_its_compressed_form_does(intent_goa
     assert (ep.tool_name, ep.goal) == (compressed.tool_name, compressed.goal)
 
 
-@pytest.mark.xfail(strict=True, reason="#995: a compressed record hashes ':<outcome>' with no tool")
 def test_a_compressed_records_signature_keeps_its_tool():
     from maxim.similarity.signature import SituationSignature
 
@@ -58,7 +56,6 @@ def test_a_compressed_records_signature_keeps_its_tool():
     assert SituationSignature.from_memory(CompressedMemory.from_episodic(ep)).tool_name == "draw_water"
 
 
-@pytest.mark.xfail(strict=True, reason="#995: a compressed context item carries no goal or tool")
 def test_a_compressed_records_context_item_keeps_goal_and_tool():
     from maxim.agents.memory_agent import MemoryAgent
 
@@ -69,7 +66,6 @@ def test_a_compressed_records_context_item_keeps_goal_and_tool():
 # -- #993: summaries read real fields ------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="#993: Observer reads Context.goal and Action.tool_used, which do not exist")
 def test_the_observers_memory_list_shows_goal_and_tool_for_both_kinds():
     from maxim.simulation.introspection import Observer
 
@@ -83,10 +79,13 @@ def test_the_observers_memory_list_shows_goal_and_tool_for_both_kinds():
             return 2
 
     out = Observer(hippocampus=_H()).memory_recall()
-    assert [(m["goal"], m["tool"]) for m in out["memories"]] == [("fetch water", "draw_water")] * 2
+    # An episode shows its ACTIVE goal; the compressed record only kept the intent goal (#1137).
+    assert [(m["goal"], m["tool"]) for m in out["memories"]] == [
+        ("stay warm", "draw_water"),
+        ("fetch water", "draw_water"),
+    ]
 
 
-@pytest.mark.xfail(strict=True, reason="#993: the summary's valence reads Outcome.valence, which does not exist")
 def test_an_agent_export_labels_each_memorys_outcome():
     from maxim.runtime.agent_factory import AgentInstance
 
@@ -105,7 +104,6 @@ def test_an_agent_export_labels_each_memorys_outcome():
 # -- #1129: the public recall source reads the real record ---------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="#1129: _summarize reads cli_input/transcript on the record, not perception")
 def test_public_recall_returns_an_episode_from_a_real_record():
     from maxim.integration.recall import EpisodicRecallSource
 
@@ -120,3 +118,77 @@ def test_public_recall_returns_an_episode_from_a_real_record():
     items = EpisodicRecallSource(hippo).recalled_items(limit=8)
     assert sorted(i.text for i in items) == ["a well stands in the yard", "find the cellar"]
     assert max(i.salience for i in items) == pytest.approx(0.7)
+
+
+def test_no_reader_probes_a_field_no_record_has():
+    """``Action.tool_used`` and ``Context.goal`` never existed; ``Outcome.valence`` neither. A probe of one
+    always got its default (#993, #1129). Scan ``src/`` and ``scripts/`` for the probes. Limits: a blocklist
+    of these three names in their one-line forms; a two-step probe (``ctx = m.context; getattr(ctx, "goal")``)
+    or a new misspelling passes. Typed parameters checked by mypy would be the structural guard."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    bad = re.compile(
+        r'"tool_used"|getattr\(\s*getattr\([^)]*"context"[^)]*\)\s*,\s*"goal"|\.context\.goal\b|getattr\(\s*getattr\([^)]*"outcome"[^)]*\)\s*,\s*"valence"'
+    )
+    hits = [
+        f"{path.relative_to(root)}:{n}"
+        for top in ("src/maxim", "scripts")
+        for path in (root / top).rglob("*.py")
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if bad.search(line) and 'exp.type == "tool_used"' not in line  # an expectation type, not a field
+    ]
+    assert hits == []
+
+
+# -- each migrated reader, pinned for both kinds (executor review) --------------------------------
+
+
+def test_an_episodes_context_item_keeps_its_active_goal():
+    from maxim.agents.memory_agent import MemoryAgent
+
+    item = MemoryAgent._memory_to_context_item(_episode(), 0.5)
+    assert (item["content"]["goal"], item["content"]["action"]) == ("stay warm", "draw_water")
+
+
+def test_an_enrichment_summary_names_tool_and_intent_goal_for_both_kinds():
+    from maxim.integration.bio_enrichment import BioEnrichmentPipeline
+
+    for record in (_episode(), CompressedMemory.from_episodic(_episode())):
+        text = BioEnrichmentPipeline._summarize_episode(record)
+        assert "draw_water" in text and "(goal: fetch water)" in text, (type(record).__name__, text)
+
+
+def test_public_recall_ranks_each_item_by_its_own_records_salience():
+    from maxim.integration.recall import EpisodicRecallSource
+
+    compressed = CompressedMemory(id="c1", timestamp=1.0, goal="find the cellar", salience=0.2)
+    records = {"e1": _episode(), "c1": compressed}
+    episodes = [SimpleNamespace(imagined=False, valence=0.0, activated_nodes=(n,)) for n in ("e1", "c1")]
+    hippo = SimpleNamespace(get=records.get, _episode_store=SimpleNamespace(all_episodes=lambda: episodes))
+    by_text = {i.text: i.salience for i in EpisodicRecallSource(hippo).recalled_items(limit=8)}
+    assert by_text == {"a well stands in the yard": pytest.approx(0.7), "find the cellar": pytest.approx(0.2)}
+
+
+def test_public_recall_falls_back_to_an_episodes_active_goal():
+    from maxim.integration.recall import EpisodicRecallSource
+
+    quiet = _episode()
+    quiet.perception = Perception(salience=0.4)  # no text
+    hippo = SimpleNamespace(
+        get={"e1": quiet}.get,
+        _episode_store=SimpleNamespace(
+            all_episodes=lambda: [SimpleNamespace(imagined=False, valence=0.0, activated_nodes=("e1",))]
+        ),
+    )
+    assert [i.text for i in EpisodicRecallSource(hippo).recalled_items(limit=8)] == ["stay warm"]
+
+
+def test_the_memory_tool_formats_tool_and_goal_for_both_kinds():
+    from maxim.tools.introspection import _format_episodic_memory
+
+    assert [
+        (_format_episodic_memory(r)["tool"], _format_episodic_memory(r)["goal"])
+        for r in (_episode(), CompressedMemory.from_episodic(_episode()))
+    ] == [("draw_water", "stay warm"), ("draw_water", "fetch water")]

@@ -68,12 +68,17 @@ def test_per_kind_cap():
 def test_episodic_source_filters_imagined_and_joins_record_text():
     """The episodic join: non-imagined episode → readable record text + salience;
     imagined episode is never yielded (provenance at the source)."""
+    # Real records: an episode's text and salience live on its ``perception`` (this fake used to put them on
+    # the record, which no real record does, and so hid #1129).
+    from maxim.memory.types import EpisodicMemory, Perception
+
+    def _rec(rid: str, text: str, salience: float) -> EpisodicMemory:
+        return EpisodicMemory(id=rid, timestamp=1.0, perception=Perception(cli_input=text, salience=salience))
+
     records = {
-        "m_real": SimpleNamespace(
-            cli_input="your rogue betrayed the party", salience=0.9, transcript=None, context=None
-        ),
-        "m_dull": SimpleNamespace(cli_input="you entered a room", salience=0.2, transcript=None, context=None),
-        "m_fic": SimpleNamespace(cli_input="the dragon spoke", salience=0.95, transcript=None, context=None),
+        "m_real": _rec("m_real", "your rogue betrayed the party", 0.9),
+        "m_dull": _rec("m_dull", "you entered a room", 0.2),
+        "m_fic": _rec("m_fic", "the dragon spoke", 0.95),
     }
     episodes = [
         SimpleNamespace(imagined=False, valence=-0.9, activated_nodes=("m_real",)),

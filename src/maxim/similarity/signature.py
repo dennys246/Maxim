@@ -102,9 +102,9 @@ class SituationSignature:
                 )
 
         # Compute structural hash
-        tool_name = ""
-        if hasattr(memory, "action"):
-            tool_name = getattr(memory.action, "tool_name", "") or ""
+        # Both record kinds answer ``tool_name`` (#995); reading it from ``action`` hashed a compressed
+        # record as ":<outcome>".
+        tool_name = getattr(memory, "tool_name", "") or ""
         from maxim.memory.types import outcome_label, record_success
 
         # None is "unknown", not a failure (#843); both record kinds (#991: a compressed one read "").

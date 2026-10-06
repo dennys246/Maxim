@@ -1001,19 +1001,15 @@ class BioEnrichmentPipeline:
         """Create a one-line summary from an EpisodicMemory."""
         parts: list[str] = []
         # Tool action
-        tool = getattr(mem, "tool_name", "") or ""
-        if hasattr(mem, "action") and hasattr(mem.action, "tool_name"):
-            tool = mem.action.tool_name or tool
+        tool = mem.tool_name or ""  # both record kinds answer it (#995)
         if tool:
             success = record_success(mem)
             status = "succeeded" if success else "failed" if success is False else ""
             parts.append(f"{tool} {status}".strip())
         # Goal context
-        goal = ""
-        if hasattr(mem, "decision") and hasattr(mem.decision, "intent"):
-            goal = mem.decision.intent.get("goal", "")
-        if not goal and hasattr(mem, "context"):
-            goal = getattr(mem.context, "active_goal", "") or ""
+        # Intent goal, else active goal: ``goal`` answers exactly that on both record kinds (#995);
+        # a compressed record used to show none.
+        goal = mem.goal or ""
         if goal:
             parts.append(f"(goal: {goal[:40]})")
         # Outcome
