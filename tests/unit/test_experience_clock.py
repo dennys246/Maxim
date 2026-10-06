@@ -7,13 +7,15 @@ import inspect
 import logging
 import threading
 from pathlib import Path
+from types import ModuleType
 from unittest.mock import MagicMock
 
 import pytest
 
 from maxim.memory.experience_clock import UNIT, ExperienceClock
 from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
-from maxim.runtime.agent_loop import _loop_bio_handles, _loop_live_tick
+from maxim.runtime.agent_loop import _loop_live_tick
+from maxim.runtime.loop_setup import _loop_bio_handles
 from maxim.runtime.experience_time import REALTIME_PASS_CAP_US, ExperienceClockDriver
 from maxim.simulation.composite_source import CompositePerceptSource, CompositeRoutingError
 from maxim.simulation.conversational_source import ConversationalSource
@@ -271,20 +273,38 @@ def test_the_live_tick_drifts_the_body_and_advances_the_world_clock(monkeypatch)
     driver.on_live_pass.assert_called_once_with()
 
 
-def _loop_calls(name: str) -> list[ast.Call]:
-    # FUNCTION-SPECIFIC (an AST of run_agentic_loop's own body): the 1.3.2 decomposition's slice that
+def _calls(module: ModuleType, function: str, name: str) -> list[ast.Call]:
+    # FUNCTION-SPECIFIC (an AST of one function's own body): the 1.3.2 decomposition's slice that
     # moves the live tick or the bio-handle build updates this consciously (tests/unit/_loop_source.py).
     # Parse the FILE, not the live attribute: other tests replace ``agent_loop.run_agentic_loop``.
+    # A call is ``name(...)`` or ``mod.name(...)`` (the setup calls agent_loop's helpers through the module).
+    tree = ast.parse(Path(module.__file__).read_text())
+    [fn] = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == function]
+    return [
+        n
+        for n in ast.walk(fn)
+        if isinstance(n, ast.Call) and (getattr(n.func, "id", None) or getattr(n.func, "attr", None)) == name
+    ]
+
+
+def _loop_calls(name: str) -> list[ast.Call]:
     import maxim.runtime.agent_loop as agent_loop
 
-    module = ast.parse(Path(agent_loop.__file__).read_text())
-    [tree] = [n for n in module.body if isinstance(n, ast.FunctionDef) and n.name == "run_agentic_loop"]
-    return [n for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == name]
+    return _calls(agent_loop, "run_agentic_loop", name)
+
+
+def _setup_calls(name: str) -> list[ast.Call]:
+    import maxim.runtime.loop_setup as loop_setup
+
+    return _calls(loop_setup, "build_loop_run", name)
 
 
 def test_run_agentic_loop_advances_the_clock_on_every_live_pass():
-    # One driver, built once; one live tick carrying it, and no bare drift call that would bypass it.
-    assert len(_loop_calls("_loop_bio_handles")) == 1
+    # One driver, built once (by the setup, slice 1); one live tick carrying it, and no bare drift
+    # call that would bypass it.
+    assert len(_setup_calls("_loop_bio_handles")) == 1
+    assert _loop_calls("_loop_bio_handles") == []
+    assert len(_loop_calls("build_loop_run")) == 1
     [live] = _loop_calls("_loop_live_tick")
     assert isinstance(live.args[-1], ast.Name) and live.args[-1].id == "_loop_xclock"
     assert _loop_calls("tick_embodiment_drift") == []

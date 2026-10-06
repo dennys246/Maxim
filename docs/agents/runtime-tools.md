@@ -25,7 +25,7 @@ Any code that runs early in `_main_impl` and consumes `argv` must explicitly han
 
 | Area | Key files |
 |---|---|
-| Agent loop | `runtime/agent_loop.py`, `runtime/loop_controller.py` |
+| Agent loop | `runtime/agent_loop.py`, `runtime/loop_controller.py`, `runtime/loop_setup.py` (the per-run setup, `build_loop_run` → frozen `LoopRun`; 1.3.2 slice 1) |
 | Tools (runtime half) | `tools/registry.py` (scene-scoped activation, active tool cap, `deactivate_tool`), `tools/base.py` (Tool ABC, `ToolOutput.side_effects`), `tools/discovery.py` (SEM discovery, goal top-k, LRU eviction), `runtime/executor.py` (dispatch + active-tool gate, aliases). Embodiment-side tool files (`embodiment/tool_bridge.py`, `embodiment/entity_map.py`) → docs/agents/embodiment.md |
 | Prompt composition | `agents/prompt_builder.py` (PromptBuilder + budgeter — single composition point), `prompts/acting_coach.py`. Substrate-plan B1's PromptAssembler scaffold was deleted; never wired into production. |
 | Percept schema | `agents/percept_context.py`, `agents/percept_factory.py` (`make_text_percept`, `make_scene_percept`, `make_intero_percept`), `agents/modality.py` (SensoryTag, SubstrateModality). Isolation hygiene: PerceptContext AND ReactionContext must NOT carry cross-agent intent, private state, scenario oracles, or learned-policy hints (the module docstrings of `percept_context.py` and `reactions/types.py` are the contract); SEM specs don't import Reaction types (modulators reach the ReactionBus via `CerebellumModulator` mediation). |
