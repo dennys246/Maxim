@@ -148,6 +148,14 @@ def _gh_release(tag: str) -> dict | None:
         raise AuditError(f"gh release view {tag}: unreadable JSON ({exc})") from exc
 
 
+def _ls_remote_tag(tag: str) -> subprocess.CompletedProcess[str]:
+    """``git ls-remote --tags origin <tag>``: the one network call in the tag check, a seam so tests never reach the
+    real remote (CI's network namespace caught the unit test that did, #940)."""
+    return subprocess.run(
+        ("git", "ls-remote", "--tags", "origin", tag), cwd=REPO, capture_output=True, text=True, check=False
+    )
+
+
 def release_problems(version: str, pypi: dict[str, str]) -> list[str]:
     """Everything wrong with the release object for ``version`` (empty = clean)."""
     tag = f"v{version}"
@@ -155,9 +163,7 @@ def release_problems(version: str, pypi: dict[str, str]) -> list[str]:
     if not _git("tag", "-l", tag).strip():
         # _git swallows failures (it is the offline audit's helper); a network/auth
         # failure here would otherwise be reported as "there is no tag".
-        probe = subprocess.run(
-            ("git", "ls-remote", "--tags", "origin", tag), cwd=REPO, capture_output=True, text=True, check=False
-        )
+        probe = _ls_remote_tag(tag)
         if probe.returncode != 0:
             raise AuditError(f"git ls-remote for {tag}: {probe.stderr.strip()}")
         if not probe.stdout.strip():
