@@ -89,6 +89,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`set_entity_sensor` value mode now writes the sensor it names** ([#874](https://github.com/dennys246/Maxim/issues/874)).
+  It wrote every name onto the body's root, so cradle Act 1's `arms.thermal` (the fire's heat) became an orphan root
+  key: the arm's own `thermal` never moved, and because `evaluate_failures` reads root keys first, the arm's drive
+  pain latched at the written value and never followed the arm as it cooled. Value mode also clamped every sensor to
+  [0, 1] (a cold write to a [-1, 1] sensor became 0) and reported success for a sensor the body lacks, or for a
+  derived `health` that `evaluate_failures` re-derives on every call (both now fail). Both modes
+  now resolve the sensor through one helper, `embodiment/tool_bridge.py::_resolve_sensor_slot` (shared with
+  `_apply_sensor_deltas`), clamp to the declared range, and fail the call for a missing sensor, naming the sensors
+  the body has. The first write's pain is unchanged; the per-call pain reading now follows the arm as it cools,
+  so the PainBus breach latch can clear and a later exposure publishes a new onset (cradle runs now send more
+  drive-pain signals to NAc than before, when the latch never cleared).
+
 - **The Cerebellum's forward models are saved at session end, where they are loaded from** (#908, engram plan E1).
   `build_bio_stack` loaded `<home>/cerebellum.json` by a hard-coded path, while `BioStack.save_cerebellum` saved
   only to `CerebellumConfig.persistence_path`, which nothing set. So the three session-end callers each called a

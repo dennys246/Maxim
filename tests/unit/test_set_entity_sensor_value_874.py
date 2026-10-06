@@ -36,7 +36,6 @@ def _infant():
     return root, bus, SetEntitySensorTool(embodiment=emb, entity_map=None)
 
 
-@pytest.mark.xfail(strict=True, reason="#874: value mode writes an orphan root key")
 def test_value_reaches_the_arm_sub_sensor_not_an_orphan_root_key():
     root, _, tool = _infant()
     out = tool.execute(sensor="arms.thermal", value=0.8, source="fire")
@@ -45,7 +44,6 @@ def test_value_reaches_the_arm_sub_sensor_not_an_orphan_root_key():
     assert "arms.thermal" not in root.vital_metrics
 
 
-@pytest.mark.xfail(strict=True, reason="#874: value mode clamps every sensor to [0, 1]")
 def test_value_clamps_to_the_declared_range_not_unit():
     root, _, tool = _infant()
     assert tool.execute(sensor="core_temperature", value=-0.5, source="cold").success
@@ -54,7 +52,6 @@ def test_value_clamps_to_the_declared_range_not_unit():
     assert root.modulators["arms"].vital_metrics["thermal"] == pytest.approx(-1.0)
 
 
-@pytest.mark.xfail(strict=True, reason="#874: value mode reports success for a sensor the body lacks")
 def test_value_on_a_missing_sensor_fails_and_writes_nothing():
     root, _, tool = _infant()
     before = dict(root.vital_metrics)
@@ -64,7 +61,6 @@ def test_value_on_a_missing_sensor_fails_and_writes_nothing():
     assert root.vital_metrics == before
 
 
-@pytest.mark.xfail(strict=True, reason="#874: the orphan key never drifts, so arm pain stays latched")
 def test_arm_heat_pain_follows_the_arm_as_it_cools():
     """The state-based channel (returned FailureEvents) must read the ARM's value.
 
@@ -97,3 +93,69 @@ def test_value_still_sets_a_root_sensor():
     root, _, tool = _infant()
     assert tool.execute(sensor="hunger", value=0.0, source="food").success
     assert root.vital_metrics["hunger"] == pytest.approx(0.0)
+
+
+@pytest.mark.parametrize("mode", ["value", "delta"])
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf"), "lots", None, True])
+def test_a_non_finite_or_non_numeric_value_is_rejected_and_writes_nothing(bad, mode):
+    """NaN would pass the clamp as the range's MAXIMUM (min(1.0, nan) is 1.0) and report success."""
+    if mode == "delta" and bad is None:
+        pytest.skip("delta=None means value mode")
+    root, _, tool = _infant()
+    before = root.modulators["arms"].vital_metrics["thermal"]
+    out = tool.execute(sensor="arms.thermal", **{mode: bad})
+    assert out.success is False
+    assert root.modulators["arms"].vital_metrics["thermal"] == before
+
+
+def test_the_missing_sensor_error_names_only_sensors_the_tool_accepts():
+    """A self-correcting orchestrator must never be told to use a name that then fails."""
+    from maxim.embodiment.tool_bridge import _resolve_sensor_slot
+
+    root, _, tool = _infant()
+    tool._embodiment.evaluate_failures()  # writes the derived <mod>.integrity root keys
+    out = tool.execute(sensor="wings.thermal", value=0.5)
+    listed = out.error.split("it has: ", 1)[1].split(", ")
+    assert "arms.thermal" in listed and "hunger" in listed
+    assert "health" not in listed  # derived: listing it would steer the orchestrator into a no-op
+    for name in listed:
+        assert _resolve_sensor_slot(root, name) is not None, name
+
+
+@pytest.mark.parametrize("kwargs", [{"value": 0.2}, {"delta": -0.3}])
+def test_a_derived_health_write_fails_instead_of_succeeding_as_a_no_op(kwargs):
+    """evaluate_failures re-derives ``health`` from component integrity on every call."""
+    root, _, tool = _infant()
+    tool._embodiment.evaluate_failures()  # health now sits on the root, derived
+    derived = root.vital_metrics["health"]
+    out = tool.execute(sensor="health", **kwargs)
+    assert out.success is False and "derived" in out.error
+    assert root.vital_metrics["health"] == pytest.approx(derived)
+
+
+def test_a_derived_health_body_without_components_keeps_health_writable():
+    """``derive_health()`` is None without component sensors, so evaluate_failures never overwrites it."""
+
+    class _Body:
+        name = full_path = "blob"
+        metadata = {"health": "derived"}
+        sensors: dict = {}
+        modulators: dict = {}
+
+        def __init__(self) -> None:
+            self.vital_metrics = {"health": 0.5}
+
+        def derive_health(self):
+            return None
+
+    class _Emb:
+        def __init__(self, root) -> None:
+            self.root = root
+
+        def evaluate_failures(self):
+            return []
+
+    body = _Body()
+    out = SetEntitySensorTool(embodiment=_Emb(body), entity_map=None).execute(sensor="health", value=0.9)
+    assert out.success
+    assert body.vital_metrics["health"] == pytest.approx(0.9)
