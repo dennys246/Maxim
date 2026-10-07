@@ -389,8 +389,8 @@ recorded in this plan.
 
 | Batch | Issues | Notes |
 |---|---|---|
-| 3. Silent seams | [#851](https://github.com/dennys246/Maxim/issues/851) ⟲ `ToolPainBridge` pending entries leak and disable embodiment-pain attribution (the "SEM pain → NAc cascade" row: "ToolPainBridge attribution change"); [#845](https://github.com/dennys246/Maxim/issues/845) memory consumers that never deliver: items 2, 3 and 5 (5 verified first), and item 4's `exec_agent.py::recall_deep` site (its `plan_manager` site is #841's); item 1 rides the slice — **per consumer, wire it or mark it Dormant, each with its behaviour tier declared**; [#863](https://github.com/dennys246/Maxim/issues/863) step 2, the telemetry wraps catching caller logic, **outside** `agent_loop.py`, `orchestrator.py` and `_main_impl` | The #840/#841 class, beside item 4's mypy extension, which catches more of them. |
-| 4. Body defects | [#873](https://github.com/dennys246/Maxim/issues/873) ⟲ the no-silent-fallback half: `damage_component` fails on a missing part instead of reporting success (row 9); [#874](https://github.com/dennys246/Maxim/issues/874) ⟲ cradle heat never reaches the arm (row 9's "Cradle / drive / SEM body change"; probably discharged structurally, since row 9 is the dragon / `base_humanoid` setup, but stated in the PR) | Both are "reports success, did nothing". #873's four design points (sum vs weighted mean, a missing part, partless bodies, archetype reflex sets) stay with [deferred/reflex_layering.md](deferred/reflex_layering.md). |
+| 3. Silent seams | [#851](https://github.com/dennys246/Maxim/issues/851) ⟲ `ToolPainBridge` pending entries leak and disable embodiment-pain attribution (the "SEM pain → NAc cascade" row: "ToolPainBridge attribution change"); [#845](https://github.com/dennys246/Maxim/issues/845) memory consumers that never deliver: items 2, 3 and 5 (5 verified first), and item 4's `exec_agent.py::recall_deep` site (its `plan_manager` site is #841's); item 1 rides the slice — **per consumer, wire it or mark it Dormant, each with its behaviour tier declared**; [#863](https://github.com/dennys246/Maxim/issues/863) step 2, the telemetry wraps catching caller logic, **outside** `agent_loop.py`, `orchestrator.py` and `_main_impl`; **added 2026-10-06 (owner):** [#1138](https://github.com/dennys246/Maxim/issues/1138) `EpisodicRecallSource.recalled_items` ignores its limit (live since #1129; first, beside #1140) and [#1128](https://github.com/dennys246/Maxim/issues/1128) the Dormant `MemoryAgent` queries bump `access_count` every tick (default retention until memory Phase 5; one owner call, stop vs uncounted; its own ledger walk) | The #840/#841 class, beside item 4's mypy extension, which catches more of them. Session C order (owner, 2026-10-06): #1138 → simulation honesty (D49, D46/D50) → #1128 → [#1124](https://github.com/dennys246/Maxim/issues/1124) → #1077–#1079, #1081. |
+| 4. Body defects | [#873](https://github.com/dennys246/Maxim/issues/873) ⟲ the no-silent-fallback half: `damage_component` fails on a missing part instead of reporting success (row 9); [#874](https://github.com/dennys246/Maxim/issues/874) ⟲ cradle heat never reaches the arm (row 9's "Cradle / drive / SEM body change"; probably discharged structurally, since row 9 is the dragon / `base_humanoid` setup, but stated in the PR) | Both are "reports success, did nothing". #873's four design points (sum vs weighted mean, a missing part, partless bodies, archetype reflex sets) stay with [deferred/reflex_layering.md](deferred/reflex_layering.md). **Added 2026-10-06 (owner):** [#1124](https://github.com/dennys246/Maxim/issues/1124) (#874's review) a dotted ROOT key shadows the real modulator sub-sensor in `evaluate_failures` (reloaded pre-#874 orphans; the derived `<mod>.integrity` keys); one design call, moving derived integrity off `vital_metrics`. |
 
 *With the slice that owns the file*, each in its own PR. A fix measured on a loop mid-refactor cannot be
 told apart from the refactor.
@@ -410,6 +410,9 @@ told apart from the refactor.
     operational mode per call site, so the follow-up type ignores the launch grant. The slice that owns
     the loop's mode handling makes one accessor the only capability reader, guarded against new raw
     `state.data["mode"]` reads. #829's source-pin wiring tests become behavioural in the same PR.
+  - [#1125](https://github.com/dennys246/Maxim/issues/1125) (#874's review): `Executor._drive_pressure_snapshot` misses modulator-qualified drives
+    (`arms.thermal`, `head.thermal`, `arms.pressure`); with the slice that moves `_read_drive_ranges`.
+    Record-only. Handed to Session A 2026-10-06.
   - [#863](https://github.com/dennys246/Maxim/issues/863): its `agent_loop.py` sites. Its `cli.py::_main_impl`
     sites go with that slice if it lands; if not, they stay open on #863 with this home recorded.
 - **After the orchestrator's characterization tests** (the first slice of its decomposition):
@@ -419,6 +422,9 @@ told apart from the refactor.
     `scripts/exp44/` and `scripts/benchmark_*` harness scans stay, listed in the persistence-config
     brief's invariant with their reason (they scan a data home they created, not name a run).
   - #863's `orchestrator.py` sites.
+  - [#1123](https://github.com/dennys246/Maxim/issues/1123) (#874's review): the orchestrator's `set_entity_sensor` hint advertises `health` (not writable on
+    derived-health bodies; it now fails) and "0.0-1.0" (value mode clamps to declared ranges), and the schema's
+    `value` defaults to 1.0. With the `start_simulation_mode` slice. Handed to Session A 2026-10-06.
 - **After the decomposition, not inside it:**
   - [#866](https://github.com/dennys246/Maxim/issues/866), then [#865](https://github.com/dennys246/Maxim/issues/865).
     Moving `sim_logger` touches imports in 79 files, `agent_loop.py` among them, and #866 changes
@@ -436,6 +442,11 @@ from the plan that owns it:
 - [#848](https://github.com/dennys246/Maxim/issues/848) → memory 2S-e.
 - [#899](https://github.com/dennys246/Maxim/issues/899) → roadmap 1.4 Phase 5 keying.
 - [#784](https://github.com/dennys246/Maxim/issues/784) → [world_channel_weighting.md](world_channel_weighting.md).
+- [#1137](https://github.com/dennys246/Maxim/issues/1137) (compression keeps only the intent goal; a persisted-shape change) → the memory line
+  ([memory_strength_and_forgetting.md](memory_strength_and_forgetting.md)). Trigger: the first path that compresses
+  in a sim, or any work on sleep/consolidation in the loop (no committed store holds a compressed record today).
+- [#1118](https://github.com/dennys246/Maxim/issues/1118) (the E4 record's `widening_overreach` field is narrower than the prereg's term) →
+  [engram_formation.md](engram_formation.md) E4. Trigger: before any E4 re-run.
 
 **Done when:**
 - Batches 0–2 are closed.
