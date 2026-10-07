@@ -53,12 +53,18 @@ These extensions are optional and additive; new ones may be introduced
 post-1.0 with the same duck-typed-with-default pattern. Adapters that
 do not implement them get sensible defaults at the call sites.
 
-Network-backed adapter case (C10 prep, transport ships in 1.1)
----------------------------------------------------------------
+Network-backed adapter case (C10 prep; DEFERRED, not shipped)
+--------------------------------------------------------------
 
 A perception peer that runs on-device STT / vision / sensors and ships
-event-shaped percepts to a leader is implemented as a Protocol-conformant
-``RemotePerceptSource`` (1.1 file: ``src/maxim/agents/remote_percept_source.py``).
+event-shaped percepts to a leader WOULD be a Protocol-conformant
+``RemotePerceptSource``. It does not exist: no such module was written,
+``mesh/message.py::MeshMessageType.PERCEPT_PUSH`` (with ``EXPERIENCE_OFFER``
+and ``CAUSAL_LINK_SHARE``) has no producer, and ``mesh/bus.py::LocalMessageBus``
+is in-process only, so live percept sharing does not exist at any layer
+(bugs ledger D46). The design is owned by
+``docs/plans/deferred/mesh_perception_transport.md``; what follows is that
+design's contract, kept here so a future adapter fits the current shape.
 The existing four-member contract is sufficient — adding required Protocol
 members post-1.0 would break every third-party ``PerceptSource``
 implementation, so the network-adapter case is deliberately fit within

@@ -532,7 +532,9 @@ The `--dm` flag is reserved for a future generative DM mode. Today, all 11 shipp
 
 ### Party Mode
 
-Enable `party_mode: true` in campaign YAML to run with NPC agents that have real memory and learning. Each NPC gets its own Hippocampus and NAc instance, receives scene narrative alongside the PC, generates dialogue, and adapts based on prior encounters.
+> **Not implemented.** `party_mode: true` does nothing: there is no party runtime, NPCs get no Hippocampus or NAc, and the campaign runs as a single PC. Setting it logs a warning (bugs ledger D50). What follows is the planned design.
+
+The plan: `party_mode: true` would run NPC agents with real memory and learning. Each NPC would get its own Hippocampus and NAc instance, receive scene narrative alongside the PC, generate dialogue, and adapt based on prior encounters.
 
 ```yaml
 campaign:
@@ -548,7 +550,7 @@ npcs:
     model_tier: small
 ```
 
-During each encounter: NPC agents react first (generating dialogue and updating internal state), then the PC observes NPC reactions alongside the scene and makes a choice. All agents witness the outcome, which feeds into their hippocampus. After the campaign, per-NPC memory exports are available in the report.
+Planned: during each encounter NPC agents would react first (generating dialogue and updating internal state), then the PC would observe NPC reactions alongside the scene and make a choice, with all agents witnessing the outcome. None of this runs today.
 
 ### Encounter Templates
 

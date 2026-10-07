@@ -1,8 +1,8 @@
 """BenchmarkRunner — multi-model comparative testing.
 
 Automates running campaign scenarios across multiple LLM models,
-computing tiered metrics (LLM behavior, cognitive architecture,
-embodiment), and producing comparative reports.
+computing tiered metrics (LLM behavior, cognitive architecture; the
+embodiment tier is Dormant, D49e), and producing comparative reports.
 
 Wraps ``run_campaign()`` from ``experiment.py`` for each model/scenario
 combination, aggregates results across runs, and scores against
@@ -31,6 +31,18 @@ from pathlib import Path
 from typing import Any
 
 from maxim.simulation.sim_types import is_simulation_run_failure
+
+# The one list of metrics where lower is better: the composite inverts them, rankings sort them ascending,
+# and the baseline comparison reads them the same way (D49: three lists used to disagree).
+LOWER_IS_BETTER: frozenset[str] = frozenset(
+    {"hallucination_rate", "alias_redirect_rate", "cost_per_turn", "action_latency_p50_ms", "action_latency_p95_ms"}
+)
+# Never scored: an unbounded millisecond value has no honest [0, 1] normalization, and scoring it
+# uninverted would rank a slower model higher. Latency is Tier 1, which is Dormant (no metric computed), so
+# this is pre-emptive (owner decision 2026-10-07).
+NOT_IN_COMPOSITE: frozenset[str] = frozenset({"action_latency_p50_ms", "action_latency_p95_ms"})
+# Stamped into every benchmark_report.json: composites under another scheme are not comparable (D49).
+SCORE_SCHEME = "weighted-per-scenario-v1"
 
 
 logger = logging.getLogger(__name__)
@@ -266,6 +278,10 @@ class BenchmarkRunner:
 
         # Load suite or single scenario
         self._scoring: dict[str, dict] = {}
+        # Per scenario (keyed by the path stem the runs report): its weight in the composite and the metrics
+        # it scores, from the suite entry and the scenario's own ``benchmark`` section (D49).
+        self._scenario_weight: dict[str, float] = {}
+        self._scenario_metrics: dict[str, list[str] | None] = {}
         self._scenarios = self._load_suite(suite_path)
 
     def _load_suite(self, path: str) -> list[dict[str, Any]]:
@@ -282,7 +298,9 @@ class BenchmarkRunner:
 
         p = Path(path)
         if not p.exists():
-            raise FileNotFoundError(f"Suite/scenario not found: {path}")
+            siblings = sorted(f.name for f in p.parent.glob("*.yaml")) if p.parent.is_dir() else []
+            available = f" Available in {p.parent}: {', '.join(siblings)}." if siblings else ""
+            raise FileNotFoundError(f"Suite/scenario not found: {path}.{available}")
 
         defn = load_scenario(p)
 
@@ -300,8 +318,11 @@ class BenchmarkRunner:
                         "config": entry.get("config"),
                     }
                 )
+                self._register_scenario(entry["path"], entry.get("weight", 1.0), _child_metric_selection(entry["path"]))
             if not scenarios:
                 raise ValueError(f"Suite {path} has no scenarios listed")
+            if sum(self._scenario_weight.values()) <= 0:
+                raise ValueError(f"Suite {path} gives its scenarios no weight (every weight is 0)")
             logger.info(
                 "Loaded benchmark suite: %s (%d scenarios, %d scoring thresholds)",
                 defn.name,
@@ -317,6 +338,9 @@ class BenchmarkRunner:
             seed_kw = defn.benchmark.get("seed_keywords", [])
             weight = defn.benchmark.get("weight", 1.0)
         self._scoring = {}
+        self._register_scenario(path, weight, (defn.benchmark or {}).get("metrics"))
+        if self._scenario_weight[Path(path).stem] <= 0:
+            raise ValueError(f"Scenario {path} gives itself no weight (benchmark.weight is 0)")
 
         return [
             {
@@ -492,7 +516,9 @@ class BenchmarkRunner:
         turns = max(result.sim_turns, 1)
 
         # ── Tier 1: LLM Behavior ────────────────────────────────
-        # (tool_stats not yet on ExperimentResult — uses analysis data)
+        # Dormant since 2026-10-07 (D49): nothing here computes a Tier 1 metric, and its helpers
+        # (``_count_think_chains``, ``_compute_ttr``) have no caller, so no benchmark has ever
+        # reported one; the docs' Tier 1 table is a design sketch. Behaviour tier: n/a.
 
         # ── Tier 2: Cognitive Architecture ───────────────────────
         # Memory system
@@ -531,7 +557,7 @@ class BenchmarkRunner:
             metrics[f"recall_{kw}"] = 1.0 if data.get("count", 0) > 0 else 0.0
 
         # ── Tier 3: auto-detected ────────────────────────────────
-        # (filled when Embodiment ships — introspector.embodiment_stats())
+        # (Dormant, D49e: see ``_collect_tier3_metrics``; nothing produces Tier 3 metrics)
 
         return metrics
 
@@ -574,24 +600,24 @@ class BenchmarkRunner:
             aggregated[key] = statistics.mean(values) if values else 0.0
             stddevs[key] = statistics.stdev(values) if len(values) > 1 else 0.0
 
-        # Per-scenario breakdown
-        per_scenario: dict[str, dict[str, float]] = {}
+        # Per-scenario breakdown: the true mean across that scenario's runs (it was a running half-mean,
+        # ``(old + new) / 2``, right only for two runs: D49).
+        # A run that did not emit a metric contributes 0 to that metric's mean, as in ``aggregated`` above:
+        # the collectors emit some metrics only when non-zero, so absent means not achieved.
+        runs_by_scenario: dict[str, list[RunResult]] = {}
         for r in successful:
-            if r.scenario not in per_scenario:
-                per_scenario[r.scenario] = {}
-            for k, v in r.metrics.items():
-                # Average across runs for same scenario
-                if k in per_scenario[r.scenario]:
-                    per_scenario[r.scenario][k] = (per_scenario[r.scenario][k] + v) / 2
-                else:
-                    per_scenario[r.scenario][k] = v
+            runs_by_scenario.setdefault(r.scenario, []).append(r)
+        per_scenario: dict[str, dict[str, float]] = {}
+        for scenario, scenario_runs in runs_by_scenario.items():
+            keys = {k for r in scenario_runs for k in r.metrics}
+            per_scenario[scenario] = {k: statistics.mean(r.metrics.get(k, 0.0) for r in scenario_runs) for k in keys}
 
         # Expectations
         total_passed = sum(r.expectations_passed for r in successful)
         total_expected = sum(r.expectations_total for r in successful)
 
-        # Composite score (equal weight T1:T2, normalized 0-1)
-        score = self._compute_composite_score(aggregated)
+        # Composite: each scenario scored on its selected metrics, combined by its weight (D49).
+        score = self._compute_weighted_composite(per_scenario)
 
         # Check pass/fail against suite scoring thresholds
         passed = self._check_thresholds(aggregated)
@@ -609,24 +635,23 @@ class BenchmarkRunner:
         )
 
     def _compute_composite_score(self, metrics: dict[str, float]) -> float:
-        """Compute a weighted composite score from metrics.
+        """Score one set of metrics: the mean of each metric normalized to [0, 1].
 
-        Currently uses simple normalization: each metric contributes
-        its value (capped at 1.0) divided by total metrics.
+        Each metric contributes its value (capped at 1.0) divided by total metrics. One scenario's score;
+        ``_compute_weighted_composite`` combines scenarios by weight.
         """
         if not metrics:
             return 0.0
 
-        # Metrics where lower is better
-        invert = {"hallucination_rate", "alias_redirect_rate", "cost_per_turn"}
-
         score_sum = 0.0
         count = 0
         for key, value in metrics.items():
+            if key in NOT_IN_COMPOSITE:
+                continue
             if key.startswith("recall_"):
                 # Binary: 0 or 1
                 score_sum += value
-            elif key in invert:
+            elif key in LOWER_IS_BETTER:
                 score_sum += max(0.0, 1.0 - value)
             else:
                 # Cap at 1.0 for ratio metrics, allow higher for counts
@@ -634,6 +659,43 @@ class BenchmarkRunner:
             count += 1
 
         return score_sum / max(count, 1)
+
+    def _register_scenario(self, path: str, weight: float, metrics: list[str] | None) -> None:
+        stem = Path(path).stem
+        if stem in self._scenario_weight:
+            # Runs are reported by stem, so two entries with one stem would merge their runs and scores.
+            raise ValueError(
+                f"Benchmark suite lists two scenarios named {stem!r} ({path}); scenario names must be unique"
+            )
+        weight = float(weight)
+        if weight < 0:
+            raise ValueError(f"Benchmark scenario {stem!r} has a negative weight ({weight})")
+        self._scenario_weight[stem] = weight
+        self._scenario_metrics[stem] = list(metrics) if metrics else None
+
+    def _compute_weighted_composite(self, per_scenario: dict[str, dict[str, float]]) -> float:
+        """The suite's composite: each registered scenario's score, weighted by its suite ``weight`` (D49).
+
+        A scenario scores the metrics its ``benchmark.metrics`` selects (all collected metrics when it selects
+        none). A selected metric no run emitted scores 0, and is never inverted into a perfect score. A
+        scenario with no successful run scores 0 at its full weight: a crash is a failure, not a pass on
+        fewer questions (owner decision 2026-10-07).
+        """
+        total_weight = 0.0
+        weighted = 0.0
+        for scenario, weight in self._scenario_weight.items():
+            metrics = per_scenario.get(scenario)
+            total_weight += weight
+            if not metrics:
+                continue
+            selection = self._scenario_metrics.get(scenario)
+            if selection:
+                parts = [self._compute_composite_score({k: metrics[k]}) if k in metrics else 0.0 for k in selection]
+                scenario_score = sum(parts) / len(parts)
+            else:
+                scenario_score = self._compute_composite_score(metrics)
+            weighted += weight * scenario_score
+        return weighted / total_weight if total_weight > 0 else 0.0
 
     def _check_thresholds(self, metrics: dict[str, float]) -> bool:
         """Check if metrics meet suite-level scoring thresholds."""
@@ -661,13 +723,12 @@ class BenchmarkRunner:
         for mr in results.values():
             all_keys.update(mr.metrics.keys())
 
-        invert = {"hallucination_rate", "alias_redirect_rate", "cost_per_turn"}
         rankings: dict[str, list[str]] = {}
         for key in all_keys:
             ranked = sorted(
                 results.keys(),
                 key=lambda m: results[m].metrics.get(key, 0),
-                reverse=(key not in invert),
+                reverse=(key not in LOWER_IS_BETTER),
             )
             rankings[key] = ranked
 
@@ -676,13 +737,7 @@ class BenchmarkRunner:
     # ── Baseline comparison ────────────────────────────────────────
 
     # Metrics where a *lower* value means better performance.
-    _LOWER_IS_BETTER: set[str] = {
-        "hallucination_rate",
-        "alias_redirect_rate",
-        "cost_per_turn",
-        "action_latency_p50_ms",
-        "action_latency_p95_ms",
-    }
+    _LOWER_IS_BETTER: frozenset[str] = LOWER_IS_BETTER
 
     def _load_baseline(self, path: str) -> BenchmarkReport | None:
         """Load a previously saved benchmark_report.json as a BenchmarkReport.
@@ -702,6 +757,15 @@ class BenchmarkRunner:
         except (OSError, _json.JSONDecodeError) as exc:
             logger.warning("Failed to read baseline %s: %s — skipping comparison", path, exc)
             return None
+
+        if data.get("score_scheme") != SCORE_SCHEME:
+            logger.warning(
+                "Baseline %s was scored under %r, not %r: its composite scores are not comparable "
+                "(per-metric deltas still are; D49)",
+                path,
+                data.get("score_scheme", "flat-mean (before 2026-10-07)"),
+                SCORE_SCHEME,
+            )
 
         # Reconstruct ModelResult objects from serialized data
         results: dict[str, ModelResult] = {}
@@ -783,6 +847,7 @@ class BenchmarkRunner:
         # JSON report
         report_path = report_dir / "benchmark_report.json"
         report_data = {
+            "score_scheme": SCORE_SCHEME,
             "timestamp": report.timestamp,
             "suite": report.suite,
             "models": report.models,
@@ -897,6 +962,11 @@ class BenchmarkRunner:
         picks up those metrics without any benchmark code changes.
 
         Returns an empty dict pre-embodiment.
+
+        Dormant since 2026-10-07 (D49e): nothing calls this, and no introspector implements
+        ``embodiment_stats()``, so Tier 3 has never produced a metric. ``--benchmark tier3`` and
+        ``maxim.benchmark(suite="embodiment")`` point at a suite that does not ship. Behaviour tier: n/a.
+        Owner decision on D49.
         """
         introspector = getattr(result, "introspector", None)
         if introspector is None:
@@ -909,3 +979,18 @@ class BenchmarkRunner:
             return introspector.embodiment_stats()
         except Exception:
             return {}
+
+
+def _child_metric_selection(path: str) -> list[str] | None:
+    """The metrics a suite's child scenario selects in its own ``benchmark`` section (D49).
+
+    Fails fast: a child that is missing or does not parse refuses the suite at construction, naming the
+    child (it used to fail only its own runs, later; owner decision 2026-10-07).
+    """
+    from maxim.simulation.scenario_source import load_scenario
+
+    try:
+        defn = load_scenario(Path(path))
+    except (FileNotFoundError, ValueError, AttributeError) as exc:
+        raise ValueError(f"Benchmark suite scenario {path} cannot be loaded: {exc}") from exc
+    return (defn.benchmark or {}).get("metrics")

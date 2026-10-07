@@ -140,10 +140,10 @@ Every campaign YAML has these sections:
 | `expectations` | No | Bio-system thresholds for automated validation |
 | `permissions` | No | Per-character enforced authority blocks (see below) |
 
-Two further campaign-level keys are parsed onto `CampaignDef` and then ignored by the 1.1
-runtime: `party_mode` (see [Party Mode](#party-mode-multi-agent-campaigns--planned-not-yet-implemented))
-and `choice_resolution` (default `"pc_decides"`, which is the only behaviour there is).
-Setting either changes nothing.
+Two further campaign-level keys do nothing. `party_mode` (see [Party Mode](#party-mode-multi-agent-campaigns--planned-not-yet-implemented))
+is kept on `CampaignDef`; `party_mode: true` logs a warning that no party runtime exists.
+`choice_resolution` is no longer a field: `"pc_decides"` (the default, and the only behaviour
+there is) loads silently, and any other value logs a warning (bugs ledger D50).
 
 ### Enforced Permissions
 

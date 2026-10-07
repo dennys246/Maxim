@@ -125,6 +125,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fallback's category key never matched, so it touched nothing until #1153 is fixed), and
   `count_access=False` through `MemoryHub.build_concept_context` / `ConceptContextBuilder.build` (default `True`, so
   the adaptive planner, whose result is used, still counts). Grounding's own touches (ATL and AG) stay.
+- **The benchmark composite honours the suite format it ships; Tier 3 declared Dormant** (bugs ledger D49, owner
+  decisions 2026-10-07). Shipped suites set a per-scenario `weight` and a per-scenario `benchmark.metrics`
+  selection, and the runner ignored both: the composite was a flat mean of every collected metric, and repeat runs
+  of a scenario were folded with a running half-mean `(old + new) / 2` (the true mean only for two runs). The
+  composite is now the `weight`-weighted mean of per-scenario scores over every scenario in the suite (one with no
+  successful run scores 0 at its weight), each scenario scoring the metrics it selects (a run that did not emit a
+  metric counts 0 in its mean, since collectors emit some only when non-zero), and per-scenario metrics are true
+  means. One `LOWER_IS_BETTER` list replaces three that disagreed, and latency is kept out of the composite. **Tier 1
+  (LLM behaviour) has never computed a metric** (its block in `_compute_metrics` is empty and its helpers have no
+  caller), so every benchmark composite has been Tier 2 only; Tier 1 is now marked Dormant beside Tier 3 and the
+  docs' Tier 1 table is labelled a design. **Benchmark composites before and after are not comparable**
+  (no ledger row or site claim rests on one): reports now carry `score_scheme`, and an unstamped baseline warns.
+  A missing suite names the suites that exist; a suite whose child is missing or does not parse, a negative or
+  all-zero weight, or two scenarios with one file name is refused when the runner is built (a broken child used
+  to fail only its own runs). Tier 3 (`_collect_tier3_metrics`, no caller;
+  `embodiment_stats()`, never implemented) is marked Dormant; removing `tier2`/`tier3` from `--benchmark`'s choices
+  waits for the `cli.py` decomposition slice.
+- **Campaign keys that do nothing are no longer silent** (D50). `party_mode: true`, in campaign YAML or as
+  `maxim.campaign(party_mode=True)`, logs that no party runtime exists (NPCs get no Hippocampus or NAc).
+  `choice_resolution` is removed from `CampaignDef` (it had no reader): the default `pc_decides` loads silently and
+  any other value warns. `docs/user/simulation.md` no longer describes party mode as working.
+- **`simulation/sources.py` no longer implies live percept sharing shipped** (D46): it names the remote adapter as
+  never written, the mesh percept message types as having no producer, and `deferred/mesh_perception_transport.md`
+  as the owner.
+- **A confirmed action learns what the same action learns unconfirmed: one execute-and-learn function**
+  ([#1133](https://github.com/dennys246/Maxim/issues/1133); since d6b64e9f, 2026-04-09). At SUPERVISED autonomy a tool that
+  needs confirmation was run, on "yes", by `LoopController.handle_confirmation`'s own copy of the dispatch. After a
+  successful run it read `PendingConfirmation.params`, which did not exist; the broad `except` logged "Confirmed action
+  failed", showed "Action failed", recorded nothing and queued no follow-up (the action itself had run). Had it not
+  crashed it would still have learned the wrong thing: it never read the tool's side effects (harm booked POSITIVE),
+  credited under the loop's agent name instead of the hub's `agent_id`, credited no situation (the proposal was cleared
+  when the confirmation was asked) and skipped the capture, the plan outcome and `environment.step`. Now the loop's
+  section 4 block lives, moved verbatim, in `tool_dispatch.execute_and_learn`, bound once per run as
+  `LoopRun.execute_and_learn`, and both the autonomous and the confirmed path call it; the confirmed action is
+  credited to the situation it was proposed in (`PendingConfirmation.source`) and follows the main path's follow-up
+  rule (a failed "process" tool is followed up). `PendingConfirmation` is a frozen record on the controller
+  (`ctrl.pending_confirmation`, built by `from_proposal`), no longer a dict in `state.data`. A display error after a
+  confirmed action is reported and cannot undo the recorded outcome. A refused confirmation or plan is booked through
+  the run's recorder under the hub `agent_id` with the proposal's situation, and a refused plan whose action names no
+  tool is recorded as `"unknown"`, not `None`; `LoopController.record_outcome` is retired. The parallel batch now
+  credits the three drive side effects (relief, its channel, withheld credit) the single-action path always read.
+  `handle_confirmation` no longer catches everything: a raise from the pre-execution snapshot (`capture_before`)
+  or from inside `execute_and_learn`'s own `except` branch now propagates, as it does on the main path, with the
+  confirmation already cleared. Reach: SUPERVISED runs only (interactive, non-interactive auto-approval, the
+  embodied runtime, supervised scenario sims, a timed autonomy grant expiring back to SUPERVISED
+  (`--autonomy-duration`), and the model lowering its own level through `mode_switch`); goal-string and arc
+  `--sim` AUTs run AUTONOMOUS. `loop_controller.py` and `loop_state.py` join CI's mypy set.
+  Known defects the move carries, now fixed in one place later: #1145, #1146, #1147.
 
 - **`maxim.recall()` has never returned a story memory; its episodic source is declared Dormant**
   ([#1138](https://github.com/dennys246/Maxim/issues/1138), owner decision 2026-10-06). `EpisodicRecallSource`
