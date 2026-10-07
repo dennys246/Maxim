@@ -176,7 +176,7 @@ def test_the_hub_refuses_to_hand_over_a_cue_it_does_not_have_and_resets_at_sessi
 def _propose(**kw):
     from tests.unit.test_modality_seam import _ClusterRecordingNac, _multi_drive_body, _StubExecutor
 
-    from maxim.runtime.agent_loop import propose_via_substrate
+    from maxim.runtime.substrate_proposal import propose_via_substrate
     from maxim.similarity.ec import EntorhinalCortex
     from maxim.similarity.encoder import SensorEncoder
 
@@ -284,7 +284,7 @@ def test_the_session_end_reports_what_the_cue_found(tmp_path):
 
 
 def test_the_loop_resolves_its_cue_once_and_degrades_loudly(tmp_path, caplog):
-    from maxim.runtime.agent_loop import NO_SITUATION_CUE
+    from maxim.runtime.substrate_proposal import NO_SITUATION_CUE
     from maxim.runtime.loop_setup import _resolve_situation_cue
     from maxim.runtime.bio_stack import build_bio_stack
 

@@ -123,7 +123,7 @@ release mirror) is engineering, and the plan says so.
 
 | Piece | Status |
 |---|---|
-| Substrate-primary selection: `agent_loop.py::propose_via_substrate` → `NAc.recommend_action` over `{modality: EC cluster}` — **one cluster per modality** | **Shipped**, production caller |
+| Substrate-primary selection: `substrate_proposal.py::propose_via_substrate` → `NAc.recommend_action` over `{modality: EC cluster}` — **one cluster per modality** | **Shipped**, production caller |
 | Situation encoding (`SensorEncoder`, 384-d) for interoception/audio/world; cluster ids are ATL concept ids | **Shipped** |
 | Fear (`cluster_fear`) written by the pain→fear subscriber **only to the world cluster**; reward credit only to world/audio/interoception | **Shipped** — a text cluster can hold neither today |
 | Game text as a percept: player chat as `[minecraft:chat]` (always on); game system messages as `[minecraft:system]` behind `--system_messages` (#807) | **Shipped** — observed, never in the situation (`_SUBSTRATE_CHANNELS` excludes text) |

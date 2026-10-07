@@ -21,7 +21,7 @@ Production pieces, called as the loop calls them (no re-implementation):
 * ``DoAFeed`` world-setting the same ``azimuth`` root sensor the mother's call
   world-set in the nursery (owner ``doa_feed``).
 * ``generate_tools_for_entity`` → ``ToolRegistry``; ``_encode_current_clusters``
-  / ``propose_via_substrate`` (``runtime/agent_loop.py``) →
+  / ``propose_via_substrate`` (``runtime/substrate_proposal.py``) →
   ``NAc.recommend_action(current_clusters=)``; the ``NAc_RECOMMEND`` decision
   provenance (``learned_margin`` / ``explore_decisive`` / ``score_components``)
   captured through ``sim_logger.register_sim_sink``.
@@ -661,7 +661,7 @@ class DryReadoutRig:
 
 def decide(agent: LoadedAgent, rig, sink: _ProvenanceSink) -> dict:
     """One production decision at the current pose: encode → recommend → provenance."""
-    from maxim.runtime.agent_loop import NO_SITUATION_CUE, _encode_current_clusters, propose_via_substrate
+    from maxim.runtime.substrate_proposal import NO_SITUATION_CUE, _encode_current_clusters, propose_via_substrate
 
     clusters = _encode_current_clusters(agent.encoder, AGENT_ID, rig.executor)
     audio_cluster = clusters.get("audio")

@@ -43,9 +43,9 @@ HOUR = 3600.0  # a submit interval no run outlasts: the cadence is due on the fi
 
 def _seam() -> Any:
     """The module ``run_agentic_loop``'s substrate tick reads ``propose_via_substrate`` from."""
-    from maxim.runtime import agent_loop
+    from maxim.runtime import substrate_proposal
 
-    return agent_loop
+    return substrate_proposal
 
 
 # ── harness ──────────────────────────────────────────────────────────────────
@@ -382,3 +382,13 @@ def test_without_a_hub_the_proposer_gets_no_nac_and_the_explicit_no_cue(monkeypa
     assert kw["nac"] is None and kw["sensor_encoder"] is None
     assert kw["agent_id"] == "substrate-probe"
     assert repr(kw["situation_cue"]) == "NO_SITUATION_CUE"
+
+
+def test_both_moved_modules_keep_the_loop_logger_name():
+    """Slice 3 moved code out of agent_loop without renaming its log records: both the tick and the leaf
+    proposer (whose readers the Executor also calls) still log as ``maxim.runtime.agent_loop``, as the
+    slice-1/2 modules do, so a filter or handler keyed on that name sees the same records."""
+    from maxim.runtime import loop_substrate, substrate_proposal
+
+    assert loop_substrate.logger.name == LOGGER
+    assert substrate_proposal.logger.name == LOGGER

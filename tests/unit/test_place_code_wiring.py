@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from maxim.runtime.agent_loop import (
+from maxim.runtime.substrate_proposal import (
     _read_exteroceptive_ranges,
     _read_exteroceptive_states,
     place_code_exteroception_enabled,

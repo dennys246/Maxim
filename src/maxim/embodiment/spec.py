@@ -590,9 +590,9 @@ def _build_reading_schema(spec: dict[str, Any]) -> dict[str, Any]:
 
     # ``modality:`` (1.1.4 PR 2) — a sensor DECLARES which substrate modality
     # channel carries it, instead of channel membership living in hardcoded
-    # name tuples (`agent_loop._EXTEROCEPTIVE_ROOT_SENSORS`, whose own comment
+    # name tuples (`substrate_proposal._EXTEROCEPTIVE_ROOT_SENSORS`, whose own comment
     # asked for exactly this). Consumed by the channel readers in
-    # `runtime/agent_loop.py`. Interoception membership still comes from
+    # `runtime/substrate_proposal.py`. Interoception membership still comes from
     # `drive:` declarations, NOT from this field (drives are what the affinity
     # heuristic and drive-relief credit key on). Absent = the sensor belongs
     # to no exteroceptive channel (byte-identical to pre-PR-2 behavior for

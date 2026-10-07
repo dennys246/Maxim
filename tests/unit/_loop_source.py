@@ -20,7 +20,8 @@ Function-specific pins (update consciously, by owning slice). These read one fun
 ordering, a region split, an AST of that function) and are NOT routed through this helper:
 
   - ``test_substrate_action_budget.py::TestWiringPins::test_substrate_branch_consults_gate_before_proposing``
-    (gate before propose inside §6b) -- slice 3.
+    (gate before propose inside §6b): reads ``loop_substrate.substrate_tick`` since slice 3, and pins one
+    ``substrate_tick(`` call inside ``run_agentic_loop``'s ``_substrate_tick_due`` branch.
   - ``test_planning_liveness.py::test_idle_gate_uses_exact_worker_state`` and
     ``::test_completed_state_is_active_until_proposal_poll`` (§0.6 idle gate): read
     ``loop_gates.pre_tick_gate`` since slice 2 (the first also pins one ``pre_tick_gate(`` call in the loop).

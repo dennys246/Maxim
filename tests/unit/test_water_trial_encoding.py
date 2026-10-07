@@ -127,9 +127,9 @@ def test_loop_encoder_default_change_refuses(trial, monkeypatch: pytest.MonkeyPa
 @pytest.mark.parametrize("sensor", ["light_level", "time_of_day"])
 def test_rerange_of_a_high_mass_sensor_refuses(trial, monkeypatch: pytest.MonkeyPatch, sensor: str) -> None:
     """Re-ranging light_level to [-15, 15] moves shore-vs-submerged 0.7874 → 0.5832 (#783)."""
-    import maxim.runtime.agent_loop as al
+    import maxim.runtime.substrate_proposal as sp
 
-    real = al._read_world_ranges
+    real = sp._read_world_ranges
 
     def reranged(executor):
         r = dict(real(executor))
@@ -137,7 +137,7 @@ def test_rerange_of_a_high_mass_sensor_refuses(trial, monkeypatch: pytest.Monkey
         r[sensor] = (-hi, hi)
         return r
 
-    monkeypatch.setattr(al, "_read_world_ranges", reranged)
+    monkeypatch.setattr(sp, "_read_world_ranges", reranged)
     assert f"world_ranges.{sensor}" in _refusal(trial)
 
 

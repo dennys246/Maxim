@@ -1,7 +1,7 @@
 """Substrate-primary drive-need derivation — regression guards.
 
 Covers the homeostatic-deficit → corrective-need derivation in
-``runtime/agent_loop._read_drive_states`` and its downstream effect on
+``runtime/substrate_proposal._read_drive_states`` and its downstream effect on
 ``NAc.recommend_action``'s drive-affinity heuristic, per the drive-tuning
 work for Exp 41 (docs/plans/archive/substrate_exploration_policy.md /
 docs/experiments/41_substrate_primary_exploration.md).
@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from maxim.decisions.nac import NAc, NACConfig
 from maxim.embodiment.component_registry import ComponentRegistry
-from maxim.runtime.agent_loop import _read_drive_states
+from maxim.runtime.substrate_proposal import _read_drive_states
 
 
 class _Emb:

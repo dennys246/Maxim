@@ -173,7 +173,7 @@ class ScriptedSurvivalBridge:
 
 def main() -> int:
     from maxim.agents.context_pool import ContextPool
-    from maxim.runtime.agent_loop import _encode_current_clusters, _read_drive_states
+    from maxim.runtime.substrate_proposal import _encode_current_clusters, _read_drive_states
     from maxim.runtime.tool_dispatch import (
         build_tool_signature,
         read_learning_side_effects,

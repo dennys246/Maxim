@@ -77,7 +77,7 @@ if TYPE_CHECKING:
 #
 # NOTE (extero/intero seam): this Literal is the PERCEPT-path vocabulary only.
 # Substrate sensor-CHANNEL tags are an open string vocabulary — EC accepts any
-# modality string, and the ModalityChannel registry in runtime/agent_loop.py
+# modality string, and the ModalityChannel registry in runtime/substrate_proposal.py
 # mints per-channel tags (e.g. "audio" via embodiment.sensory_streams.AUDIO_TAG)
 # that deliberately do not route through this Literal. Do not treat this type
 # as exhaustive over EC node modalities.

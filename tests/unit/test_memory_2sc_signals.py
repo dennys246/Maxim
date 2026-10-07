@@ -22,7 +22,7 @@ import pytest
 from maxim.bridges.tool_pain_bridge import ToolPainBridge
 from maxim.decisions.nac import NAc
 from maxim.proprioception.pain import PainSignal, PainType
-from maxim.runtime.agent_loop import _attach_live_situation, _situation_margins
+from maxim.runtime.substrate_proposal import _attach_live_situation, _situation_margins
 from maxim.runtime.bio_integration import situation_novelty
 
 
@@ -275,10 +275,10 @@ def test_margins_are_read_for_the_situations_modalities_only():
 def test_the_llm_primary_encode_records_the_margins_with_the_clusters(monkeypatch):
     import dataclasses
 
-    import maxim.runtime.agent_loop as al
+    import maxim.runtime.substrate_proposal as sp
     from maxim.agents.llm_types import LLMProposal
 
-    monkeypatch.setattr(al, "_encode_current_clusters", lambda enc, agent_id, ex: {"interoception": "c-i"})
+    monkeypatch.setattr(sp, "_encode_current_clusters", lambda enc, agent_id, ex: {"interoception": "c-i"})
     proposal = LLMProposal(
         request_id="r",
         action={"tool_name": "t"},
