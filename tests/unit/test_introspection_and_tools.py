@@ -37,6 +37,15 @@ class FakeMemory:
     action: _Action = field(default_factory=_Action)
     outcome: _Outcome = field(default_factory=_Outcome)
 
+    # The read-only views a real EpisodicMemory has (#995): every record kind answers these.
+    @property
+    def tool_name(self) -> str:
+        return self.action.tool_name
+
+    @property
+    def goal(self) -> str:
+        return self.context.active_goal
+
 
 class FakeHippocampus:
     def __init__(self, memories: list | None = None):

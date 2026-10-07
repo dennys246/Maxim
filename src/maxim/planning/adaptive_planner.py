@@ -22,10 +22,8 @@ from maxim.planning.base import Planner
 
 
 def _strategy_tool(memory: Any) -> str:
-    """The tool a successful memory used, for either record kind: ``EpisodicMemory.action.tool_name`` or
-    ``CompressedMemory.tool_name`` (#991; the two kinds name it differently, #995). ``""`` = none."""
-    action = getattr(memory, "action", None)
-    return getattr(action, "tool_name", "") or getattr(memory, "tool_name", "") or ""
+    """The tool a successful memory used; both record kinds answer ``tool_name`` (#991, #995). ``""`` = none."""
+    return getattr(memory, "tool_name", "") or ""
 
 
 # ---------------------------------------------------------------------------

@@ -58,8 +58,8 @@ Grouped by the axis each item lifts; the "to reach" conditions come from the car
 | item | guard that makes it count |
 |---|---|
 | **[shipped #894]** **A gating lane that installs the `console` extra and the crypto dependency**, so the console, bundle-signing, hive-pull and Oasis-exchange tests run on every PR. Today **no lane installs fastapi or cryptography**, so those tests are skipped everywhere — and the 1.2 and 1.3 headlines both travel the signed-bundle path. | the lane itself, required in branch protection; a positive control asserting the previously-skipped modules now execute (count > 0), so the lane cannot go quietly vacuous. *Built 2026-09-25: `unit-tests` (already required) installs `console` + `sign` from `pyproject.toml`; `--require-extras=console,sign` fails any skip for a missing required extra (`tests/conftest.py`, pinned by `tests/unit/test_require_extras_lane.py`).* |
-| **[1.3.1 — SHIPPED (#926); first green scheduled run 2026-09-27]** **The nightly model-cache lane green** (red 16 nights running, 25 of the last 30 scheduled runs; new console modules missing from its skip allow-list). Fix by making a missing module FAIL rather than by extending the allow-list. | the lane's own red/green + a check that the allow-list cannot grow silently *(Built: the lane installs the console + sign extras and runs with `--require-extras`; `ALLOWED_MODULE_SKIPS` is gone, and `ALLOWED_SKIPS` is ratcheted in `tests/unit/test_model_cache_names.py`.)* |
-| **[→ 1.3.2; built 2026-10-05, see item 7]** **A slow lane that runs**: install `sentence-transformers` so the 24 substrate sweeps execute; replace "executed > 0" with an exact roster (owner decision 2026-10-04; it was a pinned minimum). | `scripts/check_slow_lane.py` asserting the minimum |
+| **[1.3.1 — SHIPPED (#926); first green scheduled run 2026-09-27]** **The nightly model-cache lane green** (red 16 nights running, 25 of the last 30 scheduled runs; new console modules missing from its skip allow-list). Fix by making a missing module FAIL rather than by extending the allow-list. | the lane's own red/green + a check that the allow-list cannot grow silently *(Built: the lane installs the console + sign extras and runs with `--require-extras`; `ALLOWED_MODULE_SKIPS` is gone, and `ALLOWED_SKIPS` is ratcheted in `tests/unit/test_model_cache_names.py` (since #1117: the model-cache roster's `allowed_skips`, pinned in `tests/unit/test_lane_rosters.py`).)* |
+| **[→ 1.3.2; built 2026-10-05, see item 7]** **A slow lane that runs**: install `sentence-transformers` so the 24 substrate sweeps execute; replace "executed > 0" with an exact roster (owner decision 2026-10-04; it was a pinned minimum). | `scripts/check_lane_roster.py --lane slow` asserting the exact roster |
 | **[1.3.1 — SHIPPED (#928)]** **Network blocked in tests** (hermeticity is HOME/HF isolation + ~48 env scrubs today, with no block). | a conftest socket guard + a test that asserts an outbound call raises |
 | **[1.3.2 — settings verified 2026-10-06; drift-checked by `scripts/check_repo_settings.py`]** **`release-build` required**, `enforce_admins` on, and a required-checks-present gate (verified 2026-10-06: all three contexts required, strict, admins enforced, the ruleset's bypass list empty; GitHub itself refuses a merge while a required check is absent). | branch-protection settings — **owner action**; guard: `scripts/check_repo_settings.py` (nightly, pinned to `scripts/repo_settings_expected.json`) + `tests/unit/test_check_repo_settings.py` |
 | **[1.3.1 — SHIPPED (#926)]** **The release procedure reads the nightlies**: refuse to publish while a nightly lane is red. | a step in `audit_release_build.py` or the release PR checklist, mechanized *(Built as `scripts/check_nightlies.py`, not inside the offline `audit_release_build.py`: it needs the network. Runs `--only-when-releasing` in the `release-build` job; blocking needs `release-build` required, row above. Guard: `tests/unit/test_check_nightlies.py`.)* |
@@ -274,8 +274,9 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
    **The rest built 2026-10-05, PR pending:**
    - `|| echo` is gone from both install steps.
    - The slow lane installs the semantic/console/sign extras and the model cache, runs with
-     `--require-extras`, and is held to the exact roster in `scripts/slow_lane_roster.json`
-     (`scripts/check_slow_lane.py`). Its PR-time twin is `tests/unit/test_slow_lane_roster.py`.
+     `--require-extras`, and is held to the exact roster in `scripts/lane_rosters/slow.json`
+     (`scripts/check_lane_roster.py`; one checker and one setup action for both nightly lanes since #1117, which
+     also holds the model-cache lane to an exact roster). Its PR-time twin is `tests/unit/test_lane_rosters.py`.
    - The fast suite runs in a loopback-only network namespace; its positive control is
      `tests/unit/test_network_boundary.py`.
    - Structural pins: `tests/unit/test_ci_workflow_shape.py`.
@@ -388,8 +389,8 @@ recorded in this plan.
 
 | Batch | Issues | Notes |
 |---|---|---|
-| 3. Silent seams | [#851](https://github.com/dennys246/Maxim/issues/851) ⟲ `ToolPainBridge` pending entries leak and disable embodiment-pain attribution (the "SEM pain → NAc cascade" row: "ToolPainBridge attribution change"); [#845](https://github.com/dennys246/Maxim/issues/845) memory consumers that never deliver: items 2, 3 and 5 (5 verified first), and item 4's `exec_agent.py::recall_deep` site (its `plan_manager` site is #841's); item 1 rides the slice — **per consumer, wire it or mark it Dormant, each with its behaviour tier declared**; [#863](https://github.com/dennys246/Maxim/issues/863) step 2, the telemetry wraps catching caller logic, **outside** `agent_loop.py`, `orchestrator.py` and `_main_impl` | The #840/#841 class, beside item 4's mypy extension, which catches more of them. |
-| 4. Body defects | [#873](https://github.com/dennys246/Maxim/issues/873) ⟲ the no-silent-fallback half: `damage_component` fails on a missing part instead of reporting success (row 9); [#874](https://github.com/dennys246/Maxim/issues/874) ⟲ cradle heat never reaches the arm (row 9's "Cradle / drive / SEM body change"; probably discharged structurally, since row 9 is the dragon / `base_humanoid` setup, but stated in the PR) | Both are "reports success, did nothing". #873's four design points (sum vs weighted mean, a missing part, partless bodies, archetype reflex sets) stay with [deferred/reflex_layering.md](deferred/reflex_layering.md). |
+| 3. Silent seams | [#851](https://github.com/dennys246/Maxim/issues/851) ⟲ `ToolPainBridge` pending entries leak and disable embodiment-pain attribution (the "SEM pain → NAc cascade" row: "ToolPainBridge attribution change"); [#845](https://github.com/dennys246/Maxim/issues/845) memory consumers that never deliver: items 2, 3 and 5 (5 verified first), and item 4's `exec_agent.py::recall_deep` site (its `plan_manager` site is #841's); item 1 rides the slice — **per consumer, wire it or mark it Dormant, each with its behaviour tier declared**; [#863](https://github.com/dennys246/Maxim/issues/863) step 2, the telemetry wraps catching caller logic, **outside** `agent_loop.py`, `orchestrator.py` and `_main_impl`; **added 2026-10-06 (owner):** [#1138](https://github.com/dennys246/Maxim/issues/1138) `EpisodicRecallSource.recalled_items` ignores its limit (live since #1129; first, beside #1140) and [#1128](https://github.com/dennys246/Maxim/issues/1128) the Dormant `MemoryAgent` queries bump `access_count` every tick (default retention until memory Phase 5; one owner call, stop vs uncounted; its own ledger walk) | The #840/#841 class, beside item 4's mypy extension, which catches more of them. Session C order (owner, 2026-10-06): #1138 → simulation honesty (D49, D46/D50) → #1128 → [#1124](https://github.com/dennys246/Maxim/issues/1124) → #1077–#1079, #1081. |
+| 4. Body defects | [#873](https://github.com/dennys246/Maxim/issues/873) ⟲ the no-silent-fallback half: `damage_component` fails on a missing part instead of reporting success (row 9); [#874](https://github.com/dennys246/Maxim/issues/874) ⟲ cradle heat never reaches the arm (row 9's "Cradle / drive / SEM body change"; probably discharged structurally, since row 9 is the dragon / `base_humanoid` setup, but stated in the PR) | Both are "reports success, did nothing". #873's four design points (sum vs weighted mean, a missing part, partless bodies, archetype reflex sets) stay with [deferred/reflex_layering.md](deferred/reflex_layering.md). **Added 2026-10-06 (owner):** [#1124](https://github.com/dennys246/Maxim/issues/1124) (#874's review) a dotted ROOT key shadows the real modulator sub-sensor in `evaluate_failures` (reloaded pre-#874 orphans; the derived `<mod>.integrity` keys); one design call, moving derived integrity off `vital_metrics`. |
 
 *With the slice that owns the file*, each in its own PR. A fix measured on a loop mid-refactor cannot be
 told apart from the refactor.
@@ -409,6 +410,9 @@ told apart from the refactor.
     operational mode per call site, so the follow-up type ignores the launch grant. The slice that owns
     the loop's mode handling makes one accessor the only capability reader, guarded against new raw
     `state.data["mode"]` reads. #829's source-pin wiring tests become behavioural in the same PR.
+  - [#1125](https://github.com/dennys246/Maxim/issues/1125) (#874's review): `Executor._drive_pressure_snapshot` misses modulator-qualified drives
+    (`arms.thermal`, `head.thermal`, `arms.pressure`); with the slice that moves `_read_drive_ranges`.
+    Record-only. Handed to Session A 2026-10-06.
   - [#863](https://github.com/dennys246/Maxim/issues/863): its `agent_loop.py` sites. Its `cli.py::_main_impl`
     sites go with that slice if it lands; if not, they stay open on #863 with this home recorded.
 - **After the orchestrator's characterization tests** (the first slice of its decomposition):
@@ -418,6 +422,9 @@ told apart from the refactor.
     `scripts/exp44/` and `scripts/benchmark_*` harness scans stay, listed in the persistence-config
     brief's invariant with their reason (they scan a data home they created, not name a run).
   - #863's `orchestrator.py` sites.
+  - [#1123](https://github.com/dennys246/Maxim/issues/1123) (#874's review): the orchestrator's `set_entity_sensor` hint advertises `health` (not writable on
+    derived-health bodies; it now fails) and "0.0-1.0" (value mode clamps to declared ranges), and the schema's
+    `value` defaults to 1.0. With the `start_simulation_mode` slice. Handed to Session A 2026-10-06.
 - **After the decomposition, not inside it:**
   - [#866](https://github.com/dennys246/Maxim/issues/866), then [#865](https://github.com/dennys246/Maxim/issues/865).
     Moving `sim_logger` touches imports in 79 files, `agent_loop.py` among them, and #866 changes
@@ -435,6 +442,11 @@ from the plan that owns it:
 - [#848](https://github.com/dennys246/Maxim/issues/848) → memory 2S-e.
 - [#899](https://github.com/dennys246/Maxim/issues/899) → roadmap 1.4 Phase 5 keying.
 - [#784](https://github.com/dennys246/Maxim/issues/784) → [world_channel_weighting.md](world_channel_weighting.md).
+- [#1137](https://github.com/dennys246/Maxim/issues/1137) (compression keeps only the intent goal; a persisted-shape change) → the memory line
+  ([memory_strength_and_forgetting.md](memory_strength_and_forgetting.md)). Trigger: the first path that compresses
+  in a sim, or any work on sleep/consolidation in the loop (no committed store holds a compressed record today).
+- [#1118](https://github.com/dennys246/Maxim/issues/1118) (the E4 record's `widening_overreach` field is narrower than the prereg's term) →
+  [engram_formation.md](engram_formation.md) E4. Trigger: before any E4 re-run.
 
 **Done when:**
 - Batches 0–2 are closed.
@@ -473,7 +485,9 @@ recorded-but-unused memory system. That is 1.4's work ([roadmap_1_4.md](roadmap_
 1. **`agent_loop.py`** (5,543 lines; `run_agentic_loop` 3,389 at `v1.3.1`) — first, because 1.4's Phase 0
    instrument is built on it.
    *(Slice 0, the gates, merged as #1114. Slice 1, the setup → `runtime/loop_setup.py::build_loop_run`,
-   built 2026-10-05, PR pending: `run_agentic_loop` 3,381 → 3,248 lines.)*
+   built 2026-10-05, merged as #1127: `run_agentic_loop` 3,381 → 3,248 lines. Slice 2, §0–0.6 the pre-tick
+   gate → `runtime/loop_gates.py::pre_tick_gate -> GateOutcome`, built 2026-10-06, PR pending: 3,248 → 3,125
+   lines; the helpers the body shares with the gate moved to `loop_state.py` and `loop_controller.py`.)*
 2. **`start_simulation_mode`** (`simulation/orchestrator.py`, 3,322). Its tests cover **11%** of its lines
    (the Codex card's measurement at `v1.3.1`), so it is NOT decomposed blind: characterization tests
    first, then an orchestrator coverage floor set from them (item 5 above), then slices under the same
@@ -499,7 +513,12 @@ new tests patch the new location. (c) The tests that patch `agent_loop._record_o
 back-reference (slice 5 at the latest), which also deletes `loop_setup`'s lazy `agent_loop` import.
 Slice 1 applied (a): `_prepare_executor`, `_loop_bio_handles`, `_build_loop_sensor_encoder`,
 `_resolve_situation_cue` and `_planning_liveness_enabled_via_env` moved into `loop_setup.py`, so its only
-`_al.` reads are the two seams. (d) Extracted functions take
+`_al.` reads are the two seams. Slice 2 applied (a): `tick_embodiment_drift`, `_loop_live_tick`,
+`_maybe_auto_revert_display` and `_loop_is_idle` (only the gate called them) moved into `loop_gates.py`; the
+helpers the gate shares with the loop body went to existing leaves, `_effective_mode`, `_substrate_tick_due`
+and `_planning_attempt_is_active` to `loop_state.py` and the D13 handlers (`_handle_planning_failure`,
+`_handle_planning_transport_failure`, `_report_planning_exhaustion`) to `loop_controller.py`, beside the
+counters they drive; `loop_gates` reads nothing through `agent_loop`. (d) Extracted functions take
 individual fields (or `ctrl`) as explicit keyword arguments, never the whole `LoopRun`.
 
 **Coverage first, then extract (2026-09-27).** No slice moves code its tests do not pin. Each slice

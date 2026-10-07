@@ -12,7 +12,7 @@ import time
 from typing import Any
 
 from maxim.memory.layer import activate_after_use
-from maxim.memory.types import record_success
+from maxim.memory.types import record_active_goal, record_success
 from maxim.tools.base import Tool, ToolResult
 
 
@@ -733,14 +733,11 @@ def _format_episodic_memory(m: Any) -> dict[str, Any]:
     """Format an EpisodicMemory for LLM consumption."""
     result: dict[str, Any] = {"id": m.id, "timestamp": m.timestamp}
 
+    result["goal"] = record_active_goal(m)  # the active goal; a compressed record's stored goal (#995, #1137)
     if hasattr(m, "context"):
-        ctx = m.context
-        result["goal"] = getattr(ctx, "active_goal", None)
-        result["mode"] = getattr(ctx, "active_mode", None)
+        result["mode"] = getattr(m.context, "active_mode", None)
 
-    if hasattr(m, "action"):
-        act = m.action
-        result["tool"] = getattr(act, "tool_name", None)
+    result["tool"] = getattr(m, "tool_name", None)  # both record kinds (#995); a compressed one showed none
 
     result["success"] = record_success(m)  # both record kinds (#991); a dict outcome below overrides
     if hasattr(m, "outcome"):

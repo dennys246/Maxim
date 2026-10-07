@@ -213,7 +213,7 @@ class TestHandlePlanningFailure:
         return sim
 
     def test_retry_requeues_original_request_and_reopens_window(self):
-        from maxim.runtime.agent_loop import _handle_planning_failure
+        from maxim.runtime.loop_controller import _handle_planning_failure
 
         ctrl = _make_ctrl()
         worker = MagicMock()
@@ -233,7 +233,7 @@ class TestHandlePlanningFailure:
         assert ctrl.last_llm_submit_time >= before
 
     def test_retry_without_request_uses_last_request_backstop(self):
-        from maxim.runtime.agent_loop import _handle_planning_failure
+        from maxim.runtime.loop_controller import _handle_planning_failure
 
         ctrl = _make_ctrl()
         worker = MagicMock()
@@ -254,7 +254,7 @@ class TestHandlePlanningFailure:
         worker.requeue_request.assert_not_called()
 
     def test_exhaustion_reports_abort_and_stops_requeueing(self):
-        from maxim.runtime.agent_loop import _handle_planning_failure
+        from maxim.runtime.loop_controller import _handle_planning_failure
 
         ctrl = _make_ctrl()
         worker = MagicMock()
@@ -275,7 +275,7 @@ class TestHandlePlanningFailure:
 
     def test_failed_requeue_still_paces_the_window(self):
         """A rejected requeue still stamps the attempt for exact-state recovery."""
-        from maxim.runtime.agent_loop import _handle_planning_failure
+        from maxim.runtime.loop_controller import _handle_planning_failure
 
         ctrl = _make_ctrl()
         worker = MagicMock()
@@ -289,7 +289,7 @@ class TestHandlePlanningFailure:
         assert ctrl.last_llm_submit_time >= before
 
     def test_bad_tool_retry_carries_explicit_correction(self):
-        from maxim.runtime.agent_loop import _handle_planning_failure
+        from maxim.runtime.loop_controller import _handle_planning_failure
 
         ctrl = _make_ctrl()
         worker = MagicMock()
@@ -448,34 +448,35 @@ class TestSlowCallIsNotALostTurn:
     @pytest.mark.parametrize("state_name", ["PENDING", "RUNNING", "COMPLETED"])
     def test_active_job_states_hold_the_gate_open(self, state_name):
         from maxim.agents.llm_worker import LLMAttemptState
-        from maxim.runtime.agent_loop import _planning_attempt_is_active
+        from maxim.runtime.loop_state import _planning_attempt_is_active
 
         assert _planning_attempt_is_active(LLMAttemptState[state_name]) is True
 
     @pytest.mark.parametrize("state_name", ["NONE", "FAILED", "CANCELLED", "CONSUMED", "MISSING"])
     def test_terminal_or_absent_job_states_release_the_gate(self, state_name):
         from maxim.agents.llm_worker import LLMAttemptState
-        from maxim.runtime.agent_loop import _planning_attempt_is_active
+        from maxim.runtime.loop_state import _planning_attempt_is_active
 
         assert _planning_attempt_is_active(LLMAttemptState[state_name]) is False
 
     def test_idle_gate_uses_exact_worker_state(self):
         """A running or completed-unconsumed job keeps section 2 reachable."""
-        from maxim.runtime import agent_loop
+        from maxim.runtime import agent_loop, loop_gates
 
-        # FUNCTION-SPECIFIC (a region/ordering inside run_agentic_loop): slice 2 (idle gate) updates it consciously.
-        src = inspect.getsource(agent_loop.run_agentic_loop)
-        gate = src.split("if not (", 1)[0]
+        # FUNCTION-SPECIFIC: the idle gate is ``loop_gates.pre_tick_gate`` since the 1.3.2 decomposition's
+        # slice 2 (it was a region of run_agentic_loop), and the loop calls it once per pass.
+        gate = inspect.getsource(loop_gates.pre_tick_gate)
         assert "llm_worker.latest_attempt_state()" in gate
         assert "_planning_attempt_is_active(_planning_attempt_state)" in gate
         assert "any_call_in_flight" not in gate
+        assert inspect.getsource(agent_loop.run_agentic_loop).count("pre_tick_gate(") == 1
 
     def test_completed_state_is_active_until_proposal_poll(self):
         """The backstop cannot race the result queue publication."""
-        from maxim.runtime import agent_loop
+        from maxim.runtime import loop_gates
 
-        # FUNCTION-SPECIFIC (a region/ordering inside run_agentic_loop): slice 2 (idle gate) updates it consciously.
-        src = inspect.getsource(agent_loop.run_agentic_loop)
+        # FUNCTION-SPECIFIC (an ordering inside the idle gate, ``loop_gates.pre_tick_gate`` since slice 2).
+        src = inspect.getsource(loop_gates.pre_tick_gate)
         gate_idx = src.index("_planning_attempt_is_active(_planning_attempt_state)")
         backstop_idx = src.index("planning_job_completed_without_proposal")
         assert gate_idx < backstop_idx
@@ -792,7 +793,7 @@ class TestTransportFailureIsSeparateAndBounded:
         return sim
 
     def test_rejected_requeues_exhaust_the_transport_budget(self):
-        from maxim.runtime.agent_loop import _handle_planning_failure, _handle_planning_transport_failure
+        from maxim.runtime.loop_controller import _handle_planning_failure, _handle_planning_transport_failure
 
         ctrl = _make_ctrl()
         worker = MagicMock()
@@ -817,6 +818,22 @@ class TestTransportFailureIsSeparateAndBounded:
         assert ctrl.planning_transport_failure_streak == 4
         assert ctrl.planning_exhausted is True
         assert ctrl.planning_exhausted_status == "worker_unavailable"
+
+    def test_an_already_exhausted_budget_aborts_without_retrying(self):
+        """Once liveness is latched exhausted, a further transport failure tells the caller to abort and
+        does nothing else: no requeue, no new strike, no re-stamped submit time."""
+        from maxim.runtime.loop_controller import _handle_planning_transport_failure
+
+        ctrl = _make_ctrl()
+        ctrl.planning_exhausted = True
+        ctrl.last_llm_submit_time = 123.0
+        worker = MagicMock()
+        sim = self._sim()
+        assert _handle_planning_transport_failure(ctrl, worker, sim, reason="worker_job_failed") is True
+        worker.requeue_last_request.assert_not_called()
+        sim.log.assert_not_called()
+        assert ctrl.planning_transport_failure_streak == 0
+        assert ctrl.last_llm_submit_time == 123.0
 
 
 class TestExactJobStateClosesPublicationRace:

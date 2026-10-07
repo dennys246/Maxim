@@ -169,7 +169,7 @@ class PlanHistoryBridge:
                 if not tool_name:
                     continue
 
-                # Get goal from memory
+                # Get goal from memory. # active goal on purpose, not ``.goal`` (intent-first): the two differ for pain/reflexion/motor records (#1137)
                 mem_goal = ""
                 if hasattr(memory, "context") and memory.context.active_goal:
                     mem_goal = memory.context.active_goal

@@ -27,6 +27,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
+from maxim.memory.types import record_active_goal
+
 logger = logging.getLogger(__name__)
 
 
@@ -156,15 +158,22 @@ class EpisodicRecallSource:
                 rec = None
             if rec is None:
                 continue
+            # An episode's text and salience live on its ``perception``; a compressed record carries
+            # ``salience`` itself and keeps only its ``goal``. This read them off the record and
+            # ``Context.goal`` (no such field), so every real episode was skipped (#1129).
+            perception = getattr(rec, "perception", None)
             text = (
-                getattr(rec, "cli_input", None)
-                or getattr(rec, "transcript", None)
-                or getattr(getattr(rec, "context", None), "goal", None)
+                getattr(perception, "cli_input", None)
+                or getattr(perception, "transcript", None)
+                or record_active_goal(rec)  # what ``Context.goal`` meant (#1137)
                 or ""
             )
             if text and not best_text:
                 best_text = str(text).strip()[:200]
-            best_salience = max(best_salience, float(getattr(rec, "salience", 0.0) or 0.0))
+            salience = getattr(perception, "salience", None) if perception is not None else None
+            if salience is None:
+                salience = getattr(rec, "salience", 0.0)
+            best_salience = max(best_salience, float(salience or 0.0))
         return best_text, best_salience
 
 

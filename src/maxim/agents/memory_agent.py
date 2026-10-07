@@ -50,6 +50,7 @@ from maxim.memory.types import (
     Outcome,
     Perception,
     PredictedOutcome,
+    record_active_goal,
     record_success,
 )
 from maxim.memory.association_index import AssociationIndex
@@ -967,12 +968,14 @@ class MemoryAgent(Agent, AgentOutputMixin):
     def _memory_to_context_item(record: Any, salience: float) -> dict:
         """Convert a hippocampus record to the dict format ExecAgent expects."""
         source = "episodic"
-        content = {}
+        content: dict[str, Any] = {}
         try:
-            if hasattr(record, "context") and record.context:
-                content["goal"] = getattr(record.context, "active_goal", None)
-            if hasattr(record, "action") and record.action:
-                content["action"] = getattr(record.action, "tool_name", None)
+            # A compressed record has no ``context`` / ``action``: take its flat ``goal`` / ``tool_name``
+            # (#995). An episode keeps its ACTIVE goal here, not the intent-first ``goal``: the two
+            # differ for pain, reflexion and motor records (owner decision 2026-10-06).
+            content["goal"] = record_active_goal(record)
+            if (hasattr(record, "action") and record.action) or getattr(record, "tool_name", None):
+                content["action"] = record.tool_name
                 source = "action"
             content["success"] = record_success(record)  # both record kinds (#991)
             if content["success"] is not None:

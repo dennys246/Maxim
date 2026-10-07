@@ -14,7 +14,7 @@ import pytest
 
 from maxim.memory.experience_clock import UNIT, ExperienceClock
 from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
-from maxim.runtime.agent_loop import _loop_live_tick
+from maxim.runtime.loop_gates import _loop_live_tick
 from maxim.runtime.loop_setup import _loop_bio_handles
 from maxim.runtime.experience_time import REALTIME_PASS_CAP_US, ExperienceClockDriver
 from maxim.simulation.composite_source import CompositePerceptSource, CompositeRoutingError
@@ -263,10 +263,10 @@ def test_bio_handles_follow_the_hippocampus_the_loop_captures_into():
 
 
 def test_the_live_tick_drifts_the_body_and_advances_the_world_clock(monkeypatch):
-    import maxim.runtime.agent_loop as agent_loop
+    import maxim.runtime.loop_gates as loop_gates  # the live tick's home since slice 2
 
     calls = []
-    monkeypatch.setattr(agent_loop, "tick_embodiment_drift", lambda e, m: calls.append((e, m)))
+    monkeypatch.setattr(loop_gates, "tick_embodiment_drift", lambda e, m: calls.append((e, m)))
     driver = MagicMock()
     _loop_live_tick("EXEC", "llm-primary", driver)
     assert calls == [("EXEC", "llm-primary")]
@@ -299,15 +299,26 @@ def _setup_calls(name: str) -> list[ast.Call]:
     return _calls(loop_setup, "build_loop_run", name)
 
 
+def _gate_calls(name: str) -> list[ast.Call]:
+    import maxim.runtime.loop_gates as loop_gates
+
+    return _calls(loop_gates, "pre_tick_gate", name)
+
+
 def test_run_agentic_loop_advances_the_clock_on_every_live_pass():
-    # One driver, built once (by the setup, slice 1); one live tick carrying it, and no bare drift
-    # call that would bypass it.
+    # One driver, built once (by the setup, slice 1); one live tick carrying it, in the pre-tick gate
+    # (slice 2), which the loop calls once per pass with the setup's driver; and no bare drift call
+    # that would bypass it.
     assert len(_setup_calls("_loop_bio_handles")) == 1
     assert _loop_calls("_loop_bio_handles") == []
     assert len(_loop_calls("build_loop_run")) == 1
-    [live] = _loop_calls("_loop_live_tick")
-    assert isinstance(live.args[-1], ast.Name) and live.args[-1].id == "_loop_xclock"
-    assert _loop_calls("tick_embodiment_drift") == []
+    [gate] = _loop_calls("pre_tick_gate")
+    [driver] = [k.value for k in gate.keywords if k.arg == "experience_driver"]
+    assert isinstance(driver, ast.Name) and driver.id == "_loop_xclock"
+    [live] = _gate_calls("_loop_live_tick")
+    assert isinstance(live.args[-1], ast.Name) and live.args[-1].id == "experience_driver"
+    assert _loop_calls("_loop_live_tick") == [] and _loop_calls("tick_embodiment_drift") == []
+    assert _gate_calls("tick_embodiment_drift") == []
 
 
 # ── owed work, held by strict red gates ──────────────────────────────────────

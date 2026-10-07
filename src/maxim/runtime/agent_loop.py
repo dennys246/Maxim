@@ -28,7 +28,9 @@ from maxim.runtime.bio_integration import (
     end_bio_session as _end_bio_session,
 )
 import maxim.runtime.bio_integration as _bio_integration
+from maxim.runtime.loop_gates import GateOutcome, pre_tick_gate
 from maxim.runtime.loop_setup import build_loop_run
+from maxim.runtime.loop_controller import _handle_planning_failure
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -36,7 +38,7 @@ if TYPE_CHECKING:
     from maxim.agents.llm_worker import LLMWorker
 
 # Import LLM types for runtime use (multi-step action creation + exact job state)
-from maxim.agents.llm_worker import LLMAttemptState, LLMProposal
+from maxim.agents.llm_worker import LLMProposal
 from maxim.agents.bus import StreamEvent
 from maxim.embodiment.sensory_streams import AUDIO_TAG, INTEROCEPTION_TAG, WORLD_TAG, ModalityChannel
 
@@ -116,6 +118,9 @@ _WIRE1_LOW_PHRASE = "reliable from prior experience"
 
 
 from maxim.runtime.loop_state import (
+    _effective_mode,
+    _planning_attempt_is_active,
+    _substrate_tick_due,
     _persist_state_json,
     _get_failure_strategy,
     _get_plan_depth,
@@ -424,25 +429,6 @@ def _wait_for_proposal(
     return None
 
 
-_ACTIVE_PLANNING_ATTEMPT_STATES = frozenset(
-    {
-        LLMAttemptState.PENDING,
-        LLMAttemptState.RUNNING,
-        LLMAttemptState.COMPLETED,
-    }
-)
-
-
-def _planning_attempt_is_active(state: LLMAttemptState) -> bool:
-    """Whether the exact worker job can still publish a proposal.
-
-    ``COMPLETED`` remains active until the loop consumes the queued result.
-    That closes the provider-return/result-publication race without guessing
-    how many control-loop ticks response parsing should take.
-    """
-    return state in _ACTIVE_PLANNING_ATTEMPT_STATES
-
-
 def _planning_submit_in_flight(llm_worker: Any, liveness_on: bool) -> bool:
     """Whether this loop's previous planning job can still publish a proposal (one planning request in flight per
     narrator, #1048). Only loops with planning liveness (the sim narrator) wait; the AUT is unaffected. Inputs that
@@ -515,119 +501,6 @@ def _proposal_without_action_reason(proposal: Any) -> str | None:
     if getattr(proposal, "mode_goal_achieved", False):
         return "proposal_completed_without_action"
     return "proposal_without_action"
-
-
-def _report_planning_exhaustion(ctrl: Any, sim: Any, *, reason: str, kind: str) -> bool:
-    """Emit one terminal planning/transport failure and tell the loop to stop."""
-    status = ctrl.planning_exhausted_status
-    msg = (
-        f"planning {kind} exhausted: planning_failures={ctrl.planning_failure_streak}, "
-        f"transport_failures={ctrl.planning_transport_failure_streak} "
-        f"(last: {reason}, status: {status}) — aborting sim (bugs ledger D13)"
-    )
-    logger.error(msg)
-    sim.log("EXEC", f"🛑 {msg}")
-    log_agentic(
-        "agent_loop",
-        "planning_liveness_exhausted",
-        {
-            "planning_streak": ctrl.planning_failure_streak,
-            "transport_streak": ctrl.planning_transport_failure_streak,
-            "reason": reason,
-            "status": status,
-        },
-        level="ERROR",
-    )
-    return True
-
-
-def _handle_planning_failure(
-    ctrl: Any,
-    llm_worker: Any,
-    sim: Any,
-    *,
-    reason: str,
-    original_request: Any | None,
-    failed_tool: str | None = None,
-    exhausted_status: str = "llm_wedged",
-) -> bool:
-    """Planning-liveness handler (bugs ledger D13): a planning submit ended
-    without an executable proposal — parse failure, invalid response, a
-    dropped proposal, or an await window that expired with nothing back.
-
-    LOUDLY reschedules the turn with bounded retries (byte-identical requeue
-    of the original request — no fabricated percepts) or, when the budget is
-    spent, tells the caller to abort. Never silent, never a fall-through to
-    idle.
-
-    Returns True when planning liveness is exhausted (caller breaks the loop
-    and raises ``PlanningLivenessExhausted`` after normal teardown).
-    """
-    verdict = ctrl.record_planning_failure(reason=reason, exhausted_status=exhausted_status)
-    if verdict == "already_exhausted":
-        return True
-    if verdict == "exhausted":
-        return _report_planning_exhaustion(ctrl, sim, reason=reason, kind="retry budget")
-
-    # verdict == "retry"
-    # Every retry says why the last answer failed when the model erred (narrator reliability, 2026-10-02).
-    if original_request is not None:
-        requeued = bool(llm_worker.requeue_request(original_request, failed_tool=failed_tool, reason=reason))
-    else:
-        requeued = bool(llm_worker.requeue_last_request(failed_tool=failed_tool, reason=reason))
-    attempt = ctrl.planning_failure_streak
-    limit = ctrl.planning_retry_limit
-    note = (
-        f"rescheduled (attempt {attempt}/{limit})"
-        if requeued
-        else "REQUEUE REJECTED — bounded worker-transport recovery will retry"
-    )
-    logger.warning("planning turn failed (%s) — %s", reason, note)
-    sim.log("EXEC", f"⚠ planning turn failed ({reason}) — {note}")
-    log_agentic(
-        "agent_loop",
-        "planning_retry",
-        {"reason": reason, "attempt": attempt, "limit": limit, "requeued": requeued},
-        level="WARNING",
-    )
-    # Retained for diagnostics and for non-liveness callers' legacy await
-    # window. The liveness-enabled orchestrator uses exact WorkerPool state.
-    ctrl.last_llm_submit_time = time.time()
-    return False
-
-
-def _handle_planning_transport_failure(
-    ctrl: Any,
-    llm_worker: Any,
-    sim: Any,
-    *,
-    reason: str,
-) -> bool:
-    """Bound retries for a worker attempt that failed before publication."""
-    verdict = ctrl.record_planning_transport_failure(reason=reason)
-    if verdict == "already_exhausted":
-        return True
-    if verdict == "exhausted":
-        return _report_planning_exhaustion(ctrl, sim, reason=reason, kind="transport budget")
-
-    requeued = bool(llm_worker.requeue_last_request())
-    attempt = ctrl.planning_transport_failure_streak
-    limit = ctrl.planning_transport_retry_limit
-    note = (
-        f"worker retry accepted (attempt {attempt}/{limit})"
-        if requeued
-        else f"worker retry rejected (attempt {attempt}/{limit})"
-    )
-    logger.warning("planning transport failed (%s) — %s", reason, note)
-    sim.log("EXEC", f"⚠ planning transport failed ({reason}) — {note}")
-    log_agentic(
-        "agent_loop",
-        "planning_transport_retry",
-        {"reason": reason, "attempt": attempt, "limit": limit, "requeued": requeued},
-        level="WARNING",
-    )
-    ctrl.last_llm_submit_time = time.time()
-    return False
 
 
 def _jaccard_similarity(keywords_a: set[str], keywords_b: set[str]) -> float:
@@ -1727,76 +1600,6 @@ def _attach_live_situation(proposal: Any, *, aut_mode: str, sensor_encoder: Any,
     )
 
 
-def tick_embodiment_drift(executor: Any, aut_mode: str) -> None:
-    """Advance the body's wall-clock drive drift on the llm-primary path.
-
-    On ``substrate-primary``, :func:`propose_via_substrate` already ticks the
-    body every proposal. On ``llm-primary`` the body tick is otherwise
-    *event-driven* — it only fires when a tool executes (``tool_bridge`` /
-    sim tools calling ``evaluate_failures()``). So a body sitting through
-    pure-thinking turns, idle gates, or LLM latency would never drift: its
-    drives freeze (the Track A "frozen Reachy body" finding). Calling
-    ``evaluate_failures()`` once per live loop iteration advances wall-clock
-    drift so the llm-primary body has the same clock as substrate-primary.
-
-    Idempotent w.r.t. elapsed time: ``evaluate_failures`` applies
-    ``dt = now - _last_poll`` via ``tick_vital_drift`` lazily, so calling it
-    here AND on a later tool execution in the same iteration cannot
-    double-drift (the second call sees ~0 elapsed dt). No-op on
-    substrate-primary (that path ticks itself — calling here too would double
-    the tick) and when no embodiment is wired. This calls the public
-    ``evaluate_failures()`` tick, not ``tick_vital_drift`` directly, per the
-    CLAUDE.md embodiment-tick invariant (single ``tick_vital_drift`` call site
-    in body.py).
-
-    CADENCE CAVEAT (three-lens review, 2026-07-17): ``evaluate_failures`` does
-    not only drift — it re-publishes drive-pain for any *standing* breach on
-    every call, so this per-iteration cadence makes drive-pain state-based
-    rather than onset/transition-based. This is exactly the change
-    ``docs/plans/deferred/transition_based_drive_pain.md`` names as its revival
-    trigger ("before any change to evaluate_failures cadence"). It is dampened
-    to *valence noise, not false causal links* by three existing guards — the
-    drift tick DISCARDS the returned FailureEvents (pain flows only via
-    PainBus), the PainBus ``(entity, failure_mode)`` refractory caps the rate
-    to ~2 Hz, and the ``_context_similarity`` denominator mismatch keeps these
-    events from linking to tool actions — so it is a should-fix, not a blocker.
-    Two consequences to keep in mind: (1) it is latent for the shipped reachy
-    body (its only drive, azimuth, is world-set with ``drift_rate: 0`` and
-    sits centered until DoA is fed in Track 2); (2) it DOES change the drive-
-    pain cadence for embodied llm-primary sims (Exp 44, ``--embodiment``), so
-    prior Exp 44 numbers need re-validation before being relied on.
-    """
-    if aut_mode == "substrate-primary":
-        return
-    embodiment = getattr(executor, "embodiment", None)
-    if embodiment is None:
-        return
-    try:
-        embodiment.evaluate_failures()
-    except Exception:
-        logger.debug("llm-primary embodiment tick: evaluate_failures raised", exc_info=True)
-
-
-def _maybe_auto_revert_display() -> None:
-    """Expire a temporary agent display escalation back to the user's floor.
-
-    ``DisplayModeTool`` documents escalations as auto-reverting; before this
-    tick nothing ever reverted one (``revert_display_to_floor`` had zero
-    production callers), so an escalation stuck for the rest of the session
-    and the EVENT seam's ``display``/revert wire event had no producer.
-    Cheap on the common path: one float compare, no escalation → immediate
-    return.
-    """
-    from maxim.simulation.sim_logger import maybe_auto_revert_display
-
-    try:
-        maybe_auto_revert_display()
-    except Exception:
-        # Mirrors tick_embodiment_drift's containment: a display-tier bookkeeping
-        # failure must never take down the main loop.
-        logger.debug("display auto-revert tick raised", exc_info=True)
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Extracted numbered sections of ``run_agentic_loop``
 # (docs/plans/archive/god_function_decomposition.md — mechanical moves only)
@@ -1892,16 +1695,6 @@ def _loop_capture_action(
         after_tool_execution=True,
         salience_spike=_bio_integration.consume_pain_intensity(agent_id=agent_id),
     )
-
-
-def _loop_live_tick(executor: Any, aut_mode: str, experience_driver: Any) -> None:
-    """Per LIVE pass (after the pause check, before the idle gate): the world's time advances.
-
-    The body's drive drift and the agent's experience clock (memory-strength Phase 2 decision 1)
-    both run here, so an idle agent still lives through the world's time and a paused one does not.
-    """
-    tick_embodiment_drift(executor, aut_mode)
-    experience_driver.on_live_pass()
 
 
 def _loop_bio_tick_maintenance(nac: Any) -> None:
@@ -2035,29 +1828,6 @@ def _approved_situation(proposal: Any) -> dict[str, Any]:
     }
 
 
-def _substrate_tick_due(aut_mode: str, ctrl: Any, llm_submit_interval: float) -> bool:
-    """Is the substrate-primary branch due to propose? (Its OWN wake source.)
-
-    Substrate-primary is a SENSOR-driven mode: it proposes from the sensed world
-    (synced into the body), never from text percepts, so the percept/event queue is
-    not its wake source — its submit cadence is. Without this term a live bridge that
-    emits no chat/death events left the loop idling after step 0 (Exp 60, 2026-09-16:
-    120 probe windows, ONE substrate tick each; the fake bridge's periodic "wind
-    shifts" event masked it offline and produced the "one tick per five snapshots"
-    cadence). Scope: the Minecraft HARNESS path passes no LLM worker; the orchestrator
-    does construct one for substrate-primary runs, where ``_submitted_recently`` wakes
-    the loop every iteration by accident (left as-is — NAc decay runs per non-idle
-    iteration, so changing it would change what Exp 56/57 re-runs measure). The same
-    predicate gates the substrate branch itself — ONE site, no drift.
-    Guard: tests/unit/test_substrate_primary_wake.py (RED on the pre-fix loop).
-    """
-    return (
-        aut_mode == "substrate-primary"
-        and ctrl.pending_proposal is None
-        and (time.time() - ctrl.last_llm_submit_time) > llm_submit_interval
-    )
-
-
 def _followup_result_text(tool_name: str, output: Any, result: Any, limit: int) -> str | None:
     """The RAW text a tool result contributes (the follow-up AND ``result_summary``).
 
@@ -2106,30 +1876,6 @@ def _followup_synthetic_input(followup: Any) -> str:
     result = frame_tool_output(tool, followup.result or "", external=external)
     query = str(followup.original_query or "").replace("'", "\u2019")
     return f"[ACTION_FOLLOWUP type={followup.followup_type} tool={tool} mode={followup.mode} query='{query}']: {result}"
-
-
-def _loop_is_idle(*wake_sources: object) -> bool:
-    """True when NO wake source holds — the loop sleeps ``idle_sleep_s`` and continues.
-
-    Extracted with the substrate wake term (function-length ratchet: grow the god
-    function by extracting, never inline). Order of the sources is documented at the
-    call site: pending input, pending work, sim percept, carried percept, first step,
-    awaited LLM, substrate tick due. Truthiness semantics are the old ``not (a or b …)``:
-    a third-party ``has_pending`` may return a count, so the sources are ``object``.
-    """
-    return not any(wake_sources)
-
-
-def _effective_mode(executor: Any, state: Any, default: str) -> str:
-    """The operational mode the prompt roster, context prompt and Default Network use: the operator's
-    launch grant when one is set (``Executor.operational_override``, #829), else the loop's own state
-    mode -- the SAME precedence the executor's dispatch gate applies, so what the model is shown matches
-    what dispatch enforces. (A deliberate, owner-approved exception to the 1.3.2 decomposition fence.)"""
-    granted = getattr(executor, "operational_override", None)
-    if isinstance(granted, str) and granted:
-        return granted
-    mode = state.data.get("mode", default) or default
-    return str(mode) if mode else ""
 
 
 def run_agentic_loop(
@@ -2330,156 +2076,33 @@ def run_agentic_loop(
         )
 
         # ─────────────────────────────────────────────────────────────────
-        # 0. CHECK STOP CONDITIONS
+        # 0-0.6 PRE-TICK GATE: stop checks, DN mode, pause, live tick, display
+        # revert, exhaustion, idle gate + D13 backstop (runtime/loop_gates.py)
         # ─────────────────────────────────────────────────────────────────
-        try:
-            if stop_event is not None and hasattr(stop_event, "is_set") and stop_event.is_set():
-                log_agentic("agent_loop", "shutdown", {"reason": "stop_event"})
-                break
-        except (AttributeError, RuntimeError):
-            pass
-
-        # Check for shutdown mode - break immediately to stop LLM worker promptly
-        current_mode = state.data.get("mode", "")
-        if current_mode == "shutdown":
-            log_agentic("agent_loop", "shutdown", {"reason": "shutdown_mode"})
+        _gate = pre_tick_gate(
+            step_num=step_num,
+            stop_event=stop_event,
+            state=state,
+            executor=executor,
+            ctrl=ctrl,
+            autonomy_controller=autonomy_controller,
+            sim=sim,
+            percept_source=percept_source,
+            llm_worker=llm_worker,
+            planning_liveness_on=_planning_liveness_on,
+            aut_mode=aut_mode,
+            experience_driver=_loop_xclock,
+            idle_sleep_s=idle_sleep_s,
+        )
+        if _gate is GateOutcome.EXHAUSTED:
+            _planning_liveness_exhausted = True
             break
-
-        # Configure Default Network for current mode (the operator's grant wins, #829)
-        if _dn_mode := _effective_mode(executor, state, current_mode):
-            ctrl.configure_dn_for_mode(_dn_mode)
-
-        # Check if autonomy is paused
-        if autonomy_controller.is_paused:
-            time.sleep(idle_sleep_s)
-            continue
-
-        # ─────────────────────────────────────────────────────────────────
-        # 0.45 EMBODIMENT DRIFT TICK (llm-primary)
-        # ─────────────────────────────────────────────────────────────────
-        # Advance the body's wall-clock drive drift every live iteration so a
-        # Reachy body does not freeze through pure-thinking turns / idle gates
-        # / LLM latency. Placed BEFORE the 0.6 idle gate (which ``continue``s
-        # on no stimulus) so a *sitting* robot still gets cold/hungry, and
-        # AFTER the pause check so an operator-paused agent stays frozen.
-        # No-op on substrate-primary (it ticks itself) and when unembodied.
-        _loop_live_tick(executor, aut_mode, _loop_xclock)
-
-        # Expire a temporary agent display escalation back to the user's
-        # floor (DisplayModeTool's documented auto-revert). Also the
-        # production producer of the EVENT seam's display/revert event.
-        _maybe_auto_revert_display()
-
-        # 0.5 CHECK PERCEPT SOURCE EXHAUSTION (simulation mode)
-        if sim.check_exhaustion(ctrl.pending_proposal):
+        if _gate is GateOutcome.BREAK:
             break
-
-        # ─────────────────────────────────────────────────────────────────
-        # 0.6 IDLE GATE — skip full cycle when there's nothing to react to
-        # ─────────────────────────────────────────────────────────────────
-        # The agent loop spins at target_hz for responsiveness, but should
-        # NOT burn LLM cycles when idle.  We check for any pending stimulus
-        # BEFORE running perception/pipeline agents.  If nothing is pending,
-        # sleep briefly and loop back.  This keeps the loop responsive to
-        # new input (sub-second latency) without wasting GPU on empty cycles.
-        #
-        # "Stimulus" means:
-        #   - User input (CLI or voice) waiting in state.data
-        #   - Simulation percept available from percept_source
-        #   - Pending proposal from LLM (needs execution)
-        #   - Pending action followup (tool result needs LLM processing)
-        #   - Pending next_actions chain (multi-step plan in progress)
-        #   - First iteration (startup — run initial cycle once)
-        #   - Carried live percept / awaited LLM job / substrate tick due (see _loop_is_idle)
-        _has_pending_input = bool(state.data.get("pending_cli_input") or state.data.get("pending_voice_input"))
-        _has_pending_work = bool(
-            ctrl.pending_proposal or ctrl.pending_action_followup or pending_next_actions or ctrl.pending_plan_proposal
-        )
-        _has_sim_percept = (
-            sim.is_sim_mode and percept_source is not None and getattr(percept_source, "has_pending", lambda: True)()
-        )
-        # A live producer's carried percept (the DoA feed → NullSimulation-
-        # Adapter mailbox, Stage 3 of live_audio_orient_wiring.md) must WAKE
-        # the loop — 2026-08-01 live-smoke fix. This gate's percept check
-        # was gated on is_sim_mode: the same proxy the Stage-3 §1.16 re-gate
-        # removed, one layer up. Without this term a live audio percept sat
-        # undelivered forever on an idle robot (the loop slept BEFORE
-        # next_observation surfaced it), so audio escalation only ever fired
-        # when typed input happened to wake the loop in the same window.
-        _has_carried_percept = bool(getattr(sim, "has_carried_percept", lambda: False)())
-        _is_first_step = step_num == 0
-        # If we submitted to the LLM, keep polling until the exact WorkerPool
-        # job reaches a terminal state. ``COMPLETED`` remains active until
-        # get_latest_proposal() consumes the result, which closes the old
-        # provider-return/result-publication race without a timing guess.
-        #
-        # Non-liveness callers retain their legacy 120s window. The exact
-        # state machine is deliberately scoped to the orchestrator opt-in;
-        # it must not alter unrelated agent-loop lifecycle policy.
-        _planning_attempt_state = LLMAttemptState.NONE
-        if _planning_liveness_on and llm_worker is not None:  # implied by _planning_liveness_on
-            try:
-                _planning_attempt_state = llm_worker.latest_attempt_state()
-            except Exception as e:
-                logger.warning("planning worker state unavailable: %s", e)
-                _planning_attempt_state = LLMAttemptState.MISSING
-            if _planning_attempt_state is LLMAttemptState.COMPLETED:
-                ctrl.reset_planning_transport_failures()
-
-        _submitted_recently = bool(
-            not _planning_liveness_on
-            and llm_worker is not None
-            and ctrl.pending_proposal is None
-            and (time.time() - ctrl.last_llm_submit_time) < 120.0
-        )
-        _awaiting_llm = (
-            _planning_attempt_is_active(_planning_attempt_state) if _planning_liveness_on else _submitted_recently
-        )
-
-        _wake = _has_pending_input or _has_pending_work or _has_sim_percept or _has_carried_percept
-        if _loop_is_idle(
-            _wake, _is_first_step, _awaiting_llm, _substrate_tick_due(aut_mode, ctrl, llm_submit_interval)
-        ):
-            # D13 planning-liveness backstop: the loop is about to idle, but
-            # the exact job for the last planning submit is terminal and no
-            # executable proposal was installed. Worker execution failures
-            # use a separate bounded transport budget; completed-but-empty
-            # results are planning failures. Neither can silently fall
-            # through to idle or retry forever.
-            if (
-                _planning_liveness_on
-                and not ctrl.planning_exhausted
-                and ctrl.last_llm_submit_time > 0
-                and ctrl.last_proposal_time < ctrl.last_llm_submit_time
-            ):
-                if _planning_attempt_state in {
-                    LLMAttemptState.FAILED,
-                    LLMAttemptState.CANCELLED,
-                    LLMAttemptState.MISSING,
-                }:
-                    if _handle_planning_transport_failure(
-                        ctrl,
-                        llm_worker,
-                        sim,
-                        reason=f"worker_job_{_planning_attempt_state.value}",
-                    ):
-                        _planning_liveness_exhausted = True
-                        break
-                elif _planning_attempt_state in {
-                    LLMAttemptState.NONE,
-                    LLMAttemptState.CONSUMED,
-                } and _handle_planning_failure(
-                    ctrl,
-                    llm_worker,
-                    sim,
-                    reason="planning_job_completed_without_proposal",
-                    original_request=None,
-                    exhausted_status="planning_failed",
-                ):
-                    _planning_liveness_exhausted = True
-                    break
-            time.sleep(idle_sleep_s)
+        if _gate is GateOutcome.IDLE:
             continue
+        if _gate is not GateOutcome.RUN:  # a new GateOutcome member must not silently act as RUN
+            raise AssertionError(f"unhandled GateOutcome: {_gate!r}")
 
         # ─────────────────────────────────────────────────────────────────
         # 1. PERCEPTION — via SimulationAdapter or environment

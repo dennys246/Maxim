@@ -25,6 +25,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`agent_loop` decomposition, slice 2: each pass's pre-tick gate moves to `runtime/loop_gates.py`** (roadmap
+  1.3.2 §"The decomposition"). Sections 0-0.6 of `run_agentic_loop` (the stop checks, the Default Network's
+  mode, the pause sleep, the live tick and display revert, the percept-source exhaustion check, and the idle
+  gate with its D13 planning-liveness backstop) are now `pre_tick_gate(...)`, which returns a `GateOutcome`
+  (`RUN`, `IDLE`, `BREAK`, `EXHAUSTED`) that the loop maps to the `continue`/`break` the inline block had. The
+  helpers the loop body shares with the gate moved to existing leaves: `loop_state.py` (`_effective_mode`, the
+  substrate cadence, the worker-job state check) and `loop_controller.py` (the D13 handlers, beside the
+  counters they drive). A pure move with no behaviour change: the slice-0 gates and the slice-1
+  characterization stay green unchanged, and `tests/unit/test_loop_gates_characterization.py` (written before
+  the move) pins every wake source, each terminal worker-job state through to `PlanningLivenessExhausted`, the
+  pause, the stop checks, the live tick and exhaustion through the public entry. `run_agentic_loop` shrinks
+  3,248 → 3,125 lines; `loop_gates.py` joins CI's mypy set and the swallow lint's measurement path. **Import
+  change:** the public `tick_embodiment_drift` is now `maxim.runtime.loop_gates.tick_embodiment_drift` and is
+  no longer importable from `maxim.runtime.agent_loop`.
+
 - **`agent_loop` decomposition, slice 1: the loop's setup moves to `runtime/loop_setup.py`** (roadmap 1.3.2
   §"The decomposition"). Everything `run_agentic_loop` builds and starts before its first tick (the simulation
   adapter, the first state persist, the context pool and prefetcher, the `LoopController`, the LLM loop
@@ -98,6 +113,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (DECISIONS.md, 2026-10-01).
 
 ### Fixed
+
+- **A memory's tool and goal read the same on both record kinds; public recall returns episodes again**
+  ([#993](https://github.com/dennys246/Maxim/issues/993), [#995](https://github.com/dennys246/Maxim/issues/995),
+  [#1129](https://github.com/dennys246/Maxim/issues/1129); #994 declared Dormant). `EpisodicMemory` gains read-only
+  `tool_name` and `goal` (the intent goal, else the active goal: exactly what compression stores), as #991 did for
+  `success`, and either-kind readers use them: a compressed record's context item, enrichment summary,
+  introspection tool and tracer lines now keep its tool (and, where the reader means it, its goal);
+  `SituationSignature.from_memory` does too, but it has no production caller, so that is capability, not a fix.
+  `EpisodicRecallSource` (behind `maxim.recall()` and the Console MemoryView) read `cli_input` / `transcript` /
+  `salience` off the record instead of its `perception`, and `Context.goal`, so it skipped every real episode; it
+  now returns them. `Observer.memory_recall` (the LLM's `inspect_aut`) read `Context.goal` and `Action.tool_used`,
+  neither of which exists, so goal and tool were always empty; it now shows an episode's active goal.
+  **Breaking, to a returned shape:** `export_memories()["memory_summaries"]` items drop `valence` (it read
+  `Outcome.valence`, which does not exist, so it was always 0) for `outcome` (`success` / `failure` / `unknown`);
+  a reader of `["valence"]` gets a `KeyError` (no in-tree reader). "Goal" is two facts that differ for
+  pain, reflexion and motor records; readers that mean the active goal keep it (owner decision 2026-10-06; a
+  compressed record losing it is #1137). `ExecAgent`'s pre-deliberation enrichment branch has no caller and is
+  marked Dormant (#994), with its signed-valence-as-salience defect noted for any revival.
 
 - **Memory consumers that never delivered: one wired, the rest declared Dormant**
   ([#845](https://github.com/dennys246/Maxim/issues/845), items 2–5; item 1 rides the agent_loop decomposition).

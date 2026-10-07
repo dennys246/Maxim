@@ -159,6 +159,9 @@ vibration hums beneath your back."` and `"firm weight rests on your chest."`. Re
 deciding: RA SEQUENTIAL (every node rewarded) merges the 22 strings into 2 nodes at bias 0.2. The bound covers this
 fixture, walk order, node and encoder only (prereg, "What this does not claim").
 
+**Follow-up:** [#1118](https://github.com/dennys246/Maxim/issues/1118), the record's `widening_overreach` field
+is `I(0.2) − I(0.0)`, narrower than the prereg's term; rename it before any E4 re-run.
+
 **Sensor widening** — no action; recorded as an input to the Rung B keying design (it would pull
 neighbouring situations into a node that carries fear or want: a generalization mechanism).
 

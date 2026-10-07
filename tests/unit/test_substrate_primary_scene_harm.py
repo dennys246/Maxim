@@ -546,7 +546,7 @@ class TestTickEmbodimentDriftLLMPrimary:
             return []
 
     def test_llm_primary_ticks_the_body(self):
-        from maxim.runtime.agent_loop import tick_embodiment_drift
+        from maxim.runtime.loop_gates import tick_embodiment_drift
 
         executor = _StubExecutor(["warm_self"])
         executor.embodiment = self._RecordingEmbodiment()
@@ -557,7 +557,7 @@ class TestTickEmbodimentDriftLLMPrimary:
         import maxim.embodiment.body as body_mod
         from maxim.embodiment.body import Embodiment
         from maxim.embodiment.spec import _parse_entity
-        from maxim.runtime.agent_loop import tick_embodiment_drift
+        from maxim.runtime.loop_gates import tick_embodiment_drift
 
         class _FakeTime:
             def __init__(self, start=1000.0):
@@ -603,7 +603,7 @@ class TestTickEmbodimentDriftLLMPrimary:
     def test_substrate_primary_is_a_noop(self):
         """That path ticks itself in propose_via_substrate — a second tick
         here would double it, so the helper must skip substrate-primary."""
-        from maxim.runtime.agent_loop import tick_embodiment_drift
+        from maxim.runtime.loop_gates import tick_embodiment_drift
 
         executor = _StubExecutor(["warm_self"])
         executor.embodiment = self._RecordingEmbodiment()
@@ -611,13 +611,13 @@ class TestTickEmbodimentDriftLLMPrimary:
         assert executor.embodiment.calls == 0
 
     def test_no_embodiment_is_a_noop(self):
-        from maxim.runtime.agent_loop import tick_embodiment_drift
+        from maxim.runtime.loop_gates import tick_embodiment_drift
 
         executor = _StubExecutor(["warm_self"])  # .embodiment defaults to None
         tick_embodiment_drift(executor, "llm-primary")  # must not raise
 
     def test_evaluate_failures_exception_is_swallowed(self):
-        from maxim.runtime.agent_loop import tick_embodiment_drift
+        from maxim.runtime.loop_gates import tick_embodiment_drift
 
         executor = _StubExecutor(["warm_self"])
         executor.embodiment = self._RecordingEmbodiment(raises=True)
