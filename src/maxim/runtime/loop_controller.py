@@ -141,6 +141,8 @@ class LoopController:
         self.pending_next_actions: list[dict[str, Any]] = []
         self.pending_plan_proposal: LLMProposal | None = None
         self.pending_action_followup: ActionFollowup | None = None
+        # A proposal parked for the user's yes/no (#1133: typed, on the controller, off ``state.data``).
+        self.pending_confirmation: PendingConfirmation | None = None
         self.pending_prefetch: Any | None = None
         self.last_llm_submit_time: float = 0.0
         self.llm_submit_interval: float = 0.5
@@ -198,23 +200,6 @@ class LoopController:
             self.reset_planning_failures()
 
     # ── Typed state helpers ──────────────────────────────────────────────
-
-    def get_pending_confirmation(self) -> PendingConfirmation | None:
-        raw = self.state.data.get("pending_confirmation")
-        if raw is None:
-            return None
-        return PendingConfirmation(**raw)
-
-    def set_pending_confirmation(self, pc: PendingConfirmation | None) -> None:
-        if pc is None:
-            self.state.data.pop("pending_confirmation", None)
-        else:
-            self.state.data["pending_confirmation"] = {
-                "action": pc.action,
-                "reasoning": pc.reasoning,
-                "confidence": pc.confidence,
-                "tool_name": pc.tool_name,
-            }
 
     def get_timeout_retry(self) -> TimeoutRetry | None:
         raw = self.state.data.get("pending_timeout_retry")
@@ -379,7 +364,7 @@ class LoopController:
         # typed anything while a confirmation was pending.
         from maxim.simulation.sim_logger import display_action, display_status  # noqa: F401
 
-        pc = self.get_pending_confirmation()
+        pc = self.pending_confirmation
         if pc is None:
             return False
 
@@ -442,7 +427,7 @@ class LoopController:
                 )
                 logger.info("Confirmed action %s queued follow-up (type=%s)", pc.tool_name, followup_type)
 
-            self.set_pending_confirmation(None)
+            self.pending_confirmation = None
             self.state.data.pop("pending_cli_input", None)
             self.clear_pending_user_input()
             self.pending_proposal = None
@@ -470,7 +455,7 @@ class LoopController:
                 reasoning=pc.reasoning,
             )
 
-            self.set_pending_confirmation(None)
+            self.pending_confirmation = None
             self.clear_pending_user_input()
             self.pending_proposal = None
             self._clear_confirmation_prompt()
@@ -491,7 +476,7 @@ class LoopController:
                 "user_modification": cli_text,
                 "timestamp": time.time(),
             }
-            self.set_pending_confirmation(None)
+            self.pending_confirmation = None
             display_status(f'Modification requested — revising action based on: "{cli_text}"')
             self.clear_pending_user_input()
             self._clear_confirmation_prompt()

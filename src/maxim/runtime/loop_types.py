@@ -6,17 +6,53 @@ Replaces stringly-typed ``state.data["pending_*"]`` dicts with typed structures.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from maxim.agents.llm_types import LLMProposal
 
 
-@dataclass
+@dataclass(frozen=True)
 class PendingConfirmation:
-    """A tool action awaiting user yes/no/modify response."""
+    """A tool action awaiting the user's yes/no/modify, held on ``LoopController.pending_confirmation``.
+
+    Built ONLY by ``from_proposal`` (#1133): ``source`` is the ``LLMProposal`` the action came from, so the
+    confirmed action is credited to the situation it was PROPOSED in (``source.clusters``, the #1083
+    rule), and ``tool_name`` is normalized once (``"unknown"`` when the action names none). Until #1133
+    this lived in ``state.data["pending_confirmation"]`` as a dict and the proposal was dropped when the
+    confirmation was asked, so the situation was lost.
+
+    Runtime-ephemeral: lives on the controller for the ticks between the question and the answer, never
+    persisted (``state.data``, which is snapshotted to disk, no longer carries it) and never crossing a
+    wire, so CC3 forward-compat is out of scope.
+    """
 
     action: dict[str, Any]
     reasoning: str
     confidence: float
     tool_name: str
+    source: LLMProposal
+
+    @classmethod
+    def from_proposal(cls, proposal: LLMProposal) -> PendingConfirmation:
+        """The one producer: the proposal the autonomy check parked for confirmation."""
+        action = proposal.action or {}
+        return cls(
+            action=action,
+            reasoning=proposal.reasoning,
+            confidence=proposal.confidence,
+            tool_name=action.get("tool_name") or "unknown",
+            source=proposal,
+        )
+
+    def policy_view(self) -> dict[str, Any]:
+        """The dict ``sim.resolve_confirmation`` (a ``ResponsePolicy``) has always read."""
+        return {
+            "action": self.action,
+            "reasoning": self.reasoning,
+            "confidence": self.confidence,
+            "tool_name": self.tool_name,
+        }
 
 
 @dataclass

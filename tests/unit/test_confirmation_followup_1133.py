@@ -19,7 +19,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from maxim.agents.llm_types import LLMProposal
 from maxim.runtime.loop_controller import LoopController
+from maxim.runtime.loop_types import PendingConfirmation
 from maxim.simulation.response_policy import PolicyType, ResponsePolicy
 
 # A tool with a followup type ("process"), so a successful confirm must queue a follow-up.
@@ -28,13 +30,28 @@ _PARAMS = {"path": ".maxim_workspace/notes.txt"}
 
 
 def _confirmation_data() -> dict:
-    """The exact shape agent_loop stores in state.data["pending_confirmation"]."""
+    """The confirmation as ``PendingConfirmation.policy_view()`` shows it to a response policy."""
     return {
         "action": {"tool_name": _TOOL, "params": dict(_PARAMS)},
         "reasoning": "need the notes",
         "confidence": 0.9,
         "tool_name": _TOOL,
     }
+
+
+def _pending() -> PendingConfirmation:
+    """The typed record the loop parks (``PendingConfirmation.from_proposal``)."""
+    data = _confirmation_data()
+    return PendingConfirmation.from_proposal(
+        LLMProposal(
+            request_id="r-1133",
+            action=data["action"],
+            reasoning=data["reasoning"],
+            strategy_used=None,
+            confidence=data["confidence"],
+            mode_goal_achieved=False,
+        )
+    )
 
 
 def _controller() -> LoopController:
@@ -53,7 +70,7 @@ def _controller() -> LoopController:
     )
     ctrl.context_pool = MagicMock()
     ctrl.recent_outcomes = []
-    state.data["pending_confirmation"] = _confirmation_data()
+    ctrl.pending_confirmation = _pending()
     return ctrl
 
 
@@ -153,7 +170,7 @@ class TestPlanRejectToolName:
         from maxim.agents.llm_worker import LLMProposal
 
         ctrl = _controller()
-        ctrl.state.data.pop("pending_confirmation", None)
+        ctrl.pending_confirmation = None
         ctrl.pending_plan_proposal = LLMProposal(
             request_id="r1",
             action=action,

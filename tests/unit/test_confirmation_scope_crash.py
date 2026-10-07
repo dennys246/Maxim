@@ -19,6 +19,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 
+from maxim.agents.llm_types import LLMProposal
 from maxim.runtime.loop_controller import LoopController
 from maxim.runtime.loop_types import PendingConfirmation
 
@@ -38,12 +39,14 @@ def _controller():
     # record_outcome sinks wired later in production bootstrap:
     ctrl.context_pool = MagicMock()
     ctrl.recent_outcomes = []
-    ctrl.set_pending_confirmation(
-        PendingConfirmation(
+    ctrl.pending_confirmation = PendingConfirmation.from_proposal(
+        LLMProposal(
+            request_id="r-scope",
             action={"tool_name": "adjust_yaw", "params": {}},
             reasoning="test",
+            strategy_used=None,
             confidence=0.9,
-            tool_name="adjust_yaw",
+            mode_goal_achieved=False,
         )
     )
     return ctrl
@@ -55,10 +58,10 @@ class TestConfirmationBranchScope:
         Pre-fix: UnboundLocalError on display_status → loop death."""
         ctrl = _controller()
         assert ctrl.handle_confirmation("Maxim can you focus on sounds") is True
-        assert ctrl.get_pending_confirmation() is None
+        assert ctrl.pending_confirmation is None
         assert "pending_modification" in ctrl.state.data
 
     def test_cancel_branch_does_not_crash(self):
         ctrl = _controller()
         assert ctrl.handle_confirmation("no") is True
-        assert ctrl.get_pending_confirmation() is None
+        assert ctrl.pending_confirmation is None

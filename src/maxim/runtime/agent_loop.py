@@ -1840,7 +1840,7 @@ def run_agentic_loop(
     )
     from maxim.agents.llm_worker import ModeInfo
     from maxim.modes.definitions import get_mode, TOOL_DESCRIPTIONS
-    from maxim.runtime.loop_types import ActionFollowup
+    from maxim.runtime.loop_types import ActionFollowup, PendingConfirmation
 
     # The setup block (1.3.2 decomposition, slice 1): built once, unpacked into the local names the
     # body below has always read. ``ctrl`` stays the only mutable carrier (runtime/loop_setup.py).
@@ -3336,22 +3336,19 @@ def run_agentic_loop(
                 # Check if this is a confirmation request (not a hard rejection)
                 # Autonomy controller may say "requires approval" or "requires confirmation"
                 if reason and ("requires confirmation" in reason.lower() or "requires approval" in reason.lower()):
-                    tool_name = action.get("tool_name", "unknown")
+                    # The typed record keeps the proposal as its ``source``, so the confirmed action is
+                    # credited to the situation it was proposed in (#1133; the proposal itself is cleared
+                    # below, as for every non-executed branch).
+                    _pending = PendingConfirmation.from_proposal(ctrl.pending_proposal)
+                    tool_name = _pending.tool_name
                     params = action.get("params", {})
 
-                    confirmation_data = {
-                        "action": action,
-                        "reasoning": ctrl.pending_proposal.reasoning,
-                        "confidence": confidence,
-                        "tool_name": tool_name,
-                    }
-
                     # In sim mode, auto-resolve via response policy instead of blocking
-                    sim_response = sim.resolve_confirmation(confirmation_data)
+                    sim_response = sim.resolve_confirmation(_pending.policy_view())
                     if sim_response is not None:
                         # Inject the response as if the user typed it
                         sim.log("PIPELINE", f"Auto-resolved confirmation for {tool_name}: {sim_response}")
-                        state.data["pending_confirmation"] = confirmation_data
+                        ctrl.pending_confirmation = _pending
                         state.data["pending_cli_input"] = sim_response
                     else:
                         # Production mode: display prompt if interactive, auto-resolve if not
@@ -3382,8 +3379,7 @@ def run_agentic_loop(
                             state.data["pending_cli_input"] = "yes"
                             sim.log("PIPELINE", f"Auto-approved (non-interactive): {tool_name}")
 
-                        state.data["pending_confirmation"] = confirmation_data
-                    # Don't clear ctrl.pending_proposal yet - we need to wait for response
+                        ctrl.pending_confirmation = _pending
                 else:
                     # Hard rejection - tool not allowed
                     autonomy_controller.log_action(
