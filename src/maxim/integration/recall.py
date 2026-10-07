@@ -14,7 +14,8 @@ uniformly so every source inherits them:
    little when little is known (an empty recall is correct, not a failure).
 
 The episodic memory join (Episode provenance+valence × the memory record's
-readable text) is the first source; a conservative NAc trait source is the
+readable text) is the first source, and it is Dormant: it returns nothing on the production
+path (see ``EpisodicRecallSource``, #1138); a conservative NAc trait source is the
 second. Semantic facts, player-model stores, etc. plug in behind the same
 protocol without touching the curator — that is the point of the abstraction.
 The consumer (``api.recall`` → the Console MemoryView) sees only the curated
@@ -121,6 +122,17 @@ class EpisodicRecallSource:
     through ``hippocampus.get`` to whatever readable records exist; an episode
     with no resolvable text is skipped (under-claim), never emitted as node ids.
     Provenance is honored at the source: ``imagined`` episodes are never yielded.
+
+    Dormant since 2026-10-06: it returns no story memory on the production path. An
+    episode's ``activated_nodes`` are ATL substrate node ids (``MemoryHub.on_percept_received``
+    -> ``bio_integration.record_substrate_nodes``), empty unless the substrate path is on,
+    and this joins them against the Hippocampus, where no such id lives: every one of 103
+    episodes in the committed stores has none. So ``maxim.recall()``'s ``story_memories`` is
+    always empty. Revival needs a design (#1144 lists the options: resolve through the ATL,
+    or source story memories from Hippocampus records with a per-record provenance flag). A
+    revival must also honour ``limit`` (it walks every episode today) and read records with
+    ``recall_by_ids``, not ``get`` (which counts an access on a read-only recall) (#1138).
+    Behaviour tier: n/a. Owner decision on #1138.
     """
 
     def __init__(self, hippocampus: Any) -> None:

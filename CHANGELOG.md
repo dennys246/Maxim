@@ -139,7 +139,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--sim` AUTs run AUTONOMOUS. `loop_controller.py` and `loop_state.py` join CI's mypy set.
   Known defects the move carries, now fixed in one place later: #1145, #1146, #1147.
 
-- **A memory's tool and goal read the same on both record kinds; public recall returns episodes again**
+- **`maxim.recall()` has never returned a story memory; its episodic source is declared Dormant**
+  ([#1138](https://github.com/dennys246/Maxim/issues/1138), owner decision 2026-10-06). `EpisodicRecallSource`
+  resolves each episode's `activated_nodes` through the Hippocampus, but those are ATL substrate node ids
+  (`MemoryHub.on_percept_received` → `bio_integration.record_substrate_nodes`), empty unless the substrate path is
+  on: all 103 episodes in the committed stores have none, and a substrate id is not a Hippocampus record id. So
+  `story_memories` (behind `maxim.recall()` and the Console MemoryView) is always empty, before and after the #1129
+  field fixes, whose entry below claimed otherwise from a test that hand-built episodes with Hippocampus ids. The
+  source is marked Dormant, pinned by a test on a real Hippocampus and real episodes, and its redesign is
+  [#1144](https://github.com/dennys246/Maxim/issues/1144) (with #1138's unbounded walk and its access-counting
+  `get`). No behaviour change.
+
+- **A memory's tool and goal read the same on both record kinds**
   ([#993](https://github.com/dennys246/Maxim/issues/993), [#995](https://github.com/dennys246/Maxim/issues/995),
   [#1129](https://github.com/dennys246/Maxim/issues/1129); #994 declared Dormant). `EpisodicMemory` gains read-only
   `tool_name` and `goal` (the intent goal, else the active goal: exactly what compression stores), as #991 did for
@@ -147,8 +158,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   introspection tool and tracer lines now keep its tool (and, where the reader means it, its goal);
   `SituationSignature.from_memory` does too, but it has no production caller, so that is capability, not a fix.
   `EpisodicRecallSource` (behind `maxim.recall()` and the Console MemoryView) read `cli_input` / `transcript` /
-  `salience` off the record instead of its `perception`, and `Context.goal`, so it skipped every real episode; it
-  now returns them. `Observer.memory_recall` (the LLM's `inspect_aut`) read `Context.goal` and `Action.tool_used`,
+  `salience` off the record instead of its `perception`, and `Context.goal`; it now reads the real fields, but it
+  still returns nothing on the production path (corrected 2026-10-06: see the `EpisodicRecallSource` entry above,
+  #1138). `Observer.memory_recall` (the LLM's `inspect_aut`) read `Context.goal` and `Action.tool_used`,
   neither of which exists, so goal and tool were always empty; it now shows an episode's active goal.
   **Breaking, to a returned shape:** `export_memories()["memory_summaries"]` items drop `valence` (it read
   `Outcome.valence`, which does not exist, so it was always 0) for `outcome` (`success` / `failure` / `unknown`);

@@ -74,6 +74,8 @@ Three rules make it work: **(1) provenance-filter** — show real memories; in-f
 
 **Load-bearing caveat — the view's credibility IS the product's credibility.** The whole thesis is "it remembers you," so a confidently-wrong inferred preference does more damage than showing less. Translating NAc reward-biases into stated preferences is a small inference that can misfire: gate it behind a confidence threshold, phrase tentatively, and **under-claim** when in doubt ("we've adventured twice") rather than over-claim. Scope to exactly what the day-one behavior (Adventure) produces.
 
+**Status (2026-10-06):** the shipped episodic source behind `story_memories` is Dormant: it joins episodes' ATL substrate ids against the Hippocampus and returns nothing on the production path ([#1138](https://github.com/dennys246/Maxim/issues/1138)); its redesign is [#1144](https://github.com/dennys246/Maxim/issues/1144).
+
 **Regression guard:** the verb returns a typed structure over a populated bio-stack; empty bio-stack returns an empty structure, never raises; an `imagined=True` fact never appears in `story_memories`; a below-threshold bias never appears in `preferences`.
 
 ### PROBE — structured connection test

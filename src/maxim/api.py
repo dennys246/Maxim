@@ -1222,7 +1222,8 @@ def recall(*, home_dir: str | None = None, agent_id: str | None = None, limit: i
     dumps, and **under-claims** (an empty result is honest, not a failure). It
     composes pluggable :class:`~maxim.integration.recall.RecallSource`s (episodic
     story memories, NAc traits, …), so it is not episode-specific — new sources
-    plug in without changing this verb.
+    plug in without changing this verb. The episodic source is Dormant today:
+    ``story_memories`` is always empty (#1138; redesign #1144).
 
     Two persisted layouts (post-merge review round, 2026-07-26 — the Console's
     MemoryView read MUST match the home its HANDLE agent writes, or campaign
