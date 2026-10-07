@@ -524,6 +524,37 @@ class TestExecuteParallelActions:
         )
         assert len(outcomes) == 2
 
+    def test_a_batched_action_credits_its_drive_side_effects(self, monkeypatch):
+        """#1133 (D6): the batch reads the three drive fields the single-action path always read, through
+        the same parser, and the returned dicts keep their documented shape."""
+        from maxim.runtime import tool_dispatch
+        from maxim.tools.base import ToolOutput
+
+        seen: list[dict] = []
+        monkeypatch.setattr(tool_dispatch, "record_outcome", lambda **kw: seen.append(kw))
+        ex = MagicMock()
+        ex.execute.return_value = ToolOutput(
+            success=True,
+            output="ok",
+            side_effects={"drive_potential_diff": 0.3, "drive_credit_withheld": True, "drive_relief_channel": "audio"},
+        )
+        results, _ = tool_dispatch.execute_parallel_actions(
+            agent_id="test",
+            actions=[{"tool_name": "turn_left", "params": {}}],
+            executor=ex,
+            autonomy_controller=self._make_autonomy(),
+            confidence=0.9,
+            reasoning="orient",
+            recent_outcomes=[],
+            max_recent=10,
+            llm_worker=None,
+            context_pool=self._make_context_pool(),
+        )
+        assert [
+            (kw["drive_potential_diff"], kw["drive_credit_withheld"], kw["drive_relief_channel"]) for kw in seen
+        ] == [(0.3, True, "audio")]
+        assert set(results[0]) == {"tool", "params", "success", "result", "error"}
+
 
 class TestAgentIdAttribution:
     """P4: agent_id is required + tagged on every NAc observation."""

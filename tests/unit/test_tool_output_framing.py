@@ -12,7 +12,8 @@ import re
 from pathlib import Path
 from types import SimpleNamespace
 
-from maxim.runtime.agent_loop import _followup_result_text, _followup_synthetic_input
+from maxim.runtime.agent_loop import _followup_synthetic_input
+from maxim.runtime.tool_dispatch import _followup_result_text
 from maxim.runtime.loop_types import ActionFollowup
 from maxim.utils.content_safety import TOOL_OUTPUT_RULE, frame_tool_output
 

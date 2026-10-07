@@ -22,7 +22,8 @@ import pytest
 from maxim.bridges.tool_pain_bridge import ToolPainBridge
 from maxim.decisions.nac import NAc
 from maxim.proprioception.pain import PainSignal, PainType
-from maxim.runtime.agent_loop import _attach_live_situation, _situation_margins, situation_novelty
+from maxim.runtime.agent_loop import _attach_live_situation, _situation_margins
+from maxim.runtime.bio_integration import situation_novelty
 
 
 def _signal(intensity: float) -> PainSignal:
