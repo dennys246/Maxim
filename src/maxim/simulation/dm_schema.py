@@ -139,8 +139,8 @@ class CampaignDef:
     npc_specs: dict[str, dict[str, Any]]  # name → raw SEM entity YAML
     object_specs: dict[str, dict[str, Any]] = field(default_factory=dict)
     expectations: dict[str, Any] = field(default_factory=dict)  # Bio-system expectations
-    party_mode: bool = False  # Enable PartyDMRuntime with NPC agents
-    choice_resolution: str = "pc_decides"  # How conflicting choices resolve
+    # Read by nothing: there is no party runtime (D50); setting it True warns (``warn_party_mode_unsupported``).
+    party_mode: bool = False
     genre: str = ""  # Genre tag for SEM component filtering (e.g., "fantasy", "cyberpunk")
     permissions: dict[str, Any] = field(default_factory=dict)  # Per-character enforced permission YAML
 
@@ -202,6 +202,15 @@ def _resolve_entity_specs(
     return resolved
 
 
+def warn_party_mode_unsupported(source: str) -> None:
+    """Say that party mode does nothing: there is no party runtime and NPCs get no bio-stack (D50, D40)."""
+    log.warning(
+        "%s sets party_mode, which does nothing: there is no party runtime, NPCs get no Hippocampus or NAc, "
+        "and the campaign runs as a single PC (bugs ledger D50)",
+        source,
+    )
+
+
 def load_campaign(
     path: str | Path,
     registry: Any | None = None,
@@ -230,7 +239,16 @@ def load_campaign(
     goal = campaign.get("goal", "")
     seed = campaign.get("seed", 42)
     party_mode = campaign.get("party_mode", False)
+    if party_mode:
+        warn_party_mode_unsupported(f"campaign {path.name}")
+    # ``choice_resolution`` was parsed and read by nothing (D50); "pc_decides" is the only behaviour there is.
     choice_resolution = campaign.get("choice_resolution", "pc_decides")
+    if choice_resolution != "pc_decides":
+        log.warning(
+            "campaign %s sets choice_resolution: %r, which nothing reads: the PC decides every choice (D50)",
+            path.name,
+            choice_resolution,
+        )
     genre = campaign.get("genre", "")
 
     # Parse acts
@@ -316,7 +334,6 @@ def load_campaign(
         object_specs=object_specs,
         expectations=expectations,
         party_mode=party_mode,
-        choice_resolution=choice_resolution,
         genre=genre,
         permissions=permissions,
     )

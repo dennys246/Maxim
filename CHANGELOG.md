@@ -114,6 +114,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The benchmark composite honours the suite format it ships; Tier 3 declared Dormant** (bugs ledger D49, owner
+  decisions 2026-10-07). Shipped suites set a per-scenario `weight` and a per-scenario `benchmark.metrics`
+  selection, and the runner ignored both: the composite was a flat mean of every collected metric, and repeat runs
+  of a scenario were folded with a running half-mean `(old + new) / 2` (the true mean only for two runs). The
+  composite is now the `weight`-weighted mean of per-scenario scores over every scenario in the suite (one with no
+  successful run scores 0 at its weight), each scenario scoring the metrics it selects (a run that did not emit a
+  metric counts 0 in its mean, since collectors emit some only when non-zero), and per-scenario metrics are true
+  means. One `LOWER_IS_BETTER` list replaces three that disagreed, and latency is kept out of the composite. **Tier 1
+  (LLM behaviour) has never computed a metric** (its block in `_compute_metrics` is empty and its helpers have no
+  caller), so every benchmark composite has been Tier 2 only; Tier 1 is now marked Dormant beside Tier 3 and the
+  docs' Tier 1 table is labelled a design. **Benchmark composites before and after are not comparable**
+  (no ledger row or site claim rests on one): reports now carry `score_scheme`, and an unstamped baseline warns.
+  A missing suite names the suites that exist; a suite whose child is missing or does not parse, a negative or
+  all-zero weight, or two scenarios with one file name is refused when the runner is built (a broken child used
+  to fail only its own runs). Tier 3 (`_collect_tier3_metrics`, no caller;
+  `embodiment_stats()`, never implemented) is marked Dormant; removing `tier2`/`tier3` from `--benchmark`'s choices
+  waits for the `cli.py` decomposition slice.
+- **Campaign keys that do nothing are no longer silent** (D50). `party_mode: true`, in campaign YAML or as
+  `maxim.campaign(party_mode=True)`, logs that no party runtime exists (NPCs get no Hippocampus or NAc).
+  `choice_resolution` is removed from `CampaignDef` (it had no reader): the default `pc_decides` loads silently and
+  any other value warns. `docs/user/simulation.md` no longer describes party mode as working.
+- **`simulation/sources.py` no longer implies live percept sharing shipped** (D46): it names the remote adapter as
+  never written, the mesh percept message types as having no producer, and `deferred/mesh_perception_transport.md`
+  as the owner.
 - **A confirmed action learns what the same action learns unconfirmed: one execute-and-learn function**
   ([#1133](https://github.com/dennys246/Maxim/issues/1133); since d6b64e9f, 2026-04-09). At SUPERVISED autonomy a tool that
   needs confirmation was run, on "yes", by `LoopController.handle_confirmation`'s own copy of the dispatch. After a

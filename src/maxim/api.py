@@ -1382,9 +1382,9 @@ def campaign(
             ``docs/user/stable_api.md``).
         model: LLM profile for the PC agent / orchestrator.
         party_mode: Override campaign's party_mode setting.  If ``None``,
-            uses the value from the campaign YAML.  **Parsed only** — it is
-            stored on the ``CampaignDef`` and read by nothing, so setting it
-            changes no behaviour (see the note above; bugs ledger D44).
+            uses the value from the campaign YAML.  **Does nothing** — it is
+            stored on the ``CampaignDef`` and read by nothing; ``True`` logs a
+            warning that no party runtime exists (bugs ledger D50).
         npc_model: **Not supported — passing a non-None value raises.**
             Party-mode NPC agents do not exist in the runtime (``party_mode`` is
             parsed into the campaign definition and read by nothing), so there is
@@ -1464,6 +1464,11 @@ def campaign(
     # Override party_mode if specified
     if party_mode is not None:
         from dataclasses import replace
+
+        if party_mode and not campaign_def.party_mode:  # the YAML's own True already warned at load
+            from maxim.simulation.dm_schema import warn_party_mode_unsupported
+
+            warn_party_mode_unsupported("maxim.campaign(party_mode=True)")
 
         campaign_def = replace(campaign_def, party_mode=party_mode)
 
