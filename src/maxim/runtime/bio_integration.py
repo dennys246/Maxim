@@ -36,7 +36,7 @@ def capture_episodic_memory(
     trace; ConceptExtractor links the clusters' ATL concepts (same ids) to it.
 
     ``novelty`` (REQUIRED, Phase 2S-c): how unfamiliar that situation was, in ``[0, 1]``
-    (``agent_loop.situation_novelty`` of the proposal's EC match margins), or ``None`` when no
+    (``situation_novelty`` of the proposal's EC match margins), or ``None`` when no
     margin was recorded.
 
     This is the standard per-action hippocampus capture pattern used
@@ -100,6 +100,77 @@ def capture_episodic_memory(
         raise  # a capture-contract break is never a runtime hiccup
     except Exception as e:
         logger.debug("Hippocampus capture failed: %s", e)
+
+
+def situation_novelty(margins: dict[str, float] | None) -> float | None:
+    """How unfamiliar a situation was, in ``[0, 1]``: ``1 - best similarity`` of its clusters' encodes.
+
+    Per modality ``1 - best_similarity`` (clamped), and the situation's novelty is its MOST novel
+    modality. Dynamic range, stated: sensor completions sit at or above the 0.85 threshold, so a
+    familiar situation reads ~0.0-0.15 and a separation reads higher -- a coarse, near-binary signal,
+    not a graded one. ``-1.0`` ("nothing comparable": a fresh EC or a new modality) is NOT scored as
+    maximal novelty: the tag weights novelty by a reference-set size that is still the Hippocampus's
+    trace count, which would give an empty comparison full confidence -- so it is left unmeasured
+    until the producer supplies its own reference set. ``None`` when no margin remains.
+    """
+    measured = [min(1.0, max(0.0, 1.0 - m)) for m in (margins or {}).values() if m >= 0.0]
+    return max(measured) if measured else None
+
+
+def capture_loop_action(
+    hippocampus: Any,
+    executor: Any,
+    observation: Any,
+    state: Any,
+    intent: dict[str, Any],
+    action: dict[str, Any],
+    confidence: Any,
+    result: Any,
+    run_id: str | None,
+    agent_id: str,
+    *,
+    proposal: Any,
+) -> None:
+    """Capture one executed action to the Hippocampus and close its episode step.
+
+    Called by ``tool_dispatch.execute_and_learn`` (the autonomous and the SUPERVISED-confirmed paths) and by
+    the loop's agent-fallback path. ``proposal`` (REQUIRED; ``None`` on the agent-fallback path, which has
+    none; on the confirmed path ``PendingConfirmation.source``) carries WHERE the
+    action was chosen and how unfamiliar that was:
+
+    - the situation (memory-strength Phase 2S-b) is its ``clusters`` -- ``propose_via_substrate``'s
+      in substrate-primary (encoded when the proposal was made, the tick before execution), or the
+      outcome-time encode made before execution in llm-primary. It is the same key ``_rec_outcome``
+      credits. Re-encoding at capture would read the POST-action state (the wrong key) and write the EC.
+    - the novelty (Phase 2S-c) is ``situation_novelty`` of its ``cluster_margins``, recorded with
+      those clusters at encode time.
+    """
+    if hippocampus is None:
+        return
+    capture_episodic_memory(
+        hippocampus=hippocampus,
+        executor=executor,
+        observation=observation,
+        state=state,
+        intent=intent,
+        action={
+            "tool_name": action.get("tool_name"),
+            "params": action.get("params", {}),
+            "confidence": confidence,
+        },
+        result=result,
+        run_id=run_id or "",
+        situation=getattr(proposal, "clusters", None),
+        novelty=situation_novelty(getattr(proposal, "cluster_margins", None)),
+    )
+    observe_episode(
+        hippocampus=hippocampus,
+        agent_id=agent_id,
+        channel="text",
+        activated_nodes=(),
+        after_tool_execution=True,
+        salience_spike=consume_pain_intensity(agent_id=agent_id),
+    )
 
 
 def record_plan_outcome(

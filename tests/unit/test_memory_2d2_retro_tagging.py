@@ -237,12 +237,20 @@ def test_only_the_loop_capture_path_stamps_a_situation():
     from tests.unit._loop_source import loop_source_relpaths
 
     root = pathlib.Path(__file__).resolve().parents[2] / "src" / "maxim"  # THIS checkout, as the helper reads
-    capture_calls = {"capture", "capture_from_loop", "capture_from_loop_async", "_capture_episodic"}
+    capture_calls = {
+        "capture",
+        "capture_from_loop",
+        "capture_from_loop_async",
+        "_capture_episodic",
+        "capture_episodic_memory",
+    }
     loop_files = loop_source_relpaths()  # agent_loop.py + runtime/loop_*.py (1.3.2 decomposition)
     allowed = {
         "memory/hippocampus.py",  # the capture doors threading the argument through
-        "runtime/bio_integration.py",  # the loop capture: _capture_episodic -> capture_from_loop_async
-        *loop_files,  # the loop hands its proposal's clusters to _capture_episodic
+        # the loop capture: capture_loop_action hands the proposal's clusters to capture_episodic_memory,
+        # which passes them to capture_from_loop_async (both moved here from agent_loop by #1133)
+        "runtime/bio_integration.py",
+        *loop_files,
     }
     found = set()
     for path in root.rglob("*.py"):
@@ -256,7 +264,19 @@ def test_only_the_loop_capture_path_stamps_a_situation():
                 if kw.arg == "situation" and not (isinstance(kw.value, ast.Constant) and kw.value.value is None):
                     found.add(path.relative_to(root).as_posix())
     assert found <= allowed, f"a new capture site stamps a situation: {sorted(found - allowed)}"
-    assert "runtime/bio_integration.py" in found and found & loop_files  # the scan still sees the loop
+    assert "runtime/bio_integration.py" in found  # the scan still sees the loop capture
+    # ... and inside bio_integration only the loop capture's two functions stamp one (#1133 moved the caller)
+    tree = ast.parse((root / "runtime" / "bio_integration.py").read_text())
+    stampers = {
+        fn.name
+        for fn in ast.walk(tree)
+        if isinstance(fn, ast.FunctionDef)
+        for node in ast.walk(fn)
+        if isinstance(node, ast.Call)
+        and (getattr(node.func, "attr", None) or getattr(node.func, "id", None)) in capture_calls
+        and any(kw.arg == "situation" for kw in node.keywords)
+    }
+    assert stampers == {"capture_loop_action", "capture_episodic_memory"}, stampers
 
 
 def test_a_trace_without_a_capture_seq_takes_no_part(tmp_path):

@@ -1,1 +1,20 @@
-[]
+[
+  {
+    "pool": "measurement",
+    "file": "src/maxim/runtime/tool_dispatch.py",
+    "qualname": "execute_and_learn",
+    "moved_from": {"file": "src/maxim/runtime/agent_loop.py", "qualname": "run_agentic_loop"},
+    "date": "2026-10-06",
+    "ref": "#1133",
+    "reason": "section 4's outer try moved into execute_and_learn: its `except Exception` (books the failed outcome) now also records `raised = str(e)` for the returned ExecutionOutcome, and the body reads the proposal/hub/logger through the function's parameters (ctrl.pending_proposal -> proposal, logger -> _loop_logger), so the enclosing try's AST changed; handler body otherwise verbatim (AST check in the PR)"
+  },
+  {
+    "pool": "measurement",
+    "file": "src/maxim/runtime/tool_dispatch.py",
+    "qualname": "execute_and_learn",
+    "moved_from": {"file": "src/maxim/runtime/agent_loop.py", "qualname": "run_agentic_loop"},
+    "date": "2026-10-06",
+    "ref": "#1133",
+    "reason": "section 4's memory.store_raw try moved into execute_and_learn; its content reads proposal.reasoning (was ctrl.pending_proposal.reasoning), so the enclosing try's AST changed; the handler (log_swallowed_exception(e, operation='memory.store_raw')) is verbatim"
+  }
+]

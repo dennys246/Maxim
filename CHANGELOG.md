@@ -114,6 +114,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A confirmed action learns what the same action learns unconfirmed: one execute-and-learn function**
+  ([#1133](https://github.com/dennys246/Maxim/issues/1133); since d6b64e9f, 2026-04-09). At SUPERVISED autonomy a tool that
+  needs confirmation was run, on "yes", by `LoopController.handle_confirmation`'s own copy of the dispatch. After a
+  successful run it read `PendingConfirmation.params`, which did not exist; the broad `except` logged "Confirmed action
+  failed", showed "Action failed", recorded nothing and queued no follow-up (the action itself had run). Had it not
+  crashed it would still have learned the wrong thing: it never read the tool's side effects (harm booked POSITIVE),
+  credited under the loop's agent name instead of the hub's `agent_id`, credited no situation (the proposal was cleared
+  when the confirmation was asked) and skipped the capture, the plan outcome and `environment.step`. Now the loop's
+  section 4 block lives, moved verbatim, in `tool_dispatch.execute_and_learn`, bound once per run as
+  `LoopRun.execute_and_learn`, and both the autonomous and the confirmed path call it; the confirmed action is
+  credited to the situation it was proposed in (`PendingConfirmation.source`) and follows the main path's follow-up
+  rule (a failed "process" tool is followed up). `PendingConfirmation` is a frozen record on the controller
+  (`ctrl.pending_confirmation`, built by `from_proposal`), no longer a dict in `state.data`. A display error after a
+  confirmed action is reported and cannot undo the recorded outcome. A refused confirmation or plan is booked through
+  the run's recorder under the hub `agent_id` with the proposal's situation, and a refused plan whose action names no
+  tool is recorded as `"unknown"`, not `None`; `LoopController.record_outcome` is retired. The parallel batch now
+  credits the three drive side effects (relief, its channel, withheld credit) the single-action path always read.
+  `handle_confirmation` no longer catches everything: a raise from the pre-execution snapshot (`capture_before`)
+  or from inside `execute_and_learn`'s own `except` branch now propagates, as it does on the main path, with the
+  confirmation already cleared. Reach: SUPERVISED runs only (interactive, non-interactive auto-approval, the
+  embodied runtime, supervised scenario sims, a timed autonomy grant expiring back to SUPERVISED
+  (`--autonomy-duration`), and the model lowering its own level through `mode_switch`); goal-string and arc
+  `--sim` AUTs run AUTONOMOUS. `loop_controller.py` and `loop_state.py` join CI's mypy set.
+  Known defects the move carries, now fixed in one place later: #1145, #1146, #1147.
+
 - **`maxim.recall()` has never returned a story memory; its episodic source is declared Dormant**
   ([#1138](https://github.com/dennys246/Maxim/issues/1138), owner decision 2026-10-06). `EpisodicRecallSource`
   resolves each episode's `activated_nodes` through the Hippocampus, but those are ATL substrate node ids

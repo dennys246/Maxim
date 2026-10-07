@@ -16,9 +16,11 @@ on the pre-fix code (verified)."""
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 
+from maxim.agents.llm_types import LLMProposal
 from maxim.runtime.loop_controller import LoopController
 from maxim.runtime.loop_types import PendingConfirmation
 
@@ -38,15 +40,22 @@ def _controller():
     # record_outcome sinks wired later in production bootstrap:
     ctrl.context_pool = MagicMock()
     ctrl.recent_outcomes = []
-    ctrl.set_pending_confirmation(
-        PendingConfirmation(
+    ctrl.pending_confirmation = PendingConfirmation.from_proposal(
+        LLMProposal(
+            request_id="r-scope",
             action={"tool_name": "adjust_yaw", "params": {}},
             reasoning="test",
+            strategy_used=None,
             confidence=0.9,
-            tool_name="adjust_yaw",
+            mode_goal_achieved=False,
         )
     )
     return ctrl
+
+
+def _run() -> SimpleNamespace:
+    """The run's two callables the handler takes (#1133); the cancel branch books through ``book_refusal``."""
+    return SimpleNamespace(execute_and_learn=MagicMock(), book_refusal=MagicMock())
 
 
 class TestConfirmationBranchScope:
@@ -54,11 +63,28 @@ class TestConfirmationBranchScope:
         """Free text while a confirmation is pending = modification request.
         Pre-fix: UnboundLocalError on display_status → loop death."""
         ctrl = _controller()
-        assert ctrl.handle_confirmation("Maxim can you focus on sounds") is True
-        assert ctrl.get_pending_confirmation() is None
+        run = _run()
+        assert (
+            ctrl.handle_confirmation(
+                "Maxim can you focus on sounds",
+                execute_and_learn=run.execute_and_learn,
+                book_refusal=run.book_refusal,
+                observation={},
+            )
+            is True
+        )
+        assert ctrl.pending_confirmation is None
         assert "pending_modification" in ctrl.state.data
 
     def test_cancel_branch_does_not_crash(self):
         ctrl = _controller()
-        assert ctrl.handle_confirmation("no") is True
-        assert ctrl.get_pending_confirmation() is None
+        run = _run()
+        assert (
+            ctrl.handle_confirmation(
+                "no", execute_and_learn=run.execute_and_learn, book_refusal=run.book_refusal, observation={}
+            )
+            is True
+        )
+        assert run.book_refusal.call_args.kwargs["error"] == "User rejected this action"
+        run.execute_and_learn.assert_not_called()
+        assert ctrl.pending_confirmation is None
