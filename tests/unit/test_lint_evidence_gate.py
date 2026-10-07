@@ -181,6 +181,7 @@ def _t39_move(
     ledger_token="PARTIAL",
     row="T3-9",
     side_branch=False,
+    qualifier="narrow: H3 not measured",
 ):
     """BASE: T3-9 STALE, then an O19 Exp 09 attempt's rows landed (``rows_edit`` before they land). HEAD: its
     verdict (``verdict_edit``), any ``head_edit`` to the tree, and ``row`` moved to ``ledger_token`` citing it."""
@@ -192,7 +193,9 @@ def _t39_move(
         verdict_edit(record)
         (rig.root / DATA / "rerun_exp09_o19" / "verdict.json").write_text(json.dumps(record, indent=1))
     cite = f"**Evidence:** `{DATA}/rerun_exp09_o19/verdict.json`."
-    status = f"**Status: {ledger_token} 2026-10-02**. {cite}"
+    # The real T3-9 claims the `narrow` scope (H3 not measured), the one exp09_verdict supports (#1141).
+    qualifier = f" ({qualifier})" if qualifier else ""
+    status = f"**Status: {ledger_token} 2026-10-02**{qualifier}. {cite}"
     t1_row = t1("T1-1", status if row == "T1-1" else "**Status: STALE 2026-09-30**.")
     t3_row = t3("T3-9", status if row == "T3-9" else "**Status: STALE 2026-09-30**.")
     rig.head(ledger([t1_row], [t3_row]))
@@ -421,6 +424,7 @@ def test_the_real_pass_table_supports_exp63_earned_from_pass_only() -> None:
         "rows": ["T1-16"],
         "targets": {"EARNED": ["PASS"], "REPRODUCED": ["PASS"]},
         "require": {"apparatus_checked": True},
+        "scopes": ["narrow"],
     }
     assert G.pass_table_problems(table, "HEAD") == [] and "exp63_verdict" in R.O19_KINDS
     import o19_verdict as v
@@ -918,8 +922,9 @@ def test_an_allowance_establishes_but_never_supports(rig) -> None:
     candidate = R.Judgement(path="v", status=G.ESTABLISHED, kind="verdict", time=3e9, allowed_dirty=True,
                             prereg="PASS", data_prereg="PASS",
                             record={"kind": "exp57_verdict", "verdict": "PASS"})  # fmt: skip
-    table = {"exp57_verdict": {"rows": ["T1-12"], "targets": {"EARNED": ["PASS"]}}}
-    assert "allowed-dirty" in (G.support_problem(candidate, "T1-12", "EARNED", table, 1.0, ctx=_ctx(rig)) or "")
+    table = {"exp57_verdict": {"rows": ["T1-12"], "targets": {"EARNED": ["PASS"]}, "scopes": [None]}}
+    problem = G.support_problem(candidate, "T1-12", "EARNED", table, 1.0, ctx=_ctx(rig), scope=None)
+    assert "allowed-dirty" in (problem or "")
 
 
 def test_runs_cannot_predate_the_commit_they_ran_on(rig) -> None:
@@ -1576,7 +1581,7 @@ def test_a_ruled_kind_without_its_complete_block_is_refused(rig) -> None:
     ],
 )
 def test_the_pass_table_complete_block_shape(kind, complete, why) -> None:
-    entry = {"rows": ["T1-1"], "targets": {"EARNED": ["EARNED"]}}
+    entry = {"rows": ["T1-1"], "targets": {"EARNED": ["EARNED"]}, "scopes": [None]}
     if complete is not None:
         entry["complete"] = complete
     assert any(why in p for p in G.pass_table_problems({kind: entry}, "HEAD")), G.pass_table_problems(
@@ -2422,7 +2427,7 @@ def test_a_successor_partial_obeys_the_identity_check_too(rig, monkeypatch) -> N
     assert sup["key"] == "10"
     rig.write(G.PASS_TABLE, json.dumps({**json.loads((REPO / G.PASS_TABLE).read_text()),
               "exp10_verdict": {"rows": ["T1-1"], "targets": {"PARTIAL": ["PASS"]},
-                                "require": {"apparatus_checked": True}}}))  # fmt: skip
+                                "require": {"apparatus_checked": True}, "scopes": [None]}}))  # fmt: skip
     failures = _reproduce(rig, monkeypatch, token="PARTIAL", before_c2=_src_change("src/maxim/x.py"))
     assert any("the subject differs" in f for f in failures), failures
 
@@ -2435,7 +2440,7 @@ def test_the_gate_and_the_harness_name_one_subject() -> None:
 
 
 def test_reproduced_is_an_o19_kinds_target_only() -> None:
-    entry = {"rows": ["T1-12"], "targets": {"REPRODUCED": ["PASS"]}}
+    entry = {"rows": ["T1-12"], "targets": {"REPRODUCED": ["PASS"]}, "scopes": [None]}
     assert any("only an O19 kind may" in p for p in G.pass_table_problems({"exp57_verdict": entry}, "HEAD"))
     assert G.pass_table_problems({"exp10_verdict": entry | {"rows": ["T1-1"]}}, "HEAD") == []
 
@@ -2470,3 +2475,182 @@ def test_a_verdict_kind_belongs_to_one_experiment(rig, monkeypatch) -> None:
     """D1: Exp 63's campaign may not take Exp 10's kind (a fresh root for a claim another experiment owns)."""
     failures = _edit_table_in_pr(rig, monkeypatch, '"kind": "exp63_verdict",', '"kind": "exp10_verdict",')
     assert any("belongs to 2 experiments (D1" in f for f in failures), failures
+
+
+# ── #1141: new support must match the row's scope (the qualifier head), per the merge-base pass table ──────
+
+
+def _scoped(scopes, kind="exp57_verdict") -> dict:
+    entry = {"rows": ["T1-12"], "targets": {"EARNED": ["PASS"]}, "require": {}}
+    return {kind: entry if scopes is ... else entry | {"scopes": scopes}}
+
+
+def _support(rig, table, scope, kind="exp57_verdict") -> str | None:
+    candidate = R.Judgement(path="v", status=G.ESTABLISHED, kind="verdict", time=3e9, prereg="PASS",
+                            data_prereg="PASS", record={"kind": kind, "verdict": "PASS"})  # fmt: skip
+    return G.support_problem(candidate, "T1-12", "EARNED", table, 1.0, ctx=_ctx(rig), scope=scope)
+
+
+@pytest.mark.parametrize(
+    ("scopes", "scope", "ok"),
+    [
+        ([None], None, True),
+        (["rung A"], "rung A", True),
+        (["rung A", "rung B"], "rung B", True),
+        (["rung A"], "rung B", False),  # #1141: a rung-A verdict re-supports rung A only
+        (["narrow"], None, False),  # the qualifier removed needs a null scope
+        ([None], "narrow", False),  # exact match, no subsumption (owner decision 2026-10-07)
+        ([None, ""], "", False),  # `()`: an empty head is no scope word, even listed at the base
+        (["reframed"], "reframed", False),  # a grandfathered non-vocabulary head matches nothing
+    ],
+)
+def test_new_support_must_match_the_rows_scope(rig, scopes, scope, ok) -> None:
+    rig.base(STALE_BOTH)
+    problem = _support(rig, _scoped(scopes), scope)
+    assert (problem is None) == ok, problem
+
+
+def test_a_base_entry_without_scopes_supports_nothing(rig) -> None:
+    rig.base(STALE_BOTH)
+    assert "declares no `scopes`" in (_support(rig, _scoped(...), None) or "")
+
+
+def test_the_scope_is_a_required_argument(rig) -> None:
+    """Design pass S2: a defaulted scope of None would silently match every unqualified entry."""
+    rig.base(STALE_BOTH)
+    candidate = R.Judgement(path="v", status=G.ESTABLISHED, kind="verdict", time=3e9, prereg="PASS",
+                            data_prereg="PASS", record={"kind": "exp57_verdict", "verdict": "PASS"})  # fmt: skip
+    with pytest.raises(TypeError):
+        G.support_problem(candidate, "T1-12", "EARNED", _scoped([None]), 1.0, ctx=_ctx(rig))
+
+
+@pytest.mark.parametrize(
+    ("qualifier", "base_scopes", "expect"),
+    [
+        ("narrow: H3 not measured", ["narrow"], None),
+        (
+            None,
+            ["narrow"],
+            "not null (the unqualified claim)",
+        ),  # the real T3-9 dropping `narrow` on an exp09 re-run: blocked
+        ("rung B", ["narrow"], "not 'rung B'"),
+        (None, ["narrow", None], None),  # once main's table admits the full claim
+    ],
+)
+def test_the_gate_matches_the_heads_scope_end_to_end(rig, monkeypatch, qualifier, base_scopes, expect) -> None:
+    table = json.loads((REPO / G.PASS_TABLE).read_text())
+    table["exp09_verdict"]["scopes"] = base_scopes
+    rig.write(G.PASS_TABLE, json.dumps(table))
+    _t39_move(rig, monkeypatch, qualifier=qualifier)
+    failures, _ = rig.run()
+    if expect is None:
+        assert failures == []
+    else:
+        assert any("T3-9: no NEW support" in f and "supports scopes" in f and expect in f for f in failures), failures
+
+
+@pytest.mark.parametrize(
+    ("kind", "scopes", "why"),
+    [
+        ("exp57_verdict", ..., "needs `scopes`"),
+        ("exp57_verdict", [], "non-empty list"),
+        ("exp57_verdict", "narrow", "non-empty list"),
+        ("exp57_verdict", ["narrow", "narrow"], "non-empty list"),
+        ("exp57_verdict", [3], "non-empty list"),
+        ("exp57_verdict", [""], "not scope words"),
+        ("exp57_verdict", ["Rung B"], "not scope words"),
+        ("exp57_verdict", ["rung A and B"], "not scope words"),
+        ("exp62_verdict", ["rung A", "rung B"], "exactly one scope"),  # design pass S1
+    ],
+)
+def test_the_pass_table_scopes_shape_at_head(kind, scopes, why) -> None:
+    entry = {"rows": ["T1-15"], "targets": {"EARNED": ["EARNED"]}}
+    if scopes is not ...:
+        entry["scopes"] = scopes
+    if kind in R.COMPLETE_RULES:
+        entry["complete"] = REAL_TABLE[kind]["complete"]
+    problems = G.pass_table_problems({kind: entry}, "HEAD")
+    assert any(why in p for p in problems), problems
+
+
+def test_the_merge_base_checks_scopes_structure_only() -> None:
+    """Design pass S3: a base value outside today's vocabulary is inert, not a red on every PR; absent supplies none."""
+    entry = {"rows": ["T1-12"], "targets": {"EARNED": ["PASS"]}}
+    assert G.pass_table_problems({"exp57_verdict": entry}, "the merge-base", at_base=True) == []
+    assert G.pass_table_problems({"exp57_verdict": entry | {"scopes": ["old word"]}}, "b", at_base=True) == []
+    assert G.pass_table_problems({"exp57_verdict": entry | {"scopes": []}}, "b", at_base=True) != []
+
+
+def test_the_real_pass_table_scopes_match_each_rows_current_head() -> None:
+    """The migration (#1141): every entry supports its rows' heads as the ledger stands, so the next re-date of any
+    row passes the scope check."""
+    rows = {r.id: r for r in G.L.parse((REPO / G.L.LEDGER_PATH).read_text())[0]}
+    for kind, entry in REAL_TABLE.items():
+        if kind.startswith("_"):
+            continue
+        for row_id in entry["rows"]:
+            assert G.row_scope(rows[row_id]) in entry["scopes"], (kind, row_id)
+
+
+def test_a_new_scope_in_the_pass_table_is_noted() -> None:
+    base = {"exp57_verdict": {"rows": ["T1-12"], "targets": {}, "require": {}, "scopes": [None]}}
+    head = {"exp57_verdict": base["exp57_verdict"] | {"scopes": [None, "narrow"]}}
+    notes = G.scope_change_notes(base, head)
+    assert len(notes) == 1 and "['narrow']" in notes[0] and "not bound to its verdicts" in notes[0], notes
+    bound = {"exp57_verdict": head["exp57_verdict"] | {"require": {"h3": True}}}
+    assert "not bound" not in G.scope_change_notes(base, bound)[0]
+    assert G.scope_change_notes(base, base) == []
+
+
+def test_an_unparsed_qualifier_fails_the_row(rig, monkeypatch) -> None:
+    """Design pass N3: nested parentheses escape STATUS_RE, and the row would read as the unqualified, full claim."""
+    _t39_move(rig, monkeypatch, qualifier="narrow (H3 not measured)")
+    failures, _ = rig.run()
+    assert any("T3-9: the Status line's parenthesised qualifier was not parsed" in f for f in failures), failures
+
+
+def test_the_gate_notes_a_scope_the_pr_adds_to_the_pass_table(rig) -> None:
+    """The pass-table PR that admits a new scope is #1141's review point: the gate run on it names the new scope."""
+    rig.base(STALE_BOTH)
+    table = json.loads((REPO / G.PASS_TABLE).read_text())
+    table["exp57_verdict"]["scopes"] = [None, "narrow"]
+    rig.write(G.PASS_TABLE, json.dumps(table))
+    rig.head(STALE_BOTH)
+    failures, notes = rig.run()
+    assert failures == [] and any("exp57_verdict now supports scope(s) ['narrow']" in n for n in notes), notes
+
+
+def test_a_ruled_kind_keeps_the_scope_main_gave_it(rig) -> None:
+    """#1141 review: a swap of exp62's ["rung A"] for ["rung B"] keeps one scope, but its frozen sets still describe a
+    rung-A run, so a rung-A re-run would support rung B. A new scope on a ruled kind is a new kind."""
+    rig.base(STALE_BOTH)
+    table = json.loads((REPO / G.PASS_TABLE).read_text())
+    table["exp62_verdict"]["scopes"] = ["rung B"]
+    rig.write(G.PASS_TABLE, json.dumps(table))
+    rig.head(STALE_BOTH)
+    failures, _ = rig.run()
+    assert any("exp62_verdict has a complete-run rule, so its scopes ['rung A'] may not change" in f for f in failures)
+
+
+def test_the_bootstrap_declares_scopes_in_one_note() -> None:
+    base = {"exp57_verdict": {"rows": ["T1-12"], "targets": {}, "require": {}}}
+    head = {"exp57_verdict": base["exp57_verdict"] | {"scopes": [None]}}
+    assert G.scope_change_notes(base, head) == [
+        f"{G.PASS_TABLE}: 1 kind(s) declare their first `scopes` (bootstrap): exp57_verdict"
+    ]
+    assert G.ruled_scope_problems({"exp62_verdict": {}}, {"exp62_verdict": {"scopes": ["rung A"]}}) == []
+
+
+def test_an_unparsed_base_qualifier_reads_as_a_widening() -> None:
+    old, new = _qrow(None), _qrow("rung B")
+    old.qualifier_unparsed = True
+    assert G.qualifier_widens(old, new)
+
+
+def test_a_ruled_kinds_entry_may_not_be_deleted() -> None:
+    """Delta round: deleting exp62 and re-adding it with ["rung B"] in a later PR would skip the keep-the-scope rule."""
+    base = {"exp62_verdict": {"scopes": ["rung A"]}}
+    assert any("may not be deleted" in p for p in G.ruled_scope_problems(base, {}))
+    assert G.ruled_scope_problems(base, {"exp62_verdict": {"scopes": ["rung A"], "targets": {}}}) == []
+    retired = REAL_TABLE["exp62_verdict"] | {"targets": {}}  # the whole retire shape passes the HEAD shape check
+    assert G.pass_table_problems({"exp62_verdict": retired}, "HEAD") == []

@@ -71,7 +71,7 @@ def qualifier_problems(row: L.Row) -> list[str]:
         if (row.token, row.date, row.qualifier) != pin:
             return [f"the GRANDFATHERED_QUALIFIERS entry for {row.id} {pin} is stale; remove it and fix the qualifier"]
         return []
-    if row.qualifier and not L.SCOPE_HEAD.match(L.qualifier_head(row.qualifier)):
+    if row.qualifier is not None and not L.SCOPE_HEAD.match(L.qualifier_head(row.qualifier)):  # `()` included
         return [
             f"qualifier ({row.qualifier}) must open with a scope word (`narrow`, `rung <X>`); a reason goes in the "
             "prose (the format spec: the qualifier carries SCOPE only)"
