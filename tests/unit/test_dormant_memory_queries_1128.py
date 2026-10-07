@@ -12,14 +12,11 @@ from __future__ import annotations
 
 import time
 
-import pytest
-
 from maxim.agents.bus import AgentBus
 from maxim.agents.memory_agent import MemoryAgent
 from maxim.memory.hippocampus import Hippocampus
 
 
-@pytest.mark.xfail(strict=True, reason="#1128: building the Dormant context touches a Hippocampus record")
 def test_building_context_does_not_count_a_hippocampus_access():
     agent = MemoryAgent(AgentBus())
     hippocampus = Hippocampus.empty()
@@ -31,7 +28,6 @@ def test_building_context_does_not_count_a_hippocampus_access():
     assert record.access_count == before
 
 
-@pytest.mark.xfail(strict=True, reason="#1128: AngularGyrus.recall has no uncounted read")
 def test_an_angular_gyrus_recall_can_read_without_touching():
     from maxim.math.angular_gyrus import AngularGyrus
     from maxim.math.math_types import MathMemory
@@ -45,7 +41,6 @@ def test_an_angular_gyrus_recall_can_read_without_touching():
     assert record.access_count == before
 
 
-@pytest.mark.xfail(strict=True, reason="#1128: the concept builder's relationship lookup always touches")
 def test_concept_relationships_can_be_read_without_touching():
     from maxim.memory.atl import ATL
     from maxim.memory.concept_context import ConceptContextBuilder
@@ -62,3 +57,37 @@ def test_concept_relationships_can_be_read_without_touching():
     )
     assert {s["target"] for s in summaries} == {"stove"}
     assert other.access_count == before
+
+
+# -- the production wiring (review fold): a dropped kwarg would silently restore counting ----------
+
+
+def test_memory_agent_asks_the_hub_for_uncounted_concept_reads():
+    from types import SimpleNamespace
+
+    seen: dict = {}
+
+    def _build(**kwargs):
+        seen.update(kwargs)
+        return []
+
+    agent = MemoryAgent(AgentBus())
+    agent._memory_hub = SimpleNamespace(build_concept_context=_build)
+    agent._build_concept_context([{"label": "kettle"}], [])
+    assert seen.get("count_access") is False
+
+
+def test_the_hub_passes_count_access_through_to_the_builder():
+    from types import SimpleNamespace
+
+    from maxim.integration.memory_hub import MemoryHub
+
+    seen: dict = {}
+
+    def _build(**kwargs):
+        seen.update(kwargs)
+        return []
+
+    hub = SimpleNamespace(_concept_context_builder=SimpleNamespace(build=_build))
+    MemoryHub.build_concept_context(hub, detected_objects=["kettle"], count_access=False)
+    assert seen.get("count_access") is False

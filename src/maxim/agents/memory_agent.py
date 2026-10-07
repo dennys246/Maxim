@@ -857,6 +857,15 @@ class MemoryAgent(Agent, AgentOutputMixin):
                 mem.long_term = True
                 mem.consolidated_at = now
 
+    def _peek_memory(self, memory_id: str) -> Any:
+        """Read a Hippocampus record without counting an access (#1128).
+
+        The context these queries build is Dormant (nothing reads it), so a read here must not move the
+        ``access_count`` default retention runs on: ``Hippocampus.get`` would touch the record every tick.
+        """
+        found = self._hippocampus.recall_by_ids([memory_id]) if self._hippocampus else []
+        return found[0] if found else None
+
     def _get_relevant_memories(self, current: Percept | None) -> list[dict]:
         """Get memories relevant to current context.
 
@@ -872,7 +881,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
             sorted_ids = sorted(self._salience.items(), key=lambda x: x[1], reverse=True)
             results = []
             for mid, sal in sorted_ids[: self._context_window]:
-                mem = self._hippocampus.get(mid)
+                mem = self._peek_memory(mid)
                 if mem:
                     results.append(self._memory_to_context_item(mem, sal))
             return results
@@ -936,14 +945,14 @@ class MemoryAgent(Agent, AgentOutputMixin):
             for mid, score in combined
             if mid in forming_ids
             or not self._hippocampus
-            or ((mem := self._hippocampus.get(mid)) is None or now - getattr(mem, "timestamp", 0) > 3.0)
+            or ((mem := self._peek_memory(mid)) is None or now - getattr(mem, "timestamp", 0) > 3.0)
         ]
 
         combined.sort(key=lambda x: x[1], reverse=True)
 
         results = []
         for mid, score in combined[: self._context_window]:
-            mem = self._hippocampus.get(mid)
+            mem = self._peek_memory(mid)
             if mem:
                 item = self._memory_to_context_item(mem, score)
                 # Attach prediction context from forming pool if applicable
@@ -1233,10 +1242,13 @@ class MemoryAgent(Agent, AgentOutputMixin):
         and ``detected_people``; the live prompt's ``StructuredContext`` comes from
         ``InMemoryMemory.build_context``, which sets none of the four. Memory
         content reaches the LLM through ``BioEnrichmentPipeline`` instead. They
-        still run on every throttled tick, on this pool, and two of their reads
-        count accesses (``Hippocampus.get`` in ``_get_relevant_memories``, the
-        ``atl.recall`` fallback in ``_build_knowledge_context``), so they move
-        default retention for results nothing reads (#1128). Behaviour tier: n/a. Owner decision
+        still run on every throttled tick, on this pool, because one of them,
+        ``_build_concept_context``, is concept grounding's only production caller
+        outside ``agentic_runtime`` (ATL relation updates, AG quantification). Their
+        reads of records nothing uses no longer count an access (#1128, owner
+        decision 2026-10-07): ``_peek_memory`` for the Hippocampus, AG
+        ``recall(touch=False)``, concept context ``count_access=False`` for the
+        ATL. Grounding's own touches (ATL and AG) stay: grounding is a use. Behaviour tier: n/a. Owner decision
         on #845 (the knowledge lookup itself was fixed so the code is correct if
         revived).
         """
@@ -1478,6 +1490,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
                         limit=3,
                         category=MathCategory.PATTERN,
                         min_confidence=0.5,
+                        touch=False,  # the result is Dormant: do not move AG retention (#1128)
                     )
                     for record in patterns:
                         entries.append(
@@ -1630,6 +1643,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
             detected_objects=object_labels,
             detected_people=people_labels,
             active_goal=self._active_goal_description,
+            count_access=False,  # the result is Dormant; grounding still learns (#1128)
         )
 
     def set_active_goal(self, goal_id: str | None, description: str | None = None) -> None:

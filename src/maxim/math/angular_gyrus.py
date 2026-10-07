@@ -200,8 +200,13 @@ class AngularGyrus(StoreFileOwnership, MemoryLayer):
         domain: str | None = None,
         min_confidence: float | None = None,
         include_compressed: bool = True,
+        touch: bool = True,
     ) -> list[MathMemory | CompressedMathMemory]:
-        """Query math records by filters."""
+        """Query math records by filters.
+
+        ``touch=False`` reads without counting an access: for a caller whose result nothing uses, so it does
+        not move the ``access_count`` this method ranks by and retention reads (#1128).
+        """
         with self._rwlock.read():
             # Start with candidates from index if possible
             candidate_ids: set[str] | None = None
@@ -240,9 +245,10 @@ class AngularGyrus(StoreFileOwnership, MemoryLayer):
         results.sort(key=lambda r: (r.access_count, r.confidence), reverse=True)
 
         # Touch recalled records
-        for r in results[:limit]:
-            r.touch()
-            self._total_recalls += 1
+        if touch:
+            for r in results[:limit]:
+                r.touch()
+                self._total_recalls += 1
 
         return results[:limit]
 
