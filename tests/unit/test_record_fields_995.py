@@ -104,7 +104,9 @@ def test_an_agent_export_labels_each_memorys_outcome():
 # -- #1129: the public recall source reads the real record ---------------------------------------
 
 
-def test_public_recall_returns_an_episode_from_a_real_record():
+def test_public_recall_reads_a_real_records_fields_when_an_id_resolves():
+    """Hand-built episodes carrying Hippocampus ids: production episodes carry none, so the source is
+    Dormant (#1138, redesign #1144). This pins only that the reader uses the real fields."""
     from maxim.integration.recall import EpisodicRecallSource
 
     ep = _episode()
