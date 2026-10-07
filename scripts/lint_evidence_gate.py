@@ -220,6 +220,14 @@ def exceptions_problems(base_list, head_list, repo: Repo | None = None) -> list[
             any(not e.get(f) for f in EXCEPTION_FIELDS) or "from" not in e  # `from: null` = a new row
         ):
             out.append(f"{EXCEPTIONS}: ledger exception {e.get('id')!r} lacks a required field")
+        elif (
+            e["kind"] == "ledger"
+            and "to_qualifier" in e
+            and not (e["to_qualifier"] is None or (isinstance(e["to_qualifier"], str) and e["to_qualifier"]))
+        ):
+            out.append(
+                f"{EXCEPTIONS}: ledger exception {e.get('id')!r}: to_qualifier must be a non-empty string or null"
+            )
         elif e["kind"] == "prereg":
             # The pin's form is checked against HEAD only for a NEW clause: one already on main whose entry later
             # changed shape is inert (the prereg lint notes it), never a permanent failure of every PR.
@@ -304,6 +312,17 @@ class RowResult:
     notes: list[str]
 
 
+def qualifier_widens(old: L.Row | None, row: L.Row) -> bool:
+    """A qualifier change that can WIDEN the claim (#1108, owner decision 2026-10-06): the qualifier is removed, or its
+    scope word changes (``narrow`` -> ``rung A``, ``rung A`` -> ``rung B``). It needs NEW support, like a raise or a
+    re-date. Detail appended under the same scope word, or a qualifier added to an unqualified row, is judged only;
+    text cannot prove an appended clause narrows, so a same-head widening (``rung A, and rung B``) is the stated
+    residual that review checks."""
+    if old is None or not old.qualifier:
+        return False
+    return row.qualifier is None or L.qualifier_head(row.qualifier) != L.qualifier_head(old.qualifier)
+
+
 def triggers_for(row: L.Row, old: L.Row | None, changed: set[str], watched: list[str]) -> list[str]:
     out = []
     if old is None:
@@ -318,8 +337,17 @@ def triggers_for(row: L.Row, old: L.Row | None, changed: set[str], watched: list
         out.append("Evidence changed")
     if old.claim != row.claim:
         out.append("claim changed")
-    if old.qualifier and (row.qualifier is None or old.qualifier not in row.qualifier):
-        out.append("qualifier removed or rewritten")
+    # Any change but an exact match is judged (#1108: the old substring test let `(rung A)` -> `(rung A and B)` pass
+    # unjudged). Compared raw: a ledger row is one table line, so a whitespace change inside the parentheses is an edit.
+    if old.qualifier != row.qualifier:
+        if old.qualifier is None:
+            out.append("qualifier added")
+        elif row.qualifier is None:
+            out.append("qualifier removed")
+        else:
+            out.append("qualifier changed")
+        if qualifier_widens(old, row):
+            out.append("qualifier widened")
     for prefix in watched:
         if any(c == prefix or c.startswith(prefix.rstrip("/") + "/") for c in changed):
             out.append(f"{prefix} changed")
@@ -448,7 +476,8 @@ def gate(
             res.failures.append(
                 "cites no ESTABLISHED, LEGACY or EXCEPTED record (a judged row that changes rests on one)"
             )
-        needs_support = old is None or L.needs_new_date(old.token, row.token) or old.date != row.date
+        widened = qualifier_widens(old, row)
+        needs_support = old is None or L.needs_new_date(old.token, row.token) or old.date != row.date or widened
         if needs_support:
             base_paths = {e.path for e in old.evidence} if old else set()
             after = status_set_time(repo, base, row.id, old.token, old.date) if old else float(repo.commit_time(base))
@@ -456,10 +485,19 @@ def gate(
             problems_new = [support_problem(j, row.id, row.token, table, after, ctx=ctx) for j in new]
             cited = {e.path for e in row.evidence}
             supporting = [e for e in active if e.get("from") == (old.token if old else None) and e.get("path") in cited]
+            if widened:
+                # For a pure widening every clause at the current (to, to_date) reads as "settled", so a re-date clause
+                # would support every later widening. Only a clause bound to THIS qualifier does (design pass, #1108).
+                supporting = [e for e in supporting if "to_qualifier" in e and e["to_qualifier"] == row.qualifier]
             excepted |= {e.get("id") for e in supporting}
             if not any(p is None for p in problems_new) and not supporting:
+                hint = (
+                    " (a widened qualifier: an owner exception supplies it only with `to_qualifier` naming the new one)"
+                    if widened
+                    else ""
+                )
                 res.failures.append(
-                    "no NEW support: " + ("; ".join(p for p in problems_new if p) or "no newly cited record")
+                    "no NEW support: " + ("; ".join(p for p in problems_new if p) or "no newly cited record") + hint
                 )
         cited_paths = {j.path for j in judgements}
         for e in active:
