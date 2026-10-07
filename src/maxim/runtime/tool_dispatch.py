@@ -17,7 +17,7 @@ from collections.abc import Callable
 from typing import Any
 
 from maxim.decisions.causal_link import Valence as _V
-from maxim.runtime.bio_integration import _loop_capture_action, record_plan_outcome as _record_plan_outcome
+from maxim.runtime.bio_integration import capture_loop_action, record_plan_outcome as _record_plan_outcome
 from maxim.runtime.loop_types import ActionFollowup
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import log_agentic
@@ -683,6 +683,9 @@ def execute_parallel_actions(
                     "error": error,
                     "_embodiment_failed": _side.embodiment_failed,
                     "_outcome_valence": _side.outcome_valence,
+                    "_drive_potential_diff": _side.drive_potential_diff,
+                    "_drive_credit_withheld": _side.drive_credit_withheld,
+                    "_drive_relief_channel": _side.drive_relief_channel,
                 }
             )
 
@@ -725,6 +728,11 @@ def execute_parallel_actions(
             tool_params=pr.get("params"),
             embodiment_failed=bool(pr.get("_embodiment_failed")),
             outcome_valence=pr.get("_outcome_valence"),
+            # #1133 (D6): the three drive fields the single-action path always read, through the same
+            # parser; a batched action now carries its drive relief and its withheld credit too.
+            drive_potential_diff=pr.get("_drive_potential_diff"),
+            drive_credit_withheld=bool(pr.get("_drive_credit_withheld")),
+            drive_relief_channel=pr.get("_drive_relief_channel"),
             cluster_id=cluster_id,
             clusters=clusters,
             # Phase 1 guardrail must reach the BATCH path too: without this, an
@@ -732,12 +740,6 @@ def execute_parallel_actions(
             # drive_potential_diff) would fall to the tool-success floor and flood
             # the interoception cluster — the exact flooding the guard prevents on
             # the single-action path (two-lens review, both lenses CONFIRMED).
-            # NOTE (sem_motor_binding.md review fold): this path does NOT read
-            # per-action side_effects, so drive_credit_withheld never reaches it.
-            # Covered today because llm-primary sets drive_relief_only=True (same
-            # elif) and substrate-primary emits single actions only. If
-            # substrate-primary ever batches, thread the marker here per the
-            # every-secondary-dispatcher lesson (#437).
             drive_relief_only=drive_relief_only,
         )
 
@@ -763,8 +765,8 @@ def execute_parallel_actions(
     # returned dicts have a documented shape (tool, success, result, error,
     # params) that callers and the LLM-facing history rely on.
     for pr in parallel_results:
-        pr.pop("_embodiment_failed", None)
-        pr.pop("_outcome_valence", None)
+        for key in [k for k in pr if k.startswith("_")]:
+            del pr[key]
 
     return parallel_results, combined_results
 
@@ -816,6 +818,48 @@ def _followup_result_text(tool_name: str, output: Any, result: Any, limit: int) 
     return None
 
 
+def book_refusal(
+    *,
+    rec_outcome: Callable[..., Any],
+    agent_id: str,
+    recent_outcomes: list[dict[str, Any]],
+    max_recent: int,
+    llm_worker: Any,
+    context_pool: Any,
+    nac: Any,
+    state: Any,
+    source: Any,
+    tool_name: str,
+    error: str,
+    reasoning: str,
+) -> None:
+    """Book an action a person REFUSED (a confirmation or a plan answered "no"), as the loop books a hard
+    rejection (#1133, D4).
+
+    Through the run's recorder (``drive_relief_only`` bound) under the hub's ``agent_id`` (the controller's own
+    ``agent_name`` drifted from it), credited to the situation the action was PROPOSED in (``source``, the
+    ``LLMProposal``: its ``cluster_id`` / ``clusters``). The per-run half is bound once by
+    ``loop_setup.build_loop_run`` as ``LoopRun.book_refusal``; callers pass ``source``, ``tool_name``,
+    ``error`` and ``reasoning``. Replaces the retired ``LoopController.record_outcome``.
+    """
+    rec_outcome(
+        agent_id=agent_id,
+        tool_name=tool_name,
+        success=False,
+        result_summary=None,
+        error=error,
+        reasoning=reasoning,
+        recent_outcomes=recent_outcomes,
+        max_recent=max_recent,
+        llm_worker=llm_worker,
+        context_pool=context_pool,
+        nac=nac,
+        active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
+        cluster_id=getattr(source, "cluster_id", None),
+        clusters=getattr(source, "clusters", None),
+    )
+
+
 @dataclasses.dataclass(frozen=True)
 class ExecutionOutcome:
     """What one ``execute_and_learn`` call did, for its caller to display or route.
@@ -863,11 +907,15 @@ def execute_and_learn(
     confidence: float,
     proposal: Any,
     observation: Any,
+    human_involved: bool,
 ) -> ExecutionOutcome:
     """Execute one approved action and book everything the agent learns from it (#1133; #1085's core).
 
-    THE dispatch seam: every path that runs an action the agent chose calls this, so what an action
-    teaches cannot depend on how it was approved. Moved verbatim from ``run_agentic_loop`` §4 (the
+    THE dispatch seam, so what an action teaches does not depend on how it was approved. Called today by
+    the autonomous path (``run_agentic_loop`` §4) and the SUPERVISED-confirmed path
+    (``LoopController.handle_confirmation``). Tracked exceptions that still dispatch on their own: the
+    parallel batch (``execute_parallel_actions``, which reads the same side-effect fields), the PLANNING
+    approved path (§5, #1085) and the agent-fallback path (#1147). Moved verbatim from ``run_agentic_loop`` §4 (the
     autonomous path), in order: the pre-execution snapshot, ``executor.execute``, the tool's learning
     side effects, the ``write_file`` overwrite retry, the timeout-retry prompt, the write cache
     invalidation, the ``tool_called``/``tool_result`` events, the autonomy audit entry, the deliberation
@@ -881,7 +929,11 @@ def execute_and_learn(
     ``drive_relief_only`` bound), ``agent_id`` the hub's, ``memory_hub`` ``None`` when the hub's session
     did not start (no plan outcome then). The rest is per action: ``proposal`` is the ``LLMProposal`` the
     action came from, carrying the reasoning, citations, triggering input and the situation (``clusters``
-    / ``cluster_id`` / ``cluster_margins``) the credit and the capture are keyed to.
+    / ``cluster_id`` / ``cluster_margins``) the credit and the capture are keyed to; ``human_involved`` marks
+    the autonomy audit entry of an action a person confirmed. On the confirmed path the two times differ
+    (owner decision D2): the credit and the capture's situation are keyed to PROPOSAL time
+    (``PendingConfirmation.source``), while ``observation`` is the ANSWER-time observation the capture
+    stores, the same tick-of-execution observation the autonomous path passes.
 
     Logs on the ``maxim.runtime.agent_loop`` logger, as the block always has (the ``loop_setup``
     precedent). Known defects carried by the move, to be fixed HERE: #1145 (a step after the credit
@@ -1026,6 +1078,7 @@ def execute_and_learn(
             confidence=confidence,
             citations=proposal.citations,
             outcome="success" if success else "failure",
+            human_involved=human_involved,
             error=getattr(result, "error", None),
         )
 
@@ -1142,7 +1195,7 @@ def execute_and_learn(
         except Exception as e:
             log_swallowed_exception(e, operation="memory.store_raw")
 
-        _loop_capture_action(
+        capture_loop_action(
             hippocampus,
             executor,
             observation,
@@ -1182,6 +1235,7 @@ def execute_and_learn(
             mode=state.data.get("mode", "unknown"),
             confidence=confidence,
             outcome="error",
+            human_involved=human_involved,
             error=str(e),
         )
 

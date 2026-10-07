@@ -24,7 +24,7 @@ from maxim.runtime.tool_dispatch import (
 
 # Extracted to bio_integration.py
 from maxim.runtime.bio_integration import (
-    _loop_capture_action,
+    capture_loop_action,
     end_bio_session as _end_bio_session,
 )
 from maxim.runtime.loop_gates import GateOutcome, pre_tick_gate
@@ -1885,7 +1885,7 @@ def run_agentic_loop(
     _drive_relief_only, _rec_outcome = run.drive_relief_only, run.rec_outcome
     _loop_sensor_encoder, _loop_situation_cue = run.sensor_encoder, run.situation_cue
     _planning_liveness_on = run.planning_liveness_on
-    _execute_and_learn = run.execute_and_learn
+    _execute_and_learn, _book_refusal = run.execute_and_learn, run.book_refusal
 
     # Mutable-container aliases — safe because in-place mutation is shared.
     # State variables (pending_proposal, pending_action_followup, etc.) use
@@ -2577,7 +2577,9 @@ def run_agentic_loop(
             # ───────────────────────────────────────────────────────────────
             # CONFIRMATION / TIMEOUT / PLAN APPROVAL — delegated to controller
             # ───────────────────────────────────────────────────────────────
-            if ctrl.handle_confirmation(cli_text):
+            if ctrl.handle_confirmation(
+                cli_text, execute_and_learn=_execute_and_learn, book_refusal=_book_refusal, observation=observation
+            ):
                 cli_input = None
                 continue
 
@@ -2593,7 +2595,7 @@ def run_agentic_loop(
             pending_prefetch = ctrl.pending_prefetch
 
             # Planning mode: check if this input is approval/rejection/modify
-            if ctrl.handle_plan_approval(cli_text):
+            if ctrl.handle_plan_approval(cli_text, book_refusal=_book_refusal):
                 if ctrl.pending_proposal is None and ctrl.pending_plan_proposal is None:
                     # Plan was rejected — don't send to LLM
                     cli_input = None
@@ -3037,7 +3039,7 @@ def run_agentic_loop(
                                     except Exception as e:
                                         log_swallowed_exception(e, operation="memory.store_raw")
 
-                                    _loop_capture_action(
+                                    capture_loop_action(
                                         hippocampus,
                                         executor,
                                         observation,
@@ -3294,7 +3296,11 @@ def run_agentic_loop(
                 # Execute it and book what it teaches: ONE function for every path that runs an action
                 # the agent chose (#1133; moved verbatim from here into tool_dispatch.execute_and_learn).
                 _outcome = _execute_and_learn(
-                    action=action, confidence=confidence, proposal=ctrl.pending_proposal, observation=observation
+                    action=action,
+                    confidence=confidence,
+                    proposal=ctrl.pending_proposal,
+                    observation=observation,
+                    human_involved=False,
                 )
                 if _outcome.followup is not None:
                     ctrl.pending_action_followup = _outcome.followup

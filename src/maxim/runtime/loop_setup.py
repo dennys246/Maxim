@@ -46,7 +46,7 @@ from typing import TYPE_CHECKING, Any
 
 from maxim.runtime.bio_integration import start_bio_session
 from maxim.runtime.loop_state import _persist_state_json
-from maxim.runtime.tool_dispatch import execute_and_learn, safe_agent_name
+from maxim.runtime.tool_dispatch import book_refusal, execute_and_learn, safe_agent_name
 from maxim.utils.logging import log_swallowed_exception
 
 # The setup logs as the agent loop always has: the SAME logger object as ``agent_loop.logger`` (logging
@@ -60,6 +60,7 @@ if TYPE_CHECKING:
     from maxim.evaluation.base import Evaluator
     from maxim.runtime.loop_controller import LoopController
     from maxim.runtime.sim_adapter import NullSimulationAdapter, SimulationAdapter
+    from maxim.runtime.tool_dispatch import ExecutionOutcome
 
 
 @dataclass(frozen=True)
@@ -100,8 +101,10 @@ class LoopRun:
     memory_hub_enabled: bool
     planning_liveness_on: bool
     # ``tool_dispatch.execute_and_learn`` with every per-run argument bound (#1133): callers pass only
-    # ``action``, ``confidence``, ``proposal`` and ``observation``.
-    execute_and_learn: Callable[..., Any]
+    # ``action``, ``confidence``, ``proposal``, ``observation`` and ``human_involved``.
+    execute_and_learn: Callable[..., ExecutionOutcome]
+    # ``tool_dispatch.book_refusal`` likewise (#1133): callers pass ``source``, ``tool_name``, ``error``, ``reasoning``.
+    book_refusal: Callable[..., None]
 
 
 # ── helpers moved from agent_loop.py (slice 1 review, rule (a): only the setup calls them) ──
@@ -322,7 +325,7 @@ def _bind_execute_and_learn(
     rec_outcome: Callable[..., Any],
     nac: Any,
     memory_hub_enabled: bool,
-) -> Callable[..., Any]:
+) -> Callable[..., ExecutionOutcome]:
     """The run's ``tool_dispatch.execute_and_learn`` with every per-run argument bound, like ``rec_outcome``
     (#1133). The loop's own handles are read off ``ctrl``, which holds the same objects the loop does for
     the whole run (the setup built it from them). ``memory_hub`` is ``None`` when the hub's session did
@@ -348,6 +351,24 @@ def _bind_execute_and_learn(
         context_pool=ctrl.context_pool,
         nac=nac,
         run_id=ctrl.run_id,
+    )
+
+
+def _bind_book_refusal(
+    ctrl: LoopController, *, agent_id: str, rec_outcome: Callable[..., Any], nac: Any
+) -> Callable[..., None]:
+    """The run's ``tool_dispatch.book_refusal`` with every per-run argument bound (#1133): the run's
+    recorder, the hub ``agent_id`` and NAc, and the controller's outcome list, worker, pool and state."""
+    return functools.partial(
+        book_refusal,
+        rec_outcome=rec_outcome,
+        agent_id=agent_id,
+        recent_outcomes=ctrl.recent_outcomes,
+        max_recent=ctrl.max_recent_outcomes,
+        llm_worker=ctrl.llm_worker,
+        context_pool=ctrl.context_pool,
+        nac=nac,
+        state=ctrl.state,
     )
 
 
@@ -513,6 +534,7 @@ def build_loop_run(
         nac=_loop_nac,
         memory_hub_enabled=memory_hub_enabled,
     )
+    _book_refusal = _bind_book_refusal(ctrl, agent_id=_loop_agent_id, rec_outcome=_rec_outcome, nac=_loop_nac)
 
     return LoopRun(
         executor=executor,
@@ -539,4 +561,5 @@ def build_loop_run(
         memory_hub_enabled=memory_hub_enabled,
         planning_liveness_on=_planning_liveness_on,
         execute_and_learn=_execute_and_learn,
+        book_refusal=_book_refusal,
     )

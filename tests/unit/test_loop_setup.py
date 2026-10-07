@@ -161,6 +161,7 @@ _UNPACK = {
     "_loop_situation_cue": "situation_cue",
     "_planning_liveness_on": "planning_liveness_on",
     "_execute_and_learn": "execute_and_learn",
+    "_book_refusal": "book_refusal",
 }
 
 
@@ -216,7 +217,63 @@ def test_execute_and_learn_is_bound_to_the_runs_own_handles(monkeypatch, tmp_pat
     assert (kw["agent_id"], kw["agent_name"], kw["run_id"]) == (run.agent_id, run.agent_name, run.run_id)
     assert kw["max_recent"] == run.ctrl.max_recent_outcomes
     unbound = [p for p in inspect.signature(execute_and_learn).parameters if p not in kw]
-    assert unbound == ["action", "confidence", "proposal", "observation"]
+    assert unbound == ["action", "confidence", "proposal", "observation", "human_involved"]
+
+
+@pytest.mark.parametrize("start_fails", [False, True])
+def test_execute_and_learn_gets_the_hub_only_when_its_session_started(monkeypatch, tmp_path, start_fails):
+    """#1133: ``execute_and_learn`` books a plan outcome iff ``memory_hub`` is not None, so the binding must
+    pass ``None`` when the hub's session did not start (the old ``memory_hub_enabled and ...`` gate)."""
+    from tests.unit.test_loop_setup_characterization import _Hub
+
+    hub = _Hub([], start_fails=start_fails)
+    run = _build(monkeypatch, tmp_path, memory_hub=hub)
+    assert run.memory_hub_enabled is (not start_fails)
+    assert run.execute_and_learn.keywords["memory_hub"] is (None if start_fails else hub)
+
+
+def test_book_refusal_is_bound_to_the_runs_own_handles(monkeypatch, tmp_path):
+    """#1133 (D4): a refused confirmation or plan books through the run's recorder under the hub
+    ``agent_id``, into the controller's outcome list; callers pass only what was refused."""
+    import inspect
+
+    from maxim.runtime.tool_dispatch import book_refusal
+
+    run = _build(monkeypatch, tmp_path)
+    bound = run.book_refusal
+    assert bound.func is book_refusal
+    kw = bound.keywords
+    for name, value in {
+        "rec_outcome": run.rec_outcome,
+        "nac": run.nac,
+        "context_pool": run.context_pool,
+        "recent_outcomes": run.ctrl.recent_outcomes,
+        "state": run.ctrl.state,
+    }.items():
+        assert kw[name] is value, name
+    assert kw["agent_id"] == run.agent_id
+    assert [p for p in inspect.signature(book_refusal).parameters if p not in kw] == [
+        "source",
+        "tool_name",
+        "error",
+        "reasoning",
+    ]
+
+
+def test_both_bindings_carry_the_runs_real_nac_worker_and_outcome_window(monkeypatch, tmp_path):
+    """#1133 delta review: the binding pins above build with ``nac``/``llm_worker`` = None, where binding
+    ``None`` would pass (None is None). Here the hub exposes a real NAc stand-in and the loop has a worker,
+    so a binding that drops either (the pre-P4 'zero NAc links' class) or narrows the outcome window fails."""
+    from tests.unit.test_loop_setup_characterization import _Hub
+
+    nac, worker = object(), SimpleNamespace(name="worker")
+    run = _build(monkeypatch, tmp_path, memory_hub=_Hub([], nac=nac), llm_worker=worker)
+    assert run.nac is nac
+    for bound in (run.execute_and_learn, run.book_refusal):
+        kw = bound.keywords
+        assert kw["nac"] is nac, bound.func.__name__
+        assert kw["llm_worker"] is worker, bound.func.__name__
+        assert kw["max_recent"] == run.ctrl.max_recent_outcomes != 1, bound.func.__name__
 
 
 @pytest.mark.parametrize("bad", [{"target_hz": 0.0}, {"max_steps": "x"}])

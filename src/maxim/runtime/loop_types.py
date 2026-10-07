@@ -45,8 +45,17 @@ class PendingConfirmation:
             source=proposal,
         )
 
+    @property
+    def params(self) -> dict[str, Any]:
+        """The action's params; a non-dict value reads as ``{}`` (the executor's own guard)."""
+        raw = self.action.get("params")
+        return raw if isinstance(raw, dict) else {}
+
     def policy_view(self) -> dict[str, Any]:
-        """The dict ``sim.resolve_confirmation`` (a ``ResponsePolicy``) has always read."""
+        """The dict ``sim.resolve_confirmation`` (a ``ResponsePolicy``) has always read.
+
+        A compatibility shape: ``ResponsePolicy.resolve_confirmation(confirmation: dict)`` is public and may be
+        overridden by a user's subclass, so it keeps receiving the dict it always did, not this record."""
         return {
             "action": self.action,
             "reasoning": self.reasoning,

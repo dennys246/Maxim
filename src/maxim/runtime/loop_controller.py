@@ -13,22 +13,25 @@ import collections
 import logging
 import os
 import time
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from maxim.agents.llm_worker import LLMProposal
-from maxim.runtime.tool_dispatch import record_outcome as _record_outcome, safe_agent_name as _safe_agent_name
+from maxim.runtime.tool_dispatch import safe_agent_name as _safe_agent_name
 from maxim.runtime.dn_controller import DefaultNetworkController
 from maxim.runtime.loop_types import (
     ActionFollowup,
     PendingConfirmation,
     TimeoutRetry,
 )
+from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import log_agentic
 
 if TYPE_CHECKING:
     from maxim.agents.autonomy import AutonomyController
     from maxim.agents.llm_worker import LLMWorker
     from maxim.evaluation.base import Evaluator
+    from maxim.runtime.tool_dispatch import ExecutionOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -287,42 +290,6 @@ class LoopController:
         self.planning_exhausted_status = "llm_wedged"
         self.planning_exhausted_reason = ""
 
-    # ── Outcome recording (delegates to module-level helper) ─────────────
-
-    def record_outcome(
-        self,
-        *,
-        tool_name: str,
-        success: bool,
-        result_summary: str | None,
-        error: str | None,
-        reasoning: str,
-    ) -> None:
-        # ``self.agent_name`` is the canonical per-agent attribution key
-        # (set in __init__ via _safe_agent_name). Multi-agent tests
-        # that construct LoopController per-agent get isolated NAc
-        # attribution because record_outcome tags every NAc observation
-        # with this id.  ``nac`` is read off the bound memory_hub —
-        # pre-P4 this helper dropped ``nac=`` on the floor entirely,
-        # so the three indirect callers (confirmation accept/reject +
-        # plan reject) all silently produced ZERO NAc causal links.
-        # Pre-merge architecture review caught this as the band-aid
-        # pattern P4 was supposed to eliminate.
-        nac = getattr(self.memory_hub, "nac", None) if self.memory_hub is not None else None
-        _record_outcome(
-            agent_id=self.agent_name,
-            tool_name=tool_name,
-            success=success,
-            result_summary=result_summary,
-            error=error,
-            reasoning=reasoning,
-            recent_outcomes=self.recent_outcomes,
-            max_recent=self.max_recent_outcomes,
-            llm_worker=self.llm_worker,
-            context_pool=self.context_pool,
-            nac=nac,
-        )
-
     # ── Tool registry cache ──────────────────────────────────────────────
 
     def get_all_tools(self) -> set[str]:
@@ -347,22 +314,55 @@ class LoopController:
         except Exception:
             pass
 
+    @staticmethod
+    def _display_confirmed_outcome(pc: PendingConfirmation, outcome: ExecutionOutcome) -> None:
+        """Show what a confirmed action did. Display only: the outcome is already booked, so a display
+        failure is reported (Stage 1) and never turns a success into "Action failed"."""
+        from maxim.simulation.sim_logger import display_action, display_status
+
+        try:
+            if outcome.success:
+                display_action(pc.tool_name, pc.params)
+                if outcome.output:
+                    display_status(f"Result: {str(outcome.output)}")
+            else:
+                display_status(f"Action failed: {outcome.error or 'unknown error'}")
+        except Exception:
+            log_swallowed_exception()
+
     # ── Phase: Handle confirmation input ─────────────────────────────────
 
-    def handle_confirmation(self, cli_text: str) -> bool:
+    def handle_confirmation(
+        self,
+        cli_text: str,
+        *,
+        execute_and_learn: Callable[..., ExecutionOutcome],
+        book_refusal: Callable[..., None],
+        observation: Any,
+    ) -> bool:
         """Process user input when a confirmation is pending.
 
         Returns True if the input was consumed (caller should skip further processing).
-        """
-        from maxim.modes.definitions import get_tool_followup_type
 
+        A "yes" runs the parked action through the run's ``execute_and_learn`` (#1133), the SAME function
+        the autonomous path calls, so a confirmed action learns exactly what it would have learned
+        unconfirmed: its side effects, the hub's ``agent_id``, the situation it was PROPOSED in
+        (``pc.source``), the capture, the plan outcome, ``environment.step`` and the main path's follow-up
+        rule. The function books before it returns; the display runs after it, inside its own guard, so a
+        display error cannot undo a recorded outcome or show "Action failed"; the bookkeeping runs in
+        ``finally``: a raise from ``execute_and_learn`` (its pre-execution snapshot, or its own ``except``
+        branch) propagates as it does on the main path, with the confirmation already cleared. A "no" is
+        booked through ``book_refusal``. Both callables are the run's own (``LoopRun.execute_and_learn`` /
+        ``LoopRun.book_refusal``), passed as required keywords: the controller holds no run state of its own
+        for them.
+        """
         # Import at FUNCTION scope, before any branch (2026-08-04 live
         # crash): the import previously lived inside the approve branch's
         # try-block, which makes ``display_status`` a LOCAL name for the
         # whole function — the cancel/modification branches then raised
         # UnboundLocalError and killed the agentic loop the moment a user
         # typed anything while a confirmation was pending.
-        from maxim.simulation.sim_logger import display_action, display_status  # noqa: F401
+        from maxim.simulation.sim_logger import display_status
 
         pc = self.pending_confirmation
         if pc is None:
@@ -373,65 +373,26 @@ class LoopController:
         if response in ("yes", "y", "ok", "sure", "proceed", "confirm"):
             logger.info("User confirmed action: %s", pc.tool_name)
             log_agentic("agent_loop", "user_confirmed", {"tool": pc.tool_name, "approved": True})
-
-            confirmed_success = False
-            confirmed_result_str = None
             try:
-                result = self.executor.execute(pc.action)
-                success = getattr(result, "success", True)
-                error_msg = getattr(result, "error", None)
-                self.autonomy_controller.log_action(
-                    action_type="executed",
+                outcome = execute_and_learn(
                     action=pc.action,
-                    reasoning=pc.reasoning,
-                    mode=self.state.data.get("mode", "unknown"),
                     confidence=pc.confidence,
+                    proposal=pc.source,
+                    observation=observation,
                     human_involved=True,
-                    outcome="success" if success else "failure",
                 )
-                output = getattr(result, "output", None)
-                if success:
-                    confirmed_success = True
-                    display_action(pc.tool_name, pc.params or {})
-                    if output:
-                        display_status(f"Result: {str(output)}")
-                else:
-                    display_status(f"Action failed: {error_msg or 'unknown error'}")
-
-                confirmed_result_str = str(output)[:3000] if output is not None else None
-                self.record_outcome(
-                    tool_name=pc.tool_name,
-                    success=success,
-                    result_summary=confirmed_result_str,
-                    error=error_msg,
-                    reasoning=pc.reasoning or "",
-                )
-
-            except Exception as e:
-                logger.error(f"Confirmed action failed: {e}")
-                display_status(f"Action failed: {e}")
-
-            # Queue a follow-up LLM cycle so it can continue
-            current_mode = self.state.data.get("mode", "live")
-            followup_type = get_tool_followup_type(pc.tool_name, current_mode)
-            if followup_type and confirmed_success and confirmed_result_str is not None:
-                self.pending_action_followup = ActionFollowup(
-                    tool=pc.tool_name,
-                    result=confirmed_result_str,
-                    original_query=getattr(self.pending_proposal, "triggering_input", "")
-                    if self.pending_proposal
-                    else "",
-                    followup_type=followup_type,
-                    mode=current_mode,
-                    timestamp=time.time(),
-                )
-                logger.info("Confirmed action %s queued follow-up (type=%s)", pc.tool_name, followup_type)
-
-            self.pending_confirmation = None
-            self.state.data.pop("pending_cli_input", None)
-            self.clear_pending_user_input()
-            self.pending_proposal = None
-            self._clear_confirmation_prompt()
+                if outcome.followup is not None:
+                    self.pending_action_followup = outcome.followup
+                    logger.info(
+                        "Confirmed action %s queued follow-up (type=%s)", pc.tool_name, outcome.followup.followup_type
+                    )
+                self._display_confirmed_outcome(pc, outcome)
+            finally:
+                self.pending_confirmation = None
+                self.state.data.pop("pending_cli_input", None)
+                self.clear_pending_user_input()
+                self.pending_proposal = None
+                self._clear_confirmation_prompt()
             return True
 
         elif response in ("no", "n", "cancel", "reject", "abort"):
@@ -447,10 +408,9 @@ class LoopController:
             )
             display_status("Action cancelled by user")
 
-            self.record_outcome(
+            book_refusal(
+                source=pc.source,
                 tool_name=pc.tool_name,
-                success=False,
-                result_summary=None,
                 error="User rejected this action",
                 reasoning=pc.reasoning,
             )
@@ -533,10 +493,11 @@ class LoopController:
 
     # ── Phase: Handle plan approval ──────────────────────────────────────
 
-    def handle_plan_approval(self, cli_text: str) -> bool:
+    def handle_plan_approval(self, cli_text: str, *, book_refusal: Callable[..., None]) -> bool:
         """Process user input when a plan proposal is awaiting approval.
 
-        Returns True if the input was consumed.
+        Returns True if the input was consumed. A rejection is booked through ``book_refusal``
+        (``LoopRun.book_refusal``, the run's recorder), so it is required.
         """
         from maxim.runtime.approval import detect_approval_intent
 
@@ -567,16 +528,15 @@ class LoopController:
             return True
 
         elif intent == "reject":
-            rejected_tool = (
-                self.pending_plan_proposal.action.get("tool_name") if self.pending_plan_proposal.action else "unknown"
-            )
+            # A model-chosen action may name no tool (or null): "unknown", as a missing action always was,
+            # never ``None`` (#1133: NAc keyed it ``tool:None``).
+            rejected_tool = (self.pending_plan_proposal.action or {}).get("tool_name") or "unknown"
             logger.info("Plan rejected by user, cancelling")
             log_agentic("agent_loop", "plan_rejected", {"tool": rejected_tool})
 
-            self.record_outcome(
+            book_refusal(
+                source=self.pending_plan_proposal,
                 tool_name=rejected_tool,
-                success=False,
-                result_summary=None,
                 error="User rejected the proposed plan",
                 reasoning=self.pending_plan_proposal.reasoning or "",
             )

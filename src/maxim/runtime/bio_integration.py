@@ -117,7 +117,7 @@ def situation_novelty(margins: dict[str, float] | None) -> float | None:
     return max(measured) if measured else None
 
 
-def _loop_capture_action(
+def capture_loop_action(
     hippocampus: Any,
     executor: Any,
     observation: Any,
@@ -131,9 +131,11 @@ def _loop_capture_action(
     *,
     proposal: Any,
 ) -> None:
-    """Capture one executed action to the Hippocampus and close its episode step (both loop paths).
+    """Capture one executed action to the Hippocampus and close its episode step.
 
-    ``proposal`` (REQUIRED; ``None`` on the agent-fallback path, which has none) carries WHERE the
+    Called by ``tool_dispatch.execute_and_learn`` (the autonomous and the SUPERVISED-confirmed paths) and by
+    the loop's agent-fallback path. ``proposal`` (REQUIRED; ``None`` on the agent-fallback path, which has
+    none; on the confirmed path ``PendingConfirmation.source``) carries WHERE the
     action was chosen and how unfamiliar that was:
 
     - the situation (memory-strength Phase 2S-b) is its ``clusters`` -- ``propose_via_substrate``'s

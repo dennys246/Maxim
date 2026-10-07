@@ -247,7 +247,7 @@ def test_only_the_loop_capture_path_stamps_a_situation():
     loop_files = loop_source_relpaths()  # agent_loop.py + runtime/loop_*.py (1.3.2 decomposition)
     allowed = {
         "memory/hippocampus.py",  # the capture doors threading the argument through
-        # the loop capture: _loop_capture_action hands the proposal's clusters to capture_episodic_memory,
+        # the loop capture: capture_loop_action hands the proposal's clusters to capture_episodic_memory,
         # which passes them to capture_from_loop_async (both moved here from agent_loop by #1133)
         "runtime/bio_integration.py",
         *loop_files,
@@ -276,7 +276,7 @@ def test_only_the_loop_capture_path_stamps_a_situation():
         and (getattr(node.func, "attr", None) or getattr(node.func, "id", None)) in capture_calls
         and any(kw.arg == "situation" for kw in node.keywords)
     }
-    assert stampers == {"_loop_capture_action", "capture_episodic_memory"}, stampers
+    assert stampers == {"capture_loop_action", "capture_episodic_memory"}, stampers
 
 
 def test_a_trace_without_a_capture_seq_takes_no_part(tmp_path):

@@ -156,7 +156,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "run_agentic_loop",
-      "lines": 2817
+      "lines": 2819
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -196,7 +196,7 @@
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
       "qualname": "execute_and_learn",
-      "lines": 379
+      "lines": 389
     },
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
@@ -274,14 +274,14 @@
       "file": "src/maxim/runtime/tool_dispatch.py",
       "qualname": "execute_and_learn",
       "from": null,
-      "to": 379,
+      "to": 389,
       "split_from": {
         "file": "src/maxim/runtime/agent_loop.py",
         "qualname": "run_agentic_loop"
       },
       "date": "2026-10-06",
       "ref": "#1133",
-      "reason": "run_agentic_loop section 4's execute-and-learn block moved verbatim into the shared tool_dispatch.execute_and_learn (owner decision 2026-10-06), so the SUPERVISED confirmation path calls the same function; run_agentic_loop drops 3125 -> 2817. Splitting the block itself is later work (#1145/#1146 are fixed inside it)."
+      "reason": "run_agentic_loop section 4's execute-and-learn block moved verbatim into the shared tool_dispatch.execute_and_learn (owner decision 2026-10-06), so the SUPERVISED confirmation path calls the same function; run_agentic_loop drops 3125 -> 2817 (2819 after the C5 commit). Splitting it is tracked by #1150 (dispatch, learn and after-effects steps); #1145/#1146 are fixed inside it. 379 lines at the move; 389 after the confirmed path added the human_involved parameter (+4) and the docstring its D2 and tracked-exception clauses."
     }
   ],
   "history": [
@@ -314,6 +314,7 @@
     "2026-10-04 (roadmap 1.3.2 item 6, #940 item 1): v2 — one ratchet. Every function in src/maxim over 200 lines (53, 19 of them over 300) pinned at its span on that day; scripts/lint_function_length.py is the only checker (strict equality, raises only via `exceptions`); test_function_length_baseline.py deleted.",
     "run_agentic_loop tightened 3381 -> 3248 on 2026-10-05 (roadmap 1.3.2 decomposition, slice 1) when the setup block moved to runtime/loop_setup.py::build_loop_run (the frozen LoopRun of per-run handles, unpacked into the loop's existing local names) with its helpers _build_sim_adapter / _context_pool_config / _novelty_gate / _planning_liveness_gate, all under 200 lines; a pure move.",
     "run_agentic_loop tightened 3248 -> 3125 on 2026-10-06 (roadmap 1.3.2 decomposition, slice 2) when sections 0-0.6 (stop checks, DN mode, pause, live tick, display revert, exhaustion, the idle gate and its D13 backstop) moved to runtime/loop_gates.py::pre_tick_gate, which returns a GateOutcome the loop maps to its break/continue; the helpers the gate shares with the loop moved to loop_state.py (wake predicates, _effective_mode) and loop_controller.py (the D13 handlers); every piece under 200 lines; a pure move.",
-    "run_agentic_loop tightened 3125 -> 2817 on 2026-10-06 (#1133) when section 4's execute-and-learn block moved verbatim into tool_dispatch.execute_and_learn (pinned at 379 by its split_from exception), the one function the autonomous and the SUPERVISED-confirmed paths both call."
+    "run_agentic_loop tightened 3125 -> 2817 on 2026-10-06 (#1133) when section 4's execute-and-learn block moved verbatim into tool_dispatch.execute_and_learn (379 lines at the move, the C3 commit), the one function the autonomous and the SUPERVISED-confirmed paths both call.",
+    "execute_and_learn 379 -> 389 on 2026-10-06 (#1133, the C5 commit): the human_involved parameter the SUPERVISED-confirmed path passes to the autonomy audit entry, and docstring clauses naming its callers, its tracked exceptions and the D2 time keys; covered by the same split_from exception (to: 389); its split is #1150. run_agentic_loop 2817 -> 2819 in the same commit (the confirmation handler's call now passes its two callables); still below its base pin 3125."
   ]
 }

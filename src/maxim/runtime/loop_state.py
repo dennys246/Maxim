@@ -74,7 +74,7 @@ def _get_failure_strategy(intent: dict, action: dict) -> str:
 def _get_plan_depth(decision: dict) -> int:
     """Extract current plan depth from decision metadata."""
     plan = decision.get("plan")
-    if hasattr(plan, "depth"):
+    if plan is not None and hasattr(plan, "depth"):
         return plan.depth
     return 0
 

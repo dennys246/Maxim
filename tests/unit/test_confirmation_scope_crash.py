@@ -16,6 +16,7 @@ on the pre-fix code (verified)."""
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 
@@ -52,16 +53,38 @@ def _controller():
     return ctrl
 
 
+def _run() -> SimpleNamespace:
+    """The run's two callables the handler takes (#1133); the cancel branch books through ``book_refusal``."""
+    return SimpleNamespace(execute_and_learn=MagicMock(), book_refusal=MagicMock())
+
+
 class TestConfirmationBranchScope:
     def test_modification_branch_does_not_crash(self):
         """Free text while a confirmation is pending = modification request.
         Pre-fix: UnboundLocalError on display_status → loop death."""
         ctrl = _controller()
-        assert ctrl.handle_confirmation("Maxim can you focus on sounds") is True
+        run = _run()
+        assert (
+            ctrl.handle_confirmation(
+                "Maxim can you focus on sounds",
+                execute_and_learn=run.execute_and_learn,
+                book_refusal=run.book_refusal,
+                observation={},
+            )
+            is True
+        )
         assert ctrl.pending_confirmation is None
         assert "pending_modification" in ctrl.state.data
 
     def test_cancel_branch_does_not_crash(self):
         ctrl = _controller()
-        assert ctrl.handle_confirmation("no") is True
+        run = _run()
+        assert (
+            ctrl.handle_confirmation(
+                "no", execute_and_learn=run.execute_and_learn, book_refusal=run.book_refusal, observation={}
+            )
+            is True
+        )
+        assert run.book_refusal.call_args.kwargs["error"] == "User rejected this action"
+        run.execute_and_learn.assert_not_called()
         assert ctrl.pending_confirmation is None
