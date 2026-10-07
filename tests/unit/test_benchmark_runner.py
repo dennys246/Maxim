@@ -491,22 +491,25 @@ class TestHelperMethods:
 
 
 class TestUnifiedLoader:
-    def test_suite_with_config(self):
-        """Suite entries can carry per-scenario config."""
-        yaml_content = """
+    def test_suite_with_config(self, tmp_path):
+        """Suite entries can carry per-scenario config. (The child must exist: a suite whose child cannot be
+        loaded is refused at construction since D49.)"""
+        child = tmp_path / "test.yaml"
+        child.write_text("name: test\n")
+        suite = tmp_path / "config_suite.yaml"
+        suite.write_text(
+            f"""
 name: config_suite
 suite:
   scenarios:
-    - path: test.yaml
+    - path: {child}
       weight: 2.0
       config:
         mode: generative
         max_turns: 10
 """
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            f.write(yaml_content)
-            f.flush()
-            runner = BenchmarkRunner(models=["test"], suite_path=f.name)
+        )
+        runner = BenchmarkRunner(models=["test"], suite_path=str(suite))
 
         assert runner._scenarios[0]["config"]["mode"] == "generative"
         assert runner._scenarios[0]["config"]["max_turns"] == 10

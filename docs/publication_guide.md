@@ -24,10 +24,6 @@ Run the core scenarios end-to-end to verify the new infrastructure doesn't break
 # DM campaign (single-agent)
 maxim --sim scenarios/campaigns/heist_v1.yaml
 
-# DM campaign with party mode (multi-agent)
-# Requires: party_mode: true in campaign YAML
-maxim --sim scenarios/campaigns/heist_v1.yaml  # (add party_mode to YAML first)
-
 # Generative campaign
 maxim --sim "test memory recall under interference"
 

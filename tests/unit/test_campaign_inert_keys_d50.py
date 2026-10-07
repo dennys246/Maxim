@@ -26,19 +26,16 @@ def _campaign(tmp_path: Path, **campaign_keys) -> Path:
     return path
 
 
-@pytest.mark.xfail(strict=True, reason="D50: party_mode: true loads silently and does nothing")
 def test_party_mode_true_warns_that_no_party_runtime_exists(tmp_path, caplog):
     with caplog.at_level(logging.WARNING, logger="maxim.simulation.dm_schema"):
         load_campaign(_campaign(tmp_path, party_mode=True))
     assert any("party_mode" in r.getMessage() for r in caplog.records)
 
 
-@pytest.mark.xfail(strict=True, reason="D50: choice_resolution is parsed onto CampaignDef and read by nothing")
 def test_choice_resolution_is_not_a_campaign_field(tmp_path):
     assert not hasattr(load_campaign(_campaign(tmp_path)), "choice_resolution")
 
 
-@pytest.mark.xfail(strict=True, reason="D50: a non-default choice_resolution loads silently and does nothing")
 def test_a_non_default_choice_resolution_warns_as_inert(tmp_path, caplog):
     with caplog.at_level(logging.WARNING, logger="maxim.simulation.dm_schema"):
         load_campaign(_campaign(tmp_path, choice_resolution="vote"))
@@ -50,3 +47,43 @@ def test_the_shipped_campaign_loads_without_an_inert_key_warning(caplog):
     with caplog.at_level(logging.WARNING, logger="maxim.simulation.dm_schema"):
         load_campaign(SHIPPED)
     assert not [r for r in caplog.records if "party_mode" in r.getMessage() or "choice_resolution" in r.getMessage()]
+
+
+def test_the_api_party_mode_override_warns_too(monkeypatch):
+    """``maxim.campaign(party_mode=True)`` goes around the YAML load, so it warns through the same helper.
+    (``api.campaign`` reconfigures logging, so this spies on the helper; the load tests pin its log line.)"""
+    import maxim.simulation.dm_schema as dm_schema
+    import maxim.simulation.orchestrator as orchestrator
+    from maxim import api
+
+    class _Stop(Exception):
+        pass
+
+    def _stop(*_a, **_k):
+        raise _Stop
+
+    warned: list[str] = []
+    monkeypatch.setattr(dm_schema, "warn_party_mode_unsupported", warned.append)
+    monkeypatch.setattr(orchestrator, "start_simulation_mode", _stop)
+    with pytest.raises(_Stop):
+        api.campaign(str(SHIPPED), party_mode=True)
+    assert warned == ["maxim.campaign(party_mode=True)"]
+
+
+def test_the_api_override_does_not_warn_twice_when_the_yaml_already_set_it(monkeypatch, tmp_path):
+    import maxim.simulation.dm_schema as dm_schema
+    import maxim.simulation.orchestrator as orchestrator
+    from maxim import api
+
+    class _Stop(Exception):
+        pass
+
+    def _stop(*_a, **_k):
+        raise _Stop
+
+    warned: list[str] = []
+    monkeypatch.setattr(dm_schema, "warn_party_mode_unsupported", warned.append)
+    monkeypatch.setattr(orchestrator, "start_simulation_mode", _stop)
+    with pytest.raises(_Stop):
+        api.campaign(str(_campaign(tmp_path, party_mode=True)), party_mode=True)
+    assert warned == ["campaign campaign.yaml"]  # the load's warning only
