@@ -156,7 +156,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "run_agentic_loop",
-      "lines": 3125
+      "lines": 2817
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -192,6 +192,11 @@
       "file": "src/maxim/runtime/leader_proxy.py",
       "qualname": "_ProxyHandler._proxy_request",
       "lines": 324
+    },
+    {
+      "file": "src/maxim/runtime/tool_dispatch.py",
+      "qualname": "execute_and_learn",
+      "lines": 379
     },
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
@@ -264,7 +269,21 @@
       "lines": 221
     }
   ],
-  "exceptions": [],
+  "exceptions": [
+    {
+      "file": "src/maxim/runtime/tool_dispatch.py",
+      "qualname": "execute_and_learn",
+      "from": null,
+      "to": 379,
+      "split_from": {
+        "file": "src/maxim/runtime/agent_loop.py",
+        "qualname": "run_agentic_loop"
+      },
+      "date": "2026-10-06",
+      "ref": "#1133",
+      "reason": "run_agentic_loop section 4's execute-and-learn block moved verbatim into the shared tool_dispatch.execute_and_learn (owner decision 2026-10-06), so the SUPERVISED confirmation path calls the same function; run_agentic_loop drops 3125 -> 2817. Splitting the block itself is later work (#1145/#1146 are fixed inside it)."
+    }
+  ],
   "history": [
     "2026-08-29 (#570, roadmap 1.1.x item 16.4): v1 baseline created, pinning run_agentic_loop / start_simulation_mode / _main_impl at their v1.1.0 AST spans (3546 / 3342 / 1752), reviewed 2026-09-04; strict equality in tests/unit/test_function_length_baseline.py, alongside a separate growth-only CI lint (scripts/lint_function_length.py) whose own pins went stale.",
     "run_agentic_loop tightened 3546 -> 3512 on 2026-08-30 (1.1.2 Cluster B, the first extraction) when sections 7 (CALL STEP CALLBACK) and 8.5 (BIO-SYSTEM PER-TICK MAINTENANCE) moved to the module-level _loop_step_callback / _loop_bio_tick_maintenance in agent_loop.py; mechanical move, section order preserved.",
@@ -294,6 +313,7 @@
     "run_agentic_loop tightened 3384 -> 3381 on 2026-10-04 (roadmap 1.3.2 item 4, #1083) when the approved-proposal situation read moved to the module-level _approved_situation in agent_loop.py (the queued Proposal now references its LLMProposal as source), paying for the mypy annotations and narrowings added to the loop in the same change.",
     "2026-10-04 (roadmap 1.3.2 item 6, #940 item 1): v2 — one ratchet. Every function in src/maxim over 200 lines (53, 19 of them over 300) pinned at its span on that day; scripts/lint_function_length.py is the only checker (strict equality, raises only via `exceptions`); test_function_length_baseline.py deleted.",
     "run_agentic_loop tightened 3381 -> 3248 on 2026-10-05 (roadmap 1.3.2 decomposition, slice 1) when the setup block moved to runtime/loop_setup.py::build_loop_run (the frozen LoopRun of per-run handles, unpacked into the loop's existing local names) with its helpers _build_sim_adapter / _context_pool_config / _novelty_gate / _planning_liveness_gate, all under 200 lines; a pure move.",
-    "run_agentic_loop tightened 3248 -> 3125 on 2026-10-06 (roadmap 1.3.2 decomposition, slice 2) when sections 0-0.6 (stop checks, DN mode, pause, live tick, display revert, exhaustion, the idle gate and its D13 backstop) moved to runtime/loop_gates.py::pre_tick_gate, which returns a GateOutcome the loop maps to its break/continue; the helpers the gate shares with the loop moved to loop_state.py (wake predicates, _effective_mode) and loop_controller.py (the D13 handlers); every piece under 200 lines; a pure move."
+    "run_agentic_loop tightened 3248 -> 3125 on 2026-10-06 (roadmap 1.3.2 decomposition, slice 2) when sections 0-0.6 (stop checks, DN mode, pause, live tick, display revert, exhaustion, the idle gate and its D13 backstop) moved to runtime/loop_gates.py::pre_tick_gate, which returns a GateOutcome the loop maps to its break/continue; the helpers the gate shares with the loop moved to loop_state.py (wake predicates, _effective_mode) and loop_controller.py (the D13 handlers); every piece under 200 lines; a pure move.",
+    "run_agentic_loop tightened 3125 -> 2817 on 2026-10-06 (#1133) when section 4's execute-and-learn block moved verbatim into tool_dispatch.execute_and_learn (pinned at 379 by its split_from exception), the one function the autonomous and the SUPERVISED-confirmed paths both call."
   ]
 }

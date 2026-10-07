@@ -18,16 +18,15 @@ from maxim.runtime.tool_dispatch import (
     safe_agent_name as _safe_agent_name,
     record_outcome as _record_outcome,  # noqa: F401 -- a seam: loop_setup reads agent_loop._record_outcome
     execute_parallel_actions as _execute_parallel,
-    read_learning_side_effects,
+    _followup_result_text,
+    _reset_deliberation,
 )
 
 # Extracted to bio_integration.py
 from maxim.runtime.bio_integration import (
-    capture_episodic_memory as _capture_episodic,
-    record_plan_outcome as _record_plan_outcome,
+    _loop_capture_action,
     end_bio_session as _end_bio_session,
 )
-import maxim.runtime.bio_integration as _bio_integration
 from maxim.runtime.loop_gates import GateOutcome, pre_tick_gate
 from maxim.runtime.loop_setup import build_loop_run
 from maxim.runtime.loop_controller import _handle_planning_failure
@@ -126,21 +125,6 @@ from maxim.runtime.loop_state import (
     _get_plan_depth,
     _build_replan_context,
 )
-
-
-def _reset_deliberation(executor: Any) -> None:
-    """Reset ThinkTool deliberation state when a non-think action fires (L2).
-
-    Single call site for both dispatch paths — prevents drift.
-    """
-    try:
-        _registry = getattr(executor, "registry", None)
-        if _registry is not None:
-            _think_tool = _registry.get("think")
-            if hasattr(_think_tool, "reset_deliberation"):
-                _think_tool.reset_deliberation()
-    except (KeyError, Exception):
-        pass  # think tool not registered or not a ThinkTool
 
 
 def _idle_sleep(idle_sleep_s: float) -> None:
@@ -1558,21 +1542,6 @@ def _situation_margins(sensor_encoder: Any, agent_id: str, clusters: dict[str, s
     return margins or None
 
 
-def situation_novelty(margins: dict[str, float] | None) -> float | None:
-    """How unfamiliar a situation was, in ``[0, 1]``: ``1 - best similarity`` of its clusters' encodes.
-
-    Per modality ``1 - best_similarity`` (clamped), and the situation's novelty is its MOST novel
-    modality. Dynamic range, stated: sensor completions sit at or above the 0.85 threshold, so a
-    familiar situation reads ~0.0-0.15 and a separation reads higher -- a coarse, near-binary signal,
-    not a graded one. ``-1.0`` ("nothing comparable": a fresh EC or a new modality) is NOT scored as
-    maximal novelty: the tag weights novelty by a reference-set size that is still the Hippocampus's
-    trace count, which would give an empty comparison full confidence -- so it is left unmeasured
-    until the producer supplies its own reference set. ``None`` when no margin remains.
-    """
-    measured = [min(1.0, max(0.0, 1.0 - m)) for m in (margins or {}).values() if m >= 0.0]
-    return max(measured) if measured else None
-
-
 def _attach_live_situation(proposal: Any, *, aut_mode: str, sensor_encoder: Any, agent_id: str, executor: Any) -> Any:
     """In llm-primary the LLM chose the action, so ``propose_via_substrate`` never ran and no
     substrate cluster was captured: encode the current interoception (+audio) state HERE -- the
@@ -1641,60 +1610,6 @@ def _loop_step_callback(ctrl: Any, *, step_num: int) -> None:
             )
     except Exception:
         logger.debug("on_step callback failed", exc_info=True)
-
-
-def _loop_capture_action(
-    hippocampus: Any,
-    executor: Any,
-    observation: Any,
-    state: Any,
-    intent: dict[str, Any],
-    action: dict[str, Any],
-    confidence: Any,
-    result: Any,
-    run_id: str | None,
-    agent_id: str,
-    *,
-    proposal: Any,
-) -> None:
-    """Capture one executed action to the Hippocampus and close its episode step (both loop paths).
-
-    ``proposal`` (REQUIRED; ``None`` on the agent-fallback path, which has none) carries WHERE the
-    action was chosen and how unfamiliar that was:
-
-    - the situation (memory-strength Phase 2S-b) is its ``clusters`` -- ``propose_via_substrate``'s
-      in substrate-primary (encoded when the proposal was made, the tick before execution), or the
-      outcome-time encode made before execution in llm-primary. It is the same key ``_rec_outcome``
-      credits. Re-encoding at capture would read the POST-action state (the wrong key) and write the EC.
-    - the novelty (Phase 2S-c) is ``situation_novelty`` of its ``cluster_margins``, recorded with
-      those clusters at encode time.
-    """
-    if hippocampus is None:
-        return
-    _capture_episodic(
-        hippocampus=hippocampus,
-        executor=executor,
-        observation=observation,
-        state=state,
-        intent=intent,
-        action={
-            "tool_name": action.get("tool_name"),
-            "params": action.get("params", {}),
-            "confidence": confidence,
-        },
-        result=result,
-        run_id=run_id or "",
-        situation=getattr(proposal, "clusters", None),
-        novelty=situation_novelty(getattr(proposal, "cluster_margins", None)),
-    )
-    _bio_integration.observe_episode(
-        hippocampus=hippocampus,
-        agent_id=agent_id,
-        channel="text",
-        activated_nodes=(),
-        after_tool_execution=True,
-        salience_spike=_bio_integration.consume_pain_intensity(agent_id=agent_id),
-    )
 
 
 def _loop_bio_tick_maintenance(nac: Any) -> None:
@@ -1826,38 +1741,6 @@ def _approved_situation(proposal: Any) -> dict[str, Any]:
         "cluster_id": getattr(source, "cluster_id", None),
         "clusters": getattr(source, "clusters", None),
     }
-
-
-def _followup_result_text(tool_name: str, output: Any, result: Any, limit: int) -> str | None:
-    """The RAW text a tool result contributes (the follow-up AND ``result_summary``).
-
-    Deliberately unframed: ``result_summary`` feeds ``record_outcome``, whose NAc outcome signature
-    is its first 50 characters -- a frame header there would collapse every outcome of a tool into
-    one causal link (#823 review). Framing happens in ``_followup_synthetic_input``.
-    """
-    if output is not None:
-        if tool_name == "internet_search" and isinstance(output, list):
-            parts = []
-            for i, item in enumerate(output[:10], 1):  # Limit to 10 results
-                if isinstance(item, dict):
-                    parts.append(
-                        f"[{i}] {item.get('title', '')}\n    URL: {item.get('url', '')}\n    {item.get('snippet', '')}"
-                    )
-            text = "\n\n".join(parts)[:limit]
-        else:
-            text = str(output)[:limit]
-        # For empty results, include metadata message if available
-        if not output and hasattr(result, "metadata"):
-            msg = result.metadata.get("message", "")
-            if msg:
-                text = f"[No results: {msg}]"
-        return text
-    # When output is None but the tool returned an error, include the error text so follow-up
-    # re-thinks can see WHY it failed.
-    error_msg = getattr(result, "error", None) if result else None
-    if error_msg:
-        return f"[ERROR: {str(error_msg)[:limit]}]"
-    return None
 
 
 def _followup_synthetic_input(followup: Any) -> str:
@@ -2002,6 +1885,7 @@ def run_agentic_loop(
     _drive_relief_only, _rec_outcome = run.drive_relief_only, run.rec_outcome
     _loop_sensor_encoder, _loop_situation_cue = run.sensor_encoder, run.situation_cue
     _planning_liveness_on = run.planning_liveness_on
+    _execute_and_learn = run.execute_and_learn
 
     # Mutable-container aliases — safe because in-place mutation is shared.
     # State variables (pending_proposal, pending_action_followup, etc.) use
@@ -3407,322 +3291,13 @@ def run_agentic_loop(
             )
 
             if can_execute:
-                # Capture pre-execution snapshot for preemption reversal
-                if hasattr(agent, "_execution_tracker") and agent._execution_tracker:
-                    goal_desc = ctrl.pending_proposal.reasoning or ""
-                    robot_handle = getattr(agent, "goal", None)
-                    robot_handle = getattr(robot_handle, "robot", None) if robot_handle else None
-                    agent._execution_tracker.capture_before(
-                        goal_description=goal_desc[:200],
-                        tool_name=action.get("tool_name", ""),
-                        tool_params=action.get("params", {}),
-                        robot=robot_handle,
-                    )
-
-                # Execute the action
-                try:
-                    exec_start = time.time()
-                    logger.info("Starting tool execution: %s", action.get("tool_name"))
-                    if sim.is_sim_mode:
-                        sim.log(
-                            "EXEC",
-                            f"Executing: {action.get('tool_name')} "
-                            f"by {_loop_name} params={list((action.get('params') or {}).keys())}",
-                        )
-                    result = executor.execute(action)
-                    exec_elapsed = time.time() - exec_start
-                    success = getattr(result, "success", True)
-                    _learning_side = read_learning_side_effects(result)
-                    _embodiment_failed = _learning_side.embodiment_failed
-                    _drive_potential_diff = _learning_side.drive_potential_diff
-                    _drive_credit_withheld = _learning_side.drive_credit_withheld
-                    _drive_relief_channel = _learning_side.drive_relief_channel
-                    _reported_valence = _learning_side.outcome_valence
-                    logger.info(
-                        "Tool execution completed in %.2fs: %s, success=%s",
-                        exec_elapsed,
-                        action.get("tool_name"),
-                        success,
-                    )
-                    if sim.is_sim_mode:
-                        sim.log(
-                            "EXEC",
-                            f"Completed: {action.get('tool_name')} success={success} elapsed={exec_elapsed:.2f}s",
-                        )
-
-                    # Auto-recover: write_file failed because file exists → retry with overwrite
-                    if (
-                        not success
-                        and action.get("tool_name") == "write_file"
-                        and "already exists" in str(getattr(result, "error", "")).lower()
-                    ):
-                        raw_params = action.get("params")
-                        safe_params = raw_params if isinstance(raw_params, dict) else {}
-                        logger.info(
-                            "Auto-recovery: retrying write_file with overwrite=True for %s",
-                            safe_params.get("path", "?"),
-                        )
-                        retry_action = dict(action)
-                        retry_params = dict(safe_params)
-                        retry_params["overwrite"] = True
-                        retry_action["params"] = retry_params
-                        result = executor.execute(retry_action)
-                        success = getattr(result, "success", True)
-                        if success:
-                            logger.info("Auto-recovery succeeded for write_file")
-                        else:
-                            logger.warning(
-                                "Auto-recovery failed for write_file: %s",
-                                getattr(result, "error", "unknown"),
-                            )
-
-                    # If this was a timeout retry prompt, store state for user response
-                    if action.get("_timeout_retry") and success:
-                        # Plan 3.5 R2: fall back to the current agent-level LLM
-                        # timeout default if the action didn't include _timeout_s.
-                        # Was hardcoded 60.0 pre-plan (mesh-era value).
-                        from maxim.agents.llm_worker import DEFAULT_LLM_CALL_TIMEOUT_S
-
-                        timeout_s = action.get("_timeout_s", DEFAULT_LLM_CALL_TIMEOUT_S)
-                        # In sim mode, auto-resolve instead of blocking
-                        sim_timeout_response = sim.resolve_timeout_retry(timeout_s)
-                        if sim_timeout_response is not None:
-                            sim.log("PIPELINE", f"Auto-resolved timeout retry: {sim_timeout_response}")
-                            state.data["pending_timeout_retry"] = {
-                                "original_request": action.get("_original_request"),
-                                "timeout_s": timeout_s,
-                            }
-                            state.data["pending_cli_input"] = sim_timeout_response
-                        else:
-                            state.data["pending_timeout_retry"] = {
-                                "original_request": action.get("_original_request"),
-                                "timeout_s": timeout_s,
-                            }
-
-                    # Invalidate cache for write operations to ensure fresh reads
-                    tool_name = action.get("tool_name", "")
-                    if tool_name == "write_file" and success:
-                        written_path = action.get("params", {}).get("path")
-                        if written_path:
-                            invalidated = result_cache.invalidate(path=written_path)
-                            if invalidated > 0:
-                                logger.debug("Invalidated %d cache entries for: %s", invalidated, written_path)
-
-                    # Log tool execution
-                    log_agentic(
-                        "agent_loop",
-                        "tool_called",
-                        {
-                            "tool": action.get("tool_name"),
-                            "success": success,
-                            "source": "llm_worker",
-                        },
-                    )
-
-                    # Log tool result details
-                    output = getattr(result, "output", None)
-                    if output:
-                        log_agentic(
-                            "agent_loop",
-                            "tool_result",
-                            {
-                                "tool": action.get("tool_name"),
-                                "output": output if isinstance(output, dict) else str(output)[:100],
-                            },
-                        )
-
-                    # Log to autonomy controller
-                    autonomy_controller.log_action(
-                        action_type="executed",
-                        action=action,
-                        reasoning=ctrl.pending_proposal.reasoning,
-                        mode=state.data.get("mode", "unknown"),
-                        confidence=confidence,
-                        citations=ctrl.pending_proposal.citations,
-                        outcome="success" if success else "failure",
-                        error=getattr(result, "error", None),
-                    )
-
-                    # Track outcome for context pool and learning
-                    # Get followup type to determine result storage and follow-up behavior
-                    tool_name = action.get("tool_name", "")
-                    current_mode = state.data.get("mode", "live")
-
-                    # L2: Reset deliberation state when a non-think action fires.
-                    if tool_name != "think":
-                        _reset_deliberation(executor)
-
-                    from maxim.modes.definitions import get_tool_followup_type
-
-                    followup_type = get_tool_followup_type(tool_name, current_mode)
-
-                    # Store more result for tools that need processing (up to 3000 chars)
-                    needs_processing = followup_type in ("process", "respond", "engage")
-                    result_limit = 3000 if needs_processing else 100
-                    result_str = _followup_result_text(tool_name, output, result, result_limit)
-
-                    _rec_outcome(
-                        agent_id=_loop_agent_id,
-                        tool_name=tool_name or "unknown",
-                        success=success,
-                        result_summary=result_str,
-                        error=getattr(result, "error", None),
-                        reasoning=getattr(ctrl.pending_proposal, "reasoning", "") if ctrl.pending_proposal else "",
-                        recent_outcomes=recent_outcomes,
-                        max_recent=max_recent_outcomes,
-                        llm_worker=llm_worker,
-                        context_pool=context_pool,
-                        nac=_loop_nac,
-                        active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
-                        tool_params=action.get("params"),
-                        cluster_id=getattr(ctrl.pending_proposal, "cluster_id", None),
-                        clusters=getattr(ctrl.pending_proposal, "clusters", None),
-                        embodiment_failed=_embodiment_failed,
-                        drive_potential_diff=_drive_potential_diff,
-                        drive_credit_withheld=_drive_credit_withheld,
-                        drive_relief_channel=_drive_relief_channel,
-                        outcome_valence=_reported_valence,
-                    )
-
-                    # Record plan outcome in MemoryHub for learning. A plan that
-                    # led to bodily harm is a NEGATIVE plan outcome even if the
-                    # tool mechanically succeeded (B5) — otherwise the plan path
-                    # books a positive CausalLink that competes with the tool's
-                    # learned aversion (the PlanHistoryBridge records under the
-                    # same tool event signature).
-                    if memory_hub_enabled and memory_hub is not None:
-                        _record_plan_outcome(
-                            memory_hub=memory_hub,
-                            goal=ctrl.pending_proposal.reasoning or "",
-                            tool_name=tool_name,
-                            success=success and not _embodiment_failed,
-                        )
-
-                    # If this tool has a followup_type, trigger a follow-up LLM cycle.
-                    # The followup_type determines how the LLM should handle the results:
-                    #   "process" - LLM processes results for next action (coding agent)
-                    #   "respond" - LLM synthesizes results into user response
-                    #   "engage"  - LLM responds AND offers proactive follow-ups
-                    # "process" followups fire even on failure so the LLM can
-                    # learn from the error and retry with a different tool
-                    # (e.g. sim orchestrator's catch-all 'respond' rejects →
-                    # LLM should immediately re-think, not stall for 60s).
-                    # Note: Use 'is not None' to handle empty lists [] which are falsy but still valid output
-                    if followup_type and ((success and output is not None) or followup_type == "process"):
-                        triggering_input = getattr(ctrl.pending_proposal, "triggering_input", "")
-                        ctrl.pending_action_followup = ActionFollowup(
-                            tool=tool_name,
-                            result=result_str,
-                            original_query=triggering_input,
-                            followup_type=followup_type,
-                            mode=current_mode,
-                            timestamp=time.time(),
-                        )
-                        logger.info(
-                            "Tool %s completed with followup_type=%s, queuing follow-up", tool_name, followup_type
-                        )
-
-                    # Track conversation history for response/speak actions
-                    tool_name = action.get("tool_name", "")
-                    if tool_name in ("respond", "speak") and success:
-                        raw_params = action.get("params")
-                        params = raw_params if isinstance(raw_params, dict) else {}
-                        response_message = params.get("message") or params.get("text", "")
-                        triggering_input = getattr(ctrl.pending_proposal, "triggering_input", "")
-                        if response_message and triggering_input:
-                            context_pool.add_conversation_turn(
-                                user_input=triggering_input,
-                                assistant_response=response_message,
-                                tool_used=tool_name,
-                            )
-
-                    # Process result
-                    try:
-                        followup = environment.step(result)
-                        if followup:
-                            state.update(followup)
-                    except Exception as e:
-                        log_swallowed_exception(e, operation="environment.step_followup")
-
-                    # Store in memory
-                    try:
-                        memory.store_raw(
-                            content={
-                                "action": action,
-                                "reasoning": ctrl.pending_proposal.reasoning,
-                                "result": getattr(result, "output", None),
-                                "success": getattr(result, "success", True),
-                            },
-                            metadata={"type": "action_execution"},
-                        )
-                    except Exception as e:
-                        log_swallowed_exception(e, operation="memory.store_raw")
-
-                    _loop_capture_action(
-                        hippocampus,
-                        executor,
-                        observation,
-                        state,
-                        {"goal": ctrl.pending_proposal.reasoning, "source": "llm_worker"},
-                        action,
-                        confidence,
-                        result,
-                        run_id,
-                        _loop_agent_id,
-                        proposal=ctrl.pending_proposal,
-                    )
-
-                    # Handle failure
-                    if success is False:
-                        log_agentic(
-                            "agent_loop",
-                            "goal_failed",
-                            {
-                                "tool": action.get("tool_name"),
-                                "error": getattr(result, "error", None),
-                            },
-                            level="WARNING",
-                        )
-                        try:
-                            state.mark_failure(getattr(result, "error", None))
-                        except Exception as e:
-                            log_swallowed_exception(e, operation="state.mark_failure")
-
-                except Exception as e:
-                    logger.error(f"Action execution failed: {e}")
-                    autonomy_controller.log_action(
-                        action_type="executed",
-                        action=action,
-                        reasoning=ctrl.pending_proposal.reasoning,
-                        mode=state.data.get("mode", "unknown"),
-                        confidence=confidence,
-                        outcome="error",
-                        error=str(e),
-                    )
-
-                    # Track exception in recent_outcomes for LLM learning
-                    _rec_outcome(
-                        agent_id=_loop_agent_id,
-                        tool_name=action.get("tool_name", "unknown"),
-                        success=False,
-                        result_summary=None,
-                        error=str(e),
-                        reasoning=getattr(ctrl.pending_proposal, "reasoning", "") if ctrl.pending_proposal else "",
-                        recent_outcomes=recent_outcomes,
-                        max_recent=max_recent_outcomes,
-                        llm_worker=llm_worker,
-                        context_pool=context_pool,
-                        nac=_loop_nac,
-                        active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
-                        cluster_id=getattr(ctrl.pending_proposal, "cluster_id", None),
-                        clusters=getattr(ctrl.pending_proposal, "clusters", None),
-                    )
-
-                    # Mark failure in state
-                    try:
-                        state.mark_failure(str(e))
-                    except Exception as mf_err:
-                        log_swallowed_exception(mf_err, operation="state.mark_failure_exc")
+                # Execute it and book what it teaches: ONE function for every path that runs an action
+                # the agent chose (#1133; moved verbatim from here into tool_dispatch.execute_and_learn).
+                _outcome = _execute_and_learn(
+                    action=action, confidence=confidence, proposal=ctrl.pending_proposal, observation=observation
+                )
+                if _outcome.followup is not None:
+                    ctrl.pending_action_followup = _outcome.followup
 
                 ctrl.pending_proposal = None
 

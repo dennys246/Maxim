@@ -13,13 +13,19 @@ import logging
 import os
 import re
 import time
+from collections.abc import Callable
 from typing import Any
 
 from maxim.decisions.causal_link import Valence as _V
+from maxim.runtime.bio_integration import _loop_capture_action, record_plan_outcome as _record_plan_outcome
+from maxim.runtime.loop_types import ActionFollowup
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import log_agentic
 
 logger = logging.getLogger(__name__)
+# ``execute_and_learn`` logs as the agent loop always has (the ``loop_setup`` precedent): the SAME logger
+# object as ``agent_loop.logger``, so its records keep the ``maxim.runtime.agent_loop`` name.
+_loop_logger = logging.getLogger("maxim.runtime.agent_loop")
 
 # Outcome-signature token per learning tier. A NEUTRAL outcome must not
 # share causal-link identity with a success or a failure: link ids hash
@@ -761,3 +767,453 @@ def execute_parallel_actions(
         pr.pop("_outcome_valence", None)
 
     return parallel_results, combined_results
+
+
+def _reset_deliberation(executor: Any) -> None:
+    """Reset ThinkTool deliberation state when a non-think action fires (L2).
+
+    Single call site for both dispatch paths — prevents drift.
+    """
+    try:
+        _registry = getattr(executor, "registry", None)
+        if _registry is not None:
+            _think_tool = _registry.get("think")
+            if hasattr(_think_tool, "reset_deliberation"):
+                _think_tool.reset_deliberation()
+    except (KeyError, Exception):
+        pass  # think tool not registered or not a ThinkTool
+
+
+def _followup_result_text(tool_name: str, output: Any, result: Any, limit: int) -> str | None:
+    """The RAW text a tool result contributes (the follow-up AND ``result_summary``).
+
+    Deliberately unframed: ``result_summary`` feeds ``record_outcome``, whose NAc outcome signature
+    is its first 50 characters -- a frame header there would collapse every outcome of a tool into
+    one causal link (#823 review). Framing happens in ``_followup_synthetic_input``.
+    """
+    if output is not None:
+        if tool_name == "internet_search" and isinstance(output, list):
+            parts = []
+            for i, item in enumerate(output[:10], 1):  # Limit to 10 results
+                if isinstance(item, dict):
+                    parts.append(
+                        f"[{i}] {item.get('title', '')}\n    URL: {item.get('url', '')}\n    {item.get('snippet', '')}"
+                    )
+            text = "\n\n".join(parts)[:limit]
+        else:
+            text = str(output)[:limit]
+        # For empty results, include metadata message if available
+        if not output and hasattr(result, "metadata"):
+            msg = result.metadata.get("message", "")
+            if msg:
+                text = f"[No results: {msg}]"
+        return text
+    # When output is None but the tool returned an error, include the error text so follow-up
+    # re-thinks can see WHY it failed.
+    error_msg = getattr(result, "error", None) if result else None
+    if error_msg:
+        return f"[ERROR: {str(error_msg)[:limit]}]"
+    return None
+
+
+@dataclasses.dataclass(frozen=True)
+class ExecutionOutcome:
+    """What one ``execute_and_learn`` call did, for its caller to display or route.
+
+    ``raised`` is True when the dispatch raised (the ``except`` branch booked the failure); ``error`` is
+    then the exception's text, otherwise the tool's own ``error``. ``followup`` is the follow-up LLM
+    cycle the tool asks for, or ``None``: the function never writes the controller, so the caller
+    assigns it.
+
+    Runtime-ephemeral: built and consumed within one loop tick, never persisted and never crossing a
+    wire, so CC3 forward-compat is out of scope.
+    """
+
+    success: bool
+    raised: bool
+    result: Any
+    output: Any
+    error: str | None
+    result_str: str | None
+    followup: ActionFollowup | None
+
+
+def execute_and_learn(
+    *,
+    agent: Any,
+    agent_name: str,
+    agent_id: str,
+    executor: Any,
+    sim: Any,
+    state: Any,
+    environment: Any,
+    memory: Any,
+    hippocampus: Any,
+    memory_hub: Any,
+    result_cache: Any,
+    autonomy_controller: Any,
+    rec_outcome: Callable[..., Any],
+    recent_outcomes: list[dict[str, Any]],
+    max_recent: int,
+    llm_worker: Any,
+    context_pool: Any,
+    nac: Any,
+    run_id: str,
+    action: dict[str, Any],
+    confidence: float,
+    proposal: Any,
+    observation: Any,
+) -> ExecutionOutcome:
+    """Execute one approved action and book everything the agent learns from it (#1133; #1085's core).
+
+    THE dispatch seam: every path that runs an action the agent chose calls this, so what an action
+    teaches cannot depend on how it was approved. Moved verbatim from ``run_agentic_loop`` §4 (the
+    autonomous path), in order: the pre-execution snapshot, ``executor.execute``, the tool's learning
+    side effects, the ``write_file`` overwrite retry, the timeout-retry prompt, the write cache
+    invalidation, the ``tool_called``/``tool_result`` events, the autonomy audit entry, the deliberation
+    reset, the outcome credit (``rec_outcome``), the plan outcome, the follow-up, the conversation turn,
+    ``environment.step``, ``memory.store_raw``, the Hippocampus capture and ``mark_failure``; an
+    exception books a failed outcome instead.
+
+    Every parameter is keyword-only with no default, so a caller that forgets one gets a ``TypeError``.
+    The first block is per run and is bound ONCE by ``loop_setup.build_loop_run`` as
+    ``LoopRun.execute_and_learn`` (a ``functools.partial``): ``rec_outcome`` is the run's recorder (with
+    ``drive_relief_only`` bound), ``agent_id`` the hub's, ``memory_hub`` ``None`` when the hub's session
+    did not start (no plan outcome then). The rest is per action: ``proposal`` is the ``LLMProposal`` the
+    action came from, carrying the reasoning, citations, triggering input and the situation (``clusters``
+    / ``cluster_id`` / ``cluster_margins``) the credit and the capture are keyed to.
+
+    Logs on the ``maxim.runtime.agent_loop`` logger, as the block always has (the ``loop_setup``
+    precedent). Known defects carried by the move, to be fixed HERE: #1145 (a step after the credit
+    raising books a second, negative outcome), #1146 (the overwrite retry's side effects are not read).
+    """
+    result: Any = None
+    success = False
+    output: Any = None
+    result_str: str | None = None
+    queued_followup: ActionFollowup | None = None
+    raised: str | None = None
+    # Capture pre-execution snapshot for preemption reversal
+    if hasattr(agent, "_execution_tracker") and agent._execution_tracker:
+        goal_desc = proposal.reasoning or ""
+        robot_handle = getattr(agent, "goal", None)
+        robot_handle = getattr(robot_handle, "robot", None) if robot_handle else None
+        agent._execution_tracker.capture_before(
+            goal_description=goal_desc[:200],
+            tool_name=action.get("tool_name", ""),
+            tool_params=action.get("params", {}),
+            robot=robot_handle,
+        )
+
+    # Execute the action
+    try:
+        exec_start = time.time()
+        _loop_logger.info("Starting tool execution: %s", action.get("tool_name"))
+        if sim.is_sim_mode:
+            sim.log(
+                "EXEC",
+                f"Executing: {action.get('tool_name')} "
+                f"by {agent_name} params={list((action.get('params') or {}).keys())}",
+            )
+        result = executor.execute(action)
+        exec_elapsed = time.time() - exec_start
+        success = getattr(result, "success", True)
+        _learning_side = read_learning_side_effects(result)
+        _embodiment_failed = _learning_side.embodiment_failed
+        _drive_potential_diff = _learning_side.drive_potential_diff
+        _drive_credit_withheld = _learning_side.drive_credit_withheld
+        _drive_relief_channel = _learning_side.drive_relief_channel
+        _reported_valence = _learning_side.outcome_valence
+        _loop_logger.info(
+            "Tool execution completed in %.2fs: %s, success=%s",
+            exec_elapsed,
+            action.get("tool_name"),
+            success,
+        )
+        if sim.is_sim_mode:
+            sim.log(
+                "EXEC",
+                f"Completed: {action.get('tool_name')} success={success} elapsed={exec_elapsed:.2f}s",
+            )
+
+        # Auto-recover: write_file failed because file exists → retry with overwrite
+        if (
+            not success
+            and action.get("tool_name") == "write_file"
+            and "already exists" in str(getattr(result, "error", "")).lower()
+        ):
+            raw_params = action.get("params")
+            safe_params = raw_params if isinstance(raw_params, dict) else {}
+            _loop_logger.info(
+                "Auto-recovery: retrying write_file with overwrite=True for %s",
+                safe_params.get("path", "?"),
+            )
+            retry_action = dict(action)
+            retry_params = dict(safe_params)
+            retry_params["overwrite"] = True
+            retry_action["params"] = retry_params
+            result = executor.execute(retry_action)
+            success = getattr(result, "success", True)
+            if success:
+                _loop_logger.info("Auto-recovery succeeded for write_file")
+            else:
+                _loop_logger.warning(
+                    "Auto-recovery failed for write_file: %s",
+                    getattr(result, "error", "unknown"),
+                )
+
+        # If this was a timeout retry prompt, store state for user response
+        if action.get("_timeout_retry") and success:
+            # Plan 3.5 R2: fall back to the current agent-level LLM
+            # timeout default if the action didn't include _timeout_s.
+            # Was hardcoded 60.0 pre-plan (mesh-era value).
+            from maxim.agents.llm_worker import DEFAULT_LLM_CALL_TIMEOUT_S
+
+            timeout_s = action.get("_timeout_s", DEFAULT_LLM_CALL_TIMEOUT_S)
+            # In sim mode, auto-resolve instead of blocking
+            sim_timeout_response = sim.resolve_timeout_retry(timeout_s)
+            if sim_timeout_response is not None:
+                sim.log("PIPELINE", f"Auto-resolved timeout retry: {sim_timeout_response}")
+                state.data["pending_timeout_retry"] = {
+                    "original_request": action.get("_original_request"),
+                    "timeout_s": timeout_s,
+                }
+                state.data["pending_cli_input"] = sim_timeout_response
+            else:
+                state.data["pending_timeout_retry"] = {
+                    "original_request": action.get("_original_request"),
+                    "timeout_s": timeout_s,
+                }
+
+        # Invalidate cache for write operations to ensure fresh reads
+        tool_name = action.get("tool_name", "")
+        if tool_name == "write_file" and success:
+            written_path = action.get("params", {}).get("path")
+            if written_path:
+                invalidated = result_cache.invalidate(path=written_path)
+                if invalidated > 0:
+                    _loop_logger.debug("Invalidated %d cache entries for: %s", invalidated, written_path)
+
+        # Log tool execution
+        log_agentic(
+            "agent_loop",
+            "tool_called",
+            {
+                "tool": action.get("tool_name"),
+                "success": success,
+                "source": "llm_worker",
+            },
+        )
+
+        # Log tool result details
+        output = getattr(result, "output", None)
+        if output:
+            log_agentic(
+                "agent_loop",
+                "tool_result",
+                {
+                    "tool": action.get("tool_name"),
+                    "output": output if isinstance(output, dict) else str(output)[:100],
+                },
+            )
+
+        # Log to autonomy controller
+        autonomy_controller.log_action(
+            action_type="executed",
+            action=action,
+            reasoning=proposal.reasoning,
+            mode=state.data.get("mode", "unknown"),
+            confidence=confidence,
+            citations=proposal.citations,
+            outcome="success" if success else "failure",
+            error=getattr(result, "error", None),
+        )
+
+        # Track outcome for context pool and learning
+        # Get followup type to determine result storage and follow-up behavior
+        tool_name = action.get("tool_name", "")
+        current_mode = state.data.get("mode", "live")
+
+        # L2: Reset deliberation state when a non-think action fires.
+        if tool_name != "think":
+            _reset_deliberation(executor)
+
+        from maxim.modes.definitions import get_tool_followup_type
+
+        followup_type = get_tool_followup_type(tool_name, current_mode)
+
+        # Store more result for tools that need processing (up to 3000 chars)
+        needs_processing = followup_type in ("process", "respond", "engage")
+        result_limit = 3000 if needs_processing else 100
+        result_str = _followup_result_text(tool_name, output, result, result_limit)
+
+        rec_outcome(
+            agent_id=agent_id,
+            tool_name=tool_name or "unknown",
+            success=success,
+            result_summary=result_str,
+            error=getattr(result, "error", None),
+            reasoning=getattr(proposal, "reasoning", "") if proposal else "",
+            recent_outcomes=recent_outcomes,
+            max_recent=max_recent,
+            llm_worker=llm_worker,
+            context_pool=context_pool,
+            nac=nac,
+            active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
+            tool_params=action.get("params"),
+            cluster_id=getattr(proposal, "cluster_id", None),
+            clusters=getattr(proposal, "clusters", None),
+            embodiment_failed=_embodiment_failed,
+            drive_potential_diff=_drive_potential_diff,
+            drive_credit_withheld=_drive_credit_withheld,
+            drive_relief_channel=_drive_relief_channel,
+            outcome_valence=_reported_valence,
+        )
+
+        # Record plan outcome in MemoryHub for learning. A plan that
+        # led to bodily harm is a NEGATIVE plan outcome even if the
+        # tool mechanically succeeded (B5) — otherwise the plan path
+        # books a positive CausalLink that competes with the tool's
+        # learned aversion (the PlanHistoryBridge records under the
+        # same tool event signature).
+        if memory_hub is not None:
+            _record_plan_outcome(
+                memory_hub=memory_hub,
+                goal=proposal.reasoning or "",
+                tool_name=tool_name,
+                success=success and not _embodiment_failed,
+            )
+
+        # If this tool has a followup_type, trigger a follow-up LLM cycle.
+        # The followup_type determines how the LLM should handle the results:
+        #   "process" - LLM processes results for next action (coding agent)
+        #   "respond" - LLM synthesizes results into user response
+        #   "engage"  - LLM responds AND offers proactive follow-ups
+        # "process" followups fire even on failure so the LLM can
+        # learn from the error and retry with a different tool
+        # (e.g. sim orchestrator's catch-all 'respond' rejects →
+        # LLM should immediately re-think, not stall for 60s).
+        # Note: Use 'is not None' to handle empty lists [] which are falsy but still valid output
+        if followup_type and ((success and output is not None) or followup_type == "process"):
+            triggering_input = getattr(proposal, "triggering_input", "")
+            queued_followup = ActionFollowup(
+                tool=tool_name,
+                result=result_str,
+                original_query=triggering_input,
+                followup_type=followup_type,
+                mode=current_mode,
+                timestamp=time.time(),
+            )
+            _loop_logger.info("Tool %s completed with followup_type=%s, queuing follow-up", tool_name, followup_type)
+
+        # Track conversation history for response/speak actions
+        tool_name = action.get("tool_name", "")
+        if tool_name in ("respond", "speak") and success:
+            raw_params = action.get("params")
+            params = raw_params if isinstance(raw_params, dict) else {}
+            response_message = params.get("message") or params.get("text", "")
+            triggering_input = getattr(proposal, "triggering_input", "")
+            if response_message and triggering_input:
+                context_pool.add_conversation_turn(
+                    user_input=triggering_input,
+                    assistant_response=response_message,
+                    tool_used=tool_name,
+                )
+
+        # Process result
+        try:
+            followup = environment.step(result)
+            if followup:
+                state.update(followup)
+        except Exception as e:
+            log_swallowed_exception(e, operation="environment.step_followup")
+
+        # Store in memory
+        try:
+            memory.store_raw(
+                content={
+                    "action": action,
+                    "reasoning": proposal.reasoning,
+                    "result": getattr(result, "output", None),
+                    "success": getattr(result, "success", True),
+                },
+                metadata={"type": "action_execution"},
+            )
+        except Exception as e:
+            log_swallowed_exception(e, operation="memory.store_raw")
+
+        _loop_capture_action(
+            hippocampus,
+            executor,
+            observation,
+            state,
+            {"goal": proposal.reasoning, "source": "llm_worker"},
+            action,
+            confidence,
+            result,
+            run_id,
+            agent_id,
+            proposal=proposal,
+        )
+
+        # Handle failure
+        if success is False:
+            log_agentic(
+                "agent_loop",
+                "goal_failed",
+                {
+                    "tool": action.get("tool_name"),
+                    "error": getattr(result, "error", None),
+                },
+                level="WARNING",
+            )
+            try:
+                state.mark_failure(getattr(result, "error", None))
+            except Exception as e:
+                log_swallowed_exception(e, operation="state.mark_failure")
+
+    except Exception as e:
+        raised = str(e)
+        _loop_logger.error(f"Action execution failed: {e}")
+        autonomy_controller.log_action(
+            action_type="executed",
+            action=action,
+            reasoning=proposal.reasoning,
+            mode=state.data.get("mode", "unknown"),
+            confidence=confidence,
+            outcome="error",
+            error=str(e),
+        )
+
+        # Track exception in recent_outcomes for LLM learning
+        rec_outcome(
+            agent_id=agent_id,
+            tool_name=action.get("tool_name", "unknown"),
+            success=False,
+            result_summary=None,
+            error=str(e),
+            reasoning=getattr(proposal, "reasoning", "") if proposal else "",
+            recent_outcomes=recent_outcomes,
+            max_recent=max_recent,
+            llm_worker=llm_worker,
+            context_pool=context_pool,
+            nac=nac,
+            active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
+            cluster_id=getattr(proposal, "cluster_id", None),
+            clusters=getattr(proposal, "clusters", None),
+        )
+
+        # Mark failure in state
+        try:
+            state.mark_failure(str(e))
+        except Exception as mf_err:
+            log_swallowed_exception(mf_err, operation="state.mark_failure_exc")
+    return ExecutionOutcome(
+        success=bool(success) and raised is None,
+        raised=raised is not None,
+        result=result,
+        output=output,
+        error=raised if raised is not None else getattr(result, "error", None),
+        result_str=result_str,
+        followup=queued_followup,
+    )

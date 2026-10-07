@@ -160,6 +160,7 @@ _UNPACK = {
     "_loop_sensor_encoder": "sensor_encoder",
     "_loop_situation_cue": "situation_cue",
     "_planning_liveness_on": "planning_liveness_on",
+    "_execute_and_learn": "execute_and_learn",
 }
 
 
@@ -186,6 +187,36 @@ def _unpack_map() -> dict[str, list[str]]:
 def test_the_loop_unpacks_every_field_into_its_own_local():
     assert _unpack_map() == {local: [field] for local, field in _UNPACK.items()}
     assert set(_UNPACK.values()) == {f.name for f in dataclasses.fields(LoopRun)}
+
+
+def test_execute_and_learn_is_bound_to_the_runs_own_handles(monkeypatch, tmp_path):
+    """#1133: the run's execute-and-learn credits through the run's recorder (``drive_relief_only``
+    bound), under the hub ``agent_id``, into the controller's outcome list and the run's NAc, pool,
+    cache and adapter -- the same objects every other path of the run uses. Only the per-action
+    arguments are left for the caller."""
+    import inspect
+
+    from maxim.runtime.tool_dispatch import execute_and_learn
+
+    run = _build(monkeypatch, tmp_path)
+    bound = run.execute_and_learn
+    assert bound.func is execute_and_learn
+    kw = bound.keywords
+    for name, value in {
+        "executor": run.executor,
+        "sim": run.sim,
+        "rec_outcome": run.rec_outcome,
+        "nac": run.nac,
+        "context_pool": run.context_pool,
+        "result_cache": run.result_cache,
+        "recent_outcomes": run.ctrl.recent_outcomes,
+        "autonomy_controller": run.autonomy_controller,
+    }.items():
+        assert kw[name] is value, name
+    assert (kw["agent_id"], kw["agent_name"], kw["run_id"]) == (run.agent_id, run.agent_name, run.run_id)
+    assert kw["max_recent"] == run.ctrl.max_recent_outcomes
+    unbound = [p for p in inspect.signature(execute_and_learn).parameters if p not in kw]
+    assert unbound == ["action", "confidence", "proposal", "observation"]
 
 
 @pytest.mark.parametrize("bad", [{"target_hz": 0.0}, {"max_steps": "x"}])
