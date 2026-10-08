@@ -607,7 +607,7 @@ name; unknown → NOT-ESTABLISHED. Outcomes: ESTABLISHED / LEGACY (in the snapsh
   (`_evidence_records.py::_rejudge_with`), so a record that drops a rowless marker and renumbers k is refused unless
   its rows are forged too; that residue (the forged-verdict class, reproduction §12) is owed as a gate-side check of
   the rows history and the markers against fetched tags
-  ([#1168](https://github.com/dennys246/Maxim/issues/1168), outstanding M40). The harness preflight refuses a new attempt
+  ([#1168](https://github.com/dennys246/Maxim/issues/1168), outstanding M43). The harness preflight refuses a new attempt
   of such a campaign once an earlier one leaked or is rowless (D2, `o19_rerun.py::check_within_campaign`, from
   origin's markers and `origin/main`'s rows), and `protocol_problems` refuses a campaign whose phase counts
   `LEAK_GATES` does not cover.
