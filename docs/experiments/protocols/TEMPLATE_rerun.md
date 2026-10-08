@@ -32,7 +32,8 @@ reached `main` before each named entry's first record.
 - **Command:** the exact harness invocation, writing to `docs/experiments/data/rerun_exp<NN>_<YYYY-MM-DD>/`. The
   harness hands each sim the harness run id and records every attempt; a hand-run sim cannot back the row.
 - **Attempts:** a stop rule fixed in advance (e.g. at most 3 attempts; the first complete attempt decides; the
-  harness refuses a new attempt once one is complete), so a run is never retried until it passes.
+  harness refuses a new attempt once one is complete), so a run is never retried until it passes. From #1079, a
+  failed decided gate in an aborted attempt of a new campaign ends that campaign: no later attempt can decide it.
 - **Verdict and row mapping:** each verdict value (e.g. `PASS` / `FAIL` / `ABORT`) and the status it gives the row,
   pre-registered. A typed abort (`planning_failed`, …) is not data, and the row cannot move on it. Name the
   verdict kind and its pass set for the M1b evidence gate (only a stamped verdict supplies new support).

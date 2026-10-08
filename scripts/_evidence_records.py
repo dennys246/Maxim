@@ -888,6 +888,10 @@ def o19_difference(rejudged: dict, rec: dict) -> str | None:
         ("deciding_attempt", lambda o: o.get("deciding_attempt")),
         ("attempts", projection),
         ("gates", lambda o: plain(o.get("gates"))),
+        # #1079 S1: the STRUCTURED within-campaign bar ([run_id, k, status]); absent on every pre-#1079 judge's output
+        # and on the four pre-#1079 campaigns' (None == None). Its prose twin (within_campaign_leak_notes) may embed
+        # host paths and exception text: the writer prints it and never persists it, and it is never compared.
+        ("within_campaign_leaks", lambda o: plain(o.get("within_campaign_leaks"))),
     ):
         if get(rejudged) != get(rec):
             return name
@@ -997,6 +1001,22 @@ def _rejudge_with(mod, rec: dict, rows: list[dict], data_dir: str, ctx: Ctx, ord
         return f"{type(exc).__name__}: {exc}"
     if set(attempts) - {m["run_id"] for m in ordered_markers}:
         return "rows name attempts with no start marker"
+    # #1079 (exec S1): every row is bound to ITS start marker by the fields the harness stamps on it (``attempt_k``,
+    # ``marker``), so a record cannot drop an earlier marker and renumber the deciding attempt to k = 1 (which would
+    # make the within-campaign trigger vacuous) without forging the rows too.
+    by_run = {m["run_id"]: m for m in ordered_markers}
+    for r in rows:
+        m = by_run.get(as_dict(r.get("provenance")).get("harness_run_id"))
+        if r.get("record_kind") != "harness_row" or m is None:
+            continue
+        k = r.get("attempt_k")
+        # The marker clause is belt-and-braces: the ref is already forced to <ns>/<exp>/attempt-<k>-<run_id> above,
+        # and the row's run id is the marker's, so the k comparison carries the binding.
+        if isinstance(k, bool) or k != m["k"] or r.get("marker") != m.get("ref"):
+            return (
+                f"a row of attempt {str(m['run_id'])[:12]} carries attempt_k {k!r} and marker {r.get('marker')!r}, "
+                f"not its start marker's ({m['k']}, {m.get('ref')!r})"
+            )[:400]
     ordered = [{"run_id": m["run_id"], "k": m["k"], "rows": attempts.get(m["run_id"], [])} for m in ordered_markers]
     # The data root mirrors the data directory's parent: the campaign's own directory, and each campaign it succeeds
     # (a successor's judge reads its predecessors' committed phases beside its own, #1059). A judge that reads only
@@ -1167,11 +1187,50 @@ def _closure_problems(
     return {"protocol": cap.get("protocol"), "harness_env": cap.get("harness_env"), "model": cap.get("model")}
 
 
+def o19_within_campaign_problems(cap: dict, key) -> list[str]:
+    """#1079 (owner decision 2026-10-08, REFUSE): why the cited verdict's DECIDING attempt may not supply support
+    because an earlier attempt of the same campaign leaked a FAILED gate ([] = it may). Reads only the BOUND judge's
+    re-run (``cap["rejudged"]``, equal to the record by ``o19_difference``), never the record's own field.
+
+    - The trigger is structural (design pass S2): the deciding attempt's k is not 1. Markers are forced to k = 1..n
+      (``rejudge_o19``) and an attempt after the deciding one refuses in the judge, so k == 1 means nothing earlier
+      exists, committed or not. It is vacuous for every pre-#1079 campaign (10 and 10c2 decide nothing; 09 and 63
+      decide at k = 1), so their old bound judges never need the field; the gate holds no key list.
+    - Triggered, the bound judge must emit ``within_campaign_leaks`` (else the verdict supports nothing: a new key a
+      later edit put in ``PRE_1079_KEYS`` fails closed here), and it must be empty.
+    - D1 (a rowless earlier marker bars) is WRITER-enforced and gate-TRUSTED (design pass S3): the writer reads the
+      markers from origin (``ls-remote``); the gate sees only the record's ``apparatus.markers``, but ``_rejudge_with``
+      binds every row to its marker (``attempt_k``, ``marker``), so a record that drops a rowless marker and renumbers
+      k is refused unless its rows are forged too: that residue is the forged-verdict class (reproduction.md section
+      12), with a gate-side check of the rows history and the markers against fetched tags owed (#1168)."""
+    rejudged = as_dict(cap.get("rejudged"))
+    deciding = rejudged.get("deciding_attempt")
+    if deciding is None:
+        return []  # an ABORT supports nothing (the pass table refuses it first)
+    attempts = rejudged.get("attempts") if isinstance(rejudged.get("attempts"), list) else []
+    k = next((as_dict(a).get("k") for a in attempts if as_dict(a).get("run_id") == deciding), None)
+    if k == 1 and not isinstance(k, bool):
+        return []  # nothing came before the deciding attempt, so nothing can have leaked
+    leaks = rejudged.get("within_campaign_leaks")
+    if not isinstance(leaks, list):
+        return [
+            f"campaign {key}: its deciding attempt is attempt {k!r}, but its bound judge does not compute the "
+            "within-campaign leaked-gate bar (#1079): the verdict supports nothing"
+        ]
+    if leaks:
+        return [
+            f"campaign {key}: a FAILED gate leaked into an earlier attempt of this campaign (#1079): {leaks[:3]}"[:400]
+        ]
+    return []
+
+
 def o19_succession_problems(j: Judgement, token: str, ctx: Ctx) -> list[str]:
     """Why this O19 verdict may not support ``token`` under the campaign-succession rules (#1059; [] = it may).
 
     - S2: whether the campaign HAS a predecessor is read from the BOUND judge's table, whose entry for the campaign
       must equal the merge-base table's (never the record's own fields).
+    - #1079: no earlier attempt of the cited campaign leaked a FAILED gate (:func:`o19_within_campaign_problems`),
+      for a root or a successor campaign and every token.
     - A ROOT campaign's verdict never supports REPRODUCED; a SUCCESSOR's supports no positive token but REPRODUCED
       (owner decision 2026-10-02), and for every token it supports (PARTIAL included):
     - D2: its bound judge emits the leaked-gate bar, and it is empty (a bound judge without it: supports nothing);
@@ -1196,6 +1255,8 @@ def o19_succession_problems(j: Judgement, token: str, ctx: Ctx) -> list[str]:
     base_protocol = _plain(base_mod.PROTOCOL)
     if not isinstance(entry, dict) or base_protocol.get(key) != entry:
         return [f"campaign {key}'s entry in the merge-base campaign table is not its bound judge's (S2)"]
+    if within := o19_within_campaign_problems(cap, key):  # #1079: root and successor campaigns, every token
+        return within
     if not isinstance(entry.get("supersedes"), dict):
         if token == "REPRODUCED":
             return [f"campaign {key} is a root campaign: only a successor campaign's verdict supports REPRODUCED"]

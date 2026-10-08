@@ -104,11 +104,14 @@ class Rig:
 # ── an O19 attempt as the harness writes it, stamped as the verdict writer would ─────────────────────────
 
 
-def o19_attempt(rig: Rig, exp: str, executed: str, *, monkeypatch, rows_edit=None, side_branch: bool = False) -> dict:
+def o19_attempt(rig: Rig, exp: str, executed: str, *, monkeypatch, rows_edit=None, side_branch: bool = False,
+                earlier=None, rowless_first: bool = False) -> dict:  # fmt: skip
     """Write a complete O19 attempt for ``exp`` (run on ``executed``), land its rows and session files on main's
     first-parent history (``rig.base_sha`` moves to the landing), and write (uncommitted) the verdict the writer
     stamps AT that landing commit: ``verdict_commit`` = its executed commit = the landing, each bound blob read there.
-    ``rows_edit(rig)`` changes the data before it lands; ``side_branch`` lands it on a branch merged ``--no-ff``."""
+    ``rows_edit(rig)`` changes the data before it lands; ``side_branch`` lands it on a branch merged ``--no-ff``.
+    #1079: ``earlier(rows, data_dir)`` first writes an earlier attempt (a mock attempt it then edits, e.g. aborts);
+    ``rowless_first`` declares an earlier start marker (k = 1) whose rows never landed."""
     import o19_rerun as h
     import o19_verdict as v
     from _provenance import stamp_verdict
@@ -118,9 +121,23 @@ def o19_attempt(rig: Rig, exp: str, executed: str, *, monkeypatch, rows_edit=Non
     stable_provenance(monkeypatch)
     monkeypatch.setattr(h._provenance, "_RUN_ID", {})
     monkeypatch.setattr(h._provenance, "evidence_out_path", lambda *a, **k: rows_path)
+    first = ""
+    if earlier is not None:
+        assert h.main(["run", "--exp", exp, "--mock"]) == 0
+        first_rows = [json.loads(ln) for ln in rows_path.read_text().splitlines()]
+        earlier(first_rows, data_dir)
+        first = "".join(json.dumps(r, sort_keys=True) + "\n" for r in first_rows)
+        rows_path.write_text("")  # the harness's own reading may call an edited attempt complete
+        monkeypatch.setattr(h._provenance, "_RUN_ID", {})
     assert h.main(["run", "--exp", exp, "--mock"]) == 0
+    rows_path.write_text(first + rows_path.read_text())
     rows = [json.loads(ln) for ln in rows_path.read_text().splitlines()]
+    run_order = list(dict.fromkeys(r["provenance"]["harness_run_id"] for r in rows))
     for r in rows:  # as a real attempt on the rig: not mock, run on a commit on main, its sims stamped likewise
+        # stamped with its attempt's k and start marker as a real attempt's row is (a mock attempt has no marker)
+        rid = r["provenance"]["harness_run_id"]
+        k = run_order.index(rid) + 1 + (1 if rowless_first else 0)
+        r.update(attempt_k=k, marker=f"{v.MARKER_NAMESPACE}/{exp}/attempt-{k}-{rid}")
         r["mock"] = False
         r["provenance"].update(executed_git_hash=executed, working_tree_dirty_src_scripts=False)
         for sim in r.get("sims") or []:
@@ -138,15 +155,23 @@ def o19_attempt(rig: Rig, exp: str, executed: str, *, monkeypatch, rows_edit=Non
         rig.base_sha = _git(rig.root, "rev-parse", "HEAD")
     rows = [json.loads(ln) for ln in rows_path.read_text().splitlines()]
     attempts = v.attempts_from_rows(rows)
-    rid = next(iter(attempts))
-    out = v.judge(exp, [{"run_id": rid, "k": 1, "rows": attempts[rid]}], data_dir)
+    run_ids = [*(["0" * 32] if rowless_first else []), *attempts]
+    ordered = [{"run_id": rid, "k": k, "rows": attempts.get(rid, [])} for k, rid in enumerate(run_ids, 1)]
+    judge = R.load_o19_judge(_git_bytes(rig.root, f"{landed}:{R.O19_JUDGE}"))  # the judge the rig holds there
+    assert not isinstance(judge, str), judge
+    out = judge.judge(exp, ordered, data_dir)
+    out.pop("within_campaign_leak_notes", None)  # as the writer does (#1079 S1: the prose is never persisted)
     bound = {
         p: _git(rig.root, "rev-parse", f"{landed}:{p}") for p in (R.O19_JUDGE, R.O19_RERUN, v.PROTOCOL[exp]["prereg"])
     }
-    marker = {"run_id": rid, "k": 1, "ref": f"{v.MARKER_NAMESPACE}/{exp}/attempt-1-{rid}", "peeled": executed}
+    markers = [
+        {"run_id": a["run_id"], "k": a["k"], "ref": f"{v.MARKER_NAMESPACE}/{exp}/attempt-{a['k']}-{a['run_id']}",
+         "peeled": executed}
+        for a in ordered
+    ]  # fmt: skip
     out.update(
         apparatus_checked=True,
-        apparatus={"markers": [marker]},
+        apparatus={"markers": markers},
         bound_files=bound,
         verdict_commit=landed,
         verdict_source_sha256=hashlib.sha256(_git_bytes(rig.root, f"{landed}:{R.O19_JUDGE}")).hexdigest(),
@@ -2098,7 +2123,8 @@ def _close_campaign_1(rig: Rig, monkeypatch, *, rows_edit=None, record_edit=None
     executed = rig.base_sha
     rows = [json.loads(ln) for ln in rows_path.read_text().splitlines()]
     for r in rows:
-        r["mock"] = False
+        rid = r["provenance"]["harness_run_id"]  # stamped with its start marker as a real attempt's row is
+        r.update(mock=False, attempt_k=1, marker=f"{v.MARKER_NAMESPACE}/10/attempt-1-{rid}")
         r["provenance"].update(executed_git_hash=executed, working_tree_dirty_src_scripts=False)
     if abort:
         rows[-1].update(status="failed", reason="SimRunFailed: planning_failed")
@@ -2139,12 +2165,12 @@ def _close_campaign_1(rig: Rig, monkeypatch, *, rows_edit=None, record_edit=None
 
 def _reproduce(rig: Rig, monkeypatch, *, token="REPRODUCED", rows_edit=None, record_edit=None, before_c2=None,
                after_c2=None, c1_judge: str | None = None, abort: bool = True,
-               closure_late: bool = False) -> list[str]:  # fmt: skip
+               closure_late: bool = False, c2_attempt: dict | None = None) -> list[str]:  # fmt: skip
     """BASE: T1-1 STALE, campaign 1 closed, the judge pinning that closure, ``before_c2(rig)`` (lands with the pin),
     a campaign-2 attempt landed, then ``after_c2(rig)`` on main. HEAD: T1-1 -> ``token`` citing campaign 2.
     ``c1_judge``: the judge text campaign 1 runs and closes with (committed before it, restored after); ``abort``:
     campaign 1's attempt aborted (else it is a PASS); ``closure_late``: the closure lands with campaign 2's rows,
-    after campaign 2 ran."""
+    after campaign 2 ran; ``c2_attempt``: extra ``o19_attempt`` arguments for campaign 2 (#1079: an earlier attempt)."""
     import o19_verdict as v
 
     rig.prereg[f"{DATA}/rerun_exp10_o19c2"] = "PASS"
@@ -2162,7 +2188,7 @@ def _reproduce(rig: Rig, monkeypatch, *, token="REPRODUCED", rows_edit=None, rec
     rig.base_sha = rig.commit("the judge pins campaign 1's closure", BASE_DATE)
     if closure_late:  # o19_attempt lands it with campaign 2's rows
         rig.write(f"{v.data_dir('10')}/verdict.json", rig.closure_raw)
-    record = o19_attempt(rig, "10c2", rig.base_sha, monkeypatch=monkeypatch)
+    record = o19_attempt(rig, "10c2", rig.base_sha, monkeypatch=monkeypatch, **(c2_attempt or {}))
     record["apparatus"]["succession"] = {**v.PROTOCOL["10c2"]["supersedes"], "verdict_sha256": pin,
                                          "closure_landed": 1.0, "prereg_landed": 1.0}  # fmt: skip
     verdict = rig.root / DATA / "rerun_exp10_o19c2" / "verdict.json"
@@ -2904,3 +2930,156 @@ def test_a_ruled_kinds_entry_may_not_be_deleted() -> None:
     assert G.ruled_scope_problems(base, {"exp62_verdict": {"scopes": ["rung A"], "targets": {}}}) == []
     retired = REAL_TABLE["exp62_verdict"] | {"targets": {}}  # the whole retire shape passes the HEAD shape check
     assert G.pass_table_problems({"exp62_verdict": retired}, "HEAD") == []
+
+
+# ── #1079: the leaked-gate bar within one campaign (owner decision 2026-10-08: the verdict reports, the gate refuses) ──
+
+PRE_1079 = 'PRE_1079_KEYS = frozenset({"10", "10c2", "09", "63"})'
+
+
+def _as_new_keys(rg: Rig) -> None:
+    """The rig's judge treats every campaign as a NEW key (no real campaign is new yet): it emits the bar."""
+    _judge_text(rg, PRE_1079, "PRE_1079_KEYS = frozenset()")
+
+
+def _leaky_attempt_1(rows, data_dir):
+    """Attempt 1 committed phases 1-2 ok with a 2-memory store (Exp 10's P0 FAILED), then died in phase 3."""
+    sdir = data_dir / rows[0]["session_id"]
+    store = _stored(sdir, "aut_hippocampus.json")
+    data = json.dumps({"memories": [{"id": "a"}, {"id": "b"}]}).encode()
+    store.with_name("aut_hippocampus.json").write_bytes(data)
+    if store.name.endswith(".gz"):
+        store.unlink()
+    rows[0]["files"]["aut_hippocampus.json"] = hashlib.sha256(data).hexdigest()
+    rows[-1].update(status="failed", reason="SimRunFailed: planning_failed")
+
+
+def _clean_attempt_1(rows, _data_dir):
+    rows[-1].update(status="failed", reason="SimRunFailed: planning_failed")
+
+
+def _t11_within(rig: Rig, monkeypatch, *, new_keys=True, record_edit=None, **attempt) -> list[str]:
+    """BASE: T1-1 STALE; campaign 10 (a root) as a NEW key when ``new_keys``; its attempts landed (``attempt``: the
+    earlier one). HEAD: its verdict moves T1-1 to MAINTAINED."""
+    rig.base(STALE_BOTH_ROWS)
+    if new_keys:
+        _as_new_keys(rig)
+        rig.base_sha = rig.commit("every campaign is a new key", BASE_DATE)
+    record = o19_attempt(rig, "10", rig.base_sha, monkeypatch=monkeypatch, **attempt)
+    assert record["verdict"] == "PASS" and record["attempts"][-1]["k"] >= 2, record["attempts"]
+    if record_edit:
+        record_edit(record)
+    (rig.root / DATA / "rerun_exp10_o19" / "verdict.json").write_text(json.dumps(record, indent=1))
+    cite = f"**Evidence:** `{DATA}/rerun_exp10_o19/verdict.json`."
+    rig.head(ledger([t1("T1-1", f"**Status: MAINTAINED 2026-10-02**. {cite}")],
+                    [t3("T3-9", "**Status: STALE 2026-09-30**.")]))  # fmt: skip
+    return rig.run()[0]
+
+
+def test_a_maintained_after_a_leak_in_an_earlier_attempt_supports_nothing(rig, monkeypatch) -> None:
+    failures = _t11_within(rig, monkeypatch, earlier=_leaky_attempt_1)
+    assert any("leaked into an earlier attempt of this campaign (#1079)" in f and "P0" in f for f in failures), failures
+
+
+def test_a_maintained_after_a_clean_earlier_attempt_is_supported(rig, monkeypatch) -> None:
+    assert _t11_within(rig, monkeypatch, earlier=_clean_attempt_1) == []
+
+
+def test_a_rowless_earlier_marker_bars_the_deciding_attempt(rig, monkeypatch) -> None:
+    """D1: a start marker whose rows never landed cannot be judged, so it bars (writer-enforced: the writer reads
+    origin's markers; the gate trusts the record's, design pass S3)."""
+    failures = _t11_within(rig, monkeypatch, rowless_first=True)
+    assert any("(#1079)" in f and "rowless" in f for f in failures), failures
+
+
+def test_a_record_that_drops_a_rowless_marker_and_renumbers_is_refused(rig, monkeypatch) -> None:
+    """Exec S1: dropping attempt 1's (rowless) start marker and renumbering the deciding attempt to k = 1 would make
+    the within-campaign trigger vacuous. The rows the harness stamped still name attempt 2 and its marker, so the
+    gate refuses the record unless the rows are forged too (that residue: #1168)."""
+
+    def renumber(record):
+        (_dropped, deciding) = record["apparatus"]["markers"]
+        rid = deciding["run_id"]
+        deciding.update(k=1, ref=deciding["ref"].replace(f"attempt-2-{rid}", f"attempt-1-{rid}"))
+        record["apparatus"]["markers"] = [deciding]
+        record["attempts"] = [a | {"k": 1} for a in record["attempts"] if a["run_id"] == rid]
+        record["within_campaign_leaks"] = []
+
+    failures = _t11_within(rig, monkeypatch, rowless_first=True, record_edit=renumber)
+    assert any("carries attempt_k 2" in f and "not its start marker's (1," in f for f in failures), failures
+
+
+def test_a_bound_judge_without_the_bar_supports_a_later_attempt_nothing(rig, monkeypatch) -> None:
+    """The real judge omits the field for the four pre-#1079 keys: a deciding attempt with k != 1 under such a judge
+    (a key put in PRE_1079_KEYS by a later edit) fails closed."""
+    failures = _t11_within(rig, monkeypatch, new_keys=False, earlier=_clean_attempt_1)
+    assert any("does not compute the within-campaign leaked-gate bar (#1079)" in f for f in failures), failures
+
+
+def test_a_forged_within_campaign_field_is_a_different_verdict(rig, monkeypatch) -> None:
+    failures = _t11_within(rig, monkeypatch, earlier=_leaky_attempt_1,
+                           record_edit=lambda r: r.update(within_campaign_leaks=[]))  # fmt: skip
+    assert any("gives a different within_campaign_leaks" in f for f in failures), failures
+
+
+def test_the_within_campaign_prose_is_never_compared(rig, monkeypatch) -> None:
+    failures = _t11_within(rig, monkeypatch, earlier=_clean_attempt_1,
+                           record_edit=lambda r: r.update(within_campaign_leak_notes=["edited"]))  # fmt: skip
+    assert failures == [], failures
+
+
+def test_a_partial_after_a_leak_in_an_earlier_attempt_supports_nothing(rig, monkeypatch) -> None:
+    import gzip
+
+    def no_flinch_incomplete(rows, data_dir):  # all phases ok but C4-invalid (N1), and H1 NOT MET
+        sdir = data_dir / rows[0]["session_id"]
+        log = gzip.decompress((sdir / "run_log.jsonl.gz").read_bytes()).replace(b"attack_flinch", b"other_reflex")
+        (sdir / "run_log.jsonl.gz").write_bytes(gzip.compress(log))
+        rows[0]["files"]["run_log.jsonl"] = hashlib.sha256(log).hexdigest()
+        rows[0]["served_model"] = {**(rows[0].get("served_model") or {}), "reads": []}
+
+    _as_new_keys(rig)
+    rig.base(ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")]))
+    record = o19_attempt(rig, "09", rig.base_sha, monkeypatch=monkeypatch, earlier=no_flinch_incomplete)
+    assert record["verdict"] == "PARTIAL" and record["within_campaign_leaks"][0][1] == 1, record
+    cite = f"**Evidence:** `{DATA}/rerun_exp09_o19/verdict.json`."
+    rig.head(ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")],
+                    [t3("T3-9", f"**Status: PARTIAL 2026-10-02** (narrow: H3 not measured). {cite}")]))  # fmt: skip
+    failures = rig.run()[0]
+    assert any("(#1079)" in f and "H1" in f for f in failures), failures
+
+
+def test_a_reproduced_after_a_leak_in_an_earlier_attempt_supports_nothing(rig, monkeypatch) -> None:
+    """A successor campaign is covered too: its own earlier attempt leaked (campaign 1's closure is clean)."""
+    failures = _reproduce(rig, monkeypatch, before_c2=_as_new_keys, c2_attempt={"earlier": _leaky_attempt_1})
+    assert any("leaked into an earlier attempt of this campaign (#1079)" in f for f in failures), failures
+
+
+@pytest.mark.parametrize("rejudged, refused", [
+    ({"deciding_attempt": None, "attempts": [{"run_id": "a", "k": 1}, {"run_id": "b", "k": 2}]}, None),
+    ({"deciding_attempt": "a", "attempts": [{"run_id": "a", "k": 1}]}, None),  # vacuous: nothing came earlier
+    ({"deciding_attempt": "b", "attempts": [{"run_id": "a", "k": 1}, {"run_id": "b", "k": 2}]}, "does not compute"),
+    ({"deciding_attempt": "b", "attempts": [{"run_id": "a", "k": 1}, {"run_id": "b", "k": 2}],
+      "within_campaign_leaks": []}, None),
+    ({"deciding_attempt": "b", "attempts": [{"run_id": "a", "k": 1}, {"run_id": "b", "k": 2}],
+      "within_campaign_leaks": [["a", 1, ["P0"]]]}, "FAILED gate leaked"),
+    ({"deciding_attempt": "a", "attempts": [{"run_id": "a", "k": True}]}, "does not compute"),  # a bool is not k 1
+    ({"deciding_attempt": "a", "attempts": [{"run_id": "z", "k": 1}]}, "does not compute"),  # deciding not listed
+])  # fmt: skip
+def test_the_within_campaign_rule(rejudged, refused) -> None:
+    problems = R.o19_within_campaign_problems({"rejudged": rejudged}, "x")
+    assert (problems == []) if refused is None else any(refused in p for p in problems), problems
+
+
+def test_the_within_campaign_trigger_is_vacuous_for_every_verdict_on_main() -> None:
+    """The four pre-#1079 campaigns: ABORT (10, 10c2) or deciding at k = 1 (09, 63), so their bound judges, which do
+    not emit the bar, still support exactly what they did."""
+    found = {}
+    for path in sorted((REPO / DATA).glob("*/verdict.json")):
+        rec = json.loads(path.read_text())
+        if R.str_field(rec, "kind") not in R.O19_KINDS:
+            continue
+        found[rec["experiment"]] = rec.get("deciding_attempt")
+        assert "within_campaign_leaks" not in rec, path
+        assert R.o19_within_campaign_problems({"rejudged": rec}, rec["experiment"]) == [], path
+    assert set(found) == {"10", "10c2", "09", "63"}, found

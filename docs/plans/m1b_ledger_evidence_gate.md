@@ -586,6 +586,31 @@ name; unknown → NOT-ESTABLISHED. Outcomes: ESTABLISHED / LEGACY (in the snapsh
   it. HEAD's own cap must be an int >= 1 and hold HEAD's table (S2: a malformed cap cannot land and later refuse
   every judge edit). Continuity is gate-owned (S1): every HEAD successor's experiment and kind are its
   predecessor's, and a non-string `experiment` refuses (`_o19_campaign_count_problems`).
+- **A leaked gate inside one campaign bars its deciding attempt (#1079; owner decision 2026-10-08, REFUSE).** For
+  campaign keys outside `o19_verdict.PRE_1079_KEYS` (the four campaigns with a verdict on main: `10`, `10c2`, `09`,
+  `63`, whose `judge()` output is unchanged), the judge reports `within_campaign_leaks`: each attempt BEFORE the
+  deciding one (all of them for an ABORT), in k order, whose committed `ok` phases show a FAILED or unjudgeable
+  `LEAK_GATES` gate (the #1059 phase-prefix map, now read by both bars through `_attempt_leak`), as a STRUCTURED
+  `[run_id, k, status]` (`status` = the sorted failed gate names, `"unjudgeable"` or `"rowless"`); its prose twin
+  `within_campaign_leak_notes` (host paths, exception text) is never compared and never persisted (the writer prints it to
+  stderr and drops it before writing `verdict.json`). An earlier attempt the judge found
+  C1–C5-incomplete is still read (strict), and an earlier start marker with no rows BARS (D1: "rowless"). The
+  verdict and its exit code do not change. The gate
+  (`_evidence_records.py::o19_within_campaign_problems`, from `o19_succession_problems` right after S2, so root and
+  successor campaigns and every token) reads only the bound judge's re-run: its trigger is structural, the
+  deciding attempt's k is not 1 (design pass S2; vacuous for the four keys: 10/10c2 decide nothing, 09/63 decide at
+  k = 1), and then the field must be present (a bound judge without it supports nothing, so a new key wrongly added
+  to `PRE_1079_KEYS` fails closed) and empty. `o19_difference` compares the structured field (S1: a forged `[]`
+  fails; absent on every pre-#1079 record and judge, `None == None`). `O19_INTERFACE` is not extended, so every
+  judge main ever held still loads. **D1 is writer-enforced and gate-trusted** (S3): the writer reads the markers
+  from origin. The gate binds every row to its start marker by the `attempt_k` and `marker` the harness stamps
+  (`_evidence_records.py::_rejudge_with`), so a record that drops a rowless marker and renumbers k is refused unless
+  its rows are forged too; that residue (the forged-verdict class, reproduction §12) is owed as a gate-side check of
+  the rows history and the markers against fetched tags
+  ([#1168](https://github.com/dennys246/Maxim/issues/1168), outstanding M40). The harness preflight refuses a new attempt
+  of such a campaign once an earlier one leaked or is rowless (D2, `o19_rerun.py::check_within_campaign`, from
+  origin's markers and `origin/main`'s rows), and `protocol_problems` refuses a campaign whose phase counts
+  `LEAK_GATES` does not cover.
 - **A scope is one path component** (#1081 item 3): `protocol_problems` refuses a scope that is not
   `[0-9a-z_]+`, the shape the gate's directory placement and the leaked-gate bar assume.
 - **Not built (owner decision 2026-10-08): per-campaign model pins** (#1081 items 1–2). Closed with the trigger
