@@ -114,6 +114,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`MemoryAgent`'s Dormant context queries no longer move retention** ([#1128](https://github.com/dennys246/Maxim/issues/1128),
+  owner decision 2026-10-07: keep running, read uncounted). On every tick through `ExecAgent.propose_intent` they
+  fill `relevant_memories`, `concept_context`, `knowledge_context`, `valence_context` and `causal_context`, which no
+  production path reads (#845), and their reads touched the records they looked at: `Hippocampus.get` (twice per
+  candidate) and the concept builder's `ATL.get`. So recent episodes and related concepts gained `access_count` (default `access_based` retention) for results
+  nothing used. They keep running, because `_build_concept_context` is concept grounding's only production caller
+  outside `agentic_runtime` (ATL relation updates, AG quantification), but those reads are now uncounted: a
+  `recall_by_ids` peek for the Hippocampus, a new keyword-only `AngularGyrus.recall(touch=False)` (preventive: the AG
+  fallback's category key never matched, so it touched nothing until #1153 is fixed), and
+  `count_access=False` through `MemoryHub.build_concept_context` / `ConceptContextBuilder.build` (default `True`, so
+  the adaptive planner, whose result is used, still counts). Grounding's own touches (ATL and AG) stay.
 - **The benchmark composite honours the suite format it ships; Tier 3 declared Dormant** (bugs ledger D49, owner
   decisions 2026-10-07). Shipped suites set a per-scenario `weight` and a per-scenario `benchmark.metrics`
   selection, and the runner ignored both: the composite was a flat mean of every collected metric, and repeat runs
