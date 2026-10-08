@@ -1,6 +1,11 @@
 # Thalamus & hypothalamus — the organizing frame for percept ingress + drive integration
 
 > **⛔ SUPERSEDED 2026-07-17 by `thalamus_relay_design_pass.md` (the grow-vs-subsume fork resolved: SUBSUME) → shipped PR #402. Kept as the organizing frame (percept = thalamus, drives = hypothalamus).**
+>
+> **Revisited 2026-10-07 by the grounding line** ([../grounding.md](../grounding.md)): this frame
+> organizes GL2 ([../autonomic_layer.md](../autonomic_layer.md), hypothalamus/insula) and GL3
+> ([../thalamic_relay.md](../thalamic_relay.md), the relay), extended by a binding layer (GL4). The SUBSUME
+> decision above stands.
 
 **Status:** Framing note (2026-07-17). Not a build plan — an **organizing model** that explains the
 four-facet percept-testbed audit ([percept_testbed_audit.md](percept_testbed_audit.md)) and names

@@ -1,6 +1,17 @@
 # Perception Pipeline Placement — per-stage workload distribution
 
 
+> **Revive trigger RE-KEYED 2026-10-07 (owner decision; [DECISIONS.md](../../../DECISIONS.md)
+> 2026-10-07).** The physical trigger below conflated two N=2 arguments. Minecraft and the other live
+> sources already satisfy the PERCEPTION abstraction. So this plan now revives when **the grounding
+> line's GL3 registry+provenance stage ([thalamic_relay.md](../thalamic_relay.md)) ships AND a stage is
+> placed across a wire**, a capability trigger, not a body count. The robot hardware factory ([second_body_staging.md](second_body_staging.md) Stage B)
+> keeps the physical-robot trigger.
+>
+> The `src/` Dormant marker in `runtime/perception_placement.py` (module docstring) still names "the
+> 1.3 cross-modal perception fabric" as its resurrection trigger. Re-pointing it is a `src/` docstring
+> change that needs an `[Unreleased]` line; until it lands, this banner governs.
+>
 > **DEFERRED 2026-09-19** (plans audit at the 1.3.0 release; README §Rules: a deferred plan states its revive trigger). **Revive when:** a second robot body physically exists (a real backend registered through `maxim.robots`, or the operator records its arrival). The design below is unchanged and is not being worked on until then.
 **Status:** Shell plan, drafted 2026-06-22; corrected 2026-06-22 after a code-grounded review pass (see "Review corrections" below).
 **Scope:** Abstraction (placement type + config surface + pinned/placeable model) is the deliverable; per-placement implementation is small and incremental, shipped one cut point at a time. The driving consumer (Reachy sound-localization cradle) is a separate, larger build with real new substrate + motor work — *not* "mostly free reuse" (see honest accounting below).

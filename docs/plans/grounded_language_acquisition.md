@@ -1,5 +1,19 @@
 # Grounded Language Acquisition + Substrate-Primary AUT (parallel-mode architecture)
 
+> **SUBSUMED FOR GROUNDING 2026-10-07 by [grounding.md](grounding.md)** (owner decision G5;
+> [DECISIONS.md](../../DECISIONS.md) 2026-10-07). Grounding is now done body first. Words become
+> similar by the consequences of the actions they name, predicted by
+> [latent_forward_model.md](latent_forward_model.md). Its word side is the innate-prior tier and
+> enters after the orchestrator decomposition. That answers this plan's paired-data audit ("REDESIGN
+> THE SOURCE") by changing the pair: (context, consequence), not (sensor vector, text percept). Phase
+> 2's symbol-binding layer is therefore not built from here.
+>
+> **This plan keeps its own scope**, recorded in the note below as of 2026-09-19:
+> - the substrate-primary AUT and the parallel-mode architecture;
+> - its Phase -1 / Phase 0 history;
+> - the paths that `src/`, the CLI help text and `analysis/roy_log.py` cite, which is why it stays at
+>   this path.
+>
 > **REVIVED 2026-09-19 as a PARALLEL LINE, with an entry condition (owner decision).** The
 > 2026-09-19 plans audit flagged this file: it declared itself the active umbrella while no roadmap
 > referenced it, and two files it names were never written (`src/maxim/language/binding_registry.py`,
