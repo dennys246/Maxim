@@ -489,6 +489,19 @@ jobs:
         # tests/unit/test_lint_coverage.py.
         run: python scripts/lint_coverage.py
 
+      - name: Upload coverage.json (#1103, diagnostic)
+        # Diagnostic only, after the gate (lint_coverage.ci_step_rules allows nothing between the measuring
+        # suite and the gate but MemoryHub). #1103: a few statements flip between identical CI runs (they did
+        # not flip across two identical local runs, 2026-10-08); diffing `executed_lines` of two runs of one
+        # commit names the timing-dependent lines. Uploaded even when the gate fails, which is when it matters.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-json
+          path: coverage.json
+          retention-days: 14
+          if-no-files-found: warn
+
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 5
