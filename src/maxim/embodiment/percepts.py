@@ -151,8 +151,8 @@ class EmbodimentPerceptSource:
         # and this branch is a no-op (byte-identical pre-Stage-3 path).
         #
         # The sensor-value collector walks the embodiment tree directly
-        # (NOT body_state_summary, which intentionally skips dotted-key
-        # modulator drive specs — Roy-4 review surfaced this gap, see
+        # (NOT body_state_summary, which skipped dotted-key modulator drive
+        # specs until #1125 — Roy-4 review surfaced this gap, see
         # naming_events.py::collect_sensor_values docstring).
         if self._naming_patterns:
             from maxim.embodiment.naming_events import (

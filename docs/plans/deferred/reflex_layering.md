@@ -1,5 +1,9 @@
 # Reflex layering: separating what hit the body, what it felt, and what it did
 
+> **2026-10-07 (grounding line, [../grounding.md](../grounding.md)):** routes 2/3 (stimulus vs felt pain
+> vs response) are GL3's fast/slow track split in [../thalamic_relay.md](../thalamic_relay.md). Added
+> revive trigger: GL3's two-track thermal receptor opens. Triggers (a)–(d) below are unchanged.
+
 > **DEFERRED 2026-09-24 (owner decision).** Route 1 of this finding shipped as a fix: a
 > `ReflexFiring` now records its `outcome` (`acted` / `failed` / `suppressed` / `dry_run`). Routes 2
 > and 3 below are recorded here and not built.

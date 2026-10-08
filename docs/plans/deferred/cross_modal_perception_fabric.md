@@ -1,6 +1,15 @@
 # Cross-Modal Perception Fabric (1.3 design direction)
 
 
+> **Revive trigger RE-KEYED 2026-10-07 (owner decision; [DECISIONS.md](../../../DECISIONS.md)
+> 2026-10-07).** The physical trigger below conflated two N=2 arguments. Five live sources (drives, the
+> Minecraft world, Reachy DoA, narrator text, DN vision) already satisfy the PERCEPTION abstraction. So
+> this plan now revives on a capability: **the grounding line's GL3 registry+provenance stage
+> ([thalamic_relay.md](../thalamic_relay.md)) ships AND a 1.4 rung needs cross-modal binding.** Until then, its binding convention, two-level
+> attention and artifact contract are inputs to that plan, not a plan of record, and its Stage 0 gates
+> are unchanged. The robot hardware factory ([second_body_staging.md](second_body_staging.md) Stage B)
+> and the microduck keep the physical-robot trigger.
+>
 > **DEFERRED 2026-09-19** (plans audit at the 1.3.0 release; README §Rules: a deferred plan states its revive trigger). **Revive when:** a second robot body physically exists (a real backend registered through `maxim.robots`, or the operator records its arrival). The design below is unchanged and is not being worked on until then.
 **Status:** DESIGN DRAFT, **rev 4** (2026-08-11). Zero code. Rev 4 folds the H1
 campaign result and the Exp 48 apparatus investigation: **Stage 0a is now
