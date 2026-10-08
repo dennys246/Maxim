@@ -32,6 +32,15 @@ _BREACH_MIN_EPS = 1e-3
 _BREACH_HYSTERESIS = 0.2
 
 
+def _modulator_sensor_unit(ent: Entity, qualified: str) -> str:
+    """The declared ``unit`` of a modulator sub-sensor (``arms.thermal``); ``"ratio"`` when none is
+    declared, the same default the summary gives an entity-level drive."""
+    mod_name, sub_name = qualified.split(".", 1)
+    sub_spec = getattr(ent.modulators.get(mod_name), "_sensors", {}).get(sub_name, {})
+    unit = sub_spec.get("unit") if isinstance(sub_spec, dict) else None
+    return unit if isinstance(unit, str) and unit else "ratio"
+
+
 @dataclass
 class EmbodimentConfig:
     """Configuration for the Embodiment runtime."""
@@ -652,17 +661,24 @@ class Embodiment:
             # Include drive state from vital_metrics for sensors with DriveSpecs
             # that may not be captured by sensor.read() (vital_metrics path)
             from maxim.embodiment.sem import EntropicDriveSpec, HomeostaticDriveSpec
+            from maxim.embodiment.sem import _read_sensor_value
 
             for ds_name, ds in ent.drive_specs.items():
                 if ds_name in ent_state["sensors"]:
                     # Already captured — add drive annotation
                     val = ent_state["sensors"][ds_name]["value"]
-                elif "." not in ds_name and ds_name in ent.vital_metrics:
-                    # Entity-level vital metric not captured by sensor read
-                    val = ent.vital_metrics[ds_name]
-                    ent_state["sensors"][ds_name] = {"value": val, "unit": "ratio"}
                 else:
-                    continue
+                    # Not captured by a sensor read: an entity-level vital metric, or a
+                    # modulator drive (``arms.thermal``) whose value lives on the modulator.
+                    # Both go through the embodiment's one resolution rule (#1125). A None or
+                    # non-numeric value skips that drive (the pressure record's rule); an int
+                    # renders as a float.
+                    resolved = _read_sensor_value(ent, ds_name)
+                    if resolved is None:
+                        continue
+                    val = resolved
+                    unit = _modulator_sensor_unit(ent, ds_name) if "." in ds_name else "ratio"
+                    ent_state["sensors"][ds_name] = {"value": val, "unit": unit}
 
                 # Annotate with drive state
                 if isinstance(ds, HomeostaticDriveSpec):

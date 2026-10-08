@@ -4,6 +4,12 @@
 > nothing here is 1.3 work — this is the staging that unlocks when a SECOND BODY exists (Stage B is
 > "driven by N=2"). A release-numbered name on deferred, release-independent work is how its status
 > went stale; the revive trigger below, not a version, is what governs it.
+>
+> **Not re-keyed 2026-10-07 (owner decision G4; [DECISIONS.md](../../../DECISIONS.md) 2026-10-07).**
+> The grounding line re-keys the PERCEPTION plans (the fabric, placement and modality resolution) to its
+> relay stage (GL3). This plan's physical trigger stands, because Stage B's "engine seam" is the robot
+> backend (`hardware/controller.py::RobotController`, `maxim.robots`), which Minecraft does not satisfy.
+> The grounding line's percept source is named `Receptor` in code, not "engine", to keep the two apart.
 
 **Status:** DRAFT 2026-09-01, written immediately after 1.1.2 published. **DEFERRED 2026-09-18 (owner) — revive trigger: a second body physically exists (a real backend registered through `maxim.robots`, or the operator records the body's arrival here); Stage A runs unchanged on revival. NOT the 1.4 plan — 1.4 is [roadmap_1_4.md](roadmap_1_4.md).** (Rescoped 2026-09-09: it was the 1.4 sequencing plan) — the perception fabric + microduck moved from 1.3 to 1.4
 when the survival world became 1.3 ("Oasis-2"; see [archive/roadmap_1_3.md](archive/roadmap_1_3.md) and the

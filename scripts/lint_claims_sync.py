@@ -66,7 +66,6 @@ NO_INDEX_ENTRY = {
 _ANY_MARKER = re.compile(r"<!--\s*claim\b[^>]*-->")
 _MARKER = re.compile(r"<!-- claim: (T\d-\d+) -->")
 _FENCE = re.compile(r"^\s*(```|~~~)")
-_SEPARATOR = re.compile(r"^\|?\s*:?-{3,}")
 
 
 @dataclass
@@ -102,7 +101,11 @@ def scan(text: str) -> tuple[list[Table], list[tuple[int, str]]]:
             i += 1
             continue
         current = None
-        if stripped.startswith("|") and i + 1 < len(lines) and _SEPARATOR.match(lines[i + 1].strip()):
+        if (
+            stripped.startswith("|")
+            and i + 1 < len(lines)
+            and L.is_delimiter_row(lines[i + 1], len(L.split_cells(stripped)))
+        ):
             current = Table(tuple(L.split_cells(stripped)))
             tables.append(current)
             i += 2

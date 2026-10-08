@@ -2,6 +2,9 @@
 
 
 > **DEFERRED 2026-09-19** (plans audit at the 1.3.0 release; README §Rules: a deferred plan states its revive trigger). **Revive when:** a second robot body physically exists (a real backend registered through `maxim.robots`, or the operator records its arrival). The design below is unchanged and is not being worked on until then.
+> **2026-10-07 (owner decision G4, [../grounding.md](../grounding.md)):** this trigger is NOT re-keyed;
+> it is the robot half of the second-body gate. This plan's reflex tier is not the grounding line's GL3
+> `reflex` track. Whether to re-read the "second robot body" gate is a question at GL3's start.
 **Status:** DRAFT plan, REVISED after three-lens review (2026-07-17 —
 [reviews/hybrid_runtime_two_lens_review.md](reviews/hybrid_runtime_two_lens_review.md)).
 Track 2 of [embodiment_runtime_wiring.md](archive/embodiment_runtime_wiring.md) — the piece that actually

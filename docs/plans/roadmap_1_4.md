@@ -8,11 +8,18 @@ rung *as sketched* and none attacked the thesis or the ladder's order. v2 folds 
 2026-09-18:** (1) the "Shared perception" 1.4 (perception fabric + microduck + Exp 55 [re-pointed 2026-09-27 to coding_world.md] + breeding,
 sequenced in [deferred/second_body_staging.md](deferred/second_body_staging.md)) is **DEFERRED on a physical trigger** — it
 revives the day a second body exists (a real backend registered through `maxim.robots`, or the
-operator records the body's arrival), Stage A unchanged, the plan intact; (2) 1.4 continues the
+operator records the body's arrival), Stage A unchanged, the plan intact *(re-keyed 2026-10-07 for its
+perception half; see below and §The grounding line)*; (2) 1.4 continues the
 survival line on the rig that already runs it: **generalization + anticipation**; (3) the deferred
 JEPA plan is **re-pointed, not revived** (§JEPA); (4) the motor layer for complex behaviour is
 **primitive movements** on a **variant body**; (5) the **instrument is refined first**, scoped by the
-first rung that consumes each piece — never as a framework.
+first rung that consumes each piece — never as a framework. **Owner decisions taken 2026-10-07**
+(§The grounding line; DECISIONS.md 2026-10-07): decision (3) is **reversed** — the predictor enters as
+[latent_forward_model.md](latent_forward_model.md), inheriting the JEPA plan's four rules; and
+decision (1)'s physical trigger now governs only the robot half of "Shared perception" — the
+perception plans re-key to capability triggers on the grounding line's GL3 registry+provenance stage
+(the fabric: that stage ships AND a 1.4 rung needs cross-modal binding; placement: it ships AND a stage
+is placed across a wire; modality resolution: it ships).
 
 **Shape, on purpose:** open where 1.3's plan was not. Fixed here: the thesis, the ladder's order, the
 instrument each rung needs, the release thresholds. Open: which rungs beyond the first two ship in
@@ -80,8 +87,8 @@ currency. The review changed what it looks like (§The classroom) and what each 
 | Primitives as the motor layer; param-free, fixed-duration; a VARIANT body | The exact primitive set and durations (pilot rows 1–2) |
 | The instrument, split by consumer (§Phase 0); E1's part ships before E1 | The campaign core's API (extracted; acceptance test below) |
 | Release thresholds T1–T4; T5/T6 conditional | Which mechanism E2/E3 name: routing, a relief store, a graded predictor, keying, none |
-| JEPA re-pointed; the survival-world paired-data audit is a DIFFERENT audit from its Stage 0 | Whether any predictor is JEPA-shaped |
-| "Shared perception" deferred on a physical trigger; Phase 1b deferred on the hostile-window trigger; intrinsic motivation stays a parallel line, not in this ladder | — |
+| JEPA re-pointed (reversed 2026-10-07: the predictor is [latent_forward_model.md](latent_forward_model.md), §The grounding line); the survival-world paired-data audit is a DIFFERENT audit from its Stage 0 | Whether any predictor is JEPA-shaped (2026-10-07: it is not called JEPA while its target is the fixed autonomic code) |
+| "Shared perception" deferred on a physical trigger (2026-10-07: its robot half only; the perception plans re-key to the grounding line's GL3); Phase 1b deferred on the hostile-window trigger; intrinsic motivation stays a parallel line, not in this ladder | — |
 
 ---
 
@@ -332,6 +339,9 @@ infrastructure the review located, and the full four-lens review.
   *Candidate consumer (2026-10-04, PROPOSED):* [executive_function.md](executive_function.md) Stage 1, a gated goal
   slot. It enters only if this routing audit shows routed credit fails for lack of a stable key across a dive
   ([#1073](https://github.com/dennys246/Maxim/issues/1073)).
+  *Grounding dependency (2026-10-07):* the grounding line routes no consequence-credited value to the
+  selection surface before this audit has decided that surface. GL2c waits for it, and GL6 enters
+  through it as a declared arm (§The grounding line).
 - **A cluster-keyed relief store (needed by E2).** New: a positive, world-keyed write from measured
   relief, beside the fear-only store. Front-gate against `credit_operant_reward` (teacher) and the
   trace. Enters BEFORE Phase 3. **Its review also reserves the opposite sign on the same seam** (schema
@@ -341,6 +351,11 @@ infrastructure the review located, and the full four-lens review.
   *Second candidate consumer (2026-10-04, PROPOSED):* [fear_learning.md](fear_learning.md) Experiment A's
   fear-relief credit (two-factor avoidance) is a positive, situation-keyed relief write. It front-gates against
   this store ([#1072](https://github.com/dennys246/Maxim/issues/1072)).
+  *Producer (2026-10-07, PROPOSED):* the grounding line's GL2c positive producer (satiation / relief,
+  [autonomic_layer.md](autonomic_layer.md)) writes the signed event this store keys. The recommendation
+  is one joint four-lens review covering producer and store, with fear_learning's Exp A and coding_world
+  C3's reserved sign; that is an owner decision at GL2c's start. Either way no second store is created,
+  and under any routing GL2c fires T1-11, T1-12 and T1-13/14/15 (owner decision G7).
 - **A graded predictor (anticipation).** Audit first: `anticipatory_pre_activate` + drive
   TemporalEvents (dormant on both ends) and `embodiment/cerebellum.py` (write live, read dormant —
   and, until [#908](https://github.com/dennys246/Maxim/issues/908) landed 2026-10-04, never SAVED: the
@@ -349,6 +364,12 @@ infrastructure the review located, and the full four-lens review.
   in [engram_formation.md](engram_formation.md)).
   Only if neither can carry "how far pain is" does a new plan (`latent_forward_model.md`) open — and
   that is where the §JEPA predictive idea and the §Pressure candidate input would live.
+  *(2026-10-07, owner: the plan is open. [latent_forward_model.md](latent_forward_model.md) is the
+  grounding line's GL4, and its S0a **is** this audit. The "only if neither can carry it" condition is
+  replaced by S0a's written verdict on how much of the Cerebellum and the timed predictor it extends
+  rather than rebuilds. Its target is the autonomic consequence record, `InteroceptiveOutcome`
+  ([autonomic_layer.md](autonomic_layer.md)), and E3's "how far is pain" is one readout of it.
+  §The grounding line; DECISIONS.md 2026-10-07.)*
 - **Keying / generalization (R1's home) — and Exp 62 §Rung B, whose entry condition is stated here
   because the branch below cannot reach it.** The tree Phase 1 writes ("never share → keying; share
   but no transfer → the write channel; transfer → the wall is further out") arms this mechanism only
@@ -405,19 +426,115 @@ infrastructure the review located, and the full four-lens review.
   restated: it must not silently power E1–E3 (a declared ablation arm or its own line, never an
   undeclared default). Disposition recorded in archive/roadmap_1_3.md Phase 6.
 
-## JEPA — re-pointed, not revived
+## The grounding line (owner decisions G1–G8, 2026-10-07)
 
-[deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md) is a **projection
-layer** aligning the 384-dim sensor encoder with the 768-dim language encoder; its revive trigger is
-"a problem that is structurally cross-modal AND unsolvable by threshold tuning". Nothing in this
-roadmap fires it: pressure, light, oxygen and position are sensor-encoded in one family and cosine
-between them is defined. What the survival line may need is the *predictive* idea — a latent forward
-model — which shares the acronym, not the mechanism, and enters (if at all) through Phase 5's graded
-predictor, after the Cerebellum and the timed predictor are audited. **The survival-world paired-data
-audit** (a sensor vector + a language percept per tick) is a DIFFERENT audit from that file's Stage 0
-(defined over Roy-5b cradle sessions with an NAc-reward pairing rule): it gets its own ≈ 50-line
-script and pairing rule, is a measurement that commits to nothing, and does not satisfy or replace
-Stage 0. The file's banner is edited to say so (§Record edits).
+**Plan of record:** [grounding.md](grounding.md), the umbrella. It holds the thesis, the stage table
+GL0–GL6, the front-gate answer for each part, the behaviour-tier map, the ledger blast radius, and every
+owner decision still open, each written as "Owner decision at <stage> start". Its sub-plans are
+[autonomic_layer.md](autonomic_layer.md) (GL2), [thalamic_relay.md](thalamic_relay.md) (GL3) and
+[latent_forward_model.md](latent_forward_model.md) (GL4). The state page is
+[../wiring/body-and-word-worlds.md](../wiring/body-and-word-worlds.md), and the decision record is
+DECISIONS.md, 2026-10-07. Where this section and grounding.md differ, grounding.md is authoritative for
+stage detail; this section owns only the placement in 1.4.
+
+**What it answers.** The [#1120](https://github.com/dennys246/Maxim/issues/1120) audit found that the EC
+is two disconnected worlds.
+- The **body world** is the `SensorEncoder` channels, at 0.85 with frozen centroids. It is the only
+  path that acts without the LLM, and no EARNED row depends on the word path.
+- The **word world** is EC `text`, embedded at 0.44 on a running mean, only with
+  `MAXIM_SUBSTRATE_PATH=1`: percepts on any runtime with that flag, affordance **names** only from the
+  `--sim` orchestrator.
+
+No edge joins the two, and every live Reaction is negative. So concepts are similar by name, never by
+what they do to the body: on shipped components, a `touch` that soothes and a `touch` that burns share one
+node. The line's thesis is the reverse: **concepts become similar by what they do to the body.** That
+question is a graded prediction of consequence, which is Anticipation's question asked of concepts, so
+the line sits in this roadmap rather than beside it.
+
+**Placement: it fills Phase 5's slots and does not add a ladder.** No second store and no second
+predictor is created.
+
+| Stage | What | Phase 5 slot / existing owner | When |
+|---|---|---|---|
+| GL0 — truth | the state page, the claim corrections, and the honest #1120 test fix (its own PR) | — (T8) | now: docs, tests, docstrings |
+| GL1 — paper | the four plans and their four-lens reviews; the L0 gate, read as the innate-prior measurement; a name-vs-consequence census over the shipped affordances | — (T8) | now: paper and offline |
+| GL2a — autonomic, record-only | the signed body-consequence record, `InteroceptiveOutcome` (deviation, pain, relief, urgency), produced beside `evaluate_failures` in `embodiment/body.py`; recorded, and nothing reads it to act | the producer side of the relief store (record only) | now: outside the fence (owner decision G1) |
+| GL2b — regulatory fixes | a heat corrective need; burn as pain (a `NociceptorSpec`; where it is declared is an owner decision at GL2b's start, with a variant body the strict-default recommendation); valence keyed on the cause, after [#1161](https://github.com/dennys246/Maxim/issues/1161) | none: these are defects, one issue each, in the nociception vocabulary ([deferred/nociception_layer.md](deferred/nociception_layer.md), revived into autonomic_layer.md) | after GL2a; fenced where it touches the loop |
+| GL2c — the positive producer | satiation / relief: the Reaction `EntropicDriveSpec` promised and nobody built; off by default, it fires T1-11, T1-12 and T1-13/14/15 under any routing and lands only with a batched live re-run of Exp 60/61/62 (+ the T1-11 and T1-12 arguments or re-runs; owner decision G7) | **the cluster-keyed relief store**, with [fear_learning.md](fear_learning.md) Exp A and [coding_world.md](coding_world.md) C3's reserved sign | after R4's routing audit |
+| GL3 — relay | GL3.B0, the census (ingress inventory, red gates; tests only) first; then GL3.B1, the `Receptor` registry over the existing sources, byte-identical, landing **with** provenance on the write path, whose consumers are GL5's experiment and the forward model's contamination guard (owner decision G8); GL3.B2, the handoff to GL4. The first `AfferentTrack` slice, GL3.B3, is the thermal dual-track fan-out (`nociceptive_fast` + `affective_slow`, one shared pid reaching credit), behind a flag, with no preemption; it needs GL2b's `NociceptorSpec` and carries the seq-authority handover as its stage gate. Nociceptive-fast preemption in substrate-primary, GL3.B4, enters only as a **declared 1.4 rung arm** (the owner names the rung). GL3.B5–B8 (text receptors, the `reflex` track, LLM-primary + the wake hook, hardware edges) each wait for a rung that names them. The timing defects L1, L2, L5 and L7 are to file as defect issues, fixable without the registry | none: infrastructure, entering only with its consumer (decision 5) | GL3.B0 runs now (tests only, inside the fence); GL3.B1 onward after the decomposition fence |
+| GL4 — latent forward model | S0a audit; S0b paired-data capture audit; S1 Cerebellum target fix; S2 offline predictor; S3 session-end retrain + guards; S4 opt-in consequence EC modality | **the graded predictor**: S0a is the audit §Phase 5 mandates | GL4 S0a (audit) and the paper run now; S0b needs a fresh capture (a sim run); S1 is `src/` inside G1's fence exemption and waits only for GL2a; S3 and S4 wait for the fence (owner decision G1) |
+| GL5 — the first claim | consequence similarity transfers learned value where names differ and blocks it where names collide; successor candidate to T1-5 | T9 | four-lens prereg review; sim |
+| GL6 — a selection consumer | the predicted consequence enters `recommend_action` as a **declared arm** | R4's selection surface | only if GL5 earns; rig re-runs after E3 |
+
+**It depends on R4.** The line routes no consequence-credited value to the selection surface before R4's
+routing audit has decided that surface (§Phase 5, "first"). GL2c waits for that audit, and GL6 enters
+through it.
+
+**Owner decision (3) is reversed** by owner decision G2 (§JEPA below; DECISIONS.md 2026-10-07). The
+predictor enters as `latent_forward_model.md`, so the §Phase 5 pointer to that name is now true, and it
+inherits the JEPA plan's four rules. It is not called JEPA while its target is the fixed autonomic code.
+
+**Second body: perception is re-keyed, the robot factory is not.** Minecraft already satisfies the
+perception abstraction. So the perception fabric, perception-pipeline-placement and modality-resolution
+plans now revive on capability triggers: the fabric when GL3's registry+provenance stage ships AND a
+1.4 rung needs cross-modal binding; placement when that stage ships AND a stage is placed across a
+wire; modality resolution when that stage ships. [deferred/second_body_staging.md](deferred/second_body_staging.md)
+Stage B (the robot factory), the orient line and the microduck keep the physical-robot trigger of owner
+decision (1).
+
+**Rules the line carries into this roadmap:**
+- Body world first. The word world comes later, as the innate-prior tier, after the orchestrator
+  decomposition.
+- `src/` waits for the 1.3.2 decomposition fence (§Groundwork), except GL2a and GL4 S1, inside an
+  exact exempt file set (Groundwork item 6).
+- Every automatic behaviour declares its tier. The word embedding is an innate prior; the consequence
+  predictor is learned. New invariants enter as `[engineering]`.
+- No grounding flag is set in an E1–E3 arm unless that arm declares it (M10, amended 2026-10-07).
+- Each grounding rig need is its own Track C slot (§Groundwork, Track C note).
+- New mechanization rows: M39 (every percept enters the EC through the relay), M40 (afferent tracks
+  are never OS threads) and M41 (forward-model training data carries provenance and the narrated
+  discount), in [outstanding.md](outstanding.md).
+- Narrator-written consequences are `narrated`, never `experienced`, and are used at a declared
+  discount (owner decision G6).
+
+**Blast radius, in short** (the full walk is in grounding.md):
+- **No earned row fires** for GL0, or for GL4 S0–S2 while it has no consumer.
+- **GL2a** is not a no-op for the ledger: it adds `EncodingSignals.extra["interoception"]` to every loop
+  capture, which `EncodingSignals.to_dict` persists, so T1-16's "memory record shape" fires by wording
+  (a structural walk), as does GL4 S1's `extra["context"]`.
+- **GL2b** fires T1-6 (functionally), T1-9/T1-10 only if a shared infant body changes, the wording of
+  T1-13's drive floor, and T3-9; its cause-keyed rows are a live LLM-path change (they reach the
+  ThoughtGate and enrichment through `learned_aversions`) and fire T1-14's bundle-scrub wording.
+- **GL2c** fires T1-11, T1-12, T1-13 (its #888 discharge lapses), T1-14 and T1-15 under any routing,
+  which means a batched live re-run of Exp 60/61/62 plus the T1-11 and T1-12 arguments or re-runs
+  (owner decision G7).
+- **GL3.B1, the registry+provenance stage**: whether a byte-identity-proven registry fires T1-6, T1-10,
+  T1-11, T1-12, T1-13, T1-14 and T1-15 by wording is an **owner decision at that stage's start**; the
+  strict-default recommendation is that they fire, the offline guards re-run, and rig re-runs take a
+  committed machine-readable exception.
+- **GL6** fires T1-3, T1-7 and T1-10 through T1-15.
+
+## JEPA — re-pointed 2026-09-18, reversed 2026-10-07
+
+Until 2026-10-07 this section read "re-pointed, not revived" (owner decision (3), 2026-09-18). The owner
+reversed it (DECISIONS.md 2026-10-07). The *predictive* idea now enters as
+[latent_forward_model.md](latent_forward_model.md), the grounding line's GL4, and it inherits
+[deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md)'s four rules:
+- no pretrained cross-modal weights;
+- the contamination guard is a CI test;
+- opt-in;
+- the existing encoders are untouched.
+
+It is **not called JEPA** while its target is the fixed autonomic code, because that is supervised
+regression in a JEPA shape. The name waits until the target is a learned embedding of a rich percept.
+
+The **projection** plan (384 ↔ 768 alignment) is subsumed for 1.4 and not revived; its banner says so.
+
+There are three paired-data audits, and none substitutes for another:
+- **The survival-world audit** (a sensor vector + a language percept per tick) is still a DIFFERENT
+  audit from that file's Stage 0, and does not satisfy it.
+- **latent_forward_model.md's S0b** is a third audit, over (context, consequence) pairs, with its own
+  pairing rule.
 
 ## Pressure — the instinct, its measured limits, and the corrected criterion
 
@@ -489,6 +606,32 @@ frozen status verbatim; **EARNED** per rung = every frozen gate of that rung's p
   measured a collapse); the release PR re-verifies the "Changes behaviour" column of
   [../wiring/engram-formation.md](../wiring/engram-formation.md) §1 by caller grep. Engineering only —
   no behavioural claim, and no earned row's trigger fires.
+- **T8 — grounding truth and contracts** ([grounding.md](grounding.md), owner decision G1, 2026-10-07).
+  Engineering only, modelled on T7. It requires three things:
+  - **(a) GL0 merged:** the state page [../wiring/body-and-word-worlds.md](../wiring/body-and-word-worlds.md),
+    the claim corrections, and the honest #1120 test fix. That fix flips the two original strict red
+    gates for the cause #1120 names, and keeps the new strict red gates (pinning the defects it found)
+    that its owner decisions retain. GL0 also files the timing defects L1, L2, L5 and L7 as defect
+    issues (owner decision G8).
+  - **(b) The plans reviewed:** grounding.md (the umbrella's own review included) and its three
+    sub-plans have each been through the
+    four-lens design review with no unfolded DO-NOT-BUILD, and through the three-lens review every
+    sub-plan gets.
+  - **(c) Dormancy and re-points done**, for the markers the line owns:
+    - `Hippocampus.retrieve_cross_modal` is marked Dormant;
+    - `episode.py::apply_hebbian_on_close`, bugs-ledger D6 and ledger T3-7 are re-pointed from "the 1.3
+      fabric stage" to the grounding line's binding stage;
+    - T3-4 (`anticipatory_pre_activate`) is re-pointed to latent_forward_model.md S0a.
+
+  Any grounding `src/` stage that ships before the cut (GL2a, GL4 S1, GL3.B1, the registry+provenance stage)
+  is walked under T4. If it has no
+  consumer, it is handled under T4a. T8 carries no behavioural claim, and no earned row's trigger fires.
+- **T9 (conditional) — the first grounding claim** (GL5; GL6 only if GL5 earns). Same rule as T5/T6:
+  it ships in 1.4.0 only if its outcome is recorded by the time T1–T4, T7 and T8 hold, otherwise in
+  1.4.x. A recorded null ships as a null; an unrun GL5 is neither claimed nor a failure. **It is never
+  co-headlined with E3** (owner). The release name and headline follow the rule below, which reads the
+  E-ladder only, and a GL5 result is reported as its own CHANGELOG line. Its prereg gets all four lenses,
+  because it is a new claim, and lands on `main` before its first data timestamp.
 
 **Name and headline rule.** The release name is fixed at the transaction from the highest rung with a
 recorded EARNED ("Anticipation" only if E3 earns it; "Sequence credit" if E2/E3's credit arm does;
@@ -544,6 +687,10 @@ until the 1.3.2 decomposition slices touching it have landed.
    at the pinned 0.44, purity ≥ 0.9 and leave-one-out accuracy ≥ 0.8 against a word-overlap baseline. A
    pass re-enters the line with a four-lens design review, ready to build after 1.3.2; a fail archives it
    with the measurement. Either way it is learned before any effort is spent.
+   *(2026-10-07, owner decision G5: L0 now runs as grounding GL1's innate-prior measurement, and its
+   "pass → candidate 1.5 headline" consequence is RETIRED. A pass informs
+   [latent_forward_model.md](latent_forward_model.md)'s word head instead of re-entering the line on
+   its own; see the [deferred/grounded_word_binding.md](deferred/grounded_word_binding.md) banner.)*
 3. **Social referencing's prerequisites** ([social_referencing.md](social_referencing.md)): the remaining
    [public_oasis.md](public_oasis.md) Phase 0 items it depends on, and the four-lens design review of its
    Exp C prereg (paper; its src waits for 1.3.2 and its rig time for E3).
@@ -555,6 +702,21 @@ until the 1.3.2 decomposition slices touching it have landed.
    ingest clamp as a pure `recommend_action` replay over donor-bundle pressure; do a draft `code_sandbox`
    world roster's situations separate — and the line's four-lens design review. None touches loop code;
    none needs the rig.
+6. **The grounding line's paper and offline stages** ([grounding.md](grounding.md); owner decision G1,
+   2026-10-07):
+   - GL0's truth PR and the honest #1120 test fix;
+   - GL1's four plans and their four-lens reviews, the L0 gate (item 2) and the name-vs-consequence
+     census;
+   - GL3.B0, the relay's census and red gates (tests only, inside the fence);
+   - GL4 S0a (audit) and the paper. GL4 S0b needs a fresh capture (a sim run). GL4 S1 waits only for
+     GL2a (exempt set below); GL4 S3 and S4 are `src/` and wait for the fence; GL4 S2 is offline
+     (`scripts/`).
+
+   GL2a may also land now, and GL4 S1 after it (owner decision G1). The exempt file set, exactly: GL2a
+   edits `embodiment/body.py`, `embodiment/sem.py`, the new leaf `embodiment/event_id.py`,
+   `runtime/executor.py` (`Executor._stamp_invocation` only), `tools/base.py::ToolOutput` and
+   `runtime/bio_integration.py`; GL4 S1 edits `embodiment/tool_bridge.py` (the `ActionContext` assembly and the observe call), `embodiment/cerebellum.py` (payload `"1.2"`, the new payload key, `import_state` refusing newer versions), `runtime/executor.py` (`Executor._stamp_invocation` only), `runtime/bio_integration.py` (`EncodingSignals.extra["context"]` at the loop capture) and the new leaf `embodiment/action_context.py` (the `ActionContext` type). Every other grounding `src/` change waits for the
+   decomposition slices.
 
 **Rig order (Track C)** — one rig, one operator; no live run on code that is still moving:
 1. the complete Exp 10 re-run (1.3.2, right after #935);
@@ -564,6 +726,14 @@ until the 1.3.2 decomposition slices touching it have landed.
 4. after E3's campaign has run or its disposition is recorded, the parallel lines' rig work, one at a
    time: social referencing's Exp C, then the coding world's Exp W Stage 2 (only if its offline replay
    found a non-trivial region).
+
+*Grounding line (2026-10-07):* each rig need is its own slot, never stacked on another run.
+- **GL2c's batched live re-run of Exp 60/61/62** (+ the T1-11 and T1-12 arguments or re-runs): one slot, after
+  item 2 and between E-rung campaigns, never during one.
+- **GL3.B4 (nociceptive-fast preemption)** runs only as a declared arm inside the rung that names it;
+  GL3.B3, the first track slice, is a flag-off fan-out and needs no rig slot.
+- **GL6's re-runs:** after E3.
+- **GL2b's Exp 42 re-run** is a sim, not the rig.
 
 ## Schedule that keeps the rig busy (scope lens SF-8)
 
@@ -600,6 +770,9 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   instrument rebuild; a second research line inside it would make a null in either unreadable.
   *(2026-09-21: audit ran; disposition REDESIGN THE SOURCE; exploratory re-audit #810.)*
   *(2026-09-24: its concrete path, [deferred/grounded_word_binding.md](deferred/grounded_word_binding.md), is DEFERRED behind a frozen offline gate — do blind-authored phrasings of five situations cluster by situation? Pass → a candidate 1.5 headline; fail → archive. Language stays off this ladder.)*
+  *(2026-10-07: SUBSUMED for grounding by [grounding.md](grounding.md) (owner decision G5), which sits in §Phase 5's slots
+  rather than here; this entry stays as the record of the 2026-09-19 line. Language still stays off the
+  E-ladder: the word side is the innate-prior tier, after the orchestrator decomposition.)*
 - **Memory strength and forgetting** ([memory_strength_and_forgetting.md](memory_strength_and_forgetting.md),
   opened 2026-09-21): a hippocampal forgetting model — storage strength from existing signals
   (salience, novelty, RPE, pain, relevance-gated drive pressure, relief, failure; noisy-OR over
@@ -648,7 +821,10 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
 ## What is NOT in 1.4
 
 - **Shared perception** — deferred on a physical trigger (a second body); Stage A unchanged on
-  revival; plan intact.
+  revival; plan intact. *(2026-10-07: this now covers the robot half only: the hardware factory, the
+  microduck and the reflex runtime. The perception half is re-keyed to the grounding line's GL3
+  registry+provenance stage (the fabric also needs a 1.4 rung that requires cross-modal binding); see
+  §The grounding line.)*
 - **The survival reflex tier (1.3 Phase 1b)** — deferred on its trigger, now recorded in
   archive/roadmap_1_3.md: the measured onset-to-death window of a hostile against this loop's ≈ 1 s reaction;
   longer than a second ⇒ never built.
@@ -677,6 +853,14 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
 - **The coding world grows into a second ladder.** At most one claim-bearing experiment in that line is
   active at a time (M12); its `src/` waits for the 1.4.0 cut by default; the divergence rule applies
   line-wide.
+- **The grounding line lapses an earned row's discharge and adds a second may-fail line.**
+  - GL2c's positive producer makes T1-13's #888 reasoning false and, under any routing, fires T1-11,
+    T1-12, T1-14 and T1-15 too (the Minecraft breach latches clear at Exp 60's own contingency). Mitigation:
+    off by default, the executing survival checks unchanged with it off, the staged-donor refusals
+    restated, and one batched live re-run of Exp 60/61/62 (+ the T1-11 and T1-12 arguments or
+    re-runs).
+  - A GL5 null and an E3 null in one release would each be unreadable. Mitigation: T9 is conditional
+    and never co-headlined, and M10 is amended.
 
 ## Record edits made with this plan (so the plans audit reads one story)
 
@@ -705,6 +889,37 @@ each; the status header marks Exp 55 re-pointed. Companion edits: [coding_world.
 [social_referencing.md](social_referencing.md) (§Deferred sources), [README.md](README.md) (§Active entry;
 Exp 55 leaves the Shared-perception deferral), [outstanding.md](outstanding.md) (M10–M14), DECISIONS.md
 (2026-09-27 record).
+
+*2026-10-07 (grounding line):*
+- **This file:**
+  - the status header records the 2026-10-07 decisions;
+  - §Phase 5 gains notes on R4, the relief store and the graded predictor (the
+    `latent_forward_model.md` pointer is now true);
+  - a new §The grounding line;
+  - §JEPA is rewritten as a pointer (decision (3) reversed);
+  - §Release thresholds gains T8 and T9;
+  - Groundwork gains item 6, a note on item 2 and a Track C note;
+  - §Parallel lines, §What is NOT in 1.4 and §Risks gain one line each.
+- **New:** [grounding.md](grounding.md), [autonomic_layer.md](autonomic_layer.md),
+  [thalamic_relay.md](thalamic_relay.md), [latent_forward_model.md](latent_forward_model.md), and
+  [../wiring/body-and-word-worlds.md](../wiring/body-and-word-worlds.md).
+- **Companion edits:**
+  - [README.md](README.md): an §Active subsection, the 1.4 row and §Deferred notes;
+  - dated banners on [grounded_language_acquisition.md](grounded_language_acquisition.md),
+    [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md),
+    [deferred/grounded_word_binding.md](deferred/grounded_word_binding.md),
+    [deferred/cross_modal_perception_fabric.md](deferred/cross_modal_perception_fabric.md),
+    [deferred/perception_pipeline_placement.md](deferred/perception_pipeline_placement.md),
+    [deferred/modality_resolution_and_alignment.md](deferred/modality_resolution_and_alignment.md),
+    [deferred/second_body_staging.md](deferred/second_body_staging.md),
+    [deferred/nociception_layer.md](deferred/nociception_layer.md),
+    [archive/affordance_concept_transfer.md](archive/affordance_concept_transfer.md),
+    [deferred/reflex_layering.md](deferred/reflex_layering.md),
+    [deferred/hybrid_substrate_reflex_runtime.md](deferred/hybrid_substrate_reflex_runtime.md) and
+    [archive/thalamus_hypothalamus_framing.md](archive/thalamus_hypothalamus_framing.md), plus a dated
+    E7 pointer line in [engram_formation.md](engram_formation.md);
+  - [outstanding.md](outstanding.md): M39, M40 and M41 added, M10 amended;
+  - DECISIONS.md: the 2026-10-07 record.
 
 ## Review record (v1 → v2, 2026-09-18)
 

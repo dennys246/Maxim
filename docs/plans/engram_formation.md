@@ -192,6 +192,9 @@ is". Yes → its plan wires `predict` into the substrate path (not `CerebellumMo
 fallback) and may revive engram recall as context. No → E2's dormancy stands; at the next release
 checkpoint with no reviver, the motor-engram docs move to a "designed, never wired" appendix.
 
+*(2026-10-07: that audit is now [latent_forward_model.md](latent_forward_model.md) S0a, the grounding
+line's GL4 ([grounding.md](grounding.md)); E7's owner pointer moves there.)*
+
 ## Sequencing
 
 ```

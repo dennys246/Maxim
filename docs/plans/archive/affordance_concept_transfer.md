@@ -1,5 +1,20 @@
 # Affordance Concept Transfer — substrate-native cross-entity learning
 
+> **CORRECTED 2026-10-07 ([#1120](https://github.com/dennys246/Maxim/issues/1120),
+> [#910](https://github.com/dennys246/Maxim/issues/910)). The claims below are contradicted by the code;
+> the body is kept unedited as the record.**
+> - **(a) No component nodes.** A component close to its compound (~0.73) never gets its own node:
+>   "fire" and "breath" complete into the "fire breath" node at 0.40 and at 0.44. Where transfer
+>   happens, it is compound-to-compound by name ("flame jet" → "fire breath" at 0.601). Shared words
+>   link unrelated affordances ("water jet" → the "jet" node at 0.785).
+> - **(b) `[DANGEROUS]` could never fire.** `reward_bias` is clamped ≥ 0, and the branch was removed in
+>   #910.
+> - **(c) No caution behaviour was ever measured.** Ledger T1-5 is re-judged in GL0.
+> - **(d) 0.40 is retired.** Production is 0.44 (Exp 24–26).
+>
+> State: [../../wiring/body-and-word-worlds.md](../../wiring/body-and-word-worlds.md). Consequence-based
+> transfer is the grounding line's job ([../grounding.md](../grounding.md)).
+
 **Status:** Refined plan v3 (2026-04-24)
 **Scope:** DecompositionStrategy, LinguisticEncoder on-ramp, SCN temporal coupling, BioEnrichment annotations, per-agent imagination, self-affordance encoding
 **Depends on:** [sem_entity_ownership.md](sem_entity_ownership.md) (shipped — self vs scene entity separation)
