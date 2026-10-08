@@ -226,7 +226,7 @@ sleep 5
 maxim config set llm.profile deepseek-r1-distill-qwen-32b
 tmux new -d -s maxim-leader "source .venv/bin/activate && maxim --llm deepseek-r1-distill-qwen-32b"
 sleep 120
-curl -s -m 10 -H "Authorization: Bearer OYpVQCIwcczWmsBhlm0h2SU9xWXfVP7mKv-f_EqV2q8" http://127.0.0.1:8100/v1/models
+curl -s -m 10 -H "Authorization: Bearer $MAXIM_KEY" http://127.0.0.1:8100/v1/models
 
 # 4. Fire the harness (use same arm/scenario structure as Qwen32B fire — direct A/B)
 mkdir -p docs/experiments/data /tmp/exp37_deepseek
