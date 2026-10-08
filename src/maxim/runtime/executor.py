@@ -585,6 +585,7 @@ class Executor:
         if embodiment is None or getattr(embodiment, "root", None) is None:
             return None
         from maxim.embodiment.sem import drive_pressure
+        from maxim.embodiment.sem import _read_sensor_value
         from maxim.runtime.substrate_proposal import _read_drive_ranges
 
         # A body-read glitch must never take down the action: this runs OUTSIDE tool.run's guard,
@@ -593,15 +594,13 @@ class Executor:
             ranges = _read_drive_ranges(self)
             pressures: dict[str, float] = {}
             for entity in embodiment.root.walk():
-                metrics = getattr(entity, "vital_metrics", {}) or {}
                 for name, spec in (getattr(entity, "drive_specs", {}) or {}).items():
-                    value = metrics.get(name)
-                    if value is None:
+                    # The embodiment's one resolution rule (#1125): a qualified drive
+                    # (``arms.thermal``) is read from its modulator, not the root.
+                    # ``None`` = missing or non-numeric: skip the drive, never the action.
+                    reading = _read_sensor_value(entity, name)
+                    if reading is None:
                         continue
-                    try:
-                        reading = float(value)
-                    except (TypeError, ValueError):
-                        continue  # a non-numeric sensor value: skip the drive, never the action
                     lo, hi = ranges.get(name, (float("nan"), float("nan")))
                     measured = drive_pressure(spec, reading, lo, hi)
                     if measured is not None:

@@ -69,12 +69,9 @@ def _summary_sensors(emb: Embodiment) -> dict[str, dict[str, Any]]:
     return body["sensors"]
 
 
-# ── red gates: the record readers are blind to modulator drives ─────────────────────────────────
+# ── the record readers find modulator drives (red gates at f1c833ab) ─────────────────────────────────
 
 
-@pytest.mark.xfail(
-    strict=True, reason="#1125: the pressure record reads root.vital_metrics, so modulator drives are absent"
-)
 def test_the_pressure_record_carries_every_modulator_drive():
     _, emb = _infant()
     record = _pressure_record(emb)
@@ -88,9 +85,6 @@ def test_the_pressure_record_carries_every_modulator_drive():
     }
 
 
-@pytest.mark.xfail(
-    strict=True, reason="#1125: the pressure record reads root.vital_metrics, so modulator drives are absent"
-)
 def test_the_pressure_record_follows_the_arm_as_it_cools():
     root, emb = _infant()
     hot = _pressure_record(emb)["arms.thermal"]
@@ -99,7 +93,6 @@ def test_the_pressure_record_follows_the_arm_as_it_cools():
     assert _pressure_record(emb)["arms.thermal"] == 0.0
 
 
-@pytest.mark.xfail(strict=True, reason="#1125: body_state_summary skips every dotted drive name")
 def test_the_body_state_summary_shows_every_modulator_drive():
     _, emb = _infant()
     sensors = _summary_sensors(emb)
@@ -110,7 +103,6 @@ def test_the_body_state_summary_shows_every_modulator_drive():
     }
 
 
-@pytest.mark.xfail(strict=True, reason="#1125: body_state_summary skips every dotted drive name")
 def test_the_burning_arm_reaches_the_prompt_text_and_the_coach():
     """Behind ``MAXIM_ENABLE_BODY_STATE_PROMPT`` the LLM reads this text, and Acting Coach Layer 4
     names the drives that need attention from it."""
@@ -168,7 +160,6 @@ def test_the_body_state_prompt_stays_off_by_default(monkeypatch):
 # ── D2: the selection readers and both records agree with the one resolver, on the real body ────
 
 
-@pytest.mark.xfail(strict=True, reason="#1125: both records skip modulator drives, so they disagree with the resolver")
 def test_selection_and_record_readers_agree_with_the_resolver():
     """``_read_drive_states`` and ``substrate_telemetry`` resolve qualified drives with their own walk
     (left as they are, owner decision D2); the pressure record and the Body State read through the
@@ -183,8 +174,7 @@ def test_selection_and_record_readers_agree_with_the_resolver():
     - ``Embodiment.tick_vital_drift``: a writer with its own qualified walk;
     - ``naming_events.collect_sensor_values``: a flat walk over every sub-sensor, not only drives.
     """
-    from maxim.embodiment.sem import drive_pressure
-    from maxim.embodiment.tool_bridge import _resolve_sensor_slot
+    from maxim.embodiment.sem import _resolve_sensor_slot, drive_pressure
     from maxim.runtime.substrate_proposal import _read_drive_ranges, _read_drive_states
     from maxim.simulation.substrate_telemetry import _drive_snapshot
 
@@ -213,3 +203,64 @@ def test_selection_and_record_readers_agree_with_the_resolver():
         assert summary[name]["value"] == resolved[name], name
         expected_pressure = drive_pressure(root.drive_specs[name], resolved[name], *ranges[name])
         assert record[name] == pytest.approx(expected_pressure), name
+
+
+# ── one bad drive costs only that drive ──────────────────────────────────────────────────────────
+
+
+def test_a_malformed_modulator_range_costs_only_that_drive():
+    """The value read uses the LOCATION only, never the declared range: a range that cannot be parsed
+    drops that drive's pressure (``_read_drive_ranges`` skips it), not the whole record, and never
+    breaks the Body State."""
+    root, emb = _infant()
+    root.modulators["arms"]._sensors["thermal"]["range"] = [0.0]  # unpacks to nothing usable
+    record = _pressure_record(emb)
+    assert "arms.thermal" not in record
+    assert {name: record.get(name) for name in ("arms.pressure", "head.thermal")} == {
+        "arms.pressure": pytest.approx(0.75),
+        "head.thermal": pytest.approx(0.4),
+    }
+    assert set(_ROOT) <= set(record)
+    sensors = _summary_sensors(emb)
+    assert sensors["arms.thermal"]["value"] == 0.8  # the summary never needed the range
+    assert set(_QUALIFIED) | set(_ROOT) <= set(sensors)
+
+
+def test_a_non_numeric_modulator_value_costs_only_that_drive():
+    root, emb = _infant()
+    root.modulators["arms"].vital_metrics["pressure"] = "abc"
+    record = _pressure_record(emb)
+    assert record  # not None, not empty: the action's record survives one unreadable drive
+    assert "arms.pressure" not in record
+    assert {"arms.thermal", "head.thermal", *_ROOT} <= set(record)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (1, {"value": 1.0, "unit": "ratio", "drive": "deprived, intensity 0.30"}),
+        ("abc", None),
+        (None, None),
+    ],
+    ids=["int-renders-as-float", "non-numeric-skips", "none-skips"],
+)
+def test_the_summary_bare_fallback_reads_through_the_resolver(value, expected):
+    """A root drive the sensor reads did not capture falls back to its ``vital_metrics`` value, by the
+    resolver's rule: an int renders as a float, and a None or non-numeric value skips the drive
+    instead of raising out of the summary (the pressure record's rule)."""
+    root, emb = _infant()
+    del root.sensors["hunger"]  # hunger is now reachable only through the vital_metrics fallback
+    root.vital_metrics["hunger"] = value
+    sensors = _summary_sensors(emb)
+    assert sensors.get("hunger") == expected
+    if expected is not None:
+        assert type(sensors["hunger"]["value"]) is float
+    assert sensors["thirst"]["value"] == 0.4  # the rest of the body is still summarised
+
+
+def test_a_modulator_drive_with_no_declared_unit_renders_as_ratio():
+    """An undeclared unit renders ``ratio`` on a modulator drive, as it does on a bare drive (the infant's YAML
+    declares every unit, so this strips one to reach the default)."""
+    root, emb = _infant()
+    root.modulators["arms"]._sensors["pressure"].pop("unit", None)
+    assert _summary_sensors(emb)["arms.pressure"]["unit"] == "ratio"
