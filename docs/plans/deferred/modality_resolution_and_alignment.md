@@ -1,6 +1,12 @@
 # Modality resolution & alignment — the substrate's discriminability audit
 
 
+> **Revive trigger RE-KEYED 2026-10-07 (owner decision; [DECISIONS.md](../../../DECISIONS.md)
+> 2026-10-07).** This plan now revives when **the grounding line's GL3 registry+provenance stage
+> ([thalamic_relay.md](../thalamic_relay.md)) ships**, a capability trigger. The physical trigger
+> below was a perception argument that Minecraft and the other live sources already satisfy. Its
+> discriminability facts are inputs to that plan.
+>
 > **DEFERRED 2026-09-19** (plans audit at the 1.3.0 release; README §Rules: a deferred plan states its revive trigger). **Revive when:** a second robot body physically exists (a real backend registered through `maxim.robots`, or the operator records its arrival). The design below is unchanged and is not being worked on until then.
 **Status:** DRAFT (2026-08-11). Prerequisite for
 [deferred/retrosplenial_spatial_frames.md](deferred/retrosplenial_spatial_frames.md)
