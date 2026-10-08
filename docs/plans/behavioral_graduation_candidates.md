@@ -231,6 +231,36 @@ update.
   ATL relations, and the survival harnesses use the ATL only through `activate_substrate_node` (#812's
   caller grep).
 
+### Trigger walk — 2026-10-08, #1125 (the drive records read modulator drives)
+
+#1125 makes two RECORD readers resolve a modulator drive (`arms.thermal`, `arms.pressure`, `head.thermal` on the
+infant bodies) through the one resolution rule, moved to `embodiment/sem.py` (`_resolve_sensor_slot`, and its
+location-only read `_read_sensor_value`): the executor's `drive_pressure` on the encoding record, and
+`Embodiment.body_state_summary`. The pressure record reads root drives exactly as before (pinned); the summary's
+root-drive fallback now renders an int as a float and skips a None or non-numeric value instead of raising. The
+credit reads (`pre_values`, `_drive_potential_diff`, `_drive_progress_by_drive`, `cradle_mother`) are deliberately
+NOT changed; resolving them inverts Exp 42's harm credit at arm saturation, which is #1161's to walk. **No Earned or
+Validated row fires:**
+
+- **T1-9 (Exp 52)** names `_drive_potential_diff`, which is unchanged (a docstring correction only), and
+  `cradle_mother`, which is untouched.
+- **T1-6 (Exp 42), T1-4, T1-7**: no credit, B8, `record_outcome` or orient path changed. Exp 42's
+  `test_execute_delta_attribution_causing_vs_bystander_on_chilled_body` passes unchanged. The resolver's move keeps
+  `self_effect` / `target_effect` / `set_entity_sensor` writes behaviour-identical (the range half is unchanged).
+- **T1-16** names "the memory record shape": unchanged (the same per-drive tuple; an infant body now has seven
+  entries in it instead of four). The encoding tag reads pressure only for drives in `drive_relief`, whose keys
+  come from the unchanged credit path, so no tag moves.
+- **T1-2 (Exp 37)** "prompt construction change": the Body State text gains the modulator drives, but only
+  behind `MAXIM_ENABLE_BODY_STATE_PROMPT` (default off, and not wired in production before 2026-07-14). The row
+  is already STALE.
+- **T3-9 (Exp 09, PARTIAL)** "Cradle / drive / SEM body change": no body, drive or cradle definition changed;
+  the narrative reflex path reads neither record.
+- **The global trigger table:** "Cradle / drive / SEM body change" → T3-6, T3-10, T3-15, and "prompt-builder
+  change" → T3-11, T3-12. All five are DROPPED. "Bio-system refactor touching module M" does not apply: the
+  resolver's move into `sem.py` is behaviour-identical for its writers, and no bio-system module changed.
+- **The only flag-on consumers** of the Body State text are Exp 44 and the
+  `acting_coach_body_state_ablation` plan, both deferred (T3-11, the Acting Coach row, is DROPPED).
+
 ### Trigger walk — 2026-10-04, #908 + #909 (the Cerebellum is saved; its read side is marked Dormant)
 
 #908 makes `build_bio_stack` bind `<home>/cerebellum.json` on the Cerebellum's config, so
