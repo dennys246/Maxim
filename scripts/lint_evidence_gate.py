@@ -4,7 +4,8 @@
 A ledger row at a positive status or PARTIAL, when it changes, must rest on evidence that is ESTABLISHED: stamped,
 not a typed abort, not mock, the code on main, one known code tree (judged by ``scripts/_evidence_records.py``). A raise, a move between positive tokens or a date
 change additionally needs NEW support: a newly cited, stamped VERDICT that the merge-base pass table
-(``docs/experiments/evidence_pass_table.json``) lets support this row at its new token. Records committed before
+(``docs/experiments/evidence_pass_table.json``) lets support this row at its new token and its scope (the qualifier
+head, #1141). Records committed before
 M1a are LEGACY (``docs/experiments/evidence_legacy.json``): judged as such, never new support. Owner-named
 overrides live in ``docs/experiments/evidence_exceptions.json``: only clauses already on main act, append-only.
 
@@ -87,9 +88,19 @@ def require_met(record: dict, require: dict) -> bool:
     return True
 
 
-def support_problem(j: Judgement, row_id: str, token: str, table: dict, after: float, *, ctx: Ctx) -> str | None:
-    """Why this newly cited record does NOT supply new support for moving ``row_id`` to ``token`` (None = it does).
-    An O19 verdict additionally obeys the campaign-succession rules (#1059), read through the gate's ``ctx``."""
+def row_scope(row: L.Row) -> str | None:
+    """The scope a row claims at its status: its qualifier's head (``narrow``, ``rung A``), or None when unqualified.
+    An empty qualifier ``()`` gives ``""``, a head no pass-table entry may list (#1141 design pass N2)."""
+    return None if row.qualifier is None else L.qualifier_head(row.qualifier)
+
+
+def support_problem(
+    j: Judgement, row_id: str, token: str, table: dict, after: float, *, ctx: Ctx, scope: str | None
+) -> str | None:
+    """Why this newly cited record does NOT supply new support for moving ``row_id`` to ``token`` at ``scope`` (the
+    row's HEAD qualifier head, None = unqualified; required, never defaulted: a default None would match every
+    unqualified entry) (None = it does). An O19 verdict additionally obeys the campaign-succession rules (#1059), read
+    through the gate's ``ctx``."""
     if j.status != ESTABLISHED:
         return f"{j.path} is {j.status}"
     if j.kind not in SUPPORT_KINDS or j.record is None:
@@ -102,6 +113,19 @@ def support_problem(j: Judgement, row_id: str, token: str, table: dict, after: f
         return f"{j.path}: {kind} may not support {row_id}"
     if j.record.get("verdict") not in ((entry.get("targets") or {}).get(token) or []):
         return f"{j.path}: verdict {j.record.get('verdict')!r} does not support {token}"
+    # #1141: the KIND implies the scope it supports, read from the merge-base; exact match, no subsumption. A base
+    # entry without `scopes` supports nothing; a head outside the vocabulary matches nothing.
+    scopes = entry.get("scopes")
+    if not isinstance(scopes, list):
+        return f"{j.path}: {kind} declares no `scopes` in the merge-base pass table (it supports nothing until it does)"
+    if scope is not None and not L.SCOPE_HEAD.match(scope):
+        return f"{j.path}: the row's qualifier head {scope!r} is not a scope word (narrow, rung X), so no verdict supports it"
+    if scope not in scopes:
+        shown = "null (the unqualified claim)" if scope is None else repr(scope)
+        return (
+            f"{j.path}: {kind} supports scopes {scopes}, not {shown} (a verdict re-supporting another scope is not "
+            "support for this one; a new scope is a reviewed pass-table change on main first)"
+        )
     if not require_met(j.record, entry.get("require") or {}):
         return f"{j.path}: {kind}'s required fields {entry.get('require')} do not hold"
     if j.prereg != "PASS" or j.data_prereg != "PASS":
@@ -143,15 +167,103 @@ def pass_table_problems(table, where: str, *, at_base: bool = False) -> list[str
                 t in L.RANK and isinstance(v, list) and all(isinstance(x, str) for x in v) for t, v in targets.items()
             )
             or not isinstance(require, dict)
-            or set(entry) - {"rows", "targets", "require", "note", "complete"}
+            or set(entry) - {"rows", "targets", "require", "note", "complete", "scopes"}
         ):
             out.append(f"{PASS_TABLE} at {where}: entry {kind!r} is malformed (rows / targets / require)")
         elif "REPRODUCED" in targets and kind not in O19_KINDS:
             # #1059 S5: REPRODUCED is a successor O19 campaign's label; no other kind has campaigns.
             out.append(f"{PASS_TABLE} at {where}: entry {kind!r} targets REPRODUCED, which only an O19 kind may")
+        elif scopes_problem(kind, entry, at_base=at_base):
+            out.append(f"{PASS_TABLE} at {where}: entry {kind!r}: {scopes_problem(kind, entry, at_base=at_base)}")
         elif complete_problem(kind, entry.get("complete"), at_base=at_base):
             problem = complete_problem(kind, entry.get("complete"), at_base=at_base)
             out.append(f"{PASS_TABLE} at {where}: entry {kind!r}: {problem}")
+    return out
+
+
+def scopes_problem(kind: str, entry: dict, *, at_base: bool = False) -> str | None:
+    """`scopes` (#1141): a non-empty list of unique qualifier heads, each null (the unqualified claim) or a string. At
+    HEAD it is REQUIRED, each string a scope word (``_ledger.SCOPE_HEAD``), and a kind with a complete-run rule lists
+    exactly one: its frozen sets bind a run's completeness, not which rung it ran, so a second scope on it would let
+    an old-scope re-run support the new one (design pass S1). At the MERGE-BASE only the structure is checked: absent
+    supplies no support, and a string outside today's vocabulary is inert (``support_problem`` never matches it), so
+    narrowing the vocabulary cannot red every PR (design pass S3)."""
+    if "scopes" not in entry:
+        return None if at_base else "needs `scopes` (the qualifier heads its verdicts support; null = unqualified)"
+    scopes = entry["scopes"]
+    if (
+        not isinstance(scopes, list)
+        or not scopes
+        or not all(s is None or isinstance(s, str) for s in scopes)
+        or len(set(scopes)) != len(scopes)
+    ):
+        return "`scopes` must be a non-empty list of unique null-or-string qualifier heads"
+    if at_base:
+        return None
+    bad = [s for s in scopes if s is not None and not L.SCOPE_HEAD.match(s)]
+    if bad:
+        return f"`scopes` {bad} are not scope words (narrow, rung X; null = unqualified)"
+    if kind in COMPLETE_RULES and len(scopes) != 1:
+        return "a kind with a complete-run rule supports exactly one scope (a new scope on a ruled kind is a new kind)"
+    return None
+
+
+def scope_change_notes(base_table, head_table) -> list[str]:
+    """The pass-table change that admits a new scope is the review point for #1141's rule, so make it loud: name every
+    scope a kind gains, and say when its `require` / `complete` did not change with it (nothing then binds a verdict
+    of that kind to the new scope but review)."""
+    if not isinstance(base_table, dict) or not isinstance(head_table, dict):
+        return []
+    out: list[str] = []
+    first: list[str] = []
+    for kind, entry in head_table.items():
+        if kind.startswith("_") or not isinstance(entry, dict) or not isinstance(entry.get("scopes"), list):
+            continue
+        old = base_table.get(kind) if isinstance(base_table.get(kind), dict) else {}
+        if old and "scopes" not in old:
+            first.append(kind)  # the bootstrap (#1141): the kind's existing support, now declared
+            continue
+        old_scopes = old.get("scopes") if isinstance(old.get("scopes"), list) else []
+        added = [s for s in entry["scopes"] if s not in old_scopes]
+        if not added:
+            continue
+        unbound = old and entry.get("require") == old.get("require") and entry.get("complete") == old.get("complete")
+        out.append(
+            f"{PASS_TABLE}: {kind} now supports scope(s) {added}: review decides how its verdicts are bound to them"
+            + (
+                " (its require / complete did not change: the new scope is not bound to its verdicts)"
+                if unbound
+                else ""
+            )
+        )
+    if first:
+        out.append(f"{PASS_TABLE}: {len(first)} kind(s) declare their first `scopes` (bootstrap): {', '.join(first)}")
+    return out
+
+
+def ruled_scope_problems(base_table, head_table) -> list[str]:
+    """A kind with a complete-run rule keeps the scope main gave it (#1141 review): its frozen sets bind completeness,
+    not which rung ran, so swapping ``["rung A"]`` for ``["rung B"]`` would let a rung-A re-run support rung B. A new
+    scope on a ruled kind is a new kind. Deleting the entry is refused too (delta round): a later PR could re-add it
+    with another scope, and the base it is judged against would hold none. Retire one by emptying its ``targets``.
+    (A base entry without ``scopes`` is the bootstrap: nothing to keep.)"""
+    if not isinstance(base_table, dict) or not isinstance(head_table, dict):
+        return []
+    out = []
+    for kind, old in base_table.items():
+        if kind not in COMPLETE_RULES or not isinstance(old, dict) or "scopes" not in old:
+            continue
+        entry = head_table.get(kind)
+        if not isinstance(entry, dict):
+            out.append(
+                f"{PASS_TABLE}: {kind} has a complete-run rule and scopes {old['scopes']} on main, so its entry may not "
+                "be deleted (retire it by emptying its targets, keeping scopes and complete)"
+            )
+        elif entry.get("scopes") != old["scopes"]:
+            out.append(
+                f"{PASS_TABLE}: {kind} has a complete-run rule, so its scopes {old['scopes']} may not change "
+                "(a new scope on a ruled kind is a new kind)"
+            )
     return out
 
 
@@ -318,7 +430,11 @@ def qualifier_widens(old: L.Row | None, row: L.Row) -> bool:
     re-date. Detail appended under the same scope word, or a qualifier added to an unqualified row, is judged only;
     text cannot prove an appended clause narrows, so a same-head widening (``rung A, and rung B``) is the stated
     residual that review checks."""
-    if old is None or not old.qualifier:
+    if old is None:
+        return False
+    if old.qualifier_unparsed:
+        return True  # #1141 review: an unparsed base qualifier cannot show that the change keeps its scope
+    if not old.qualifier:
         return False
     return row.qualifier is None or L.qualifier_head(row.qualifier) != L.qualifier_head(old.qualifier)
 
@@ -407,7 +523,10 @@ def gate(
     failures += pass_table_problems(table, "the merge-base", at_base=True)
     if not isinstance(table, dict):
         table = {}
-    failures += pass_table_problems(load_json(repo, "HEAD", PASS_TABLE, {}), "HEAD")
+    head_table = load_json(repo, "HEAD", PASS_TABLE, {})
+    failures += pass_table_problems(head_table, "HEAD")
+    failures += ruled_scope_problems(table, head_table)
+    notes += scope_change_notes(table, head_table)
     head_snap = load_json(repo, "HEAD", LEGACY_SNAPSHOT, None)
     base_snap = load_json(repo, base, LEGACY_SNAPSHOT, None)
     if head_snap is None:
@@ -458,6 +577,11 @@ def gate(
             res.notes.append("RE-VALIDATED-BY-TESTS: named, not checked")
             notes += [f"{row.id}: {n}" for n in res.notes]
             continue
+        if row.qualifier_unparsed:
+            res.failures.append(
+                "the Status line's parenthesised qualifier was not parsed (nested parentheses?): the row would read as "
+                "unqualified, the full claim"
+            )
         # A clause acts only when pinned to the cited FILE's bytes (a session directory is never pinned).
         active = [e for e in active_exceptions(base_exc, row, old) if pinned(repo, e)]
         excepted: set[str] = set()
@@ -482,7 +606,8 @@ def gate(
             base_paths = {e.path for e in old.evidence} if old else set()
             after = status_set_time(repo, base, row.id, old.token, old.date) if old else float(repo.commit_time(base))
             new = [j for j in judgements if j.path not in base_paths]
-            problems_new = [support_problem(j, row.id, row.token, table, after, ctx=ctx) for j in new]
+            scope = row_scope(row)
+            problems_new = [support_problem(j, row.id, row.token, table, after, ctx=ctx, scope=scope) for j in new]
             cited = {e.path for e in row.evidence}
             supporting = [e for e in active if e.get("from") == (old.token if old else None) and e.get("path") in cited]
             if widened:

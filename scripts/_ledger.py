@@ -75,7 +75,7 @@ GUARD = re.compile(r"regression\s+guards?\s*:", re.IGNORECASE)
 #: A qualifier carries SCOPE only and opens with one of these words (#1105); detail after `:`/`;`/`,` narrows it
 #: further, and a reason belongs in the prose. lint_ledger_format checks it; lint_claims_sync's R3 shares
 #: ``qualifier_head``.
-SCOPE_HEAD = re.compile(r"^(narrow|rung [A-Z])$")
+SCOPE_HEAD = re.compile(r"^(narrow|rung [A-Z])\Z")  # \Z: `$` would also match before a trailing newline
 
 
 def qualifier_head(qualifier: str) -> str:
@@ -112,6 +112,9 @@ class Row:
     token: str | None = None
     date: str | None = None
     qualifier: str | None = None
+    #: A parenthesised qualifier STATUS_RE did not capture (nested parentheses): ``qualifier`` then reads None, i.e.
+    #: the unqualified, full claim (#1141). Also a row problem; the evidence gate fails a judged row on it.
+    qualifier_unparsed: bool = False
     evidence: list[Entry] = field(default_factory=list)
     has_evidence_field: bool = False
     superseded_by: str | None = None
@@ -193,6 +196,9 @@ def _parse_status(row: Row) -> None:
         return
     row.token, row.date, row.qualifier = m.group(1), m.group(2), m.group(3)
     rest = cell[m.end() :]
+    if m.group(3) is None and rest.lstrip().startswith("("):
+        row.qualifier_unparsed = True
+        row.problems.append("a parenthesised qualifier the status grammar did not parse (nested parentheses?)")
     sup = SUPERSEDED_BY.match(rest)
     row.superseded_by = sup.group(1) if sup else None
     n_marks = cell.count(EVIDENCE_MARK)
