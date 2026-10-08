@@ -14,7 +14,7 @@ swallowed (logged at DEBUG). Telemetry must never crash the AUT loop.
 
 Read alongside:
 - docs/plans/grounded_language_acquisition.md Phase 0
-- src/maxim/runtime/agent_loop.py::propose_via_substrate (the call site)
+- src/maxim/runtime/loop_substrate.py::substrate_tick (the call site; the proposer is substrate_proposal.py::propose_via_substrate)
 - src/maxim/simulation/orchestrator.py (the wire-up)
 """
 

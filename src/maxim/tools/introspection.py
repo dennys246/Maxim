@@ -800,7 +800,7 @@ def _format_concept(c: Any) -> dict[str, Any]:
 
 
 # Read-only cognitive introspection tools — meta-cognition, not embodied
-# actions. The substrate-primary action path (runtime/agent_loop.py::
+# actions. The substrate-primary action path (runtime/substrate_proposal.py::
 # propose_via_substrate) filters these out of the NAc.recommend_action
 # candidate set: they always succeed, so their causal confidence snowballs and
 # drowns out the embodied affordances the mode exists to test (the meta-tool

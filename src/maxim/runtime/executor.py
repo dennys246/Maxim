@@ -585,7 +585,7 @@ class Executor:
         if embodiment is None or getattr(embodiment, "root", None) is None:
             return None
         from maxim.embodiment.sem import drive_pressure
-        from maxim.runtime.agent_loop import _read_drive_ranges
+        from maxim.runtime.substrate_proposal import _read_drive_ranges
 
         # A body-read glitch must never take down the action: this runs OUTSIDE tool.run's guard,
         # and the executor's contract is that a bad invocation is a failed ToolOutput, not a raise.
@@ -636,7 +636,7 @@ class Executor:
             _log.debug("drive progress from %r is not this body's; not recorded", producer)
             return None
         from maxim.embodiment.sem import relief_fraction_from_progress
-        from maxim.runtime.agent_loop import _read_drive_ranges
+        from maxim.runtime.substrate_proposal import _read_drive_ranges
 
         try:
             specs: dict[str, Any] = {}

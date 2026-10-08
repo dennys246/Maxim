@@ -34,6 +34,7 @@ def _run_loop_once(monkeypatch: pytest.MonkeyPatch, tmp_path) -> tuple[list[dict
     from maxim.agents.maxim_agent import MaximAgent
     from maxim.environment.filesystem_env import FileSystemEnv
     from maxim.runtime import agent_loop as AL
+    from maxim.runtime import substrate_proposal
     from maxim.runtime.bootstrap import build_decision_engine, build_executor, build_memory
     from maxim.runtime.state import RuntimeState
     from maxim.tools.base import Tool, ToolOutput
@@ -80,7 +81,7 @@ def _run_loop_once(monkeypatch: pytest.MonkeyPatch, tmp_path) -> tuple[list[dict
             outcomes.append(kw)
         return real_record(**kw)
 
-    monkeypatch.setattr(AL, "propose_via_substrate", _propose)
+    monkeypatch.setattr(substrate_proposal, "propose_via_substrate", _propose)
     monkeypatch.setattr(AL, "_record_outcome", _spy_record)
 
     controller = AutonomyController()

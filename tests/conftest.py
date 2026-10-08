@@ -508,7 +508,7 @@ def _isolate_maxim_nac_min_confidence():
     ``min_confidence`` threshold in ``propose_via_substrate`` for
     Roy-2c (H1 vs H2 disambiguator). Per CLAUDE.md "opt-in env vars
     in hot startup paths need autouse scrubs", pair the env-var
-    reader at agent_loop._resolve_min_confidence with this scrub so
+    reader at substrate_proposal._resolve_min_confidence with this scrub so
     a CLI/Roy test that sets the var does not leak into every later
     test that constructs the agent loop.
     """

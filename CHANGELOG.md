@@ -25,6 +25,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`agent_loop` decomposition, slice 3: the substrate tick moves to `runtime/loop_substrate.py`, the substrate
+  proposer to `runtime/substrate_proposal.py`** (roadmap 1.3.2 §"The decomposition"; internal). The body of
+  `run_agentic_loop`'s substrate-primary branch (§6b: the turn-scoped action gate, the proposal, the submit-clock
+  advance, the pending proposal and its sim EXEC line, the telemetry snapshot) is now `substrate_tick(...)`; the
+  branch's `_substrate_tick_due` predicate stays at the call site. `propose_via_substrate` and its whole family
+  (the drive, world and exteroceptive readers, the channel registry, `_encode_current_clusters`,
+  `NO_SITUATION_CUE`, `_attach_live_situation`, ...) moved verbatim to the leaf `substrate_proposal.py`, which
+  imports nothing from the loop. A pure move with no behaviour change: the loop selection golden, the slice-0/1/2
+  and #1133 characterization and the Exp 60/61/R3 verdict reproductions stay green, and
+  `tests/unit/test_loop_substrate_characterization.py` (written before the move) pins §6b through the public
+  entry, including the pending-proposal term of the substrate cadence. The loop's local `llm_submit_interval`
+  alias is gone (its readers read `ctrl.llm_submit_interval`, which nothing reassigns). `run_agentic_loop`
+  shrinks 2,819 → 2,783 lines; both modules join CI's mypy set and the swallow lint's measurement path.
+  **Import change:** `propose_via_substrate`, `NO_SITUATION_CUE`, `place_code_exteroception_enabled` and the
+  private readers are now imported from `maxim.runtime.substrate_proposal` and are no longer importable from
+  `maxim.runtime.agent_loop`, with no re-export, so an external harness importing them from `agent_loop` breaks and must import from the new module (none is in `maxim.api` or `maxim.runtime.__all__`); a test that replaces the proposer patches `substrate_proposal.propose_via_substrate`.
+
 - **`agent_loop` decomposition, slice 2: each pass's pre-tick gate moves to `runtime/loop_gates.py`** (roadmap
   1.3.2 §"The decomposition"). Sections 0-0.6 of `run_agentic_loop` (the stop checks, the Default Network's
   mode, the pause sleep, the live tick and display revert, the percept-source exhaustion check, and the idle

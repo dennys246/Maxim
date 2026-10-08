@@ -106,6 +106,8 @@ MEASUREMENT_PATH = [
     "src/maxim/runtime/agent_loop.py",
     "src/maxim/runtime/loop_setup.py",  # the setup block's measurement-path code (1.3.2 slice 1)
     "src/maxim/runtime/loop_gates.py",  # the pre-tick gate, moved from agent_loop.py (1.3.2 slice 2)
+    "src/maxim/runtime/loop_substrate.py",  # the substrate tick (section 6b), moved from agent_loop.py (1.3.2 slice 3)
+    "src/maxim/runtime/substrate_proposal.py",  # the substrate proposer + sensor readers, moved from agent_loop.py (slice 3)
     "src/maxim/similarity/encoder.py",
     "src/maxim/similarity/ec.py",
     "src/maxim/bridges/tool_pain_bridge.py",

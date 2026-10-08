@@ -172,7 +172,7 @@ class TestGeometryIsAPropertyOfTheSpaceNotTheReading:
     """The review round's blocker — found independently by TWO lenses.
 
     The tag was first keyed on `sorted(sensors.keys())`: the READING. But
-    `agent_loop._read_drive_states` emits `cold` only while a thermal drive is
+    `substrate_proposal._read_drive_states` emits `cold` only while a thermal drive is
     outside its comfort band (`drives.setdefault("cold", cold_need)`), and
     `place_code` drops cells below an activation floor. So the key set is
     state-dependent, and a warm infant and a cold one hashed to DIFFERENT

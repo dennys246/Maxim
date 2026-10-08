@@ -12,7 +12,7 @@ component:
     STAYS cold — core_temperature well below set_point with a slow warm-back
     drift — so warmth-seeking is a SUSTAINED, drive-relevant temptation. The
     substrate's drive-affinity heuristic (via the derived "cold" need in
-    runtime/agent_loop._read_drive_states) then surfaces the deceptive
+    runtime/substrate_proposal._read_drive_states) then surfaces the deceptive
     hearth's warm_self as a high-value action; the experiment measures whether
     the agent learns to AVOID it despite the cold pull, because warm_self
     breaches the arms' thermal comfort band (pain).

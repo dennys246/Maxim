@@ -114,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[FAIL] provenance: {exc}")
         return 3
 
-    from maxim.runtime.agent_loop import _encode_current_clusters, _read_world_ranges
+    from maxim.runtime.substrate_proposal import _encode_current_clusters, _read_world_ranges
     from maxim.simulation.minecraft_harness import build_minecraft_aut
 
     report: dict = {

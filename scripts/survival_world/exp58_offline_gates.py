@@ -92,7 +92,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[FAIL] provenance: {exc}")
         return 3
 
-    from maxim.runtime.agent_loop import _encode_current_clusters, propose_via_substrate
+    from maxim.runtime.substrate_proposal import _encode_current_clusters, propose_via_substrate
     from maxim.simulation.minecraft_harness import MinecraftSyncPump, build_minecraft_aut
 
     report: dict = {"ts": time.time(), "train_ticks": TRAIN_TICKS, "provenance": provenance, "instrument_error": None}

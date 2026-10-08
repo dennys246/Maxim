@@ -116,7 +116,7 @@ def test_production_factory_reads_the_robots_own_deltas():
 
 def test_whitelist_substring_matches_the_big_pair():
     # benchmark_cradle_mother's MAXIM_SUBSTRATE_TOOL_WHITELIST=turn_left,turn_right is
-    # applied as a substring filter (agent_loop.propose_via_substrate) — on this body
+    # applied as a substring filter (substrate_proposal.propose_via_substrate) — on this body
     # that is the full 4-tool repertoire, declared in the pre-registration (S6).
     terms = ["turn_left", "turn_right"]
     names = _tools(_infant())

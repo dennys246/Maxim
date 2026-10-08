@@ -21,7 +21,7 @@ import pytest
 
 
 def _ticks_with_events(events: bool, tmp_path, *, want: int = 3, deadline_s: float = 10.0) -> list[float]:
-    from maxim.runtime import agent_loop as AL
+    from maxim.runtime import substrate_proposal as SP
     from maxim.simulation.minecraft_harness import FakeBridgeServer, build_minecraft_aut, run_minecraft_aut
 
     srv = FakeBridgeServer(state_interval_s=0.1, events=events)
@@ -32,13 +32,13 @@ def _ticks_with_events(events: bool, tmp_path, *, want: int = 3, deadline_s: flo
         entity_ref="bodies/minecraft_player",
     )
     calls: list[float] = []
-    orig = AL.propose_via_substrate
+    orig = SP.propose_via_substrate
 
     def spy(**kw):
         calls.append(time.monotonic())
         return orig(**kw)
 
-    AL.propose_via_substrate = spy
+    SP.propose_via_substrate = spy
     stop = threading.Event()
     th = threading.Thread(
         target=run_minecraft_aut,
@@ -58,7 +58,7 @@ def _ticks_with_events(events: bool, tmp_path, *, want: int = 3, deadline_s: flo
     finally:
         stop.set()
         th.join(timeout=30.0)
-        AL.propose_via_substrate = orig
+        SP.propose_via_substrate = orig
         assert not th.is_alive(), "loop thread outlived its stop event"
         try:
             aut.client.close()
@@ -97,7 +97,7 @@ def test_substrate_proposal_is_executed_on_the_harness_loop(tmp_path):
     this harness path no substrate proposal had ever executed. Verified RED on the
     pre-fix runner (0 executor calls in 10 s), green after.
     """
-    from maxim.runtime.agent_loop import _encode_current_clusters
+    from maxim.runtime.substrate_proposal import _encode_current_clusters
     from maxim.simulation.minecraft_harness import FakeBridgeServer, build_minecraft_aut, run_minecraft_aut
 
     srv = FakeBridgeServer(state_interval_s=0.1)  # events off: the live condition
@@ -157,7 +157,8 @@ def test_planning_level_never_executes_a_body_affordance(tmp_path):
     bridge — a body affordance must NOT reach the executor. This is the pre-fix runner's condition
     (`run_agentic_loop` builds `AutonomyController()` = PLANNING when none is passed)."""
     from maxim.agents.autonomy import AutonomyController, AutonomyLevel
-    from maxim.runtime.agent_loop import _encode_current_clusters, run_agentic_loop
+    from maxim.runtime.agent_loop import run_agentic_loop
+    from maxim.runtime.substrate_proposal import _encode_current_clusters
     from maxim.simulation.minecraft_harness import FakeBridgeServer, _loop_kwargs, build_minecraft_aut
 
     srv = FakeBridgeServer(state_interval_s=0.1)

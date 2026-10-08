@@ -11,7 +11,7 @@ and that no LLM call occurs along the way.
 
 Read alongside:
 - docs/plans/grounded_language_acquisition.md (Phase -1 gate)
-- src/maxim/runtime/agent_loop.py::propose_via_substrate
+- src/maxim/runtime/substrate_proposal.py::propose_via_substrate
 - src/maxim/decisions/nac.py::recommend_action
 """
 
@@ -22,7 +22,7 @@ import pytest
 from maxim.decisions.nac import NAc, NACConfig
 from maxim.embodiment.component_registry import ComponentRegistry
 from maxim.proprioception.pain_bus import PainBus
-from maxim.runtime.agent_loop import (
+from maxim.runtime.substrate_proposal import (
     NO_SITUATION_CUE,
     _read_drive_ranges,
     _read_drive_states,
@@ -440,7 +440,7 @@ class TestClusterKeyedActionSelection:
 
         # First tick: encode the current drive snapshot to learn the
         # cluster id the substrate sees in this state.
-        from maxim.runtime.agent_loop import _read_drive_ranges, _read_drive_states
+        from maxim.runtime.substrate_proposal import _read_drive_ranges, _read_drive_states
 
         drives = _read_drive_states(world["executor"])
         # Range-AWARE, matching what propose_via_substrate encodes below.

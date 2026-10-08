@@ -107,7 +107,7 @@ def test_read_drive_ranges_covers_every_signed_drive():
     must have a range, and every declared signed sensor must be covered."""
     from maxim.embodiment.body import Embodiment
     from maxim.embodiment.component_registry import ComponentRegistry
-    from maxim.runtime.agent_loop import _read_drive_ranges, _read_drive_states
+    from maxim.runtime.substrate_proposal import _read_drive_ranges, _read_drive_states
 
     class _Exec:
         def __init__(self, emb):
@@ -134,7 +134,7 @@ def test_read_exteroceptive_states_encodes_driveless_azimuth():
     direction — without this the operant orient policy is blind to left-vs-right."""
     from maxim.embodiment.body import Embodiment
     from maxim.embodiment.component_registry import ComponentRegistry
-    from maxim.runtime.agent_loop import (
+    from maxim.runtime.substrate_proposal import (
         _read_drive_states,
         _read_exteroceptive_ranges,
         _read_exteroceptive_states,
@@ -156,7 +156,7 @@ def test_read_exteroceptive_states_encodes_driveless_azimuth():
 
 
 def test_read_exteroceptive_states_empty_without_embodiment():
-    from maxim.runtime.agent_loop import _read_exteroceptive_states
+    from maxim.runtime.substrate_proposal import _read_exteroceptive_states
 
     class _Exec:
         embodiment = None
@@ -169,7 +169,7 @@ def test_read_drive_ranges_skips_malformed_range_without_disabling():
     raise — it is evaluated inside the encode_sensors try/except, so a raise would
     silently disable ALL substrate encoding for the agent every tick. The bad
     sensor is skipped (falls back to the legacy map); good ones still get ranges."""
-    from maxim.runtime.agent_loop import _read_drive_ranges
+    from maxim.runtime.substrate_proposal import _read_drive_ranges
 
     class _Sensor:
         def __init__(self, rng):
