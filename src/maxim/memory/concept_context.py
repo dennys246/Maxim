@@ -60,8 +60,12 @@ class ConceptContextBuilder:
         active_goal: str | None = None,
         limit: int = 5,
         budget_ms: float | None = None,
+        count_access: bool = True,
     ) -> list[dict]:
         """Build concept context entries for the current percept.
+
+        ``count_access=False`` reads related concepts without counting an access, for a caller whose result
+        nothing uses (``MemoryAgent``'s Dormant context, #1128). Grounding still runs and learns either way.
 
         Synchronous — AG grounding is arithmetic on in-memory arrays, not
         blocking I/O. Budget bounds total grounding work across all concepts.
@@ -124,7 +128,7 @@ class ConceptContextBuilder:
             layer_enrichment = self._collect_layer_enrichment(concept)
 
             # Get relationships (always — cheap O(edges) lookup)
-            rel_summaries = self._collect_relationships(concept)
+            rel_summaries = self._collect_relationships(concept, count_access=count_access)
 
             # Format AG quantifications
             ag_props: dict[str, Any] = {}
@@ -213,12 +217,16 @@ class ConceptContextBuilder:
                     )
         return entries
 
-    def _collect_relationships(self, concept: Concept) -> list[dict]:
-        """Collect relationship summaries for a concept."""
+    def _collect_relationships(self, concept: Concept, *, count_access: bool = True) -> list[dict]:
+        """Collect relationship summaries for a concept (``count_access=False``: read without touching)."""
         relationships = self._atl.find_by_relationship(concept.id, direction="both", limit=10)
         summaries: list[dict] = []
         for other_id, rel in relationships:
-            other = self._atl.get(other_id)
+            if count_access:
+                other = self._atl.get(other_id)
+            else:
+                found = self._atl.recall_by_ids([other_id])
+                other = found[0] if found else None
             if other:
                 summaries.append(
                     {

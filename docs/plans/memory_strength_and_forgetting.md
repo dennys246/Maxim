@@ -237,7 +237,8 @@ counts as a `tool` use at its render cap (genuinely past memories only: the curr
 captures are skipped, so re-reading the present is not counted); `MemoryAgent`'s bio queries,
 PromptBuilder's memory sections and ExecAgent's own LLM path (incl. `recall_deep`) are Dormant.
 The replan site is wired but dead until #845(1); the adaptive planner is live only in
-`embodied_runtime/agentic_runtime.py`. #1128: the Dormant queries still bump `access_count`.
+`embodied_runtime/agentic_runtime.py`. #1128 (2026-10-07): the Dormant queries still run (concept grounding rides
+on them) but read uncounted, so they no longer move `access_count`.
 [#1137](https://github.com/dennys246/Maxim/issues/1137) (homed here, 2026-10-06): compression keeps only a record's
 intent goal, so a `CompressedMemory` loses the active goal; trigger: the first path that compresses in a sim, or
 any sleep/consolidation work in the loop.

@@ -1870,10 +1870,11 @@ class MemoryHub:
         active_goal: str | None = None,
         limit: int = 5,
         budget_ms: float | None = None,
+        count_access: bool = True,
     ) -> list[dict]:
         """Build concept context entries for the current percept.
 
-        Delegates to ConceptContextBuilder if available. Returns empty list
+        Delegates to ConceptContextBuilder if available (``count_access``: see its ``build``). Returns empty list
         if ATL or ConceptContextBuilder is not wired.
         """
         if self._concept_context_builder is None:
@@ -1885,6 +1886,7 @@ class MemoryHub:
                 active_goal=active_goal,
                 limit=limit,
                 budget_ms=budget_ms,
+                count_access=count_access,
             )
         except Exception as e:
             logger.warning("Concept context build failed: %s", e)
