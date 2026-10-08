@@ -164,13 +164,14 @@ def collect_sensor_values(embodiment: Embodiment) -> dict[str, float]:
     - dotted modulator path (``arms.thermal``) — for modulator
       sub-sensors stored in ``modulator.vital_metrics``
 
-    This bypasses ``Body.body_state_summary()`` because that method
-    intentionally skips dotted-key drive specs (see body.py:527's
-    ``"." not in ds_name`` check) — the modulator vital_metrics layer
-    is where ``arms.thermal`` actually lives. Roy-4's pre-merge review
-    surfaced this as a structural gap: the naming hook MUST read from
-    the modulator layer or the "warm" utterance will silently never
-    fire across Roy-5b's 50 priming turns.
+    This bypasses ``Body.body_state_summary()``, which until #1125 skipped
+    dotted-key drive specs (a ``"." not in ds_name`` check) — the modulator
+    vital_metrics layer is where ``arms.thermal`` actually lives. Roy-4's
+    pre-merge review surfaced this as a structural gap: the naming hook MUST
+    read from the modulator layer or the "warm" utterance will silently never
+    fire across Roy-5b's 50 priming turns. The summary now resolves modulator
+    DRIVES, but it still omits non-drive sub-sensors (``arms.texture``), so
+    this flat walk stays.
 
     Later modulators with the same dotted suffix overwrite earlier
     ones — both walks happen in entity-tree order, so the convention
