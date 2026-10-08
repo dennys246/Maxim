@@ -225,8 +225,9 @@ class TestFormatNamingSection:
 
 # ---------------------------------------------------------------------------
 # collect_sensor_values — modulator-aware sensor walk
-# (B1 fold: body_state_summary skips dotted modulator keys; the
-#  collector must walk modulator vital_metrics directly.)
+# (B1 fold: body_state_summary skipped dotted modulator keys until #1125,
+#  and still omits non-drive sub-sensors; the collector walks modulator
+#  vital_metrics directly.)
 # ---------------------------------------------------------------------------
 
 
@@ -250,9 +251,10 @@ class TestCollectSensorValues:
 
     def test_modulator_sub_sensors_collected_via_dotted_key(self, real_body):
         """The load-bearing B1 fold: ``arms.thermal`` lives in
-        ``entity.modulators['arms'].vital_metrics['thermal']``, NOT in
-        ``body_state_summary``'s output. The collector MUST surface it
-        or "warm" silently never fires."""
+        ``entity.modulators['arms'].vital_metrics['thermal']``, not in
+        the root's ``vital_metrics`` (``body_state_summary`` skipped it
+        until #1125). The collector MUST surface it or "warm" silently
+        never fires."""
         body, entity = real_body
         entity.modulators["arms"].vital_metrics["thermal"] = 0.85
         values = collect_sensor_values(body)
@@ -456,9 +458,9 @@ class TestNamingEventsWithinTickCoFiringIntegration:
         assert "hunger" in percept.content
 
     def test_modulator_sub_sensor_utterance_fires(self, real_naming_body):
-        """Pins B1: ``arms.thermal`` lives in modulator vital_metrics,
-        NOT in body_state_summary. If the collector skips the modulator
-        path, "warm" silently never fires."""
+        """Pins B1: ``arms.thermal`` lives in modulator vital_metrics, not
+        the root's (body_state_summary skipped it until #1125). If the
+        collector skips the modulator path, "warm" silently never fires."""
         source, entity, _ = real_naming_body
         entity.modulators["arms"].vital_metrics["thermal"] = 0.85
 

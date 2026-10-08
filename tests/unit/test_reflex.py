@@ -681,7 +681,7 @@ class TestSensorReflexDelta:
         }
         specs = load_archetype_reflexes(archetype)
         assert specs
-        from maxim.embodiment.tool_bridge import _resolve_sensor_slot
+        from maxim.embodiment.sem import _resolve_sensor_slot
 
         for spec in specs:
             reg = ReflexRegistry((spec,), clock=_Clock())

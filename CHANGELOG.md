@@ -131,6 +131,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The drive RECORDS read modulator drives where they live** ([#1125](https://github.com/dennys246/Maxim/issues/1125),
+  owner decision 2026-10-08: records only). The infant bodies declare `arms.thermal`, `arms.pressure` and
+  `head.thermal` as root drives, but their values live on the `arms`/`head` modulators, and two readers looked a
+  drive up as `root.vital_metrics[name]`, so they never found one. `Executor._drive_pressure_snapshot` (the
+  `drive_pressure` on the memory-strength encoding record, record-only) now carries all seven infant drives instead
+  of four; `Embodiment.body_state_summary` (the Body State text an LLM reads only behind
+  `MAXIM_ENABLE_BODY_STATE_PROMPT`, default off) now shows a burning arm, and Acting Coach Layer 4 names it.
+  - **One resolution rule, now in `embodiment/sem.py`:** `_resolve_sensor_slot` (#874) moved there from
+    `tool_bridge`, beside a new location step `_sensor_location` and the value read
+    `_read_sensor_value`. The value read uses the location only, so a malformed declared range costs that drive's
+    pressure and nothing else, and one non-numeric drive value costs only that drive. New code imports
+    `_resolve_sensor_slot` from `maxim.embodiment.sem`; the old `tool_bridge` path still resolves only through
+    `tool_bridge`'s own import of it.
+  - **Root drives:** the pressure record reads them exactly as before (pinned). In the Body State, a root drive
+    that no sensor read captures now goes through the same rule: an int renders as a float, and a None or
+    non-numeric value skips that drive instead of raising out of the summary. The encoding tag is unchanged: it
+    pairs pressure only with drives in `drive_relief`, whose keys still come from the credit path.
+  - **The selection readers and both records agree with the resolver** on every infant drive (`_read_drive_states`,
+    `substrate_telemetry`, the pressure record, the summary). Outside that pin, on purpose: the credit reads,
+    `Embodiment.evaluate_failures` (root keys first, the #874 shadow), `tick_vital_drift` and
+    `naming_events.collect_sensor_values`.
+  - **The credit path is untouched and still blind to modulator drives:** `tool_bridge`'s `pre_values` /
+    `_drive_potential_diff` / `_drive_progress_by_drive` and `cradle_mother`. Resolving them would make a harmful
+    warm on a saturated arm credit +1 (Exp 42's harm arm inverts through the collateral-harm gate), so that change
+    is [#1161](https://github.com/dennys246/Maxim/issues/1161).
+  - **Widens [#1163](https://github.com/dennys246/Maxim/issues/1163)** (the persisted `ToolOutput` repr acting as
+    memory text): infant traces now carry `arms.*` / `head.thermal` in `drive_pressure_before`.
+  Guard: `tests/unit/test_modulator_drive_reads_1125.py` (real `infant_humanoid`).
+
 - **`MemoryAgent`'s Dormant context queries no longer move retention** ([#1128](https://github.com/dennys246/Maxim/issues/1128),
   owner decision 2026-10-07: keep running, read uncounted). On every tick through `ExecAgent.propose_intent` they
   fill `relevant_memories`, `concept_context`, `knowledge_context`, `valence_context` and `causal_context`, which no
@@ -242,7 +271,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pain latched at the written value and never followed the arm as it cooled. Value mode also clamped every sensor to
   [0, 1] (a cold write to a [-1, 1] sensor became 0) and reported success for a sensor the body lacks, or for a
   derived `health` that `evaluate_failures` re-derives on every call (both now fail). Both modes
-  now resolve the sensor through one helper, `embodiment/tool_bridge.py::_resolve_sensor_slot` (shared with
+  now resolve the sensor through one helper, `_resolve_sensor_slot` (now in `embodiment/sem.py`, #1125; shared with
   `_apply_sensor_deltas`), clamp to the declared range, and fail the call for a missing sensor, naming the sensors
   the body has. The first write's pain is unchanged; the per-call pain reading now follows the arm as it cools,
   so the PainBus breach latch can clear and a later exposure publishes a new onset (cradle runs now send more
