@@ -79,7 +79,7 @@ class _Hub:
     """The few MemoryHub members the loop reads (``loop_setup``, ``bio_integration``)."""
 
     def __init__(self, obs: Observed) -> None:
-        from maxim.runtime.agent_loop import NO_SITUATION_CUE
+        from maxim.runtime.substrate_proposal import NO_SITUATION_CUE
 
         self.agent_id = HUB_AGENT_ID
         self.nac = _RecordingNAc(obs.nac_observations)
@@ -168,6 +168,7 @@ def run_once(
     from maxim.agents.maxim_agent import MaximAgent
     from maxim.environment.filesystem_env import FileSystemEnv
     from maxim.runtime import agent_loop as AL
+    from maxim.runtime import substrate_proposal
     from maxim.runtime import prefetch
     from maxim.runtime.bootstrap import build_decision_engine, build_executor, build_memory
     from maxim.runtime.loop_controller import LoopController
@@ -235,7 +236,7 @@ def run_once(
             obs.outcomes.append(dict(kw))
         return real_record(**kw)
 
-    monkeypatch.setattr(AL, "propose_via_substrate", _propose)
+    monkeypatch.setattr(substrate_proposal, "propose_via_substrate", _propose)
     monkeypatch.setattr(AL, "_record_outcome", _spy_record)
 
     cache = _Cache(obs)

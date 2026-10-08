@@ -14,7 +14,7 @@ import pytest
 
 from maxim.embodiment.sensory_streams import AUDIO_TAG, WORLD_TAG
 from maxim.embodiment.spec import _parse_entity
-from maxim.runtime.agent_loop import (
+from maxim.runtime.substrate_proposal import (
     _SUBSTRATE_CHANNELS,
     _read_exteroceptive_ranges,
     _read_exteroceptive_states,
@@ -126,7 +126,7 @@ class TestModalityDeclaration:
             body = _parse_entity(dict(spec.get("entity", spec)))
             ex = _FakeExecutor(body)
             assert _read_world_states(ex) == {}, f"{ref} unexpectedly feeds the world channel"
-            from maxim.runtime.agent_loop import _read_declared_modality_states
+            from maxim.runtime.substrate_proposal import _read_declared_modality_states
 
             assert _read_declared_modality_states(ex, AUDIO_TAG) == {}, (
                 f"{ref} unexpectedly declares audio sensors — audio channel content would change"

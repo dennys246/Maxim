@@ -356,6 +356,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     from maxim.environment.filesystem_env import FileSystemEnv
     from maxim.runtime import agent_loop as AL
     from maxim.runtime import loop_setup as LS
+    from maxim.runtime import substrate_proposal as SP
     from maxim.runtime.bootstrap import build_decision_engine, build_memory
     from maxim.runtime.state import RuntimeState
     from maxim.similarity import ec as ec_mod
@@ -429,7 +430,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
         if spec["fear_writes"] or spec["seed_reward"]:
             # the seeded NAc: keyed on the situation the loop itself will encode first
             enc = LS._build_loop_sensor_encoder(hub, aut.bio.nac)
-            seed_clusters = AL._encode_current_clusters(enc, AGENT_ID, aut.executor)
+            seed_clusters = SP._encode_current_clusters(enc, AGENT_ID, aut.executor)
             world_cluster = seed_clusters["world"]
             for _ in range(spec["fear_writes"]):
                 aut.bio.nac.record_cluster_fear(AGENT_ID, world_cluster, "drive:oxygen", 1.0)

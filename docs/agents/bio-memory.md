@@ -18,7 +18,7 @@ percept text / sensor reading
   → SCN temporal credit (decisions/temporal_credit.py::TemporalCreditDistributor —
       the single intake fanning out to NAc eligibility, SCN bins, oscillator phases)
   → back into behavior: prompt annotations (Wire-A cluster-bias, Wire-1 variance band)
-      and substrate-primary action selection (agent_loop::propose_via_substrate / NAc.recommend_action).
+      and substrate-primary action selection (substrate_proposal::propose_via_substrate / NAc.recommend_action).
 ```
 
 Attribution back into the chain has a strict preference order: **direct lookup key first** (`(tool_name, invocation_id)` → `NAc.record_outcome`), context similarity only as the out-of-band fallback (`record_outcome_full`, directional `_context_similarity`).
@@ -191,14 +191,14 @@ operation; rename inconsistent legacy names during the next change to that syste
 
 - `MAXIM_SUBSTRATE_PATH` = enable LinguisticEncoder → EC → ATL dual-write = `runtime/agent_loop.py` / encoder wiring
 - `MAXIM_CONCEPT_DECOMPOSITION` = enable noun-phrase decomposition before EC (needs spaCy) = `similarity/decomposer.py`
-- `MAXIM_NAC_MIN_CONFIDENCE` = override `propose_via_substrate` min_confidence (default 0.3; 0.0 bypasses cold-start gate) = `runtime/agent_loop.py`
+- `MAXIM_NAC_MIN_CONFIDENCE` = override `propose_via_substrate` min_confidence (default 0.3; 0.0 bypasses cold-start gate) = `runtime/substrate_proposal.py`
 - `MAXIM_NAC_REWARD_BIAS_DISABLED` = reward-bias ablation: the live write (`credit_node`), every read (`reward_bias`, `get_threshold_overrides`), `distribute_reward`, `decay_reward_biases` and `get_agent_tool_biases` all no-op (read once at NAc construction; the live write + reads were ungated until #889, so Exp 37's NAc-bias-off arm did not ablate). **Scope: `_reward_bias` only** — for `_cluster_reward_bias` it hides just the Wire-A prompt read (`get_agent_tool_biases`); cluster-bias writes and `recommend_action`'s cluster term are NOT gated = `decisions/nac.py` (x-ref simulation-experiments)
 - `MAXIM_EC_TRACE_ACTIVATIONS` = per-tick `sim_ec_activation` JSONL events = `similarity/ec.py`
 - `MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION` = Wire-A cluster-bias prompt annotation off (ablation) = producer in `runtime/agent_loop.py`
 - `MAXIM_DISABLE_VARIANCE_ANNOTATION` = Wire-1 variance-band annotation off (ablation) = producer in `runtime/agent_loop.py`
 - `MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU` = Wire-A cluster-bias decay tau, clamped [50,1000], invalid → 300 + WARNING = `decisions/nac.py`
 - `MAXIM_NAC_TEMPORAL_CREDIT_WEIGHT` = temporal-phase fallback credit weight (default 0.3x) = `decisions/nac.py` / `NACConfig`
-- `MAXIM_PLACE_CODE_EXTEROCEPTION` = audio channel emits Gaussian population code over azimuth instead of raw scalar (default OFF; see gotcha above) = `runtime/agent_loop.py::_read_exteroceptive_states` (x-ref embodiment)
+- `MAXIM_PLACE_CODE_EXTEROCEPTION` = audio channel emits Gaussian population code over azimuth instead of raw scalar (default OFF; see gotcha above) = `runtime/substrate_proposal.py::_read_exteroceptive_states` (x-ref embodiment)
 - `MAXIM_HIPPO_TRACE` = per-operation Hippocampus trace events = `memory/hippo_tracer.py`
 - `MAXIM_MEMORY_STRATEGY` = retention model: `access_based` (default, today's) | `importance_based` | `composite` | `strength` (the Bjork model, Phase 2c-3). Prefer `maxim config set memory.strategy <name>`; an unknown name RAISES at every door (config section, writer, `config.json` parse, env, store) — only a MISSING value falls back = `runtime/config_loader.py::resolve_memory_strategy`, the ONE resolver every store is built from (`bio_stack`, `agent_factory`, `create`, `load`, `session`, `api`, foundry; guarded by an AST test that no bare `Hippocampus()`/`ATL()` is built outside `memory/`)
 - `MAXIM_MEMORY_S_BASE` / `MAXIM_MEMORY_K` = the strength model's encoding equation, `S0 = s_base * (1 + k * tag)`. `s_base` is in the experience clock's MICROSECONDS. Unset means "the model's own default" (`memory/encoding.py::S_BASE_DEFAULT` / `K_DEFAULT`) — the schema stores `None`, never a copied number. A Hippocampus builder takes these and the strategy through ONE bundle, `config_loader.py::resolve_hippocampus_memory_kwargs`, so it cannot thread the model and silently drop the tuning; the ATL takes only the strategy = `maxim config set memory.s_base <us>`

@@ -247,7 +247,7 @@ def capture(args: argparse.Namespace) -> int:
     measurement is never perturbed.
     """
     from exp56 import common as C  # noqa: E402  (rcon + repo root, as exp58_run)
-    from maxim.runtime.agent_loop import _read_world_ranges, _read_world_states
+    from maxim.runtime.substrate_proposal import _read_world_ranges, _read_world_states
     from maxim.simulation.minecraft_harness import MinecraftSyncPump, build_minecraft_aut
     from survival_world.common import settle_until
 

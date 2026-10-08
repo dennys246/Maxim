@@ -169,7 +169,7 @@ def _picks_eat(
 
 
 def _set_probe_state(aut: Any, food: float) -> dict[str, float]:
-    from maxim.runtime.agent_loop import _read_drive_states
+    from maxim.runtime.substrate_proposal import _read_drive_states
 
     aut.executor.embodiment.root.vital_metrics.update({"food": float(food), "health": FROZEN["probe_health"]})
     return _read_drive_states(aut.executor)
@@ -189,7 +189,7 @@ def _marginal_probe(
     reads vital_metrics directly), encode THAT state's clusters, read the frozen NAc twice: WITH
     encoded clusters (prior+causal+cluster-bias) and WITHOUT (prior+causal). marginal = with AND NOT
     without = the learned cluster bias's isolated behavioural effect. recommend_action is read-only."""
-    from maxim.runtime.agent_loop import _encode_current_clusters
+    from maxim.runtime.substrate_proposal import _encode_current_clusters
 
     drives = _set_probe_state(aut, food)
     clusters = _encode_current_clusters(encoder, agent_id, aut.executor)
@@ -273,7 +273,7 @@ def _run_arm(
     """Fresh substrate -> cold-prior pre-check -> train (to plateau if target_episodes is None, else
     exactly target_episodes) -> post marginal-probe. Returns the seed record incl. validity flags."""
     from maxim.agents.context_pool import ContextPool
-    from maxim.runtime.agent_loop import _encode_current_clusters, _read_drive_states
+    from maxim.runtime.substrate_proposal import _encode_current_clusters, _read_drive_states
     from maxim.runtime.tool_dispatch import read_learning_side_effects, record_outcome
     from maxim.tools.introspection import INTROSPECTION_TOOL_NAMES
 

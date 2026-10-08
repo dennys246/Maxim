@@ -524,6 +524,7 @@ def test_a_row_without_a_leading_pipe_is_still_parsed(tmp_path: Path) -> None:
         ("(narrow-ish)", False),
         ("(reframed)", False),
         ("(because the run was short)", False),
+        ("()", False),  # #1141: an empty qualifier is no scope word
     ],
 )
 def test_a_qualifier_opens_with_a_scope_word(tmp_path: Path, qualifier: str, ok: bool) -> None:
@@ -546,3 +547,17 @@ def test_a_grandfather_pin_without_its_row_is_stale(tmp_path: Path, monkeypatch)
     monkeypatch.setattr(F, "GRANDFATHERED_QUALIFIERS", {"T1-9": ("EARNED", "2026-09-01", "reframed")})
     repo = _repo(tmp_path, _ledger([OK_T1]))
     assert any("GRANDFATHERED_QUALIFIERS entry for T1-9 names no ledger row" in f for f in _lint(repo))
+
+
+def test_a_nested_paren_qualifier_is_a_row_problem(tmp_path: Path) -> None:
+    """#1141 review: STATUS_RE does not capture ``(rung B (x))``; the row would read as unqualified, the full claim."""
+    row = OK_T1.replace("**Status: EARNED 2026-09-01**.", "**Status: EARNED 2026-09-01** (rung B (see x)).")
+    rows, _ = L.parse(_ledger([row]))
+    t1 = next(r for r in rows if r.id == "T1-1")
+    assert t1.qualifier is None and t1.qualifier_unparsed
+    repo = _repo(tmp_path, _ledger([row]))
+    assert any("did not parse (nested parentheses?)" in f for f in _lint(repo))
+
+
+def test_the_scope_word_has_no_trailing_newline() -> None:
+    assert L.SCOPE_HEAD.match("rung A") and not L.SCOPE_HEAD.match("rung A\n")

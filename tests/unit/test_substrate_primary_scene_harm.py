@@ -213,7 +213,7 @@ def test_introspection_names_cover_the_registered_tools():
 
 def test_propose_via_substrate_excludes_introspection_tools():
     """Embodied affordances reach recommend_action; introspection tools do not."""
-    from maxim.runtime.agent_loop import NO_SITUATION_CUE, propose_via_substrate
+    from maxim.runtime.substrate_proposal import NO_SITUATION_CUE, propose_via_substrate
     from maxim.tools.introspection import INTROSPECTION_TOOL_NAMES
 
     names = [
@@ -236,7 +236,7 @@ def test_propose_via_substrate_excludes_introspection_tools():
 def test_propose_via_substrate_idle_when_only_introspection():
     """If every candidate is an introspection tool, the substrate has no
     embodied action to propose → None (IDLE), not a meta-tool fidget."""
-    from maxim.runtime.agent_loop import NO_SITUATION_CUE, propose_via_substrate
+    from maxim.runtime.substrate_proposal import NO_SITUATION_CUE, propose_via_substrate
 
     nac = _RecordingNac()
     out = propose_via_substrate(
@@ -256,7 +256,7 @@ def test_substrate_tool_whitelist_restricts_to_minimal_repertoire(monkeypatch):
     tools) so generic always-succeed tools (sense_presence) can't out-compete the
     orient turns — the mac-mini failure where the infant chose sense_presence
     (causal_pos 0.99) over turning."""
-    from maxim.runtime.agent_loop import NO_SITUATION_CUE, propose_via_substrate
+    from maxim.runtime.substrate_proposal import NO_SITUATION_CUE, propose_via_substrate
 
     monkeypatch.setenv("MAXIM_SUBSTRATE_TOOL_WHITELIST", "turn_left,turn_right,listen")
     names = [
@@ -281,7 +281,7 @@ def test_substrate_tool_whitelist_restricts_to_minimal_repertoire(monkeypatch):
 
 def test_substrate_tool_whitelist_absent_keeps_all(monkeypatch):
     """No whitelist → existing behavior (sense_presence still competes)."""
-    from maxim.runtime.agent_loop import NO_SITUATION_CUE, propose_via_substrate
+    from maxim.runtime.substrate_proposal import NO_SITUATION_CUE, propose_via_substrate
 
     monkeypatch.delenv("MAXIM_SUBSTRATE_TOOL_WHITELIST", raising=False)
     nac = _RecordingNac()
@@ -478,7 +478,7 @@ class TestProposeViaSubstrateTick:
         import maxim.embodiment.body as body_mod
         from maxim.embodiment.body import Embodiment
         from maxim.embodiment.spec import _parse_entity
-        from maxim.runtime.agent_loop import NO_SITUATION_CUE, propose_via_substrate
+        from maxim.runtime.substrate_proposal import NO_SITUATION_CUE, propose_via_substrate
 
         class _FakeTime:
             def __init__(self, start=1000.0):

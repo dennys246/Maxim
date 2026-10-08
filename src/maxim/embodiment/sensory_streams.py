@@ -15,7 +15,7 @@ one sensor stream = one ``encode_sensors(modality=tag)`` call = one entry in
 the ``{modality: cluster_id}`` set that flows through ``recommend_action``
 (additive bias sum) and ``record_outcome`` (credit routing). Adding a future
 modality (vision, touch) is one tuple entry at the registry site in
-``runtime/agent_loop.py`` (plus its tag in ``DECLARABLE_MODALITY_TAGS``) —
+``runtime/substrate_proposal.py`` (plus its tag in ``DECLARABLE_MODALITY_TAGS``) —
 NOT a new class, ABC, or percept manifest; the modality string tag is the
 extensibility seam. Channel MEMBERSHIP is the other half (1.1.4 PR 2): a
 sensor declares its channel in the body YAML (``modality: world|audio``),
@@ -51,7 +51,7 @@ AUDIO_TAG = "audio"
 # state a body senses that is neither a drive (interoception) nor sound
 # localization: light level, altitude, hostile proximity, … Membership is
 # DECLARED per sensor (`modality: world` in the body YAML → the channel
-# readers in runtime/agent_loop.py), never a hardcoded name tuple. Consumers
+# readers in runtime/substrate_proposal.py), never a hardcoded name tuple. Consumers
 # special-case it by NAME in two places that must stay consistent: it is
 # GAINED (`SensorEncoderConfig.gain_modalities`, the A4 large-N encoding) and
 # FROZEN-CENTROID from birth (ECConfig + hivemind defaults, plan decision D6).

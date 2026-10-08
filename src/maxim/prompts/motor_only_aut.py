@@ -16,7 +16,7 @@ a wiring bug; substrate-primary mode chooses one or the other.
 
 Read alongside:
 - docs/plans/grounded_language_acquisition.md Phase 0
-- src/maxim/runtime/agent_loop.py::propose_via_substrate
+- src/maxim/runtime/substrate_proposal.py::propose_via_substrate
 - src/maxim/prompts/acting_coach.py (the layer this replaces)
 """
 
@@ -53,7 +53,7 @@ def compose_motor_only_percept(
 
     Args:
         drives: ``{drive_name: value in [0, 1]}`` — typically extracted
-            via ``runtime.agent_loop._read_drive_states``.
+            via ``runtime.substrate_proposal._read_drive_states``.
         sensors: Additional sensor readings beyond the drive-mapped set.
             Same numeric contract as drives.
         available_tools: Tool names. Order is preserved if a list/tuple

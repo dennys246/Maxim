@@ -458,7 +458,7 @@ def test_a_sim_run_starts_the_default_network_but_never_stops_it(monkeypatch, tm
 
 
 def _spy_substrate(monkeypatch: pytest.MonkeyPatch, proposal: Any = None) -> list[dict[str, Any]]:
-    from maxim.runtime import agent_loop as AL
+    from maxim.runtime import substrate_proposal
 
     calls: list[dict[str, Any]] = []
 
@@ -466,7 +466,7 @@ def _spy_substrate(monkeypatch: pytest.MonkeyPatch, proposal: Any = None) -> lis
         calls.append(kw)
         return proposal if len(calls) == 1 else None
 
-    monkeypatch.setattr(AL, "propose_via_substrate", _propose)
+    monkeypatch.setattr(substrate_proposal, "propose_via_substrate", _propose)
     return calls
 
 
@@ -488,7 +488,7 @@ def test_the_substrate_tick_receives_the_hubs_bio_handles(monkeypatch, tmp_path)
 
 
 def test_with_no_hub_the_substrate_tick_gets_the_agent_name_and_no_cue(monkeypatch, tmp_path):
-    from maxim.runtime.agent_loop import NO_SITUATION_CUE
+    from maxim.runtime.substrate_proposal import NO_SITUATION_CUE
 
     calls = _spy_substrate(monkeypatch)
     _run(monkeypatch, tmp_path, stop=False, agent=_Agent("Name Only"), aut_mode="substrate-primary")
@@ -499,7 +499,7 @@ def test_with_no_hub_the_substrate_tick_gets_the_agent_name_and_no_cue(monkeypat
 
 
 def test_a_hub_without_an_agent_id_or_a_cue_falls_back(monkeypatch, tmp_path, caplog):
-    from maxim.runtime.agent_loop import NO_SITUATION_CUE
+    from maxim.runtime.substrate_proposal import NO_SITUATION_CUE
 
     calls = _spy_substrate(monkeypatch)
     hub = _Hub([], agent_id=None, cue=RuntimeError("no ATL"))

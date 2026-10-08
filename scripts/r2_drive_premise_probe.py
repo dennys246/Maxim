@@ -44,7 +44,7 @@ from maxim.embodiment.component_registry import ComponentRegistry  # noqa: E402
 from maxim.embodiment.tool_bridge import generate_tools_for_entity  # noqa: E402
 from maxim.tools.registry import ToolRegistry  # noqa: E402
 from maxim.tools.introspection import INTROSPECTION_TOOL_NAMES  # noqa: E402
-from maxim.runtime.agent_loop import _read_drive_states  # noqa: E402
+from maxim.runtime.substrate_proposal import _read_drive_states  # noqa: E402
 from maxim.decisions.nac import NAc, NACConfig  # noqa: E402
 
 BODY_REF = "bodies/minecraft_player"
@@ -63,7 +63,7 @@ def _build() -> tuple[object, list[str]]:
     root = _parse_entity(resolve_entity_spec(BODY_REF, creg))
     registry = ToolRegistry()
     generate_tools_for_entity(root, registry)
-    # Mirror runtime/agent_loop.propose_via_substrate exactly.
+    # Mirror runtime/substrate_proposal.propose_via_substrate exactly.
     available = [t for t in registry.list() if t not in INTROSPECTION_TOOL_NAMES]
     return root, available
 

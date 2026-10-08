@@ -161,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[FAIL] offline gates record {gates_path} does not authorize a run: {refusal}")
         return 3
 
-    from maxim.runtime.agent_loop import _encode_current_clusters, propose_via_substrate
+    from maxim.runtime.substrate_proposal import _encode_current_clusters, propose_via_substrate
     from maxim.similarity.encoder import SensorEncoderConfig
     from maxim.simulation.minecraft_harness import MinecraftSyncPump, build_minecraft_aut, run_minecraft_aut
     from survival_world.common import make_fresh_encoder
