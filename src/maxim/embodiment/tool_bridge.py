@@ -25,6 +25,7 @@ from maxim.embodiment.sem import (
     HomeostaticDriveSpec,
     Modulator,
     Sensor,
+    _resolve_sensor_slot,
 )
 from maxim.proprioception.pain import drive_failure_sensor
 from maxim.tools.base import Tool, ToolOutput
@@ -97,40 +98,6 @@ def _emit_motor_credit_trace(
 # ---------------------------------------------------------------------------
 # Sensor delta application
 # ---------------------------------------------------------------------------
-
-
-def _resolve_sensor_slot(body: Entity, sensor_name: str) -> tuple[dict[str, float], str, float, float] | None:
-    """Where a (possibly qualified) sensor lives on ``body``, and its declared range.
-
-    The one resolution tool and affordance writes use (#874: ``set_entity_sensor``
-    in both modes, ``self_effect``/``target_effect``). Other writers (DM cascade,
-    cerebellum predictions, vital drift, the derived ``<mod>.integrity`` keys in
-    ``evaluate_failures``) do not go through it. ``"arms.thermal"`` is
-    the ``thermal`` sub-sensor of the ``arms`` modulator, a bare name is an
-    entity-level sensor. Returns ``(metrics, key, lo, hi)``, the range being the
-    sensor's schema range or ``[0, 1]``, or ``None`` when the body has no such
-    sensor (a caller must not write it: a qualified name written to the root is
-    an orphan key that shadows the real sub-sensor in ``evaluate_failures``).
-    """
-    lo, hi = 0.0, 1.0
-    if "." in sensor_name:
-        mod_name, sub_name = sensor_name.split(".", 1)
-        mod = body.modulators.get(mod_name)
-        metrics = getattr(mod, "vital_metrics", None) if mod is not None else None
-        if metrics is None or metrics.get(sub_name) is None:
-            return None
-        sub_spec = getattr(mod, "_sensors", {}).get(sub_name, {})
-        if isinstance(sub_spec, dict) and "range" in sub_spec:
-            lo, hi = sub_spec["range"]
-        return metrics, sub_name, lo, hi
-    if body.vital_metrics.get(sensor_name) is None:
-        return None
-    sensor = body.sensors.get(sensor_name)
-    if sensor is not None:
-        rng = sensor.reading_schema.get("range")
-        if rng and len(rng) == 2:
-            lo, hi = rng
-    return body.vital_metrics, sensor_name, lo, hi
 
 
 def _write_sensor(
@@ -225,8 +192,10 @@ def _drive_potential_diff(
 
     Only entity-level drive sensors (``body.drive_specs``) are scored — the
     centeredness (azimuth) and hunger/thirst/energy drives all live there.
-    Qualified modulator sub-sensors (``arms.thermal``) carry no drive spec today
-    and are skipped; those affordances fall back to the ±1 tool-success signal.
+    Qualified modulator sub-sensors (``arms.thermal``) DO carry a root drive spec on
+    the infant bodies, but their values live on the modulator, so the root reads here
+    and in ``pre_values`` never find them and they are skipped (#1161 owns resolving
+    them; see the collateral-harm note at ``pre_values``).
 
     Scores the acting body's own ``self_effect`` only; a ``target_effect`` (a
     caregiver acting on another body, e.g. a mother feeding an infant) is
@@ -596,15 +565,12 @@ class ModulatorAffordanceTool(Tool):
         # executor's own body.  Fires when the agent explicitly called the
         # tool (not reflex/orchestrator).  Supports entity-level sensors
         # ("hunger") and qualified modulator sub-sensors ("arms.thermal").
-        # Motor-credit (GAP 1): score the drive relief this affordance's own
-        # self_effect produces. Snapshot the pre-effect values of the drive
-        # sensors it will touch, apply, then diff — positive = relief, so
-        # substrate-primary selection learns "turn toward the sound," not just
-        # "turning succeeds." Emitted on side_effects["drive_potential_diff"].
-        # ``None`` = no drive sensor touched (or collateral harm — see the harm
-        # gate after failure evaluation); a float (incl 0.0 / negatives) = the
-        # measured net relief. ``accounted_sensors`` are the drive sensors this
-        # diff represents, used by the collateral-harm gate below.
+        # Motor-credit (GAP 1): score the drive relief this affordance's own self_effect produces. Snapshot the
+        # pre-effect values of the drive sensors it will touch, apply, then diff: positive = relief, so
+        # substrate-primary selection learns "turn toward the sound," not just "turning succeeds." Emitted on
+        # side_effects["drive_potential_diff"]: ``None`` = no drive sensor touched (or collateral harm, see the
+        # harm gate after failure evaluation); a float (incl 0.0 / negatives) = the measured net relief.
+        # ``accounted_sensors`` are the drive sensors this diff represents, used by the collateral-harm gate below.
         drive_potential_diff: float | None = None
         accounted_sensors: set[str] = set()
         # Live-world-owned sensor filter (live_audio_orient_wiring.md
@@ -638,6 +604,9 @@ class ModulatorAffordanceTool(Tool):
             _body = self._embodiment.root
             _drive_specs = getattr(_body, "drive_specs", {}) or {}
             _metrics = getattr(_body, "vital_metrics", {}) or {}
+            # Root reads only: BLIND to modulator drives (``arms.thermal``) on purpose until #1161; resolving them
+            # makes a harmful warm on a saturated arm credit +1 past the harm gate (pinned by
+            # test_substrate_primary_scene_harm).
             pre_values = {name: _metrics[name] for name in _self_effect if name in _drive_specs and name in _metrics}
             accounted_sensors = set(pre_values)
             _apply_sensor_deltas(
