@@ -216,6 +216,9 @@ class Judgement:
     # An O19 verdict re-judged by its bound judge: {"rejudged": its output, "protocol": its PROTOCOL, "harness_env":
     # its HARNESS_ENV, "model": its model pins} (JSON-plain), what the succession rules read (#1059). None until the re-judge agrees.
     o19: dict | None = None
+    # The judge itself raised one of CODE_ERRORS (a gate defect, not bad bytes): set where the exception is caught,
+    # never parsed back out of a reason string (#1037).
+    code_error: bool = False
 
     def fail(self, why: str) -> Judgement:
         self.status = NOT_ESTABLISHED
@@ -1452,7 +1455,7 @@ def o19_history_problems(repo: Repo, base: str) -> list[str]:
 
 def unjudged(j: Judgement) -> bool:
     """The record could not be judged (a judge-code error, not bad bytes: a corrupt file is simply refused)."""
-    return any(r.startswith(tuple(f"malformed: {e}:" for e in CODE_ERRORS)) for r in j.reasons)
+    return j.code_error
 
 
 def watched_paths(j: Judgement) -> list[str]:
@@ -1474,6 +1477,7 @@ def judge_entry(path: str, ctx: Ctx) -> Judgement:
         _judge_entry(path, ctx, j)
     except (GateError, *MALFORMED) as exc:
         j.fail(f"malformed: {type(exc).__name__}: {exc}"[:300])
+        j.code_error = type(exc).__name__ in CODE_ERRORS
     return j
 
 
