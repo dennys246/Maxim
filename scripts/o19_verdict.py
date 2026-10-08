@@ -82,6 +82,9 @@ EXP10_PHASES = [
 # subject code (#1059; docs/experiments/reproduction.md §13).
 MAX_CAMPAIGNS = 2
 _KEY = re.compile(r"[0-9a-z]+")
+# A campaign's data directory is ONE path component under docs/experiments/data/: the evidence gate places each
+# campaign's directory under its last component and the leaked-gate bar reads ``data_root/<scope>`` (#1081 item 3).
+_SCOPE = re.compile(r"[0-9a-z_]+")
 RESERVED_KEYS = frozenset({"preflight"})  # o19_rerun.py's dry-run marker namespace
 
 PROTOCOL: dict[str, dict] = {
@@ -171,9 +174,9 @@ def _plain(value):
 
 
 def protocol_problems(protocol: dict[str, dict] | None = None) -> list[str]:
-    """The structural campaign rules ([] = sound): plain keys, one experiment per chain, a successor names an
-    existing predecessor of its own experiment and kind, each campaign is succeeded at most once, at most one open
-    campaign per experiment, and at most ``MAX_CAMPAIGNS`` campaigns per experiment."""
+    """The structural campaign rules ([] = sound): plain keys, one-component scopes, one experiment per chain, a
+    successor names an existing predecessor of its own experiment and kind, each campaign is succeeded at most once,
+    at most one open campaign per experiment, and at most ``MAX_CAMPAIGNS`` campaigns per experiment."""
     protocol = PROTOCOL if protocol is None else protocol
     problems = []
     for key, p in protocol.items():
@@ -181,6 +184,8 @@ def protocol_problems(protocol: dict[str, dict] | None = None) -> list[str]:
             problems.append(f"campaign key {key!r} is not [0-9a-z]+ or is reserved")
         if p.get("experiment") not in EXPERIMENTS:
             problems.append(f"campaign {key}: experiment {p.get('experiment')!r} is not 10, 09 or 63")
+        if not isinstance(p.get("scope"), str) or not _SCOPE.fullmatch(p["scope"]):
+            problems.append(f"campaign {key}: scope {p.get('scope')!r} is not one path component [0-9a-z_]+")
         sup = p.get("supersedes")
         if sup is None:
             continue

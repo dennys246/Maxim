@@ -26,6 +26,29 @@ DATA_ROOT = REPO / "docs/experiments/data"  # every campaign's committed data di
 _EVIDENCE_OUT_PATH = (
     h._provenance.evidence_out_path
 )  # the fixture redirects the harness's rows; the verdict needs the real one
+_REAL_PROVENANCE = h._provenance.executed_code_provenance
+_PROVENANCE: dict = {}  # one real provenance block per test session (#1081 item 6)
+
+
+def stable_provenance(monkeypatch) -> None:
+    """Make a mock attempt independent of concurrent writes to the live worktree (#1081 item 6): the harness's
+    provenance hashes the live tree (``code_tree_sha256``), so a file created or removed mid-hash makes it
+    "unknown" and the mock run exits 2. The block is captured ONCE per session from the real function (retried,
+    and the test skipped if the tree never hashes), then served with a live run id. The provenance tests themselves
+    stay on the live tree."""
+    if "block" not in _PROVENANCE:
+        for _ in range(3):
+            block = _REAL_PROVENANCE(REPO, sys.executable)
+            if isinstance(block.get("code_tree_sha256"), str) and len(block["code_tree_sha256"]) == 64:
+                _PROVENANCE["block"] = block
+                break
+        else:
+            pytest.skip(f"the live code tree never hashed ({block.get('code_tree_sha256')!r})")
+
+    def fixed(*_a, **_k) -> dict:
+        return {**copy.deepcopy(_PROVENANCE["block"]), **h._provenance._run_id_stamp()}
+
+    monkeypatch.setattr(h._provenance, "executed_code_provenance", fixed)
 
 
 # ── the protocol is the prereg's ─────────────────────────────────────────────────────────────────────────
@@ -218,6 +241,7 @@ def mock_attempt(tmp_path, monkeypatch):
     """One mock attempt through the real harness ``run`` (rows file redirected into tmp_path)."""
 
     def make(exp: str) -> Path:
+        stable_provenance(monkeypatch)
         monkeypatch.setattr(h._provenance, "_RUN_ID", {})
         rows = tmp_path / f"rows_{exp}.jsonl"
         monkeypatch.setattr(h._provenance, "evidence_out_path", lambda *a, **k: rows)
@@ -1945,6 +1969,7 @@ def _mock_campaign(tmp_path: Path, monkeypatch, exp: str, *, failed_from: int | 
     data_dir = tmp_path / v.PROTOCOL[exp]["scope"]
     data_dir.mkdir(parents=True, exist_ok=True)
     rows_file = data_dir / "rows.jsonl"
+    stable_provenance(monkeypatch)
     monkeypatch.setattr(h._provenance, "_RUN_ID", {})
     monkeypatch.setattr(h._provenance, "evidence_out_path", lambda *a, **k: rows_file)
     import contextlib
@@ -2130,3 +2155,72 @@ def test_the_bar_reads_a_predecessor_only_as_its_pinned_closure_judged_it(tmp_pa
         (pdir / "verdict.json").unlink()
     problems = v.chain_leaked_gate_problems("10c2", tmp_path)
     assert len(problems) == 1 and expected in problems[0] and "cannot be ruled out" in problems[0], problems
+
+
+def test_a_scope_is_one_path_component() -> None:
+    """#1081 item 3: the gate places a campaign's directory under its last path component and the leaked-gate bar
+    reads ``data_root/<scope>``, so a scope with a ``/`` would refuse forever: the table refuses it up front."""
+    assert v.protocol_problems() == []
+    for bad in ("rerun/exp10", "..", "Rerun_exp10", "", None):
+        problems = v.protocol_problems(_table(**{"09": {**v.PROTOCOL["09"], "scope": bad}}))
+        assert any("is not one path component" in p for p in problems), (bad, problems)
+
+
+def test_the_harness_and_the_gate_read_one_set_of_executed_commits(tmp_path, monkeypatch) -> None:
+    """#1081 item 4: ``campaign_commits_on_main`` (harness) and ``_campaign_record`` + ``_executed`` (gate) are two
+    readers of the same closures; on one fixture they agree, per predecessor (a harness header's decoy commit is read
+    by neither; a marker with no rows is read by both)."""
+    import copy as _copy
+
+    import _evidence_records as R
+
+    rig = Rig(tmp_path)
+    rig.put("marker_only.py", b"x = 2\n", "2026-10-01T10:30:00Z")
+    marker_only = _git(rig.work, "rev-parse", "HEAD")
+    rig.put("c2.py", b"x = 3\n", "2026-10-01T10:40:00Z")
+    c2 = _git(rig.work, "rev-parse", "HEAD")
+    table = _copy.deepcopy(v.PROTOCOL)
+
+    def close(key: str, ran: str, markers: list[str], date: str) -> str:
+        rows = json.dumps({"record_kind": "harness_row", "provenance": {"executed_git_hash": ran}}) + "\n"
+        rows += json.dumps({"record_kind": "harness_header", "provenance": {"executed_git_hash": "f" * 40}}) + "\n"
+        rig.put(v.rows_path(key), rows.encode(), date)
+        closure = {"data": v.rows_path(key), "data_sha256": v.sha256_bytes(rows.encode()),
+                   "apparatus": {"markers": [{"peeled": m} for m in markers]}}  # fmt: skip
+        raw = json.dumps(closure).encode()
+        rig.put(f"{v.data_dir(key)}/verdict.json", raw, date)
+        return v.sha256_bytes(raw)
+
+    table["10c2"]["supersedes"]["verdict_sha256"] = close(
+        "10", rig.code, [rig.code, marker_only], "2026-10-01T11:00:00Z"
+    )
+    pin_c2 = close("10c2", c2, [c2], "2026-10-01T12:00:00Z")
+    table["10c3"] = {**table["10c2"], "scope": "rerun_exp10_o19c3", "prereg": "c3.md",
+                     "supersedes": {**table["10c2"]["supersedes"], "key": "10c2", "verdict_sha256": pin_c2,
+                                    "verdict": f"{v.data_dir('10c2')}/verdict.json"}}  # fmt: skip
+    monkeypatch.setattr(v, "PROTOCOL", table)
+    monkeypatch.setattr(v, "REPO_ROOT", rig.work)
+    base = _git(rig.work, "rev-parse", "origin/main")
+    ctx = R.Ctx(repo=R.Repo(rig.work), base=base, ref=base, legacy={}, prereg={}, table={})
+
+    def gate_reads(succ: str) -> set:
+        found: set = set()
+        for pred in v.predecessors(succ):
+            sup = table[{"10": "10c2", "10c2": "10c3"}[pred]]["supersedes"]
+            found |= R._executed(*R._campaign_record(ctx, sup["verdict"], sup["verdict_sha256"]))
+        return found
+
+    assert v.campaign_commits_on_main("10c2") == ({rig.code, marker_only}, [])
+    assert v.campaign_commits_on_main("10c2")[0] == gate_reads("10c2")
+    assert v.campaign_commits_on_main("10c3") == ({rig.code, marker_only, c2}, [])
+    assert v.campaign_commits_on_main("10c3")[0] == gate_reads("10c3")
+
+
+def test_a_mock_attempt_does_not_read_the_live_tree(tmp_path, monkeypatch) -> None:
+    """#1081 item 6: the mock helpers serve one captured provenance block, so a live tree that cannot be hashed (a
+    file created and removed mid-hash makes ``code_tree_sha256`` "unknown") no longer makes a mock attempt exit 2."""
+    stable_provenance(monkeypatch)  # captured while the tree hashes
+    monkeypatch.setattr(h._provenance, "code_tree_sha256", lambda *a, **k: "unknown: a file vanished mid-hash")
+    rows = _mock_campaign(tmp_path, monkeypatch, "10")
+    assert rows and all(r["provenance"]["code_tree_sha256"] == _PROVENANCE["block"]["code_tree_sha256"] for r in rows)
+    assert len({r["provenance"]["harness_run_id"] for r in rows}) == 1  # the live run id, minted per attempt
