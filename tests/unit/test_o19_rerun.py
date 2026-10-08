@@ -2201,7 +2201,7 @@ def test_the_harness_and_the_gate_read_one_set_of_executed_commits(tmp_path, mon
     monkeypatch.setattr(v, "PROTOCOL", table)
     monkeypatch.setattr(v, "REPO_ROOT", rig.work)
     base = _git(rig.work, "rev-parse", "origin/main")
-    ctx = R.Ctx(repo=R.Repo(rig.work), base=base, ref=base, legacy={}, prereg={}, table={})
+    ctx = R.Ctx(repo=R.Repo(rig.work), base=base, ref=base, legacy={}, prereg={}, table={}, retired={})
 
     def gate_reads(succ: str) -> set:
         found: set = set()
