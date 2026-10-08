@@ -222,12 +222,15 @@ def _drive_snapshot(executor: Any | None) -> dict[str, Any]:
                 if isinstance(val, (int, float)):
                     drives[ds_name] = float(val)
             # Capture vital_metrics not already classified as drives —
-            # gives us non-drive sensors (durability, integrity, etc.)
+            # gives us non-drive sensors (durability, etc.)
             for vname, vval in getattr(ent, "vital_metrics", {}).items():
-                if vname in drives:
-                    continue
+                if vname in drives or "." in vname:
+                    continue  # a dotted key is never a real sensor (#1124): it would shadow the derived value
                 if isinstance(vval, (int, float)):
                     sensors[f"{ent.name}.{vname}"] = float(vval)
+            # Component integrity is derived, not stored on vital_metrics (#1124).
+            for mod_name, integrity in ent.component_integrities().items():
+                sensors[f"{ent.name}.{mod_name}.integrity"] = float(integrity)
     except Exception:
         return {"available": False}
     return {"available": True, "drives": drives, "sensors": sensors}

@@ -1,0 +1,246 @@
+{
+  "name": "dragon",
+  "entity_type": "creature",
+  "sensors": {
+    "fire_breath_charge": {
+      "name": "fire_breath_charge",
+      "unit": "ratio",
+      "reading_schema": {
+        "type": "float",
+        "range": [
+          0,
+          1
+        ],
+        "initial": 0.7
+      },
+      "initial": 0.7
+    },
+    "aggression": {
+      "name": "aggression",
+      "unit": "ratio",
+      "reading_schema": {
+        "type": "float",
+        "range": [
+          0,
+          1
+        ],
+        "initial": 0.8
+      },
+      "initial": 0.8
+    }
+  },
+  "modulators": {
+    "head": {
+      "name": "head",
+      "affordances": {
+        "bite": {
+          "description": "Seize a target in massive jaws",
+          "timeout": 30.0
+        },
+        "roar": {
+          "description": "Terrifying roar that shakes the ground",
+          "timeout": 30.0
+        }
+      },
+      "abstract": false,
+      "sensors": {
+        "skull_integrity": {
+          "unit": "ratio",
+          "range": [
+            0,
+            1
+          ],
+          "initial": 1.0,
+          "weight": 0.6
+        },
+        "jaw_strength": {
+          "unit": "ratio",
+          "range": [
+            0,
+            1
+          ],
+          "initial": 1.0,
+          "weight": 0.4
+        }
+      }
+    },
+    "wing": {
+      "name": "wing",
+      "affordances": {
+        "take_flight": {
+          "description": "Launch into the air",
+          "timeout": 30.0
+        },
+        "dive_attack": {
+          "description": "Plunge from altitude onto a target \u2014 devastating impact",
+          "timeout": 30.0
+        },
+        "land": {
+          "description": "Settle to the ground",
+          "timeout": 30.0
+        },
+        "circle": {
+          "description": "Circle overhead menacingly",
+          "timeout": 30.0
+        }
+      },
+      "abstract": false,
+      "sensors": {
+        "membrane_integrity": {
+          "unit": "ratio",
+          "range": [
+            0,
+            1
+          ],
+          "initial": 1.0,
+          "weight": 0.4
+        },
+        "bone_integrity": {
+          "unit": "ratio",
+          "range": [
+            0,
+            1
+          ],
+          "initial": 1.0,
+          "weight": 0.4
+        },
+        "joint_mobility": {
+          "unit": "ratio",
+          "range": [
+            0,
+            1
+          ],
+          "initial": 1.0,
+          "weight": 0.2
+        }
+      }
+    },
+    "torso": {
+      "name": "torso",
+      "affordances": {},
+      "abstract": false,
+      "sensors": {
+        "armor_integrity": {
+          "unit": "ratio",
+          "range": [
+            0,
+            1
+          ],
+          "initial": 0.95,
+          "weight": 0.5
+        },
+        "organ_health": {
+          "unit": "ratio",
+          "range": [
+            0,
+            1
+          ],
+          "initial": 1.0,
+          "weight": 0.5
+        }
+      }
+    },
+    "combat": {
+      "name": "combat",
+      "affordances": {
+        "fire_breath": {
+          "description": "Unleash a cone of flame \u2014 devastating but drains charge",
+          "timeout": 30.0
+        },
+        "claw_strike": {
+          "description": "Rake with massive claws",
+          "timeout": 30.0
+        },
+        "tail_sweep": {
+          "description": "Sweep the tail in a wide arc \u2014 knocks back nearby targets",
+          "timeout": 30.0
+        }
+      },
+      "abstract": false,
+      "sensors": {
+        "claw_sharpness": {
+          "unit": "ratio",
+          "range": [
+            0,
+            1
+          ],
+          "initial": 1.0,
+          "weight": 0.5
+        },
+        "tail_strength": {
+          "unit": "ratio",
+          "range": [
+            0,
+            1
+          ],
+          "initial": 1.0,
+          "weight": 0.5
+        }
+      }
+    }
+  },
+  "metadata": {
+    "health": "derived",
+    "health_weights": {
+      "head": 0.25,
+      "wing": 0.15,
+      "torso": 0.4,
+      "combat": 0.2
+    }
+  },
+  "vital_metrics": {
+    "fire_breath_charge": 0.7,
+    "aggression": 0.8,
+    "health": 0.696,
+    "head.integrity": 0.664,
+    "wing.integrity": 1.0,
+    "torso.integrity": 0.44999999999999996,
+    "combat.integrity": 1.0,
+    "head.awareness_orphan": 0.1
+  },
+  "failure_modes": [
+    {
+      "name": "grounded",
+      "triggers": [
+        {
+          "field": "wing.integrity",
+          "op": "<",
+          "value": 0.3,
+          "pain": 0.4
+        }
+      ],
+      "trigger_mode": "any",
+      "pain_intensity": 0.4,
+      "persistent": false
+    },
+    {
+      "name": "jaw_broken",
+      "triggers": [
+        {
+          "field": "head.integrity",
+          "op": "<",
+          "value": 0.2,
+          "pain": 0.5
+        }
+      ],
+      "trigger_mode": "any",
+      "pain_intensity": 0.5,
+      "persistent": false
+    },
+    {
+      "name": "death",
+      "triggers": [
+        {
+          "field": "health",
+          "op": "<=",
+          "value": 0.0,
+          "pain": 1.0
+        }
+      ],
+      "trigger_mode": "any",
+      "pain_intensity": 1.0,
+      "persistent": false
+    }
+  ],
+  "_format_version": "1.0"
+}

@@ -31,6 +31,44 @@ _BREACH_DEEPEN_FRACTION = 0.05
 _BREACH_MIN_EPS = 1e-3
 _BREACH_HYSTERESIS = 0.2
 
+# (entity path, key) pairs already reported for a dotted vital_metrics key that a real modulator sub-sensor
+# overrides (#1124). Process-wide warn-once; tests reset it (tests/conftest.py).
+_warned_shadowed_keys: set[tuple[str, str]] = set()
+
+
+def _reset_shadowed_key_warnings() -> None:
+    """Test-only: clear the warn-once set for shadowed dotted keys."""
+    _warned_shadowed_keys.clear()
+
+
+def _add_component_and_vital_readings(ent: Entity, readings: dict[str, float]) -> None:
+    """Complete *readings* (the entity's own sensors already in it) for trigger and drive evaluation.
+
+    Order (#1124): modulator sub-sensors (``arms.thermal``), then each component's derived integrity
+    (``wing.integrity``, unless a sub-sensor is itself named ``integrity``), then the entity's own
+    ``vital_metrics``. A dotted key there (a pre-#874 orphan, or a stored integrity) used to come first and
+    shadow the real value; now it loses, and is reported once per (entity path, key).
+    """
+    for mod_name, mod in ent.modulators.items():
+        if hasattr(mod, "vital_metrics"):
+            for ms_name, ms_val in mod.vital_metrics.items():
+                readings.setdefault(f"{mod_name}.{ms_name}", ms_val)
+
+    for mod_name, integrity in ent.component_integrities().items():
+        readings.setdefault(f"{mod_name}.integrity", integrity)
+
+    for vname, vval in ent.vital_metrics.items():
+        if vname not in readings:
+            readings[vname] = vval
+        elif "." in vname and (ent.full_path, vname) not in _warned_shadowed_keys:
+            _warned_shadowed_keys.add((ent.full_path, vname))
+            log.warning(
+                "%s: vital_metrics carries %r, which the modulator's own value overrides; component "
+                "state lives on its modulator (#1124)",
+                ent.full_path,
+                vname,
+            )
+
 
 @dataclass
 class EmbodimentConfig:
@@ -189,12 +227,6 @@ class Embodiment:
                 if derived is not None:
                     ent.vital_metrics["health"] = derived
 
-            # Include per-modulator integrity readings so failure modes
-            # can trigger on component state (e.g., trigger on wing.integrity)
-            for mod_name, mod in ent.modulators.items():
-                if hasattr(mod, "compute_integrity") and hasattr(mod, "vital_metrics") and mod.vital_metrics:
-                    ent.vital_metrics[f"{mod_name}.integrity"] = mod.compute_integrity()
-
             # collect scalar sensor values for trigger evaluation
             readings: dict[str, float] = {}
             for sname, sensor in ent.sensors.items():
@@ -206,18 +238,7 @@ class Embodiment:
                     except Exception:
                         log_swallowed_exception()
 
-            # also include vital_metrics (may have drifted values)
-            for vname, vval in ent.vital_metrics.items():
-                if vname not in readings:
-                    readings[vname] = vval
-
-            # Include modulator sub-sensor vital_metrics for drive evaluation
-            for mod_name, mod in ent.modulators.items():
-                if hasattr(mod, "vital_metrics"):
-                    for ms_name, ms_val in mod.vital_metrics.items():
-                        qualified = f"{mod_name}.{ms_name}"
-                        if qualified not in readings:
-                            readings[qualified] = ms_val
+            _add_component_and_vital_readings(ent, readings)
 
             # Log sensor readings for display/JSONL (Track 5: SEM observability)
             try:
@@ -231,7 +252,7 @@ class Embodiment:
 
             # -- Standard failure mode evaluation --
             for fm in ent.failure_modes:
-                if fm.evaluate(readings):
+                if fm.evaluate(readings, source=ent.full_path):
                     event = FailureEvent(
                         entity_path=ent.full_path,
                         failure_name=fm.name,

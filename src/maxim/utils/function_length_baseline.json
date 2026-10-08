@@ -71,12 +71,12 @@
     {
       "file": "src/maxim/embodiment/body.py",
       "qualname": "Embodiment.evaluate_failures",
-      "lines": 241
+      "lines": 224
     },
     {
       "file": "src/maxim/embodiment/spec.py",
       "qualname": "_parse_entity",
-      "lines": 210
+      "lines": 207
     },
     {
       "file": "src/maxim/embodiment/tool_bridge.py",

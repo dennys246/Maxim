@@ -104,13 +104,14 @@ def _resolve_sensor_slot(body: Entity, sensor_name: str) -> tuple[dict[str, floa
 
     The one resolution tool and affordance writes use (#874: ``set_entity_sensor``
     in both modes, ``self_effect``/``target_effect``). Other writers (DM cascade,
-    cerebellum predictions, vital drift, the derived ``<mod>.integrity`` keys in
-    ``evaluate_failures``) do not go through it. ``"arms.thermal"`` is
+    cerebellum predictions, vital drift) do not go through it (one shared
+    resolver: #1156). ``"arms.thermal"`` is
     the ``thermal`` sub-sensor of the ``arms`` modulator, a bare name is an
     entity-level sensor. Returns ``(metrics, key, lo, hi)``, the range being the
     sensor's schema range or ``[0, 1]``, or ``None`` when the body has no such
     sensor (a caller must not write it: a qualified name written to the root is
-    an orphan key that shadows the real sub-sensor in ``evaluate_failures``).
+    an orphan key, which ``evaluate_failures`` overrides with the real sub-sensor
+    and reports, and which ``Entity.to_dict`` does not save, #1124).
     """
     lo, hi = 0.0, 1.0
     if "." in sensor_name:

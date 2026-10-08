@@ -1762,6 +1762,16 @@ def _reset_world_set_ownership_warn_dedup():
 
 
 @pytest.fixture(autouse=True)
+def _reset_shadowed_key_warn_dedup():
+    """Clear evaluate_failures' warn-once set for dotted vital_metrics keys a sub-sensor overrides (#1124)."""
+    from maxim.embodiment.body import _reset_shadowed_key_warnings
+
+    _reset_shadowed_key_warnings()
+    yield
+    _reset_shadowed_key_warnings()
+
+
+@pytest.fixture(autouse=True)
 def _isolate_cradle_mother_stimulus_order_env():
     """Scrub MAXIM_CRADLE_MOTHER_STIMULUS_ORDER between tests (CLAUDE.md
     env-var rule): a leaked 'shuffled' would silently flip any test that
