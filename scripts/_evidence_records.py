@@ -18,7 +18,7 @@ import subprocess
 import sys
 import tempfile
 import zlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
@@ -1129,6 +1129,47 @@ def _executed(rec: dict, rows: list[dict]) -> set:
     return found
 
 
+def _closure_problems(
+    ctx: Ctx, pred: str, crec: dict, crows: list[dict], key: str, entry: dict, base_protocol: dict
+) -> str | dict:
+    """Predecessor ``pred``'s pinned closure (``crec``, its rows ``crows``, both as main holds them) judged at the gate
+    (#1078, #1081 item 5): established by ``judge_o19`` through ITS bound judge at the merge-base (verdict_commit on
+    main's first-parent history, every bound blob the same there and at each executed commit, ``data_sha256``,
+    ``verdict_source_sha256``, the markers bound to the rows, the session files re-hashed, and the bound judge's
+    re-run equal to the record), a real ABORT of ``pred``, and of the cited campaign ``key``'s experiment and kind (by
+    the merge-base table, never the record alone). Returns the bound judge's ``{protocol, harness_env, model}`` for
+    S6, or a refusal. Never ``judge_entry``: its scope rule refuses every ABORT that counted no unit (campaign 10's
+    real closure), which would bar every successor of a phase-0 abort."""
+    jp = Judgement(path=f"{pred}'s closure")
+    try:
+        judge_o19(
+            crec, crows, crec.get("data") if isinstance(crec.get("data"), str) else "", jp, replace(ctx, ref=ctx.base)
+        )
+    except (GateError, *MALFORMED) as exc:
+        jp.fail(f"malformed: {type(exc).__name__}: {exc}")
+    if jp.reasons or not isinstance(jp.o19, dict):
+        reasons = list(dict.fromkeys(jp.reasons))[:3] or ["its bound judge gave no result"]
+        return f"its closure is not established: {reasons}"[:500]
+    pentry = as_dict(base_protocol.get(pred))
+    if (pentry.get("experiment"), pentry.get("kind")) != (entry.get("experiment"), entry.get("kind")):
+        return f"its entry in the merge-base table is not campaign {key}'s experiment and kind"
+    if crec.get("verdict") != "ABORT":
+        return (
+            f"its closure verdict is {crec.get('verdict')!r}, not an ABORT (only an ABORT may be succeeded; PASS, FAIL"
+            " and NOT SHOWN are terminal)"
+        )
+    if crec.get("experiment") != pred:
+        return f"its closure names campaign {crec.get('experiment')!r}, not {pred}"
+    if str_field(crec, "kind") != entry.get("kind"):
+        return f"its closure is of kind {crec.get('kind')!r}, not {entry.get('kind')!r}"
+    if crec.get("mock") is not False:
+        return "its closure is a mock verdict (or does not say)"
+    if any(not isinstance(r, dict) or r.get("mock") is not False for r in crows):
+        return "its closure judged a mock row (or one that does not say)"
+    cap = jp.o19
+    return {"protocol": cap.get("protocol"), "harness_env": cap.get("harness_env"), "model": cap.get("model")}
+
+
 def o19_succession_problems(j: Judgement, token: str, ctx: Ctx) -> list[str]:
     """Why this O19 verdict may not support ``token`` under the campaign-succession rules (#1059; [] = it may).
 
@@ -1139,6 +1180,9 @@ def o19_succession_problems(j: Judgement, token: str, ctx: Ctx) -> list[str]:
     - D2: its bound judge emits the leaked-gate bar, and it is empty (a bound judge without it: supports nothing);
     - S1/S4: every commit any campaign of the chain ran on (each predecessor's pinned closure verdict's rows and
       markers, the successor's own, aborted attempts included) exists, is on main, and holds one subject listing;
+    - #1078: each predecessor's pinned closure is judged here (:func:`_closure_problems`: established through its
+      own bound judge, a real ABORT of that campaign, of this campaign's experiment and kind), and it was on main at
+      every commit the campaign pinning it ran on;
     - S6: the bound judges' phases, HARNESS_ENV and model pins (``MODEL_FIELDS``), and every recorded sim argv (less ``--resume-sim <id>``) and
       MAXIM_* env per phase, are the root's."""
     rec = j.record or {}
@@ -1184,6 +1228,8 @@ def o19_succession_problems(j: Judgement, token: str, ctx: Ctx) -> list[str]:
     argv: dict[object, set[str]] = {}
     env: dict[object, set[str]] = {}
     tables: dict[str, tuple[str, str]] = {}  # campaign -> (its bound phases, its bound HARNESS_ENV)
+    succ_executed: set = set()  # the commits the campaign that pins this one ran on
+    chain_key = key  # that campaign
     for campaign, path, pin in chain:
         if campaign == key:
             rows = json_lines(decompressed(rec["data"], ctx.repo.blob(ctx.ref, rec["data"]) or b""))
@@ -1203,20 +1249,25 @@ def o19_succession_problems(j: Judgement, token: str, ctx: Ctx) -> list[str]:
             bound = None
         if isinstance(got, str):
             problems.append(f"campaign {campaign}: {got}")
+            succ_executed = set()
             continue
         crec, crows = got
-        if bound is None:  # a predecessor's own bound judge: what IT ran
-            oid = as_dict(crec.get("bound_files")).get(O19_JUDGE)
-            out = subprocess.run(["git", "cat-file", "blob", str(oid)], cwd=ctx.repo.root, capture_output=True)
-            mod = load_o19_judge(out.stdout) if out.returncode == 0 and isinstance(oid, str) else "absent"
-            if isinstance(mod, str):
-                problems.append(f"campaign {campaign}: its bound judge cannot be loaded ({mod})"[:300])
+        if bound is None:  # a predecessor: its closure judged through ITS bound judge, which is what IT ran (#1078)
+            # S3 (design pass): the pinned closure was on main before the campaign that pins it ran: at every commit
+            # that campaign ran on (each on main, checked below), the closure's path holds the pinned bytes.
+            for c in sorted(c for c in succ_executed if isinstance(c, str) and HEX40.match(c)):
+                at = ctx.repo.blob(c, path) if ctx.repo.kind(c, path) == "blob" else None
+                if at is None or sha256(at) != pin:
+                    problems.append(
+                        f"campaign {campaign}: {path} is not the pinned closure at campaign {chain_key}'s executed "
+                        f"commit {c[:12]}: the closure must reach main before its successor runs"
+                    )
+            closure = _closure_problems(ctx, campaign, crec, crows, key, entry, base_protocol)
+            if isinstance(closure, str):
+                problems.append(f"campaign {campaign}: {closure}")
+                succ_executed = set()
                 continue
-            bound = {
-                "protocol": _plain(mod.PROTOCOL),
-                "harness_env": _plain(getattr(mod, "HARNESS_ENV", None)),
-                "model": _model_of(mod),
-            }
+            bound = closure
         phases = as_dict(bound["protocol"].get(campaign)).get("phases")
         tables[campaign] = (
             json.dumps(phases, sort_keys=True),
@@ -1224,6 +1275,7 @@ def o19_succession_problems(j: Judgement, token: str, ctx: Ctx) -> list[str]:
             json.dumps(bound["model"], sort_keys=True),
         )
         executed = _executed(crec, crows)
+        succ_executed, chain_key = executed, campaign
         if not executed:
             problems.append(f"campaign {campaign}: no executed commit is recorded")
         for c in executed:
@@ -1248,6 +1300,8 @@ def o19_succession_problems(j: Judgement, token: str, ctx: Ctx) -> list[str]:
         if not isinstance(c, str) or not HEX40.match(c):
             problems.append(f"campaign {campaign}: executed commit {c!r} is not a full commit id")
             continue
+        # Defence in depth since #1078: the successor's own judge_o19 (bound_judge) and each predecessor's
+        # _closure_problems refuse such a commit first, so these two branches are not reached from O19 input.
         exists = subprocess.run(["git", "cat-file", "-e", f"{c}^{{commit}}"], cwd=ctx.repo.root, capture_output=True)
         if exists.returncode != 0:
             problems.append(f"campaign {campaign}: executed commit {c[:12]} does not exist here")
@@ -1278,7 +1332,8 @@ def o19_table_problems(repo: Repo, base: str) -> list[str]:
     """A HEAD ``o19_verdict.py`` against the merge-base's (#1059): D1, each verdict kind belongs to one experiment
     and that map is append-only; S3, a campaign entry is FROZEN (kept, unedited) once its rows or verdict exist on
     main or another entry names it in ``supersedes``, so "has a predecessor" cannot be laundered by an edit; and an
-    entry's ``supersedes`` object, once on main, is frozen itself (no re-pin to a rewritten closure)."""
+    entry's ``supersedes`` object, once on main, is frozen itself (no re-pin to a rewritten closure); and #1077, the
+    campaign count against the merge-base's cap (:func:`_o19_campaign_count_problems`)."""
     base_src, head_src = repo.blob(base, O19_JUDGE), repo.blob("HEAD", O19_JUDGE)
     if base_src is None or head_src is None:
         return []  # no table on one side: a deleted judge while verdicts exist fails half B
@@ -1306,6 +1361,7 @@ def o19_table_problems(repo: Repo, base: str) -> list[str]:
             out.append(f"{O19_JUDGE}: verdict kind {kind} belongs to {len(exps)} experiments (D1: exactly one)")
         elif kind in base_kinds and exps != base_kinds[kind]:
             out.append(f"{O19_JUDGE}: verdict kind {kind} moved to another experiment (D1: the map is append-only)")
+    out += _o19_campaign_count_problems(base_mod, head_mod, head_p)
     named = {as_dict(as_dict(p).get("supersedes")).get("key") for table in (base_p, head_p) for p in table.values()}
     tree = repo.tree(base)
     for key, entry in sorted(base_p.items()):
@@ -1324,6 +1380,73 @@ def o19_table_problems(repo: Repo, base: str) -> list[str]:
                 f"{O19_JUDGE}: campaign {key}'s `supersedes` (its predecessor and the pinned closure SHA-256) is on "
                 "main and was removed or edited: a re-pin could point a successor at a rewritten closure (frozen)"
             )
+    return out
+
+
+def _cap_problem(mod, where: str) -> tuple[int | None, str | None]:
+    """A judge's ``MAX_CAMPAIGNS`` as the cap, or why it is not one (an int, not a bool, >= 1). Absent at the
+    merge-base means a pre-succession judge: a cap of 1. Read with ``getattr``: it is NOT in ``O19_INTERFACE``
+    (the oldest judge on main's history has none)."""
+    cap = getattr(mod, "MAX_CAMPAIGNS", None)
+    if cap is None and where == "the merge-base":
+        return 1, None
+    if not isinstance(cap, int) or isinstance(cap, bool) or cap < 1:
+        return None, f"{O19_JUDGE} at {where}: MAX_CAMPAIGNS {cap!r} is not an integer >= 1"
+    return cap, None
+
+
+def _o19_campaign_count_problems(base_mod, head_mod, head_p: dict) -> list[str]:
+    """#1077: the campaign cap is read from the MERGE-BASE judge, so one PR cannot raise it and add the campaign
+    that uses it (a raise is its own PR; a later PR whose merge-base holds the raise may use it). HEAD's campaigns
+    are counted per experiment and per chain root (design pass S1), and HEAD's own cap must be well-formed and hold
+    HEAD's table (S2: a malformed or too-low cap cannot land and later refuse every judge edit). Continuity is
+    gate-owned too (S1): every HEAD successor's experiment and kind are its predecessor's, never trusted to HEAD's
+    ``protocol_problems``."""
+    out: list[str] = []
+    by_experiment: dict[str, list[str]] = {}
+    by_root: dict[str, list[str]] = {}
+    for key, entry in sorted(head_p.items()):
+        entry = as_dict(entry)
+        exp = entry.get("experiment")
+        if not isinstance(exp, str):
+            out.append(f"{O19_JUDGE}: campaign {key}'s experiment {exp!r} is not a string")
+        else:
+            by_experiment.setdefault(exp, []).append(key)
+        root, seen = key, {key}
+        while isinstance(as_dict(head_p.get(root)).get("supersedes"), dict):
+            prev = head_p[root]["supersedes"].get("key")
+            pentry = head_p.get(prev) if isinstance(prev, str) else None
+            if not isinstance(pentry, dict) or prev in seen:
+                out.append(
+                    f"{O19_JUDGE}: campaign {root} supersedes {prev!r}, which is not a campaign in the table (or the chain cycles)"
+                )
+                break
+            if (pentry.get("experiment"), pentry.get("kind")) != (
+                head_p[root].get("experiment"),
+                head_p[root].get("kind"),
+            ):
+                out.append(f"{O19_JUDGE}: campaign {root} supersedes {prev}, another experiment or kind (S1)")
+            seen.add(prev)
+            root = prev
+        by_root.setdefault(root, []).append(key)
+    out = sorted(set(out), key=out.index)
+    base_cap, problem = _cap_problem(base_mod, "the merge-base")
+    if problem:
+        out.append(problem)
+    head_cap, problem = _cap_problem(head_mod, "HEAD")
+    if problem:
+        out.append(problem)
+    largest = max((len(v) for v in (*by_experiment.values(), *by_root.values())), default=0)
+    if head_cap is not None and head_cap < largest:
+        out.append(f"{O19_JUDGE} at HEAD: MAX_CAMPAIGNS {head_cap} is below its own table's {largest} campaigns")
+    if base_cap is not None:
+        for label, groups in (("experiment", by_experiment), ("the chain rooted at campaign", by_root)):
+            for name, keys in sorted(groups.items()):
+                if len(keys) > base_cap:
+                    out.append(
+                        f"{O19_JUDGE}: {label} {name} has {len(keys)} campaigns at HEAD ({keys}), more than the "
+                        f"merge-base's MAX_CAMPAIGNS {base_cap} (#1077: raise the cap in its own PR first)"
+                    )
     return out
 
 
