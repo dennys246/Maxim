@@ -487,7 +487,8 @@ the per-experiment "complete run" rules for Exp 53/60/61/62, whose pass-table en
   first committed before the M1a cutoff (merge of #999, 2026-09-29T22:41:16Z) whose bytes (decompressed for
   `.gz`) carry no `"record_kind"`. Shrink-only against the base; a key whose file is gone or changed FAILS.
 - `docs/experiments/evidence_exceptions.json` — owner-named overrides (empty at landing), read from the merge-base,
-  append-only.
+  append-only. Kinds: `ledger`, `prereg` (5b-2), `superseded` (`lint_ledger_format`), `redaction` (#1081 item 7,
+  §Redaction below).
 
 ### Triggers (per row ID, base ledger vs HEAD ledger)
 A row is JUDGED when its HEAD token is positive (EARNED/MAINTAINED/RE-VALIDATED) or PARTIAL (on every change,
@@ -586,6 +587,31 @@ name; unknown → NOT-ESTABLISHED. Outcomes: ESTABLISHED / LEGACY (in the snapsh
   it. HEAD's own cap must be an int >= 1 and hold HEAD's table (S2: a malformed cap cannot land and later refuse
   every judge edit). Continuity is gate-owned (S1): every HEAD successor's experiment and kind are its
   predecessor's, and a non-string `experiment` refuses (`_o19_campaign_count_problems`).
+- **A leaked gate inside one campaign bars its deciding attempt (#1079; owner decision 2026-10-08, REFUSE).** For
+  campaign keys outside `o19_verdict.PRE_1079_KEYS` (the four campaigns with a verdict on main: `10`, `10c2`, `09`,
+  `63`, whose `judge()` output is unchanged), the judge reports `within_campaign_leaks`: each attempt BEFORE the
+  deciding one (all of them for an ABORT), in k order, whose committed `ok` phases show a FAILED or unjudgeable
+  `LEAK_GATES` gate (the #1059 phase-prefix map, now read by both bars through `_attempt_leak`), as a STRUCTURED
+  `[run_id, k, status]` (`status` = the sorted failed gate names, `"unjudgeable"` or `"rowless"`); its prose twin
+  `within_campaign_leak_notes` (host paths, exception text) is never compared and never persisted (the writer prints it to
+  stderr and drops it before writing `verdict.json`). An earlier attempt the judge found
+  C1–C5-incomplete is still read (strict), and an earlier start marker with no rows BARS (D1: "rowless"). The
+  verdict and its exit code do not change. The gate
+  (`_evidence_records.py::o19_within_campaign_problems`, from `o19_succession_problems` right after S2, so root and
+  successor campaigns and every token) reads only the bound judge's re-run: its trigger is structural, the
+  deciding attempt's k is not 1 (design pass S2; vacuous for the four keys: 10/10c2 decide nothing, 09/63 decide at
+  k = 1), and then the field must be present (a bound judge without it supports nothing, so a new key wrongly added
+  to `PRE_1079_KEYS` fails closed) and empty. `o19_difference` compares the structured field (S1: a forged `[]`
+  fails; absent on every pre-#1079 record and judge, `None == None`). `O19_INTERFACE` is not extended, so every
+  judge main ever held still loads. **D1 is writer-enforced and gate-trusted** (S3): the writer reads the markers
+  from origin. The gate binds every row to its start marker by the `attempt_k` and `marker` the harness stamps
+  (`_evidence_records.py::_rejudge_with`), so a record that drops a rowless marker and renumbers k is refused unless
+  its rows are forged too; that residue (the forged-verdict class, reproduction §12) is owed as a gate-side check of
+  the rows history and the markers against fetched tags
+  ([#1168](https://github.com/dennys246/Maxim/issues/1168), outstanding M44). The harness preflight refuses a new attempt
+  of such a campaign once an earlier one leaked or is rowless (D2, `o19_rerun.py::check_within_campaign`, from
+  origin's markers and `origin/main`'s rows), and `protocol_problems` refuses a campaign whose phase counts
+  `LEAK_GATES` does not cover.
 - **A scope is one path component** (#1081 item 3): `protocol_problems` refuses a scope that is not
   `[0-9a-z_]+`, the shape the gate's directory placement and the leaked-gate bar assume.
 - **Not built (owner decision 2026-10-08): per-campaign model pins** (#1081 items 1–2). Closed with the trigger
@@ -659,6 +685,69 @@ support or such a clause. Every entry needs a
 unique string `id`.
 Removing Evidence: a row with ≥ 1 ESTABLISHED entry at base keeps one (a base entry that cannot be judged keeps the
 ratchet on, with a NOTE; a record with corrupt bytes or an unexpected shape is simply NOT-ESTABLISHED there).
+
+### Redaction (`kind: "redaction"`; #1081 item 7, built 2026-10-08)
+Owner decision 2026-10-04 (option A: a redaction retires the campaign) and 2026-10-08 (D0–D6, all as recommended);
+approach note adversarially reviewed (0 DO-NOT-BUILD, 5 SHOULD-FIX and 7 NIT, all folded). O19 closed campaigns only
+(D6). Before it, `o19_closed_data_problems` refused every byte under a closed campaign's directory with no exception
+path, so a forced redaction could only merge by bypassing the ruleset.
+- **What it is for (D0).** Tip hygiene, not secrecy: the old blob stays in every first-parent commit since the data
+  landed, and rewriting history would break every executed-commit, marker and `verdict_commit` binding. Rotate the
+  credential first; history rewriting is out of policy.
+- **The record.** Exactly `{id, kind, campaign, data_dir, paths, reason, ref, owner, date}`; `paths` a non-empty
+  list of exactly `{path, from_sha256, to_sha256}`, each a plain path under `data_dir` (no `..` or empty component),
+  unique, never the campaign's `verdict.json` or rows file (redact in place); `from_sha256` / `to_sha256` whole-file
+  SHA-256 over the RAW committed bytes (D1, never a hash of the removed substring: a dictionary oracle for a short
+  secret), `to_sha256` null for a delete, `from != to`. For a NEW record only (absent at the merge-base, design pass
+  S4, so a landed record never becomes a permanent failure): `campaign` a key of the merge-base table and closed there
+  (its `verdict.json` on main), `data_dir` that campaign's directory by the merge-base judge, each path a regular
+  file at HEAD whose bytes are `from_sha256`, and no `(path, from_sha256)` another record already lists
+  (`_evidence_records.py::redaction_record_problem` and `::redaction_pair_problems`, one owner of the shape).
+- **Authorization: from the merge-base only (D2, two PRs).** A changed path under a closed campaign's directory is
+  accepted iff a MERGE-BASE record of that campaign lists it with `from_sha256` = its bytes on main and `to_sha256`
+  = its bytes at HEAD (null: absent at HEAD), a regular file on main with the SAME mode at HEAD (the record hashes
+  bytes, not the mode: a symlink whose target string is the to-bytes, or a 100644 -> 100755 flip, fails). An add,
+  another path, other bytes, or a record added in the same PR still fail; an applied entry never authorizes again
+  (`_redaction_authorizes`). A directory a merge-base record names stays closed whatever happens to its
+  `verdict.json` (G-d). With any record present, an unreadable merge-base judge fails closed, and a loadable one
+  that cannot place a key of its own table raises (`_dir_of`, loud): on the freeze and table paths a "no
+  directory" would read as "not closed" and pass the change. (`o19_table_problems` and `redaction_record_problem`
+  call the judge's `rows_path` directly, so there a raise is a traceback, equally loud.) Retirement alone reads it
+  leniently (`_dir_or_none`), because the record's own `data_dir` retires without the judge. Stated cost: a
+  merge-base judge that cannot place one of its own keys fails EVERY PR, the fix included, until an owner override;
+  what keeps such a judge off main is `protocol_problems`' one-component scope rule and `test_o19_rerun.py`.
+- **Retirement: from base ∪ HEAD.** `retired_dirs` maps each directory a record names (its `data_dir`, read
+  without the judge, design pass S2, and its `campaign`'s merge-base directory; a malformed record still retires)
+  and every campaign whose merge-base `supersedes` chain reaches one (D5) to the record id. It is carried as
+  `Ctx.retired`, a REQUIRED field with no default (a Ctx that forgot it is a `TypeError`); the Evidence-removal
+  ratchet's base Ctx gets the merge-base's records only (S1). It acts at: `_judge_entry` (first, before the prereg
+  and the legacy match: anything under a retired directory is NOT-ESTABLISHED, which also closes G-a, a failed
+  attempt's file that no ok row hashes) and `judge_verdict` (a verdict whose `data` is retired);
+  `_closure_problems` (before the closure's re-judge, so the refusal names the retirement, not a hash mismatch).
+  Design pass S3 (a chain with a retired member supports nothing) needs no walk in `o19_succession_problems`: the
+  descendant closure retires the cited campaign's own directory, so its verdict is already refused by
+  `_judge_entry`. Half B (`o19_judge_edit_problems`) skips a retired verdict, or one whose `data` is retired (as
+  `judge_verdict` refuses it), NOTED: its redacted bytes would otherwise refuse every later judge edit, G-c; and
+  `o19_table_problems` (a NEW or changed `supersedes` naming a retired campaign fails, D4; a retired entry is frozen
+  like a landed one; a landed `supersedes` is not re-judged, so a retirement never bricks a judge edit).
+- **The ledger, on every run (not diff-scoped, G-b; `retired_citation_problems`).** G1: no row in the judged class
+  (positive, PARTIAL, RE-VALIDATED-BY-TESTS; S5) cites a path under a retired directory. G2 (D3): in the change whose
+  records newly retire a directory, every row judged-class on main whose base OR HEAD Evidence touches it is exactly
+  `STALE` at HEAD (S1: dropping the citation does not escape). Concurrent PRs: G1 is global, and strict branch
+  protection makes the second PR re-run against the first. The forced STALE is not only a ledger edit: every README
+  results cell and experiments-index cell citing the row displays its status token and date (`lint_claims_sync.py`
+  R2, R5), so PR 1 edits those too, and a STALE row blocks the next release
+  ([behavioral_graduation_candidates.md](behavioral_graduation_candidates.md) lifecycle) until it is earned back.
+- **Earn-back (D4).** A new pre-registered experiment id with its own kind and pass-table entry (the Exp 63
+  precedent; derivative design review). Today's table rules make a same-experiment re-run impossible for every
+  current campaign (one open campaign per experiment, only an ABORT may be succeeded, `MAX_CAMPAIGNS = 2`).
+- **Landing changes nothing:** main's exceptions file holds no record, so no directory is retired; every judge main
+  ever held still loads, and nothing joins `O19_INTERFACE`.
+- Regression guard: `tests/unit/test_lint_evidence_gate.py` (`test_a_record_on_main_lets_exactly_the_listed_bytes_change`,
+  red on the pre-change gate; `test_the_retiring_change_moves_every_citing_row_to_exactly_stale`;
+  `test_the_retired_field_is_required`; `test_a_mode_change_with_the_listed_bytes_is_refused`;
+  `test_a_malformed_record_still_retires`; `test_a_judge_that_cannot_place_its_own_campaign_fails_the_freeze_loudly`;
+  each mechanism deletion-probed).
 
 ### Bootstrap
 5b-1's own PR moves no row (the pass table is not on main yet). T1-1 / T3-9 move in a later PR, once the table

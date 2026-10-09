@@ -9,6 +9,7 @@ verdict, so the gate's re-judge exercises the shipped code.
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import os
@@ -104,11 +105,14 @@ class Rig:
 # ── an O19 attempt as the harness writes it, stamped as the verdict writer would ─────────────────────────
 
 
-def o19_attempt(rig: Rig, exp: str, executed: str, *, monkeypatch, rows_edit=None, side_branch: bool = False) -> dict:
+def o19_attempt(rig: Rig, exp: str, executed: str, *, monkeypatch, rows_edit=None, side_branch: bool = False,
+                earlier=None, rowless_first: bool = False) -> dict:  # fmt: skip
     """Write a complete O19 attempt for ``exp`` (run on ``executed``), land its rows and session files on main's
     first-parent history (``rig.base_sha`` moves to the landing), and write (uncommitted) the verdict the writer
     stamps AT that landing commit: ``verdict_commit`` = its executed commit = the landing, each bound blob read there.
-    ``rows_edit(rig)`` changes the data before it lands; ``side_branch`` lands it on a branch merged ``--no-ff``."""
+    ``rows_edit(rig)`` changes the data before it lands; ``side_branch`` lands it on a branch merged ``--no-ff``.
+    #1079: ``earlier(rows, data_dir)`` first writes an earlier attempt (a mock attempt it then edits, e.g. aborts);
+    ``rowless_first`` declares an earlier start marker (k = 1) whose rows never landed."""
     import o19_rerun as h
     import o19_verdict as v
     from _provenance import stamp_verdict
@@ -118,9 +122,23 @@ def o19_attempt(rig: Rig, exp: str, executed: str, *, monkeypatch, rows_edit=Non
     stable_provenance(monkeypatch)
     monkeypatch.setattr(h._provenance, "_RUN_ID", {})
     monkeypatch.setattr(h._provenance, "evidence_out_path", lambda *a, **k: rows_path)
+    first = ""
+    if earlier is not None:
+        assert h.main(["run", "--exp", exp, "--mock"]) == 0
+        first_rows = [json.loads(ln) for ln in rows_path.read_text().splitlines()]
+        earlier(first_rows, data_dir)
+        first = "".join(json.dumps(r, sort_keys=True) + "\n" for r in first_rows)
+        rows_path.write_text("")  # the harness's own reading may call an edited attempt complete
+        monkeypatch.setattr(h._provenance, "_RUN_ID", {})
     assert h.main(["run", "--exp", exp, "--mock"]) == 0
+    rows_path.write_text(first + rows_path.read_text())
     rows = [json.loads(ln) for ln in rows_path.read_text().splitlines()]
+    run_order = list(dict.fromkeys(r["provenance"]["harness_run_id"] for r in rows))
     for r in rows:  # as a real attempt on the rig: not mock, run on a commit on main, its sims stamped likewise
+        # stamped with its attempt's k and start marker as a real attempt's row is (a mock attempt has no marker)
+        rid = r["provenance"]["harness_run_id"]
+        k = run_order.index(rid) + 1 + (1 if rowless_first else 0)
+        r.update(attempt_k=k, marker=f"{v.MARKER_NAMESPACE}/{exp}/attempt-{k}-{rid}")
         r["mock"] = False
         r["provenance"].update(executed_git_hash=executed, working_tree_dirty_src_scripts=False)
         for sim in r.get("sims") or []:
@@ -138,15 +156,23 @@ def o19_attempt(rig: Rig, exp: str, executed: str, *, monkeypatch, rows_edit=Non
         rig.base_sha = _git(rig.root, "rev-parse", "HEAD")
     rows = [json.loads(ln) for ln in rows_path.read_text().splitlines()]
     attempts = v.attempts_from_rows(rows)
-    rid = next(iter(attempts))
-    out = v.judge(exp, [{"run_id": rid, "k": 1, "rows": attempts[rid]}], data_dir)
+    run_ids = [*(["0" * 32] if rowless_first else []), *attempts]
+    ordered = [{"run_id": rid, "k": k, "rows": attempts.get(rid, [])} for k, rid in enumerate(run_ids, 1)]
+    judge = R.load_o19_judge(_git_bytes(rig.root, f"{landed}:{R.O19_JUDGE}"))  # the judge the rig holds there
+    assert not isinstance(judge, str), judge
+    out = judge.judge(exp, ordered, data_dir)
+    out.pop("within_campaign_leak_notes", None)  # as the writer does (#1079 S1: the prose is never persisted)
     bound = {
         p: _git(rig.root, "rev-parse", f"{landed}:{p}") for p in (R.O19_JUDGE, R.O19_RERUN, v.PROTOCOL[exp]["prereg"])
     }
-    marker = {"run_id": rid, "k": 1, "ref": f"{v.MARKER_NAMESPACE}/{exp}/attempt-1-{rid}", "peeled": executed}
+    markers = [
+        {"run_id": a["run_id"], "k": a["k"], "ref": f"{v.MARKER_NAMESPACE}/{exp}/attempt-{a['k']}-{a['run_id']}",
+         "peeled": executed}
+        for a in ordered
+    ]  # fmt: skip
     out.update(
         apparatus_checked=True,
-        apparatus={"markers": [marker]},
+        apparatus={"markers": markers},
         bound_files=bound,
         verdict_commit=landed,
         verdict_source_sha256=hashlib.sha256(_git_bytes(rig.root, f"{landed}:{R.O19_JUDGE}")).hexdigest(),
@@ -626,7 +652,9 @@ def rig_epoch(iso: str) -> int:
 
 
 def _ctx(rig: Rig) -> G.Ctx:
-    return G.Ctx(repo=G.Repo(rig.root), base=rig.base_sha, ref="HEAD", legacy={}, prereg={DATA: "PASS"}, table={})
+    return G.Ctx(
+        repo=G.Repo(rig.root), base=rig.base_sha, ref="HEAD", legacy={}, prereg={DATA: "PASS"}, table={}, retired={}
+    )
 
 
 def test_event_log_groups(rig) -> None:
@@ -1107,7 +1135,7 @@ def test_half_b_on_the_real_repo_every_o19_verdict_rejudges_the_same() -> None:
     if repo.kind("HEAD", f"{DATA}/rerun_exp10_o19c2/verdict.json") != "blob":
         pytest.skip("this clone's HEAD holds no O19 verdict")
     assert verdicts
-    ctx = R.Ctx(repo=repo, base="HEAD", ref="HEAD", legacy={}, prereg={}, table={})
+    ctx = R.Ctx(repo=repo, base="HEAD", ref="HEAD", legacy={}, prereg={}, table={}, retired={})
     assert R.o19_judge_edit_problems(ctx) == []
 
 
@@ -2098,7 +2126,8 @@ def _close_campaign_1(rig: Rig, monkeypatch, *, rows_edit=None, record_edit=None
     executed = rig.base_sha
     rows = [json.loads(ln) for ln in rows_path.read_text().splitlines()]
     for r in rows:
-        r["mock"] = False
+        rid = r["provenance"]["harness_run_id"]  # stamped with its start marker as a real attempt's row is
+        r.update(mock=False, attempt_k=1, marker=f"{v.MARKER_NAMESPACE}/10/attempt-1-{rid}")
         r["provenance"].update(executed_git_hash=executed, working_tree_dirty_src_scripts=False)
     if abort:
         rows[-1].update(status="failed", reason="SimRunFailed: planning_failed")
@@ -2139,12 +2168,12 @@ def _close_campaign_1(rig: Rig, monkeypatch, *, rows_edit=None, record_edit=None
 
 def _reproduce(rig: Rig, monkeypatch, *, token="REPRODUCED", rows_edit=None, record_edit=None, before_c2=None,
                after_c2=None, c1_judge: str | None = None, abort: bool = True,
-               closure_late: bool = False) -> list[str]:  # fmt: skip
+               closure_late: bool = False, c2_attempt: dict | None = None) -> list[str]:  # fmt: skip
     """BASE: T1-1 STALE, campaign 1 closed, the judge pinning that closure, ``before_c2(rig)`` (lands with the pin),
     a campaign-2 attempt landed, then ``after_c2(rig)`` on main. HEAD: T1-1 -> ``token`` citing campaign 2.
     ``c1_judge``: the judge text campaign 1 runs and closes with (committed before it, restored after); ``abort``:
     campaign 1's attempt aborted (else it is a PASS); ``closure_late``: the closure lands with campaign 2's rows,
-    after campaign 2 ran."""
+    after campaign 2 ran; ``c2_attempt``: extra ``o19_attempt`` arguments for campaign 2 (#1079: an earlier attempt)."""
     import o19_verdict as v
 
     rig.prereg[f"{DATA}/rerun_exp10_o19c2"] = "PASS"
@@ -2162,7 +2191,7 @@ def _reproduce(rig: Rig, monkeypatch, *, token="REPRODUCED", rows_edit=None, rec
     rig.base_sha = rig.commit("the judge pins campaign 1's closure", BASE_DATE)
     if closure_late:  # o19_attempt lands it with campaign 2's rows
         rig.write(f"{v.data_dir('10')}/verdict.json", rig.closure_raw)
-    record = o19_attempt(rig, "10c2", rig.base_sha, monkeypatch=monkeypatch)
+    record = o19_attempt(rig, "10c2", rig.base_sha, monkeypatch=monkeypatch, **(c2_attempt or {}))
     record["apparatus"]["succession"] = {**v.PROTOCOL["10c2"]["supersedes"], "verdict_sha256": pin,
                                          "closure_landed": 1.0, "prereg_landed": 1.0}  # fmt: skip
     verdict = rig.root / DATA / "rerun_exp10_o19c2" / "verdict.json"
@@ -2274,7 +2303,9 @@ def _closure_alone(rig: Rig) -> R.Judgement:
     import o19_verdict as v
 
     path = f"{v.data_dir('10')}/verdict.json"
-    ctx = R.Ctx(repo=R.Repo(rig.root), base=rig.base_sha, ref=rig.base_sha, legacy={}, prereg=rig.prereg, table={})
+    ctx = R.Ctx(
+        repo=R.Repo(rig.root), base=rig.base_sha, ref=rig.base_sha, legacy={}, prereg=rig.prereg, table={}, retired={}
+    )
     crec, crows = R._campaign_record(ctx, path, None)
     j = R.Judgement(path=path)
     R.judge_o19(crec, crows, crec["data"], j, ctx)
@@ -2409,7 +2440,7 @@ def test_each_closure_check(monkeypatch, edit, why) -> None:
         base["10"]["kind"] = "exp09_verdict"
     elif edit == "base_experiment":
         base["10"]["experiment"] = "09"
-    ctx = R.Ctx(repo=None, base="b", ref="b", legacy={}, prereg={}, table={})  # type: ignore[arg-type]
+    ctx = R.Ctx(repo=None, base="b", ref="b", legacy={}, prereg={}, table={}, retired={})  # type: ignore[arg-type]
     got = R._closure_problems(ctx, "10", crec, crows, "10c2", entry, base)
     assert isinstance(got, str) and why in got, got
     if edit in ("reasons", "not_rejudged"):
@@ -2428,7 +2459,7 @@ def test_the_real_chain_closure_is_judged_sound() -> None:
     import o19_verdict as v
 
     base = _git(REPO, "rev-parse", "origin/main")
-    ctx = R.Ctx(repo=R.Repo(REPO), base=base, ref=base, legacy={}, prereg={}, table={})
+    ctx = R.Ctx(repo=R.Repo(REPO), base=base, ref=base, legacy={}, prereg={}, table={}, retired={})
     sup = v.PROTOCOL["10c2"]["supersedes"]
     got = R._campaign_record(ctx, sup["verdict"], sup["verdict_sha256"])
     assert not isinstance(got, str), got
@@ -2904,6 +2935,709 @@ def test_a_ruled_kinds_entry_may_not_be_deleted() -> None:
     assert G.ruled_scope_problems(base, {"exp62_verdict": {"scopes": ["rung A"], "targets": {}}}) == []
     retired = REAL_TABLE["exp62_verdict"] | {"targets": {}}  # the whole retire shape passes the HEAD shape check
     assert G.pass_table_problems({"exp62_verdict": retired}, "HEAD") == []
+
+
+# ── #1079: the leaked-gate bar within one campaign (owner decision 2026-10-08: the verdict reports, the gate refuses) ──
+
+PRE_1079 = 'PRE_1079_KEYS = frozenset({"10", "10c2", "09", "63"})'
+
+
+def _as_new_keys(rg: Rig) -> None:
+    """The rig's judge treats every campaign as a NEW key (no real campaign is new yet): it emits the bar."""
+    _judge_text(rg, PRE_1079, "PRE_1079_KEYS = frozenset()")
+
+
+def _leaky_attempt_1(rows, data_dir):
+    """Attempt 1 committed phases 1-2 ok with a 2-memory store (Exp 10's P0 FAILED), then died in phase 3."""
+    sdir = data_dir / rows[0]["session_id"]
+    store = _stored(sdir, "aut_hippocampus.json")
+    data = json.dumps({"memories": [{"id": "a"}, {"id": "b"}]}).encode()
+    store.with_name("aut_hippocampus.json").write_bytes(data)
+    if store.name.endswith(".gz"):
+        store.unlink()
+    rows[0]["files"]["aut_hippocampus.json"] = hashlib.sha256(data).hexdigest()
+    rows[-1].update(status="failed", reason="SimRunFailed: planning_failed")
+
+
+def _clean_attempt_1(rows, _data_dir):
+    rows[-1].update(status="failed", reason="SimRunFailed: planning_failed")
+
+
+def _t11_within(rig: Rig, monkeypatch, *, new_keys=True, record_edit=None, **attempt) -> list[str]:
+    """BASE: T1-1 STALE; campaign 10 (a root) as a NEW key when ``new_keys``; its attempts landed (``attempt``: the
+    earlier one). HEAD: its verdict moves T1-1 to MAINTAINED."""
+    rig.base(STALE_BOTH_ROWS)
+    if new_keys:
+        _as_new_keys(rig)
+        rig.base_sha = rig.commit("every campaign is a new key", BASE_DATE)
+    record = o19_attempt(rig, "10", rig.base_sha, monkeypatch=monkeypatch, **attempt)
+    assert record["verdict"] == "PASS" and record["attempts"][-1]["k"] >= 2, record["attempts"]
+    if record_edit:
+        record_edit(record)
+    (rig.root / DATA / "rerun_exp10_o19" / "verdict.json").write_text(json.dumps(record, indent=1))
+    cite = f"**Evidence:** `{DATA}/rerun_exp10_o19/verdict.json`."
+    rig.head(ledger([t1("T1-1", f"**Status: MAINTAINED 2026-10-02**. {cite}")],
+                    [t3("T3-9", "**Status: STALE 2026-09-30**.")]))  # fmt: skip
+    return rig.run()[0]
+
+
+def test_a_maintained_after_a_leak_in_an_earlier_attempt_supports_nothing(rig, monkeypatch) -> None:
+    failures = _t11_within(rig, monkeypatch, earlier=_leaky_attempt_1)
+    assert any("leaked into an earlier attempt of this campaign (#1079)" in f and "P0" in f for f in failures), failures
+
+
+def test_a_maintained_after_a_clean_earlier_attempt_is_supported(rig, monkeypatch) -> None:
+    assert _t11_within(rig, monkeypatch, earlier=_clean_attempt_1) == []
+
+
+def test_a_rowless_earlier_marker_bars_the_deciding_attempt(rig, monkeypatch) -> None:
+    """D1: a start marker whose rows never landed cannot be judged, so it bars (writer-enforced: the writer reads
+    origin's markers; the gate trusts the record's, design pass S3)."""
+    failures = _t11_within(rig, monkeypatch, rowless_first=True)
+    assert any("(#1079)" in f and "rowless" in f for f in failures), failures
+
+
+def test_a_record_that_drops_a_rowless_marker_and_renumbers_is_refused(rig, monkeypatch) -> None:
+    """Exec S1: dropping attempt 1's (rowless) start marker and renumbering the deciding attempt to k = 1 would make
+    the within-campaign trigger vacuous. The rows the harness stamped still name attempt 2 and its marker, so the
+    gate refuses the record unless the rows are forged too (that residue: #1168)."""
+
+    def renumber(record):
+        (_dropped, deciding) = record["apparatus"]["markers"]
+        rid = deciding["run_id"]
+        deciding.update(k=1, ref=deciding["ref"].replace(f"attempt-2-{rid}", f"attempt-1-{rid}"))
+        record["apparatus"]["markers"] = [deciding]
+        record["attempts"] = [a | {"k": 1} for a in record["attempts"] if a["run_id"] == rid]
+        record["within_campaign_leaks"] = []
+
+    failures = _t11_within(rig, monkeypatch, rowless_first=True, record_edit=renumber)
+    assert any("carries attempt_k 2" in f and "not its start marker's (1," in f for f in failures), failures
+
+
+def test_a_bound_judge_without_the_bar_supports_a_later_attempt_nothing(rig, monkeypatch) -> None:
+    """The real judge omits the field for the four pre-#1079 keys: a deciding attempt with k != 1 under such a judge
+    (a key put in PRE_1079_KEYS by a later edit) fails closed."""
+    failures = _t11_within(rig, monkeypatch, new_keys=False, earlier=_clean_attempt_1)
+    assert any("does not compute the within-campaign leaked-gate bar (#1079)" in f for f in failures), failures
+
+
+def test_a_forged_within_campaign_field_is_a_different_verdict(rig, monkeypatch) -> None:
+    failures = _t11_within(rig, monkeypatch, earlier=_leaky_attempt_1,
+                           record_edit=lambda r: r.update(within_campaign_leaks=[]))  # fmt: skip
+    assert any("gives a different within_campaign_leaks" in f for f in failures), failures
+
+
+def test_the_within_campaign_prose_is_never_compared(rig, monkeypatch) -> None:
+    failures = _t11_within(rig, monkeypatch, earlier=_clean_attempt_1,
+                           record_edit=lambda r: r.update(within_campaign_leak_notes=["edited"]))  # fmt: skip
+    assert failures == [], failures
+
+
+def test_a_partial_after_a_leak_in_an_earlier_attempt_supports_nothing(rig, monkeypatch) -> None:
+    import gzip
+
+    def no_flinch_incomplete(rows, data_dir):  # all phases ok but C4-invalid (N1), and H1 NOT MET
+        sdir = data_dir / rows[0]["session_id"]
+        log = gzip.decompress((sdir / "run_log.jsonl.gz").read_bytes()).replace(b"attack_flinch", b"other_reflex")
+        (sdir / "run_log.jsonl.gz").write_bytes(gzip.compress(log))
+        rows[0]["files"]["run_log.jsonl"] = hashlib.sha256(log).hexdigest()
+        rows[0]["served_model"] = {**(rows[0].get("served_model") or {}), "reads": []}
+
+    _as_new_keys(rig)
+    rig.base(ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", "**Status: STALE 2026-09-30**.")]))
+    record = o19_attempt(rig, "09", rig.base_sha, monkeypatch=monkeypatch, earlier=no_flinch_incomplete)
+    assert record["verdict"] == "PARTIAL" and record["within_campaign_leaks"][0][1] == 1, record
+    cite = f"**Evidence:** `{DATA}/rerun_exp09_o19/verdict.json`."
+    rig.head(ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")],
+                    [t3("T3-9", f"**Status: PARTIAL 2026-10-02** (narrow: H3 not measured). {cite}")]))  # fmt: skip
+    failures = rig.run()[0]
+    assert any("(#1079)" in f and "H1" in f for f in failures), failures
+
+
+def test_a_reproduced_after_a_leak_in_an_earlier_attempt_supports_nothing(rig, monkeypatch) -> None:
+    """A successor campaign is covered too: its own earlier attempt leaked (campaign 1's closure is clean)."""
+    failures = _reproduce(rig, monkeypatch, before_c2=_as_new_keys, c2_attempt={"earlier": _leaky_attempt_1})
+    assert any("leaked into an earlier attempt of this campaign (#1079)" in f for f in failures), failures
+
+
+@pytest.mark.parametrize("rejudged, refused", [
+    ({"deciding_attempt": None, "attempts": [{"run_id": "a", "k": 1}, {"run_id": "b", "k": 2}]}, None),
+    ({"deciding_attempt": "a", "attempts": [{"run_id": "a", "k": 1}]}, None),  # vacuous: nothing came earlier
+    ({"deciding_attempt": "b", "attempts": [{"run_id": "a", "k": 1}, {"run_id": "b", "k": 2}]}, "does not compute"),
+    ({"deciding_attempt": "b", "attempts": [{"run_id": "a", "k": 1}, {"run_id": "b", "k": 2}],
+      "within_campaign_leaks": []}, None),
+    ({"deciding_attempt": "b", "attempts": [{"run_id": "a", "k": 1}, {"run_id": "b", "k": 2}],
+      "within_campaign_leaks": [["a", 1, ["P0"]]]}, "FAILED gate leaked"),
+    ({"deciding_attempt": "a", "attempts": [{"run_id": "a", "k": True}]}, "does not compute"),  # a bool is not k 1
+    ({"deciding_attempt": "a", "attempts": [{"run_id": "z", "k": 1}]}, "does not compute"),  # deciding not listed
+])  # fmt: skip
+def test_the_within_campaign_rule(rejudged, refused) -> None:
+    problems = R.o19_within_campaign_problems({"rejudged": rejudged}, "x")
+    assert (problems == []) if refused is None else any(refused in p for p in problems), problems
+
+
+def test_the_within_campaign_trigger_is_vacuous_for_every_verdict_on_main() -> None:
+    """The four pre-#1079 campaigns: ABORT (10, 10c2) or deciding at k = 1 (09, 63), so their bound judges, which do
+    not emit the bar, still support exactly what they did."""
+    found = {}
+    for path in sorted((REPO / DATA).glob("*/verdict.json")):
+        rec = json.loads(path.read_text())
+        if R.str_field(rec, "kind") not in R.O19_KINDS:
+            continue
+        found[rec["experiment"]] = rec.get("deciding_attempt")
+        assert "within_campaign_leaks" not in rec, path
+        assert R.o19_within_campaign_problems({"rejudged": rec}, rec["experiment"]) == [], path
+    assert set(found) == {"10", "10c2", "09", "63"}, found
+
+
+# ── #1081 item 7: a redaction record retires the campaign (owner decisions 2026-10-04 + 2026-10-08) ─────────────
+# BASE: Exp 09's campaign closed with T3-9 PARTIAL citing its verdict. PR 1 lands the record (and T3-9 -> STALE); PR 2,
+# with the record on main, changes exactly the listed bytes.
+
+V09 = f"{DATA}/rerun_exp09_o19/verdict.json"
+
+
+def _sha(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _t39(token: str, cite: str = V09) -> str:
+    status = f"**Status: {token} 2026-10-02**" + (" (narrow: H3 not measured)" if token == "PARTIAL" else "")
+    evidence = f" **Evidence:** `{cite}`." if cite else ""
+    return ledger([t1("T1-1", "**Status: STALE 2026-09-30**.")], [t3("T3-9", f"{status}.{evidence}")])
+
+
+def _session_files(rig: Rig, exp: str) -> list[str]:
+    import o19_verdict as v
+
+    root = rig.root / v.data_dir(exp)
+    return sorted(
+        p.relative_to(rig.root).as_posix()
+        for p in root.rglob("*")
+        if p.is_file() and p.parent != root  # a session file, never the rows file or the closure
+    )
+
+
+def _redacted(path: str) -> bytes:
+    return gzip.compress(b"[redacted]\n", mtime=0) if path.endswith(".gz") else b"[redacted]\n"
+
+
+def _record(rig: Rig, path: str, *, campaign: str = "09", to: bytes | None = b"", rid: str = "redact-1", **kw) -> dict:
+    import o19_verdict as v
+
+    after = _redacted(path) if to == b"" else to
+    rec = {
+        "id": rid,
+        "kind": "redaction",
+        "campaign": campaign,
+        "data_dir": v.data_dir(campaign),
+        "paths": [{"path": path, "from_sha256": _sha((rig.root / path).read_bytes()),
+                   "to_sha256": None if after is None else _sha(after)}],
+        "reason": "a token in a copied console log",
+        "ref": "#1081",
+        "owner": "dennys246",
+        "date": "2026-10-08",
+    }  # fmt: skip
+    rec.update(kw)
+    return rec
+
+
+def _closed_09(rig: Rig, monkeypatch, *, rows_edit=None) -> None:
+    """BASE: campaign 09 closed on main, T3-9 PARTIAL citing its verdict."""
+    rig.base(STALE_BOTH_ROWS)
+    o19_attempt(rig, "09", rig.base_sha, monkeypatch=monkeypatch, rows_edit=rows_edit)
+    rig.base(_t39("PARTIAL"))
+
+
+def _promote(rig: Rig) -> None:
+    rig.base_sha = _git(rig.root, "rev-parse", "HEAD")
+
+
+def _pr1(rig: Rig, rec: dict, token: str = "STALE", cite: str = V09) -> list[str]:
+    rig.write(G.EXCEPTIONS, json.dumps([rec], indent=1))
+    rig.head(_t39(token, cite))
+    return rig.run()[0]
+
+
+def _retired_09(rig: Rig, monkeypatch, *, rows_edit=None, pick=0, to: bytes | None = b"") -> tuple[str, dict]:
+    """PR 1 landed: the record on main, T3-9 STALE."""
+    _closed_09(rig, monkeypatch, rows_edit=rows_edit)
+    path = _session_files(rig, "09")[pick]
+    rec = _record(rig, path, to=to)
+    assert _pr1(rig, rec) == []
+    _promote(rig)
+    return path, rec
+
+
+def test_a_redaction_record_lands_with_its_citing_rows_stale(rig, monkeypatch) -> None:
+    """PR 1 (owner D2/D3): the record, and every row citing the campaign moved to exactly STALE: clean."""
+    _closed_09(rig, monkeypatch)
+    assert _pr1(rig, _record(rig, _session_files(rig, "09")[0])) == []
+
+
+@pytest.mark.parametrize(
+    ("token", "cite", "g1"),
+    [("PARTIAL", V09, True), ("DORMANT", V09, False), ("PARTIAL", "", False)],
+    ids=["stays-partial", "dormant-not-stale", "drops-the-citation"],
+)
+def test_the_retiring_change_moves_every_citing_row_to_exactly_stale(rig, monkeypatch, token, cite, g1) -> None:
+    """G2 (D3), reading the base Evidence too (design pass S1: dropping the citation does not escape); G1 refuses a
+    judged row citing a retired campaign at all."""
+    _closed_09(rig, monkeypatch)
+    failures = _pr1(rig, _record(rig, _session_files(rig, "09")[0]), token=token, cite=cite)
+    assert any("T3-9: was PARTIAL on main" in f and "exactly STALE" in f and "(G2" in f for f in failures), failures
+    assert any("T3-9: cites" in f and "(G1" in f for f in failures) == g1, failures
+
+
+def test_a_record_on_main_lets_exactly_the_listed_bytes_change(rig, monkeypatch) -> None:
+    """PR 2, the positive control: the listed path changes from main's bytes to exactly to_sha256."""
+    path, _ = _retired_09(rig, monkeypatch)
+    rig.write(path, _redacted(path))
+    rig.head(_t39("STALE"))
+    assert rig.run()[0] == []
+
+
+def test_a_record_on_main_lets_a_listed_path_be_deleted_when_to_is_null(rig, monkeypatch) -> None:
+    path, _ = _retired_09(rig, monkeypatch, to=None)
+    (rig.root / path).unlink()
+    rig.head(_t39("STALE"))
+    assert rig.run()[0] == []
+
+
+def _closed_failures(failures: list[str]) -> list[str]:
+    return [f for f in failures if "campaign 09 is closed" in f]
+
+
+@pytest.mark.parametrize("case", ["other_bytes", "unlisted", "added"])
+def test_a_record_on_main_lets_nothing_else_change(rig, monkeypatch, case) -> None:
+    """Anything but the listed path's exact from -> to still fails: other bytes, another file, an add."""
+    path, _ = _retired_09(rig, monkeypatch)
+    if case == "other_bytes":
+        rig.write(path, _redacted(path) + b"x")
+    elif case == "unlisted":
+        other = _session_files(rig, "09")[1]
+        rig.write(other, (rig.root / other).read_bytes() + b"\n")
+    else:
+        rig.write(path.rsplit("/", 1)[0] + "/new.txt", "x\n")
+    rig.head(_t39("STALE"))
+    assert _closed_failures(rig.run()[0]), rig.run()[0]
+
+
+@pytest.mark.parametrize("case", ["symlink", "exec-bit"])
+def test_a_mode_change_with_the_listed_bytes_is_refused(rig, monkeypatch, case) -> None:
+    """The record hashes bytes, not the mode: a symlink whose target string IS the to-bytes, or the redacted bytes
+    with the exec bit flipped (100644 -> 100755), is not the listed change (HEAD's mode must be main's)."""
+    path, _ = _retired_09(rig, monkeypatch, to=b"elsewhere" if case == "symlink" else b"")
+    full = rig.root / path
+    if case == "symlink":
+        full.unlink()
+        os.symlink("elsewhere", full)
+    else:
+        rig.write(path, _redacted(path))
+        full.chmod(0o755)
+    rig.head(_t39("STALE"))
+    mode = _git(rig.root, "ls-tree", "HEAD", path).split()[0]
+    assert mode == ("120000" if case == "symlink" else "100755"), mode
+    assert _closed_failures(rig.run()[0]), rig.run()[0]
+
+
+def test_an_applied_redaction_entry_never_authorizes_again(rig, monkeypatch) -> None:
+    """One-shot: once the bytes are to_sha256 on main, the entry's from-bytes are gone."""
+    path, _ = _retired_09(rig, monkeypatch)
+    rig.write(path, _redacted(path))
+    rig.head(_t39("STALE"))
+    assert rig.run()[0] == []
+    _promote(rig)
+    rig.write(path, b"another edit\n")
+    rig.head(_t39("STALE"))
+    assert _closed_failures(rig.run()[0]), rig.run()[0]
+
+
+def test_an_entry_authorizes_only_from_its_own_from_bytes(rig, monkeypatch) -> None:
+    """Two landed entries for one path, X -> Y and Y -> Z: a jump X -> Z is not the second entry's change (its
+    from-bytes are not main's), so it fails; X -> Y passes."""
+    _closed_09(rig, monkeypatch)
+    path = _session_files(rig, "09")[0]
+    first = _record(rig, path)
+    y, z = _redacted(path), _redacted(path) + b"z"
+    second = _record(rig, path, rid="redact-2", to=z)
+    second["paths"][0]["from_sha256"] = _sha(y)
+    rig.write(G.EXCEPTIONS, json.dumps([first], indent=1))
+    rig.head(_t39("STALE"))
+    assert rig.run()[0] == []
+    _promote(rig)
+    rig.write(G.EXCEPTIONS, json.dumps([first, second], indent=1))
+    rig.base(_t39("STALE"))  # landed as on main (its new-record HEAD-bytes check is the landing PR's)
+    rig.write(path, z)
+    rig.head(_t39("STALE"))
+    assert _closed_failures(rig.run()[0]), rig.run()[0]
+    rig.write(path, y)
+    rig.head(_t39("STALE"))
+    assert rig.run()[0] == []
+
+
+def test_a_record_in_the_same_change_authorizes_no_byte_change(rig, monkeypatch) -> None:
+    """D2: only a record already on main authorizes (here also refused as new: its from is not HEAD's bytes)."""
+    _closed_09(rig, monkeypatch)
+    path = _session_files(rig, "09")[0]
+    rec = _record(rig, path)
+    rig.write(path, _redacted(path))
+    failures = _pr1(rig, rec)
+    assert _closed_failures(failures), failures
+    assert any("from_sha256 is not its bytes at HEAD" in f for f in failures), failures
+
+
+def test_a_retired_row_cannot_be_raised_while_it_cites_the_retired_verdict(rig, monkeypatch) -> None:
+    """After PR 1: raising T3-9 back to PARTIAL on the retired verdict fails G1, and the row's own judgement refuses
+    the verdict as retired (an earn-back cites a NEW experiment's verdict, owner D4)."""
+    _retired_09(rig, monkeypatch)
+    rig.head(_t39("PARTIAL").replace("2026-10-02", "2026-10-03"))
+    failures = rig.run()[0]
+    assert any("T3-9: cites" in f and "(G1" in f for f in failures), failures
+    assert any(f.startswith(f"T3-9: {V09}: retired by redaction 'redact-1'") for f in failures), failures
+
+
+def test_g1_reads_every_citation_and_the_by_tests_row_too() -> None:
+    """G1 per citation (a new verdict beside the retired one still fails) and on the whole judged class (design pass
+    S5: RE-VALIDATED-BY-TESTS included); STALE rows may keep the citation."""
+    retired = {f"{DATA}/rerun_exp09_o19": "r1"}
+    both = f"**Evidence:** `{DATA}/new_exp/verdict.json`, `{V09}`."
+    text = ledger(
+        [t1("T1-1", f"**Status: RE-VALIDATED-BY-TESTS 2026-10-02**. **Evidence:** `{V09}`.")],
+        [t3("T3-9", f"**Status: PARTIAL 2026-10-02** (narrow: x). {both}"), t3("T3-8", f"**Status: STALE 2026-10-02**. {both}")],
+    )  # fmt: skip
+    rows, _ = G.L.parse(text)
+    problems = G.retired_citation_problems(rows, {}, retired, retired)
+    assert sorted(p.split(":")[0] for p in problems) == ["T1-1", "T3-9"], problems
+
+
+def test_retiring_a_predecessor_retires_its_successors(rig, monkeypatch) -> None:
+    """D5: retiring campaign 10 retires 10c2, so a row at REPRODUCED citing 10c2 fails G1 and G2; moved to STALE, the
+    retiring change is clean."""
+    assert _reproduce(rig, monkeypatch) == []
+    _promote(rig)
+    rec = _record(rig, _session_files(rig, "10")[0], campaign="10")
+    rig.write(G.EXCEPTIONS, json.dumps([rec], indent=1))
+    c2 = f"**Evidence:** `{DATA}/rerun_exp10_o19c2/verdict.json`."
+    rig.head(
+        ledger([t1("T1-1", f"**Status: REPRODUCED 2026-10-02**. {c2}")], [t3("T3-9", "**Status: STALE 2026-09-30**.")])
+    )
+    failures = rig.run()[0]
+    assert any("T1-1: cites" in f and "rerun_exp10_o19c2" in f and "(G1" in f for f in failures), failures
+    assert any("T1-1: was REPRODUCED on main" in f and "(G2" in f for f in failures), failures
+    rig.head(ledger([t1("T1-1", f"**Status: STALE 2026-10-03**. {c2}")], [t3("T3-9", "**Status: STALE 2026-09-30**.")]))
+    assert rig.run()[0] == []
+    retired = R.retired_dirs(R.Repo(rig.root), rig.base_sha, [rec])
+    assert retired == {f"{DATA}/rerun_exp10_o19": "redact-1", f"{DATA}/rerun_exp10_o19c2": "redact-1"}
+
+
+def test_a_chain_with_a_retired_member_supports_nothing(rig, monkeypatch) -> None:
+    """S3 without a walk in o19_succession_problems: retired_dirs' descendant closure retires 10c2 with campaign 10,
+    so 10c2's verdict is refused by _judge_entry before support is read; and a context retiring only the predecessor
+    is still refused, by _closure_problems (before the closure's re-judge)."""
+    assert _reproduce(rig, monkeypatch) == []
+    repo = R.Repo(rig.root)
+    rec = _record(rig, _session_files(rig, "10")[0], campaign="10", rid="r1")
+    kw = dict(repo=repo, base=rig.base_sha, ref="HEAD", legacy={}, prereg=rig.prereg,
+              table=json.loads((REPO / G.PASS_TABLE).read_text()))  # fmt: skip
+    closed = R.retired_dirs(repo, rig.base_sha, [rec])
+    assert f"{DATA}/rerun_exp10_o19c2" in closed
+    j = R.judge_entry(f"{DATA}/rerun_exp10_o19c2/verdict.json", R.Ctx(**kw, retired=closed))
+    assert j.status == R.NOT_ESTABLISHED and j.reasons[0].startswith("retired by redaction 'r1'"), j.reasons
+    ctx = R.Ctx(**kw, retired={f"{DATA}/rerun_exp10_o19": "r1"})
+    j = R.judge_entry(f"{DATA}/rerun_exp10_o19c2/verdict.json", ctx)
+    assert j.status == R.ESTABLISHED, j.reasons
+    problems = R.o19_succession_problems(j, "REPRODUCED", ctx)
+    assert any("campaign 10: its closure is retired by redaction 'r1'" in p for p in problems), problems
+
+
+def test_a_retired_closure_is_refused_before_its_rejudge(monkeypatch) -> None:
+    def boom(*_a, **_k):
+        raise AssertionError("judge_o19 ran on a retired closure")
+
+    monkeypatch.setattr(R, "judge_o19", boom)
+    ctx = R.Ctx(repo=None, base="b", ref="b", legacy={}, prereg={}, table={},  # type: ignore[arg-type]
+                retired={f"{DATA}/rerun_exp10_o19": "r1"})  # fmt: skip
+    crec = {"data": f"{DATA}/rerun_exp10_o19/rows.jsonl"}
+    got = R._closure_problems(ctx, "10", crec, [], "10c2", {}, {})
+    assert isinstance(got, str) and "its closure is retired by redaction 'r1'" in got, got
+
+
+def test_the_g_a_pin_a_failed_attempts_file_redacted_still_retires_the_verdict(rig, monkeypatch) -> None:
+    """G-a: a file no ok row hashes (here an extra console log) re-judges identically after its redaction, so only the
+    record (Ctx.retired) makes the verdict support nothing."""
+
+    def console(rg: Rig) -> None:
+        import o19_verdict as v
+
+        session = sorted(p for p in (rg.root / v.data_dir("09")).iterdir() if p.is_dir())[0]
+        (session / "console.out").write_text("TOKEN=abc123\n")
+
+    _closed_09(rig, monkeypatch, rows_edit=console)
+    path = next(p for p in _session_files(rig, "09") if p.endswith("/console.out"))
+    rec = _record(rig, path)
+    assert _pr1(rig, rec) == []
+    _promote(rig)
+    rig.write(path, _redacted(path))
+    rig.head(_t39("STALE"))
+    assert rig.run()[0] == []
+    _promote(rig)
+    repo = R.Repo(rig.root)
+    kw = dict(repo=repo, base=rig.base_sha, ref="HEAD", legacy={}, prereg=rig.prereg,
+              table=json.loads((REPO / G.PASS_TABLE).read_text()))  # fmt: skip
+    assert R.judge_entry(V09, R.Ctx(**kw, retired={})).status == R.ESTABLISHED  # the redaction alone breaks nothing
+    j = R.judge_entry(V09, R.Ctx(**kw, retired=R.retired_dirs(repo, rig.base_sha, [rec])))
+    assert j.status == R.NOT_ESTABLISHED and j.reasons[0].startswith("retired by redaction 'redact-1'"), j.reasons
+
+
+def test_a_verdict_whose_data_is_retired_supports_nothing(rig) -> None:
+    """A verdict outside the retired directory whose `data` points into it is refused for that."""
+    rig.write(f"{DATA}/rerun_exp09_o19/rows.jsonl", "\n")
+    rig.write(
+        f"{DATA}/other_verdict.json",
+        json.dumps({"record_kind": "verdict", "data": f"{DATA}/rerun_exp09_o19/rows.jsonl"}),
+    )
+    rig.base(STALE_BOTH_ROWS)
+    ctx = _ctx(rig)
+    ctx.retired = {f"{DATA}/rerun_exp09_o19": "r1"}
+    j = R.judge_entry(f"{DATA}/other_verdict.json", ctx)
+    assert any("is retired by redaction 'r1'" in r for r in j.reasons), j.reasons
+
+
+def test_a_judge_edit_skips_a_retired_verdict(rig, monkeypatch) -> None:
+    """G-c: after an ok-row file's redaction the verdict no longer re-judges; a later judge edit is not refused for it
+    (it supports nothing), and the gate NOTES the skip."""
+    path, _ = _retired_09(rig, monkeypatch)
+    rig.write(path, _redacted(path))
+    rig.head(_t39("STALE"))
+    assert rig.run()[0] == []
+    _promote(rig)
+    _judge_text(rig, "MAX_ATTEMPTS = 3", "MAX_ATTEMPTS = 3  # x")
+    rig.head(_t39("STALE"))
+    failures, notes = rig.run()
+    assert failures == [], failures
+    assert any("retired by redaction 'redact-1'" in n and "not re-judged" in n for n in notes), notes
+
+
+def test_a_judge_edit_skips_a_verdict_whose_data_is_retired(rig, monkeypatch) -> None:
+    """Half B matches judge_verdict: a verdict OUTSIDE the retired directory whose `data` lies in it supports nothing,
+    so its redacted rows do not refuse a later judge edit either."""
+    path, _ = _retired_09(rig, monkeypatch)
+    rig.write(path, _redacted(path))
+    rig.head(_t39("STALE"))
+    assert rig.run()[0] == []
+    rig.write(f"{DATA}/copy_o19/verdict.json", (rig.root / V09).read_bytes())
+    rig.base(_t39("STALE"))
+    _judge_text(rig, "MAX_ATTEMPTS = 3", "MAX_ATTEMPTS = 3  # x")
+    rig.head(_t39("STALE"))
+    failures = [f for f in rig.run()[0] if "copy_o19" in f]
+    assert failures == [], failures
+
+
+def _09c2() -> str:
+    return (
+        'PROTOCOL["09c2"] = {"experiment": "09", "scope": "rerun_exp09_o19c2", "kind": "exp09_verdict",\n'
+        '    "prereg": "docs/experiments/protocols/c2.md", "phases": PROTOCOL["09"]["phases"],\n'
+        '    "supersedes": {"key": "09", "verdict": "docs/experiments/data/rerun_exp09_o19/verdict.json",\n'
+        '                   "verdict_sha256": "0" * 64, "owner_decision": "2026-10-08", "cause_issue": 1}}\n'
+        "EXPERIMENTS = frozenset("
+    )
+
+
+def test_a_new_successor_of_a_retired_campaign_is_refused_at_the_table(rig) -> None:
+    rig.base(STALE_BOTH_ROWS)
+    _judge_text(rig, "EXPERIMENTS = frozenset(", _09c2())
+    rig.head(STALE_BOTH_ROWS)
+    repo = R.Repo(rig.root)
+    retired = {f"{DATA}/rerun_exp09_o19": "r1"}
+    assert any("campaign 09c2 supersedes campaign '09', retired by redaction 'r1'" in p
+               for p in R.o19_table_problems(repo, rig.base_sha, retired))  # fmt: skip
+    assert not any("retired" in p for p in R.o19_table_problems(repo, rig.base_sha, {}))
+
+
+def test_a_retired_entry_is_frozen_in_the_table(rig) -> None:
+    """Design pass S2: an entry a redaction retired (here an unrun successor, retired with its predecessor) is frozen
+    like a landed one."""
+    _judge_text(rig, "EXPERIMENTS = frozenset(", _09c2())
+    rig.base(STALE_BOTH_ROWS)
+    _judge_text(rig, '"docs/experiments/protocols/c2.md"', '"docs/experiments/protocols/c2b.md"')
+    rig.head(STALE_BOTH_ROWS)
+    repo = R.Repo(rig.root)
+    retired = {f"{DATA}/rerun_exp09_o19": "r1", f"{DATA}/rerun_exp09_o19c2": "r1"}
+    assert any("campaign 09c2 is frozen" in p for p in R.o19_table_problems(repo, rig.base_sha, retired))
+    assert not any("09c2 is frozen" in p for p in R.o19_table_problems(repo, rig.base_sha, {}))
+
+
+def test_a_landed_successor_is_not_refused_when_its_predecessor_retires(rig) -> None:
+    """A landed `supersedes` is frozen, so a retirement after it never bricks a later judge edit."""
+    rig.base(STALE_BOTH_ROWS)
+    _judge_text(rig, "MAX_ATTEMPTS = 3", "MAX_ATTEMPTS = 3  # x")
+    rig.head(STALE_BOTH_ROWS)
+    assert R.o19_table_problems(R.Repo(rig.root), rig.base_sha, {f"{DATA}/rerun_exp10_o19": "r1"}) == []
+
+
+def _small_rig(rig: Rig, *, verdict: bool = True) -> str:
+    """BASE: campaign 09's directory with a session file, its rows file and (``verdict``) its closure; no attempt."""
+    import o19_verdict as v
+
+    d = v.data_dir("09")
+    rig.write(f"{d}/s1/console.out", "TOKEN=abc\n")
+    rig.write(f"{d}/s1/other.txt", "x\n")
+    rig.write(v.rows_path("09"), "\n")
+    if verdict:
+        rig.write(f"{d}/verdict.json", "{}\n")
+    rig.write(f"{DATA}/rerun_exp63/s/x.txt", "x\n")
+    os.symlink("console.out", rig.root / d / "s1" / "link.out")
+    rig.base(STALE_BOTH_ROWS)
+    return d
+
+
+def test_a_record_naming_a_campaign_closes_its_directory(rig) -> None:
+    """G-d: a directory a base record names stays frozen even without its verdict.json."""
+    d = _small_rig(rig, verdict=False)
+    rec = _record(rig, f"{d}/s1/console.out")
+    rig.write(G.EXCEPTIONS, json.dumps([rec]))
+    rig.base(STALE_BOTH_ROWS)
+    rig.write(f"{d}/s1/other.txt", "y\n")
+    rig.head(STALE_BOTH_ROWS)
+    assert _closed_failures(rig.run()[0]), rig.run()[0]
+
+
+def test_a_redaction_record_is_append_only() -> None:
+    rec = {"id": "r1", "kind": "redaction", "paths": []}
+    assert any("append-only" in p for p in G.exceptions_problems([rec], [{**rec, "reason": "x"}]))
+    assert any("append-only" in p for p in G.exceptions_problems([rec], []))
+
+
+@pytest.mark.parametrize(
+    ("edit", "why"),
+    [
+        (lambda r, d: r.update(campaign="99"), "is not in the merge-base campaign table"),
+        (lambda r, d: r.update(campaign="63", data_dir=f"{DATA}/rerun_exp63",
+                               paths=[{**r["paths"][0], "path": f"{DATA}/rerun_exp63/s/x.txt"}]), "not campaign 63's"),
+        (lambda r, d: r["paths"][0].update(path=f"{DATA}/rerun_exp10_o19/s1/console.out"), "is not a plain path under"),
+        (lambda r, d: r["paths"][0].update(path=f"{d}/s1/../s1/console.out"), "is not a plain path under"),
+        (lambda r, d: r["paths"].append(dict(r["paths"][0])), "is listed twice"),
+        (lambda r, d: r.update(paths=[]), "non-empty list"),
+        (lambda r, d: r.update(extra="x"), "must carry exactly"),
+        (lambda r, d: r.pop("ref"), "must carry exactly"),
+        (lambda r, d: r.update(ref=""), "lacks a required field"),
+        (lambda r, d: r["paths"][0].update(from_sha256="0" * 64), "from_sha256 is not its bytes at HEAD"),
+        (lambda r, d: r["paths"][0].update(from_sha256="xyz"), "not a SHA-256"),
+        (lambda r, d: r["paths"][0].update(to_sha256=r["paths"][0]["from_sha256"]), "equals to_sha256"),
+        (lambda r, d: r["paths"][0].update(path=f"{d}/s1/link.out"), "not a regular file at HEAD"),
+        (lambda r, d: r["paths"][0].update(path=f"{d}/verdict.json"), "may not list the campaign's verdict.json"),
+        (lambda r, d: r["paths"][0].update(path=f"{d}/rows.jsonl"), "may not list the campaign's rows file"),
+        (lambda r, d: r.update(data_dir=f"{d}/s1"), "is not campaign 09's data directory"),
+    ],
+)  # fmt: skip
+def test_a_malformed_redaction_record_is_refused(rig, edit, why) -> None:
+    d = _small_rig(rig)
+    rec = _record(rig, f"{d}/s1/console.out")
+    assert G.exceptions_problems([], [rec], G.Repo(rig.root), rig.base_sha) == []  # the control
+    edit(rec, d)
+    problems = G.exceptions_problems([], [rec], G.Repo(rig.root), rig.base_sha)
+    assert any(why in p for p in problems), problems
+
+
+def test_an_open_campaigns_record_is_refused(rig) -> None:
+    d = _small_rig(rig, verdict=False)
+    problems = G.exceptions_problems([], [_record(rig, f"{d}/s1/console.out")], G.Repo(rig.root), rig.base_sha)
+    assert any("is not closed at the merge-base" in p for p in problems), problems
+
+
+def test_a_landed_record_is_checked_for_structure_only(rig) -> None:
+    """S4: a record on main whose from no longer matches HEAD (it was applied) never fails a later change."""
+    d = _small_rig(rig)
+    rec = _record(rig, f"{d}/s1/console.out")
+    rec["paths"][0]["from_sha256"] = "0" * 64
+    assert G.exceptions_problems([rec], [rec], G.Repo(rig.root), rig.base_sha) == []
+    assert any(
+        "needs" in p or "no repository" in p for p in G.exceptions_problems([], [_record(rig, f"{d}/s1/console.out")])
+    )
+
+
+def test_a_new_record_may_not_relist_another_records_from_bytes(rig) -> None:
+    d = _small_rig(rig)
+    first = _record(rig, f"{d}/s1/console.out")
+    second = _record(rig, f"{d}/s1/console.out", rid="redact-2", to=b"other\n")
+    problems = G.exceptions_problems([first], [first, second], G.Repo(rig.root), rig.base_sha)
+    assert any("'redact-2' lists" in p and "'redact-1' already lists" in p for p in problems), problems
+
+
+def test_an_unreadable_merge_base_judge_fails_closed_only_with_records(rig) -> None:
+    d = _small_rig(rig)
+    rig.write(R.O19_JUDGE, "raise ValueError('broken')\n")
+    rig.base(STALE_BOTH_ROWS)
+    ctx = R.Ctx(repo=R.Repo(rig.root), base=rig.base_sha, ref="HEAD", legacy={}, prereg={}, table={}, retired={})
+    rec = _record(rig, f"{d}/s1/console.out")
+    assert any("fail closed" in p for p in R.o19_closed_data_problems(ctx, set(), base_redactions=[rec],
+                                                                     head_redactions=[]))  # fmt: skip
+    assert any("fail closed" in p for p in R.o19_closed_data_problems(ctx, set(), base_redactions=[],
+                                                                     head_redactions=[rec]))  # fmt: skip
+    assert R.o19_closed_data_problems(ctx, set(), base_redactions=[], head_redactions=[]) == []
+    # retirement still holds without the judge (design pass S2: data_dir is read without it)
+    assert R.retired_dirs(ctx.repo, rig.base_sha, [rec]) == {d: "redact-1"}
+
+
+def test_a_malformed_record_still_retires(rig, monkeypatch) -> None:
+    """Fail closed: a record that fails the shape check still retires (its data_dir string, and its campaign's
+    merge-base directory), so the retiring change still owes the forced STALE (G2) beside the shape failure."""
+    d = _small_rig(rig)
+    repo = R.Repo(rig.root)
+    assert R.retired_dirs(repo, rig.base_sha, [{"kind": "redaction", "id": "r1", "data_dir": f"{d}/"}]) == {d: "r1"}
+    assert R.retired_dirs(repo, rig.base_sha, [{"kind": "redaction", "campaign": "09", "data_dir": 5}]) == {d: "None"}
+
+
+def test_a_malformed_record_in_the_retiring_change_still_forces_stale(rig, monkeypatch) -> None:
+    _closed_09(rig, monkeypatch)
+    rec = _record(rig, _session_files(rig, "09")[0])
+    rec["extra"] = "x"
+    failures = _pr1(rig, rec, token="PARTIAL")
+    assert any("must carry exactly" in f for f in failures), failures
+    assert any("T3-9: was PARTIAL on main" in f and "(G2" in f for f in failures), failures
+
+
+def test_a_judge_that_cannot_place_its_own_campaign_fails_the_freeze_loudly(rig) -> None:
+    """A merge-base judge whose rows_path raises for a key of its own table is a GateError on the freeze path (a None
+    there would read as "not closed" and pass the edit); retirement still holds by the record's data_dir."""
+    d = _small_rig(rig)
+    _judge_text(rig, "def data_dir(exp: str) -> str:\n", "def data_dir(exp: str) -> str:\n    assert exp != '09'\n")
+    rig.base(STALE_BOTH_ROWS)
+    rig.write(f"{d}/s1/other.txt", "y\n")
+    rig.head(STALE_BOTH_ROWS)
+    ctx = R.Ctx(repo=R.Repo(rig.root), base=rig.base_sha, ref="HEAD", legacy={}, prereg={}, table={}, retired={})
+    with pytest.raises(R.GateError, match="cannot place campaign 09"):
+        R.o19_closed_data_problems(ctx, {f"{d}/s1/other.txt"}, base_redactions=[], head_redactions=[])
+    with pytest.raises(R.GateError, match="cannot place campaign 09"):
+        rig.run()
+    rec = _record(rig, f"{d}/s1/console.out")
+    assert R.retired_dirs(ctx.repo, rig.base_sha, [rec]) == {d: "redact-1"}
+
+
+def test_the_other_exceptions_readers_ignore_a_redaction_record(rig) -> None:
+    """Wire map: lint_ledger_format's superseded clauses and the prereg lint's clauses filter by kind."""
+    import lint_ledger_format as F
+
+    d = _small_rig(rig)
+    rec = _record(rig, f"{d}/s1/console.out")
+    rig.write(G.EXCEPTIONS, json.dumps([rec]))
+    rig.base(STALE_BOTH_ROWS)
+    row = G.L.parse(STALE_BOTH_ROWS)[0][0]
+    assert F.superseded_clause([rec], row, None) is None
+    assert G.P.active_prereg_exceptions(rig.root, rig.base_sha) == ({}, [])
+    assert G.active_exceptions([rec], row, None) == []
+
+
+def test_the_retired_field_is_required() -> None:
+    """A Ctx that forgot the retired set is a TypeError, never a silent no-op."""
+    with pytest.raises(TypeError, match="retired"):
+        R.Ctx(repo=None, base="b", ref="b", legacy={}, prereg={}, table={})  # type: ignore[call-arg,arg-type]
+
+
+def test_the_real_exceptions_file_retires_nothing() -> None:
+    """Landing changes no verdict: main's exceptions file holds no redaction record."""
+    assert G.redaction_records(json.loads((REPO / G.EXCEPTIONS).read_text())) == []
 
 
 # ── #1037: fail-closed review NITs ──────────────────────────────────────────────────────────────────────────

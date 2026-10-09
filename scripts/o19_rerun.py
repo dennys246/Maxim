@@ -16,7 +16,9 @@ An attempt, in order:
      (3); HEAD is not on ``origin/main``'s history (2); the rows file is not ``origin/main``'s, or main's history of
      it is not append-only (2); it would mix code trees — keep the rig at the first attempt's commit (2); it already
      holds a complete attempt, or 3 attempts are declared (2); the campaign is closed, or a successor's predecessor
-     has no pinned ABORT closure verdict on main before now (2); the model config does not resolve to the prereg's
+     has no pinned ABORT closure verdict on main before now (2); a campaign key outside ``PRE_1079_KEYS`` whose
+     earlier attempt leaked a FAILED gate into its committed phases, or left a start marker with no rows (2, #1079:
+     ``check_within_campaign``); the model config does not resolve to the prereg's
      (2); something already listens on the sim's port (2); another harness holds the lock (2); a git step fails (2);
      Exp 63 only: ``memory.strategy`` does not resolve to ``access_based`` in the attempt's fresh data home (2; the
      value read is stamped as ``memory_strategy`` in every row, C4').
@@ -679,6 +681,33 @@ def check_campaign(exp: str) -> None:
             raise Refused("; ".join(problems))
 
 
+def check_within_campaign(exp: str, markers: dict[str, dict]) -> None:
+    """#1079 D2 (owner decision 2026-10-08): the preflight half of the within-campaign bar (the evidence gate stays
+    the authority). For a campaign key outside ``PRE_1079_KEYS``, no earlier attempt of THIS campaign leaked a FAILED
+    gate into its committed phases, and no earlier start marker is rowless (D1): once one has, no later attempt of the
+    campaign can supply support, so it must not burn rig time. ``markers`` are origin's (``ls-remote``, N4), so an
+    attempt whose rows never landed is still seen; rows and session files are read as ``origin/main`` holds them."""
+    if exp in v.PRE_1079_KEYS:
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        data_root = v.materialize("origin/main", [exp], Path(tmp)) / v.PROTOCOL[exp]["scope"]
+        try:
+            rows = read_rows(data_root / "rows.jsonl")
+        except ValueError as exc:  # a malformed line on main: the bar cannot be ruled out, so refuse (exit 2)
+            raise Refused(f"campaign {exp}'s rows on origin/main cannot be read ({exc}) (#1079)") from exc
+        attempts = v.attempts_from_rows(rows)
+        ordered = [
+            {"run_id": rid, "k": m["k"], "rows": attempts.get(rid, [])}
+            for rid, m in sorted(markers.items(), key=lambda kv: kv[1]["k"])
+        ]
+        _structured, notes = v.within_campaign_leaks(exp, ordered, None, data_root)
+    if notes:
+        raise Refused(
+            f"an earlier attempt of campaign {exp} leaked a FAILED gate or cannot be judged (#1079): no later attempt "
+            f"of this campaign can supply support; close it with its verdict: {notes[:3]}"
+        )
+
+
 def prepare(args: argparse.Namespace, exp: str, mock: bool):
     """Everything before the marker. Returns ``(rows_file, provenance, run_id, k, home, gguf, read_served,
     lock, stamps)`` (``stamps``: what every row of the attempt carries beyond its phase, Exp 63's
@@ -708,6 +737,7 @@ def prepare(args: argparse.Namespace, exp: str, mock: bool):
             markers = remote_markers(exp)
             if set(attempts) - set(markers):
                 raise Refused(f"rows name attempts with no start marker: {sorted(set(attempts) - set(markers))}")
+            check_within_campaign(exp, markers)
     except (subprocess.CalledProcessError, v.Refusal) as exc:
         raise Refused(f"{type(exc).__name__}: {exc}") from exc
     k = len(markers) + 1

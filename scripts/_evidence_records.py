@@ -13,6 +13,7 @@ import gzip
 import hashlib
 import importlib.util
 import json
+import posixpath
 import re
 import subprocess
 import sys
@@ -43,6 +44,8 @@ FINISH_OK = frozenset({"completed", "max_turns", "complete", "all_encounters_com
 FINISH_OK_PREFIX = "campaign_end:"
 SKEW_S = 300  # a unit's ts may precede its own executed commit's committer time by at most this (clock skew)
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+REGULAR_MODES = ("100644", "100755")  # a tracked regular file (never a symlink 120000 or a submodule 160000)
 
 ESTABLISHED, LEGACY, EXCEPTED, NOT_ESTABLISHED = "ESTABLISHED", "LEGACY", "EXCEPTED", "NOT-ESTABLISHED"
 SUPPORT_KINDS = frozenset({"verdict"})  # only a stamped verdict supplies NEW support (owner decision 2026-09-30)
@@ -234,6 +237,11 @@ class Ctx:
     legacy: dict[str, str]
     prereg: dict[str, str]  # top-level data entry -> classify_all status
     table: dict  # the MERGE-BASE pass table (complete-run rules read its `complete`): required, never defaulted
+    # #1081 item 7: O19 campaign data directory -> the id of the redaction record that retired it (descendants
+    # included, :func:`retired_dirs`). REQUIRED, never defaulted: a Ctx that forgot it would silently judge a redacted
+    # campaign's verdict as established (a TypeError instead). The gate's ctx reads base U HEAD records; the
+    # Evidence-removal ratchet's base ctx reads the merge-base's only.
+    retired: dict[str, str]
 
     def prereg_status(self, path: str) -> str | None:
         best = None
@@ -466,6 +474,9 @@ def judge_verdict(rec: dict, j: Judgement, ctx: Ctx) -> None:
     data_rel = rec.get("data")
     if not isinstance(data_rel, str) or not data_rel.startswith(DATA_ROOT + "/") or ".." in data_rel.split("/"):
         j.fail(f"verdict data {data_rel!r} is not a path under {DATA_ROOT}/")
+        return
+    if hit := retired_by(ctx.retired, data_rel):
+        j.fail(f"verdict data {data_rel} is retired by redaction {hit[1]!r} ({hit[0]}): it supports nothing")
         return
     j.data_prereg = ctx.prereg_status(data_rel)
     if j.data_prereg not in PREREG_OK:
@@ -891,6 +902,10 @@ def o19_difference(rejudged: dict, rec: dict) -> str | None:
         ("deciding_attempt", lambda o: o.get("deciding_attempt")),
         ("attempts", projection),
         ("gates", lambda o: plain(o.get("gates"))),
+        # #1079 S1: the STRUCTURED within-campaign bar ([run_id, k, status]); absent on every pre-#1079 judge's output
+        # and on the four pre-#1079 campaigns' (None == None). Its prose twin (within_campaign_leak_notes) may embed
+        # host paths and exception text: the writer prints it and never persists it, and it is never compared.
+        ("within_campaign_leaks", lambda o: plain(o.get("within_campaign_leaks"))),
     ):
         if get(rejudged) != get(rec):
             return name
@@ -1000,6 +1015,22 @@ def _rejudge_with(mod, rec: dict, rows: list[dict], data_dir: str, ctx: Ctx, ord
         return f"{type(exc).__name__}: {exc}"
     if set(attempts) - {m["run_id"] for m in ordered_markers}:
         return "rows name attempts with no start marker"
+    # #1079 (exec S1): every row is bound to ITS start marker by the fields the harness stamps on it (``attempt_k``,
+    # ``marker``), so a record cannot drop an earlier marker and renumber the deciding attempt to k = 1 (which would
+    # make the within-campaign trigger vacuous) without forging the rows too.
+    by_run = {m["run_id"]: m for m in ordered_markers}
+    for r in rows:
+        m = by_run.get(as_dict(r.get("provenance")).get("harness_run_id"))
+        if r.get("record_kind") != "harness_row" or m is None:
+            continue
+        k = r.get("attempt_k")
+        # The marker clause is belt-and-braces: the ref is already forced to <ns>/<exp>/attempt-<k>-<run_id> above,
+        # and the row's run id is the marker's, so the k comparison carries the binding.
+        if isinstance(k, bool) or k != m["k"] or r.get("marker") != m.get("ref"):
+            return (
+                f"a row of attempt {str(m['run_id'])[:12]} carries attempt_k {k!r} and marker {r.get('marker')!r}, "
+                f"not its start marker's ({m['k']}, {m.get('ref')!r})"
+            )[:400]
     ordered = [{"run_id": m["run_id"], "k": m["k"], "rows": attempts.get(m["run_id"], [])} for m in ordered_markers]
     # The data root mirrors the data directory's parent: the campaign's own directory, and each campaign it succeeds
     # (a successor's judge reads its predecessors' committed phases beside its own, #1059). A judge that reads only
@@ -1065,15 +1096,19 @@ def _model_of(mod) -> dict:
 
 def base_o19_judge(ctx: Ctx):
     """The merge-base's ``o19_verdict.py``, loaded (cached per gate run); a refusal string when absent or unloadable."""
-    key = f"o19-base:{ctx.base}"
-    if key not in ctx.repo._cache:
-        source = ctx.repo.blob(ctx.base, O19_JUDGE)
+    return _base_judge(ctx.repo, ctx.base)
+
+
+def _base_judge(repo: Repo, base: str):
+    key = f"o19-base:{base}"
+    if key not in repo._cache:
+        source = repo.blob(base, O19_JUDGE)
         before = list(sys.path)
         try:
-            ctx.repo._cache[key] = "no judge at the merge-base" if source is None else load_o19_judge(source)
+            repo._cache[key] = "no judge at the merge-base" if source is None else load_o19_judge(source)
         finally:
             sys.path[:] = before
-    return ctx.repo._cache[key]
+    return repo._cache[key]
 
 
 def subject_listing(repo: Repo, commit: str) -> list[str] | None:
@@ -1141,6 +1176,13 @@ def _closure_problems(
     S6, or a refusal. Never ``judge_entry``: its scope rule refuses every ABORT that counted no unit (campaign 10's
     real closure), which would bar every successor of a phase-0 abort."""
     jp = Judgement(path=f"{pred}'s closure")
+    # #1081 item 7 (O19-hardening review): a redacted predecessor is refused for its retirement, before its re-judge
+    # could report the redacted bytes as a hash mismatch.
+    hit = retired_by(ctx.retired, crec.get("data"))
+    if ctx.retired and hit is None:
+        hit = retired_by(ctx.retired, _campaign_dir(ctx, pred))
+    if hit:
+        return f"its closure is retired by redaction {hit[1]!r} ({hit[0]}): a redacted campaign supports nothing"
     try:
         judge_o19(
             crec, crows, crec.get("data") if isinstance(crec.get("data"), str) else "", jp, replace(ctx, ref=ctx.base)
@@ -1170,11 +1212,50 @@ def _closure_problems(
     return {"protocol": cap.get("protocol"), "harness_env": cap.get("harness_env"), "model": cap.get("model")}
 
 
+def o19_within_campaign_problems(cap: dict, key) -> list[str]:
+    """#1079 (owner decision 2026-10-08, REFUSE): why the cited verdict's DECIDING attempt may not supply support
+    because an earlier attempt of the same campaign leaked a FAILED gate ([] = it may). Reads only the BOUND judge's
+    re-run (``cap["rejudged"]``, equal to the record by ``o19_difference``), never the record's own field.
+
+    - The trigger is structural (design pass S2): the deciding attempt's k is not 1. Markers are forced to k = 1..n
+      (``rejudge_o19``) and an attempt after the deciding one refuses in the judge, so k == 1 means nothing earlier
+      exists, committed or not. It is vacuous for every pre-#1079 campaign (10 and 10c2 decide nothing; 09 and 63
+      decide at k = 1), so their old bound judges never need the field; the gate holds no key list.
+    - Triggered, the bound judge must emit ``within_campaign_leaks`` (else the verdict supports nothing: a new key a
+      later edit put in ``PRE_1079_KEYS`` fails closed here), and it must be empty.
+    - D1 (a rowless earlier marker bars) is WRITER-enforced and gate-TRUSTED (design pass S3): the writer reads the
+      markers from origin (``ls-remote``); the gate sees only the record's ``apparatus.markers``, but ``_rejudge_with``
+      binds every row to its marker (``attempt_k``, ``marker``), so a record that drops a rowless marker and renumbers
+      k is refused unless its rows are forged too: that residue is the forged-verdict class (reproduction.md section
+      12), with a gate-side check of the rows history and the markers against fetched tags owed (#1168)."""
+    rejudged = as_dict(cap.get("rejudged"))
+    deciding = rejudged.get("deciding_attempt")
+    if deciding is None:
+        return []  # an ABORT supports nothing (the pass table refuses it first)
+    attempts = rejudged.get("attempts") if isinstance(rejudged.get("attempts"), list) else []
+    k = next((as_dict(a).get("k") for a in attempts if as_dict(a).get("run_id") == deciding), None)
+    if k == 1 and not isinstance(k, bool):
+        return []  # nothing came before the deciding attempt, so nothing can have leaked
+    leaks = rejudged.get("within_campaign_leaks")
+    if not isinstance(leaks, list):
+        return [
+            f"campaign {key}: its deciding attempt is attempt {k!r}, but its bound judge does not compute the "
+            "within-campaign leaked-gate bar (#1079): the verdict supports nothing"
+        ]
+    if leaks:
+        return [
+            f"campaign {key}: a FAILED gate leaked into an earlier attempt of this campaign (#1079): {leaks[:3]}"[:400]
+        ]
+    return []
+
+
 def o19_succession_problems(j: Judgement, token: str, ctx: Ctx) -> list[str]:
     """Why this O19 verdict may not support ``token`` under the campaign-succession rules (#1059; [] = it may).
 
     - S2: whether the campaign HAS a predecessor is read from the BOUND judge's table, whose entry for the campaign
       must equal the merge-base table's (never the record's own fields).
+    - #1079: no earlier attempt of the cited campaign leaked a FAILED gate (:func:`o19_within_campaign_problems`),
+      for a root or a successor campaign and every token.
     - A ROOT campaign's verdict never supports REPRODUCED; a SUCCESSOR's supports no positive token but REPRODUCED
       (owner decision 2026-10-02), and for every token it supports (PARTIAL included):
     - D2: its bound judge emits the leaked-gate bar, and it is empty (a bound judge without it: supports nothing);
@@ -1199,6 +1280,12 @@ def o19_succession_problems(j: Judgement, token: str, ctx: Ctx) -> list[str]:
     base_protocol = _plain(base_mod.PROTOCOL)
     if not isinstance(entry, dict) or base_protocol.get(key) != entry:
         return [f"campaign {key}'s entry in the merge-base campaign table is not its bound judge's (S2)"]
+    # #1081 item 7 (design pass S3, a chain with a retired member supports nothing) needs no walk here: ctx.retired is
+    # built by retired_dirs, closed under descendants over this same merge-base table, so a retired member retires
+    # this campaign's own directory too, and _judge_entry / judge_verdict refused the cited verdict before support
+    # reached this function. A predecessor's closure is refused for its retirement in _closure_problems.
+    if within := o19_within_campaign_problems(cap, key):  # #1079: root and successor campaigns, every token
+        return within
     if not isinstance(entry.get("supersedes"), dict):
         if token == "REPRODUCED":
             return [f"campaign {key} is a root campaign: only a successor campaign's verdict supports REPRODUCED"]
@@ -1328,12 +1415,15 @@ def o19_succession_problems(j: Judgement, token: str, ctx: Ctx) -> list[str]:
     return problems
 
 
-def o19_table_problems(repo: Repo, base: str) -> list[str]:
+def o19_table_problems(repo: Repo, base: str, retired: dict[str, str]) -> list[str]:
     """A HEAD ``o19_verdict.py`` against the merge-base's (#1059): D1, each verdict kind belongs to one experiment
     and that map is append-only; S3, a campaign entry is FROZEN (kept, unedited) once its rows or verdict exist on
-    main or another entry names it in ``supersedes``, so "has a predecessor" cannot be laundered by an edit; and an
-    entry's ``supersedes`` object, once on main, is frozen itself (no re-pin to a rewritten closure); and #1077, the
-    campaign count against the merge-base's cap (:func:`_o19_campaign_count_problems`)."""
+    main, another entry names it in ``supersedes``, or a redaction record retired it (#1081 item 7), so "has a
+    predecessor" cannot be laundered by an edit; and an entry's ``supersedes`` object, once on main, is frozen itself
+    (no re-pin to a rewritten closure); #1077, the campaign count against the merge-base's cap
+    (:func:`_o19_campaign_count_problems`); and #1081 item 7, no NEW ``supersedes`` names a retired campaign (a dead
+    chain is refused at the table, before a wasted rig campaign; a re-run is a new experiment id, owner D4).
+    ``retired``: the gate's ``Ctx.retired`` (required)."""
     base_src, head_src = repo.blob(base, O19_JUDGE), repo.blob("HEAD", O19_JUDGE)
     if base_src is None or head_src is None:
         return []  # no table on one side: a deleted judge while verdicts exist fails half B
@@ -1367,6 +1457,7 @@ def o19_table_problems(repo: Repo, base: str) -> list[str]:
     for key, entry in sorted(base_p.items()):
         rows_rel = base_mod.rows_path(key)
         landed = rows_rel in tree or rows_rel.rsplit("/", 1)[0] + "/verdict.json" in tree
+        landed = landed or retired_by(retired, rows_rel) is not None  # design pass S2: a retired entry is frozen too
         if (landed or key in named) and head_p.get(key) != entry:
             out.append(
                 f"{O19_JUDGE}: campaign {key} is frozen (its data is on main or a successor names it) and was "
@@ -1379,6 +1470,16 @@ def o19_table_problems(repo: Repo, base: str) -> list[str]:
             out.append(
                 f"{O19_JUDGE}: campaign {key}'s `supersedes` (its predecessor and the pinned closure SHA-256) is on "
                 "main and was removed or edited: a re-pin could point a successor at a rewritten closure (frozen)"
+            )
+    for key, entry in sorted(head_p.items()):
+        sup = as_dict(as_dict(entry).get("supersedes"))
+        if not sup or as_dict(base_p.get(key)).get("supersedes") == sup:
+            continue  # a landed pin is frozen above: a retirement after it never bricks a later judge edit
+        hit = retired_by(retired, _dir_of(base_mod, sup.get("key")))
+        if hit:
+            out.append(
+                f"{O19_JUDGE}: campaign {key} supersedes campaign {sup.get('key')!r}, retired by redaction {hit[1]!r}: a "
+                "retired chain supports nothing (a re-run is a new experiment id, #1081 item 7, owner D4)"
             )
     return out
 
@@ -1450,31 +1551,261 @@ def _o19_campaign_count_problems(base_mod, head_mod, head_p: dict) -> list[str]:
     return out
 
 
-def closed_campaign_dir(ctx: Ctx, key: str) -> str | None:
-    """Campaign ``key``'s data directory when the merge-base holds its verdict (the campaign is CLOSED), else None."""
+def closed_campaign_dir(ctx: Ctx, key: str, base_redactions: list[dict]) -> str | None:
+    """Campaign ``key``'s data directory when it is CLOSED: the merge-base holds its verdict, or a merge-base
+    redaction record names it (#1081 item 7, G-d: a retired directory stays frozen whatever later happens to its
+    ``verdict.json``). Else None."""
     base_mod = base_o19_judge(ctx)
     if isinstance(base_mod, str):
         return None
-    directory = base_mod.rows_path(key).rsplit("/", 1)[0]
-    return directory if ctx.repo.kind(ctx.base, f"{directory}/verdict.json") == "blob" else None
+    directory = _dir_of(base_mod, key)
+    if directory is None:
+        return None
+    named = any(e.get("campaign") == key or _norm(e.get("data_dir")) == directory for e in base_redactions)
+    return directory if named or ctx.repo.kind(ctx.base, f"{directory}/verdict.json") == "blob" else None
 
 
-def o19_closed_data_problems(ctx: Ctx, changed: set[str]) -> list[str]:
+def o19_closed_data_problems(
+    ctx: Ctx, changed: set[str], *, base_redactions: list[dict], head_redactions: list[dict]
+) -> list[str]:
     """#1059 delta review: a CLOSED campaign's data directory (its verdict on main) is immutable: any add, edit,
-    delete or rename under it fails, with no exception path (the owner's strict stance on O19). Its rows and closure
-    are what a successor's leaked-gate bar and subject check read."""
+    delete or rename under it fails. Its rows and closure are what a successor's leaked-gate bar and subject check
+    read. The one exception (#1081 item 7, owner decision 2026-10-04 + 2026-10-08): a MERGE-BASE redaction record
+    of that campaign lets exactly one listed path change from exactly its ``from_sha256`` (main's bytes) to exactly
+    its ``to_sha256`` (null: deleted); a record in the same diff authorizes nothing (reviewed on main first, D2), and
+    an applied entry never authorizes again (its from-bytes are gone). The record retired the campaign when it
+    landed, so nothing it lets change is evidence. Both record lists are REQUIRED: with any record present an
+    unreadable merge-base judge fails (it cannot place the directory), instead of passing everything."""
     base_mod = base_o19_judge(ctx)
     if isinstance(base_mod, str):
+        if base_redactions or head_redactions:
+            return [
+                f"redaction records exist but the merge-base campaign table cannot be read ({base_mod}): fail closed"
+            ]
         return []
     out = []
     for key in sorted(base_mod.PROTOCOL):
-        directory = closed_campaign_dir(ctx, key)
+        directory = closed_campaign_dir(ctx, key, base_redactions)
         hits = sorted(c for c in changed if directory and c.startswith(directory + "/"))
-        if hits:
+        unauthorized = [c for c in hits if not _redaction_authorizes(ctx, c, key, directory, base_redactions)]
+        if unauthorized:
             out.append(
                 f"{directory}: campaign {key} is closed (its verdict is on main), so its data directory is immutable;"
-                f" this change touches {hits[:3]} (a successor's leaked-gate bar and subject check read these bytes)"
+                f" this change touches {unauthorized[:3]} (a successor's leaked-gate bar and subject check read these "
+                "bytes; only a redaction record already on main lets a listed path change, to exactly its to_sha256)"
             )
+    return out
+
+
+def _redaction_authorizes(ctx: Ctx, path: str, key: str, directory: str, base_redactions: list[dict]) -> bool:
+    """A merge-base redaction record of campaign ``key`` lists ``path`` with ``from_sha256`` = its bytes at the
+    merge-base and ``to_sha256`` = its bytes at HEAD (``null``: absent at HEAD). A regular file at the base, and at
+    HEAD the SAME mode (the record hashes bytes, never the mode: a symlink whose target string is the to-bytes, or a
+    100644 -> 100755 flip, is not the listed change); an add has no base bytes, so it is never authorized."""
+    base_tree, head_tree = ctx.repo.tree(ctx.base), ctx.repo.tree("HEAD")
+    if path not in base_tree or base_tree[path][0] not in REGULAR_MODES:
+        return False
+    before = sha256(ctx.repo.blob(ctx.base, path) or b"")
+    if path in head_tree:
+        if head_tree[path][0] != base_tree[path][0]:
+            return False
+        after: str | None = sha256(ctx.repo.blob("HEAD", path) or b"")
+    else:
+        after = None
+    for e in base_redactions:
+        if e.get("campaign") != key or _norm(e.get("data_dir")) != directory or not isinstance(e.get("paths"), list):
+            continue
+        for item in e["paths"]:
+            if (
+                isinstance(item, dict)
+                and item.get("path") == path
+                and "to_sha256" in item
+                and item.get("from_sha256") == before
+                and item["to_sha256"] == after
+            ):
+                return True
+    return False
+
+
+# ── #1081 item 7: a redaction record retires the campaign (owner decisions 2026-10-04, 2026-10-08) ─────────────
+# A redaction is TIP HYGIENE, not secrecy (D0): every first-parent commit since the data landed still holds the old
+# blob, and rewriting history would break every executed-commit, marker and verdict_commit binding. Rotate the
+# credential first. The record (``kind: "redaction"`` in docs/experiments/evidence_exceptions.json) does two things,
+# read from two places: it AUTHORIZES the byte change only from the merge-base (:func:`o19_closed_data_problems`), and
+# it RETIRES the campaign from base U HEAD (:func:`retired_dirs`), so the PR adding it moves every citing row to STALE.
+
+REDACTION_FIELDS = ("id", "kind", "campaign", "data_dir", "paths", "reason", "ref", "owner", "date")
+REDACTION_PATH_FIELDS = ("path", "from_sha256", "to_sha256")
+
+
+def _norm(path) -> str | None:
+    """A repository path without a trailing slash or ``.`` / ``..`` / empty components (None when not a string)."""
+    if not isinstance(path, str) or not path.strip("/"):
+        return None
+    return posixpath.normpath(path).rstrip("/")
+
+
+def retired_by(retired: dict[str, str], path) -> tuple[str, str] | None:
+    """``(directory, record id)`` when ``path`` is a retired directory or lies under one, else None."""
+    norm = _norm(path)
+    if norm is None:
+        return None
+    for directory, rid in sorted(retired.items()):
+        if norm == directory or norm.startswith(directory + "/"):
+            return directory, rid
+    return None
+
+
+def _dir_of(base_mod, key) -> str | None:
+    """Campaign ``key``'s data directory by the merge-base judge's ``rows_path``; None only when there is no such
+    campaign (an unloadable judge, or ``key`` not a key of its table). A judge that cannot place a key OF ITS OWN
+    TABLE raises :class:`GateError` (loud): on the freeze and table paths a None would read as "not closed" or "not
+    retired" and pass the change (fail open). Retirement alone reads through :func:`_dir_or_none`."""
+    if isinstance(base_mod, str) or not isinstance(key, str) or key not in base_mod.PROTOCOL:
+        return None
+    try:
+        return _norm(base_mod.rows_path(key).rsplit("/", 1)[0])
+    except Exception as exc:  # noqa: BLE001 — any judge failure, re-raised as the gate's own loud error
+        raise GateError(f"the merge-base judge cannot place campaign {key}'s data directory: {exc!r}"[:300]) from exc
+
+
+def _dir_or_none(base_mod, key) -> str | None:
+    """:func:`_dir_of` for RETIREMENT only, where a campaign the judge cannot place adds no directory and the record's
+    own ``data_dir`` string still retires (fail closed: retirement never needs the judge, design pass S2). Not a
+    pass: the same campaign's freeze and table checks call :func:`_dir_of` and fail loudly on the same judge."""
+    try:
+        return _dir_of(base_mod, key)
+    except GateError:
+        return None
+
+
+def _campaign_dir(ctx: Ctx, key) -> str | None:
+    return _dir_of(base_o19_judge(ctx), key)
+
+
+def redaction_records(entries) -> list[dict]:
+    """The ``kind: "redaction"`` entries of an exceptions list (a non-list holds none; its shape fails elsewhere)."""
+    return (
+        [e for e in entries if isinstance(e, dict) and e.get("kind") == "redaction"]
+        if isinstance(entries, list)
+        else []
+    )
+
+
+def retired_dirs(repo: Repo, base: str, records: list[dict]) -> dict[str, str]:
+    """Every retired O19 data directory -> the redaction record id that retired it. Fail closed: a MALFORMED record
+    still retires (its ``data_dir`` string and its ``campaign``'s merge-base directory both count; a record can fail
+    the shape check but never un-retire). Closed under descendants (owner D5): a campaign whose merge-base
+    ``supersedes`` chain reaches a retired one is retired by the same record. ``data_dir`` is read without the
+    judge (design pass S2), so retirement holds even when the merge-base judge cannot load."""
+    base_mod = _base_judge(repo, base)
+    out: dict[str, str] = {}
+    for e in records:
+        rid = e["id"] if isinstance(e.get("id"), str) and e["id"] else repr(e.get("id"))
+        for directory in (_norm(e.get("data_dir")), _dir_or_none(base_mod, e.get("campaign"))):
+            if directory is not None:
+                out.setdefault(directory, rid)
+    if isinstance(base_mod, str) or not out:
+        return out
+    grew = True
+    while grew:  # D5: descendants, to a fixpoint (a cycle adds nothing twice)
+        grew = False
+        for key, entry in sorted(base_mod.PROTOCOL.items()):
+            pred = as_dict(as_dict(entry).get("supersedes")).get("key")
+            mine, theirs = _dir_or_none(base_mod, key), _dir_or_none(base_mod, pred)
+            if mine is not None and theirs in out and mine not in out:
+                out[mine] = out[theirs]
+                grew = True
+    return out
+
+
+def _plain_path(path) -> bool:
+    return (
+        isinstance(path, str)
+        and bool(path)
+        and not path.startswith("/")
+        and "\\" not in path
+        and all(part not in ("", ".", "..") for part in path.split("/"))
+    )
+
+
+def redaction_record_problem(e: dict, repo: Repo | None, base: str | None, *, new: bool) -> str | None:
+    """Why a ``kind: "redaction"`` record is malformed (None: well-formed). Structure always; everything read from
+    the merge-base or HEAD only for a NEW record (absent at the base, design pass S4), so a landed record never turns
+    into a permanent failure: its campaign a key of the merge-base table and closed there, ``data_dir`` that
+    campaign's directory by the merge-base judge (design pass S2), no listed path its rows file, and each path a
+    regular file at HEAD whose raw bytes are ``from_sha256`` (the record lands before the bytes change, D2)."""
+    if set(e) != set(REDACTION_FIELDS):
+        return f"must carry exactly {list(REDACTION_FIELDS)}"
+    if any(not isinstance(e[f], str) or not e[f] for f in REDACTION_FIELDS if f != "paths"):
+        return "lacks a required field (each but `paths` a non-empty string)"
+    directory = e["data_dir"]
+    if not _plain_path(directory) or not directory.startswith(DATA_ROOT + "/"):
+        return f"data_dir {directory!r} is not a plain directory under {DATA_ROOT}/"
+    paths = e["paths"]
+    if not isinstance(paths, list) or not paths:
+        return "`paths` must be a non-empty list"
+    seen: set[str] = set()
+    for item in paths:
+        if not isinstance(item, dict) or set(item) != set(REDACTION_PATH_FIELDS):
+            return f"each path must be exactly {list(REDACTION_PATH_FIELDS)}"
+        path, before, after = item["path"], item["from_sha256"], item["to_sha256"]
+        if not _plain_path(path) or not path.startswith(directory + "/"):
+            return f"path {path!r} is not a plain path under {directory}/"
+        if path in seen:
+            return f"path {path} is listed twice"
+        seen.add(path)
+        if path == f"{directory}/verdict.json":
+            return "may not list the campaign's verdict.json (redact in place; never delete or rewrite the closure)"
+        if not isinstance(before, str) or not HEX64.match(before):
+            return f"{path}: from_sha256 is not a SHA-256 hex digest"
+        if after is not None and (not isinstance(after, str) or not HEX64.match(after)):
+            return f"{path}: to_sha256 is not a SHA-256 hex digest or null (deleted)"
+        if before == after:
+            return f"{path}: from_sha256 equals to_sha256 (nothing to redact)"
+    if not new:
+        return None
+    if repo is None or base is None:
+        return "is new, so it is checked against the merge-base and HEAD, and no repository was given"
+    base_mod = _base_judge(repo, base)
+    if isinstance(base_mod, str):
+        return f"names campaign {e['campaign']!r}, but the merge-base campaign table cannot be read ({base_mod})"
+    if e["campaign"] not in base_mod.PROTOCOL:
+        return f"campaign {e['campaign']!r} is not in the merge-base campaign table"
+    if _dir_of(base_mod, e["campaign"]) != directory:
+        return f"data_dir {directory} is not campaign {e['campaign']}'s data directory at the merge-base"
+    if repo.kind(base, f"{directory}/verdict.json") != "blob":
+        return f"campaign {e['campaign']} is not closed at the merge-base (no verdict.json): there is nothing to retire"
+    rows_rel = base_mod.rows_path(e["campaign"])
+    head_tree = repo.tree("HEAD")
+    for item in paths:
+        path = item["path"]
+        if path == rows_rel:
+            return f"may not list the campaign's rows file {path} (redact a session file in place)"
+        if head_tree.get(path, ("",))[0] not in REGULAR_MODES:
+            return f"{path} is not a regular file at HEAD (a new record lands before the bytes change)"
+        if sha256(repo.blob("HEAD", path) or b"") != item["from_sha256"]:
+            return f"{path}: from_sha256 is not its bytes at HEAD (a new record lands before the bytes change, D2)"
+    return None
+
+
+def redaction_pair_problems(base_list: list, head_list: list) -> list[str]:
+    """A NEW redaction record may not list a ``(path, from_sha256)`` another record already lists: two records with
+    one from-bytes and different to-bytes would make the authorized result ambiguous (design pass NIT). The other
+    half of the record's shape, beside :func:`redaction_record_problem` (one owner); the caller prefixes the file."""
+    seen: dict[tuple, str] = {}
+    out = []
+    for e in sorted(redaction_records(head_list), key=lambda r: r not in base_list):  # landed records first
+        for item in e.get("paths") if isinstance(e.get("paths"), list) else []:
+            if not isinstance(item, dict):
+                continue
+            pair = (json.dumps(item.get("path")), json.dumps(item.get("from_sha256")))
+            if pair in seen and e not in base_list:
+                out.append(
+                    f"redaction record {e.get('id')!r} lists {item.get('path')!r} from bytes record "
+                    f"{seen[pair]!r} already lists"
+                )
+            seen.setdefault(pair, str(e.get("id")))
     return out
 
 
@@ -1507,7 +1838,10 @@ def closed_history_problem(ctx: Ctx, key: str) -> str | None:
 def o19_judge_edit_problems(ctx: Ctx) -> list[str]:
     """Half B of #1050: a diff touching ``scripts/o19_verdict.py`` re-judges EVERY O19 verdict in the HEAD tree with
     the HEAD script; any different result, refusal, or a deleted script while one exists fails (strict, owner
-    decision 2026-10-03: no exception path; a judge change scopes new behaviour to new campaign keys)."""
+    decision 2026-10-03: no exception path; a judge change scopes new behaviour to new campaign keys). A verdict in a
+    RETIRED directory, or whose ``data`` lies in one (``ctx.retired``, base U HEAD records, #1081 item 7), is skipped: it supports nothing, and its
+    redacted bytes would refuse every later judge edit. Keyed on HEAD records too: that costs a permanent retirement
+    and a forced STALE, never an open door."""
     out: list[str] = []
     records: list[tuple[str, dict]] = []
     # Every verdict.json main holds or this diff adds: one deleted or renamed in the same diff is still re-judged.
@@ -1533,6 +1867,11 @@ def o19_judge_edit_problems(ctx: Ctx) -> list[str]:
         out.append(f"{O19_JUDGE} is deleted while O19 verdicts exist ({[p for p, _, _ in records]})")
         records = []
     for path, ref, rec in records:
+        if retired_by(ctx.retired, path) or retired_by(ctx.retired, rec.get("data")):
+            # #1081 item 7 (G-c): a retired verdict supports nothing (judge_verdict refuses one whose `data` is
+            # retired, wherever it lives), so a change in its re-judged result changes no claim; re-judging redacted
+            # bytes would refuse every later judge edit. The gate NOTES each retired directory.
+            continue
         data_rel = rec.get("data")
         if not isinstance(data_rel, str) or not data_rel.startswith(DATA_ROOT + "/") or ".." in data_rel.split("/"):
             out.append(f"{path}: its data {data_rel!r} is not under {DATA_ROOT}/")
@@ -1605,6 +1944,11 @@ def judge_entry(path: str, ctx: Ctx) -> Judgement:
 
 
 def _judge_entry(path: str, ctx: Ctx, j: Judgement) -> None:
+    # #1081 item 7, before anything else (the prereg, the legacy match): a redaction retired the campaign, so nothing
+    # under its directory is evidence, whatever its bytes now re-judge to (a failed attempt's file is never re-hashed).
+    if hit := retired_by(ctx.retired, path):
+        j.fail(f"retired by redaction {hit[1]!r} ({hit[0]}): a redacted campaign's records support nothing")
+        return
     j.prereg = ctx.prereg_status(path)
     if j.prereg not in PREREG_OK:  # before anything else, legacy included
         j.fail(f"prereg status {j.prereg}")
