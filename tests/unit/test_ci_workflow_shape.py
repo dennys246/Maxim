@@ -54,6 +54,18 @@ def test_no_install_step_swallows_its_failure():
     assert not offenders, offenders
 
 
+def test_no_job_installs_the_package_without_its_core_dependencies():
+    """2026-10-09: `pip install --no-deps -e .` left httpx/rich/json-repair/filelock to arrive transitively;
+    huggingface-hub 2.x moved httpx -> httpx2 and main went red at an unchanged commit (filelock was already 4.x
+    against our <4 pin). The package is installed WITH its declared dependencies everywhere."""
+    offenders = [
+        (where, step.get("name"))
+        for where, step in _all_steps()
+        if re.search(r"\bpip install\b[^\n]*--no-deps[^\n]*(-e\s+)?\.(\s|$|\[)", _commands(step))
+    ]
+    assert not offenders, offenders
+
+
 def test_every_test_run_is_inside_the_loopback_only_network_namespace():
     """The fast suite and both nightly lanes (architecture review: the boundary covered one step). The MemoryHub step
     is the stated exception: the coverage gate pins its exact form (scripts/lint_coverage.py::ci_step_rules)."""
