@@ -266,6 +266,32 @@ jobs:
           GH_TOKEN: ${{ secrets.SETTINGS_READ_TOKEN }}
         run: python3 scripts/check_repo_settings.py
 
+  # ── Whole-tree secret scan (#1081; owner decisions 2026-10-08) ────────────────
+  # The lint job's step judges what a PR or push ADDS; this catches a pattern added after old data landed, and
+  # anything a skipped range missed. "(nightly)" in the name means the release gate (scripts/check_nightlies.py)
+  # refuses to publish while it is red. Stdlib only, no token.
+  secret-scan:
+    name: Secret scan, whole tree (nightly)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # `--all` reads no push base; the read scopes are carried anyway so the rule "every job running a _lint_git lint
+    # can read its push base" (tests/unit/test_lint_git_push.py) holds without an exemption.
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: No credential in any tracked blob, no email in experiment data
+        run: python3 scripts/lint_secrets.py --all
+
   # ── Release truth ─────────────────────────────────────────────────────────
   # Not a PR gate: it needs PyPI + the GitHub API, and a network flake must not
   # block unrelated PRs. It runs where a release actually lands (push to main),
@@ -1293,6 +1319,20 @@ jobs:
           ref=origin/main
           if [ "${GITHUB_EVENT_NAME:-}" = push ]; then ref=HEAD; fi
           python3 scripts/lint_prereg_precedes_data.py --ref "$ref"
+
+      - name: Secret scan (#1081, owner decisions 2026-10-08)
+        run: |
+          # Every blob any commit on the branch introduced (whole blobs, archives
+          # opened by magic bytes), every commit message and the PR title/body:
+          # key patterns on every path, emails only under docs/experiments/data/.
+          # The branch is already public when this runs, so a finding means
+          # ROTATE; the gate keeps the bytes off main's permanent history.
+          # Allowlist entries act only once on main (D2); the pattern table is
+          # united with the base copy. No base on a PR/push is exit 2, never a
+          # skip. On a schedule the range is empty by construction: the whole
+          # tree is the `Secret scan (nightly)` job's `--all` run.
+          # Positive controls + deletion probes: tests/unit/test_lint_secrets.py.
+          python3 scripts/lint_secrets.py
 
       - name: Ledger evidence gate (M1b PR 5b-1)
         run: |

@@ -6,7 +6,8 @@ Structural pins on `.github/workflows/test.yml`, read PARSED (a comment satisfie
   (tests/unit/test_network_boundary.py);
 - both nightly lanes install and run their tests, offline against a warmed model cache, through ONE setup action
   (.github/actions/model-cache-setup, #1117), and each is held to its exact roster (scripts/check_lane_roster.py);
-- the claims lint runs in the lint job (roadmap 1.3.2 item 8).
+- the claims lint runs in the lint job (roadmap 1.3.2 item 8);
+- the secret scan runs in the lint job and, whole-tree, in a nightly job (#1081).
 """
 
 from __future__ import annotations
@@ -128,3 +129,12 @@ def test_the_settings_drift_check_runs_nightly_from_the_protected_environment():
     step = next(s for s in job["steps"] if "check_repo_settings.py" in _run(s))
     assert step["env"]["GH_TOKEN"] == "${{ secrets.SETTINGS_READ_TOKEN }}" and "--static" not in _run(step)
     assert any(_run(s).strip() == "python3 scripts/check_repo_settings.py --static" for s in _steps("lint"))
+
+
+def test_the_secret_scan_runs_on_every_pr_and_on_the_whole_tree_nightly():
+    """#1081: the diff-mode step in the required lint job, and an explicit `--all` run in a (nightly) job the release
+    gate reads (on a schedule the diff range is empty by construction, so the lint-job step alone would be vacuous)."""
+    assert any(_commands(s).strip() == "python3 scripts/lint_secrets.py" for s in _steps("lint"))
+    job = WF["jobs"]["secret-scan"]
+    assert "(nightly)" in job["name"] and "schedule" in job["if"]
+    assert any(_run(s).strip() == "python3 scripts/lint_secrets.py --all" for s in job["steps"])
