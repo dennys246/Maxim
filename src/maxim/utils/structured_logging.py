@@ -66,6 +66,7 @@ EVENT_VERBOSITY: dict[str, int] = {
     "plan_awaiting_approval": 0,
     "plan_approved": 0,
     "plan_rejected": 0,
+    "plan_refused": 0,  # a drained approval refused by the machine (#1085: blocked / drain_aborted / no_action)
     "plan_modify_requested": 0,
     "plan_approval_check": 0,
     # Level 1: Important events

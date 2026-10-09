@@ -46,7 +46,7 @@ from typing import TYPE_CHECKING, Any
 
 from maxim.runtime.bio_integration import start_bio_session
 from maxim.runtime.loop_state import _persist_state_json
-from maxim.runtime.tool_dispatch import book_refusal, execute_and_learn, safe_agent_name
+from maxim.runtime.tool_dispatch import book_machine_refusal, book_refusal, execute_and_learn, safe_agent_name
 from maxim.utils.logging import log_swallowed_exception
 
 # The setup logs as the agent loop always has: the SAME logger object as ``agent_loop.logger`` (logging
@@ -105,6 +105,9 @@ class LoopRun:
     execute_and_learn: Callable[..., ExecutionOutcome]
     # ``tool_dispatch.book_refusal`` likewise (#1133): callers pass ``source``, ``tool_name``, ``error``, ``reasoning``.
     book_refusal: Callable[..., None]
+    # ``tool_dispatch.book_machine_refusal`` likewise (#1085): no NAc and no situation, by signature; callers pass
+    # ``tool_name``, ``error``, ``reasoning``.
+    book_machine_refusal: Callable[..., None]
 
 
 # ── helpers moved from agent_loop.py (slice 1 review, rule (a): only the setup calls them) ──
@@ -372,6 +375,23 @@ def _bind_book_refusal(
     )
 
 
+def _bind_book_machine_refusal(
+    ctrl: LoopController, *, agent_id: str, rec_outcome: Callable[..., Any]
+) -> Callable[..., None]:
+    """The run's ``tool_dispatch.book_machine_refusal`` with every per-run argument bound (#1085): the run's
+    recorder, the hub ``agent_id``, and the controller's outcome list, worker and pool. No NAc and no state (so no
+    goal): a refusal no person made is booked for the LLM only."""
+    return functools.partial(
+        book_machine_refusal,
+        rec_outcome=rec_outcome,
+        agent_id=agent_id,
+        recent_outcomes=ctrl.recent_outcomes,
+        max_recent=ctrl.max_recent_outcomes,
+        llm_worker=ctrl.llm_worker,
+        context_pool=ctrl.context_pool,
+    )
+
+
 def build_loop_run(
     *,
     agent: Any,
@@ -535,6 +555,7 @@ def build_loop_run(
         memory_hub_enabled=memory_hub_enabled,
     )
     _book_refusal = _bind_book_refusal(ctrl, agent_id=_loop_agent_id, rec_outcome=_rec_outcome, nac=_loop_nac)
+    _book_machine_refusal = _bind_book_machine_refusal(ctrl, agent_id=_loop_agent_id, rec_outcome=_rec_outcome)
 
     return LoopRun(
         executor=executor,
@@ -562,4 +583,5 @@ def build_loop_run(
         planning_liveness_on=_planning_liveness_on,
         execute_and_learn=_execute_and_learn,
         book_refusal=_book_refusal,
+        book_machine_refusal=_book_machine_refusal,
     )
