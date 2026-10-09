@@ -227,10 +227,6 @@ class TestIT1FireTransfer:
 class TestIT2NoFalseTransfer:
     """Fire danger does NOT contaminate semantically dissimilar affordances."""
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="#1120: with the real encoder no water substrate concept forms, so this control has nothing to test",
-    )
     def test_water_does_not_share_fire_node(self, bio_stack):
         """'water_jet' does NOT pattern-complete to the 'fire' node."""
         ec, atl, nac, scn, encoder = bio_stack
@@ -246,19 +242,16 @@ class TestIT2NoFalseTransfer:
         _encode_affordances(fountain, encoder, agent_id)
 
         # Water concepts should NOT share nodes with fire concepts
-        water_concepts = atl.recall(name="water", category="substrate", limit=1)
+        # #1120: the fountain forms a 'water jet' node; an exact-name `atl.recall(name="water")` missed it.
+        water_node_id = _find_substrate_concept(atl, "water")
         # `if water_concepts:` here made the assertion optional: no water concept
         # meant the test passed having checked nothing (D61). The absence is the
         # more likely outcome under a degraded encoder, so the guard silently
         # protected exactly the case it was written to catch.
-        assert water_concepts, "no water substrate concept was formed — nothing to test"
-        water_bias = nac.reward_bias(agent_id, water_concepts[0].id)
+        assert water_node_id, "no water substrate concept was formed — nothing to test"
+        water_bias = nac.reward_bias(agent_id, water_node_id)
         assert water_bias >= 0, f"Water node got negative bias {water_bias} — false transfer!"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="#1120: with the real encoder no water substrate concept forms, so this control has nothing to test",
-    )
     def test_water_has_no_dangerous_annotation(self, bio_stack):
         """Water should carry no learned harm from the fire node (reward_bias is never negative; #910)."""
         ec, atl, nac, scn, encoder = bio_stack
@@ -273,9 +266,10 @@ class TestIT2NoFalseTransfer:
         _encode_affordances(fountain, encoder, agent_id)
 
         # Check annotation via the AFFORDANCE_STRATEGY + ATL + NAc path
-        water_concepts = atl.recall(name="water", category="substrate", limit=1)
-        assert water_concepts, "no water substrate concept was formed — nothing to test"
-        bias = nac.reward_bias(agent_id, water_concepts[0].id)
+        # #1120: the fountain forms a 'water jet' node; an exact-name `atl.recall(name="water")` missed it.
+        water_node_id = _find_substrate_concept(atl, "water")
+        assert water_node_id, "no water substrate concept was formed — nothing to test"
+        bias = nac.reward_bias(agent_id, water_node_id)
         # Harm on "fire" must not leak a negative bias onto "water"
         assert bias >= -0.01, f"Water has bias {bias} — harm leaked across concepts"
 
