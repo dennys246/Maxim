@@ -39,13 +39,13 @@ WORD WORLD (only with MAXIM_SUBSTRATE_PATH=1; affordance NAMES only from the --s
 | `interoception` | `SensorEncoder`, 384-d hashed sum, ungained | 0.85, frozen | `runtime/substrate_proposal.py::_read_drive_states` (+ the derived `cold` need) | live | yes (substrate-primary) | T1-6 (Exp 42), T1-9 (Exp 52) |
 | `audio` | `SensorEncoder`, 384-d, ungained | 0.85, frozen | `embodiment/audio_localization.py::DoAFeed` (live Reachy), `AzimuthDoASource` (sim) | live | yes | T1-7 (orient 45), T1-10 (Exp 53) |
 | `world` | `SensorEncoder`, 384-d, **gained** (A4 p=3.0) | 0.85, frozen | `embodiment/backends/minecraft.py::MinecraftWorldBackend.sync_world_sensors` → `world_set_axis` | live | yes | T1-11 (Exp 56), T1-13 (Exp 60), T1-14 (Exp 61), T1-15 (Exp 62); T1-12 (Exp 57) is PARTIAL, not EARNED |
-| `text` | `LinguisticEncoder`, paraphrase-mpnet 768-d (384-d bag-of-words fallback without sentence-transformers) | 0.44, running mean | percepts on **any runtime**: `agents/memory_agent.py` → `integration/memory_hub.py::MemoryHub.on_percept_received` → `LinguisticEncoder.encode`; affordance NAMES only via `imagination/trigger.py::encode_entity_affordances` (only production caller: `simulation/orchestrator.py`) | `MAXIM_SUBSTRATE_PATH=1` only | no: prompt text and a `tool:*` nudge that is 0 on every recorded run (§5) | none (T1-5 is PARTIAL; §5) |
+| `text` | `LinguisticEncoder`, paraphrase-mpnet 768-d (384-d bag-of-words fallback without sentence-transformers) | 0.44, running mean | percepts on **any runtime**: `agents/memory_agent.py` → `integration/memory_hub.py::MemoryHub.on_percept_received` → `LinguisticEncoder.encode`; affordance NAMES only via `imagination/trigger.py::encode_entity_affordances` (only production caller: `simulation/orchestrator.py`) | `MAXIM_SUBSTRATE_PATH=1` only | no: prompt text and a `tool:*` nudge that is 0 on every recorded run (§5) | none (T1-5 is DROPPED 2026-10-08, owner decision in GL0; §5) |
 | `vision` | `LinguisticEncoder` over the percept's **text content**, under a `vision` tag (code-read) | 0.44 | `agents/perception_agent.py` (DN / robot), through the same `on_percept_received` encode | robot path, and `MAXIM_SUBSTRATE_PATH=1` only | no | none |
 
 Notes on the table:
 - `ECConfig.frozen_centroid_modalities` defaults to `{"interoception", "audio", "world"}`
-  (`similarity/ec.py::ECConfig`; `world` was added in 1.1.4 PR 1). `bio-memory.md`'s EC table still
-  lists two.
+  (`similarity/ec.py::ECConfig`; `world` was added in 1.1.4 PR 1). `bio-memory.md`'s EC table listed
+  two until 2026-10-08.
 - **The same reading can enter twice.** Minecraft `health`/`food`/`oxygen` carry both a `modality:
   world` declaration and a `drive:` block (`_data/components/bodies/minecraft_player.yaml`), so one
   sensor reading enters both the world channel and the interoception channel.
@@ -68,8 +68,8 @@ A store is a mechanism only when it is **written → keyed → read → acts**
 | Would-be link | Written? | Keyed on | Read? | Acts? | Status |
 |---|---|---|---|---|---|
 | Hebbian episode binding (`memory/episode.py::apply_hebbian_on_close`) | no on the production percept path (one node stashed per percept) | node pair | — | — | **Dormant** since 2026-08-29 (D6); T3-7 DORMANT |
-| Graph path in enrichment (`integration/bio_enrichment.py::BioEnrichmentPipeline._query_hippocampus_traced`, docstring "the associative 'fire → pain' path") | walks `Hippocampus._binding_graph`, which does not grow (D6) | — | yes | returns nothing in production | **inert**; docstring overclaims |
-| `memory/hippocampus.py::Hippocampus.retrieve_cross_modal` | n/a | — | **no `src/` caller** (only `scripts/p4_*.py`) | — | uncalled, no dormancy marker yet |
+| Graph path in enrichment (`integration/bio_enrichment.py::BioEnrichmentPipeline._query_hippocampus_traced`, docstring "the associative 'fire → pain' path") | walks `Hippocampus._binding_graph`, which does not grow (D6) | — | yes | returns nothing in production | **inert**; docstring corrected (GL0) |
+| `memory/hippocampus.py::Hippocampus.retrieve_cross_modal` | n/a | — | **no `src/` caller** (only `scripts/p4_*.py`) | — | uncalled; Dormant marker added (GL0) |
 | Concept-decomposition Stage-2 relation metadata (`memory/episode.py`, `memory/hippocampus.py` "Concept decomposition Stage 2") | accumulated | node pair | **UNVERIFIED** that any reader exists (audit: "unread") | no | unread |
 | Naming events (`embodiment/naming_events.py`) | drive-utterance co-firing scaffold | — | — | — | **Dormant** since 2026-05-29 |
 | ATL situation link (`memory/concept_extractor.py::ConceptExtractor._link_situation`, 2S-b) | yes | trace ↔ situation-cluster concept | recall only | no | live, but situation concepts are kept out of co-occurrence ("No inline relationships are formed for situation concepts") |
@@ -84,8 +84,8 @@ affordance (`encode_entity_affordances`) produce the same node, and
 can land on it. `imagined` exists only on `ComponentRegistry`, `ImaginationResult`, `Episode.imagined`
 and CausalLinks tagged retroactively at session end (`NAc.tag_imagined_links`). The only per-node
 "source" is `EntorhinalCortex._substrate_node_sources`, which records hivemind origin, not
-experienced/imagined. (`bio-memory.md`'s gotcha "LLM-imagined entities skip substrate encoding" is
-false: they are encoded, unflagged.)
+experienced/imagined. (`bio-memory.md`'s gotcha used to say "LLM-imagined entities skip substrate
+encoding"; corrected (GL0): they are encoded, unflagged.)
 
 ## 3. One burn, traced: fire → pain, and where it stops
 
@@ -191,7 +191,7 @@ the falsifiable signature the grounding line tests (GL5).
    (`fire` ~ `breath` 0.297 to each other). There is no component path.
 5. IT-1's positives hold at 0.44, but at the compound level (`flame jet` → `fire breath`, 0.601).
 
-So T1-5 ("Affordance concept transfer", PARTIAL 2026-06-15) is name similarity at the compound
+So T1-5 ("Affordance concept transfer", DROPPED 2026-10-08 by owner decision in GL0) is name similarity at the compound
 level; its behavioural claim was never measured, and its Regression guard cites a lesson that left
 CLAUDE.md in the 2026-08-13 diet, a string splitter, and the never-run
 `docs/experiments/temporal_credit_validation.md`.
@@ -206,7 +206,7 @@ producer.
 
 | Defect | Evidence | Status |
 |---|---|---|
-| Infant burn is too weak and the wrong kind (max 0.2, DRIVE, under every learning threshold) | §3 | verified in code; issue to file |
+| Infant burn is too weak and the wrong kind (max 0.2, DRIVE, under every learning threshold) | §3 | verified in code; owned by GL2b (planned, not built; [autonomic_layer.md](../plans/autonomic_layer.md)) |
 | **Heat yields no corrective need** (cold does). `sem.py::corrective_need_intensity` returns a value only for homeostatic deficits below `set_point − comfort_band` and for entropic drives; above the set point it returns `None`. `substrate_proposal.py::_DRIVE_CORRECTIVE_NEEDS` maps `temp`/`thermal` → `"cold"` only | docstring: "the 1.3 survival-loop scope (break 1)" | latent: no shipped experiment measures an overheated agent (**UNVERIFIED** that none does) |
 | **Wire-2 percept valence keyed on the SUFFERER, not the cause.** `create_percept_valence_subscriber` keys `(agent, entity_name or entity_type, failure_mode)`; `body.py::_publish_pain` sets `entity_name` to the body node that owns the failure. `simulation/tools.py` builds `side_effects["actor_invocation"] = {"source_entity", "source_affordance", ...}` and drops it | the NAc docstring example ("a dragon that burned the agent once…") cannot be produced by any `body.py` path | verified |
 | **LLM-primary never calls `NAc.note_active_clusters`** (only caller: `runtime/substrate_proposal.py`), so Wire 4 books no situation fear there | audit | re-read before treating as a defect; not the autonomic plan's: GL3 or its own defect issue |
@@ -237,8 +237,10 @@ wall time: neither is deterministic.
 | L6 | `default_network/gate.py::ThalamicGate` is DN-only and vision-shaped; DN is skipped in sim; `DefaultNetwork.add_escalation_callback` has no caller. | grep |
 | L7 | **Dead preemption scaffolding.** `runtime/preemption.py::PreemptionCircuit` ("Pain is the first registered source") is constructed nowhere in `src/`, `tests/` or `scripts/`; nothing publishes a `PreemptionSignal` or calls `MaximAgent.wire_preemption`; it survives the orphan lint only through the `runtime/__init__.py` re-export. `agent_loop.py` §3's `hasattr(agent.goal, "check_hold")` branch is dead (no `check_hold` in `src/`). `tool_dispatch.py`'s `_execution_tracker.capture_before` guard can never be true. Recommended disposition: a `Dormant since` marker (dormancy over deletion; removal touches the `maxim.runtime` re-exports). | grep |
 
-L1, L2, L5 and L7 are **to file as defect issues** (owner decision G8, 2026-10-07); each is fixable
-without the grounding line's registry.
+L1, L2, L5 and L7 are filed as defect issues (owner decision G8, 2026-10-07):
+[#1176](https://github.com/dennys246/Maxim/issues/1176) L1, [#1177](https://github.com/dennys246/Maxim/issues/1177) L2,
+[#1178](https://github.com/dennys246/Maxim/issues/1178) L5, [#1179](https://github.com/dennys246/Maxim/issues/1179) L7;
+each is fixable without the grounding line's registry.
 
 What does already bypass slow processing: tool-coupled pain inside `execute` (`ToolPainBridge`,
 T1-4); same-tick fear inside `propose_via_substrate` (encode → `note_active_clusters` →
@@ -275,10 +277,10 @@ chain; T1-16 (Exp 63) is Hippocampus recall into the prompt and T1-4 rides PainB
 | `EncodingSignals.extra` on the loop capture (flattened into the persisted trace by `EncodingSignals.to_dict`) | T1-16 ("the memory record shape"); Exp 10's memory-shape wording |
 | EC persistence (`ec.json`) / bundle manifest / `_BUNDLE_EC_NODE_FIELDS` | T1-10, T1-14 |
 | Shared EC scan / threshold / centroid rule | T1-3, T1-10, T1-15 |
-| `infant_humanoid` (every infant variant `extends:` it: `_chilled`, `_cold`, `_naming_v1`, `infant_operant*`) | T1-6, T1-9/T1-10, T3-9 (T3-6, T3-10 and T3-15 are DROPPED and carry no `Re-run on:`) |
+| `infant_humanoid` (every infant variant `extends:` it: `_chilled`, `_cold`, `_naming_v1`, `infant_operant*`) | T1-6, T1-9/T1-10, T3-9 (T3-6, T3-10 and T3-15 are DROPPED and carry no `Re-run on:`; a DROPPED row may still carry one labelled "for the successor", as T1-5 does) |
 | PainBus / ReactionBus / NAc reward pipeline | T1-4, T3-9 |
 | `run_agentic_loop` idle gate or autonomy handling | T1-13 (and T1-14/15) |
-| Affordance decomposition | T1-5 |
+| Affordance decomposition | T1-5 (DROPPED; its `Re-run on:` is kept for the successor) |
 
 Rows whose stated rationale cites a dead path: T3-19 (`_reward_bias` clamp) says "pain-avoidance
 routed via valence instead", but edge valence is T3-7 DORMANT. In production pain avoidance runs
@@ -307,7 +309,7 @@ ones above it):
    discounted is decided at GL3.B1. (GL2a for the record, GL3.B1 for EC/NAc writes.)
 4. **Fast signals are not gated by slow ones:** pain transduction does not wait for a turn budget,
    a reflex does not wait for the token budget, and a decided action can be dropped when the body
-   changed after the decision. (The L1/L2/L5 defect issues, fixable without the registry; GL3's
+   changed after the decision. (The L1/L2/L5 defect issues #1176/#1177/#1178, fixable without the registry; GL3's
    tracks, from GL3.B3, for one scheduling model; preemption is GL3.B4.)
 5. **Something predicts consequence from (percept, action) and generalises to an unseen pair**,
    trained on experienced pairs, plus narrated pairs at the declared discount (owner decision G6),

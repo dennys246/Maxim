@@ -62,7 +62,7 @@ Every experiment entry follows this structure:
 > [../wiring/](../wiring/) (see `experiment-catalog-candidates.md`). **Follow-up RESOLVED 2026-09-13:** the audit
 > counted 8 UNKNOWN docs without enumerating them; a re-sweep found 9 candidates lacking a stated
 > verdict (the audit's exact cut is not recoverable) and each now carries an evidence-based
-> `Status (audit 2026-09-13)` line: STALE — `temporal_credit_validation` (never run),
+> `Status (audit 2026-09-13)` line: STALE — `temporal_credit_validation` (never run; corrected 2026-10-08: it ran, unstamped, with no evidence, see that doc's 2026-10-08 block),
 > `09_pfc_deliberation_cycle` (live run never happened); SUPERSEDED —
 > `hippocampal_recall_experiment` (plan doc; runs live in the run-notes), `r2_learned_bias_prereg`
 > (v1 never took data; line resolved offline); POC — `sem_tool_discovery_s1` (S2 never run);
@@ -180,7 +180,7 @@ Companion reproduction runbooks are in [protocols/](protocols/).
 
 | Entry | Date | Status | Decision |
 |---|---|---|---|
-| [temporal_credit_validation.md](temporal_credit_validation.md) | TBD | **STATUS: PRE-REGISTERED, NOT YET RUN** — the `[behavioral]` tag in CLAUDE.md for SCN temporal coupling is provisional pending execution of this protocol. See [protocols/temporal_credit_validation.md](protocols/temporal_credit_validation.md) for the reproduction runbook. | Four simulation sets defined; cross-session fire-danger transfer is the headline claim. |
+| [temporal_credit_validation.md](temporal_credit_validation.md) | TBD | **STATUS: NO EVIDENCE** — corrected 2026-10-08: the runner was executed ~19 times on 2026-04-24/25 while being debugged, unstamped, with no result recorded and no temporal-credit entries in the logs. The `[behavioral]` SCN-coupling tag in `docs/agents/bio-memory.md` is marked evidence PENDING; a redesigned, pre-registered run (four-lens design review first) is owed. See [protocols/temporal_credit_validation.md](protocols/temporal_credit_validation.md) for the reproduction runbook. | Four simulation sets defined; cross-session fire-danger transfer is the headline claim. |
 
 ### Exp 37 — 1.0 graduation gate
 

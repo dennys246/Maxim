@@ -468,9 +468,13 @@ class ImaginationTrigger:
         ``AffordanceDecompositionStrategy`` into compound + component concepts,
         then encodes each through LinguisticEncoder → EC → ATL → NAc eligibility.
 
-        This creates substrate nodes for concepts like "fire" and "breath"
-        that are shared across entities — enabling cross-entity transfer
-        through EC pattern completion.
+        A component completes into whatever existing node it is nearest. On a
+        fresh EC that is its own compound (~0.73), so "fire" and "breath" never
+        form nodes; a component forms its own node only when no existing node
+        is near it (e.g. the mage's "jet", after "flame jet" had merged into
+        "fire breath") (#1120). Anything shared across entities is shared by
+        NAME similarity, not by shared consequence. Grounding names in
+        consequences is the 1.4 grounding line (``docs/plans/grounding.md``).
 
         Called OUTSIDE the trigger's ``_lock`` to avoid cross-lock ordering
         issues with ATL's RWLock.
@@ -1088,9 +1092,11 @@ def encode_entity_affordances(
 ) -> list[str]:
     """Encode an entity's affordance names through the substrate path.
 
-    Standalone version for call sites that register the agent's OWN body
-    (orchestrator AUT setup, embodied_runtime) — these don't go through
-    ImaginationTrigger.
+    Standalone version for registering the agent's OWN body without going
+    through ImaginationTrigger. Its only production caller is
+    ``simulation/orchestrator.py`` (AUT self-entities at setup, only when the
+    AUT MemoryHub carries an encoder, i.e. the substrate path);
+    ``embodied_runtime`` does not call it.
 
     Returns list of substrate node IDs created/reinforced.
     """

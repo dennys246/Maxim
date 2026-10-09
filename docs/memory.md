@@ -8,7 +8,7 @@ Maxim's memory system spans multiple bio-inspired subsystems, each handling a di
 |-----------|-------------|----------------|
 | **Hippocampus** | Hippocampus | Episodic memories (events, conversations) with associative indexing |
 | **ATL** | Anterior Temporal Lobe | Semantic concepts, entities, and typed relationships |
-| **Angular Gyrus** | Angular Gyrus / IPS | Mathematical cognition, cross-modal statistical summaries |
+| **Angular Gyrus** | Angular Gyrus / IPS | Mathematical cognition: exact arithmetic, statistical summaries and math-fact memory (not cross-modal) |
 | **NAc** | Nucleus Accumbens | Causal links and reward prediction errors |
 | **SCN** | Suprachiasmatic Nucleus | Temporal rhythm indexing for time-based retrieval |
 | **EC** | Entorhinal Cortex | Multi-modal similarity routing with Phase 4 neural embeddings |

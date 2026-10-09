@@ -78,12 +78,12 @@ Consequence for this plan: **the tool-path record today omits exactly the drive 
    Every live Reaction is `kind="pain"`, `Valence.NEGATIVE` (`reactions/compat.py::pain_signal_to_reaction`).
    T1-13's annotation records the scored `reward_bias` term at 0.0 at all 108 scored decisions in
    `exp61_pairs.jsonl` + `exp62_rows.jsonl`.
-2. **The satiation Reaction promised by `sem.py::EntropicDriveSpec` was never built.** The docstring says a
-   positive Reaction fires when the value crosses back below `satisfaction_threshold`; in
+2. **The satiation Reaction promised by `sem.py::EntropicDriveSpec` was never built.** The docstring said a
+   positive Reaction fires when the value crosses back below `satisfaction_threshold` (corrected in GL0); in
    `body.py::Embodiment.evaluate_failures` the crossing is detected (`elif cleared:
    breach_latch.pop(ds_name, None)`, both the homeostatic and entropic branches) and discarded.
-   `reactions/types.py::ReactionKind` already reserves `"satiation"`, with no producer. (GL0 corrects the
-   docstring; the class is SHAPE-FROZEN at 1.0 (CC3), so no field changes.) **Where that crossing
+   `reactions/types.py::ReactionKind` already reserves `"satiation"`, with no producer. (GL0 corrected the
+   docstring and field comment; the class is SHAPE-FROZEN at 1.0 (CC3), so no field changed.) **Where that crossing
    happens on the earned bodies:** on `minecraft_player` the homeostatic `oxygen` and `health` latches
    clear on every surfacing and every regeneration **after a latched breach** (the homeostatic `elif
    cleared:` branch; `oxygen` breaches below 14 bubbles), i.e. at Exp 60's own `escape_water`
