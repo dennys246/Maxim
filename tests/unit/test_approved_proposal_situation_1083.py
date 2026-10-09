@@ -127,8 +127,23 @@ def test_approved_proposal_is_credited_to_its_proposal_time_situation(monkeypatc
 
 @pytest.mark.timeout(60)
 def test_a_successful_approved_action_logs_no_failure(monkeypatch, tmp_path, caplog):
-    """(b) A tool that succeeded is not reported as "Approved action failed"."""
+    """(b) A tool that succeeded is reported as no failure: no ERROR on the loop's logger, no ``plan_refused`` and
+    no ``goal_failed`` event. (Re-pointed by #1085: the old "Approved action failed" string no longer exists.)"""
+    from maxim.utils import structured_logging
+
+    events: list[str] = []
+    buffer = structured_logging.get_abstraction_buffer()
+    real_append = buffer.append
+
+    def _append(record):
+        if getattr(record, "source", None) == "agent_loop":
+            events.append(record.event)
+        return real_append(record)
+
+    monkeypatch.setattr(buffer, "append", _append)
     with caplog.at_level(logging.ERROR, logger="maxim.runtime.agent_loop"):
         _, executed = _run_loop_once(monkeypatch, tmp_path)
     assert executed == [_TOOL]
-    assert not [r for r in caplog.records if "Approved action failed" in r.getMessage()]
+    assert "tool_called" in events  # the observation itself is live
+    assert "plan_refused" not in events and "goal_failed" not in events
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]

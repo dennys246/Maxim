@@ -27,7 +27,8 @@ Owner decisions (2026-10-08; 2026-10-09 after the review):
   #1133's confirmed path; see #1146).
 
 Driven through the REAL loop (``tests/unit/_execute_learn_driver.py``, ``level="planning"``: an embedder approves
-at submit). Each ``xfail(strict=True)`` gate fails on ``main`` for the reason it states.
+at submit). Each gate was an ``xfail(strict=True)`` red on ``main`` for the reason its comment states, and the
+fix flipped it.
 """
 
 from __future__ import annotations
@@ -52,10 +53,7 @@ def _refusals(obs: Any) -> list[dict[str, Any]]:
 # ── (a) credit parity ────────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#1085: §5 hand-rolls the dispatch -- no tool_params, no side effects, no capture, plan outcome or step",
-)
+# Red on main (#1085): §5 hand-rolls the dispatch -- no tool_params, no side effects, no capture, plan outcome or step
 @pytest.mark.parametrize(
     "effects",
     [
@@ -84,9 +82,7 @@ def test_the_same_action_autonomous_and_approved_learns_identically(monkeypatch,
     }
 
 
-@pytest.mark.xfail(
-    strict=True, reason="#1085: §5's follow-up drops the error text (result=None) and the trigger (original_query='')"
-)
+# Red on main (#1085): §5's follow-up drops the error text (result=None) and the trigger (original_query='')
 def test_the_approved_follow_up_follows_the_main_path_rule(monkeypatch, tmp_path):
     auto = run_once(monkeypatch, tmp_path / "auto", tool="run_tests", success=False, output=None, error="nope")
     monkeypatch.undo()
@@ -115,10 +111,7 @@ def _two_approved(monkeypatch, tmp_path, **kw: Any) -> Any:
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#1085: get_approved takes every approved entry before the first executes; a raise loses the rest silently",
-)
+# Red on main (#1085): get_approved takes every approved entry before the first executes; a raise loses the rest silently
 def test_a_raising_approved_entry_refuses_the_rest_typed_and_propagates(monkeypatch, tmp_path):
     obs = _two_approved(monkeypatch, tmp_path, record_raises_for=TOOL, catch=True)
     assert isinstance(obs.raised, RuntimeError), obs.raised
@@ -128,7 +121,7 @@ def test_a_raising_approved_entry_refuses_the_rest_typed_and_propagates(monkeypa
     assert [(d["reason"], d["tool"]) for d in _refusals(obs)] == [("drain_aborted", SECOND)]
 
 
-@pytest.mark.xfail(strict=True, reason="#1085: a raise loses the rest; nothing guards a failing refusal")
+# Red on main (#1085): a raise loses the rest; nothing guards a failing refusal
 def test_an_aborted_drain_rejects_every_entry_even_when_booking_them_raises(monkeypatch, tmp_path):
     """Executor S1: ``execute_and_learn`` raises E1 (the first entry's recorder) and booking the refusal raises E2
     (the second entry's recorder). Every remaining entry still ends rejected/drain_aborted, E1 (never E2)
@@ -157,10 +150,7 @@ class _NullSim:
         return None
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#1085: a KeyboardInterrupt in the first approved entry leaves the rest approved, for a later drain to run",
-)
+# Red on main (#1085): a KeyboardInterrupt in the first approved entry leaves the rest approved, for a later drain to run
 def test_a_keyboard_interrupt_mid_drain_leaves_nothing_approved(monkeypatch, tmp_path):
     """Delta review S2: a ``BaseException`` (here ``KeyboardInterrupt`` out of the first entry's tool, which
     ``execute_and_learn``'s own handler does not catch) still refuses every remaining entry, propagates, and
@@ -198,10 +188,7 @@ _BLOCKED = {
 }
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#1085: §5 executes an approved entry without checking the pause, the hard safety constraints or the policy's hard denials",
-)
+# Red on main (#1085): §5 executes an approved entry without checking the pause, the hard safety constraints or the policy's hard denials
 @pytest.mark.parametrize("how", list(_BLOCKED))
 def test_an_approved_blocked_action_is_refused_typed_and_not_executed(monkeypatch, tmp_path, how):
     knobs, detail = _BLOCKED[how]
@@ -214,10 +201,7 @@ def test_an_approved_blocked_action_is_refused_typed_and_not_executed(monkeypatc
     assert detail in refusal["detail"].lower()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#1085: §5 hand-rolls the dispatch -- an approved tool outside allowed_tools runs without parity",
-)
+# Red on main (#1085): §5 hand-rolls the dispatch -- an approved tool outside allowed_tools runs without parity
 def test_an_approved_tool_outside_allowed_tools_executes_with_parity(monkeypatch, tmp_path):
     """Owner decision 2026-10-09: ``allowed_tools`` is a "needs approval" check, not a hard denial, so an approved
     tool outside a non-empty list RUNS, and learns as it would autonomously."""
@@ -235,10 +219,7 @@ def test_an_approved_tool_outside_allowed_tools_executes_with_parity(monkeypatch
 # ── (d) a machine refusal books no NAc ───────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#1085: no machine refusal exists on main -- a blocked entry runs (and books NAc), a drained-away one is lost",
-)
+# Red on main (#1085): no machine refusal exists on main -- a blocked entry runs (and books NAc), a drained-away one is lost
 @pytest.mark.parametrize("case", ["forbidden", "policy_forbidden", "policy_prefix", "drain_aborted"])
 def test_a_machine_refusal_books_recent_outcomes_only(monkeypatch, tmp_path, case):
     reason = "drain_aborted" if case == "drain_aborted" else "blocked"
@@ -267,10 +248,7 @@ def test_a_machine_refusal_books_recent_outcomes_only(monkeypatch, tmp_path, cas
 _WRITE = {"path": "a.txt", "content": "x"}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#1085/#1146: execute_and_learn re-executes a CONFIRMED write_file with overwrite=True",
-)
+# Red on main (#1085, #1146): execute_and_learn re-executes a CONFIRMED write_file with overwrite=True
 def test_a_policy_confirmed_write_file_is_not_retried_with_overwrite(monkeypatch, tmp_path):
     """The confirmation here is a MACHINE "yes" (interactive mode OFF: the non-interactive SUPERVISED auto-yes).
     ``human_involved=True`` means confirmed or approved by a person OR a policy, and either way the action

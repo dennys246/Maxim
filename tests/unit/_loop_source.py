@@ -34,7 +34,8 @@ ordering, a region split, an AST of that function) and are NOT routed through th
     use of ``run.planning_liveness_on``); ``test_exhaustion_raises_after_teardown`` (raise after
     ``_end_bio_session``; the teardown and the raise stayed in the loop in slices 1 and 2 -- the gate
     returns ``GateOutcome.EXHAUSTED`` and the loop sets its flag -- so the pin is unchanged);
-    ``test_proposal_time_stamped_on_any_proposal`` -- slice 4.
+    ``test_proposal_time_stamped_on_any_proposal`` -- the slice that moves §2 (the proposal poll stamps it);
+    NOT slice 4, which moved §5 (#1085) and left this pin untouched.
   - ``test_planning_liveness.py::test_bad_tool_name_is_recorded_for_correction`` (§2 region) -- §2 is
     LLM-primary, outside phase 1.
   - ``test_console_tool_allowlist.py::TestRosterAdvertisesOnlyPermittedTools::test_agent_loop_filters_the_advertised_roster_through_permits``,

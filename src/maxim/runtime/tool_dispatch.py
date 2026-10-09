@@ -860,6 +860,46 @@ def book_refusal(
     )
 
 
+def book_machine_refusal(
+    *,
+    rec_outcome: Callable[..., Any],
+    agent_id: str,
+    recent_outcomes: list[dict[str, Any]],
+    max_recent: int,
+    llm_worker: Any,
+    context_pool: Any,
+    tool_name: str,
+    error: str,
+    reasoning: str,
+) -> None:
+    """Book an approved action the MACHINE refused (blocked at drain time, or a drain aborted by a raise; #1085).
+
+    Only a human "no" books NAc (``book_refusal``; owner re-decision 2026-10-08, #1185): a refusal that no person
+    made teaches nothing about the action or its situation, so it is booked to the outcome window, the LLM's
+    reasoning carryover and the context pool only. There is no ``nac``, no situation and no goal to pass, by
+    signature: the recorder gets ``nac=None`` (no causal observation, no cluster reward), no cluster and
+    ``active_goal=None`` (no goal credit). Scope: the PLANNING drain's refusals (``loop_planning``); §4's hard
+    rejection and a confirmation "no" still book NAc (#1185). Bound once per run by ``loop_setup.build_loop_run``
+    as ``LoopRun.book_machine_refusal``.
+    """
+    rec_outcome(
+        agent_id=agent_id,
+        tool_name=tool_name,
+        success=False,
+        result_summary=None,
+        error=error,
+        reasoning=reasoning,
+        recent_outcomes=recent_outcomes,
+        max_recent=max_recent,
+        llm_worker=llm_worker,
+        context_pool=context_pool,
+        nac=None,
+        active_goal=None,
+        cluster_id=None,
+        clusters=None,
+    )
+
+
 @dataclasses.dataclass(frozen=True)
 class ExecutionOutcome:
     """What one ``execute_and_learn`` call did, for its caller to display or route.
@@ -912,32 +952,30 @@ def execute_and_learn(
     """Execute one approved action and book everything the agent learns from it (#1133; #1085's core).
 
     THE dispatch seam, so what an action teaches does not depend on how it was approved. Called today by
-    the autonomous path (``run_agentic_loop`` §4) and the SUPERVISED-confirmed path
-    (``LoopController.handle_confirmation``). Tracked exceptions that still dispatch on their own: the
-    parallel batch (``execute_parallel_actions``, which reads the same side-effect fields), the PLANNING
-    approved path (§5, #1085) and the agent-fallback path (#1147). Moved verbatim from ``run_agentic_loop`` §4 (the
-    autonomous path), in order: the pre-execution snapshot, ``executor.execute``, the tool's learning
-    side effects, the ``write_file`` overwrite retry, the timeout-retry prompt, the write cache
-    invalidation, the ``tool_called``/``tool_result`` events, the autonomy audit entry, the deliberation
-    reset, the outcome credit (``rec_outcome``), the plan outcome, the follow-up, the conversation turn,
-    ``environment.step``, ``memory.store_raw``, the Hippocampus capture and ``mark_failure``; an
-    exception books a failed outcome instead.
+    the autonomous path (``run_agentic_loop`` §4), the SUPERVISED-confirmed path
+    (``LoopController.handle_confirmation``) and the PLANNING-approved path (``loop_planning.drain_approved``,
+    #1085). Tracked exceptions that still dispatch on their own: the parallel batch (``execute_parallel_actions``,
+    which reads the same side-effect fields) and the agent-fallback path (#1147). Moved verbatim from §4
+    (the autonomous path), in order: the pre-execution snapshot, ``executor.execute``, the tool's learning
+    side effects, the ``write_file`` overwrite retry, the timeout-retry prompt, the write cache invalidation,
+    the ``tool_called``/``tool_result`` events, the autonomy audit entry, the deliberation reset, the outcome
+    credit (``rec_outcome``), the plan outcome, the follow-up, the conversation turn, ``environment.step``,
+    ``memory.store_raw``, the Hippocampus capture and ``mark_failure``; an exception books a failed outcome.
 
     Every parameter is keyword-only with no default, so a caller that forgets one gets a ``TypeError``.
     The first block is per run and is bound ONCE by ``loop_setup.build_loop_run`` as
     ``LoopRun.execute_and_learn`` (a ``functools.partial``): ``rec_outcome`` is the run's recorder (with
     ``drive_relief_only`` bound), ``agent_id`` the hub's, ``memory_hub`` ``None`` when the hub's session
     did not start (no plan outcome then). The rest is per action: ``proposal`` is the ``LLMProposal`` the
-    action came from, carrying the reasoning, citations, triggering input and the situation (``clusters``
-    / ``cluster_id`` / ``cluster_margins``) the credit and the capture are keyed to; ``human_involved`` marks
-    the autonomy audit entry of an action a person confirmed. On the confirmed path the two times differ
-    (owner decision D2): the credit and the capture's situation are keyed to PROPOSAL time
-    (``PendingConfirmation.source``), while ``observation`` is the ANSWER-time observation the capture
-    stores, the same tick-of-execution observation the autonomous path passes.
-
-    Logs on the ``maxim.runtime.agent_loop`` logger, as the block always has (the ``loop_setup``
-    precedent). Known defects carried by the move, to be fixed HERE: #1145 (a step after the credit
-    raising books a second, negative outcome), #1146 (the overwrite retry's side effects are not read).
+    action came from (or a sourceless ``autonomy.Proposal``: no situation), carrying the reasoning, citations,
+    triggering input and the situation (``clusters``/``cluster_id``/``cluster_margins``) credit and capture key to.
+    ``human_involved``: the action was confirmed or approved, by a person OR a policy (the non-interactive
+    SUPERVISED auto-yes, sim AUTO_APPROVE); it marks the audit entry and turns the ``write_file`` overwrite
+    retry OFF (#1085: what was approved runs exactly). On those paths the two times differ (owner decision D2):
+    credit and capture key to PROPOSAL time (``PendingConfirmation.source``; the queued ``Proposal.source``),
+    while ``observation`` is the ANSWER-time one the capture stores. Logs on ``maxim.runtime.agent_loop``
+    (the ``loop_setup`` precedent). Known defects carried by the move, to be fixed HERE: #1145 (a step after
+    the credit raising books a second, negative outcome), #1146 (the overwrite retry's side effects).
     """
     result: Any = None
     success = False
@@ -988,9 +1026,10 @@ def execute_and_learn(
                 f"Completed: {action.get('tool_name')} success={success} elapsed={exec_elapsed:.2f}s",
             )
 
-        # Auto-recover: write_file failed because file exists → retry with overwrite
+        # Auto-recover: file exists → retry with overwrite (not if a person or a policy approved it: #1085)
         if (
             not success
+            and not human_involved
             and action.get("tool_name") == "write_file"
             and "already exists" in str(getattr(result, "error", "")).lower()
         ):

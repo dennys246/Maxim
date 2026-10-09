@@ -290,22 +290,35 @@ class SupervisionPolicy:
     sandbox_execute_requires_approval: bool = True  # Sandbox execution needs approval
     cwd_write_requires_approval: bool = True  # CWD writes need approval in supervised
 
-    def can_execute(self, action: dict[str, Any], *, confidence: float | None = None) -> tuple[bool, str | None]:
-        """Check if action can be executed autonomously."""
+    def hard_deny(self, action: dict[str, Any]) -> str | None:
+        """The policy's HARD denials, or ``None`` (#1085, owner decisions S7 and 2026-10-09): the forbidden
+        prefixes, the forbidden categories and the forbidden tools. An approval does not lift these (it lifts only
+        the level), so a drained PLANNING approval is checked against them; ``can_execute`` calls this first. Its
+        other checks (the ``allowed_tools`` list, confidence, ``requires_confirmation``, the sandbox/CWD write and
+        execute rules) mean "needs approval", which an approval satisfies."""
         tool_name = str(action.get("tool_name", "") or "")
 
         # Check forbidden prefixes
         for prefix in self.forbidden_prefixes:
             if tool_name.startswith(prefix):
-                return False, f"Tool '{tool_name}' blocked by prefix rule: {prefix}"
+                return f"Tool '{tool_name}' blocked by prefix rule: {prefix}"
 
         # Check forbidden categories
         tool_category = str(action.get("category", "") or "")
         if tool_category and tool_category in self.forbidden_categories:
-            return False, f"Tool '{tool_name}' blocked by category: {tool_category}"
+            return f"Tool '{tool_name}' blocked by category: {tool_category}"
 
         if tool_name in self.forbidden_tools:
-            return False, f"Tool '{tool_name}' is forbidden"
+            return f"Tool '{tool_name}' is forbidden"
+        return None
+
+    def can_execute(self, action: dict[str, Any], *, confidence: float | None = None) -> tuple[bool, str | None]:
+        """Check if action can be executed autonomously (the hard denials are ``hard_deny``'s)."""
+        tool_name = str(action.get("tool_name", "") or "")
+
+        denied = self.hard_deny(action)
+        if denied is not None:
+            return False, denied
 
         if self.allowed_tools and tool_name not in self.allowed_tools:
             return False, f"Tool '{tool_name}' requires approval"
@@ -384,13 +397,31 @@ class ProposalQueue:
             return False
 
     def get_approved(self) -> list[Proposal]:
-        """Get approved proposals ready for execution."""
+        """Take EVERY approved proposal out of the queue at once (public API; kept for embedders).
+
+        Warning: a bulk take bypasses the agent loop's drain and its blocker (``AutonomyController
+        .approved_action_blocker``), and an entry taken here and not executed is lost. The loop itself uses
+        ``pop_approved``, one entry at a time (#1085).
+        """
         with self._lock:
             approved = [p for p in self._pending if p.status == "approved"]
             # Remove approved from queue
             for p in approved:
                 self._pending.remove(p)
             return approved
+
+    def pop_approved(self) -> Proposal | None:
+        """Remove and return the OLDEST approved proposal, or ``None`` when none is approved (#1085).
+
+        One at a time, so a caller that executes each before taking the next never holds approved entries
+        outside the queue: if one execution raises, the rest are still here to be refused, not lost.
+        """
+        with self._lock:
+            for proposal in self._pending:
+                if proposal.status == "approved":
+                    self._pending.remove(proposal)
+                    return proposal
+            return None
 
     def add_approval_pattern(self, pattern: ApprovalPattern) -> None:
         """Add a pattern for auto-approval in SUPERVISED mode."""
@@ -599,13 +630,22 @@ class AutonomyController:
         }
     )
 
-    def can_execute_action(self, action: dict[str, Any], confidence: float | None = None) -> tuple[bool, str | None]:
-        """Check if an action can be executed at current autonomy level."""
-        level = self.current_level
+    def approval_blocker(self, action: dict[str, Any], *, level: AutonomyLevel | None = None) -> str | None:
+        """Why ``action`` may not run whatever its approval, or ``None`` (#1085).
+
+        Every check ``can_execute_action`` makes that is NOT about the autonomy level: the pause, then the
+        CRITICAL safety constraints (``SafetyConstraints.forbidden_tools``, a hard forbid that "applies even in
+        AUTONOMOUS mode"). ``can_execute_action`` calls it first, so the two cannot drift. A drained PLANNING
+        approval is checked against ``approved_action_blocker``: this, plus ``SupervisionPolicy.hard_deny``.
+        ``level`` is the level the safety context is built for (``current_level`` when ``None``);
+        ``can_execute_action`` passes the one it read, so both checks see the same level.
+        """
+        if level is None:
+            level = self.current_level
         tool_name = str(action.get("tool_name", "") or "")
 
         if self.is_paused:
-            return False, "Execution is paused"
+            return "Execution is paused"
 
         # Build runtime context for safety check
         context = RuntimeContext(
@@ -627,7 +667,31 @@ class AutonomyController:
         violations = self.safety_constraints.check_constraints(context)
         critical_violations = [v for v in violations if v.severity == "critical"]
         if critical_violations:
-            return False, critical_violations[0].description
+            return critical_violations[0].description
+        return None
+
+    def approved_action_blocker(self, action: dict[str, Any]) -> str | None:
+        """Why an action a human APPROVED may still not run, or ``None`` (#1085; owner decision S7).
+
+        Approval lifts only the level: the pause and the critical safety constraints (``approval_blocker``) and the
+        supervision policy's hard denials (``SupervisionPolicy.hard_deny``: forbidden prefixes, categories and
+        tools) still refuse. The drain (``loop_planning.drain_approved``) checks this; ``can_execute_action`` is
+        untouched by it.
+        """
+        return self.approval_blocker(action) or self.supervision_policy.hard_deny(action)
+
+    def can_execute_action(self, action: dict[str, Any], confidence: float | None = None) -> tuple[bool, str | None]:
+        """Check if an action can be executed at current autonomy level.
+
+        The non-level checks are ``approval_blocker``'s (pause, critical safety constraints); the level
+        checks follow it.
+        """
+        level = self.current_level
+        tool_name = str(action.get("tool_name", "") or "")
+
+        blocker = self.approval_blocker(action, level=level)
+        if blocker is not None:
+            return False, blocker
 
         # Always-allowed tools bypass the level checks (PLANNING approval,
         # SUPERVISED policy) — safe for immediate execution once the hard
