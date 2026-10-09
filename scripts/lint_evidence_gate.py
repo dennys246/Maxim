@@ -7,7 +7,10 @@ change additionally needs NEW support: a newly cited, stamped VERDICT that the m
 (``docs/experiments/evidence_pass_table.json``) lets support this row at its new token and its scope (the qualifier
 head, #1141). Records committed before
 M1a are LEGACY (``docs/experiments/evidence_legacy.json``): judged as such, never new support. Owner-named
-overrides live in ``docs/experiments/evidence_exceptions.json``: only clauses already on main act, append-only.
+overrides live in ``docs/experiments/evidence_exceptions.json``: only clauses already on main act, append-only. A
+``kind: "redaction"`` record (#1081 item 7) RETIRES a closed O19 campaign and its successors from the change that adds
+it (every citing judged row goes exactly STALE there), and, once on main, lets exactly its listed paths change from
+their ``from_sha256`` to their ``to_sha256``: tip hygiene, never secrecy (rotate the credential first).
 
 Diff-scoped against the merge-base with origin/main. It reads committed bytes (git objects at HEAD); uncommitted
 changes (untracked files included) under the data root, in the ledger, the pass table, the legacy snapshot or the
@@ -58,6 +61,11 @@ from _evidence_records import (  # noqa: E402  (re-exported: the gate's record v
     o19_closed_data_problems,
     o19_succession_problems,
     o19_table_problems,
+    redaction_pair_problems,
+    redaction_record_problem,
+    redaction_records,
+    retired_by,
+    retired_dirs,
     sha256,
     str_field,
     unjudged,
@@ -310,7 +318,9 @@ def load_json(repo: Repo, ref: str, path: str, default):
         raise GateError(f"{path} at {ref[:12]} is not JSON") from exc
 
 
-def exceptions_problems(base_list, head_list, repo: Repo | None = None) -> list[str]:
+def exceptions_problems(base_list, head_list, repo: Repo | None = None, base: str | None = None) -> list[str]:
+    """The exceptions file's shape, append-only against the merge-base. ``repo`` / ``base``: a NEW clause's pin is
+    checked against them (a new redaction record without them is refused, never waved through)."""
     out = []
     if not isinstance(head_list, list) or not isinstance(base_list, list):
         return [f"{EXCEPTIONS} must be a JSON list"]
@@ -319,9 +329,15 @@ def exceptions_problems(base_list, head_list, repo: Repo | None = None) -> list[
         if json.dumps(e, sort_keys=True) not in head_set:
             label = e.get("id") if isinstance(e, dict) else e
             out.append(f"{EXCEPTIONS}: an entry on main was edited or removed (append-only): {label!r}"[:200])
+    out += [f"{EXCEPTIONS}: {p}"[:300] for p in redaction_pair_problems(base_list, head_list)]
     for e in head_list:
-        if not isinstance(e, dict) or e.get("kind") not in ("ledger", "prereg", "superseded"):
-            out.append(f"{EXCEPTIONS}: an entry is not a ledger/prereg/superseded exception: {e!r}"[:200])
+        if not isinstance(e, dict) or e.get("kind") not in ("ledger", "prereg", "superseded", "redaction"):
+            out.append(f"{EXCEPTIONS}: an entry is not a ledger/prereg/superseded/redaction exception: {e!r}"[:200])
+        elif e["kind"] == "redaction":
+            # #1081 item 7: the gate owns this shape (lint_ledger_format and the prereg lint ignore the kind).
+            problem = redaction_record_problem(e, repo, base, new=e not in base_list)
+            if problem:
+                out.append(f"{EXCEPTIONS}: redaction record {e.get('id')!r} {problem}"[:300])
         elif e["kind"] == "superseded" and (
             any(not e.get(f) for f in SUPERSEDED_FIELDS) or "from" not in e  # `from: null` = a new row
         ):
@@ -350,6 +366,44 @@ def exceptions_problems(base_list, head_list, repo: Repo | None = None) -> list[
     ids = [e.get("id") for e in head_list if isinstance(e, dict)]
     if not all(isinstance(i, str) and i for i in ids) or len(set(ids)) != len(ids):
         out.append(f"{EXCEPTIONS}: every entry needs a unique string id")
+    return out
+
+
+def retired_citation_problems(
+    head_rows: list[L.Row], base_rows: dict[str, L.Row], retired: dict[str, str], base_retired: dict[str, str]
+) -> list[str]:
+    """#1081 item 7: a redaction retires its campaign (and every successor, D5), forced on the ledger on EVERY run,
+    not only for triggered rows (the gate is diff-scoped, G-b).
+
+    - G1: no row in the judged class (positive, PARTIAL, RE-VALIDATED-BY-TESTS: design pass S5) cites a path at or
+      under a retired directory. An earn-back drops the retired citation and cites a NEW campaign's verdict.
+    - G2 (owner D3): in the change whose records newly retire a directory, every row judged-class on main whose base
+      OR head Evidence touches it is exactly STALE at HEAD (design pass S1: dropping the citation does not escape)."""
+    out = []
+    for row in head_rows:
+        if row.token is None or not judged_class(row):
+            continue
+        for e in row.evidence:
+            if hit := retired_by(retired, e.path):
+                out.append(
+                    f"{row.id}: cites {e.path}, retired by redaction {hit[1]!r} ({hit[0]}): a row at {row.token} "
+                    "may not cite a retired campaign (G1: it supports nothing; move the row to STALE, or earn it back "
+                    "with a new experiment's verdict and drop this citation)"
+                )
+    newly = {d: rid for d, rid in retired.items() if d not in base_retired}
+    head = {r.id: r for r in head_rows}
+    for row_id, old in sorted(base_rows.items()):
+        if not newly or old.token is None or not judged_class(old):
+            continue
+        now = head.get(row_id)
+        paths = [e.path for e in old.evidence] + ([e.path for e in now.evidence] if now is not None else [])
+        hits = [h for h in (retired_by(newly, p) for p in paths) if h]
+        if hits and (now is None or now.token != "STALE"):
+            got = "removed" if now is None else now.token
+            out.append(
+                f"{row_id}: was {old.token} on main citing {hits[0][0]}, newly retired by redaction {hits[0][1]!r}: "
+                f"the retiring change moves it to exactly STALE, not {got} (G2, #1081 item 7 owner D3)"
+            )
     return out
 
 
@@ -535,7 +589,11 @@ def gate(
     failures += legacy_problems(repo, head_snap, base_snap)
     base_exc = load_json(repo, base, EXCEPTIONS, [])
     head_exc = load_json(repo, "HEAD", EXCEPTIONS, [])
-    failures += exceptions_problems(base_exc, head_exc, repo)
+    failures += exceptions_problems(base_exc, head_exc, repo, base)
+    # #1081 item 7: redaction records AUTHORIZE byte changes from the merge-base only, and RETIRE from base U HEAD.
+    base_redactions, head_redactions = redaction_records(base_exc), redaction_records(head_exc)
+    retired = retired_dirs(repo, base, base_redactions + head_redactions)
+    base_retired = retired_dirs(repo, base, base_redactions)
     if prereg is None:
         try:
             envelope = P.classify_all(repo.root, base)
@@ -543,15 +601,21 @@ def gate(
             raise GateError(f"the prereg classification could not run: {exc}") from exc
         failures += [f"prereg lint: {f}" for f in envelope.get("failures") or []]
         prereg = {e["entry"]: e["status"] for e in envelope.get("entries") or []}
-    ctx = Ctx(repo=repo, base=base, ref="HEAD", legacy=head_snap, prereg=prereg, table=table)
+    ctx = Ctx(repo=repo, base=base, ref="HEAD", legacy=head_snap, prereg=prereg, table=table, retired=retired)
     changed = repo.changed(base)
     # #1050 half B: a judge edit may not change any existing O19 verdict, cited by a row or not (strict).
     if O19_JUDGE in changed:
         failures += o19_judge_edit_problems(ctx)
+        notes += [
+            f"{d}: retired by redaction {rid!r}: its verdict is not re-judged by the judge edit (it supports nothing)"
+            for d, rid in sorted(retired.items())
+        ]
         # #1059 D1/S3: the kind -> experiment map and every frozen campaign entry are append-only.
-        failures += o19_table_problems(repo, base)
-    # #1059: a closed campaign's data directory is immutable (every diff, whatever else it touches).
-    failures += o19_closed_data_problems(ctx, changed)
+        failures += o19_table_problems(repo, base, retired)
+    # #1059: a closed campaign's data directory is immutable (every diff, whatever else it touches), but for exactly
+    # the from -> to a merge-base redaction record lists (#1081 item 7).
+    failures += o19_closed_data_problems(ctx, changed, base_redactions=base_redactions, head_redactions=head_redactions)
+    failures += retired_citation_problems(head_rows, base_rows, retired, base_retired)
     # #1050 N2: every judge main ever held still loads through this (possibly edited) gate.
     failures += o19_history_problems(repo, base)
     results = []
@@ -641,6 +705,7 @@ def gate(
                 legacy=load_json(repo, base, LEGACY_SNAPSHOT, {}) or {},
                 prereg=prereg,
                 table=table,
+                retired=base_retired,  # design pass S1: the ratchet sees what main held
             )
             at_base = [judge_entry(e.path, base_ctx) for e in old.evidence]
             # A base record the judges could not judge (a gate defect) keeps the ratchet ON (fail closed), and says why.
