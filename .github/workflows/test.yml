@@ -439,9 +439,11 @@ jobs:
           # pyyaml here (not only in the guarded optional line below): the coverage ratchet reads
           # this workflow structurally to verify its own step.
           pip install pytest "pytest-cov==7.0.0" "coverage==7.13.3" pytest-xdist pytest-timeout "pyyaml>=6.0,<7.0"
-          # Install without deps first (reachy-mini requires robot hardware SDK),
-          # then install available deps separately
-          pip install --no-deps -e .
+          # The package WITH its core dependencies (httpx, rich, json-repair, filelock<4, ...). It was
+          # `--no-deps` from 2026-04 while reachy-mini (robot SDK) was a core dependency; it is an extra now,
+          # and `--no-deps` left the core deps to arrive transitively: huggingface-hub 2.x (2026-10-09)
+          # switched httpx -> httpx2 and httpcore vanished, red on main at an unchanged commit.
+          pip install -e .
           # No `|| echo`: a failed install fails here (roadmap 1.3.2 item 7, #940). Every package installed on
           # the 2026-10-05 main run; a skip for a missing backend would otherwise pass as green.
           pip install faster-whisper ctranslate2 onnxruntime av numpy opencv-python scipy llama-cpp-python ddgs pyyaml
