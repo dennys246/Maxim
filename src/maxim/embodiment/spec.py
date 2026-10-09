@@ -517,6 +517,7 @@ def _parse_entity(
         )
 
         # Initialize modulator vital_metrics from sensor specs
+        initial_values = modulator.initial_values()
         for ms_name, ms_spec in mod_sensors.items():
             # `modality:` is an ENTITY-LEVEL sensor declaration; the channel
             # walk reads only `ent.sensors`/`ent.vital_metrics`, so a
@@ -528,13 +529,8 @@ def _parse_entity(
                     "supported — declare it on an entity-level sensor (the channel "
                     "readers do not walk modulator sub-sensors)"
                 )
-            if isinstance(ms_spec, dict) and "range" in ms_spec:
-                initial = ms_spec.get("initial")
-                if initial is not None:
-                    modulator.vital_metrics[ms_name] = float(initial)
-                else:
-                    lo, hi = ms_spec["range"]
-                    modulator.vital_metrics[ms_name] = float((lo + hi) / 2)
+            if ms_name in initial_values:
+                modulator.vital_metrics[ms_name] = initial_values[ms_name]
             # Parse drive spec from modulator sub-sensors. `.get(...) is not
             # None` (NOT `"drive" in`): a `drive: null` on a sub-sensor is the
             # same "extends child removes an inherited drive" idiom the
@@ -567,7 +563,38 @@ def _parse_entity(
             else:
                 entity.vital_metrics[sensor_name] = float((lo + hi) / 2)
 
+    _warn_unresolvable_trigger_fields(entity)
     return entity
+
+
+def _warn_unresolvable_trigger_fields(entity: Entity) -> None:
+    """Warn at parse about a failure trigger whose field nothing on this entity can produce.
+
+    Such a trigger never fires (#1124: a trigger with no reading does not fire). It used to fire on every
+    evaluation, its missing field reading 0.0. Mirrors the ``requires`` warning above, for LLM-designed and
+    hand-written entities alike (owner decision 2026-10-07). Producible: an entity sensor or vital metric, a
+    modulator sub-sensor (``arms.thermal``), a component's ``<mod>.integrity``, a drive, or a derived ``health``.
+    """
+    producible = set(entity.sensors) | set(entity.vital_metrics) | set(entity.drive_specs)
+    for mod_name, mod in entity.modulators.items():
+        subs = getattr(mod, "vital_metrics", None) or {}
+        producible.update(f"{mod_name}.{ms_name}" for ms_name in subs)
+        if subs:
+            producible.add(f"{mod_name}.integrity")
+    if entity.metadata.get("health") == "derived":
+        producible.add("health")
+    for fm in entity.failure_modes:
+        conditions = list(fm.triggers) + ([fm.recovery_condition] if fm.recovery_condition else [])
+        unresolvable = sorted({t.field for t in conditions} - producible)
+        if unresolvable:
+            log.warning(
+                "failure mode %s.%s triggers on %s, which nothing on %r declares: it will NEVER fire unless "
+                "something writes that field at runtime (a trigger with no reading does not fire, #1124)",
+                entity.name,
+                fm.name,
+                unresolvable,
+                entity.name,
+            )
 
 
 def _build_reading_schema(spec: dict[str, Any]) -> dict[str, Any]:
@@ -916,6 +943,23 @@ class SpecModulator:
             if integrity >= threshold:
                 result.append(la)
         return result
+
+    def initial_values(self) -> dict[str, float]:
+        """The starting sub-sensor values its spec declares: ``initial``, else the range midpoint.
+
+        Shared by ``_parse_entity`` and ``Entity.from_dict`` (a file written before format 1.1 carries no
+        values, #1124), so a reloaded modulator starts where a freshly parsed one does.
+        """
+        values: dict[str, float] = {}
+        for ms_name, ms_spec in self._sensors.items():
+            if isinstance(ms_spec, dict) and "range" in ms_spec:
+                initial = ms_spec.get("initial")
+                if initial is not None:
+                    values[ms_name] = float(initial)
+                else:
+                    lo, hi = ms_spec["range"]
+                    values[ms_name] = float((lo + hi) / 2)
+        return values
 
     def compute_integrity(self) -> float:
         """Derive modulator integrity from sub-sensor vital_metrics.

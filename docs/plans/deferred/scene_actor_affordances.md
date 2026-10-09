@@ -234,4 +234,4 @@ The cradle (B4 in [v1_refinement.md](../archive/v1_refinement.md)) already valid
 - [v1_refinement.md](../archive/v1_refinement.md) P4 — multi-agent attribution work shipped via PR #202; this plan composes with it for Stage 5's edge case.
 - [minecraft_benchmark.md](minecraft_benchmark.md) — relevant if Minecraft mobs use the same scripted-actor pattern (zombies, creepers, skeletons).
 - `feedback_orch_prompt_strength.md` — local LLMs need forceful prompt framing for new tools.
-- `feedback_imagined_entity_affordance_encoding_gap.md` — related: imagined entities skip substrate encoding for affordances. Stage 4 of this plan touches the designer prompt; not the same fix but adjacent.
+- `feedback_imagined_entity_affordance_encoding_gap.md` — related: imagined entities' affordances (corrected 2026-10-08: they ARE substrate-encoded, but carry no `imagined` provenance on the node). Stage 4 of this plan touches the designer prompt; not the same fix but adjacent.

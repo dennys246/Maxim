@@ -797,8 +797,10 @@ def apply_hebbian_on_close(
     graph never grows from percepts -- a property of the INPUT, not a bug here. The
     1.1.x decision is dormancy, not wiring (roadmap item 13): multi-node activation is
     a hard dependency of the 1.3 fabric's orient-windowed Hebbian binding, and wiring
-    it now would be 1.3 scope creep without 1.3's experiment. Resurrection trigger:
-    that fabric stage. The mechanism itself stays exercised by
+    it now would be 1.3 scope creep without 1.3's experiment. Resurrection trigger
+    (re-pointed 2026-10-07, since the fabric is deferred on a second robot body): the
+    1.4 grounding line's binding stage (``docs/plans/grounding.md`` GL4), or that
+    fabric stage if it revives first. The mechanism itself stays exercised by
     ``tests/substrate/test_p3a_episode_binding.py``, which supplies multi-node
     episodes directly.
     """

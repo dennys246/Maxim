@@ -17,6 +17,9 @@ run can read it):
 - the EFFECTIVE rules on ``main`` (``/rules/branches/main``, every ruleset that applies, globs and excludes resolved
   by GitHub) and each one's ruleset ``enforcement``;
 - CodeQL default setup: state, languages, query suite;
+- ``security_and_analysis`` (#1081, owner decision D3 2026-10-08): secret scanning, push protection (the only layer
+  that runs BEFORE a secret is published) and non-provider patterns stay on, so none can be switched off silently;
+  an absent object (token scope) is exit 2;
 - the ``settings-check`` environment exists and is fenced to ``main`` (GitHub creates a missing environment UNFENCED
   the first time a job names it, so the owner creates it first and the check pins the fence);
 - **no ruleset bypass was USED on ``main``** in the last month (paginated) (``rule-suites`` with ``rule_suite_result=bypass``),
@@ -101,7 +104,13 @@ def _field(d: Any, key: str, where: str) -> Any:
 
 def observe(repo: str, api: Callable[[str], Any] = gh_api) -> dict[str, Any]:
     """The live settings, normalised for comparison. Raises CannotVerify on any unreadable part."""
-    out: dict[str, Any] = {"default_branch": _field(api(f"repos/{repo}"), "default_branch", "repo")}
+    repo_obj = api(f"repos/{repo}")
+    out: dict[str, Any] = {"default_branch": _field(repo_obj, "default_branch", "repo")}
+    # GitHub omits (or nulls) this object for a token without admin read: that is "cannot verify", never a pass.
+    security = _field(repo_obj, "security_and_analysis", "repo")
+    if not isinstance(security, dict):
+        raise CannotVerify("repo: `security_and_analysis` is not an object (token scope?)")
+    out["security_and_analysis"] = security
     try:
         out["protection"] = _strip_urls(api(f"repos/{repo}/branches/{BRANCH}/protection"))
     except Unprotected:
@@ -172,6 +181,7 @@ PINNED = (
     "ruleset_enforcement",
     "codeql_default_setup",
     "token_environment",
+    "security_and_analysis",
 )
 
 

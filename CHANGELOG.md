@@ -25,6 +25,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Docstrings no longer claim cross-modal grounding that does not exist (#1120 audit, GL0 of the grounding line;
+  no behaviour change):** the bio-enrichment graph path is marked inert in production (D6) and the affordance
+  `[effective]` annotation's exact-name lookup is stated; the affordance-encoding helpers no longer promise
+  component-level cross-entity transfer or an `embodied_runtime` caller; the ATL / semantic-types "multimodal"
+  mapping says what the code does (name-keyed, per-modality); `EntropicDriveSpec` no longer promises a positive
+  Reaction when a drive crosses back below `satisfaction_threshold` (the crossing only clears the breach latch
+  and sets the label; per-action relief is still credited; docstring and comment only; SHAPE-FROZEN);
+  `Hippocampus.retrieve_cross_modal` is marked Dormant; the resurrection trigger of `apply_hebbian_on_close` and
+  `record_substrate_nodes` is re-pointed to the grounding line's binding stage (`docs/plans/grounding.md` GL4);
+  the EC "multi-modal" wording now reads multi-dimensional, per modality. User-visible: the README's
+  bio-systems table no longer calls the SCN "anticipatory credit" or the Angular Gyrus "cross-modal binding",
+  and the README no longer says every contact converges on NAc learning (#1161); the ledger's T1-5 claim
+  (component-level affordance transfer) is DROPPED: a component completes into its nearest existing node, so
+  what transfers is name similarity, not shared consequence.
 - **`agent_loop` decomposition, slice 3: the substrate tick moves to `runtime/loop_substrate.py`, the substrate
   proposer to `runtime/substrate_proposal.py`** (roadmap 1.3.2 §"The decomposition"; internal). The body of
   `run_agentic_loop`'s substrate-primary branch (§6b: the turn-scoped action gate, the proposal, the submit-clock
@@ -130,6 +144,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (DECISIONS.md, 2026-10-01).
 
 ### Fixed
+
+- **A reloaded body keeps its component state, and a dotted entity key no longer shadows a real sub-sensor**
+  ([#1124](https://github.com/dennys246/Maxim/issues/1124), owner decisions 2026-10-07). `Entity.to_dict` saved an
+  entity's `vital_metrics` but not its modulators' sub-sensor values, and `from_dict` rebuilt every modulator empty, with
+  no integrity function and no damage affinities. After `maxim.load.entity` / `Entity.load`, integrity and derived
+  health stayed at their saved values whatever the body took, and a body saved before its first evaluation reloaded
+  with no `head.integrity` at all. Since a trigger read a missing field as 0.0, an unhurt reloaded humanoid fired
+  `concussion` and `crippled`. Separately, `Embodiment.evaluate_failures` read the entity's `vital_metrics` before its
+  modulators and wrote each derived `<mod>.integrity` there, so a dotted key (that stored integrity, or a pre-#874
+  orphan like `arms.thermal`) shadowed the real value. Now: the Entity file format is **1.1** and each modulator saves
+  its `values`, `integrity` function and `damage_affinities`; integrity is derived on read
+  (`Entity.component_integrities()`, shared by failure triggers, drive telemetry and `get_visible_sensors`) and never
+  stored; a modulator sub-sensor beats a dotted entity key, which is reported once, and a save drops one with a
+  WARNING. Loading a 1.0 file migrates each damaged `<mod>.integrity` onto that modulator's weighted, non-drive
+  sub-sensors (so integrity and health come back as saved; the integrity function, never saved in 1.0, loads as
+  `weighted_mean`) and drops its other dotted keys, with one WARNING per entity. **A
+  failure trigger whose field has no reading no longer fires**, and a recovery condition with no reading no longer
+  clears; each warns once, and parsing an entity warns about a trigger naming a field nothing produces. No shipped
+  body or scenario entity has such a trigger, and integrity values are computed exactly as before. **A 1.1 entity file
+  is not readable by 1.3.1 or earlier**: those builds ignore the saved values and fire integrity triggers on an unhurt
+  body. Still not saved: affordance `params`/`requires`/`self_effect`, latent affordances and failure-mode state
+  (#1159). Follow-ups: #1155 (`host_machine` overheats at rest), #1156 (one sensor resolver), #1159.
+
+- **The drive RECORDS read modulator drives where they live** ([#1125](https://github.com/dennys246/Maxim/issues/1125),
+  owner decision 2026-10-08: records only). The infant bodies declare `arms.thermal`, `arms.pressure` and
+  `head.thermal` as root drives, but their values live on the `arms`/`head` modulators, and two readers looked a
+  drive up as `root.vital_metrics[name]`, so they never found one. `Executor._drive_pressure_snapshot` (the
+  `drive_pressure` on the memory-strength encoding record, record-only) now carries all seven infant drives instead
+  of four; `Embodiment.body_state_summary` (the Body State text an LLM reads only behind
+  `MAXIM_ENABLE_BODY_STATE_PROMPT`, default off) now shows a burning arm, and Acting Coach Layer 4 names it.
+  - **One resolution rule, now in `embodiment/sem.py`:** `_resolve_sensor_slot` (#874) moved there from
+    `tool_bridge`, beside a new location step `_sensor_location` and the value read
+    `_read_sensor_value`. The value read uses the location only, so a malformed declared range costs that drive's
+    pressure and nothing else, and one non-numeric drive value costs only that drive. New code imports
+    `_resolve_sensor_slot` from `maxim.embodiment.sem`; the old `tool_bridge` path still resolves only through
+    `tool_bridge`'s own import of it.
+  - **Root drives:** the pressure record reads them exactly as before (pinned). In the Body State, a root drive
+    that no sensor read captures now goes through the same rule: an int renders as a float, and a None or
+    non-numeric value skips that drive instead of raising out of the summary. The encoding tag is unchanged: it
+    pairs pressure only with drives in `drive_relief`, whose keys still come from the credit path.
+  - **The selection readers and both records agree with the resolver** on every infant drive (`_read_drive_states`,
+    `substrate_telemetry`, the pressure record, the summary). Outside that pin, on purpose: the credit reads,
+    `Embodiment.evaluate_failures` (root keys first, the #874 shadow), `tick_vital_drift` and
+    `naming_events.collect_sensor_values`.
+  - **The credit path is untouched and still blind to modulator drives:** `tool_bridge`'s `pre_values` /
+    `_drive_potential_diff` / `_drive_progress_by_drive` and `cradle_mother`. Resolving them would make a harmful
+    warm on a saturated arm credit +1 (Exp 42's harm arm inverts through the collateral-harm gate), so that change
+    is [#1161](https://github.com/dennys246/Maxim/issues/1161).
+  - **Widens [#1163](https://github.com/dennys246/Maxim/issues/1163)** (the persisted `ToolOutput` repr acting as
+    memory text): infant traces now carry `arms.*` / `head.thermal` in `drive_pressure_before`.
+  Guard: `tests/unit/test_modulator_drive_reads_1125.py` (real `infant_humanoid`).
 
 - **`MemoryAgent`'s Dormant context queries no longer move retention** ([#1128](https://github.com/dennys246/Maxim/issues/1128),
   owner decision 2026-10-07: keep running, read uncounted). On every tick through `ExecAgent.propose_intent` they
@@ -242,7 +307,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pain latched at the written value and never followed the arm as it cooled. Value mode also clamped every sensor to
   [0, 1] (a cold write to a [-1, 1] sensor became 0) and reported success for a sensor the body lacks, or for a
   derived `health` that `evaluate_failures` re-derives on every call (both now fail). Both modes
-  now resolve the sensor through one helper, `embodiment/tool_bridge.py::_resolve_sensor_slot` (shared with
+  now resolve the sensor through one helper, `_resolve_sensor_slot` (now in `embodiment/sem.py`, #1125; shared with
   `_apply_sensor_deltas`), clamp to the declared range, and fail the call for a missing sensor, naming the sensors
   the body has. The first write's pain is unchanged; the per-call pain reading now follows the arm as it cools,
   so the PainBus breach latch can clear and a later exposure publishes a new onset (cradle runs now send more

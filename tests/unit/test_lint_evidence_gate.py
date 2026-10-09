@@ -3638,3 +3638,43 @@ def test_the_retired_field_is_required() -> None:
 def test_the_real_exceptions_file_retires_nothing() -> None:
     """Landing changes no verdict: main's exceptions file holds no redaction record."""
     assert G.redaction_records(json.loads((REPO / G.EXCEPTIONS).read_text())) == []
+
+
+# ── #1037: fail-closed review NITs ──────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(("exc", "code"), [(TypeError("t"), True), (KeyError("k"), True), (ValueError("v"), False)])
+def test_a_judge_code_error_is_a_field_not_a_reason_prefix(rig, monkeypatch, exc, code) -> None:
+    """#1037: unjudged() matched the reason text; a record whose own bytes say "malformed: TypeError:" would read as
+    a gate defect. The field is set where the exception is caught."""
+    rig.base(STALE_BOTH)
+
+    def boom(path, ctx, j):
+        raise exc
+
+    monkeypatch.setattr(R, "_judge_entry", boom)
+    assert R.unjudged(R.judge_entry(f"{DATA}/x.json", _ctx(rig))) is code
+    j = R.Judgement(path="x")
+    j.fail("malformed: TypeError: a reason, not a raise")
+    assert not R.unjudged(j)
+
+
+def test_a_legacy_key_naming_a_directory_says_so(rig, monkeypatch) -> None:
+    monkeypatch.setattr(G, "M1A_CUTOFF", 4_000_000_000)
+    rig.base(STALE_BOTH)
+    rig.write(G.LEGACY_SNAPSHOT, json.dumps({DATA: "0" * 64}))  # removing keys is allowed; this one names a dir
+    rig.head(STALE_BOTH)
+    assert any(f"{DATA} is a directory, not a file" in f for f in rig.run()[0])
+
+
+def test_entering_by_tests_from_an_unparsed_base_status_names_it(rig) -> None:
+    rig.write("tests/unit/test_x.py", "def test_x():\n    pass\n")
+    stale = [t3("T3-9", "**Status: STALE 2026-09-30**.")]
+    rig.base(ledger([t1("T1-2", "Status: garbled.")], stale))
+    rig.head(
+        ledger(
+            [t1("T1-2", "**Status: RE-VALIDATED-BY-TESTS 2026-10-02**. **Evidence:** `tests/unit/test_x.py`.")], stale
+        )
+    )
+    _, notes = rig.run()
+    assert any("T1-2: enters RE-VALIDATED-BY-TESTS from an unparsed status" in n for n in notes), notes

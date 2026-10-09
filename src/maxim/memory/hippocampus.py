@@ -1795,6 +1795,11 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         """Cross-modal retrieval — return substrate nodes of
         ``target_modality`` co-activated with the cue.
 
+        Dormant since 2026-10-07: no src/ caller (only the P4 sweep scripts,
+        scripts/p4_*.py); the binding graph it walks never grows on the
+        production percept path (D6). Resurrection trigger: the grounding
+        line's binding stage (``docs/plans/grounding.md``).
+
         **P4 Stage 1 — the canonical cross-modal retrieval entry point.**
         Mirror P3b's ``episode_membership_filter`` snapshot pattern
         exactly: build a frozenset of node ids matching

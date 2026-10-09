@@ -128,7 +128,7 @@ Maxim uses neuroscience-inspired names for its subsystems:
 | NAc | Reward/causal learning | Learns "what causes what" |
 | SCN | Internal clock | Tracks temporal patterns |
 | EC | Memory indexing | Routes memories to the right store |
-| Angular Gyrus | Cross-modal algebra | Combines different memory types |
+| Angular Gyrus | Math layer | Exact arithmetic and math-fact memory (not cross-modal binding) |
 | Cerebellum | Motor prediction | Predicts outcomes of actions |
 
 ## Next Steps

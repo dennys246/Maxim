@@ -110,7 +110,7 @@ def test_a_non_finite_or_non_numeric_value_is_rejected_and_writes_nothing(bad, m
 
 def test_the_missing_sensor_error_names_only_sensors_the_tool_accepts():
     """A self-correcting orchestrator must never be told to use a name that then fails."""
-    from maxim.embodiment.tool_bridge import _resolve_sensor_slot
+    from maxim.embodiment.sem import _resolve_sensor_slot
 
     root, _, tool = _infant()
     tool._embodiment.evaluate_failures()  # writes the derived <mod>.integrity root keys

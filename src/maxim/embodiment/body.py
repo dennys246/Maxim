@@ -31,6 +31,53 @@ _BREACH_DEEPEN_FRACTION = 0.05
 _BREACH_MIN_EPS = 1e-3
 _BREACH_HYSTERESIS = 0.2
 
+# (entity path, key) pairs already reported for a dotted vital_metrics key that a real modulator sub-sensor
+# overrides (#1124). Process-wide warn-once; tests reset it (tests/conftest.py).
+_warned_shadowed_keys: set[tuple[str, str]] = set()
+
+
+def _reset_shadowed_key_warnings() -> None:
+    """Test-only: clear the warn-once set for shadowed dotted keys."""
+    _warned_shadowed_keys.clear()
+
+
+def _add_component_and_vital_readings(ent: Entity, readings: dict[str, float]) -> None:
+    """Complete *readings* (the entity's own sensors already in it) for trigger and drive evaluation.
+
+    Order (#1124): modulator sub-sensors (``arms.thermal``), then each component's derived integrity
+    (``wing.integrity``, unless a sub-sensor is itself named ``integrity``), then the entity's own
+    ``vital_metrics``. A dotted key there (a pre-#874 orphan, or a stored integrity) used to come first and
+    shadow the real value; now it loses, and is reported once per (entity path, key).
+    """
+    for mod_name, mod in ent.modulators.items():
+        if hasattr(mod, "vital_metrics"):
+            for ms_name, ms_val in mod.vital_metrics.items():
+                readings.setdefault(f"{mod_name}.{ms_name}", ms_val)
+
+    for mod_name, integrity in ent.component_integrities().items():
+        readings.setdefault(f"{mod_name}.integrity", integrity)
+
+    for vname, vval in ent.vital_metrics.items():
+        if vname not in readings:
+            readings[vname] = vval
+        elif "." in vname and (ent.full_path, vname) not in _warned_shadowed_keys:
+            _warned_shadowed_keys.add((ent.full_path, vname))
+            log.warning(
+                "%s: vital_metrics carries %r, which the modulator's own value overrides; component "
+                "state lives on its modulator (#1124)",
+                ent.full_path,
+                vname,
+            )
+
+
+def _modulator_sensor_unit(ent: Entity, qualified: str) -> str:
+    """The declared ``unit`` of a modulator sub-sensor (``arms.thermal``); ``"ratio"`` when none is
+    declared, the same default the summary gives an entity-level drive."""
+    mod_name, sub_name = qualified.split(".", 1)
+    sub_spec = getattr(ent.modulators.get(mod_name), "_sensors", {}).get(sub_name, {})
+    unit = sub_spec.get("unit") if isinstance(sub_spec, dict) else None
+    return unit if isinstance(unit, str) and unit else "ratio"
+
 
 @dataclass
 class EmbodimentConfig:
@@ -189,12 +236,6 @@ class Embodiment:
                 if derived is not None:
                     ent.vital_metrics["health"] = derived
 
-            # Include per-modulator integrity readings so failure modes
-            # can trigger on component state (e.g., trigger on wing.integrity)
-            for mod_name, mod in ent.modulators.items():
-                if hasattr(mod, "compute_integrity") and hasattr(mod, "vital_metrics") and mod.vital_metrics:
-                    ent.vital_metrics[f"{mod_name}.integrity"] = mod.compute_integrity()
-
             # collect scalar sensor values for trigger evaluation
             readings: dict[str, float] = {}
             for sname, sensor in ent.sensors.items():
@@ -206,18 +247,7 @@ class Embodiment:
                     except Exception:
                         log_swallowed_exception()
 
-            # also include vital_metrics (may have drifted values)
-            for vname, vval in ent.vital_metrics.items():
-                if vname not in readings:
-                    readings[vname] = vval
-
-            # Include modulator sub-sensor vital_metrics for drive evaluation
-            for mod_name, mod in ent.modulators.items():
-                if hasattr(mod, "vital_metrics"):
-                    for ms_name, ms_val in mod.vital_metrics.items():
-                        qualified = f"{mod_name}.{ms_name}"
-                        if qualified not in readings:
-                            readings[qualified] = ms_val
+            _add_component_and_vital_readings(ent, readings)
 
             # Log sensor readings for display/JSONL (Track 5: SEM observability)
             try:
@@ -231,7 +261,7 @@ class Embodiment:
 
             # -- Standard failure mode evaluation --
             for fm in ent.failure_modes:
-                if fm.evaluate(readings):
+                if fm.evaluate(readings, source=ent.full_path):
                     event = FailureEvent(
                         entity_path=ent.full_path,
                         failure_name=fm.name,
@@ -652,17 +682,24 @@ class Embodiment:
             # Include drive state from vital_metrics for sensors with DriveSpecs
             # that may not be captured by sensor.read() (vital_metrics path)
             from maxim.embodiment.sem import EntropicDriveSpec, HomeostaticDriveSpec
+            from maxim.embodiment.sem import _read_sensor_value
 
             for ds_name, ds in ent.drive_specs.items():
                 if ds_name in ent_state["sensors"]:
                     # Already captured — add drive annotation
                     val = ent_state["sensors"][ds_name]["value"]
-                elif "." not in ds_name and ds_name in ent.vital_metrics:
-                    # Entity-level vital metric not captured by sensor read
-                    val = ent.vital_metrics[ds_name]
-                    ent_state["sensors"][ds_name] = {"value": val, "unit": "ratio"}
                 else:
-                    continue
+                    # Not captured by a sensor read: an entity-level vital metric, or a
+                    # modulator drive (``arms.thermal``) whose value lives on the modulator.
+                    # Both go through the embodiment's one resolution rule (#1125). A None or
+                    # non-numeric value skips that drive (the pressure record's rule); an int
+                    # renders as a float.
+                    resolved = _read_sensor_value(ent, ds_name)
+                    if resolved is None:
+                        continue
+                    val = resolved
+                    unit = _modulator_sensor_unit(ent, ds_name) if "." in ds_name else "ratio"
+                    ent_state["sensors"][ds_name] = {"value": val, "unit": unit}
 
                 # Annotate with drive state
                 if isinstance(ds, HomeostaticDriveSpec):

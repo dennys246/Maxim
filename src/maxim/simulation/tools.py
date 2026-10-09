@@ -801,7 +801,7 @@ class SetEntitySensorTool(Tool):
     ``value`` SETS the sensor (the LLM-facing use); ``delta`` ADJUSTS it, the
     same resolve/write path ``self_effect``/``target_effect`` use via
     ``embodiment/tool_bridge.py::_apply_sensor_deltas``. Both modes resolve the sensor with
-    ``tool_bridge._resolve_sensor_slot`` (qualified modulator sub-sensors such
+    ``sem._resolve_sensor_slot`` (qualified modulator sub-sensors such
     as ``arms.thermal``) and clamp to its declared range, and both fail the call
     for a sensor the body does not have. Value mode used to write every name to
     the root, so ``arms.thermal`` became an orphan root key that shadowed the
@@ -867,7 +867,8 @@ class SetEntitySensorTool(Tool):
         if delta_raw is not None:
             return self._adjust(root, sensor, delta_raw, source)
 
-        from maxim.embodiment.tool_bridge import _resolve_sensor_slot, _write_sensor
+        from maxim.embodiment.sem import _resolve_sensor_slot
+        from maxim.embodiment.tool_bridge import _write_sensor
 
         raw_value = kwargs.get("value", 1.0)
         if isinstance(raw_value, bool):
@@ -923,7 +924,8 @@ class SetEntitySensorTool(Tool):
         if not math.isfinite(delta):
             return ToolOutput(success=False, error=f"delta must be finite, got {delta_raw!r}")
 
-        from maxim.embodiment.tool_bridge import _resolve_sensor_slot, _write_sensor
+        from maxim.embodiment.sem import _resolve_sensor_slot
+        from maxim.embodiment.tool_bridge import _write_sensor
 
         slot = _resolve_sensor_slot(root, sensor)
         if slot is None:

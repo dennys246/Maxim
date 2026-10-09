@@ -417,7 +417,12 @@ def legacy_problems(repo: Repo, head_snap, base_snap) -> list[str]:
     tree = repo.tree("HEAD")
     for path, digest in sorted(head_snap.items()):
         if path not in tree:
-            out.append(f"{LEGACY_SNAPSHOT}: {path} is gone (remove its key)")
+            is_dir = any(p.startswith(path.rstrip("/") + "/") for p in tree)
+            out.append(
+                f"{LEGACY_SNAPSHOT}: {path} is a directory, not a file (keys name files)"
+                if is_dir
+                else f"{LEGACY_SNAPSHOT}: {path} is gone (remove its key)"
+            )
             continue
         data = repo.blob("HEAD", path) or b""
         if sha256(data) != digest:
@@ -626,7 +631,8 @@ def gate(
         if old and old.token in LEAVING_UNCHECKED and row.token != old.token and not judged_class(row):
             notes.append(f"{row.id}: leaves {old.token} for {row.token} (not judged: review decides)")
         if row.token == L.BY_TESTS and (old is None or old.token != L.BY_TESTS):
-            entered = f"from {old.token}" if old else "as a new row"
+            # A base row with no parsed token (its parse problems are reported elsewhere) is named as such (#1037).
+            entered = (f"from {old.token}" if old.token else "from an unparsed status") if old else "as a new row"
             notes.append(f"{row.id}: enters RE-VALIDATED-BY-TESTS {entered} (not judged: review decides)")
         if not judged_class(row):
             continue

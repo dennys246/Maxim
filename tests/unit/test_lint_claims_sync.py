@@ -128,8 +128,9 @@ def test_an_index_marker_outside_a_status_table_FAILS():
     assert any("claim marker outside a table with a Status column" in f for f in _fails(index=index))
 
 
-def test_the_reasoned_exemption_is_the_only_uncited_tier1_row():
-    assert set(C.NO_INDEX_ENTRY) == {"T1-5"} and all(reason for *_, reason in C.NO_INDEX_ENTRY.values())
+def test_no_tier1_row_is_exempt_from_the_index():
+    """T1-5 was the only exemption; DROPPED 2026-10-08, it is exempt by rule. A new exemption is a deliberate edit here."""
+    assert C.NO_INDEX_ENTRY == {}
 
 
 # ── the ledger ────────────────────────────────────────────────────────────────────────────────────────
@@ -154,6 +155,7 @@ def test_a_results_row_without_a_leading_pipe_is_still_a_row():
     assert any("must cite its ledger row" in f for f in _fails(readme=readme))
 
 
-def test_a_stale_exemption_FAILS():
-    ledger = _swap(LEDGER, "**Status: PARTIAL 2026-06-15** (reframed)", "**Status: PARTIAL 2026-06-16** (reframed)")
-    assert any("NO_INDEX_ENTRY exemption for T1-5" in f for f in _fails(ledger=ledger))
+def test_a_stale_exemption_FAILS(monkeypatch):
+    """An exemption pinned to a status the row no longer has (T1-5 moved PARTIAL -> DROPPED) fails."""
+    monkeypatch.setattr(C, "NO_INDEX_ENTRY", {"T1-5": ("PARTIAL", "2026-06-15", "a PoC with no experiment doc")})
+    assert any("NO_INDEX_ENTRY exemption for T1-5" in f for f in _fails())

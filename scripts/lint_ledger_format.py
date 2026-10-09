@@ -16,7 +16,8 @@ gate shares):
     aborted/invalid/dry-run/non-frozen.
   - RE-VALIDATED-BY-TESTS cites tracked ``tests/**/test_*.py`` files.
   - Link text that looks like a path must name the link's own target.
-- **Regression guard:** positive, RE-VALIDATED-BY-TESTS and LEGACY rows carry a ``Regression guard:`` field.
+- **Regression guard:** positive, RE-VALIDATED-BY-TESTS and LEGACY rows carry a ``Regression guard:`` field that
+  cites a complete link or a code span before its sentence or field ends (#1012).
 - **SUPERSEDED** names a different, existing row that is not itself superseded (``by T<n>-<m>``).
 
 Against the merge-base (diff-scoped, like the other ``_lint_git`` lints):
@@ -61,7 +62,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 #: Qualifiers that predate the scope-vocabulary rule (#1105), pinned to the exact status they were granted at: the
 #: entry goes stale, and fails, once the row's token, date or qualifier changes (re-judge the row and fix it then).
-GRANDFATHERED_QUALIFIERS = {"T1-5": ("PARTIAL", "2026-06-15", "reframed")}
+GRANDFATHERED_QUALIFIERS: dict[str, tuple[str, str, str]] = {}  # T1-5's pin retired: DROPPED 2026-10-08 (GL0)
 
 
 def qualifier_problems(row: L.Row) -> list[str]:
@@ -79,6 +80,31 @@ def qualifier_problems(row: L.Row) -> list[str]:
     return []
 
 
+_NEXT_FIELD = re.compile(r"\*\*[^*]+:\*\*")
+#: What a guard citation looks like: a path or a test node (``/`` or ``::``, or a ``.py``/``.md`` name).
+_GUARD_TARGET = re.compile(r"/|::|\.(?:py|md)\b")
+
+
+def cited_guard(cell: str) -> bool:
+    """A ``Regression guard:`` phrase followed, before its sentence or field ends, by a link whose target is a path
+    (not empty, not only an ``#anchor``) or a code span shaped like a path or test node (#1012: presence alone passed
+    prose such as "there is no regression guard: TODO", and a backticked `TODO` is still prose). The
+    span ends at ``. `` outside links and code spans, or at the next ``**Field:**`` label (a following Evidence code
+    span is not the guard's citation)."""
+    for m in L.GUARD.finditer(cell):
+        rest = cell[m.end() :]
+        masked = rest
+        for rx in (L._LINK, L._CODE):  # a ". " inside link text or a code span does not end the sentence
+            masked = rx.sub(lambda t: "\0" * len(t.group(0)), masked)
+        ends = [x.start() for x in (re.search(r"\.\s", masked), _NEXT_FIELD.search(masked)) if x]
+        span = rest[: min(ends)] if ends else rest
+        links = (t.group(2) for t in L._LINK.finditer(span))
+        codes = (t.group(1) for t in L._CODE.finditer(span))
+        if any(x and not x.startswith("#") for x in links) or any(_GUARD_TARGET.search(c) for c in codes):
+            return True
+    return False
+
+
 def row_problems(row: L.Row, rows_by_id: dict[str, L.Row], tracked: dict[str, str], today: str) -> list[str]:
     out = list(row.problems)
     if row.token is None:
@@ -94,8 +120,11 @@ def row_problems(row: L.Row, rows_by_id: dict[str, L.Row], tracked: dict[str, st
         out.append(f"{row.token} needs an **Evidence:** field citing at least one record")
     for entry in row.evidence:
         out.extend(L.classify_entry(entry, tracked, tests=row.token == L.BY_TESTS)[1])
-    if row.token in L.NEEDS_GUARD and not L.GUARD.search(row.status_cell):
-        out.append(f"{row.token} row has no 'Regression guard:' field in its Status cell")
+    if row.token in L.NEEDS_GUARD and not cited_guard(row.status_cell):
+        out.append(
+            f"{row.token} row has no 'Regression guard:' field citing a link or `code` span in its sentence "
+            "(the phrase alone, or prose like 'no regression guard: TODO', is not a guard; #1012)"
+        )
     if row.token == "SUPERSEDED":
         target = rows_by_id.get(row.superseded_by or "")
         if target is None or target.id == row.id or target.token == "SUPERSEDED":

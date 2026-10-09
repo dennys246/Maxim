@@ -19,7 +19,7 @@ Mental model of the substrate chain: [docs/agents/bio-memory.md](../agents/bio-m
 | Engram family | Forms | Specific | Recalled from a cue | Changes behaviour | Evidence (ledger) |
 |---|---|---|---|---|---|
 | **Situation engram** — EC sensor cluster + NAc `cluster_fear` / `cluster_reward_bias` | ✅ | ⚠️ neutral→extreme swings only; daily wrap boundary (#899) | ✅ EC completion | ✅ **substrate-primary, no LLM** | **EARNED** ×7 (Exp 45, 52, 53b, 56, 60, 61, 62 rung A) |
-| **Recognition engram** — EC text node + node-keyed `reward_bias` | ✅ | ⚠️ running-mean drift; reward widening compounds it (#911) | ✅ text + vision (LinguisticEncoder; sensor never) | LLM prompt text + `tool:*` nudge ≤ 0.20 | PARTIAL / pulled from 1.0 framing |
+| **Recognition engram** — EC text node + node-keyed `reward_bias` | ✅ | ⚠️ running-mean drift; the 0.44 radius already spans concepts (E4, #911: no collapse; but widening admits unrelated names, #1181) | ✅ text + vision (LinguisticEncoder; sensor never) | LLM prompt text; the `tool:*` read exists but no live producer pays a positive reward, so the nudge is 0 on every recorded run | DROPPED 2026-10-08 (ledger T1-5; GL0) |
 | **Episodic engram** — Hippocampus trace | ✅ honest encoding | ✅ per-situation key (2S-b) | ✅ built (2S-d cue) — **result discarded** | LLM prompt text only | Exp 10 (cross-session persistence) |
 | **Semantic engram** — ATL concept | ✅ by NAME | n/a | ✅ by name | LLM prompt text only | none |
 | **Motor engram** — Cerebellum program ↔ Hippocampus trace | ❌ no production caller (#909) | — | — | ❌ | none |
@@ -78,10 +78,24 @@ creates a `reward_bias`**, it can only erase one.
 
 - **Readout.** The bias lowers that node's EC threshold (`max(0.10, 0.44 − bias)`) — it makes
   recognition more permissive — and feeds prompt annotations. `recommend_action` reads `reward_bias`
-  only for `tool:*` keys (a ≤ 0.20 nudge, cluster-blind). Routing trace credit to the selection
-  surface is roadmap 1.4 Phase 5's R4 item, not this tracker's.
+  for `tool:*` keys (`decisions/nac.py::NAc.recommend_action`, `bias = self.reward_bias(agent_id,
+  event_sig)`; capped at 0.20, cluster-blind), **but no live producer pays a positive reward into `credit_node`** (a loaded state can restore one via `NAc.load_state`):
+  `_reward_bias` is written live only by `credit_node` (clamped ≥ 0; `NAc.load_state` restores saved values) through
+  `TemporalCreditDistributor.distribute`, whose sole caller (`runtime/bio_stack.py`'s ReactionBus
+  handler) pays a positive reward only for a positive Reaction. Every live Reaction constructor is
+  negative; the only positive one, `CerebellumModulator`, is uncalled (Dormant). So the nudge is **0
+  on every recorded run**: T1-13's annotation reports the scored `reward_bias` term at 0.0 in all 108
+  decisions in `exp61_pairs` + `exp62_rows` (corrected 2026-10-08, #1120 grounding truth pass).
+  Routing trace credit to the selection surface is roadmap 1.4 Phase 5's R4 item, not this
+  tracker's.
 - **Drift hazard (#911).** Widening + running mean = a rewarded node accepts looser matches and
-  averages them in. Unmeasured.
+  averages them in. **Measured 2026-10-06: NO COLLAPSE** ([engram_formation.md](../plans/engram_formation.md)
+  E4; record [diagnosis.json](../experiments/data/e4_text_widening_drift/diagnosis.json)). It also found
+  that the **0.44 text radius already spans concepts**: the thermal and texture pairs share nodes at
+  bias 0. The widening overreach (13 strings) is the input for whoever builds the first positive
+  text-credit producer. No collapse is not no harm: widening itself admits unrelated names
+  ([#1181](https://github.com/dennys246/Maxim/issues/1181): crediting `fire breath` to the cap lets
+  `water jet` complete into it; strict red gate in `tests/integration/test_affordance_transfer.py`).
 - **Danger label removed (#910, 2026-10-04).** Three affordance annotators (`_annotate_aff`,
   `_annotate_affordance_valence`, `SenseToolsTool._nac_annotation`'s substrate fallback) used to print a
   danger label for `reward_bias < −0.01`, which the clamp makes impossible. The dead branches are gone

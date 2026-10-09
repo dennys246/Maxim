@@ -13,12 +13,21 @@ the registered SEM graph.
 
 from __future__ import annotations
 
+import logging
 import math
 import operator
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
+
+logger = logging.getLogger(__name__)
+
+# The Entity JSON format (``Entity.save`` / ``Entity.load``). 1.1 (#1124): each modulator carries its
+# sub-sensor ``values``, ``integrity`` function and ``damage_affinities``; the entity's ``vital_metrics``
+# carries no dotted keys. A 1.0 file still loads: its modulators start from their sensor spec and its
+# dotted keys are dropped with a WARNING.
+ENTITY_FORMAT_VERSION: str = "1.1"
 
 
 # ---------------------------------------------------------------------------
@@ -204,9 +213,17 @@ class EntropicDriveSpec:
     drinking, resting) reverses the drift.
 
     ``drift_direction`` is ``"up"`` (toward 1.0) or ``"down"`` (toward 0.0).
-    Pain fires when the value crosses ``deprivation_threshold``.  A positive
-    Reaction fires when the value crosses back below
-    ``satisfaction_threshold`` after being deprived.
+    Pain fires when the value crosses ``deprivation_threshold``.  No positive
+    Reaction fires when the drive crosses back past ``satisfaction_threshold``;
+    the crossing only clears the breach latch
+    (``embodiment/body.py::Embodiment.evaluate_failures``) and sets the
+    "rising"/"satisfied" label (``Embodiment.body_state_summary``).  The
+    threshold also bounds the relief/pressure spans
+    (``corrective_need_intensity``, ``drive_span``,
+    ``relief_fraction_from_progress``, ``drive_pressure``), and per-action
+    relief IS credited (``drive_comfort_progress`` -> +/-1 motor credit in
+    ``runtime/tool_dispatch.py``).  What was never built is a Reaction on the
+    crossing (the grounding line's GL2c, ``docs/plans/grounding.md``).
 
     SHAPE-FROZEN at 1.0 (CC3). YAML-parsed drive contract. Adding any
     new field post-1.0 is a major-version-bump change. Per CLAUDE.md:
@@ -218,7 +235,7 @@ class EntropicDriveSpec:
     drift_rate: float  # per-second drift rate
     deprivation_threshold: float  # PainSignal fires beyond this
     deprivation_pain: float  # pain intensity at deprivation
-    satisfaction_threshold: float  # positive Reaction fires when crossing back
+    satisfaction_threshold: float  # crossing back clears the breach latch; bounds relief spans; no Reaction (GL2c)
     coupled_to: tuple[CouplingSpec, ...] | None = None  # 1.0 interface, deferred
 
 
@@ -595,6 +612,20 @@ class Entity:
 
     # -- component-level damage -----------------------------------------------
 
+    def component_integrities(self) -> dict[str, float]:
+        """Each component modulator's integrity, by modulator name, derived from its sub-sensors now.
+
+        The one producer of the ``<mod>.integrity`` readings that failure triggers, telemetry and the
+        visible-sensor view use (#1124). Never stored on ``vital_metrics``: a stored copy shadowed the real
+        sub-sensors, went stale, and was persisted. A modulator with no sub-sensor values (capability-only)
+        has no integrity reading.
+        """
+        return {
+            mod_name: mod.compute_integrity()
+            for mod_name, mod in self.modulators.items()
+            if hasattr(mod, "compute_integrity") and getattr(mod, "vital_metrics", None)
+        }
+
     def derive_health(self) -> float | None:
         """Derive entity health from modulator component integrities.
 
@@ -606,14 +637,7 @@ class Entity:
         Called by ``Body.evaluate_failures()`` to update
         ``vital_metrics["health"]`` when ``metadata.get("health") == "derived"``.
         """
-        # Collect modulator integrities
-        integrities: dict[str, float] = {}
-        for mod_name, mod in self.modulators.items():
-            if hasattr(mod, "compute_integrity"):
-                integrity = mod.compute_integrity()
-                if hasattr(mod, "vital_metrics") and mod.vital_metrics:
-                    integrities[mod_name] = integrity
-
+        integrities = self.component_integrities()
         if not integrities:
             return None  # No component sensors → not using derived health
 
@@ -674,11 +698,16 @@ class Entity:
     def to_dict(self) -> dict[str, Any]:
         """Serialize entity tree to a dict suitable for YAML/JSON persistence.
 
-        Captures the full entity tree including sensors (metadata only,
-        not live backends), modulators (affordance schemas), children,
-        vital metrics, failure modes, and metadata.
+        Captures the entity tree: sensors (metadata only, not live backends),
+        modulators (sub-sensor specs and values, integrity function, damage
+        affinities, affordance descriptions), children, vital metrics, failure
+        modes, drive specs and metadata. ``Entity.from_dict()`` restores those.
 
-        Round-trips with ``Entity.from_dict()``.
+        NOT captured, so NOT restored (#1159): an affordance's ``params``,
+        ``requires``, ``self_effect``, ``target_effect`` and ``always_active``;
+        latent affordances; a failure mode's runtime ``active``/``last_fired``.
+        A dotted ``vital_metrics`` key is not saved either: component state lives
+        on its modulator (#1124), so one is dropped here with a WARNING.
         """
 
         def _sensor_dict(s: Any) -> dict[str, Any]:
@@ -717,6 +746,16 @@ class Entity:
             mod_sensors = getattr(m, "sensors", None)
             if mod_sensors:
                 d["sensors"] = dict(mod_sensors)
+            # Component state and its spec (format 1.1, #1124): without them a reloaded modulator was empty,
+            # so its integrity and the entity's derived health stayed at their saved values forever.
+            values = getattr(m, "vital_metrics", None)
+            if values:
+                d["values"] = dict(values)
+            if hasattr(m, "integrity_fn"):
+                d["integrity"] = m.integrity_fn
+            affinities = getattr(m, "damage_affinities", None)
+            if affinities:
+                d["damage_affinities"] = {k: dict(v) for k, v in affinities.items()}
             return d
 
         def _trigger_dict(t: Any) -> dict[str, Any]:
@@ -751,7 +790,17 @@ class Entity:
         if self.metadata:
             result["metadata"] = dict(self.metadata)
         if self.vital_metrics:
-            result["vital_metrics"] = dict(self.vital_metrics)
+            dotted = sorted(k for k in self.vital_metrics if "." in k)
+            if dotted:
+                # Owner decision 2026-10-07 (#1124): the writer enforces what the loader assumes, so a save and a
+                # load agree. ``vital_metrics`` is a public dict; a dotted key there is never a real sensor.
+                logger.warning(
+                    "Entity %r: not saving dotted vital_metrics keys %s; component state lives on its modulator "
+                    "(#1124)",
+                    self.name,
+                    dotted,
+                )
+            result["vital_metrics"] = {k: v for k, v in self.vital_metrics.items() if "." not in k}
         if self.failure_modes:
             result["failure_modes"] = [_failure_dict(fm) for fm in self.failure_modes]
         if self.drive_specs:
@@ -796,7 +845,11 @@ class Entity:
             metadata=data.get("metadata"),
         )
         if "vital_metrics" in data:
-            entity.vital_metrics = dict(data["vital_metrics"])
+            # A dotted key here is a stored ``<mod>.integrity`` (written before format 1.1) or an orphan
+            # sub-sensor value (pre-#874 ``set_entity_sensor``); either shadowed the modulator's real value.
+            # Dropped (owner decision 2026-10-07, #1124): integrity is re-derived, an orphan is stale.
+            metrics = dict(data["vital_metrics"])
+            entity.vital_metrics = {k: v for k, v in metrics.items() if "." not in k}
 
         # Reconstruct drive specs
         if "drive_specs" in data:
@@ -864,13 +917,24 @@ class Entity:
                     mod_sensors = mdata.get("sensors") or {}
                     if not isinstance(mod_sensors, dict):
                         mod_sensors = {}
-                    entity.modulators[mname] = SpecModulator(
+                    modulator = SpecModulator(
                         _name=mdata.get("name", mname),
                         _entity_name=data["name"],
                         _affordances=affs,
                         _sensors=mod_sensors,
+                        _integrity_fn=mdata.get("integrity", "weighted_mean"),
+                        _damage_affinities=mdata.get("damage_affinities") or {},
                         _abstract=mod_abstract,
+                        _entity_ref=entity,
                     )
+                    # Format 1.1 carries the sub-sensor values; an older file starts them from the spec,
+                    # as a freshly parsed body does.
+                    saved_values = mdata.get("values")
+                    if isinstance(saved_values, dict):
+                        modulator.vital_metrics.update({k: float(v) for k, v in saved_values.items()})
+                    else:
+                        modulator.vital_metrics.update(modulator.initial_values())
+                    entity.modulators[mname] = modulator
             except ImportError:
                 pass  # spec module not available — skip modulator reconstruction
 
@@ -908,6 +972,8 @@ class Entity:
                     )
                 )
 
+        _migrate_dotted_vital_metrics(entity, data)
+
         # Reconstruct children recursively
         for child_data in data.get("children", []):
             cls.from_dict(child_data, parent=entity)
@@ -918,7 +984,7 @@ class Entity:
         from maxim.utils.atomic_io import atomic_write_json
         from maxim.utils.format_version import with_format_version
 
-        atomic_write_json(path, with_format_version(self.to_dict()))
+        atomic_write_json(path, with_format_version(self.to_dict(), version=ENTITY_FORMAT_VERSION))
 
     @classmethod
     def load(cls, path: str) -> "Entity":
@@ -940,6 +1006,143 @@ class Entity:
         mods = list(self.modulators.keys())
         kids = len(self.children)
         return f"Entity({self.name!r}, type={self.entity_type!r}, sensors={sens}, modulators={mods}, children={kids})"
+
+
+def _migrate_dotted_vital_metrics(entity: Entity, data: dict[str, Any]) -> None:
+    """Carry a saved file's dotted ``vital_metrics`` keys onto the modulators, or drop them, with a WARNING.
+
+    A file written before format 1.1 holds a component's last integrity as ``<mod>.integrity`` and no sub-sensor
+    values. Dropping it would heal every saved body, so when that modulator has no saved ``values`` and the saved
+    integrity differs from its start, its weighted (``weight`` > 0) non-drive sub-sensors are set to the saved
+    integrity, so integrity and derived health come back as saved (owner decision 2026-10-07, #1124). A drive
+    sub-sensor (``arms.thermal``) is left at its start: it is not damage, and setting it to an integrity would be
+    a burn. A 1.0 file never saved the integrity function either, so the modulator loads as ``weighted_mean``: a
+    ``min``/``max`` component (the dragon's torso) is then rewritten to reproduce its saved integrity even when
+    unhurt, and later damage on it is averaged. A result that does not reproduce the saved value (a weighted
+    drive sub-sensor) is reported; a value that is not a finite number is dropped and reported. Every other dotted key (a pre-#874
+    orphan, or an integrity a 1.1 file's ``values`` already supersede) is dropped.
+    """
+    saved = data.get("vital_metrics") or {}
+    dotted = sorted(k for k in saved if "." in k)
+    if not dotted:
+        return
+    migrated: list[str] = []
+    inexact: list[str] = []
+    unusable: list[str] = []
+    for key in dotted:
+        mod_name, _, sub = key.partition(".")
+        mod = entity.modulators.get(mod_name)
+        mod_data = (data.get("modulators") or {}).get(mod_name) or {}
+        values = getattr(mod, "vital_metrics", None)
+        compute_integrity = getattr(mod, "compute_integrity", None)
+        if sub != "integrity" or not values or compute_integrity is None or isinstance(mod_data.get("values"), dict):
+            continue
+        try:
+            target = float(saved[key])
+        except (TypeError, ValueError):
+            target = math.nan
+        if not math.isfinite(target):  # not a number, NaN or inf: would poison every sub-sensor it touched
+            unusable.append(f"{key}={saved[key]!r}")
+            continue
+        if abs(compute_integrity() - target) <= 1e-9:
+            migrated.append(key)  # undamaged: the spec start already is the saved state
+            continue
+        specs = getattr(mod, "sensors", {}) or {}
+        for ms_name in values:
+            spec = specs.get(ms_name)
+            weight = spec.get("weight", 1.0) if isinstance(spec, dict) else 1.0
+            if weight > 0 and f"{mod_name}.{ms_name}" not in entity.drive_specs:
+                values[ms_name] = target
+        migrated.append(key)
+        if abs(compute_integrity() - target) > 1e-6:
+            inexact.append(f"{key}={target:.3f}->{compute_integrity():.3f}")
+    dropped = [k for k in dotted if k not in migrated]
+    logger.warning(
+        "Entity %r (format %s): component state lives on its modulator (#1124); migrated %s into their "
+        "modulators' sub-sensors%s, dropped %s%s",
+        data.get("name"),
+        data.get("_format_version", "0.x"),
+        migrated or "nothing",
+        f" (not reproduced exactly: {inexact})" if inexact else "",
+        dropped or "nothing",
+        f" (not a finite number: {unusable})" if unusable else "",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sensor resolution (one rule for every reader and writer that resolves a name)
+# ---------------------------------------------------------------------------
+
+
+def _sensor_location(body: Entity, sensor_name: str) -> tuple[dict[str, float], str] | None:
+    """Where a (possibly qualified) sensor's value lives on ``body``: ``(metrics, key)``, or ``None``.
+
+    ``"arms.thermal"`` is the ``thermal`` sub-sensor of the ``arms`` modulator, so its value is
+    ``body.modulators["arms"].vital_metrics["thermal"]``; a bare name is an entity-level sensor in
+    ``body.vital_metrics``. ``None`` when the body has no such sensor, or its value is ``None``.
+    Reads no range, so a malformed declared range can never cost a value read (#1125 review).
+    """
+    if "." in sensor_name:
+        mod_name, sub_name = sensor_name.split(".", 1)
+        mod = body.modulators.get(mod_name)
+        metrics = getattr(mod, "vital_metrics", None) if mod is not None else None
+        if metrics is None or metrics.get(sub_name) is None:
+            return None
+        return metrics, sub_name
+    if body.vital_metrics.get(sensor_name) is None:
+        return None
+    return body.vital_metrics, sensor_name
+
+
+def _resolve_sensor_slot(body: Entity, sensor_name: str) -> tuple[dict[str, float], str, float, float] | None:
+    """Where a (possibly qualified) sensor lives on ``body``, and its declared range.
+
+    The embodiment's ONE resolution rule, for writes and reads alike. Tool and affordance writes use
+    this (#874: ``set_entity_sensor`` in both modes, ``self_effect``/``target_effect``); drive-value
+    READS use its location half through ``_read_sensor_value`` (#1125: the executor's
+    ``drive_pressure`` record, ``Embodiment.body_state_summary``). Other writers (DM cascade,
+    cerebellum predictions, vital drift) do not go through it (one shared resolver: #1156), and neither do the credit reads in ``tool_bridge``
+    (#1161). The location is ``_sensor_location``; this adds the range on top. Returns
+    ``(metrics, key, lo, hi)``, the range being the sensor's schema range or ``[0, 1]``, or
+    ``None`` when the body has no such sensor (a caller must not write it: a qualified name written
+    to the root is an orphan key, which ``evaluate_failures`` overrides with the real sub-sensor
+    and reports, and which ``Entity.to_dict`` does not save, #1124).
+    """
+    location = _sensor_location(body, sensor_name)
+    if location is None:
+        return None
+    metrics, key = location
+    lo, hi = 0.0, 1.0
+    if "." in sensor_name:
+        mod = body.modulators[sensor_name.split(".", 1)[0]]
+        sub_spec = getattr(mod, "_sensors", {}).get(key, {})
+        if isinstance(sub_spec, dict) and "range" in sub_spec:
+            lo, hi = sub_spec["range"]
+        return metrics, key, lo, hi
+    sensor = body.sensors.get(sensor_name)
+    if sensor is not None:
+        rng = sensor.reading_schema.get("range")
+        if rng and len(rng) == 2:
+            lo, hi = rng
+    return metrics, key, lo, hi
+
+
+def _read_sensor_value(body: Entity, sensor_name: str) -> float | None:
+    """The current value of a (possibly qualified) sensor, by the one resolution rule.
+
+    The read half of ``_resolve_sensor_slot`` (#1125): a drive declared as ``arms.thermal`` on the
+    root lives on the ``arms`` modulator, so a reader that looks it up as
+    ``root.vital_metrics["arms.thermal"]`` never finds it. Uses only the LOCATION, never the range.
+    ``None`` when the body has no such sensor or its value is not a number.
+    """
+    location = _sensor_location(body, sensor_name)
+    if location is None:
+        return None
+    metrics, key = location
+    try:
+        return float(metrics[key])
+    except (TypeError, ValueError):
+        return None  # a non-numeric value is "not readable", like a missing one
 
 
 # ---------------------------------------------------------------------------
@@ -992,22 +1195,50 @@ class FailureMode:
     recovery_condition: FailureTrigger | None = None
     active: bool = False
     last_fired: float = 0.0
+    # Runtime only (never serialized): trigger fields already reported as having no reading. Per instance, so
+    # each entity's failure modes report their own missing fields.
+    _warned_missing: set[str] = field(default_factory=set, init=False, repr=False, compare=False)
 
-    def evaluate(self, sensor_readings: dict[str, float]) -> bool:
-        """Check if this failure mode should fire given current readings."""
+    def _reading(self, sensor_readings: dict[str, float], name: str, source: str) -> float | None:
+        """The reading a trigger tests, or None, reported once per field, when nothing produces it.
+
+        A missing reading used to evaluate as 0.0, so a ``<`` trigger fired on a key nothing wrote: a reloaded
+        humanoid with no ``head.integrity`` was concussed unhurt (#1124). Unknown is not a breach, as an
+        unreadable drive sensor already is in ``evaluate_failures``.
+
+        Behaviour tier: invariant (fail-closed: unknown is not a breach). Owner decision on #1124, 2026-10-07.
+        A trigger naming a field nothing can produce is also warned about at parse (``spec._parse_entity``).
+        """
+        val = sensor_readings.get(name)
+        if val is None and name not in self._warned_missing:
+            self._warned_missing.add(name)
+            logger.warning(
+                "Failure mode %r%s: trigger field %r has no reading; it does not fire (#1124)",
+                self.name,
+                f" on {source}" if source else "",
+                name,
+            )
+        return val
+
+    def evaluate(self, sensor_readings: dict[str, float], *, source: str = "") -> bool:
+        """Check if this failure mode should fire given current readings.
+
+        A trigger whose field has no reading does not fire, and a recovery condition with no reading does
+        not clear; each such field is reported once. *source* (the entity path) only labels that report.
+        """
         if self.persistent and self.active:
             # check recovery
             if self.recovery_condition is not None:
-                val = sensor_readings.get(self.recovery_condition.field, 0.0)
-                if self.recovery_condition.evaluate(val):
+                val = self._reading(sensor_readings, self.recovery_condition.field, source)
+                if val is not None and self.recovery_condition.evaluate(val):
                     self.active = False
                     return False
             return True  # still active, no recovery yet
 
         results = []
         for trigger in self.triggers:
-            val = sensor_readings.get(trigger.field, 0.0)
-            results.append(trigger.evaluate(val))
+            val = self._reading(sensor_readings, trigger.field, source)
+            results.append(val is not None and trigger.evaluate(val))
 
         if self.trigger_mode == "all":
             fired = all(results) if results else False

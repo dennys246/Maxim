@@ -1,5 +1,12 @@
 # Nociception layer — pain says what it is, consumers say what they take
 
+> **REVIVED 2026-10-07 into [autonomic_layer.md](../autonomic_layer.md)** (grounding GL2; owner
+> decision, [DECISIONS.md](../../../DECISIONS.md) 2026-10-07). The autonomic code's pain half is this
+> plan's vocabulary, so the two are merged rather than multiplied: autonomic_layer.md carries steps 2–4
+> as its own stages, or cites them here. Trigger (d) still binds: step 3 (the F1 fix) lands before or
+> with any R4 credit-routing PR, and before GL2c's positive producer makes the credit path non-inert.
+> This file stays at this path as the record of the four-lens-reviewed design.
+>
 > **DEFERRED 2026-09-24 (owner decision), revised the same day after a four-lens review** (reports in
 > [../reviews/nociception_layer/](../reviews/nociception_layer/): architecture, bio-fidelity, wiring,
 > risk/ledger; all four: *adopt the deferral, with changes* — folded below, §Review record).

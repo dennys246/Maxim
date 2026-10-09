@@ -55,18 +55,13 @@ BARRED_FROM_README = frozenset({"DROPPED", "DORMANT", "TIER-2", "SETUP", "BORDER
 EXEMPT_FROM_INDEX = frozenset({"DROPPED", "TIER-2"})
 #: Tier 1 rows with no experiment entry to cite (R6), pinned to the ledger status they were granted at: when the row
 #: moves, or an index row starts citing it, the exemption is stale and fails.
-NO_INDEX_ENTRY = {
-    "T1-5": (
-        "PARTIAL",
-        "2026-06-15",
-        "a mechanism PoC with no experiment doc; its behavioural claim was pulled (ledger)",
-    )
-}
+#: Empty since 2026-10-08: T1-5, the only exemption, was DROPPED (GL0 of the grounding line), and DROPPED rows are
+#: exempt from R6 by rule.
+NO_INDEX_ENTRY: dict[str, tuple[str, str, str]] = {}
 
 _ANY_MARKER = re.compile(r"<!--\s*claim\b[^>]*-->")
 _MARKER = re.compile(r"<!-- claim: (T\d-\d+) -->")
 _FENCE = re.compile(r"^\s*(```|~~~)")
-_SEPARATOR = re.compile(r"^\|?\s*:?-{3,}")
 
 
 @dataclass
@@ -102,7 +97,11 @@ def scan(text: str) -> tuple[list[Table], list[tuple[int, str]]]:
             i += 1
             continue
         current = None
-        if stripped.startswith("|") and i + 1 < len(lines) and _SEPARATOR.match(lines[i + 1].strip()):
+        if (
+            stripped.startswith("|")
+            and i + 1 < len(lines)
+            and L.is_delimiter_row(lines[i + 1], len(L.split_cells(stripped)))
+        ):
             current = Table(tuple(L.split_cells(stripped)))
             tables.append(current)
             i += 2
