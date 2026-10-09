@@ -56,6 +56,13 @@ from tests import network_guard as _network_guard  # noqa: E402
 
 _network_guard.install()
 
+# The fast suite never touches the real Docker daemon (#1103; owner decision 2026-10-08): spawning the docker CLI
+# raises DockerBlocked, at collection too. `@pytest.mark.slow` lifts it for one test -- real-Docker tests live in the
+# nightly slow lane (scripts/lane_rosters/slow.json). See tests/docker_guard.py.
+from tests import docker_guard as _docker_guard  # noqa: E402
+
+_docker_guard.install()
+
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):  # noqa: ANN001, ANN201
     """How many calls the network guard blocked this session (each would have left the machine)."""
@@ -244,6 +251,33 @@ def _network_guard_for_marked_tests(request: pytest.FixtureRequest):
         yield
     finally:
         _network_guard.enabled = True
+
+
+@pytest.fixture(autouse=True)
+def _docker_guard_for_fast_tests(request: pytest.FixtureRequest):
+    """The fast suite is hermetic about Docker (#1103): a non-slow test that spawned the docker CLI FAILS here, even
+    when the code under test swallowed the ``DockerBlocked`` it raised. ``@pytest.mark.slow`` lifts the guard."""
+    if request.node.get_closest_marker("slow") is not None:
+        _docker_guard.enabled = False
+        try:
+            yield
+        finally:
+            _docker_guard.enabled = True
+        return
+    # A cached probe result left by an earlier test (a mocked True/False) would make a later test's Docker path
+    # depend on ORDER; starting every fast test from "never probed" makes an unfaked probe hit the guard every time.
+    runner_module = sys.modules.get("maxim.simulation.container_runner")
+    if runner_module is not None:
+        runner_module._DOCKER_AVAILABLE_CACHE = None  # type: ignore[attr-defined]
+    before = len(_docker_guard.attempts)
+    yield
+    touched = _docker_guard.attempts[before:]
+    if touched:
+        pytest.fail(
+            f"fast-suite test spawned the real docker CLI {touched!r} (#1103): force backend='tmpdir', monkeypatch "
+            "check_docker_available and fake the runner, or mark it slow and add it to scripts/lane_rosters/slow.json",
+            pytrace=False,
+        )
 
 
 @pytest.fixture(autouse=True)

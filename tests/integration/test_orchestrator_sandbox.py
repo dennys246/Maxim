@@ -17,7 +17,12 @@ from __future__ import annotations
 import pytest
 
 from maxim.simulation.orchestrator import _prepare_sim_workspace, _setup_sim_sandbox
-from maxim.simulation.container_runner import check_docker_available
+from maxim.simulation.container_runner import (
+    ContainerExecResult,
+    ContainerHandle,
+    ContainerSpec,
+    check_docker_available,
+)
 from maxim.simulation.sandbox import (
     DockerSandbox,
     PainTriggerLayer,
@@ -117,58 +122,118 @@ class TestTmpdirBackend:
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# Auto backend — fallback behavior
+# Auto backend — fallback behavior (hermetic: the probe is faked, #1103)
 # ─────────────────────────────────────────────────────────────────────────
 
 
+class _FakeRunner:
+    """A ``ContainerRunner`` that launches nothing: records calls, answers every exec with exit 0."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def ensure_image(self, image: str) -> None:
+        self.calls.append(f"ensure_image {image}")
+
+    def launch(self, spec: ContainerSpec) -> ContainerHandle:
+        self.calls.append("launch")
+        return ContainerHandle("fake-cid", "fake-name", spec)
+
+    def exec(self, handle, command, *, user=None, timeout=30.0, stdin=None):  # noqa: ANN001, ANN201
+        self.calls.append(f"exec {command}")
+        return ContainerExecResult()
+
+    def write_file(self, handle, path, content, *, user=None):  # noqa: ANN001, ANN201
+        self.calls.append(f"write_file {path}")
+        return True
+
+    def read_file(self, handle, path, *, user=None):  # noqa: ANN001, ANN201
+        return "", False
+
+    def stop(self, handle) -> None:  # noqa: ANN001
+        self.calls.append("stop")
+
+
+@pytest.fixture
+def docker_probe(monkeypatch):
+    """Pin what ``create_sandbox`` sees: ``set(True)`` makes the daemon "reachable" and backs ``DockerSandbox`` with
+    ``_FakeRunner``; ``set(False)`` makes it unreachable. Both seams are late-imported from ``container_runner``
+    inside ``create_sandbox`` / ``DockerSandbox.__init__``, so patching the module attribute reaches them. The fast
+    suite never touches the machine's real daemon (tests/docker_guard.py); a real-container test is
+    ``TestDockerBackend`` in the slow lane."""
+    import maxim.simulation.container_runner as cr
+
+    runner = _FakeRunner()
+
+    def _set(available: bool) -> _FakeRunner:
+        monkeypatch.setattr(cr, "check_docker_available", lambda refresh=False: available)
+        monkeypatch.setattr(cr, "get_container_runner", lambda backend="local-docker": runner)
+        return runner
+
+    return _set
+
+
 class TestAutoBackend:
-    def test_auto_returns_valid_sandbox_regardless_of_docker(self):
-        """Whether Docker is available or not, auto must return a
-        working sandbox. No silent failures."""
-        sandbox, root, pain_bus = _setup_sim_sandbox(
-            backend="auto",
-            populate=False,
-        )
+    @pytest.mark.parametrize("available", [True, False])
+    def test_auto_returns_valid_sandbox_either_way(self, docker_probe, available):
+        """Whether Docker is available or not, auto must return a working sandbox. No silent failures."""
+        docker_probe(available)
+        sandbox, root, pain_bus = _setup_sim_sandbox(backend="auto", populate=False)
         try:  # noqa: SIM105
             assert sandbox is not None
             assert root is not None
             assert pain_bus is not None
-            # Inner is either Docker or Tmpdir, never None
-            inner = sandbox._sandbox
-            assert isinstance(inner, (DockerSandbox, TmpdirSandbox))
         finally:
             if sandbox is not None:
                 sandbox.cleanup()
 
-    def test_auto_matches_docker_availability(self):
-        """Auto mode should pick Docker iff check_docker_available()."""
-        docker_ok = check_docker_available()
+    def test_auto_picks_docker_when_daemon_reachable(self, docker_probe):
+        runner = docker_probe(True)
         sandbox, _, _ = _setup_sim_sandbox(backend="auto", populate=False)
         try:  # noqa: SIM105
-            inner = sandbox._sandbox
-            if docker_ok:
-                assert isinstance(inner, DockerSandbox), "auto mode should pick Docker when daemon is reachable"
-            else:
-                assert isinstance(inner, TmpdirSandbox), (
-                    "auto mode should fall back to tmpdir when Docker is unavailable"
-                )
+            assert isinstance(sandbox._sandbox, DockerSandbox), "auto mode should pick Docker when daemon is reachable"
+            assert "launch" in runner.calls, "the Docker sandbox was chosen but never started"
+        finally:
+            if sandbox is not None:
+                sandbox.cleanup()
+        assert runner.calls[-1] == "stop"
+
+    def test_auto_falls_back_to_tmpdir_when_daemon_unreachable(self, docker_probe):
+        runner = docker_probe(False)
+        sandbox, _, _ = _setup_sim_sandbox(backend="auto", populate=False)
+        try:  # noqa: SIM105
+            assert isinstance(sandbox._sandbox, TmpdirSandbox), (
+                "auto mode should fall back to tmpdir when Docker is unavailable"
+            )
+            assert runner.calls == [], "the fallback must not touch the container runner"
         finally:
             if sandbox is not None:
                 sandbox.cleanup()
 
+    def test_docker_backend_refuses_when_daemon_unreachable(self, docker_probe):
+        """backend="docker" requires the daemon: the helper reports no sandbox instead of a tmpdir in disguise."""
+        docker_probe(False)
+        sandbox, root, _ = _setup_sim_sandbox(backend="docker", populate=False)
+        assert sandbox is None
+        assert root is None
+
 
 # ─────────────────────────────────────────────────────────────────────────
-# Docker backend — opt-in, skipped without Docker
+# Docker backend — a REAL daemon: nightly slow lane only (#1103)
 # ─────────────────────────────────────────────────────────────────────────
 
 
-# Refresh the cache — other test modules may have poisoned it with
-# mocked subprocess results. We want a real probe at collection time.
-_DOCKER = check_docker_available(refresh=True)
-
-
-@pytest.mark.skipif(not _DOCKER, reason="Docker not available")
+@pytest.mark.slow
 class TestDockerBackend:
+    """Real containers. In the slow lane (``scripts/lane_rosters/slow.json``), whose ubuntu runner has Docker; the
+    probe runs HERE, not at import, so collecting the fast suite never reaches the daemon (tests/docker_guard.py).
+    A skip is not in the roster's ``allowed_skips``: on the lane, no Docker is a failure, not a pass."""
+
+    @pytest.fixture(autouse=True)
+    def _require_docker(self):
+        if not check_docker_available(refresh=True):
+            pytest.skip("Docker not available")
+
     def test_docker_backend_returns_docker_sandbox(self):
         sandbox, root, pain_bus = _setup_sim_sandbox(
             backend="docker",
@@ -190,10 +255,12 @@ class TestDockerBackend:
 
 
 class TestOrderingContract:
-    def test_helper_never_raises_unbound_local_error(self):
+    @pytest.mark.parametrize("docker_available", [True, False])
+    def test_helper_never_raises_unbound_local_error(self, docker_probe, docker_available):
         """The helper must NEVER raise UnboundLocalError regardless of
         the backend or whether Docker is available. This is the exact
         bug class that hid in start_simulation_mode for weeks."""
+        docker_probe(docker_available)
         for backend in ("auto", "tmpdir"):
             sandbox, _, _ = _setup_sim_sandbox(
                 backend=backend,

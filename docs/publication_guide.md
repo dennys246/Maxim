@@ -48,7 +48,9 @@ python -m pytest tests/integration/test_memory_hub.py -q
 Expected: zero failures, no network/model downloads, no hardware access, and no
 writes outside the test-owned temporary root. The network half is ENFORCED: `tests/network_guard.py`
 (installed by `tests/conftest.py`) makes any outbound TCP connect or non-loopback DNS lookup raise;
-`@pytest.mark.allow_network` is the reviewed exception. Do not waive an ordering failure as
+`@pytest.mark.allow_network` is the reviewed exception. So is the Docker half (#1103): `tests/docker_guard.py`
+fails any non-`slow` test that spawns the `docker` CLI, and the real-container tests run in the nightly slow lane
+(`scripts/lane_rosters/slow.json`). Do not waive an ordering failure as
 "pre-existing." Do NOT treat a specific pass/skip count as the expectation: skip counts are
 environment-dependent by construction (installed extras, platform, model
 cache), and the totals move with every added test. Judge the run by
