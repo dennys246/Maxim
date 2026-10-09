@@ -14,6 +14,11 @@ successor campaign (``supersedes``) opens only after its predecessor's stamped A
 at most ``MAX_CAMPAIGNS`` campaigns exist per experiment (owner decisions 2026-10-02; :func:`protocol_problems`,
 :func:`successor_problems`).
 
+A FAILED gate seen in an aborted attempt's committed phases bars later support: a predecessor campaign's bars its
+successor (#1059, :func:`chain_leaked_gate_problems`), and, for campaign keys outside :data:`PRE_1079_KEYS`, an earlier
+attempt's (or an earlier start marker with no rows) bars the deciding attempt of the same campaign (#1079,
+:func:`within_campaign_leaks`): the verdict reports it as ``within_campaign_leaks`` and the evidence gate refuses.
+
 This module also holds the PROTOCOL (goals, turn caps, flags, model) that ``o19_rerun.py`` runs, so the
 verdict's ``verdict_source_sha256`` covers what was run as well as how it was judged.
 
@@ -86,6 +91,12 @@ _KEY = re.compile(r"[0-9a-z]+")
 # campaign's directory under its last component and the leaked-gate bar reads ``data_root/<scope>`` (#1081 item 3).
 _SCOPE = re.compile(r"[0-9a-z_]+")
 RESERVED_KEYS = frozenset({"preflight"})  # o19_rerun.py's dry-run marker namespace
+# #1079 (owner decision 2026-10-08): the campaigns whose verdicts predate the within-campaign leaked-gate bar. Each has
+# a verdict on main and a frozen data directory (no attempt can ever be added under them), so their judge() output
+# stays exactly what it was before #1079: no ``within_campaign_leaks`` field. Not a trust point: the evidence gate
+# holds no key list and refuses a deciding attempt with k != 1 whose bound judge omits the field, so adding a NEW key
+# here fails closed; removing one of the four changes its output and fails the judge-edit re-judge (half B).
+PRE_1079_KEYS = frozenset({"10", "10c2", "09", "63"})
 
 PROTOCOL: dict[str, dict] = {
     "10": {
@@ -204,6 +215,10 @@ def protocol_problems(protocol: dict[str, dict] | None = None) -> list[str]:
         # env var counts as a change of subject; a successor needing a new harness flag is a new experiment).
         if _plain(prev.get("phases")) != _plain(p.get("phases")):
             problems.append(f"campaign {key}'s phases (argv, env) are not {sup['key']}'s")
+    for key, p in protocol.items():  # #1079: both leaked-gate bars read every prefix length of every campaign
+        phases = p.get("phases") if isinstance(p.get("phases"), list) else []
+        if set(LEAK_GATES.get(p.get("experiment"), {})) != set(range(1, len(phases) + 1)):
+            problems.append(f"campaign {key}: LEAK_GATES does not cover each of its {len(phases)} phase counts")
     # #1059 D1: each verdict kind belongs to exactly one experiment (the gate also holds the map append-only against
     # the merge-base table), so a new experiment id cannot reuse a kind to get a fresh root.
     experiments_of_kind: dict[str, set] = {}
@@ -1130,7 +1145,10 @@ def exp63_gates(phases: list[dict], *, goal: str) -> dict:
     return out
 
 
-# ── #1059: a FAILED gate leaked into an aborted predecessor's committed phases bars its successor ───────────
+# ── #1059 / #1079: a FAILED gate leaked into an aborted attempt's committed phases ─────────────────────────────
+# The map below serves TWO bars: #1059 (an aborted PREDECESSOR campaign's attempt bars its successor,
+# :func:`chain_leaked_gate_problems`) and #1079 (an earlier aborted attempt of the SAME campaign bars its deciding
+# attempt, :func:`within_campaign_leaks`; new campaign keys only, :data:`PRE_1079_KEYS`).
 # D2 (the design pass's fix): the gates a committed PREFIX of an attempt's phases decides, per experiment: the number of
 # leading ``ok`` phase rows -> the gates computable from them. A prefix of another length cannot be judged, and a
 # leaked phase that cannot be judged BARS the successor (strict: the design pass's recommendation, adopted
@@ -1181,6 +1199,33 @@ def _committed_phase(data_root: Path, row: dict) -> dict:
     return {"report": report, "store": store, "lines": log_lines(log_bytes, strict=True), "log_bytes": log_bytes}
 
 
+def _attempt_leak(key: str, label: str, attempt_rows: list[dict], data_root: Path) -> tuple[object, str] | None:
+    """One attempt's leaked-gate reading, shared by both bars (#1059 between campaigns, #1079 within one): over the
+    attempt's leading ``ok`` phases (``data_root`` = its campaign's data directory), every gate :data:`LEAK_GATES`
+    says they decide must pass. Returns None (no committed ``ok`` prefix, or every decided gate passed), else
+    ``(status, prose)``: ``status`` is the SORTED failed gate names or ``"unjudgeable"`` (a prefix that cannot be
+    judged bars too), the structured form #1079's verdict field carries; ``prose`` (``label`` first) is for humans
+    and may embed exception text, so it is never compared."""
+    prefix = []
+    for i, row in enumerate(attempt_rows):
+        if row.get("phase_index") != i or row.get("status") != "ok":
+            break
+        prefix.append(row)
+    if not prefix:
+        return None
+    names = LEAK_GATES[experiment_of(key)].get(len(prefix))
+    if names is None:
+        return "unjudgeable", f"{label}: {len(prefix)} committed phases decide no known gate set (cannot be judged)"
+    try:
+        passes = _gate_passes(key, [_committed_phase(data_root, row) for row in prefix])
+        failed = [name for name in names if passes[name] is not True]
+    except _UNJUDGEABLE as exc:
+        return "unjudgeable", f"{label}: its committed phases cannot be judged ({type(exc).__name__}: {exc})"[:300]
+    if failed:
+        return sorted(failed), f"{label}: a FAILED gate leaked into its committed phases: {failed}"
+    return None
+
+
 def leaked_gate_problems(pred_key: str, rows: list[dict], data_root: Path) -> list[str]:
     """Why campaign ``pred_key``'s committed rows bar a successor ([] = they do not): over each attempt's leading
     ``ok`` phases (``data_root`` = its data directory), every gate :data:`LEAK_GATES` says they decide must pass. A
@@ -1191,27 +1236,42 @@ def leaked_gate_problems(pred_key: str, rows: list[dict], data_root: Path) -> li
         return [f"campaign {pred_key}: its rows cannot be read ({exc}), so a leaked phase cannot be ruled out"]
     problems = []
     for run_id, attempt_rows in attempts.items():
-        prefix = []
-        for i, row in enumerate(attempt_rows):
-            if row.get("phase_index") != i or row.get("status") != "ok":
-                break
-            prefix.append(row)
-        if not prefix:
-            continue
-        label = f"campaign {pred_key}, attempt {str(run_id)[:12]}"
-        names = LEAK_GATES[experiment_of(pred_key)].get(len(prefix))
-        if names is None:
-            problems.append(f"{label}: {len(prefix)} committed phases decide no known gate set (cannot be judged)")
-            continue
-        try:
-            passes = _gate_passes(pred_key, [_committed_phase(data_root, row) for row in prefix])
-            failed = [name for name in names if passes[name] is not True]
-        except _UNJUDGEABLE as exc:
-            problems.append(f"{label}: its committed phases cannot be judged ({type(exc).__name__}: {exc})"[:300])
-            continue
-        if failed:
-            problems.append(f"{label}: a FAILED gate leaked into its committed phases: {failed}")
+        leak = _attempt_leak(pred_key, f"campaign {pred_key}, attempt {str(run_id)[:12]}", attempt_rows, data_root)
+        if leak is not None:
+            problems.append(leak[1])
     return problems
+
+
+def within_campaign_leaks(
+    key: str, attempts_in_order: list[dict], deciding_run_id: str | None, data_root: Path
+) -> tuple[list[list], list[str]]:
+    """#1079 (owner decision 2026-10-08, REFUSE): the leaked-gate bar WITHIN one campaign. Over every attempt BEFORE
+    the deciding one (all of them when none decides), in k order: an attempt whose committed ``ok`` prefix shows a
+    FAILED (or unjudgeable) :data:`LEAK_GATES` gate is listed, and so is an earlier start marker with NO rows (D1:
+    rows never committed cannot be ruled out, so a hard-killed attempt bars too). An attempt the judge found
+    incomplete for C1-C5 is read the same way (strict, N1): its committed phases were still seen. Returns
+    ``(structured, prose)``: ``structured`` = ``[run_id, k, status]`` per listed attempt, ``status`` the sorted failed
+    gate names, ``"unjudgeable"`` or ``"rowless"`` (the verdict's ``within_campaign_leaks``, compared by the gate);
+    ``prose`` the human lines (never compared and never persisted: it may embed exception text). ``data_root`` is the
+    campaign's own directory, the one :func:`judge` reads. Pure over the bytes (no git, no network)."""
+    structured: list[list] = []
+    prose: list[str] = []
+    for attempt in attempts_in_order:
+        run_id = attempt["run_id"]
+        if run_id == deciding_run_id:
+            break
+        label = f"campaign {key}, attempt {attempt.get('k')} ({str(run_id)[:12]})"
+        if not attempt["rows"]:
+            leak: tuple[object, str] | None = (
+                "rowless",
+                f"{label}: a start marker whose rows never reached main (cannot be judged, #1079 D1)",
+            )
+        else:
+            leak = _attempt_leak(key, label, attempt["rows"], data_root)
+        if leak is not None:
+            structured.append([run_id, attempt.get("k"), leak[0]])
+            prose.append(leak[1])
+    return structured, prose
 
 
 def chain_leaked_gate_problems(key: str, data_root: Path) -> list[str]:
@@ -1641,7 +1701,12 @@ def check_apparatus(exp: str, rel_rows: str, judged: bytes, attempts: dict[str, 
 
 def judge(exp: str, attempts_in_order: list[dict], data_root: Path) -> dict:
     """Re-hash every copied file, decide each attempt's completeness from its committed bytes, and gate the
-    first complete one. Pure over the bytes (no git, no network). Raises :class:`Refusal` on an integrity break."""
+    first complete one. Pure over the bytes (no git, no network). Raises :class:`Refusal` on an integrity break.
+
+    For a campaign key outside :data:`PRE_1079_KEYS` it also reports ``within_campaign_leaks`` (#1079): each attempt
+    before the deciding one (every attempt when none decides) whose committed phases show a FAILED or unjudgeable
+    gate, or that is a start marker with no rows (D1: a rowless earlier marker cannot be judged, so it bars). The
+    verdict and its exit code do not change; the evidence gate refuses the support."""
     listing = []
     deciding = None
     for attempt in attempts_in_order:
@@ -1702,6 +1767,13 @@ def judge(exp: str, attempts_in_order: list[dict], data_root: Path) -> dict:
         # #1059 D2: emitted so the gate's re-judge with this (bound) judge reproduces the bar; a successor verdict
         # whose bound judge does not emit it supports nothing. Never compared with the record (o19_difference).
         out["leaked_gates"] = chain_leaked_gate_problems(exp, data_root.parent)
+    if exp not in PRE_1079_KEYS:
+        # #1079: the bar within this campaign. The structured field is compared with the record by the gate
+        # (o19_difference) and refuses a deciding attempt it lists after; the prose is for humans only (main() prints
+        # it to stderr and drops it before the verdict is stamped and written: S1).
+        out["within_campaign_leaks"], out["within_campaign_leak_notes"] = within_campaign_leaks(
+            exp, attempts_in_order, None if deciding is None else deciding[0]["run_id"], data_root
+        )
     if deciding is None:
         out["verdict"] = "ABORT"
         out["deciding_attempt"] = None
@@ -1818,6 +1890,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"REFUSED: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
     report.update(extra)
+    # #1079 N3: the verdict reports (stderr), the gate refuses. The prose may embed host paths and exception text, so
+    # it is never persisted (design pass S1): only the structured ``within_campaign_leaks`` reaches verdict.json.
+    for note in report.pop("within_campaign_leak_notes", None) or []:
+        print(
+            f"WITHIN-CAMPAIGN LEAK (#1079; the evidence gate refuses this verdict's support): {note}", file=sys.stderr
+        )
     report["verdict_source_sha256"] = sha256_bytes(Path(__file__).read_bytes())
     stamp_verdict(
         report,
