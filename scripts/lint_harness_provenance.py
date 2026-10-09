@@ -59,7 +59,7 @@ opt out with a line containing ``# provenance-exempt:`` followed by the reason.
 This lint catches FORGETTING, not evasion (house convention for heuristic
 lints): a docstring mention of the guard name counts as compliance, one
 exempt marker exempts the whole file, and ``shell=True`` string spawns,
-``os.system`` writes, ``shutil.copy``/``move``, ``atomic_write_json``,
+``os.system`` writes, ``shutil.copy``/``move``, an aliased writer import,
 ``.save(`` and hand-rolled ``os.replace`` escape the regexes. It is a forcing
 function for the honest author, not a security boundary.
 
@@ -92,6 +92,7 @@ _MAXIM_SPAWN = re.compile(
 _RECORD_WRITE = re.compile(
     r"""(
         json\.dump\(                        # json.dump(obj, fh)
+      | \batomic_write_(?:json|text|bytes)\(   # utils/atomic_io's canonical writers (#1111)
       | \.write_text\(                      # Path.write_text(...)
       | \bopen\([^)\n]*['"][wa]b?['"]       # open(path, "w") / "a" / "wb" / "ab"
       | \bopen\([^)\n]*mode=['"][wa]b?['"]  # open(path, mode="w")
@@ -156,12 +157,24 @@ def _sets_run_id_env(tree: ast.AST) -> bool:
     return False
 
 
+def _is_sim_flag(node: ast.AST) -> bool:
+    return isinstance(node, ast.Constant) and node.value == "--sim"
+
+
 def _spawns_sim(tree: ast.AST) -> bool:
-    """A ``"--sim"`` inside a list literal: a command line that runs a simulation (not an argparse flag)."""
-    return any(
-        isinstance(n, ast.List) and any(isinstance(e, ast.Constant) and e.value == "--sim" for e in n.elts)
-        for n in ast.walk(tree)
-    )
+    """A ``"--sim"`` inside a list or tuple literal, or appended/inserted into a command (``cmd.append("--sim")``):
+    a command line that runs a simulation. An argparse ``add_argument("--sim")`` is a flag, not a spawn (#1010)."""
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.List, ast.Tuple)) and any(_is_sim_flag(e) for e in n.elts):
+            return True
+        if (
+            isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr in ("append", "insert")
+            and any(_is_sim_flag(a) for a in n.args)
+        ):
+            return True
+    return False
 
 
 def _stamp_failures(rel: Path, tree: ast.AST) -> list[str]:

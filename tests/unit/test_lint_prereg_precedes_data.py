@@ -939,3 +939,27 @@ def test_a_clause_on_an_ungoverned_rerun_still_judges_the_records_form(repo: Rep
     assert run(repo) == 1
     out = capsys.readouterr()
     assert "naive ISO-8601" in out.err and "clause does not apply" in out.out
+
+
+@pytest.mark.parametrize(
+    "header",
+    ["**Amendment 1 — 2026-10-01, apparatus, PRE-DATA, x.**\n", "**Amendment 1 — Oct 1, 2026, PRE-DATA, x.**\n"],
+)
+def test_a_header_todays_grammar_accepts_is_read_the_same_in_history(repo: Repo, capsys, header: str) -> None:
+    """#1014: the lenient historical reading wanted the class as the FIRST clause and a comma-free date, so these
+    current-grammar headers were never matched in history: a false "not on main in its current form"."""
+    _governed(repo, header)
+    repo.commit("prereg", T0)
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.commit("data", T0 + 200)
+    assert run(repo) == 0, capsys.readouterr().err
+
+
+def test_an_allowance_on_an_excepted_ungoverned_rerun_names_the_fix(repo: Repo, capsys) -> None:
+    """#1037: an ungoverned re-run has no result doc of its own, so "no result doc names the entry" named no fix."""
+    repo.data("rerun_exp9_x.jsonl", [T0 + 100], {"allow_dirty": True})
+    repo.commit("data", T0 + 200)
+    repo.write("docs/experiments/evidence_exceptions.json", json.dumps([_clause(repo, "rerun_exp9_x.jsonl")]))
+    repo.commit("clause", T0 + 300)
+    assert run(repo) == 1
+    assert "land a re-run pre-registration" in capsys.readouterr().err

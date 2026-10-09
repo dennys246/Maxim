@@ -951,6 +951,82 @@ class Entity:
 
 
 # ---------------------------------------------------------------------------
+# Sensor resolution (one rule for every reader and writer that resolves a name)
+# ---------------------------------------------------------------------------
+
+
+def _sensor_location(body: Entity, sensor_name: str) -> tuple[dict[str, float], str] | None:
+    """Where a (possibly qualified) sensor's value lives on ``body``: ``(metrics, key)``, or ``None``.
+
+    ``"arms.thermal"`` is the ``thermal`` sub-sensor of the ``arms`` modulator, so its value is
+    ``body.modulators["arms"].vital_metrics["thermal"]``; a bare name is an entity-level sensor in
+    ``body.vital_metrics``. ``None`` when the body has no such sensor, or its value is ``None``.
+    Reads no range, so a malformed declared range can never cost a value read (#1125 review).
+    """
+    if "." in sensor_name:
+        mod_name, sub_name = sensor_name.split(".", 1)
+        mod = body.modulators.get(mod_name)
+        metrics = getattr(mod, "vital_metrics", None) if mod is not None else None
+        if metrics is None or metrics.get(sub_name) is None:
+            return None
+        return metrics, sub_name
+    if body.vital_metrics.get(sensor_name) is None:
+        return None
+    return body.vital_metrics, sensor_name
+
+
+def _resolve_sensor_slot(body: Entity, sensor_name: str) -> tuple[dict[str, float], str, float, float] | None:
+    """Where a (possibly qualified) sensor lives on ``body``, and its declared range.
+
+    The embodiment's ONE resolution rule, for writes and reads alike. Tool and affordance writes use
+    this (#874: ``set_entity_sensor`` in both modes, ``self_effect``/``target_effect``); drive-value
+    READS use its location half through ``_read_sensor_value`` (#1125: the executor's
+    ``drive_pressure`` record, ``Embodiment.body_state_summary``). Other writers (DM cascade,
+    cerebellum predictions, vital drift, the derived ``<mod>.integrity`` keys in
+    ``evaluate_failures``) do not go through it, and neither do the credit reads in ``tool_bridge``
+    (#1161). The location is ``_sensor_location``; this adds the range on top. Returns
+    ``(metrics, key, lo, hi)``, the range being the sensor's schema range or ``[0, 1]``, or
+    ``None`` when the body has no such sensor (a caller must not write it: a qualified name written
+    to the root is an orphan key that shadows the real sub-sensor in ``evaluate_failures``).
+    """
+    location = _sensor_location(body, sensor_name)
+    if location is None:
+        return None
+    metrics, key = location
+    lo, hi = 0.0, 1.0
+    if "." in sensor_name:
+        mod = body.modulators[sensor_name.split(".", 1)[0]]
+        sub_spec = getattr(mod, "_sensors", {}).get(key, {})
+        if isinstance(sub_spec, dict) and "range" in sub_spec:
+            lo, hi = sub_spec["range"]
+        return metrics, key, lo, hi
+    sensor = body.sensors.get(sensor_name)
+    if sensor is not None:
+        rng = sensor.reading_schema.get("range")
+        if rng and len(rng) == 2:
+            lo, hi = rng
+    return metrics, key, lo, hi
+
+
+def _read_sensor_value(body: Entity, sensor_name: str) -> float | None:
+    """The current value of a (possibly qualified) sensor, by the one resolution rule.
+
+    The read half of ``_resolve_sensor_slot`` (#1125): a drive declared as ``arms.thermal`` on the
+    root lives on the ``arms`` modulator, so a reader that looks it up as
+    ``root.vital_metrics["arms.thermal"]`` never finds it. Uses only the LOCATION, never the range.
+    ``None`` when the body has no such sensor or its value is not a number.
+    """
+    location = _sensor_location(body, sensor_name)
+    if location is None:
+        return None
+    metrics, key = location
+    try:
+        return float(metrics[key])
+    except (TypeError, ValueError):
+        return None  # a non-numeric value is "not readable", like a missing one
+
+
+# ---------------------------------------------------------------------------
 # Failure mode spec
 # ---------------------------------------------------------------------------
 
