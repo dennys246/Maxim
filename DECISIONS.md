@@ -2,6 +2,108 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-10-09 — Grounding GL1 design-review decisions (G9–G20)
+
+### Decision
+
+The GL1 four-lens design review of `docs/plans/grounding.md` and `docs/plans/autonomic_layer.md`
+(reports: `docs/plans/reviews/grounding_gl1/{confounding,bio-faithful,wiring,environment}.md`) returned
+nine DO-NOT-BUILDs. The owner took G9–G16 on 2026-10-09, and the plans fold every DO-NOT-BUILD
+(`grounding.md` §GL1 lists each with its resolving sentence). The GL1 code review (three lenses, no
+blockers) followed the same day, and the owner took G17–G20 with it. G1–G8 stand, except where an
+"amended 2026-10-09" clause in the 2026-10-07 entry below says otherwise.
+
+1. **G9. GL2a ships the tool-path record only.** The out-of-band producer (the per-entity snapshot,
+   `Embodiment.drain_outcomes()`, its queue and bound, and the lock over `evaluate_failures`' latch) lands
+   after the decomposition fence, together with the narrated scope.
+2. **G10. The queue bound,** once the out-of-band producer exists: measured from a scripted session's
+   peak; overflow drops the oldest record, and every drop is counted and logged.
+3. **G11. Valence is unweighted:** `valence = relief − harm − nociception`, an innate prior. Health counts
+   once: a `drive:health` loss enters `nociception` as this event's injury and is excluded from `harm`.
+   That is a definition of the inputs, not a weighting.
+4. **G12. Urgency v1 is pressure only** (max pressure after the event); the slope waits for GL3's timing.
+5. **G13. GL5 is an acquired-equivalence design** (Honey & Hall 1989): authored items whose sensed
+   readings and consequences DISAGREE, experience of each item required, and the model gated against a
+   no-learning sensed-similarity baseline. The jet triad becomes a control for generalisation from sensed
+   features, not the test. T9 keeps its claim under this design.
+6. **G14. GL2a's exempt set is widened inside `runtime/executor.py`** to `Executor._run_started` (the raw
+   before-snapshot) and `Executor._stamp_invocation`. The tool-path record is scoped to the invoked
+   affordance's own declared drives, read through `embodiment/sem.py::_resolve_sensor_slot` /
+   `_read_sensor_value` (the #1125 resolver, merged in #1164), and reported net of the declared drift over
+   the window (a pure helper factored from `Embodiment.tick_vital_drift`'s arithmetic; the gate has a
+   `_StepClock` case that advances 20 s between the loop tick and the tool call). The existing trio
+   (`drive_pressure_before`, `drive_relief`, `pain`) and `encoding_tag` / `storage_strength` stay
+   byte-identical, pinned by a golden taken from the pre-change commit on the scripted cradle sequence and
+   the Minecraft arm.
+7. **G15. `PhysicalEventId` is session-unique at GL2a.** GL2a mints pids unique within a session (agent,
+   session id, seq) and persists no sequencer state. The cross-session resume (the sequencer's own
+   high-water mark, wired at both load seams, `runtime/bio_stack.py::build_bio_stack` and
+   `simulation/orchestrator.py::_restore_aut_from_session`, and tested through the real load paths) lands
+   after the fence and before GL4 S1, the first stage that persists pids where they are joined across
+   sessions. *(Its GL2a half is superseded by G17: GL2a mints no pid at all.)*
+8. **G16. A harness-scoped provenance kind, `apparatus`.** Harness writes to a drive (the water trial's
+   rescue teleport and `/effect` heal, R3's respawn, Exp 56's teacher feed, Exp 52's mother feed) are
+   recorded as `apparatus`: never a forward-model training target, never credit. The double-credit rule
+   extends to `NAc.credit_operant_reward`. GL2c's batched re-run reports satiation counts per arm and per
+   cause. Provenance kinds are now `experienced` / `narrated` (discounted, G6) / `imagined` / `apparatus`
+   (excluded).
+9. **G17. GL2a ships no event id (supersedes G15's GL2a half).** GL2a's `InteroceptiveOutcome` carries no
+   pid. The `PhysicalEventId` type (agent_id, session_id, seq), the per-agent sequencer, its session-id
+   source and the cross-session resume all land together at the post-fence resume stage, before GL4 S1
+   (the first joiner). Records written before that stage carry no pid and are never forward-model
+   training data. `CauseRef.cause_pid` lands at that stage too, and GL2a's exempt file set drops
+   `embodiment/event_id.py`. The "one live sequencer per agent; a rebuild fails loudly" rule moves to the
+   resume stage, which must define release (bio session end and executor shutdown), name the two
+   harnesses that rebuild one agent in one process (`scripts/survival_world/r3_run.py`,
+   `scripts/survival_world/exp61_run.py`) and add a conftest autouse reset. The session-id source
+   (deterministic; who mints it; its scope; `--resume-sim` behaviour; a new required keyword on
+   `build_executor` and its callers) is asked at the resume stage's start.
+10. **G18. GL4 S0a is the audit roadmap 1.4 Phase 5 requires:** one audit, one verdict.
+11. **G19. T1-5's successor (the GL5 claim) lives in the cradle.** The GL1 census found every harm-class
+    collision in a cradle `touch` / `warm_self` variant. Minecraft stays a consequence-prediction arm.
+12. **G20. The L0 gate is a measurement only.** PASS or FAIL is recorded as the word prior's quality and
+    moves nothing; `grounded_word_binding` stays SUBSUMED (G5).
+
+Filed with the review: [#1189](https://github.com/dennys246/Maxim/issues/1189). `ToolOutput`'s repr is
+persisted and substring-searched, so the existing executor stamps already leak into memory retrieval.
+GL2a's new field and GL4's `ActionContext` are declared `repr=False`, with a guard that `str(ToolOutput)`
+is byte-identical, and GL2a's T1-16 discharge covers the substring path.
+
+### Reason
+
+- **The tool-path window was undefined** (wiring D1, confounding DNB-1, environment DNB-1). As drafted it
+  either refilled the trio (a memory-strength change under a "record-only" label) or failed its own pin. A
+  body-wide window took in narrator writes and wall-clock drift as the action's consequence. G14 makes the
+  record action-scoped, netted of drift, and leaves the trio untouched.
+- **Relief must depend on need** (bio-faithful DNB-1, alliesthesia). The plan now computes relief and harm
+  from the change in `drive_pressure`, and persists the per-drive block so a later schema can be
+  recomputed.
+- **The resume could not be wired inside the exempt set, and its source loses traces** (wiring D2): G15.
+- **The record would have entered recall through the `ToolOutput` repr** (wiring D3): `repr=False`,
+  #1189.
+- **Sensed properties and consequences moved together in every GL5 arm** (confounding DNB-2): G13. **S0b's
+  stop gate could hardly fail** (confounding DNB-3): null consequences are excluded, and collisions and
+  convergences are counted separately.
+- **The apparatus caused the survival rows' satiation crossings** (environment DNB-2): G16, and G7's
+  description is corrected.
+- **No deterministic session id exists to mint a G15 pid with** (GL1 code review): G17. Every session id
+  today is wall-clock `time.strftime` (`simulation/orchestrator.py`, `simulation/research_orchestrator.py`,
+  `simulation/report.py`, `runtime/loop_setup.py`, `runtime/agent_loop.py`); the minting sites have none
+  in scope (`build_executor` takes no session parameter); and R3 and Exp 61 rebuild the same `agent_id` in
+  one process, which the one-live-sequencer rule would refuse. Choosing the source is a decision of its
+  own, so the type waits for the stage that needs it.
+- **G18–G20 close the three questions `grounding.md` left open for GL1's start** (the Phase 5 audit, T1-5's
+  successor, the L0 gate's role).
+
+### Tradeoffs
+
+- GL2a no longer records out-of-band change. Minecraft's post-return oxygen refill and every narrator
+  consequence wait for the post-fence producer, so GL2c and S0b's Minecraft floor depend on it.
+- Pids do not join across sessions until the resume stage lands, so GL4 S1 waits for it. Since G17 GL2a
+  records carry no pid at all, so none of them is ever forward-model training data.
+- The acquired-equivalence arm needs authored items (Risk 9, circular authored physics, stays open). The
+  Minecraft arm tests consequence prediction, not transfer, unless a transfer contrast is designed.
+
 ## 2026-10-07 — Entity format 1.1: component state lives on its modulator; a trigger with no reading does not fire (#1124)
 
 ### Decision
@@ -61,6 +163,9 @@ never by what they do to the body. The 1.4 grounding line answers this in stages
      versions), `runtime/executor.py` (`Executor._stamp_invocation` only), `runtime/bio_integration.py`
      (`EncodingSignals.extra["context"]` at the loop capture) and the new leaf
      `embodiment/action_context.py` (the `ActionContext` type). Anything else waits for the fence.
+     *(Amended 2026-10-09 by G14: GL2a's `runtime/executor.py` scope is `Executor._run_started` plus
+     `Executor._stamp_invocation`. Amended 2026-10-09 by G17: GL2a's set drops `embodiment/event_id.py`,
+     which lands at the post-fence resume stage; GL4 S1 waits for that stage, so its exemption is moot.)*
 2. **Owner decision G2. The 2026-09-18 decision 3 is reversed.**
    - "JEPA re-pointed, not revived" (recorded here 2026-09-19) no longer holds. The predictor enters as
      `docs/plans/latent_forward_model.md`, the name Phase 5 already reserved, so that pointer becomes true.
@@ -72,7 +177,8 @@ never by what they do to the body. The 1.4 grounding line answers this in stages
 3. **Owner decision G3. Names.**
    - A percept source is a `Receptor` in code; prose may say "engine". The pathway it emits onto is an
      `AfferentTrack`. The handoff record is an `AfferentEvent`, carrying a deterministic `PhysicalEventId`
-     of (agent, seq): no uuid, no wall time.
+     of (agent, seq): no uuid, no wall time. *(Amended 2026-10-09 by G15 and G17: the id is (agent,
+     session id, seq), and the type lands at the post-fence resume stage, not GL2a.)*
    - **An engine is not a track.** One receptor emits onto one or more tracks, and one physical event
      fans out under one shared id. A burn, for example, goes to a fast nociceptive track and a slow
      affective track.
@@ -108,7 +214,9 @@ never by what they do to the body. The 1.4 grounding line answers this in stages
      GL5 reports its results with AND without narrated data.
    - Reason (owner): excluding them would mute the world the LLM's language priors simulate.
    - Provenance kinds are `experienced` / `narrated` / `imagined`; `declared` and `reported` stay open at
-     GL3.B1, the registry+provenance stage. No type defaults provenance to `experienced`.
+     GL3.B1, the registry+provenance stage. No type defaults provenance to `experienced`. *(Amended
+     2026-10-09 by G16: a fourth kind, `apparatus`, for harness writes; recorded, never trained on,
+     never credited.)*
    - The contamination guard checks that a narrated record can never be relabelled `experienced` and
      that the discount is applied.
 7. **Owner decision G7. Satiation fires the survival rows whatever the routing.**
@@ -125,6 +233,15 @@ never by what they do to the body. The 1.4 grounding line answers this in stages
      `cluster_reward_bias`, `links`, `event_outcome_welford`) and
      `scripts/survival_world/r3_run.py::_R3._boundary` (`reward_bias`, `links`).
    - Routing (relief store, distributor, or both) stays an open GL2c decision.
+   - *Amended 2026-10-09 (G16; GL1 environment review, DNB-2):* the decision stands, but the description
+     above of where the crossing happens is wrong. On the earned rows the crossings land where the
+     apparatus acts. Exp 60/61 training is propose-only, and every episode ends in
+     `scripts/survival_world/water_trial.py::WaterTrial.rescue` (an RCON teleport to shore, a settle until
+     oxygen ≥ `RECOVER_OXYGEN_MIN`, then `heal()`), so the `oxygen` latch clears during the rescue, not at
+     `escape_water`. Exp 60's probes are capped before the breach and never latch. R3's respawns reset
+     health and oxygen. Exp 56's teacher and Exp 52's mother write the drive directly. Those writes are
+     `apparatus` (G16), and the rows still fire whatever the routing. `food` is not reachable natively in
+     the earned campaigns.
 8. **Owner decision G8. The registry enters with its consumer.**
    - GL3's `Receptor` registry lands together with provenance on the write path, in one stage (GL3.B1),
      whose consumers are GL5's experiment and the forward model's contamination guard. GL3's census and
@@ -142,20 +259,35 @@ never by what they do to the body. The 1.4 grounding line answers this in stages
 the type):
 - One type, `PhysicalEventId(agent_id: str, seq: int)`: frozen, SHAPE-FROZEN at 1.0 (CC3 path b);
   `__post_init__` rejects an empty `agent_id` and a negative `seq`; `__str__` is `"{agent_id}:{seq}"`. It
-  lives in the leaf module `maxim/embodiment/event_id.py`, built at GL2a; GL3 imports it.
+  lives in the leaf module `maxim/embodiment/event_id.py`, built at GL2a; GL3 imports it. *(Amended
+  2026-10-09 by G15: the id is (agent, session id, seq), so the type carries a non-empty `session_id`
+  between the two and `__str__` is `"{agent_id}:{session_id}:{seq}"`. Like the seq, the session id
+  carries no uuid and no wall time, and `__post_init__` rejects an empty one. Amended again 2026-10-09 by
+  G17: the type, its leaf module and the sequencer are built at the post-fence resume stage, not GL2a.)*
 - One seq authority per agent: an `EventSequencer` held by the agent's primary `Embodiment`. Ephemeral,
   scene and foundry wrappers mint no records and no ids. `seq` persists per agent and resumes past the
   saved maximum (the `Hippocampus._resume_capture_seq` rule). At GL3.B3 the scheduler's drain point
   takes over, with the GL2a counter as its backing store; the handover is GL3.B3's stage gate.
+  *(Amended 2026-10-09 by G15: GL2a's pids are unique within a session (agent, session id, seq), and
+  GL2a persists no sequencer state. The persisted resume, with its own high-water mark and both load
+  seams (`bio_stack.build_bio_stack`, `orchestrator._restore_aut_from_session`) tested through the real
+  load paths, lands after the fence and before GL4 S1. Superseded in part by G17: GL2a builds no
+  sequencer and mints no pid; the sequencer, its session-id source and the resume land together at
+  that stage.)*
 - A consequence names its cause by `CauseRef.cause_pid` (`PhysicalEventId | None`), the same type.
+  *(Amended 2026-10-09 by G17: `cause_pid` lands with the type at the post-fence resume stage.)*
 - `Embodiment.drain_outcomes()` has named production drainers (the loop capture; in `--sim`, the AUT
   loop's `capture_loop_action` on `sim.aut`), a drop-oldest bound with every drop counted and logged,
-  and ephemeral wrappers never queue.
+  and ephemeral wrappers never queue. *(Amended 2026-10-09 by G9/G10: it lands with the out-of-band
+  producer, after the fence; GL2a builds none of it.)*
 - The `--sim` orchestrator thread (the `start_simulation_mode` caller running the orchestrator agent's
   loop, where the narrator's tools, registered on `orch_registry`, call `evaluate_failures` while the AUT
   loop runs on `sim.aut`; not `sim.dm`, which only interactive DM campaigns use) is a declared edge: a
   lock from GL2a, an inbox drained once per pass from GL3.B3. The reflex dispatch's instances of the
-  same classes run on the loop thread.
+  same classes run on the loop thread. *(Amended 2026-10-09 by G9: GL2a's sequencer takes its own
+  private lock; the lock over `evaluate_failures`' latch and snapshot lands with the out-of-band
+  producer. Amended again by G17: the sequencer, with its private lock, lands at the post-fence resume
+  stage.)*
 - Forward-model pairs join on the `pid`, never on the executor's `uuid4` invocation id; the tool path
   stamps the pid on `ToolOutput` beside it.
 

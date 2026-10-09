@@ -155,8 +155,10 @@ node.
 
 **Name collisions on shipped components** (audit #1120; counts re-verified 2026-10-07 by a walk of
 every `affordances:` block under `_data/components/`):
-- `touch` ×16 share one node: a blanket (safe), the fire pit (burn) and a sharp rock (cut) all
-  complete into the same `touch`.
+- `touch` ×16 share one node: a blanket (safe), the fire pit (burn) and a sharp rock all
+  complete into the same `touch`. (The GL1 census, [grounding_census.md](../experiments/grounding_census.md),
+  found the sharp rock's declared +0.4 pressure sits inside its 0.6 comfort band, so its YAML does not
+  model a cut; the safe-vs-harmful collision is blanket vs fire pit.)
 - `warm_self` ×14, in safe and harmful variants, shares one node.
 - `turn_left` and `turn_right` collapse into one node.
 - Only **42 of 405** shipped affordances declare `self_effect`/`target_effect`, so most (entity,
@@ -301,11 +303,13 @@ ones above it):
    from deprivation is a positive event. (Autonomic layer, GL2: the record is `InteroceptiveOutcome`.)
 2. **One physical event has one identity across every channel that carries it**, deterministic
    under the step clock (no uuid, no wall time), so a fast pain, a slow ache and a world-sensor change
-   join as the same burn. (`PhysicalEventId` and the per-agent sequencer at GL2a; the afferent-track
-   scheduler takes the seq over at GL3.B3.)
-3. **Every substrate write carries its provenance** (experienced / narrated / imagined), never
-   defaulted; narrated consequences earn credit and train the predictor only at a declared discount
-   and are never relabelled experienced (owner decision G6); whether imagined nodes are refused or
+   join as the same burn. (`PhysicalEventId` and the per-agent sequencer at the post-fence resume stage,
+   before GL4 S1, not GL2a (owner decision G17); the afferent-track scheduler takes the seq over at
+   GL3.B3.)
+3. **Every substrate write carries its provenance** (experienced / narrated / imagined / apparatus),
+   never defaulted; narrated consequences earn credit and train the predictor only at a declared discount
+   and are never relabelled experienced (owner decision G6); apparatus (harness) writes are recorded but
+   never trained on or credited (owner decision G16); whether imagined nodes are refused or
    discounted is decided at GL3.B1. (GL2a for the record, GL3.B1 for EC/NAc writes.)
 4. **Fast signals are not gated by slow ones:** pain transduction does not wait for a turn budget,
    a reflex does not wait for the token budget, and a decided action can be dropped when the body

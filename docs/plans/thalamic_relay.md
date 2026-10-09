@@ -17,9 +17,11 @@
   plus cradle, substrate-primary). The word world comes later, as the innate-prior tier.
 - **G3** Code names are `Receptor` (a receptor class or percept source; prose may say "engine"
   informally) and `AfferentTrack`. The handoff record is `AfferentEvent`, and it carries a deterministic
-  shared `PhysicalEventId` = (agent, seq), with no uuid and no wall time. No existing bio class is renamed.
-  `PhysicalEventId` is **not defined here**: GL2a builds it in the leaf module
-  `maxim/embodiment/event_id.py` (no maxim imports), and this plan **uses** it (§5.2).
+  shared `PhysicalEventId` = (agent, seq), with no uuid and no wall time (amended 2026-10-09 by G15:
+  (agent, session id, seq); and by G17: the type is built at the post-fence resume stage, not GL2a).
+  No existing bio class is renamed. `PhysicalEventId` is **not defined here**: the autonomic plan's
+  post-fence resume stage builds it in the leaf module `maxim/embodiment/event_id.py` (no maxim
+  imports), and this plan **uses** it (§5.2).
 - **G4** Minecraft satisfies the **perception** abstraction. The perception plans' "second body" triggers
   are re-keyed to capability triggers that fire at GL3 (§9). The robot hardware factory keeps its
   physical-robot trigger.
@@ -30,8 +32,10 @@
   `DamageComponentTool`, `OrchestratorActorTool`, and the reflex dispatch that goes through them) are
   stamped `narrated`, never `experienced`. They are usable for forward-model training and for credit at a
   **declared discount** (value: owner decision at GL4 start; strict default for that later decision: a
-  small discount). Provenance kinds are `experienced` / `narrated` / `imagined`; `declared` and `reported`
-  stay open at GL3.B1 (§11). A narrated record can never be relabelled experienced.
+  small discount). Provenance kinds were `experienced` / `narrated` / `imagined`; `declared` and `reported`
+  stay open at GL3.B1 (§11). A narrated record can never be relabelled experienced. *Amended 2026-10-09
+  by G16:* a fourth kind, `apparatus` (harness writes to a drive: rescue, heal, respawn, teacher and
+  mother feeds), recorded and never trained on or credited.
 - **G8** The Receptor registry lands **with** provenance (one stage, GL3.B1), whose consumers are GL5's
   experiment and the forward model's contamination guard. The nociceptive-fast preemption slice (GL3.B4)
   becomes a declared 1.4 rung arm, or waits for one (the owner names the rung later). The timing defects
@@ -42,8 +46,8 @@
 design-pass decision 1, DP1, reserved): `ReceptorSpec`, `AfferentTrackSpec`, `AfferentEvent`,
 `ReceptorRegistry`, `TrackScheduler`. It also owns a per-node provenance dict on
 `similarity/ec.py::EntorhinalCortex` (GL3.B1). **Uses, does not own:** `PhysicalEventId` and the per-agent
-`EventSequencer` (GL2a, `maxim/embodiment/event_id.py`; the sequencer is held by the agent's primary
-`Embodiment`). Seq authority moves to this plan's scheduler at the GL3.B3 stage gate (§5.5).
+`EventSequencer` (`maxim/embodiment/event_id.py`, built at the autonomic plan's post-fence resume stage,
+G17; the sequencer is held by the agent's primary `Embodiment`). Seq authority moves to this plan's scheduler at the GL3.B3 stage gate (§5.5).
 **Companion plans:** [autonomic_layer.md](autonomic_layer.md) (GL2: `InteroceptiveOutcome`,
 `NociceptorSpec`; it supplies the first dual-track receptor); [latent_forward_model.md](latent_forward_model.md)
 (GL4: it consumes `AfferentEvent`s joined on `pid`, never on the executor's `uuid4` invocation id,
@@ -229,9 +233,12 @@ has ever mixed two snapshots in one encode. Tracks fix ordering, not tearing.
 under `--sim` (`sim.aut` and the orchestrator thread (the `start_simulation_mode` caller running the orchestrator agent's loop)), so the shared mutable state it touches is written from both:
 `Entity.drive_breach_severity` (the breach latch dict, `embodiment/sem.py`) and GL2a's per-entity
 previous-snapshot slot. No lock guards either today (code-read: `embodiment/body.py` and
-`embodiment/sem.py` take none). The rule, in two steps: **from GL2a**, out-of-band records minted off the
-loop thread go through the `EventSequencer`'s lock, so ids never collide (whether the latch dict and the
-snapshot slot take the same lock is GL2a's gate-design item); **from GL3.B3**, orchestrator-thread
+`embodiment/sem.py` take none). The rule, in steps (amended 2026-10-09 by G9 and G17): **GL2a** mints
+nothing and adds no lock over that state; **from the post-fence resume stage** the tool path mints on the
+executor's thread, under the `EventSequencer`'s own private lock;
+**with the out-of-band producer, after the fence,** records minted off the loop thread go through the
+sequencer's lock, so ids never collide, and one `Embodiment`-owned lock guards the latch dict and the
+snapshot slot; **from GL3.B3**, orchestrator-thread
 transduction no longer calls `evaluate_failures` directly: it posts into the edge inbox, which the loop drains once per
 pass (H0, §5.5), so the latch and the slot are touched from the loop thread only.
 
@@ -365,11 +372,11 @@ deliberately priority-free and identity-free. **It rides on:** `ModalityChannel`
 `encoding_geometry_tag` / `record_encoder_provenance`, `DECLARABLE_MODALITY_TAGS`, the body-YAML
 declarations, and `PerceptSource` (CC8).
 
-**`AfferentEvent` (on GL2a's `PhysicalEventId`).** No existing record joins two lanes of one physical
+**`AfferentEvent` (on the autonomic plan's `PhysicalEventId`, built at its post-fence resume stage, G17).** No existing record joins two lanes of one physical
 event. DoAFeed's lanes share only a wall timestamp, which is not a join key under turn-based or lockstep
 clocks. `TemporalEvent` is the right credit envelope, but the uuid its producers mint and its wall-clock
 signature are nondeterministic, and it is coupled to SCN registration. It is kept as the envelope, and it
-carries `str(pid)` in `context` instead of changing its frozen shape. **It rides on:** GL2a's
+carries `str(pid)` in `context` instead of changing its frozen shape. **It rides on:** the resume stage's
 `PhysicalEventId` and per-agent `EventSequencer` (which follow the `Hippocampus.capture_seq` pattern,
 including its resume-past-max-on-load rule) and `ExperienceClock`. This plan adds no second identity type.
 
@@ -397,7 +404,8 @@ tracks still exist, is the shared identity of one physical event seen on fast an
 provenance, for GL4 and the credit line.
 
 **Count:** one new package with a thin coordinator and a scheduler, three types (`ReceptorSpec`,
-`AfferentTrackSpec`, `AfferentEvent`; `PhysicalEventId` is GL2a's), and one new EC parallel dict. No new
+`AfferentTrackSpec`, `AfferentEvent`; `PhysicalEventId` is the autonomic plan's, built at its post-fence
+resume stage, G17), and one new EC parallel dict. No new
 encoder, no new EC modality, no new bus, no class per modality. `ModalityChannel` stops being the registry
 and becomes one encoder adapter.
 
@@ -424,15 +432,19 @@ and becomes one encoder adapter.
 ### 5.2 Types (one definition each; the drafts' `PerceptEngineSpec` → `ReceptorSpec`, `TrackSpec` → `AfferentTrackSpec`)
 
 ```python
-# Imported, not defined here. GL2a's leaf module (no maxim imports):
+# Imported, not defined here. The leaf module (no maxim imports), built at the autonomic plan's
+# post-fence resume stage (G17), not GL2a:
 #   from maxim.embodiment.event_id import PhysicalEventId
-# PhysicalEventId(agent_id: str, seq: int): frozen, SHAPE-FROZEN at 1.0 (CC3 path b);
-# __post_init__ rejects an empty agent_id and a negative seq; __str__ is "{agent_id}:{seq}".
+# PhysicalEventId(agent_id: str, session_id: str, seq: int): frozen, SHAPE-FROZEN at 1.0 (CC3 path b);
+# __post_init__ rejects an empty agent_id, an empty session_id and a negative seq;
+# __str__ is "{agent_id}:{session_id}:{seq}" (G15).
 # ONE join rule: InteroceptiveOutcome.pid, CauseRef.cause_pid, AfferentEvent.pid,
 # TemporalEvent.context["pid"] and GL4 training rows all join on the pid, never on the
 # executor's uuid4 invocation id (not persisted-stable).
 
-ProvenanceKind = Literal["experienced", "narrated", "imagined"]   # + "declared"/"reported": owner decision (§11, GL3.B1)
+ProvenanceKind = Literal["experienced", "narrated", "imagined", "apparatus"]   # apparatus: G16 (harness writes;
+                                                   # never trained on or credited); + "declared"/"reported":
+                                                   # owner decision (§11, GL3.B1)
 ReceptorClass  = Literal["exteroceptive", "interoceptive", "proprioceptive",
                          "nociceptive", "linguistic", "efference"]
 EncoderKind    = Literal["sensor_sum", "linguistic", "linguistic_affordance", "precomputed"]
@@ -497,17 +509,21 @@ class AfferentEvent:
 ```
 
 **Reconciliation choices (put to the four-lens review):**
-- **One `PhysicalEventId`, GL2a's.** One planning draft hashed `(engine_id, agent_id, engine_seq)` and
-  another used `(agent, seq)`. Owner decision G3 is `(agent, seq)`, and the type lives once, in
-  `maxim/embodiment/event_id.py`. The receptor is a field of the event, not of its identity, so one burn
+- **One `PhysicalEventId`, the autonomic plan's.** One planning draft hashed `(engine_id, agent_id,
+  engine_seq)` and another used `(agent, seq)`. Owner decision G3 was `(agent, seq)`, amended by G15 to
+  `(agent, session id, seq)`; the type lives once, in `maxim/embodiment/event_id.py`, built at the
+  post-fence resume stage (G17). The receptor is a field of the event, not of its identity, so one burn
   seen by two receptors (thermal sensor plus the derived drive) can still share or link ids through
   `caused_by`.
-- **One seq authority per agent at a time.** GL2a's per-agent `EventSequencer`, held by the agent's
-  primary `Embodiment`, assigns seq until GL3.B3; from GL3.B3 the scheduler's drain point assigns it and
+- **One seq authority per agent at a time.** The per-agent `EventSequencer` (built at the post-fence
+  resume stage, G17), held by the agent's primary `Embodiment`, assigns seq until GL3.B3; from GL3.B3 the scheduler's drain point assigns it and
   the sequencer becomes the scheduler's backing store (persisted high-water). Ephemeral, scene and foundry
   wrappers (`agent_id == ""`, `simulation/tools.py`'s `scene_emb`, the `simulation/foundry.py` wrappers)
-  are not the AUT: they mint no records and no ids. seq persists per agent from GL2a and resumes past the
-  saved maximum on load (the `Hippocampus._resume_capture_seq` rule).
+  are not the AUT: they mint no records and no ids. (Amended 2026-10-09 by G15 and G17:) GL2a mints no
+  pid; the type, the sequencer, its session-id source and the cross-session resume past the sequencer's
+  own high-water mark (the `Hippocampus._resume_capture_seq` rule), wired at both load seams
+  (`bio_stack.build_bio_stack`, `orchestrator._restore_aut_from_session`), land together after the fence
+  and before GL4 S1, so they are in place before GL3.B3's handover.
 - **`agent_id` lives once**, on the pid. The event carries no second copy that could disagree.
 - **No wall time on the event.** One draft had `wall_ts`. It is dropped: `experience_us` is the analysis
   clock, `Percept.timestamp` still exists for the LLM route, and a wall field would break byte-identical
@@ -577,7 +593,7 @@ not a C-fibre pain claim about hunger.
 | `language` | language cortex route (heard or read words) | 1 | 20 | pending proposal **only** for `multi_step` / `fallback` strategies | 1.0 | prompt, relay (word world, under `MAXIM_SUBSTRATE_PATH`) | 0 / latest | CLI, narrator, transcript → the §1.5 CLI-preemption rule, **declared, not changed** |
 
 **Fan-out example (one burn, after GL2b's `NociceptorSpec`).** `arms.thermal` crosses its noxious
-threshold. The thermal receptor emits one `PhysicalEventId("aut", 41)`, delivered on `reflex` (withdraw),
+threshold. The thermal receptor emits one `PhysicalEventId("aut", "<session>", 41)`, delivered on `reflex` (withdraw),
 `nociceptive_fast` (locus `arms`, delivered now, published onto PainBus under the nociceptor's failure mode,
 `drive:arms.thermal:noxious` as GL2b specifies it) and `affective_slow` (two passes later, summed with any
 follow-on heat, feeding GL2's deviation/urgency). The thermal value itself stays in the body channel
@@ -596,11 +612,12 @@ becomes a **required keyword** on `build_loop_run` (silent-no-op-into-types rule
 - `emit(receptor_id, *, locus, intensity, payload, provenance, caused_by=None) -> PhysicalEventId`: loop
   thread only. It assigns `seq` and enqueues one delivery per declared track with
   `due_pass = pass_index + spec.latency_passes`.
-- **Seq authority handover (GL3.B3's stage gate).** Before GL3.B3, GL2a's per-agent `EventSequencer` (held
+- **Seq authority handover (GL3.B3's stage gate).** Before GL3.B3, the per-agent `EventSequencer` built
+  at the post-fence resume stage (G17; GL2a mints nothing) (held
   by the primary `Embodiment`, lock-guarded for out-of-band records minted off the loop thread) is the only
   seq authority. At GL3.B3, seq assignment moves to the drain point: `emit` draws from the same per-agent
   counter, which becomes the scheduler's backing store, so the persisted high-water and its
-  resume-past-max-on-load rule carry over unchanged. One authority at a time: a guard test asserts that,
+  resume-past-max-on-load rule (both from the post-fence resume stage, G15) carry over unchanged. One authority at a time: a guard test asserts that,
   with the scheduler live, the `Embodiment` never assigns a seq itself, and that seqs stay unique and
   monotonic across the handover and across a save/load.
 - `edge_inbox.put(receptor_id, edge_local_seq, ...)`: **the only call legal from another thread.** It is a
@@ -769,8 +786,8 @@ provenance dict is recommended.
 |---|---|
 | Every percept enters EC through the registry | `scripts/lint_relay_only_encode.py` (M39: an AST lint allowing `SensorEncoder.encode_*` / `LinguisticEncoder.encode*` / `EC.pattern_complete_or_separate` only from `perception/` plus an allowlist naming each current caller with its reason). Until GL3.B1 ships: **process invariant, mechanization backlog M39**. |
 | Tracks are logical, never OS threads | M40: a grep/AST lint, no `threading.Thread` / `asyncio.create_task` in `perception/` except allowlisted hardware-edge adapters. Process invariant until built. |
-| One physical event, one pid, across every track; a consequence carries its cause | Structural guard: `AfferentEvent.__post_init__` rejects a missing pid / receptor / provenance, and GL2a's `PhysicalEventId.__post_init__` rejects an empty agent or negative seq; `tests/unit/test_afferent_tracks.py` pins the fan-out. |
-| One seq authority per agent at a time; seqs unique and monotonic across the GL3.B3 handover and a save/load | `tests/unit/test_afferent_tracks.py` (handover arm) + the GL2a sequencer's persistence test |
+| One physical event, one pid, across every track; a consequence carries its cause | Structural guard: `AfferentEvent.__post_init__` rejects a missing pid / receptor / provenance, and `PhysicalEventId.__post_init__` (from the post-fence resume stage, G17) rejects an empty agent, an empty session id or a negative seq; `tests/unit/test_afferent_tracks.py` pins the fan-out. |
+| One seq authority per agent at a time; seqs unique and monotonic across the GL3.B3 handover and a save/load | `tests/unit/test_afferent_tracks.py` (handover arm) + the resume stage's test through both real load paths (G15, G17) |
 | No provenance default; a narrated record is never relabelled experienced, through the registry, save/load, merge or ingest | Structural guard: the sentinel rejections in `ReceptorSpec` / `AfferentEvent` / `InteroceptiveOutcome` / `ActionContext` `__post_init__`; `tests/unit/test_ec_provenance.py` |
 | Total order, no wall time, cross-process determinism | `tests/unit/test_afferent_tracks.py` + the flag-on arm of `test_agent_loop_selection_golden.py` across two processes and two `PYTHONHASHSEED`s |
 | Preemption re-arms, at most once per pid | `tests/unit/test_tracks_preemption_loop.py` (livelock probe) + a `TestLoopWiringPins`-style pin on the handler |
@@ -831,7 +848,7 @@ stages of this plan: they are filed now and fixed in their own seams, under the 
 - **When:** only together with a consumer of provenance (owner decision G8): GL5's experiment, or the
   forward model's contamination guard (latent_forward_model.md). The registry does not land alone.
 - **Build:** `ReceptorSpec`, `Receptor`, `ReceptorRegistry.register/tick`, `AfferentEvent` (pids drawn
-  from GL2a's `EventSequencer`; the seq handover is GL3.B3's). The three `ModalityChannel`s registered as
+  from the resume stage's `EventSequencer`, G17; the seq handover is GL3.B3's). The three `ModalityChannel`s registered as
   receptors in today's code order (interoception, audio, world), with specs derived from body YAML;
   `_encode_current_clusters` and `propose_via_substrate` call `registry.tick`. Provenance per §5.7: the
   imagination and own-body affordance sites become receptors; `provenance=` is required on
@@ -1019,7 +1036,7 @@ The 1.4.0 minor-version heartbeat walks every Tier-1 row regardless (T4).
 refactor*: channel order and the active-channel count set `recommend_action`'s summed cluster term, so
 GL3.B1 preserves both, plus the empty-read rule. *Cross-thread `vital_metrics` tearing*: tracks fix
 ordering, not snapshots (**UNVERIFIED** impact) until GL3.B8. *Two threads in `evaluate_failures` under
-`--sim`* (§3.2): unlocked today; GL2a's sequencer lock guards ids only, and GL3.B3 moves the orchestrator
+`--sim`* (§3.2): unlocked today; the resume stage's sequencer lock (G17) guards ids only, and GL3.B3 moves the orchestrator
 thread behind the inbox. *Bio over-claim*: pass latency is ordinal only. *Divergence*: if two consecutive stages
 each surface a new failure mode, stop and audit the layer beneath (the body sensor resolvers, #1124 /
 #1156 / #1159, are the likely layer).
@@ -1030,8 +1047,9 @@ each surface a new failure mode, stop and audit the layer beneath (the body sens
 
 `runtime/agent_loop.py`, `runtime/loop_*.py` and `simulation/orchestrator.py` belong to **Session A**'s
 1.3.2 decomposition (slices 4 and 5 of `agent_loop` remain, then `start_simulation_mode`). Under G1, src
-work waits for the fence, with one exception, GL2a, which lives outside it (GL2a also builds
-`maxim/embodiment/event_id.py`, which this plan imports). For this plan:
+work waits for the fence, with one exception, GL2a, which lives outside it
+(`maxim/embodiment/event_id.py`, which this plan imports, is built at the autonomic plan's post-fence
+resume stage, G17, not GL2a). For this plan:
 
 | Stage | Touches | Waits for |
 |---|---|---|
@@ -1085,7 +1103,7 @@ The naming follows: `Receptor`, never a bare `Engine`, so it cannot collide with
 | M10 (amended 2026-10-07) | No grounding flag is active in an E1–E3 arm unless the arm declares it | M10's list already names GL3 track preemption (`runtime.afferent_tracks`); the GL3.B1 PR adds the credit-check flag to it. |
 
 The pid-and-cause rule and the no-provenance-default rule need no backlog row: they are **structural
-guards** (`AfferentEvent.__post_init__`, GL2a's `PhysicalEventId.__post_init__`, the sentinel rejections),
+guards** (`AfferentEvent.__post_init__`, `PhysicalEventId.__post_init__` from the resume stage, the sentinel rejections),
 cited as such in §5.10.
 
 ---
@@ -1094,8 +1112,9 @@ cited as such in §5.10.
 
 Decided, not re-opened: G6 (narrated is discounted, never experienced; the discount value is GL4's
 start decision), G8 (registry with provenance; GL3.B4 a declared arm or waits; L1/L2/L5/L7 filed as
-#1176–#1179), and the identity contract (`PhysicalEventId` from GL2a; one seq authority per agent; seq
-persisted per agent from GL2a; the orchestrator thread a declared edge).
+#1176–#1179), and the identity contract (`PhysicalEventId` (agent, session id, seq), built with its
+sequencer, session-id source and cross-session resume at the post-fence resume stage, G15 and G17; one
+seq authority per agent; the orchestrator thread a declared edge).
 
 | # | Decision | At | Recommendation |
 |---|---|---|---|
@@ -1107,7 +1126,7 @@ persisted per agent from GL2a; the orchestrator thread a declared edge).
 | TR6 | Track numbers: latency, priority, preemption rights, gain, refractory | GL3.B3, GL3.B4 | As tabled in §5.4; only `nociceptive_fast` / `affective_slow` built; the preemption right only at GL3.B4. |
 | TR7 | Latency in passes (ordinal) or experience µs | GL3.B3 | Passes. |
 | TR8 | Protective action after preemption: same-pass reselect, or reflex motor program first | GL3.B4 | Same-pass reselect, with the double-`note_active_clusters` question settled by the gate design pass. |
-| TR9 | (Settled by the identity contract: seq persists per agent from GL2a, resumed past the saved maximum on load.) | n/a | n/a |
+| TR9 | (Settled by the identity contract as amended by G15 and G17: no pid at GL2a; the type, the sequencer and its session-id source are built, persisted per agent and resumed past the saved maximum at the post-fence resume stage, before GL4 S1.) | n/a | n/a |
 | TR10 | Do GL3.B3, GL3.B4 and GL3.B6 fire T3-9? | GL3.B3, GL3.B4, GL3.B6 | Strict: yes; walk and re-run Exp 09's offline guard. |
 | TR11 | Provenance kinds beyond experienced / narrated / imagined: add `declared`? `reported`, or `narrated` + `caused_by`? | GL3.B1 | `declared` yes (the planning drafts' recommendation); `narrated` + `caused_by` (this plan's lean; no draft recommendation). |
 | TR12 | Refuse vs discount credit for **imagined** nodes (narrated is decided: G6) | GL3.B1 | Strict: refuse (invariant). |

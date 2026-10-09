@@ -9,14 +9,27 @@
 > today's selection pinned byte-identical**. **Nothing here is built until this plan's four-lens design
 > review (GL1) has no unfolded DO-NOT-BUILD.** `src/` work waits for the 1.3.2 decomposition fence
 > **except GL2a**, which is record-only (owner decision G1). GL2a's exempt file set is exactly:
-> `embodiment/body.py`, `embodiment/sem.py`, the new leaf `embodiment/event_id.py`,
-> `runtime/executor.py` (`_stamp_invocation`), `tools/base.py::ToolOutput` and
-> `runtime/bio_integration.py`. Anything outside that set waits for the fence (§5.2 says what that
-> means for narrated records).
+> `embodiment/body.py`, `embodiment/sem.py`,
+> `runtime/executor.py` (`_run_started` and `_stamp_invocation`, widened by G14 on 2026-10-09),
+> `tools/base.py::ToolOutput` and `runtime/bio_integration.py` (the leaf `embodiment/event_id.py` left
+> the set by G17: it lands at the post-fence resume stage). Anything outside that set waits for the
+> fence (§5.2 says what that means for narrated records).
+>
+> **GL1 four-lens review folded 2026-10-09.** Reports:
+> [confounding](reviews/grounding_gl1/confounding.md) · [bio-faithful](reviews/grounding_gl1/bio-faithful.md) ·
+> [wiring](reviews/grounding_gl1/wiring.md) · [environment](reviews/grounding_gl1/environment.md). Owner
+> decisions G9–G16 (DECISIONS.md 2026-10-09) settle their nine DO-NOT-BUILDs, and
+> [grounding.md](grounding.md) §GL1 names the sentence that resolves each; G17–G20 came with the GL1
+> code review the same day. In short: GL2a is the
+> tool-path record only (G9); it is action-scoped, read through the #1125 resolver and netted of drift
+> (G14); its relief and harm follow need (alliesthesia, §3.1); it carries **no event id**: the
+> `PhysicalEventId` type, the per-agent sequencer, its session-id source and the cross-session resume
+> land together at the post-fence resume stage, before GL4 S1 (G17, superseding G15's GL2a half); its
+> field is `repr=False` (#1189); and harness writes are `apparatus` (G16).
 
 **Owns (proposed):** the consequence record and its pure computation (`embodiment/sem.py`, beside the
 existing drive helpers); the identity type `PhysicalEventId` in the leaf module `embodiment/event_id.py`
-and the per-agent `EventSequencer` (GL2a; GL3 imports both); the out-of-band record at
+and the per-agent `EventSequencer` (built at the post-fence resume stage, G17; GL3 imports both); the out-of-band record at
 `embodiment/body.py::Embodiment.evaluate_failures`; one additive record-only field on
 `tools/base.py::ToolOutput`; the `NociceptorSpec` producer; the direction-aware corrective need; the cause
 stamp on PainBus context; the satiation producer.
@@ -61,13 +74,16 @@ that is the change that reaches the earned survival rows.
 | Motor credit (the positive learning that does exist) | `tool_bridge.py::_drive_potential_diff` → `drive_comfort_progress` (sign only, ±1) → `tool_dispatch` → `NAc.update_cluster_reward` | value-progress toward comfort, credited to the INTEROCEPTION cluster | LIVE, earned (T1-6, T1-7, T1-9) |
 | Cerebellar forward model | `embodiment/cerebellum.py` (`observe_from_action` from `tool_bridge.py`) | predicts raw sensor deltas per (entity, modulator, affordance, bucket); saved since #908, read side Dormant (#909) | write LIVE, read Dormant |
 
-**Two open defects already sit under this record.** #1125 (OPEN): `Executor._drive_pressure_snapshot`
-misses modulator-qualified drives (`arms.thermal`, `head.thermal`, `arms.pressure`). #1161 (OPEN): the
+**One defect still sits under this record, and one is closed.** #1125 is CLOSED (2026-10-08, #1164):
+`Executor._drive_pressure_snapshot` now reads modulator-qualified drives (`arms.thermal`, `head.thermal`,
+`arms.pressure`) through `embodiment/sem.py::_read_sensor_value` / `_resolve_sensor_slot` (the one
+resolver; `tool_bridge.py` only imports it). #1161 (OPEN): the
 affordance-credit reads in `tool_bridge.py` (`pre_values`, `_drive_potential_diff`,
 `_drive_progress_by_drive`) read drives by bare name, so a qualified drive's progress is never measured —
 and Exp 42's safe-vs-harm discrimination (T1-6) depends on that blindness (#1161's own measurement: with
 the read resolved and no gate change, `warmth_alpha_harm` `warm_self` flips from −1 to +1 on warms 3–5).
-Consequence for this plan: **the tool-path record today omits exactly the drive a burn moves.**
+Consequence for this plan: **today's `ToolOutput.drive_relief` omits exactly the drive a burn moves**, so
+the record reads drives itself (§3.1.4) and never refills that field.
 
 ### 1.2 What does not exist
 
@@ -84,14 +100,23 @@ Consequence for this plan: **the tool-path record today omits exactly the drive 
    breach_latch.pop(ds_name, None)`, both the homeostatic and entropic branches) and discarded.
    `reactions/types.py::ReactionKind` already reserves `"satiation"`, with no producer. (GL0 corrected the
    docstring and field comment; the class is SHAPE-FROZEN at 1.0 (CC3), so no field changed.) **Where that crossing
-   happens on the earned bodies:** on `minecraft_player` the homeostatic `oxygen` and `health` latches
-   clear on every surfacing and every regeneration **after a latched breach** (the homeostatic `elif
-   cleared:` branch; `oxygen` breaches below 14 bubbles), i.e. at Exp 60's own `escape_water`
-   contingency, since its training trials breach; `minecraft_player` `food` is entropic with
-   `satisfaction_threshold: 16.0`; `minecraft_bench` `d1` (Exp 56, T1-11) and `minecraft_bench57` `d1`
-   (Exp 57, T1-12; the same spec, copied verbatim) are entropic, drifting up, with
-   `satisfaction_threshold: 0.3`. Any producer at this site therefore lands on the earned survival and
-   transfer rows' own measured events (§3.5).
+   happens on the earned bodies** (corrected 2026-10-09, GL1 environment review DNB-2; G7's decision
+   stands): on `minecraft_player` the homeostatic `oxygen` and `health` latches clear on any recovery
+   **after a latched breach** (the homeostatic `elif cleared:` branch; `oxygen` breaches below 14 and
+   clears at ≥ 15.2, `_BREACH_HYSTERESIS` 0.2). On the earned campaigns that recovery is made by the
+   **apparatus**, not by the agent's `escape_water`. Exp 60/61 training is propose-only
+   (`scripts/survival_world/water_trial.py::WaterTrial.train`), and every episode ends in
+   `WaterTrial.rescue`: an RCON teleport to shore, a settle until oxygen ≥ `RECOVER_OXYGEN_MIN` (19), then
+   `heal()` (`/effect instant_health` + `/effect saturation`). Exp 60's probes are capped before the
+   breach (`probe_cap_s` 4.335 < `pain_edge_min_s` 5.085 in `docs/experiments/data/exp60_trials.jsonl`),
+   so a FEAR-arm escape mints no crossing. R3's respawns reset health and oxygen to 20. `minecraft_player`
+   `food` is entropic with `satisfaction_threshold: 16.0` and is not reachable natively in campaign time.
+   `minecraft_bench` `d1` (Exp 56, T1-11) and `minecraft_bench57` `d1` (Exp 57, T1-12; the same spec,
+   copied verbatim) are entropic, drifting up, with `satisfaction_threshold: 0.3`, and Exp 56's teacher
+   (`scripts/exp56/common.py`) and Exp 52's mother (`simulation/cradle_mother.py::reactive_mother_tick`)
+   write that drive directly before `NAc.credit_operant_reward`. Any producer at this site therefore lands
+   on the earned survival and transfer rows' own measured events (§3.5), mostly as **apparatus** writes
+   (G16, §3.1.4).
 3. **No record of out-of-band body change** (narrator writes, the Minecraft bridge's sensor writes,
    drift, an actor hitting the AUT). The Minecraft writes are seen only at the next loop-thread
    `evaluate_failures` call: `simulation/minecraft_harness.py::MinecraftSyncPump._run` writes sensors and
@@ -113,10 +138,16 @@ Consequence for this plan: **the tool-path record today omits exactly the drive 
 | the reflex dispatch (`integration/bio_enrichment.py`'s `_reflex_damage_tool` / `_reflex_sensor_tool`: separate instances of the same `DamageComponentTool` / `SetEntitySensorTool` classes, wired into the AUT's `BioEnrichmentPipeline`) | the agent loop (`sim.aut`): it runs inside the AUT's `enrich` | the loop thread, not the edge; its consequences are still **narrated** (G6) |
 | `simulation/foundry.py`; `simulation/tools.py` `scene_emb` (an ephemeral `Embodiment` around a scene entity) | either | not the AUT: these wrappers mint no record and no id |
 | `embodiment/percepts.py::EmbodimentPerceptSource` | — | no production constructor |
+| `simulation/fixture_orchestrator.py` (`--sim scenarios/substrate/*.yaml`) | — | calls no `evaluate_failures` (GL1 wiring review N3) |
 
 Two pieces of mutable state are touched from both threads today, with no lock in `embodiment/body.py`:
-the entity-owned breach latch `Entity.drive_breach_severity` and (once GL2a adds it) the per-entity
-previous-snapshot slot. §3.1.2 adds the lock.
+the entity-owned breach latch `Entity.drive_breach_severity` and (once the out-of-band producer adds it)
+the per-entity previous-snapshot slot. The lock over them lands **with the out-of-band producer, after
+the fence** (G9, §3.1.2); GL2a takes no lock (it mints nothing, G17), and the sequencer the post-fence
+resume stage builds takes only its own private lock. `PainBus._suppress_bridge`
+is a plain instance flag, not thread-local, so with two publishing threads one thread's flag can
+suppress, or fail to suppress, the other's bridge dispatch: pre-existing, and added to GL3.B0's
+two-thread census (wiring N2).
 
 **Pain ingress census.** Body pain also enters PainBus / ReactionBus without passing
 `evaluate_failures`: `DamageComponentTool` publishes a `PainSignal` directly, proportional to damage,
@@ -128,7 +159,10 @@ ReactionBus); `runtime/sim_adapter.py::next_observation` turns a `pain_signal` p
 Network's `bridges/pain_bridge.py::PainCircuitBridge` (robot). The public `api.py` `"pain_signal"` event
 subscribers observe only `PainSignal`s on the agent bus (`bus.subscribe(PainSignal, _on_pain)`); the
 Reactions put straight onto ReactionBus (`InjectPainTool` → `conversational_source.inject_pain`,
-`sim_adapter.next_observation`) never become a `PainSignal`, so those subscribers never see them. The record built here sees only what reaches `evaluate_failures` or
+`sim_adapter.next_observation`) never become a `PainSignal`, so those `api.py` subscribers never see
+them. PainBus's own direct subscribers (memory, NAc, Wire 2, Wire 4) do receive such pain Reactions,
+lossily, through `PainBus._bridge_reaction_to_pain_subs`, whenever they are published on that
+`pain_bus.reaction_bus` (wiring N1). The record built here sees only what reaches `evaluate_failures` or
 the tool path; every other ingress is listed, not covered, and the census is re-checked in GL1.
 
 ### 1.3 The regulatory defects
@@ -158,8 +192,14 @@ YAML models only the thermoreceptor.
 **R-2 — heat yields no corrective need.** `sem.py::corrective_need_intensity` returns a value only for
 homeostatic deficits below `set_point − comfort_band` and for entropic "down" drives; above the set point
 it returns `None`. `runtime/substrate_proposal.py::_DRIVE_CORRECTIVE_NEEDS` maps `temp`/`thermal` →
-`"cold"` only. Hypothalamic thermoregulation is two-sided. Impact today is **latent**: I found no prereg
-naming an overheated agent (UNVERIFIED that none measures one).
+`"cold"` only. Hypothalamic thermoregulation is two-sided. Impact today: no prereg names an overheated
+agent (UNVERIFIED that none measures one), but the need is **not latent** in the cradle scene: a shipped
+cooling act exists (`items/cradle_cool_air.yaml`: `draft.feel` takes core −0.2 and arms −0.15; its
+`shelter` warms, +0.05), and `simulation/arcs.py` activates `cradle_cool_air` beside the fire pit in the
+`exploration` **phase** of the `cradle` and `cradle_prelinguistic` arcs (and the `_deceptive` arcs built
+from their phases); entities persist across phases, so it stays in the scene after that. Whether a heat need gets a consumer there is decided by its affinity keywords
+(a `"cool"` keyword would match the `cool_air_*` tool names), so the keyword choice is the switch between
+latent and live (GL1 environment review SF-4).
 
 **R-3 — Wire-2 percept valence is keyed on the SUFFERER.** `pain_bus.py::create_percept_valence_subscriber`
 keys `(agent_id, context["entity_name"] or entity_type, failure_mode)`; `_publish_pain` /
@@ -208,8 +248,8 @@ PainBus / ReactionBus (pain and the reserved `"satiation"` kind), and the existi
 | Need | Rides on | Must add — and why existing infrastructure cannot do it |
 |---|---|---|
 | Body-consequence record | `drive_pressure`, `drive_span`, `drive_comfort_progress`, `classify_pain`, `EncodingSignals.extra`, `ToolOutput` additive fields | One frozen record + one pure function. `EncodingSignals` cannot be the record: it validates per-drive values as unsigned `[0,1]`, so signed delta and deviation cannot live there, and it exists only at capture sites, not at out-of-band body change. |
-| Out-of-band record | `evaluate_failures`; the entity-owned latch pattern | A per-entity previous-snapshot slot (`__slots__`, never serialized, like `drive_breach_severity`), a bounded queue and a pull, `Embodiment.drain_outcomes()`. No bus: the loop pulls. |
-| Event identity | `memory/hippocampus.py::Hippocampus._resume_capture_seq` (the resume-past-the-saved-maximum rule) | A per-agent `EventSequencer` and `PhysicalEventId`. Hippocampus `capture_seq` numbers memories, not physical events (one event can yield no capture or several), and the executor's `uuid4` invocation id is neither deterministic nor persisted-stable. |
+| Out-of-band record (after the fence, G9) | `evaluate_failures`; the entity-owned latch pattern | A per-entity previous-snapshot slot (`__slots__`, never serialized, like `drive_breach_severity`), a bounded queue and a pull, `Embodiment.drain_outcomes()`. No bus: the loop pulls. |
+| Event identity | `memory/hippocampus.py::Hippocampus._resume_capture_seq` (the resume-past-the-saved-maximum rule, reused by the post-fence resume stage, G15) | A per-agent `EventSequencer` and `PhysicalEventId`, built at that resume stage (G17), not GL2a. Hippocampus `capture_seq` numbers memories, not physical events (one event can yield no capture or several), and the executor's `uuid4` invocation id is neither deterministic nor persisted-stable. |
 | Burn nociception | channel-1/2 drive machinery, B8, the one parser, `classify_pain` | `NociceptorSpec`, because drive specs are SHAPE-FROZEN and a standard `failure_modes:` entry floods PainBus and bypasses B8 (§3.2). |
 | Heat need | `_read_drive_states`, `_DRIVE_TOOL_AFFINITIES` | A direction-aware wrapper; `corrective_need_intensity` must stay byte-identical (it is named by T1-6). |
 | Positive producer | ReactionBus, `"satiation"` `ReactionKind`, the body latch, the Phase 5 relief store | Structurally nothing — one emission at the latch-clear site. That it needs no mechanism is exactly why its blast radius is the whole credit path (§5). |
@@ -232,30 +272,43 @@ signal (later stages) and the forward model's target.
 @dataclass(frozen=True, slots=True)
 class InteroceptiveOutcome:
     """CC3 path (a): defaults on every field + extra (JSON-only; __post_init__ rejects collisions).
-    The defaults exist only to satisfy path (a); __post_init__ REJECTS the sentinels (pid None,
-    provenance ""), so no record can exist without identity or provenance. Built ONLY through
-    sem.interoceptive_outcome(...), whose identity keywords are required (§3.1.4)."""
-    pid: PhysicalEventId | None = None      # REQUIRED: the join key (agent_id, seq); tracks fan out on it
+    The defaults exist only to satisfy path (a); __post_init__ REJECTS the sentinel provenance "",
+    so no record can exist without provenance. Built ONLY through sem.interoceptive_outcome(...),
+    whose identity keywords are required (§3.1.4). GL2a's record has NO pid field (G17); the
+    post-fence resume stage adds `pid` (additive under path (a)) and from then rejects pid None."""
+    # pid: PhysicalEventId | None = None    # added at the post-fence resume stage (G17), REQUIRED from
+    #                                       # then: the join key (agent_id, session_id, seq; G15)
     invocation_id: str = ""                 # executor uuid4, in-process diagnostic only; NEVER a join key
     agent_id: str = ""
     body_path: str = ""                     # whose body (drive names collide across bodies)
-    provenance: str = ""                    # REQUIRED: experienced | narrated | imagined; no default
+    provenance: str = ""                    # REQUIRED: experienced | narrated | imagined | apparatus (G16)
     sufferer: str = ""                      # entity path whose body changed (today's Wire-2 key)
     cause: CauseRef | None = None           # who/what did it; None = unknown / world
-    # per drive, sorted by name, only drives with a declared range (never imputed):
+    # The PER-DRIVE BLOCK, sorted by name, only drives with a declared range (never imputed). On the
+    # tool path ONLY the invoked affordance's own declared drives (G14). Persisted in full beside the
+    # core (§3.1.4), so a later schema can be recomputed from the replay buffer.
+    pressure_before: tuple[tuple[str, float], ...] = ()  # == existing drive_pressure (unsigned [0,1])
+    pressure_after: tuple[tuple[str, float], ...] = ()   # drive_pressure after, NET of declared drift
+    drive_delta: tuple[tuple[str, float], ...] = ()      # SIGNED [-1,1]: drive_comfort_progress / drive_span,
+                                                         # net of declared drift: the physical description,
+                                                         # not the valence (+ toward the set point)
     deviation_after: tuple[tuple[str, float], ...] = ()  # SIGNED [-1,1]; homeostatic (v - set_point)/span
                                                          # (+ above, - below); entropic: drive_pressure (>=0)
-    drive_delta: tuple[tuple[str, float], ...] = ()      # SIGNED [-1,1]: drive_comfort_progress / drive_span
-                                                         # (+ toward comfort = relief, - away = harm)
-    pressure_before: tuple[tuple[str, float], ...] = ()  # == existing drive_pressure (unsigned)
-    satiated: tuple[str, ...] = ()          # drives whose breach latch CLEARED in this event
+    caused: tuple[tuple[str, bool], ...] = ()            # per drive: True = this action's declared effect
+                                                         # (every tool-path entry); False = felt (out-of-band)
+    satiated: tuple[str, ...] = ()          # declared drives whose latch cleared in THIS invocation's own
+                                            # evaluation (the two `elif cleared:` sites only)
     # body-agnostic core, each [0,1]:
-    nociception: float = 0.0                # max PainKind.NOCICEPTIVE intensity (ANTICIPATORY excluded)
+    nociception: float = 0.0                # max PainKind.NOCICEPTIVE intensity (ANTICIPATORY excluded);
+                                            # for drive:health, THIS event's injury (G11; see below)
     drive_pain: float = 0.0                 # max PainKind.DRIVE intensity
-    relief: float = 0.0                     # max positive drive_delta
-    harm: float = 0.0                       # max |negative drive_delta|
-    urgency: float = 0.0                    # v1: max pressure AFTER (§3.1.3)
+    relief: float = 0.0                     # max over drives of the DROP in drive_pressure (alliesthesia)
+    harm: float = 0.0                       # max over drives of the RISE in drive_pressure;
+                                            # TISSUE_DAMAGE_DRIVES excluded (health counts once, G11)
+    urgency: float = 0.0                    # v1: max pressure AFTER (G12, §3.1.3)
     extra: dict = field(default_factory=dict, hash=False, compare=False)
+    # extra on the tool path: drift_dt_s, the per-drive drift netted out, the observed (un-netted) delta,
+    # nociception_basis ("caused_or_felt" until the bridge split lands, below)
 
 @dataclass(frozen=True, slots=True)
 class CauseRef:
@@ -263,29 +316,70 @@ class CauseRef:
     entity: str = ""        # YAML noun of the causing entity ("fire_pit", "zombie"); never the sufferer
     affordance: str = ""    # "touch", "fire_breath"
     tool: str = ""          # tool signature when a tool call caused it
-    cause_pid: PhysicalEventId | None = None   # the physical event that caused it, when one did
+    # cause_pid: PhysicalEventId | None = None   # added at the post-fence resume stage (G17): the
+    #                                            # physical event that caused it, when one did
     extra: dict = field(default_factory=dict, hash=False, compare=False)
 
-# embodiment/event_id.py — a leaf module with no maxim imports, built at GL2a; GL3 imports it
+# embodiment/event_id.py — a leaf module with no maxim imports, built at the post-fence resume stage
+# (G17), not GL2a; GL3 imports it
 @dataclass(frozen=True, slots=True)
 class PhysicalEventId:
     """CC3 path (b): SHAPE-FROZEN at 1.0 (CC3) — an identity; a new field would change equality and
     break every persisted join. Deterministic: no uuid, no wall time (G3). __post_init__ rejects an
-    empty agent_id and a negative seq. str() is the join form "{agent_id}:{seq}"."""
+    empty agent_id, an empty session_id and a negative seq. str() is the join form
+    "{agent_id}:{session_id}:{seq}" (G15 shape; the type, the sequencer and the resume land together,
+    G17)."""
     agent_id: str
-    seq: int                # per-agent monotonic, minted only by that agent's EventSequencer
+    session_id: str         # G15; its deterministic source is asked at the resume stage's start (G17)
+    seq: int                # monotonic within the session, minted only by that agent's EventSequencer
 ```
 
 **Computation is pure and lives beside the existing helpers** in `embodiment/sem.py`
-(`interoceptive_outcome(specs, ranges, before, after, pains, latch_cleared, *, pid, cause, provenance)`),
-reusing `drive_span`, `drive_pressure`, `drive_comfort_progress` and `classify_pain`. The positive part of
-`drive_delta` equals the existing `relief_fraction_from_progress` by construction; a guard pins `relief ==
-max(drive_relief)` so the two cannot diverge (the memory-strength `sum(dict) == scalar` pattern).
+(`interoceptive_outcome(specs, ranges, before, after, drift, pains, cleared, *, cause, provenance)`;
+`pid` joins the required keywords at the post-fence resume stage, G17),
+reusing `drive_span`, `drive_pressure`, `drive_comfort_progress` and `classify_pain`, plus one pure drift
+helper factored from `embodiment/body.py::Embodiment.tick_vital_drift`'s arithmetic (G14), which
+`tick_vital_drift` is reimplemented on, byte-identical over a value × `dt` grid on every shipped body.
 
-**`drive:health` is carried as nociception**, consistent with `TISSUE_DAMAGE_DRIVES`, and the record's
-docstring says it is an engineering proxy for injury (nociception_layer taxonomy note: hypoxic health loss
-is near-painless). **ANTICIPATORY pain is excluded** from every field: a prediction is not an outcome
-(nociception_layer principle 4).
+**Relief and harm follow need (alliesthesia; GL1 bio-faithful review DNB-1).** A body-consequence code
+that scores the same physical change the same way whatever the body's state is the caricature: warmth on
+the skin is pleasant when the core is cool, neutral when the body is comfortable, and food is rewarding
+when hungry and neutral when sated (Cabanac 1971). So the core reads the **change in `drive_pressure`**
+per drive, `relief = max_d (p_before − p_after)⁺` and `harm = max_d (p_after − p_before)⁺`.
+`sem.py::drive_pressure` is already 0 inside a homeostatic comfort band and on the satisfied side of an
+entropic drive, so this is first-order alliesthesia with no new formula. `drive_delta`, the raw signed
+progress over span, stays in the per-drive block as the physical description. Worked through the shipped
+YAML: `fire_pit.warm_self` after two `cool_air.feel` gives harm 0 and relief ≈ 0.27; `blanket.touch` at
+rest gives 0; sated eating gives 0.
+
+**The relief pin, restated so it can fail** (wiring D1, confounding DNB-1). The existing trio is never
+refilled (§3.1.4). The guard is: **the positive part of the record's `drive_delta` equals
+`ToolOutput.drive_relief` for every drive present in `drive_relief`** (within float tolerance). The two are
+computed by different code from different reads: the trio diffs around `_apply_sensor_deltas` inside the
+tool, by bare name, before drift; the record diffs the executor's `_run_started` snapshot against the
+post-run read through the resolver, net of the drift the body applied. So the pin fails if the drift
+netting is wrong, if the resolver reads another slot, or if a foreign write lands inside the window, and
+its deletion probe (remove the netting) re-reds it on the `_StepClock` 20 s case (§5.2). Qualified drives
+are absent from `drive_relief` while #1161 is open: that difference is a named, #1161-scoped divergence
+with its own `xfail(strict=True)` gate ("the record carries `arms.thermal`; `drive_relief` does not"),
+which flips when #1161 lands.
+
+**Health counts once (owner decision G11).** `drive:health` is carried as nociception, consistent with
+`TISSUE_DAMAGE_DRIVES`, and is excluded from `harm`, so one transduction enters valence once. Its
+nociception is **this event's injury**, the normalised Δhealth loss, not `drive_pain_for_value`'s level
+(which codes the accumulated deficit: losing 1 hp at 11 hp would read 1.0, at 15 hp 0). The record's
+docstring says it is an engineering proxy for injury (hypoxic health loss is near-painless); when the
+damage source is unknown, `extra["injury_cause_unknown"]` is set so GL4 can separate drowning from contact
+damage (the Minecraft bridge's `damage` event carries no source). **ANTICIPATORY pain is excluded** from
+every field: a prediction is not an outcome (nociception_layer principle 4).
+
+**Caused vs felt pain** (bio-faithful SF-2). `ToolPainBridge.pop_invocation_pain` returns the pain the
+action caused when it caused any, else the pain the body felt while it ran. A forward model predicts
+reafference, so the two must be told apart. Splitting them needs an additive accessor in
+`bridges/tool_pain_bridge.py`, which is outside G1's exempt set, so it lands at the out-of-band producer
+stage (after the fence, with the narrated and apparatus scopes, G9). Until then
+the record carries `extra["nociception_basis"] = "caused_or_felt"`, and GL4 S0b counts those records
+separately and trains on them only after the split.
 
 #### 3.1.1 The forward-model projection (reconciled with `latent_forward_model.md`)
 
@@ -294,15 +388,29 @@ draft's separate `ConsequenceCode` is dropped).
 `InteroceptiveOutcome.as_vector(schema_id="ans-v1")` returns:
 
 - **Core, fixed 6-d, body-agnostic:** `[valence, nociception, drive_pain, relief, harm, urgency]`, with
-  `valence = clip(relief − harm − nociception, −1, 1)` as the v1 innate prior (weighting is an owner
-  decision, §8). This is what lets a Minecraft burn and a cradle burn land near each other.
+  `valence = clip(relief − harm − nociception, −1, 1)`, unweighted, the v1 innate prior (owner decision
+  G11). This is what lets a Minecraft burn and a cradle burn land near each other.
 - **Per-body drive block:** `deviation_after ‖ drive_delta` in the body's declared drive order. Its
   dimension varies by body, so the predictor either trains per body or predicts the core only;
   `schema_id` + `body_path` fix the order and a mismatch refuses.
+- **The forward-model target is the change-only subset** (bio-faithful SF-3). The core mixes changes
+  (relief, harm, nociception) with levels (urgency and `drive_pain` are levels; so is `deviation_after`).
+  Levels are largely predictable from the sensed context, so a predictor could score by copying the
+  situation. The target projection is therefore the phasic dimensions; the levels are passed in as
+  context. The record keeps every field; only the projection changes, and `latent_forward_model.md`
+  carries the matching context-copy baseline.
+- **Gates read per-dimension signs** (`nociception`, `harm`, `relief`), never `valence` alone; valence is
+  reported beside them as the innate-prior summary (confounding SF-2).
+- **The schema id moves with the target's meaning** (confounding SF-2). GL2b(ii) changes what
+  `nociception` means for the same contact (the infant burn goes from DRIVE 0.04 to NOCICEPTIVE), so it
+  bumps the schema id (`ans-v2`), and no training or evaluation set spans two schema ids (S0b and S2
+  refuse a mixed set). Because the per-drive block is persisted, an `ans-v1` capture can be re-projected
+  under `ans-v2`.
 
 **One join rule everywhere:** a training pair joins on `pid`, on the tool path and out-of-band alike,
 and on nothing else. The executor's `uuid4` invocation id is not persisted-stable and is never a join
-key; on the tool path `Executor._stamp_invocation` mints the `pid` and stamps it on the `ToolOutput`
+key; from the post-fence resume stage (G17; GL2a records carry no `pid` and never train), on the
+tool path `Executor._stamp_invocation` mints the `pid` and stamps it on the `ToolOutput`
 (inside `ToolOutput.interoceptive_outcome`, beside the in-process invocation id) so the forward model's
 `ActionContext` and this record carry the same one. While the target is this fixed code, the predictor
 is supervised regression in a JEPA shape (owner decision G2).
@@ -310,23 +418,56 @@ is supervised regression in a JEPA shape (owner decision G2).
 #### 3.1.2 Identity: `PhysicalEventId`, one sequencer per agent, one declared cross-thread edge
 
 A burn is one physical event seen on more than one `AfferentTrack` (GL3: nociceptive-fast and
-affective-slow). Every track copy and this record carry the same `PhysicalEventId(agent_id, seq)`. The
-contract (canonical across the grounding plans):
+affective-slow). Every track copy and this record carry the same `PhysicalEventId(agent_id, session_id,
+seq)`. The contract (canonical across the grounding plans; amended 2026-10-09 by G9, G15 and G17).
+**Everything in this subsection lands at the post-fence resume stage (G17), not GL2a**: GL2a's record
+carries no event id, and records written before that stage are never forward-model training data.
 
-- **One type, one leaf module, built at GL2a.** `PhysicalEventId` lives in `embodiment/event_id.py`, a
-  leaf with no `maxim` imports. GL3's relay imports it; it does not define it.
+- **One type, one leaf module, built at the resume stage.** `PhysicalEventId` lives in
+  `embodiment/event_id.py`, a leaf with no `maxim` imports. GL3's relay imports it; it does not define it.
 - **One seq authority per agent.** A per-agent `EventSequencer`, held by the agent's **primary**
-  `Embodiment`, is the only minter. Ephemeral, scene and foundry wrappers (`agent_id == ""`, the
-  `simulation/tools.py` `scene_emb`, the `simulation/foundry.py` wrappers) are not the AUT: they mint no
-  record and no id. `seq` is assigned only when a record is **emitted** (latched), so it is stable under
-  `_StepClock` lockstep tests.
-- **seq persists per agent from GL2a.** Each record's `str(pid)` rides into the persisted trace through
-  `EncodingSignals.extra["interoception"]`; on load the sequencer resumes past the maximum `seq` found
-  there, the rule `memory/hippocampus.py::Hippocampus._resume_capture_seq` already applies to
-  `capture_seq`. The load seam that hands the restored maximum to the attached `Embodiment` is named in
-  GL2a's design pass.
-- **GL3 handover.** At GL3.B3, seq assignment moves to the relay scheduler's drain point and the GL2a
-  counter becomes the scheduler's backing store. One authority at a time: the handover is GL3.B3's stage
+  `Embodiment`, is the only minter. "Primary" means the `Embodiment` that
+  `runtime/bootstrap.py::build_executor` constructs with a non-empty `agent_id`, and at most one live
+  sequencer per `agent_id` per process is asserted, so a harness that builds two AUTs (or rebuilds one)
+  fails loudly instead of running two seq authorities (wiring N4). The stage must define **release**
+  (bio session end and executor shutdown release the agent's sequencer), name the two harnesses that
+  rebuild one `agent_id` in one process today (`scripts/survival_world/r3_run.py`,
+  `scripts/survival_world/exp61_run.py`) and how each releases before it rebuilds, and add a
+  `tests/conftest.py` autouse reset of the live-sequencer registry (G17). Ephemeral, scene and foundry wrappers
+  (`agent_id == ""`, the `simulation/tools.py` `scene_emb`, the `simulation/foundry.py` wrappers,
+  `maxim.create.embodiment()`, the `scripts/orient_substrate/*` probes' `Embodiment(root=...)`) are not
+  the AUT: they mint no record and no id, so public-API users of `create.embodiment()` get no record
+  (stated, wiring S3). `seq` is assigned only when a record is **emitted**, so it is stable under
+  `_StepClock` lockstep tests. The sequencer serialises minting with its own private lock (G9).
+- **When a pid is minted** (wiring S3). Only when the invocation reached `tool.run` **and**
+  `self.embodiment.agent_id` is non-empty. `_stamp_invocation` also runs on the inactive-scene,
+  unregistered-tool and exception paths, and those mint nothing. A synthetic `ToolOutput` built by a
+  wrapper (`runtime/fear_gate.py::FearGatedExecutor` returns a new one on a block) carries no record,
+  which is correct.
+- **No pid at GL2a; the identity and its resume land together (owner decision G17, superseding G15's
+  GL2a half).** No deterministic session id exists today: every session id is wall-clock
+  `time.strftime` (`simulation/orchestrator.py`, `simulation/research_orchestrator.py`,
+  `simulation/report.py`, `runtime/loop_setup.py`, `runtime/agent_loop.py`), the minting sites have none
+  in scope (`runtime/bootstrap.py::build_executor` takes no session parameter), and R3 and Exp 61
+  rebuild the same `agent_id` in one process. So GL2a mints nothing, and **the type, the sequencer, its
+  session-id source and the cross-session resume land together after the fence and before GL4 S1**,
+  the first stage that persists pids where they are joined across sessions (the Cerebellum payload,
+  `ActionContext`). The session-id source is asked at that stage's start: deterministic under
+  `_StepClock` (no uuid, no wall time, G3); who mints it; its scope; `--resume-sim` behaviour; and a new
+  required keyword on `build_executor`, with its callers. From that stage each record's `str(pid)`
+  rides into the persisted trace through `EncodingSignals.extra["interoception"]`. The resume resumes from the sequencer's **own** high-water mark (a top-level key in
+  an existing per-agent persisted file that carries `_format_version`, written at every save), taken as
+  the max of that mark and any pid seq seen in a pid-bearing store. It does not resume from the
+  Hippocampus traces alone, which lose pids: the capture queue drops its oldest entry when full, the
+  store evicts and compresses, the PLANNING-approved, parallel and retry `executor.execute` paths never
+  capture, and `load_persisted=False` agents never resume (wiring D2). It is wired at **both** load
+  seams, `runtime/bio_stack.py::build_bio_stack` (which restores the Hippocampus before
+  `build_executor` builds the `Embodiment`) and `simulation/orchestrator.py::_restore_aut_from_session`
+  (which runs on `--resume-sim` after the AUT executor exists). Its gate drives both real load paths and
+  never hand-seeds the sequencer; it fires T1-16's "Hippocampus save/restore or the resume path"
+  wording if it touches the Hippocampus load or `RESUME_STORES` (wiring S9).
+- **GL3 handover.** At GL3.B3, seq assignment moves to the relay scheduler's drain point and the
+  resume stage's counter becomes the scheduler's backing store. One authority at a time: the handover is GL3.B3's stage
   gate, with a test that the two never both assign.
 - **The orchestrator thread is a declared edge.** The narrator tools (`OrchestratorActorTool`,
   `DamageComponentTool`, `SetEntitySensorTool`, registered on `orch_registry`) call
@@ -334,50 +475,128 @@ contract (canonical across the grounding plans):
   running the orchestrator agent's loop) while the AUT loop runs on `sim.aut` (§1.2a). The reflex
   dispatch's instances of the same classes run inside the AUT's `enrich`, on the loop thread. The agent loop is therefore **not** the only caller, and
   the Minecraft bridge is not the off-thread one (`MinecraftSyncPump._run` never calls
-  `evaluate_failures`). From GL2a, `evaluate_failures`' latch, snapshot and mint section runs under one
-  `Embodiment`-owned `threading.RLock` (re-entrant, per the CLAUDE.md threading rule: the section
-  publishes pain synchronously, and whether any subscriber re-enters the body is checked in the design
-  pass, not assumed), which guards the state both threads touch —
-  `Entity.drive_breach_severity` and the per-entity snapshot slot — and the sequencer. No lock exists in
-  `embodiment/body.py` today; adding it serialises an existing race and is called out in the GL2a PR.
+  `evaluate_failures`). **GL2a adds no lock over `evaluate_failures`** (owner decision G9) and mints
+  nothing (G17). From the resume stage, tool-path minting runs wherever the AUT executor runs, and
+  narrator calls mint nothing, so the sequencer's own private lock is enough. **With the out-of-band producer, after the fence,** `evaluate_failures`'
+  latch, snapshot and mint section runs under one `Embodiment`-owned `threading.RLock` (re-entrant, per
+  the CLAUDE.md threading rule: the section publishes pain synchronously, and whether any subscriber
+  re-enters the body is checked in that stage's design pass, not assumed), which guards the state both
+  threads touch (`Entity.drive_breach_severity` and the per-entity snapshot slot). No lock exists in
+  `embodiment/body.py` today; adding it serialises an existing race and changes how narrator-thread pain
+  publication interleaves, so it is called out in that stage's PR, which also names the out-of-band
+  producer its two-thread test exercises (wiring S2).
   From GL3.B3, orchestrator-thread transduction posts into the relay's edge inbox, drained once per
   pass; GL3.B0's census and GL3.B3's gate 6 assert this thread identity.
 
 #### 3.1.3 Urgency
 
-Bio: urgency is need × imminence. v1 = `max(pressure_after)` (computable today, no clock). The slope term
+Bio: urgency is need × imminence. v1 = `max(pressure_after)` (computable today, no clock; owner decision
+G12). The slope term
 (Δpressure per experience-clock µs, or time-to-deprivation for drifting entropic drives) waits for GL3's
 timing work: world-owned Minecraft drives declare `drift_rate: 0` (`minecraft_player.yaml`), so imminence
 must be measured, and the experience clock is the only legitimate clock (bio-memory brief).
 
 #### 3.1.4 Where it is produced, and the provenance and forward-compat path
 
-- **Tool path:** `Executor._stamp_invocation` already holds pressure-before, relief and pain. One additive
-  field, `ToolOutput.interoceptive_outcome`, record-only. The existing trio
-  (`drive_pressure_before`, `drive_relief`, `pain`) is filled from the same computation and stays (CC3;
-  consumers read them). It is a `ToolOutput` **field**, stamped by the executor like that trio, not a
-  `side_effects` key: `docs/user/tool_side_effects.md` registers what a tool's `execute()` reports, and
-  tools never set this. So it needs no registry row. The forward model's `ActionContext` is built inside
-  the tool but attached by the same executor stamp; this plan recommends it ride the same way (a field,
-  not a registry key), and that decision is `latent_forward_model.md` S1's.
-- **Out-of-band path:** `evaluate_failures` compares against the previous evaluation's per-entity snapshot
-  and queues a record; `Embodiment.drain_outcomes()` returns them. Emission is **latched like channel 2**:
-  band entry/exit, deepening past `_BREACH_DEEPEN_FRACTION`, a nociceptive event, or a satiation — never
-  per tick.
-- **`drain_outcomes()` lifecycle.** The production drainer is the loop capture
-  (`runtime/tool_dispatch.py` → `runtime/bio_integration.py::capture_loop_action`) on the agent-loop
-  thread, in substrate-primary and LLM-primary alike; in `--sim` that is the AUT loop on `sim.aut`, which
-  also drains the records the narrator's tools queued from the orchestrator thread. The queue is **bounded**: on
-  overflow it drops the oldest record, counts the drop and logs it (never silent). Ephemeral wrappers
-  never queue (§3.1.2). A body attached where no loop capture runs queues up to the bound and then
-  drops with the count; the GL2a design pass names the bound and lists such runtimes.
-- **Consumers in GL2a:** a trace line, and the loop capture writing the core plus `str(pid)` and
-  `provenance` into `EncodingSignals.extra["interoception"]` (no `EncodingSignals` field change). No
-  reader acts. It is still a change to the **persisted memory record**: `EncodingSignals.to_dict`
-  flattens `extra` into the trace the Hippocampus saves, so every loop capture's saved shape grows by
-  this key (blast radius in §5.2).
-- **Provenance (owner decision G6).** Three kinds: `experienced`, `narrated`, `imagined` (`declared` /
-  `reported` stay open at GL3.B1, the registry+provenance stage). Consequences written by the narrator's tools
+- **Tool path (owner decision G14; GL1 wiring D1, confounding DNB-1, environment DNB-1).** One additive
+  field, `ToolOutput.interoceptive_outcome`, record-only, declared
+  `field(default=None, repr=False)` (#1189, below). Its window and drive set are fixed:
+  - **The window** runs from the raw before-snapshot `Executor._run_started` takes just before
+    `tool.run` (beside today's `pressure_before`) to the read `Executor._stamp_invocation` makes after
+    `tool.run` returns.
+  - **The drives** are only the invoked affordance's own declared drives (the key set
+    `tool_bridge.py::_drive_progress_by_drive` iterates), read through
+    `embodiment/sem.py::_resolve_sensor_slot` / `_read_sensor_value`, so `arms.thermal` is never omitted.
+    Body-wide change outside that set is not on the tool-path record; it belongs to the out-of-band
+    producer. On `minecraft_player` the bridge affordances declare no `self_effect` (`escape_water`
+    declares none; `eat` declares a stub `food` that the live readback owns), so a Minecraft tool-path
+    record carries an essentially empty drive block, and every Minecraft body consequence, the
+    post-return oxygen refill included, waits for the out-of-band producer (wiring S5, environment SF-2).
+  - **Drift is netted out.** `evaluate_failures` applies `tick_vital_drift(now − _last_poll)` on entry,
+    and on LLM-primary the previous evaluation is the loop tick before the LLM call, so a raw diff would
+    book the whole LLM turn's drift as the action's consequence (a 20 s turn adds +1.6 `cold` on
+    `infant_humanoid_chilled`, clamped at 1.0, against `warm_self`'s −0.3). The body records, for the
+    calling thread's evaluation inside this invocation, the drift it applied per declared drive (the
+    pure helper above) and the interval (`extra["drift_dt_s"]`); the record reports values net of it
+    and keeps the observed delta in `extra`. Drift is never advanced early from the executor: that
+    would move pain-publication cadence.
+  - **Satiation** is detected only at the two `elif cleared:` sites, recorded by the body for the
+    calling thread's evaluation inside this invocation. Never from a latch diff, and never from the
+    silent pop on an unreadable sensor (`ent.drive_breach_severity.pop(ds_name, None)` in the
+    `current is None` branch).
+  - **The existing trio stays byte-identical.** `drive_pressure_before`, `drive_relief` and `pain` are
+    computed exactly as today and are never refilled from the record: `drive_relief` reaches
+    `EncodingSignals.drive_relief` → `memory/encoding.py::encoding_tag` → `storage_strength`, so
+    refilling it would be a memory-strength change with its own T1-16 walk. A golden taken from the
+    pre-change commit pins the trio, `encoding_tag` and `storage_strength` for every capture of the
+    scripted cradle sequence and the Minecraft `fear_water` arm; it is byte-identical after the change,
+    and it still passes with the record reverted (the reverse deletion probe: the record never fed the
+    trio).
+  - **The residual a narrator write leaves** (environment SF-6, confounding SF-1). In `--sim` a
+    narrator write to a declared drive that lands inside the window (the arc tells the narrator to raise
+    `arms.thermal` toward 0.8 on approach to the fire pit) is in an `experienced` tool-path record. The
+    relief pin catches it on drives the trio sees. The structural fix, a per-body write epoch bumped by
+    any write outside the executor's bracket that marks the record `mixed`, needs `_write_sensor`
+    (outside the exempt set), so it lands with the narrated scope. Until then §10's narrator invariant is
+    scoped to out-of-band records, and S0b/S2 count `--sim` tool-path records separately.
+
+  It is a `ToolOutput` **field**, stamped by the executor like the trio, not a `side_effects` key:
+  `docs/user/tool_side_effects.md` registers what a tool's `execute()` reports, and tools never set this,
+  so it needs no registry row. The forward model's `ActionContext` is built inside the tool but attached
+  by the same executor stamp, rides the same way (a field, `repr=False`), and that decision is
+  `latent_forward_model.md` S1's.
+- **Out-of-band path (after the fence, owner decision G9):** `evaluate_failures` compares against the
+  previous evaluation's per-entity snapshot and queues a record; `Embodiment.drain_outcomes()` returns
+  them. Emission is **latched like channel 2**: band entry/exit, deepening past `_BREACH_DEEPEN_FRACTION`,
+  a nociceptive event, or a satiation — never per tick. The snapshot stores the values the latch was
+  evaluated on, never a re-read, and a Minecraft record carries the bridge's `state_age_s` at both ends,
+  since the sync pump writes on its own thread every 0.5 s (environment NIT-4). A tool's delayed
+  consequence (oxygen recovering after `escape_water` returns) joins its invocation through
+  `CauseRef.cause_pid`: the next out-of-band record within a declared horizon carries the invocation's
+  `pid` (confounding SF-1, environment SF-2). `cause_pid` and `pid` exist from the post-fence resume
+  stage (G17), so this join needs that stage as well as this one.
+- **`drain_outcomes()` lifecycle (with the out-of-band producer, after the fence).** The production
+  drainer is the loop capture (`runtime/tool_dispatch.py` →
+  `runtime/bio_integration.py::capture_loop_action`) on the agent-loop thread, in substrate-primary and
+  LLM-primary alike; in `--sim` that is the AUT loop on `sim.aut`, which also drains the records the
+  narrator's tools queued from the orchestrator thread. The queue is **bounded** (owner decision G10):
+  the bound is measured from a scripted session's peak, and on overflow it drops the oldest record,
+  counts the drop and logs it (never silent). Ephemeral wrappers never queue (§3.1.2). A body attached
+  where no loop capture runs queues up to the bound and then drops with the count; that stage's design
+  pass lists such runtimes. GL2a builds none of this: under G9 the queue would have no producer, so its
+  bound would measure 0.
+- **Consumers in GL2a:** a trace line, and the loop capture writing the core, the per-drive block
+  and `provenance` (no `pid` until the resume stage, G17) into `EncodingSignals.extra["interoception"]` (no `EncodingSignals` field
+  change; `encoding_tag` reads declared fields only, never `extra`). It is still a change to the
+  **persisted memory record**: `EncodingSignals.to_dict` flattens `extra` into the trace the Hippocampus
+  saves, so every loop capture's saved shape grows by this key (blast radius in §5.2).
+- **"No reader acts" holds only because the field is `repr=False`** (GL1 wiring D3; issue
+  [#1189](https://github.com/dennys246/Maxim/issues/1189)). `Hippocampus.capture_from_loop` stores the
+  `ToolOutput` object in `Outcome.result`, `atomic_write_json` serialises it with `default=str`, and
+  `Hippocampus.search_by_content` substring-matches `str(value)`. That is Path 3 of
+  `integration/bio_enrichment.py::_query_hippocampus`, and `tools/narrative.py`,
+  `agents/exec_agent.py` and `simulation/introspection.py` call it too. A default-repr record would put
+  `relief`, `harm`, `oxygen`, `thermal` and cause nouns into the searchable text of every captured action.
+  So the field is `repr=False`, a guard pins `str(ToolOutput)` byte-identical with and without the
+  record, and the T1-16 discharge covers the substring path (§5.2). The existing stamps (`pain=`,
+  `drive_relief=`) already leak this way; the root fix (a declared projection at capture) changes the
+  persisted shape and is #1189's, an owner decision, not a GL2a fold.
+- **Provenance (owner decisions G6, G16).** Four kinds: `experienced`, `narrated` (discounted, G6),
+  `imagined`, and `apparatus` (excluded, G16); `declared` / `reported` stay open at GL3.B1, the
+  registry+provenance stage. **`apparatus`** is harness-scoped: writes the experimenter makes to a drive,
+  namely the water trial's rescue teleport and `/effect` heal (`WaterTrial.rescue` / `heal`), R3's
+  respawn, Exp 56's teacher feed (`scripts/exp56/common.py`) and Exp 52's mother feed
+  (`simulation/cradle_mother.py::reactive_mother_tick`), and any other harness write to a drive. An
+  apparatus record is kept for the report, is never a forward-model training target and never pays
+  credit. The apparatus scope is a **window**, not a thread-local: a harness write opens an apparatus
+  epoch on the body, and the evaluation(s) that next observe that write are stamped `apparatus` until
+  the epoch closes. A thread-local scope cannot work here, because the write and the evaluation that
+  sees it run on different threads: the rescue's oxygen change arrives on the `mc-sync` thread
+  (`MinecraftSyncPump`), and the latch clears on a later loop-thread `evaluate_failures`. The epoch's
+  exact extent (how many evaluations, or until which state) is that stage's design-pass item. It lands
+  with the out-of-band producer; until then no out-of-band record is minted, so none can be mislabelled.
+  GL2c's "a rescue-caused crossing delivers nothing" gate drives the **real** rescue path,
+  `scripts/survival_world/water_trial.py::WaterTrial.rescue`, never a hand-written drive write. Consequences written by the narrator's tools
   (`simulation/tools.py::SetEntitySensorTool`, `DamageComponentTool`, `OrchestratorActorTool`, and the
   reflex dispatch, which uses separate instances of the first two classes on the loop thread) are stamped **`narrated`, never
   `experienced`**. A narrated record is usable for forward-model training and for credit at a **declared
@@ -387,30 +606,35 @@ must be measured, and the experience clock is the only legitimate clock (bio-mem
   are never produced by GL2. Mechanism: the narrator tools run their `evaluate_failures` call inside an
   `Embodiment` narrated scope (thread-local, so a concurrent loop-thread evaluation stays
   `experienced`); the Embodiment passes the scope's kind to the factory explicitly, and tool-path records
-  minted by the agent's own executor are `experienced`. Whether the scope lands in GL2a or after the
-  fence is §5.2's decision; until it lands, no out-of-band record is minted. Credit already paid
+  minted by the agent's own executor are `experienced`. The scope lands after the fence with the
+  out-of-band producer (owner decision G9); until it lands, no out-of-band record is minted. The forward
+  model's gates read experienced data only; narrated and apparatus numbers are reported, never gated
+  (confounding SF-7: a narrated target is itself generated from names; this does not reopen G6's
+  discounted use in training). Credit already paid
   today by PainBus for narrator pain is unchanged in GL2 (changing it would be its own ledger walk); the
   discount applies to this record's consumers. The forward model's contamination guard checks that a
   narrated record can never be relabelled `experienced` and that the discount is applied. Frozen does
   not prevent a relabel: `dataclasses.replace(rec, provenance="experienced")` builds a new record, so
   the no-relabel guard tests that call too, and asserts that the factory / validator path refuses it or
   that the contamination test catches it (no relabelling helper exists either).
-- **Forward-compat:** `InteroceptiveOutcome` and `CauseRef` take CC3 path (a); `PhysicalEventId` takes path
+- **Forward-compat:** `InteroceptiveOutcome` and `CauseRef` take CC3 path (a), which is what lets the
+  resume stage add `pid` / `cause_pid` as defaulted fields (G17); `PhysicalEventId` takes path
   (b) with the rationale above. Serialised through `to_dict`/`from_dict` inside files that already carry
   `_format_version` (traces, Hippocampus); no new persisted file in GL2. No value is hashed; if a later
   stage hashes an id across processes it uses `utils/seeding.py::stable_hash_64_signed`.
-- **Structural enforcement:** the factory's `pid=`, `cause=` and `provenance=` are **required
-  keyword-only**, so forgetting identity is a `TypeError`, and `__post_init__` rejects the `pid=None` and
-  `provenance=""` sentinels, so a record without them cannot be constructed at all. No type in the
+- **Structural enforcement:** the factory's `cause=` and `provenance=` are **required keyword-only**
+  (and `pid=` from the post-fence resume stage, G17), so forgetting them is a `TypeError`, and
+  `__post_init__` rejects the `provenance=""` sentinel (and, from that stage, `pid=None`), so a record
+  without them cannot be constructed at all. No type in the
   grounding line defaults provenance to `"experienced"`. Structural guard: the factory signature plus
   the stage's AST test that `InteroceptiveOutcome(` is never constructed directly in `src/`.
 
-**Dependency on #1125.** The tool-path record must not inherit #1125's blindness: on the infant, a record
-that omits `arms.thermal` omits the burn. GL2a therefore reads drives through
-`tool_bridge.py::_resolve_sensor_slot` (the resolution #1125 applies to the records) and must not derive
-`drive_delta` from `side_effects["drive_progress_by_drive"]` while #1161 keeps that side effect blind.
-GL2a lands after #1125, or carries #1125's fix as its first commit (which of the two: §8); it never
-ships a record that omits `arms.thermal`.
+**#1125 is merged; #1161 is the only relief-side blindness left.** #1125 closed 2026-10-08 (#1164): the
+records read modulator drives through the one resolver, `embodiment/sem.py::_resolve_sensor_slot` /
+`_read_sensor_value`, and GL2a reads its drives through it, so it never ships a record that omits
+`arms.thermal`. It must not derive `drive_delta` from `side_effects["drive_progress_by_drive"]` while
+#1161 keeps that side effect blind (`_drive_progress_by_drive` still reads `vital_metrics` by bare
+name).
 
 ### 3.2 Burn as nociception: `NociceptorSpec`, a second receptor on the same sensor
 
@@ -425,14 +649,15 @@ arms:
     thermal:
       drive: {drift_mode: homeostatic, set_point: 0.0, comfort_band: 0.5, pain_scale: 0.4, ...}  # unchanged
       nociceptor:            # NEW, optional
-        modality: heat       # heat | cold | mechanical | chemical
+        modality: heat       # heat | cold | mechanical | chemical; VALIDATED (heat ⇒ above, cold ⇒ below)
         direction: above     # above | below
         threshold: <owner>   # noxious onset, sensor units
         pain_scale: <owner>  # intensity per unit past threshold, clamped [0,1]
 ```
 
 Parsed into a new frozen `NociceptorSpec` (CC3 path (a)) on `Entity.nociceptor_specs` — not a field on the
-frozen drive specs. Evaluated in `evaluate_failures` inside the drive loop's structure:
+frozen drive specs. `modality` gets a reader, not decoration: the parser validates it against
+`direction` (heat ⇒ `above`, cold ⇒ `below`), and GL3.B3 uses it for track routing (bio-faithful N3). Evaluated in `evaluate_failures` inside the drive loop's structure:
 
 - **Channel 1:** a FailureEvent named `drive:<sensor>:noxious`, state-based like every drive failure.
   `drive_failure_sensor` parses it unchanged (sensor = `arms.thermal`), so **B8 applies with no parser
@@ -471,7 +696,19 @@ that a +0.6 contact from rest reaches ≥ 0.4 (the highest PainBus learner thres
 sees it), and that a single `warm_self` (+0.2) or any `*_safe` / `green_hearth` (+0.05) application
 produces 0. Note the nociceptor reads sensor **state**, not the affordance: repeated `warm_self` that stacks
 `arms.thermal` past threshold is noxious, which is bio-faithful, and the GL1 census should report which
-shipped sequences stack past it. **Body placement:** declare it on a **variant body**, never by editing
+shipped sequences stack past it. **The shipped scenes rarely touch from rest** (GL1 environment review
+SF-3): SEM effects are additive deltas clamped to range, `cool_air.feel` takes `arms.thermal` −0.15 per
+call (GL2a's own sequence reaches −0.30, so a touch lands at 0.30), and the arc tells the narrator to raise
+`arms.thermal` toward 0.8 on approach (a touch from 0.8 clamps at 1.0, delta +0.2). For a touch from a
+chilled arm to be noxious the threshold must be < 0.3; for a single `warm_self` from rest to give 0 it
+must be > 0.2; in that band two stacked `warm_self` are noxious and noxious onset sits below the thermal
+comfort band (0.5), which inverts the biology. So the stage-start calibration reads the `arms.thermal`
+distribution at `touch` / `warm_self` time over the committed cradle data first, then either states the
+gate over those starting states ("noxious from ≥ X") or gives the variant body a contact affordance that
+is not additive (a new authored `touch` that sets a floor, declared on the variant, never an edit to a
+shipped one). It also names the narrated share: the burns the arc produces through
+`SetEntitySensorTool`. The gate adds a "`warm_self` after `touch`, arm still hot" row beside the
+from-rest rows (confounding NIT-3). **Body placement:** declare it on a **variant body**, never by editing
 `infant_humanoid.yaml`, which `infant_humanoid_chilled` (Exp 42), `_cold`, `_naming_v1` and
 `infant_operant*` all extend; Exp 42's `warmth_alpha_harm` drives `arms.thermal` to 1.0, so a nociceptor on
 the base body changes T1-6's fixture directly.
@@ -483,11 +720,14 @@ two-track receptor: one thermal stimulus, a nociceptive-fast and an affective-sl
 stage's `NociceptorSpec`; only nociceptive-fast **preemption**, GL3.B4, is a declared 1.4 rung arm (owner
 decision G8). Bio mapping for those tracks: thermoreception and thermal pain both ascend the
 anterolateral (spinothalamic) system — Aδ "first pain" on the fast lateral route, C-fibre "second pain"
-on the slow spinoreticular/affective route — never the dorsal-column `mechano_proprio` track. That the
-slow affective track also carries **drive** breaches (air hunger, hunger, the infant's thermal
-discomfort) is justified only as Craig's lamina-I homeostatic pathway (lamina-I spinothalamic afferents
-carrying the body's physiological condition to the insula); outside that reading, drive breaches have no
-claim on a pain track.
+on the slow spinoreticular/affective route — never the dorsal-column `mechano_proprio` track. First and
+second pain come from two **fibre populations** with different thresholds and kinetics (Aδ and C), not one
+receptor fanned onto two tracks; the fan-out's docstring says "FUNCTIONAL: one threshold for both fibre
+classes" (bio-faithful N4). That the slow affective track also carries **drive** breaches is justified
+only as **homeostatic afferents**: lamina-I spinal afferents for the infant's thermal discomfort, and the
+vagal / NTS cranial route for air hunger, which is chemoreceptive (carotid and medullary chemoreceptors
+→ NTS). Hunger is mostly humoral state acting on the hypothalamus, not an afferent event (bio-faithful
+N2). Outside that reading, drive breaches have no claim on a pain track.
 
 ### 3.3 Two-sided corrective needs (cold path byte-identical)
 
@@ -506,10 +746,15 @@ rule: the hard-coded prior gets a follow-up issue with its migration trigger in 
 
 ### 3.4 Valence keyed on the CAUSE, with sign, beside the sufferer rows
 
-- `Embodiment.evaluate_failures(*, cause: CauseRef | None = None)` — keyword-only, default `None` = today's
-  behaviour. The keyword is **body-wide**, but the cause is attached **per sensor**: only to the failures
-  on sensors that B8 (`tool_bridge.py::_intrinsically_harmful_sensors`) marks as harmed by **this call's**
-  own delta. A breach lingering on another sensor never inherits it. Callers that know the cause pass
+- `Embodiment.evaluate_failures(*, cause: CauseRef | None = None, cause_sensors: frozenset[str] =
+  frozenset())` — keyword-only, defaults = today's behaviour. The cause is attached **per sensor**: only
+  to the failures on sensors in `cause_sensors`, the set B8 (`tool_bridge.py::_intrinsically_harmful_sensors`)
+  marks as harmed by **this call's** own delta. Channel 2 publishes inside `evaluate_failures`, but
+  today `ModulatorAffordanceTool.execute` computes B8's set **after** `evaluate_failures()` returns; B8
+  depends only on the effect dicts and the specs, so the caller computes it first and passes it in (GL1
+  wiring review S6). A breach lingering on another sensor never inherits the cause. PainBus's
+  `(entity, failure_mode)` refractory ignores the cause, so a second cause on the same mode within 0.5 s
+  is dropped (stated). Callers that know the cause pass
   it: `ModulatorAffordanceTool.execute` (cause = the affordance's own entity + affordance, gated by its
   `self_effect` / `target_effect` harmful set) and `simulation/tools.py::OrchestratorActorTool`
   (`source_entity`, `source_affordance`), which today runs no B8 at all: the stage computes the same
@@ -544,31 +789,69 @@ rule: the hard-coded prior gets a follow-up issue with its migration trigger in 
   turns it on; and cause rows are excluded from bundle export, with a count, until a transfer experiment
   declares them.
 - Positive rows are invisible to that reader (it treats ≥ 0 as zero). An approach reader is a separate
-  mechanism that must be earned; it is not proposed. On substrate-primary the negative rows have no
+  mechanism that must be earned; it is not proposed. **Positive cause rows (GL2c) get their own key**, so
+  appetitive and aversive values are never netted into one scalar (biology keeps them in partly separate
+  populations, basolateral amygdala positive and negative neurons; Namburi et al. 2015).
+- **Cause rows are cradle / `--sim` only.** The Minecraft bridge's damage signal (`entityHurt` →
+  `event("damage", ...)`) carries no attacker or source, and the snapshot carries no cause, so every
+  Minecraft world consequence has `cause=None`. A Minecraft cause needs a bridge protocol change, which
+  fires the re-run trigger on four EARNED rows and gets its own ledger walk (GL1 environment review SF-7). On substrate-primary the negative rows have no
   selection reader either (the reader is the text salience scorer) — stated, not fixed here.
 
-Tier: cause attribution is an **invariant** (who did it is a fact the producer knows); the valence is
-**learned**.
+Tier (re-tiered 2026-10-09, GL1 bio-faithful review SF-6): cause attribution is an **engineering prior
+(oracle attribution)**, not an invariant. Pavlovian learning attaches value to the *perceived* cue by
+contingency, with cues competing through prediction error (Rescorla–Wagner, Kamin blocking); handing the
+learner the producer's YAML noun as ground truth means only one cue can ever be credited, and
+`NAc.record_percept_valence` (`current + α·v`, clamped) has no prediction error and no extinction. So
+cause rows can never be cited as learned stimulus valence, in GL5 or in any claim, and GL2b(iii)'s PR
+files a follow-up issue with a trigger for RW-style updating (prediction error, extinction) on the cause
+namespace. The
+valence values are **learned**; that a bystander never becomes a cause stays an invariant.
 
 ### 3.5 The positive producer: satiation and relief
 
-Two signals, kept distinct because biology keeps them distinct:
+Three positive kinds, kept distinct because biology keeps them distinct (GL1 bio-faithful review SF-5;
+the crossing rule is an innate-prior simplification, since biological satiety is partly pre-absorptive):
 
-- **Satiation (drive-reduction crossing):** the breach latch clears with a latched severity present — the
-  event the `EntropicDriveSpec` docstring promised; the homeostatic equivalent is a latched breach clearing
-  back inside the hysteresis band. Emitted **once per breach episode**, never per tick.
-- **Graded relief:** the positive part of `drive_delta` on any event, already on the record.
+- **Satiation (a consummatory or corrective act):** the breach latch clears with a latched severity
+  present **and** a tool cause (`cause` not None): eating, warming. The event the `EntropicDriveSpec`
+  docstring promised; the homeostatic equivalent is a latched breach clearing back inside the hysteresis
+  band. Emitted **once per breach episode**, never per tick. The `"satiation"` `ReactionKind` is used only
+  for this kind.
+- **Relief at the offset of an aversive state:** nociception or air hunger stops (negative reinforcement;
+  pain-relief learning gives cues present at pain offset a positive value, Tanimoto, Heisenberg & Gerber
+  2004). Oxygen recovery is this kind: air hunger is relieved, not sated. It is recorded at the event where
+  the aversive input stops.
+- **Recovery (passive or world):** a latch clears with `cause` None, e.g. `minecraft_player` `health`
+  regenerating past its band long after the harm stopped. It is recorded and pays **no** credit unless an
+  arm declares it; routed through the distributor it would credit whatever action happened to be
+  eligible.
+- **Graded relief** (on the record): the drop in `drive_pressure` on any event (§3.1).
+
+**Intensity and expectation, inputs to GL2c's joint review** (bio-faithful SF-4). A satiation's intensity
+is the episode's latched severity (`Entity.drive_breach_severity`, the deprivation depth), never the delta
+of the step that crossed the threshold, which can be a last drift across the hysteresis band. And it is
+delivered as a prediction error against the relief store's expectation for that cluster: dopaminergic
+reward is a prediction error, and a fully predicted reward produces none (Schultz 1997). Without that, a
+repeated surfacing saturates the bias, which then measures how often the act happened, not its value. The
+store is the natural home for the expectation, which is a bio argument for option B or C over A; it does
+not change G7.
 
 **Record stage (GL2a):** `InteroceptiveOutcome.satiated` + `relief`. Zero consumers; its only ledger
 consequence is GL2a's record-shape walk (§5.2).
 
-**Why every routing reaches the earned survival rows (owner decision G7).** The satiation crossing is
-not a rare event on the bodies the earned rows ran on (§1.2 item 2): on `minecraft_player` the `oxygen`
-and `health` latches clear on every surfacing and every regeneration after a latched breach (`oxygen`
-below 14 bubbles); Exp 60's training trials breach, so the crossing fires **at Exp 60's own
-`escape_water` contingency**, the very act whose anticipatory timing T1-13 measures; `food` there is
-entropic (`satisfaction_threshold: 16.0`), and `minecraft_bench` `d1` (Exp 56) and `minecraft_bench57`
-`d1` (Exp 57, the same spec) are entropic with `satisfaction_threshold: 0.3`. Any delivery of a positive signal at that site — through a `Reaction`,
+**Why every routing reaches the earned survival rows (owner decision G7; its description corrected
+2026-10-09 by G16).** The crossing is not a rare event on the bodies the earned rows ran on (§1.2 item 2),
+but on the earned campaigns the **apparatus** makes it, not the agent. Exp 60/61 training is
+propose-only and every episode ends in `WaterTrial.rescue`, so the `oxygen` latch clears during the
+rescue's teleport and settle (clear at ≥ 15.2; breach below 14); Exp 60's probes are capped before the
+breach and never latch; R3's respawns reset health and oxygen to 20; `food` (`satisfaction_threshold:
+16.0`) is not reachable natively in campaign time; and `minecraft_bench` `d1` (Exp 56) and
+`minecraft_bench57` `d1` (Exp 57, the same spec, `satisfaction_threshold: 0.3`) are written by the
+teacher, as Exp 52's mother writes `hunger`. Those are `apparatus` records (G16), never credit. That
+matters because censoring is more common in the arm that did not escape, so an apparatus-caused positive
+would be **differential by arm** on the comparison T1-13 measures. The rows still fire: any delivery of a
+positive signal at that site — through a `Reaction`,
 through the relief store, or both — feeds a new positive value into the place the survival and transfer
 claims were measured. **GL2c therefore fires T1-11, T1-12, T1-13, T1-14 and T1-15 whatever the
 routing** (T1-12 added by the owner 2026-10-08; its `Re-run on:` matches T1-11's). No
@@ -579,7 +862,7 @@ routing "avoids" the T1-13 lapse; the routing only decides which surface the pos
 | Option | Route | Reaches |
 |---|---|---|
 | B — relief store only | the satiation/relief record is the input to roadmap Phase 5's cluster-keyed relief store (world-cluster keyed), and nothing else. No `Reaction` is emitted; `_reward_bias` is never written by this producer. | the relief store; its reader is rung E2's, designed in the joint review |
-| A — Reaction stage | `Reaction(kind="satiation", valence=POSITIVE, intensity=<relief of the satiated drive>, context=ReactionContext(agent_id=<body agent>), source="drive:<name>:satiation")` on `pain_bus.reaction_bus` | with no other wiring: `hippocampus.capture_reaction` (episode net valence) and `_distribute_reward_from_reaction` → `TemporalCreditDistributor.distribute` → `NAc.credit_node(+)` → `_reward_bias` → `recommend_action` Component 2 (`reward_bias(agent_id, "tool:<name>")`) and EC text-threshold widening. The first time `_reward_bias` can grow in production. |
+| A — Reaction stage | `Reaction(kind="satiation", valence=POSITIVE, intensity=<the episode's latched severity>, context=ReactionContext(agent_id=<body agent>), source="drive:<name>:satiation")` on `pain_bus.reaction_bus` | with no other wiring: `hippocampus.capture_reaction` (subscribed to every Reaction; it appends to the pending episode, so satiation changes persisted episode valence and content) and `_distribute_reward_from_reaction` → `TemporalCreditDistributor.distribute` → `NAc.credit_node(+)` on **every** `(agent, node)` in `NAc._eligibility`: EC **text** nodes (`LinguisticEncoder` paths), **sensor-cluster** nodes (`SensorEncoder`; their `reward_bias` has no reader, #911, but trips `donor_sanity_staged` / `_R3._boundary`) and whatever bystander `tool:<name>` keys are still eligible (positive-direction B8 pollution the pid-keyed dedupe does not cover) → `_reward_bias` → `recommend_action` Component 2 (`reward_bias(agent_id, "tool:<name>")`) and EC text-threshold widening. The first time `_reward_bias` can grow in production. The ReactionBus default refractory (0.5 s, keyed `satiation:drive:<name>:satiation`) drops a second crossing of one drive inside the window (stated). |
 | C — both, behind one switch | A and B | union |
 
 Rows fired, every option: T1-13 (by its explicit lapse clause under A; by the measured contingency under
@@ -618,22 +901,30 @@ the 1.3.2 live Exp 60 re-run, never stacked on it or on an E-rung campaign.
 **T1-13's lapse clause, explicitly.** T1-13's discharge (#888, restated in the #851 walk) rests on "the only
 positive Reaction constructor in `src/` is `CerebellumModulator` … never given a `reaction_bus`" and ends:
 "**If a positive Reaction emitter is ever wired, this reasoning lapses and the trigger applies.**" Under
-option A that sentence fires by its letter. Under B or C it fires in substance, because the positive
-value lands on the `escape_water` contingency the discharge argued nothing could reward. GL2c's PR
-records the walk entry on T1-13 either way.
+option A that sentence fires by its letter. Under B or C it fires in substance: a positive producer
+exists on the body T1-13 ran on, and whether any agent-caused (non-apparatus) crossing reaches the
+`escape_water` contingency the discharge argued nothing could reward is exactly what the batched re-run's
+per-arm, per-cause satiation counts show (G16). GL2c's PR records the walk entry on T1-13 either way.
 
-**Narrated satiation.** A crossing caused by a narrator write (e.g. a narrated feeding through
-`SetEntitySensorTool`) is a `narrated` record (§3.1.4) and is delivered at the declared narrated
-discount, never at full weight.
+**Narrated and apparatus satiation.** A crossing caused by a narrator write (e.g. a narrated feeding
+through `SetEntitySensorTool`) is a `narrated` record (§3.1.4) and is delivered at the declared narrated
+discount, never at full weight. A crossing caused by the apparatus (a rescue, a heal, a respawn, a
+teacher or mother feed) is an `apparatus` record and delivers **nothing** (G16). The harnesses enter the
+apparatus scope around `rescue` / `heal` / respawn and the feeds, and GL2c's flag-on gate asserts that a
+rescue-caused crossing delivers nothing.
 
-**Double credit (option A or C).** A tool-caused satiation is also credited by channel 3
-(`update_cluster_reward`, a different map) — the nociception plan's F2 shape. Bio: phasic dopamine fires
-once per unexpected reward. Recommendation: one credit per physical event, keyed by `pid`; the distributor
-skips a satiation whose cause is a tool channel 3 already credited. Named in the Wire-integrity review.
+**Double credit (option A or C; extended by G16).** A tool-caused satiation is also credited by channel 3
+(`update_cluster_reward`, a different map) — the nociception plan's F2 shape — and a teacher or mother
+feed is already credited by `NAc.credit_operant_reward`. Bio: phasic dopamine fires once per unexpected
+reward. Recommendation: one credit per physical event, keyed by `pid`; the distributor skips a satiation
+whose cause is a tool channel 3 already credited, or a feed `credit_operant_reward` already paid. Named
+in the Wire-integrity review.
 
-**engram_formation.md E4's overreach set.** If any option ever lets this producer credit text nodes,
-E4's 13-string widening overreach set must be read first (roadmap T7). Option B does not reach text
-nodes.
+**engram_formation.md E4's overreach set is mandatory under A or C** (GL1 wiring review S7). The
+distributor's eligible set includes EC text nodes, so option A pays positive `_reward_bias` to them, and
+E4's 13-string widening overreach set is read before A or C is chosen (roadmap T7). Either satiation
+credit is gated to the causing `tool:` key, or the eligible-set composition is recorded as an input to
+the joint review. Option B does not reach text nodes.
 
 ### 3.6 The `≥ 0` reward-bias clamp is kept
 
@@ -651,12 +942,15 @@ the Dormant T3-7 path (GL0 truth item 13 corrects the wording).
 
 | Behaviour | Tier | Follow-up / migration trigger |
 |---|---|---|
-| Computing the record from declared specs (deviation, delta, pressure, satiation crossing) | invariant | — |
-| Core valence weighting (`relief − harm − nociception`) | innate prior | owner decision; learned only via the forward model |
-| Urgency v1 = max pressure after | innate prior | slope term with GL3 timing |
+| Computing the record from declared specs (deviation, delta, pressure, satiation crossing, drift netting) | invariant | — |
+| Relief and harm as the change in `drive_pressure` (first-order alliesthesia) | innate prior | learned only via the forward model |
+| Core valence weighting (`relief − harm − nociception`, unweighted; health counted once) | innate prior (owner decision G11) | learned only via the forward model |
+| Urgency v1 = max pressure after | innate prior (owner decision G12) | slope term with GL3 timing |
+| `apparatus` records excluded from training and credit | invariant (G16) | — |
 | Nociceptor threshold and gain | innate prior | `adaptive_nociception.md` revive triggers |
 | Heat need + affinity keywords | innate prior | follow-up issue in the GL2b(i) PR |
-| Cause attribution (who did it) | invariant | — |
+| Cause attribution (who did it; the producer's YAML noun) | engineering prior (oracle attribution; never cited as learned stimulus valence) | follow-up issue: RW-style updating on the cause namespace |
+| A bystander never becomes a cause | invariant | — |
 | Percept valence values, credit from satiation | learned | — |
 | Narrated-record discount | innate prior (a declared constant) | owner decision at GL4 start; S5/GL5 report with and without narrated data |
 
@@ -680,66 +974,131 @@ start (§8). No stage carries a timeline.
   dragon's `fire_breath` (`_data/components/creatures/dragon.yaml`) declares no `target_effect`, so it
   cannot hurt the AUT, and there is no `breathe_fire`. The gate is written against a **new fixture**
   authored in GL2b(iii) (a test-local actor in GL0);
-  (d) an entropic deprive → satisfy cycle produces exactly one satiation event on the record (today: none).
+  (d) a deprive → satisfy cycle produces exactly one satiation event on the record (today: none). GL2a's
+  own scripted sequence already contains a **homeostatic** crossing on the tool path: `core_temperature`'s
+  latch clears on the second `warm_self` (deviation 0.15 ≤ 0.25·0.8); the entropic case is the cradle
+  hunger / `cradle_food.eat` cycle (hunger −0.4, satisfaction 0.3, so one feed clears only from
+  hunger ≤ 0.7).
 - File issues for the verified defects not yet filed (heat need, satiation producer, cause keying), linked
   from here.
 
-### 5.2 GL2a — the record, record-only (outside the fence; owner decision G1)
+### 5.2 GL2a — the record, record-only (outside the fence; owner decisions G1, G9, G14, G15, G17)
 
-- **Build:** `embodiment/event_id.py` (`PhysicalEventId`), the per-agent `EventSequencer` with its
-  persisted resume, `CauseRef`, `InteroceptiveOutcome`, `sem.interoceptive_outcome`;
-  `ToolOutput.interoceptive_outcome` (carrying the `pid`); the per-entity snapshot, the `RLock` and the
-  bounded `Embodiment.drain_outcomes()`; the trace line and `EncodingSignals.extra["interoception"]`.
-  Files: exactly the exempt set in the header (`embodiment/body.py`, `embodiment/sem.py`,
-  `embodiment/event_id.py`, `runtime/executor.py` `_stamp_invocation`, `tools/base.py::ToolOutput`,
-  `runtime/bio_integration.py`).
-- **Narrated records and the fence.** Stamping narrator consequences `narrated` (§3.1.4) needs the three
-  narrator tools' `execute` bodies in `simulation/tools.py` (four `evaluate_failures` call sites) to
-  enter the narrated scope, and that file is not in the exempt set. An out-of-band record minted from a narrator call without the scope would be labelled
-  `experienced`, which G6 forbids. Thread identity cannot stand in for the scope: the narrator tools run on
-  the orchestrator thread (the `start_simulation_mode` caller running the orchestrator agent's loop),
-  but the reflex dispatch calls separate instances of the same `DamageComponentTool` /
-  `SetEntitySensorTool` classes from the AUT's enrichment pipeline, on the loop thread (`sim.aut`). Owner decision
-  at GL2a start: **strict default** — GL2a ships the tool-path record only (minted solely by the
-  executor whose embodiment is the agent's primary `Embodiment`; a narrator tool run by the orchestrator's executor
-  mints nothing), and the out-of-band producer lands after the fence together with the narrated scope, so
-  no out-of-band record's provenance is ever guessed; the non-strict alternative adds those three
-  `execute` bodies (no orchestrator edit) to the exempt set and ships both halves now. The identity
-  contract, the sequencer and the lock land in GL2a either way.
-- **Depends on:** GL1's four-lens review of this plan; **#1125** — GL2a lands after #1125 or carries its
-  fix as commit 1; it never ships a record that omits `arms.thermal`.
-- **Falsifiable gate:** on a scripted cradle sequence (`cool_air` ×2, `warm_self` ×2, `touch`) the records
-  match a committed hand-computed table, **including `arms.thermal`**; red gate (d) flips for the record
-  half (through a satisfying tool action under the strict default; through drift as well once the
-  out-of-band producer ships); the deletion probe (remove the producer) changes only the trace and the
-  `extra` key.
-- **Guards:** `relief == max(drive_relief)`; record present iff a body is attached (no zero records);
-  latch semantics (entry / exit / deepen, no per-tick flood — reuse `test_transition_drive_pain.py`
-  shapes); `PhysicalEventId` sequence deterministic under `_StepClock`, and resumed past the saved
-  maximum after a save/load round trip; ephemeral wrappers mint nothing; `PhysicalEventId` rejects an
-  empty `agent_id` and a negative `seq`; the required-keyword factory and the sentinel rejection; a
-  two-thread test (loop thread + a narrator-thread caller) that seq stays unique and the latch
-  consistent; the queue bound drops oldest with a count. Behaviour preservation byte-identical:
-  `test_agent_loop_selection_golden.py`, `test_decision_provenance.py`, `test_encoder_golden_v1.py`.
-  For the survival harnesses the gate **executes** the producer: the scripted water-trial smoke
-  (`tests/unit/test_water_trial_smoke.py`) and `tests/unit/test_exp61_run.py` pass unchanged. (The
-  committed Exp 60/61/R3 verdict reproductions are not a gate here: `compute_verdict` re-reads committed
-  JSONL and never executes the code under test.)
+- **Build:** `CauseRef` (without `cause_pid`), `InteroceptiveOutcome` (without `pid`),
+  `sem.interoceptive_outcome` and the pure drift helper; `ToolOutput.interoceptive_outcome`
+  (`repr=False`); `Executor._stamp_invocation` sets it, and its short-circuit equality tuple (today
+  `(rpe, drive_pressure_before, drive_relief, pain)`, which returns the input `ToolOutput` unchanged when
+  every stamp already matches) gains `interoceptive_outcome`, or a record on an otherwise unchanged
+  output is silently dropped; in `body.py`, the per-call record of the drift applied and the latch
+  cleared at the two `elif cleared:` sites; the raw before-snapshot in `Executor._run_started`; the trace
+  line and `EncodingSignals.extra["interoception"]`; and **the cradle scripted-sequence loop driver** the
+  gate below needs (test-side, not `src/`): no harness today drives a fixed `feel` ×2 / `warm_self` ×2 /
+  `touch` sequence through `run_agentic_loop` on a cradle body (`tests/unit/_loop_harness.py` drives the
+  scripted Minecraft world), so GL2a builds one. Files: exactly the exempt set in the header
+  (`embodiment/body.py`, `embodiment/sem.py`, `runtime/executor.py` `_run_started` +
+  `_stamp_invocation` (G14), `tools/base.py::ToolOutput`, `runtime/bio_integration.py`). **Not in GL2a**
+  (G9): the per-entity snapshot, the `RLock` over `evaluate_failures`, `Embodiment.drain_outcomes()` and
+  its bound; they land with the out-of-band producer. **Not in GL2a** (G17): `embodiment/event_id.py`,
+  `PhysicalEventId`, the per-agent sequencer, its session-id source, `pid` and `cause_pid`; they land at
+  the post-fence resume stage. GL2a records carry no pid and are never forward-model training data.
+- **Narrated records and the fence (decided 2026-10-09, owner decision G9: tool-path only).** Stamping
+  narrator consequences `narrated` (§3.1.4) needs the three narrator tools' `execute` bodies in
+  `simulation/tools.py` (four `evaluate_failures` call sites) to enter the narrated scope, and that file
+  is not in the exempt set. Thread identity cannot stand in for the scope: the narrator tools run on the
+  orchestrator thread, but the reflex dispatch calls separate instances of the same
+  `DamageComponentTool` / `SetEntitySensorTool` classes from the AUT's enrichment pipeline, on the loop
+  thread (`sim.aut`). So GL2a ships the tool-path record only, minted solely by the executor whose
+  embodiment is the agent's primary `Embodiment` (a narrator tool run by the orchestrator's executor
+  mints nothing), and the out-of-band producer lands after the fence together with the narrated and
+  apparatus scopes, so no out-of-band record's provenance is ever guessed.
+- **After the fence, before GL4 S1 (G15, G17): the resume stage** (§3.1.2). It builds the identity and
+  its resume together: `embodiment/event_id.py` (`PhysicalEventId`, rejecting an empty `agent_id` or
+  `session_id` and a negative `seq`), the per-agent `EventSequencer` with its own private lock, the
+  session-id source (asked at the stage's start: deterministic, who mints it, its scope, `--resume-sim`
+  behaviour, a new required keyword on `build_executor` and its callers), `InteroceptiveOutcome.pid`,
+  `CauseRef.cause_pid`, the one-live-sequencer assertion with its release (bio session end, executor
+  shutdown), the two same-process rebuild harnesses (`scripts/survival_world/r3_run.py`,
+  `scripts/survival_world/exp61_run.py`) and a conftest autouse reset; then the sequencer's own
+  high-water mark, both load seams, and its gate through the real load paths. GL4 S1 depends on it.
+- **Depends on:** GL1's four-lens review of this plan (folded 2026-10-09); #1125 is merged (#1164);
+  **#954** for the survival check below, or a stated margin.
+- **Falsifiable gate**, driven **through the real loop and capture** (`run_agentic_loop` →
+  `tool_dispatch.execute_and_learn` → `capture_loop_action`, as `tests/unit/test_water_trial_smoke.py`
+  does), with the record read back from the Hippocampus, never by calling `executor.execute` directly
+  (wiring S4):
+  - on the scripted cradle sequence (`cool_air`'s `draft.feel` ×2, `fire_pit.warm_self` ×2,
+    `fire_pit.touch`, on `infant_humanoid`) the records match a committed table computed **by hand from
+    the YAML deltas and specs**, never by calling the `sem.py` helpers it checks (confounding NIT-1):
+    `arms.thermal` 0 → −0.15 → −0.30 → −0.10 → +0.10 → +0.70, `core_temperature` −0.15 → −0.35 →
+    −0.55 → −0.35 → −0.15 → 0.00, with the `core_temperature` satiation crossing on the second
+    `warm_self` asserted (environment NIT-2);
+  - a `_StepClock` case (`tests/unit/_loop_harness.py::_StepClock` patches the global `time`, so
+    `body.py` sees it) advances 20 s between the loop tick and the tool call on
+    `infant_humanoid_chilled` (entropic `cold`, 0.08/s), and its hand-computed table shows a warmth item's
+    `warm_self` `cold` change (−0.3) net of drift (environment DNB-1). The order is fixed: the tool
+    applies its delta first, then `evaluate_failures` drifts the body (`tick_vital_drift`), and the drift
+    is **clamped** to the sensor's range. The hand table: `cold` 0.6 → 0.3 after the delta → 0.3 + 20 ×
+    0.08 = 1.9, clamped to 1.0; the applied drift is 0.7 (not the declared 1.6), the observed change is
+    +0.4, and the net is +0.4 − 0.7 = −0.3. So the helper nets the **applied** (clamped) drift computed
+    on the post-delta value, never the declared `drift_rate × dt`;
+  - red gate (d) flips for the record half on the tool path (the homeostatic crossing above; the entropic
+    cradle feed), and through drift only once the out-of-band producer ships;
+  - the deletion probe (remove the producer) changes only the trace and the persisted `extra` key: the
+    trio / `encoding_tag` / `storage_strength` golden, the selection golden and the encoder golden stay
+    byte-identical, and `str(ToolOutput)` is byte-identical with and without the record (#1189).
+- **Guards:**
+  - the relief pin as restated in §3.1 (positive part of `drive_delta` == `drive_relief` on every drive
+    present in `drive_relief`), its deletion probe (remove the drift netting → the `_StepClock` case
+    re-reds), and the #1161-scoped `xfail(strict=True)` gate for `arms.thermal`;
+  - the pre-change golden of the trio, `encoding_tag` and `storage_strength` over the scripted cradle
+    sequence and the Minecraft `fear_water` arm, byte-identical, plus its reverse probe (revert the
+    record, the golden still passes);
+  - record present **iff an agent-bound body is attached and the tool ran** (no zero records; wiring S3);
+  - `str(ToolOutput)` byte-identical with and without the record;
+  - satiation detected only at the `elif cleared:` sites (a test that the unreadable-sensor pop records
+    nothing);
+  - the required-keyword factory and the sentinel rejection (`provenance=""`); the record has no `pid`
+    field at GL2a (G17). The identity guards (`PhysicalEventId` sequence deterministic under
+    `_StepClock`, unique within a session, at most one live sequencer per `agent_id` per process with its
+    release, ephemeral wrappers mint nothing, the empty `agent_id` / `session_id` and negative `seq`
+    rejections) belong to the post-fence resume stage;
+  - behaviour preservation byte-identical: `test_agent_loop_selection_golden.py`,
+    `test_decision_provenance.py`, `test_encoder_golden_v1.py`.
+
+  The latch-semantics, two-thread and queue-bound guards belong to the out-of-band stage (G9): in GL2a
+  narrator calls mint nothing and the queue has no producer, so those tests would be vacuous.
+  **Survival harnesses.** The executing check is
+  `tests/unit/test_water_trial_smoke.py::test_water_trial_ticks_acts_and_the_staging_close_persists_fear`,
+  the one test there that executes `escape_water` through the executor, and it asserts that the
+  `escape_water` `ToolOutput` carries a record (no `pid` at GL2a, G17; the deletion probe re-reds it) and **no**
+  relief (the refill is out-of-band). It is still on wall time (`train_cap_s=8.0`, `t_surface < 2.5`),
+  named in open [#954](https://github.com/dennys246/Maxim/issues/954), and GL2a adds per-invocation work
+  that narrows those margins; so GL2a lands after #954 moves it onto `StepClock`, or the PR states its
+  margins (environment SF-1). `tests/unit/test_exp61_run.py` runs no loop (verdict, donor-sanity and
+  statistics over hand-built files), so it is **not** an executing check and is not cited as one. (The
+  committed Exp 60/61/R3 verdict reproductions are not a gate here either: `compute_verdict` re-reads
+  committed JSONL and never executes the code under test.)
 - **Rows fired by wording: T1-16, not none.** GL2a adds `extra["interoception"]` to every loop capture,
   and `memory/encoding.py::EncodingSignals.to_dict` flattens `extra` into the persisted trace, so the
   saved memory record's shape changes and T1-16's "the memory record shape" trigger fires by its letter
   (T1-1, Exp 10, carries the older "hippocampus persistence schema change" wording but is SUPERSEDED by
-  T1-16). The PR records the walk: either a structural discharge (`_rank_by_relevance` and
-  `_query_hippocampus` read no `extra` key, shown by grep and a byte-identical ranking test over a
-  store with and without the key) or the Exp 63 re-run. `runtime/executor.py` is touched: run the
-  CLAUDE.md mypy invocation.
+  T1-16). The PR records the walk: either a structural discharge or the Exp 63 re-run. The structural
+  discharge has three legs: `_rank_by_relevance` and `_query_hippocampus` read no `extra` key (grep);
+  a byte-identical ranking test over a store with and without the key; and the same test on the
+  **substring path** (`Hippocampus.search_by_content`, Path 3 of `_query_hippocampus`) with queries that
+  would match a record token (`"relief"`, `"oxygen"`, `"thermal"`), which holds only because the field
+  is `repr=False` (wiring D3, #1189). `runtime/executor.py` is touched: run the CLAUDE.md mypy invocation.
 
 ### 5.3 GL2b — the regulatory fixes (one issue + PR each)
 
 **(i) Heat corrective need** (§3.3). Fenced: `substrate_proposal.py` and `nac.py`'s affinity table are on the
 body selection path, so it waits for the remaining agent_loop slices.
 - Gate: red gate (b) flips; `corrective_need_intensity` byte-identical over a grid on every shipped body;
-  Minecraft `_read_drive_states` dicts identical.
+  Minecraft `_read_drive_states` dicts identical. The walk includes the `simulation/arcs.py` cradle scene,
+  where `cradle_cool_air` is a shipped cooling act: the affinity keywords decide whether the need is latent
+  or live there (§1.3 R-2). The keyword list is frozen before GL5's fixtures are named, because tool names
+  carry the entity name and the word prior reaches selection through these keywords (§GL5 in
+  `grounding.md`; confounding SF-6).
 - Rows fired: T1-13 ("`recommend_action` drive-activation floor" by its wording); T1-6 (the derived need is
   encoded into the interoception channel whenever a cradle body goes above set point — Exp 42's harm item
   does exactly that); T3-9 (PARTIAL; "Cradle / drive / SEM body change"). A re-run or a written discharge
@@ -753,10 +1112,12 @@ body selection path, so it waits for the remaining agent_loop slices.
   ReactionBus refractory key `pain:pain_detector:external_signal` with the drive Reaction from the same
   call (§3.2) and the burn can be delivered as 0.04.
 - Gate: red gate (a) flips on the variant, with the learning threshold fixed by the stage-start
-  calibration decision; single `warm_self` / `*_safe` applications produce zero nociception; the B8
+  calibration decision over the measured starting states (§3.2); single `warm_self` / `*_safe`
+  applications produce zero nociception, from rest and from the post-`touch` state; the B8
   causer-vs-bystander test on the chilled body extended to `noxious`; both the drive Reaction and the
   nociceptor Reaction of one contact reach `_distribute_reward_from_reaction`; deletion probe (remove
   the `noxious` rule in `failure_pain_kind` → the gate re-reds).
+- It bumps the record's schema id to `ans-v2` (§3.1.1): the same contact's `nociception` changes meaning.
 - Guard: nociception_layer step 4's **golden table**, generated from pre-change code over every `PainType`
   × source (including `nociceptor:*`) × origin × `agent_id`, recording each consumer's accept flag and
   delivered value **through both refractories** (PainBus per `(entity, failure_mode)`, ReactionBus per
@@ -770,7 +1131,9 @@ body selection path, so it waits for the remaining agent_loop slices.
 **(iii) Cause-keyed valence** (§3.4).
 - Builds the red-gate (c) fixture: an actor affordance with a `target_effect` harmful to the AUT.
 - Gate: red gate (c) flips; sufferer rows byte-identical; a bystander affordance never stamps a cause; a
-  breach lingering on another sensor never inherits the cause; the actor path's B8 gating; the aversion
+  breach lingering on another sensor never inherits the cause (B8's set is computed before
+  `evaluate_failures` and passed as `cause_sensors`); cause rows are cradle / `--sim` only (no Minecraft
+  source exists); the actor path's B8 gating; the aversion
   map byte-identical under the strict default (§3.4); cause rows survive or are counted out of the
   bundle scrub exactly as decided, never silently dropped.
 - Rows fired — **not none, and not additive at the reader** (§3.4): no ledger row's trigger cites
@@ -790,34 +1153,54 @@ audit the body layer beneath; the sensor-resolver disagreements (#1124, #1156, #
 
 ### 5.4 GL2c — the positive producer (last, deliberately)
 
-- **Depends on:** GL2a; R4's routing audit has decided the selection surface (Phase 5 "first"); **one joint
+- **Depends on:** GL2a; **the out-of-band producer with the narrated and apparatus scopes** (after the
+  fence; G9, G16), because on Minecraft every oxygen crossing is out-of-band and a narrator-caused cradle
+  satiation would otherwise be delivered at full weight (environment SF-2); R4's routing audit has
+  decided the selection surface (Phase 5 "first"); **one joint
   four-lens design review with Phase 5's relief store** (plus `fear_learning.md` Exp A and `coding_world.md`
   C3's reserved opposite sign), owner decision at stage start, recommended yes; **nociception_layer step 3
-  (the F1 / F1b fix) landed before or with it** (§7); `engram_formation.md` E4's overreach set read if
-  text nodes can be reached.
+  (the F1 / F1b fix) landed before or with it** (§7); `engram_formation.md` E4's overreach set read
+  (mandatory under A or C, §3.5).
 - **Build:** the satiation emission at the latch-clear site, routed per the owner's option (§3.5), behind a
   declared `maxim config` switch, default OFF, in M10's harness fingerprint, enabled only by a
   pre-registered experiment. (If an env var is unavoidable it needs an autouse conftest scrub in the same
   commit.) The restated refusals (§3.5) are part of the build.
-- **Gate (flag off):** every golden byte-identical, and the executing survival checks
-  (`test_water_trial_smoke.py`, `test_exp61_run.py`) unchanged. **Gate (flag on):** red gate (d) flips
-  for delivery; on a scripted Minecraft surfacing-after-submersion and eat-after-hunger sequence, exactly
-  one satiation per breach episode; under option B this producer never writes `_reward_bias`; under
+- **Gate (flag off):** every golden byte-identical, and the executing survival check (the
+  `test_water_trial_smoke.py` test named in §5.2, on `StepClock` after #954, or with stated margins)
+  unchanged; `test_exp61_run.py` and `test_r3_run.py` are run but not cited as executing the producer
+  (environment SF-1). **Gate (flag on):** red gate (d) flips for delivery; exactly one positive event per
+  breach episode on a scripted **cradle** deprive → satisfy sequence (`infant_humanoid` hunger,
+  `cradle_food.eat`; Minecraft `food` deprivation is not reachable natively, and `ScriptedWaterBridge`
+  serves `food` 20 and a no-op `eat`, so a Minecraft eat case needs a **new** scripted fixture class,
+  never an edit to that cited guard; environment SF-5) and on a scripted Minecraft
+  surfacing-after-submersion (relief at offset, §3.5); a rescue-caused crossing delivers nothing (G16);
+  passive recovery delivers nothing; under option B this producer never writes `_reward_bias`; under
   option A `_reward_bias` becomes non-empty **only** from satiation; the zero-bias guards in
   `test_nac.py` and the refusals in `donor_sanity_staged` and `_R3._boundary` are restated, not deleted;
   narrated satiations carry the declared discount.
 - **Lands only with the batched live re-run** of Exp 60, 61 and 62 plus the T1-11 and T1-12 arguments
   or the Exp 56 / Exp 57 re-runs (G7): Exp 60's frozen gates still PASS on the rig, or the row is recorded BROKEN and blocks the
-  release.
+  release. The re-run reports satiation counts **per arm and per cause** (agent action / apparatus /
+  respawn; G16). **MAINTAINED needs more than a PASS** (confounding SF-4): with a positive value on the
+  surfacing act, the agent could surface on time because surfacing is rewarded rather than because of the
+  situation fear T1-13 claims. So the re-run records the per-component score at every scored decision
+  (`NAc.recommend_action` already emits `components`: `causal`, `reward_bias`, `learned_bias`, `drive`,
+  `explore`), and MAINTAINED requires the frozen gate to PASS **and** the decision to be unchanged with
+  the satiation term zeroed (a counterfactual recomputed offline from the recorded components). A PASS
+  that holds only with the term is recorded as the new cause, not as MAINTAINED. The same requirement
+  goes into the joint four-lens review's brief.
 - **Rows fired, every routing (G7):** T1-11, T1-12, T1-13, T1-14 (also functionally: the donor sanity)
   and T1-15;
   plus, by the "PainBus / ReactionBus / NAc reward pipeline change" wording, T1-4 and T3-9 under options
-  A and C; T1-6 / T1-9 for cradle hunger/thirst satiation, per wording; and the relief store's own walk
+  A and C; **T1-16** under A and C, because `hippocampus.capture_reaction` (subscribed to every Reaction,
+  `runtime/bio_stack.py`) appends satiation Reactions to the pending episode and so changes the persisted
+  episode's valence and content, "the memory record shape" (wiring S8); T1-6 / T1-9 for cradle hunger/thirst satiation, per wording; and the relief store's own walk
   (rung E2's) under options B and C.
 
 ### 5.5 Hand-off to the latent forward model
 
-`latent_forward_model.md` consumes `drain_outcomes()` and the tool-path record as its target, core first.
+`latent_forward_model.md` consumes the tool-path record (and, after the fence, `drain_outcomes()`) as its
+target, the change-only subset first (§3.1.1), on experienced records only.
 Its S1 changes the Cerebellum's observe call to these consequence dims (target entity keyed); this plan
 only guarantees the record exists and is honest. Affordances with no declared `self_effect` (363 of the
 405 shipped, per the #1120 audit) have no predicted consequence: stated, not imputed.
@@ -827,12 +1210,14 @@ only guarantees the record exists and is honest. Affordances with no declared `s
 | Stage | Symbols touched | Rows whose trigger fires (by wording unless noted) |
 |---|---|---|
 | GL0 | docstrings, red gates | none |
-| GL2a | new symbols and `embodiment/event_id.py`; `ToolOutput` additive field; lock, sequencer and snapshot in `evaluate_failures`; `extra["interoception"]` on every loop capture | **T1-16** ("the memory record shape": `EncodingSignals.to_dict` flattens `extra` into the persisted trace) — walk or structural discharge |
+| GL2a | new symbols (no event id, G17); `ToolOutput` additive field (`repr=False`); the before-snapshot in `_run_started`; the per-call drift and cleared record in `evaluate_failures`; `extra["interoception"]` on every loop capture | **T1-16** ("the memory record shape": `EncodingSignals.to_dict` flattens `extra` into the persisted trace) — walk or structural discharge, including the substring path (#1189) |
+| Out-of-band producer + scopes (after the fence, G9) | snapshot, lock, `drain_outcomes()`, narrated and apparatus scopes in `simulation/tools.py` and the harnesses | T1-16 (more captures carry the key); walked in its own PR |
+| Resume stage (after the fence, before GL4 S1, G15, G17) | `embodiment/event_id.py`, the sequencer and its session-id source (a new required `build_executor` keyword and its callers), `pid` / `cause_pid`; the sequencer's high-water mark; `build_bio_stack`, `_restore_aut_from_session` | **T1-16** by its "Hippocampus save/restore or the resume path (`RESUME_STORES`)" wording if it touches them |
 | GL2b(i) | `substrate_proposal` need map, `_DRIVE_TOOL_AFFINITIES` | T1-13 (floor), T1-6, T3-9 |
 | GL2b(ii) | `failure_pain_kind`, `evaluate_failures`, a variant body YAML, the side-effects registry grammar | T1-6 (with #1161), T1-4, T3-9; T1-9/T1-10 only if a shared body changes |
 | GL2b(iii) | percept-valence subscriber (cause namespace), PainSignal context, the aversion reader's exclusion, bundle scrub | T1-16 (pain episodes' shape); T1-14 by wording (the strict-default exclusion is a `bundle.py` scrub edit) and walked (donor check, hivemind keys); T1-2 (STALE); a live LLM-path change via `learned_aversions` unless excluded |
-| GL2c (any routing) | the latch-clear emission and its route; the restated refusals | **T1-11 / T1-12 / T1-13 / T1-14 / T1-15 (G7: the crossing is Exp 60's `escape_water` contingency; T1-14 and R3 refusals functionally)**; T1-6 / T1-9 per wording |
-| GL2c (A or C) | `_distribute_reward_from_reaction` input, `credit_node` writes | adds T1-4, T3-9 |
+| GL2c (any routing) | the latch-clear emission and its route; the restated refusals | **T1-11 / T1-12 / T1-13 / T1-14 / T1-15 (G7: a positive producer on the earned bodies, whose crossings the apparatus mostly makes, G16; T1-14 and R3 refusals functionally)**; T1-6 / T1-9 per wording |
+| GL2c (A or C) | `_distribute_reward_from_reaction` input, `credit_node` writes, `capture_reaction` | adds T1-4, T3-9, T1-16 (episode valence) |
 | GL2c (B or C) | relief store input | adds the relief store's own walk |
 | Wire 4 | — | must not change in any stage |
 
@@ -866,12 +1251,16 @@ decision G5), added in this plan's PR.
 
 | Stage | Decision | Recommendation (strict option first where offered) |
 |---|---|---|
-| GL2a | #1125: land after it, or carry its fix as commit 1? (A dependency either way, not an option to skip.) | After #1125, or its fix as commit 1; never ship a record that omits `arms.thermal`. |
-| GL2a | Narrated records vs the fence: add the three narrator tools' `execute` bodies in `simulation/tools.py` to the exempt set, or ship the tool-path record only and land the out-of-band producer with the narrated scope after the fence (§5.2)? | **Tool-path only (strict)**: no out-of-band record's provenance is ever guessed. |
-| GL2a | `drain_outcomes()` queue bound, and the load seam that hands the restored maximum `seq` to the `Embodiment` | A bound sized from a scripted session's peak, drop-oldest with a counted, logged drop; the seam named in the design pass. |
-| GL2a | Core valence formula: `relief − harm − nociception`, or weighted (e.g. nociception ×2, a negativity bias)? | Unweighted v1; innate prior either way; revisit only with forward-model evidence. |
-| GL2a | Urgency v1 pressure-only, slope with GL3 timing? | Yes. |
-| GL2b(i) | Heat-need name (`heat` vs `overheat`) and affinity keywords; does it wait for a cooling affordance in a shipped scene? | `heat`; keywords chosen to avoid `withdraw`; build the need, and say in the PR that no shipped scene yet offers a cooling act. |
+| GL2a | #1125 | **Closed:** merged 2026-10-08 (#1164); GL2a reads through its resolver. |
+| GL2a | Narrated records vs the fence | **Decided 2026-10-09 (G9):** tool-path only; the out-of-band producer lands after the fence with the narrated scope. |
+| GL2a | `drain_outcomes()` queue bound | **Decided 2026-10-09 (G10):** measured from a scripted session's peak, drop-oldest, counted and logged; applies once the out-of-band producer exists. |
+| GL2a | The load seam for the restored `seq` | **Decided 2026-10-09 (G15, superseded in part by G17):** no pid at GL2a; the type, the sequencer, its session-id source and the resume (own high-water mark, both seams, real load paths) land together after the fence, before GL4 S1. |
+| GL2a | Executor scope and the record's window | **Decided 2026-10-09 (G14):** `_run_started` + `_stamp_invocation`; action-scoped, resolver-read, net of drift; trio byte-identical. |
+| GL2a | Core valence formula | **Decided 2026-10-09 (G11):** unweighted `relief − harm − nociception`, an innate prior; health counted once. |
+| GL2a | Urgency v1 | **Decided 2026-10-09 (G12):** pressure only; slope with GL3 timing. |
+| GL2a | Session id source (G15) | **Decided 2026-10-09 (G17):** none exists (every session id is wall-clock `time.strftime`, and `build_executor` has no session parameter), so GL2a mints no id. Moved to the resume stage (next row). |
+| Resume stage (after the fence, before GL4 S1) | Session id source; sequencer release | Asked at the stage's start (G17): deterministic (no uuid, no wall time); who mints it; its scope; `--resume-sim` behaviour; a new required keyword on `build_executor` and its callers; release at bio session end and executor shutdown; the `r3_run.py` / `exp61_run.py` same-process rebuilds; a conftest autouse reset. |
+| GL2b(i) | Heat-need name (`heat` vs `overheat`) and affinity keywords | `heat`; keywords chosen to avoid `withdraw`. The keywords are the switch between latent and live in the cradle arc scene, which has a cooling act (`cradle_cool_air`, §1.3 R-2); say which in the PR, and freeze the list before GL5's fixtures are named. |
 | GL2b(ii) | **#1161 order:** option A (resolve the modulator read + narrow the collateral gate) before burn-as-pain? | Yes, #1161 first, with its Exp 42 re-run plan and the T1-9 call and safe-warm-when-satiated flip it raises. |
 | GL2b(ii) | Burn calibration: the learning threshold this stage must clear, the nociceptor threshold and gain, and body placement | Threshold ≥ 0.4 (every PainBus learner); values satisfying §3.2's constraint; variant body only, the shipped base body waits for a post-#1161 Exp 42 re-run. |
 | GL2b(ii) | Nociception step 2 before or with this stage? | With or before (the ReactionBus refractory collision, §3.2, makes it a prerequisite in practice). |
@@ -894,16 +1283,24 @@ decision G5), added in this plan's PR.
   one yields no entry. The units invariant in `_read_drive_ranges` applies.
 - **One-sided signs:** Minecraft health/oxygen cannot exceed the set point (max 20 = set point), so the
   signed deviation is one-sided there; the forward model must not read "never positive" as learned.
-- **The record inherits upstream blindness** (#1125/#1161) unless it resolves sensors itself (§3.1.4).
+- **The record inherits upstream blindness** (#1161) unless it resolves sensors itself (§3.1.4); it reads
+  through the #1125 resolver and never refills the blind trio.
 - **Two writers on one body:** the narrator's orchestrator thread and the AUT loop both run
-  `evaluate_failures` on the AUT body; without the GL2a lock, a seq could be minted twice or a latch read
-  half-updated. The two-thread test is the guard.
+  `evaluate_failures` on the AUT body; once the out-of-band producer mints there, a seq could be minted
+  twice or a latch read half-updated without its lock. That stage's two-thread test is the guard; GL2a
+  mints nothing (G17), and from the resume stage tool-path minting runs on the executor's thread, under
+  the sequencer's own lock.
 - **Mislabelled provenance:** a narrator consequence recorded as `experienced` would hand language-prior
-  physics to the forward model at full weight. The strict GL2a default (tool-path only until the narrated
-  scope lands) and the contamination guard's no-relabel check are the guards.
-- **Satiation lands on the measured contingency:** the oxygen/health crossing fires at Exp 60's
-  `escape_water`, so a positive producer can reinforce exactly the act the survival claims measured
-  (§3.5). Off by default and the batched re-run are the guards.
+  physics to the forward model at full weight. The G9 default (tool-path only until the narrated scope
+  lands), the relief pin (it catches a foreign write on a drive the trio sees), the `--sim` tool-path
+  records counted separately, and the contamination guard's no-relabel check are the guards. The
+  remaining hole, a narrator write to a declared drive inside the window, closes with the write epoch.
+- **Apparatus counted as experience:** a rescue, heal, respawn or teacher feed stamped `experienced`
+  would be a synthetic reward delivered as world-native (D1), and in Exp 60 it would fall unevenly
+  across arms. `apparatus` (G16) and the per-arm, per-cause counts are the guards.
+- **Satiation lands near the measured contingency:** a positive producer can reinforce the act the
+  survival claims measured (§3.5). Off by default, `apparatus` excluded, the batched re-run, and
+  MAINTAINED only with the satiation term zeroed are the guards.
 - **Claim drift:** keep autonomic wording out of release-claim prose until a GL5 record exists (M36 does
   not lint CHANGELOG claim lines).
 
@@ -911,22 +1308,30 @@ decision G5), added in this plan's PR.
 
 Each enters `docs/agents/embodiment.md` in the stage that builds it, with its `Regression guard:` line.
 
-- The record is built only through the factory with required keyword-only `pid=`, `cause=`,
-  `provenance=`. Regression guard: `embodiment/sem.py::interoceptive_outcome` signature (structural) + the
+- The record is built only through the factory with required keyword-only `cause=`, `provenance=`
+  (and `pid=` from the post-fence resume stage, G17). Regression guard: `embodiment/sem.py::interoceptive_outcome` signature (structural) + the
   stage's AST test that `InteroceptiveOutcome(` is not constructed elsewhere in `src/`.
-- `relief == max(drive_relief)` on every tool-path record. Regression guard: the GL2a unit test (proposed
-  `tests/unit/test_interoceptive_outcome.py`).
+- The positive part of the record's `drive_delta` equals `ToolOutput.drive_relief` on every drive present
+  in `drive_relief`, and the trio, `encoding_tag` and `storage_strength` are byte-identical to the
+  pre-change golden. Regression guard: the GL2a unit test (proposed
+  `tests/unit/test_interoceptive_outcome.py`) with its drift-netting deletion probe.
+- `str(ToolOutput)` is byte-identical with and without the record (`repr=False`, #1189). Regression
+  guard: the same test file.
 - `corrective_need_intensity` is the `"below"` projection of `corrective_need`, byte-identical on every
   shipped body. Regression guard: the GL2b(i) grid test (proposed `tests/unit/test_corrective_need_two_sided.py`).
 - A cause is stamped only for sensors in the affordance's B8 harmful set. Regression guard: the GL2b(iii)
   bystander test.
-- `PhysicalEventId` carries no uuid and no wall time, rejects an empty `agent_id` and a negative `seq`,
-  and is minted only by the agent's `EventSequencer` (ephemeral wrappers mint none). Regression guard:
-  the frozen dataclass in `embodiment/event_id.py` (structural, SHAPE-FROZEN) + the lockstep determinism
-  test + the resume-past-saved-maximum round-trip test.
-- No record carries a defaulted provenance; a narrator consequence is never `experienced`. Regression
-  guard: `InteroceptiveOutcome.__post_init__` sentinel rejection (structural) + the GL2a (or post-fence
-  narrated-scope) test that every narrator tool's record is `narrated`.
+- (Enters at the post-fence resume stage, G17.) `PhysicalEventId` carries no uuid and no wall time,
+  rejects an empty `agent_id`, an empty `session_id` and a negative `seq`, and is minted only by the
+  agent's `EventSequencer` (ephemeral wrappers mint none; one live sequencer per `agent_id`, released at
+  bio session end and executor shutdown). Regression guard: the frozen dataclass in
+  `embodiment/event_id.py` (structural, SHAPE-FROZEN) + the lockstep determinism test + its test through
+  both real load paths.
+- No record carries a defaulted provenance; an out-of-band narrator consequence is never `experienced`,
+  and an apparatus write is never trained on or credited. Regression guard:
+  `InteroceptiveOutcome.__post_init__` sentinel rejection (structural) + the post-fence narrated- and
+  apparatus-scope tests (every narrator tool's out-of-band record is `narrated`; a rescue-caused crossing
+  delivers nothing). Until the write epoch lands, the invariant is scoped to out-of-band records (§3.1.4).
 - No stage edits `DEFAULT_CLUSTER_FEAR_FAILURE_MODES`. Regression guard: the existing Wire-4 guards
   (`tests/unit/test_cluster_fear.py`).
 
@@ -945,4 +1350,6 @@ the next free number. The GL2c switch rides the existing M10 row (amended 2026-1
   [reviews/nociception_layer/](reviews/nociception_layer/)
 - `docs/agents/embodiment.md` §2 (the three pain/credit channels, B8, the drive protocol)
 - `docs/agents/bio-memory.md` (reward-bias clamp, Wire 4)
-- Issues: #1120 (audit), #1125, #1161, #880 (F1), #888 / #889 (R4 defects), #908 / #909 (Cerebellum)
+- Issues: #1120 (audit), #1125 (closed, #1164), #1161, #880 (F1), #888 / #889 (R4 defects), #908 / #909
+  (Cerebellum), #954 (wall-time water-trial tests), #1189 (`ToolOutput` repr in recall)
+- GL1 four-lens review (2026-10-09): [reviews/grounding_gl1/](reviews/grounding_gl1/)
