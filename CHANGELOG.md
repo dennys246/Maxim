@@ -145,6 +145,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An APPROVED PLANNING action learns what the same action learns autonomously** ([#1085](https://github.com/dennys246/Maxim/issues/1085),
+  PR-a; owner decisions 2026-10-08 and 2026-10-09; also `agent_loop` decomposition slice 4). At PLANNING autonomy
+  the loop queues every proposal, and an embedder's `proposal_queue.approve` is the only route that approves one
+  (this change opens no other; the approval surface is [#1185](https://github.com/dennys246/Maxim/issues/1185)).
+  - **Learning parity.** `run_agentic_loop`'s §5 executed approved entries through its own copy of the dispatch: it
+    booked no params and no side effects (a harmful approved action booked POSITIVE), ran no capture, plan outcome
+    or `environment.step`, and queued a follow-up without its triggering input (and, on a failure, without the error
+    text). §5 is now `runtime/loop_planning.py::drain_approved`, which runs each approved action through
+    `tool_dispatch.execute_and_learn` with `human_involved=True`, keyed to the situation it was proposed in (#1083).
+  - **A robust drain.** §5 took every approved entry out of the queue before executing the first; its per-entry
+    handler caught a tool's own raise, but a raise escaping it (from the outcome recorder, for instance) silently
+    lost every other approved entry. The drain now takes ONE entry at a time (`ProposalQueue.pop_approved`). A raise
+    anywhere in an entry's step (any `BaseException`, `KeyboardInterrupt` included) rejects every remaining
+    approved entry (`plan_refused{reason: "drain_aborted"}`), even if reporting them raises too, and the ORIGINAL
+    exception propagates as on the main path (an `Exception` raised while reporting is logged; a second interrupt
+    raised then escapes instead, with every entry already rejected, because the reject pass runs before any I/O). An approved entry with no action, dropped silently before, is refused
+    as `no_action` (logged, not booked).
+  - **Approval lifts only the PLANNING level** (owner decision S7). Before each entry the drain checks the new
+    `AutonomyController.approved_action_blocker`: a critical safety constraint (`approval_blocker`, the non-level
+    half that `can_execute_action` now calls) or the supervision policy's hard denials (`SupervisionPolicy.hard_deny`,
+    which `can_execute` now calls first: forbidden tools, prefixes and categories) refuse the entry
+    (`reason: "blocked"`) and it does not run. The policy's "needs approval" checks (the `allowed_tools` list,
+    confidence, `requires_confirmation`, the sandbox/CWD rules) are what the approval satisfies (owner decision
+    2026-10-09). `can_execute_action` and `can_execute` decide exactly as before at every level. The check also
+    refuses on a pause, but only a pause landing after this tick's gate (later in the tick, or during the drain):
+    a paused loop's gate idles, so the drain does not run while paused; approved entries do not expire, and a
+    later `resume()` would run them (#1185).
+  - **The drain's refusals book no NAc.** `blocked` and `drain_aborted` book through `tool_dispatch.book_machine_refusal`
+    (bound as `LoopRun.book_machine_refusal`), which has no NAc, situation or goal to pass: `recent_outcomes` and the
+    LLM's carryover only. §4's hard rejection and a confirmation "no" still book NAc (#1185).
+  - **No `write_file` overwrite retry for a confirmed or approved action.** With `human_involved=True` (confirmed or
+    approved, by a person OR a policy: the non-interactive SUPERVISED auto-yes and sim AUTO_APPROVE included),
+    `execute_and_learn` no longer re-executes a failed `write_file` with `overwrite=True`, a second action nobody
+    approved; this also changes the SUPERVISED-confirmed path (#1133). The autonomous path keeps its retry,
+    unchanged and pinned (related: [#1146](https://github.com/dennys246/Maxim/issues/1146)).
+  - `run_agentic_loop` shrinks 2,783 → 2,720 lines; `loop_planning.py` joins CI's mypy set and the swallow lint's
+    measurement path; the `plan_refused` event is registered at verbosity 0. Guards:
+    `tests/unit/test_approved_path_learns_1085.py` (strict red gates on `main`),
+    `tests/unit/test_approved_path_characterization.py`, `tests/unit/test_loop_planning.py`.
+
 - **A reloaded body keeps its component state, and a dotted entity key no longer shadows a real sub-sensor**
   ([#1124](https://github.com/dennys246/Maxim/issues/1124), owner decisions 2026-10-07). `Entity.to_dict` saved an
   entity's `vital_metrics` but not its modulators' sub-sensor values, and `from_dict` rebuilt every modulator empty, with

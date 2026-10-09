@@ -4,8 +4,9 @@ Unit tests (always run) exercise the ContainerRunner protocol, factory,
 and path-mapping logic in DockerSandbox by mocking the subprocess
 layer.
 
-Integration tests (skipped when Docker isn't available) spin up real
-containers to verify end-to-end behavior.
+Integration tests spin up real containers to verify end-to-end behavior;
+they are ``@pytest.mark.slow`` (the nightly slow lane, #1103) and skip
+locally when Docker isn't available.
 """
 
 from __future__ import annotations
@@ -150,14 +151,15 @@ class TestPermissionsForAutonomy:
 class TestCheckDockerAvailable:
     """These tests refresh the docker-available cache with mocked
     subprocess, which would leak into later tests. The ``_restore_cache``
-    fixture puts a real probe result back after each test."""
+    fixture puts the PREVIOUS cache value back after each test (it used to
+    re-probe the real daemon, which the fast suite must never touch, #1103)."""
 
     @pytest.fixture(autouse=True)
-    def _restore_cache(self):
+    def _restore_cache(self, monkeypatch):
+        import maxim.simulation.container_runner as cr
+
+        monkeypatch.setattr(cr, "_DOCKER_AVAILABLE_CACHE", cr._DOCKER_AVAILABLE_CACHE)
         yield
-        # Re-probe with real subprocess so later tests aren't
-        # stuck with a mocked False/True value.
-        check_docker_available(refresh=True)
 
     def test_not_available_when_docker_missing(self):
         # FileNotFoundError when `docker` binary isn't installed
@@ -341,15 +343,14 @@ class TestDockerSandboxReadonlyWorkspace:
         assert sandbox.write_file("foo.txt", "content") is False
 
 
-# ── Integration tests (Docker required) ──────────────────────────────────
-
-
-_DOCKER = check_docker_available()
+# ── Integration tests (a REAL Docker daemon: nightly slow lane only, #1103) ─
 
 
 def _start_or_skip(sandbox) -> None:
     """Start the sandbox; SKIP (don't fail) when the image can't be pulled
-    because the Docker registry is unreachable.
+    because the Docker registry is unreachable — a fallback for LOCAL runs only.
+    On the nightly slow lane (#1103) the image is pre-pulled by a named step, and
+    any skip here is an unlisted skip, so the roster check turns the lane red.
 
     Docker being installed (``check_docker_available()``) does not guarantee the
     runner can reach Docker Hub. In CI the ``docker pull python:3.12-slim`` step
@@ -369,13 +370,23 @@ def _start_or_skip(sandbox) -> None:
         raise
 
 
-@pytest.mark.skipif(not _DOCKER, reason="Docker not available")
+@pytest.mark.slow
 class TestDockerSandboxIntegration:
     """End-to-end tests that actually launch a container.
 
     These are slower (first-run image pull + container startup ~2-3s)
-    but exercise the real docker CLI path.
+    but exercise the real docker CLI path. They run in the nightly slow
+    lane (``scripts/lane_rosters/slow.json``), whose ubuntu runner has
+    Docker; the fast suite is hermetic (tests/docker_guard.py). The probe
+    runs in a fixture, not at import, so collecting the fast suite never
+    reaches the daemon. A skip is not in the roster's ``allowed_skips``:
+    on the lane, no Docker (or an unpullable image) is a failure.
     """
+
+    @pytest.fixture(autouse=True)
+    def _require_docker(self):
+        if not check_docker_available(refresh=True):
+            pytest.skip("Docker not available")
 
     def test_start_and_cleanup(self):
         sandbox = DockerSandbox(

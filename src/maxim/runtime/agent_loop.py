@@ -16,8 +16,6 @@ from maxim.runtime.tool_dispatch import (
     safe_agent_name as _safe_agent_name,
     record_outcome as _record_outcome,  # noqa: F401 -- a seam: loop_setup reads agent_loop._record_outcome
     execute_parallel_actions as _execute_parallel,
-    _followup_result_text,
-    _reset_deliberation,
 )
 
 # Extracted to bio_integration.py
@@ -29,6 +27,7 @@ from maxim.runtime.loop_gates import GateOutcome, pre_tick_gate
 from maxim.runtime.loop_setup import build_loop_run
 from maxim.runtime.loop_controller import _handle_planning_failure
 from maxim.runtime.loop_substrate import substrate_tick
+from maxim.runtime.loop_planning import drain_approved
 
 # Module reference, not a name import: a test that patches the leaf also reaches the loop's call.
 from maxim.runtime import substrate_proposal as _sp
@@ -924,20 +923,6 @@ def resolve_llm_loop_overrides() -> tuple[int | None, int | None]:
     )
 
 
-def _approved_situation(proposal: Any) -> dict[str, Any]:
-    """The situation an APPROVED proposal was proposed in, as ``record_outcome`` kwargs (#1083).
-
-    Keyed to PROPOSAL time (owner decision 2026-10-04): read from the ``LLMProposal`` the queued
-    ``Proposal`` references, so the approved path credits the same ``(agent, cluster, tool)`` key as
-    the autonomous path. A ``Proposal`` with no source credits no situation.
-    """
-    source = getattr(proposal, "source", None)
-    return {
-        "cluster_id": getattr(source, "cluster_id", None),
-        "clusters": getattr(source, "clusters", None),
-    }
-
-
 def _followup_synthetic_input(followup: Any) -> str:
     """The follow-up input the LLM receives, with the tool result FRAMED as data (#823).
 
@@ -1081,6 +1066,7 @@ def run_agentic_loop(
     _loop_sensor_encoder, _loop_situation_cue = run.sensor_encoder, run.situation_cue
     _planning_liveness_on = run.planning_liveness_on
     _execute_and_learn, _book_refusal = run.execute_and_learn, run.book_refusal
+    _book_machine_refusal = run.book_machine_refusal
 
     # Mutable-container aliases — safe because in-place mutation is shared.
     # State variables (pending_proposal, pending_action_followup, etc.) use
@@ -2611,83 +2597,19 @@ def run_agentic_loop(
                 ctrl.pending_proposal = None
 
         # ─────────────────────────────────────────────────────────────────
-        # 5. CHECK FOR APPROVED PROPOSALS (PLANNING mode)
+        # 5. CHECK FOR APPROVED PROPOSALS (PLANNING mode) -- runtime/loop_planning.py (#1085)
         # ─────────────────────────────────────────────────────────────────
         if autonomy_controller.current_level == AutonomyLevel.PLANNING:
-            approved = autonomy_controller.proposal_queue.get_approved()
-            for proposal in approved:
-                if proposal.action:
-                    tool_name = proposal.action.get("tool_name", "unknown")
-                    try:
-                        result = executor.execute(proposal.action)
-                        success = getattr(result, "success", True)
-                        output = getattr(result, "output", None)
-                        error_msg = getattr(result, "error", None)
-                        autonomy_controller.log_action(
-                            action_type="executed",
-                            action=proposal.action,
-                            reasoning=proposal.reasoning,
-                            mode=state.data.get("mode", "unknown"),
-                            confidence=proposal.confidence,
-                            human_involved=True,
-                            outcome="success" if success else "failure",
-                        )
-
-                        # Record outcome so LLM sees the result
-                        result_str = _followup_result_text(tool_name, output, None, 3000)
-                        _rec_outcome(
-                            agent_id=_loop_agent_id,
-                            tool_name=tool_name,
-                            success=success,
-                            result_summary=result_str,
-                            error=error_msg,
-                            reasoning=proposal.reasoning or "",
-                            recent_outcomes=recent_outcomes,
-                            max_recent=max_recent_outcomes,
-                            llm_worker=llm_worker,
-                            context_pool=context_pool,
-                            nac=_loop_nac,
-                            active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
-                            **_approved_situation(proposal),
-                        )
-
-                        # L2: Reset deliberation state on non-think tool execution
-                        if tool_name != "think":
-                            _reset_deliberation(executor)
-
-                        # Queue follow-up so LLM can continue
-                        from maxim.modes.definitions import get_tool_followup_type
-
-                        current_mode = state.data.get("mode", "live")
-                        followup_type = get_tool_followup_type(tool_name, current_mode)
-                        if followup_type and ((success and output is not None) or followup_type == "process"):
-                            ctrl.pending_action_followup = ActionFollowup(
-                                tool=tool_name,
-                                result=result_str,
-                                original_query="",
-                                followup_type=followup_type,
-                                mode=current_mode,
-                                timestamp=time.time(),
-                            )
-
-                    except Exception as e:
-                        logger.error(f"Approved action failed: {e}")
-                        # Record failure so LLM knows (also fixes missing llm_worker call)
-                        _rec_outcome(
-                            agent_id=_loop_agent_id,
-                            tool_name=tool_name,
-                            success=False,
-                            result_summary=None,
-                            error=str(e),
-                            reasoning=proposal.reasoning or "",
-                            recent_outcomes=recent_outcomes,
-                            max_recent=max_recent_outcomes,
-                            llm_worker=llm_worker,
-                            context_pool=context_pool,
-                            nac=_loop_nac,
-                            active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
-                            **_approved_situation(proposal),
-                        )
+            _approved_followup = drain_approved(
+                autonomy_controller=autonomy_controller,
+                execute_and_learn=_execute_and_learn,
+                book_machine_refusal=_book_machine_refusal,
+                observation=observation,
+                state=state,
+                sim=sim,
+            )
+            if _approved_followup is not None:
+                ctrl.pending_action_followup = _approved_followup
 
         # ─────────────────────────────────────────────────────────────────
         # 6. SUBMIT NEW CONTEXT TO LLM (non-blocking, event-driven)

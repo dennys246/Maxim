@@ -222,6 +222,15 @@ jobs:
       - name: Install the optional backends
         run: |
           pip install faster-whisper ctranslate2 onnxruntime av numpy opencv-python scipy llama-cpp-python ddgs pyyaml
+      # The real-Docker tests moved here from the fast suite (#1103, owner decision 2026-10-08: the fast suite is
+      # hermetic, tests/docker_guard.py). Pull their image OUTSIDE the network namespace so a registry hiccup fails
+      # this step by name instead of surfacing as an unlisted skip in the roster check; the daemon is reached over
+      # its unix socket, which the namespace does not cut.
+      - name: Pull the Docker sandbox image
+        # Bounded retry for a registry hiccup, still failing loudly by name after three tries (a red slow lane
+        # blocks a release through check_nightlies; a listed "Docker not available" skip would hide a runner
+        # without Docker, which the roster exists to catch).
+        run: for i in 1 2 3; do docker pull python:3.12-slim && exit 0; sleep 15; done; exit 1
       - name: Run the slow lane
         env:
           MAXIM_RUN_MODEL_TESTS: "1"
@@ -480,6 +489,7 @@ jobs:
                src/maxim/runtime/executor.py src/maxim/runtime/agent_loop.py \
                src/maxim/runtime/loop_setup.py src/maxim/runtime/loop_gates.py \
                src/maxim/runtime/loop_substrate.py src/maxim/runtime/substrate_proposal.py \
+               src/maxim/runtime/loop_planning.py \
                src/maxim/runtime/loop_controller.py src/maxim/runtime/loop_state.py \
                src/maxim/runtime/tool_dispatch.py src/maxim/runtime/loop_types.py \
                src/maxim/bridges/ src/maxim/planning/ \
@@ -516,6 +526,19 @@ jobs:
         # Prints overall + per-package coverage every run. Positive control:
         # tests/unit/test_lint_coverage.py.
         run: python scripts/lint_coverage.py
+
+      - name: Upload coverage.json (#1103, diagnostic)
+        # Diagnostic only, after the gate (lint_coverage.ci_step_rules allows nothing between the measuring
+        # suite and the gate but MemoryHub). #1103: a few statements flip between identical CI runs (they did
+        # not flip across two identical local runs, 2026-10-08); diffing `executed_lines` of two runs of one
+        # commit names the timing-dependent lines. Uploaded even when the gate fails, which is when it matters.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-json
+          path: coverage.json
+          retention-days: 14
+          if-no-files-found: warn
 
   lint:
     runs-on: ubuntu-latest

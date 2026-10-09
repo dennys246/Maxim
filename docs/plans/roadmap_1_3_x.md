@@ -517,7 +517,11 @@ recorded-but-unused memory system. That is 1.4's work ([roadmap_1_4.md](roadmap_
    gate → `runtime/loop_gates.py::pre_tick_gate -> GateOutcome`, built 2026-10-06, merged as #1136: 3,248 →
    3,125 lines; the helpers the body shares with the gate moved to `loop_state.py` and `loop_controller.py`.
    Slice 3, §6b the substrate tick → `runtime/loop_substrate.py::substrate_tick` and the proposer family →
-   the leaf `runtime/substrate_proposal.py`, built 2026-10-07, PR pending: 2,819 → 2,783 lines (the 3,125 → 2,819 step between slices 2 and 3 was #1133's move of §4 into `tool_dispatch.execute_and_learn`).)*
+   the leaf `runtime/substrate_proposal.py`, built 2026-10-07, merged as #1157: 2,819 → 2,783 lines (the 3,125 → 2,819 step between slices 2 and 3 was #1133's move of §4 into `tool_dispatch.execute_and_learn`).
+   Slice 4, §5 the PLANNING approved path → `runtime/loop_planning.py::drain_approved`, which runs each approved
+   action through `execute_and_learn(human_involved=True)` (#1085 PR-a: learning parity, a one-at-a-time drain,
+   `approved_action_blocker` at drain time (pause, safety forbids, the policy's hard denials), no NAc for machine refusals, no overwrite retry for a write confirmed or approved by a person or a policy; it
+   opens no approval route, the surface is #1185), built 2026-10-08, PR pending: 2,783 → 2,720 lines.)*
 2. **`start_simulation_mode`** (`simulation/orchestrator.py`, 3,322). Its tests cover **11%** of its lines
    (the Codex card's measurement at `v1.3.1`), so it is NOT decomposed blind: characterization tests
    first, then an orchestrator coverage floor set from them (item 5 above), then slices under the same
@@ -584,11 +588,15 @@ an extraction. **Function-specific pins** (an ordering or region inside one func
 owning slice in that module's docstring and are updated consciously by that slice: slice 1
 (`test_planning_liveness` gate definition and raise-after-teardown, `test_experience_clock` AST),
 slice 2 (`test_planning_liveness` idle-gate pins), slice 3 (`test_substrate_action_budget` §6b
-ordering), slice 4 (`test_planning_liveness` proposal-time stamp).
+ordering), and the slice that moves §2 (`test_planning_liveness` proposal-time stamp; slice 4 moved §5, not §2).
 
 **Characterization owed before slices 4 and 5** (no gate pins this code today; the executor lens,
 slice 0): **slice 4** needs a PLANNING arm, or an extended `test_approved_proposal_situation_1083.py`,
-pinning §5's `pending_action_followup`, `log_action` and `_reset_deliberation` (skipped for `think`).
+pinning §5's `pending_action_followup`, `log_action` and `_reset_deliberation` (skipped for `think`) —
+**done** (2026-10-08): the driver's `level="planning"` arm, `tests/unit/test_approved_path_characterization.py`.
+Slice 4 is an exception to "Coverage first, then extract": by owner decision 1 (#1085, 2026-10-08) it is a fix as
+well as a move, so its fix commit CHANGES those characterization pins (each changed test says so) instead of
+keeping them green unchanged.
 **Slice 5** needs a transcript-bearing or scripted-percept arm that runs §1.1 imagination, §1.15
 auto-sense, §1.16 audio and `state.update(observation)`; only text pins touch them now.
 

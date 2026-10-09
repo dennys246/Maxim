@@ -262,14 +262,17 @@ class TestPainTriggerLayer:
 
 
 class TestCreateSandbox:
+    # backend="tmpdir" explicitly: the default "auto" probes the machine's Docker daemon, so the test (and the
+    # coverage it reports) would depend on the runner (#1103). The auto decision is pinned with a faked probe in
+    # tests/integration/test_orchestrator_sandbox.py::TestAutoBackend.
     def test_creates_populated_sandbox(self):
-        layer = create_sandbox(populate=True)
+        layer = create_sandbox(populate=True, backend="tmpdir")
         assert layer.file_exists("etc/passwd")
         assert layer.file_exists("project/main.py")
         layer.cleanup()
 
     def test_creates_empty_sandbox(self):
-        layer = create_sandbox(populate=False)
+        layer = create_sandbox(populate=False, backend="tmpdir")
         assert not layer.file_exists("etc/passwd")
         layer.cleanup()
 

@@ -231,6 +231,66 @@ update.
   ATL relations, and the survival harnesses use the ATL only through `activate_substrate_node` (#812's
   caller grep).
 
+### Trigger walk — 2026-10-09, #1085 PR-a (the PLANNING approved path runs through `execute_and_learn`)
+
+#1085 PR-a (decomposition slice 4) replaces `run_agentic_loop`'s §5 with `loop_planning.drain_approved`. The drain
+runs each embedder-approved PLANNING entry through `tool_dispatch.execute_and_learn(human_involved=True)`, one at a
+time, after checking `AutonomyController.approved_action_blocker`. Its machine refusals book no NAc
+(`book_machine_refusal`). Two extractions moved verbatim: `approval_blocker` (the pause and the critical safety
+constraints, out of `can_execute_action`) and `SupervisionPolicy.hard_deny` (forbidden prefixes, categories and
+tools, out of `can_execute`). And `execute_and_learn` skips its `write_file` overwrite retry when
+`human_involved=True`. **No ledger run is SUPERVISED or PLANNING:** every autonomy level in
+`docs/experiments/data` reads "Autonomy level: autonomous", and the survival and orchestrator harnesses build
+AUTONOMOUS controllers (`minecraft_harness`, the orchestrator's `aut_autonomy`, the sim tools' `sub_autonomy`).
+
+- **T1-13 (Exp 60, EARNED) fires by its letter** ("`run_agentic_loop` idle-gate or autonomy handling change") and
+  is **discharged structurally**:
+  - The Exp 60 AUT runs AUTONOMOUS, and AUTONOMOUS never queues a proposal, so the drain has nothing to run. Its
+    call stays gated on `current_level == PLANNING`.
+  - **The halt case.** A hard stop calls `emergency_halt`, which sets PLANNING + paused, and the tick `continue`s.
+    From then on the pre-tick gate idles every pass, so §4 and the drain never run again: nothing is queued and
+    nothing drains. No in-tree `resume()` caller exists.
+  - `can_execute_action` decides identically at every level: the extraction is verbatim and reads the level
+    once. `can_execute` does too, pinned by a nine-action decision matrix with messages
+    (`tests/unit/test_loop_planning.py`), which passes against main's code as well. `approved_action_blocker`
+    is read only by the drain.
+  - The retry change applies only with `human_involved=True` (the confirmed and approved paths). The autonomous
+    retry is pinned unchanged (`test_approved_path_characterization.py::test_the_autonomous_write_file_overwrite_retry`).
+  - The selection golden and the offline Exp 60 verdict reproduction are green, unchanged.
+- **T1-14 (Exp 61, EARNED)** inherits Exp 60's triggers ("every Exp 60 trigger"), so it is discharged by the same
+  argument. Its own `Re-run on:` names no autonomy term, and its offline verdict reproduction is green.
+- **T1-15 (Exp 62 rung A, EARNED) fires by its letter**: its `Re-run on:` opens with "every Exp 60 trigger".
+  It is discharged by the same argument. It is Exp 60's agent and protocol, AUTONOMOUS, so nothing is queued
+  and the drain has nothing to run. Its own triggers, verbatim from its `Re-run on:`, name no autonomy term, and
+  none of them changed:
+  - "any change to the two-pool apparatus (`setup_world.py` water-classroom geometry, `--shore-y` / `--pool-id` /
+    stacking, either pool's `measured` block or gate-(ii) record)";
+  - "`WaterTrial.use_geometry` / the one-instrument-attach guard";
+  - "the one-cap rule or its margins";
+  - "the `minecraft_player` world-sensor roster or any `range:`/`rest:` on it (a constant-mass sensor's range IS
+    its weight)";
+  - "`_sensor_embed` / `gain_exponent` / `gain_modalities` / `pattern_threshold`";
+  - "the minor-version heartbeat".
+
+  **Offline verdict reproduction, run 2026-10-09:** `exp62_run.compute_verdict` over the committed
+  `docs/experiments/data/exp62_rows.jsonl` (31 rows, campaign `exp62-rungA-1`) gives EARNED. Its `verdict`, `incomplete_cause`, `n_clean`, `refused`, `rates`,
+  `replay`, `fisher_cross_vs_ablated` and `checks` are field-for-field identical to the committed
+  `exp62_verdict.json`. `tests/unit/test_exp62_run.py` and `test_exp62_precheck.py` pass.
+- **T1-4, T1-6, T1-8 ("`record_outcome` credit change") do not fire.** `record_outcome` is unedited. Only callers
+  changed, and each runs only at PLANNING or SUPERVISED: the drain's `execute_and_learn` and
+  `book_machine_refusal`, and the confirmed path's retry. T1-4's guard tests (`tests/substrate/test_sem_*`,
+  `test_build_executor`, `test_tool_pain_pending_leak`) pass.
+- **The global trigger table:**
+  - "PainBus / ReactionBus / NAc reward pipeline change" → T1-4, T3-10, T3-15. The NAc reward pipeline gains a new
+    caller (`book_machine_refusal`, `nac=None`) and the drain's credit now goes through `execute_and_learn`. Both
+    run only at PLANNING, and no ledger run is PLANNING or SUPERVISED, so neither touches any recorded run's
+    reward path. `record_outcome`, the PainBus and the ReactionBus are unedited. T1-4's guard tests pass.
+  - "Bio-system refactor touching module M" does not apply: no bio-system module changed. `agents/autonomy.py`'s
+    two extractions are verbatim and decision-identical, which the `can_execute` matrix pins.
+  - Neither "Substrate-pipeline change", "Cradle / drive / SEM body change" nor "LLM model swap / prompt-builder
+    change" applies: no encoder, EC, NAc, ATL, SCN, body, drive or prompt code changed.
+  - The `plan_refused` event is new, registered at verbosity 0. It is a log line, which no ledger reader consumes.
+
 ### Trigger walk — 2026-10-08, #1125 (the drive records read modulator drives)
 
 #1125 makes two RECORD readers resolve a modulator drive (`arms.thermal`, `arms.pressure`, `head.thermal` on the

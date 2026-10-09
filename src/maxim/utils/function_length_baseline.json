@@ -151,7 +151,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "run_agentic_loop",
-      "lines": 2783
+      "lines": 2720
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -196,7 +196,7 @@
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
       "qualname": "execute_and_learn",
-      "lines": 389
+      "lines": 388
     },
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
@@ -316,6 +316,7 @@
     "run_agentic_loop tightened 3248 -> 3125 on 2026-10-06 (roadmap 1.3.2 decomposition, slice 2) when sections 0-0.6 (stop checks, DN mode, pause, live tick, display revert, exhaustion, the idle gate and its D13 backstop) moved to runtime/loop_gates.py::pre_tick_gate, which returns a GateOutcome the loop maps to its break/continue; the helpers the gate shares with the loop moved to loop_state.py (wake predicates, _effective_mode) and loop_controller.py (the D13 handlers); every piece under 200 lines; a pure move.",
     "run_agentic_loop tightened 3125 -> 2817 on 2026-10-06 (#1133) when section 4's execute-and-learn block moved verbatim into tool_dispatch.execute_and_learn (379 lines at the move, the C3 commit), the one function the autonomous and the SUPERVISED-confirmed paths both call.",
     "execute_and_learn 379 -> 389 on 2026-10-06 (#1133, the C5 commit): the human_involved parameter the SUPERVISED-confirmed path passes to the autonomy audit entry, and docstring clauses naming its callers, its tracked exceptions and the D2 time keys; covered by the same split_from exception (to: 389); its split is #1150. run_agentic_loop 2817 -> 2819 in the same commit (the confirmation handler's call now passes its two callables); still below its base pin 3125.",
-    "run_agentic_loop tightened 2819 -> 2783 on 2026-10-07 (roadmap 1.3.2 decomposition, slice 3) when section 6b's body (the substrate tick: action gate, proposer, clock advance, pending proposal, telemetry) moved verbatim to runtime/loop_substrate.py::substrate_tick (the cadence predicate stays at the call site) and the local llm_submit_interval alias was deleted; propose_via_substrate (250) moved verbatim with its reader family to runtime/substrate_proposal.py, a FREE move (AST-identical, same pin), so no exception record."
+    "run_agentic_loop tightened 2819 -> 2783 on 2026-10-07 (roadmap 1.3.2 decomposition, slice 3) when section 6b's body (the substrate tick: action gate, proposer, clock advance, pending proposal, telemetry) moved verbatim to runtime/loop_substrate.py::substrate_tick (the cadence predicate stays at the call site) and the local llm_submit_interval alias was deleted; propose_via_substrate (250) moved verbatim with its reader family to runtime/substrate_proposal.py, a FREE move (AST-identical, same pin), so no exception record.",
+    "run_agentic_loop tightened 2783 -> 2720 on 2026-10-08 (roadmap 1.3.2 decomposition, slice 4; #1085) when section 5, the PLANNING approved path, was replaced by one call to runtime/loop_planning.py::drain_approved (under 200 lines), which runs each approved action through tool_dispatch.execute_and_learn(human_involved=True); the hand-rolled dispatch and the module-level _approved_situation were deleted. execute_and_learn 389 -> 388 (the human_involved retry gate paid for by tightening its docstring)."
   ]
 }

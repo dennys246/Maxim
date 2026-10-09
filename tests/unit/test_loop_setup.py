@@ -162,6 +162,7 @@ _UNPACK = {
     "_planning_liveness_on": "planning_liveness_on",
     "_execute_and_learn": "execute_and_learn",
     "_book_refusal": "book_refusal",
+    "_book_machine_refusal": "book_machine_refusal",
 }
 
 
@@ -260,6 +261,30 @@ def test_book_refusal_is_bound_to_the_runs_own_handles(monkeypatch, tmp_path):
     ]
 
 
+def test_book_machine_refusal_is_bound_without_a_nac(monkeypatch, tmp_path):
+    """#1085: a refusal no person made (blocked at drain time, a drain aborted by a raise) books through the run's
+    recorder under the hub ``agent_id`` into the controller's outcome list -- and has no ``nac``, no situation and
+    no state (so no active goal) to pass at all, so it cannot teach the NAc or credit a goal."""
+    import inspect
+
+    from maxim.runtime.tool_dispatch import book_machine_refusal
+
+    run = _build(monkeypatch, tmp_path)
+    bound = run.book_machine_refusal
+    assert bound.func is book_machine_refusal
+    kw = bound.keywords
+    for name, value in {
+        "rec_outcome": run.rec_outcome,
+        "context_pool": run.context_pool,
+        "recent_outcomes": run.ctrl.recent_outcomes,
+    }.items():
+        assert kw[name] is value, name
+    assert kw["agent_id"] == run.agent_id
+    params = inspect.signature(book_machine_refusal).parameters
+    assert "nac" not in params and "source" not in params and "state" not in params
+    assert [p for p in params if p not in kw] == ["tool_name", "error", "reasoning"]
+
+
 def test_both_bindings_carry_the_runs_real_nac_worker_and_outcome_window(monkeypatch, tmp_path):
     """#1133 delta review: the binding pins above build with ``nac``/``llm_worker`` = None, where binding
     ``None`` would pass (None is None). Here the hub exposes a real NAc stand-in and the loop has a worker,
@@ -274,6 +299,10 @@ def test_both_bindings_carry_the_runs_real_nac_worker_and_outcome_window(monkeyp
         assert kw["nac"] is nac, bound.func.__name__
         assert kw["llm_worker"] is worker, bound.func.__name__
         assert kw["max_recent"] == run.ctrl.max_recent_outcomes != 1, bound.func.__name__
+    machine = run.book_machine_refusal.keywords  # #1085: the worker and window, and still no NAc
+    assert "nac" not in machine
+    assert machine["llm_worker"] is worker
+    assert machine["max_recent"] == run.ctrl.max_recent_outcomes
 
 
 @pytest.mark.parametrize("bad", [{"target_hz": 0.0}, {"max_steps": "x"}])
