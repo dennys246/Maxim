@@ -61,7 +61,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 #: Qualifiers that predate the scope-vocabulary rule (#1105), pinned to the exact status they were granted at: the
 #: entry goes stale, and fails, once the row's token, date or qualifier changes (re-judge the row and fix it then).
-GRANDFATHERED_QUALIFIERS = {"T1-5": ("PARTIAL", "2026-06-15", "reframed")}
+GRANDFATHERED_QUALIFIERS: dict[str, tuple[str, str, str]] = {}  # T1-5's pin retired: DROPPED 2026-10-08 (GL0)
 
 
 def qualifier_problems(row: L.Row) -> list[str]:

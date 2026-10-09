@@ -1,11 +1,27 @@
 """Integration tests for affordance concept transfer + temporal credit.
 
-IT-1 through IT-6: substrate-level pipeline with real sentence-transformers
-embeddings.  IT-7: goal-level credit attribution (NAc + distributor +
-ThoughtGate, no embeddings needed).
+**What "transfer" means here.** Every sharing these tests pin is NAME similarity: two affordance names whose
+sentence embeddings are close complete into one EC substrate node, so NAc bias on that node is read by both.
+Similarity by CONSEQUENCE (two things that hurt the same way) is the grounding line's job, not this file's
+(#1120).
 
-Requires: sentence-transformers (for IT-1 through IT-6 cosine similarity).
-IT-7 runs without sentence-transformers.
+**Which tests need a semantic encoder** (``_require_semantic_encoder`` skips them under the hash fallback):
+
+- IT-1 ``test_fire_concepts_share_ec_node`` / ``test_positive_bias_transfers_to_similar_affordance``,
+- IT-2 (all), and the three #1120 red gates in ``TestIssue1120RedGates``.
+
+Encoder-independent (they run, and mean the same thing, under the hash fallback): IT-1's Cerebellum test, IT-3
+(``credit_node`` bookkeeping), IT-4 (eligibility decay / temporal anchors), IT-5 (per-agent NAc isolation), IT-6
+(self-affordance concepts; its sharing is the identical string "slash") and IT-7 (goal-level credit, no
+embeddings at all).
+
+Nodes are looked up by the ids ``encode_decomposed`` returns for each affordance (one id per chunk, in chunk
+order ``[compound, component, component, ...]``), never by name: a by-name lookup is what made #1120's
+controls miss the fountain's ``'water jet'`` node.
+
+The fixture runs at the PRODUCTION threshold (``ECConfig()``, 0.44). The retired 0.40 appears only in the
+``bio_stack_at_retired_040`` fixture, used by one red gate that documents why it was retired.
+
 Marked 'slow' — skipped by default fast suite.
 """
 
@@ -41,21 +57,41 @@ pytestmark = [
     pytest.mark.skipif(not _HAS_ST, reason="sentence-transformers not installed"),
 ]
 
+# The pattern-completion threshold retired by Exp 24–26 (running-mean centroid drift; see the
+# ``ECConfig.pattern_complete_threshold`` comment). Used ONLY by the red gate that pins why it was retired.
+_RETIRED_THRESHOLD = 0.40
+
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
-def bio_stack():
-    """Build a real bio-stack: EC + ATL + NAc + SCN + LinguisticEncoder."""
-    ec = EntorhinalCortex(ECConfig(pattern_complete_threshold=0.40))
+def _build_bio_stack(ec_config: ECConfig):
+    ec = EntorhinalCortex(ec_config)
     atl = ATL(ATLConfig())
     nac = NAc(NACConfig(temporal_credit_weight=0.3))
     scn = SCN()
     encoder = LinguisticEncoder(ec=ec, atl=atl, nac=nac, config=EncoderConfig())
     return ec, atl, nac, scn, encoder
+
+
+@pytest.fixture()
+def bio_stack():
+    """Build a real bio-stack (EC + ATL + NAc + SCN + LinguisticEncoder) at the PRODUCTION threshold.
+
+    ``ECConfig()`` and not a literal, so a future default change moves this fixture with production
+    (NAc's ``get_threshold_overrides`` holds a coupled copy of the default; see ``ec.py``).
+    """
+    return _build_bio_stack(ECConfig())
+
+
+@pytest.fixture()
+def bio_stack_at_retired_040():
+    """The same stack at the RETIRED 0.40 threshold — for the centroid-drift red gate only."""
+    stack = _build_bio_stack(ECConfig(pattern_complete_threshold=_RETIRED_THRESHOLD))
+    assert stack[0].config.pattern_complete_threshold == _RETIRED_THRESHOLD
+    return stack
 
 
 def _make_entity(
@@ -80,43 +116,45 @@ def _make_entity(
     return ent
 
 
+def _dragon() -> Entity:
+    return _make_entity("dragon", "creature", {"combat": {"fire_breath": "breathe fire"}})
+
+
+def _mage() -> Entity:
+    return _make_entity("mage", "creature", {"magic": {"flame_jet": "jet of flame"}})
+
+
+def _fountain() -> Entity:
+    return _make_entity("fountain", "environment", {"hydraulic": {"water_jet": "spray water"}})
+
+
 def _encode_affordances(entity: Entity, encoder: LinguisticEncoder, agent_id: str) -> list[str]:
-    """Encode all of an entity's affordance names through the substrate path."""
+    """Encode all of an entity's affordance names through the orchestrator's entry point (flat id list)."""
     from maxim.imagination.trigger import encode_entity_affordances
 
     return encode_entity_affordances(entity, encoder, agent_id)
 
 
-def _find_substrate_concept(atl: ATL, keyword: str) -> str:
-    """Find a substrate concept whose name contains the keyword.
+def _encode_nodes_by_affordance(entity: Entity, encoder: LinguisticEncoder, agent_id: str) -> dict[str, list[str]]:
+    """Encode each affordance through the production affordance encoder; return its node ids per affordance.
 
-    ATL stores concepts with name=chunk.text (e.g., "fire breath", "fire").
-    Pattern completion may merge "fire" into the "fire breath" node, so
-    exact name match can miss.  Search all substrate concepts for a substring.
+    Uses the same factory ``encode_entity_affordances`` uses (``_make_aff_encoder``), so the ids are the ones
+    production would produce. Each list is one node id per chunk, in chunk order ``[compound, comp1, comp2, ...]``
+    (``LinguisticEncoder.encode_decomposed`` appends one id per chunk, duplicates included).
     """
-    concepts = atl.recall(category="substrate", limit=100)
-    for c in concepts:
-        if keyword.lower() in c.name.lower():
-            return c.id
-    return ""
+    from maxim.imagination.trigger import _make_aff_encoder
+
+    aff_encoder = _make_aff_encoder(encoder)
+    assert aff_encoder is not None, "production affordance-encoder factory failed to build"
+    return {
+        aff_name: aff_encoder.encode_decomposed(aff_name, "text", agent_id)
+        for mod in entity.modulators.values()
+        for aff_name in mod.affordances
+    }
 
 
-def _credit_affordance_node(
-    nac: NAc,
-    atl: ATL,
-    agent_id: str,
-    affordance_component: str,
-    reward: float,
-) -> None:
-    """Find the substrate concept for an affordance component and credit it."""
-    node_id = _find_substrate_concept(atl, affordance_component)
-    assert node_id, f"No substrate concept containing '{affordance_component}'"
-    nac.credit_node(agent_id, node_id, reward)
-
-
-# ---------------------------------------------------------------------------
-# IT-1: Dragon → Mage fire transfer
-# ---------------------------------------------------------------------------
+def _all_nodes(by_affordance: dict[str, list[str]]) -> set[str]:
+    return {nid for ids in by_affordance.values() for nid in ids}
 
 
 def _require_semantic_encoder(encoder) -> None:
@@ -124,21 +162,17 @@ def _require_semantic_encoder(encoder) -> None:
 
     `tests/conftest.py` deliberately sets `HF_HUB_OFFLINE=1`,
     `TRANSFORMERS_OFFLINE=1` and an isolated `HF_HOME` — correct isolation, no
-    network in tests and no polluting the developer's model cache. The
-    consequence is that `LinguisticEncoder` can NEVER load
-    `paraphrase-mpnet-base-v2` under pytest and always uses the bag-of-words
-    hash fallback, whose own docstring says outright: *"Not semantically
-    meaningful — paraphrase collapse will NOT work with this."*
+    network in tests and no polluting the developer's model cache. Unless the
+    model is pre-seeded into that cache, `LinguisticEncoder` uses the
+    bag-of-words hash fallback, whose own docstring says outright: *"Not
+    semantically meaningful — paraphrase collapse will NOT work with this."*
 
-    So every assertion in this file about "fire" and "flame" sharing a node, or
-    "water" not sharing one, is being made against an encoder that cannot
-    express the relationship. **The positive tests fail honestly; the negative
-    controls pass VACUOUSLY**, because a hash encoder separates everything —
-    which is exactly the shape of the outcome they are asserting.
-
+    Against that encoder, assertions about "fire" and "flame" sharing a node,
+    or "water" not sharing one, cannot be made: **the positive tests fail
+    honestly; the negative controls pass VACUOUSLY**, because a hash encoder
+    separates everything — exactly the shape of the outcome they assert.
     Skipping is not a fix, it is honest reporting: a skipped test is not a
-    passing test. The real remedy is to pre-seed the model into the isolated
-    `HF_HOME` so the nightly `-m slow` lane can actually run these (D61).
+    passing test.
     """
     # `using_fallback` LOADS the model before answering. The old check read `encoder._model is None` before anything had
     # loaded it (the model is lazy), so it was true on every run and these tests skipped even with the model cached:
@@ -151,61 +185,67 @@ def _require_semantic_encoder(encoder) -> None:
         )
 
 
+# ---------------------------------------------------------------------------
+# IT-1: Dragon → Mage fire transfer
+# ---------------------------------------------------------------------------
+
+
 class TestIT1FireTransfer:
-    """Cross-entity affordance transfer via shared substrate concept."""
+    """Cross-entity affordance transfer via a shared substrate node (name similarity, compound level)."""
 
     def test_fire_concepts_share_ec_node(self, bio_stack):
-        """Dragon 'fire_breath' and mage 'flame_jet' complete to same EC node."""
-        ec, atl, nac, scn, encoder = bio_stack
-        _require_semantic_encoder(encoder)
-        agent_id = "test_agent"
+        """Mage 'flame_jet' completes into the dragon's 'fire_breath' COMPOUND node.
 
-        dragon = _make_entity("dragon", "creature", {"combat": {"fire_breath": "breathe fire"}})
-        mage = _make_entity("mage", "creature", {"magic": {"flame_jet": "jet of flame"}})
-
-        dragon_nodes = _encode_affordances(dragon, encoder, agent_id)
-        mage_nodes = _encode_affordances(mage, encoder, agent_id)
-
-        # "fire" from fire_breath and "flame" from flame_jet should share
-        # a substrate node (cosine > 0.40 threshold)
-        assert len(set(dragon_nodes) & set(mage_nodes)) > 0, (
-            f"No shared nodes between dragon {dragon_nodes} and mage {mage_nodes}"
-        )
-
-    def test_positive_bias_transfers_to_similar_affordance(self, bio_stack):
-        """After dragon fire_breath → POSITIVE, mage flame_jet inherits bias.
-
-        Note: _reward_bias clamps to [0, max] — negative credit produces 0.
-        Transfer is verified via positive credit (successful tool use).
+        Measured with paraphrase-mpnet-base-v2: 'flame jet' ~ 'fire breath' = 0.601, above the production 0.44
+        (#1120). The sharing is compound-to-compound by name; it does NOT go through a shared "fire"/"flame"
+        component node. A component completes into whatever existing node it is nearest. On a fresh EC that is
+        its own compound (~0.73), so ``fire`` and ``breath`` never form nodes; a component forms its own node only
+        when no existing node is near it (e.g. the mage's ``jet``, after ``flame jet`` had merged into
+        ``fire breath``). See the #1120 red gate ``test_components_get_their_own_nodes``.
         """
         ec, atl, nac, scn, encoder = bio_stack
         _require_semantic_encoder(encoder)
         agent_id = "test_agent"
 
-        dragon = _make_entity("dragon", "creature", {"combat": {"fire_breath": "breathe fire"}})
-        mage = _make_entity("mage", "creature", {"magic": {"flame_jet": "jet of flame"}})
+        # The dragon goes through the orchestrator's entry point, so it stays exercised.
+        dragon_flat = _encode_affordances(_dragon(), encoder, agent_id)
+        assert dragon_flat, "encode_entity_affordances returned no nodes for the dragon"
+        dragon_compound = dragon_flat[0]  # one affordance → its compound chunk's node comes first
 
-        _encode_affordances(dragon, encoder, agent_id)
+        mage = _encode_nodes_by_affordance(_mage(), encoder, agent_id)
+        assert mage["flame_jet"][0] == dragon_compound, (
+            f"'flame jet' did not complete into the 'fire breath' node: dragon={dragon_flat}, mage={mage}"
+        )
 
-        # Dragon fire_breath → POSITIVE outcome (successful use)
-        _credit_affordance_node(nac, atl, agent_id, "fire", 1.0)
+    def test_positive_bias_transfers_to_similar_affordance(self, bio_stack):
+        """Positive credit on the dragon's 'fire_breath' node is read through the mage's own 'flame_jet' node.
 
-        # Now encode mage — "flame" should complete to the same "fire" node
-        _encode_affordances(mage, encoder, agent_id)
+        The read is keyed by the node id the MAGE's encoding returned, so the test fails if the mage forms its
+        own node. Only POSITIVE bias can transfer: ``reward_bias`` is clamped to [0, max] (#910).
 
-        # The shared substrate concept should have positive bias
-        fire_node_id = _find_substrate_concept(atl, "fire")
-        assert fire_node_id, "No substrate concept containing 'fire'"
-        bias = nac.reward_bias(agent_id, fire_node_id)
-        assert bias > 0, f"Expected positive bias on 'fire' node, got {bias}"
+        Confound: crediting widens that node's completion threshold (0.44 − bias) before the mage encodes. The
+        0.601 match clears the unwidened 0.44 too, which ``test_fire_concepts_share_ec_node`` shows without
+        credit. The unrelated-affordance control (water must read 0.0) is NOT here: under this same widening
+        the fountain collapses into the credited node, which the red gate
+        ``test_credit_widening_does_not_absorb_water`` pins.
+        """
+        ec, atl, nac, scn, encoder = bio_stack
+        _require_semantic_encoder(encoder)
+        agent_id = "test_agent"
+
+        dragon = _encode_nodes_by_affordance(_dragon(), encoder, agent_id)
+        nac.credit_node(agent_id, dragon["fire_breath"][0], 1.0)
+
+        mage = _encode_nodes_by_affordance(_mage(), encoder, agent_id)
+        bias = nac.reward_bias(agent_id, mage["flame_jet"][0])
+        assert bias > 0, f"mage 'flame_jet' node {mage['flame_jet'][0]} carries no bias ({bias}); dragon={dragon}"
 
     def test_cerebellum_has_no_model_for_new_entity(self, bio_stack):
-        """Cerebellum forward models are entity-specific — no cross-entity leak."""
+        """Cerebellum forward models are entity-specific — no cross-entity leak (encoder-independent)."""
         ec, atl, nac, scn, encoder = bio_stack
         cerebellum = Cerebellum()
 
         # Train cerebellum on dragon via observe_from_action
-        _make_entity("dragon", "creature", {"combat": {"fire_breath": "breathe fire"}})
         cerebellum.observe_from_action(
             entity="dragon",
             modulator="combat",
@@ -225,93 +265,200 @@ class TestIT1FireTransfer:
 
 
 class TestIT2NoFalseTransfer:
-    """Fire danger does NOT contaminate semantically dissimilar affordances."""
+    """Water affordances do not share nodes with fire affordances (dragon-only scenario, no credit).
 
-    def test_water_does_not_share_fire_node(self, bio_stack):
-        """'water_jet' does NOT pattern-complete to the 'fire' node."""
+    Under credit they DO share: the widening gate ``test_credit_widening_does_not_absorb_water`` pins it (#1181).
+    """
+
+    def test_water_does_not_share_with_fire_dragon_only(self, bio_stack):
+        """After dragon then fountain at 0.44, the fountain's nodes are disjoint from the dragon's.
+
+        Low power, by design: in this scenario water and fire separate trivially ('water jet' ~ 'fire breath' =
+        0.298, #1120), so this guards only against a gross collapse. The scenarios where a false transfer does
+        appear are the red gates in ``TestIssue1120RedGates``. No bias assertion: ``reward_bias`` is never
+        negative (#910), so "water got no harm" cannot fail.
+        """
         ec, atl, nac, scn, encoder = bio_stack
         _require_semantic_encoder(encoder)
         agent_id = "test_agent"
 
-        dragon = _make_entity("dragon", "creature", {"combat": {"fire_breath": "breathe fire"}})
-        fountain = _make_entity("fountain", "environment", {"hydraulic": {"water_jet": "spray water"}})
+        dragon = _encode_nodes_by_affordance(_dragon(), encoder, agent_id)
+        fountain = _encode_nodes_by_affordance(_fountain(), encoder, agent_id)
 
-        _encode_affordances(dragon, encoder, agent_id)
-        _credit_affordance_node(nac, atl, agent_id, "fire", -1.0)
+        shared = _all_nodes(fountain) & _all_nodes(dragon)
+        assert not shared, f"fountain shares {shared} with the dragon: dragon={dragon}, fountain={fountain}"
 
-        _encode_affordances(fountain, encoder, agent_id)
+    @pytest.mark.xfail(
+        strict=True,
+        raises=AssertionError,
+        reason=(
+            "#1120: crediting 'fire breath' up to the cap (bias = max_reward_bias 0.20) widens its completion "
+            "threshold to 0.44 - 0.20 = 0.24, well below 'water jet'~'fire breath' 0.298, so the fountain "
+            "collapses into the credited fire node and reads its bias — reward-driven widening absorbs an "
+            "unrelated name (#1181); a flip caused by changing reward_bias_alpha / max_reward_bias is not a fix "
+            "of #1181"
+        ),
+    )
+    def test_credit_widening_does_not_absorb_water(self, bio_stack):
+        """Credit at the bias cap on the fire node must not pull the fountain into it (dragon-only, 0.44).
 
-        # Water concepts should NOT share nodes with fire concepts
-        # #1120: the fountain forms a 'water jet' node; an exact-name `atl.recall(name="water")` missed it.
-        water_node_id = _find_substrate_concept(atl, "water")
-        # `if water_concepts:` here made the assertion optional: no water concept
-        # meant the test passed having checked nothing (D61). The absence is the
-        # more likely outcome under a degraded encoder, so the guard silently
-        # protected exactly the case it was written to catch.
-        assert water_node_id, "no water substrate concept was formed — nothing to test"
-        water_bias = nac.reward_bias(agent_id, water_node_id)
-        assert water_bias >= 0, f"Water node got negative bias {water_bias} — false transfer!"
-
-    def test_water_has_no_dangerous_annotation(self, bio_stack):
-        """Water should carry no learned harm from the fire node (reward_bias is never negative; #910)."""
+        Strict red gate: asserts the correct behaviour and flips when reward-driven threshold widening stops
+        absorbing affordances this dissimilar. The node is credited until ``reward_bias`` reaches
+        ``max_reward_bias``, so the margin is the full cap and not a ``reward_bias_alpha`` knife-edge (one
+        +1.0 credit gives 0.15, leaving 0.44 - 0.15 = 0.29 only 0.008 under 0.298). The precondition (without
+        credit the two separate) is ``test_water_does_not_share_with_fire_dragon_only``.
+        """
         ec, atl, nac, scn, encoder = bio_stack
         _require_semantic_encoder(encoder)
         agent_id = "test_agent"
 
-        dragon = _make_entity("dragon", "creature", {"combat": {"fire_breath": "breathe fire"}})
-        _encode_affordances(dragon, encoder, agent_id)
-        _credit_affordance_node(nac, atl, agent_id, "fire", -1.0)
+        dragon = _encode_nodes_by_affordance(_dragon(), encoder, agent_id)
+        fire_node = dragon["fire_breath"][0]
+        cap = nac.config.max_reward_bias
+        for _ in range(100):
+            if nac.reward_bias(agent_id, fire_node) >= cap:
+                break
+            nac.credit_node(agent_id, fire_node, 1.0)
+        if nac.reward_bias(agent_id, fire_node) != cap:
+            pytest.fail(
+                f"precondition: credit did not bring the fire node to the cap: "
+                f"bias={nac.reward_bias(agent_id, fire_node)}, cap={cap}"
+            )
 
-        fountain = _make_entity("fountain", "environment", {"hydraulic": {"water_jet": "spray water"}})
-        _encode_affordances(fountain, encoder, agent_id)
-
-        # Check annotation via the AFFORDANCE_STRATEGY + ATL + NAc path
-        # #1120: the fountain forms a 'water jet' node; an exact-name `atl.recall(name="water")` missed it.
-        water_node_id = _find_substrate_concept(atl, "water")
-        assert water_node_id, "no water substrate concept was formed — nothing to test"
-        bias = nac.reward_bias(agent_id, water_node_id)
-        # Harm on "fire" must not leak a negative bias onto "water"
-        assert bias >= -0.01, f"Water has bias {bias} — harm leaked across concepts"
+        fountain = _encode_nodes_by_affordance(_fountain(), encoder, agent_id)
+        shared = _all_nodes(fountain) & _all_nodes(dragon)
+        assert not shared, f"fountain collapsed into the credited fire node: dragon={dragon}, fountain={fountain}"
+        assert nac.reward_bias(agent_id, fountain["water_jet"][0]) == 0.0
 
 
 # ---------------------------------------------------------------------------
-# IT-3: Specific overrides abstract
+# #1120 red gates: the false transfers the controls were written for
+# ---------------------------------------------------------------------------
+
+
+class TestIssue1120RedGates:
+    """Strict red gates for the defects #1120's investigation measured. Each asserts the CORRECT behaviour.
+
+    Each uses ``raises=AssertionError`` and checks its precondition with ``pytest.fail`` (a different
+    exception type), so a broken precondition FAILS the test instead of hiding inside the expected xfail.
+    """
+
+    @pytest.mark.xfail(
+        strict=True,
+        raises=AssertionError,
+        reason=(
+            "#1120 §4: each component is ~0.73 to its compound and completes into it ('fire'~'breath' 0.297 to "
+            "each other), so component concepts never exist and 'fire' and 'breath' cannot be told apart"
+        ),
+    )
+    def test_components_get_their_own_nodes(self, bio_stack):
+        """``fire_breath`` → ["fire breath", "fire", "breath"] must give three distinct nodes (fresh EC, 0.44).
+
+        A flip here is an affordance-decomposition change, which fires the GL5 successor's re-run trigger. Owner:
+        the grounding line's GL4 (``docs/plans/latent_forward_model.md``).
+        """
+        ec, atl, nac, scn, encoder = bio_stack
+        _require_semantic_encoder(encoder)
+
+        nodes = _encode_nodes_by_affordance(_dragon(), encoder, "test_agent")
+        if len(nodes["fire_breath"]) != 3:
+            pytest.fail(f"precondition: expected 3 chunks for 'fire_breath', got {nodes['fire_breath']}")
+        assert len(set(nodes["fire_breath"])) == 3, f"components collapsed into the compound: {nodes}"
+
+    @pytest.mark.xfail(
+        strict=True,
+        raises=AssertionError,
+        reason=(
+            "#1120: 'water jet' and 'flame jet' share the mage's 'jet' component node at 0.44 "
+            "('water jet'~'jet' 0.785) — name similarity, not consequence; flips only if word-level sharing "
+            "stops (grounding line GL4)"
+        ),
+    )
+    def test_water_does_not_share_with_fire_side_after_mage(self, bio_stack):
+        """Dragon → mage → fountain at 0.44: the fountain shares no node with the dragon or the mage."""
+        ec, atl, nac, scn, encoder = bio_stack
+        _require_semantic_encoder(encoder)
+        agent_id = "test_agent"
+
+        dragon = _encode_nodes_by_affordance(_dragon(), encoder, agent_id)
+        mage = _encode_nodes_by_affordance(_mage(), encoder, agent_id)
+        # Positive control: the scenario provably CAN share a node.
+        if mage["flame_jet"][0] != dragon["fire_breath"][0]:
+            pytest.fail(f"precondition: 'flame jet' did not complete into 'fire breath': {dragon}, {mage}")
+
+        fountain = _encode_nodes_by_affordance(_fountain(), encoder, agent_id)
+        shared = _all_nodes(fountain) & (_all_nodes(dragon) | _all_nodes(mage))
+        assert not shared, f"fountain shares {shared} with the fire side: dragon={dragon}, mage={mage}, {fountain}"
+
+    @pytest.mark.xfail(
+        strict=True,
+        raises=AssertionError,
+        reason=(
+            "#1120 §3: running-mean text-centroid drift at the retired 0.40 (Exp 24–26) collapses the fountain "
+            "into 'fire breath' once the mage has pulled the centroid; documentary: pins why 0.40 was retired; "
+            "no fix is planned; an XPASS means text completion stopped drifting"
+        ),
+    )
+    def test_retired_040_mage_present_collapse(self, bio_stack_at_retired_040):
+        """At the RETIRED 0.40, dragon → mage → fountain: the fountain's compound is not the dragon's compound.
+
+        Documents why 0.40 is retired (and that this file's old fixture threshold was the amplifier). Production
+        runs at ``ECConfig()``; this gate deliberately does not. The precondition runs the same scenario WITHOUT
+        the mage on a fresh stack at 0.40 and requires the fountain to separate there, so the collapse the
+        assertion pins is the mage-driven drift and not the lower threshold alone.
+        """
+        _ec0, _atl0, _nac0, _scn0, encoder0 = _build_bio_stack(ECConfig(pattern_complete_threshold=_RETIRED_THRESHOLD))
+        _require_semantic_encoder(encoder0)
+        dragon0 = _encode_nodes_by_affordance(_dragon(), encoder0, "test_agent")
+        fountain0 = _encode_nodes_by_affordance(_fountain(), encoder0, "test_agent")
+        if fountain0["water_jet"][0] == dragon0["fire_breath"][0]:
+            pytest.fail(
+                f"precondition: at 0.40 WITHOUT the mage the fountain already collapses into the fire node, so "
+                f"the gate cannot isolate mage-driven drift: dragon={dragon0}, fountain={fountain0}"
+            )
+
+        ec, atl, nac, scn, encoder = bio_stack_at_retired_040
+        _require_semantic_encoder(encoder)
+        agent_id = "test_agent"
+
+        dragon = _encode_nodes_by_affordance(_dragon(), encoder, agent_id)
+        _encode_nodes_by_affordance(_mage(), encoder, agent_id)
+        fountain = _encode_nodes_by_affordance(_fountain(), encoder, agent_id)
+        assert fountain["water_jet"][0] != dragon["fire_breath"][0], (
+            f"fountain collapsed into the fire node: dragon={dragon}, fountain={fountain}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# IT-3: credit_node bookkeeping
 # ---------------------------------------------------------------------------
 
 
 class TestIT3SpecificOverridesAbstract:
-    """Repeated positive experience overrides initially negative bias."""
+    """NAc credit bookkeeping on one encoded node (encoder-independent)."""
 
-    def test_positive_experience_builds_bias(self, bio_stack):
-        """Repeated positive mage fire_heal builds positive bias on shared node.
+    def test_credit_node_accumulates_on_one_node(self, bio_stack):
+        """Repeated positive credit on one node accumulates its ``reward_bias`` (bounded).
 
-        _reward_bias clamps to [0, max] — negative credit produces 0.0.
-        This test verifies that positive experience on the shared 'fire'
-        node accumulates bias, which is the transfer mechanism: the mage's
-        fire_heal benefit transfers to any other entity with fire affordances.
+        This pins ``credit_node`` bookkeeping only: it credits a node and reads the SAME node, so it says
+        nothing about transfer between entities (that is IT-1). It holds under any encoder.
         """
         ec, atl, nac, scn, encoder = bio_stack
         agent_id = "test_agent"
 
-        dragon = _make_entity("dragon", "creature", {"combat": {"fire_breath": "breathe fire"}})
-        mage = _make_entity("mage", "creature", {"magic": {"fire_heal": "healing fire"}})
+        dragon = _encode_nodes_by_affordance(_dragon(), encoder, agent_id)
+        node_id = dragon["fire_breath"][0]
 
-        _encode_affordances(dragon, encoder, agent_id)
+        assert nac.reward_bias(agent_id, node_id) == 0.0, "expected zero bias before any credit"
 
-        fire_node_id = _find_substrate_concept(atl, "fire")
-        assert fire_node_id, "No substrate concept containing 'fire'"
+        nac.credit_node(agent_id, node_id, 1.0)
+        after_one = nac.reward_bias(agent_id, node_id)
+        assert after_one > 0, f"one positive credit produced no bias ({after_one})"
 
-        # Baseline: no bias
-        initial_bias = nac.reward_bias(agent_id, fire_node_id)
-        assert initial_bias == 0.0, f"Expected zero initial bias, got {initial_bias}"
-
-        # Mage fire_heal → POSITIVE (repeated 5x)
-        _encode_affordances(mage, encoder, agent_id)
-        for _ in range(5):
-            nac.credit_node(agent_id, fire_node_id, 1.0)
-
-        final_bias = nac.reward_bias(agent_id, fire_node_id)
-        assert final_bias > 0, f"Positive experience should create positive bias, got {final_bias}"
+        for _ in range(4):
+            nac.credit_node(agent_id, node_id, 1.0)
+        after_five = nac.reward_bias(agent_id, node_id)
+        assert after_five > after_one, f"repeated credit did not accumulate: {after_one} -> {after_five}"
 
 
 # ---------------------------------------------------------------------------
@@ -367,32 +514,29 @@ class TestIT4TemporalCreditUnderDecay:
 
 
 class TestIT5MultiAgentIsolation:
-    """Agent A's learning does NOT affect Agent B's reward bias."""
+    """Agent A's learning does NOT affect Agent B's reward bias (encoder-independent)."""
 
     def test_agent_isolation(self, bio_stack):
-        """Agent A learns fire benefit; Agent B sees no bias."""
+        """Agent A learns fire benefit; Agent B sees no bias on the same node.
+
+        Pins NAc's per-agent keying. Both agents encode the same entity into a shared EC/ATL, so they reach the
+        same node under any encoder; no semantics needed.
+        """
         ec, atl, nac, scn, encoder = bio_stack
         agent_a = "agent_a"
         agent_b = "agent_b"
 
-        dragon = _make_entity("dragon", "creature", {"combat": {"fire_breath": "breathe fire"}})
+        nodes_a = _encode_nodes_by_affordance(_dragon(), encoder, agent_a)
+        nodes_b = _encode_nodes_by_affordance(_dragon(), encoder, agent_b)
+        node_id = nodes_a["fire_breath"][0]
+        assert nodes_b["fire_breath"][0] == node_id, f"agents did not share the node: {nodes_a}, {nodes_b}"
 
-        # Both agents encode the same entity (shared EC/ATL)
-        _encode_affordances(dragon, encoder, agent_a)
-        _encode_affordances(dragon, encoder, agent_b)
+        nac.credit_node(agent_a, node_id, 1.0)
 
-        # Agent A experiences fire → POSITIVE
-        fire_node_id = _find_substrate_concept(atl, "fire")
-        assert fire_node_id, "No substrate concept containing 'fire'"
-
-        nac.credit_node(agent_a, fire_node_id, 1.0)
-
-        # Agent A should have positive bias
-        bias_a = nac.reward_bias(agent_a, fire_node_id)
+        bias_a = nac.reward_bias(agent_a, node_id)
         assert bias_a > 0, f"Agent A should have positive bias, got {bias_a}"
 
-        # Agent B should have ZERO bias
-        bias_b = nac.reward_bias(agent_b, fire_node_id)
+        bias_b = nac.reward_bias(agent_b, node_id)
         assert bias_b == 0.0, f"Agent B should have zero bias, got {bias_b}"
 
 
@@ -402,10 +546,14 @@ class TestIT5MultiAgentIsolation:
 
 
 class TestIT6SelfAffordanceEncoding:
-    """Agent's own body affordances form substrate concepts."""
+    """Agent's own body affordances form substrate concepts (encoder-independent)."""
 
     def test_self_affordances_create_substrate_concepts(self, bio_stack):
-        """Agent body affordances (slash, move) create ATL substrate concepts."""
+        """Agent body affordances (slash, move) create ATL substrate concepts.
+
+        Encoder-independent: pins that the encoding path writes ATL concepts and NAc eligibility traces, not
+        any similarity between them.
+        """
         ec, atl, nac, scn, encoder = bio_stack
         agent_id = "test_agent"
 
@@ -432,7 +580,11 @@ class TestIT6SelfAffordanceEncoding:
         assert traces, "NAc should have eligibility traces for self-affordances"
 
     def test_self_and_scene_share_substrate_concepts(self, bio_stack):
-        """Agent 'slash' and dragon 'slash' share the same EC node."""
+        """Agent 'slash' and dragon 'slash' share the same EC node.
+
+        Encoder-independent: both affordances are the IDENTICAL string "slash", which completes into one node
+        under any encoder, the hash fallback included. It pins self/scene sharing of one name, not similarity.
+        """
         ec, atl, nac, scn, encoder = bio_stack
         agent_id = "test_agent"
 

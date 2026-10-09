@@ -111,8 +111,8 @@ never by what they do to the body. The 1.4 grounding line answers this in stages
      seq-authority handover as its stage gate.
    - Nociceptive-fast preemption (GL3.B4) becomes a declared 1.4 rung arm, or waits for one; the owner
      names the rung later.
-   - The timing defects L1, L2, L5 and the dead preemption scaffolding L7 are to file as defect issues
-     now, each fixable without the registry.
+   - The timing defects L1, L2, L5 and the dead preemption scaffolding L7 are filed as defect issues
+     (#1176 L1, #1177 L2, #1178 L5, #1179 L7), each fixable without the registry.
 
 **The event-identity contract** (one statement; `grounding.md` carries it, `autonomic_layer.md` defines
 the type):

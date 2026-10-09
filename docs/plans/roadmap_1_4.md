@@ -333,7 +333,10 @@ infrastructure the review located, and the full four-lens review.
   are R4's first work: [#888](https://github.com/dennys246/Maxim/issues/888) (temporal anchors never
   expire in-session and dilute every reward's credit) and [#889](https://github.com/dennys246/Maxim/issues/889)
   (the reward-bias ablation switch does not ablate the live path). *Wording correction from that
-  review:* `_reward_bias` **is** read by selection for `tool:*` keys (a ≤0.20 nudge, cluster-blind); it
+  review:* `_reward_bias` **is** read by selection for `tool:*` keys (capped at 0.20, cluster-blind), but
+  no live producer pays a positive reward into `credit_node` (`credit_node` clamps ≥ 0 and every live Reaction is
+  negative), so the nudge is 0 on every recorded run (T1-13: 0.0 at all 108 scored decisions; corrected
+  2026-10-08, [engram-formation.md](../wiring/engram-formation.md) §3); it
   is the cluster-keyed credit that selection never sees. The path is live on the EARNED survival loop
   but **unfingerprinted**.
   *Candidate consumer (2026-10-04, PROPOSED):* [executive_function.md](executive_function.md) Stage 1, a gated goal

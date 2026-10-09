@@ -165,7 +165,7 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
     on the write path (GL3.B1), registering the existing receptors byte-identically. The first track
     slice (GL3.B3) is the thermal dual-track fan-out, flag off, no preemption; nociceptive-fast
     preemption (GL3.B4) is a declared 1.4 rung arm or waits for one. The timing defects
-    (L1, L2, L5, L7) are to file as defect issues, fixable without the registry.
+    are filed as defect issues (#1176 L1, #1177 L2, #1178 L5, #1179 L7), fixable without the registry.
   - GL3.B0 (census + red gates, tests only) runs now; GL3.B1 onward waits for the decomposition
     fence, and the plan must answer `archive/percept_testbed_audit.md`'s "not a
     manifest as conceived".
@@ -455,7 +455,7 @@ Previously archived (2026-04-29 1.0 audit — verified shipped against code):
 - [archive/proprioceptive_discovery.md](archive/proprioceptive_discovery.md) — **✅ Mechanisms A+B SHIPPED + ARCHIVED.** Latent-affordance discovery + entity acquisition.
 
 Recently archived (2026-04-25 plans audit + stall recovery verified shipped):
-- [archive/affordance_concept_transfer.md](archive/affordance_concept_transfer.md) — **✅ Stages 0-4 SHIPPED + ARCHIVED.** Cross-entity learning, SCN temporal coupling.
+- [archive/affordance_concept_transfer.md](archive/affordance_concept_transfer.md) — **✅ Stages 0–4 shipped and archived.** Cross-entity transfer is compound-name level only; there is no component path ([#1120](https://github.com/dennys246/Maxim/issues/1120)), and the behavioural claim is pulled (T1-5; owner decision 2026-10-08 to drop it). SCN temporal coupling is live.
 - [archive/component_level_damage.md](archive/component_level_damage.md) — **✅ Stages 1-5 SHIPPED + ARCHIVED.** Per-modulator damage, `--deep-embodiment`. Stage 6 deferred.
 - [archive/percept_reflex_system.md](archive/percept_reflex_system.md) — **✅ SHIPPED + ARCHIVED.** ReflexRegistry, wired into BioEnrichmentPipeline.
 - [archive/sem_entity_ownership.md](archive/sem_entity_ownership.md) — **✅ SHIPPED + ARCHIVED.** Self/scene separation, discovery filter.

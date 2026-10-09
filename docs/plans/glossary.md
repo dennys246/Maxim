@@ -57,7 +57,7 @@ Tell them apart by the plan or version in scope: "P2 Stage 2" + substrate → re
 | `ATL` | Anterior Temporal Lobe | Semantic hub |
 | `SCN` | Suprachiasmatic Nucleus | Temporal / circadian credit (oscillator) |
 | `DN` | Default Network | Reactive behaviors, arousal, novelty |
-| AngularGyrus | — | Cross-modal association |
+| AngularGyrus | Angular Gyrus (posterior parietal) | Math computation + math-fact memory; grounds ATL concept statistics. Not cross-modal |
 | `SEM` | Sensory–Entity–Modulator | Embodiment spec system (sensors, drives, affordances) |
 | `AUT` | Agent Under Test | The learning agent inside a sim |
 | `WM` | Working Memory | Exec-owned active-reference layer (not a memory tier) |

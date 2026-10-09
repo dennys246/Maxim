@@ -25,6 +25,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Docstrings no longer claim cross-modal grounding that does not exist (#1120 audit, GL0 of the grounding line;
+  no behaviour change):** the bio-enrichment graph path is marked inert in production (D6) and the affordance
+  `[effective]` annotation's exact-name lookup is stated; the affordance-encoding helpers no longer promise
+  component-level cross-entity transfer or an `embodied_runtime` caller; the ATL / semantic-types "multimodal"
+  mapping says what the code does (name-keyed, per-modality); `EntropicDriveSpec` no longer promises a positive
+  Reaction when a drive crosses back below `satisfaction_threshold` (the crossing only clears the breach latch
+  and sets the label; per-action relief is still credited; docstring and comment only; SHAPE-FROZEN);
+  `Hippocampus.retrieve_cross_modal` is marked Dormant; the resurrection trigger of `apply_hebbian_on_close` and
+  `record_substrate_nodes` is re-pointed to the grounding line's binding stage (`docs/plans/grounding.md` GL4);
+  the EC "multi-modal" wording now reads multi-dimensional, per modality. User-visible: the README's
+  bio-systems table no longer calls the SCN "anticipatory credit" or the Angular Gyrus "cross-modal binding",
+  and the README no longer says every contact converges on NAc learning (#1161); the ledger's T1-5 claim
+  (component-level affordance transfer) is DROPPED: a component completes into its nearest existing node, so
+  what transfers is name similarity, not shared consequence.
 - **`agent_loop` decomposition, slice 3: the substrate tick moves to `runtime/loop_substrate.py`, the substrate
   proposer to `runtime/substrate_proposal.py`** (roadmap 1.3.2 §"The decomposition"; internal). The body of
   `run_agentic_loop`'s substrate-primary branch (§6b: the turn-scoped action gate, the proposal, the submit-clock

@@ -334,7 +334,7 @@ CLI: `maxim --generate-simulation "description" -o output.yaml`
 - **Proximity** (Layer 2): Orchestrator writes sensor values via `set_entity_sensor`
 - **Narrative** (Layer 3): Keyword reflexes fire on percept text (fallback)
 
-All three layers converge on: sensor change → `evaluate_failures()` → PainBus → NAc.
+All three layers converge on `evaluate_failures()`; whether the resulting pain reaches NAc learning depends on its intensity and class (corrected 2026-10-08). The infant's touch-burn does not: `arms.thermal` is a homeostatic drive (comfort_band 0.5, pain_scale 0.4 over range [−1, 1]), so its maximum drive pain is **0.2**, classed as a DRIVE rather than nociceptive, and below every PainBus subscriber's learning threshold (0.4 / 0.3 / 0.3 / 0.3). Affordance credit is also blind to modulator drives such as `arms.thermal`, and Exp 42's harm discrimination depends on that blindness ([#1161](https://github.com/dennys246/Maxim/issues/1161)).
 
 **Touch affordances** provide transient contact without acquisition via `self_effect` on AffordanceSchema (e.g., touching fire writes `arms.thermal: +0.6`).
 

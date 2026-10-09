@@ -781,9 +781,9 @@ It has three arms, because each closes another's confound:
 **Gate.** Pre-registered, per arm, with margins fixed in the prereg. A recorded null ships as a null (T9).
 Every arm's result is reported with AND without narrated pairs (G6); the prereg names which of the two the
 gate reads (strict default: without), and a result that holds only with narrated pairs is reported as such.
-On EARNED: a **new** Tier-1 row with `Re-run on:` and `Regression guard:`. If GL0 kept T1-5 as PARTIAL,
-T1-5 → `SUPERSEDED <date> by T1-<new>`; if GL0 DROPPED it, the new row cites T1-5 in its history. It is
-never a re-label of T1-5. A Tier-3 seed row at `SETUP` may be added
+On EARNED: a **new** Tier-1 row with `Re-run on:` and `Regression guard:`. GL0 DROPPED T1-5 (2026-10-08)
+and kept its ID for this link: the GL5 successor is linked `SUPERSEDED by` (T1-5 →
+`SUPERSEDED <date> by T1-<new>`), and the new row cites T1-5 in its history. It is never a re-label of T1-5. A Tier-3 seed row at `SETUP` may be added
 when the prereg merges.
 
 **Guards.** The harness inherits S3–S4's guards, plus M10's fingerprint extended with the grounding flags

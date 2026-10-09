@@ -204,9 +204,17 @@ class EntropicDriveSpec:
     drinking, resting) reverses the drift.
 
     ``drift_direction`` is ``"up"`` (toward 1.0) or ``"down"`` (toward 0.0).
-    Pain fires when the value crosses ``deprivation_threshold``.  A positive
-    Reaction fires when the value crosses back below
-    ``satisfaction_threshold`` after being deprived.
+    Pain fires when the value crosses ``deprivation_threshold``.  No positive
+    Reaction fires when the drive crosses back past ``satisfaction_threshold``;
+    the crossing only clears the breach latch
+    (``embodiment/body.py::Embodiment.evaluate_failures``) and sets the
+    "rising"/"satisfied" label (``Embodiment.body_state_summary``).  The
+    threshold also bounds the relief/pressure spans
+    (``corrective_need_intensity``, ``drive_span``,
+    ``relief_fraction_from_progress``, ``drive_pressure``), and per-action
+    relief IS credited (``drive_comfort_progress`` -> +/-1 motor credit in
+    ``runtime/tool_dispatch.py``).  What was never built is a Reaction on the
+    crossing (the grounding line's GL2c, ``docs/plans/grounding.md``).
 
     SHAPE-FROZEN at 1.0 (CC3). YAML-parsed drive contract. Adding any
     new field post-1.0 is a major-version-bump change. Per CLAUDE.md:
@@ -218,7 +226,7 @@ class EntropicDriveSpec:
     drift_rate: float  # per-second drift rate
     deprivation_threshold: float  # PainSignal fires beyond this
     deprivation_pain: float  # pain intensity at deprivation
-    satisfaction_threshold: float  # positive Reaction fires when crossing back
+    satisfaction_threshold: float  # crossing back clears the breach latch; bounds relief spans; no Reaction (GL2c)
     coupled_to: tuple[CouplingSpec, ...] | None = None  # 1.0 interface, deferred
 
 

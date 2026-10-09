@@ -369,9 +369,12 @@ def record_substrate_nodes(node_ids: tuple[str, ...], *, agent_id: str) -> None:
     llm-primary percept path stashes a 1-tuple, and ``apply_hebbian_on_close``
     returns early below two nodes, so episode binding never grows from percepts in
     production. The stash itself is live (episodes carry the node ids); it is the
-    multi-node case that is dormant. Resurrection trigger: the 1.3 fabric's
-    orient-windowed binding. Do not build new behaviour on percept-driven binding
-    until then (roadmap item 13).
+    multi-node case that is dormant. Resurrection trigger (re-pointed 2026-10-08,
+    as in ``memory/episode.py::apply_hebbian_on_close``; the fabric is deferred on a
+    second robot body): the 1.4 grounding line's binding stage
+    (``docs/plans/grounding.md`` GL4), or the fabric's orient-windowed binding if it
+    revives first. Do not build new behaviour on percept-driven binding until then
+    (roadmap item 13).
 
     Called by MemoryHub.on_percept_received after LinguisticEncoder
     produces substrate_node_id(s). Consumed by the next observe_episode
