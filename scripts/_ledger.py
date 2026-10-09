@@ -88,7 +88,7 @@ def qualifier_head(qualifier: str) -> str:
 # which stay as they are (widening them would change which files THAT lint judges).
 REFUSED_SUFFIXES = (".py", ".md", ".sh", ".ipynb")
 REFUSED_MARKERS = ("dryrun", "nonfrozen", "aborted", "invalid")
-_LINK = re.compile(r"\[([^\]]*)\]\(([^)\s]*)\)")
+_LINK = re.compile(r"\[([^\]]*)\]\(((?:[^()\s]|\([^()\s]*\))*)\)")  # one level of balanced () in a target (#1012)
 _CODE = re.compile(r"`([^`]+)`")
 
 
@@ -129,8 +129,21 @@ class Row:
         return " | ".join(self.cells.get(c, "") for c in TABLES[self.table]["claim"])
 
 
+_DELIMITER = re.compile(r"^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$")
+
+
+def is_delimiter_row(line: str, header_cells: int) -> bool:
+    """A GFM table's delimiter row under a header of ``header_cells`` cells: dashes (optional colons) in every cell, at
+    least one ``|``, and the header's cell count — otherwise GitHub renders no table (a bare ``---`` is a setext
+    heading). The one delimiter grammar, shared by the ledger parser and lint_claims_sync (#1012 review)."""
+    stripped = line.strip()
+    return "|" in stripped and bool(_DELIMITER.match(stripped)) and len(split_cells(stripped)) == header_cells
+
+
 def split_cells(line: str) -> list[str]:
-    """A GFM table row's cells: split on UNESCAPED ``|`` (inside a code span too, as GitHub does)."""
+    """A GFM table row's cells: split on UNESCAPED ``|`` (inside a code span too, as GitHub does). cmark-gfm's cell
+    scanner treats a backslash-pipe as an escaped pipe whatever precedes it, so a backslash run before a pipe never
+    makes it split (verified against GitHub's renderer, #1012 review)."""
     body = line.strip()
     if body.startswith("|"):
         body = body[1:]
@@ -232,8 +245,14 @@ def parse(text: str) -> tuple[list[Row], list[str]]:
             problems.append(f"{prefix} status table: expected one header {header}, found {len(starts)}")
             continue
         start = starts[0]
-        table_lines.update((start, start + 1))
-        i = start + 2
+        if start + 1 >= len(lines) or not is_delimiter_row(lines[start + 1], len(header)):
+            # Without its delimiter line GitHub renders no table, and the first row would be skipped as one (#1012).
+            problems.append(f"{prefix} status table: the header has no delimiter line (|---|...) under it")
+            table_lines.add(start)
+            i = start + 1
+        else:
+            table_lines.update((start, start + 1))
+            i = start + 2
         # GFM keeps a table open until a blank line, so a row without a leading `|` still renders as a ledger row and
         # must not escape the lint (#1105). A non-row line glued under the table fails as a cell-count problem.
         while i < len(lines) and lines[i].strip() != "":

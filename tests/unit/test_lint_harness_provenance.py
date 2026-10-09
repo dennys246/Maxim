@@ -7,7 +7,10 @@ spawner-gate rule.
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
+
+import pytest
 
 from scripts import lint_harness_provenance as L
 
@@ -68,6 +71,14 @@ def test_top_level_gated_writer_without_a_preflight_fails(tmp_path: Path) -> Non
     assert "docs/experiments/data/" in fails[0]
 
 
+@pytest.mark.parametrize("writer", ["atomic_write_json(path, payload)", "atomic_write_text(path, text)"])
+def test_family_3_sees_the_canonical_atomic_writers(tmp_path: Path, writer: str) -> None:
+    """#1111: a harness writing its gated record the sanctioned way (utils/atomic_io) was never inspected."""
+    root = _tree(tmp_path)
+    (root / "scripts/make_artifact.py").write_text(GATED_OUT + writer + "\n")
+    assert len([f for f in L.lint(root) if "make_artifact.py" in f]) == 1
+
+
 def test_top_level_gated_writer_with_the_preflight_passes(tmp_path: Path) -> None:
     root = _tree(tmp_path)
     (root / "scripts/make_artifact.py").write_text(
@@ -100,3 +111,19 @@ def test_family_3_ignores_a_script_that_only_reads_gated_data(tmp_path: Path) ->
 
 def test_real_tree_is_clean() -> None:
     assert L.lint() == []
+
+
+@pytest.mark.parametrize(
+    ("src", "spawns"),
+    [
+        ('cmd = ["maxim", "--sim", goal]', True),
+        ('cmd = ("maxim", "--sim", goal)', True),
+        ('cmd.append("--sim")', True),
+        ('cmd.insert(1, "--sim")', True),
+        ('parser.add_argument("--sim")', False),
+        ('x = "--sim"', False),
+    ],
+)
+def test_spawns_sim_sees_every_command_shape(src: str, spawns: bool) -> None:
+    """#1010 item 5: a tuple or an appended flag escaped the list-literal-only check."""
+    assert L._spawns_sim(ast.parse(src)) is spawns

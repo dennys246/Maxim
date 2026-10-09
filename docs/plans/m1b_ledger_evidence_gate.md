@@ -567,6 +567,30 @@ name; unknown → NOT-ESTABLISHED. Outcomes: ESTABLISHED / LEGACY (in the snapsh
   `O19_INTERFACE` (every attribute the re-judge calls). A gate edit an old judge cannot satisfy would strand that
   judge's verdicts. The check needs the full history: a shallow clone fails (the lint job checks out at
   `fetch-depth: 0`).
+- **A predecessor's closure is judged at the gate (#1078, #1081 item 5; 2026-10-08).** For a successor verdict,
+  each predecessor's pinned closure (as main holds it) goes through `judge_o19` with `ref` = the merge-base: it is
+  bound to its data through its OWN bound judge (`bound_judge`: `verdict_commit` on main's first-parent history and
+  its own executed commit, every bound blob the same there and at each executed and peeled commit, `data_sha256`,
+  `verdict_source_sha256`), its session files are re-hashed, and the bound judge's re-run must equal the record. On
+  top: no reasons, `verdict == "ABORT"` (a PASS, FAIL or NOT SHOWN is terminal), `experiment` = the predecessor's
+  key, `kind` = the cited campaign's entry's kind, the predecessor's merge-base entry of the cited campaign's
+  experiment and kind, `mock` false on the record and on every row (`_closure_problems`). The S6 tables come from
+  that re-judge's capture; the old unbound `git cat-file` load of `bound_files[O19_JUDGE]` is gone. Not
+  `judge_entry`: its scope rule refuses every ABORT that counted no unit (campaign 10's real closure). **Closure
+  timing is structural** (design pass S3): at every executed and peeled commit of the campaign that pins it, the
+  pinned path holds the pinned bytes, so the closure was on main before its successor ran.
+- **The campaign cap is the merge-base's (#1077; 2026-10-08).** When `scripts/o19_verdict.py` changes,
+  `o19_table_problems` counts HEAD's campaigns per `experiment` AND per chain root against the merge-base judge's
+  `MAX_CAMPAIGNS` (read with `getattr`, never in `O19_INTERFACE`: absent = a pre-succession judge, a cap of 1; a
+  non-int, a bool or a value below 1 refuses). A raise is its own PR; a later PR whose merge-base holds it may use
+  it. HEAD's own cap must be an int >= 1 and hold HEAD's table (S2: a malformed cap cannot land and later refuse
+  every judge edit). Continuity is gate-owned (S1): every HEAD successor's experiment and kind are its
+  predecessor's, and a non-string `experiment` refuses (`_o19_campaign_count_problems`).
+- **A scope is one path component** (#1081 item 3): `protocol_problems` refuses a scope that is not
+  `[0-9a-z_]+`, the shape the gate's directory placement and the leaked-gate bar assume.
+- **Not built (owner decision 2026-10-08): per-campaign model pins** (#1081 items 1–2). Closed with the trigger
+  "the first O19 experiment that pre-registers a model other than mistral-7b / 8192": an edit to the four global
+  pins is already refused today (it would change 09's and 63's verdicts in half B).
 - Each `status: ok` row's `files` re-hashed under `dirname(data)/<session_id>/` (plain or `.gz`,
   uncompressed bytes; both forms present → refused); `session_id` one plain path component inside
   `dirname(data)`; file names without `/` or `..`; no symlinks. The `sims[]` check runs over ok rows only

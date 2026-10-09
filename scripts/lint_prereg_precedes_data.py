@@ -467,7 +467,12 @@ def declaration_history(repo_root: Path, ref: str, prereg: Path) -> dict[str, di
         sha, ct = line.split()
         present = _git(repo_root, "cat-file", "-t", f"{sha}:{prereg.as_posix()}", check=False).strip() == "blob"
         text = _git(repo_root, "show", f"{sha}:{prereg.as_posix()}") if present else ""
-        decl = parse_declarations(text, f"{prereg}@{sha[:8]}", strict=False)
+        try:
+            # A version that meets today's grammar is read by it (#1014: the lenient reading demands the class as the
+            # header's FIRST clause, so `— 2026-10-01, apparatus, PRE-DATA` passed now but was never matched in history).
+            decl = parse_declarations(text, f"{prereg}@{sha[:8]}")
+        except LintError:
+            decl = parse_declarations(text, f"{prereg}@{sha[:8]}", strict=False)
         now: dict[str, set] = {"unscoped": set(), "scoped": set(), "scope": set(decl.scope)}
         for num, pre, scope in decl.amendments:
             if pre and scope is None:
@@ -731,7 +736,13 @@ def record_form_problems(ix: _Index, entry: Path, *, facts, fallback: bool, adde
             text = (ix.repo_root / d).read_text(errors="replace")
             paras = _names_entry(text, entry.name) + [p for rid in facts.run_ids for p in _names_entry(text, rid)]
             echoed |= any("allow_dirty" in para for para in paras)
-        if not echoed:
+        if not echoed and not governing:
+            out.append(
+                "records carry allow_dirty: true, and no pre-registration governs the entry, so no result doc can echo "
+                "the allowance — land a re-run pre-registration (protocols/TEMPLATE_rerun.md) to move the entry onto "
+                "the governed path, then echo `allow_dirty` in its write-up (#1037)"
+            )
+        elif not echoed:
             out.append(
                 "records carry allow_dirty: true but no result doc of this experiment names the entry (or its "
                 "harness_run_id) in a paragraph mentioning `allow_dirty` — the write-up must echo the allowance"
