@@ -23,7 +23,10 @@ ENV_KEY = f"repos/{REPO}/environments/settings-check"
 def _responses(exp: dict) -> dict:
     """The API responses that observe() would normalise back into `exp`."""
     return {
-        f"repos/{REPO}": {"default_branch": exp["default_branch"]},
+        f"repos/{REPO}": {
+            "default_branch": exp["default_branch"],
+            "security_and_analysis": copy.deepcopy(exp["security_and_analysis"]),
+        },
         f"repos/{REPO}/branches/main/protection": copy.deepcopy(exp["protection"]),
         f"repos/{REPO}/rules/branches/main?per_page=100": copy.deepcopy(exp["effective_rules"]),
         **{f"repos/{REPO}/rulesets/{rid}": {"enforcement": e} for rid, e in exp["ruleset_enforcement"].items()},
@@ -89,6 +92,20 @@ def test_the_committed_settings_compare_clean():
             )
             or r.update({f"repos/{REPO}/rulesets/99": {"enforcement": "active"}}),
             "effective_rules drifted",
+        ),
+        (
+            "push protection switched off",
+            lambda r: r[f"repos/{REPO}"]["security_and_analysis"]["secret_scanning_push_protection"].update(
+                status="disabled"
+            ),
+            "security_and_analysis.secret_scanning_push_protection",
+        ),
+        (
+            "non-provider patterns switched off",
+            lambda r: r[f"repos/{REPO}"]["security_and_analysis"]["secret_scanning_non_provider_patterns"].update(
+                status="disabled"
+            ),
+            "security_and_analysis.secret_scanning_non_provider_patterns",
         ),
         (
             "CodeQL loses python",
@@ -161,6 +178,8 @@ def test_an_unprotected_branch_is_drift_not_unverifiable():
         lambda r: r.update({f"repos/{REPO}/branches/main/protection": S.CannotVerify("HTTP 401")}),
         lambda r: r.update({f"repos/{REPO}/code-scanning/default-setup": {"state": "configured"}}),  # field missing
         lambda r: r.update({BYPASS_KEY: {"message": "x"}}),
+        lambda r: r[f"repos/{REPO}"].pop("security_and_analysis"),  # a token that cannot see it (#1081 D3)
+        lambda r: r[f"repos/{REPO}"].update(security_and_analysis=None),
     ],
 )
 def test_an_unreadable_part_cannot_verify_never_passes(mutate):
