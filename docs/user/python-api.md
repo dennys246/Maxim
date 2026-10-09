@@ -345,7 +345,9 @@ guard.reveal("main_gate")
 child_entity.detach()
 child_entity.reparent(new_parent)
 
-# Save/load entity trees (preserves metadata, vital metrics, children)
+# Save/load entity trees (preserves metadata, vital metrics, children, and each
+# component's sub-sensor values, integrity function and damage affinities; NOT yet
+# affordance params/requires/self_effect or latent affordances, #1159)
 guard.save("/tmp/modified_guard.json")
 loaded_guard = maxim.load.entity("/tmp/modified_guard.json")
 ```

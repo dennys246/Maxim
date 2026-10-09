@@ -2,6 +2,30 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-10-07 — Entity format 1.1: component state lives on its modulator; a trigger with no reading does not fire (#1124)
+
+### Decision
+
+Owner decisions (2026-10-07, at the issue's start and after its review round):
+- `<mod>.integrity` is derived on read (`Entity.component_integrities()`), never stored on an entity's `vital_metrics`. When failures are evaluated, a modulator's real sub-sensor beats a dotted `vital_metrics` key, and the collision is reported once.
+- The Entity JSON format is **1.1** (`sem.ENTITY_FORMAT_VERSION`). Each modulator saves its sub-sensor `values`, its `integrity` function and its `damage_affinities`, and a reload rebuilds the modulator's back-reference to its entity. The writer saves no dotted `vital_metrics` key; it warns about any it drops.
+- **Loading a 1.0 file:**
+  - A damaged `<mod>.integrity` is migrated onto that modulator's weighted, non-drive sub-sensors, so integrity and derived health come back as saved.
+  - Every other dotted key is dropped.
+  - One WARNING per entity says which keys were migrated and which were dropped.
+- **A ≤1.3.1 build reading a 1.1 file:** it ignores `values`, finds no stored integrity and fires integrity triggers on a healthy body. This is documented, not worked around: a compatibility copy would put derived keys back in the file.
+- **A failure trigger whose field has no reading does not fire**, and a recovery condition with no reading does not clear. Each warns once. `_parse_entity` warns when a trigger names a field nothing on the entity produces. Behaviour tier: invariant (fail-closed: unknown is not a breach).
+
+### Reason
+
+A missing field read as 0.0, so a `<` trigger fired on any key nothing wrote. A reload emptied every modulator, so integrity froze at its saved value. A body saved before its first evaluation therefore reloaded concussed and crippled while unhurt, and a stored integrity or a pre-#874 orphan key shadowed the real sub-sensor.
+
+### Tradeoffs
+
+- A 1.0 file's integrity is migrated, not its true sub-sensor values, and its integrity function falls back to `weighted_mean`. Neither was ever saved. So a `min`/`max` component (the dragon's torso) comes back with its saved integrity but averages later damage. Where the saved integrity cannot be reproduced (a weighted drive sub-sensor), the WARNING says so.
+- Affordance specs (`params`, `requires`, `self_effect`), latent affordances and failure-mode runtime state still do not round-trip (#1159).
+- One shared sensor resolver is not part of this decision (#1156).
+
 ## 2026-10-07 — The grounding line: body first, a latent forward model, receptors and afferent tracks (#1120 audit)
 
 ### Decision
