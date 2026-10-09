@@ -278,7 +278,7 @@ def declared_world_roster(executor: Any) -> list[str]:
 
     `_read_world_ranges` skips a world sensor with a missing/malformed range (it re-folds through
     the legacy map) while `_read_world_states` still encodes it — so the ranges alone cannot see a
-    range-less sensor joining the vector. Same walk as `agent_loop._read_declared_modality_ranges`.
+    range-less sensor joining the vector. Same walk as `substrate_proposal._read_declared_modality_ranges`.
     """
     from maxim.embodiment.sensory_streams import WORLD_TAG
 
@@ -643,7 +643,7 @@ class WaterTrial:
         return t_tp
 
     def encode_world_cluster(self) -> str | None:
-        from maxim.runtime.agent_loop import _encode_current_clusters
+        from maxim.runtime.substrate_proposal import _encode_current_clusters
 
         return _encode_current_clusters(self.encoder, self.agent_id, self.aut.executor).get("world")
 
@@ -679,7 +679,7 @@ class WaterTrial:
     def live_encoding(self) -> dict[str, Any]:
         """The encoding identity of the encoder this trial BOOKS and READS through (training's
         `propose_via_substrate` and the NODE-gate encodes), over the body's full declared roster."""
-        from maxim.runtime.agent_loop import _read_world_ranges
+        from maxim.runtime.substrate_proposal import _read_world_ranges
 
         ex = self.aut.executor
         return encoding_identity(self.encoder.config, _read_world_ranges(ex), declared_world_roster(ex))
@@ -694,7 +694,7 @@ class WaterTrial:
         return encoder_config_identity(SensorEncoderConfig())
 
     def live_fingerprint(self) -> dict[str, Any]:
-        from maxim.runtime.agent_loop import _read_world_ranges
+        from maxim.runtime.substrate_proposal import _read_world_ranges
 
         cfg = self.aut.bio.nac.config
         oxy = self.aut.executor.embodiment.root.drive_specs.get("oxygen")
@@ -1006,7 +1006,7 @@ class WaterTrial:
 
     def train(self) -> tuple[dict[str, Any], list[str]]:
         """K yoked, propose-only conditioning episodes at the pool floor (no execution)."""
-        from maxim.runtime.agent_loop import propose_via_substrate
+        from maxim.runtime.substrate_proposal import propose_via_substrate
         from maxim.runtime.experience_time import ExperienceClockDriver
 
         # Propose-only training bypasses the loop, whose live pass is what advances the experience

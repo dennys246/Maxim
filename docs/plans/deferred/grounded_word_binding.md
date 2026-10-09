@@ -1,5 +1,16 @@
 # Grounded word binding — a heard word calls back its situation (substrate-primary)
 
+> **L0 KEPT 2026-10-07 as the grounding line's innate-prior measurement (GL1,
+> [grounding.md](../grounding.md); owner decision G5, [DECISIONS.md](../../../DECISIONS.md) 2026-10-07).**
+> The frozen re-entry gate below runs unchanged, offline, in GL1: model, 0.44 threshold, situations and
+> criteria all as frozen 2026-09-24. What changes is what a result means. It measures how good the word
+> embedding is as the innate prior for [latent_forward_model.md](../latent_forward_model.md)'s word head.
+> The old "PASS → candidate 1.5 headline" consequence is **RETIRED**: a PASS no longer revives this plan
+> on its own; either result is recorded and read by that plan.
+> Whether a FAIL still archives this plan is an owner decision at GL1's start, and the strict default
+> is the frozen "fail → archive". **Revive when:** the grounding line's word-world (innate-prior) tier
+> opens, after the orchestrator decomposition, reading L0's recorded result.
+>
 > **DEFERRED 2026-09-24 on a CONDITION, not a date (owner decision).** This plan sits behind an entry
 > gate that has **not passed**: the grounded-language line's paired-data audit returned *REDESIGN THE
 > DATA SOURCE — not a pass* (2026-09-20), and its re-audit was *EXPLORATORY; not a revival*
@@ -123,7 +134,7 @@ release mirror) is engineering, and the plan says so.
 
 | Piece | Status |
 |---|---|
-| Substrate-primary selection: `agent_loop.py::propose_via_substrate` → `NAc.recommend_action` over `{modality: EC cluster}` — **one cluster per modality** | **Shipped**, production caller |
+| Substrate-primary selection: `substrate_proposal.py::propose_via_substrate` → `NAc.recommend_action` over `{modality: EC cluster}` — **one cluster per modality** | **Shipped**, production caller |
 | Situation encoding (`SensorEncoder`, 384-d) for interoception/audio/world; cluster ids are ATL concept ids | **Shipped** |
 | Fear (`cluster_fear`) written by the pain→fear subscriber **only to the world cluster**; reward credit only to world/audio/interoception | **Shipped** — a text cluster can hold neither today |
 | Game text as a percept: player chat as `[minecraft:chat]` (always on); game system messages as `[minecraft:system]` behind `--system_messages` (#807) | **Shipped** — observed, never in the situation (`_SUBSTRATE_CHANNELS` excludes text) |

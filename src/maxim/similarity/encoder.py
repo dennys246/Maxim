@@ -964,7 +964,7 @@ class SensorEncoder:
         # which is precisely the merge corruption the dimension guard cannot see.
         # The tag must name the SPACE, not the SAMPLE. Keying it on
         # `sensors.keys()` was wrong and the bio-fidelity lens measured the
-        # consequence: `agent_loop._read_drive_states` emits `cold` only while
+        # consequence: `substrate_proposal._read_drive_states` emits `cold` only while
         # a thermal drive is outside its comfort band
         # (`drives.setdefault("cold", cold_need)`), so a warm infant and a cold
         # one hashed to DIFFERENT geometries and their interoception clusters

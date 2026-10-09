@@ -43,7 +43,7 @@
 #   MAXIM_NAC_MIN_CONFIDENCE=0.0 maxim roy run scenarios/roy/roy_2c_iteration.yaml
 #
 # IMPORTANT: the env var must be set in the runner's environment, not
-# in the YAML — the runner reads it at agent_loop._resolve_min_confidence
+# in the YAML — the runner reads it at substrate_proposal._resolve_min_confidence
 # inside propose_via_substrate. The runbook in
 # protocols/20_roy_2c_reproduction.md spells this out.
 #

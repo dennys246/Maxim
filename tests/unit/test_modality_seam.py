@@ -21,7 +21,7 @@ import pytest
 
 from maxim.embodiment.body import Embodiment
 from maxim.embodiment.spec import _parse_entity
-from maxim.runtime.agent_loop import NO_SITUATION_CUE, propose_via_substrate
+from maxim.runtime.substrate_proposal import NO_SITUATION_CUE, propose_via_substrate
 from maxim.similarity.ec import EntorhinalCortex
 from maxim.similarity.encoder import SensorEncoder
 
@@ -243,7 +243,7 @@ class TestModalityClustersGuard:
         preference in tool_dispatch AND a registry channel tag — a rename in
         one place must trip here, not silently de-preference operant credit."""
         from maxim.embodiment.sensory_streams import AUDIO_TAG
-        from maxim.runtime.agent_loop import _SUBSTRATE_CHANNELS
+        from maxim.runtime.substrate_proposal import _SUBSTRATE_CHANNELS
 
         assert AUDIO_TAG == "audio"
         assert AUDIO_TAG in {ch.tag for ch in _SUBSTRATE_CHANNELS}

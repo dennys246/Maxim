@@ -21,7 +21,7 @@ container aliases) stays a local of ``run_agentic_loop``.
 only the setup calls moved here with it, bodies verbatim (rule (a) of the roadmap's import-direction
 paragraph): ``_prepare_executor``, ``_planning_liveness_enabled_via_env``, ``_loop_bio_handles``,
 ``_build_loop_sensor_encoder``, ``_resolve_situation_cue`` (which imports the ``NO_SITUATION_CUE``
-sentinel from ``agent_loop``, where ``propose_via_substrate`` also uses it). Two names are PATCH SEAMS
+sentinel from ``substrate_proposal``, where ``propose_via_substrate`` also uses it; slice 3). Two names are PATCH SEAMS
 that existing tests replace on ``agent_loop``, so they are read through the ``agent_loop`` module at
 call time: ``agent_loop._record_outcome`` and ``agent_loop.resolve_llm_loop_overrides``. ``agent_loop``
 is imported inside the functions, because ``agent_loop`` imports this module. The setup LOGS on the
@@ -210,7 +210,7 @@ def _resolve_situation_cue(memory_hub: Any) -> Any:
     with the opt-out (fail-soft, like the rest of the loop) -- where the survival harnesses, which
     read ``MemoryHub.situation_cue`` directly, stop instead.
     """
-    from maxim.runtime.agent_loop import NO_SITUATION_CUE  # import path only: the sentinel stays in agent_loop
+    from maxim.runtime.substrate_proposal import NO_SITUATION_CUE
 
     if memory_hub is None:
         return NO_SITUATION_CUE

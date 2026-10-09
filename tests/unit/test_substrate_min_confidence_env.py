@@ -1,14 +1,14 @@
 """Unit tests for the ``MAXIM_NAC_MIN_CONFIDENCE`` env-var override.
 
 Added in 0.9.1 (release_0_9_1.md Stage 0a). The resolver in
-``agent_loop._resolve_min_confidence`` is the surface that lets Roy-2c
+``substrate_proposal._resolve_min_confidence`` is the surface that lets Roy-2c
 drop ``propose_via_substrate``'s gate to 0.0 without code edits, and
 that Wire-A's ablation experiment relies on.
 """
 
 from __future__ import annotations
 
-from maxim.runtime.agent_loop import (
+from maxim.runtime.substrate_proposal import (
     _DEFAULT_SUBSTRATE_MIN_CONFIDENCE,
     _resolve_min_confidence,
 )

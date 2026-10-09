@@ -451,6 +451,7 @@ jobs:
                src/maxim/hivemind/ \
                src/maxim/runtime/executor.py src/maxim/runtime/agent_loop.py \
                src/maxim/runtime/loop_setup.py src/maxim/runtime/loop_gates.py \
+               src/maxim/runtime/loop_substrate.py src/maxim/runtime/substrate_proposal.py \
                src/maxim/runtime/loop_controller.py src/maxim/runtime/loop_state.py \
                src/maxim/runtime/tool_dispatch.py src/maxim/runtime/loop_types.py \
                src/maxim/bridges/ src/maxim/planning/ \

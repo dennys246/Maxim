@@ -26,6 +26,201 @@ A missing field read as 0.0, so a `<` trigger fired on any key nothing wrote. A 
 - Affordance specs (`params`, `requires`, `self_effect`), latent affordances and failure-mode runtime state still do not round-trip (#1159).
 - One shared sensor resolver is not part of this decision (#1156).
 
+## 2026-10-07 — The grounding line: body first, a latent forward model, receptors and afferent tracks (#1120 audit)
+
+### Decision
+
+These are owner decisions G1–G4, taken after the #1120 five-angle audit, and G5–G8, taken in the review
+round the same day. The audit found that the EC is two disconnected worlds:
+- a BODY world: the `SensorEncoder` channels at 0.85 with frozen centroids. It is live by default and it
+  is the only path that acts without the LLM. No EARNED ledger row depends on the other world (T1-16 is
+  Hippocampus recall into the prompt; T1-4 rides PainBus / `ToolPainBridge`);
+- a WORD world: EC `text` at 0.44 on a running mean, only with `MAXIM_SUBSTRATE_PATH=1`. Percepts encode
+  there on any runtime with that flag; affordance NAMES encode there only from the `--sim` orchestrator.
+
+No edge joins them, and no positive consequence producer exists, so concepts are similar by name and
+never by what they do to the body. The 1.4 grounding line answers this in stages GL0–GL6
+(`docs/plans/grounding.md`):
+
+1. **Owner decision G1. Placement.**
+   - The line fills roadmap 1.4 Phase 5's existing slots (the relief store's producer side; the graded
+     predictor, as `latent_forward_model.md`). It does not open a new ladder or a parallel line.
+   - A new release threshold **T8** (engineering only, like T7) gates 1.4.0.
+   - **T9**, the first grounding claim, is conditional and never co-headlined with E3.
+   - **Body world first** (Minecraft and the cradle, substrate-primary). The word world comes later, as
+     the innate-prior tier.
+   - GL0, GL1, GL3.B0 (census + red gates, tests only), GL4 S0a (audit) and the paper run now, beside
+     1.3.2. GL4 S0b needs a fresh capture (a sim run). GL4 S1 waits only for GL2a (exempt set below);
+     GL4 S3 and S4 are `src/` and wait for the fence; GL4 S2 is offline (`scripts/`).
+   - `src/` waits for the `agent_loop`/orchestrator decomposition fence. The exception is record-only
+     GL2a, plus GL4 S1. The exempt file set, exactly: GL2a edits `embodiment/body.py`,
+     `embodiment/sem.py`, the new leaf `embodiment/event_id.py`, `runtime/executor.py`
+     (`Executor._stamp_invocation` only), `tools/base.py::ToolOutput` and `runtime/bio_integration.py`;
+     GL4 S1 edits `embodiment/tool_bridge.py` (the `ActionContext` assembly and the observe call),
+     `embodiment/cerebellum.py` (payload `"1.2"`, the new payload key, `import_state` refusing newer
+     versions), `runtime/executor.py` (`Executor._stamp_invocation` only), `runtime/bio_integration.py`
+     (`EncodingSignals.extra["context"]` at the loop capture) and the new leaf
+     `embodiment/action_context.py` (the `ActionContext` type). Anything else waits for the fence.
+2. **Owner decision G2. The 2026-09-18 decision 3 is reversed.**
+   - "JEPA re-pointed, not revived" (recorded here 2026-09-19) no longer holds. The predictor enters as
+     `docs/plans/latent_forward_model.md`, the name Phase 5 already reserved, so that pointer becomes true.
+   - It inherits the four rules of `docs/plans/deferred/jepa_cross_modal_alignment.md`: no pretrained
+     cross-modal weights; the contamination guard is a CI test; opt-in; existing encoders untouched.
+   - It is **not called JEPA** until its target is a learned embedding of a rich percept. While its
+     target is the fixed autonomic code, it is supervised regression in a JEPA shape.
+   - The projection plan is subsumed, not revived.
+3. **Owner decision G3. Names.**
+   - A percept source is a `Receptor` in code; prose may say "engine". The pathway it emits onto is an
+     `AfferentTrack`. The handoff record is an `AfferentEvent`, carrying a deterministic `PhysicalEventId`
+     of (agent, seq): no uuid, no wall time.
+   - **An engine is not a track.** One receptor emits onto one or more tracks, and one physical event
+     fans out under one shared id. A burn, for example, goes to a fast nociceptive track and a slow
+     affective track.
+   - Tracks are **logical channels scheduled on the loop/tick clock**: deterministic, lockstep-testable,
+     never OS threads. Real concurrency exists only at hardware edges, which post into an inbox the loop
+     drains.
+   - Stage IDs are GL0–GL6 (`GL` was unused). No existing bio class is renamed.
+4. **Owner decision G4. The second-body gate is split.**
+   - Minecraft satisfies the PERCEPTION abstraction. Five live sources (drives, the Minecraft world,
+     Reachy DoA, narrator text, DN vision) already differ in receptor class, embedding space and clock.
+   - So three plans re-key to a capability trigger, the relay's registry+provenance stage (GL3.B1):
+     `deferred/cross_modal_perception_fabric.md`, `deferred/perception_pipeline_placement.md` and
+     `deferred/modality_resolution_and_alignment.md`.
+   - The robot hardware factory (`deferred/second_body_staging.md` Stage B, the orient line, the
+     microduck) keeps its physical-robot trigger, because Minecraft is not a `maxim.robots` controller.
+   - The re-keyed triggers, worded once: the fabric revives when GL3's registry+provenance stage ships
+     AND a 1.4 rung needs cross-modal binding; placement revives when that stage ships AND a stage is
+     placed across a wire; modality resolution revives when that stage ships.
+5. **Owner decision G5. Dispositions.** Taken now:
+   - `deferred/jepa_cross_modal_alignment.md` is **SUBSUMED** by `latent_forward_model.md` (its four
+     rules carried over);
+   - `grounded_language_acquisition.md` is **SUBSUMED** for grounding by `grounding.md` (its own scope
+     note kept);
+   - `deferred/grounded_word_binding.md`'s L0 gate is kept as GL1's innate-prior measurement, and its old
+     "PASS → candidate 1.5 headline" consequence is **RETIRED**;
+   - `deferred/nociception_layer.md` is **REVIVED** into `autonomic_layer.md`.
+6. **Owner decision G6. Narrated provenance, discounted.**
+   - Consequences written by the narrator's tools (`simulation/tools.py::SetEntitySensorTool`,
+     `DamageComponentTool`, `OrchestratorActorTool`, and the reflex dispatch that goes through them) are
+     stamped `narrated`, never `experienced`.
+   - They are usable for forward-model training and for credit at a **declared discount**. Its value is
+     an owner decision at GL4's start; the strict default for that decision is a small discount, and
+     GL5 reports its results with AND without narrated data.
+   - Reason (owner): excluding them would mute the world the LLM's language priors simulate.
+   - Provenance kinds are `experienced` / `narrated` / `imagined`; `declared` and `reported` stay open at
+     GL3.B1, the registry+provenance stage. No type defaults provenance to `experienced`.
+   - The contamination guard checks that a narrated record can never be relabelled `experienced` and
+     that the discount is applied.
+7. **Owner decision G7. Satiation fires the survival rows whatever the routing.**
+   - On `minecraft_player` the homeostatic `oxygen` and `health` breach latches clear on every surfacing
+     or regeneration (`embodiment/body.py::Embodiment.evaluate_failures`, `elif cleared:
+     breach_latch.pop`) after a latched breach, which is Exp 60's own `escape_water` contingency; its
+     `food` is entropic with `satisfaction_threshold: 16`, and the `d1` of `minecraft_bench` (T1-11) and
+     of `minecraft_bench57` (T1-12, the same spec) is entropic with 0.3.
+   - So GL2c fires T1-11, T1-12, T1-13, T1-14 and T1-15 under any routing (T1-12 added by the owner
+     2026-10-08; its `Re-run on:` matches T1-11's). It ships off by default and lands only with a
+     batched live re-run of Exp 60/61/62 (plus the T1-11 and T1-12 arguments or re-runs).
+   - The staged-donor refusals are restated, not deleted:
+     `scripts/survival_world/exp61_run.py::donor_sanity_staged` (non-empty `reward_bias`,
+     `cluster_reward_bias`, `links`, `event_outcome_welford`) and
+     `scripts/survival_world/r3_run.py::_R3._boundary` (`reward_bias`, `links`).
+   - Routing (relief store, distributor, or both) stays an open GL2c decision.
+8. **Owner decision G8. The registry enters with its consumer.**
+   - GL3's `Receptor` registry lands together with provenance on the write path, in one stage (GL3.B1),
+     whose consumers are GL5's experiment and the forward model's contamination guard. GL3's census and
+     red gates (GL3.B0) stay first; they are tests only and run now, inside the fence.
+   - GL3's stage IDs are always prefixed (`GL3.B0`–`GL3.B8`; a bare `B8` is the delta-attribution
+     invariant), and `thalamic_relay.md` §6 is the canonical map. The first track slice (GL3.B3) is the
+     thermal dual-track fan-out, with no preemption, built on GL2b's `NociceptorSpec`; it carries the
+     seq-authority handover as its stage gate.
+   - Nociceptive-fast preemption (GL3.B4) becomes a declared 1.4 rung arm, or waits for one; the owner
+     names the rung later.
+   - The timing defects L1, L2, L5 and the dead preemption scaffolding L7 are to file as defect issues
+     now, each fixable without the registry.
+
+**The event-identity contract** (one statement; `grounding.md` carries it, `autonomic_layer.md` defines
+the type):
+- One type, `PhysicalEventId(agent_id: str, seq: int)`: frozen, SHAPE-FROZEN at 1.0 (CC3 path b);
+  `__post_init__` rejects an empty `agent_id` and a negative `seq`; `__str__` is `"{agent_id}:{seq}"`. It
+  lives in the leaf module `maxim/embodiment/event_id.py`, built at GL2a; GL3 imports it.
+- One seq authority per agent: an `EventSequencer` held by the agent's primary `Embodiment`. Ephemeral,
+  scene and foundry wrappers mint no records and no ids. `seq` persists per agent and resumes past the
+  saved maximum (the `Hippocampus._resume_capture_seq` rule). At GL3.B3 the scheduler's drain point
+  takes over, with the GL2a counter as its backing store; the handover is GL3.B3's stage gate.
+- A consequence names its cause by `CauseRef.cause_pid` (`PhysicalEventId | None`), the same type.
+- `Embodiment.drain_outcomes()` has named production drainers (the loop capture; in `--sim`, the AUT
+  loop's `capture_loop_action` on `sim.aut`), a drop-oldest bound with every drop counted and logged,
+  and ephemeral wrappers never queue.
+- The `--sim` orchestrator thread (the `start_simulation_mode` caller running the orchestrator agent's
+  loop, where the narrator's tools, registered on `orch_registry`, call `evaluate_failures` while the AUT
+  loop runs on `sim.aut`; not `sim.dm`, which only interactive DM campaigns use) is a declared edge: a
+  lock from GL2a, an inbox drained once per pass from GL3.B3. The reflex dispatch's instances of the
+  same classes run on the loop thread.
+- Forward-model pairs join on the `pid`, never on the executor's `uuid4` invocation id; the tool path
+  stamps the pid on `ToolOutput` beside it.
+
+The plans:
+- `docs/plans/grounding.md`, the umbrella;
+- `docs/plans/autonomic_layer.md` (GL2): the signed body-consequence code and the regulatory defects.
+  `deferred/nociception_layer.md` is REVIVED into it;
+- `docs/plans/thalamic_relay.md` (GL3): receptors and afferent tracks;
+- `docs/plans/latent_forward_model.md` (GL4).
+
+The state page is `docs/wiring/body-and-word-worlds.md`. Every other choice the drafts raised stays open,
+listed in `grounding.md` as "Owner decision at <stage> start". That includes T1-5's status and #1120's
+retired-threshold red gate (both at GL0), #1161's order, and the joint review of GL2c with the relief
+store.
+
+### Reason
+
+- **Nothing links a word to a consequence.**
+  - Hebbian episode binding is Dormant (D6);
+  - `Hippocampus.retrieve_cross_modal` has no `src/` caller;
+  - `archive/cross_modal_substrate_binding.md` is cancelled.
+
+  On shipped components, names and consequences disagree: a safe `touch` and a burning one share one
+  node, as do a safe and a harmful `warm_self`. Name similarity cannot tell them apart, and the
+  compound-name match is what #1120 actually measured under T1-5.
+- **Body first is the only order whose results are readable.** No earned row depends on the word path,
+  and the word path is fenced (the orchestrator) and LLM-coupled.
+- **The predictor needs a target the body already has**, a signed consequence code. That is why the
+  autonomic layer is built first. It is also why the projection plan (384 ↔ 768 alignment) is solving a
+  different problem.
+- **Phase 5's slots keep the rules.** Placing the line there keeps "no second store, no second predictor",
+  the relief store's own review rule. It also lets T8 gate the release on engineering truth without
+  gating it on a may-fail result.
+- **The physical trigger conflated two arguments:** a robot-factory argument (designing
+  `hardware/controller.py::RobotController` from one robot) and a perception argument that is already
+  satisfied.
+
+### Tradeoffs
+
+- **GL2c's positive producer lapses a written discharge, under any routing (G7).** T1-13 (Exp 60) says
+  "if a positive Reaction emitter is ever wired, this reasoning lapses", and the Minecraft breach latches
+  clear at Exp 60's own contingency, so T1-11, T1-12, T1-13, T1-14 and T1-15 all fire whichever surface
+  the producer writes. No routing avoids it. The producer is off by default and lands only with a
+  batched live re-run of Exp 60/61/62 (+ T1-11 and T1-12) in its own rig slot after the 1.3.2 live Exp 60 re-run, never
+  stacked on it.
+- **Narrated data is used, not excluded (G6).** The cost is a contamination risk the guard must close
+  (no relabelling, the discount applied), and every GL5 result is reported with and without it.
+- **Two may-fail lines in one release make a null in either unreadable.** Hence T9 is conditional and
+  never co-headlined, and no grounding flag is set in an E1–E3 arm unless declared (mechanization backlog
+  M10, amended).
+- **A relay contract is close to the percept-channel manifest that `archive/percept_testbed_audit.md`
+  rejected "as conceived".** `thalamic_relay.md` must answer that in its front-gate. Per G8 the registry
+  enters only with provenance and that stage's consumers, wrapping the existing receptors
+  byte-identically; the first track slice (GL3.B3) is a flag-off fan-out with no preemption, and
+  preemption (GL3.B4) enters only as a declared rung arm.
+- **The rules followed by attention become backlog rows.**
+  - Rows in `docs/plans/outstanding.md`: M39 (every percept enters the EC through the relay), M40
+    (afferent tracks are never threads) and M41 (below).
+  - The shared event identity is to be enforced by its type (structural guard: `PhysicalEventId` and
+    frozen records with required keyword-only fields); no row.
+  - The predictor's contamination guard is to be enforced by its CI test. Until `latent_forward_model.md`
+    S3 lands it is backlog row M41; then it is structural.
+- **Banners, not moves.** `grounded_language_acquisition.md` and `deferred/jepa_cross_modal_alignment.md`
+  are cited by `src/` and the CLI, so they stay at their paths with dated banners.
+
 ## 2026-10-01 — config.json 1.2: the file holds exactly the operator's choices
 
 ### Decision

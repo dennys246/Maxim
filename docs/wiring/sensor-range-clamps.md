@@ -23,7 +23,7 @@ at ±128, `hostile_count` at 32, `nearest_*_dist` at 64.
 
 **Rule:** when a harness needs "did the world state I commanded arrive in the body?", clamp
 the expected value through the sensor's declared range first — read the ranges from the
-production ranger (`agent_loop._read_world_ranges(executor)`), never re-typed from the YAML —
+production ranger (`substrate_proposal._read_world_ranges(executor)`), never re-typed from the YAML —
 and guard that the clamped expectations for your conditions still differ by more than the
 tolerance (two positions above the cap are indistinguishable to the sensor).
 

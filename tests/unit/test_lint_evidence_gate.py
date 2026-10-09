@@ -24,6 +24,7 @@ sys.path.insert(0, str(REPO / "scripts"))
 
 import _evidence_records as R  # noqa: E402
 import lint_evidence_gate as G  # noqa: E402
+from tests.unit.test_o19_rerun import stable_provenance  # noqa: E402
 
 LEDGER = "docs/plans/behavioral_graduation_candidates.md"
 PREREG_CLAUSE = {"id": "x1", "kind": "prereg", "path": "docs/experiments/data/legacy_old.jsonl", "sha256": "s",
@@ -114,6 +115,7 @@ def o19_attempt(rig: Rig, exp: str, executed: str, *, monkeypatch, rows_edit=Non
 
     data_dir = rig.root / v.data_dir(exp)
     rows_path = data_dir / "rows.jsonl"
+    stable_provenance(monkeypatch)
     monkeypatch.setattr(h._provenance, "_RUN_ID", {})
     monkeypatch.setattr(h._provenance, "evidence_out_path", lambda *a, **k: rows_path)
     assert h.main(["run", "--exp", exp, "--mock"]) == 0
@@ -181,6 +183,7 @@ def _t39_move(
     ledger_token="PARTIAL",
     row="T3-9",
     side_branch=False,
+    qualifier="narrow: H3 not measured",
 ):
     """BASE: T3-9 STALE, then an O19 Exp 09 attempt's rows landed (``rows_edit`` before they land). HEAD: its
     verdict (``verdict_edit``), any ``head_edit`` to the tree, and ``row`` moved to ``ledger_token`` citing it."""
@@ -192,7 +195,9 @@ def _t39_move(
         verdict_edit(record)
         (rig.root / DATA / "rerun_exp09_o19" / "verdict.json").write_text(json.dumps(record, indent=1))
     cite = f"**Evidence:** `{DATA}/rerun_exp09_o19/verdict.json`."
-    status = f"**Status: {ledger_token} 2026-10-02**. {cite}"
+    # The real T3-9 claims the `narrow` scope (H3 not measured), the one exp09_verdict supports (#1141).
+    qualifier = f" ({qualifier})" if qualifier else ""
+    status = f"**Status: {ledger_token} 2026-10-02**{qualifier}. {cite}"
     t1_row = t1("T1-1", status if row == "T1-1" else "**Status: STALE 2026-09-30**.")
     t3_row = t3("T3-9", status if row == "T3-9" else "**Status: STALE 2026-09-30**.")
     rig.head(ledger([t1_row], [t3_row]))
@@ -421,6 +426,7 @@ def test_the_real_pass_table_supports_exp63_earned_from_pass_only() -> None:
         "rows": ["T1-16"],
         "targets": {"EARNED": ["PASS"], "REPRODUCED": ["PASS"]},
         "require": {"apparatus_checked": True},
+        "scopes": ["narrow"],
     }
     assert G.pass_table_problems(table, "HEAD") == [] and "exp63_verdict" in R.O19_KINDS
     import o19_verdict as v
@@ -918,8 +924,9 @@ def test_an_allowance_establishes_but_never_supports(rig) -> None:
     candidate = R.Judgement(path="v", status=G.ESTABLISHED, kind="verdict", time=3e9, allowed_dirty=True,
                             prereg="PASS", data_prereg="PASS",
                             record={"kind": "exp57_verdict", "verdict": "PASS"})  # fmt: skip
-    table = {"exp57_verdict": {"rows": ["T1-12"], "targets": {"EARNED": ["PASS"]}}}
-    assert "allowed-dirty" in (G.support_problem(candidate, "T1-12", "EARNED", table, 1.0, ctx=_ctx(rig)) or "")
+    table = {"exp57_verdict": {"rows": ["T1-12"], "targets": {"EARNED": ["PASS"]}, "scopes": [None]}}
+    problem = G.support_problem(candidate, "T1-12", "EARNED", table, 1.0, ctx=_ctx(rig), scope=None)
+    assert "allowed-dirty" in (problem or "")
 
 
 def test_runs_cannot_predate_the_commit_they_ran_on(rig) -> None:
@@ -1576,7 +1583,7 @@ def test_a_ruled_kind_without_its_complete_block_is_refused(rig) -> None:
     ],
 )
 def test_the_pass_table_complete_block_shape(kind, complete, why) -> None:
-    entry = {"rows": ["T1-1"], "targets": {"EARNED": ["EARNED"]}}
+    entry = {"rows": ["T1-1"], "targets": {"EARNED": ["EARNED"]}, "scopes": [None]}
     if complete is not None:
         entry["complete"] = complete
     assert any(why in p for p in G.pass_table_problems({kind: entry}, "HEAD")), G.pass_table_problems(
@@ -1991,7 +1998,7 @@ def _history_blobs() -> list[tuple[str, bytes]]:
     ]
 
 
-@pytest.mark.skipif(not _history_blobs(), reason="needs origin/main's full history (the unit-test job is depth 1)")
+@pytest.mark.skipif(not _history_blobs(), reason="needs origin/main's full history (a shallow clone has none)")
 def test_every_judge_on_mains_history_loads_through_the_gate() -> None:
     """N2: the gate re-judges a verdict with the judge that wrote it, so every judge main ever held must still load
     through ``load_o19_judge`` with the interface ``rejudge_o19`` calls (N3: and import only the standard library)."""
@@ -2073,14 +2080,18 @@ def _stored(session_dir: Path, name: str) -> Path:
     return next(p for p in (session_dir / name, session_dir / f"{name}.gz") if p.exists())
 
 
-def _close_campaign_1(rig: Rig, monkeypatch, *, rows_edit=None, record_edit=None) -> str:
-    """Land campaign 1's aborted attempt (garden phase failed) and its stamped ABORT closure; returns its SHA-256."""
+def _close_campaign_1(rig: Rig, monkeypatch, *, rows_edit=None, record_edit=None, abort: bool = True,
+                      land: bool = True) -> str:  # fmt: skip
+    """Land campaign 1's attempt (its garden phase failed when ``abort``) and its stamped closure, written and judged
+    by the judge the rig holds at that commit (so it is genuinely bound, #1078); returns its SHA-256. With
+    ``land=False`` the closure is left in ``rig.closure_raw``, unwritten."""
     import o19_rerun as h
     import o19_verdict as v
     from _provenance import stamp_verdict
 
     data_dir = rig.root / v.data_dir("10")
     rows_path = data_dir / "rows.jsonl"
+    stable_provenance(monkeypatch)
     monkeypatch.setattr(h._provenance, "_RUN_ID", {})
     monkeypatch.setattr(h._provenance, "evidence_out_path", lambda *a, **k: rows_path)
     assert h.main(["run", "--exp", "10", "--mock"]) == 0
@@ -2089,15 +2100,18 @@ def _close_campaign_1(rig: Rig, monkeypatch, *, rows_edit=None, record_edit=None
     for r in rows:
         r["mock"] = False
         r["provenance"].update(executed_git_hash=executed, working_tree_dirty_src_scripts=False)
-    rows[-1].update(status="failed", reason="SimRunFailed: planning_failed")
+    if abort:
+        rows[-1].update(status="failed", reason="SimRunFailed: planning_failed")
     if rows_edit:
         rows_edit(rows, data_dir)
     rows_path.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in rows))
     landed = rig.commit("campaign 1's attempt lands", BASE_DATE)
-    attempts = v.attempts_from_rows(rows)
+    judge = R.load_o19_judge(_git_bytes(rig.root, f"{landed}:{R.O19_JUDGE}"))  # the judge it ran with
+    assert not isinstance(judge, str), judge
+    attempts = judge.attempts_from_rows(rows)
     rid = next(iter(attempts))
-    out = v.judge("10", [{"run_id": rid, "k": 1, "rows": attempts[rid]}], data_dir)
-    assert out["verdict"] == "ABORT"
+    out = judge.judge("10", [{"run_id": rid, "k": 1, "rows": attempts[rid]}], data_dir)
+    assert out["verdict"] == ("ABORT" if abort else "PASS"), out["verdict"]
     out.update(
         apparatus_checked=True,
         apparatus={
@@ -2108,30 +2122,46 @@ def _close_campaign_1(rig: Rig, monkeypatch, *, rows_edit=None, record_edit=None
             for p in (R.O19_JUDGE, R.O19_RERUN, v.PROTOCOL["10"]["prereg"])
         },  # fmt: skip
         verdict_commit=landed,
+        verdict_source_sha256=hashlib.sha256(_git_bytes(rig.root, f"{landed}:{R.O19_JUDGE}")).hexdigest(),
+        provenance={"executed_git_hash": landed, "code_tree_sha256": "t" * 64, "working_tree_dirty_src_scripts": False},
     )
     stamp_verdict(out, repo_root=rig.root, kind="exp10_verdict", data=rows_path, data_bytes=rows_path.read_bytes(),
                   scope={"all_rows": True}, mock=False)  # fmt: skip
     if record_edit:
         record_edit(out)
     raw = json.dumps(out, indent=1).encode()
-    (data_dir / "verdict.json").write_bytes(raw)
-    rig.commit("campaign 1 closes", BASE_DATE)
+    rig.closure_raw = raw
+    if land:
+        (data_dir / "verdict.json").write_bytes(raw)
+        rig.commit("campaign 1 closes", BASE_DATE)
     return hashlib.sha256(raw).hexdigest()
 
 
 def _reproduce(rig: Rig, monkeypatch, *, token="REPRODUCED", rows_edit=None, record_edit=None, before_c2=None,
-               after_c2=None) -> list[str]:  # fmt: skip
+               after_c2=None, c1_judge: str | None = None, abort: bool = True,
+               closure_late: bool = False) -> list[str]:  # fmt: skip
     """BASE: T1-1 STALE, campaign 1 closed, the judge pinning that closure, ``before_c2(rig)`` (lands with the pin),
-    a campaign-2 attempt landed, then ``after_c2(rig)`` on main. HEAD: T1-1 -> ``token`` citing campaign 2."""
+    a campaign-2 attempt landed, then ``after_c2(rig)`` on main. HEAD: T1-1 -> ``token`` citing campaign 2.
+    ``c1_judge``: the judge text campaign 1 runs and closes with (committed before it, restored after); ``abort``:
+    campaign 1's attempt aborted (else it is a PASS); ``closure_late``: the closure lands with campaign 2's rows,
+    after campaign 2 ran."""
     import o19_verdict as v
 
     rig.prereg[f"{DATA}/rerun_exp10_o19c2"] = "PASS"
     rig.base(STALE_BOTH_ROWS)
-    pin = _close_campaign_1(rig, monkeypatch, rows_edit=rows_edit, record_edit=record_edit)
+    real = (rig.root / R.O19_JUDGE).read_text()
+    if c1_judge is not None:
+        rig.write(R.O19_JUDGE, c1_judge)
+        rig.base_sha = rig.commit("campaign 1's judge", BASE_DATE)
+    pin = _close_campaign_1(rig, monkeypatch, rows_edit=rows_edit, record_edit=record_edit, abort=abort,
+                            land=not closure_late)  # fmt: skip
+    rig.write(R.O19_JUDGE, real)
     _judge_text(rig, REAL_C1_PIN, pin)
     if before_c2:
         before_c2(rig)
     rig.base_sha = rig.commit("the judge pins campaign 1's closure", BASE_DATE)
+    if closure_late:  # o19_attempt lands it with campaign 2's rows
+        rig.write(f"{v.data_dir('10')}/verdict.json", rig.closure_raw)
     record = o19_attempt(rig, "10c2", rig.base_sha, monkeypatch=monkeypatch)
     record["apparatus"]["succession"] = {**v.PROTOCOL["10c2"]["supersedes"], "verdict_sha256": pin,
                                          "closure_landed": 1.0, "prereg_landed": 1.0}  # fmt: skip
@@ -2239,19 +2269,33 @@ def test_a_successor_with_another_env_supports_nothing(rig, monkeypatch) -> None
     assert any("phase 1: the recorded sim argv or MAXIM_* env differs" in f for f in failures), failures
 
 
+def _closure_alone(rig: Rig) -> R.Judgement:
+    """Campaign 1's closure as main holds it, judged by ``judge_o19`` alone (its bound judge re-run, #1078)."""
+    import o19_verdict as v
+
+    path = f"{v.data_dir('10')}/verdict.json"
+    ctx = R.Ctx(repo=R.Repo(rig.root), base=rig.base_sha, ref=rig.base_sha, legacy={}, prereg=rig.prereg, table={})
+    crec, crows = R._campaign_record(ctx, path, None)
+    j = R.Judgement(path=path)
+    R.judge_o19(crec, crows, crec["data"], j, ctx)
+    return j
+
+
+def _s6_case(rig: Rig, monkeypatch, old: str, new: str) -> list[str]:
+    """S6 on the bound tables (S4 of the #1078 design pass): campaign 1 runs and closes with a judge that differs from
+    campaign 2's in ``old`` -> ``new``, committed on main before it, so its closure is genuinely bound to it."""
+    text = (rig.root / R.O19_JUDGE).read_text()
+    assert old in text
+    failures = _reproduce(rig, monkeypatch, c1_judge=text.replace(old, new))
+    j = _closure_alone(rig)
+    assert j.reasons == [] and j.o19 is not None, j.reasons  # the closure itself is sound: S6 is what refuses
+    return failures
+
+
 def test_a_successor_whose_table_phases_differ_from_the_roots_supports_nothing(rig, monkeypatch) -> None:
     """S6 on the bound tables: campaign 1's own (bound) judge names other phases than campaign 2's judge does."""
-    text = (rig.root / R.O19_JUDGE).read_text()
-    old = '    ("baseline", EXP10_GOAL_DUNGEON, 8, False, [], {}),'
-    assert old in text
-    alt = rig.root.parent / "alt_judge.py"
-    alt.write_text(text.replace(old, '    ("baseline", EXP10_GOAL_DUNGEON, 8, False, [], {"MAXIM_X": "1"}),'))
-    oid = _git(rig.root, "hash-object", "-w", str(alt))
-
-    def other_judge(record):
-        record["bound_files"][R.O19_JUDGE] = oid
-
-    failures = _reproduce(rig, monkeypatch, record_edit=other_judge)
+    failures = _s6_case(rig, monkeypatch, '    ("baseline", EXP10_GOAL_DUNGEON, 8, False, [], {}),',
+                        '    ("baseline", EXP10_GOAL_DUNGEON, 8, False, [], {"MAXIM_X": "1"}),')  # fmt: skip
     assert any("bound phases, HARNESS_ENV or model pins are not root campaign 10's" in f for f in failures), failures
 
 
@@ -2265,18 +2309,133 @@ def test_a_successor_whose_table_phases_differ_from_the_roots_supports_nothing(r
 def test_a_successor_whose_model_pins_differ_from_the_roots_supports_nothing(rig, monkeypatch, old, new) -> None:
     """S6 (review): the model is configured through `maxim config`, so argv and env never show it; the bound judges'
     model pins are compared across the chain."""
-    text = (rig.root / R.O19_JUDGE).read_text()
-    assert old in text
+    failures = _s6_case(rig, monkeypatch, old, new)
+    assert any("model pins are not root campaign 10's" in f for f in failures), failures
+    assert R.MODEL_FIELDS == ("MODEL_PROFILE", "MODEL_PROFILE_STAMPED", "MODEL_GGUF", "N_CTX")
+
+
+# ── #1078 + #1081 item 5: a predecessor's closure is judged at the gate, through its bound judge ─────────────
+
+
+def test_a_successor_of_a_pass_supports_nothing(rig, monkeypatch) -> None:
+    """#1078, the real hole: a PASS is terminal. Its closure leaks no failed gate, so before the gate judged the
+    closure a successor of a PASS on byte-identical code supported REPRODUCED."""
+    failures = _reproduce(rig, monkeypatch, abort=False)
+    assert any("campaign 10: its closure verdict is 'PASS', not an ABORT" in f for f in failures), failures
+
+
+def test_a_closure_its_bound_judge_does_not_reproduce_supports_nothing(rig, monkeypatch) -> None:
+    """The closure still says ABORT, but its attempts are not what its bound judge computes from its rows."""
+
+    def edit(record):
+        record["attempts"][0]["complete"] = not record["attempts"][0]["complete"]
+
+    failures = _reproduce(rig, monkeypatch, record_edit=edit)
+    assert any("campaign 10: its closure is not established" in f and "different attempts" in f for f in failures), (
+        failures
+    )
+
+
+@pytest.mark.parametrize("where", ["record", "row"])
+def test_a_mock_closure_supports_nothing(rig, monkeypatch, where) -> None:
+    def record(rec):
+        rec["mock"] = True
+
+    def row(rows, _data_dir):
+        rows[0]["mock"] = True
+
+    failures = _reproduce(rig, monkeypatch, **({"record_edit": record} if where == "record" else {"rows_edit": row}))
+    assert any("campaign 10: its closure" in f and "mock" in f for f in failures), failures
+
+
+def test_a_closure_bound_to_a_judge_main_never_held_supports_nothing(rig, monkeypatch) -> None:
+    """#1081 item 5: the closure's bound judge is read through ``bound_judge`` (the blob at its verdict_commit and at
+    every executed commit), never straight from its ``bound_files`` (a blob that exists here but was never on main)."""
     alt = rig.root.parent / "alt_judge.py"
-    alt.write_text(text.replace(old, new))
+    alt.write_text((rig.root / R.O19_JUDGE).read_text() + "\n# never on main\n")
     oid = _git(rig.root, "hash-object", "-w", str(alt))
 
     def other_judge(record):
         record["bound_files"][R.O19_JUDGE] = oid
 
     failures = _reproduce(rig, monkeypatch, record_edit=other_judge)
-    assert any("model pins are not root campaign 10's" in f for f in failures), failures
-    assert R.MODEL_FIELDS == ("MODEL_PROFILE", "MODEL_PROFILE_STAMPED", "MODEL_GGUF", "N_CTX")
+    assert any("campaign 10: its closure is not established" in f and f"bound {R.O19_JUDGE} is" in f
+               for f in failures), failures  # fmt: skip
+
+
+def test_a_closure_that_landed_after_the_successor_ran_supports_nothing(rig, monkeypatch) -> None:
+    """S3 of the design pass: the closure's timing is checked structurally, at every commit the successor ran on."""
+    failures = _reproduce(rig, monkeypatch, closure_late=True)
+    assert any("is not the pinned closure at campaign 10c2's executed commit" in f for f in failures), failures
+
+
+@pytest.mark.parametrize(
+    ("edit", "why"),
+    [
+        ("reasons", "its closure is not established"),
+        ("verdict", "not an ABORT"),
+        ("experiment", "names campaign '10c2', not 10"),
+        ("kind", "is of kind 'exp09_verdict'"),
+        ("base_kind", "is not campaign 10c2's experiment and kind"),
+        ("base_experiment", "is not campaign 10c2's experiment and kind"),
+        ("mock", "is a mock"),
+        ("row_mock", "a mock row"),
+        ("not_rejudged", "its closure is not established"),
+    ],
+)
+def test_each_closure_check(monkeypatch, edit, why) -> None:
+    """Each check on a predecessor's closure, one at a time (``judge_o19`` stubbed to its verdict)."""
+    import copy as _copy
+
+    import o19_verdict as v
+
+    base = _copy.deepcopy(R._plain(v.PROTOCOL))
+    entry = base["10c2"]
+    crec = {"verdict": "ABORT", "experiment": "10", "kind": "exp10_verdict", "mock": False, "data": "d"}
+    crows = [{"record_kind": "harness_row", "mock": False}]
+
+    def judge_o19(rec, rows, data_rel, j, ctx):
+        if edit == "reasons":
+            j.fail("O19 verdict: re-judge refused: x")
+        elif edit != "not_rejudged":
+            j.o19 = {"protocol": base, "harness_env": None, "model": {}}
+
+    monkeypatch.setattr(R, "judge_o19", judge_o19)
+    if edit in ("verdict", "experiment", "kind", "mock"):
+        crec[edit] = {"verdict": "PASS", "experiment": "10c2", "kind": "exp09_verdict", "mock": True}[edit]
+    elif edit == "row_mock":
+        crows.append({"record_kind": "harness_header", "mock": True})
+    elif edit == "base_kind":
+        base["10"]["kind"] = "exp09_verdict"
+    elif edit == "base_experiment":
+        base["10"]["experiment"] = "09"
+    ctx = R.Ctx(repo=None, base="b", ref="b", legacy={}, prereg={}, table={})  # type: ignore[arg-type]
+    got = R._closure_problems(ctx, "10", crec, crows, "10c2", entry, base)
+    assert isinstance(got, str) and why in got, got
+    if edit in ("reasons", "not_rejudged"):
+        return
+    crec.update({"verdict": "ABORT", "experiment": "10", "kind": "exp10_verdict", "mock": False})
+    crows[:] = crows[:1]
+    base["10"].update(kind="exp10_verdict", experiment="10")
+    assert R._closure_problems(ctx, "10", crec, crows, "10c2", entry, base) == {"protocol": base, "harness_env": None,
+                                                                         "model": {}}  # fmt: skip
+
+
+@pytest.mark.skipif(not _history_blobs(), reason="needs origin/main's full history (a shallow clone has none)")
+def test_the_real_chain_closure_is_judged_sound() -> None:
+    """Probe 1 of the design note, pinned: campaign 10's real closure passes ``judge_o19`` with its bound judge, and
+    every check the gate makes on a predecessor's closure (it is campaign 10c2's predecessor)."""
+    import o19_verdict as v
+
+    base = _git(REPO, "rev-parse", "origin/main")
+    ctx = R.Ctx(repo=R.Repo(REPO), base=base, ref=base, legacy={}, prereg={}, table={})
+    sup = v.PROTOCOL["10c2"]["supersedes"]
+    got = R._campaign_record(ctx, sup["verdict"], sup["verdict_sha256"])
+    assert not isinstance(got, str), got
+    base_protocol = R._plain(R.base_o19_judge(ctx).PROTOCOL)
+    bound = R._closure_problems(ctx, "10", *got, "10c2", base_protocol["10c2"], base_protocol)
+    assert isinstance(bound, dict), bound
+    assert bound["model"] == R._model_of(v)
 
 
 def _launder(rg: Rig) -> None:
@@ -2396,11 +2555,14 @@ def test_amending_a_successor_entry_other_than_its_supersedes_is_not_the_pin_rul
 
 
 def test_a_missing_executed_commit_refuses(rig, monkeypatch) -> None:
+    """A predecessor's marker naming a commit that does not exist: since #1078 its closure's own binding refuses it
+    (the commit is not on main, and the attempt's rows did not run on it), before the chain's subject check."""
+
     def ghost(record):
         record["apparatus"]["markers"][0]["peeled"] = "1" * 40
 
     failures = _reproduce(rig, monkeypatch, record_edit=ghost)
-    assert any("executed commit 111111111111 does not exist here" in f for f in failures), failures
+    assert any("campaign 10: its closure is not established" in f and "111111111111" in f for f in failures), failures
 
 
 def test_has_a_predecessor_is_read_from_the_merge_base_table(rig, monkeypatch) -> None:
@@ -2422,7 +2584,7 @@ def test_a_successor_partial_obeys_the_identity_check_too(rig, monkeypatch) -> N
     assert sup["key"] == "10"
     rig.write(G.PASS_TABLE, json.dumps({**json.loads((REPO / G.PASS_TABLE).read_text()),
               "exp10_verdict": {"rows": ["T1-1"], "targets": {"PARTIAL": ["PASS"]},
-                                "require": {"apparatus_checked": True}}}))  # fmt: skip
+                                "require": {"apparatus_checked": True}, "scopes": [None]}}))  # fmt: skip
     failures = _reproduce(rig, monkeypatch, token="PARTIAL", before_c2=_src_change("src/maxim/x.py"))
     assert any("the subject differs" in f for f in failures), failures
 
@@ -2435,7 +2597,7 @@ def test_the_gate_and_the_harness_name_one_subject() -> None:
 
 
 def test_reproduced_is_an_o19_kinds_target_only() -> None:
-    entry = {"rows": ["T1-12"], "targets": {"REPRODUCED": ["PASS"]}}
+    entry = {"rows": ["T1-12"], "targets": {"REPRODUCED": ["PASS"]}, "scopes": [None]}
     assert any("only an O19 kind may" in p for p in G.pass_table_problems({"exp57_verdict": entry}, "HEAD"))
     assert G.pass_table_problems({"exp10_verdict": entry | {"rows": ["T1-1"]}}, "HEAD") == []
 
@@ -2470,3 +2632,315 @@ def test_a_verdict_kind_belongs_to_one_experiment(rig, monkeypatch) -> None:
     """D1: Exp 63's campaign may not take Exp 10's kind (a fresh root for a claim another experiment owns)."""
     failures = _edit_table_in_pr(rig, monkeypatch, '"kind": "exp63_verdict",', '"kind": "exp10_verdict",')
     assert any("belongs to 2 experiments (D1" in f for f in failures), failures
+
+
+# ── #1077: the campaign cap is the merge-base's; HEAD's cap and continuity are checked by the gate itself ─────
+
+_CAP = "MAX_CAMPAIGNS = 2"
+
+
+def _c3(experiment: str = '"10"', kind: str = "exp10_verdict") -> str:
+    """A third Exp 10 campaign (superseding 10c2) appended to the judge's table, before ``EXPERIMENTS``."""
+    return (
+        f'PROTOCOL["10c3"] = {{"experiment": {experiment}, "scope": "rerun_exp10_o19c3", "kind": "{kind}",\n'
+        '    "prereg": "docs/experiments/protocols/c3.md", "phases": EXP10_PHASES,\n'
+        '    "supersedes": {"key": "10c2", "verdict": "docs/experiments/data/rerun_exp10_o19c2/verdict.json",\n'
+        '                   "verdict_sha256": "0" * 64, "owner_decision": "2026-10-08", "cause_issue": 1}}\n'
+        "EXPERIMENTS = frozenset("
+    )
+
+
+def _cap_case(rig: Rig, *, base: tuple[tuple[str, str], ...] = (), head: tuple[tuple[str, str], ...] = ()):
+    """BASE: the real judge with ``base`` edits; HEAD: ``head`` edits on top. Returns the gate's failures."""
+    for old, new in base:
+        _judge_text(rig, old, new)
+    rig.base(STALE_BOTH_ROWS)
+    for old, new in head:
+        _judge_text(rig, old, new)
+    rig.head(STALE_BOTH_ROWS)
+    return rig.run()[0]
+
+
+def _cap_failures(failures: list[str]) -> list[str]:
+    return [f for f in failures if "MAX_CAMPAIGNS" in f or "(S1)" in f or "is not a string" in f]
+
+
+def test_a_cap_raise_and_the_campaign_that_uses_it_in_one_pr_fail(rig) -> None:
+    failures = _cap_case(rig, head=((_CAP, "MAX_CAMPAIGNS = 3"), ("EXPERIMENTS = frozenset(", _c3())))
+    assert any("experiment 10 has 3 campaigns at HEAD" in f and "merge-base's MAX_CAMPAIGNS 2" in f
+               for f in failures), failures  # fmt: skip
+
+
+def test_a_raise_only_pr_passes_the_cap_rule(rig) -> None:
+    assert _cap_failures(_cap_case(rig, head=((_CAP, "MAX_CAMPAIGNS = 3"),))) == []
+
+
+def test_a_campaign_within_the_merge_base_cap_passes_the_cap_rule(rig) -> None:
+    failures = _cap_case(rig, base=((_CAP, "MAX_CAMPAIGNS = 3"),), head=(("EXPERIMENTS = frozenset(", _c3()),))
+    assert _cap_failures(failures) == [], failures
+
+
+@pytest.mark.parametrize(
+    ("base_cap", "why"),
+    [
+        ("", "experiment 10 has 2 campaigns at HEAD"),  # absent: a pre-succession judge, a cap of 1
+        ("MAX_CAMPAIGNS = '2'", "at the merge-base: MAX_CAMPAIGNS '2' is not an integer"),
+        ("MAX_CAMPAIGNS = True", "at the merge-base: MAX_CAMPAIGNS True is not an integer"),
+    ],
+)
+def test_the_merge_base_cap_is_read_strictly(rig, base_cap, why) -> None:
+    """HEAD is the real judge (cap 2, Exp 10 with 2 campaigns); the merge-base's cap is absent or malformed."""
+    real = (rig.root / R.O19_JUDGE).read_text()
+    _judge_text(rig, _CAP, base_cap)
+    rig.base(STALE_BOTH_ROWS)
+    rig.write(R.O19_JUDGE, real)
+    rig.head(STALE_BOTH_ROWS)
+    failures = rig.run()[0]
+    assert any(why in f for f in failures), failures
+
+
+@pytest.mark.parametrize(
+    ("head_cap", "why"),
+    [
+        ("MAX_CAMPAIGNS = True", "at HEAD: MAX_CAMPAIGNS True is not an integer"),
+        ("MAX_CAMPAIGNS = 0", "at HEAD: MAX_CAMPAIGNS 0 is not an integer >= 1"),
+        ("MAX_CAMPAIGNS = '3'", "at HEAD: MAX_CAMPAIGNS '3' is not an integer"),
+        ("MAX_CAMPAIGNS = 1", "MAX_CAMPAIGNS 1 is below its own table's 2 campaigns"),
+    ],
+)
+def test_heads_cap_must_be_well_formed_and_hold_its_table(rig, head_cap, why) -> None:
+    """S2 of the design pass: a malformed or too-low cap cannot land (it would refuse every later judge edit)."""
+    assert any(why in f for f in _cap_case(rig, head=((_CAP, head_cap),)))
+
+
+def test_a_successor_of_another_experiment_fails_continuity_and_the_per_root_count(rig) -> None:
+    """S1: a successor of Exp 10's chain labelled Exp 09 keeps each experiment within the cap (2 + 2), but the chain
+    rooted at campaign 10 holds 3 campaigns, and its experiment is not its predecessor's."""
+    failures = _cap_case(rig, head=(("EXPERIMENTS = frozenset(", _c3('"09"', "exp09_verdict")),))
+    assert any("campaign 10c3 supersedes 10c2, another experiment or kind (S1)" in f for f in failures), failures
+    assert any("the chain rooted at campaign 10 has 3 campaigns" in f for f in failures), failures
+    assert not any("experiment 10 has" in f or "experiment 09 has" in f for f in failures), failures
+
+
+def test_a_non_string_experiment_is_a_refusal(rig) -> None:
+    failures = _cap_case(rig, base=((_CAP, "MAX_CAMPAIGNS = 3"),), head=(("EXPERIMENTS = frozenset(", _c3("10")),))
+    assert any("campaign 10c3's experiment 10 is not a string" in f for f in failures), failures
+
+
+# ── #1141: new support must match the row's scope (the qualifier head), per the merge-base pass table ──────
+
+
+def _scoped(scopes, kind="exp57_verdict") -> dict:
+    entry = {"rows": ["T1-12"], "targets": {"EARNED": ["PASS"]}, "require": {}}
+    return {kind: entry if scopes is ... else entry | {"scopes": scopes}}
+
+
+def _support(rig, table, scope, kind="exp57_verdict") -> str | None:
+    candidate = R.Judgement(path="v", status=G.ESTABLISHED, kind="verdict", time=3e9, prereg="PASS",
+                            data_prereg="PASS", record={"kind": kind, "verdict": "PASS"})  # fmt: skip
+    return G.support_problem(candidate, "T1-12", "EARNED", table, 1.0, ctx=_ctx(rig), scope=scope)
+
+
+@pytest.mark.parametrize(
+    ("scopes", "scope", "ok"),
+    [
+        ([None], None, True),
+        (["rung A"], "rung A", True),
+        (["rung A", "rung B"], "rung B", True),
+        (["rung A"], "rung B", False),  # #1141: a rung-A verdict re-supports rung A only
+        (["narrow"], None, False),  # the qualifier removed needs a null scope
+        ([None], "narrow", False),  # exact match, no subsumption (owner decision 2026-10-07)
+        ([None, ""], "", False),  # `()`: an empty head is no scope word, even listed at the base
+        (["reframed"], "reframed", False),  # a grandfathered non-vocabulary head matches nothing
+    ],
+)
+def test_new_support_must_match_the_rows_scope(rig, scopes, scope, ok) -> None:
+    rig.base(STALE_BOTH)
+    problem = _support(rig, _scoped(scopes), scope)
+    assert (problem is None) == ok, problem
+
+
+def test_a_base_entry_without_scopes_supports_nothing(rig) -> None:
+    rig.base(STALE_BOTH)
+    assert "declares no `scopes`" in (_support(rig, _scoped(...), None) or "")
+
+
+def test_the_scope_is_a_required_argument(rig) -> None:
+    """Design pass S2: a defaulted scope of None would silently match every unqualified entry."""
+    rig.base(STALE_BOTH)
+    candidate = R.Judgement(path="v", status=G.ESTABLISHED, kind="verdict", time=3e9, prereg="PASS",
+                            data_prereg="PASS", record={"kind": "exp57_verdict", "verdict": "PASS"})  # fmt: skip
+    with pytest.raises(TypeError):
+        G.support_problem(candidate, "T1-12", "EARNED", _scoped([None]), 1.0, ctx=_ctx(rig))
+
+
+@pytest.mark.parametrize(
+    ("qualifier", "base_scopes", "expect"),
+    [
+        ("narrow: H3 not measured", ["narrow"], None),
+        (
+            None,
+            ["narrow"],
+            "not null (the unqualified claim)",
+        ),  # the real T3-9 dropping `narrow` on an exp09 re-run: blocked
+        ("rung B", ["narrow"], "not 'rung B'"),
+        (None, ["narrow", None], None),  # once main's table admits the full claim
+    ],
+)
+def test_the_gate_matches_the_heads_scope_end_to_end(rig, monkeypatch, qualifier, base_scopes, expect) -> None:
+    table = json.loads((REPO / G.PASS_TABLE).read_text())
+    table["exp09_verdict"]["scopes"] = base_scopes
+    rig.write(G.PASS_TABLE, json.dumps(table))
+    _t39_move(rig, monkeypatch, qualifier=qualifier)
+    failures, _ = rig.run()
+    if expect is None:
+        assert failures == []
+    else:
+        assert any("T3-9: no NEW support" in f and "supports scopes" in f and expect in f for f in failures), failures
+
+
+@pytest.mark.parametrize(
+    ("kind", "scopes", "why"),
+    [
+        ("exp57_verdict", ..., "needs `scopes`"),
+        ("exp57_verdict", [], "non-empty list"),
+        ("exp57_verdict", "narrow", "non-empty list"),
+        ("exp57_verdict", ["narrow", "narrow"], "non-empty list"),
+        ("exp57_verdict", [3], "non-empty list"),
+        ("exp57_verdict", [""], "not scope words"),
+        ("exp57_verdict", ["Rung B"], "not scope words"),
+        ("exp57_verdict", ["rung A and B"], "not scope words"),
+        ("exp62_verdict", ["rung A", "rung B"], "exactly one scope"),  # design pass S1
+    ],
+)
+def test_the_pass_table_scopes_shape_at_head(kind, scopes, why) -> None:
+    entry = {"rows": ["T1-15"], "targets": {"EARNED": ["EARNED"]}}
+    if scopes is not ...:
+        entry["scopes"] = scopes
+    if kind in R.COMPLETE_RULES:
+        entry["complete"] = REAL_TABLE[kind]["complete"]
+    problems = G.pass_table_problems({kind: entry}, "HEAD")
+    assert any(why in p for p in problems), problems
+
+
+def test_the_merge_base_checks_scopes_structure_only() -> None:
+    """Design pass S3: a base value outside today's vocabulary is inert, not a red on every PR; absent supplies none."""
+    entry = {"rows": ["T1-12"], "targets": {"EARNED": ["PASS"]}}
+    assert G.pass_table_problems({"exp57_verdict": entry}, "the merge-base", at_base=True) == []
+    assert G.pass_table_problems({"exp57_verdict": entry | {"scopes": ["old word"]}}, "b", at_base=True) == []
+    assert G.pass_table_problems({"exp57_verdict": entry | {"scopes": []}}, "b", at_base=True) != []
+
+
+def test_the_real_pass_table_scopes_match_each_rows_current_head() -> None:
+    """The migration (#1141): every entry supports its rows' heads as the ledger stands, so the next re-date of any
+    row passes the scope check."""
+    rows = {r.id: r for r in G.L.parse((REPO / G.L.LEDGER_PATH).read_text())[0]}
+    for kind, entry in REAL_TABLE.items():
+        if kind.startswith("_"):
+            continue
+        for row_id in entry["rows"]:
+            assert G.row_scope(rows[row_id]) in entry["scopes"], (kind, row_id)
+
+
+def test_a_new_scope_in_the_pass_table_is_noted() -> None:
+    base = {"exp57_verdict": {"rows": ["T1-12"], "targets": {}, "require": {}, "scopes": [None]}}
+    head = {"exp57_verdict": base["exp57_verdict"] | {"scopes": [None, "narrow"]}}
+    notes = G.scope_change_notes(base, head)
+    assert len(notes) == 1 and "['narrow']" in notes[0] and "not bound to its verdicts" in notes[0], notes
+    bound = {"exp57_verdict": head["exp57_verdict"] | {"require": {"h3": True}}}
+    assert "not bound" not in G.scope_change_notes(base, bound)[0]
+    assert G.scope_change_notes(base, base) == []
+
+
+def test_an_unparsed_qualifier_fails_the_row(rig, monkeypatch) -> None:
+    """Design pass N3: nested parentheses escape STATUS_RE, and the row would read as the unqualified, full claim."""
+    _t39_move(rig, monkeypatch, qualifier="narrow (H3 not measured)")
+    failures, _ = rig.run()
+    assert any("T3-9: the Status line's parenthesised qualifier was not parsed" in f for f in failures), failures
+
+
+def test_the_gate_notes_a_scope_the_pr_adds_to_the_pass_table(rig) -> None:
+    """The pass-table PR that admits a new scope is #1141's review point: the gate run on it names the new scope."""
+    rig.base(STALE_BOTH)
+    table = json.loads((REPO / G.PASS_TABLE).read_text())
+    table["exp57_verdict"]["scopes"] = [None, "narrow"]
+    rig.write(G.PASS_TABLE, json.dumps(table))
+    rig.head(STALE_BOTH)
+    failures, notes = rig.run()
+    assert failures == [] and any("exp57_verdict now supports scope(s) ['narrow']" in n for n in notes), notes
+
+
+def test_a_ruled_kind_keeps_the_scope_main_gave_it(rig) -> None:
+    """#1141 review: a swap of exp62's ["rung A"] for ["rung B"] keeps one scope, but its frozen sets still describe a
+    rung-A run, so a rung-A re-run would support rung B. A new scope on a ruled kind is a new kind."""
+    rig.base(STALE_BOTH)
+    table = json.loads((REPO / G.PASS_TABLE).read_text())
+    table["exp62_verdict"]["scopes"] = ["rung B"]
+    rig.write(G.PASS_TABLE, json.dumps(table))
+    rig.head(STALE_BOTH)
+    failures, _ = rig.run()
+    assert any("exp62_verdict has a complete-run rule, so its scopes ['rung A'] may not change" in f for f in failures)
+
+
+def test_the_bootstrap_declares_scopes_in_one_note() -> None:
+    base = {"exp57_verdict": {"rows": ["T1-12"], "targets": {}, "require": {}}}
+    head = {"exp57_verdict": base["exp57_verdict"] | {"scopes": [None]}}
+    assert G.scope_change_notes(base, head) == [
+        f"{G.PASS_TABLE}: 1 kind(s) declare their first `scopes` (bootstrap): exp57_verdict"
+    ]
+    assert G.ruled_scope_problems({"exp62_verdict": {}}, {"exp62_verdict": {"scopes": ["rung A"]}}) == []
+
+
+def test_an_unparsed_base_qualifier_reads_as_a_widening() -> None:
+    old, new = _qrow(None), _qrow("rung B")
+    old.qualifier_unparsed = True
+    assert G.qualifier_widens(old, new)
+
+
+def test_a_ruled_kinds_entry_may_not_be_deleted() -> None:
+    """Delta round: deleting exp62 and re-adding it with ["rung B"] in a later PR would skip the keep-the-scope rule."""
+    base = {"exp62_verdict": {"scopes": ["rung A"]}}
+    assert any("may not be deleted" in p for p in G.ruled_scope_problems(base, {}))
+    assert G.ruled_scope_problems(base, {"exp62_verdict": {"scopes": ["rung A"], "targets": {}}}) == []
+    retired = REAL_TABLE["exp62_verdict"] | {"targets": {}}  # the whole retire shape passes the HEAD shape check
+    assert G.pass_table_problems({"exp62_verdict": retired}, "HEAD") == []
+
+
+# ── #1037: fail-closed review NITs ──────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(("exc", "code"), [(TypeError("t"), True), (KeyError("k"), True), (ValueError("v"), False)])
+def test_a_judge_code_error_is_a_field_not_a_reason_prefix(rig, monkeypatch, exc, code) -> None:
+    """#1037: unjudged() matched the reason text; a record whose own bytes say "malformed: TypeError:" would read as
+    a gate defect. The field is set where the exception is caught."""
+    rig.base(STALE_BOTH)
+
+    def boom(path, ctx, j):
+        raise exc
+
+    monkeypatch.setattr(R, "_judge_entry", boom)
+    assert R.unjudged(R.judge_entry(f"{DATA}/x.json", _ctx(rig))) is code
+    j = R.Judgement(path="x")
+    j.fail("malformed: TypeError: a reason, not a raise")
+    assert not R.unjudged(j)
+
+
+def test_a_legacy_key_naming_a_directory_says_so(rig, monkeypatch) -> None:
+    monkeypatch.setattr(G, "M1A_CUTOFF", 4_000_000_000)
+    rig.base(STALE_BOTH)
+    rig.write(G.LEGACY_SNAPSHOT, json.dumps({DATA: "0" * 64}))  # removing keys is allowed; this one names a dir
+    rig.head(STALE_BOTH)
+    assert any(f"{DATA} is a directory, not a file" in f for f in rig.run()[0])
+
+
+def test_entering_by_tests_from_an_unparsed_base_status_names_it(rig) -> None:
+    rig.write("tests/unit/test_x.py", "def test_x():\n    pass\n")
+    stale = [t3("T3-9", "**Status: STALE 2026-09-30**.")]
+    rig.base(ledger([t1("T1-2", "Status: garbled.")], stale))
+    rig.head(
+        ledger(
+            [t1("T1-2", "**Status: RE-VALIDATED-BY-TESTS 2026-10-02**. **Evidence:** `tests/unit/test_x.py`.")], stale
+        )
+    )
+    _, notes = rig.run()
+    assert any("T1-2: enters RE-VALIDATED-BY-TESTS from an unparsed status" in n for n in notes), notes

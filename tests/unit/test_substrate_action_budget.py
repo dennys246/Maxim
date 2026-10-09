@@ -17,7 +17,9 @@ identically).
 
 from __future__ import annotations
 
+import ast
 import inspect
+import textwrap
 import time
 
 from maxim.simulation.bridge import SimulationBridge, read_substrate_actions_per_turn_env
@@ -241,16 +243,34 @@ class TestWiringPins:
         """The gate check must sit inside the substrate-primary cadence
         block, BEFORE propose_via_substrate — pinned at source level."""
         import maxim.runtime.agent_loop as al
+        import maxim.runtime.loop_substrate as ls
 
-        # FUNCTION-SPECIFIC (an ordering inside §6b, kept on run_agentic_loop's body): the 1.3.2
-        # decomposition's slice 3 moves this block and updates this pin consciously
+        # FUNCTION-SPECIFIC (an ordering inside §6b): since the 1.3.2 decomposition's slice 3 the
+        # branch head stays in run_agentic_loop and its body is loop_substrate.substrate_tick
         # (tests/unit/_loop_source.py lists every such pin).
-        src = inspect.getsource(al.run_agentic_loop)
+        loop_src = inspect.getsource(al.run_agentic_loop)
         # The branch head is the shared cadence predicate (2026-09-16, substrate wake source):
-        # substrate-primary AND no pending proposal AND cadence elapsed, in ONE helper.
-        branch_start = src.index("if _substrate_tick_due(aut_mode, ctrl, llm_submit_interval):")
-        gate_pos = src.index("not substrate_action_gate()", branch_start)
-        propose_pos = src.index("propose_via_substrate(", branch_start)
+        # substrate-primary AND no pending proposal AND cadence elapsed, in ONE helper; the tick is
+        # called inside it.
+        assert "if _substrate_tick_due(aut_mode, ctrl, ctrl.llm_submit_interval):" in loop_src
+        # By AST, not text order: the ONE substrate_tick call is in the body of the _substrate_tick_due branch
+        # (a call after the branch, or unconditional, fails here).
+        tree = ast.parse(textwrap.dedent(loop_src))
+
+        def _calls(node, name):
+            return [
+                n
+                for n in ast.walk(node)
+                if isinstance(n, ast.Call) and getattr(n.func, "id", getattr(n.func, "attr", None)) == name
+            ]
+
+        branches = [n for n in ast.walk(tree) if isinstance(n, ast.If) and _calls(n.test, "_substrate_tick_due")]
+        assert len(branches) == 1
+        in_body = [c for stmt in branches[0].body for c in _calls(stmt, "substrate_tick")]
+        assert len(in_body) == 1 and len(_calls(tree, "substrate_tick")) == 1
+        src = inspect.getsource(ls.substrate_tick)
+        gate_pos = src.index("not substrate_action_gate()")
+        propose_pos = src.index("propose_via_substrate(")
         assert gate_pos < propose_pos, (
             "substrate_action_gate must be consulted BEFORE propose_via_substrate "
             "in the substrate-primary branch — the budget bounds proposals, not telemetry"

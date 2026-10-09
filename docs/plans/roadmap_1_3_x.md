@@ -59,9 +59,9 @@ Grouped by the axis each item lifts; the "to reach" conditions come from the car
 |---|---|
 | **[shipped #894]** **A gating lane that installs the `console` extra and the crypto dependency**, so the console, bundle-signing, hive-pull and Oasis-exchange tests run on every PR. Today **no lane installs fastapi or cryptography**, so those tests are skipped everywhere — and the 1.2 and 1.3 headlines both travel the signed-bundle path. | the lane itself, required in branch protection; a positive control asserting the previously-skipped modules now execute (count > 0), so the lane cannot go quietly vacuous. *Built 2026-09-25: `unit-tests` (already required) installs `console` + `sign` from `pyproject.toml`; `--require-extras=console,sign` fails any skip for a missing required extra (`tests/conftest.py`, pinned by `tests/unit/test_require_extras_lane.py`).* |
 | **[1.3.1 — SHIPPED (#926); first green scheduled run 2026-09-27]** **The nightly model-cache lane green** (red 16 nights running, 25 of the last 30 scheduled runs; new console modules missing from its skip allow-list). Fix by making a missing module FAIL rather than by extending the allow-list. | the lane's own red/green + a check that the allow-list cannot grow silently *(Built: the lane installs the console + sign extras and runs with `--require-extras`; `ALLOWED_MODULE_SKIPS` is gone, and `ALLOWED_SKIPS` is ratcheted in `tests/unit/test_model_cache_names.py` (since #1117: the model-cache roster's `allowed_skips`, pinned in `tests/unit/test_lane_rosters.py`).)* |
-| **[→ 1.3.2; built 2026-10-05, see item 7]** **A slow lane that runs**: install `sentence-transformers` so the 24 substrate sweeps execute; replace "executed > 0" with an exact roster (owner decision 2026-10-04; it was a pinned minimum). | `scripts/check_lane_roster.py --lane slow` asserting the exact roster |
+| **[1.3.2 — MERGED (#1122, #1139), see item 7]** **A slow lane that runs**: install `sentence-transformers` so the 24 substrate sweeps execute; replace "executed > 0" with an exact roster (owner decision 2026-10-04; it was a pinned minimum). | `scripts/check_lane_roster.py --lane slow` asserting the exact roster |
 | **[1.3.1 — SHIPPED (#928)]** **Network blocked in tests** (hermeticity is HOME/HF isolation + ~48 env scrubs today, with no block). | a conftest socket guard + a test that asserts an outbound call raises |
-| **[1.3.2 — settings verified 2026-10-06; drift-checked by `scripts/check_repo_settings.py`]** **`release-build` required**, `enforce_admins` on, and a required-checks-present gate (verified 2026-10-06: all three contexts required, strict, admins enforced, the ruleset's bypass list empty; GitHub itself refuses a merge while a required check is absent). | branch-protection settings — **owner action**; guard: `scripts/check_repo_settings.py` (nightly, pinned to `scripts/repo_settings_expected.json`) + `tests/unit/test_check_repo_settings.py` |
+| **[1.3.2 — MERGED (#1130); settings verified 2026-10-06, drift-checked nightly by `scripts/check_repo_settings.py`, token live]** **`release-build` required**, `enforce_admins` on, and a required-checks-present gate (verified 2026-10-06: all three contexts required, strict, admins enforced, the ruleset's bypass list empty; GitHub itself refuses a merge while a required check is absent). | branch-protection settings — **owner action**; guard: `scripts/check_repo_settings.py` (nightly, pinned to `scripts/repo_settings_expected.json`) + `tests/unit/test_check_repo_settings.py` |
 | **[1.3.1 — SHIPPED (#926)]** **The release procedure reads the nightlies**: refuse to publish while a nightly lane is red. | a step in `audit_release_build.py` or the release PR checklist, mechanized *(Built as `scripts/check_nightlies.py`, not inside the offline `audit_release_build.py`: it needs the network. Runs `--only-when-releasing` in the `release-build` job; blocking needs `release-build` required, row above. Guard: `tests/unit/test_check_nightlies.py`.)* |
 
 ### Runtime correctness (C+ → B−)
@@ -71,7 +71,7 @@ Grouped by the axis each item lifts; the "to reach" conditions come from the car
 | **[1.3.1 — SHIPPED (#930)]** **`AgentInstance.export_memories()` always reports 0** — it reads `self.hippocampus.memories`, which does not exist, and an `except Exception` turns the error into `0`; `AgentPool.export_all_memories` propagates it; the documented example in `docs/user/python-api.md` prints "0 memories" beside a hippocampus holding one. | a test asserting the COUNT (both current tests are vacuous: one checks the key exists, the other that it is a dict) |
 | **[1.3.1 — SHIPPED (#930)]** **`create.agent`'s docstring example crashes** — `capture(perception="dark cave ahead")` raises `AttributeError`; `capture` does not validate its argument. | argument validation + a doctest-style test that runs the documented example |
 | **[1.3.1 — SHIPPED (#930)]** **`maxim.diagnose()` and `maxim doctor --json` disagree** (diagnose reports all-passed while the CLI exits 1 on a probe diagnose never runs). | a test pinning one probe set for both entry points |
-| **[→ 1.3.2]** **The silent-default swallow shape** — a handler that ASSIGNS a fallback instead of `pass`, which is what hid `export_memories` and which `lint_no_silent_swallows.py` cannot see. | extend the lint to that shape, as a ratchet on today's count (430 bare sites, 1,788 `except Exception` total) *(Built 2026-10-04 in 1.3.2, PR pending: check 5 of `scripts/lint_no_silent_swallows.py`, 298 silent-default sites at the build, sharing one per-function pool with check 2's 415; checks 2, 3 and 5 credit verbatim moves and recorded edited moves (`scripts/swallow_moves.json`), so the decomposition slices do not trip them.)* |
+| **[1.3.2 — MERGED (#1099)]** **The silent-default swallow shape** — a handler that ASSIGNS a fallback instead of `pass`, which is what hid `export_memories` and which `lint_no_silent_swallows.py` cannot see. | extend the lint to that shape, as a ratchet on today's count (430 bare sites, 1,788 `except Exception` total) *(Built 2026-10-04 in 1.3.2, merged as #1099: check 5 of `scripts/lint_no_silent_swallows.py`, 298 silent-default sites at the build, sharing one per-function pool with check 2's 415; checks 2, 3 and 5 credit verbatim moves and recorded edited moves (`scripts/swallow_moves.json`), so the decomposition slices do not trip them.)* |
 
 ### Maintainability (C → C+, the cheap half)
 
@@ -109,7 +109,7 @@ it ships with its guard or it does not ship.
 | **[1.3.1 — SHIPPED (#930)]** **D32** — load the foundational preamble from `CONSTITUTION.md` as package data (pip users get an empty preamble today) | a drift test: packaged copy == repo-root `CONSTITUTION.md`, and a wheel-install test that the preamble is non-empty |
 | **[→ 1.3.2]** **D49** — benchmark honesty: apply-or-delete `weight`, fix the running half-mean, drop-or-ship the missing tier2/tier3 suite files (`simulation/benchmark.py`). **2026-10-07:** `weight`, `metrics` and true means done (Session C, owner: honour the format); dropping `tier2`/`tier3` from `--benchmark`'s choices goes with the `cli.py` decomposition slice (Session A) | a unit test per promise: a weighted suite's aggregate moves with `weight` (or the key is rejected), and every suite file the format names loads |
 | **[→ 1.3.2]** **D46 + D50** — delete the dead percept-transport reference (`simulation/sources.py`); warn on the inert `party_mode` / `choice_resolution` keys in `load_campaign` and drop the dead schema field | a test that loading a campaign carrying either key WARNS once |
-| **[1.3.2 — built 2026-10-06, PR pending]** **D63** — a PR against a non-`main` base runs no required checks (Tests now runs on PRs to any base; GitHub's required checks block the final merge to `main` while a check is absent; the settings that make that so are drift-checked nightly, `scripts/check_repo_settings.py`) | guard: `scripts/check_repo_settings.py` (nightly live half + `--static` in the lint job) + `tests/unit/test_check_repo_settings.py`; the any-base trigger is pinned by `tests/unit/test_ci_workflow_shape.py::test_tests_run_on_prs_to_any_base` |
+| **[1.3.2 — MERGED (#1130)]** **D63** — a PR against a non-`main` base runs no required checks (Tests now runs on PRs to any base; GitHub's required checks block the final merge to `main` while a check is absent; the settings that make that so are drift-checked nightly, `scripts/check_repo_settings.py`) | guard: `scripts/check_repo_settings.py` (nightly live half + `--static` in the lint job) + `tests/unit/test_check_repo_settings.py`; the any-base trigger is pinned by `tests/unit/test_ci_workflow_shape.py::test_tests_run_on_prs_to_any_base` |
 | **[→ 1.3.2]** **Fail-loud Stage 3** — narrow the measurement-path swallows; green-lit since Stage 2 measured **zero** firings ([deferred/measurement_path_fail_loud.md](deferred/measurement_path_fail_loud.md)). Must not land mid-walk on a branch a graduation run reads from. | `scripts/lint_no_silent_swallows.py`'s zero-total set grows to cover each narrowed file |
 | **[1.3.1 — SHIPPED (#920, #923, #925)]** **The security cluster (register O11)** — the sandbox ([#800](https://github.com/dennys246/Maxim/issues/800) Python scripts never run, [#801](https://github.com/dennys246/Maxim/issues/801) raw-prefix containment, [#802](https://github.com/dennys246/Maxim/issues/802) the path runs instead of the approved content) and mode/approval ([#828](https://github.com/dennys246/Maxim/issues/828) any audio can say "maxim singularity" — highest, [#827](https://github.com/dennys246/Maxim/issues/827) autonomy approvals never shown or resolved, [#826](https://github.com/dennys246/Maxim/issues/826) suspected prompt-only tool lists), plus [#824](https://github.com/dennys246/Maxim/issues/824) DNS rebinding. Widened from the sandbox trio on the re-scope: a release that ships the security fixes on `main` does not ship knowing these. | each issue's own red gate |
 | **[→ 1.3.2]** **L8 record-stamping** (stamp model / endpoint / n_ctx / quantization on every run record) — Exp 44b's prerequisite; status **not re-verified** on the merge date, check before starting | a test that a run record without those fields is refused by its writer |
@@ -252,7 +252,7 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
 6. **One function-length ratchet** — nothing over 200 lines may grow, nothing new may exceed 200 — replacing
    the two mismatched mechanisms ([#940](https://github.com/dennys246/Maxim/issues/940)). Guard: the lint, with
    a per-function baseline.
-   **Built 2026-10-04, PR pending (#940 item 1).** `scripts/lint_function_length.py` is now the only checker
+   **Built 2026-10-04, merged as #1090 (#940 item 1); follow-ups #1089 merged as #1115.** `scripts/lint_function_length.py` is now the only checker
    (`tests/unit/test_function_length_baseline.py` is deleted) and covers all of `src/maxim`: every function
    over 200 lines is pinned in `src/maxim/utils/function_length_baseline.json` (format 2) at its exact span,
    **53 at the build, 19 of them over 300**. Owner decisions 2026-10-04: threshold 200; strict equality (a
@@ -266,12 +266,13 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
 7. **CI escape paths ([#940](https://github.com/dennys246/Maxim/issues/940))**: the `|| echo` optional install,
    the reason-less `importorskip`, the slow lane's expected roster, the network guard at the process-tree
    boundary. Guard: each lane fails on the escape.
-   **The importorskip half built 2026-10-04, PR pending:** `--require-extras` now refuses to start unless each
+   **The importorskip half built 2026-10-04, merged as #1097:** `--require-extras` now refuses to start unless each
    requirement's top-level module imports (`tests/conftest.py::_require_extras_importable`), and also reads pytest's
    own "could not import" message for those modules. Owner decisions 2026-10-04 for the rest: the slow lane
    installs and runs its tests (46 selected and 16 ran on the 2026-10-05 nightly) against an exact roster with reasoned
    skips only; the unit-tests pytest step runs in a loopback-only network namespace, with no OS-level exception.
-   **The rest built 2026-10-05, PR pending:**
+   **The rest built 2026-10-05, merged as #1122** (its first dispatch run found a leaking test, an always-skipping
+   guard and two real substrate failures, now strict red gates on [#1120](https://github.com/dennys246/Maxim/issues/1120)):
    - `|| echo` is gone from both install steps.
    - The slow lane installs the semantic/console/sign extras and the model cache, runs with
      `--require-extras`, and is held to the exact roster in `scripts/lane_rosters/slow.json`
@@ -282,6 +283,11 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
    - Structural pins: `tests/unit/test_ci_workflow_shape.py`.
    The namespace wraps the fast suite and both nightly lanes (`scripts/ci_netns.sh`). Stated limit: the MemoryHub step
    keeps the in-process guard only, because the coverage gate pins its exact form.
+   **Item 7 DONE 2026-10-06.** Follow-ups merged: #1132 (#1091: the ledger ref and append-only rules shared in
+   `scripts/_lint_allowance.py`; the two TYPE_CHECKING detectors deliberately kept apart), #1139 (#1117: one roster
+   checker, `scripts/check_lane_roster.py --lane`, and one setup action, `.github/actions/model-cache-setup`, for
+   both nightly lanes; the model-cache lane now has an exact roster too). Watch: `ubuntu-latest` moves to Ubuntu 26
+   on 2026-10-19; the first nightly after it is the check that `scripts/ci_netns.sh` still works.
 8. **One source of truth for claims** (mechanization backlog M2). Guard: the claims-registry lint.
    **Built 2026-10-04, PR pending** (owner decisions 2026-10-04: the ledger is the single source; the surfaces are linted,
    not generated; v1 covers the README results table and the experiments index): `scripts/lint_claims_sync.py`. Each
@@ -292,6 +298,9 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
    CI lint step lands, with Session B's `test.yml` batch after #1092; then it also discharges
    [#940](https://github.com/dennys246/Maxim/issues/940) item 2's guard (the README's Exp 10 row, corrected on 2026-09-27
    with nothing to stop it drifting). Remaining surfaces: backlog M36.
+   **Item 8 DONE: merged as #1107; its CI lint step landed with #1122.** Follow-up: #1143 (#1108, owner decisions
+   2026-10-06) makes the evidence gate judge ANY qualifier change and require new support for a widened one
+   (removed, or its scope word changed); an owner exception supports a widening only with `to_qualifier`.
 
 **Engram integrity (pulled in from 1.4's parallel line, 2026-09-27).** Its four engineering items gate
 1.4.0 (release threshold T7), touch no survival rung's path and run off the rig
@@ -447,6 +456,25 @@ from the plan that owns it:
   in a sim, or any work on sleep/consolidation in the loop (no committed store holds a compressed record today).
 - [#1118](https://github.com/dennys246/Maxim/issues/1118) (the E4 record's `widening_overreach` field is narrower than the prereg's term) →
   [engram_formation.md](engram_formation.md) E4. Trigger: before any E4 re-run.
+- **Session B follow-ups (placed 2026-10-07; owner to confirm):**
+  - [#1141](https://github.com/dennys246/Maxim/issues/1141) (a widened qualifier's new support is not checked
+    against the new scope) — **MERGED as #1158 (2026-10-08)**: pass-table entries declare `scopes`, and all new
+    support must match the row's scope ([m1b_ledger_evidence_gate.md](m1b_ledger_evidence_gate.md) §New support).
+  - **The Session B follow-up cleanup (owner, 2026-10-08: leave nothing hanging):** [#1012](https://github.com/dennys246/Maxim/issues/1012),
+    [#1014](https://github.com/dennys246/Maxim/issues/1014), [#1037](https://github.com/dennys246/Maxim/issues/1037),
+    [#1111](https://github.com/dennys246/Maxim/issues/1111) and [#1010](https://github.com/dennys246/Maxim/issues/1010)'s
+    lint-side items (lint hygiene); [#1077](https://github.com/dennys246/Maxim/issues/1077), [#1078](https://github.com/dennys246/Maxim/issues/1078)
+    and [#1081](https://github.com/dennys246/Maxim/issues/1081) items 1–6 (O19 hardening); [#1079](https://github.com/dennys246/Maxim/issues/1079)
+    (the within-campaign leaked-gate bar: refuse, owner); #1081 item 7 (a redaction retires the campaign) and the data-PR secret
+    scan, taken over from Session C; [#1103](https://github.com/dennys246/Maxim/issues/1103) (coverage nondeterminism). Owner
+    decisions 2026-10-08: the O19 campaign cap is read from the merge-base (a raise is its own PR); "consider"-grade NITs are
+    fixed when cheap and fail-closed, the rest closed with a recorded reason; #1010 items 8–9 (orchestrator) go to the
+    orchestrator characterization slice. Each gate change gets an approach note and an adversarial design pass first.
+  - [#1120](https://github.com/dennys246/Maxim/issues/1120) (with the real encoder, the affordance-transfer
+    negative controls form no water concept; two strict red gates) → Session C, beside the substrate work.
+    Trigger: before any claim rests on IT-1's positive transfer (`tests/integration/test_affordance_transfer.py`).
+  - [#1100](https://github.com/dennys246/Maxim/issues/1100) (flaky: `test_store_guard_971` NAc round trip across
+    wall-clock decay) → batch 0, CI truth, the #951/#954 timing class. Trigger: its next CI firing.
 
 **Done when:**
 - Batches 0–2 are closed.
@@ -486,8 +514,10 @@ recorded-but-unused memory system. That is 1.4's work ([roadmap_1_4.md](roadmap_
    instrument is built on it.
    *(Slice 0, the gates, merged as #1114. Slice 1, the setup → `runtime/loop_setup.py::build_loop_run`,
    built 2026-10-05, merged as #1127: `run_agentic_loop` 3,381 → 3,248 lines. Slice 2, §0–0.6 the pre-tick
-   gate → `runtime/loop_gates.py::pre_tick_gate -> GateOutcome`, built 2026-10-06, PR pending: 3,248 → 3,125
-   lines; the helpers the body shares with the gate moved to `loop_state.py` and `loop_controller.py`.)*
+   gate → `runtime/loop_gates.py::pre_tick_gate -> GateOutcome`, built 2026-10-06, merged as #1136: 3,248 →
+   3,125 lines; the helpers the body shares with the gate moved to `loop_state.py` and `loop_controller.py`.
+   Slice 3, §6b the substrate tick → `runtime/loop_substrate.py::substrate_tick` and the proposer family →
+   the leaf `runtime/substrate_proposal.py`, built 2026-10-07, PR pending: 2,819 → 2,783 lines (the 3,125 → 2,819 step between slices 2 and 3 was #1133's move of §4 into `tool_dispatch.execute_and_learn`).)*
 2. **`start_simulation_mode`** (`simulation/orchestrator.py`, 3,322). Its tests cover **11%** of its lines
    (the Codex card's measurement at `v1.3.1`), so it is NOT decomposed blind: characterization tests
    first, then an orchestrator coverage floor set from them (item 5 above), then slices under the same
@@ -518,7 +548,11 @@ Slice 1 applied (a): `_prepare_executor`, `_loop_bio_handles`, `_build_loop_sens
 helpers the gate shares with the loop body went to existing leaves, `_effective_mode`, `_substrate_tick_due`
 and `_planning_attempt_is_active` to `loop_state.py` and the D13 handlers (`_handle_planning_failure`,
 `_handle_planning_transport_failure`, `_report_planning_exhaustion`) to `loop_controller.py`, beside the
-counters they drive; `loop_gates` reads nothing through `agent_loop`. (d) Extracted functions take
+counters they drive; `loop_gates` reads nothing through `agent_loop`. Slice 3 moved the whole substrate-proposer
+family to the leaf `substrate_proposal.py` (no re-exports; every importer, `executor.py`, `loop_setup.py`, the
+`scripts/` harnesses and the tests, retargeted), and applied (b): the three tests that patched
+`agent_loop.propose_via_substrate` now patch `substrate_proposal`, which `loop_substrate` reads through its module
+reference. (d) Extracted functions take
 individual fields (or `ctrl`) as explicit keyword arguments, never the whole `LoopRun`.
 
 **Coverage first, then extract (2026-09-27).** No slice moves code its tests do not pin. Each slice

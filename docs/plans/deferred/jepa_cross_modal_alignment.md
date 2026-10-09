@@ -1,5 +1,26 @@
 # JEPA Cross-Modal Alignment (1.1+ / 1.2 research direction)
 
+> **SUBSUMED 2026-10-07 by [latent_forward_model.md](../latent_forward_model.md)** (owner decision; the
+> grounding line, [grounding.md](../grounding.md) GL4; [DECISIONS.md](../../../DECISIONS.md) 2026-10-07).
+> The owner reversed roadmap 1.4's 2026-09-18 decision 3 ("re-pointed, not revived"). The predictor
+> that plan builds is action-conditioned: it predicts the autonomic body-consequence code
+> ([autonomic_layer.md](../autonomic_layer.md)) from an affordance or percept context. That is not this
+> file's 384 ↔ 768 projection.
+>
+> **Four rules carry over and bind it:**
+> 1. no pretrained cross-modal weights (no CLIP / ImageBind / multimodal projection imports);
+> 2. the contamination guard is a CI test (the `test_jepa_no_contamination.py` analogue: a training row
+>    without substrate provenance raises);
+> 3. opt-in, default off;
+> 4. the existing encoders are untouched.
+>
+> It is not called JEPA while its target is the fixed autonomic code, because that is supervised
+> regression in a JEPA shape.
+>
+> The projection below is NOT revived. It stays here as the record, and as a future option for a learned
+> target encoder. **Revive when:** the trigger below fires, or latent_forward_model.md's target becomes a
+> learned embedding of a rich percept. It is kept at this path because three `src/` files cite it.
+>
 > **DEFERRED (2026-07-15 plans audit):** DRAFT, zero code; 1.2+ research direction. Its motivating fact is structural and still true (384-dim SensorEncoder vs 768-dim LinguisticEncoder → cross-modal cosine undefined), and its data-production prereq (roy_5 Stage 3 cradle redesign) HAS shipped — but the demonstrated-need trigger never fired (Exp 35/36 resolved via threshold tuning, not projection). **Revive when:** a 1.1+ iteration surfaces a problem that is structurally cross-modal AND unsolvable by threshold tuning, AND the Stage 0 paired-data audit (~50 LOC) confirms the cradle arc yields sufficient training pairs. **Re-pointed 2026-09-18 ([roadmap_1_4.md](../roadmap_1_4.md) §JEPA):** this plan is a PROJECTION (cross-modal alignment, 384 ↔ 768); the survival line's need is a PREDICTOR (a latent forward model), which is not this plan and enters through a new plan only when E3 names the gap — after `embodiment/cerebellum.py` and `anticipatory_pre_activate` are audited. Revive trigger unchanged — and note where it CAN fire: the survival line is
 within-modality (pressure, light, oxygen, position share one sensor space; cosine between them is
 defined), but [grounded_language_acquisition.md](../grounded_language_acquisition.md) is cross-modal

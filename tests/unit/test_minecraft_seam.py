@@ -317,7 +317,7 @@ class TestWorldBackend:
         """The A4 caller chain end to end at unit level: bridge state →
         world-owned sensors → the declared world channel → a GAINED encode
         producing a world-modality EC node with the gain in its geometry."""
-        from maxim.runtime.agent_loop import _read_world_ranges, _read_world_states
+        from maxim.runtime.substrate_proposal import _read_world_ranges, _read_world_states
         from maxim.similarity.ec import ECConfig, EntorhinalCortex
         from maxim.similarity.encoder import SensorEncoder
 
@@ -398,7 +398,7 @@ class TestDesignedRestVsWarning:
         assert not encoder.last_encode_was_designed_rest(agent_id="a", modality="world")
 
     def test_loop_logs_designed_rest_at_debug_not_warning(self, caplog):
-        from maxim.runtime.agent_loop import _encode_was_designed_rest
+        from maxim.runtime.substrate_proposal import _encode_was_designed_rest
         from maxim.similarity.ec import ECConfig, EntorhinalCortex
         from maxim.similarity.encoder import SensorEncoder
 

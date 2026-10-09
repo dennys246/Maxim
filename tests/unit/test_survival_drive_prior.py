@@ -17,7 +17,7 @@ from maxim.embodiment.sem import (
     HomeostaticDriveSpec,
     corrective_need_intensity,
 )
-from maxim.runtime.agent_loop import _corrective_need_for, _read_drive_states
+from maxim.runtime.substrate_proposal import _corrective_need_for, _read_drive_states
 
 
 def _executor(health: float, food: float):

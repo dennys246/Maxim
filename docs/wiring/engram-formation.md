@@ -116,7 +116,7 @@ every trace but read only under `memory.strategy=strength`.
 situation cue (`cue_situation` / `recall_situation`: shared world/audio cluster, ranked by
 `max(encoding_tag, retro_tag)`, recall-only).
 
-**Behaviour — LLM text only.** `agent_loop.py` calls the situation cue and **discards the result**;
+**Behaviour — LLM text only.** `runtime/substrate_proposal.py::propose_via_substrate` calls the situation cue and **discards the result**;
 its consumer (2S-e) is parked. In the survival world nothing counts as memory *use* at all (#848).
 Enrichment renders ≤ 3 episodes into the prompt.
 

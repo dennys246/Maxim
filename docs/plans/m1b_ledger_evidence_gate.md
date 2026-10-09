@@ -478,8 +478,8 @@ the per-experiment "complete run" rules for Exp 53/60/61/62, whose pass-table en
   support, exceptions, the legacy snapshot, the CLI. `scripts/_evidence_records.py` — what a cited record is and
   whether it is established (git access, the record judges, the O19 re-judge); stdlib-only.
 - `docs/experiments/evidence_pass_table.json` — `{kind: {"rows": [IDs], "targets": {TOKEN: [verdict values]},
-  "require": {dotted.field: scalar}}}`, read from the MERGE-BASE (absent there = empty: no support, never
-  unrestricted). 5b-1 entries: `exp10_verdict` (T1-1; MAINTAINED: PASS; require `apparatus_checked: true`),
+  "require": {dotted.field: scalar}, "scopes": [qualifier head | null]}}` (`scopes`: #1141, see §New support), read from the MERGE-BASE (absent there = empty: no support, never
+  unrestricted). 5b-1 entries (each also carries `scopes` since #1141): `exp10_verdict` (T1-1; MAINTAINED: PASS; require `apparatus_checked: true`),
   `exp09_verdict` (T3-9; MAINTAINED: PASS, PARTIAL: PARTIAL; require `apparatus_checked: true`), `exp56_verdict`
   (T1-11; RE-VALIDATED: PASS; require `noop_kit.kit_pass: true`), `exp57_verdict` (T1-12; EARNED: PASS, PARTIAL: PARTIAL).
   Its shape is validated at the merge-base AND at HEAD (a malformed entry fails before it reaches main).
@@ -567,6 +567,30 @@ name; unknown → NOT-ESTABLISHED. Outcomes: ESTABLISHED / LEGACY (in the snapsh
   `O19_INTERFACE` (every attribute the re-judge calls). A gate edit an old judge cannot satisfy would strand that
   judge's verdicts. The check needs the full history: a shallow clone fails (the lint job checks out at
   `fetch-depth: 0`).
+- **A predecessor's closure is judged at the gate (#1078, #1081 item 5; 2026-10-08).** For a successor verdict,
+  each predecessor's pinned closure (as main holds it) goes through `judge_o19` with `ref` = the merge-base: it is
+  bound to its data through its OWN bound judge (`bound_judge`: `verdict_commit` on main's first-parent history and
+  its own executed commit, every bound blob the same there and at each executed and peeled commit, `data_sha256`,
+  `verdict_source_sha256`), its session files are re-hashed, and the bound judge's re-run must equal the record. On
+  top: no reasons, `verdict == "ABORT"` (a PASS, FAIL or NOT SHOWN is terminal), `experiment` = the predecessor's
+  key, `kind` = the cited campaign's entry's kind, the predecessor's merge-base entry of the cited campaign's
+  experiment and kind, `mock` false on the record and on every row (`_closure_problems`). The S6 tables come from
+  that re-judge's capture; the old unbound `git cat-file` load of `bound_files[O19_JUDGE]` is gone. Not
+  `judge_entry`: its scope rule refuses every ABORT that counted no unit (campaign 10's real closure). **Closure
+  timing is structural** (design pass S3): at every executed and peeled commit of the campaign that pins it, the
+  pinned path holds the pinned bytes, so the closure was on main before its successor ran.
+- **The campaign cap is the merge-base's (#1077; 2026-10-08).** When `scripts/o19_verdict.py` changes,
+  `o19_table_problems` counts HEAD's campaigns per `experiment` AND per chain root against the merge-base judge's
+  `MAX_CAMPAIGNS` (read with `getattr`, never in `O19_INTERFACE`: absent = a pre-succession judge, a cap of 1; a
+  non-int, a bool or a value below 1 refuses). A raise is its own PR; a later PR whose merge-base holds it may use
+  it. HEAD's own cap must be an int >= 1 and hold HEAD's table (S2: a malformed cap cannot land and later refuse
+  every judge edit). Continuity is gate-owned (S1): every HEAD successor's experiment and kind are its
+  predecessor's, and a non-string `experiment` refuses (`_o19_campaign_count_problems`).
+- **A scope is one path component** (#1081 item 3): `protocol_problems` refuses a scope that is not
+  `[0-9a-z_]+`, the shape the gate's directory placement and the leaked-gate bar assume.
+- **Not built (owner decision 2026-10-08): per-campaign model pins** (#1081 items 1–2). Closed with the trigger
+  "the first O19 experiment that pre-registers a model other than mistral-7b / 8192": an edit to the four global
+  pins is already refused today (it would change 09's and 63's verdicts in half B).
 - Each `status: ok` row's `files` re-hashed under `dirname(data)/<session_id>/` (plain or `.gz`,
   uncompressed bytes; both forms present → refused); `session_id` one plain path component inside
   `dirname(data)`; file names without `/` or `..`; no symlinks. The `sims[]` check runs over ok rows only
@@ -578,15 +602,45 @@ name; unknown → NOT-ESTABLISHED. Outcomes: ESTABLISHED / LEGACY (in the snapsh
 A judged row's raise, move between positives, date change, or WIDENED qualifier (removed, or its scope word —
 `_ledger.qualifier_head` — changed; #1108, owner decision 2026-10-06) needs ≥ 1 NEWLY cited (absent from the base
 Evidence) record that is a verdict, in the merge-base pass table with this row in `rows`, whose `verdict` is in
-`targets[<new token>]`, whose `require` predicates hold (dotted from the verdict's top level; missing key or
+`targets[<new token>]`, whose entry's `scopes` lists the row's HEAD scope (below), whose `require` predicates hold (dotted from the verdict's top level; missing key or
 non-dict on the way = unmet; type-strict equality), ESTABLISHED, prereg-PASS (the verdict and its data entry), clean, and whose time (min `ts` over
 its scoped units; never a terminal's or its own) is after the commit time of the base commit that set the row's
 previous status line (a new row: the merge-base's). LEGACY / GRANDFATHERED / UNGOVERNED / allowed-dirty never
 count; an ACTIVE exception (first clause: this PR performs its exact from→to with HEAD's date == to_date) may.
-Residuals of the widening rule (stated, #1108 design pass): appended detail under the same scope word (`rung A, and
-rung B`) is judged but needs no new support, since text cannot prove a clause narrows; and the pass table has no
-notion of scope, so a widening is met by any newer verdict of the right kind for the row's token, even one that
-re-supports only the old scope (follow-up #1141: key pass-table targets by scope head).
+Residual of the widening rule (stated, #1108 design pass): appended detail under the same scope word (`rung A, and
+rung B`) is judged but needs no new support, since text cannot prove a clause narrows.
+
+**Scope (#1141, owner decisions 2026-10-07; approach note adversarially reviewed: 0 DO-NOT-BUILD, 3 SHOULD-FIX and
+4 NIT, all folded).** Before #1141 the table had no notion of scope, so a widening (or a re-date of a row already at
+`(rung B)`) was met by any newer verdict of the right kind, even one that re-supported only the old scope.
+- **The KIND implies the scope**, bound in the merge-base pass table, never by the verdict writer: each entry's
+  `scopes` lists the qualifier heads its verdicts support (`_ledger.SCOPE_HEAD`: `narrow`, `rung X`; `null` = the
+  unqualified claim). ALL new support is checked (raise, move, re-date, widening, new row): the row's HEAD scope —
+  `qualifier_head(qualifier)`, or `null` when unqualified — must be in `scopes`. Exact match, no subsumption: `null`
+  does not cover `narrow`; an entry lists every head it supports. A head outside the vocabulary (`""` from `()`, a
+  grandfathered `reframed`) matches nothing, checked by the gate itself.
+- **Required at HEAD; structure only at the merge-base.** At HEAD `scopes` is a non-empty list of unique scope words
+  or null. At the merge-base an entry without it supplies NO support, and a string outside today's vocabulary is
+  inert there, so narrowing the vocabulary cannot red every PR. An open PR whose merge-base predates #1141 gets no
+  support until it merges main.
+- **A kind with a complete-run rule supports exactly one scope, and keeps the one main gave it**: its frozen sets
+  bind a run's completeness, not which rung it ran, so a second scope — or a swap of `rung A` for `rung B` — would
+  let an old-scope re-run support the new one. A new scope on a ruled kind is a new kind. Its entry may not be
+  deleted either (a later PR could re-add it with another scope); retire it by emptying its `targets`, keeping `scopes` and `complete`.
+- **The table lists every row's current scope** (a test checks it against the live ledger): a row that narrows or
+  re-scopes needs its kind's `scopes` to gain that head on main first, or its next re-date has no support.
+- **A new scope is a reviewed pass-table change on main first**, and the gate NOTES every scope a kind gains (and
+  says when its `require` / `complete` did not change with it: then nothing but review binds a verdict to the new
+  scope). For example, T3-9 dropping `narrow` once H3 is measured needs `null` added to `exp09_verdict`, bound by a
+  `require` on the H3 result.
+- **An unparsed qualifier fails the row**: nested parentheses escape `STATUS_RE`, and the row would read as the
+  unqualified, full claim. `_ledger` owns the check (`Row.qualifier_unparsed`, a row problem `lint_ledger_format`
+  reports, the primary check); the gate also fails a judged row on it, and an unparsed BASE qualifier reads as a widening. `lint_ledger_format`
+  also refuses an empty `()`.
+- Exceptions are unchanged: an owner clause is an explicit decision, and `to_qualifier` still binds a widening.
+- Stated limits: `scopes` is per kind, not per row (every entry names one row today); a kind without a complete-run
+  rule serving two scopes is bound to them only by `require`, which review checks. Regression guard: process
+  invariant — mechanization backlog M1 (its review-enforced limits list).
 
 ### Exceptions (ledger kind)
 Only clauses already on main act (one added by this change is reviewed first, used after). A clause is ACTIVE

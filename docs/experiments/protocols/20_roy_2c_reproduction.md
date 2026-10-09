@@ -22,7 +22,7 @@ The recorded run on 2026-05-13 produced **A ≈ B ≈ C** — all three arms pro
 
 Same as [19_roy_2pc_reproduction.md § Prerequisites](19_roy_2pc_reproduction.md), plus:
 
-- **0.9.1 codebase or later.** `MAXIM_NAC_MIN_CONFIDENCE` env-var override at `agent_loop._resolve_min_confidence` is introduced in 0.9.1 (Stage 0a). Older checkouts ignore the env var; default `min_confidence=0.3` applies regardless.
+- **0.9.1 codebase or later.** `MAXIM_NAC_MIN_CONFIDENCE` env-var override at `substrate_proposal._resolve_min_confidence` (`agent_loop` before 1.3.2 slice 3) is introduced in 0.9.1 (Stage 0a). Older checkouts ignore the env var; default `min_confidence=0.3` applies regardless.
 - `tests/unit/test_substrate_min_confidence_env.py` should pass on the local checkout — confirms the env-var resolver works.
 
 ## A. Pre-flight (3 min)
@@ -144,7 +144,7 @@ done
 
 **`maxim roy run` reports `gate` value at 0.3 in any log line** — the env var didn't propagate. Verify with `env | grep MAXIM_NAC_MIN_CONFIDENCE` before the run.
 
-**Per-arm action count stays at 2** — the env var was set but the resolver isn't being called. Check `agent_loop._resolve_min_confidence` exists and is called from `propose_via_substrate`. Run the unit tests: `pytest tests/unit/test_substrate_min_confidence_env.py -v`.
+**Per-arm action count stays at 2** — the env var was set but the resolver isn't being called. Check `substrate_proposal._resolve_min_confidence` (`agent_loop` before 1.3.2 slice 3) exists and is called from `propose_via_substrate`. Run the unit tests: `pytest tests/unit/test_substrate_min_confidence_env.py -v`.
 
 **Arm A produces non-zero `sense_food_source` count** — POSITIVE H2 result; flip the interpretation. Update [20_roy_2c.md](../20_roy_2c.md) headline to "H2 confirmed" and revisit Wire-A's design (gate-tuning becomes a viable interim alternative; Wire-A's annotation may not be strictly necessary).
 

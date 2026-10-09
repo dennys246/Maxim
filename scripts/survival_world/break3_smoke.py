@@ -87,7 +87,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--satisfaction", type=float, default=16.0, help="stop eating at/above this")
     args = ap.parse_args(argv)
 
-    from maxim.runtime.agent_loop import _read_drive_states
+    from maxim.runtime.substrate_proposal import _read_drive_states
     from maxim.runtime.tool_dispatch import read_learning_side_effects
     from maxim.simulation.minecraft_harness import build_minecraft_aut
     from maxim.tools.introspection import INTROSPECTION_TOOL_NAMES

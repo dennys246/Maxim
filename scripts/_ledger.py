@@ -75,7 +75,7 @@ GUARD = re.compile(r"regression\s+guards?\s*:", re.IGNORECASE)
 #: A qualifier carries SCOPE only and opens with one of these words (#1105); detail after `:`/`;`/`,` narrows it
 #: further, and a reason belongs in the prose. lint_ledger_format checks it; lint_claims_sync's R3 shares
 #: ``qualifier_head``.
-SCOPE_HEAD = re.compile(r"^(narrow|rung [A-Z])$")
+SCOPE_HEAD = re.compile(r"^(narrow|rung [A-Z])\Z")  # \Z: `$` would also match before a trailing newline
 
 
 def qualifier_head(qualifier: str) -> str:
@@ -88,7 +88,7 @@ def qualifier_head(qualifier: str) -> str:
 # which stay as they are (widening them would change which files THAT lint judges).
 REFUSED_SUFFIXES = (".py", ".md", ".sh", ".ipynb")
 REFUSED_MARKERS = ("dryrun", "nonfrozen", "aborted", "invalid")
-_LINK = re.compile(r"\[([^\]]*)\]\(([^)\s]*)\)")
+_LINK = re.compile(r"\[([^\]]*)\]\(((?:[^()\s]|\([^()\s]*\))*)\)")  # one level of balanced () in a target (#1012)
 _CODE = re.compile(r"`([^`]+)`")
 
 
@@ -112,6 +112,9 @@ class Row:
     token: str | None = None
     date: str | None = None
     qualifier: str | None = None
+    #: A parenthesised qualifier STATUS_RE did not capture (nested parentheses): ``qualifier`` then reads None, i.e.
+    #: the unqualified, full claim (#1141). Also a row problem; the evidence gate fails a judged row on it.
+    qualifier_unparsed: bool = False
     evidence: list[Entry] = field(default_factory=list)
     has_evidence_field: bool = False
     superseded_by: str | None = None
@@ -126,8 +129,21 @@ class Row:
         return " | ".join(self.cells.get(c, "") for c in TABLES[self.table]["claim"])
 
 
+_DELIMITER = re.compile(r"^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$")
+
+
+def is_delimiter_row(line: str, header_cells: int) -> bool:
+    """A GFM table's delimiter row under a header of ``header_cells`` cells: dashes (optional colons) in every cell, at
+    least one ``|``, and the header's cell count — otherwise GitHub renders no table (a bare ``---`` is a setext
+    heading). The one delimiter grammar, shared by the ledger parser and lint_claims_sync (#1012 review)."""
+    stripped = line.strip()
+    return "|" in stripped and bool(_DELIMITER.match(stripped)) and len(split_cells(stripped)) == header_cells
+
+
 def split_cells(line: str) -> list[str]:
-    """A GFM table row's cells: split on UNESCAPED ``|`` (inside a code span too, as GitHub does)."""
+    """A GFM table row's cells: split on UNESCAPED ``|`` (inside a code span too, as GitHub does). cmark-gfm's cell
+    scanner treats a backslash-pipe as an escaped pipe whatever precedes it, so a backslash run before a pipe never
+    makes it split (verified against GitHub's renderer, #1012 review)."""
     body = line.strip()
     if body.startswith("|"):
         body = body[1:]
@@ -193,6 +209,9 @@ def _parse_status(row: Row) -> None:
         return
     row.token, row.date, row.qualifier = m.group(1), m.group(2), m.group(3)
     rest = cell[m.end() :]
+    if m.group(3) is None and rest.lstrip().startswith("("):
+        row.qualifier_unparsed = True
+        row.problems.append("a parenthesised qualifier the status grammar did not parse (nested parentheses?)")
     sup = SUPERSEDED_BY.match(rest)
     row.superseded_by = sup.group(1) if sup else None
     n_marks = cell.count(EVIDENCE_MARK)
@@ -226,8 +245,14 @@ def parse(text: str) -> tuple[list[Row], list[str]]:
             problems.append(f"{prefix} status table: expected one header {header}, found {len(starts)}")
             continue
         start = starts[0]
-        table_lines.update((start, start + 1))
-        i = start + 2
+        if start + 1 >= len(lines) or not is_delimiter_row(lines[start + 1], len(header)):
+            # Without its delimiter line GitHub renders no table, and the first row would be skipped as one (#1012).
+            problems.append(f"{prefix} status table: the header has no delimiter line (|---|...) under it")
+            table_lines.add(start)
+            i = start + 1
+        else:
+            table_lines.update((start, start + 1))
+            i = start + 2
         # GFM keeps a table open until a blank line, so a row without a leading `|` still renders as a ledger row and
         # must not escape the lint (#1105). A non-row line glued under the table fails as a cell-count problem.
         while i < len(lines) and lines[i].strip() != "":

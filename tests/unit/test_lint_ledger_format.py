@@ -12,8 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from scripts import _ledger as L
 from scripts import lint_ledger_format as F
+
+L = F.L  # the parser module object the lint itself imports: `scripts._ledger` would be a second copy (#1012)
 
 REPO = Path(__file__).resolve().parents[2]
 T1_HEADER = "| ID | Claim | Bio-mechanism | Status |\n| --- | --- | --- | --- |\n"
@@ -524,6 +525,7 @@ def test_a_row_without_a_leading_pipe_is_still_parsed(tmp_path: Path) -> None:
         ("(narrow-ish)", False),
         ("(reframed)", False),
         ("(because the run was short)", False),
+        ("()", False),  # #1141: an empty qualifier is no scope word
     ],
 )
 def test_a_qualifier_opens_with_a_scope_word(tmp_path: Path, qualifier: str, ok: bool) -> None:
@@ -546,3 +548,83 @@ def test_a_grandfather_pin_without_its_row_is_stale(tmp_path: Path, monkeypatch)
     monkeypatch.setattr(F, "GRANDFATHERED_QUALIFIERS", {"T1-9": ("EARNED", "2026-09-01", "reframed")})
     repo = _repo(tmp_path, _ledger([OK_T1]))
     assert any("GRANDFATHERED_QUALIFIERS entry for T1-9 names no ledger row" in f for f in _lint(repo))
+
+
+def test_a_nested_paren_qualifier_is_a_row_problem(tmp_path: Path) -> None:
+    """#1141 review: STATUS_RE does not capture ``(rung B (x))``; the row would read as unqualified, the full claim."""
+    row = OK_T1.replace("**Status: EARNED 2026-09-01**.", "**Status: EARNED 2026-09-01** (rung B (see x)).")
+    rows, _ = L.parse(_ledger([row]))
+    t1 = next(r for r in rows if r.id == "T1-1")
+    assert t1.qualifier is None and t1.qualifier_unparsed
+    repo = _repo(tmp_path, _ledger([row]))
+    assert any("did not parse (nested parentheses?)" in f for f in _lint(repo))
+
+
+def test_the_scope_word_has_no_trailing_newline() -> None:
+    assert L.SCOPE_HEAD.match("rung A") and not L.SCOPE_HEAD.match("rung A\n")
+
+
+# ── #1012: the follow-up edges ────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("guard", "ok"),
+    [
+        (" **Regression guard:** `tests/unit/test_x.py`.", True),
+        (" **Regression guard:** [t](../../tests/unit/test_x.py).", True),
+        (" There is no regression guard: TODO.", False),
+        (" Regression guard: none yet. See `tests/unit/test_x.py`.", False),  # the citation is past its sentence
+        (" **Regression guard:** none yet **Evidence:** `tests/unit/test_x.py`.", False),  # another field's citation
+        (" **Regression guard:** TODO [](", False),  # an unfinished link is no citation
+        (" **Regression guard:** TODO [x]().", False),  # a link with an empty target is no citation
+        (" There is no regression guard: `TODO`.", False),  # a backticked word is still prose
+        (" **Regression guard:** [x](#top).", False),  # an anchor is no path
+        (" **Regression guard:** `tests/unit/test_x.py::test_y`.", True),
+        (" **Regression guard:** none **corrected 2026-09-25:** `tests/unit/test_x.py`.", False),  # a lowercase label
+        (" **Regression guard:** [Exp 1. run](../../tests/unit/test_x.py).", True),  # ". " inside link text
+    ],
+)
+def test_a_guard_cites_something_in_its_sentence(tmp_path: Path, guard: str, ok: bool) -> None:
+    row = OK_T1.replace(GUARD, guard)
+    hits = [f for f in _lint(_repo(tmp_path, _ledger([OK_T1])), _ledger([row])) if "Regression guard:" in f]
+    assert (hits == []) is ok, hits
+
+
+@pytest.mark.parametrize(
+    ("line", "cells"),
+    [
+        ("| a | b |", ["a", "b"]),
+        ("| a \\| b |", ["a \\| b"]),
+        ("| a \\\\| b |", ["a \\\\| b"]),  # GitHub: a backslash-pipe never splits, whatever precedes it
+        ("| a | b \\|", ["a", "b \\|"]),  # an escaped closing pipe stays in the cell
+        ("| a | |", ["a", ""]),
+    ],
+)
+def test_split_cells_matches_githubs_renderer(line: str, cells: list[str]) -> None:
+    """Pinned against GitHub's renderer (`gh api markdown -f mode=gfm`, #1012 review): #1012 item 5's premise that a
+    double backslash makes the pipe split was wrong, so the parser keeps GitHub's reading."""
+    assert L.split_cells(line) == cells
+
+
+def test_a_link_target_may_hold_balanced_parentheses() -> None:
+    entries, error = L._parse_evidence(" [r](../experiments/data/r_(1).jsonl).")
+    assert error is None and entries[0].path == "docs/experiments/data/r_(1).jsonl", (entries, error)
+
+
+@pytest.mark.parametrize(
+    ("line", "ok"),
+    [("|---|---|", True), ("| :-- | --: |", True), ("---", False), ("|---|", False), ("|---|x|", False)],
+)
+def test_the_delimiter_row_is_githubs(line: str, ok: bool) -> None:
+    """A bare `---` is a setext heading, and a cell count unlike the header's renders no table (#1012 review)."""
+    assert L.is_delimiter_row(line, 2) is ok
+    assert not L.is_delimiter_row("---", 1)  # a setext underline even under a one-cell header
+
+
+def test_a_header_without_its_delimiter_line_is_a_problem() -> None:
+    text = _ledger([OK_T1])
+    lines = text.split("\n")
+    delim = next(i for i, ln in enumerate(lines) if ln.startswith("|---") or ln.startswith("| ---"))
+    rows, problems = L.parse("\n".join(lines[:delim] + lines[delim + 1 :]))
+    assert any("no delimiter line" in p for p in problems), problems
+    assert "T1-1" in [r.id for r in rows]  # the first data row is read, not swallowed as a delimiter
