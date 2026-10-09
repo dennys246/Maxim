@@ -2201,7 +2201,7 @@ def test_the_harness_and_the_gate_read_one_set_of_executed_commits(tmp_path, mon
     monkeypatch.setattr(v, "PROTOCOL", table)
     monkeypatch.setattr(v, "REPO_ROOT", rig.work)
     base = _git(rig.work, "rev-parse", "origin/main")
-    ctx = R.Ctx(repo=R.Repo(rig.work), base=base, ref=base, legacy={}, prereg={}, table={})
+    ctx = R.Ctx(repo=R.Repo(rig.work), base=base, ref=base, legacy={}, prereg={}, table={}, retired={})
 
     def gate_reads(succ: str) -> set:
         found: set = set()
@@ -2224,3 +2224,300 @@ def test_a_mock_attempt_does_not_read_the_live_tree(tmp_path, monkeypatch) -> No
     rows = _mock_campaign(tmp_path, monkeypatch, "10")
     assert rows and all(r["provenance"]["code_tree_sha256"] == _PROVENANCE["block"]["code_tree_sha256"] for r in rows)
     assert len({r["provenance"]["harness_run_id"] for r in rows}) == 1  # the live run id, minted per attempt
+
+
+# ── #1079: the leaked-gate bar WITHIN one campaign (new campaign keys only; owner decision 2026-10-08, REFUSE) ─────
+
+
+def _two_attempts(tmp_path: Path, monkeypatch, exp: str, *, failed_from=None, edit=None, rowless: bool = False):
+    """Campaign ``exp`` with an aborted attempt 1 (its phases from ``failed_from`` on failed, then ``edit(rows,
+    data_dir)``; ``rowless``: a start marker whose rows never landed) and a complete mock attempt 2, as the judge
+    reads them: ``([{run_id, k, rows}] in k order, the campaign's data directory)``."""
+    data_dir = tmp_path / v.PROTOCOL[exp]["scope"]
+    if rowless:
+        _mock_campaign(tmp_path, monkeypatch, exp)
+        rows = [json.loads(ln) for ln in (data_dir / "rows.jsonl").read_text().splitlines()]
+        rid = rows[0]["provenance"]["harness_run_id"]
+        return [{"run_id": "0" * 32, "k": 1, "rows": []}, {"run_id": rid, "k": 2, "rows": rows}], data_dir
+    _mock_campaign(tmp_path, monkeypatch, exp, failed_from=failed_from, edit=edit)
+    monkeypatch.setattr(h._provenance, "_RUN_ID", {})
+    first = (data_dir / "rows.jsonl").read_text()
+    (data_dir / "rows.jsonl").write_text("")  # the harness's own reading may call an incomplete all-ok attempt complete
+    assert h.main(["run", "--exp", exp, "--mock"]) == 0  # attempt 2
+    (data_dir / "rows.jsonl").write_text(first + (data_dir / "rows.jsonl").read_text())
+    attempts = v.attempts_from_rows([json.loads(ln) for ln in (data_dir / "rows.jsonl").read_text().splitlines()])
+    assert len(attempts) == 2
+    ordered = [{"run_id": rid, "k": i + 1, "rows": rs} for i, (rid, rs) in enumerate(attempts.items())]
+    return ordered, data_dir
+
+
+@pytest.fixture
+def new_keys(monkeypatch):
+    """Every campaign judged as a NEW key: the within-campaign bar applies (no real campaign is new yet)."""
+    monkeypatch.setattr(v, "PRE_1079_KEYS", frozenset())
+
+
+def _served_never_read(rows, data_dir):
+    """Attempt 1's only phase is committed ok but INCOMPLETE (C4: the served model was never read): N1."""
+    rows[0]["served_model"] = {**(rows[0].get("served_model") or {}), "reads": []}
+
+
+def _no_flinch(rows, data_dir):
+    import gzip
+
+    sdir = data_dir / rows[0]["session_id"]
+    log = gzip.decompress((sdir / f"{v.RUN_LOG}.gz").read_bytes()).replace(b"attack_flinch", b"other_reflex")
+    (sdir / f"{v.RUN_LOG}.gz").write_bytes(gzip.compress(log))
+    rows[0]["files"][v.RUN_LOG] = v.sha256_bytes(log)
+
+
+def _list_store(rows, data_dir):
+    """Phase 1's saved store is a JSON list: the judge reads it, but no gate can (an unjudgeable prefix)."""
+    data = b"[]"
+    (data_dir / rows[0]["session_id"] / "aut_hippocampus.json").write_bytes(data)
+    rows[0]["files"]["aut_hippocampus.json"] = v.sha256_bytes(data)
+
+
+def test_exp10_a_leak_in_an_earlier_attempt_is_reported(tmp_path, monkeypatch, new_keys) -> None:
+    """The known answer (#1079 section 1): attempt 1 committed phases 1-2 ok with a 2-memory store (P0 FAILED), then
+    died; attempt 2 PASSes. The verdict and its deciding attempt are unchanged; the bar names attempt 1's P0."""
+    ordered, data_dir = _two_attempts(tmp_path, monkeypatch, "10", failed_from=2, edit=_thin_phase_0)
+    out = v.judge("10", ordered, data_dir)
+    assert out["verdict"] == "PASS" and out["deciding_attempt"] == ordered[1]["run_id"]
+    assert out["within_campaign_leaks"] == [[ordered[0]["run_id"], 1, ["P0", "P2.gate"]]]
+    assert len(out["within_campaign_leak_notes"]) == 1 and "'P0'" in out["within_campaign_leak_notes"][0]
+
+
+def test_a_clean_earlier_attempt_leaks_nothing(tmp_path, monkeypatch, new_keys) -> None:
+    for failed_from in (2, 1, 0):
+        ordered, data_dir = _two_attempts(tmp_path / str(failed_from), monkeypatch, "10", failed_from=failed_from)
+        out = v.judge("10", ordered, data_dir)
+        assert out["verdict"] == "PASS" and out["within_campaign_leaks"] == [], (failed_from, out)
+
+
+def test_an_abort_lists_every_attempts_leak(tmp_path, monkeypatch, new_keys) -> None:
+    ordered, data_dir = _two_attempts(tmp_path, monkeypatch, "10", failed_from=2, edit=_thin_phase_0)
+    ordered[1]["rows"][-1]["status"] = "failed"  # attempt 2 aborts too, in its garden phase, after a clean prefix
+    out = v.judge("10", ordered, data_dir)
+    assert out["verdict"] == "ABORT" and [a for _r, a, _s in out["within_campaign_leaks"]] == [1]
+    ordered[1]["rows"][0], ordered[1]["rows"][1:] = (
+        ordered[0]["rows"][0] | {"provenance": ordered[1]["rows"][0]["provenance"]},
+        [],
+    )
+    out = v.judge("10", ordered, data_dir)
+    assert [a for _r, a, _s in out["within_campaign_leaks"]] == [1, 2], out["within_campaign_leaks"]
+
+
+def test_exp63_an_earlier_phase_1_with_fewer_than_3_records_leaks_p0(tmp_path, monkeypatch, new_keys) -> None:
+    ordered, data_dir = _two_attempts(tmp_path, monkeypatch, "63", failed_from=1, edit=_thin_phase_0)
+    out = v.judge("63", ordered, data_dir)
+    assert out["deciding_attempt"] == ordered[1]["run_id"]
+    assert out["within_campaign_leaks"] == [[ordered[0]["run_id"], 1, ["P0"]]]
+
+
+def test_exp09_an_incomplete_earlier_attempt_is_still_judged(tmp_path, monkeypatch, new_keys) -> None:
+    """N1 (strict): an earlier attempt the judge found C4-invalid still had its committed phases seen."""
+    ordered, data_dir = _two_attempts(tmp_path / "clean", monkeypatch, "09", edit=_served_never_read)
+    out = v.judge("09", ordered, data_dir)
+    assert [a["complete"] for a in out["attempts"]] == [False, True] and out["verdict"] == "PARTIAL"
+    assert out["within_campaign_leaks"] == []  # incomplete, but every decided gate passed: nothing leaked
+
+    def both(rows, d):
+        _served_never_read(rows, d)
+        _no_flinch(rows, d)
+
+    ordered, data_dir = _two_attempts(tmp_path / "leak", monkeypatch, "09", edit=both)
+    out = v.judge("09", ordered, data_dir)
+    (leak,) = out["within_campaign_leaks"]
+    assert leak[:2] == [ordered[0]["run_id"], 1] and "H1" in leak[2] and "H3" not in leak[2], leak
+
+
+def test_an_earlier_prefix_that_cannot_be_judged_bars(tmp_path, monkeypatch, new_keys) -> None:
+    ordered, data_dir = _two_attempts(tmp_path / "store", monkeypatch, "10", failed_from=2, edit=_list_store)
+    out = v.judge("10", ordered, data_dir)
+    assert out["within_campaign_leaks"] == [[ordered[0]["run_id"], 1, "unjudgeable"]]
+    assert "cannot be judged" in out["within_campaign_leak_notes"][0]
+    ordered, data_dir = _two_attempts(tmp_path / "set", monkeypatch, "10", failed_from=2)
+    monkeypatch.setitem(v.LEAK_GATES, "10", {1: ("P0",), 3: ("P0",)})
+    out = v.judge("10", ordered, data_dir)
+    assert out["within_campaign_leaks"] == [[ordered[0]["run_id"], 1, "unjudgeable"]]
+
+
+def test_a_rowless_earlier_marker_bars(tmp_path, monkeypatch, new_keys) -> None:
+    """D1 (owner decision 2026-10-08): an earlier start marker whose rows never reached main cannot be judged, so it
+    bars: otherwise resetting the local rows file before the next attempt would launder a leak."""
+    ordered, data_dir = _two_attempts(tmp_path, monkeypatch, "10", rowless=True)
+    out = v.judge("10", ordered, data_dir)
+    assert out["verdict"] == "PASS" and out["within_campaign_leaks"] == [["0" * 32, 1, "rowless"]]
+
+
+def test_the_deciding_attempt_and_later_ones_are_never_read(tmp_path, monkeypatch, new_keys) -> None:
+    """The deciding attempt's own FAILED gate (Exp 09: H1 not met, so a FAIL) is the verdict's, never a leak."""
+    rows = _mock_campaign(tmp_path, monkeypatch, "09", edit=_no_flinch)
+    data_dir = tmp_path / v.PROTOCOL["09"]["scope"]
+    rid = rows[0]["provenance"]["harness_run_id"]
+    assert v._attempt_leak("09", "x", rows, data_dir) is not None  # it HAS a failed decided gate (non-vacuous)
+    out = v.judge("09", [{"run_id": rid, "k": 1, "rows": rows}], data_dir)
+    assert out["deciding_attempt"] == rid and out["verdict"] == "FAIL", out
+    assert out["within_campaign_leaks"] == [] and out["within_campaign_leak_notes"] == []
+    # judge() refuses an attempt after the complete one, so the "later" half is pinned on the function itself: an
+    # attempt after the deciding one (the same failed-gate bytes under another run id) is never read either.
+    later = {"run_id": "f" * 32, "k": 2, "rows": rows}
+    assert v.within_campaign_leaks("09", [{"run_id": rid, "k": 1, "rows": rows}, later], rid, data_dir) == ([], [])
+
+
+def test_a_pre_1079_campaigns_output_is_unchanged(tmp_path, monkeypatch) -> None:
+    ordered, data_dir = _two_attempts(tmp_path, monkeypatch, "10", failed_from=2, edit=_thin_phase_0)
+    out = v.judge("10", ordered, data_dir)
+    assert "within_campaign_leaks" not in out and "within_campaign_leak_notes" not in out
+
+
+def _main_judge():
+    """``origin/main``'s judge, loaded as the gate loads one (None when this clone has no origin/main)."""
+    import subprocess
+
+    import _evidence_records as R
+
+    src = subprocess.run(["git", "show", f"origin/main:{R.O19_JUDGE}"], cwd=REPO, capture_output=True).stdout
+    mod = R.load_o19_judge(src) if src else None
+    return None if isinstance(mod, str) else mod
+
+
+@pytest.mark.skipif(_main_judge() is None, reason="needs origin/main's judge")
+@pytest.mark.parametrize("exp", ["10", "10c2", "09", "63"])
+def test_every_pre_1079_campaign_judges_exactly_as_mains_judge(tmp_path, monkeypatch, exp) -> None:
+    """The four campaigns' FULL judge() output is main's, on a multi-attempt fixture (not only the compared fields)."""
+    edit = _served_never_read if v.experiment_of(exp) == "09" else _thin_phase_0
+    ordered, data_dir = _two_attempts(tmp_path, monkeypatch, exp, failed_from=None if exp == "09" else 1, edit=edit)
+    old = _main_judge()
+    assert v.judge(exp, copy.deepcopy(ordered), data_dir) == old.judge(exp, copy.deepcopy(ordered), data_dir)
+
+
+@pytest.mark.skipif(_main_judge() is None, reason="needs origin/main's judge")
+@pytest.mark.parametrize("failed_from, edit", [
+    (None, None), (2, None), (1, _thin_phase_0), (2, _thin_phase_0), (None, _thin_phase_0), (2, _list_store),
+    (2, lambda rows, d: rows[0]["files"].update({"report.json": "0" * 64})),
+    (2, lambda rows, d: rows[0].update(session_id="../x")),
+])  # fmt: skip
+def test_the_extracted_leak_reading_is_byte_equal_to_mains(tmp_path, monkeypatch, failed_from, edit) -> None:
+    rows = _mock_campaign(tmp_path, monkeypatch, "10", failed_from=failed_from, edit=edit)
+    old = _main_judge()
+    for gates in (None, {1: ("P0",), 3: ("P0",)}):
+        if gates is not None:
+            monkeypatch.setitem(v.LEAK_GATES, "10", gates)
+            monkeypatch.setitem(old.LEAK_GATES, "10", gates)
+        new = v.leaked_gate_problems("10", rows, tmp_path / "rerun_exp10_o19")
+        assert new == old.leaked_gate_problems("10", rows, tmp_path / "rerun_exp10_o19")
+
+
+def test_pre_1079_keys_are_the_four_campaigns_with_a_verdict_on_main() -> None:
+    assert v.PRE_1079_KEYS == {"10", "10c2", "09", "63"}
+    for key in v.PRE_1079_KEYS:
+        assert (REPO / v.data_dir(key) / "verdict.json").is_file(), key
+
+
+def test_the_campaign_table_refuses_a_campaign_the_leak_bar_cannot_read() -> None:
+    table = _table()
+    table["09"]["phases"] = [*table["09"]["phases"], table["09"]["phases"][0]]  # a second phase: no gate set for 2
+    assert any("LEAK_GATES does not cover" in p for p in v.protocol_problems(table))
+
+
+def _materialized(src: Path):
+    """A ``materialize`` stand-in: the campaign's directory as ``src`` holds it (the harness reads origin/main's)."""
+    import shutil
+
+    def materialize(ref, keys, dest):
+        assert ref == "origin/main"
+        for key in keys:
+            shutil.copytree(src, dest / v.PROTOCOL[key]["scope"])
+        return dest
+
+    return materialize
+
+
+def _markers(ordered: list[dict]) -> dict:
+    return {a["run_id"]: {"k": a["k"]} for a in ordered}
+
+
+def test_the_harness_refuses_a_campaign_whose_earlier_attempt_leaked(tmp_path, monkeypatch, new_keys) -> None:
+    ordered, data_dir = _two_attempts(tmp_path, monkeypatch, "10", failed_from=2, edit=_thin_phase_0)
+    earlier = ordered[:1]  # attempt 2 is about to start: only attempt 1 is on main
+    (data_dir / "rows.jsonl").write_text("".join(json.dumps(r) + "\n" for r in earlier[0]["rows"]))
+    monkeypatch.setattr(v, "materialize", _materialized(data_dir))
+    with pytest.raises(h.Refused, match="#1079"):
+        h.check_within_campaign("10", _markers(earlier))
+    rowless = {**_markers(earlier), "0" * 32: {"k": 2}}  # D1 + N4: a marker origin lists with no rows on main
+    (data_dir / "rows.jsonl").write_text("")
+    with pytest.raises(h.Refused, match="rows never reached main"):
+        h.check_within_campaign("10", rowless)
+
+
+def test_the_harness_lets_a_clean_campaign_or_a_pre_1079_key_continue(tmp_path, monkeypatch) -> None:
+    ordered, data_dir = _two_attempts(tmp_path, monkeypatch, "10", failed_from=2)
+    (data_dir / "rows.jsonl").write_text("".join(json.dumps(r) + "\n" for r in ordered[0]["rows"]))
+    monkeypatch.setattr(v, "materialize", _materialized(data_dir))
+    monkeypatch.setattr(v, "PRE_1079_KEYS", frozenset())
+    h.check_within_campaign("10", _markers(ordered[:1]))
+    monkeypatch.setattr(v, "PRE_1079_KEYS", frozenset({"10"}))
+    monkeypatch.setattr(v, "materialize", lambda *a: pytest.fail("a pre-#1079 key reads nothing"))
+    h.check_within_campaign("10", {"0" * 32: {"k": 1}})
+
+
+def test_the_harness_runs_the_within_campaign_bar_before_any_marker(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(h._provenance, "assert_repo_interpreter", lambda *a, **k: None)
+    monkeypatch.setattr(h._provenance, "executed_code_provenance", lambda *a, **k: {})
+    monkeypatch.setattr(h._provenance, "append_refusal", lambda *a, **k: None)
+    monkeypatch.setattr(h, "take_lock", lambda exp: None)
+    monkeypatch.setattr(h, "check_on_main", lambda rows_file: None)
+    monkeypatch.setattr(h, "check_campaign", lambda exp: None)
+    monkeypatch.setattr(h, "read_rows", lambda path: [])
+    monkeypatch.setattr(h, "remote_markers", lambda exp: {"0" * 32: {"k": 1}})
+    seen = []
+
+    def refuse(exp, markers):
+        seen.append((exp, markers))
+        raise h.Refused("an earlier attempt leaked (#1079)")
+
+    monkeypatch.setattr(h, "check_within_campaign", refuse)
+    pushed = []
+    monkeypatch.setattr(h, "push_marker", lambda *a, **k: pushed.append(a))
+    assert h.main(["run", "--exp", "09", "--write-experiment-results"]) == 2
+    assert "#1079" in capsys.readouterr().err and pushed == [] and seen == [("09", {"0" * 32: {"k": 1}})]
+
+
+def test_the_verdict_writer_prints_a_within_campaign_leak(monkeypatch, capsys, tmp_path) -> None:
+    """N3: the verdict reports (stderr), the gate refuses; the exit code stays the verdict's."""
+    monkeypatch.setattr(v, "judge", lambda exp, ordered, root: {
+        "verdict": "PASS", "deciding_attempt": "b", "attempts": [], "experiment": exp,
+        "within_campaign_leaks": [["a", 1, ["P0"]]], "within_campaign_leak_notes": ["attempt 1: P0 leaked"]})  # fmt: skip
+    rows = tmp_path / "rows.jsonl"
+    rows.write_text(json.dumps({"record_kind": "harness_row", "mock": True, "ts": 1.0,
+                                "provenance": {"harness_run_id": "a"}}) + "\n")  # fmt: skip
+    assert v.main(["--exp", "09", "--data", str(rows), "--json", str(tmp_path / "v.json"), "--offline"]) == 0
+    assert "WITHIN-CAMPAIGN LEAK (#1079" in capsys.readouterr().err
+    written = json.loads((tmp_path / "v.json").read_text())  # S1: the prose (host paths, exception text) stays off disk
+    assert written["within_campaign_leaks"] == [["a", 1, ["P0"]]] and "within_campaign_leak_notes" not in written
+
+
+def test_the_harness_refuses_when_mains_rows_cannot_be_read(tmp_path, monkeypatch, capsys) -> None:
+    """A malformed rows line on origin/main is a refusal (exit 2), never a ValueError traceback."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "rows.jsonl").write_text('{"record_kind": "harness_row"\n')
+    monkeypatch.setattr(v, "PRE_1079_KEYS", frozenset())
+    monkeypatch.setattr(v, "materialize", _materialized(src))
+    with pytest.raises(h.Refused, match="cannot be read"):
+        h.check_within_campaign("09", {"0" * 32: {"k": 1}})
+    monkeypatch.setattr(h._provenance, "assert_repo_interpreter", lambda *a, **k: None)
+    monkeypatch.setattr(h._provenance, "executed_code_provenance", lambda *a, **k: {})
+    monkeypatch.setattr(h._provenance, "append_refusal", lambda *a, **k: None)
+    monkeypatch.setattr(h, "take_lock", lambda exp: None)
+    monkeypatch.setattr(h, "check_on_main", lambda rows_file: None)
+    monkeypatch.setattr(h, "check_campaign", lambda exp: None)
+    real_read_rows = h.read_rows  # the materialized copy of main is read for real; the local rows file is empty
+    monkeypatch.setattr(h, "read_rows", lambda path: [] if Path(path).is_relative_to(REPO) else real_read_rows(path))
+    monkeypatch.setattr(h, "remote_markers", lambda exp: {"0" * 32: {"k": 1}})
+    pushed = []
+    monkeypatch.setattr(h, "push_marker", lambda *a, **k: pushed.append(a))
+    assert h.main(["run", "--exp", "09", "--write-experiment-results"]) == 2
+    assert "REFUSED" in capsys.readouterr().err and pushed == []
