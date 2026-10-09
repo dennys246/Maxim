@@ -1,8 +1,24 @@
 # Temporal Credit Validation — Experiment Results
 
 > **Status (audit 2026-09-13): STALE** — protocol + runner shipped ~2026-04 (commit 6dccd363)
-> but the 4-set run was never executed; every Result cell still reads TBD and no data exists
-> under `data/` or `results/`.
+> but the 4-set run was never executed (wrong: it ran and produced no evidence, see the 2026-10-08
+> correction below); every Result cell still reads TBD and no data exists under `data/` or `results/`.
+>
+> **Corrected 2026-10-08 (1.4 grounding line, GL0 truth pass): it ran, and produced no evidence.**
+> "Never executed" was wrong. The runner (`scripts/temporal_credit_validation.sh`) was executed about
+> **19 times on the owner's Mac on 2026-04-24/25** while the script was being debugged (results
+> directories `~/.maxim/experiments/temporal_credit_20260424_*` / `temporal_credit_20260425_*`, local
+> only, never committed): mostly Sim Set 1 (dragon → mage), one run with Sets 2–3. **No result was ever
+> recorded here.** A scan of the most complete runs' JSONL found **zero** temporal-credit,
+> `credit_node`, `reward_bias` or `credit_goal` entries, and the reports carry `_llm_unavailable`
+> fallbacks. The runs are unstamped (no code-under-test, model or context provenance), so they are weak
+> evidence and **cannot hold a status** in either direction (CLAUDE.md, weak evidence never gates).
+> Set 1's headline `[DANGEROUS]` criterion cannot pass by construction (#910, below). **What is owed:**
+> a redesigned, pre-registered run of the SCN phase-similarity fallback credit (Hypothesis 3), with a
+> four-lens design review first ([DESIGN_REVIEW.md](DESIGN_REVIEW.md)); [#1180](https://github.com/dennys246/Maxim/issues/1180). Until it lands,
+> the `[behavioral]` SCN-coupling stub in [docs/agents/bio-memory.md](../agents/bio-memory.md) that
+> cites this doc is marked **evidence PENDING** (owner decision 2026-10-08: run the experiment rather
+> than demote the tag).
 
 **Plan:** [temporal_credit_integration.md](../plans/archive/temporal_credit_integration.md)
 **Protocol:** [temporal_credit_validation.md](protocols/temporal_credit_validation.md)

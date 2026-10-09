@@ -4,9 +4,14 @@ Implements MemoryLayer ABC for semantic knowledge: facts, concepts,
 entities, and their typed relationships.  Structurally mirrors
 Hippocampus but stores SemanticMemory instead of EpisodicMemory.
 
-Brain mapping: The ATL integrates multimodal information into unified
-semantic representations.  It captures *what things mean* rather than
-*what happened* (episodic) or *how to compute* (angular gyrus).
+Brain mapping: In the brain the ATL is a cross-modal semantic hub that
+integrates multimodal information into unified semantic representations.
+It captures *what things mean* rather than *what happened* (episodic) or
+*how to compute* (angular gyrus).  **Here it is not cross-modal:** concepts
+are keyed by name, substrate concepts are per-modality, and no edge links a
+text node to a sensor-cluster concept (``Hippocampus.retrieve_cross_modal``
+has no ``src/`` caller; the binding graph is inert, bugs ledger D6).
+Planned: the 1.4 grounding line (``docs/plans/grounding.md``).
 
 Concepts are promoted from episodes (via NAc reward signals and
 StatisticianAgent pattern confirmation) or ingested directly (RAG).

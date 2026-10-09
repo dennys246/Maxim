@@ -35,7 +35,7 @@
 - **G8** The Receptor registry lands **with** provenance (one stage, GL3.B1), whose consumers are GL5's
   experiment and the forward model's contamination guard. The nociceptive-fast preemption slice (GL3.B4)
   becomes a declared 1.4 rung arm, or waits for one (the owner names the rung later). The timing defects
-  L1, L2, L5 and the dead preemption scaffolding L7 (§3.4, §3.5) are **to be filed as defect issues now**;
+  L1, L2, L5 and the dead preemption scaffolding L7 (§3.4, §3.5) are **filed as defect issues** (#1176 L1, #1177 L2, #1178 L5, #1179 L7);
   each is fixable without the registry.
 
 **Owns (proposed):** a new `src/maxim/perception/` package (the name `archive/thalamus_relay_design_pass.md`
@@ -273,7 +273,7 @@ cancels `pending_action_followup` and any pending proposal whose `strategy_used`
 
 ### 3.4 The delays, L1–L6 (code-read; magnitudes UNVERIFIED until GL3.B0 characterizes them)
 
-**L1, L2 and L5 (and L7, §3.5) are to be filed as defect issues now (owner decision G8).** Each is
+**L1, L2 and L5 (and L7, §3.5) are filed as defect issues (owner decision G8): #1176 L1, #1177 L2, #1178 L5, #1179 L7.** Each is
 fixable without the registry. Each issue names the root-cause seam its fix belongs in, and the issue's
 review checks that the fix is not one of the special cases §4.2 warns about. Whether L1's fix is itself a
 preemption check, and so the GL3.B4 arm, is the L1 issue's first question. The tracks (§5) later re-house
@@ -747,7 +747,7 @@ provenance dict is recommended.
 | DefaultNetwork 30 Hz thread | **Left alone.** It is a hardware-edge reflex loop on the robot. Under G4, `deferred/hybrid_substrate_reflex_runtime.md` keeps its robot trigger. "DN consumes the `reflex` track through an outbox" is recorded there as a note, not as a trigger change. |
 | `embodiment/percepts.py::EmbodimentPerceptSource` (Dormant since 2026-07-14) | **Stays Dormant.** The registry makes it unnecessary. It is not resurrected. |
 | `SensoryTag.perceived_intensity` / `modulated_by` (no producer) | `relay_gain` is the real per-route gain. Owner decision: mark the field Dormant/dead, or wire it from `relay_gain`. Not a stage gate. |
-| **`runtime/preemption.py::PreemptionCircuit`, `ExecutionTracker`, `wire_preemption`, the `check_hold` branch, the `capture_before` guard** | **Dead (never ran); defect L7, to file as an issue.** Owner decision at GL3.B0 (TR1). **Recommended (strict, dormancy over deletion):** mark them `Dormant since 2026-10-07` in the module docstring; callers and re-exports stay; `AfferentTrackSpec` borrows `SourceConfig`'s vocabulary without importing it. Non-strict alternative: delete them, which removes the `PreemptionCircuit` / `ExecutionTracker` re-exports from `maxim.runtime` (a CHANGELOG line). The scheduler lives in `perception/`, not in this module. |
+| **`runtime/preemption.py::PreemptionCircuit`, `ExecutionTracker`, `wire_preemption`, the `check_hold` branch, the `capture_before` guard** | **Dead (never ran); defect L7, [#1179](https://github.com/dennys246/Maxim/issues/1179).** Owner decision at GL3.B0 (TR1). **Recommended (strict, dormancy over deletion):** mark them `Dormant since 2026-10-07` in the module docstring; callers and re-exports stay; `AfferentTrackSpec` borrows `SourceConfig`'s vocabulary without importing it. Non-strict alternative: delete them, which removes the `PreemptionCircuit` / `ExecutionTracker` re-exports from `maxim.runtime` (a CHANGELOG line). The scheduler lives in `perception/`, not in this module. |
 
 ### 5.9 Behaviour tiers
 
@@ -1093,8 +1093,8 @@ cited as such in §5.10.
 ## 11. Open owner decisions (each asked at the named stage's start; strict option is the default recommendation where one exists)
 
 Decided, not re-opened: G6 (narrated is discounted, never experienced; the discount value is GL4's
-start decision), G8 (registry with provenance; GL3.B4 a declared arm or waits; L1/L2/L5/L7 to file as
-issues), and the identity contract (`PhysicalEventId` from GL2a; one seq authority per agent; seq
+start decision), G8 (registry with provenance; GL3.B4 a declared arm or waits; L1/L2/L5/L7 filed as
+#1176–#1179), and the identity contract (`PhysicalEventId` from GL2a; one seq authority per agent; seq
 persisted per agent from GL2a; the orchestrator thread a declared edge).
 
 | # | Decision | At | Recommendation |

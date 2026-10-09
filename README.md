@@ -72,8 +72,8 @@ Maxim's architecture is modelled on brain systems, not software patterns:
 | **NAc** (nucleus accumbens) | Reward and punishment learning | Causal links from actions to outcomes, reward bias, situation-keyed fear |
 | **EC** (entorhinal cortex) | Pattern separation and completion | Encodes sensor state into situation clusters |
 | **ATL** (anterior temporal lobe) | Semantic concepts | Forms and reinforces concepts from experience |
-| **SCN** (suprachiasmatic nucleus) | Circadian clock | Temporal phase tracking, anticipatory credit |
-| **Angular Gyrus** | Cross-modal binding | Associative retrieval across episodes |
+| **SCN** (suprachiasmatic nucleus) | Circadian clock | Temporal phase tracking and time-anchored credit fallback |
+| **Angular Gyrus** | Arithmetic-fact retrieval (posterior parietal) | Math layer: exact arithmetic and math-fact memory, used to ground ATL concept statistics |
 | **PainBus** | Nociception | Pain signals from the body, which drive NAc learning |
 | **Default Network** | Resting-state network | Novelty detection, arousal, reactive behaviours |
 
@@ -102,7 +102,9 @@ hunger:
 ```
 
 Contact, touch and narrated events all converge on one pipeline: sensor change → failure evaluation →
-PainBus → NAc learning. In the Minecraft world the game owns the drives (hunger drains, air runs out)
+PainBus. Whether that pain reaches NAc learning depends on its intensity and class: the infant's
+touch-burn, for one, is a weak drive pain below every learner's threshold
+([#1161](https://github.com/dennys246/Maxim/issues/1161)). In the Minecraft world the game owns the drives (hunger drains, air runs out)
 and the pain comes from the game, not from a model.
 
 ## Sharing what an agent learned
