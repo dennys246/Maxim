@@ -146,7 +146,9 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
     innate-prior tier.
   - **Subsumes** [grounded_language_acquisition.md](grounded_language_acquisition.md) for grounding,
     and [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md) (owner decision
-    G5). Narrated consequences are stamped `narrated` and used at a declared discount (G6).
+    G5). Narrated consequences are stamped `narrated` and used at a declared discount (G6); harness writes
+    to a drive (rescue, heal, respawn, teacher and mother feeds) are `apparatus`, recorded and never
+    trained on or credited (G16, 2026-10-09, from the GL1 design review).
 - [autonomic_layer.md](autonomic_layer.md) — **PROPOSED 2026-10-07, plan only (GL2).** The signed
   body-consequence record, `InteroceptiveOutcome` (deviation, pain, relief, urgency), the predictor targets.
   - **The regulatory defects the audit found:** no heat corrective need; an infant touch-burn that
@@ -159,7 +161,10 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
     decision at GL2c's start.
 - [thalamic_relay.md](thalamic_relay.md) — **PROPOSED 2026-10-07, plan only (GL3).** One registration
   contract for percept sources (`Receptor`) and the afferent pathways they emit onto (`AfferentTrack`).
-  - One physical event fans out under a shared, deterministic `PhysicalEventId` (agent, seq).
+  - One physical event fans out under a shared, deterministic `PhysicalEventId` (agent, seq; since
+    G15, 2026-10-09, agent, session id, seq). Since G17 (2026-10-09) GL2a mints no id: the type, the
+    per-agent sequencer, its session-id source and the cross-session resume land together at a
+    post-fence resume stage, before GL4 S1.
   - Tracks are logical channels on the loop clock, never OS threads.
   - The registry enters with its consumer (owner decision G8): it lands in one stage with provenance
     on the write path (GL3.B1), registering the existing receptors byte-identically. The first track

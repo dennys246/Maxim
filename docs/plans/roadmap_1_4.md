@@ -460,13 +460,13 @@ predictor is created.
 | Stage | What | Phase 5 slot / existing owner | When |
 |---|---|---|---|
 | GL0 — truth | the state page, the claim corrections, and the honest #1120 test fix (its own PR) | — (T8) | now: docs, tests, docstrings |
-| GL1 — paper | the four plans and their four-lens reviews; the L0 gate, read as the innate-prior measurement; a name-vs-consequence census over the shipped affordances | — (T8) | now: paper and offline |
-| GL2a — autonomic, record-only | the signed body-consequence record, `InteroceptiveOutcome` (deviation, pain, relief, urgency), produced beside `evaluate_failures` in `embodiment/body.py`; recorded, and nothing reads it to act | the producer side of the relief store (record only) | now: outside the fence (owner decision G1) |
+| GL1 — paper | the four plans and their four-lens reviews; the L0 gate, read as the innate-prior measurement only (G20: PASS or FAIL moves nothing); a name-vs-consequence census over the shipped affordances | — (T8) | now: paper and offline |
+| GL2a — autonomic, record-only | the signed body-consequence record, `InteroceptiveOutcome` (deviation, pain, relief, urgency), on the **tool path only** (G9): scoped to the invoked affordance's declared drives, net of declared drift, with relief and harm following need (G14, G11); **no event id** (G17: `PhysicalEventId`, the per-agent sequencer, its session-id source and the cross-session resume land together at a post-fence resume stage before GL4 S1, and GL2a records are never training data); a `repr=False` field (#1189); recorded, and nothing reads it to act. The out-of-band record lands after the fence | the producer side of the relief store (record only) | now: outside the fence (owner decisions G1, G14) |
 | GL2b — regulatory fixes | a heat corrective need; burn as pain (a `NociceptorSpec`; where it is declared is an owner decision at GL2b's start, with a variant body the strict-default recommendation); valence keyed on the cause, after [#1161](https://github.com/dennys246/Maxim/issues/1161) | none: these are defects, one issue each, in the nociception vocabulary ([deferred/nociception_layer.md](deferred/nociception_layer.md), revived into autonomic_layer.md) | after GL2a; fenced where it touches the loop |
-| GL2c — the positive producer | satiation / relief: the Reaction `EntropicDriveSpec` promised and nobody built; off by default, it fires T1-11, T1-12 and T1-13/14/15 under any routing and lands only with a batched live re-run of Exp 60/61/62 (+ the T1-11 and T1-12 arguments or re-runs; owner decision G7) | **the cluster-keyed relief store**, with [fear_learning.md](fear_learning.md) Exp A and [coding_world.md](coding_world.md) C3's reserved sign | after R4's routing audit |
+| GL2c — the positive producer | satiation / relief: the Reaction `EntropicDriveSpec` promised and nobody built; off by default, it fires T1-11, T1-12 and T1-13/14/15 under any routing and lands only with a batched live re-run of Exp 60/61/62 (+ the T1-11 and T1-12 arguments or re-runs; owner decision G7); harness-made crossings (rescue, heal, respawn, teacher and mother feeds) are `apparatus` and deliver nothing (G16), and the re-run reports satiation counts per arm and per cause | **the cluster-keyed relief store**, with [fear_learning.md](fear_learning.md) Exp A and [coding_world.md](coding_world.md) C3's reserved sign | after R4's routing audit |
 | GL3 — relay | GL3.B0, the census (ingress inventory, red gates; tests only) first; then GL3.B1, the `Receptor` registry over the existing sources, byte-identical, landing **with** provenance on the write path, whose consumers are GL5's experiment and the forward model's contamination guard (owner decision G8); GL3.B2, the handoff to GL4. The first `AfferentTrack` slice, GL3.B3, is the thermal dual-track fan-out (`nociceptive_fast` + `affective_slow`, one shared pid reaching credit), behind a flag, with no preemption; it needs GL2b's `NociceptorSpec` and carries the seq-authority handover as its stage gate. Nociceptive-fast preemption in substrate-primary, GL3.B4, enters only as a **declared 1.4 rung arm** (the owner names the rung). GL3.B5–B8 (text receptors, the `reflex` track, LLM-primary + the wake hook, hardware edges) each wait for a rung that names them. The timing defects L1, L2, L5 and L7 are to file as defect issues, fixable without the registry | none: infrastructure, entering only with its consumer (decision 5) | GL3.B0 runs now (tests only, inside the fence); GL3.B1 onward after the decomposition fence |
-| GL4 — latent forward model | S0a audit; S0b paired-data capture audit; S1 Cerebellum target fix; S2 offline predictor; S3 session-end retrain + guards; S4 opt-in consequence EC modality | **the graded predictor**: S0a is the audit §Phase 5 mandates | GL4 S0a (audit) and the paper run now; S0b needs a fresh capture (a sim run); S1 is `src/` inside G1's fence exemption and waits only for GL2a; S3 and S4 wait for the fence (owner decision G1) |
-| GL5 — the first claim | consequence similarity transfers learned value where names differ and blocks it where names collide; successor candidate to T1-5 | T9 | four-lens prereg review; sim |
+| GL4 — latent forward model | S0a audit; S0b paired-data capture audit; S1 Cerebellum target fix; S2 offline predictor; S3 session-end retrain + guards; S4 opt-in consequence EC modality | **the graded predictor**: S0a is the audit §Phase 5 mandates | GL4 S0a (audit) and the paper run now; S0b needs a fresh capture (a sim run); S1 is `src/` inside G1's fence exemption and waits for GL2a and the post-fence pid resume (G15); S3 and S4 wait for the fence (owner decision G1) |
+| GL5 — the first claim | consequence similarity transfers learned value where names differ and blocks it where names collide; successor candidate to T1-5, living in the **cradle** (G19: the GL1 census found every harm-class collision in a cradle `touch` / `warm_self` variant). **An acquired-equivalence design** (owner decision G13): authored items whose sensed readings and consequences disagree, experience of each required, gated against a no-learning sensed-similarity baseline; the jet triad is a control, and the Minecraft arm tests consequence prediction, not transfer | T9 | four-lens prereg review; sim |
 | GL6 — a selection consumer | the predicted consequence enters `recommend_action` as a **declared arm** | R4's selection surface | only if GL5 earns; rig re-runs after E3 |
 
 **It depends on R4.** The line routes no consequence-credited value to the selection surface before R4's
@@ -498,13 +498,15 @@ decision (1).
   are never OS threads) and M41 (forward-model training data carries provenance and the narrated
   discount), in [outstanding.md](outstanding.md).
 - Narrator-written consequences are `narrated`, never `experienced`, and are used at a declared
-  discount (owner decision G6).
+  discount (owner decision G6). Harness writes to a drive are `apparatus`: recorded, never trained on,
+  never credited (owner decision G16, 2026-10-09).
 
 **Blast radius, in short** (the full walk is in grounding.md):
 - **No earned row fires** for GL0, or for GL4 S0–S2 while it has no consumer.
 - **GL2a** is not a no-op for the ledger: it adds `EncodingSignals.extra["interoception"]` to every loop
   capture, which `EncodingSignals.to_dict` persists, so T1-16's "memory record shape" fires by wording
-  (a structural walk), as does GL4 S1's `extra["context"]`.
+  (a structural walk that also covers the substring recall path, #1189), as does GL4 S1's
+  `extra["context"]`.
 - **GL2b** fires T1-6 (functionally), T1-9/T1-10 only if a shared infant body changes, the wording of
   T1-13's drive floor, and T3-9; its cause-keyed rows are a live LLM-path change (they reach the
   ThoughtGate and enrichment through `learned_aversions`) and fire T1-14's bundle-scrub wording.
@@ -629,7 +631,11 @@ frozen status verbatim; **EARNED** per rung = every frozen gate of that rung's p
   Any grounding `src/` stage that ships before the cut (GL2a, GL4 S1, GL3.B1, the registry+provenance stage)
   is walked under T4. If it has no
   consumer, it is handled under T4a. T8 carries no behavioural claim, and no earned row's trigger fires.
-- **T9 (conditional) — the first grounding claim** (GL5; GL6 only if GL5 earns). Same rule as T5/T6:
+- **T9 (conditional) — the first grounding claim** (GL5; GL6 only if GL5 earns). Its claim is unchanged,
+  and it is tested by an acquired-equivalence design (owner decision G13, 2026-10-09): items whose sensed
+  readings and consequences disagree, experience of each item required, and the model gated against a
+  no-learning sensed-similarity baseline, so a PASS cannot be produced by perceptual similarity alone.
+  The jet triad is a control for generalisation from sensed features. Same rule as T5/T6:
   it ships in 1.4.0 only if its outcome is recorded by the time T1–T4, T7 and T8 hold, otherwise in
   1.4.x. A recorded null ships as a null; an unrun GL5 is neither claimed nor a failure. **It is never
   co-headlined with E3** (owner). The release name and headline follow the rule below, which reads the
@@ -711,14 +717,18 @@ until the 1.3.2 decomposition slices touching it have landed.
    - GL1's four plans and their four-lens reviews, the L0 gate (item 2) and the name-vs-consequence
      census;
    - GL3.B0, the relay's census and red gates (tests only, inside the fence);
-   - GL4 S0a (audit) and the paper. GL4 S0b needs a fresh capture (a sim run). GL4 S1 waits only for
-     GL2a (exempt set below); GL4 S3 and S4 are `src/` and wait for the fence; GL4 S2 is offline
+   - GL4 S0a (audit; it **is** Phase 5's mandated audit, G18) and the paper. GL4 S0b needs a fresh
+     capture (a sim run). GL4 S1 waits for GL2a (exempt set below) and for the post-fence resume stage
+     that builds the event id and its cross-session resume (G15, G17), so it lands after the fence and
+     its exemption is moot; GL4 S3 and S4 are `src/` and wait for the fence; GL4 S2 is offline
      (`scripts/`).
 
-   GL2a may also land now, and GL4 S1 after it (owner decision G1). The exempt file set, exactly: GL2a
-   edits `embodiment/body.py`, `embodiment/sem.py`, the new leaf `embodiment/event_id.py`,
-   `runtime/executor.py` (`Executor._stamp_invocation` only), `tools/base.py::ToolOutput` and
-   `runtime/bio_integration.py`; GL4 S1 edits `embodiment/tool_bridge.py` (the `ActionContext` assembly and the observe call), `embodiment/cerebellum.py` (payload `"1.2"`, the new payload key, `import_state` refusing newer versions), `runtime/executor.py` (`Executor._stamp_invocation` only), `runtime/bio_integration.py` (`EncodingSignals.extra["context"]` at the loop capture) and the new leaf `embodiment/action_context.py` (the `ActionContext` type). Every other grounding `src/` change waits for the
+   GL2a may also land now, and GL4 S1 after it and the resume stage (owner decisions G1, G15, G17). The
+   exempt file set, exactly: GL2a
+   edits `embodiment/body.py`, `embodiment/sem.py`,
+   `runtime/executor.py` (`Executor._run_started` and `Executor._stamp_invocation`, G14),
+   `tools/base.py::ToolOutput` and
+   `runtime/bio_integration.py` (the leaf `embodiment/event_id.py` left the set by G17); GL4 S1 edits `embodiment/tool_bridge.py` (the `ActionContext` assembly and the observe call), `embodiment/cerebellum.py` (payload `"1.2"`, the new payload key, `import_state` refusing newer versions), `runtime/executor.py` (`Executor._stamp_invocation` only), `runtime/bio_integration.py` (`EncodingSignals.extra["context"]` at the loop capture) and the new leaf `embodiment/action_context.py` (the `ActionContext` type). Every other grounding `src/` change waits for the
    decomposition slices.
 
 **Rig order (Track C)** — one rig, one operator; no live run on code that is still moving:
@@ -858,10 +868,12 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   line-wide.
 - **The grounding line lapses an earned row's discharge and adds a second may-fail line.**
   - GL2c's positive producer makes T1-13's #888 reasoning false and, under any routing, fires T1-11,
-    T1-12, T1-14 and T1-15 too (the Minecraft breach latches clear at Exp 60's own contingency). Mitigation:
-    off by default, the executing survival checks unchanged with it off, the staged-donor refusals
-    restated, and one batched live re-run of Exp 60/61/62 (+ the T1-11 and T1-12 arguments or
-    re-runs).
+    T1-12, T1-14 and T1-15 too (the Minecraft breach latches clear on the earned bodies; on the earned
+    campaigns the apparatus makes those crossings, G7 as amended 2026-10-09). Mitigation:
+    off by default, the executing survival checks unchanged with it off, `apparatus` crossings
+    delivering nothing (G16), the staged-donor refusals restated, and one batched live re-run of Exp
+    60/61/62 (+ the T1-11 and T1-12 arguments or re-runs) reporting satiation counts per arm and per
+    cause.
   - A GL5 null and an E3 null in one release would each be unreadable. Mitigation: T9 is conditional
     and never co-headlined, and M10 is amended.
 
@@ -923,6 +935,16 @@ Exp 55 leaves the Shared-perception deferral), [outstanding.md](outstanding.md) 
     E7 pointer line in [engram_formation.md](engram_formation.md);
   - [outstanding.md](outstanding.md): M39, M40 and M41 added, M10 amended;
   - DECISIONS.md: the 2026-10-07 record.
+
+*2026-10-09 (GL1 design review, owner decisions G9–G16):* §The grounding line's GL2a, GL2c, GL4 and GL5
+rows, its rules list and its blast-radius line; T9's design note; Groundwork item 6's exempt set (G14)
+and GL4 S1's dependency (G15); the grounding risk line (G7's description corrected, G16). The record is
+DECISIONS.md 2026-10-09; the fold is [grounding.md](grounding.md) §GL1.
+
+*2026-10-09 (GL1 code review, owner decisions G17–G20):* GL2a's row and Groundwork item 6 (no event id at
+GL2a; the type, sequencer, session-id source and resume land together at the post-fence resume stage,
+G17; `embodiment/event_id.py` leaves the exempt set; GL4 S1's exemption is moot); GL4 S0a is Phase 5's
+audit (G18); the GL5 claim lives in the cradle (G19); the L0 gate is a measurement only (G20).
 
 ## Review record (v1 → v2, 2026-09-18)
 

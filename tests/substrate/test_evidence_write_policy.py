@@ -179,6 +179,7 @@ class TestScriptsEvidenceWritePolicy:
         "fine_sweep_phase_2.py",
         "measure_p1_at_threshold.py",
         "diagnose_roy_paraphrase_collapse.py",
+        "grounding_census.py",  # GL1 census (#1167); also refuses on the EC's realized provenance
     )
 
     @staticmethod
