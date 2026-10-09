@@ -18,6 +18,12 @@ observations hold whether the dispatch lives inline in ``agent_loop`` or in ``to
 ``level="supervised"`` routes the proposal through the SUPERVISED confirmation path: the probe tool is
 in ``requires_confirmation`` and interactive mode is OFF, so the loop answers "yes" itself
 (``should_prompt("confirmation")`` is False) and the answer is handled on the next tick.
+
+``level="planning"`` routes it through the PLANNING queue (#1085): the loop queues every proposal, and an
+EMBEDDER approves it (the ``test_approved_proposal_situation_1083`` pattern: ``proposal_queue.submit`` is
+wrapped so the queued proposals are approved, in order, once ``approve_batch`` of them have been queued).
+``forbid`` makes the probe tool a hard ``SafetyConstraints`` forbid; ``pause_on_approve`` pauses the
+controller right after the approval (``emergency_halt``), before the loop drains the queue.
 """
 
 from __future__ import annotations
@@ -48,6 +54,16 @@ class Observed:
     executed: list[dict[str, Any]] = field(default_factory=list)
     proposed: list[str] = field(default_factory=list)
     ctrls: list[Any] = field(default_factory=list)
+    # Every recorder call, whatever its tool (``outcomes`` keeps the probe tool's only).
+    all_outcomes: list[dict[str, Any]] = field(default_factory=list)
+    # Every OTHER NAc call (``update_cluster_reward``, ``credit_goal``, ...), as (method, kwargs).
+    nac_calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
+    # Every ``reset_deliberation`` the think stand-in received (``think_probe=True``).
+    deliberation_resets: list[int] = field(default_factory=list)
+    # The PLANNING arm: the proposals the loop queued, in order.
+    submitted: list[Any] = field(default_factory=list)
+    autonomy: Any = None
+    raised: BaseException | None = None
 
     @property
     def ctrl(self) -> Any:
@@ -56,10 +72,11 @@ class Observed:
 
 
 class _RecordingNAc:
-    """Stands in for the hub's NAc: records every causal observation; every other call is a no-op."""
+    """Stands in for the hub's NAc: records every causal observation, and every other call (as a no-op)."""
 
-    def __init__(self, sink: list[dict[str, Any]]) -> None:
+    def __init__(self, sink: list[dict[str, Any]], calls: list[tuple[str, dict[str, Any]]] | None = None) -> None:
         self._sink = sink
+        self._calls = calls if calls is not None else []
 
     def observe(self, **kw: Any) -> None:
         self._sink.append(kw)
@@ -70,6 +87,7 @@ class _RecordingNAc:
             raise AttributeError(name)
 
         def _noop(*a: Any, **k: Any) -> None:
+            self._calls.append((name, dict(k)))
             return None
 
         return _noop
@@ -82,7 +100,7 @@ class _Hub:
         from maxim.runtime.substrate_proposal import NO_SITUATION_CUE
 
         self.agent_id = HUB_AGENT_ID
-        self.nac = _RecordingNAc(obs.nac_observations)
+        self.nac = _RecordingNAc(obs.nac_observations, obs.nac_calls)
         self.ec = None
         self.hippocampus = None
         self.situation_cue = NO_SITUATION_CUE
@@ -161,9 +179,29 @@ def run_once(
     then_propose: str | None = None,
     submit_interval: float | None = None,
     max_steps: int = 6,
+    fail_unless_overwrite: bool = False,
+    think_probe: bool = False,
+    approve_batch: int = 1,
+    forbid: bool = False,
+    pause_on_approve: bool = False,
+    record_raises_for: str | tuple[str, ...] | None = None,
+    catch: bool = False,
+    active_goal: str | None = None,
+    policy: dict[str, Any] | None = None,
+    tool_raises: type[BaseException] | None = None,
 ) -> Observed:
-    """Run the loop until the one proposal has been executed (and, supervised, confirmed)."""
-    from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
+    """Run the loop until the one proposal has been executed (and, supervised, confirmed).
+
+    ``fail_unless_overwrite``: the probe fails as ``write_file`` does on an existing file, unless it is
+    called with ``overwrite=True``. ``think_probe``: a ``think`` stand-in is registered, recording
+    ``reset_deliberation``. ``record_raises_for``: the outcome recorder raises for that tool, or
+    those tools (after recording the call; the message names the tool). ``catch``: an exception out of the loop is kept in ``Observed.raised``.
+    ``active_goal``: the state's active goal, so a credit booked against the NAc also credits the goal.
+    ``policy``: the PLANNING controller's ``SupervisionPolicy`` fields (its hard denials, for instance).
+    ``tool_raises``: the probe tool raises this (a ``KeyboardInterrupt``, say) instead of returning; with
+    ``catch``, any ``BaseException`` out of the loop is kept in ``Observed.raised``.
+    """
+    from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SafetyConstraints, SupervisionPolicy
     from maxim.agents.llm_types import LLMProposal
     from maxim.agents.maxim_agent import MaximAgent
     from maxim.environment.filesystem_env import FileSystemEnv
@@ -189,10 +227,31 @@ def run_once(
 
         def execute(self, **kwargs: Any) -> Any:
             obs.executed.append({"_tool": tool, **kwargs})
+            if tool_raises is not None:
+                raise tool_raises("probe: the tool raised")
+            if fail_unless_overwrite and not kwargs.get("overwrite"):
+                return ToolOutput(success=False, output=None, error=f"File already exists: {kwargs.get('path')}")
             return ToolOutput(success=success, output=output, error=error, side_effects=side_effects)
+
+        def reset_deliberation(self) -> None:
+            obs.deliberation_resets.append(1)
 
     registry = ToolRegistry()
     registry.register(_Probe())
+    if think_probe:
+
+        class _Think(Tool):
+            name = "think"
+            description = "stub"
+            input_schema: dict = {}
+
+            def execute(self, **kwargs: Any) -> Any:
+                return ToolOutput(success=True, output="thought")
+
+            def reset_deliberation(self) -> None:
+                obs.deliberation_resets.append(1)
+
+        registry.register(_Think())
     if then_propose is not None:
 
         class _Second(Tool):
@@ -232,8 +291,12 @@ def run_once(
     real_record = AL._record_outcome
 
     def _spy_record(**kw: Any) -> Any:
+        obs.all_outcomes.append(dict(kw))
         if kw.get("tool_name") == tool:
             obs.outcomes.append(dict(kw))
+        raising = (record_raises_for,) if isinstance(record_raises_for, str) else (record_raises_for or ())
+        if kw.get("tool_name") in raising:
+            raise RuntimeError(f"probe: the recorder broke on {kw.get('tool_name')}")
         return real_record(**kw)
 
     monkeypatch.setattr(substrate_proposal, "propose_via_substrate", _propose)
@@ -277,8 +340,29 @@ def run_once(
             initial_level=AutonomyLevel.SUPERVISED,
             supervision_policy=SupervisionPolicy(requires_confirmation={tool}, min_confidence_autonomous=0.0),
         )
+    elif level == "planning":
+        controller = AutonomyController(
+            initial_level=AutonomyLevel.PLANNING,
+            safety_constraints=SafetyConstraints(forbidden_tools=frozenset({tool})) if forbid else None,
+            supervision_policy=SupervisionPolicy(**policy) if policy else None,
+        )
+        pq = controller.proposal_queue
+        real_submit = pq.submit
+
+        def _submit_then_approve(proposal: Any) -> None:
+            # The embedder: approves the queued proposals, in order, once ``approve_batch`` are queued.
+            real_submit(proposal)
+            obs.submitted.append(proposal)
+            if len(obs.submitted) % approve_batch == 0:
+                for queued in obs.submitted[-approve_batch:]:
+                    assert pq.approve(queued.id, approved_by="test:embedder")
+                if pause_on_approve:
+                    controller.emergency_halt("probe: paused after the approval")
+
+        monkeypatch.setattr(pq, "submit", _submit_then_approve)
     else:
         raise ValueError(level)
+    obs.autonomy = controller
 
     env = FileSystemEnv(str(tmp_path / "ws"))
     (tmp_path / "ws").mkdir(exist_ok=True)
@@ -292,23 +376,42 @@ def run_once(
 
     state = RuntimeState()
     state.data["mode"] = "active"
-    AL.run_agentic_loop(
-        MaximAgent(),
-        env,
-        state,
-        build_memory(),
-        build_decision_engine(),
-        executor,
-        autonomy_controller=controller,
-        hippocampus=_Hippocampus(obs, raises=capture_raises),
-        memory_hub=_Hub(obs),
-        aut_mode="substrate-primary",
-        max_steps=max_steps,
-        target_hz=200.0,
-        idle_sleep_s=0.0,
-        stop_event=threading.Event(),
-    )
+    if active_goal is not None:
+        state.data["active_goal"] = active_goal
+    try:
+        AL.run_agentic_loop(
+            MaximAgent(),
+            env,
+            state,
+            build_memory(),
+            build_decision_engine(),
+            executor,
+            autonomy_controller=controller,
+            hippocampus=_Hippocampus(obs, raises=capture_raises),
+            memory_hub=_Hub(obs),
+            aut_mode="substrate-primary",
+            max_steps=max_steps,
+            target_hz=200.0,
+            idle_sleep_s=0.0,
+            stop_event=threading.Event(),
+        )
+    except BaseException as exc:
+        if not catch:
+            raise
+        obs.raised = exc
     return obs
+
+
+def audit_view(obs: Observed, action_type: str = "executed") -> list[dict[str, Any]]:
+    """The autonomy audit entries of one type, as comparable data (no timestamp)."""
+    out = []
+    for entry in obs.autonomy.get_audit_log():
+        if entry.action_type != action_type:
+            continue
+        d = dict(vars(entry))
+        d.pop("timestamp")
+        out.append(d)
+    return out
 
 
 def credit_view(kw: dict[str, Any], obs: Observed) -> dict[str, Any]:
