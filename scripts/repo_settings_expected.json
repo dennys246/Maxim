@@ -97,6 +97,23 @@
   "ruleset_enforcement": {
     "13705164": "active"
   },
+  "security_and_analysis": {
+    "dependabot_security_updates": {
+      "status": "enabled"
+    },
+    "secret_scanning": {
+      "status": "enabled"
+    },
+    "secret_scanning_non_provider_patterns": {
+      "status": "enabled"
+    },
+    "secret_scanning_push_protection": {
+      "status": "enabled"
+    },
+    "secret_scanning_validity_checks": {
+      "status": "disabled"
+    }
+  },
   "token_environment": {
     "branch_policies": [
       {

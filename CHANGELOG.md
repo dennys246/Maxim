@@ -145,6 +145,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A reloaded body keeps its component state, and a dotted entity key no longer shadows a real sub-sensor**
+  ([#1124](https://github.com/dennys246/Maxim/issues/1124), owner decisions 2026-10-07). `Entity.to_dict` saved an
+  entity's `vital_metrics` but not its modulators' sub-sensor values, and `from_dict` rebuilt every modulator empty, with
+  no integrity function and no damage affinities. After `maxim.load.entity` / `Entity.load`, integrity and derived
+  health stayed at their saved values whatever the body took, and a body saved before its first evaluation reloaded
+  with no `head.integrity` at all. Since a trigger read a missing field as 0.0, an unhurt reloaded humanoid fired
+  `concussion` and `crippled`. Separately, `Embodiment.evaluate_failures` read the entity's `vital_metrics` before its
+  modulators and wrote each derived `<mod>.integrity` there, so a dotted key (that stored integrity, or a pre-#874
+  orphan like `arms.thermal`) shadowed the real value. Now: the Entity file format is **1.1** and each modulator saves
+  its `values`, `integrity` function and `damage_affinities`; integrity is derived on read
+  (`Entity.component_integrities()`, shared by failure triggers, drive telemetry and `get_visible_sensors`) and never
+  stored; a modulator sub-sensor beats a dotted entity key, which is reported once, and a save drops one with a
+  WARNING. Loading a 1.0 file migrates each damaged `<mod>.integrity` onto that modulator's weighted, non-drive
+  sub-sensors (so integrity and health come back as saved; the integrity function, never saved in 1.0, loads as
+  `weighted_mean`) and drops its other dotted keys, with one WARNING per entity. **A
+  failure trigger whose field has no reading no longer fires**, and a recovery condition with no reading no longer
+  clears; each warns once, and parsing an entity warns about a trigger naming a field nothing produces. No shipped
+  body or scenario entity has such a trigger, and integrity values are computed exactly as before. **A 1.1 entity file
+  is not readable by 1.3.1 or earlier**: those builds ignore the saved values and fire integrity triggers on an unhurt
+  body. Still not saved: affordance `params`/`requires`/`self_effect`, latent affordances and failure-mode state
+  (#1159). Follow-ups: #1155 (`host_machine` overheats at rest), #1156 (one sensor resolver), #1159.
+
 - **The drive RECORDS read modulator drives where they live** ([#1125](https://github.com/dennys246/Maxim/issues/1125),
   owner decision 2026-10-08: records only). The infant bodies declare `arms.thermal`, `arms.pressure` and
   `head.thermal` as root drives, but their values live on the `arms`/`head` modulators, and two readers looked a
