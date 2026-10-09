@@ -66,15 +66,14 @@ def get_visible_sensors(entity: Entity, depth: int = 2) -> dict[str, float]:
     """Return the sensor readings visible to the agent at the given depth.
 
     Level 2: entity-level sensors + per-modulator ``integrity`` (single value).
-    Level 3: entity-level sensors + all modulator sub-sensors.
+    Level 3: entity-level sensors + all modulator sub-sensors + each ``integrity``.
     """
     readings: dict[str, float] = {}
 
-    # Entity-level sensors (always visible)
+    # Entity-level sensors (always visible). A dotted key here is never a real
+    # sensor (component state lives on its modulator, #1124), so it is skipped.
     for sname, sval in entity.vital_metrics.items():
-        # Skip computed modulator integrity keys at level 2
-        # (they're exposed as named integrity values below)
-        if "." in sname and depth < 3:
+        if "." in sname:
             continue
         readings[sname] = sval
 
@@ -87,10 +86,11 @@ def get_visible_sensors(entity: Entity, depth: int = 2) -> dict[str, float]:
             # Level 3: expose all sub-sensors
             for ms_name, ms_val in mod.vital_metrics.items():
                 readings[f"{mod_name}.{ms_name}"] = ms_val
-        else:
-            # Level 2: expose only aggregated integrity
-            if hasattr(mod, "compute_integrity"):
-                readings[f"{mod_name}.integrity"] = mod.compute_integrity()
+
+    # Aggregated integrity at every level (level 2 sees only this per modulator),
+    # unless a sub-sensor is itself named ``integrity``.
+    for mod_name, integrity in entity.component_integrities().items():
+        readings.setdefault(f"{mod_name}.integrity", integrity)
 
     return readings
 
