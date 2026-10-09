@@ -4,9 +4,13 @@ Defines SemanticMemory, CompressedSemantic, and supporting types for
 the semantic concept memory layer.  SemanticMemory captures *what things
 mean* — facts, concepts, entities — stripped of the when/where of learning.
 
-Brain mapping: The anterior temporal lobe integrates multimodal information
-into unified semantic representations.  Lesions cause semantic dementia —
-loss of concept knowledge while episodic memory is preserved.
+Brain mapping: In the brain the anterior temporal lobe integrates multimodal
+information into unified semantic representations.  Lesions cause semantic
+dementia — loss of concept knowledge while episodic memory is preserved.
+Here these types are NOT cross-modal: concepts are keyed by name, substrate
+concepts are per-modality, and nothing links a text concept to a
+sensor-cluster concept (see ``memory/atl.py``; planned: the 1.4 grounding
+line, ``docs/plans/grounding.md``).
 """
 
 from __future__ import annotations

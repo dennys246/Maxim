@@ -55,13 +55,9 @@ BARRED_FROM_README = frozenset({"DROPPED", "DORMANT", "TIER-2", "SETUP", "BORDER
 EXEMPT_FROM_INDEX = frozenset({"DROPPED", "TIER-2"})
 #: Tier 1 rows with no experiment entry to cite (R6), pinned to the ledger status they were granted at: when the row
 #: moves, or an index row starts citing it, the exemption is stale and fails.
-NO_INDEX_ENTRY = {
-    "T1-5": (
-        "PARTIAL",
-        "2026-06-15",
-        "a mechanism PoC with no experiment doc; its behavioural claim was pulled (ledger)",
-    )
-}
+#: Empty since 2026-10-08: T1-5, the only exemption, was DROPPED (GL0 of the grounding line), and DROPPED rows are
+#: exempt from R6 by rule.
+NO_INDEX_ENTRY: dict[str, tuple[str, str, str]] = {}
 
 _ANY_MARKER = re.compile(r"<!--\s*claim\b[^>]*-->")
 _MARKER = re.compile(r"<!-- claim: (T\d-\d+) -->")

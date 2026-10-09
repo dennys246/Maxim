@@ -1,6 +1,9 @@
-"""Entorhinal Cortex (EC) - Multi-modal similarity engine.
+"""Entorhinal Cortex (EC) - Multi-dimensional signature similarity engine.
 
-Provides efficient similarity queries across multiple dimensions.
+Provides efficient similarity queries across multiple signature dimensions
+(semantic/structural/temporal hashes). "Multi-modal" here never means
+cross-modal: substrate completion is **per modality** and geometry-masked,
+and there is no cross-modality comparison.
 
 Bio-mapping: FUNCTIONAL. This class decides whether an input matches an
 existing representation or warrants a new one, and the method that does it is
@@ -486,15 +489,16 @@ class PatternResult:
 
 
 class EntorhinalCortex(StoreFileOwnership):
-    """Entorhinal Cortex - Multi-modal similarity engine.
+    """Entorhinal Cortex - Multi-dimensional signature similarity engine.
 
-    Provides efficient multi-modal similarity queries across all memory
+    Provides efficient multi-dimensional similarity queries across all memory
     components. Just as the biological EC serves as the gateway between
     the hippocampus and neocortex, this subsystem enables:
 
     - Indexed signature queries - approximate nearest-neighbor lookup via LSH
     - Substrate pattern completion - exact same-modality centroid scan, O(Nd)
-    - Multi-modal matching - Combine semantic, structural, temporal signals
+    - Multi-dimensional signature matching - combine semantic, structural,
+      temporal hashes (substrate completion never compares across modalities)
     - Composite signatures - Compress features into hashable representations
 
     KNOWN LIMITATION (Phase 2):

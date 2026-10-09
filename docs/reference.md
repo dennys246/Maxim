@@ -138,9 +138,9 @@ Maxim uses neuroscience-inspired names. Here is the translation:
 | Hippocampus | Episodic memory | `memory/` | Stores and recalls experiences (events, conversations) |
 | ATL | Semantic memory | `memory/` | Extracts concepts, categories, and generalizations |
 | NAc | Reward / causal learning | `decisions/` | Learns cause-and-effect relationships ("what leads to what"). `distribute_reward` now wired via ReactionBus subscriber in `build_bio_stack` |
-| SCN | Internal clock | `time/` | Tracks circadian-like temporal patterns and rhythms. Kuramoto oscillator learns event-type co-occurrence for anticipatory temporal credit (B2) |
+| SCN | Internal clock | `time/` | Tracks circadian-like temporal patterns and rhythms; time-anchored credit fallback (`NAc._temporal_anchors`). The Kuramoto oscillator learns event-type co-occurrence, but its anticipatory pre-activation (`TemporalCreditDistributor.anticipatory_pre_activate`, B2) is Dormant since 2026-05-26 (no production caller) |
 | EC | Memory indexing + substrate recognition | `similarity/` | Routes queries via similarity; pattern_complete_or_separate for substrate nodes (P1) |
-| Angular Gyrus | Cross-modal algebra | `math/` | Combines memories across different modalities |
+| Angular Gyrus | Math layer | `math/` | Exact arithmetic and math-fact/method memory, used to ground ATL concept statistics (not cross-modal binding) |
 | Cerebellum | Motor prediction | `embodiment/` | Forward model of physical actions: trains live from SEM affordance outcomes (`observe_from_action` in `embodiment/tool_bridge.py`) via `BioStack.cerebellum`, saved to `<home>/cerebellum.json` at session end (#908). `predict`, motor-program crystallization and motor engrams (Dormant since 2026-10-04, #909) and `CerebellumModulator` (since 2026-05-26) have no production caller |
 | Amygdala / Fear | Threat detection | `proprioception/` | Detects harm, triggers pain signals, gates risky actions |
 | Default Network | Reactive behavior | `default_network/` | Background processing, idle behaviors, spontaneous thoughts |

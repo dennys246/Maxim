@@ -690,7 +690,11 @@ class BioEnrichmentPipeline:
         Three retrieval paths, tried in order:
         1. **Graph path**: encode text → EC pattern complete → retrieve_on_cue
            (spreading activation on binding graph) → reverse index → memories.
-           This is the associative "fire → pain" path.
+           This is the INTENDED associative path, and it is inert in production: it walks
+           ``Hippocampus._binding_graph``, which never grows on the percept path because
+           ``memory/episode.py::apply_hebbian_on_close`` is Dormant (one node per percept, bugs
+           ledger D6; ledger T3-7). Nothing links a "fire" concept to pain here. See
+           ``docs/plans/grounding.md``.
         2. **Index path**: query by goal (when goal matches prior sessions).
            This is the direct cross-session path.
         3. **Substring path**: legacy full-text search (fallback).
@@ -956,6 +960,12 @@ class BioEnrichmentPipeline:
         ``reward_bias`` to ``[0, max]`` (load does not yet, #1102), so harm can only remove the label.
         Harm lives in ``percept_valences`` / ``cluster_fear`` and causal links, which this does not read
         (engram plan E3, option 1 deferred). Tier: learned (positive reward_bias only).
+
+        Lookup is by EXACT chunk name (``atl.recall(name=chunk.text)``): a component close to its
+        compound never forms its own node (it completes into the compound, #1120), and a paraphrase
+        merged into another node's name is invisible. No live producer pays a positive reward into
+        ``credit_node`` (#1120 audit; a loaded state can restore a positive bias via
+        ``NAc.load_state``), so ``[effective]`` is unreachable from live experience today.
         """
         if self._nac is None or self._atl is None:
             return affordance_name
