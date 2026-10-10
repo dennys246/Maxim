@@ -8,8 +8,8 @@ mode by CLASS. ``engage`` stays only when ``get_mode(name)`` is a definition of 
 an unknown name, ``None`` or a passive-class mode gives ``respond`` (fail closed). A template-only change: both types
 queue the same follow-up bookkeeping, and both templates tell the model to answer with ``respond``.
 
-Its own red gates (and its own commit). Each ``xfail(strict=True)`` gate fails on ``main`` for the reason it states;
-the plain tests are guards, green on ``main``.
+Its own red gates (and its own commit), written as ``xfail(strict=True)``, each failing on ``main`` for the reason its
+"Red on main" comment states; the fix flipped them. The tests without one are guards, green on ``main``.
 """
 
 from __future__ import annotations
@@ -21,16 +21,14 @@ from tests.unit._execute_learn_driver import run_once
 
 pytestmark = pytest.mark.timeout(60)
 
-_LITERAL_ONLY = "#963 Q3: only the literal 'passive' downgrades engage"
-
 
 @pytest.mark.parametrize(
     "mode",
     [
-        pytest.param("observe", marks=pytest.mark.xfail(strict=True, reason=_LITERAL_ONLY)),
-        pytest.param("sleep", marks=pytest.mark.xfail(strict=True, reason=_LITERAL_ONLY)),
-        pytest.param("train", marks=pytest.mark.xfail(strict=True, reason=_LITERAL_ONLY)),
-        pytest.param("reflection", marks=pytest.mark.xfail(strict=True, reason=_LITERAL_ONLY)),
+        "observe",  # Red on main: only the literal 'passive' downgraded
+        "sleep",  # Red on main: only the literal 'passive' downgraded
+        "train",  # Red on main: only the literal 'passive' downgraded
+        "reflection",  # Red on main: only the literal 'passive' downgraded
         "passive",  # a guard: the literal already downgrades
     ],
 )
@@ -39,12 +37,12 @@ def test_a_passive_class_mode_downgrades_engage_to_respond(mode):
     assert get_tool_followup_type("web_search", mode) == "respond"
 
 
-@pytest.mark.xfail(strict=True, reason="#963 Q3: an unknown mode name keeps engage (fails open)")
+# Red on main: #963 Q3: an unknown mode name keeps engage (fails open)
 def test_an_unknown_mode_name_gives_respond():
     assert get_tool_followup_type("internet_search", "no-such-mode") == "respond"
 
 
-@pytest.mark.xfail(strict=True, reason="#963 Q3: no mode keeps engage (fails open)")
+# Red on main: #963 Q3: no mode keeps engage (fails open)
 @pytest.mark.parametrize("mode", [None, ""])
 def test_no_mode_gives_respond(mode):
     assert get_tool_followup_type("internet_search", mode) == "respond"
@@ -68,7 +66,7 @@ def test_a_tool_that_does_not_engage_is_unchanged_by_the_mode(mode):
             assert get_tool_followup_type(name, mode) == info.get("followup_type"), name
 
 
-@pytest.mark.xfail(strict=True, reason="#963 Q3: an observe run mode (passive-class) still queues an engage follow-up")
+# Red on main: #963 Q3: an observe run mode (passive-class) still queues an engage follow-up
 @pytest.mark.parametrize("level", ["autonomous", "supervised", "planning"])
 def test_an_observe_run_mode_queues_a_respond_follow_up(monkeypatch, tmp_path, level):
     """Through the real loop, on every dispatch path: the default CLI loop's run mode is ``observe``."""

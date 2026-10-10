@@ -576,13 +576,16 @@ class MaximState:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def get_mode(name: str) -> ModeDefinition | None:
+def get_mode(name: str | None) -> ModeDefinition | None:
     """Get a mode definition by name.
 
     Supports both new operational mode names (passive, active, singularity)
     and legacy mode names (observe, live, exploration, etc.) which map to
-    the closest operational mode.
+    the closest operational mode. No name (None, or not a string) is no
+    definition (#963), never an ``AttributeError``.
     """
+    if not isinstance(name, str):
+        return None
     # Normalize name
     normalized = name.lower().replace("_", "-")
 
@@ -1127,11 +1130,16 @@ PROMPT_TOOL_NAMES: frozenset[str] = REGISTERED_TOOL_NAMES | frozenset(TOOL_DESCR
 
 
 def get_tool_followup_type(tool_name: str, mode_name: str | None = None) -> str | None:
-    """Get the followup type for a tool, optionally adjusted by mode.
+    """Get the followup type for a tool, adjusted by the operational mode.
+
+    ``engage`` (respond AND offer follow-ups) is kept only in an active- or singularity-class mode; in a passive-class
+    mode (``passive``, ``observe``, ``sleep``, ...), an unknown name or no mode it is ``respond`` -- judged by the
+    mode's CLASS, fail closed (#963 owner decision Q3; before, only the literal name ``"passive"`` downgraded, which no
+    shipped code writes). Every other followup type is the tool's own.
 
     Args:
         tool_name: Name of the tool
-        mode_name: Optional mode name for mode-specific behavior
+        mode_name: The operational mode (``loop_state.operational_mode``)
 
     Returns:
         Followup type: None, "process", "respond", or "engage"
@@ -1139,9 +1147,9 @@ def get_tool_followup_type(tool_name: str, mode_name: str | None = None) -> str 
     tool_info = TOOL_DESCRIPTIONS.get(tool_name, {})
     followup_type = tool_info.get("followup_type")
 
-    # Mode-specific overrides
-    if mode_name and followup_type:
-        if mode_name == "passive" and followup_type == "engage":
+    if followup_type == "engage":
+        definition = get_mode(mode_name)
+        if definition is None or definition.name not in ("active", "singularity"):
             return "respond"
 
     return followup_type

@@ -252,6 +252,12 @@ mode and no grant, every reader returns exactly the state's mode, as before.
   instruction branch change only under a grant or a missing/empty mode, and every Exp 37/38 sub-sim is an
   orchestrator AUT in `active` with no grant (`scripts/benchmark_cross_session.py` runs `maxim --sim`, which
   refuses the grant), so its prompts are unchanged. Its STALE status and its owed re-fire are unchanged.
+  **The by-class downgrade (Q3)** also changes the template in a passive-class RUN mode (`observe`, `sleep`,
+  `train`, `reflection`) with no grant. Checked: no T1-2 / Exp 37 / Exp 38 run used one. The harness's sub-sims are
+  orchestrator AUTs, whose state mode is `active` (`orchestrator.py`), the narrator `singularity`; and no writer in
+  the census above puts a passive-class mode in the loop state on a ledger path. The experiment docs and data name
+  no `observe` run mode (their `observe` is the `fire_pit_observe` / `hearth_observe` affordance tool). In `active`
+  and `singularity` the downgrade keeps `engage`, as before.
 - **T1-13 (Exp 60, EARNED) "`run_agentic_loop` idle-gate or autonomy handling change": fires by its letter,
   discharged structurally** (as in the #1085 walk). The autonomy handling is edited: the audit's mode argument in
   the PLANNING (proposed) and SUPERVISED (hard rejection) branches, in `loop_planning`'s refusals and in

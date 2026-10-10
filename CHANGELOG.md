@@ -25,6 +25,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A search's follow-up keeps `engage` only in an active- or singularity-class mode** ([#963](https://github.com/dennys246/Maxim/issues/963)
+  owner decision Q3; a template-only change). `get_tool_followup_type` downgraded `engage` ("respond and offer
+  follow-ups") to `respond` only for the literal mode name `"passive"`, which no shipped code writes into the loop
+  state, so the downgrade never fired on a shipped path. It now judges the mode by CLASS, fail closed: a
+  passive-class mode (`passive`, `observe`, `sleep`, `train`, `reflection`), an unknown name or no mode gives
+  `respond`. Effect: on the default CLI loop (`observe`) and `maxim.run()`, an `internet_search`/`web_search`
+  result is synthesised with the plain respond template instead of the engage one (no current date, no "offer
+  follow-ups" line); both queue the same follow-up and both tell the model to answer with `respond`. The engage
+  template's `observe` ("concise") instruction branch in `prompt_builder._build_engage_prompt` is now unreachable
+  (an `observe` follow-up is never `engage`); it is left in place. `get_mode(None)` returns None instead of raising
+  `AttributeError`. Guard: `tests/unit/test_followup_type_by_class_963.py` (red on `main`).
+
 - **One operational-mode accessor, guarded by a lint** ([#963](https://github.com/dennys246/Maxim/issues/963); owner
   decisions Q1-Q8, 2026-10-09).
   - **`Executor.effective_operational_mode()`** (new) owns the one precedence in the agent loop and at dispatch
@@ -44,9 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `log_action(mode=)` entries and the minimal `StructuredContext.mode` record the operational mode (Q5);
     `StructuredContext.mode` thus carries two vocabularies (MemoryAgent, its main producer, writes the run mode;
     #1193). On a loop whose state names no mode
-    (the CLI `--mode agentic` loop, `maxim.run()`), a search's follow-up is labelled `observe` instead of `live`,
-    so the engage template's instruction takes its `observe` ("concise") branch instead of "1-2 options"; the
-    audit records `observe` instead of `unknown`; the batched-exploration follow-up is labelled with the
+    (the CLI `--mode agentic` loop, `maxim.run()`), a search's follow-up is labelled `observe` instead of `live`
+    (and, with the by-class downgrade above, takes the respond template); the audit records `observe` instead of
+    `unknown`; the batched-exploration follow-up is labelled with the
     operational mode instead of `exploration` (its `process` template ignores the mode).
   - **Tightenings (fail closed; no shipped writer produces the inputs):** a mode source returning None, `""` or a
     non-string (an explicit `state.data["mode"] = None` or a non-string) now restricts at dispatch (`observe` or

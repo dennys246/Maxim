@@ -32,15 +32,16 @@ LEVELS = ("autonomous", "supervised", "planning")
 # (state mode, grant) -> (follow-up type, follow-up mode, audit mode).
 _MATRIX: dict[str, tuple[str | None, str | None, tuple[str, str, str]]] = {
     "live": ("live", None, ("engage", "live", "live")),
-    "observe": ("observe", None, ("engage", "observe", "observe")),
+    # #963 Q3 changed this: an observe run mode (passive-class) kept the engage template (("engage", ...)).
+    "observe": ("observe", None, ("respond", "observe", "observe")),
     "active": ("active", None, ("engage", "active", "active")),
     # #963 changed these: the grant decided dispatch, but the follow-up and the audit read the run mode
     # (("engage", "live", "live") and ("engage", "", "")); every reader now reads the operational mode.
     "passive_grant_over_live": ("live", "passive", ("respond", "passive", "passive")),
     "passive_grant_over_empty": ("", "passive", ("respond", "passive", "passive")),
     # No mode in the state (the CLI loop, ``maxim.run()``). #963 changed this: each reader picked its own default
-    # (("engage", "live", "unknown")); the one default is ``observe``.
-    "no_mode": (None, None, ("engage", "observe", "observe")),
+    # (("engage", "live", "unknown")); the one default is ``observe``, passive-class, so respond (Q3).
+    "no_mode": (None, None, ("respond", "observe", "observe")),
 }
 
 
