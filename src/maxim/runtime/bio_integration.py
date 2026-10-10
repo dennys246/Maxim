@@ -69,6 +69,9 @@ def capture_episodic_memory(
     # ``rpe`` is in [0, 1] by construction (the Rescorla-Wagner value is bounded at every producer),
     # so a value outside it is a broken invariant and fails here, loudly.
     # Per-drive pressure (read BEFORE the action) and relief ride on the same stamp (Phase 2b-ii).
+    # The body-consequence record (grounding GL2a) rides in ``extra``, which ``encoding_tag`` never
+    # reads: it is persisted with the trace and changes nothing the trace encodes with.
+    outcome = result.interoceptive_outcome if isinstance(result, ToolOutput) else None
     encoding = EncodingSignals(
         site="loop",
         salience=None,
@@ -77,6 +80,7 @@ def capture_episodic_memory(
         pain=result.pain if isinstance(result, ToolOutput) else None,
         drive_pressure=result.drive_pressure_before if isinstance(result, ToolOutput) else None,
         drive_relief=result.drive_relief if isinstance(result, ToolOutput) else None,
+        extra={"interoception": outcome.to_dict()} if outcome is not None else {},
     )
     if rpe is not None and rpe > 0.0 and isinstance(observation, dict):
         current_salience = observation.get("salience", 0.5)

@@ -45,7 +45,9 @@ direction nobody is looking.
 ## Mechanization backlog (added 2026-09-27)
 
 Rules the repo follows **by attention** — each a `Regression guard: process invariant` in CLAUDE.md or a
-brief, citing its row here (CLAUDE.md §Working principles, "Enforced, or on the backlog"). The v1.3.1
+brief, citing its row here. An ID is defined once (a row moving to §Closed leaves the table) and every
+citation must name a defined ID, enforced by `scripts/lint_backlog_ids.py` in CI (#1175); take the next number
+from `main` right before pushing, since parallel branches collide (CLAUDE.md §Working principles, "Enforced, or on the backlog"). The v1.3.1
 score cards credit only enforcement, and the release's slips all landed on rules like these. **Close a
 row by shipping the check** (a lint, test or required CI job, proven by deleting its mechanism), then
 point the rule's guard line at it and move the row to §Closed. Ranked by the axis it moves; both v1.3.1

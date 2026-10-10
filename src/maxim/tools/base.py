@@ -5,7 +5,10 @@ import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from maxim.embodiment.sem import InteroceptiveOutcome
 
 # Registration-time classifier for tool provenance / lifecycle. The four
 # kinds correspond to the three independent registration regimes the
@@ -101,6 +104,11 @@ class ToolOutput:
     # (memory-strength Phase 2S-c): what the action caused, else the peak felt while it ran; 0.0
     # when a pain source was watched and nothing fired; None when none was watched. Tools never set it.
     pain: float | None = None
+    # What THIS invocation did to the body (grounding GL2a, docs/plans/autonomic_layer.md §3.1), stamped
+    # by the executor: one record when the tool ran on an agent-bound body, else None. Record-only.
+    # ``repr=False`` is load-bearing (#1189): ``str(ToolOutput)`` is persisted and substring-searched by
+    # the Hippocampus, so a printed record would put its numbers and nouns into memory retrieval.
+    interoceptive_outcome: InteroceptiveOutcome | None = field(default=None, repr=False)
 
 
 # Backward-compat alias — existing tools that import ToolResult keep working.

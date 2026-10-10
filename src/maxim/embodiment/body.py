@@ -9,9 +9,11 @@ vital-metric drift.
 from __future__ import annotations
 
 import logging
+import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from typing import Any
 
 from maxim.embodiment.sem import Entity, FailureMode, SensorReading
@@ -89,6 +91,32 @@ class EmbodimentConfig:
     enable_pain: bool = True
 
 
+@dataclass(eq=False)
+class OutcomeWindow:
+    """What the CALLING thread's evaluations did to the body while an executor invocation ran (GL2a).
+
+    Opened by ``Embodiment.outcome_window`` around ``tool.run`` (``Executor._run_started``, owner
+    decision G14) so the tool-path ``InteroceptiveOutcome`` can report values net of the drift the body
+    applied and the latches it cleared. Thread-scoped: an evaluation on another thread (the
+    orchestrator's narrator tools) never lands here.
+
+    - ``drift``: entity path -> drive -> the drift APPLIED (after clamping, on the value the evaluation
+      found), summed over the window's evaluations.
+    - ``drift_dt_s``: the drift interval those evaluations covered.
+    - ``cleared``: entity path -> the drives whose breach latch an ``elif cleared:`` site actually
+      cleared (a latch that existed). Never the silent pop of an unreadable sensor.
+
+    Scope, stated: the window keeps another thread's EVALUATIONS out, not its WRITES. A narrator write
+    (or a narrator evaluation's drift tick: ``_last_poll`` is shared) that lands on the body during
+    ``tool.run`` shows in the record's after-read, unnetted, until the post-fence lock and write epoch
+    land (``autonomic_layer.md`` §3.1.4). Identity, not value, closes a window (``eq=False``).
+    """
+
+    drift: dict[str, dict[str, float]] = field(default_factory=dict)
+    drift_dt_s: float = 0.0
+    cleared: dict[str, set[str]] = field(default_factory=dict)
+
+
 @dataclass
 class FailureEvent:
     """Record of a failure mode firing."""
@@ -144,6 +172,9 @@ class Embodiment:
         # credit mill, live_audio_orient_wiring.md). Runtime-only state;
         # never serialized. Empty (the default) = sim semantics, unchanged.
         self.live_world_set_sensors: set[str] = set()
+        # Open OutcomeWindows, per thread (GL2a): what this thread's evaluations applied and cleared
+        # while an executor invocation ran. Runtime-only; never serialized.
+        self._outcome_windows = threading.local()
 
     # -- entity access ------------------------------------------------------
 
@@ -182,6 +213,45 @@ class Embodiment:
             if readings:
                 result[ent.full_path] = {name: r.value for name, r in readings.items()}
         return result
+
+    # -- outcome windows (grounding GL2a) ------------------------------------
+
+    def _open_windows(self) -> list[OutcomeWindow]:
+        stack = getattr(self._outcome_windows, "stack", None)
+        if stack is None:
+            stack = self._outcome_windows.stack = []
+        return stack
+
+    @contextmanager
+    def outcome_window(self) -> Iterator[OutcomeWindow]:
+        """Record what THIS thread's ``evaluate_failures`` calls apply and clear until the block exits.
+
+        Record-only: opening a window changes nothing the body does. Windows nest; an evaluation
+        records into every window open on its thread.
+        """
+        window = OutcomeWindow()
+        stack = self._open_windows()
+        stack.append(window)
+        try:
+            yield window
+        finally:
+            del stack[next(i for i, w in enumerate(stack) if w is window)]
+
+    def _note_drift(self, applied: dict[str, dict[str, float]] | None, dt: float) -> None:
+        if applied is None:  # a stubbed tick_vital_drift (tests disable drift that way)
+            return
+        for window in self._open_windows():
+            window.drift_dt_s += dt
+            for path, drives in applied.items():
+                slot = window.drift.setdefault(path, {})
+                for name, value in drives.items():
+                    slot[name] = slot.get(name, 0.0) + value
+
+    def _clear_latch(self, latch: dict[str, float], entity_path: str, drive: str) -> None:
+        """An ``elif cleared:`` site: drop the breach latch; a latch that existed is a satiation."""
+        if latch.pop(drive, None) is not None:
+            for window in self._open_windows():
+                window.cleared.setdefault(entity_path, set()).add(drive)
 
     # -- failure evaluation -------------------------------------------------
 
@@ -224,7 +294,7 @@ class Embodiment:
         if self._last_poll > 0:
             drift_dt = now - self._last_poll
             if drift_dt > 0:
-                self.tick_vital_drift(drift_dt)
+                self._note_drift(self.tick_vital_drift(drift_dt), drift_dt)
         self._last_poll = now
 
         events: list[FailureEvent] = []
@@ -366,7 +436,7 @@ class Embodiment:
                             breach_latch[ds_name] = severity
                             self._publish_drive_pain(ent, ds_name, pain, readings)
                     elif cleared:
-                        breach_latch.pop(ds_name, None)
+                        self._clear_latch(breach_latch, ent.full_path, ds_name)
 
                 elif isinstance(ds, EntropicDriveSpec):
                     # NB: this inline threshold check mirrors the entropic branch
@@ -406,7 +476,7 @@ class Embodiment:
                                 ent, ds_name, ds.deprivation_pain, readings, event_suffix="deprived"
                             )
                     elif cleared:
-                        breach_latch.pop(ds_name, None)
+                        self._clear_latch(breach_latch, ent.full_path, ds_name)
 
         return events
 
@@ -561,17 +631,22 @@ class Embodiment:
 
     # -- vital metric drift -------------------------------------------------
 
-    def tick_vital_drift(self, dt: float = 1.0) -> None:
+    def tick_vital_drift(self, dt: float = 1.0) -> dict[str, dict[str, float]]:
         """Apply drift to vital metrics via drive specs or legacy hardcoded names.
 
         Called once per poll cycle.  Drive specs on the entity take
         precedence over the legacy hardcoded metric-name dispatch.
         Homeostatic drives drift toward ``set_point``; entropic drives
         drift in ``drift_direction``.
+
+        Returns the drift APPLIED to each drive-spec sensor, per entity path (grounding GL2a): the
+        arithmetic is ``sem.drift_step`` (owner decision G14), so it is the value the body wrote,
+        clamp included, which an outcome window nets out of the tool-path record.
         """
-        from maxim.embodiment.sem import EntropicDriveSpec, HomeostaticDriveSpec
+        from maxim.embodiment.sem import drift_step
 
         rate = self.config.vital_drift_rate
+        applied: dict[str, dict[str, float]] = {}
         for ent in self.root.walk():
             # --- Drive-spec-based drift (preferred) ---
             for ds_name, ds in ent.drive_specs.items():
@@ -581,31 +656,14 @@ class Embodiment:
                     mod = ent.modulators.get(mod_name)
                     if mod is None or not hasattr(mod, "vital_metrics"):
                         continue
-                    current = mod.vital_metrics.get(sensor_name)
-                    if current is None:
-                        continue
-                    if isinstance(ds, HomeostaticDriveSpec):
-                        delta = ds.set_point - current
-                        step = min(abs(delta), ds.drift_rate * dt)
-                        mod.vital_metrics[sensor_name] = current + (step if delta > 0 else -step)
-                    elif isinstance(ds, EntropicDriveSpec):
-                        if ds.drift_direction == "up":
-                            mod.vital_metrics[sensor_name] = min(1.0, current + ds.drift_rate * dt)
-                        else:
-                            mod.vital_metrics[sensor_name] = max(0.0, current - ds.drift_rate * dt)
+                    metrics, key = mod.vital_metrics, sensor_name
                 else:
-                    current = ent.vital_metrics.get(ds_name)
-                    if current is None:
-                        continue
-                    if isinstance(ds, HomeostaticDriveSpec):
-                        delta = ds.set_point - current
-                        step = min(abs(delta), ds.drift_rate * dt)
-                        ent.vital_metrics[ds_name] = current + (step if delta > 0 else -step)
-                    elif isinstance(ds, EntropicDriveSpec):
-                        if ds.drift_direction == "up":
-                            ent.vital_metrics[ds_name] = min(1.0, current + ds.drift_rate * dt)
-                        else:
-                            ent.vital_metrics[ds_name] = max(0.0, current - ds.drift_rate * dt)
+                    metrics, key = ent.vital_metrics, ds_name
+                current = metrics.get(key)
+                if current is None:
+                    continue
+                metrics[key] = drift_step(ds, current, dt)
+                applied.setdefault(ent.full_path, {})[ds_name] = metrics[key] - current
 
             # --- Legacy hardcoded drift (for entities without drive specs) ---
             driven_sensors = set(ent.drive_specs.keys())
@@ -622,6 +680,7 @@ class Embodiment:
                         0.0,
                         ent.vital_metrics[vname] - rate * dt,
                     )
+        return applied
 
     # -- body state snapshot for prompts ------------------------------------
 

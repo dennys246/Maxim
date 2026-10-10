@@ -575,6 +575,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A body-consequence record for every tool the agent runs on its own body (grounding GL2a; record-only, no
+  behaviour change):** `ToolOutput.interoceptive_outcome` carries one `InteroceptiveOutcome`
+  (`embodiment/sem.py`) per invocation that reached `tool.run` on an agent-bound body: the invoked
+  affordance's own declared drives before and after, net of the drift the body applied during the call,
+  plus a body-agnostic core (relief and harm as the drop and rise in drive pressure, nociception, drive
+  pain, urgency) and the drives whose breach latch cleared (satiation). The loop capture persists it in the
+  trace's `EncodingSignals.extra["interoception"]`; `encoding_tag` never reads `extra`, so the drive
+  pressure, relief and pain a trace encodes with, its tag and its storage strength are byte-identical
+  (pinned by a golden taken before the change). The field is `repr=False`, so `str(ToolOutput)`, which the
+  Hippocampus persists and substring-searches, is unchanged (#1189). Nothing reads the record to act. It
+  carries no event id yet (the id and its cross-session resume land together later, owner decision G17),
+  and bodies without an `agent_id` (`maxim.create.embodiment()`, foundry and probe bodies) record nothing.
+  `Embodiment.tick_vital_drift` now returns the drift it applied (same values written, pinned over every
+  shipped drive body), and `Embodiment.outcome_window()` records it per thread. Each loop trace, compressed
+  ones included, grows by the record (about 0.5 KB with no drive, 0.8 KB with one).
+  (`docs/plans/autonomic_layer.md` §5.2)
 - **Every writer the ledger cites stamps what its record is, and an event log says how its run ended**
   (M1b PR 5a-2).
   - Orient event logs (`live_common.JsonlLog`) declare evidence vs non-support. An evidence run ends in exactly
