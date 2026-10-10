@@ -124,13 +124,22 @@ def test_an_unregistered_tool_leaves_nothing_pending():
 def test_the_failure_whose_pain_arrives_is_still_attributed_to_its_tool():
     """Retiring at return must not pre-empt the failure's own attribution: pain dispatch is synchronous,
     so ``_on_pain`` has already popped the entry and booked NEGATIVE before the executor retires it."""
-    executor, _, _ = _rig(detector=PainDetector())
+    executor, _, spy = _rig(detector=PainDetector())
     nac = executor._tool_pain_bridge._nac  # type: ignore[union-attr]
-    record = MagicMock(wraps=nac.record_outcome)
-    nac.record_outcome = record  # type: ignore[method-assign]
+    real_record_event = nac.record_event
+    event_ids: list[str] = []
+
+    def _record_event(**kwargs: Any) -> str:
+        event_ids.append(real_record_event(**kwargs))
+        return event_ids[-1]
+
+    nac.record_event = _record_event  # type: ignore[method-assign]
     executor.execute({"tool_name": "grab", "params": {}})
-    record.assert_called_once()
-    assert record.call_args.kwargs["event_id"] == "tool:grab"
+    # Booked once, NEGATIVE, on THIS invocation's own pending event (#1207), not by signature.
+    spy.assert_called_once()
+    assert spy.call_args.kwargs["outcome_signature"] == "tool:grab:negative"
+    assert len(event_ids) == 1
+    assert spy.call_args.kwargs["attributed_event_id"] == event_ids[0]
 
 
 def test_an_inactive_scene_tool_leaves_nothing_pending():

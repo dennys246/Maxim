@@ -72,7 +72,7 @@ class TestPhase1CausesEdgeCreatedOnHighRPE:
         )
 
         nac = MagicMock()
-        nac.record_outcome.return_value = [link]
+        nac.record_outcome_full.return_value = [link]
 
         from maxim.proprioception.pain import PainDetector
 
@@ -106,7 +106,7 @@ class TestPhase1NoCausesEdgeOnLowRPE:
         )
 
         nac = MagicMock()
-        nac.record_outcome.return_value = [link]
+        nac.record_outcome_full.return_value = [link]
 
         from maxim.proprioception.pain import PainDetector
 
@@ -128,7 +128,7 @@ class TestPhase1NoCausesEdgeWithoutHippocampus:
         link = _make_link(last_rpe=0.8, memory_ids=["mem-1", "mem-2"])
 
         nac = MagicMock()
-        nac.record_outcome.return_value = [link]
+        nac.record_outcome_full.return_value = [link]
 
         from maxim.proprioception.pain import PainDetector
 

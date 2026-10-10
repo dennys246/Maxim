@@ -25,6 +25,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A failed tool call is no longer booked as a success by the next success of the same tool (#1207).**
+  `ToolPainBridge` attributed every outcome by tool SIGNATURE, so a success also booked every other pending
+  `tool:X` event inside NAc's 300 s window, and nothing retired the pending event of a failed or never-run
+  invocation: one failure followed by one success booked two positives. The bridge now books each outcome
+  on its own invocation's event id (`NAc.record_outcome_full(attributed_event_id=...)`; the causal link is
+  still keyed on the signature, so confidence accrues as before), `ToolPainBridge.finish_invocation`
+  retires the invocation's NAc pending event (new `NAc.discard_pending_event`), and the executor starts an
+  invocation only once it will run (after the inactive-scene and unregistered-tool gates), so a call that
+  never ran queues nothing. Positive credit for tools that fail and then succeed falls to the true count.
+  Never-run calls now stamp `ToolOutput.pain = None` ("not measured") instead of `0.0`, and with a pain
+  detector wired (no production builder wires one) they no longer book `tool:X:negative`, an RPE or a
+  reflexion (owner decision TF2: only tools that ran earn failure credit). NAc event ids gain a sequence
+  suffix so they stay unique within one clock tick, and the `--debug nac` tracer also traces
+  `record_outcome_full`, so tool outcomes stay visible. (`docs/plans/tool_failure_credit.md` Stage 1)
 - **The preemption scaffolding is marked Dormant (#1179; owner decision TR1; docstrings and a comment
   only, no behaviour change):** `runtime/preemption.py` (`PreemptionCircuit`, `ExecutionTracker`),
   `MaximAgent.wire_preemption` and `tool_dispatch`'s `capture_before` guard now say they were never wired,

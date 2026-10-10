@@ -53,7 +53,9 @@ class NacTracer:
         self._wrap_observe(nac)
         self._wrap_predict(nac)
         self._wrap_record_event(nac)
+        self._outcome_depth = threading.local()  # record_outcome delegates to record_outcome_full: print once
         self._wrap_record_outcome(nac)
+        self._wrap_record_outcome_full(nac)
 
         self._print(f"{_BOLD}[NAc TRACER]{_RESET} Active — tracing events, outcomes, predictions, causal links")
 
@@ -77,20 +79,40 @@ class NacTracer:
         original = nac.record_outcome
 
         def traced(*args: Any, **kwargs: Any) -> Any:
-            result = original(*args, **kwargs)
+            depth = getattr(self._outcome_depth, "n", 0)
+            self._outcome_depth.n = depth + 1
+            try:
+                result = original(*args, **kwargs)
+            finally:
+                self._outcome_depth.n = depth
             event_id = args[0] if args else kwargs.get("event_id", "?")
             valence = args[2] if len(args) > 2 else kwargs.get("outcome_valence", "?")
-            color = (
-                _GREEN
-                if str(valence) == "Valence.POSITIVE"
-                else _RED
-                if str(valence) == "Valence.NEGATIVE"
-                else _YELLOW
-            )
-            self._print(f"{color}{_ts()} [NAc OUTCOM]{_RESET} event={_short(str(event_id), 20)} valence={valence}")
+            self._print_outcome(f"event={_short(str(event_id), 20)}", valence)
             return result
 
         nac.record_outcome = traced  # type: ignore[assignment]
+
+    def _wrap_record_outcome_full(self, nac: NAc) -> None:
+        """The full API is what the tool-pain bridge books through since #1207 (by event id); without this
+        the trace went blind to every tool outcome. A call nested inside ``record_outcome`` (which delegates
+        here) is printed once, by the outer wrapper."""
+        original = nac.record_outcome_full
+
+        def traced(*args: Any, **kwargs: Any) -> Any:
+            result = original(*args, **kwargs)
+            if getattr(self._outcome_depth, "n", 0) == 0:
+                outcome = args[1] if len(args) > 1 else kwargs.get("outcome_signature", "?")
+                valence = args[2] if len(args) > 2 else kwargs.get("outcome_valence", "?")
+                self._print_outcome(f"outcome={_short(str(outcome), 28)}", valence)
+            return result
+
+        nac.record_outcome_full = traced  # type: ignore[assignment]
+
+    def _print_outcome(self, what: str, valence: Any) -> None:
+        color = (
+            _GREEN if str(valence) == "Valence.POSITIVE" else _RED if str(valence) == "Valence.NEGATIVE" else _YELLOW
+        )
+        self._print(f"{color}{_ts()} [NAc OUTCOM]{_RESET} {what} valence={valence}")
 
     def _wrap_observe(self, nac: NAc) -> None:
         original = nac.observe

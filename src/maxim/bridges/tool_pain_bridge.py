@@ -82,6 +82,9 @@ class ToolPainBridge:
         self._lock = threading.Lock()
         self._pending_tools: dict[tuple[str, str], str] = {}
         self._pending_contexts: dict[tuple[str, str], dict[str, Any]] = {}  # (tool, inv_id) → context
+        # (tool, inv_id) → the NAc pending event id ``record_event`` returned (#1207): outcomes are
+        # attributed to THIS invocation's event, never to every pending event with its signature.
+        self._pending_event_ids: dict[tuple[str, str], str] = {}
         # Surprise per INVOCATION (#847): the executor stamps it onto that invocation's ToolOutput,
         # so a capture reads the surprise of the action it is capturing. It replaced a single
         # ``_last_rpe`` slot that nothing ever reset, which let a capture read an EARLIER tool's
@@ -231,13 +234,14 @@ class ToolPainBridge:
             Event signature for tracking.
         """
         event_signature = f"tool:{tool_name}"
-        self._nac.record_event(
+        event_id = self._nac.record_event(
             event_type="tool",
             event_signature=event_signature,
             context=context,
         )
         with self._lock:
             self._pending_tools[(tool_name, invocation_id)] = event_signature
+            self._pending_event_ids[(tool_name, invocation_id)] = event_id
             if context:
                 self._pending_contexts[(tool_name, invocation_id)] = context
             if invocation_id:
@@ -261,6 +265,44 @@ class ToolPainBridge:
         with self._lock:
             self._pending_tools.pop((tool_name, invocation_id), None)
             self._pending_contexts.pop((tool_name, invocation_id), None)
+            event_id = self._pending_event_ids.pop((tool_name, invocation_id), None)
+        # The NAc side of the same lifecycle (#1207): an invocation no path booked (a failure, or a
+        # call that booked nothing) must not stay pending, or a later success of the same tool would
+        # book it too. A no-op when an outcome already consumed it.
+        if event_id is not None:
+            self._nac.discard_pending_event(event_id)
+
+    def _book_invocation(
+        self,
+        tool_name: str,
+        invocation_id: str,
+        event_signature: str,
+        valence: Valence,
+        context: dict[str, Any] | None = None,
+    ) -> list[Any]:
+        """Book THIS invocation's outcome on its own pending event (#1207).
+
+        ``NAc.record_outcome(event_id=...)`` attributes by SIGNATURE, which also booked every other pending
+        ``tool:X`` in the window (a stale failure credited by a later success). The link is still keyed on
+        the event's signature, outcome signature and context, so confidence accrues on one link across
+        invocations. The id is read, not popped: ``finish_invocation`` always retires it, a no-op once this
+        outcome consumed it (so an NAc error here cannot strand the event). A missing id is a broken
+        lifecycle, reported and booked nowhere: it never falls back to signature attribution.
+        """
+        with self._lock:
+            event_id = self._pending_event_ids.get((tool_name, invocation_id))
+        if event_id is None:
+            logger.warning(
+                "tool-pain bridge: no NAc event id for %s/%s; outcome not booked (#1207)", tool_name, invocation_id
+            )
+            return []
+        return self._nac.record_outcome_full(
+            outcome_type="result",
+            outcome_signature=f"{event_signature}:{valence.value}",
+            outcome_valence=valence,
+            context=context,
+            attributed_event_id=event_id,
+        )
 
     def record_tool_complete(
         self,
@@ -301,11 +343,7 @@ class ToolPainBridge:
         # toward the 0.5 prior. Only a mechanical failure still short-circuits
         # here (the direct-attribution paths own that).
         if event_signature and success and valence is not Valence.NEGATIVE:
-            links = self._nac.record_outcome(
-                event_type="tool",
-                event_id=event_signature,
-                outcome_valence=valence,
-            )
+            links = self._book_invocation(tool_name, invocation_id, event_signature, valence)
             rpe = max((lnk.last_rpe or 0.0 for lnk in links), default=0.0) if links else 0.0
             self._note_invocation_rpe(invocation_id, rpe)
             self._create_causal_edges(links)
@@ -372,9 +410,9 @@ class ToolPainBridge:
         root-cause writeup.
 
         This method pops the pending tool event by ``(tool_name,
-        invocation_id)`` and calls ``nac.record_outcome`` (not
-        ``record_outcome_full``) with a direct event_id — NO context
-        similarity, NO attribution ambiguity. Mirrors the shape of
+        invocation_id)`` and books it on that invocation's own NAc event
+        id (``_book_invocation`` → ``record_outcome_full(attributed_event_id=...)``,
+        #1207) — NO context similarity, NO attribution ambiguity. Mirrors the shape of
         :meth:`record_tool_complete` on the failure side. Specifically,
         this method also:
 
@@ -430,12 +468,7 @@ class ToolPainBridge:
             "failures": failures,
         }
 
-        links = self._nac.record_outcome(
-            event_type="tool",
-            event_id=event_signature,
-            outcome_valence=Valence.NEGATIVE,
-            context=outcome_context,
-        )
+        links = self._book_invocation(tool_name, invocation_id, event_signature, Valence.NEGATIVE, outcome_context)
         rpe = max((lnk.last_rpe or 0.0 for lnk in links), default=0.0) if links else 0.0
         self._note_invocation_rpe(invocation_id, rpe)
         self._create_causal_edges(links)
@@ -510,11 +543,8 @@ class ToolPainBridge:
             event_signature = self._pending_tools.pop((tool_name, invocation_id), None)
             self._pending_contexts.pop((tool_name, invocation_id), None)
         if event_signature:
-            links = self._nac.record_outcome(
-                event_type="tool",
-                event_id=event_signature,
-                outcome_valence=Valence.NEGATIVE,
-                context=signal.context,
+            links = self._book_invocation(
+                tool_name, invocation_id, event_signature, Valence.NEGATIVE, dict(signal.context or {})
             )
             rpe = max((lnk.last_rpe or 0.0 for lnk in links), default=0.0) if links else 0.0
             self._note_invocation_rpe(invocation_id, rpe)

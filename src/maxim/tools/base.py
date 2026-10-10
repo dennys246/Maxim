@@ -102,7 +102,8 @@ class ToolOutput:
     drive_relief: tuple[tuple[str, float], ...] | None = None
     # The pain of THIS invocation, stamped by the executor from the tool-pain bridge
     # (memory-strength Phase 2S-c): what the action caused, else the peak felt while it ran; 0.0
-    # when a pain source was watched and nothing fired; None when none was watched. Tools never set it.
+    # when a pain source was watched and nothing fired; None when none was watched, or the call never ran (an
+    # inactive or unregistered tool starts no invocation, #1207). Tools never set it.
     pain: float | None = None
     # What THIS invocation did to the body (grounding GL2a, docs/plans/autonomic_layer.md §3.1), stamped
     # by the executor: one record when the tool ran on an agent-bound body, else None. Record-only.
