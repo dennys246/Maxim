@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -166,8 +167,76 @@ def test_an_unknown_run_mode_fails_closed() -> None:
     """Before #829 an unresolvable mode name restricted nothing (the `agentic` hole)."""
     denial = _executor(lambda: "no-such-mode")._mode_denial("bash")
     assert denial is not None and "enforced as passive" in denial
-    assert _executor(lambda: None)._mode_denial("bash") is None  # no mode at all: unchanged
+    # #963 (Q4) changed this pin: a mode source that names no mode restricted nothing; it is now the one default,
+    # observe (passive). Only an executor with no mode source and no grant is unrestricted.
+    assert _executor(lambda: None)._mode_denial("bash") is not None
     assert _executor()._mode_denial("bash") is None
+
+
+def test_the_one_operational_mode_accessor() -> None:
+    """``Executor.effective_operational_mode`` (#963, owner decisions Q1/Q4): the grant, else the mode source's name,
+    ``observe`` for an empty or missing one, passive (fail closed) for a non-string; None only with neither a source
+    nor a grant. The grant is stored raw (N2)."""
+    assert _executor().effective_operational_mode() is None
+    assert _executor(lambda: "live").effective_operational_mode() == "live"
+    assert _executor(lambda: "").effective_operational_mode() == "observe"
+    assert _executor(lambda: None).effective_operational_mode() == "observe"
+    assert _executor(lambda: 7).effective_operational_mode() == "passive"
+    granted = _executor(lambda: "live")
+    granted.set_operational_override("PASSIVE")
+    assert granted.effective_operational_mode() == "PASSIVE"  # raw, as the operator gave it
+    assert granted._mode_denial("bash") is not None
+    granted.set_operational_override(None)
+    assert granted.effective_operational_mode() == "live"
+    no_source = _executor()
+    no_source.set_operational_override("active")
+    assert no_source.effective_operational_mode() == "active"
+
+
+def test_the_loop_reads_the_executors_mode_and_its_own_only_without_one() -> None:
+    """``loop_state.operational_mode`` (#963): the executor's answer; the run mode (else ``observe``) only when there
+    is no executor or the executor has neither a grant nor a source; a non-string answer is a ``TypeError``."""
+    from maxim.runtime.executor import Executor
+    from maxim.runtime.loop_state import operational_mode, run_mode, shutdown_requested
+
+    class _State:
+        def __init__(self, data: dict) -> None:
+            self.data = data
+
+    assert operational_mode(None, _State({"mode": "live"})) == "live"
+    assert operational_mode(None, _State({})) == "observe"
+    assert operational_mode(None, _State({"mode": ""})) == "observe"
+    assert operational_mode(_executor(), _State({"mode": "exploration"})) == "exploration"
+    assert operational_mode(_executor(lambda: "live"), _State({"mode": "observe"})) == "live"  # the executor's own
+    wrapped = MagicMock(spec=Executor)
+    wrapped.effective_operational_mode.return_value = MagicMock()
+    with pytest.raises(TypeError, match="not str or None"):
+        operational_mode(wrapped, _State({"mode": "live"}))
+    assert run_mode(_State({"mode": 3})) is None and run_mode(_State({"mode": "sleep"})) == "sleep"
+    assert run_mode(_State({"mode": ""})) is None and run_mode(_State({})) is None
+    assert shutdown_requested(_State({"mode": "shutdown"})) and not shutdown_requested(_State({}))
+
+
+def test_every_executor_wrapper_forwards_the_accessor() -> None:
+    """The wrappers forward ``effective_operational_mode`` (``__getattr__``); none defines its own (#963)."""
+    from maxim.runtime.fear_gate import FearGatedExecutor
+    from maxim.runtime.pain_interceptor import AnticipatoryPainExecutor, PainInterceptorExecutor
+    from maxim.simulation.instrumented_executor import InstrumentedExecutor
+
+    inner = _executor(lambda: "live")
+    inner.set_operational_override("passive")
+    for wrapper_type in (FearGatedExecutor, PainInterceptorExecutor, AnticipatoryPainExecutor, InstrumentedExecutor):
+        assert "effective_operational_mode" not in vars(wrapper_type), wrapper_type
+    wrapped = [
+        InstrumentedExecutor(inner, MagicMock()),
+        AnticipatoryPainExecutor(inner, None),
+        PainInterceptorExecutor.__new__(PainInterceptorExecutor),
+        FearGatedExecutor.__new__(FearGatedExecutor),
+    ]
+    wrapped[2]._inner = inner
+    wrapped[3]._executor = inner
+    for w in wrapped:
+        assert w.effective_operational_mode() == "passive", type(w)
 
 
 def test_singularity_is_granted_loudly_on_every_honoured_path(caplog, capsys) -> None:
@@ -178,29 +247,33 @@ def test_singularity_is_granted_loudly_on_every_honoured_path(caplog, capsys) ->
     assert "singularity" in capsys.readouterr().err
     executor = _executor(lambda: "exploration")
     _apply_operational_grant(executor, "singularity")
-    assert executor.operational_override == "singularity"
+    assert executor.effective_operational_mode() == "singularity"
     _apply_operational_grant(executor, None)  # no flag: nothing changes
-    assert executor.operational_override == "singularity"
+    assert executor.effective_operational_mode() == "singularity"
 
 
 def test_what_the_model_is_shown_follows_the_grant() -> None:
-    """The prompt roster, context prompt and Default Network read `_effective_mode` -- the same
-    precedence dispatch applies -- so a raising grant is not a silent no-op at the prompt."""
+    """The prompt roster and context prompt read ``loop_state.operational_mode`` -- the executor's own
+    precedence, the one dispatch applies (#963) -- so a raising grant is not a silent no-op at the prompt.
 
-    from maxim.runtime import loop_state  # _effective_mode's home since the 1.3.2 decomposition's slice 2
+    The roster's half is a SOURCE pin until the slice that extracts §6's prompt assembly (owner decision Q6,
+    #963); the Default Network and the follow-up are pinned BEHAVIOURALLY, flipping the grant between two ticks
+    (``test_loop_gates_characterization.py::test_the_default_network_follows_a_grant_set_between_ticks``,
+    ``test_one_mode_accessor_963.py``), and ``scripts/lint_loop_mode_reads.py`` holds every other read."""
+
+    from maxim.runtime import loop_state  # operational_mode's home (#963)
 
     class _State:
         data = {"mode": "observe"}
 
     executor = _executor(lambda: "observe")
-    assert loop_state._effective_mode(executor, _State(), "observe") == "observe"
-    executor.set_operational_override("active")
-    assert loop_state._effective_mode(executor, _State(), "observe") == "active"
+    assert loop_state.operational_mode(executor, _State()) == "observe"
+    executor.set_operational_override("active")  # the grant is a floor as well as a ceiling (#922)
+    assert loop_state.operational_mode(executor, _State()) == "active"
     from tests.unit._loop_source import loop_source
 
     loop = loop_source()  # the loop's modules, wherever the block lives (1.3.2 decomposition)
-    assert 'mode_name = _effective_mode(executor, state, "observe")' in loop  # the roster + context prompt
-    assert "_dn_mode := _effective_mode(executor, state, current_mode)" in loop  # the Default Network
+    assert "mode_name = operational_mode(executor, state)" in loop  # the roster + context prompt
 
 
 def test_the_mode_switch_tool_sees_the_grant() -> None:
@@ -225,7 +298,8 @@ def test_the_mode_switch_tool_sees_the_grant() -> None:
 
 
 def test_the_robot_runtime_carries_the_grant() -> None:
-    """Both runtimes: the CLI agent loop AND the robot runtime (Selfy) honour the flag."""
+    """Both runtimes: the CLI agent loop AND the robot runtime (Selfy) honour the flag. SOURCE pins until the
+    slices that extract ``cli._main_impl`` and ``_start_agentic_runtime`` (owner decision Q6, #963)."""
     import inspect
 
     from maxim import cli

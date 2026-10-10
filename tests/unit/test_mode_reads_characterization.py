@@ -1,7 +1,8 @@
 """#963 characterization: what each mode reader in the agent loop sees, by run mode and launch grant.
 
-Written BEFORE #963 routes every read through one accessor, and green on ``main``: it pins today's values,
-defects included, so the fix's change is visible per test (the slice 3/4 protocol). The readers:
+Written BEFORE #963 routes every read through one accessor, and green on ``main``: it pinned that day's values,
+defects included, so the fix's change is visible per test (the slice 3/4 protocol). The cells #963 changed say
+so, with the value they had. The readers:
 
 - the follow-up a tool queues (its ``followup_type`` and ``mode``), on all three dispatch paths that share
   ``tool_dispatch.execute_and_learn`` (autonomous, the policy-confirmed SUPERVISED path, the PLANNING approved
@@ -28,16 +29,18 @@ pytestmark = pytest.mark.timeout(60)
 ENGAGE_TOOL = "internet_search"
 LEVELS = ("autonomous", "supervised", "planning")
 
-# (state mode, grant) -> (follow-up type, follow-up mode, audit mode), as ``main`` has them.
+# (state mode, grant) -> (follow-up type, follow-up mode, audit mode).
 _MATRIX: dict[str, tuple[str | None, str | None, tuple[str, str, str]]] = {
     "live": ("live", None, ("engage", "live", "live")),
     "observe": ("observe", None, ("engage", "observe", "observe")),
     "active": ("active", None, ("engage", "active", "active")),
-    # The #963 defect: the grant decides dispatch, but the follow-up and the audit read the run mode.
-    "passive_grant_over_live": ("live", "passive", ("engage", "live", "live")),
-    "passive_grant_over_empty": ("", "passive", ("engage", "", "")),
-    # No mode in the state (the CLI loop, ``maxim.run()``): each reader picks its own default.
-    "no_mode": (None, None, ("engage", "live", "unknown")),
+    # #963 changed these: the grant decided dispatch, but the follow-up and the audit read the run mode
+    # (("engage", "live", "live") and ("engage", "", "")); every reader now reads the operational mode.
+    "passive_grant_over_live": ("live", "passive", ("respond", "passive", "passive")),
+    "passive_grant_over_empty": ("", "passive", ("respond", "passive", "passive")),
+    # No mode in the state (the CLI loop, ``maxim.run()``). #963 changed this: each reader picked its own default
+    # (("engage", "live", "unknown")); the one default is ``observe``.
+    "no_mode": (None, None, ("engage", "observe", "observe")),
 }
 
 
@@ -61,16 +64,17 @@ def test_the_follow_up_and_the_audit_by_run_mode_and_grant(monkeypatch, tmp_path
 
 # ── the dispatch gate, composed as the loop composes it ──────────────────────────────────────────────
 
-# (state mode, grant) -> does a host-acting tool (bash) pass the mode gate, on ``main``.
+# (state mode, grant) -> does a host-acting tool (bash) pass the mode gate.
 _DISPATCH: dict[str, tuple[str | None, str | None, bool]] = {
     "live": ("live", None, True),
     "observe": ("observe", None, False),
     "active": ("active", None, True),
     "passive_grant_over_live": ("live", "passive", False),
     "passive_grant_over_empty": ("", "passive", False),
-    # An explicit empty mode restricts nothing (the prompt roster shows passive): #963 makes it passive.
-    "empty": ("", None, True),
-    "no_mode": (None, None, False),  # the mode source's own default, observe
+    # An explicit empty mode. #963 (Q4) changed this: it restricted nothing (True) while the prompt roster showed
+    # passive; the one default, observe, is passive.
+    "empty": ("", None, False),
+    "no_mode": (None, None, False),  # the one default, observe (the mode source's own default before #963)
 }
 
 

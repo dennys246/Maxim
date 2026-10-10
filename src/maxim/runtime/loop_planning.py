@@ -45,6 +45,7 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from maxim.runtime.loop_state import operational_mode
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import log_agentic
 
@@ -67,14 +68,16 @@ def drain_approved(
     autonomy_controller: AutonomyController,
     execute_and_learn: Callable[..., ExecutionOutcome],
     book_machine_refusal: Callable[..., None],
+    executor: Any,
     observation: Any,
     state: Any,
     sim: Any,
 ) -> ActionFollowup | None:
     """Execute every approved PLANNING proposal, oldest first; return the last follow-up any of them queued.
 
-    ``execute_and_learn`` / ``book_machine_refusal`` are the run's bound callables (``LoopRun``); ``observation``
-    is this tick's, the observation the capture stores (the answer-time observation, as on the confirmed path).
+    ``execute_and_learn`` / ``book_machine_refusal`` are the run's bound callables (``LoopRun``); ``executor`` is the
+    run's, whose operational mode a refusal's audit entry records (#963); ``observation`` is this tick's, the
+    observation the capture stores (the answer-time observation, as on the confirmed path).
 
     Exception-safe: the WHOLE per-entry step (the blocker, the execution, that entry's own refusal) runs inside
     one ``try``. On a raise (any ``BaseException``, ``KeyboardInterrupt`` included), every entry still approved
@@ -86,7 +89,11 @@ def drain_approved(
     """
     queue = autonomy_controller.proposal_queue
     refuser = _Refuser(
-        autonomy_controller=autonomy_controller, book_machine_refusal=book_machine_refusal, state=state, sim=sim
+        autonomy_controller=autonomy_controller,
+        book_machine_refusal=book_machine_refusal,
+        executor=executor,
+        state=state,
+        sim=sim,
     )
     followup: ActionFollowup | None = None
     while (proposal := queue.pop_approved()) is not None:
@@ -161,6 +168,7 @@ class _Refuser:
 
     autonomy_controller: AutonomyController
     book_machine_refusal: Callable[..., None]
+    executor: Any
     state: Any
     sim: Any
 
@@ -185,7 +193,7 @@ class _Refuser:
             action_type="rejected",
             action=proposal.action,
             reasoning=f"Refused ({reason}): {detail}",
-            mode=self.state.data.get("mode", "unknown"),
+            mode=operational_mode(self.executor, self.state),
             confidence=proposal.confidence,
             human_involved=False,
         )

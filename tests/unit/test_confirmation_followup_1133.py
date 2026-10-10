@@ -65,7 +65,11 @@ def _pending() -> PendingConfirmation:
 def _controller() -> LoopController:
     state = MagicMock()
     state.data = {"mode": "live"}
-    executor = MagicMock()
+    from maxim.runtime.executor import Executor
+
+    # spec=Executor, and its operational mode said (#963: loop_state.operational_mode refuses a non-str answer).
+    executor = MagicMock(spec=Executor)
+    executor.effective_operational_mode.return_value = "live"
     executor.execute.return_value = MagicMock(success=True, error=None, output="file contents here")
     ctrl = LoopController(
         agent=MagicMock(),

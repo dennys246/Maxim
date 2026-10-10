@@ -116,7 +116,8 @@ _WIRE1_LOW_PHRASE = "reliable from prior experience"
 
 
 from maxim.runtime.loop_state import (
-    _effective_mode,
+    operational_mode,
+    seed_runtime_run_mode,
     _planning_attempt_is_active,
     _substrate_tick_due,
     _persist_state_json,
@@ -1604,7 +1605,7 @@ def run_agentic_loop(
                         _max_cyc_for_display = (
                             _max_cycles_override
                             if _max_cycles_override is not None
-                            else (3 if getattr(state, "data", {}).get("percept_source") else 2)
+                            else (3 if state.data.get("percept_source") else 2)
                         )
                         # NOTE: don't push percept text to thinking panel here —
                         # the percept is an INPUT, not a thought. The AUT's actual
@@ -1673,14 +1674,10 @@ def run_agentic_loop(
             if thought_gate is not None:
                 thought_gate.reset_refractory(step_num)
 
-        # Ensure maxim_runtime contains mode from state.data for MemoryAgent
-        # This propagates mode set in CLI to PerceptionAgent -> MemoryAgent -> ExecAgent
+        # Ensure maxim_runtime carries the RUN mode for MemoryAgent (PerceptionAgent -> MemoryAgent -> ExecAgent)
         if "maxim_runtime" not in state.data:
             state.data["maxim_runtime"] = {}
-        if isinstance(state.data.get("maxim_runtime"), dict):
-            # Preserve existing mode if set, otherwise use state.data["mode"]
-            if "mode" not in state.data["maxim_runtime"] and "mode" in state.data:
-                state.data["maxim_runtime"]["mode"] = state.data["mode"]
+        seed_runtime_run_mode(state)  # keeps a mode already there (#963 Q5: the run mode, not the operational one)
 
         # Check for hard stops in observation
         transcript = None
@@ -2191,7 +2188,7 @@ def run_agentic_loop(
                                         action_type="executed",
                                         action=action,
                                         reasoning=intent.get("source", "agent_fallback"),
-                                        mode=state.data.get("mode", "unknown"),
+                                        mode=operational_mode(executor, state),
                                         confidence=confidence,
                                         outcome="success" if success else "failure",
                                         error=getattr(result, "error", None),
@@ -2396,7 +2393,7 @@ def run_agentic_loop(
                     result=combined_results,
                     original_query=ctrl.pending_proposal.triggering_input,
                     followup_type="process",
-                    mode=state.data.get("mode", "exploration"),
+                    mode=operational_mode(executor, state),
                     timestamp=time.time(),
                 )
                 logger.info("Batched exploration complete, queuing followup for LLM")
@@ -2503,7 +2500,7 @@ def run_agentic_loop(
                     action_type="proposed",
                     action=action,
                     reasoning=ctrl.pending_proposal.reasoning,
-                    mode=state.data.get("mode", "unknown"),
+                    mode=operational_mode(executor, state),
                     confidence=confidence,
                 )
 
@@ -2572,7 +2569,7 @@ def run_agentic_loop(
                         action_type="rejected",
                         action=action,
                         reasoning=f"Rejected: {reason}",
-                        mode=state.data.get("mode", "unknown"),
+                        mode=operational_mode(executor, state),
                         confidence=confidence,
                     )
                     # Record rejection so LLM knows not to re-propose
@@ -2604,6 +2601,7 @@ def run_agentic_loop(
                 autonomy_controller=autonomy_controller,
                 execute_and_learn=_execute_and_learn,
                 book_machine_refusal=_book_machine_refusal,
+                executor=executor,
                 observation=observation,
                 state=state,
                 sim=sim,
@@ -2671,7 +2669,7 @@ def run_agentic_loop(
 
                         context = StructuredContext(
                             timestamp=time.time(),
-                            mode=state.data.get("mode", "active"),
+                            mode=operational_mode(executor, state),
                             autonomy_level=state.data.get("autonomy_level", "supervised"),
                             internet_access=state.data.get("internet_access", False),
                         )
@@ -2686,7 +2684,7 @@ def run_agentic_loop(
 
                         context = StructuredContext(
                             timestamp=time.time(),
-                            mode=state.data.get("mode", "active"),
+                            mode=operational_mode(executor, state),
                             autonomy_level=state.data.get("autonomy_level", "supervised"),
                             internet_access=state.data.get("internet_access", False),
                         )
@@ -3008,8 +3006,8 @@ def run_agentic_loop(
                         processed_cli_inputs.append(new_cli_input)
 
                     if context:
-                        # Get mode info -- the operator's grant wins, as at dispatch (#829)
-                        mode_name = _effective_mode(executor, state, "observe")
+                        # Get mode info -- the operator's grant wins, as at dispatch (#829; one reader, #963)
+                        mode_name = operational_mode(executor, state)
 
                         # Get mode definition for tool access (unknown = passive, as dispatch enforces, #829)
                         mode_def = get_mode(mode_name) or get_mode("passive")

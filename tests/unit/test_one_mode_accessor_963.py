@@ -13,8 +13,9 @@ context's mode record the OPERATIONAL mode (Q5); behavioural tests for the Defau
 flipping the grant between two ticks so a cached value cannot pass (Q6).
 
 Driven through the REAL loop (``tests/unit/_execute_learn_driver.py``; the Default Network through the pre-tick
-gate characterization's driver). Each ``xfail(strict=True)`` gate fails on ``main`` for the reason it states. The
-by-class follow-up downgrade (Q3) has its own gates: ``tests/unit/test_followup_type_by_class_963.py``.
+gate characterization's driver). Written as ``xfail(strict=True)`` red gates, each failing on ``main`` for the reason
+its "Red on main" comment states; the fix flipped them. The by-class follow-up downgrade (Q3) has its own gates:
+``tests/unit/test_followup_type_by_class_963.py``.
 """
 
 from __future__ import annotations
@@ -28,9 +29,7 @@ pytestmark = pytest.mark.timeout(60)
 ENGAGE_TOOL = "internet_search"
 
 
-@pytest.mark.xfail(
-    strict=True, reason="#963: the follow-up reads state.data['mode'] (default 'live'), not the passive grant"
-)
+# Red on main: #963: the follow-up reads state.data['mode'] (default 'live'), not the passive grant
 @pytest.mark.parametrize("level", ["autonomous", "supervised", "planning"])
 def test_a_passive_grant_is_the_follow_ups_type_and_mode_on_every_path(monkeypatch, tmp_path, level):
     """All three paths share ``execute_and_learn``: autonomous, policy-confirmed (SUPERVISED, non-interactive
@@ -52,7 +51,7 @@ _AUDITED = {
 }
 
 
-@pytest.mark.xfail(strict=True, reason="#963: the audit records the run mode ('live'), not the mode dispatch enforced")
+# Red on main: #963: the audit records the run mode ('live'), not the mode dispatch enforced
 @pytest.mark.parametrize("path", list(_AUDITED))
 def test_the_audit_records_the_operational_mode(monkeypatch, tmp_path, path):
     knobs, kinds = _AUDITED[path]
@@ -62,7 +61,7 @@ def test_the_audit_records_the_operational_mode(monkeypatch, tmp_path, path):
     assert {e.mode for e in entries} == {"passive"}
 
 
-@pytest.mark.xfail(strict=True, reason="#963: a refused confirmation's audit entry records the run mode ('live')")
+# Red on main: #963: a refused confirmation's audit entry records the run mode ('live')
 def test_a_refused_confirmation_is_audited_with_the_operational_mode():
     """The confirmation "no" branch (``LoopController.handle_confirmation``), with the run's real executor."""
     from types import SimpleNamespace
@@ -103,9 +102,7 @@ def test_a_refused_confirmation_is_audited_with_the_operational_mode():
     assert (call.kwargs["action_type"], call.kwargs["mode"]) == ("rejected", "passive")
 
 
-@pytest.mark.xfail(
-    strict=True, reason="#963: the follow-up never sees the grant, so a grant set mid-run changes nothing"
-)
+# Red on main: #963: the follow-up never sees the grant, so a grant set mid-run changes nothing
 def test_a_grant_set_between_two_ticks_reaches_the_next_follow_up_and_audit(monkeypatch, tmp_path):
     """Owner decision Q6: read per use, never cached. The first search runs with no grant, the grant is set before
     the second is proposed, and the second's follow-up and audit entry carry it."""
@@ -130,7 +127,7 @@ def test_a_grant_set_between_two_ticks_reaches_the_next_follow_up_and_audit(monk
     ]
 
 
-@pytest.mark.xfail(strict=True, reason="#963: an empty mode from the loop's mode source restricts nothing at dispatch")
+# Red on main: #963: an empty mode from the loop's mode source restricts nothing at dispatch
 def test_an_explicit_empty_run_mode_is_passive_at_dispatch():
     """Owner decision Q4: the one default is ``observe`` (passive), never an empty value. The prompt roster already
     showed passive for it; dispatch ran a host-acting tool. Composed as the loop composes it."""
@@ -146,7 +143,7 @@ def test_an_explicit_empty_run_mode_is_passive_at_dispatch():
     assert denial is not None and "passive mode does not allow" in denial
 
 
-@pytest.mark.xfail(strict=True, reason="#963: a state with no mode leaves the Default Network unconfigured")
+# Red on main: #963: a state with no mode leaves the Default Network unconfigured
 def test_the_default_network_is_observe_when_the_state_has_no_mode(monkeypatch, tmp_path):
     from tests.unit.test_loop_gates_characterization import _run
 

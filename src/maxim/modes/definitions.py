@@ -309,6 +309,12 @@ DANGEROUS_TOOLS = {"execute_file", "run_code", "sandbox_exec"}
 # Operational Mode Definitions
 # ─────────────────────────────────────────────────────────────────────────────
 
+# The ONE default operational mode (#963, owner decision Q4): what the agent loop runs as when its state names no
+# mode, or an empty one. Passive-class, so a run that never chose a mode cannot act on the host. Read by
+# ``Executor.effective_operational_mode`` and ``loop_state.operational_mode``; it lives here so the executor
+# imports no loop module.
+DEFAULT_RUN_MODE = "observe"
+
 OPERATIONAL_MODES: dict[str, ModeDefinition] = {
     "passive": ModeDefinition(
         name="passive",

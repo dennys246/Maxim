@@ -46,9 +46,10 @@ def _compute_target_hz(capabilities) -> float:
 
 def seed_run_mode(state: Any, mode: Any) -> None:
     """Write the runtime's RUN mode (``maxim --mode live|agentic|...``) where the agent loop reads it:
-    ``state.data["mode"]`` -- the value the prompt roster reads each tick and the executor's mode gate
-    enforces at every dispatch (#826). Without it the loop fell back to ``"observe"`` (passive) for
-    every robot run but exploration, which the gate then enforced."""
+    ``state.data["mode"]``. When no launch grant is set, it is the operational mode the prompt roster reads
+    each tick and the executor's mode gate enforces at every dispatch (#826; both read
+    ``Executor.effective_operational_mode()``, which prefers the grant, #963). Without it the loop fell back
+    to ``"observe"`` (passive) for every robot run but exploration, which the gate then enforced."""
     if isinstance(mode, str) and mode.strip():
         state.data["mode"] = mode.strip()
 
