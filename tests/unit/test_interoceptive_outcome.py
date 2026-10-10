@@ -38,7 +38,6 @@ TOL = 1e-5
 CRADLE = ("items/cradle_cool_air", "items/cradle_fire_pit")
 CRADLE_SCRIPT = ("cool_air_feel", "cool_air_feel", "fire_pit_warm_self", "fire_pit_warm_self", "fire_pit_touch")
 pytestmark = pytest.mark.timeout(120)
-RED = pytest.mark.xfail(strict=True, reason="GL2a: the record does not exist yet")
 
 
 def _records(run: Any) -> list[dict[str, Any] | None]:
@@ -141,7 +140,6 @@ CRADLE_TABLE = [
 ]
 
 
-@RED
 def test_every_loop_capture_persists_its_record(cradle_run: Any) -> None:
     records = _records(cradle_run)
     assert len(records) == len(CRADLE_SCRIPT)
@@ -162,7 +160,6 @@ def test_every_loop_capture_persists_its_record(cradle_run: Any) -> None:
         assert "pid" not in rec  # G17: the identity lands at the post-fence resume stage
 
 
-@RED
 @pytest.mark.parametrize("index", range(len(CRADLE_TABLE)))
 def test_the_cradle_records_match_the_hand_table(cradle_run: Any, index: int) -> None:
     rec = _records(cradle_run)[index]
@@ -176,14 +173,12 @@ def test_the_cradle_records_match_the_hand_table(cradle_run: Any, index: int) ->
     assert _block(rec, "caused") == {d: True for d in want["drive_delta"]}  # every tool-path entry is caused
 
 
-@RED
 def test_gate_d_homeostatic_crossing_is_one_satiation_on_the_second_warm(cradle_run: Any) -> None:
     """Red gate (d), the homeostatic half on the tool path: exactly one satiation event."""
     satiations = [(i, list(r["satiated"])) for i, r in enumerate(_records(cradle_run)) if r["satiated"]]
     assert satiations == [(3, ["core_temperature"])]
 
 
-@RED
 def test_relief_pin_positive_drive_delta_equals_drive_relief(cradle_run: Any) -> None:
     """The record and the trio are computed by different code from different reads (§3.1): on every
     drive present in ``drive_relief``, the positive part of the record's ``drive_delta`` equals it."""
@@ -232,7 +227,6 @@ def chilled_run(tmp_path_factory: pytest.TempPathFactory) -> Any:
         mp.undo()
 
 
-@RED
 def test_twenty_seconds_of_drift_are_netted_at_their_applied_clamped_value(chilled_run: Any) -> None:
     rec = _records(chilled_run)[1]
     assert abs(rec["extra"]["drift_dt_s"] - 20.0) <= 1e-3
@@ -247,7 +241,6 @@ def test_twenty_seconds_of_drift_are_netted_at_their_applied_clamped_value(chill
     assert abs(rec["relief"] - 1.0) <= TOL
 
 
-@RED
 def test_the_relief_pin_holds_across_twenty_seconds_of_drift(chilled_run: Any) -> None:
     """The netting's deletion probe re-reds THIS: un-netted, cold's change is +0.4 (away from comfort)."""
     out = chilled_run.outputs[1]
@@ -262,7 +255,6 @@ def test_the_relief_pin_holds_across_twenty_seconds_of_drift(chilled_run: Any) -
 # eat: 0.75 -> 0.35 (> 0.3, not cleared; not deprived). eat: 0.35 -> -0.05, clamped to 0.0 -> cleared.
 
 
-@RED
 def test_gate_d_entropic_feed_cycle_is_one_satiation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     run = run_cradle(
         monkeypatch,
@@ -343,7 +335,6 @@ def _probe_tools() -> tuple[Any, Any]:
     return _Plain(), _Raises()
 
 
-@RED
 def test_record_iff_an_agent_bound_body_and_the_tool_ran(tmp_path: Path) -> None:
     plain, raises = _probe_tools()
     bound = _executor(tmp_path, "gl2a_bound", plain, raises)
@@ -358,7 +349,6 @@ def test_record_iff_an_agent_bound_body_and_the_tool_ran(tmp_path: Path) -> None
     assert unbound.execute({"tool_name": "fire_pit_warm_self", "params": {}}).interoceptive_outcome is None
 
 
-@RED
 def test_str_of_a_tool_output_is_byte_identical_with_and_without_the_record(tmp_path: Path) -> None:
     """#1189: ``ToolOutput`` reaches the Hippocampus's searchable text through ``str``."""
     bound = _executor(tmp_path, "gl2a_bound")
@@ -371,7 +361,6 @@ def test_str_of_a_tool_output_is_byte_identical_with_and_without_the_record(tmp_
         assert token not in str(out)
 
 
-@RED
 def test_the_unreadable_sensor_pop_records_no_satiation(tmp_path: Path) -> None:
     """Satiation is the two ``elif cleared:`` sites only, never the silent pop of an unreadable sensor."""
     bound = _executor(tmp_path, "gl2a_bound")
@@ -391,7 +380,6 @@ def test_the_unreadable_sensor_pop_records_no_satiation(tmp_path: Path) -> None:
 # ── the factory's structure (§3.1.4) ──────────────────────────────────────────
 
 
-@RED
 def test_the_factory_requires_cause_and_provenance() -> None:
     import inspect
 
@@ -403,7 +391,6 @@ def test_the_factory_requires_cause_and_provenance() -> None:
         assert params[name].default is inspect.Parameter.empty
 
 
-@RED
 def test_the_record_refuses_missing_or_unknown_provenance_and_has_no_pid() -> None:
     from maxim.embodiment.sem import InteroceptiveOutcome
 
@@ -416,7 +403,6 @@ def test_the_record_refuses_missing_or_unknown_provenance_and_has_no_pid() -> No
         InteroceptiveOutcome(provenance="experienced", extra={"relief": 1.0})  # collides with a field
 
 
-@RED
 def test_the_record_round_trips_through_its_persisted_form(cradle_run: Any) -> None:
     from maxim.embodiment.sem import InteroceptiveOutcome
 
@@ -425,7 +411,6 @@ def test_the_record_round_trips_through_its_persisted_form(cradle_run: Any) -> N
     assert _records(cradle_run)[4] == rec.to_dict()
 
 
-@RED
 def test_no_src_code_constructs_the_record_except_its_factory() -> None:
     """Structural guard: ``InteroceptiveOutcome(`` only inside ``sem.py``'s factory and ``from_dict``."""
     offenders = []
@@ -445,3 +430,139 @@ def test_no_src_code_constructs_the_record_except_its_factory() -> None:
     from maxim.embodiment import sem  # the factory exists, so the guard is not vacuous
 
     assert "InteroceptiveOutcome(" in Path(sem.__file__).read_text()
+
+
+# ── T1-16 structural discharge: the persisted key moves no retrieval (autonomic_layer.md §5.2) ──
+#
+# GL2a grows every loop capture's saved trace by ``extra["interoception"]``, which fires T1-16's "the
+# memory record shape" trigger. The discharge's three legs: the ranking readers read no ``extra`` key;
+# ranking is byte-identical over a store with and without the record; and the substring path
+# (``Hippocampus.search_by_content``, Path 3 of ``_query_hippocampus``) is too, on queries that would
+# match a record token -- which holds only because ``ToolOutput.interoceptive_outcome`` is
+# ``repr=False`` (wiring D3, #1189).
+
+_RECORD_QUERIES = ("relief", "oxygen", "thermal", "nociception", "urgency", "interoceptive", "caused_or_felt")
+
+
+def test_t1_16_the_ranking_readers_read_no_extra_key() -> None:
+    import inspect
+
+    from maxim.integration.bio_enrichment import BioEnrichmentPipeline
+    from maxim.memory.hippocampus_retrieval import _rank_by_relevance
+
+    readers = [_rank_by_relevance]
+    for name in ("_query_hippocampus", "_query_hippocampus_traced"):
+        readers.append(getattr(BioEnrichmentPipeline, name))
+    for reader in readers:
+        source = inspect.getsource(reader)
+        for token in ("extra", "interoception", ".encoding"):
+            assert token not in source, (reader.__qualname__, token)
+
+
+def _strip_record(trace: Any) -> None:
+    """The same trace as if GL2a had never run: no persisted key, no record on the ToolOutput."""
+    trace.encoding = dataclasses.replace(trace.encoding, extra={})
+    result = getattr(trace.outcome, "result", None)
+    if getattr(result, "interoceptive_outcome", None) is not None:
+        trace.outcome.result = dataclasses.replace(result, interoceptive_outcome=None)
+
+
+def test_t1_16_ranking_and_substring_search_are_identical_without_the_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from maxim.memory.hippocampus_retrieval import _rank_by_relevance
+
+    run = run_cradle(
+        monkeypatch,
+        tmp_path,
+        body_ref="bodies/infant_humanoid",
+        entity_refs=CRADLE,
+        script=tuple(Step(t) for t in CRADLE_SCRIPT),
+    )
+    hippo = run.hippocampus
+    assert sum(1 for t in run.traces if "interoception" in t.encoding.extra) == len(CRADLE_SCRIPT)
+    queries = _RECORD_QUERIES + ("fire_pit_touch", "cool_air_feel", "cradle script")
+
+    def views() -> tuple[list[list[str]], list[list[str]]]:
+        memories = list(hippo._memories.values())
+        ranked = [[id(m) for m in _rank_by_relevance(list(memories), q, 50)] for q in queries]
+        found = [sorted(id(m) for m in hippo.search_by_content(q, limit=50)) for q in queries]
+        return ranked, found
+
+    with_record = views()
+    for trace in run.traces:
+        _strip_record(trace)
+    assert all("interoception" not in t.encoding.extra for t in run.traces)
+    assert views() == with_record
+
+
+def test_a_record_on_an_otherwise_unchanged_output_is_not_dropped(tmp_path: Path) -> None:
+    """``_stamp_invocation`` returns its input unchanged when every stamp already matches; the record is
+    in that comparison, or a record on an output with no other stamp (no bridge, no readable drive)
+    would be silently dropped (§5.2)."""
+    from maxim.embodiment.sem import CauseRef
+    from maxim.runtime.executor import _OutcomeStart
+    from maxim.tools.base import ToolOutput
+
+    bound = _executor(tmp_path, "gl2a_bound")
+    bound._tool_pain_bridge = None  # no surprise and no pain to stamp
+    bare = ToolOutput(success=True)
+    start = _OutcomeStart(cause=CauseRef(tool="gl2a_plain"), specs={}, before={})
+    stamped = bound._stamp_invocation(bare, "inv-1", None, outcome=start)
+    assert (stamped.rpe, stamped.drive_pressure_before, stamped.drive_relief, stamped.pain) == (None, None, None, None)
+    assert stamped.interoceptive_outcome is not None
+    assert stamped.interoceptive_outcome.cause == CauseRef(tool="gl2a_plain")
+
+
+def test_a_window_sees_only_its_own_threads_evaluations(tmp_path: Path) -> None:
+    """The orchestrator's narrator tools evaluate the AUT's body on ANOTHER thread (§3.1.2); their drift
+    and clears never land in the AUT executor's window."""
+    import threading
+    import time as _time
+
+    bound = _executor(tmp_path, "gl2a_bound")
+    emb = bound.embodiment
+    root = emb.root
+    root.vital_metrics["core_temperature"] = -0.6
+    emb.evaluate_failures()  # baseline poll + latch
+    root.vital_metrics["core_temperature"] = 0.0  # back in band: the next evaluation clears the latch
+    with emb.outcome_window() as window:
+        _time.sleep(0.01)  # some drift to apply
+        other = threading.Thread(target=emb.evaluate_failures)
+        other.start()
+        other.join()
+    assert "core_temperature" not in root.drive_breach_severity  # the other thread did clear it
+    assert window.drift == {} and window.drift_dt_s == 0.0 and window.cleared == {}
+
+
+def test_nested_windows_close_by_identity(tmp_path: Path) -> None:
+    """Two empty windows compare equal by value; closing the inner one must not close the outer."""
+    import time as _time
+
+    emb = _executor(tmp_path, "gl2a_bound").embodiment
+    emb.evaluate_failures()  # baseline poll
+    with emb.outcome_window() as outer:
+        with emb.outcome_window() as inner:
+            pass
+        _time.sleep(0.01)
+        emb.evaluate_failures()
+    assert inner.drift == {} and outer.drift  # only the still-open window recorded the later drift
+    assert emb._open_windows() == []
+
+
+def test_a_self_affordance_names_no_causing_entity(tmp_path: Path) -> None:
+    """``CauseRef.entity`` is never the sufferer: the body's own affordance names the act, not an entity."""
+    bound = _executor(tmp_path, "gl2a_bound")
+    out = bound.execute({"tool_name": "infant_humanoid_turn_left", "params": {}})
+    cause = out.interoceptive_outcome.cause
+    assert (cause.entity, cause.affordance, cause.tool) == ("", "turn_left", "infant_humanoid_turn_left")
+
+
+def test_only_an_affordance_names_a_causing_entity(tmp_path: Path) -> None:
+    """Sensing a scene item does nothing to it: a sensor read or sense names no causing entity."""
+    bound = _executor(tmp_path, "gl2a_bound")
+    for tool in ("sense_fire_pit", "read_fire_pit_heat_output"):
+        cause = bound.execute({"tool_name": tool, "params": {}}).interoceptive_outcome.cause
+        assert (cause.entity, cause.affordance, cause.tool) == ("", "", tool)
+    touch = bound.execute({"tool_name": "fire_pit_touch", "params": {}}).interoceptive_outcome.cause
+    assert (touch.entity, touch.affordance) == ("fire_pit", "touch")

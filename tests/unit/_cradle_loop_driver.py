@@ -59,6 +59,7 @@ class CradleRun:
     traces: list[Any] = field(default_factory=list)  # EpisodicMemory, capture order
     tool_names: list[str] = field(default_factory=list)  # every tool the run registered
     embodiment: Any = None
+    hippocampus: Any = None  # the run's real Hippocampus (its traces are ``traces``)
 
 
 def run_cradle(
@@ -206,6 +207,7 @@ def run_cradle(
     assert hippo.flush(timeout=30.0), "the Hippocampus capture worker did not drain"
     traces = [m for m in hippo._memories.values() if getattr(m, "capture_seq", None) is not None]
     run.traces = sorted(traces, key=lambda m: m.capture_seq)
+    run.hippocampus = hippo
     try:
         bio.on_session_end()
     except Exception as exc:  # teardown only; the traces are already read
