@@ -149,6 +149,7 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
     G5). Narrated consequences are stamped `narrated` and used at a declared discount (G6); harness writes
     to a drive (rescue, heal, respawn, teacher and mother feeds) are `apparatus`, recorded and never
     trained on or credited (G16, 2026-10-09, from the GL1 design review).
+- [tool_failure_credit.md](tool_failure_credit.md) — **ACTIVE 2026-10-10 ([#1200](https://github.com/dennys246/Maxim/issues/1200)).** Tool failure was never wired into learning; putting it on the PainBus as it stands makes learning worse (the context-similarity NAc subscriber steals the bridge's event). Staged design B (owner TF1–TF3): Stage 1 a stale-success defect (#1207); Stage 2 failure credit through `ToolPainBridge.record_tool_failure` with a real RPE; Stage 3 a felt-only FRUSTRATION PainBus signal once `Reaction` carries kind.
 - [autonomic_layer.md](autonomic_layer.md) — **PROPOSED 2026-10-07, plan only (GL2).** The signed
   body-consequence record, `InteroceptiveOutcome` (deviation, pain, relief, urgency), the predictor targets.
   - **The regulatory defects the audit found:** no heat corrective need; an infant touch-burn that
