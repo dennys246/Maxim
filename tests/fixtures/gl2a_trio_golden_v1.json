@@ -1,0 +1,540 @@
+{
+ "arms": {
+  "cradle": {
+   "arm": "cradle",
+   "captures": [
+    {
+     "drive_pressure": [
+      [
+       "arms.pressure",
+       0.0
+      ],
+      [
+       "arms.thermal",
+       0.0
+      ],
+      [
+       "azimuth",
+       0.0
+      ],
+      [
+       "core_temperature",
+       0.0
+      ],
+      [
+       "head.thermal",
+       0.0
+      ],
+      [
+       "hunger",
+       0.0
+      ],
+      [
+       "thirst",
+       0.0
+      ]
+     ],
+     "drive_relief": [
+      [
+       "core_temperature",
+       0.0
+      ]
+     ],
+     "encoding_tag": 0.5,
+     "pain": 0.0,
+     "storage_strength": 15000000.0,
+     "tool": "cool_air_feel"
+    },
+    {
+     "drive_pressure": [
+      [
+       "arms.pressure",
+       0.0
+      ],
+      [
+       "arms.thermal",
+       0.0
+      ],
+      [
+       "azimuth",
+       0.0
+      ],
+      [
+       "core_temperature",
+       0.133333333
+      ],
+      [
+       "head.thermal",
+       0.0
+      ],
+      [
+       "hunger",
+       0.0
+      ],
+      [
+       "thirst",
+       0.0
+      ]
+     ],
+     "drive_relief": [
+      [
+       "core_temperature",
+       0.0
+      ]
+     ],
+     "encoding_tag": 0.506,
+     "pain": 0.0,
+     "storage_strength": 15060000.0,
+     "tool": "cool_air_feel"
+    },
+    {
+     "drive_pressure": [
+      [
+       "arms.pressure",
+       0.0
+      ],
+      [
+       "arms.thermal",
+       0.0
+      ],
+      [
+       "azimuth",
+       0.0
+      ],
+      [
+       "core_temperature",
+       0.399999866
+      ],
+      [
+       "head.thermal",
+       0.0
+      ],
+      [
+       "hunger",
+       0.0
+      ],
+      [
+       "thirst",
+       0.0
+      ]
+     ],
+     "drive_relief": [
+      [
+       "core_temperature",
+       0.2
+      ]
+     ],
+     "encoding_tag": 0.759999947,
+     "pain": 0.0,
+     "storage_strength": 17599999.465942383,
+     "tool": "fire_pit_warm_self"
+    },
+    {
+     "drive_pressure": [
+      [
+       "arms.pressure",
+       0.0
+      ],
+      [
+       "arms.thermal",
+       0.0
+      ],
+      [
+       "azimuth",
+       0.0
+      ],
+      [
+       "core_temperature",
+       0.133333067
+      ],
+      [
+       "head.thermal",
+       0.0
+      ],
+      [
+       "hunger",
+       0.0
+      ],
+      [
+       "thirst",
+       0.0
+      ]
+     ],
+     "drive_relief": [
+      [
+       "core_temperature",
+       0.2
+      ]
+     ],
+     "encoding_tag": 0.604799878,
+     "pain": 0.0,
+     "storage_strength": 16047998.783798216,
+     "tool": "fire_pit_warm_self"
+    },
+    {
+     "drive_pressure": [
+      [
+       "arms.pressure",
+       0.0
+      ],
+      [
+       "arms.thermal",
+       0.0
+      ],
+      [
+       "azimuth",
+       0.0
+      ],
+      [
+       "core_temperature",
+       0.0
+      ],
+      [
+       "head.thermal",
+       0.0
+      ],
+      [
+       "hunger",
+       0.0
+      ],
+      [
+       "thirst",
+       0.0
+      ]
+     ],
+     "drive_relief": [
+      [
+       "core_temperature",
+       0.1499994
+      ]
+     ],
+     "encoding_tag": 0.5749997,
+     "pain": 0.0,
+     "storage_strength": 15749996.99831009,
+     "tool": "fire_pit_touch"
+    }
+   ]
+  },
+  "fear_water": {
+   "arm": "fear_water",
+   "captures": [
+    {
+     "drive_pressure": [
+      [
+       "food",
+       0.0
+      ],
+      [
+       "health",
+       0.0
+      ],
+      [
+       "oxygen",
+       0.0
+      ]
+     ],
+     "drive_relief": null,
+     "encoding_tag": 0.0,
+     "pain": 0.0,
+     "storage_strength": 10000000.0,
+     "tool": "minecraft_player_flee"
+    },
+    {
+     "drive_pressure": [
+      [
+       "food",
+       0.0
+      ],
+      [
+       "health",
+       0.0
+      ],
+      [
+       "oxygen",
+       0.0
+      ]
+     ],
+     "drive_relief": null,
+     "encoding_tag": 0.500002492,
+     "pain": 0.0,
+     "storage_strength": 15000024.923719408,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "drive_pressure": [
+      [
+       "food",
+       0.0
+      ],
+      [
+       "health",
+       0.0
+      ],
+      [
+       "oxygen",
+       0.0
+      ]
+     ],
+     "drive_relief": null,
+     "encoding_tag": 0.430022262,
+     "pain": 0.0,
+     "storage_strength": 14300222.615530375,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "drive_pressure": [
+      [
+       "food",
+       0.0
+      ],
+      [
+       "health",
+       0.0
+      ],
+      [
+       "oxygen",
+       0.0
+      ]
+     ],
+     "drive_relief": null,
+     "encoding_tag": 0.405443664,
+     "pain": 0.0,
+     "storage_strength": 14054436.641621297,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "drive_pressure": [
+      [
+       "food",
+       0.0
+      ],
+      [
+       "health",
+       0.0
+      ],
+      [
+       "oxygen",
+       0.0
+      ]
+     ],
+     "drive_relief": null,
+     "encoding_tag": 0.318133578,
+     "pain": 0.0,
+     "storage_strength": 13181335.782211332,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "drive_pressure": [
+      [
+       "food",
+       0.0
+      ],
+      [
+       "health",
+       0.0
+      ],
+      [
+       "oxygen",
+       0.0
+      ]
+     ],
+     "drive_relief": null,
+     "encoding_tag": 0.27371955,
+     "pain": 0.0,
+     "storage_strength": 12737195.501848077,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "drive_pressure": [
+      [
+       "food",
+       0.01
+      ],
+      [
+       "health",
+       0.0
+      ],
+      [
+       "oxygen",
+       0.0
+      ]
+     ],
+     "drive_relief": null,
+     "encoding_tag": 0.235735869,
+     "pain": 0.0,
+     "storage_strength": 12357358.692177733,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "drive_pressure": [
+      [
+       "food",
+       0.065
+      ],
+      [
+       "health",
+       0.0
+      ],
+      [
+       "oxygen",
+       0.0
+      ]
+     ],
+     "drive_relief": null,
+     "encoding_tag": 0.223724361,
+     "pain": 0.0,
+     "storage_strength": 12237243.614403162,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "drive_pressure": [
+      [
+       "food",
+       0.12
+      ],
+      [
+       "health",
+       0.0
+      ],
+      [
+       "oxygen",
+       0.0
+      ]
+     ],
+     "drive_relief": null,
+     "encoding_tag": 0.174112632,
+     "pain": 0.0,
+     "storage_strength": 11741126.324991977,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "drive_pressure": [
+      [
+       "food",
+       0.175
+      ],
+      [
+       "health",
+       0.0
+      ],
+      [
+       "oxygen",
+       0.0
+      ]
+     ],
+     "drive_relief": null,
+     "encoding_tag": 0.150308682,
+     "pain": 0.0,
+     "storage_strength": 11503086.818041986,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "drive_pressure": [
+      [
+       "food",
+       0.23
+      ],
+      [
+       "health",
+       0.0
+      ],
+      [
+       "oxygen",
+       0.0
+      ]
+     ],
+     "drive_relief": null,
+     "encoding_tag": 0.130477583,
+     "pain": 0.0,
+     "storage_strength": 11304775.830369053,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "drive_pressure": [
+      [
+       "food",
+       0.34
+      ],
+      [
+       "health",
+       0.0
+      ],
+      [
+       "oxygen",
+       0.0
+      ]
+     ],
+     "drive_relief": null,
+     "encoding_tag": 0.116469137,
+     "pain": 0.0,
+     "storage_strength": 11164691.3738026,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "drive_pressure": [
+      [
+       "food",
+       0.395
+      ],
+      [
+       "health",
+       0.0
+      ],
+      [
+       "oxygen",
+       0.0
+      ]
+     ],
+     "drive_relief": null,
+     "encoding_tag": 0.104451248,
+     "pain": 0.0,
+     "storage_strength": 11044512.4821384,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "drive_pressure": [
+      [
+       "food",
+       0.45
+      ],
+      [
+       "health",
+       0.0
+      ],
+      [
+       "oxygen",
+       0.0
+      ]
+     ],
+     "drive_relief": null,
+     "encoding_tag": 0.095665165,
+     "pain": 0.0,
+     "storage_strength": 10956651.648606677,
+     "tool": "minecraft_player_escape_water"
+    },
+    {
+     "drive_pressure": [
+      [
+       "food",
+       0.505
+      ],
+      [
+       "health",
+       0.0
+      ],
+      [
+       "oxygen",
+       0.0
+      ]
+     ],
+     "drive_relief": null,
+     "encoding_tag": 0.089877047,
+     "pain": 0.0,
+     "storage_strength": 10898770.465136876,
+     "tool": "minecraft_player_escape_water"
+    }
+   ]
+  }
+ },
+ "generated_at_commit": "d9e89f5a4a872e634fc01160a3085a319472887e"
+}

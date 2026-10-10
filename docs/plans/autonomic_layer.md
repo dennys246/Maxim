@@ -984,6 +984,16 @@ start (§8). No stage carries a timeline.
 
 ### 5.2 GL2a — the record, record-only (outside the fence; owner decisions G1, G9, G14, G15, G17)
 
+> **BUILT 2026-10-09** (branch `feat/gl2a-interoceptive-outcome`). Guards:
+> `tests/unit/test_interoceptive_outcome.py`, `tests/unit/test_gl2a_trio_golden.py` (fixture
+> `tests/fixtures/gl2a_trio_golden_v1.json`, generated at d9e89f5a) and
+> `tests/unit/test_drift_step_byte_identical.py`; the cradle driver is `tests/unit/_cradle_loop_driver.py`.
+> Two gates stay red by design: the #1161-scoped `arms.thermal` gate and gate (d)'s drift-only crossing
+> (the out-of-band producer). The entropic half of gate (d) needed two feeds, not one: a few ticks of
+> hunger drift between the latch-setting evaluation and the feed lift the post-feed value just past 0.3
+> (`satisfaction_threshold`), so one feed from 0.7 never clears. #954 is still open; the PR states the
+> water-trial margins it measured.
+
 - **Build:** `CauseRef` (without `cause_pid`), `InteroceptiveOutcome` (without `pid`),
   `sem.interoceptive_outcome` and the pure drift helper; `ToolOutput.interoceptive_outcome`
   (`repr=False`); `Executor._stamp_invocation` sets it, and its short-circuit equality tuple (today

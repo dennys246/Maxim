@@ -8,12 +8,14 @@ import uuid
 from typing import TYPE_CHECKING, Any, Callable
 
 from maxim.tools.base import Tool, ToolOutput
+from maxim.utils.logging import log_swallowed_exception
 from maxim.tools.registry import ToolRegistry
 
 if TYPE_CHECKING:
     from maxim.agents.permissions import AgentPermissions
     from maxim.bridges.tool_pain_bridge import ToolPainBridge
-    from maxim.embodiment.body import Embodiment
+    from maxim.embodiment.body import Embodiment, OutcomeWindow
+    from maxim.embodiment.sem import CauseRef, InteroceptiveOutcome
     from maxim.proprioception.pain import PainDetector
 
 
@@ -76,6 +78,22 @@ _TOOL_ALIASES_LOCK = threading.RLock()
 
 
 _log = logging.getLogger(__name__)
+
+
+@dataclasses.dataclass
+class _OutcomeStart:
+    """The tool-path body-consequence record's before-half (grounding GL2a, owner decision G14).
+
+    Taken in ``Executor._run_started`` just before ``tool.run``: the invoked affordance's own declared
+    drives, their values, and the cause. ``window`` is the body's ``OutcomeWindow`` over ``tool.run``
+    (the drift the body applied and the latches it cleared on this thread). ``_stamp_invocation``
+    reads the after-half and builds the record.
+    """
+
+    cause: CauseRef
+    specs: dict[str, Any]
+    before: dict[str, float]
+    window: OutcomeWindow | None = None
 
 
 # The "Only use tools from the list" reply names these when the agent has them (#1042).
@@ -399,14 +417,20 @@ class Executor:
             return self._stamp_invocation(result, invocation_id, None)
 
         pressure_before = self._drive_pressure_snapshot()
+        outcome = self._outcome_start(tool, tool_name)
         try:
-            result = tool.run(**params)
+            if outcome is None or self.embodiment is None:
+                result = tool.run(**params)
+            else:
+                with self.embodiment.outcome_window() as window:
+                    result = tool.run(**params)
+                outcome.window = window
         except Exception as e:
             with self._lock:
                 self._running = None
             result = ToolOutput(success=False, error=f"Tool {tool_name!r} execution failed: {e}")
             self._report_failure(tool_name, invocation_id, result, params)
-            return self._stamp_invocation(result, invocation_id, pressure_before)
+            return self._stamp_invocation(result, invocation_id, pressure_before)  # raised: no record
 
         with self._lock:
             self._running = None
@@ -480,7 +504,7 @@ class Executor:
         else:
             self._report_failure(tool_name, invocation_id, result, params)
 
-        return self._stamp_invocation(result, invocation_id, pressure_before)
+        return self._stamp_invocation(result, invocation_id, pressure_before, outcome=outcome)
 
     def _report_failure(
         self,
@@ -659,19 +683,115 @@ class Executor:
             return None
         return tuple(sorted(relief.items())) if relief else None
 
+    def _outcome_start(self, tool: Any, tool_name: str) -> _OutcomeStart | None:
+        """The before-half of this invocation's body-consequence record, or None when it mints none.
+
+        Only an agent-bound body records (wiring S3): ``create.embodiment()``, foundry, scene and probe
+        bodies carry ``agent_id == ""`` and mint nothing. The drives are the invoked affordance's own
+        declared ``self_effect`` drives (G14), read through the one resolver (#1125); a tool that
+        declares none still gets a record, with an empty drive block. Never costs the action.
+        """
+        embodiment = self.embodiment
+        root = getattr(embodiment, "root", None) if embodiment is not None else None
+        if root is None or not getattr(embodiment, "agent_id", ""):
+            return None
+        from maxim.embodiment.sem import CauseRef, _read_sensor_value, affordance_declared_drives
+
+        try:
+            drive_specs = getattr(root, "drive_specs", {}) or {}
+            # A ModulatorAffordanceTool's own declaration and cause. tool_bridge has no public accessor
+            # for them and is outside GL2a's file set, so they are read by attribute; any other tool
+            # (a sensor read or sense of an entity included) declares no drives and names no entity.
+            schema = getattr(tool, "_affordance_schema", None)
+            declared = affordance_declared_drives(
+                getattr(schema, "self_effect", None),
+                drive_specs,
+                getattr(embodiment, "live_world_set_sensors", None) or (),
+            )
+            before = {name: value for name in declared if (value := _read_sensor_value(root, name)) is not None}
+            # Only an affordance acts, so only an affordance names a causing entity, and that entity is
+            # never the sufferer: an affordance of the body's own modulators (``turn_left``,
+            # ``escape_water``) names none; the affordance and tool still name the act.
+            affordance = str(getattr(tool, "_affordance_name", "") or "")
+            acting = getattr(tool, "_entity", None) if affordance else None
+            cause = CauseRef(
+                entity="" if acting is None or acting is root else str(getattr(acting, "name", "") or ""),
+                affordance=affordance,
+                tool=tool_name,
+            )
+        except Exception:  # noqa: BLE001 - a record must not cost the action
+            log_swallowed_exception()
+            return None
+        return _OutcomeStart(cause=cause, specs={name: drive_specs[name] for name in declared}, before=before)
+
+    def _interoceptive_outcome(
+        self, outcome: _OutcomeStart, invocation_id: str, pain: float | None
+    ) -> InteroceptiveOutcome | None:
+        """The after-half: this invocation's record, built by ``sem.interoceptive_outcome`` (GL2a).
+
+        Read after ``tool.run`` returned, net of the drift the body applied inside the window. The
+        provenance is ``experienced``: this executor is the agent's own (an agent-bound body). Never
+        costs the action.
+        """
+        from maxim.embodiment.sem import _read_sensor_value, interoceptive_outcome
+        from maxim.runtime.substrate_proposal import _read_drive_ranges
+
+        embodiment = self.embodiment
+        if embodiment is None:  # _outcome_start found a body; a detached one records nothing
+            return None
+        try:
+            root = embodiment.root
+            path = root.full_path
+            window = outcome.window
+            after = {name: value for name in outcome.specs if (value := _read_sensor_value(root, name)) is not None}
+            record = interoceptive_outcome(
+                outcome.specs,
+                _read_drive_ranges(self),
+                outcome.before,
+                after,
+                window.drift.get(path, {}) if window is not None else {},
+                pain,
+                window.cleared.get(path, ()) if window is not None else (),
+                cause=outcome.cause,
+                provenance="experienced",
+                agent_id=embodiment.agent_id,
+                body_path=path,
+                sufferer=path,
+                invocation_id=invocation_id,
+                drift_dt_s=window.drift_dt_s if window is not None else 0.0,
+            )
+        except Exception:  # noqa: BLE001 - a record must not cost the action
+            log_swallowed_exception()
+            return None
+        _log.debug(
+            "interoception %s: relief=%.3f harm=%.3f nociception=%.3f drive_pain=%.3f urgency=%.3f satiated=%s",
+            outcome.cause.tool,
+            record.relief,
+            record.harm,
+            record.nociception,
+            record.drive_pain,
+            record.urgency,
+            list(record.satiated),
+        )
+        return record
+
     def _stamp_invocation(
         self,
         result: ToolOutput,
         invocation_id: str,
         pressure_before: tuple[tuple[str, float], ...] | None,
+        *,
+        outcome: _OutcomeStart | None = None,
     ) -> ToolOutput:
         """Attach what THIS invocation carried: its surprise and the body around it.
 
         The Rescorla-Wagner error NAc computed for this invocation's outcome travels on the
         ToolOutput (#847), so a capture reads the surprise of the action it captures rather than an
         earlier tool's; the drive pressure it acted under and the relief it produced ride along the
-        same way (memory-strength Phase 2b-ii), and so does its pain (Phase 2S-c). The executor is
-        the only writer of all four.
+        same way (memory-strength Phase 2b-ii), and so does its pain (Phase 2S-c). ``outcome`` (the
+        tool ran on an agent-bound body) adds the body-consequence record (grounding GL2a); the
+        inactive-scene, unregistered-tool and raised paths pass none and mint nothing. The executor is
+        the only writer of all five.
         """
         if not isinstance(result, ToolOutput):
             return result
@@ -680,15 +800,29 @@ class Executor:
         # Popped on EVERY path, like the surprise, so no invocation's pain outlives it (2S-c).
         pain = bridge.pop_invocation_pain(invocation_id) if bridge is not None else None
         relief = self._drive_relief(result)
-        if (result.rpe, result.drive_pressure_before, result.drive_relief, result.pain) == (
+        record = self._interoceptive_outcome(outcome, invocation_id, pain) if outcome is not None else None
+        # The record is in the short-circuit: an otherwise unchanged output would silently drop it.
+        if (
+            result.rpe,
+            result.drive_pressure_before,
+            result.drive_relief,
+            result.pain,
+            result.interoceptive_outcome,
+        ) == (
             rpe,
             pressure_before,
             relief,
             pain,
+            record,
         ):
             return result
         return dataclasses.replace(
-            result, rpe=rpe, drive_pressure_before=pressure_before, drive_relief=relief, pain=pain
+            result,
+            rpe=rpe,
+            drive_pressure_before=pressure_before,
+            drive_relief=relief,
+            pain=pain,
+            interoceptive_outcome=record,
         )
 
     def tool_usage_stats(self) -> dict[str, Any]:

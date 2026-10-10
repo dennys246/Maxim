@@ -17,7 +17,7 @@ import logging
 import math
 import operator
 import time
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
@@ -425,6 +425,311 @@ def drive_pressure(spec: DriveSpec, value: float, lo: float, hi: float) -> float
             return 0.0 if value == spec.satisfaction_threshold else 1.0
         return max(0.0, min(1.0, (value - spec.satisfaction_threshold) / span))
     return None
+
+
+def drift_step(spec: DriveSpec, value: float, dt: float) -> float:
+    """Where a drive's own drift moves ``value`` over ``dt`` seconds: the arithmetic of
+    ``Embodiment.tick_vital_drift``, which runs on this (grounding GL2a, owner decision G14).
+
+    Homeostatic: toward ``set_point`` at ``drift_rate``, never past it. Entropic: in ``drift_direction``
+    at ``drift_rate``, clamped to ``[0, 1]`` ("up" rises; any other direction falls). Pure, so the
+    applied drift an evaluation netted can be recomputed and pinned.
+    """
+    if isinstance(spec, HomeostaticDriveSpec):
+        delta = spec.set_point - value
+        step = min(abs(delta), spec.drift_rate * dt)
+        return value + (step if delta > 0 else -step)
+    if isinstance(spec, EntropicDriveSpec):
+        if spec.drift_direction == "up":
+            return min(1.0, value + spec.drift_rate * dt)
+        return max(0.0, value - spec.drift_rate * dt)
+    return value
+
+
+# ---------------------------------------------------------------------------
+# The body-consequence record (grounding GL2a, docs/plans/autonomic_layer.md §3.1)
+# ---------------------------------------------------------------------------
+
+#: The provenance a body-consequence record may carry (owner decisions G6, G16). ``narrated`` is
+#: discounted and ``apparatus`` excluded by the record's later consumers; GL2a produces ``experienced``
+#: only (the tool path, G9). There is no default: a record without provenance cannot be built.
+OUTCOME_PROVENANCE: frozenset[str] = frozenset({"experienced", "narrated", "imagined", "apparatus"})
+
+
+def _check_extra(owner: Any, extra: Any) -> None:
+    """CC3 path (a): ``extra`` holds JSON values only and never shadows a declared field."""
+    import json
+
+    if not isinstance(extra, dict):
+        raise ValueError(f"{type(owner).__name__}.extra must be a dict, got {type(extra).__name__}")
+    declared = {f for f in owner.__dataclass_fields__ if f != "extra"}
+    collisions = set(extra) & declared
+    if collisions:
+        raise ValueError(f"{type(owner).__name__}.extra keys collide with declared fields: {sorted(collisions)}")
+    try:
+        json.dumps(extra)
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"{type(owner).__name__}.extra must hold JSON values only: {e}") from None
+    object.__setattr__(owner, "extra", dict(extra))
+
+
+@dataclass(frozen=True, slots=True)
+class CauseRef:
+    """Who or what caused a body consequence (grounding GL2a; ``None`` on the record = unknown / world).
+
+    CC3 path (a): defaults on every field plus ``extra`` (JSON values only; ``__post_init__`` rejects a
+    key that collides with a declared field). The post-fence resume stage adds ``cause_pid`` (the
+    physical event that caused it) as a defaulted field (owner decision G17).
+    """
+
+    entity: str = ""  # YAML noun of the causing entity ("fire_pit"); never the sufferer
+    affordance: str = ""  # "touch", "warm_self"
+    tool: str = ""  # the tool signature, when a tool call caused it
+    extra: dict[str, Any] = field(default_factory=dict, hash=False, compare=False)
+
+    def __post_init__(self) -> None:
+        _check_extra(self, self.extra)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"entity": self.entity, "affordance": self.affordance, "tool": self.tool, "extra": dict(self.extra)}
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> CauseRef:
+        return cls(
+            entity=str(data.get("entity", "")),
+            affordance=str(data.get("affordance", "")),
+            tool=str(data.get("tool", "")),
+            extra=dict(data.get("extra") or {}),
+        )
+
+
+_DriveBlock = tuple[tuple[str, float], ...]
+_OUTCOME_CORE = ("nociception", "drive_pain", "relief", "harm", "urgency")
+_OUTCOME_BLOCKS = ("pressure_before", "pressure_after", "drive_delta", "deviation_after")
+
+
+@dataclass(frozen=True, slots=True)
+class InteroceptiveOutcome:
+    """One body-consequence event: what happened to the body, and was it good (grounding GL2a).
+
+    The insular record of ``docs/plans/autonomic_layer.md`` §3.1, record-only in GL2a: produced on the
+    tool path by ``Executor._stamp_invocation`` (owner decisions G9, G14) and written into the loop
+    capture's ``EncodingSignals.extra["interoception"]``; no reader acts on it. Built ONLY through
+    :func:`interoceptive_outcome`, whose ``cause=`` and ``provenance=`` are required keywords.
+
+    CC3 path (a): defaults on every field plus ``extra`` (JSON values only; ``__post_init__`` rejects a
+    colliding key). The defaults exist only to satisfy path (a): ``__post_init__`` REJECTS the
+    sentinel ``provenance=""`` (and any kind outside ``OUTCOME_PROVENANCE``), so no record exists
+    without provenance. GL2a's record carries NO event id (owner decision G17): the post-fence resume
+    stage adds ``pid`` as a defaulted field and from then rejects ``pid=None``. ``invocation_id`` is the
+    executor's in-process uuid, a diagnostic only: it is not persisted (``to_dict``), not compared, and
+    never a join key.
+
+    Per-drive blocks are sorted ``(drive, value)`` pairs over the drives with a declared range only
+    (never imputed); on the tool path, only the invoked affordance's own declared drives (G14), net of
+    the drift the body applied during the invocation. ``pressure_*`` is ``drive_pressure`` (unsigned,
+    ``[0, 1]``); ``drive_delta`` is the signed progress toward comfort over the drive's span
+    (``[-1, 1]``, the physical description, not the valence); ``deviation_after`` is signed
+    ``(v - set_point) / span`` for a homeostatic drive and the pressure for an entropic one.
+
+    The core is body-agnostic, each in ``[0, 1]``: ``relief`` / ``harm`` are the largest DROP / RISE in
+    drive pressure (first-order alliesthesia: the same physical change scores by need), ``harm``
+    excluding the tissue-damage drives, whose loss is ``nociception`` instead (health counts once, G11);
+    ``nociception`` is the action's nociceptive pain (caused, else felt: ``extra["nociception_basis"]``)
+    or this event's injury, whichever is larger, and never anticipatory; ``drive_pain`` is the largest
+    drive-pain level after the action (``drive_pain_for_value``: a homeostatic breach or an entropic
+    deprivation, the tissue-damage drives excluded); ``urgency`` (v1, G12) is the largest pressure after.
+
+    Scope, stated (GL2a): ``experienced`` means "minted by the agent's own executor", not "free of other
+    writers". A narrator write landing on the body during ``tool.run`` shows in the after-read, unnetted,
+    until the post-fence lock and write epoch land (``autonomic_layer.md`` §3.1.4).
+    The valence ``relief - harm - nociception`` is the projection's (GL4), not a field.
+    """
+
+    invocation_id: str = field(default="", compare=False)
+    agent_id: str = ""
+    body_path: str = ""  # whose body: drive names collide across bodies
+    provenance: str = ""  # REQUIRED: one of OUTCOME_PROVENANCE
+    sufferer: str = ""  # entity path whose body changed
+    cause: CauseRef | None = None
+    pressure_before: _DriveBlock = ()
+    pressure_after: _DriveBlock = ()
+    drive_delta: _DriveBlock = ()
+    deviation_after: _DriveBlock = ()
+    caused: tuple[tuple[str, bool], ...] = ()  # True = the action's declared effect (every tool-path entry)
+    satiated: tuple[str, ...] = ()  # declared drives whose breach latch cleared in this invocation
+    nociception: float = 0.0
+    drive_pain: float = 0.0
+    relief: float = 0.0
+    harm: float = 0.0
+    urgency: float = 0.0
+    extra: dict[str, Any] = field(default_factory=dict, hash=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self.provenance not in OUTCOME_PROVENANCE:
+            raise ValueError(
+                f"InteroceptiveOutcome.provenance must be one of {sorted(OUTCOME_PROVENANCE)}, got {self.provenance!r}"
+            )
+        for name in _OUTCOME_CORE:
+            value = getattr(self, name)
+            if not (isinstance(value, (int, float)) and math.isfinite(value) and 0.0 <= value <= 1.0):
+                raise ValueError(f"InteroceptiveOutcome.{name} must be a number in [0, 1], got {value!r}")
+        _check_extra(self, self.extra)
+
+    def to_dict(self) -> dict[str, Any]:
+        """The persisted form (JSON values only; ``invocation_id`` stays in-process)."""
+        out: dict[str, Any] = {
+            "agent_id": self.agent_id,
+            "body_path": self.body_path,
+            "provenance": self.provenance,
+            "sufferer": self.sufferer,
+            "cause": self.cause.to_dict() if self.cause is not None else None,
+        }
+        for name in _OUTCOME_BLOCKS:
+            out[name] = [[k, v] for k, v in getattr(self, name)]
+        out["caused"] = [[k, v] for k, v in self.caused]
+        out["satiated"] = list(self.satiated)
+        for name in _OUTCOME_CORE:
+            out[name] = getattr(self, name)
+        out["extra"] = dict(self.extra)
+        return out
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> InteroceptiveOutcome:
+        cause = data.get("cause")
+
+        def block(name: str) -> _DriveBlock:
+            return tuple((str(k), float(v)) for k, v in data.get(name) or ())
+
+        def core(name: str) -> float:
+            return float(data.get(name, 0.0))
+
+        return cls(
+            agent_id=str(data.get("agent_id", "")),
+            body_path=str(data.get("body_path", "")),
+            provenance=str(data.get("provenance", "")),
+            sufferer=str(data.get("sufferer", "")),
+            cause=CauseRef.from_dict(cause) if cause is not None else None,
+            pressure_before=block("pressure_before"),
+            pressure_after=block("pressure_after"),
+            drive_delta=block("drive_delta"),
+            deviation_after=block("deviation_after"),
+            caused=tuple((str(k), bool(v)) for k, v in data.get("caused") or ()),
+            satiated=tuple(str(d) for d in data.get("satiated") or ()),
+            nociception=core("nociception"),
+            drive_pain=core("drive_pain"),
+            relief=core("relief"),
+            harm=core("harm"),
+            urgency=core("urgency"),
+            extra=dict(data.get("extra") or {}),
+        )
+
+
+def affordance_declared_drives(
+    self_effect: Mapping[str, float] | None, drive_specs: Mapping[str, Any], live_owned: Iterable[str]
+) -> tuple[str, ...]:
+    """The drives an affordance's own ``self_effect`` declares it moves: the record's drive set (G14).
+
+    The keys ``tool_bridge`` applies and scores (``_self_effect`` after the live-owned filter) that
+    carry a drive spec on the body, qualified modulator sub-sensors (``arms.thermal``) included: the
+    record reads them through the one resolver (#1125), where the credit reads are still blind (#1161).
+    """
+    live = set(live_owned)
+    return tuple(sorted(name for name in (self_effect or {}) if name in drive_specs and name not in live))
+
+
+def interoceptive_outcome(
+    specs: Mapping[str, DriveSpec],
+    ranges: Mapping[str, tuple[float, float]],
+    before: Mapping[str, float],
+    after: Mapping[str, float],
+    drift: Mapping[str, float],
+    nociception: float | None,
+    satiated: Iterable[str],
+    *,
+    cause: CauseRef | None,
+    provenance: str,
+    agent_id: str = "",
+    body_path: str = "",
+    sufferer: str = "",
+    invocation_id: str = "",
+    drift_dt_s: float = 0.0,
+) -> InteroceptiveOutcome:
+    """The one way to build an :class:`InteroceptiveOutcome` (grounding GL2a, §3.1).
+
+    ``specs`` are the drives the record covers (on the tool path, the invoked affordance's own declared
+    drives, G14), ``before`` / ``after`` their values around the action, and ``drift`` the drift the
+    body APPLIED to each during it (clamped, on the post-delta value; ``Embodiment.outcome_window``):
+    the record reports values net of it and keeps the observed change in ``extra``. ``nociception`` is
+    the action's nociceptive pain (``ToolPainBridge.pop_invocation_pain``: caused, else felt), ``None``
+    when unmeasured. ``satiated`` are the drives whose breach latch the body cleared during it.
+
+    ``cause=`` and ``provenance=`` are REQUIRED keywords, so forgetting either is a ``TypeError``.
+    """
+    from maxim.proprioception.pain import TISSUE_DAMAGE_DRIVES
+
+    blocks: dict[str, dict[str, float]] = {name: {} for name in _OUTCOME_BLOCKS}
+    drift_by_drive: dict[str, float] = {}
+    observed: dict[str, float] = {}
+    relief = harm = urgency = drive_pain = injury = 0.0
+    for name in sorted(specs):
+        spec = specs[name]
+        if name not in before or name not in after:
+            continue
+        lo, hi = ranges.get(name, (float("nan"), float("nan")))
+        span = drive_span(spec, lo, hi)
+        v0 = float(before[name])
+        applied = float(drift.get(name, 0.0))
+        v1 = float(after[name]) - applied
+        p0, p1 = drive_pressure(spec, v0, lo, hi), drive_pressure(spec, v1, lo, hi)
+        if span is None or p0 is None or p1 is None:
+            continue  # no declared range: the drive is absent, never imputed
+        delta = max(-1.0, min(1.0, drive_comfort_progress(spec, v0, v1) / span))
+        if isinstance(spec, HomeostaticDriveSpec):
+            deviation = max(-1.0, min(1.0, (v1 - spec.set_point) / span))
+        else:
+            deviation = p1
+        blocks["pressure_before"][name] = p0
+        blocks["pressure_after"][name] = p1
+        blocks["drive_delta"][name] = delta
+        blocks["deviation_after"][name] = deviation
+        drift_by_drive[name] = applied
+        observed[name] = float(after[name]) - v0
+        relief = max(relief, p0 - p1)
+        urgency = max(urgency, p1)
+        if f"drive:{name}" in TISSUE_DAMAGE_DRIVES:
+            injury = max(injury, -delta)  # this event's normalised loss, not the deficit's level (G11)
+        else:
+            harm = max(harm, p1 - p0)
+            drive_pain = max(drive_pain, drive_pain_for_value(spec, v1))
+    covered = tuple(sorted(blocks["drive_delta"]))
+    extra: dict[str, Any] = {
+        "drift_dt_s": float(drift_dt_s),
+        "drift": drift_by_drive,
+        "observed_change": observed,
+        # Caused and felt pain are one value until ToolPainBridge splits them (after the fence).
+        "nociception_basis": "caused_or_felt",
+    }
+    return InteroceptiveOutcome(
+        invocation_id=invocation_id,
+        agent_id=agent_id,
+        body_path=body_path,
+        provenance=provenance,
+        sufferer=sufferer,
+        cause=cause,
+        pressure_before=tuple(sorted(blocks["pressure_before"].items())),
+        pressure_after=tuple(sorted(blocks["pressure_after"].items())),
+        drive_delta=tuple(sorted(blocks["drive_delta"].items())),
+        deviation_after=tuple(sorted(blocks["deviation_after"].items())),
+        caused=tuple((name, True) for name in covered),
+        satiated=tuple(sorted(set(satiated) & set(specs))),
+        nociception=max(float(nociception or 0.0), injury),
+        drive_pain=drive_pain,
+        relief=relief,
+        harm=harm,
+        urgency=urgency,
+        extra=extra,
+    )
 
 
 # ---------------------------------------------------------------------------
