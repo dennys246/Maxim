@@ -27,7 +27,7 @@ aggregation) and SCN temporal credit (decisions/temporal_credit.py::TemporalCred
 single intake fanning out to NAc eligibility, SCN bins, oscillator phases).
 ```
 
-Attribution back into the chain has a strict preference order: **direct lookup key first** (`(tool_name, invocation_id)` → the invocation's own event id, `record_outcome_full(attributed_event_id=...)`, #1207), context similarity only as the out-of-band fallback (`record_outcome_full` with no attribution, directional `_context_similarity`). The distinction is the attribution argument, not the method name: `record_outcome(event_id=...)` attributes by SIGNATURE and books every pending event of that signature in the window.
+Attribution back into the chain has a strict preference order: **direct lookup key first** (`(tool_name, invocation_id)` → the invocation's own event id, `record_outcome_full(attributed_event_id=...)`, #1207; `PainCircuitBridge` likewise books on its pending movement's own event id, #1209), context similarity only as the out-of-band fallback (`record_outcome_full` with no attribution, directional `_context_similarity`). The distinction is the attribution argument, not the method name: `record_outcome(event_id=...)` attributes by SIGNATURE and books every pending event of that signature in the window.
 
 **EC threshold table — the numbers people confuse (a real incident: sensor threshold assumed 0.44):**
 

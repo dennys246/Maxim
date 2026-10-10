@@ -49,7 +49,6 @@ def _pending(nac: NAc, signature: str) -> list[dict[str, Any]]:
     return [e for e in nac._pending_events if e["signature"] == signature]
 
 
-@pytest.mark.xfail(strict=True, reason="#1209: a pain books every pending same-signature look_at")
 def test_two_uncompleted_starts_and_one_pain_book_exactly_one_negative() -> None:
     """The issue's gate: look_at starts and never completes, so one pain must not book the stale start."""
     bridge, nac = _bridge()
@@ -59,7 +58,6 @@ def test_two_uncompleted_starts_and_one_pain_book_exactly_one_negative() -> None
     assert _observations(nac, SIG, Valence.NEGATIVE) == 1
 
 
-@pytest.mark.xfail(strict=True, reason="#1209: the bridge books by signature, not by its own event id")
 def test_a_pain_never_books_another_producers_same_signature_event() -> None:
     """Pins booking BY ID on its own (retiring a replaced action alone would not pass this): an event some
     other producer queued under the same signature is neither booked nor consumed."""
@@ -71,7 +69,6 @@ def test_a_pain_never_books_another_producers_same_signature_event() -> None:
     assert [e["id"] for e in _pending(nac, SIG)] == [foreign]
 
 
-@pytest.mark.xfail(strict=True, reason="#1209: a replaced action's NAc event is never retired")
 def test_a_replaced_action_retires_its_event() -> None:
     bridge, nac = _bridge()
     bridge.record_action_start(SIG)
@@ -79,7 +76,6 @@ def test_a_replaced_action_retires_its_event() -> None:
     assert [e["id"] for e in _pending(nac, SIG)] == [current]
 
 
-@pytest.mark.xfail(strict=True, reason="#1209: a timed-out action's NAc event is never retired")
 def test_a_timed_out_action_retires_its_event() -> None:
     bridge, nac = _bridge(action_timeout_seconds=-1.0)  # every pain arrives too late
     bridge.record_action_start(SIG)
@@ -88,7 +84,6 @@ def test_a_timed_out_action_retires_its_event() -> None:
     assert _pending(nac, SIG) == []
 
 
-@pytest.mark.xfail(strict=True, reason="#1209: completing with learning off leaves the action and its event pending")
 def test_completing_with_learning_off_retires_the_action() -> None:
     bridge, nac = _bridge(enable_learning=False)
     bridge.record_action_start(SIG)
@@ -130,6 +125,41 @@ def test_a_failed_start_never_leaves_the_previous_actions_id_behind() -> None:
     with patch.object(nac, "record_event", side_effect=RuntimeError("probe")):
         with pytest.raises(RuntimeError):
             bridge.record_action_start(SIG)
+    assert bridge.get_stats()["has_pending_action"] is False
     bridge._on_pain(_pain())
     assert _observations(nac, "look_at:dy=1:dp=1", Valence.NEGATIVE) == 0
     assert _observations(nac, SIG, Valence.NEGATIVE) == 0
+
+
+def test_a_late_retire_never_wipes_a_newer_movement() -> None:
+    """Pain is handled on the PainBus / detector thread while movements start on the command path: when a
+    pain handler finishes with movement A after B has started, B (and its NAc event) must survive."""
+    bridge, nac = _bridge()
+    bridge.record_action_start("look_at:dy=1:dp=1")
+    taken = bridge._pending  # what an in-flight pain handler holds
+    current = bridge.record_action_start(SIG)
+    bridge._retire(taken)
+    assert bridge.get_stats()["has_pending_action"] is True
+    assert [e["id"] for e in _pending(nac, SIG)] == [current]
+
+
+def test_a_pain_whose_event_is_gone_is_not_counted_as_attributed() -> None:
+    """When the movement's NAc event was already consumed (another producer's context-similarity booking)
+    or aged out, nothing is learned, so the bridge must not count or report an attribution."""
+    bridge, nac = _bridge()
+    event_id = bridge.record_action_start(SIG)
+    nac.discard_pending_event(event_id)  # stands in for a booking by another producer
+    bridge._on_pain(_pain())
+    assert _observations(nac, SIG, Valence.NEGATIVE) == 0
+    assert bridge.get_stats()["total_pain_attributed"] == 0
+    assert bridge.get_stats()["has_pending_action"] is False
+
+
+def test_an_nac_error_while_booking_still_retires_the_movement() -> None:
+    bridge, nac = _bridge()
+    event_id = bridge.record_action_start(SIG)
+    with patch.object(nac, "record_outcome_full", side_effect=RuntimeError("probe")):
+        with pytest.raises(RuntimeError):
+            bridge._on_pain(_pain())
+    assert bridge.get_stats()["has_pending_action"] is False
+    assert event_id not in [e["id"] for e in nac._pending_events]
