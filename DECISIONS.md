@@ -2,6 +2,27 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-10-09 — Thalamic relay GL3.B0 decisions (TR1, TR2)
+
+### Decision
+
+Asked at GL3.B0's start (`docs/plans/thalamic_relay.md` §6, §11), both on the strict recommendation:
+
+1. **TR1. The dead preemption scaffolding goes Dormant, not deleted** (L7, #1179):
+   `runtime/preemption.py::PreemptionCircuit`, `ExecutionTracker`, `MaximAgent.wire_preemption`, the
+   `check_hold` branch and the `capture_before` guard will be marked `Dormant since 2026-10-07: never
+   wired; superseded in vocabulary by AfferentTrackSpec` by #1179. Callers and the `maxim.runtime`
+   re-exports stay.
+2. **TR2. The substrate turn budget may delay only action, never nociception** (L2, #1177): a denied
+   tick still transduces (the encode, `note_active_clusters` and `evaluate_failures`) and skips only the
+   proposal. GL3.B0's red gate (e) encodes it and flips with #1177's fix.
+
+### Rationale
+
+TR1 is dormancy over deletion: the code is wired by re-export, and its vocabulary is close to what a
+track needs. TR2: a slow signal (the narrator's turn) must not gate the fastest one; delaying a
+drift-driven breach also stamps it late and misaligns NAc's temporal window (§3.4).
+
 ## 2026-10-09 — Grounding GL1 design-review decisions (G9–G20)
 
 ### Decision
