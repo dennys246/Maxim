@@ -128,6 +128,31 @@ LLM-facing fragments are wrapped last, and only where a consumer needs them.
 | Own-body affordance names | `simulation/orchestrator.py` → `imagination/trigger.py::encode_entity_affordances` | the same encode path as the imagined case | `"text"` | yes | none; **indistinguishable from imagined** | wall |
 | Mesh peer percepts | none (`PERCEPT_PUSH` has no producer) | n/a | n/a | n/a | n/a | n/a |
 
+**GL3.B0 census (2026-10-09; corrected after its review).** The checked-in table is
+`tests/unit/test_receptor_census.py::CENSUS`: every site with its liveness and the threads that run it;
+the scan fails on any new or vanished site (it checks sites; the liveness and thread columns are
+code-read, and a new caller one hop up is invisible to it). It adds producers the table above missed or
+misdescribed:
+- percepts: the messaging channels (`comms/`, on a webhook thread); `AgentPool.run_turn` (a pool worker
+  in a concurrent round); the scenario fixture source (`simulation/scenario_source.py`, a raw `Percept`);
+  the Dormant `EmbodimentPerceptSource`; and above all `agents/perception_agent.py::PerceptionAgent.process_observation`,
+  **the per-pass percept of every `MaximAgent` loop** (CLI / transcript text, vision only when detections
+  exist), published synchronously to the memory agent, on the loop thread (the "Vision" row understates it);
+- `ConversationalSource.inject_cli` runs on six threads: the orchestrator, `sim.dm` (through
+  `send_and_wait`), `sim.stdin` (human free text straight into the AUT's percept source), `sim.stall`
+  (nudges, into the orchestrator's own source), a console request, and `main` (the cradle mother, and the
+  generative, fixture, pre-campaign and non-interactive DM sends);
+- `inject_pain`'s direct-Reaction branch needs `pain_bus=`, which no caller passes: the live path is the
+  INTEROCEPTION percept, turned into a Reaction on the loop by `SimulationAdapter.next_observation` (so
+  the row above, "published as a Reaction straight onto reaction_bus", is wrong); `inject_sensor` has no caller;
+- body writers outside the narrator row: the **cradle reactive mother** (`simulation/cradle_mother.py::reactive_mother_tick`)
+  writes the AUT's hunger and azimuth from `main` while `sim.aut` runs, and the DM cascade
+  (`dm_runtime.py::CascadeResolver.resolve`) writes campaign entities on `sim.dm` (on `main` when the
+  campaign runs non-interactively, after `sim.aut` starts), the AUT's body when a role resolves to it; the
+  narrator's `DamageComponentTool` also writes the body through `apply_damage`;
+- the imagined-affordance encode is also reached from the fixture runner's manifest on `main` while the
+  AUT loop runs; `ComponentIndex._embed` is its own sentence model, not the EC.
+
 **Gaps the census exposes** (all code-read):
 
 1. **Identity.** No reading says which receptor produced it. The DoA feed is already a one-receptor,
@@ -217,11 +242,11 @@ through this harness.**
 |---|---|---|
 | loop (`sim.aut` under `--sim`) | `run_agentic_loop` | yes; calls `evaluate_failures` from `propose_via_substrate` (substrate-primary) and `tick_embodiment_drift` (llm-primary), and, under `--sim`, through the reflex dispatch's `DamageComponentTool` / `SetEntitySensorTool` instances inside the AUT's `enrich`. **Not the only caller** (next row) |
 | the orchestrator thread (`--sim` only: the `start_simulation_mode` caller running the orchestrator agent's loop) | `simulation/orchestrator.py` registers `OrchestratorActorTool` / `DamageComponentTool` / `SetEntitySensorTool` on `orch_registry` against `_aut_embodiment`, run inside `run_agentic_loop(orch_agent, …)` | **yes**: the narrator's tools write the AUT's sensors and call `_aut_embodiment.evaluate_failures()` on this thread while the AUT loop runs on `sim.aut`; `DamageComponentTool` publishes a `PainSignal` directly |
-| `sim.dm` (interactive DM campaigns only) | `simulation/orchestrator.py` → `campaign_runner.run_dm_campaign` | never touches the narrator tools above |
+| `sim.dm` (interactive DM campaigns; a non-interactive campaign runs the same code on `main`) | `simulation/orchestrator.py` → `campaign_runner.run_dm_campaign` | never touches the narrator tools above, but it is **not** body-silent: its sends reach `PerceivedPainAssessor.assess_text` (pain into the AUT's buses), `inject_cli` writes the AUT's percept source, and the DM cascade can write the AUT's sensors (GL3.B0 census, §2 and §3.3) |
 | `mc-sync-<agent>` (0.5 s) | `simulation/minecraft_harness.py::MinecraftSyncPump._run` | writes `vital_metrics` via `world_set_axis`; publishes no pain and **never calls `evaluate_failures`** |
 | `minecraft-bridge-reader` | `simulation/minecraft.py` | fills the snapshot and event queue; `call_action` **blocks** the loop thread until `action_result` |
 | `doa-feed` | `embodied_runtime/agentic_runtime.py` → `DoAFeed.run` | `world_set` of azimuth plus `carry_percept` (one slot, latest wins) |
-| DefaultNetwork `_run_loop` (30 Hz) | `default_network/network.py::DefaultNetwork` | behaviours, `PriorityArbiter`, ThalamicGate; **live robot only** |
+| DefaultNetwork `_run_loop` (30 Hz) | `default_network/network.py::DefaultNetwork` | behaviours, `PriorityArbiter`, ThalamicGate. Its thread also starts under `--sim` (the AUT's DN is built enabled, `loop_setup.py` starts it); with no robot it appears to publish nothing on these buses (**UNVERIFIED**, GL3.B0 review) |
 | WorkerPool lanes | `runtime/worker_pool.py` | LLM jobs; `cancel_pending` drains queued jobs only |
 | Hippocampus capture worker; `sim.stdin`, `sim.stall` | `memory/hippocampus.py`; `simulation/orchestrator.py` | capture; human edge, watchdog |
 
@@ -260,6 +285,24 @@ ingress.** Producers that bypass it (code-read census, for GL3.B0's test):
 | `proprioception/perceived_pain.py::PerceivedPainAssessor` | constructs `PainSignal`s and publishes `Reaction`s |
 | `bridges/pain_bridge.py::PainCircuitBridge` | the DefaultNetwork pain circuit (robot only) |
 | `bridges/tool_pain_bridge.py::ToolPainBridge` | tool-coupled pain inside `execute` (T1-4) |
+
+**GL3.B0 census corrections (2026-10-09; corrected after its review; `tests/unit/test_receptor_census.py::CENSUS`).**
+- `ToolPainBridge` publishes no `PainSignal` or `Reaction` (it books attribution into NAc and emits SCN
+  `TemporalEvent`s); `PainCircuitBridge` subscribes, and its `record_action_start` arms
+  `PainDetector._check_movement_failure` (half of the robot's motion-pain wiring).
+- **`PerceivedPainAssessor.assess_text` is a live, undeclared cross-thread pain ingress:** the
+  orchestrator assigns it to `bridge.percept_anxiety_hook`, and `SimulationBridge.send_and_wait` calls it
+  on every non-substrate-primary send, so it publishes into the AUT's PainBus / ReactionBus from whichever
+  thread sends: the orchestrator, **`sim.dm`**, or `main`. `assess` runs inside
+  `runtime/pain_interceptor.py::AnticipatoryPainExecutor` (before execute), not `PainInterceptorExecutor`.
+- **Tool-failure pain is de-wired:** `PainDetector.record_tool_error` is reached only through
+  `Executor._report_failure` when the executor has a `pain_detector`, and no `build_executor` caller passes
+  one ([#1200](https://github.com/dennys246/Maxim/issues/1200); not fixed by GL3.B0). `record_tool_running` has no caller.
+- `CerebellumModulator`'s prediction `Reaction`s are Dormant: `cerebellum_modulator_factory` has no caller.
+- `PainTriggerLayer` publishes a `Reaction` when a ReactionBus exists, else a `PainSignal` (either, not both).
+- `evaluate_failures` has three callers the list above omits: `ModulatorAffordanceTool.execute` (the
+  AUT's tools on the loop; `OrchestratorActorTool`'s ephemeral tools on the orchestrator thread),
+  `simulation/foundry.py::run_gauntlet` (no agent) and the Dormant `EmbodimentPerceptSource`.
 
 `api.py`'s `on("pain_signal")` subscriber is a consumer, not a producer, but it subscribes to the bus
 outside `build_pain_bus`'s ordered list. `PainBus.publish` is **synchronous on the publisher's thread**. Subscribers run in `build_pain_bus` order (memory → NAc outcome → Wire-2 percept
@@ -812,6 +855,40 @@ stages of this plan: they are filed now and fixed in their own seams, under the 
 
 ### GL3.B0: census and red gates (tests only; runnable now, inside the fence)
 
+> **BUILT 2026-10-09** (tests only; branch `docs/gl3-b0-afferent-census`). The census is
+> `tests/unit/test_receptor_census.py` (its corrections are folded into §2 and §3.3); the red gates are
+> `tests/unit/test_afferent_red_gates_units.py` (a, b, c, g) and `tests/unit/test_afferent_red_gates_loop.py`
+> (d, e, f; (f) in a refractory and an energy-exhausted variant), each `xfail(strict=True,
+> raises=AssertionError)` so a broken fixture fails loudly instead of counting as red. TR1 and TR2 are
+> decided (§11, DECISIONS.md 2026-10-09).
+>
+> **The read surfaces are B0's choice, and the flipping stage must flip them as written** or record an
+> owner-approved change (never a silent re-point; a red gate that does not flip is data): (a) reads NAc
+> eligibility above zero on the imagined nodes and assumes TR12's strict "refuse"; (b) drives the real
+> composition (`build_minecraft_aut(..., client=)` → `aut.percept_source.next_percept()`) and reads the
+> percept's `agent_id`, so passing the AUT's `agent_id` through `build_minecraft_aut` flips it; (d) matches
+> the stale execution by proposal identity AND by (the next pass, the same tool), so a fix that copies the
+> action dict cannot flip it falsely; (c) reads a `pid=` keyword on
+> `world_set_azimuth` and the percept's `.pid` / `context.pid` / `metadata["pid"]` (GL3.B8 decides where
+> the pid is readable, explicitly); (g) reads a `"provenance"` key on
+> `EntorhinalCortex.substrate_node_metadata` and assumes the strict mixed-state rule (§5.7 item 1:
+> `narrated` whenever any declared sensor's last writer was the narrator).
+>
+> **The frozen characterization** (`tests/unit/test_afferent_latency_characterization.py`, fixture
+> `tests/fixtures/afferent_latency_characterization_v1.json`, measured at 7d18347e with `src/` equal to
+> `main`). It is a frozen RECORD, not a golden: it is never regenerated once `src/` moves (the L1/L2 fixes
+> and GL3.B4 will move the numbers; GL3.B4 compares against this record). Its test checks equality only
+> while `src/` is the measured tree, and the shape otherwise; the instrument's blob hashes are recorded
+> as provenance and never asserted, so the shared `_loop_harness.py` stays free to change. "Both arms" are read as the two `_loop_harness` worlds, substrate-primary, in loop passes:
+> **damage** (shore world, health 20 → 8 landing while a proposal is pending: the L1 case GL3.B4
+> compares against) — pain publish +2 passes, first protective action (`flee`) +3 passes, and the
+> stale pre-damage proposal is dispatched; **drowning** (the fear_water world without seeded fear, so
+> the breach itself writes the Wire-4 fear) — `drive:oxygen` publish +0 passes, first successful
+> protective action (`escape_water`) +25 passes. llm-primary is not characterized: its protective action
+> cannot be measured deterministically without an LLM. The loop driver duplicates `_loop_harness.run_arm`'s
+> setup in the gate file because `run_arm` takes no world, gate or hook arguments and the harness is
+> Session A's; it can fold into the harness if those arguments are added there.
+
 - **Build:** `tests/unit/test_receptor_census.py` enumerates every `make_*_percept` caller, every raw
   `Percept(` site, every `encode_sensors` / `LinguisticEncoder.encode*` caller and `_SUBSTRATE_CHANNELS`,
   against a checked-in table matching §2, **plus** every pain producer in §3.3's ingress census and every
@@ -1118,8 +1195,8 @@ seq authority per agent; the orchestrator thread a declared edge).
 
 | # | Decision | At | Recommendation |
 |---|---|---|---|
-| TR1 | Dead `PreemptionCircuit` / `ExecutionTracker` / `wire_preemption` / `check_hold` / `capture_before` (L7): `Dormant since` or delete | GL3.B0 (via the L7 issue) | **Strict: `Dormant since 2026-10-07`** (dormancy over deletion; callers and re-exports stay). Non-strict alternative: delete, with a CHANGELOG line for the removed `maxim.runtime` re-exports. |
-| TR2 | L2: may the turn budget delay nociception, or only action? | GL3.B0 (via the L2 issue) | Only action. |
+| TR1 | Dead `PreemptionCircuit` / `ExecutionTracker` / `wire_preemption` / `check_hold` / `capture_before` (L7): `Dormant since` or delete | GL3.B0 (via the L7 issue) | **Decided 2026-10-09 (owner): Dormant** (`Dormant since 2026-10-07`; callers and re-exports stay), carried out by #1179. |
+| TR2 | L2: may the turn budget delay nociception, or only action? | GL3.B0 (via the L2 issue) | **Decided 2026-10-09 (owner): only action.** Red gate (e) encodes it; #1177 fixes it. |
 | TR3 | Does a byte-identity-proven GL3.B1 fire T1-6/10/11/12/15 (+13/14)? | GL3.B1 | Strict: yes, re-run offline guards, committed exception for rig re-runs. The structural discharge is the open alternative. |
 | TR4 | Home and names: `perception/`, `ReceptorRegistry`, `TrackScheduler` | GL3.B1 | Yes (the design pass reserved `perception/`). |
 | TR5 | Body-sensor specs derived from YAML (recommended) or authored; each new YAML key ships with its reader | GL3.B1 | Derived. |

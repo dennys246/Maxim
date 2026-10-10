@@ -1,0 +1,70 @@
+{
+ "arms": {
+  "damage": {
+   "breach": "health 20 -> 8 hp (pain band < 14) in the sleep after pass 0",
+   "breach_pass": 1,
+   "breach_pass_t": 0.25,
+   "breach_t": 0.0,
+   "failure_mode": "drive:health",
+   "max_steps": 12,
+   "protective_attempt_latency_passes": 3,
+   "protective_attempt_latency_s": 0.55,
+   "protective_attempt_pass": 4,
+   "protective_attempt_tool": "minecraft_player_flee",
+   "protective_effective_latency_passes": 3,
+   "protective_effective_latency_s": 0.55,
+   "protective_effective_pass": 4,
+   "protective_effective_tool": "minecraft_player_flee",
+   "protective_tools": [
+    "minecraft_player_flee"
+   ],
+   "publish_latency_passes": 2,
+   "publish_latency_s": 0.3,
+   "publish_pass": 3,
+   "stale_executed": [
+    {
+     "pass": 1,
+     "success": false,
+     "tool": "minecraft_player_mine_block"
+    }
+   ],
+   "world": "shore"
+  },
+  "drowning": {
+   "breach": "oxygen 20 - t bubbles crosses the pain band (< 14) at t > 6 s",
+   "breach_pass": 77,
+   "breach_pass_t": 6.05,
+   "breach_t": 6.0,
+   "failure_mode": "drive:oxygen",
+   "max_steps": 110,
+   "protective_attempt_latency_passes": 22,
+   "protective_attempt_latency_s": 1.9,
+   "protective_attempt_pass": 99,
+   "protective_attempt_tool": "minecraft_player_flee",
+   "protective_effective_latency_passes": 25,
+   "protective_effective_latency_s": 2.45,
+   "protective_effective_pass": 102,
+   "protective_effective_tool": "minecraft_player_escape_water",
+   "protective_tools": [
+    "minecraft_player_escape_water",
+    "minecraft_player_flee"
+   ],
+   "publish_latency_passes": 0,
+   "publish_latency_s": 0.0,
+   "publish_pass": 77,
+   "stale_executed": [],
+   "world": "fear_water (no seeded fear)"
+  }
+ },
+ "float_decimals": 9,
+ "instrument_blobs": {
+  "tests/unit/_loop_harness.py": "13b1e46639e8ccad685a587afbd8ba20096df219",
+  "tests/unit/test_afferent_latency_characterization.py": "d463e36e0503b3bcf8ca76e5be5a13a6edaf4578",
+  "tests/unit/test_afferent_red_gates_loop.py": "670011cbee9a30ee4edd5c4785a57d4faffe2946"
+ },
+ "measured_at_commit": "7d18347e60ba3392d8213c0d15d183c09605cf9f",
+ "measured_by": "tests/unit/test_afferent_latency_characterization.py --regen",
+ "src_tree": "74a0fa824e4f1a9d9d730ddfc085cce811b10eac",
+ "unit": "loop passes",
+ "what": "GL3.B0 characterization: breach -> pain publish and breach -> protective action, substrate-primary"
+}
