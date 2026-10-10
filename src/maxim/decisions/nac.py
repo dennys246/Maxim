@@ -22,8 +22,8 @@ not the algorithm.
 
 from __future__ import annotations
 
-import json
 import itertools
+import json
 import logging
 import math
 import os
@@ -656,6 +656,11 @@ class NAc(StoreFileOwnership):
     # Payload-layer legacy version string "1.0" is tombstoned; all future
     # migrations land at the envelope layer. See memory/snapshot.py docstring.
     schema_version: ClassVar[int] = 1
+    # Event ids must be unique: the tool-pain bridge books and retires BY id (#1207), and time_ns ticks in
+    # microseconds on some platforms, so two same-signature events in one tick would share an id. Ids need
+    # only be unique within one instance, whose ``record_event`` reads this counter under ``self._lock``;
+    # sharing the counter across instances is harmless.
+    _event_seq: ClassVar[itertools.count[int]] = itertools.count()
 
     def __init__(self, config: NACConfig | None = None, ec: Any = None):
         config = config or NACConfig()
@@ -735,9 +740,6 @@ class NAc(StoreFileOwnership):
 
         # Pending events awaiting outcome attribution
         self._pending_events: list[dict[str, Any]] = []
-        # Event ids must be unique: the tool-pain bridge books and retires BY id (#1207), and time_ns ticks in
-        # microseconds on some platforms, so two same-signature events in one tick would share an id.
-        self._event_seq = itertools.count()
 
         # Cold start priors: event_sig → (predicted_value, confidence)
         self._priors: dict[str, tuple[float, float]] = {}
