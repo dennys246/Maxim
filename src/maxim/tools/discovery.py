@@ -148,7 +148,7 @@ class SensePresenceTool(Tool):
     )
     # Auto-fired every tick on new percepts; result is injected into the
     # next prompt as passive perception rather than a chosen action. The
-    # executor bypass at agent_loop.py reads ``auto_fire`` and routes
+    # executor bypass in loop_perception.py's auto_sense (§1.15) reads ``auto_fire`` and routes
     # around actions.jsonl. See [docs/plans/deferred/sense_tool_registry.md].
     auto_fire = True
     kind = "auto-discovery"
@@ -156,7 +156,7 @@ class SensePresenceTool(Tool):
     # ``context`` is correctly marked optional in the export — strict MCP /
     # Anthropic clients reject calls that omit a "required" param, but
     # ``execute()`` already handles a missing context (and the auto-sense
-    # caller in agent_loop never passes one).
+    # caller in loop_perception never passes one).
     input_schema: dict[str, Any] = {
         "type": "object",
         "properties": {

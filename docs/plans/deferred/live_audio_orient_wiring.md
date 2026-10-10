@@ -87,7 +87,7 @@ Regression guards: unit test with a fake reader + real `Embodiment` over `reachy
 
 ## Stage 3 — The percept lane (react/reflect for the LLM-primary runtime)
 
-The §1.16 audio-orientation block in `agent_loop.py` (escalation tiers, reflex clamp, `_audio_escalate_this_tick`, English rendering via `format_audio_orientation`) is the designed consumer — but it's gated `if sim.is_sim_mode and ...`, and attaching a `percept_source` on the live path would flip `is_sim_mode` across 12 sites (consolidation downgrade, DN shutdown skip, sim logging...).
+The §1.16 audio-orientation block in `agent_loop.py` (since the 1.3.2 decomposition, `loop_perception.py::orient_to_audio`; escalation tiers, reflex clamp, `_audio_escalate_this_tick`, English rendering via `format_audio_orientation`) is the designed consumer — but when this plan was drafted it was gated `if sim.is_sim_mode and ...`, and attaching a `percept_source` on the live path would have flipped `is_sim_mode` across 12 sites (consolidation downgrade, DN shutdown skip, sim logging...). *(Historical: Stage 3a shipped, and the live gate is `getattr(sim, "current_percept", None) is not None and aut_mode != "substrate-primary"`.)*
 
 **Root-cause fix, not the band-aid:** the gate's real condition is "a modality-preserving percept is present," and sim-ness was its proxy. So:
 

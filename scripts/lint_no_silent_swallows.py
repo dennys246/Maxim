@@ -109,6 +109,7 @@ MEASUREMENT_PATH = [
     "src/maxim/runtime/loop_substrate.py",  # the substrate tick (section 6b), moved from agent_loop.py (1.3.2 slice 3)
     "src/maxim/runtime/substrate_proposal.py",  # the substrate proposer + sensor readers, moved from agent_loop.py (slice 3)
     "src/maxim/runtime/loop_planning.py",  # the PLANNING approved path (section 5), from agent_loop.py (slice 4, #1085)
+    "src/maxim/runtime/loop_perception.py",  # imagination, auto-sense, audio orientation (1.1-1.16), from agent_loop.py (slice 5)
     "src/maxim/similarity/encoder.py",
     "src/maxim/similarity/ec.py",
     "src/maxim/bridges/tool_pain_bridge.py",

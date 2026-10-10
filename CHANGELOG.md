@@ -25,6 +25,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`agent_loop` decomposition, slice 5: each pass's perception moves to `runtime/loop_perception.py`** (roadmap
+  1.3.2 §"The decomposition"; internal). Sections 1.1-1.16 of `run_agentic_loop` (§1.1 imagination, §1.15
+  auto-sense, §1.16 audio orientation with its sim-only orienting reflex and the B1 escalation) are now one call,
+  `perceive(...)`, which runs `imagine`, `auto_sense` and `orient_to_audio` in the inline order and returns a frozen,
+  runtime-ephemeral `PerceptionOutcome(imagination_results, auto_sense_text, audio_escalate)`; the loop unpacks it
+  into the locals §1.2 and §6 always read, and `sim.next_observation` and `state.update(observation)` stay at the
+  call site. A pure move with no behaviour change: each body is AST-identical to the inline block, the loop
+  selection golden, the slice-0 to slice-4, #1133 and #963 characterization and the Exp 60/61/62/R3 offline verdict
+  reproductions stay green unchanged, and `tests/unit/test_loop_perception_characterization.py` (written before
+  the move, through the public entry on the LLM-primary path) pins the three sections and where their outputs land
+  (the exact `auto_sense_context` at submission, the B1 minimal context, the azimuth world-set on the real
+  `bodies/reachy_mini_infant`), raising those 128 statements' coverage from 27% to 100%. It also pins, unchanged,
+  the percept-text divergence filed as [#1202](https://github.com/dennys246/Maxim/issues/1202): an attribute-style
+  observation with `cli_input` and no `transcript` feeds imagination and enrichment but is not auto-sensed.
+  `run_agentic_loop` shrinks 2,717 → 2,429 lines; `loop_perception.py` joins CI's mypy set and the swallow lint's
+  measurement path.
+
 - **The heartbeat no longer records the host's network (#1166).** `system_metrics.collect_network_interfaces`
   records `network.hostname` as the machine's first DNS label, never the full name: macOS appends the
   DHCP-supplied search domain (an ISP and a region) and can adopt a reverse-DNS name that encodes the WAN

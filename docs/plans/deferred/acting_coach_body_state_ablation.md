@@ -24,7 +24,7 @@ ever passes. Consequences, verified in the tree:
   `_compose_drive_modulation`) early-return on empty input in every
   production path.** The B3 bio-modulation shipped in 0.7 has never actually
   run in production.
-- What the LLM sees instead is **auto-sense** (agent_loop section 1.15 →
+- What the LLM sees instead is **auto-sense** (section 1.15, `loop_perception.auto_sense` →
   `auto_sense_context`): raw `read_all_sensors` output that does NOT tick the
   body and therefore lags one turn behind the drive state.
 

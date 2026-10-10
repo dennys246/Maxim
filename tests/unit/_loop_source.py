@@ -44,6 +44,10 @@ ordering, a region split, an AST of that function) and are NOT routed through th
     module-level helpers ``_followup_synthetic_input``, ``_drop_stale_proposal`` and
     ``_proposal_without_action_reason`` -- whichever slice moves the helper (it is an attribute
     lookup, so a re-export keeps it green).
+
+Slice 5 (§1.1-§1.16 -> ``loop_perception.perceive``) added no function-specific pin: its characterization,
+``test_loop_perception_characterization.py``, is behavioural through the public entry, and the §1.16 text
+pin in ``test_audio_orientation.py`` reads ``loop_source()``, which takes in ``loop_perception.py``.
 """
 
 from __future__ import annotations

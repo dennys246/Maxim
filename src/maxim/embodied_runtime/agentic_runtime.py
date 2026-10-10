@@ -182,7 +182,7 @@ class AgenticRuntimeMixin:
 
             # Stage 3: the feed's percept lane. A caller-held
             # NullSimulationAdapter (is_sim_mode stays False) carries each
-            # fresh audio percept into agent_loop §1.16's side-channel;
+            # fresh audio percept into §1.16's side-channel (loop_perception.py);
             # run_agentic_loop receives it via the sim_adapter= kwarg.
             adapter = NullSimulationAdapter()
             self._doa_sim_adapter = adapter
@@ -192,7 +192,7 @@ class AgenticRuntimeMixin:
             # defaults (0.5/0.3) sit AT or BELOW every > 0.5 escalation gate:
             # sound is passively perceived but NEVER reaches the LLM — the
             # plan's passive-by-default decision. Raising audio_salience
-            # above 0.5 makes speech escalate via §1.16 B1 (forces an LLM
+            # above 0.5 makes speech escalate via §1.16 B1 (loop_perception.py; forces an LLM
             # submission), which is the only cognition-path trigger on a
             # no_media, no-typed-input live session. Clamped to [0, 1];
             # malformed values fall back to the passive defaults with a

@@ -339,7 +339,7 @@ class Tool(ABC):
     # ``actions.jsonl``. Default False keeps existing tools unchanged.
     # Used today only by ``SensePresenceTool`` (auto-discovery scan).
     # See [docs/plans/deferred/sense_tool_registry.md] § "Tool metadata" and
-    # ``runtime/agent_loop.py`` auto-sense dispatch.
+    # ``runtime/loop_perception.py::auto_sense`` dispatch.
     auto_fire: bool = False
     # ``kind`` — registration-time classifier. Default ``"core-universal"``
     # preserves the historical semantics of plain ``ToolRegistry.register``.
