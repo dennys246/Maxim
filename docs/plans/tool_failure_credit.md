@@ -12,7 +12,9 @@
 `pain_detector`, and no production builder has ever given it one. The detector was the intended producer
 (DECISIONS #15, 2026-03-31: "tool errors route through PainDetector → NAc → FearAgent"); PR #114 wired it
 (228135a4) and its own review fold removed it (f5f9df4e, aimed at a dead subscription). So tool failure was
-**never** wired on `main`: wiring it is a new condition for every earned row, not a restoration.
+**never** wired on `main` in effect: f5f9df4e removed the orchestrator wiring, and #114's
+`agentic_runtime` branch survived until c3ddecd1 (2026-04-19) but was dead, because nothing ever set
+`self._pain_detector`. Wiring it is a new condition for every earned row, not a restoration.
 
 ## What the dive found (code-read and probed)
 
@@ -51,11 +53,12 @@
 
 ## Owner decisions (2026-10-10)
 
-- **TF1. Staged design B:** the tool-pain bridge owns invocation failure credit through a direct call, not
-  the PainBus; a felt-only FRUSTRATION PainBus signal comes later, once `Reaction` carries its kind.
-- **TF2. Only tools that ran:** failure credit only when the invocation reached `tool.run` (the GL2a
-  record-iff rule). A hallucinated or inactive tool name is a cognitive error (`_tools_hallucinated`), not
-  a tool failure.
+- **TF1. Staged design B:** the tool-pain bridge owns invocation FAILURE credit through a direct call,
+  not the PainBus (clarified at the plan review: the cut is failure-only; success links are unchanged);
+  a felt-only FRUSTRATION PainBus signal comes later, once `Reaction` carries its kind.
+- **TF2. Only tools that ran:** failure credit only when the invocation reached `tool.run`, returned or
+  raised (broader than GL2a's record-iff, which mints nothing on the raised path). A hallucinated or
+  inactive tool name is a cognitive error (`_tools_hallucinated`), not a tool failure.
 - **TF3. Suppressed while a human drives:** the existing one-predicate interactive learning gate applies.
 
 ## Stages
@@ -64,32 +67,91 @@
 
 The bridge attributes by the event id `NAc.record_event` returns (not the signature), and the invocation's
 NAc pending event is retired when the invocation ends, so a failure can never be booked POSITIVE by a
-later success. Red gate first (one failure then one success books no positive), then the fix; ledger walk
-(it changes `record_outcome` attribution: removes spurious positives).
+later success.
+
+- **API trap (plan review S1):** `NAc.record_outcome(event_id=...)` treats its argument as a SIGNATURE
+  and builds `outcome_signature=f"{event_id}:{valence}"`; passing the real id (`tool:X:<time_ns>`) through
+  it would mint a new link per invocation and confidence would never accrue (a silent selection change).
+  Use `record_outcome_full(attributed_event_id=id, outcome_signature=f"{sig}:{valence}")`, and add an NAc
+  retire API (none exists).
+- Retiring at invocation end removes the 300 s pending window for tool events. Its other consumers are
+  context-similarity matches: `create_pain_nac_subscriber` and `ToolPainBridge._on_embodiment_pain`'s
+  unattributed fall-through (neither matches a tool event in practice: pain contexts carry no `params`).
+  R4 delayed credit must not assume the window.
+- `record_tool_start` runs in `Executor.execute` BEFORE `_run_started`'s inactive-scene and unregistered
+  gates, so those never-run invocations also queue `tool:X` (an inactive tool that later activates and
+  succeeds books a POSITIVE for the call that never ran). Move `record_tool_start` after the gates (TF2).
+  Side effect to state and fingerprint: `record_tool_start` also seeds the invocation's pain entry, so
+  never-run calls then stamp `ToolOutput.pain = None` ("not measured") instead of `0.0` ("watched, nothing
+  fired"), a memory-strength 2S-c capture signal (arguably more correct; the 2S-c tests may pin it).
+- Red gate first, three arms: one failure then one success books exactly one positive; a never-run
+  (inactive / unregistered) call queues no NAc pending event and the bridge books nothing for it
+  (`tool_dispatch` still books its NEGATIVE, as today); confidence still accrues across invocations. Ledger walk:
+  T1-4, T1-6, T1-8 (a `record_outcome` attribution change: it removes spurious positives).
 
 ### Stage 2: failure credit through the bridge (#1200)
 
-- `Executor`'s returned-failure and raised branches (only where the tool ran: TF2; not under the
-  interactive gate: TF3) call a new `ToolPainBridge.record_tool_failure(tool_name, invocation_id,
-  error_kind)`, mirroring `record_tool_embodiment_failure`: a NEGATIVE attributed outcome, its RPE noted on
-  the invocation, and the bridge's reflexion and SCN behaviour.
-- `tool_dispatch.record_outcome` stops its `tool:X` `observe` for invocations the executor ran (it keeps the
-  cluster, goal, energy and recent-outcome bookings, and books refusals and invocation-less paths as
-  today); `PlanHistoryBridge` is declared a separate owner or moved off `tool:X` (decided in the stage's
-  design pass).
-- `build_executor` drops the legacy detector-subscription mode (one coherent signature; the canonical
-  builders stay required-keyword).
+- **Producer.** `Executor`'s returned-failure and raised branches (the two paths that reached `tool.run`:
+  TF2; the interactive gate already suppresses `record_tool_start`, so the call no-ops there: TF3) call a new
+  `ToolPainBridge.record_tool_failure(tool_name, invocation_id, error_kind)`, wrapped in the same
+  try/except as the success branch. It REPLACES the body of `_on_pain`'s dead TOOL_FAILURE / TIMEOUT /
+  INVALID_INPUT branch (one implementation; Stage 3 deletes the branch, or a bus signal arriving first would
+  pop the pending entry and book, and the signal would not be felt-only).
+- **What it books.** A NEGATIVE attributed outcome (through Stage 1's id attribution) and its RPE noted on
+  the invocation, so `ToolOutput.rpe` carries the failure's surprise. NOT the embodiment-failure path's
+  harm semantics: its temporal event is declared as a frustration event, not `"pain"` (or omitted), so the
+  TemporalCreditDistributor never receives tool frustration as pain. Reflexion (`rpe > 0.3`, a second
+  Hippocampus capture of the same action beside the loop capture) is decided in the stage's design pass,
+  against `memory_strength_and_forgetting.md`'s "one event once" rule. Whether its context carries
+  `agent_id` (which would newly feed the Wire-1 Welford risk profile and the bundle's
+  `event_outcome_welford`) is decided there too.
+- **The cut (failure-only; plan review B1, B2).** `tool_dispatch.record_outcome` skips its NEGATIVE `tool:X`
+  `observe` ONLY for an invocation whose failure the bridge booked. The signal is a declared executor
+  stamp on `ToolOutput` (like `rpe`; CC3 status stated in the stage), never inferred from "the executor
+  ran it" or from `rpe is None`: executors with no NAc have no bridge (`api.py`'s learning=False path, the
+  sandbox sub-executor), the interactive gate suppresses the bridge, and a bridge exception is caught; on
+  all of those `record_outcome` books as today. SUCCESS outcomes, and the D53 case (`success=True` with
+  `outcome_valence="negative"`, which the bridge's `record_tool_complete` does not book), are unchanged.
+  Whether the bridge should own ALL invocation outcomes (success is triple-booked today) is a separate,
+  later decision.
+- **Interactive behaviour changes (state it in the PR).** `record_outcome` has no interactive check, so in
+  interactive mode it is an ungated NAc writer the embodiment brief's "FOUR sites" invariant does not list.
+  Under the cut's key, interactive failures also stay on the ungated dispatch path (the bridge does not book
+  them), so BOTH its success and failure paths stay ungated; Stage 2 must add `tool_dispatch` to that
+  invariant's site list (or gate it, an owner call at the stage's start).
+- **Every consumer of the links being cut** (dispatch links: `outcome_type="tool_result"`, outcome text
+  `failure:<error[:50]>`, context `{agent_id, goal}`; bridge links: `outcome_type="result"`,
+  `tool:X:negative`, context `{"params"}`), walked in the stage's wire-integrity round:
+  `NAc.recommend_action` (max negative confidence), `tools/introspection.py::PredictOutcomeTool`
+  (`predict_all_outcomes` text to the LLM: the error text is lost), `tools/discovery.py::_nac_annotation` /
+  `_apply_nac_ranking`, `harm/tool_predictor.py`, `agents/exec_agent.py` (observation counts),
+  `agents/memory_agent.py` (`predict`), `integration/bio_enrichment.py::scan_links_for_keywords`,
+  `fear_agent` → `should_gate_tool` (it keys `build_tool_signature`, so for `use` it reads
+  `tool:use:<action>`, dispatch-only links: gating for `use` goes blind unless the bridge keys the same way),
+  and the hivemind export (`_scrub_link_for_bundle` emits `f"{outcome_type}:{valence}"`, so
+  `tool_result:negative` becomes `result:negative`: public-format content, a format-freeze question).
+- **Every `record_outcome` caller, classified ran / not-ran:** `execute_and_learn` (both call sites), the
+  parallel batch (rejected and ran actions share one call), the loop's hard rejection, the agent-fallback
+  exception, `book_refusal` and `book_machine_refusal`.
+- **`build_executor`** drops its legacy detector-subscription mode (only `tests/unit/test_build_executor.py`
+  passes `pain_detector=`). `Executor(pain_detector=)` and `ToolPainBridge(pain_detector=)` stay for Stage 3.
+  The receptor census row for `record_tool_error` is updated when it changes.
 - **Before any `src/`:** a loop-level strict red gate on `_loop_harness`'s `fear_water` arm (the failed
   `flee` books exactly one attributed NEGATIVE with a real RPE; Wire-4 cluster fear and percept valences
-  byte-identical; `escape_water` gains no negative link; `recommend_action` records identical), and
-  before/after fingerprints from the selection golden, the GL2a trio golden and the slow R3 offline
-  campaign (`tests/unit/test_r3_run.py::test_offline_campaign_apparatus_and_one_event_per_in_process_arm`).
+  byte-identical; `escape_water` gains no negative link), and before/after fingerprints of
+  `recommend_action` SCORES (not only decisions: which link family accrues confidence differs), the
+  selection golden, the GL2a trio golden, a Hippocampus trace-count / tag fingerprint (reflexion), and the
+  slow R3 offline campaign (`tests/unit/test_r3_run.py::test_offline_campaign_apparatus_and_one_event_per_in_process_arm`).
   Rig re-runs of Exp 60/61/62 are owed only if a fingerprint shows a decision or `t_surface` change;
-  otherwise T1-4 and T3-9 are discharged structurally in the PR, with the walk written down.
+  otherwise T1-4 and T3-9 are discharged structurally in the PR, with the walk written down. No ledger row
+  names a new capture site; the nearest is T1-16 (carried recall, Exp 63), whose triggers (the ranking and
+  query paths, Hippocampus save/restore, the memory record shape) do not fire by wording, but a kept
+  reflexion capture adds recall candidates, so the reflexion decision carries a recall fingerprint.
 
 ### Stage 3: a felt-only FRUSTRATION signal on the PainBus (later)
 
 Only after `Reaction` carries its kind (nociception step 2), so the distributor and episode valence can
-skip FRUSTRATION, and after the context-similarity NAc subscriber declares a kind rule. The detector's
+skip FRUSTRATION, after the context-similarity NAc subscriber declares a kind rule, and after `_on_pain`'s
+TOOL_* branch is deleted (Stage 2 moved its body into `record_tool_failure`). The detector's
 defects (item 5) are fixed then. Until Stage 3, `PainDetector.record_tool_error` stays without a live
 caller and the receptor census says so.
