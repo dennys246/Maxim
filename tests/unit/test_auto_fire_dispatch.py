@@ -7,11 +7,11 @@ lookup at agent_loop.py. Post-W1 it iterates
 output never flows through the Executor (so it never lands in
 ``actions.jsonl``).
 
-These tests pin the routing contract at the registry level — the
-agent-loop integration sits inside a 4,000-line module that is awkward
-to test in isolation; the contract that matters is "auto-fire tools
+These tests pin the routing contract at the registry level: "auto-fire tools
 are findable via the registry, and a tool's auto_fire flag determines
-whether it gets dispatched implicitly."
+whether it gets dispatched implicitly." The loop integration (now
+``runtime/loop_perception.py::auto_sense``, §1.15) is pinned through the real
+loop by ``tests/unit/test_loop_perception_characterization.py``.
 """
 
 from __future__ import annotations
@@ -90,7 +90,7 @@ def test_get_auto_fire_tools_only_returns_auto_fire():
 def test_auto_fire_dispatch_simulation_records_only_auto_fire():
     """Simulate the agent-loop auto-fire dispatch and verify routing.
 
-    Mirrors the post-W1 loop body at runtime/agent_loop.py: iterate
+    Mirrors the post-W1 loop body at runtime/loop_perception.py::auto_sense: iterate
     ``get_auto_fire_tools()`` and call ``.execute()`` on each. The LLM
     -callable tool must NOT receive an implicit dispatch.
     """

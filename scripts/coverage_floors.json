@@ -3,8 +3,8 @@
   "band": 1.0,
   "min_package_statements": 200,
   "overall": {
-    "percent": 65.9,
-    "missing": 31324
+    "percent": 66.9,
+    "missing": 30723
   },
   "packages": {
     "maxim/<root>": {
@@ -132,8 +132,8 @@
       "missing": 54
     },
     "maxim/runtime": {
-      "percent": 70.8,
-      "missing": 3708
+      "percent": 73.5,
+      "missing": 3400
     },
     "maxim/salience": {
       "percent": 68.6,

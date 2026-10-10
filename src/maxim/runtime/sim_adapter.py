@@ -275,7 +275,7 @@ class NullSimulationAdapter:
     but a live producer (the Stage-2 DoA feed's poll thread) may hand a
     percept to :meth:`carry_percept`; the next ``next_observation`` tick
     surfaces it on :attr:`current_percept` exactly like the sim adapter's
-    side-channel, and agent_loop §1.16 — re-gated on
+    side-channel, and §1.16 (``loop_perception.orient_to_audio``) — re-gated on
     ``current_percept is not None`` rather than the old ``is_sim_mode``
     proxy — consumes it. The percept never lands in the observation dict
     or ``state.data`` (same leak rationale as ``SimulationAdapter``).

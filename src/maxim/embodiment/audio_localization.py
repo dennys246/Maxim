@@ -525,7 +525,7 @@ def build_reachy_audio_orienting_source(
 # ─────────────────────────────────────────────────────────────────────────────
 # Thalamic-relay consumption helpers (thalamus_relay_design_pass.md stage 4)
 #
-# The runtime loop's §1.16 consumes an audio/DoA percept through these:
+# The runtime loop's §1.16 (``loop_perception.orient_to_audio``) consumes an audio/DoA percept through these:
 #   - ``format_audio_orientation`` renders a passive azimuth observation the loop
 #     folds into the auto-sense (passive-perception) prompt channel;
 #   - ``audio_attention_profile`` reports which attention gates the percept clears
@@ -660,7 +660,7 @@ def world_set_azimuth(embodiment: object, azimuth: float, *, owner: "str | None"
     spherical mic array or vision-driven ``head_pitch``) is a clean, mechanical
     generalization — axis-parameterize this + ``reflex_oriented_azimuth`` +
     ``OrientingProfile.max_orient_azimuth`` + the ``metadata["azimuth"]`` reads
-    in agent_loop §1.16, add ``turn_up``/``turn_down`` affordances, and pick the
+    in §1.16 (``loop_perception.orient_to_audio``), add ``turn_up``/``turn_down`` affordances, and pick the
     2-D magnitude model. NOT done now (one axis = N=1; would force guessing the
     magnitude model). Full plan + the one open design decision:
     docs/plans/deferred/productive_orienting_affordance.md § "Dimensionality".
@@ -721,7 +721,7 @@ def world_set_axis(
     that would force this layer to enumerate hardware-layer writers. The
     check lives HERE, not at the callers, so forgetting the guard becomes a
     refusal rather than a silent fabrication; un-gating a dormant caller
-    (e.g. agent_loop §1.16) cannot lie to a live-owned sensor.
+    (e.g. §1.16, ``loop_perception.orient_to_audio``) cannot lie to a live-owned sensor.
     """
     root = getattr(embodiment, "root", None)
     if root is None:

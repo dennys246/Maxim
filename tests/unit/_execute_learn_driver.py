@@ -5,8 +5,8 @@ replaced by one that returns ONE proposal carrying clusters (the ``test_approved
 driver). Everything the outcome touches is observed from OUTSIDE the code under test, so the same
 observations hold whether the dispatch lives inline in ``agent_loop`` or in ``tool_dispatch``:
 
-- the credit: ``agent_loop._record_outcome`` (the patch seam ``loop_setup`` binds into the run's
-  ``rec_outcome`` partial), spied and then called for real against a recording NAc, so the booked
+- the credit: ``tool_dispatch.record_outcome`` (its home, which ``loop_setup`` binds into the run's
+  ``rec_outcome`` partial through the module reference; slice 5, rule (c)), spied and then called for real against a recording NAc, so the booked
   VALENCE is observed too;
 - the hub: a minimal stand-in carrying a hub ``agent_id`` that differs from the loop's agent name, the
   recording NAc and ``record_plan_outcome``;
@@ -222,7 +222,7 @@ def run_once(
     from maxim.agents.maxim_agent import MaximAgent
     from maxim.environment.filesystem_env import FileSystemEnv
     from maxim.runtime import agent_loop as AL
-    from maxim.runtime import substrate_proposal
+    from maxim.runtime import substrate_proposal, tool_dispatch
     from maxim.runtime import prefetch
     from maxim.runtime.bootstrap import build_decision_engine, build_executor, build_memory
     from maxim.runtime.loop_controller import LoopController
@@ -309,7 +309,7 @@ def run_once(
             clusters=dict(CLUSTERS),
         )
 
-    real_record = AL._record_outcome
+    real_record = tool_dispatch.record_outcome
 
     def _spy_record(**kw: Any) -> Any:
         obs.all_outcomes.append(dict(kw))
@@ -321,7 +321,7 @@ def run_once(
         return real_record(**kw)
 
     monkeypatch.setattr(substrate_proposal, "propose_via_substrate", _propose)
-    monkeypatch.setattr(AL, "_record_outcome", _spy_record)
+    monkeypatch.setattr(tool_dispatch, "record_outcome", _spy_record)
 
     cache = _Cache(obs)
     monkeypatch.setattr(prefetch, "get_result_cache", lambda: cache)

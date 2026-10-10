@@ -106,7 +106,7 @@ proves awkward.
 
 ## Minimal first implementation (once the body is chosen)
 
-1. **World-set the azimuth sensor from the percept.** In `agent_loop.py` §1.16 (which already has
+1. **World-set the azimuth sensor from the percept.** In §1.16 (now `loop_perception.py::orient_to_audio`, which already has
    `executor` in scope and already extracts `metadata["azimuth"]`), when an audio percept arrives and
    the AUT body owns an `azimuth` sensor, assign it (world-set, not delta) via the sensor-write helper.
    Gate on the sensor existing (fail-soft on bodies without it). This is the sim mirror of Layer 2.
@@ -171,7 +171,7 @@ wired). It requires, and only requires:
    optional `elevation=` param.
 2. **Axis-parameterizing the ~6 azimuth-named surfaces** — `doa_to_azimuth`, `world_set_azimuth`,
    `reflex_oriented_azimuth`, `OrientingProfile.max_orient_azimuth`, the `metadata["azimuth"]` reads in
-   agent_loop §1.16, and the turn `self_effect` — e.g. `world_set_axis(emb, "elevation", v)` alongside
+   §1.16 (`loop_perception.orient_to_audio`), and the turn `self_effect` — e.g. `world_set_axis(emb, "elevation", v)` alongside
    the azimuth one. `turn_up`/`turn_down` affordances (self_effect on the elevation sensor) join
    `turn_left`/`turn_right`, capability-declared per body.
 3. **One real design decision that does not exist yet** — is 2-D "off-center magnitude" *two

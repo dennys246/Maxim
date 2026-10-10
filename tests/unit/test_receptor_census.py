@@ -315,7 +315,7 @@ CENSUS: dict[str, dict[str, tuple[str, str, frozenset[str]]]] = {
             "live",
             _T({"loop"}),
         ),
-        "maxim/runtime/agent_loop.py::run_agentic_loop": (
+        "maxim/runtime/loop_perception.py::orient_to_audio": (
             "Loop §1.16 azimuth echo (sim orienting)",
             "live",
             _T({"loop"}),
