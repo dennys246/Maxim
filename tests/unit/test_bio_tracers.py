@@ -58,6 +58,23 @@ class TestNacTracer:
         captured = capsys.readouterr()
         assert "NAc OUTCOM" in captured.err
 
+    def test_traces_a_bridge_outcome_booked_through_the_full_api_once(self, capsys):
+        """#1207: the tool-pain bridge books through ``record_outcome_full``; ``record_outcome`` delegates to it,
+        so a real NAc prints exactly one line either way."""
+        from maxim.decisions.causal_link import Valence
+        from maxim.decisions.nac import NAc, NACConfig
+
+        nac = NAc(NACConfig())
+        NacTracer(nac)
+        capsys.readouterr()
+        event_id = nac.record_event("tool", "tool:grab", context={"params": {}})
+        nac.record_outcome_full("result", "tool:grab:negative", Valence.NEGATIVE, attributed_event_id=event_id)
+        nac.record_event("tool", "tool:grab", context={"params": {}})
+        nac.record_outcome("tool", "tool:grab", Valence.POSITIVE)
+        lines = [line for line in capsys.readouterr().err.splitlines() if "NAc OUTCOM" in line]
+        assert len(lines) == 2, lines
+        assert "tool:grab:negative" in lines[0] and "NEGATIVE" in lines[0]
+
     def test_summary(self, mock_nac):
         tracer = NacTracer(mock_nac)
         s = tracer.summary()

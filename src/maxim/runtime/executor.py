@@ -363,9 +363,6 @@ class Executor:
 
         _suppress_nac = get_interactive_mode() == InteractiveMode.ON
 
-        if self._tool_pain_bridge is not None and not _suppress_nac:
-            self._tool_pain_bridge.record_tool_start(tool_name, invocation_id, context={"params": params})
-
         try:
             return self._run_started(tool_name, original_name, params, invocation_id, suppress_nac=_suppress_nac)
         finally:
@@ -431,6 +428,10 @@ class Executor:
             self._report_failure(tool_name, invocation_id, result, params)
             return self._stamp_invocation(result, invocation_id, None)
 
+        # The invocation starts only once it will run (#1207): an inactive or unregistered call never
+        # queues an NAc pending event, so a later success cannot book it. ``execute`` still retires it.
+        if self._tool_pain_bridge is not None and not suppress_nac:
+            self._tool_pain_bridge.record_tool_start(tool_name, invocation_id, context={"params": params})
         pressure_before = self._drive_pressure_snapshot()
         outcome = self._outcome_start(tool, tool_name)
         try:

@@ -564,10 +564,24 @@ class TestInteractiveAttributionGate:
     """
 
     def _executor(self):
+        """A REGISTERED tool: since #1207 the executor starts an invocation only once it will run, so an
+        unregistered call never reaches ``record_tool_start`` whatever the gate says -- these tests would
+        then prove nothing about the gate."""
         from maxim.runtime.bootstrap import build_executor
+        from maxim.tools.base import Tool, ToolOutput
         from maxim.tools.registry import ToolRegistry
 
-        executor = build_executor(ToolRegistry(), pain_bus=None, permissions=None, pain_detector=None, nac=MagicMock())
+        class _Stub(Tool):
+            name = "stub_tool"
+            description = "stub"
+            input_schema: dict = {}
+
+            def execute(self, **kwargs):
+                return ToolOutput(success=True, output="ran")
+
+        registry = ToolRegistry()
+        registry.register(_Stub())
+        executor = build_executor(registry, pain_bus=None, permissions=None, pain_detector=None, nac=MagicMock())
         executor._tool_pain_bridge = MagicMock()
         return executor
 
@@ -583,7 +597,7 @@ class TestInteractiveAttributionGate:
         monkeypatch.setattr(sim_logger, "get_interactive_mode", _boom)
         executor = self._executor()
         with pytest.raises(RuntimeError):
-            executor.execute({"tool_name": "nope", "params": {}})
+            executor.execute({"tool_name": "stub_tool", "params": {}})
         assert not executor._tool_pain_bridge.mock_calls, (
             f"a broken gate attributed a tool call to NAc: {executor._tool_pain_bridge.mock_calls}"
         )
@@ -593,7 +607,7 @@ class TestInteractiveAttributionGate:
 
         monkeypatch.setattr(sim_logger, "get_interactive_mode", lambda: sim_logger.InteractiveMode.ON)
         executor = self._executor()
-        executor.execute({"tool_name": "nope", "params": {}})
+        executor.execute({"tool_name": "stub_tool", "params": {}})
         # `record_tool_start` specifically: the gate suppresses ATTRIBUTION, not every interaction
         # with the bridge (an ungated `pop_invocation_rpe` follows on the same call).
         assert not executor._tool_pain_bridge.record_tool_start.called
@@ -604,7 +618,7 @@ class TestInteractiveAttributionGate:
 
         monkeypatch.setattr(sim_logger, "get_interactive_mode", lambda: sim_logger.InteractiveMode.OFF)
         executor = self._executor()
-        executor.execute({"tool_name": "nope", "params": {}})
+        executor.execute({"tool_name": "stub_tool", "params": {}})
         assert executor._tool_pain_bridge.record_tool_start.called, "the gate suppressed agent-driven attribution"
 
     def test_the_gate_is_not_swallowed(self):

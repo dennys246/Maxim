@@ -22,6 +22,7 @@ not the algorithm.
 
 from __future__ import annotations
 
+import itertools
 import json
 import logging
 import math
@@ -655,6 +656,11 @@ class NAc(StoreFileOwnership):
     # Payload-layer legacy version string "1.0" is tombstoned; all future
     # migrations land at the envelope layer. See memory/snapshot.py docstring.
     schema_version: ClassVar[int] = 1
+    # Event ids must be unique: the tool-pain bridge books and retires BY id (#1207), and time_ns ticks in
+    # microseconds on some platforms, so two same-signature events in one tick would share an id. Ids need
+    # only be unique within one instance, whose ``record_event`` reads this counter under ``self._lock``;
+    # sharing the counter across instances is harmless.
+    _event_seq: ClassVar[itertools.count[int]] = itertools.count()
 
     def __init__(self, config: NACConfig | None = None, ec: Any = None):
         config = config or NACConfig()
@@ -1060,7 +1066,7 @@ class NAc(StoreFileOwnership):
         """
         with self._lock:
             now = time.time()
-            event_id = f"{event_signature}:{time.time_ns()}"
+            event_id = f"{event_signature}:{time.time_ns()}:{next(self._event_seq)}"
 
             # Age-prune stale events (no outcome ever arrived within 2× the
             # temporal window) so the buffer doesn't leak in failure-heavy runs.
@@ -1084,6 +1090,20 @@ class NAc(StoreFileOwnership):
                 self._pending_events = self._pending_events[-self.config.max_pending_events :]
 
             return event_id
+
+    def discard_pending_event(self, event_id: str) -> bool:
+        """Retire one pending event by its id, without booking an outcome (#1207).
+
+        An invocation whose outcome is never booked (a failure nothing attributes, a call that never
+        ran) must not stay pending: an outcome attributed by SIGNATURE would book it too, so a failure
+        could be credited by a later success. The caller that recorded the event retires it when the
+        event's lifecycle ends. Returns whether an event was removed (``False`` if it was already
+        consumed by an outcome, aged out, or never existed).
+        """
+        with self._lock:
+            before = len(self._pending_events)
+            self._pending_events = [e for e in self._pending_events if e["id"] != event_id]
+            return len(self._pending_events) != before
 
     def record_outcome(
         self,

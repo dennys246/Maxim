@@ -382,8 +382,10 @@ class TestToolEmbodimentAttribution:
     """Stage 1 regression guards for the tool→embodiment-pain attribution fix."""
 
     def test_record_tool_embodiment_failure_pops_pending_and_records_negative(self):
-        """Direct-attribution API: pops pending event, records NEGATIVE
-        via NAc.record_outcome (not record_outcome_full), and returns the RPE."""
+        """Direct-attribution API: pops pending event, records NEGATIVE on
+        THAT invocation's own NAc event (#1207: ``record_outcome_full`` with
+        ``attributed_event_id``, never the context-similarity path), and
+        returns the RPE."""
         from maxim.bridges.tool_pain_bridge import ToolPainBridge
         from maxim.decisions.causal_link import Valence
 
@@ -391,7 +393,7 @@ class TestToolEmbodimentAttribution:
         mock_link = MagicMock()
         mock_link.last_rpe = 0.42
         mock_link.predicted_value = 0.5  # Real float — reflection path formats it.
-        nac.record_outcome = MagicMock(return_value=[mock_link])
+        nac.record_outcome_full = MagicMock(return_value=[mock_link])
 
         bridge = ToolPainBridge(nac=nac)
         bridge.record_tool_start("rusty_sword_slash", "inv-1", context={"params": {"force": 0.9}})
@@ -402,10 +404,11 @@ class TestToolEmbodimentAttribution:
         rpe = bridge.record_tool_embodiment_failure("rusty_sword_slash", "inv-1", failures)
 
         # Direct attribution — NOT context similarity.
-        nac.record_outcome.assert_called_once()
-        call_kwargs = nac.record_outcome.call_args.kwargs
-        assert call_kwargs["event_type"] == "tool"
-        assert call_kwargs["event_id"] == "tool:rusty_sword_slash"
+        nac.record_outcome.assert_not_called()
+        nac.record_outcome_full.assert_called_once()
+        call_kwargs = nac.record_outcome_full.call_args.kwargs
+        assert call_kwargs["attributed_event_id"] == nac.record_event.return_value
+        assert call_kwargs["outcome_signature"] == "tool:rusty_sword_slash:negative"
         assert call_kwargs["outcome_valence"] == Valence.NEGATIVE
         # The outcome context carries the failure metadata for diagnostics.
         ctx = call_kwargs["context"]
@@ -429,6 +432,7 @@ class TestToolEmbodimentAttribution:
         rpe = bridge.record_tool_embodiment_failure("ghost_tool", "inv-missing", [{"name": "x"}])
 
         nac.record_outcome.assert_not_called()
+        nac.record_outcome_full.assert_not_called()
         assert rpe == 0.0
 
     def test_record_tool_embodiment_failure_empty_list_raises_value_error(self):
@@ -477,7 +481,7 @@ class TestToolEmbodimentAttribution:
         surprising_link = MagicMock()
         surprising_link.last_rpe = 0.55  # Above the 0.3 threshold.
         surprising_link.predicted_value = 0.5
-        nac.record_outcome = MagicMock(return_value=[surprising_link])
+        nac.record_outcome_full = MagicMock(return_value=[surprising_link])
 
         bridge = ToolPainBridge(nac=nac)
         bridge.record_tool_start("sword_slash", "inv-r", context={"params": {}})
@@ -509,6 +513,7 @@ class TestToolEmbodimentAttribution:
 
         bridge = ToolPainBridge(nac=nac)
         bridge.record_tool_start("sword_slash", "inv-1x", context={"params": {}})
+        event_id = nac.record_event.return_value
         # Clear the record_event() call count from record_tool_start.
         nac.reset_mock()
 
@@ -539,9 +544,11 @@ class TestToolEmbodimentAttribution:
             [{"name": "shatter", "entity": "sword", "pain": 0.9}],
         )
 
-        # EXACTLY ONCE across the combined flow.
-        assert nac.record_outcome.call_count == 1
-        assert nac.record_outcome_full.call_count == 0
+        # EXACTLY ONCE across the combined flow — booked directly on the
+        # invocation's own event (#1207), never via context similarity.
+        assert nac.record_outcome.call_count == 0
+        assert nac.record_outcome_full.call_count == 1
+        assert nac.record_outcome_full.call_args.kwargs["attributed_event_id"] == event_id
 
     def test_on_embodiment_pain_guards_when_tool_pending(self):
         """With a pending tool, `_on_embodiment_pain` MUST skip NAc
@@ -852,11 +859,13 @@ class TestNeutralToolCompletion:
         from maxim.decisions.causal_link import Valence
 
         nac = MagicMock()
-        nac.record_outcome = MagicMock(return_value=[])
+        nac.record_outcome_full = MagicMock(return_value=[])
         bridge = ToolPainBridge(nac=nac)
         bridge.record_tool_start("t", "inv", {})
         bridge.record_tool_complete("t", "inv", success=True)
-        assert nac.record_outcome.call_args.kwargs["outcome_valence"] is Valence.POSITIVE
+        nac.record_outcome_full.assert_called_once()
+        assert nac.record_outcome_full.call_args.kwargs["outcome_valence"] is Valence.POSITIVE
+        assert nac.record_outcome_full.call_args.kwargs["outcome_signature"] == "tool:t:positive"
 
     def test_neutral_does_not_strengthen_learned_tool_index(self):
         """An ineffective run is no evidence this tool serves this goal."""

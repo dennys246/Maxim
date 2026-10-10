@@ -214,9 +214,13 @@ class TestToolPainBridgeStartComplete:
         assert call_kwargs[1]["event_signature"] == "tool:web_search"
 
         bridge.record_tool_complete("web_search", "inv-1", success=True)
-        nac.record_outcome.assert_called_once()
-        call_kwargs = nac.record_outcome.call_args
+        # Booked on THIS invocation's pending event (#1207), not on every pending event by signature.
+        nac.record_outcome.assert_not_called()
+        nac.record_outcome_full.assert_called_once()
+        call_kwargs = nac.record_outcome_full.call_args
         assert call_kwargs[1]["outcome_valence"] == Valence.POSITIVE
+        assert call_kwargs[1]["outcome_signature"] == "tool:web_search:positive"
+        assert call_kwargs[1]["attributed_event_id"] == nac.record_event.return_value
 
 
 # ---------------------------------------------------------------------------
@@ -247,11 +251,14 @@ class TestToolPainBridgePainCallback:
         )
         bridge._on_pain(signal)
 
-        # record_outcome should have been called with NEGATIVE
+        # A NEGATIVE outcome booked once, on this invocation's own pending event (#1207)
+        nac.record_outcome.assert_not_called()
         outcome_calls = [
-            c for c in nac.record_outcome.call_args_list if c[1].get("outcome_valence") == Valence.NEGATIVE
+            c for c in nac.record_outcome_full.call_args_list if c[1].get("outcome_valence") == Valence.NEGATIVE
         ]
         assert len(outcome_calls) == 1
+        assert outcome_calls[0][1]["outcome_signature"] == "tool:bad_tool:negative"
+        assert outcome_calls[0][1]["attributed_event_id"] == nac.record_event.return_value
 
 
 # ---------------------------------------------------------------------------
