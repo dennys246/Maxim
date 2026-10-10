@@ -36,6 +36,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `scripts/o19_rerun.py`'s row `hostname`; that harness now refuses before its start marker when the identity
   it would record is unreduced, and refuses to copy a session file that still carries the host's full hostname
   (it copies nothing; the row is `failed` with that reason). Committed data is unchanged.
+- **A search's follow-up keeps `engage` only in an active- or singularity-class mode** ([#963](https://github.com/dennys246/Maxim/issues/963)
+  owner decision Q3; a template-only change). `get_tool_followup_type` downgraded `engage` ("respond and offer
+  follow-ups") to `respond` only for the literal mode name `"passive"`, which no shipped code writes into the loop
+  state, so the downgrade never fired on a shipped path. It now judges the mode by CLASS, fail closed: a
+  passive-class mode (`passive`, `observe`, `sleep`, `train`, `reflection`), an unknown name or no mode gives
+  `respond`. Effect: on the default CLI loop (`observe`) and `maxim.run()`, an `internet_search`/`web_search`
+  result is synthesised with the plain respond template instead of the engage one (no current date, no "offer
+  follow-ups" line); both queue the same follow-up and both tell the model to answer with `respond`. The engage
+  template's `observe` ("concise") instruction branch in `prompt_builder._build_engage_prompt` is now unreachable
+  (an `observe` follow-up is never `engage`); it is left in place. `get_mode(None)` returns None instead of raising
+  `AttributeError`. Guard: `tests/unit/test_followup_type_by_class_963.py` (red on `main`).
+
+- **One operational-mode accessor, guarded by a lint** ([#963](https://github.com/dennys246/Maxim/issues/963); owner
+  decisions Q1-Q8, 2026-10-09).
+  - **`Executor.effective_operational_mode()`** (new) owns the one precedence in the agent loop and at dispatch
+    (two copies remain outside it: `bootstrap.build_tool_registry`'s `get_mode` callback, #1193, and the CLI's
+    `_current_operational_mode` / `_registry_operational_mode` / `_runtime_mode_switch_allowed`, #922): the grant,
+    else the loop's mode source (`""`/None → `DEFAULT_RUN_MODE`, `observe`, new in `modes/definitions.py`; a non-string → passive);
+    None only with neither a source nor a grant. `_mode_denial` reads nothing else, and the executor wrappers
+    forward it. **Removed: the `Executor.operational_override` property**; read `effective_operational_mode()`
+    (it is the grant when one is set). A grant name is stored raw (`"PASSIVE"` stays `"PASSIVE"`).
+  - **`runtime/loop_state.py`**: `operational_mode(executor, state)` replaces `_effective_mode` (no per-site
+    default; a non-string answer from the executor is a `TypeError`); `run_mode(state)` (the raw run mode),
+    `shutdown_requested(state)` and `seed_runtime_run_mode(state)` serve the lifecycle reads, which stay on the
+    run mode (the `shutdown` sentinel, the `maxim_runtime["mode"]` copy MemoryAgent/ExecAgent read; an empty run
+    mode is no longer copied there). The loop's mode source is `run_mode(state)`; the executor normalises it.
+    `loop_planning.drain_approved` takes a required `executor=` (its refusals' audit mode).
+  - **Template and label effects** (no capability change): `ActionFollowup.mode`, the agent loop's audit
+    `log_action(mode=)` entries and the minimal `StructuredContext.mode` record the operational mode (Q5);
+    `StructuredContext.mode` thus carries two vocabularies (MemoryAgent, its main producer, writes the run mode;
+    #1193). On a loop whose state names no mode
+    (the CLI `--mode agentic` loop, `maxim.run()`), a search's follow-up is labelled `observe` instead of `live`
+    (and, with the by-class downgrade above, takes the respond template); the audit records `observe` instead of
+    `unknown`; the batched-exploration follow-up is labelled with the
+    operational mode instead of `exploration` (its `process` template ignores the mode).
+  - **Tightenings (fail closed; no shipped writer produces the inputs):** a mode source returning None, `""` or a
+    non-string (an explicit `state.data["mode"] = None` or a non-string) now restricts at dispatch (`observe` or
+    passive) where it restricted nothing. And on a loop whose state names no mode (the CLI loop, `maxim.run()`) the
+    Default Network is now configured as `observe` (the passive definition) where it was left unconfigured: started
+    if it was stopped, its behaviour overrides cleared, no boosts, and an escalation threshold of 0.7.
+  - **`scripts/lint_loop_mode_reads.py`** (CI lint job, with `tests/unit/test_lint_loop_mode_reads.py`), whole-tree:
+    over the loop's modules, the executor and its wrappers, and every `maxim.runtime` module they import, no
+    `"mode"` constant, no generic read of the state's data (`**`, `dict()`, `.copy()`/`.items()`/`.values()`,
+    `vars`, `__dict__`, `getattr(..., "data")`, a non-constant key), and every capability sink (`get_mode`,
+    `ModeInfo`, `get_tool_followup_type`, `configure_dn_for_mode`, `ActionFollowup`, `StructuredContext`,
+    `log_action`) takes the accessor; repo-wide, nothing outside the Executor reads the grant or the mode source,
+    nothing outside `loop_state`'s lifecycle helpers and the loop's mode source names `run_mode`, and the three
+    mode-keyed readers outside the loop ([#1193](https://github.com/dennys246/Maxim/issues/1193)) are pinned. An
+    allowlist (strict counts, printed every run) carries the rest, each with its reason.
+  - `run_agentic_loop` 2,720 → 2,717 lines. The #829 source pins for the Default Network are replaced by
+    behavioural tests; the roster's and the robot runtime's stay until their extraction slices (Q6).
+
 - **Docstrings no longer claim cross-modal grounding that does not exist (#1120 audit, GL0 of the grounding line;
   no behaviour change):** the bio-enrichment graph path is marked inert in production (D6) and the affordance
   `[effective]` annotation's exact-name lookup is stated; the affordance-encoding helpers no longer promise
@@ -155,6 +207,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (DECISIONS.md, 2026-10-01).
 
 ### Fixed
+
+- **What the model is shown and what dispatch enforces read ONE operational mode** ([#963](https://github.com/dennys246/Maxim/issues/963);
+  owner decisions 2026-10-09). The operator's launch grant (`--operational-mode`, #829) decided dispatch, but the
+  agent loop's other mode readers each read the loop state's run mode with their own default. Under a passive grant
+  over a `live` run, a search (`internet_search`, `web_search`) queued an `engage` follow-up ("offer follow-ups")
+  labelled `live` instead of a `respond` one labelled `passive`, on all three dispatch paths (autonomous,
+  policy-confirmed, approved); and every one of the agent loop's autonomy audit entries (executed, proposed,
+  rejected, refused) recorded the run mode for an action dispatch judged under the grant (the tool-side entries of
+  `tools/sandbox.py`, literal `"sandbox"`, and `tools/mode_switch.py`, #1193, are unchanged). Not a capability leak (dispatch enforced the grant): drift
+  in what the model is shown, the class #829 closed for the roster. Every reader now reads
+  `loop_state.operational_mode(executor, state)`, which delegates to `Executor.effective_operational_mode()`. Also
+  fixed by the one default (`observe`, owner decision Q4): a state with no mode, or an empty one, left the Default
+  Network unconfigured (now `observe`), and an explicit empty run mode restricted nothing at dispatch while the
+  roster showed passive (now passive). Guards: `tests/unit/test_one_mode_accessor_963.py` (red on `main`, each
+  through the real loop; the follow-up and the Default Network each flip the grant between two ticks) and
+  `scripts/lint_loop_mode_reads.py` (below).
 
 - **An APPROVED PLANNING action learns what the same action learns autonomously** ([#1085](https://github.com/dennys246/Maxim/issues/1085),
   PR-a; owner decisions 2026-10-08 and 2026-10-09; also `agent_loop` decomposition slice 4). At PLANNING autonomy

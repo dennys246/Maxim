@@ -6,6 +6,7 @@ import time
 from typing import Any
 
 from maxim.agents.llm_types import LLMAttemptState
+from maxim.modes.definitions import DEFAULT_RUN_MODE
 from maxim.utils.atomic_io import atomic_write_json
 
 logger = logging.getLogger(__name__)
@@ -159,16 +160,53 @@ def _build_replan_context(
     )
 
 
-def _effective_mode(executor: Any, state: Any, default: str) -> str:
-    """The operational mode the prompt roster, context prompt and Default Network use: the operator's
-    launch grant when one is set (``Executor.operational_override``, #829), else the loop's own state
-    mode -- the SAME precedence the executor's dispatch gate applies, so what the model is shown matches
-    what dispatch enforces. (A deliberate, owner-approved exception to the 1.3.2 decomposition fence.)"""
-    granted = getattr(executor, "operational_override", None)
-    if isinstance(granted, str) and granted:
-        return granted
-    mode = state.data.get("mode", default) or default
-    return str(mode) if mode else ""
+# ── the loop's mode (#963): ONE operational-mode reader, and the run mode for lifecycle only ──
+# ``scripts/lint_loop_mode_reads.py`` (CI) holds every other read of the mode in the loop's modules to these.
+
+
+def run_mode(state: Any) -> str | None:
+    """The loop state's RUN mode, raw: ``state.data["mode"]`` when it is a non-empty string, else None.
+
+    NOT the operational mode: a capability decision, or anything the model is shown, reads ``operational_mode``.
+    The run mode serves the lifecycle reads only (``shutdown_requested``, ``seed_runtime_run_mode``) and the loop's
+    mode source (``loop_setup._prepare_executor``), which the executor normalises."""
+    mode = state.data.get("mode")
+    return mode if isinstance(mode, str) and mode else None
+
+
+def shutdown_requested(state: Any) -> bool:
+    """The ``"shutdown"`` run-mode sentinel: the loop stops at its next pass (``loop_gates.pre_tick_gate``)."""
+    return run_mode(state) == "shutdown"
+
+
+def seed_runtime_run_mode(state: Any) -> None:
+    """Copy the run mode into ``state.data["maxim_runtime"]["mode"]`` unless one is already there (the PerceptionAgent
+    -> MemoryAgent -> ExecAgent run-mode axis: sleep, reflection; #963 Q5 keeps it on the RUN mode)."""
+    runtime = state.data.get("maxim_runtime")
+    mode = run_mode(state)
+    if isinstance(runtime, dict) and mode is not None and "mode" not in runtime:
+        runtime["mode"] = mode
+
+
+def operational_mode(executor: Any, state: Any) -> str:
+    """THE operational mode of the loop (#963): what the prompt roster, the context prompt, the Default Network,
+    a tool's follow-up (its type and mode), the audit and the minimal context read -- the same value dispatch
+    enforces, because both come from ``Executor.effective_operational_mode()`` (the operator's grant, else the
+    loop's run mode through its mode source, never empty). With no executor, or one with neither a grant nor a mode
+    source, it is the run mode, else ``DEFAULT_RUN_MODE`` (``observe``).
+
+    The grant is a FLOOR as well as a ceiling (#922): it replaces the run mode whether it lowers the capability
+    (``--operational-mode passive`` over a ``live`` run) or raises it (``active`` over ``observe``).
+
+    Call it per use; never cache it (on ``ctrl`` or anywhere): the grant and the run mode can change between ticks.
+    Raises ``TypeError`` when the executor gives anything but a string or None (a stand-in executor must be
+    ``spec=Executor`` and say what it returns)."""
+    mode = executor.effective_operational_mode() if executor is not None else None
+    if mode is None:
+        return run_mode(state) or DEFAULT_RUN_MODE
+    if not isinstance(mode, str):
+        raise TypeError(f"effective_operational_mode() returned {type(mode).__name__}, not str or None")
+    return mode
 
 
 # ── the loop's wake predicates (1.3.2 slice 2): read by loop_gates.pre_tick_gate AND by the loop body ──

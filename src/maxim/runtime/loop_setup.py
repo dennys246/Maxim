@@ -45,7 +45,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from maxim.runtime.bio_integration import start_bio_session
-from maxim.runtime.loop_state import _persist_state_json
+from maxim.runtime.loop_state import _persist_state_json, run_mode
 from maxim.runtime.tool_dispatch import book_machine_refusal, book_refusal, execute_and_learn, safe_agent_name
 from maxim.utils.logging import log_swallowed_exception
 
@@ -115,15 +115,16 @@ class LoopRun:
 
 def _prepare_executor(executor: Any, action_sink: Any, state: Any) -> Any:
     """The loop's executor: wrapped with instrumentation when an action sink is given, and reading the
-    loop's LIVE mode at every dispatch (#826) -- the same ``state.data["mode"]`` the prompt roster reads
-    each tick, so a tool the mode refuses is refused when it runs, not merely left unadvertised.
-    Every wrapper delegates ``set_mode_source`` to the inner Executor."""
+    loop's LIVE run mode at every dispatch (#826), raw (``loop_state.run_mode``); the executor normalises it
+    (``Executor.effective_operational_mode``, #963), and the prompt roster reads that same value each tick
+    (``loop_state.operational_mode``), so a tool the mode refuses is refused when it runs, not merely left
+    unadvertised. Every wrapper delegates ``set_mode_source`` to the inner Executor."""
     if action_sink is not None:
         from maxim.simulation.instrumented_executor import InstrumentedExecutor  # noqa: PLC0415
 
         executor = InstrumentedExecutor(executor, action_sink)
     if executor is not None:
-        executor.set_mode_source(lambda: state.data.get("mode", "observe"))
+        executor.set_mode_source(lambda: run_mode(state))
     return executor
 
 

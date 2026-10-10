@@ -25,7 +25,7 @@ never exit a pass).
 
 **Helpers.** The four that only this block called moved here with it, bodies verbatim (rule (a)):
 ``tick_embodiment_drift``, ``_loop_live_tick``, ``_maybe_auto_revert_display``, ``_loop_is_idle``. The ones the
-loop's body also calls live in leaves both import: ``loop_state`` (``_effective_mode`` and the wake predicates
+loop's body also calls live in leaves both import: ``loop_state`` (``operational_mode`` and the wake predicates
 ``_substrate_tick_due`` / ``_planning_attempt_is_active``) and ``loop_controller`` (the D13 handlers, beside the
 counters they drive). No patch seam is read through ``agent_loop``: no test patched any of these names there
 except ``test_experience_clock.py``'s unit test of ``_loop_live_tick``, which now patches
@@ -45,7 +45,12 @@ from typing import TYPE_CHECKING, Any
 
 from maxim.agents.llm_worker import LLMAttemptState
 from maxim.runtime.loop_controller import _handle_planning_failure, _handle_planning_transport_failure
-from maxim.runtime.loop_state import _effective_mode, _planning_attempt_is_active, _substrate_tick_due
+from maxim.runtime.loop_state import (
+    _planning_attempt_is_active,
+    _substrate_tick_due,
+    operational_mode,
+    shutdown_requested,
+)
 from maxim.utils.structured_logging import log_agentic
 
 if TYPE_CHECKING:
@@ -103,14 +108,12 @@ def pre_tick_gate(
         pass
 
     # Check for shutdown mode - break immediately to stop LLM worker promptly
-    current_mode = state.data.get("mode", "")
-    if current_mode == "shutdown":
+    if shutdown_requested(state):
         log_agentic("agent_loop", "shutdown", {"reason": "shutdown_mode"})
         return GateOutcome.BREAK
 
-    # Configure Default Network for current mode (the operator's grant wins, #829)
-    if _dn_mode := _effective_mode(executor, state, current_mode):
-        ctrl.configure_dn_for_mode(_dn_mode)
+    # Configure Default Network for the operational mode (the operator's grant wins, #829; never empty, #963)
+    ctrl.configure_dn_for_mode(operational_mode(executor, state))
 
     # Check if autonomy is paused
     if autonomy_controller.is_paused:

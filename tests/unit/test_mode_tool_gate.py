@@ -127,8 +127,10 @@ def test_the_real_passive_registry() -> None:
 def test_the_robot_runtimes_run_mode_reaches_the_gate(run_mode, bash_runs) -> None:
     """The embodied runtime seeds state.data["mode"] from its run mode; before, every robot run but
     exploration fell back to "observe" (passive). "agentic" is active-class since #829 (an unknown name
-    would fail closed, enforced as passive)."""
+    would fail closed, enforced as passive). The mode source is the one the loop wires
+    (``loop_setup._prepare_executor``), not a hand-composed copy of it (#963)."""
     from maxim.embodied_runtime.agentic_runtime import seed_run_mode
+    from maxim.runtime.loop_setup import _prepare_executor
 
     class _State:
         data: dict = {}
@@ -137,7 +139,7 @@ def test_the_robot_runtimes_run_mode_reaches_the_gate(run_mode, bash_runs) -> No
     state.data = {}
     seed_run_mode(state, run_mode)
     executor, _ = _executor({"name": "unused"}, "bash")
-    executor.set_mode_source(lambda: state.data.get("mode", "observe"))
+    executor = _prepare_executor(executor, None, state)
     assert executor.execute({"tool_name": "bash", "params": {}}).success is bash_runs
 
 

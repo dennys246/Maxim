@@ -24,6 +24,11 @@ EMBEDDER approves it (the ``test_approved_proposal_situation_1083`` pattern: ``p
 wrapped so the queued proposals are approved, in order, once ``approve_batch`` of them have been queued).
 ``forbid`` makes the probe tool a hard ``SafetyConstraints`` forbid; ``pause_on_approve`` pauses the
 controller right after the approval (``emergency_halt``), before the loop drains the queue.
+
+The mode (#963): ``state_mode`` is the loop state's ``"mode"`` (``None`` leaves it unset), ``grant`` the operator's
+launch grant set on the executor before the run, and ``grant_at[k]`` a grant set just before the k-th proposal
+(0-based) is handed to the loop, so between two ticks. ``Observed.followups`` holds every follow-up the loop was
+left holding, in order (sampled before each later proposal and at the end).
 """
 
 from __future__ import annotations
@@ -64,6 +69,13 @@ class Observed:
     submitted: list[Any] = field(default_factory=list)
     autonomy: Any = None
     raised: BaseException | None = None
+    # Every distinct follow-up the controller held, in order (#963).
+    followups: list[Any] = field(default_factory=list)
+
+    def note_followup(self) -> None:
+        held = self.ctrls[0].pending_action_followup if self.ctrls else None
+        if held is not None and not any(held is f for f in self.followups):
+            self.followups.append(held)
 
     @property
     def ctrl(self) -> Any:
@@ -189,6 +201,9 @@ def run_once(
     active_goal: str | None = None,
     policy: dict[str, Any] | None = None,
     tool_raises: type[BaseException] | None = None,
+    state_mode: str | None = "active",
+    grant: str | None = None,
+    grant_at: dict[int, str | None] | None = None,
 ) -> Observed:
     """Run the loop until the one proposal has been executed (and, supervised, confirmed).
 
@@ -197,7 +212,8 @@ def run_once(
     ``reset_deliberation``. ``record_raises_for``: the outcome recorder raises for that tool, or
     those tools (after recording the call; the message names the tool). ``catch``: an exception out of the loop is kept in ``Observed.raised``.
     ``active_goal``: the state's active goal, so a credit booked against the NAc also credits the goal.
-    ``policy``: the PLANNING controller's ``SupervisionPolicy`` fields (its hard denials, for instance).
+    ``policy``: the PLANNING controller's ``SupervisionPolicy`` fields (its hard denials, for instance); at
+    SUPERVISED, fields added to the confirmation policy (``forbidden_tools`` makes a hard rejection, #963).
     ``tool_raises``: the probe tool raises this (a ``KeyboardInterrupt``, say) instead of returning; with
     ``catch``, any ``BaseException`` out of the loop is kept in ``Observed.raised``.
     """
@@ -265,6 +281,8 @@ def run_once(
 
         registry.register(_Second())
     executor = build_executor(registry, pain_bus=None, permissions=None)
+    if grant is not None:
+        executor.set_operational_override(grant)
 
     proposed: list[int] = []
 
@@ -274,6 +292,9 @@ def run_once(
         if len(proposed) >= len(queue):
             return None
         name = queue[len(proposed)]
+        obs.note_followup()
+        if grant_at and len(proposed) in grant_at:
+            executor.set_operational_override(grant_at[len(proposed)])
         proposed.append(1)
         obs.proposed.append(name)
         return LLMProposal(
@@ -338,7 +359,9 @@ def run_once(
     elif level == "supervised":
         controller = AutonomyController(
             initial_level=AutonomyLevel.SUPERVISED,
-            supervision_policy=SupervisionPolicy(requires_confirmation={tool}, min_confidence_autonomous=0.0),
+            supervision_policy=SupervisionPolicy(
+                requires_confirmation={tool}, min_confidence_autonomous=0.0, **(policy or {})
+            ),
         )
     elif level == "planning":
         controller = AutonomyController(
@@ -375,7 +398,8 @@ def run_once(
     monkeypatch.setattr(env, "step", _step)
 
     state = RuntimeState()
-    state.data["mode"] = "active"
+    if state_mode is not None:
+        state.data["mode"] = state_mode
     if active_goal is not None:
         state.data["active_goal"] = active_goal
     try:
@@ -399,6 +423,7 @@ def run_once(
         if not catch:
             raise
         obs.raised = exc
+    obs.note_followup()
     return obs
 
 
