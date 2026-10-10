@@ -118,9 +118,9 @@ def test_each_run_gets_its_own_novelty_gate(monkeypatch, tmp_path):
 
 
 def test_the_overrides_come_from_their_own_positions(monkeypatch, tmp_path):
-    from maxim.runtime import agent_loop as AL
+    from maxim.runtime import loop_setup
 
-    monkeypatch.setattr(AL, "resolve_llm_loop_overrides", lambda: (111, 2))
+    monkeypatch.setattr(loop_setup, "resolve_llm_loop_overrides", lambda: (111, 2))
     run = _build(monkeypatch, tmp_path)
     assert run.max_response_tokens_override == 111
     assert run.max_cycles_override == 2
@@ -319,3 +319,242 @@ def test_bad_timing_args_are_refused_before_any_thread_starts(monkeypatch, tmp_p
         _run(monkeypatch, tmp_path, events=events, default_network=_DN(events), memory_hub=_Hub(events), **bad)
     assert "dn.start" not in events, events
     assert not any(e.startswith("hub.on_session_start") for e in events), events
+
+
+# ── import direction, rule (c) (1.3.2 decomposition; closed in slice 5) ─────────────────────────────────────
+
+_RUNTIME = Path(__file__).resolve().parents[2] / "src" / "maxim" / "runtime"
+_PACKAGE = "maxim.runtime"
+_AGENT_LOOP = "maxim.runtime.agent_loop"
+# Modules the derived closure below must contain (fail closed: each must exist AND be reached). Not the scan
+# set: that is derived, every ``loop_*.py`` plus every ``maxim.runtime`` module they import, transitively.
+_MUST_SCAN = ("loop_setup", "loop_gates", "loop_perception", "tool_dispatch", "substrate_proposal", "loop_types")
+_CLOSURE_FLOOR = 15  # the closure was 23 modules at slice 5; a collapse below this means the derivation broke
+
+
+def _resolve(module: str, level: int, package: str = _PACKAGE) -> str:
+    """The absolute name of ``from <'.' * level><module> import ...`` written in a module of ``package``."""
+    if not level:
+        return module
+    parts = package.split(".")
+    base = parts[: len(parts) - (level - 1)] if level - 1 <= len(parts) else []
+    return ".".join([*base, module] if module else base)
+
+
+def _names_agent_loop(module: str, fromlist: list[str]) -> bool:
+    return (
+        module == _AGENT_LOOP
+        or module.startswith(_AGENT_LOOP + ".")
+        or (module == _PACKAGE and "agent_loop" in fromlist)
+    )
+
+
+def _const_str(node: ast.AST | None) -> str | None:
+    return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
+
+
+def _dynamic_target(call: ast.Call) -> tuple[str, list[str]] | None:
+    """``importlib.import_module(...)`` / ``import_module(...)`` / ``__import__(...)`` with a constant name."""
+    func = call.func
+    name = func.attr if isinstance(func, ast.Attribute) else func.id if isinstance(func, ast.Name) else None
+    if name not in ("import_module", "__import__"):
+        return None
+    name_node = call.args[0] if call.args else next((k.value for k in call.keywords if k.arg == "name"), None)
+    target = _const_str(name_node)
+    if target is None:
+        return None
+    if name == "import_module":
+        package = _const_str(call.args[1]) if len(call.args) > 1 else None
+        package = package or next((_const_str(k.value) for k in call.keywords if k.arg == "package"), None)
+        level = len(target) - len(target.lstrip("."))
+        return _resolve(target[level:], level, package or _PACKAGE), []
+    fromlist_node = (
+        call.args[3] if len(call.args) > 3 else next((k.value for k in call.keywords if k.arg == "fromlist"), None)
+    )
+    fromlist = [_const_str(e) or "" for e in getattr(fromlist_node, "elts", [])]
+    level_node = (
+        call.args[4] if len(call.args) > 4 else next((k.value for k in call.keywords if k.arg == "level"), None)
+    )
+    level = level_node.value if isinstance(level_node, ast.Constant) and isinstance(level_node.value, int) else 0
+    return _resolve(target, level), fromlist
+
+
+def _is_sys_modules(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == "modules"
+        and isinstance(node.value, ast.Name)
+        and (node.value.id == "sys")
+    )
+
+
+def agent_loop_imports(source: str) -> list[int]:
+    """Line numbers in ``source`` (a module of ``maxim.runtime``) that import or look up ``agent_loop``: ``import``
+    and ``from`` statements (absolute, or relative at any level), ``importlib.import_module`` / ``import_module`` /
+    ``__import__`` calls (positional or ``name=``) and ``sys.modules[...]`` / ``sys.modules.get(...)`` lookups whose
+    constant argument names it, and ANY attribute access named ``agent_loop`` (``maxim.runtime.agent_loop.x``,
+    ``runtime.agent_loop``). A bare string is NOT an import (``logging.getLogger("maxim.runtime.agent_loop")`` is
+    legitimate).
+
+    Known blind spots (not seen in ``src/`` today; a reviewer's grep is the belt): a name built at run time,
+    ``getattr(sys.modules[...], "agent_loop")`` (the attribute is a string), ``pkgutil.resolve_name(...)``, and
+    ``from sys import modules`` followed by ``modules[...]``."""
+    hits = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            hit = any(_names_agent_loop(a.name, []) for a in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            hit = _names_agent_loop(_resolve(node.module or "", node.level), [a.name for a in node.names])
+        elif isinstance(node, ast.Attribute) and node.attr == "agent_loop":
+            hit = True
+        elif isinstance(node, ast.Call):
+            target = _dynamic_target(node)
+            hit = target is not None and _names_agent_loop(*target)
+            if (
+                not hit
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "get"
+                and _is_sys_modules(node.func.value)
+                and node.args
+            ):
+                hit = _names_agent_loop(_const_str(node.args[0]) or "", [])
+        elif isinstance(node, ast.Subscript) and _is_sys_modules(node.value):
+            hit = _names_agent_loop(_const_str(node.slice) or "", [])
+        else:
+            hit = False
+        if hit:
+            hits.append(node.lineno)
+    return hits
+
+
+def runtime_imports(source: str) -> set[str]:
+    """The ``maxim.runtime`` submodules ``source`` (a module of ``maxim.runtime``) imports, at any depth (lazy imports
+    inside functions too): ``import maxim.runtime.x``, ``from maxim.runtime.x import y``, ``from maxim.runtime import x``
+    (``x`` a submodule), relative ``from .x import y`` / ``from . import x``, and ``import_module`` / ``__import__``
+    with a constant name. Returns bare module names (``"tool_dispatch"``); the package itself is ``""``. A
+    ``from maxim.runtime import x`` whose ``x`` has no module file is read as an attribute of the package, not a
+    submodule, so it is not followed (the dotted forms are, and fail closed in ``loop_import_closure``)."""
+    names: set[str] = set()
+
+    def _add(module: str, fromlist: list[str]) -> None:
+        if module == _PACKAGE:
+            names.update(n for n in fromlist if (_RUNTIME / f"{n}.py").exists())
+            names.add("")
+        elif module.startswith(_PACKAGE + "."):
+            names.add(module[len(_PACKAGE) + 1 :].split(".")[0])
+
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                _add(a.name, [])
+        elif isinstance(node, ast.ImportFrom):
+            _add(_resolve(node.module or "", node.level), [a.name for a in node.names])
+        elif isinstance(node, ast.Call):
+            target = _dynamic_target(node)
+            if target is not None:
+                _add(*target)
+    return names
+
+
+def loop_import_closure() -> list[Path]:
+    """The scan set, DERIVED: every ``runtime/loop_*.py`` plus every ``maxim.runtime`` module they import,
+    transitively, minus ``agent_loop`` itself (the importer) and the package ``__init__``. Fails closed: a name that
+    resolves to no module file is an error, not a skip."""
+    seen: dict[str, Path] = {}
+    queue = [p.stem for p in sorted(_RUNTIME.glob("loop_*.py"))]
+    while queue:
+        name = queue.pop()
+        if name in seen or name in ("", "agent_loop", "__init__"):
+            continue
+        path = _RUNTIME / f"{name}.py"
+        assert path.is_file(), f"maxim.runtime.{name} is imported by the loop modules but has no module file"
+        seen[name] = path
+        queue.extend(runtime_imports(path.read_text()))
+    return sorted(seen.values())
+
+
+def test_no_loop_module_or_leaf_imports_agent_loop():
+    """Rule (c) of the decomposition's import direction (``docs/plans/roadmap_1_3_x.md``), closed in slice 5:
+    ``agent_loop`` imports the ``runtime/loop_*.py`` modules, and they and every runtime module they import
+    (derived, transitively: ``loop_import_closure``) never import ``agent_loop`` back, in any form (``loop_setup``
+    once did, lazily inside a function, to reach two patch seams; slice 5 deleted that and the
+    ``agent_loop._record_outcome`` re-export the old pin here checked)."""
+    modules = loop_import_closure()
+    names = {p.stem for p in modules}
+    assert len(modules) >= _CLOSURE_FLOOR, sorted(names)
+    for must in _MUST_SCAN:
+        assert (_RUNTIME / f"{must}.py").is_file(), f"{must}.py is gone: update _MUST_SCAN"
+        assert must in names, f"{must} is no longer reached from the loop modules"
+    assert "agent_loop" not in names and len(names) == len(modules)  # one entry per module, no duplicates
+    offenders = [f"{p.name}:{line}" for p in modules for line in agent_loop_imports(p.read_text())]
+    assert offenders == []
+
+
+def test_the_closure_follows_every_import_form_to_a_runtime_module():
+    src = (
+        "import maxim.runtime.a\nfrom maxim.runtime.b import x\nfrom maxim.runtime import loop_state, not_a_module\n"
+        "from .c import y\nfrom . import tool_dispatch\ndef f():\n    from maxim.runtime.d import z\n"
+        "import importlib\nimportlib.import_module('maxim.runtime.e')\n__import__(name='maxim.runtime.f')\n"
+        "from maxim.agents import bus\n"
+    )
+    assert runtime_imports(src) == {"a", "b", "c", "d", "e", "f", "loop_state", "tool_dispatch", ""}
+
+
+def test_agent_loop_no_longer_re_binds_the_setups_seams():
+    """The two seams the setup used to read through ``agent_loop`` live at their homes (slice 5, rule (c)): the
+    run's outcome recorder is ``tool_dispatch.record_outcome`` bound through the module reference, and
+    ``resolve_llm_loop_overrides`` is the setup's own function."""
+    from maxim.runtime import agent_loop, loop_setup, tool_dispatch
+
+    assert not hasattr(agent_loop, "_record_outcome")
+    assert not hasattr(agent_loop, "resolve_llm_loop_overrides")
+    assert loop_setup._td is tool_dispatch
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from maxim.runtime import agent_loop",
+        "from maxim.runtime import agent_loop as _al",
+        "import maxim.runtime.agent_loop",
+        "import maxim.runtime.agent_loop as al",
+        "from maxim.runtime.agent_loop import run_agentic_loop",
+        "from . import agent_loop",
+        "from .agent_loop import _record_outcome",
+        "from ..runtime import agent_loop",
+        "from ..runtime.agent_loop import x",
+        "def f():\n    from maxim.runtime import agent_loop as _al\n",
+        "import importlib\nimportlib.import_module('maxim.runtime.agent_loop')",
+        "from importlib import import_module\nimport_module('maxim.runtime.agent_loop')",
+        "import importlib\nimportlib.import_module('.agent_loop', 'maxim.runtime')",
+        "import importlib\nimportlib.import_module('.agent_loop', package='maxim.runtime')",
+        "__import__('maxim.runtime.agent_loop')",
+        "__import__('maxim.runtime', fromlist=['agent_loop'])",
+        "import sys\nsys.modules['maxim.runtime.agent_loop']",
+        "import sys\nsys.modules.get('maxim.runtime.agent_loop')",
+        "import importlib\nimportlib.import_module(name='maxim.runtime.agent_loop')",
+        "__import__(name='maxim.runtime.agent_loop')",
+        "import maxim.runtime\nmaxim.runtime.agent_loop.run_agentic_loop",
+        "from maxim import runtime\nrun = runtime.agent_loop",
+    ],
+)
+def test_the_guard_catches_every_import_form(source):
+    """Negative controls: each spelling of an ``agent_loop`` import, written in a ``maxim.runtime`` module."""
+    assert agent_loop_imports(source) != []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'import logging\nlogger = logging.getLogger("maxim.runtime.agent_loop")',
+        '"""See maxim.runtime.agent_loop for the caller."""',
+        "from maxim.runtime import tool_dispatch as _td",
+        "from maxim.runtime.loop_state import operational_mode",
+        "from . import loop_state",
+        "import importlib\nimportlib.import_module('maxim.runtime.loop_state')",
+        "import sys\nsys.modules['maxim.runtime.loop_state']",
+        "from maxim.runtime import agent_loop_helpers",
+    ],
+)
+def test_the_guard_ignores_strings_and_other_modules(source):
+    assert agent_loop_imports(source) == []

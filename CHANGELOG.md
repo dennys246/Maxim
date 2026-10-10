@@ -33,14 +33,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   into the locals §1.2 and §6 always read, and `sim.next_observation` and `state.update(observation)` stay at the
   call site. A pure move with no behaviour change: each body is AST-identical to the inline block, the loop
   selection golden, the slice-0 to slice-4, #1133 and #963 characterization and the Exp 60/61/62/R3 offline verdict
-  reproductions stay green unchanged, and `tests/unit/test_loop_perception_characterization.py` (written before
+  reproductions stay green, unchanged through the move (the rule-(c) step retargets two of their patch seams), and `tests/unit/test_loop_perception_characterization.py` (written before
   the move, through the public entry on the LLM-primary path) pins the three sections and where their outputs land
   (the exact `auto_sense_context` at submission, the B1 minimal context, the azimuth world-set on the real
   `bodies/reachy_mini_infant`), raising those 128 statements' coverage from 27% to 100%. It also pins, unchanged,
   the percept-text divergence filed as [#1202](https://github.com/dennys246/Maxim/issues/1202): an attribute-style
   observation with `cli_input` and no `transcript` feeds imagination and enrichment but is not auto-sensed.
   `run_agentic_loop` shrinks 2,717 → 2,429 lines; `loop_perception.py` joins CI's mypy set and the swallow lint's
-  measurement path.
+  measurement path. The same PR closes the decomposition's import-direction rule (c): no `runtime/loop_*.py`
+  module, and no runtime module they import (transitively, a set the guard derives rather than lists), imports
+  `agent_loop` any more (an AST guard in `tests/unit/test_loop_setup.py` holds it). **Import
+  change:** `resolve_llm_loop_overrides` moved to `maxim.runtime.loop_setup`, and `agent_loop`'s private
+  `_record_outcome` re-binding of `tool_dispatch.record_outcome` is gone, with no re-export; a test that replaces
+  either patches `loop_setup.resolve_llm_loop_overrides` or `tool_dispatch.record_outcome`.
 
 - **The heartbeat no longer records the host's network (#1166).** `system_metrics.collect_network_interfaces`
   records `network.hostname` as the machine's first DNS label, never the full name: macOS appends the

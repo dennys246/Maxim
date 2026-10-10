@@ -149,6 +149,7 @@ def _run(
     from maxim.agents.context_pool import ContextPool
     from maxim.environment.filesystem_env import FileSystemEnv
     from maxim.runtime import agent_loop as AL
+    from maxim.runtime import loop_setup
     from maxim.runtime.bootstrap import build_decision_engine, build_executor, build_memory
     from maxim.runtime.loop_controller import LoopController
     from maxim.runtime.state import RuntimeState
@@ -160,13 +161,13 @@ def _run(
     pools: list[Any] = []
     _spy_init(monkeypatch, LoopController, ctrls, events, "ctrl")
     _spy_init(monkeypatch, ContextPool, pools, events, "context_pool")
-    real_overrides = AL.resolve_llm_loop_overrides
+    real_overrides = loop_setup.resolve_llm_loop_overrides
 
     def _overrides() -> Any:
         events.append("overrides")
         return real_overrides()
 
-    monkeypatch.setattr(AL, "resolve_llm_loop_overrides", overrides or _overrides)
+    monkeypatch.setattr(loop_setup, "resolve_llm_loop_overrides", overrides or _overrides)
 
     class _Events(logging.Handler):
         def emit(self, record: logging.LogRecord) -> None:
@@ -515,17 +516,17 @@ def test_a_hub_without_an_agent_id_or_a_cue_falls_back(monkeypatch, tmp_path, ca
 
 
 def _spy_outcomes(monkeypatch: pytest.MonkeyPatch, tool: str) -> list[dict[str, Any]]:
-    from maxim.runtime import agent_loop as AL
+    from maxim.runtime import tool_dispatch
 
     seen: list[dict[str, Any]] = []
-    real = AL._record_outcome
+    real = tool_dispatch.record_outcome
 
     def _spy(**kw: Any) -> Any:
         if kw.get("tool_name") == tool:
             seen.append(kw)
         return real(**kw)
 
-    monkeypatch.setattr(AL, "_record_outcome", _spy)
+    monkeypatch.setattr(tool_dispatch, "record_outcome", _spy)
     return seen
 
 

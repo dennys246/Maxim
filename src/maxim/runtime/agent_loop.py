@@ -14,7 +14,6 @@ from maxim.utils.structured_logging import log_agentic
 # Extracted to tool_dispatch.py
 from maxim.runtime.tool_dispatch import (
     safe_agent_name as _safe_agent_name,
-    record_outcome as _record_outcome,  # noqa: F401 -- a seam: loop_setup reads agent_loop._record_outcome
     execute_parallel_actions as _execute_parallel,
 )
 
@@ -891,38 +890,6 @@ def _describe_tools_for_prompt(
         except (KeyError, Exception):
             pass
     return tool_descriptions
-
-
-def resolve_llm_loop_overrides() -> tuple[int | None, int | None]:
-    """Read the two loop-level LLM knobs from the config chain, once.
-
-    Returns ``(max_response_tokens, deliberation_max_cycles)``; ``None`` for
-    an unset knob means "keep the built-in default" — the mode's
-    ``max_response_tokens`` and the 3-cycles-in-sim / 2-cycles-live cap.
-    A misconfigured env value is the loader's ``ConfigurationError`` and
-    propagates (config.json values are validated at load); ``resolve_setting``
-    raises nothing else. Read when the loop starts: the console runs one loop
-    per handle for the life of the process, so ``maxim serve`` needs a restart
-    to pick up a change.
-    """
-    from maxim.runtime.config_loader import resolve_setting
-
-    max_tokens, _src = resolve_setting("llm.max_response_tokens")
-    max_cycles, _src = resolve_setting("llm.deliberation_max_cycles")
-    if max_tokens is not None:
-        n_ctx, _src = resolve_setting("llm.n_ctx")
-        if n_ctx is not None and int(max_tokens) >= int(n_ctx):
-            # The reserve would clamp the prompt budget to zero (every
-            # section dropped) and the server would reject max_tokens.
-            logger.warning(
-                "llm.max_response_tokens=%s is not below llm.n_ctx=%s: the prompt budget collapses to zero",
-                max_tokens,
-                n_ctx,
-            )
-    return (
-        int(max_tokens) if max_tokens is not None else None,
-        int(max_cycles) if max_cycles is not None else None,
-    )
 
 
 def _followup_synthetic_input(followup: Any) -> str:

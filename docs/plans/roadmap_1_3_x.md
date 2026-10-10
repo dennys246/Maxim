@@ -549,6 +549,14 @@ if both do. (b) A patch seam stays readable on `agent_loop` only for tests that 
 new tests patch the new location. (c) The tests that patch `agent_loop._record_outcome` and
 `agent_loop.resolve_llm_loop_overrides` are retargeted in the slice that removes the last `_al.`
 back-reference (slice 5 at the latest), which also deletes `loop_setup`'s lazy `agent_loop` import.
+**(c) done in slice 5 (2026-10-10):** `resolve_llm_loop_overrides` moved to `loop_setup` (rule (a): its only
+caller), `loop_setup` binds the run's outcome recorder as `tool_dispatch.record_outcome` through a module
+reference, and the `agent_loop._record_outcome` re-binding and `loop_setup`'s lazy `agent_loop` import are gone;
+the tests patch `loop_setup.resolve_llm_loop_overrides` and `tool_dispatch.record_outcome` (rule (b), no
+re-exports). `tests/unit/test_loop_setup.py::test_no_loop_module_or_leaf_imports_agent_loop` now holds the
+direction for the loop_* modules and every runtime module they import, a set the test derives as the
+transitive closure of their `maxim.runtime` imports (an AST check of every import form, with a negative control
+per form), and the runtime-tools brief carries it as an `[engineering]` invariant.
 Slice 1 applied (a): `_prepare_executor`, `_loop_bio_handles`, `_build_loop_sensor_encoder`,
 `_resolve_situation_cue` and `_planning_liveness_enabled_via_env` moved into `loop_setup.py`, so its only
 `_al.` reads are the two seams. Slice 2 applied (a): `tick_embodiment_drift`, `_loop_live_tick`,
