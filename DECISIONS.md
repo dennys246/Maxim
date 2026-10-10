@@ -2,6 +2,27 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-10-10 — #1180 parked; the SCN-coupling stub demoted
+
+### Decision
+
+1. **#1180 (the temporal-credit validation) is parked until GL2c.** No pre-registration or harness is
+   built now; the issue re-opens when GL2c's satiation producer gives
+   `TemporalCreditDistributor.distribute` a real positive reward, and the four-lens design review runs
+   then.
+2. **The bio-memory SCN temporal-coupling stub is demoted from `[behavioral]` to `[engineering]`**
+   (superseding the 2026-10-08 call to keep the tag pending the run). It re-graduates only through a new
+   ledger row earned by that later run.
+
+### Rationale
+
+A code map taken before drafting the pre-registration (2026-10-10) showed the behavioural test cannot
+succeed by construction: every live reward reaching `distribute` is negative (the only positive `Reaction`
+constructor, `CerebellumModulator`, is Dormant); `NAc.credit_node` clamps `reward_bias` at ≥ 0, so a
+negative share is a no-op; the cluster paths substrate-primary selection reads never pass through
+`distribute`. A `[behavioral]` tag no experiment can currently earn is a claim the code cannot back; the
+strict options were taken (`docs/experiments/temporal_credit_validation.md`, PARKED block).
+
 ## 2026-10-09 — Thalamic relay GL3.B0 decisions (TR1, TR2)
 
 ### Decision
