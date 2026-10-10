@@ -13,7 +13,7 @@ Read alongside:
 - imagination/trigger.py — pipeline implementation
 - embodiment/component_registry.py — register_ephemeral()
 - embodiment/component_index.py — two-layer semantic discovery
-- runtime/agent_loop.py — imagination_trigger hook (lines 597-615)
+- runtime/loop_perception.py::imagine — the imagination_trigger hook (agent loop §1.1)
 """
 
 from __future__ import annotations

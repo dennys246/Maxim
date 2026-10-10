@@ -21,10 +21,13 @@ container aliases) stays a local of ``run_agentic_loop``.
 only the setup calls moved here with it, bodies verbatim (rule (a) of the roadmap's import-direction
 paragraph): ``_prepare_executor``, ``_planning_liveness_enabled_via_env``, ``_loop_bio_handles``,
 ``_build_loop_sensor_encoder``, ``_resolve_situation_cue`` (which imports the ``NO_SITUATION_CUE``
-sentinel from ``substrate_proposal``, where ``propose_via_substrate`` also uses it; slice 3). Two names are PATCH SEAMS
-that existing tests replace on ``agent_loop``, so they are read through the ``agent_loop`` module at
-call time: ``agent_loop._record_outcome`` and ``agent_loop.resolve_llm_loop_overrides``. ``agent_loop``
-is imported inside the functions, because ``agent_loop`` imports this module. The setup LOGS on the
+sentinel from ``substrate_proposal``, where ``propose_via_substrate`` also uses it; slice 3), and slice 5
+moved ``resolve_llm_loop_overrides`` here too (only the setup calls it; a test replaces it as
+``loop_setup.resolve_llm_loop_overrides``). The run's outcome recorder binds ``tool_dispatch.record_outcome``
+through the module reference ``_td``, so a test that replaces it patches ``tool_dispatch.record_outcome``,
+its home. This module imports nothing from ``agent_loop`` (rule (c) of the roadmap's import-direction
+paragraph, slice 5; ``tests/unit/test_loop_setup.py::test_no_loop_module_or_leaf_imports_agent_loop`` holds
+it for every ``runtime/loop_*.py`` and the leaves they import). The setup LOGS on the
 ``maxim.runtime.agent_loop`` logger (``logger`` below is that same object), so its records keep the
 agent loop's logger name. ``run_agentic_loop`` binds ``build_loop_run`` at import, so a test that
 wants to replace it patches ``agent_loop.build_loop_run``, not ``loop_setup.build_loop_run``.
@@ -44,6 +47,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from maxim.runtime import tool_dispatch as _td
 from maxim.runtime.bio_integration import start_bio_session
 from maxim.runtime.loop_state import _persist_state_json, run_mode
 from maxim.runtime.tool_dispatch import book_machine_refusal, book_refusal, execute_and_learn, safe_agent_name
@@ -270,6 +274,38 @@ def _context_pool_config(context_pool_config: dict[str, Any] | None) -> ContextP
     return pool_config
 
 
+def resolve_llm_loop_overrides() -> tuple[int | None, int | None]:
+    """Read the two loop-level LLM knobs from the config chain, once.
+
+    Returns ``(max_response_tokens, deliberation_max_cycles)``; ``None`` for
+    an unset knob means "keep the built-in default" — the mode's
+    ``max_response_tokens`` and the 3-cycles-in-sim / 2-cycles-live cap.
+    A misconfigured env value is the loader's ``ConfigurationError`` and
+    propagates (config.json values are validated at load); ``resolve_setting``
+    raises nothing else. Read when the loop starts: the console runs one loop
+    per handle for the life of the process, so ``maxim serve`` needs a restart
+    to pick up a change.
+    """
+    from maxim.runtime.config_loader import resolve_setting
+
+    max_tokens, _src = resolve_setting("llm.max_response_tokens")
+    max_cycles, _src = resolve_setting("llm.deliberation_max_cycles")
+    if max_tokens is not None:
+        n_ctx, _src = resolve_setting("llm.n_ctx")
+        if n_ctx is not None and int(max_tokens) >= int(n_ctx):
+            # The reserve would clamp the prompt budget to zero (every
+            # section dropped) and the server would reject max_tokens.
+            logger.warning(
+                "llm.max_response_tokens=%s is not below llm.n_ctx=%s: the prompt budget collapses to zero",
+                max_tokens,
+                n_ctx,
+            )
+    return (
+        int(max_tokens) if max_tokens is not None else None,
+        int(max_cycles) if max_cycles is not None else None,
+    )
+
+
 def _novelty_gate() -> Callable[..., bool]:
     """The loop's thought-novelty check, with its own tracker (one per run)."""
     # Thought novelty tracker: deque of recent thought word-sets for
@@ -433,7 +469,6 @@ def build_loop_run(
     """
     from maxim.agents.autonomy import AutonomyController
     from maxim.agents.context_pool import ContextPool
-    from maxim.runtime import agent_loop as _al
     from maxim.runtime.loop_controller import LoopController
     from maxim.runtime.prefetch import init_prefetcher, get_result_cache
 
@@ -505,7 +540,7 @@ def build_loop_run(
     # max_cycles``, P21 of the sandbox plan). Resolved ONCE per loop — the
     # precedence chain logs on every call and the value cannot change
     # mid-session anyway.
-    _max_response_tokens_override, _max_cycles_override = _al.resolve_llm_loop_overrides()
+    _max_response_tokens_override, _max_cycles_override = resolve_llm_loop_overrides()
 
     # Default Network lifecycle — managed by controller
     dn_enabled = ctrl.dn_enabled
@@ -514,7 +549,7 @@ def build_loop_run(
             dn_enabled = False
             ctrl.dn_enabled = False
 
-    # Extract NAc reference for causal learning (passed to _record_outcome)
+    # Extract NAc reference for causal learning (passed to record_outcome)
     _loop_nac, _loop_xclock = _loop_bio_handles(memory_hub, hippocampus, sim, autonomy_controller)
 
     # P4 multi-agent attribution: per-agent stash key.  Producer
@@ -533,7 +568,7 @@ def build_loop_run(
     # Credit the cluster surface from the body's real drive signal ONLY.
     _drive_relief_only: bool = aut_mode != "substrate-primary"
     # Bind the flag once so every outcome site inherits it (no per-call threading).
-    _rec_outcome = functools.partial(_al._record_outcome, drive_relief_only=_drive_relief_only)
+    _rec_outcome = functools.partial(_td.record_outcome, drive_relief_only=_drive_relief_only)
 
     _loop_sensor_encoder = _build_loop_sensor_encoder(memory_hub, _loop_nac)
     _loop_situation_cue = _resolve_situation_cue(memory_hub)

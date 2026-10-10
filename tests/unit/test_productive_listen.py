@@ -1,7 +1,7 @@
 """Guards for Phase 1 of the productive orienting affordance.
 
 `listen` becomes goal-advancing: the audio-orient channel world-sets the body's
-`azimuth` root sensor (agent_loop §1.16 via world_set_azimuth), and `listen`
+`azimuth` root sensor (loop_perception.py §1.16 via world_set_azimuth), and `listen`
 reads it back in its output so the agent can act on the direction. Capability-
 driven: any body that DECLARES an `azimuth` root sensor gets the behavior, no
 per-body code. Pins the round-trip for both shipped bodies + the fail-soft gate.

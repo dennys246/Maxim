@@ -695,7 +695,7 @@ class TestSceneEntityOwnership:
         the JSONSchema export emitted ``required: ["context"]`` despite
         the prose saying "Optional", so strict MCP / Anthropic clients
         rejected calls that omitted it. ``execute()`` already accepts a
-        missing context (and the auto-sense caller in agent_loop never
+        missing context (and the auto-sense caller in loop_perception never
         passes one), so the fix is in the schema.
         """
         emap = EntityMap()

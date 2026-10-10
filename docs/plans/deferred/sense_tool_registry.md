@@ -12,7 +12,7 @@
 W1 MVP shipped on branch `feat/w1-sense-tool-registry-mvp` (~400 LOC src + ~290 LOC tests once the two-lens fold landed). Three phases delivered:
 
 - **Phase 1** — `Tool.auto_fire: bool` + `Tool.kind: Literal[ToolKind]` on the Tool ABC with backward-compatible defaults; `SensePresenceTool` declares `auto_fire=True, kind="auto-discovery"`; SEM-derived factories (`SensorReadTool`, `ModulatorAffordanceTool`, `EntitySenseTool`) declare `kind="sem-modulator-derived"`. `ToolRegistry.register(tool, *, kind=None)` accepts override; new helpers `get_auto_fire_tools()` + `get_tools_by_kind()`.
-- **Phase 2** — `runtime/agent_loop.py` auto-sense dispatch iterates `get_auto_fire_tools()` instead of hardcoding `sense_presence`. The actions.jsonl bypass invariant is preserved (direct `tool.execute()` call, never `executor.execute_action`). The interoception block captures the entity-map source by attribute presence (`hasattr(_af_tool, "_entity_map")`) rather than re-introducing the name coupling Phase 2 set out to retire.
+- **Phase 2** — the auto-sense dispatch (`runtime/loop_perception.py::auto_sense` since the 1.3.2 decomposition) iterates `get_auto_fire_tools()` instead of hardcoding `sense_presence`. The actions.jsonl bypass invariant is preserved (direct `tool.execute()` call, never `executor.execute_action`). The interoception block captures the entity-map source by attribute presence (`hasattr(_af_tool, "_entity_map")`) rather than re-introducing the name coupling Phase 2 set out to retire.
 - **Phase 3** — Grayscale visibility via `prompts/grayscale_tools_annotation.py::build_grayscale_annotations` (producer filter — strips `tool:` prefix, excludes active + non-SEM tools, caps at top_n=5) + `compose_grayscale_tools_section` (renderer reusing Wire-A's `bias_to_band` for substrate-voice consistency). Section wired via `PromptBuilder._add_grayscale_tools_section` as an adjacent IMPORTANT section. Producer shares Wire-A's `MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION` kill switch — the two surfaces are different views of the same substrate signal.
 
 **Two-lens pre-merge review caught two BLOCK-tier findings folded in-branch:**
@@ -34,7 +34,7 @@ Originally targeted as 1.1+. Reframed during the post-Phase-C strategic discussi
 **1.0 MVP scope (smallest unit that closes the Roy-3a gap):**
 
 - **Grayscale visibility minimum** — `tools_block` rendering distinguishes always-active core tools from SEM-derived inactive tools, with `[not in current location]` tag for the latter. Inactive SEM tools the substrate has accumulated bias for (per `NAc.get_agent_tool_biases`) appear in the LLM-facing list.
-- **Tool metadata foundation** — `auto_fire: bool` field on the Tool dataclass (declarative replacement for the implicit executor bypass at [agent_loop.py:1292](../../src/maxim/runtime/agent_loop.py)). No behavior change for existing tools; the bypass discipline becomes explicit.
+- **Tool metadata foundation** — `auto_fire: bool` field on the Tool dataclass (declarative replacement for the implicit executor bypass in [loop_perception.py::auto_sense](../../../src/maxim/runtime/loop_perception.py)). No behavior change for existing tools; the bypass discipline becomes explicit.
 - **Registration-time classifier** — single `ToolRegistry.register(tool, kind=...)` accepting one of `{core-universal, auto-discovery, scene-scoped, sem-modulator-derived}` with sensible defaults for existing call sites.
 
 **Deferred to 1.1+ (full plan, post-Roy-iteration verdict):**
@@ -57,7 +57,7 @@ Added 2026-05-27 per CLAUDE.md Principle 3.
 |---|---|
 | `ToolRegistry` ([tools/registry.py](../../src/maxim/tools/registry.py)) — scene-scoped activation + active tool cap | Active-list machinery is already there; what's missing is *grayscale visibility for inactive tools*. ToolRegistry only models active/inactive as binary visibility |
 | `PromptBuilder` `tools_block` rendering | Reads ToolRegistry's active list; would need a new metadata-aware render branch to emit `[GRAYSCALE]` rows. Render-side change rides on PromptBuilder; *what to render* needs the new metadata layer |
-| Executor auto-fire bypass ([agent_loop.py:1292](../../src/maxim/runtime/agent_loop.py)) | Currently implicit-in-dispatcher-path; would still need declarative `auto_fire=True` metadata on the tool for the unification to work |
+| Executor auto-fire bypass ([loop_perception.py::auto_sense](../../../src/maxim/runtime/loop_perception.py)) | Currently implicit-in-dispatcher-path; would still need declarative `auto_fire=True` metadata on the tool for the unification to work |
 | `ComponentIndex` two-layer discovery (alias + embedding) | Solves entity-name discovery, not tool-presence visibility. Wrong abstraction layer |
 | `ToolOutput.side_effects` typed channel (CLAUDE.md L82) | Canonical bio-pipeline signal channel from-tool-to-bio-pipeline. Wrong direction — auto-sense needs a from-tool-to-event-log channel, which is a separate event-type contract |
 | `sim_log` event types | Auto-fired output could route to a new `sensory_events.jsonl` via `sim_log`; but separating from `actions.jsonl` needs a new event-type contract, not just a render change |

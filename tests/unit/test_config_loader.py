@@ -1310,12 +1310,12 @@ class TestAgentLoopReadsThePromptBudgetKnobs:
     the ModeInfo reserve and the PFC cycle cap."""
 
     def test_unset_yields_the_builtin_defaults(self):
-        from maxim.runtime.agent_loop import resolve_llm_loop_overrides
+        from maxim.runtime.loop_setup import resolve_llm_loop_overrides
 
         assert resolve_llm_loop_overrides() == (None, None)
 
     def test_env_values_reach_the_loop(self, monkeypatch):
-        from maxim.runtime.agent_loop import resolve_llm_loop_overrides
+        from maxim.runtime.loop_setup import resolve_llm_loop_overrides
 
         monkeypatch.setenv("MAXIM_LLM_MAX_RESPONSE_TOKENS", "192")
         monkeypatch.setenv("MAXIM_LLM_DELIBERATION_MAX_CYCLES", "1")
@@ -1324,7 +1324,7 @@ class TestAgentLoopReadsThePromptBudgetKnobs:
     def test_reserve_at_or_above_n_ctx_warns(self, monkeypatch, caplog):
         import logging
 
-        from maxim.runtime.agent_loop import resolve_llm_loop_overrides
+        from maxim.runtime.loop_setup import resolve_llm_loop_overrides
 
         monkeypatch.setenv("MAXIM_LLM_MAX_RESPONSE_TOKENS", "8192")  # == default n_ctx
         with caplog.at_level(logging.WARNING, logger="maxim.runtime.agent_loop"):
@@ -1332,7 +1332,7 @@ class TestAgentLoopReadsThePromptBudgetKnobs:
         assert "collapses to zero" in caplog.text
 
     def test_misconfiguration_is_loud(self, monkeypatch):
-        from maxim.runtime.agent_loop import resolve_llm_loop_overrides
+        from maxim.runtime.loop_setup import resolve_llm_loop_overrides
 
         monkeypatch.setenv("MAXIM_LLM_DELIBERATION_MAX_CYCLES", "0")
         with pytest.raises(ConfigurationError):
@@ -1344,9 +1344,9 @@ class TestAgentLoopReadsThePromptBudgetKnobs:
         src = loop_source()  # the loop's modules (1.3.2 decomposition)
         from tests.unit._loop_source import loop_call_count
 
-        # An AST call count replaced the text pin "= resolve_llm_loop_overrides()" in 1.3.2 slice 1: the setup now
-        # calls it as ``_al.resolve_llm_loop_overrides()`` (a patch seam read through agent_loop), and a call
-        # count matches either spelling while never matching the ``def`` line.
+        # An AST call count replaced the text pin "= resolve_llm_loop_overrides()" in 1.3.2 slice 1, when the setup
+        # called it as ``_al.resolve_llm_loop_overrides()``; since slice 5 (rule (c)) it is ``loop_setup``'s own
+        # function, called by its bare name. A call count matches either spelling and never the ``def`` line.
         assert loop_call_count("resolve_llm_loop_overrides") >= 1
         assert '{"max_response_tokens": _max_response_tokens_override}' in src
         assert "_max_cycles_override" in src and "else (3 if percept_source is not None else 2)" in src

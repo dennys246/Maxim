@@ -55,7 +55,7 @@ data model. It does NOT repurpose `CouplingSpec` (drive→drive, intra-body) or
 | `EntityMap.list_scene_entities()` | `embodiment/entity_map.py:119` | enumerate scene entities each turn |
 | Entity/modulator sensor `read()` | `sem.py:370`, `spec.py:675` | read the already-declared `heat_output` field value |
 | Drive-spec + pain machinery | `body.py:218-278` | once exposure moves the drive sensor, existing pain→PainBus→NAc fires unchanged — no new pain path |
-| Auto-sense §1.15 | `runtime/agent_loop.py:1306-1430` | LLM-primary hook; already holds an `EntityMap` and already iterates scene entities; inject an exposure summary into `StructuredContext.auto_sense_context` (`:2936`) |
+| Auto-sense §1.15 | `runtime/loop_perception.py::auto_sense` | LLM-primary hook; already holds an `EntityMap` and already iterates scene entities; inject an exposure summary into `StructuredContext.auto_sense_context` (`:2936`) |
 | Inert `heat_output`/`fuel` + warmth `self_effect` magnitudes | `_data/components/items/cradle_fire_pit.yaml`, `warmth_*.yaml` | the field-strength data model — the proof the model is done |
 
 ## What it must ADD

@@ -25,7 +25,7 @@ The NAc (Nucleus Accumbens) is inspired by the brain's reward prediction system.
 
 NAc learns from two sources at runtime:
 
-1. **Tool outcomes** — every tool execution in the agent loop (`runtime/agent_loop.py`) calls `nac.observe()` via `_record_outcome()`. This is how NAc learns "tool X in context Y → success/failure."
+1. **Tool outcomes** — every tool execution in the agent loop (`runtime/agent_loop.py`) calls `nac.observe()` via `tool_dispatch.record_outcome` (bound once per run as `LoopRun.rec_outcome`). This is how NAc learns "tool X in context Y → success/failure."
 
 2. **Pain events** — the PainBus publishes pain signals to a NAc subscriber (`proprioception/pain_bus.py:create_pain_nac_subscriber`). This is how NAc learns "action X → pain" for avoidance.
 
