@@ -10,8 +10,10 @@ the /v1/debug/heartbeat endpoint.
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import platform
+import re
 import shutil
 import subprocess
 import time
@@ -240,20 +242,108 @@ def collect_disk(path: str | None = None) -> dict[str, Any] | None:
 
 # ─── Network interfaces ──────────────────────────────────────────────────
 
+# The host identity a heartbeat (and an experiment harness row) may record (#1166). A full hostname is not an
+# identity but a network fact: macOS appends the DHCP-supplied search domain (an ISP and a region) and may even
+# adopt the DHCP reverse-DNS name, which encodes the WAN address. Exported session data carried both.
+IP_ENCODED_HOSTNAME = "ip-encoded"
+_DIGIT_GROUP = re.compile(r"\d+")
+_HEX_RUN = re.compile(r"[0-9a-fA-F]{8,}")
+_HEX_TOKEN = re.compile(r"[0-9a-fA-F]{1,4}")
+# Kept verbatim by ``recordable_ip``: RFC 1918 + IPv6 ULA (private), loopback, link-local. An explicit list,
+# not ``ipaddress``'s ``is_private`` (which also counts the documentation ranges and reserved space): anything
+# else, CGNAT 100.64.0.0/10 included, records as ``"non-private"``.
+_RECORDABLE_NETS = tuple(
+    ipaddress.ip_network(n)
+    for n in (
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "127.0.0.0/8",
+        "169.254.0.0/16",
+        "fc00::/7",
+        "::1/128",
+        "fe80::/10",
+    )
+)
+
+
+def _ip_encoded(label: str) -> bool:
+    """Whether ``label`` (one DNS label) encodes an address, i.e. is a reverse-DNS name:
+
+    - three consecutive 0–255 decimal groups, any separator, any prefix (``c-203-0-113-7``, ``ip-10-0-0-5``,
+      ``box-203-0-113``: three groups already name a /24);
+    - a run of 8+ hex digits (``p5b0c1d2e``, ``cb007107``; 32 = an IPv6 address);
+    - separator-joined hex tokens that concatenate to 8+ hex digits (``cb-00-71-07``, ``2001-db8-0-0-7``) when they
+      hold a letter or are 4+ tokens, so a date (``2024-10-01``: three decimal tokens) is not one.
+
+    Deliberately over-inclusive: a false positive costs only the name (``"ip-encoded"`` is recorded instead)."""
+    groups = [int(g) for g in _DIGIT_GROUP.findall(label)]
+    if any(all(g <= 255 for g in groups[i : i + 3]) for i in range(len(groups) - 2)):
+        return True
+    if _HEX_RUN.search(label):
+        return True
+    run: list[str] = []
+    for token in [*re.split(r"[-_]", label), ""]:  # the trailing "" flushes the last run
+        if token and _HEX_TOKEN.fullmatch(token):
+            run.append(token)
+            continue
+        joined = "".join(run)
+        if len(joined) >= 8 and (len(run) >= 4 or re.search(r"[a-fA-F]", joined)):
+            return True
+        run = []
+    return False
+
+
+def short_hostname(name: str | None = None) -> str:
+    """The machine's name without its network: the first DNS label of ``name`` (default ``socket.gethostname()``).
+
+    The ONE reducer for every recorded hostname (the heartbeat's ``network.hostname``, ``scripts/o19_rerun.py``'s row
+    stamp), so the producers cannot drift. A trailing dot is ignored; an address literal (``:``, or digits and dots
+    with at least one dot), or a first label that encodes an address (:func:`_ip_encoded`), becomes the fixed token
+    ``"ip-encoded"``; an empty name ``"unknown"``. A bare all-digit name is a label like any other (``12345`` is
+    kept; eight digits can be an integer-form address and reduce). Idempotent (a returned value maps to itself), but
+    no check should rely on that: ``o19_rerun.unreduced_hostname`` states its own, stricter rule, so a reducer that
+    regressed cannot pass its own check. A person-identifying first label (``<name>s-MacBook-Pro``) is out of scope
+    here (#997)."""
+    if name is None:
+        import socket
+
+        name = socket.gethostname()
+    name = name.strip().rstrip(".")
+    if ":" in name or ("." in name and re.fullmatch(r"[\d.]+", name)):  # an IPv6 or IPv4 literal
+        return IP_ENCODED_HOSTNAME
+    label = name.split(".", 1)[0]
+    if not label:
+        return "unknown"
+    return IP_ENCODED_HOSTNAME if _ip_encoded(label) else label
+
+
+def recordable_ip(raw: str) -> str:
+    """``raw`` when it is a private (RFC 1918 / ULA), loopback or link-local address; ``"non-private"`` for any other
+    address (resolving the host's name through public DNS can yield the WAN address); ``"unknown"`` when ``raw`` is
+    not an address. Idempotent. An IPv4-mapped IPv6 address (``::ffff:10.0.0.5``) is not in any kept range and
+    records as ``"non-private"``, even when the IPv4 inside is private; a scoped link-local address keeps its zone
+    (``fe80::1%en0``: an interface name, not a network)."""
+    try:
+        ip = ipaddress.ip_address(raw)
+    except ValueError:  # "unknown" (a failed resolve), "non-private" (already reduced), or any non-address text
+        return raw if raw in ("unknown", "non-private") else "unknown"
+    return str(ip) if any(ip in net for net in _RECORDABLE_NETS) else "non-private"
+
 
 def collect_network_interfaces() -> dict[str, Any] | None:
-    """Basic network interface info — active interfaces + IPs."""
+    """The host's short name and private address (#1166: never the full hostname, never a public address)."""
     try:
         import socket
 
         hostname = socket.gethostname()
         try:
-            local_ip = socket.gethostbyname(hostname)
+            local_ip = socket.gethostbyname(hostname)  # the RAW name resolves; only the recorded value is reduced
         except Exception:
             local_ip = "unknown"
         return {
-            "hostname": hostname,
-            "local_ip": local_ip,
+            "hostname": short_hostname(hostname),
+            "local_ip": recordable_ip(local_ip),
         }
     except Exception:
         return None
@@ -263,7 +353,10 @@ def collect_network_interfaces() -> dict[str, Any] | None:
 
 
 def collect_wifi_signal() -> dict[str, Any] | None:
-    """WiFi signal strength + SSID. macOS: airport. Linux: iwconfig."""
+    """WiFi signal strength. macOS: airport. Linux: iwconfig.
+
+    Never the SSID (#1166): a network name is geolocatable through public wardriving databases, and this record is
+    logged to ``MAXIM_LOG_FILE`` and served by ``/v1/debug/heartbeat``."""
     try:
         if platform.system() == "Darwin":
             return _wifi_macos()
@@ -295,7 +388,6 @@ def _wifi_macos() -> dict[str, Any] | None:
         rssi = _float(info.get("agrCtlRSSI", ""))
         noise = _float(info.get("agrCtlNoise", ""))
         return {
-            "ssid": info.get("SSID", "unknown"),
             "rssi_dbm": rssi if rssi != 0 else None,
             "noise_dbm": noise if noise != 0 else None,
             "snr_db": round(rssi - noise, 1) if rssi and noise else None,
@@ -317,18 +409,17 @@ def _wifi_linux() -> dict[str, Any] | None:
         if result.returncode != 0:
             return None
         output = result.stdout + result.stderr
-        ssid = None
+        associated = False
         signal = None
         for line in output.split("\n"):
             if "ESSID:" in line:
-                ssid = line.split("ESSID:")[1].strip().strip('"')
+                associated = True  # the SSID itself is never read into the record (#1166)
             if "Signal level=" in line:
                 sig_part = line.split("Signal level=")[1].split()[0]
                 signal = _float(sig_part)
-        if ssid is None:
+        if not associated:
             return None
         return {
-            "ssid": ssid,
             "rssi_dbm": signal,
         }
     except Exception:
@@ -366,6 +457,8 @@ __all__ = [
     "collect_memory",
     "collect_disk",
     "collect_network_interfaces",
+    "recordable_ip",
+    "short_hostname",
     "collect_wifi_signal",
     "collect_platform",
 ]

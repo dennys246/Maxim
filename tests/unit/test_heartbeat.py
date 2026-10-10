@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import logging
+import socket
 import time
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from maxim.runtime.system_metrics import (
     collect_all,
@@ -12,6 +17,8 @@ from maxim.runtime.system_metrics import (
     collect_memory,
     collect_network_interfaces,
     collect_platform,
+    recordable_ip,
+    short_hostname,
 )
 from maxim.runtime.heartbeat import HeartbeatMonitor
 
@@ -165,3 +172,148 @@ class TestHeartbeatMonitor:
         time.sleep(0.3)  # let at least 2 heartbeats fire
         monitor.stop()
         # If we got here without exception, the heartbeat is stable
+
+
+# ── #1166: the host identity the heartbeat records (synthetic names and TEST-NET / documentation addresses) ──
+
+
+FQDN = "box.example-isp.net"
+
+
+@pytest.mark.parametrize(
+    "raw, short",
+    [
+        (FQDN, "box"),
+        ("box.", "box"),
+        ("BOX.Example-ISP.NET.", "BOX"),
+        ("box", "box"),
+        ("c-203-0-113-7.example-isp.net", "ip-encoded"),
+        ("ip-198-51-100-9.example-isp.net", "ip-encoded"),
+        ("pool-192-0-2-44.example-isp.net", "ip-encoded"),
+        ("203-0-113-7", "ip-encoded"),
+        ("203.0.113.7", "ip-encoded"),
+        ("2001:db8::7", "ip-encoded"),
+        ("mac-mini-2024-10-01.example-isp.net", "mac-mini-2024-10-01"),  # a date is not an address
+        ("", "unknown"),
+        # three decimal groups already name a /24
+        ("box-203-0-113.example-isp.net", "ip-encoded"),
+        ("box-203-0-113", "ip-encoded"),
+        # an address encoded in hex: a run of 8+ hex digits, or separated hex tokens that concatenate to 8+
+        ("p5b0c1d2e.example-isp.net", "ip-encoded"),  # 5b0c1d2e
+        ("cb007107.example-isp.net", "ip-encoded"),
+        ("cb-00-71-07.example-isp.net", "ip-encoded"),
+        ("CB-00-71-07", "ip-encoded"),
+        ("host-20010db8000000000000000000000007", "ip-encoded"),  # 32 hex digits: an IPv6 address
+        ("2001-db8-0-0-7.example-isp.net", "ip-encoded"),
+        ("12345678", "ip-encoded"),  # an integer-form address
+        # ordinary names stay
+        ("big-mac-mini", "big-mac-mini"),
+        ("big-mac-mini.example-isp.net", "big-mac-mini"),
+        ("raspberrypi", "raspberrypi"),
+        ("dennys-mbp", "dennys-mbp"),
+        ("12345", "12345"),  # a bare all-digit name is a label, not an address
+        ("ip-encoded", "ip-encoded"),
+        ("unknown", "unknown"),
+    ],
+)
+def test_short_hostname_keeps_the_machine_not_the_network(raw: str, short: str) -> None:
+    assert short_hostname(raw) == short
+    assert short_hostname(short) == short  # idempotent (no check relies on it: o19_rerun states its own rule)
+
+
+@pytest.mark.parametrize(
+    "raw, recorded",
+    [
+        ("10.0.0.5", "10.0.0.5"),
+        ("192.168.1.20", "192.168.1.20"),
+        ("127.0.0.1", "127.0.0.1"),
+        ("169.254.3.4", "169.254.3.4"),
+        ("fd00::5", "fd00::5"),
+        ("fe80::1", "fe80::1"),
+        ("203.0.113.7", "non-private"),  # stands in for a WAN address
+        ("2001:db8::7", "non-private"),  # a global IPv6 (its /32 would name the ISP)
+        ("100.64.0.9", "non-private"),  # CGNAT is not a private range here
+        ("::ffff:10.0.0.5", "non-private"),  # IPv4-mapped: not in a kept range, whatever the IPv4 inside
+        ("fe80::1%en0", "fe80::1%en0"),  # a scoped link-local keeps its zone (an interface name)
+        ("unknown", "unknown"),
+        ("not-an-address", "unknown"),
+    ],
+)
+def test_recordable_ip_keeps_only_private_addresses(raw: str, recorded: str) -> None:
+    assert recordable_ip(raw) == recorded
+    assert recordable_ip(recorded) == recorded
+
+
+@pytest.fixture
+def isp_host(monkeypatch):
+    """The DHCP-suffixed hostname macOS reports on some networks, resolving to a public address."""
+    resolved: list[str] = []
+
+    def by_name(name: str) -> str:
+        resolved.append(name)
+        return "203.0.113.7"
+
+    monkeypatch.setattr(socket, "gethostname", lambda: FQDN)
+    monkeypatch.setattr(socket, "gethostbyname", by_name)
+    return resolved
+
+
+def test_collect_network_records_the_short_name_and_no_public_address(isp_host) -> None:
+    net = collect_network_interfaces()
+    assert net == {"hostname": "box", "local_ip": "non-private"}
+    assert isp_host == [FQDN]  # the RAW name resolves; only the recorded value is reduced
+
+
+def test_collect_network_keeps_a_private_address(isp_host, monkeypatch) -> None:
+    monkeypatch.setattr(socket, "gethostbyname", lambda name: "10.0.0.5")
+    assert collect_network_interfaces() == {"hostname": "box", "local_ip": "10.0.0.5"}
+
+
+def test_the_logged_heartbeat_carries_no_full_hostname(isp_host, tmp_path) -> None:
+    """The record as MAXIM_LOG_FILE writes it (the StructuredFormatter), not only the collector's return."""
+    from maxim.utils.structured_logging import StructuredFormatter
+
+    log = logging.getLogger("maxim.heartbeat")
+    handler = logging.FileHandler(tmp_path / "run_log.jsonl", encoding="utf-8")
+    handler.setFormatter(StructuredFormatter())
+    old_level = log.level
+    log.addHandler(handler)
+    log.setLevel(logging.DEBUG)
+    try:
+        monitor = HeartbeatMonitor(interval_s=60)
+        monitor._emit(monitor._collect())
+    finally:
+        log.removeHandler(handler)
+        log.setLevel(old_level)
+        handler.close()
+    text = (tmp_path / "run_log.jsonl").read_text()
+    assert "example-isp" not in text and "203.0.113.7" not in text
+    beats = [json.loads(ln) for ln in text.splitlines() if json.loads(ln).get("e") == "heartbeat"]
+    assert beats and all(b["network"] == {"hostname": "box", "local_ip": "non-private"} for b in beats)
+
+
+IWCONFIG = 'wlan0     IEEE 802.11  ESSID:"Example-Home-Net"\n          Link Quality=60/70  Signal level=-50 dBm\n'
+AIRPORT = "     agrCtlRSSI: -55\n     agrCtlNoise: -90\n          SSID: Example-Home-Net\n       channel: 36\n"
+
+
+@pytest.mark.parametrize("system, out", [("Linux", IWCONFIG), ("Darwin", AIRPORT)])
+def test_wifi_records_signal_but_never_the_ssid(monkeypatch, system: str, out: str) -> None:
+    from maxim.runtime import system_metrics
+
+    monkeypatch.setattr(system_metrics.platform, "system", lambda: system)
+    monkeypatch.setattr(
+        system_metrics.subprocess, "run", lambda *a, **k: MagicMock(returncode=0, stdout=out, stderr="")
+    )
+    wifi = system_metrics.collect_wifi_signal()
+    assert wifi is not None and wifi["rssi_dbm"] in (-50.0, -55.0)
+    assert "ssid" not in wifi and "Example-Home-Net" not in json.dumps(wifi)
+
+
+def test_wifi_linux_without_an_association_records_nothing(monkeypatch) -> None:
+    from maxim.runtime import system_metrics
+
+    monkeypatch.setattr(system_metrics.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(
+        system_metrics.subprocess, "run", lambda *a, **k: MagicMock(returncode=0, stdout="lo  no wireless", stderr="")
+    )
+    assert system_metrics.collect_wifi_signal() is None
