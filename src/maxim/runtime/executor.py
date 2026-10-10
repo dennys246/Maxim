@@ -737,8 +737,10 @@ class Executor:
         from maxim.runtime.substrate_proposal import _read_drive_ranges
 
         embodiment = self.embodiment
+        if embodiment is None:  # _outcome_start found a body; a detached one records nothing
+            return None
         try:
-            root = embodiment.root  # type: ignore[union-attr]  # _outcome_start returned a start: a body exists
+            root = embodiment.root
             path = root.full_path
             window = outcome.window
             after = {name: value for name in outcome.specs if (value := _read_sensor_value(root, name)) is not None}
@@ -752,7 +754,7 @@ class Executor:
                 window.cleared.get(path, ()) if window is not None else (),
                 cause=outcome.cause,
                 provenance="experienced",
-                agent_id=embodiment.agent_id,  # type: ignore[union-attr]
+                agent_id=embodiment.agent_id,
                 body_path=path,
                 sufferer=path,
                 invocation_id=invocation_id,

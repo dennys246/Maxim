@@ -597,20 +597,31 @@ class InteroceptiveOutcome:
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> InteroceptiveOutcome:
         cause = data.get("cause")
-        kwargs: dict[str, Any] = {
-            name: tuple((str(k), float(v)) for k, v in data.get(name) or ()) for name in _OUTCOME_BLOCKS
-        }
+
+        def block(name: str) -> _DriveBlock:
+            return tuple((str(k), float(v)) for k, v in data.get(name) or ())
+
+        def core(name: str) -> float:
+            return float(data.get(name, 0.0))
+
         return cls(
             agent_id=str(data.get("agent_id", "")),
             body_path=str(data.get("body_path", "")),
             provenance=str(data.get("provenance", "")),
             sufferer=str(data.get("sufferer", "")),
             cause=CauseRef.from_dict(cause) if cause is not None else None,
+            pressure_before=block("pressure_before"),
+            pressure_after=block("pressure_after"),
+            drive_delta=block("drive_delta"),
+            deviation_after=block("deviation_after"),
             caused=tuple((str(k), bool(v)) for k, v in data.get("caused") or ()),
             satiated=tuple(str(d) for d in data.get("satiated") or ()),
+            nociception=core("nociception"),
+            drive_pain=core("drive_pain"),
+            relief=core("relief"),
+            harm=core("harm"),
+            urgency=core("urgency"),
             extra=dict(data.get("extra") or {}),
-            **kwargs,
-            **{name: float(data.get(name, 0.0)) for name in _OUTCOME_CORE},
         )
 
 
@@ -706,7 +717,10 @@ def interoceptive_outcome(
         provenance=provenance,
         sufferer=sufferer,
         cause=cause,
-        **{name: tuple(sorted(values.items())) for name, values in blocks.items()},
+        pressure_before=tuple(sorted(blocks["pressure_before"].items())),
+        pressure_after=tuple(sorted(blocks["pressure_after"].items())),
+        drive_delta=tuple(sorted(blocks["drive_delta"].items())),
+        deviation_after=tuple(sorted(blocks["deviation_after"].items())),
         caused=tuple((name, True) for name in covered),
         satiated=tuple(sorted(set(satiated) & set(specs))),
         nociception=max(float(nociception or 0.0), injury),
