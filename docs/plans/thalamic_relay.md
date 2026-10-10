@@ -118,7 +118,7 @@ LLM-facing fragments are wrapped last, and only where a consumer needs them.
 | Minecraft world state | `simulation/minecraft.py::MinecraftClient.latest_state` → `embodiment/backends/minecraft.py::MinecraftWorldBackend.sync_world_sensors` → `world_set_axis(owner="minecraft_bridge")` → `vital_metrics` | `SensorEncoder` channel (`_read_world_states`, declared `modality: world`) | `"world"`, 384-d, **gained** (A4 p3.0), frozen | caller-passed | none | `state_age_s` exists on the client but is not carried |
 | Minecraft health / food / oxygen | the same sensors **also** declare `drive:` (`_data/components/bodies/minecraft_player.yaml`) | **the same reading enters twice**: the world channel and the interoception channel | world + interoception | caller | none | none |
 | Minecraft game events (chat / damage / death / block) | `simulation/minecraft.py::MinecraftPerceptSource.next_percept` → `make_text_percept("[minecraft:damage] …", channel="narrative")` | text percept; `SensoryTag(NARRATIVE)` by default | `"text"` (768-d mpnet, 0.44), **only with `MAXIM_SUBSTRATE_PATH=1`** | **None** (the factory is called without `agent_id`; `MemoryHub` falls back to the hub's agent) | none. **A damage event is tagged NARRATIVE, not nociceptive** | `Percept.timestamp` (wall) |
-| Reachy DoA (live) | `embodiment/audio_localization.py::DoAFeed` | **two lanes**: the sensor lane via `world_set_azimuth` → audio channel, and the percept lane via `make_audio_percept` → `adapter.carry_percept` → the `agent_loop.py` §1.16 prompt fold | `"audio"` (ungained, frozen; optional place code `MAXIM_PLACE_CODE_EXTEROCEPTION`) | set on the percept | none | `(azimuth, timestamp)` cached; head/body yaw stamped at capture. **The two lanes share no event id** |
+| Reachy DoA (live) | `embodiment/audio_localization.py::DoAFeed` | **two lanes**: the sensor lane via `world_set_azimuth` → audio channel, and the percept lane via `make_audio_percept` → `adapter.carry_percept` → the §1.16 prompt fold (`loop_perception.py::orient_to_audio`) | `"audio"` (ungained, frozen; optional place code `MAXIM_PLACE_CODE_EXTEROCEPTION`) | set on the percept | none | `(azimuth, timestamp)` cached; head/body yaw stamped at capture. **The two lanes share no event id** |
 | Sim DoA | `AzimuthDoASource` inside a `CompositePerceptSource` | same as live, through `SimulationAdapter.current_percept` | `"audio"` | per the factory call | none | wall |
 | Narrator / DM / CLI text | `simulation/conversational_source.py::ConversationalSource.inject_cli` → `make_text_percept(NARRATIVE/cli)` | LLM route; EC `"text"` only with `MAXIM_SUBSTRATE_PATH` | `"text"` | often None | none | wall |
 | Sim pain injection | `ConversationalSource.inject_pain` → `make_intero_percept` | a text percept with an INTEROCEPTION tag, published as a `Reaction` straight onto `reaction_bus` | `agents/modality.py::_SUBSTRATE_MAP[INTEROCEPTION] = "text"`, so it **embeds as language** | caller | none | wall |
@@ -206,7 +206,7 @@ misdescribed:
 |---|---|---|
 | 0–0.6 | `pre_tick_gate`: stop/pause checks, the **live tick** (`_loop_live_tick` → `tick_embodiment_drift` [llm-primary only] + `ExperienceClockDriver.on_live_pass`), then the idle gate | `runtime/loop_gates.py::pre_tick_gate`, `::_loop_live_tick` |
 | 1 | `sim.next_observation`: **one** percept per pass | `runtime/sim_adapter.py::SimulationAdapter.next_observation` |
-| 1.1 / 1.15 / 1.16 | imagination, auto-sense, audio orientation (with the sim-only orienting reflex) | `agent_loop.py` inline |
+| 1.1 / 1.15 / 1.16 | imagination, auto-sense, audio orientation (with the sim-only orienting reflex) | `loop_perception.py::perceive` (1.3.2 slice 5; `imagine`, `auto_sense`, `orient_to_audio` → `PerceptionOutcome`) |
 | 1.2 | ThoughtGate, then `BioEnrichmentPipeline.enrich` (which runs the **percept reflexes**) | inline; `integration/bio_enrichment.py::_evaluate_reflexes` |
 | 2 / 3 | poll the LLM worker (non-blocking); `agent.propose_intent` fallback | inline |
 | 4 | **execute `ctrl.pending_proposal`** | inline → `runtime/tool_dispatch.py` |
@@ -1123,7 +1123,8 @@ each surface a new failure mode, stop and audit the layer beneath (the body sens
 ## 8. Dependency on the decomposition fence
 
 `runtime/agent_loop.py`, `runtime/loop_*.py` and `simulation/orchestrator.py` belong to **Session A**'s
-1.3.2 decomposition (slices 4 and 5 of `agent_loop` remain, then `start_simulation_mode`). Under G1, src
+1.3.2 decomposition (`agent_loop`'s phase-1 slices are built: slice 4 merged as #1187, slice 5, the perception
+sections → `loop_perception.py`, built 2026-10-10; `start_simulation_mode` remains). Under G1, src
 work waits for the fence, with one exception, GL2a, which lives outside it
 (`maxim/embodiment/event_id.py`, which this plan imports, is built at the autonomic plan's post-fence
 resume stage, G17, not GL2a). For this plan:
@@ -1131,9 +1132,9 @@ resume stage, G17, not GL2a). For this plan:
 | Stage | Touches | Waits for |
 |---|---|---|
 | GL3.B0 | tests + `_loop_harness` only | nothing; coordinate harness changes with Session A |
-| GL3.B1 | `substrate_proposal.py::_encode_current_clusters` / `propose_via_substrate` (the body path); `imagination/trigger.py`, `orchestrator.py` self-entity encode; EC / NAc / `hivemind/bundle.py`, `merge.py`, `ingest.py` | the remaining `agent_loop` slices (the body path waits for them, per `roadmap_1_3_x.md`) **and** the `start_simulation_mode` slices; GL2a (the pid); a provenance consumer (G8) |
+| GL3.B1 | `substrate_proposal.py::_encode_current_clusters` / `propose_via_substrate` (the body path); `imagination/trigger.py`, `orchestrator.py` self-entity encode; EC / NAc / `hivemind/bundle.py`, `merge.py`, `ingest.py` | `agent_loop`'s phase-2 slices (the LLM-primary sections the body path crosses, per `roadmap_1_3_x.md`) **and** the `start_simulation_mode` slices; GL2a (the pid); a provenance consumer (G8) |
 | GL3.B2 | none here | GL4 Stage 2 |
-| GL3.B3 | `loop_setup.py::build_loop_run`, `loop_substrate.py`, `loop_gates.py::pre_tick_gate`, `simulation/tools.py` (the narrator tools post to the inbox) | `agent_loop` slice 4 (PLANNING arm) and slice 5 (imagination / auto-sense / audio / `state.update` arm); the orchestrator slices; GL2b |
+| GL3.B3 | `loop_setup.py::build_loop_run`, `loop_substrate.py`, `loop_gates.py::pre_tick_gate`, `simulation/tools.py` (the narrator tools post to the inbox) | the orchestrator slices; GL2b. (`agent_loop` slice 4's PLANNING arm, #1187, and slice 5's imagination / auto-sense / audio / `state.update` arm, `tests/unit/test_loop_perception_characterization.py`, 2026-10-10, are in place.) |
 | GL3.B4 | `agent_loop.py` §4, `substrate_proposal.py` | as GL3.B3, plus a declaring rung arm and the frozen GL3.B0 characterization |
 | GL3.B5 | `orchestrator.py`, `conversational_source.py`, `minecraft.py` | the orchestrator slices |
 

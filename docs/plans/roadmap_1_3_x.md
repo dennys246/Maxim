@@ -415,7 +415,7 @@ told apart from the refactor.
   - [#965](https://github.com/dennys246/Maxim/issues/965) (#832's review): the internet policy summary
     never reaches the model, and the recorded on/off is a launch snapshot. Wire a true summary through
     the live getter per turn, or delete the dead fields end to end (owner decision).
-  - [#963](https://github.com/dennys246/Maxim/issues/963) (#829's follow-up): the loop resolves the
+  - **[MERGED (#1198)]** [#963](https://github.com/dennys246/Maxim/issues/963) (#829's follow-up): the loop resolves the
     operational mode per call site, so the follow-up type ignores the launch grant. The slice that owns
     the loop's mode handling makes one accessor the only capability reader, guarded against new raw
     `state.data["mode"]` reads. #829's source-pin wiring tests become behavioural in the same PR.
@@ -521,7 +521,11 @@ recorded-but-unused memory system. That is 1.4's work ([roadmap_1_4.md](roadmap_
    Slice 4, §5 the PLANNING approved path → `runtime/loop_planning.py::drain_approved`, which runs each approved
    action through `execute_and_learn(human_involved=True)` (#1085 PR-a: learning parity, a one-at-a-time drain,
    `approved_action_blocker` at drain time (pause, safety forbids, the policy's hard denials), no NAc for machine refusals, no overwrite retry for a write confirmed or approved by a person or a policy; it
-   opens no approval route, the surface is #1185), built 2026-10-08, PR pending: 2,783 → 2,720 lines.)*
+   opens no approval route, the surface is #1185), built 2026-10-08, merged as #1187: 2,783 → 2,720 lines (then
+   2,717 with #963, merged as #1198). Slice 5, §1.1–§1.16 perception (imagination, auto-sense, audio orientation)
+   → `runtime/loop_perception.py::perceive -> PerceptionOutcome` (`imagine`, `auto_sense`, `orient_to_audio`, each
+   verbatim and under 200 lines; `next_observation` and `state.update` stay at the call site), built 2026-10-10,
+   PR pending: 2,717 → 2,429 lines; the same PR applies rule (c) below.)*
 2. **`start_simulation_mode`** (`simulation/orchestrator.py`, 3,322). Its tests cover **11%** of its lines
    (the Codex card's measurement at `v1.3.1`), so it is NOT decomposed blind: characterization tests
    first, then an orchestrator coverage floor set from them (item 5 above), then slices under the same
@@ -545,6 +549,14 @@ if both do. (b) A patch seam stays readable on `agent_loop` only for tests that 
 new tests patch the new location. (c) The tests that patch `agent_loop._record_outcome` and
 `agent_loop.resolve_llm_loop_overrides` are retargeted in the slice that removes the last `_al.`
 back-reference (slice 5 at the latest), which also deletes `loop_setup`'s lazy `agent_loop` import.
+**(c) done in slice 5 (2026-10-10):** `resolve_llm_loop_overrides` moved to `loop_setup` (rule (a): its only
+caller), `loop_setup` binds the run's outcome recorder as `tool_dispatch.record_outcome` through a module
+reference, and the `agent_loop._record_outcome` re-binding and `loop_setup`'s lazy `agent_loop` import are gone;
+the tests patch `loop_setup.resolve_llm_loop_overrides` and `tool_dispatch.record_outcome` (rule (b), no
+re-exports). `tests/unit/test_loop_setup.py::test_no_loop_module_or_leaf_imports_agent_loop` now holds the
+direction for the loop_* modules and every runtime module they import, a set the test derives as the
+transitive closure of their `maxim.runtime` imports (an AST check of every import form, with a negative control
+per form), and the runtime-tools brief carries it as an `[engineering]` invariant.
 Slice 1 applied (a): `_prepare_executor`, `_loop_bio_handles`, `_build_loop_sensor_encoder`,
 `_resolve_situation_cue` and `_planning_liveness_enabled_via_env` moved into `loop_setup.py`, so its only
 `_al.` reads are the two seams. Slice 2 applied (a): `tick_embodiment_drift`, `_loop_live_tick`,
@@ -598,7 +610,11 @@ Slice 4 is an exception to "Coverage first, then extract": by owner decision 1 (
 well as a move, so its fix commit CHANGES those characterization pins (each changed test says so) instead of
 keeping them green unchanged.
 **Slice 5** needs a transcript-bearing or scripted-percept arm that runs §1.1 imagination, §1.15
-auto-sense, §1.16 audio and `state.update(observation)`; only text pins touch them now.
+auto-sense, §1.16 audio and `state.update(observation)`; only text pins touch them now — **done** (2026-10-10):
+`tests/unit/test_loop_perception_characterization.py`, through the real loop on the LLM-primary path (a scripted
+non-sim adapter, a sim percept source for the reflex tier, a capturing worker, the real
+`bodies/reachy_mini_infant`), the block's statement coverage 27% → 100%. It pins, unchanged, the percept-text
+divergence filed as #1202.
 
 **Typing rides along, scoped:** every module the decomposition creates enters CI's mypy set. The
 repo-wide ratchet from 1.3.1 holds the rest. Full coverage is not promised.

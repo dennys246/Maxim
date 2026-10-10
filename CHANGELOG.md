@@ -39,6 +39,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reflexion (owner decision TF2: only tools that ran earn failure credit). NAc event ids gain a sequence
   suffix so they stay unique within one clock tick, and the `--debug nac` tracer also traces
   `record_outcome_full`, so tool outcomes stay visible. (`docs/plans/tool_failure_credit.md` Stage 1)
+- **`agent_loop` decomposition, slice 5: each pass's perception moves to `runtime/loop_perception.py`** (roadmap
+  1.3.2 §"The decomposition"; internal). Sections 1.1-1.16 of `run_agentic_loop` (§1.1 imagination, §1.15
+  auto-sense, §1.16 audio orientation with its sim-only orienting reflex and the B1 escalation) are now one call,
+  `perceive(...)`, which runs `imagine`, `auto_sense` and `orient_to_audio` in the inline order and returns a frozen,
+  runtime-ephemeral `PerceptionOutcome(imagination_results, auto_sense_text, audio_escalate)`; the loop unpacks it
+  into the locals §1.2 and §6 always read, and `sim.next_observation` and `state.update(observation)` stay at the
+  call site. A pure move with no behaviour change: each body is AST-identical to the inline block, the loop
+  selection golden, the slice-0 to slice-4, #1133 and #963 characterization and the Exp 60/61/62/R3 offline verdict
+  reproductions stay green, unchanged through the move (the rule-(c) step retargets two of their patch seams), and `tests/unit/test_loop_perception_characterization.py` (written before
+  the move, through the public entry on the LLM-primary path) pins the three sections and where their outputs land
+  (the exact `auto_sense_context` at submission, the B1 minimal context, the azimuth world-set on the real
+  `bodies/reachy_mini_infant`), raising those 128 statements' coverage from 27% to 100%. It also pins, unchanged,
+  the percept-text divergence filed as [#1202](https://github.com/dennys246/Maxim/issues/1202): an attribute-style
+  observation with `cli_input` and no `transcript` feeds imagination and enrichment but is not auto-sensed.
+  `run_agentic_loop` shrinks 2,717 → 2,429 lines; `loop_perception.py` joins CI's mypy set and the swallow lint's
+  measurement path. The same PR closes the decomposition's import-direction rule (c): no `runtime/loop_*.py`
+  module, and no runtime module they import (transitively, a set the guard derives rather than lists), imports
+  `agent_loop` any more (an AST guard in `tests/unit/test_loop_setup.py` holds it). **Import
+  change:** `resolve_llm_loop_overrides` moved to `maxim.runtime.loop_setup`, and `agent_loop`'s private
+  `_record_outcome` re-binding of `tool_dispatch.record_outcome` is gone, with no re-export; a test that replaces
+  either patches `loop_setup.resolve_llm_loop_overrides` or `tool_dispatch.record_outcome`.
 - **Robot motion pain is booked on the movement that caused it, once (#1209).** `PainCircuitBridge` (built
   by the Default Network, fed by `embodied_runtime/movement.py`) booked its outcomes by movement SIGNATURE, so
   one pain also booked every other pending event with that signature inside NAc's 300 s window, and nothing in

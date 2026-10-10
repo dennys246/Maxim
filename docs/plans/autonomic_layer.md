@@ -1163,6 +1163,10 @@ audit the body layer beneath; the sensor-resolver disagreements (#1124, #1156, #
 
 ### 5.4 GL2c — the positive producer (last, deliberately)
 
+> **Also unblocks [#1180](https://github.com/dennys246/Maxim/issues/1180)** (PARKED 2026-10-10): the temporal-credit
+> fallback's behavioural test needs a live positive reward to reach `TemporalCreditDistributor.distribute`,
+> and none exists until this stage's producer (`docs/experiments/temporal_credit_validation.md`, PARKED block).
+
 - **Depends on:** GL2a; **the out-of-band producer with the narrated and apparatus scopes** (after the
   fence; G9, G16), because on Minecraft every oxygen crossing is out-of-band and a narrator-caused cradle
   satiation would otherwise be delivered at full weight (environment SF-2); R4's routing audit has

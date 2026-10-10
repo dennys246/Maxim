@@ -59,7 +59,7 @@ grep "Captured:" ~/.maxim/sim_reports/*/actions.jsonl | wc -l
 
 **Check:** Look for `[NAc] Causal link:` lines in the trace.
 
-1. **NAc.observe() not called** — The agent loop must call `nac.observe()` after tool outcomes. Check `runtime/agent_loop.py` `_record_outcome()` — it should have a `nac=_loop_nac` parameter wired to all call sites.
+1. **NAc.observe() not called** — The agent loop must call `nac.observe()` after tool outcomes. Check `runtime/tool_dispatch.py::record_outcome` (the loop calls it through `LoopRun.rec_outcome`, the partial `runtime/loop_setup.py::build_loop_run` binds) — every call site should pass `nac=_loop_nac`.
 2. **NAc not initialized in MemoryHub** — Check `simulation/orchestrator.py` passes `nac=aut_nac` to MemoryHub.
 3. **Energy observations** — After our hardening work, each tool outcome also records an energy observation. If you see `tool:respond -> positive` but no energy links, the energy wiring may be missing.
 
