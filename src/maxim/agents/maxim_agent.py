@@ -377,6 +377,10 @@ class MaximAgent(Agent):
     ) -> None:
         """Wire PreemptionCircuit for interrupt handling.
 
+        **Dormant since 2026-10-07: never wired; superseded in vocabulary by AfferentTrackSpec**
+        (``runtime/preemption.py``, #1179): no caller in ``src/``, ``tests/`` or ``scripts/``, so
+        ``_execution_tracker`` is never set and nothing preempts.
+
         Call before on_start(). Gives the goal agent preemption awareness.
         """
         self._preemption_circuit = preemption_circuit

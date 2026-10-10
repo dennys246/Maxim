@@ -47,6 +47,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `_record_outcome` re-binding of `tool_dispatch.record_outcome` is gone, with no re-export; a test that replaces
   either patches `loop_setup.resolve_llm_loop_overrides` or `tool_dispatch.record_outcome`.
 
+- **The preemption scaffolding is marked Dormant (#1179; owner decision TR1; docstrings and a comment
+  only, no behaviour change):** `runtime/preemption.py` (`PreemptionCircuit`, `ExecutionTracker`),
+  `MaximAgent.wire_preemption` and `tool_dispatch`'s `capture_before` guard now say they were never wired,
+  so a reader no longer concludes that pain can preempt an action. Nothing constructs them; the
+  `maxim.runtime` re-exports stay. The loop's dead `check_hold` branch is left for the decomposition.
 - **The heartbeat no longer records the host's network (#1166).** `system_metrics.collect_network_interfaces`
   records `network.hostname` as the machine's first DNS label, never the full name: macOS appends the
   DHCP-supplied search domain (an ISP and a region) and can adopt a reverse-DNS name that encodes the WAN

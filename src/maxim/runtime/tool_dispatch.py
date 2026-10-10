@@ -984,7 +984,7 @@ def execute_and_learn(
     result_str: str | None = None
     queued_followup: ActionFollowup | None = None
     raised: str | None = None
-    # Capture pre-execution snapshot for preemption reversal
+    # Dormant since 2026-10-07 (#1179, runtime/preemption.py): never true, wire_preemption has no caller
     if hasattr(agent, "_execution_tracker") and agent._execution_tracker:
         goal_desc = proposal.reasoning or ""
         robot_handle = getattr(agent, "goal", None)
