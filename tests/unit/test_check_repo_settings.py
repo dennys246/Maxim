@@ -101,9 +101,9 @@ def test_the_committed_settings_compare_clean():
             "security_and_analysis.secret_scanning_push_protection",
         ),
         (
-            "non-provider patterns switched off",
+            "non-provider patterns changed (pinned disabled 2026-10-10; any change is drift)",
             lambda r: r[f"repos/{REPO}"]["security_and_analysis"]["secret_scanning_non_provider_patterns"].update(
-                status="disabled"
+                status="enabled"
             ),
             "security_and_analysis.secret_scanning_non_provider_patterns",
         ),
