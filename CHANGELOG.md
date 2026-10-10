@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The heartbeat no longer records the host's network (#1166).** `system_metrics.collect_network_interfaces`
+  records `network.hostname` as the machine's first DNS label, never the full name: macOS appends the
+  DHCP-supplied search domain (an ISP and a region) and can adopt a reverse-DNS name that encodes the WAN
+  address; such a label records as `"ip-encoded"`. `network.local_ip` is kept only when it is private (RFC 1918 /
+  IPv6 ULA), loopback or link-local, otherwise `"non-private"` (CGNAT 100.64.0.0/10 included). `wifi.ssid` is
+  gone from the record. The record reaches `MAXIM_LOG_FILE` (the heartbeat is always on in leader mode) and the
+  `/v1/debug/heartbeat` response, whose `wifi` object no longer has an `ssid` key and whose `network` values
+  narrow; nothing in this repo reads either value. One reducer, `system_metrics.short_hostname`, also stamps
+  `scripts/o19_rerun.py`'s row `hostname`; that harness now refuses before its start marker when the identity
+  it would record is unreduced, and refuses to copy a session file that still carries the host's full hostname
+  (it copies nothing; the row is `failed` with that reason). Committed data is unchanged.
 - **Docstrings no longer claim cross-modal grounding that does not exist (#1120 audit, GL0 of the grounding line;
   no behaviour change):** the bio-enrichment graph path is marked inert in production (D6) and the affordance
   `[effective]` annotation's exact-name lookup is stated; the affordance-encoding helpers no longer promise

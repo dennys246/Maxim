@@ -2521,3 +2521,221 @@ def test_the_harness_refuses_when_mains_rows_cannot_be_read(tmp_path, monkeypatc
     monkeypatch.setattr(h, "push_marker", lambda *a, **k: pushed.append(a))
     assert h.main(["run", "--exp", "09", "--write-experiment-results"]) == 2
     assert "REFUSED" in capsys.readouterr().err and pushed == []
+
+
+# ── #1166: the host identity stays out of the rows and the copies (synthetic names, TEST-NET addresses) ──────────
+
+import socket  # noqa: E402
+
+FQDN = "box.example-isp.net"
+
+
+def _isp_host(monkeypatch, name: str = FQDN, address: str = "203.0.113.7") -> None:
+    monkeypatch.setattr(socket, "gethostname", lambda: name)
+    monkeypatch.setattr(socket, "gethostbyname", lambda _n: address)  # no real DNS lookup
+
+
+def _with_log_line(monkeypatch, line: str, on_index: int = 0) -> None:
+    """The mock phase's run log gains ``line`` (a heartbeat or a message the sim might log)."""
+    real = h.mock_phase
+
+    def phase(exp, index, **kw):
+        sdir, report, fields, log, console, error = real(exp, index, **kw)
+        if index == on_index:
+            with log.open("a") as f:
+                f.write(line + "\n")
+        return sdir, report, fields, log, console, error
+
+    monkeypatch.setattr(h, "mock_phase", phase)
+
+
+def _host_run(tmp_path, monkeypatch) -> tuple[int, list[dict]]:
+    stable_provenance(monkeypatch)
+    rows = tmp_path / "rows.jsonl"
+    monkeypatch.setattr(h._provenance, "_RUN_ID", {})
+    monkeypatch.setattr(h._provenance, "evidence_out_path", lambda *a, **k: rows)
+    code = h.main(["run", "--exp", "10", "--mock"])
+    return code, [json.loads(ln) for ln in rows.read_text().splitlines()] if rows.exists() else []
+
+
+def _heartbeat(hostname: str) -> str:
+    return json.dumps(
+        {
+            "t": 1.0,
+            "l": "DEBUG",
+            "s": "heartbeat",
+            "e": "heartbeat",
+            "network": {"hostname": hostname, "local_ip": "10.0.0.5"},
+        }
+    )
+
+
+def test_the_row_stamps_the_short_hostname(monkeypatch, tmp_path) -> None:
+    _isp_host(monkeypatch)
+    _sdir, _report, fields, *_rest = _spawn(monkeypatch, tmp_path, _FakeSim([0]), lambda *a: {})
+    assert fields["hostname"] == "box"
+
+
+def test_a_clean_attempt_under_an_isp_hostname_still_passes(tmp_path, monkeypatch) -> None:
+    """The check does not fire on the mock's own bytes, and the copies still verify (the hash binds what is committed)."""
+    _isp_host(monkeypatch)
+    code, rows = _host_run(tmp_path, monkeypatch)
+    assert code == 0 and [r["status"] for r in rows] == ["ok", "ok", "ok"]
+    assert _judge("10", tmp_path / "rows.jsonl")["verdict"] == "PASS"
+
+
+@pytest.mark.parametrize(
+    "line, check",
+    [
+        (_heartbeat(FQDN), "known value"),
+        (_heartbeat("lab-7.example-isp.org"), "heartbeat network.hostname"),  # no known value: the structured half
+        (json.dumps({"e": "log", "msg": "connect to BOX.Example-ISP.net. refused"}), "known value"),  # case, message
+    ],
+)
+def test_a_copy_carrying_the_full_hostname_is_refused_and_writes_nothing(tmp_path, monkeypatch, line, check) -> None:
+    _isp_host(monkeypatch)
+    _with_log_line(monkeypatch, line)
+    code, rows = _host_run(tmp_path, monkeypatch)
+    assert code == 1 and len(rows) == 1  # phase 2 never ran
+    row = rows[0]
+    assert row["status"] == "failed" and row["reason"] == f"{h.HOST_IN_COPY}: {v.RUN_LOG} ({check})"
+    assert "files" not in row and not (tmp_path / row["session_id"]).exists()  # scanned before anything was written
+    assert "example-isp" not in json.dumps(rows).lower()  # the reason names the file, never the value
+
+
+def test_the_phase_start_sample_is_a_needle(tmp_path, monkeypatch) -> None:
+    """macOS renames the host on a DHCP renew: a name seen only at phase start is still searched for at copy time."""
+    _isp_host(monkeypatch)
+    real = h.mock_phase
+
+    def renew(exp, index, **kw):
+        out = real(exp, index, **kw)
+        with out[3].open("a") as f:
+            f.write(json.dumps({"e": "log", "msg": f"resolved {FQDN}"}) + "\n")
+        monkeypatch.setattr(socket, "gethostname", lambda: "box")  # the renew: copy time sees the bare name
+        return out
+
+    monkeypatch.setattr(h, "mock_phase", renew)
+    code, rows = _host_run(tmp_path, monkeypatch)
+    assert code == 1 and rows[0]["reason"].endswith("(known value)")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "http://127.0.0.1:8100/v1 localhost",
+        "mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+        "https://api.anthropic.com/v1 https://huggingface.co/x",
+        "docs at https://docs.example.org/maxim",
+        "box.local box.lan box.home.arpa",
+        "pymaxim 1.3.1",
+        "example-isp.net",  # a bare suffix is never a needle
+    ],
+)
+def test_ordinary_bytes_are_copied(tmp_path, text) -> None:
+    sdir = tmp_path / "s"
+    sdir.mkdir()
+    (sdir / "actions.jsonl").write_text(json.dumps({"e": "log", "msg": text}) + "\n" + _heartbeat("box") + "\n")
+    (sdir / "report.json").write_text(json.dumps({"note": text}))
+    files, problem = h.copy_session(
+        sdir, None, None, tmp_path / "out", hostnames=(FQDN, "box", "localhost", "box.local")
+    )
+    assert problem is None and set(files) == {"actions.jsonl", "report.json"}
+
+
+def test_only_full_public_hostnames_are_needles() -> None:
+    assert h.host_needles(["box", "", None, "box.lan", "box.local", "box.home.arpa", "x.ec2.internal", "box."]) == []
+    assert h.host_needles(["BOX.Example-ISP.net."]) == [FQDN.encode()]
+
+
+@pytest.mark.parametrize(
+    "patch_name, value",
+    [
+        ("short_hostname", lambda name=None: socket.gethostname()),  # a regressed reducer
+        ("collect_network_interfaces", lambda: {"hostname": "box", "local_ip": "203.0.113.7"}),
+        ("collect_network_interfaces", lambda: {"hostname": "c-203-0-113-7", "local_ip": "10.0.0.5"}),
+        ("collect_network_interfaces", lambda: {"hostname": FQDN, "local_ip": "10.0.0.5"}),
+        ("collect_network_interfaces", lambda: {"hostname": "cb-00-71-07", "local_ip": "10.0.0.5"}),
+        ("recordable_ip", lambda raw: raw),  # a regressed address reducer: the check states its own rule
+    ],
+)
+def test_an_unreduced_host_identity_is_refused_before_the_marker(tmp_path, monkeypatch, capsys, patch_name, value):
+    from maxim.runtime import system_metrics
+
+    _isp_host(monkeypatch)
+    monkeypatch.setattr(system_metrics, patch_name, value)
+    code, rows = _host_run(tmp_path, monkeypatch)
+    err = capsys.readouterr().err
+    assert code == 2 and rows == [] and "#1166" in err and "example-isp" not in err and "203.0.113" not in err
+
+
+@pytest.mark.parametrize("name", ["p5b0c1d2e", "cb007107", "cb-00-71-07", "box-203-0-113", "c-203-0-113-7"])
+def test_an_identity_reducer_cannot_pass_the_pre_marker_check(tmp_path, monkeypatch, capsys, name) -> None:
+    """Deletion probe kept as a test: with ``short_hostname`` the identity, a bare address-encoded name (no dot for
+    the old rule to catch) is still refused, because the check's rule is not the reducer's."""
+    from maxim.runtime import system_metrics
+
+    _isp_host(monkeypatch, name=name, address="10.0.0.5")
+    monkeypatch.setattr(system_metrics, "short_hostname", lambda name=None: socket.gethostname())
+    code, rows = _host_run(tmp_path, monkeypatch)
+    assert code == 2 and rows == [] and "#1166" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "value, unreduced",
+    [
+        ("box", False),
+        ("big-mac-mini", False),
+        ("raspberrypi", False),
+        ("dennys-mbp", False),
+        ("ip-encoded", False),
+        ("unknown", False),
+        ("mac-mini-m4", False),
+        (FQDN, True),
+        ("box.", True),
+        ("2001:db8::7", True),
+        ("203.0.113.7", True),
+        ("c-203-0-113-7", True),
+        ("ip-10-0-0-5", True),
+        ("box-203-0-113", True),
+        ("p5b0c1d2e", True),
+        ("cb007107", True),
+        ("cb-00-71-07", True),
+        ("deadbeef", True),
+        ("mac-mini-2024", True),  # the stated cost of the stricter rule: refused before any marker
+        ("", True),
+        (None, True),
+    ],
+)
+def test_the_pre_marker_hostname_rule(value, unreduced) -> None:
+    assert h.unreduced_hostname(value) is unreduced
+
+
+@pytest.mark.parametrize(
+    "value, private",
+    [
+        ("10.0.0.5", True),
+        ("172.16.4.4", True),
+        ("192.168.1.20", True),
+        ("127.0.0.1", True),
+        ("169.254.3.4", True),
+        ("fd00::5", True),
+        ("fe80::1%en0", True),
+        ("unknown", True),
+        ("non-private", True),
+        ("203.0.113.7", False),
+        ("198.51.100.9", False),
+        ("100.64.0.9", False),
+        ("2001:db8::7", False),
+        ("box", False),
+        (None, False),
+    ],
+)
+def test_the_pre_marker_address_rule(value, private) -> None:
+    assert h.recorded_ip_is_private(value) is private
+
+
+@pytest.mark.parametrize("data", ['"x"', "[1]", "null", "7"])
+def test_a_heartbeat_with_a_non_dict_data_is_not_an_error(data) -> None:
+    line = f'{{"e": "heartbeat", "data": {data}}}'.encode()
+    assert h.heartbeat_hostname_dotted(line) is False

@@ -21,7 +21,8 @@ An attempt, in order:
      ``check_within_campaign``); the model config does not resolve to the prereg's
      (2); something already listens on the sim's port (2); another harness holds the lock (2); a git step fails (2);
      Exp 63 only: ``memory.strategy`` does not resolve to ``access_based`` in the attempt's fresh data home (2; the
-     value read is stamped as ``memory_strategy`` in every row, C4').
+     value read is stamped as ``memory_strategy`` in every row, C4'); the host identity the attempt would record
+     (the row stamp, the heartbeat's network record) is not reduced to a short name and a private address (2, #1166).
   2. The start marker: an annotated tag ``refs/tags/o19/<campaign>/attempt-<k>-<run_id>`` on HEAD, pushed to ``origin``.
      A failed push is a refusal, not an attempt. From here on the attempt counts, whatever happens: every phase
      that starts writes a row, an interrupted one too.
@@ -31,7 +32,9 @@ An attempt, in order:
      from the sim's port (``/v1/models``, with the key the sim itself uses) every 30 s. The sim's own report is
      found by run id (``spawn_evidence``); the session directory and its run log are copied into the data dir,
      the files hashed (uncompressed) into the row; the row says ``failed`` when the complete-attempt condition
-     (C1–C4, ``o19_verdict.complete_problems``) does not hold, and later phases do not run.
+     (C1–C4, ``o19_verdict.complete_problems``) does not hold, and later phases do not run. A source file that
+     carries the host's full hostname is copied NOT AT ALL (#1166): the row is ``failed`` with that reason and no
+     ``files``, so committed bytes are always the rig's. The row's ``hostname`` is the machine's short name.
   4. Phase 1 is copied the moment it ends and re-hashed before phase 3 resumes it.
 The operator then commits the rows and copies to ``main`` (a merge-committed data PR) before any next attempt, and
 leaves the rig at this attempt's commit.
@@ -44,8 +47,10 @@ from __future__ import annotations
 import argparse
 import fcntl
 import gzip
+import ipaddress
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -292,6 +297,65 @@ def check_argv_parses(exp: str) -> None:
             ) from exc
 
 
+# The pre-marker check's rule for a recorded hostname (#1166 S1b). It is deliberately NOT the reducer's rule
+# (``system_metrics._ip_encoded``) and is stricter: a name passes only when it is one label of letters, digits,
+# ``-`` and ``_``, holds at most two digits in all, and has no 8+ hex digits once separators are dropped. Every
+# common reverse-DNS address encoding needs more than two digits (three decimal groups, or a hex run that holds digits) or a long hex
+# run (``deadbeef``), so a reducer that regressed to the identity, or to a weaker rule, still cannot pass; the cost is
+# that an ordinary name with three or more digits (``mac-mini-2024``) is refused too, before any marker exists, and
+# the operator renames the host. ``ip-encoded``, ``unknown`` and names like ``big-mac-mini`` pass.
+_RECORDABLE_NAME = re.compile(r"[A-Za-z0-9_-]{1,63}")
+_HEX_RUN = re.compile(r"[0-9a-fA-F]{8,}")
+
+
+def unreduced_hostname(value: object) -> bool:
+    """Whether a recorded hostname may still name a network (the rule above :data:`_RECORDABLE_NAME`): a dot, an
+    address literal, three or more digits, or a long hex run. Stated here, NOT read from the reducer it checks."""
+    if not isinstance(value, str) or not _RECORDABLE_NAME.fullmatch(value):
+        return True
+    return sum(c.isdigit() for c in value) > 2 or bool(_HEX_RUN.search(re.sub(r"[-_]", "", value)))
+
+
+# Kept verbatim in a recorded ``network.local_ip``, restated here rather than read from ``recordable_ip`` (the
+# producer this checks): RFC 1918, IPv6 ULA, loopback, link-local.
+_PRIVATE_NETS = tuple(ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"))
+
+
+def recorded_ip_is_private(value: object) -> bool:
+    """Whether a recorded ``network.local_ip`` discloses no public address: a private, loopback or link-local address,
+    or one of the reducer's tokens (``unknown``, ``non-private``)."""
+    if not isinstance(value, str):
+        return False
+    try:
+        ip = ipaddress.ip_address(value)
+    except ValueError:
+        return value in ("unknown", "non-private")
+    return ip.is_loopback or ip.is_link_local or any(ip in net for net in _PRIVATE_NETS)
+
+
+def check_host_identity() -> None:
+    """#1166 S2(b): the host identity this attempt would record is reduced, checked before the marker so a regressed
+    reducer is a refusal, not an aborted attempt. Both producers' values, read through this interpreter's ``maxim``
+    (the sims run the same one): the row stamp and the heartbeat's ``network.hostname`` pass
+    :func:`unreduced_hostname`, and ``network.local_ip`` passes :func:`recorded_ip_is_private`. Both rules are stated
+    here, not borrowed from the producers. Values are never echoed."""
+    from maxim.runtime.system_metrics import collect_network_interfaces, short_hostname  # noqa: PLC0415
+
+    net = collect_network_interfaces() or {}
+    bad = [label for label, value in (("the row stamp", short_hostname()),
+                                      ("the heartbeat's network.hostname", net.get("hostname", "unknown")))
+           if unreduced_hostname(value)]  # fmt: skip
+    if not recorded_ip_is_private(net.get("local_ip", "unknown")):
+        bad.append("the heartbeat's network.local_ip")
+    if bad:
+        raise Refused(
+            f"the host identity would be recorded unreduced (#1166): {', '.join(bad)}. The rule (stricter than the "
+            "recorder's, on purpose): the recorded hostname is one label of letters, digits, '-' or '_' with at most "
+            "2 digits and no 8+ hex-digit run, and the local address is private. Rename the host (e.g. "
+            "`scutil --set LocalHostName` on macOS) or run from a machine that meets it; no attempt was started."
+        )
+
+
 def served_reader():
     """The served-model reader, imported BEFORE the marker (a failed import must not cost an attempt). It reads
     ``GET /v1/models`` the way the peer backend's discovery does (the first ``data[].id``), with a budget that
@@ -323,21 +387,90 @@ def served_reader():
     return read
 
 
-def copy_session(session_dir: Path, run_log: Path | None, console: Path | None, dest: Path) -> dict[str, str]:
-    """Copy the session directory (``*.jsonl`` and the run log gzipped) into ``dest``; returns each file's name
-    (uncompressed) -> SHA-256 of its uncompressed bytes."""
-    dest.mkdir(parents=True, exist_ok=False)
-    digests: dict[str, str] = {}
+# Search domains a copied file may name without disclosing a network (mDNS and the private-use suffixes): a full
+# hostname under one of them is never byte-searched (#1166 S3).
+PRIVATE_SUFFIXES = (".local", ".localdomain", ".lan", ".home.arpa", ".internal")
+HOST_IN_COPY = "a copied file carries the host's full hostname (#1166)"
+
+
+def host_needles(names) -> list[bytes]:
+    """The bytes of each full hostname in ``names`` that a copied file must not carry (#1166 S3): trailing dot
+    stripped, lowercased (the search is case-insensitive). A DNS name is ASCII (an IDN is punycode), so its JSON
+    form is the same bytes. A bare name (no dot), a name whose suffix is one label, or one under
+    :data:`PRIVATE_SUFFIXES` yields nothing: never a bare suffix."""
+    out: set[bytes] = set()
+    for raw in names:
+        name = (raw or "").strip().rstrip(".").lower()
+        suffix = name.partition(".")[2]
+        if "." not in suffix or name.endswith(PRIVATE_SUFFIXES):
+            continue
+        out.add(name.encode())
+    return sorted(out)
+
+
+def heartbeat_hostname_dotted(data: bytes) -> bool:
+    """Whether a parsed heartbeat line (``e == "heartbeat"``) records a ``network.hostname`` holding a dot: the
+    structured half of the copy-time check, which needs no known value. An unparseable line is the judge's business
+    (``o19_verdict.log_lines``), not this check's."""
+    for line in data.splitlines():
+        if b"heartbeat" not in line:
+            continue
+        try:
+            obj = json.loads(line)
+        except ValueError:  # not a heartbeat record this check can read; the strict log parse judges it
+            continue
+        if not isinstance(obj, dict) or obj.get("e") != "heartbeat":
+            continue
+        data_obj = obj.get("data")
+        net = (
+            obj.get("network")
+            if "network" in obj
+            else (data_obj.get("network") if isinstance(data_obj, dict) else None)
+        )
+        if isinstance(net, dict) and "." in str(net.get("hostname") or ""):
+            return True
+    return False
+
+
+def host_problem(name: str, data: bytes, needles: list[bytes]) -> str | None:
+    """Why ``data`` (one copied file, uncompressed) must not be committed, or None. Names the file and the check,
+    never the value it found. It covers the HOSTNAME only: a regression that records the SSID or a public
+    ``local_ip`` again is guarded by the producer's unit tests (``tests/unit/test_heartbeat.py``), not here."""
+    if needles:
+        lowered = data.lower()
+        if any(n in lowered for n in needles):
+            return f"{HOST_IN_COPY}: {name} (known value)"
+    if name.endswith(".jsonl") and heartbeat_hostname_dotted(data):
+        return f"{HOST_IN_COPY}: {name} (heartbeat network.hostname)"
+    return None
+
+
+def copy_session(
+    session_dir: Path, run_log: Path | None, console: Path | None, dest: Path, *, hostnames=()
+) -> tuple[dict[str, str] | None, str | None]:
+    """Copy the session directory (``*.jsonl`` and the run log gzipped) into ``dest``. Returns ``(digests, None)``:
+    each file's name (uncompressed) -> SHA-256 of its uncompressed bytes; or ``(None, problem)`` when a source carries
+    a full hostname (``hostnames``: the harness's samples, :func:`host_problem`). Every source is scanned BEFORE
+    anything is written, so a refusal writes nothing (#1166 S2): the bytes committed are the rig's or none."""
     sources = sorted(p for p in session_dir.iterdir() if p.is_file())
     extra = [(run_log, v.RUN_LOG), (console, "console.out")]
-    for src, name in [(p, p.name) for p in sources] + [(s, n) for s, n in extra if s is not None and s.is_file()]:
+    files = [(p, p.name) for p in sources] + [(s, n) for s, n in extra if s is not None and s.is_file()]
+    needles = host_needles(hostnames)
+    blobs = []
+    for src, name in files:
         data = src.read_bytes()
+        if problem := host_problem(name, data, needles):
+            return None, problem
+        blobs.append((name, data))
+    dest.mkdir(parents=True, exist_ok=False)
+    digests: dict[str, str] = {}
+    for name, data in blobs:
         digests[name] = v.sha256_bytes(data)
         if name.endswith(".jsonl") or name == "console.out":
             (dest / f"{name}.gz").write_bytes(gzip.compress(data, mtime=0))
         else:
             (dest / name).write_bytes(data)
-    return digests
+    return digests, None
 
 
 def stop_sim(proc) -> None:
@@ -377,6 +510,8 @@ def spawn_phase(
     **_kw,
 ):
     """Run one phase's sim. Returns ``(session_dir | None, report | None, row_fields, run_log, console, error)``."""
+    from maxim.runtime.system_metrics import short_hostname  # noqa: PLC0415 -- the interpreter is asserted first
+
     argv = v.phase_argv(exp, index, resume)
     logs = Path(tempfile.mkdtemp(prefix="o19-log-"))
     run_log, console = logs / v.RUN_LOG, logs / "console.out"
@@ -387,7 +522,7 @@ def spawn_phase(
         "sim_argv": argv,
         "sim_env": recorded_env(env),
         "dropped_operator_env": base_env()[1],
-        "hostname": socket.gethostname(),
+        "hostname": short_hostname(),  # the machine's name, never its network (#1166)
         "ts": time.time(),
     }
     url = f"http://127.0.0.1:{v.SIM_PORT}/v1"
@@ -725,6 +860,7 @@ def prepare(args: argparse.Namespace, exp: str, mock: bool):
         raise Refused(refusal + " (keep the rig at the first attempt's commit)")
     try:
         check_argv_parses(exp)
+        check_host_identity()
         if not mock:
             check_on_main(rows_file)
             check_campaign(exp)
@@ -831,6 +967,7 @@ def _run_phases(args, exp, mock, rows_file, provenance, run_id, k, home, gguf, r
                 problems.append("phase 1's session changed before phase 3")
             else:
                 phase = mock_phase if mock else spawn_phase
+                start_host = socket.gethostname()  # a needle for the copy check, never recorded (#1166 S3)
                 sdir, report, fields, run_log, console, error = phase(
                     exp, index, home=home, run_id=run_id, resume=resume, provenance=provenance,
                     gguf=gguf, timeout_s=args.timeout_s, read_served=read_served,
@@ -838,8 +975,14 @@ def _run_phases(args, exp, mock, rows_file, provenance, run_id, k, home, gguf, r
                 row.update(fields)
                 if sdir is not None:
                     row["session_id"] = sdir.name
-                    row["files"] = copy_session(sdir, run_log, console, data_root / sdir.name)
-                    if index == 0:
+                    files, host = copy_session(
+                        sdir, run_log, console, data_root / sdir.name, hostnames=(start_host, socket.gethostname())
+                    )
+                    if host:  # nothing was written: a failed row with a typed reason and no files (#1166 S2)
+                        problems.append(host)
+                    else:
+                        row["files"] = files
+                    if host is None and index == 0:
                         phase1_session = sdir.name
                         phase1_source = tree_digests(sdir)
                         phase1_stores = {s for s in v.RESUME_STORES if f"aut_{s}.json" in row["files"]}
