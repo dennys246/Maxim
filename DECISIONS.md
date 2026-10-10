@@ -2,6 +2,27 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-10-10 — Tool-failure credit (#1200): TF1–TF3
+
+### Decision
+
+1. **TF1. Staged design B.** A failed tool teaches through the tool-pain bridge's direct, attributed
+   path (a new `ToolPainBridge.record_tool_failure`), not through the PainBus; `tool_dispatch` skips its
+   duplicate NEGATIVE `tool:X` booking only for a failure the bridge booked (a failure-only cut, declared by
+   an executor stamp; success links unchanged; clarified at the plan review). A stale-success defect is fixed first, on
+   its own issue. A felt-only FRUSTRATION PainBus signal comes later, once `Reaction` carries its kind.
+2. **TF2. Only tools that ran** earn failure credit (the invocation reached `tool.run`, returned or raised); a hallucinated or
+   inactive tool name is a cognitive error, not a tool failure.
+3. **TF3. Suppressed while a human drives** (the existing interactive learning gate).
+
+### Rationale
+
+A five-angle dive (`docs/plans/tool_failure_credit.md`) showed tool failure was never wired on `main` (PR
+#114 wired and un-wired it the same day), and that putting it on the PainBus as it stands makes learning
+worse: the context-similarity NAc subscriber steals the bridge's pending event, the shared cooldown
+misattributes failures across tools, and downstream consumers treat frustration as harm. The bridge's
+direct path gives each failure one attributed booking and a real RPE, which the memory-strength design
+asked for.
 ## 2026-10-10 — #1180 parked; the SCN-coupling stub demoted
 
 ### Decision
