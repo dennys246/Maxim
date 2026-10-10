@@ -119,6 +119,7 @@ def _drain(ctrl: AutonomyController, eal: Any, booked: list[dict[str, Any]]) -> 
         autonomy_controller=ctrl,
         execute_and_learn=eal,
         book_machine_refusal=lambda **kw: booked.append(kw),
+        executor=None,  # the refusals' audit mode is then the state's run mode (#963)
         observation={"tick": 1},
         state=SimpleNamespace(data={"mode": "active"}),
         sim=_Sim(),
@@ -275,6 +276,7 @@ def test_a_raise_anywhere_in_an_entry_aborts_the_drain_and_keeps_the_original(mo
             autonomy_controller=ctrl,
             execute_and_learn=lambda **kw: None,
             book_machine_refusal=_book,
+            executor=None,
             observation={},
             state=SimpleNamespace(data={}),
             sim=_Sim(),

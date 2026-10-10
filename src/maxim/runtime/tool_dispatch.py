@@ -18,6 +18,7 @@ from typing import Any
 
 from maxim.decisions.causal_link import Valence as _V
 from maxim.runtime.bio_integration import capture_loop_action, record_plan_outcome as _record_plan_outcome
+from maxim.runtime.loop_state import operational_mode
 from maxim.runtime.loop_types import ActionFollowup
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import log_agentic
@@ -1113,7 +1114,7 @@ def execute_and_learn(
             action_type="executed",
             action=action,
             reasoning=proposal.reasoning,
-            mode=state.data.get("mode", "unknown"),
+            mode=operational_mode(executor, state),
             confidence=confidence,
             citations=proposal.citations,
             outcome="success" if success else "failure",
@@ -1124,7 +1125,7 @@ def execute_and_learn(
         # Track outcome for context pool and learning
         # Get followup type to determine result storage and follow-up behavior
         tool_name = action.get("tool_name", "")
-        current_mode = state.data.get("mode", "live")
+        current_mode = operational_mode(executor, state)
 
         # L2: Reset deliberation state when a non-think action fires.
         if tool_name != "think":
@@ -1271,7 +1272,7 @@ def execute_and_learn(
             action_type="executed",
             action=action,
             reasoning=proposal.reasoning,
-            mode=state.data.get("mode", "unknown"),
+            mode=operational_mode(executor, state),
             confidence=confidence,
             outcome="error",
             human_involved=human_involved,

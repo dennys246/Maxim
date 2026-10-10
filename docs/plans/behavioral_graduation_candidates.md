@@ -231,6 +231,66 @@ update.
   ATL relations, and the survival harnesses use the ATL only through `activate_substrate_node` (#812's
   caller grep).
 
+### Trigger walk — 2026-10-09, #963 (one operational-mode reader in the agent loop)
+
+#963 routes every mode read in the agent loop through `loop_state.operational_mode(executor, state)`, which delegates
+to `Executor.effective_operational_mode()` (the operator's launch grant, else the loop's run mode through its mode
+source; `""`/None is `observe`). The readers that change: the Default Network's mode (`loop_gates.pre_tick_gate`),
+a tool's follow-up type and `ActionFollowup.mode` (`tool_dispatch.execute_and_learn`), the agent loop's autonomy
+audit `log_action(mode=)` entries, the batched-exploration follow-up's mode, the minimal `StructuredContext.mode` and
+the prompt roster (already on the grant since #829). They differ from before ONLY under a launch grant, or when the
+state's mode is missing, empty or not a string. **No ledger run has either.** The writers of the loop state's mode
+(census): the orchestrator (AUT `active`, narrator `singularity`), the sim tools' sub-agents (`active`), the
+survival harness (`active`, `minecraft_harness.py`), the console handle (`active`, `console/handle.py`), the robot
+runtime's `seed_run_mode` and its exploration override (`exploration`, `agentic_runtime.py`; no ledger run uses
+the robot runtime), and the generic `RuntimeState.update(...)` merges of an environment's step result (no
+environment emits `"mode"` today). `--operational-mode` is refused with `--sim` (#829). With a non-empty state
+mode and no grant, every reader returns exactly the state's mode, as before.
+
+- **T1-2 (Exp 37, already STALE since 2026-10-02) "prompt construction change": not fired, discharged
+  structurally.** `prompt_builder.py` is unedited. The follow-up template a search gets (engage or respond) and its
+  instruction branch change only under a grant or a missing/empty mode, and every Exp 37/38 sub-sim is an
+  orchestrator AUT in `active` with no grant (`scripts/benchmark_cross_session.py` runs `maxim --sim`, which
+  refuses the grant), so its prompts are unchanged. Its STALE status and its owed re-fire are unchanged.
+  **The by-class downgrade (Q3)** also changes the template in a passive-class RUN mode (`observe`, `sleep`,
+  `train`, `reflection`) with no grant. Checked: no T1-2 / Exp 37 / Exp 38 run used one. The harness's sub-sims are
+  orchestrator AUTs, whose state mode is `active` (`orchestrator.py`), the narrator `singularity`; and no writer in
+  the census above puts a passive-class mode in the loop state on a ledger path. The experiment docs and data name
+  no `observe` run mode (their `observe` is the `fire_pit_observe` / `hearth_observe` affordance tool). In `active`
+  and `singularity` the downgrade keeps `engage`, as before.
+- **T1-13 (Exp 60, EARNED) "`run_agentic_loop` idle-gate or autonomy handling change": fires by its letter,
+  discharged structurally** (as in the #1085 walk). The autonomy handling is edited: the audit's mode argument in
+  the PLANNING (proposed) and SUPERVISED (hard rejection) branches, in `loop_planning`'s refusals and in
+  `LoopController.handle_confirmation`'s refusal now read `operational_mode`. Every one of those runs only at
+  PLANNING or SUPERVISED, and the Exp 60 AUT is AUTONOMOUS; on the AUTONOMOUS path the audit and every other
+  reader return `active`, the state's mode, as before (`run_minecraft_aut` sets `active` with no grant; the row's
+  caveat, "a harness that sets a non-`active` mode re-opens this", is not met). The idle gate (§0.6,
+  `_loop_is_idle`) is unedited; the pre-tick gate's stop check and Default Network line are rewritten
+  (`shutdown_requested`, `operational_mode`) and return the same values for `active`. The AUTONOMOUS path's
+  `executed` audit sites changed too (the agent-fallback `log_action` in `agent_loop`, and `execute_and_learn`'s two
+  `log_action` calls, success and error): discharged by value equality, since the state is `active` with no grant,
+  so the recorded mode is `active`, as before. Evidence: the loop selection golden (`tests/unit/test_agent_loop_selection_golden.py`) is green unchanged,
+  and `tests/unit/test_exp60_run.py::test_verdict_over_the_committed_exp60_record_matches_the_committed_verdict`
+  reproduces the committed verdict.
+- **T1-14 (Exp 61, EARNED)** inherits Exp 60's triggers, so it fires by the same letter: discharged by the same
+  argument;
+  `test_exp61_run.py::test_verdict_over_the_committed_exp61_record_matches_the_committed_verdict` is green.
+- **T1-15 (Exp 62 rung A, EARNED)** opens with "every Exp 60 trigger", so it fires by the same letter: discharged
+  by the same argument (Exp 60's agent and protocol, AUTONOMOUS, `active`, no grant); none of its own triggers
+  changed. **Offline verdict reproduction, run
+  2026-10-09:** `exp62_run.compute_verdict` over the committed `exp62_rows.jsonl` (31 rows, campaign
+  `exp62-rungA-1`) gives EARNED, field-for-field identical to `exp62_verdict.json` on `verdict`,
+  `incomplete_cause`, `n_clean`, `refused`, `rates`, `replay`, `fisher_cross_vs_ablated` and `checks`.
+  `test_exp62_run.py`, `test_exp62_precheck.py` and the slow R3 offline campaign test
+  (`test_r3_run.py::test_offline_campaign_apparatus_and_one_event_per_in_process_arm`) pass.
+- **T3-11 / T3-12 (the prompt-builder category)** are DROPPED (2026-08-30), and `prompt_builder.py` is unedited.
+- **The global trigger table:** "LLM model swap / prompt-builder change" does not apply (no prompt code changed; the
+  template a follow-up gets changes only off every ledger path, above). Neither "Bio-system refactor", "Substrate-
+  pipeline change", "PainBus / ReactionBus / NAc reward pipeline change", "Cradle / drive / SEM body change" nor
+  "Encoder model swap" applies: no bio-system, encoder, EC, NAc, ATL, SCN, body, drive or reward code changed. The
+  Default Network's config (`dn_controller.py`) is unedited; it now receives `observe` where it received nothing
+  (a missing or empty mode), which no ledger run has.
+
 ### Trigger walk — 2026-10-09, #1085 PR-a (the PLANNING approved path runs through `execute_and_learn`)
 
 #1085 PR-a (decomposition slice 4) replaces `run_agentic_loop`'s §5 with `loop_planning.drain_approved`. The drain

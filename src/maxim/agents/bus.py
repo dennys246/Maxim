@@ -661,7 +661,10 @@ class StructuredContext:
     current_percept: Percept | None = None
     active_goal: str | None = None
     active_goal_sub_goals: list[str] = field(default_factory=list)
-    mode: str = "observe"  # "observe", "sleep", "shutdown"
+    # Two vocabularies (#963, tracked on #1193): MemoryAgent, the main producer, writes the RUN mode (its
+    # maxim_runtime["mode"] copy: "observe", "sleep", "shutdown", ...); the agent loop's minimal fallback context
+    # writes the OPERATIONAL mode (loop_state.operational_mode, owner decision Q5).
+    mode: str = "observe"
 
     # Autonomy and internet access (Phase 1)
     autonomy_level: str = "planning"  # "planning", "supervised", "autonomous"

@@ -1294,6 +1294,19 @@ jobs:
         run: |
           python3 scripts/lint_function_length.py
 
+      - name: One operational-mode reader in the agent loop (#963)
+        # What the model is shown and what dispatch enforces read ONE value,
+        # loop_state.operational_mode -> Executor.effective_operational_mode.
+        # Whole-tree (no git, no env, no suppressions): over the loop's modules,
+        # the executor, its wrappers and every maxim.runtime module they import,
+        # no raw "mode" read and every capability sink takes the accessor;
+        # repo-wide, the grant and the mode source are read only by the Executor
+        # and run_mode only by loop_state's lifecycle helpers. Prints the scan
+        # set and the allowlist (strict counts) every run; a broken scope exits 2.
+        # Positive control: tests/unit/test_lint_loop_mode_reads.py.
+        run: |
+          python3 scripts/lint_loop_mode_reads.py
+
       - name: Body rest-at-neutral lint (L11 range principle; Exp 60 saturation lesson)
         # Every A4-gained sensor must declare where it RESTS (`rest:` or a
         # homeostatic set_point) and that rest must be its range midpoint —

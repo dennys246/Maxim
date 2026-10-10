@@ -480,7 +480,7 @@ Owner decisions, three at the design step and one at review:
    capability.
    - It sets the mode dispatch enforces (`Executor.set_operational_override`), what the model is shown
      (`loop_state._effective_mode`: roster, context prompt, Default Network) and the registry's file
-     containment.
+     containment. (Superseded by #963: `Executor.effective_operational_mode` + `loop_state.operational_mode`.)
    - It is honoured by the CLI agent loop (`--mode agentic`) and the robot runtime.
    - It needs an explicit `--mode`. It is refused (exit 2) with `--sim`/`--research`/`--benchmark`/
      `--foundry`, whose AUTs run active by design, and with the one-shot actions that run no agent.
@@ -498,7 +498,13 @@ Owner decisions, three at the design step and one at review:
    the loop state, so no dispatch changes.
 4. **A small, explicit exception to the 1.3.2 `agent_loop` fence** (owner, at review). Three read sites
    now resolve the mode through `_effective_mode`, so a raising grant is not a silent no-op at the
-   prompt.
+   prompt. (Superseded by #963: `Executor.effective_operational_mode` + `loop_state.operational_mode`, and every
+   other mode read in the loop moved to them.)
+5. **#963 (2026-10-09), Q1: one precedence.** In the agent loop and at dispatch, the grant-over-run-mode rule
+   lives once, in `Executor.effective_operational_mode()`; `_mode_denial` and `loop_state.operational_mode` both
+   read it, with one default (`observe`). Two copies remain outside it: `bootstrap.build_tool_registry`'s
+   `get_mode` callback (#1193) and the CLI's `_current_operational_mode` / `_registry_operational_mode` /
+   `_runtime_mode_switch_allowed` (#922).
 
 ### Reason
 

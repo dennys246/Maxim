@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 from maxim.agents.llm_worker import LLMProposal
 from maxim.runtime.tool_dispatch import safe_agent_name as _safe_agent_name
 from maxim.runtime.dn_controller import DefaultNetworkController
+from maxim.runtime.loop_state import operational_mode
 from maxim.runtime.loop_types import (
     ActionFollowup,
     PendingConfirmation,
@@ -402,7 +403,7 @@ class LoopController:
                 action_type="rejected",
                 action=pc.action,
                 reasoning="User rejected confirmation",
-                mode=self.state.data.get("mode", "unknown"),
+                mode=operational_mode(self.executor, self.state),
                 confidence=pc.confidence,
                 human_involved=True,
             )

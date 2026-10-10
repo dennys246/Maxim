@@ -133,12 +133,12 @@ class Executor:
         # D77 embodiment= and D79's cerebellum=).
         self._cerebellum: Any | None = cerebellum
         self._entity_map: Any | None = entity_map
-        # The LIVE operational mode, read at every dispatch (#826): a mode's tool list used to shape
-        # only the prompt, so a tool outside it still ran when the model named it. Set by the agent
-        # loop, which owns the mode (``set_mode_source``); None = no mode restriction.
+        # The LIVE run mode, read at every dispatch (#826): a mode's tool list used to shape only the
+        # prompt, so a tool outside it still ran when the model named it. Set by the agent loop, which
+        # owns the run mode (``set_mode_source``). Read ONLY through ``effective_operational_mode``.
         self._mode_source: Callable[[], str | None] | None = None
-        # The operator's launch grant (`--operational-mode`, #829): when set it IS the mode dispatch
-        # enforces, whatever the loop's run mode says. None = the mode source decides, as before.
+        # The operator's launch grant (`--operational-mode`, #829): when set it IS the operational mode,
+        # whatever the loop's run mode says. Read ONLY through ``effective_operational_mode`` (#963).
         self._operational_override: str | None = None
         self._lock = threading.Lock()
         # (tool_name, start_time, invocation_id) or None
@@ -167,45 +167,60 @@ class Executor:
                 TOOL_ALIASES.pop(name.lower(), None)
 
     def set_mode_source(self, source: Callable[[], str | None] | None) -> None:
-        """Read the live operational mode from ``source`` at every dispatch (#826). None clears it."""
+        """Read the live run mode from ``source`` at every dispatch (#826). None clears it."""
         self._mode_source = source
 
-    @property
-    def operational_override(self) -> str | None:
-        """The operator's launch grant, or None (#829). The agent loop's prompt roster, context prompt
-        and Default Network read it through ``loop_state._effective_mode``, so what the model is SHOWN
-        matches what dispatch ENFORCES."""
-        return self._operational_override
-
     def set_operational_override(self, mode: str | None) -> None:
-        """The operator's launch grant (#829): ``mode`` becomes the operational mode dispatch enforces,
-        taking precedence over the loop's run mode. None clears it. An unknown name is refused here, at
-        launch, rather than failing closed at every dispatch."""
+        """The operator's launch grant (#829): ``mode`` becomes the operational mode, taking precedence
+        over the loop's run mode. None clears it. An unknown name is refused here, at launch, rather than
+        failing closed at every dispatch. The name is stored RAW (``"PASSIVE"``, ``"observe"``), as the
+        operator gave it (#963 Q2): ``get_mode`` resolves it wherever it is enforced, and the prompt shows
+        it as given."""
         from maxim.modes.definitions import get_mode  # noqa: PLC0415 -- runtime layer, read lazily
 
         if mode is not None and get_mode(mode) is None:
             raise ValueError(f"unknown operational mode {mode!r}")
         self._operational_override = mode
 
+    def effective_operational_mode(self) -> str | None:
+        """THE operational mode (#963): in the agent loop and at dispatch, the ONE precedence that dispatch and
+        everything the model is shown read (the loop reads it through ``loop_state.operational_mode``; the wrappers
+        forward it). Two copies remain outside it: ``bootstrap.build_tool_registry``'s ``get_mode`` callback (#1193)
+        and the CLI's ``_current_operational_mode`` / ``_registry_operational_mode`` /
+        ``_runtime_mode_switch_allowed`` (#922).
+
+        1. The operator's launch grant, when set (``set_operational_override``).
+        2. Else, when a mode source is set (the loop sets one, ``set_mode_source``): its name; ``observe``
+           (``DEFAULT_RUN_MODE``) when it gives ``""`` or None; ``passive`` (fail closed) when it gives
+           something that is not a string.
+        3. Else None: no source and no grant, the one unrestricted case.
+
+        The name is the raw one (``observe``, ``live``, ...), never canonicalised (#963 Q2).
+        """
+        from maxim.modes.definitions import DEFAULT_RUN_MODE  # noqa: PLC0415 -- runtime layer, read lazily
+
+        if self._operational_override is not None:
+            return self._operational_override
+        if self._mode_source is None:
+            return None
+        mode = self._mode_source()
+        if isinstance(mode, str):
+            return mode or DEFAULT_RUN_MODE
+        return DEFAULT_RUN_MODE if mode is None else "passive"
+
     def _mode_denial(self, tool_name: str) -> str | None:
         """Why the LIVE mode refuses to run *tool_name* (canonical name), or None (#826).
 
         By capability (``ModeDefinition.dispatch_refusal``): the mode's forbidden tools and the tools
         its capabilities exclude -- for passive, the host-acting ones. The mode's allow-list shapes the
-        prompt only. The operator's launch grant (``set_operational_override``) takes precedence over
-        the run mode. A mode NAME that resolves to no definition fails closed (#829): it is enforced as
-        passive, never as unrestricted. No mode at all (no source, or a source returning nothing)
-        restricts nothing, as before.
+        prompt only. The mode is ``effective_operational_mode()`` (the grant, else the run mode, #963). A
+        mode NAME that resolves to no definition fails closed (#829): it is enforced as passive, never as
+        unrestricted. Only an executor with no mode source and no grant restricts nothing.
         """
         from maxim.modes.definitions import get_mode  # noqa: PLC0415 -- runtime layer, read lazily
 
-        if self._operational_override is not None:
-            mode_name: str | None = self._operational_override
-        elif self._mode_source is not None:
-            mode_name = self._mode_source()
-        else:
-            return None
-        if not isinstance(mode_name, str) or not mode_name:
+        mode_name = self.effective_operational_mode()
+        if mode_name is None:
             return None
         mode_def = get_mode(mode_name)
         if mode_def is None:

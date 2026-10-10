@@ -230,7 +230,8 @@ class StateManager:
     # robot's own TTS -- so it is not human authority for a mode that executes code (#828, owner
     # decision 2026-09-26): such a mode is refused by ``executes_code`` (#821). The model's own tool uses the
     # stricter ``raises_capability`` (#924); a phrase changes only this StateManager's mode, not the mode the
-    # executor's dispatch gate reads (``state.data["mode"]``). Who may grant what across channels is #834.
+    # executor's dispatch gate reads (``Executor.effective_operational_mode()``: the launch grant, else the loop
+    # state's run mode, #963). Who may grant what across channels is #834.
     def request_mode_passive(self) -> bool:
         return self._request_mode_by_phrase("passive")
 

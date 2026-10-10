@@ -133,7 +133,7 @@ def _run(
     hooks: dict[int, Callable[[Any], None]] | None = None,
     adapter: Any = None,
     ev: list[tuple] | None = None,
-    mode: str = "active",
+    mode: str | None = "active",
     submit_interval: float | None = 1e12,
     body: Any = None,
     executor: Any = None,
@@ -211,7 +211,8 @@ def _run(
     if body is not None:
         executor.embodiment = body
     state = RuntimeState()
-    state.data["mode"] = mode
+    if mode is not None:  # None: the state carries no mode at all (the CLI loop, ``maxim.run()``)
+        state.data["mode"] = mode
     run.state = state
     workspace = tmp_path / "ws"
     workspace.mkdir(exist_ok=True)
@@ -378,10 +379,62 @@ def test_the_operators_grant_wins_for_the_default_network(monkeypatch, tmp_path)
     assert [e for e in run.ev if e[0] == "dn"] == [("dn", "observe"), ("dn", "observe")]
 
 
-def test_an_empty_mode_configures_no_default_network(monkeypatch, tmp_path):
+def test_an_empty_mode_configures_the_default_network_as_observe(monkeypatch, tmp_path):
+    """#963 (owner decision Q4) changed this pin: an empty run mode left the Default Network unconfigured; the one
+    operational-mode reader gives the one default, ``observe``."""
     run = _run(monkeypatch, tmp_path, steps=2, mode="")
-    assert not any(e[0] == "dn" for e in run.ev)
+    assert [e for e in run.ev if e[0] == "dn"] == [("dn", "observe"), ("dn", "observe")]
     assert _ran(run.ev) == [0]  # the rest of the pass is unchanged
+
+
+# ── the Default Network's mode, by run mode and grant (#963 characterization) ─────────────────────────
+
+
+def _granted(grant: str | None) -> Any:
+    from maxim.runtime.bootstrap import build_executor
+    from maxim.tools.registry import ToolRegistry
+
+    executor = build_executor(ToolRegistry(), pain_bus=None, permissions=None)
+    if grant is not None:
+        executor.set_operational_override(grant)
+    return executor
+
+
+@pytest.mark.parametrize(
+    ("mode", "grant", "dn"),
+    [
+        ("live", None, "live"),
+        ("observe", None, "observe"),
+        ("active", None, "active"),
+        ("live", "passive", "passive"),  # the grant wins (#829)
+        ("", "passive", "passive"),
+    ],
+)
+def test_the_default_networks_mode_by_run_mode_and_grant(monkeypatch, tmp_path, mode, grant, dn):
+    run = _run(monkeypatch, tmp_path, steps=2, mode=mode, executor=_granted(grant))
+    assert [e for e in run.ev if e[0] == "dn"] == [("dn", dn), ("dn", dn)]
+
+
+def test_a_state_with_no_mode_configures_the_default_network_as_observe(monkeypatch, tmp_path):
+    """The CLI loop and ``maxim.run()`` seed no mode. #963 (owner decision Q4) changed this pin: the Default Network
+    was left unconfigured; it is now ``observe``, the one default."""
+    run = _run(monkeypatch, tmp_path, steps=2, mode=None)
+    assert [e for e in run.ev if e[0] == "dn"] == [("dn", "observe"), ("dn", "observe")]
+
+
+def test_the_default_network_follows_a_grant_set_between_ticks(monkeypatch, tmp_path):
+    """Read every pass, never cached: a grant set between pass 0 and pass 1 reaches the Default Network at pass 1
+    (owner decision Q6, #963). Green before #963 too; it guards the accessor against caching."""
+    executor = _granted(None)
+    run = _run(
+        monkeypatch,
+        tmp_path,
+        steps=3,
+        mode="live",
+        executor=executor,
+        hooks={1: lambda r: executor.set_operational_override("passive")},
+    )
+    assert [e for e in run.ev if e[0] == "dn"] == [("dn", "live"), ("dn", "passive"), ("dn", "passive")]
 
 
 def test_a_paused_controller_sleeps_and_continues_before_the_live_tick(monkeypatch, tmp_path):

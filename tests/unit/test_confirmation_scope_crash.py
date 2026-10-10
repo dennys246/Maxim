@@ -26,15 +26,20 @@ from maxim.runtime.loop_types import PendingConfirmation
 
 
 def _controller():
+    from maxim.runtime.executor import Executor
+
     state = MagicMock()
     state.data = {}
+    # spec=Executor, and its operational mode said (#963: loop_state.operational_mode refuses a non-str answer).
+    executor = MagicMock(spec=Executor)
+    executor.effective_operational_mode.return_value = None
     ctrl = LoopController(
         agent=MagicMock(),
         environment=MagicMock(),
         state=state,
         memory=MagicMock(),
         decision_engine=MagicMock(),
-        executor=MagicMock(),
+        executor=executor,
         autonomy_controller=MagicMock(),
     )
     # record_outcome sinks wired later in production bootstrap:
