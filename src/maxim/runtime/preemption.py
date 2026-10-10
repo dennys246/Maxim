@@ -1,5 +1,14 @@
 """Preemption circuit — generalized interrupt system.
 
+**Dormant since 2026-10-07: never wired; superseded in vocabulary by AfferentTrackSpec**
+(``docs/plans/thalamic_relay.md`` §3.5 and §5; owner decision TR1, DECISIONS.md 2026-10-09; #1179).
+Nothing constructs ``PreemptionCircuit`` or ``ExecutionTracker`` in ``src/``, ``tests/`` or ``scripts/``,
+nothing publishes a ``PreemptionSignal``, and nothing calls ``MaximAgent.wire_preemption``; the module
+survives the orphan lint only through the ``maxim.runtime`` re-exports, which stay. So pain cannot
+preempt action through this module: the description below is of a design that never ran. The loop's
+``check_hold`` branch and ``tool_dispatch``'s ``capture_before`` guard are dead for the same reason. No
+new feature builds on this; the grounding line's scheduler lives in ``perception/``, not here.
+
 Any bio-subsystem can trigger preemption to interrupt normal pipeline
 processing and force an immediate response. Pain is the first registered
 source, but the abstraction supports any future system via register_source().
