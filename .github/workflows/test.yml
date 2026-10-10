@@ -1180,6 +1180,12 @@ jobs:
         # show the row's token, date and scope word. Positive control: tests/unit/test_lint_claims_sync.py.
         run: python3 scripts/lint_claims_sync.py
 
+      - name: Backlog IDs unique and every backlog citation resolves (#1175)
+        # Each M<n> in docs/plans/outstanding.md is defined once (open table + Closed), and every M<n> cited in a
+        # backlog-context paragraph names one. Stateless: a post-merge collision fails the merged commit.
+        # Positive control: tests/unit/test_lint_backlog_ids.py.
+        run: python3 scripts/lint_backlog_ids.py
+
       - name: Required checks map to unconditional jobs (M6 / D63, static half)
         # Each required context in scripts/repo_settings_expected.json is exactly one job's name and that job has no
         # job-level `if:` (a skipped required check counts as passing). Positive control:
