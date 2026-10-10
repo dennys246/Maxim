@@ -1,5 +1,20 @@
 # Temporal Credit Validation — Experiment Results
 
+> **PARKED 2026-10-10 (owner decision; [#1180](https://github.com/dennys246/Maxim/issues/1180)).** A code map
+> taken before the redesign showed the behavioural test is impossible by construction today: every live
+> reward reaching `TemporalCreditDistributor.distribute` is negative (no live positive `Reaction`; the
+> `CerebellumModulator` producer is Dormant), `NAc.credit_node` clamps `reward_bias` at ≥ 0 so a negative
+> share deletes an absent key, and substrate-primary selection's cluster paths never pass through
+> `distribute`. Three further facts any redesign must handle: within the 300 s anchor window "phase
+> similarity" is ~0.98–1.0 (a recency window, not a phase match); `temporal_credit_weight` is cached at the
+> distributor's construction and is not a `maxim config` key (the env var clamps at ≥ 0.05), and because
+> shares are normalised a weight of 0 re-splits credit onto the fast-trace nodes rather than removing a
+> fixed amount; the fallback window exists only between trace expiry (~33–44 passes) and the 300 s anchor
+> age, so it vanishes on ticks slower than ~7–9 s. #1180 re-opens when GL2c's satiation producer gives
+> `distribute` a real positive reward; the four-lens design review runs then, against a prereg written
+> for that producer. The SCN-coupling stub in [bio-memory.md](../agents/bio-memory.md) is demoted to
+> `[engineering]` meanwhile.
+
 > **Status (audit 2026-09-13): STALE** — protocol + runner shipped ~2026-04 (commit 6dccd363)
 > but the 4-set run was never executed (wrong: it ran and produced no evidence, see the 2026-10-08
 > correction below); every Result cell still reads TBD and no data exists under `data/` or `results/`.
