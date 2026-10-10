@@ -17,9 +17,11 @@ run can read it):
 - the EFFECTIVE rules on ``main`` (``/rules/branches/main``, every ruleset that applies, globs and excludes resolved
   by GitHub) and each one's ruleset ``enforcement``;
 - CodeQL default setup: state, languages, query suite;
-- ``security_and_analysis`` (#1081, owner decision D3 2026-10-08): secret scanning, push protection (the only layer
-  that runs BEFORE a secret is published) and non-provider patterns stay on, so none can be switched off silently;
-  an absent object (token scope) is exit 2;
+- ``security_and_analysis`` (#1081, owner decision D3 2026-10-08): secret scanning and push protection (the only layer
+  that runs BEFORE a secret is published) stay on, so neither can be switched off silently. Non-provider patterns
+  are pinned DISABLED (re-pinned 2026-10-10, owner): GitHub does not offer the toggle for this repo, and
+  ``scripts/lint_secrets.py`` covers those patterns on every PR, push and nightly. Any change to it is still drift.
+  An absent object (token scope) is exit 2;
 - the ``settings-check`` environment exists and is fenced to ``main`` (GitHub creates a missing environment UNFENCED
   the first time a job names it, so the owner creates it first and the check pins the fence);
 - **no ruleset bypass was USED on ``main``** in the last month (paginated) (``rule-suites`` with ``rule_suite_result=bypass``),
