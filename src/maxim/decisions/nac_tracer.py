@@ -106,7 +106,7 @@ class NacTracer:
                 self._print_outcome(f"outcome={_short(str(outcome), 28)}", valence)
             return result
 
-        nac.record_outcome_full = traced  # type: ignore[assignment]
+        setattr(nac, "record_outcome_full", traced)  # an instance attribute shadows the method; no suppression
 
     def _print_outcome(self, what: str, valence: Any) -> None:
         color = (
