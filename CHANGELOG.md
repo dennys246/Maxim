@@ -60,7 +60,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   change:** `resolve_llm_loop_overrides` moved to `maxim.runtime.loop_setup`, and `agent_loop`'s private
   `_record_outcome` re-binding of `tool_dispatch.record_outcome` is gone, with no re-export; a test that replaces
   either patches `loop_setup.resolve_llm_loop_overrides` or `tool_dispatch.record_outcome`.
-
+- **Robot motion pain is booked on the movement that caused it, once (#1209).** `PainCircuitBridge` (built
+  by the Default Network, fed by `embodied_runtime/movement.py`) booked its outcomes by movement SIGNATURE, so
+  one pain also booked every other pending event with that signature inside NAc's 300 s window, and nothing in
+  the bridge retired the NAc event of a movement that was replaced, timed out or completed with learning off.
+  The look_at path starts movements and never completes them, so `look_at:dy=..:dp=..` events piled up and one
+  pain booked NEGATIVE onto each of them. The bridge now books on its pending movement's own event id
+  (`record_outcome_full(attributed_event_id=...)`, same outcome signature, so the learned links are the same
+  ones) and retires the event whenever the movement ends (`NAc.discard_pending_event`, from #1207), including
+  when booking raises. The pending movement is one record (signature, event id, start, context), read once per
+  pain and cleared only if it is still current, so a pain handled on the bus thread can no longer retire a
+  newer movement the command path started; if `record_event` raises, nothing is left pending. A pain whose
+  event was already consumed or aged out is no longer counted or logged as attributed. Expect learned motion-
+  pain gates to build more slowly on the robot: one pain now adds one observation, not one per piled-up look_at.
 - **The preemption scaffolding is marked Dormant (#1179; owner decision TR1; docstrings and a comment
   only, no behaviour change):** `runtime/preemption.py` (`PreemptionCircuit`, `ExecutionTracker`),
   `MaximAgent.wire_preemption` and `tool_dispatch`'s `capture_before` guard now say they were never wired,
@@ -249,6 +261,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Concurrent observations no longer crash Hippocampus (#1135).** `Hippocampus.store_observation`'s dedup
+  tracker was checked, updated and pruned without a lock, so a thread rebuilding it while another wrote it raised
+  `RuntimeError: dictionary changed size during iteration` (seen as a full-suite flake under load; reproduced
+  10/10 with a 1 us switch interval; `AgentPool.run_turn` swallows that error, so a concurrent caller there would
+  silently drop an observation instead; no shipped path calls one instance concurrently). The check, the update and the prune are now one step under a dedicated
+  lock (the capture itself stays unlocked), and the concurrent-capture test records each thread's traceback.
 - **What the model is shown and what dispatch enforces read ONE operational mode** ([#963](https://github.com/dennys246/Maxim/issues/963);
   owner decisions 2026-10-09). The operator's launch grant (`--operational-mode`, #829) decided dispatch, but the
   agent loop's other mode readers each read the loop state's run mode with their own default. Under a passive grant
