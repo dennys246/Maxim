@@ -109,11 +109,11 @@
 2. PR-C merged.
 3. The run (≈ 2.5–3 h, no LLM consumer), the verdict, a merge-commit data PR, §Outcome, the T1-13 change.
 
-## Owner decisions this plan needs
+## Owner decisions (taken 2026-10-11, both as recommended)
 
-- **BD1. Name:** keep the `b1` token (recommended: B1 is a floor on an existing claim, `r2_`/`r3_` set the
+- **BD1. Name: the `b1` token is kept** ( B1 is a floor on an existing claim, `r2_`/`r3_` set the
   precedent, and the lint has no collision) or take `exp64`.
-- **BD2. Exp 60 trigger re-run:** B1 drops the claim that its FEAR arm re-runs Exp 60 (recommended: no ABLATED arm
+- **BD2. B1 is not Exp 60's trigger re-run** ( no ABLATED arm
   and different seeds, so the gate could not use it), or adds an ABLATED arm (≈ 30 min) so it can.
 
 ## Review record (v1 → v2, 2026-10-11)
