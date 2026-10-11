@@ -194,7 +194,7 @@ def test_the_report_stamps_provenance_before_the_router_is_built() -> None:
     from maxim.simulation import orchestrator
 
     source = inspect.getsource(orchestrator)
-    assert source.index("capture_start_provenance()") < source.index("build_primary_router(")
+    assert source.index("capture_start_provenance(") < source.index("build_primary_router(")
 
 
 def test_null_returns_the_field_to_its_default_value(tmp_path) -> None:
