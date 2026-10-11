@@ -14,8 +14,6 @@ import threading
 import time
 import traceback
 
-import pytest
-
 from maxim.time.scn import SCN
 from maxim.time.temporal_signature import TemporalSignature
 

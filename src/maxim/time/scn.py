@@ -216,7 +216,7 @@ class SCN(StoreFileOwnership):
     persistence_path: str | None = None
     # Guards every read and write of the bins, signatures, priors and oscillator (#1217). Re-entrant: some methods
     # call others (``remove_memory`` -> ``unregister``). Not state: excluded from repr and comparison, never dumped.
-    _lock: Any = field(default_factory=threading.RLock, repr=False, compare=False)
+    _lock: Any = field(default_factory=threading.RLock, init=False, repr=False, compare=False)
 
     # StoreFileOwnership (#971): never saves over a file it did not read. ClassVar, so not a field.
     _store_name: ClassVar[str] = "scn"
@@ -751,9 +751,8 @@ class SCN(StoreFileOwnership):
     def dump(self) -> dict[str, Any]:
         """Return SCN state as a JSON-serializable dict.
 
-        P3.5 Stage 1 — BioSystemSnapshot Protocol conformance. SCN has
-        no internal lock; the pre-refactor save() body also didn't lock.
-        Preserves that contract.
+        P3.5 Stage 1 — BioSystemSnapshot Protocol conformance. Taken under the SCN's lock (#1217), so the
+        dict is a point-in-time snapshot even while the capture worker registers; ``save`` writes it outside.
         """
         data: dict[str, Any] = {
             "version": "3.0",  # legacy payload string — tombstoned, do not bump
@@ -812,6 +811,7 @@ class SCN(StoreFileOwnership):
     def _fresh_store(self) -> "SCN":
         return SCN(persistence_path=self.persistence_path)
 
+    @_locked
     def _reset_store_state(self) -> None:
         """Empty the bins, signatures and priors (the snapshot contract), and give a running oscillator
         a fresh one: ``load_state`` only replaces an oscillator the file carries, so a partial load
