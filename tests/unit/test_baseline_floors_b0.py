@@ -648,3 +648,71 @@ def test_turn_metadata_with_unsortable_keys_does_not_fail_the_sims_start() -> No
 
 def test_loopback_without_a_port_matches_too() -> None:
     assert SP._root("http://localhost/v1") == "http://127.0.0.1"
+
+
+# ── edge paths of the accounting, the attempt's served call and the probes ────
+
+
+def test_an_unknown_serial_is_ignored_not_raised() -> None:
+    CA.record_start(10**9)
+    CA.record_outcome(10**9, "success", _served())
+
+
+def test_the_delta_refuses_an_entry_that_vanished_and_balance_checks_the_entries() -> None:
+    start = {1: {"entries": {("k",): 1}, "counts": {"started": 1, "success": 1}}}
+    end = {1: {"entries": {}, "counts": {"started": 1, "success": 1}}}
+    assert any("vanished" in p for p in CA.delta(start, end)[1])
+    assert CA.check_balanced({1: {"entries": {("k",): 2}, "counts": {"started": 1, "success": 1}}})
+
+
+def test_the_in_process_llama_backend_is_the_only_one_that_honours_its_seed() -> None:
+    from maxim.models.language.llama_backend import _LlamaCppBackend
+
+    backend = object.__new__(_LlamaCppBackend)
+    backend.cfg = SimpleNamespace(model_path="/m/q.gguf", quantization="Q4_K_M", seed=7)
+    served = _router()._served_call_for("p", "m", backend, 0.1)
+    assert (served.backend_kind, served.endpoint, served.quantization) == ("llama", "/m/q.gguf", "Q4_K_M")
+    assert served.seed == 7 and served.seed_honoured is True
+
+
+def test_a_served_call_that_cannot_be_built_is_reported_and_none(monkeypatch) -> None:
+    from maxim.models.language import router as router_mod
+
+    reported = []
+    monkeypatch.setattr(router_mod, "log_swallowed_exception", lambda e, **kw: reported.append(kw["site"]))
+
+    class Broken:
+        @property
+        def cfg(self):
+            raise RuntimeError("no cfg")
+
+    assert _router()._served_call_for("p", "m", Broken(), 0.1) is None
+    assert reported == ["router.served_call"]
+
+
+def test_wait_idle_reports_a_busy_router() -> None:
+    router = _router()
+    with router._inference_lock:
+        assert router.wait_idle(0.01) is False
+    assert router.wait_idle(0.01) is True
+
+
+def test_serving_probes_read_each_peer_backend(monkeypatch) -> None:
+    from tests.unit.test_maxim_peer_backend import _make_backend
+
+    router = _router()
+    peer = _make_backend()
+    monkeypatch.setattr(peer, "probe_served_model", lambda: "fresh")
+    monkeypatch.setattr(peer, "probe_leader_disk_head", lambda: "abc123")
+    router._backends["peer"] = peer
+    (probe,) = router.serving_probes()
+    assert probe == {"endpoint": "http://127.0.0.1:9999/v1", "cached_served_id": peer.served_model,
+                     "fresh_served_id": "fresh", "leader_disk_head": "abc123"}  # fmt: skip
+
+
+def test_a_peer_probe_without_a_base_url_returns_nothing() -> None:
+    from tests.unit.test_maxim_peer_backend import _make_backend
+
+    peer = _make_backend()
+    peer._provider_cfg().pop("base_url", None)
+    assert peer.probe_served_model() == "" and peer.probe_leader_disk_head() is None
