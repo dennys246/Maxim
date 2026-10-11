@@ -25,6 +25,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A tool failure that ran is now booked once, by the tool-pain bridge, with its surprise (#1200 Stage 2;
+  owner decisions TF1–TF9).** Before, no production executor booked a failure through the bridge (none is
+  built with a pain detector): a failed tool booked only `tool_dispatch.record_outcome`'s NEGATIVE `tool_result`
+  link, and `ToolOutput.rpe` was `None` for every failure. Now a returned or raised failure books ONE attributed NEGATIVE on the invocation's own NAc event
+  (`ToolPainBridge.record_tool_failure`), the executor stamps the booked signature on the new
+  `ToolOutput.nac_failure_booked`, and `record_outcome` (new `bridge_booked=` keyword) skips its own NEGATIVE
+  only when that signature equals its own. A compound (`tool:use:<action>`) or aliased signature keeps
+  dispatch's link AND gains the bridge's NEGATIVE under the bare or canonical name (`use` is the survival
+  world's main action, so the cut almost never fires there); human-driven calls (TF3) and bridge-less executors
+  book exactly as before. The bridge adds no reflexion, temporal event, SCN
+  registration or CAUSES edge for a failure (TF4, TF5); an executor composed with a pain detector
+  (`build_executor(pain_detector=)`, which no shipped builder uses) LOSES those four on its failures, because
+  the bridge books before the detector's signal reaches `_on_pain`, whose tool branch is now Dormant for that path. **Visible effects:** a booked failure carries `rpe` (≈0.5 for
+  a fresh link), so its Hippocampus capture is encoded with that surprise (on the `fear_water` arm the failed
+  `flee` capture's `encoding_tag` goes 0.0 → 0.5; `tests/fixtures/gl2a_trio_golden_v1.json` regenerated on the
+  fix commit); its NAc trace moves from `tool_result` / `failure:<error>` to `result` / `tool:X:negative` (so
+  `predict_outcome` shows the signature, not the error text, and hivemind bundles carry `result:negative`:
+  content, not format); action selection on `fear_water` is byte-identical. Readers that COUNT links see a
+  failure as one `tool:X:negative` link where distinct error texts used to mint one link each:
+  `PlanHistoryBridge`'s per-tool success rate rises (it counts links, not observations, a pre-existing defect
+  now filed separately), and `harm/tool_predictor` and `discovery`'s caution cross their 0.3 confidence
+  threshold after fewer failures. **Speculative prefetch calls
+  (`executor.speculative_calls`) now book neither valence (TF9)**, which also removes their former POSITIVE
+  `tool:read_file` / `tool:glob` links. The `write_file` overwrite retry's first attempt, failures on the
+  agent-fallback path, the classic loop, the foundry and the sandbox gain a bridge NEGATIVE with no dispatch
+  twin. The interactive-gate invariant now names `record_outcome` and `PlanHistoryBridge` as ungated writers
+  (TF6). `bridge_booked` defaults to `None` only until Session A's two `agent_loop` call sites pass it (TF8).
 - **A failed tool call is no longer booked as a success by the next success of the same tool (#1207).**
   `ToolPainBridge` attributed every outcome by tool SIGNATURE, so a success also booked every other pending
   `tool:X` event inside NAc's 300 s window, and nothing retired the pending event of a failed or never-run

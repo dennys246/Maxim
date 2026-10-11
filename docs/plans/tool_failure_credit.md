@@ -148,6 +148,111 @@ later success.
   query paths, Hippocampus save/restore, the memory record shape) do not fire by wording, but a kept
   reflexion capture adds recall candidates, so the reflexion decision carries a recall fingerprint.
 
+#### Stage 2 design (2026-10-10; owner decisions TF4–TF9; adversarial design pass folded)
+
+A read-only code map at `origin/main` bfed85bf (after #1207) settled the open questions above, and an adversarial
+design pass on this note (DO-NOT-BUILD as first drafted: script callers double-count, aliases defeat the cut, a
+ledger row missed) is folded in. Two premises above changed: `FearAgent.should_gate_tool` is dead (nothing sets
+`FearAgent._tool_pain_bridge`), so the `use` keying blinds nothing live; and `TemporalCreditDistributor.record_event`
+branches only on `"deliberation"`, so a `"pain"` vs `"frustration"` label changes nothing by itself: what an
+emitted event adds is an eligibility trace. **This design supersedes the bullets above where they differ**
+(notably the red gate's location, below).
+
+- **The stamp.** `ToolOutput.nac_failure_booked: str | None = field(default=None, repr=False)`: the event
+  signature the bridge booked the failure under, or `None`. A signature, not a bool, so the cut can check it
+  booked the SAME key dispatch would write (an alias such as `recall` → `memory_recall` books
+  `tool:memory_recall` while dispatch computes `tool:recall`). Tools never set it; `Executor._stamp_invocation`
+  is its only writer (a `failure_booked=` keyword; the field joins the short-circuit tuple, or an otherwise
+  unchanged output would drop it, and an outer executor re-stamps an inner one's value). `repr=False` because
+  `str(ToolOutput)` is persisted as `Outcome.result`. `ToolOutput` is runtime-ephemeral (not in the CC3
+  roster): the bus copies six fields, `actions.jsonl` three, the hivemind none, and no wrapper copies a stamped
+  output (the prefetch cache keeps only a success's `output`).
+- **The producer.** `ToolPainBridge.record_tool_failure(tool_name, invocation_id) -> str | None` pops the
+  invocation's `_pending_tools` / `_pending_contexts` entries (NOT `_pending_event_ids`, which `_book_invocation`
+  reads and `finish_invocation` retires); an absent entry returns `None` silently (the interactive and
+  speculative gates, never-started calls). It books ONE NEGATIVE through Stage 1's `_book_invocation` with
+  `context=None`, notes the RPE on the invocation, and returns the event signature only when a link was
+  written (a run longer than NAc's 300 s window, or an event consumed early by an unattributed match, books
+  nothing and returns `None`, so dispatch books as today). It does **not** reflect (**TF4**), emit a temporal
+  event or register with the SCN (**TF5**), create CAUSES edges, touch the learned tool index, or tag
+  `agent_id` (a failures-only Welford would read all-zero rewards as a reliable action). `_on_pain`'s dead
+  TOOL_* branch is left untouched (Stage 3 deletes it; delegating now would only rewrite two tests that pin its
+  reflexion and SCN calls); since the executor calls `record_tool_failure` before `_report_failure`, a
+  detector signal would find no pending entry either way.
+- **The executor.** In `_run_started`'s raised branch and its returned-failure branch (the TF2 "ran" paths),
+  `if bridge and not suppress_nac:` call `record_tool_failure` inside a try/except reported in the Stage-1 form,
+  BEFORE `_report_failure`, and pass the result to `_stamp_invocation(failure_booked=...)`. `suppress_nac` is
+  now "a human drives OR the action is speculative" (**TF9**, below). The inactive-scene and unregistered paths
+  are unchanged (never ran; no invocation was started since #1207).
+- **The cut (TF7, made structural).** `tool_dispatch.record_outcome(..., bridge_booked: str | None)` becomes a
+  REQUIRED keyword (no default: a caller that forgets it is a `TypeError`, not a silent double count) once
+  Session A's two `agent_loop.py` sites pass it (TF8). Until then it carries a temporary `None` default and
+  `tests/unit/test_tool_failure_credit_1200.py::test_every_record_outcome_caller_passes_the_failure_stamp`
+  (an AST scan of `src/` and `scripts/`) holds every other caller to it, with exactly those two sites allowed. It skips
+  ONLY its `nac.observe(event_type="tool", outcome_type="tool_result", ...)` and only when `bridge_booked` equals
+  its own `build_tool_signature(tool_name, tool_params)`; a compound or aliased signature, or a `None`, books as
+  today. Goal credit, cluster reward, the operant pending action, the energy observe and the plan bridge are
+  unchanged. Every caller passes it explicitly:
+  - ran, with the output in hand: `execute_and_learn`'s try branch AND its except branch (a step between
+    `execute` and `rec_outcome` can raise after the bridge booked; #1145's overlap), `execute_parallel_actions`
+    (threaded through its per-action dict as an `_`-prefixed key, already stripped), and the script callers
+    that replay the loop's sequence through the real executor: `scripts/exp56/common.py::execute_and_record`
+    (the T1-11 harness), `scripts/survival_world/r2_learned_bias.py` and `dark_danger_probe.py`;
+  - not ran, or no executor (`None`): `book_refusal`, `book_machine_refusal`, the `scripts/orient_substrate/`
+    probes that call `tools[action].execute()` directly (`2_full_path_probe.py`, `9_tool_competition_repro.py`),
+    and in `runtime/agent_loop.py` the hard rejection and the agent-fallback except (the stamp of a result the
+    fallback's own `execute` returned, else `None`: `result` must be bound to `None` before that `try`, or an
+    exception before `execute` returns would read an earlier action's output);
+  - tests that call `tool_dispatch.record_outcome` directly gain the keyword (`test_tool_dispatch.py`,
+    `test_modality_seam.py`, `test_sem_motor_binding.py`, `test_substrate_primary_scene_harm.py`, and the
+    integration `test_multi_agent_attribution{,_scale}.py`, `test_substrate_primary_aut.py`);
+    `test_approved_proposal_situation_1083.py` wraps the real function. **`agent_loop.py` is Session A's fenced
+    file (owner, 2026-10-10: coordinate):** Session A lands those two call-site lines; this PR waits for them or
+    merges with Session A's go-ahead.
+- **Speculative calls (TF9).** `runtime/executor.py` gains a `speculative_calls()` context manager over a
+  module `ContextVar`; `prefetch.py::_execute_cached` wraps its `execute` in it, and the executor treats a
+  speculative call like an interactive one for the bridge (no invocation is started, so it books neither
+  valence). The agent did not choose these calls. NOT an action-dict key: the action dict is the model's own
+  JSON, forwarded unchanged by every wrapper, so a model-written flag would let a chosen call escape credit
+  (a red-gate case pins that an action carrying `"_speculative"` books as normal). Prefetch calls the loop's
+  executor on its own thread; a wrapper that hopped threads would lose the variable and book as today, the
+  safe direction. This also removes today's speculative
+  POSITIVE `tool:read_file` / `tool:glob` links: a stated success-side change.
+- **Interactive (TF6).** No new gate: `tool_dispatch.record_outcome` and `PlanHistoryBridge` are added to the
+  embodiment brief's interactive-gate invariant as named UNGATED writers; gating them is filed separately (it
+  would also remove interactive SUCCESS links, which TF1 keeps unchanged).
+- **`build_executor`** keeps rejecting `pain_bus` + `pain_detector` together; dropping its legacy detector mode is
+  Stage 3's (the detector is that stage's producer), so Stage 2 changes no builder signature.
+- **What changes, to state in the PR.** A booked failure carries `ToolOutput.rpe` (≈0.5 for a fresh link) instead
+  of `None`: the persisted `str(ToolOutput)` gains the value and `capture_loop_action`'s salience gains
+  `rpe * 0.5`. Its NAc trace moves from the dispatch family (`tool_result`, `failure:<error[:50]>`, context
+  `{agent_id, goal}`) to the bridge family (`result`, `tool:X:negative`, context `{params}`):
+  `PredictOutcomeTool` shows the outcome signature instead of the error text, and hivemind bundles carry
+  `result:negative` rather than `tool_result:negative` (content, not format: no frozen field, allowlist or
+  fixture changes, `public_format_freeze.md`). Bridge NEGATIVEs with no dispatch twin appear for: the
+  `write_file` overwrite retry's first attempt (a real refused invocation, #1146; accepted), returned failures
+  on the agent-fallback path, the classic `run_agent_loop`, `foundry.py` and `tools/sandbox.py`. An aliased
+  failure books both the bridge's canonical key and dispatch's alias key, as aliased successes already do. In
+  the survival world the main action tool is `use`, whose dispatch signature is compound (`tool:use:<action>`),
+  so the cut almost never fires there: `use` failures keep their dispatch link AND gain the bridge's `tool:use`
+  NEGATIVE.
+- **Known residuals (named, not fixed here).** If NAc's activity collector raises after `record_outcome_full`
+  wrote the link, the executor's except leaves the stamp `None` and dispatch books a second link (the collector
+  call is unwrapped inside NAc); and in the parallel batch a raise after an action's dict was appended adds a
+  second, unstamped failure dict for it. Both go to a follow-up issue.
+- **Red gate first** (strict xfail, through the public paths; it supersedes the `_loop_harness` red gate above:
+  that harness is Session A's and gets no new pin): a returned failure and a raised failure each book exactly
+  one attributed NEGATIVE with a real RPE and stamp the booked signature; `execute_and_learn` then writes no
+  `tool_result` NEGATIVE for that tool; an interactive, speculative, bridge-less (no NAc), aliased or
+  compound-signature failure books through dispatch exactly as today; a model action carrying
+  `"_speculative"` books as normal; a success books exactly as today; a
+  `record_outcome` call without `bridge_booked` is a `TypeError`. **Fingerprints before/after** (existing tests on
+  both commits): `recommend_action` scores on the `fear_water` arm, the selection golden, the GL2a trio golden,
+  a Hippocampus trace-count/tag count, and the slow R3 offline campaign. Any decision or `t_surface` change →
+  the Exp 60/61/62 rig re-runs are owed; otherwise T1-4, T1-6 ("`record_outcome` credit-rule change", the cut is
+  one) and T3-9 are discharged structurally in the PR, with the walk written down, and T1-11's harness
+  (`exp56/common.py`) is walked as a caller.
+
 ### Stage 3: a felt-only FRUSTRATION signal on the PainBus (later)
 
 Only after `Reaction` carries its kind (nociception step 2), so the distributor and episode valence can

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import dataclasses
 import logging
 import threading
 import time
 import uuid
+from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any, Callable
 
 from maxim.tools.base import Tool, ToolOutput
@@ -17,6 +20,24 @@ if TYPE_CHECKING:
     from maxim.embodiment.body import Embodiment, OutcomeWindow
     from maxim.embodiment.sem import CauseRef, InteroceptiveOutcome
     from maxim.proprioception.pain import PainDetector
+
+
+# Calls the agent did not choose (speculative prefetch, #1200 TF9) run inside ``speculative_calls()``; the
+# executor then starts no tool-pain invocation, so the bridge books neither valence for them. A context
+# variable, not an action-dict key: the action dict is the model's own JSON, forwarded unchanged by every
+# wrapper, so a model-written flag would let a chosen call escape credit. A wrapper that ran the call on
+# another thread would not see it and would book as before (the safe direction).
+_SPECULATIVE: contextvars.ContextVar[bool] = contextvars.ContextVar("maxim_speculative_call", default=False)
+
+
+@contextlib.contextmanager
+def speculative_calls() -> Iterator[None]:
+    """Run the enclosed ``execute`` calls as speculative: no NAc credit for either outcome (#1200 TF9)."""
+    token = _SPECULATIVE.set(True)
+    try:
+        yield
+    finally:
+        _SPECULATIVE.reset(token)
 
 
 # ── Tool alias map ────────────────────────────────────────────────────────
@@ -361,7 +382,9 @@ class Executor:
         # is #864's open layering half.
         from maxim.simulation.sim_logger import InteractiveMode, get_interactive_mode
 
-        _suppress_nac = get_interactive_mode() == InteractiveMode.ON
+        # A speculative call (prefetch, TF9) was not chosen by the agent: like a human-driven one, the bridge books
+        # nothing for it. Read from the executor's context, never from the action dict (the model's own JSON).
+        _suppress_nac = get_interactive_mode() == InteractiveMode.ON or _SPECULATIVE.get()
 
         try:
             return self._run_started(tool_name, original_name, params, invocation_id, suppress_nac=_suppress_nac)
@@ -445,8 +468,10 @@ class Executor:
             with self._lock:
                 self._running = None
             result = ToolOutput(success=False, error=f"Tool {tool_name!r} execution failed: {e}")
+            booked = self._book_failure(tool_name, invocation_id, suppress_nac=suppress_nac)
             self._report_failure(tool_name, invocation_id, result, params)
-            return self._stamp_invocation(result, invocation_id, pressure_before)  # raised: no record
+            # raised: no record
+            return self._stamp_invocation(result, invocation_id, pressure_before, failure_booked=booked)
 
         with self._lock:
             self._running = None
@@ -518,9 +543,27 @@ class Executor:
                         bridge_err,
                     )
         else:
+            booked = self._book_failure(tool_name, invocation_id, suppress_nac=suppress_nac)
             self._report_failure(tool_name, invocation_id, result, params)
+            return self._stamp_invocation(
+                result, invocation_id, pressure_before, outcome=outcome, failure_booked=booked
+            )
 
         return self._stamp_invocation(result, invocation_id, pressure_before, outcome=outcome)
+
+    def _book_failure(self, tool_name: str, invocation_id: str, *, suppress_nac: bool) -> str | None:
+        """Book a failure that RAN through the tool-pain bridge (#1200 Stage 2, TF2); returns the event signature
+        it booked under, or ``None`` (no bridge, a human driving or a speculative call (TF3, TF9), nothing
+        booked, or the bridge raised). Called BEFORE ``_report_failure``, so a detector signal for the same
+        invocation finds nothing left to book. A bridge error degrades learning, never the call."""
+        bridge = self._tool_pain_bridge
+        if bridge is None or suppress_nac:
+            return None
+        try:
+            return bridge.record_tool_failure(tool_name, invocation_id)
+        except Exception:
+            log_swallowed_exception(site="executor.py:_book_failure")
+            return None
 
     def _report_failure(
         self,
@@ -798,6 +841,7 @@ class Executor:
         pressure_before: tuple[tuple[str, float], ...] | None,
         *,
         outcome: _OutcomeStart | None = None,
+        failure_booked: str | None = None,
     ) -> ToolOutput:
         """Attach what THIS invocation carried: its surprise and the body around it.
 
@@ -806,8 +850,9 @@ class Executor:
         earlier tool's; the drive pressure it acted under and the relief it produced ride along the
         same way (memory-strength Phase 2b-ii), and so does its pain (Phase 2S-c). ``outcome`` (the
         tool ran on an agent-bound body) adds the body-consequence record (grounding GL2a); the
-        inactive-scene, unregistered-tool and raised paths pass none and mint nothing. The executor is
-        the only writer of all five.
+        inactive-scene, unregistered-tool and raised paths pass none and mint nothing. ``failure_booked`` is
+        the signature the bridge booked a failure under (#1200 Stage 2), which dispatch reads to skip its own
+        NEGATIVE. The executor is the only writer of all six.
         """
         if not isinstance(result, ToolOutput):
             return result
@@ -824,12 +869,14 @@ class Executor:
             result.drive_relief,
             result.pain,
             result.interoceptive_outcome,
+            result.nac_failure_booked,
         ) == (
             rpe,
             pressure_before,
             relief,
             pain,
             record,
+            failure_booked,
         ):
             return result
         return dataclasses.replace(
@@ -839,6 +886,7 @@ class Executor:
             drive_relief=relief,
             pain=pain,
             interoceptive_outcome=record,
+            nac_failure_booked=failure_booked,
         )
 
     def tool_usage_stats(self) -> dict[str, Any]:
