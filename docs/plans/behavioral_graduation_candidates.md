@@ -48,6 +48,17 @@ Each entry below is an engineering invariant (or family) from CLAUDE.md whose bi
 1. **Pre-1.0 path:** `Pending` → graduate via cited Roy/equivalent experiment → `Earned <date>`. By 1.0, Tier 1 must be 100% Earned; Tier 3 entries that can't be earned get explicit dispositions (downgrade or [Dormant per Principle 2](../../CLAUDE.md#working-principles-for-new-mechanisms)).
 2. **Post-1.0 path:** `Earned` → re-validated on triggering events → `Maintained <last_validated>`. If a trigger fires and the entry isn't re-run, it goes `Stale` (blocks next release until validated). If a re-run fails, `Broken (regression detected <date>)` (must fix or downgrade before release). When a mechanism is removed from the codebase, the entry goes `DROPPED <date>` (the vocabulary has no Retired) but stays in the table as historical record.
 
+**The floor (owner decision BF2, 2026-10-10; [baseline_floors.md](baseline_floors.md)).** Until 2026-10-10,
+earning meant beating one of Maxim's own ablations; no row was ever compared with an agent lacking the bio
+layers. From that date a NEW claim on the LLM path earns only if the full arm beats `bare_llm` (and
+`llm_notes` for a cross-session claim), and a NEW substrate-path claim earns only if it beats `tabular_q` and
+`random`, on the same model, seeds and state keys. A row that does not beat its floor takes `PARTIAL <date>`
+with the qualifier `(narrow: floor matched)`, and its boundary result goes in the status prose. Rows earned
+earlier keep their status and owe the floor at their next trigger re-run once their harness has the floor
+arm; one that loses then moves to `PARTIAL (narrow: floor matched)`, not `BROKEN`, since its ablation result
+still stands. Until then such a row gains `floor: not measured` in its status prose (never the qualifier)
+at its next ledger touch. Regression guard: process invariant — mechanization backlog M46.
+
 ## Three-tier scope
 
 Not all 67 `[engineering]` invariants from CLAUDE.md need to graduate. Don't burn experiments on engineering scaffolding.
