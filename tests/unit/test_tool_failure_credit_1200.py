@@ -188,7 +188,7 @@ def test_a_tool_cannot_set_its_own_failure_stamp() -> None:
 
 
 @pytest.mark.xfail(
-    strict=True, reason="#1221 / TF8: bridge_booked keeps a temporary default until agent_loop passes it"
+    strict=True, reason="#1221 / TF8: bridge_booked keeps a temporary default until it is dropped (TF8 step 3)"
 )
 def test_a_record_outcome_call_without_the_stamp_is_a_type_error() -> None:
     """Flips when the default is dropped (TF8 step 3): forgetting the stamp then fails loudly."""
@@ -541,7 +541,6 @@ def _negatives(nac: NAc) -> list[tuple[str, int]]:
 
 
 # Red on main (#1200, TF8): the hard-rejection call omits bridge_booked, so it rides the temporary default
-@pytest.mark.xfail(strict=True, reason="#1200 TF8: agent_loop's hard rejection does not pass bridge_booked")
 def test_a_hard_rejection_records_with_no_failure_stamp(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
     """The tool never ran, so nothing was bridge-booked: the call says so EXPLICITLY (``bridge_booked=None``), and
     keeps working once the default is dropped (TF8 step 3), when an omitted keyword is a ``TypeError``. The
@@ -561,7 +560,6 @@ def test_a_hard_rejection_records_with_no_failure_stamp(monkeypatch: pytest.Monk
 
 
 # Red on main (#1200, TF8): the agent-fallback's except books dispatch's NEGATIVE on top of the bridge's
-@pytest.mark.xfail(strict=True, reason="#1200 TF8: the agent-fallback double-books a bridge-booked failure")
 def test_an_agent_fallback_raise_after_execute_books_the_failure_once(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Any
 ) -> None:
@@ -576,7 +574,6 @@ def test_an_agent_fallback_raise_after_execute_books_the_failure_once(
 
 # Red on main (#1200, TF8): the except omits bridge_booked; its behavioural half guards the stale read the fix
 # would otherwise create (``result`` is bound only by a RETURNED ``execute``)
-@pytest.mark.xfail(strict=True, reason="#1200 TF8: the agent-fallback's except does not pass bridge_booked")
 @pytest.mark.parametrize("earlier", [False, True], ids=["first_action", "after_a_booked_failure"])
 def test_an_agent_fallback_raise_before_execute_returns_reads_no_earlier_result(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Any, earlier: bool
@@ -597,9 +594,9 @@ def test_an_agent_fallback_raise_before_execute_returns_reads_no_earlier_result(
 
 # ── every caller passes the stamp (TF8) ───────────────────────────────────────────────────────────────
 
-# Session A's fenced file: its two ``_rec_outcome`` sites land ``bridge_booked`` in their own PR (owner decision
-# TF8, 2026-10-10). The count is exact, so that PR shrinks it to 0 and the follow-up drops the default.
-_AWAITING_SESSION_A = {"src/maxim/runtime/agent_loop.py": 2}
+# Session A's fenced file: its two ``_rec_outcome`` sites (the hard rejection and the agent fallback) landed
+# ``bridge_booked`` in their own PR (owner decision TF8, 2026-10-10), so nothing awaits; the follow-up drops the default.
+_AWAITING_SESSION_A: dict[str, int] = {}
 
 
 def _record_outcome_calls_missing_the_stamp() -> dict[str, int]:
