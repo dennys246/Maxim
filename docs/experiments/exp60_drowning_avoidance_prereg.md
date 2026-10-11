@@ -16,6 +16,10 @@
 > publishes). Data discipline: every record via the gated evidence path on a clean main checkout
 > at or after this freeze, landed by merge-commit data PR; a null ships as a null.
 >
+> **RE-RUN DECLARED 2026-10-11 (PRE-DATA):** the 1.3.2 closing re-run, `rerun_exp60_2026-10-11`, at the code pin
+> `baf0e15f`. It is governed by Amendment 8 (after Amendment 7, in §Design (iii)) and §Re-run runbook (Amendment 8).
+> Nothing above changes.
+>
 > **Amendment 2 — 2026-09-15, POST-DATA, the freeze.** POST-DATA relative to the apparatus and gate
 > records (#724, #725, #727) that this document governs; PRE-DATA relative to the trials, which
 > may not begin before this header is on main. The status text above and the two section-header
@@ -393,7 +397,172 @@ PLANNING for the rest of a run on any percept transcript containing "stop"/"halt
 bridge; the harness's `stop` is an action, not a percept). Run 2 proceeds
 under this amendment, after a one-seed diagnostic shows executed calls.
 
+**Amendment 8 — 2026-10-11, PRE-DATA, for `rerun_exp60_2026-10-11`, the 1.3.2 closing re-run: Run 2's design
+re-measured at the code pin `baf0e15f`.** Scoped to that data entry only: the 2026-09-15/16 records, Run 1, Run 2
+and Amendments 1–7 are untouched. No gate, frozen constant or part of §Design (iii) changes. This amendment
+declares the re-run's purpose, the code under test, the order of its records, the attempt policy, and the status
+each outcome moves. The procedure is §Re-run runbook (Amendment 8) below.
+
+- **Purpose.** T1-13's trigger "`run_agentic_loop` idle-gate or autonomy handling change" fired by its letter
+  during the agent-loop phase-1 decomposition. It was discharged structurally each time:
+  - #963 (PR #1198) and #1085 PR-a (slice 4, PR #1187), both walked 2026-10-09;
+  - #1133 (PR #1151);
+  - slices 0–3 (#1114, #1127, #1136, #1157), which were verbatim moves.
+
+  Slice 5 (#1210) sits on the Minecraft AUT's path. This run replaces those structural arguments with a
+  measurement. It gates that none of the following changed Exp 60's behaviour, measured against Run 2 (`2708e208`,
+  [exp60_verdict.json](data/exp60_verdict.json)):
+  - the phase-1 decomposition (slices 0–5, #1133, #963, #1085 PR-a);
+  - #1125's fix (#1164);
+  - #1212 (stale success, #1207);
+  - the #1200/#1209 credit line up to the pin: #1213 (pain-circuit booking) and #1229 (stage-2 failure credit);
+  - #1219 (the capture race);
+  - the harness PR #1223 (`--apparatus-record`, one apparatus record per verdict).
+- **Also in the pin, so also measured.** 276 first-parent commits separate Run 2 from the pin. Besides the above,
+  Exp 60's path changed through:
+  - #851's fix (#1095) and #888's fixes (#891, #892);
+  - 2S-a to 2S-d (the experience clock, `retro_tag`, the situation cue);
+  - #783's fix (#803, the encoding identity);
+  - #1194;
+  - the M1b writers and stamps;
+  - the bridge commits `acc50988` and `0c1e09b0` (`scripts/minecraft_bridge/index.js`; `package.json` is unchanged
+    since Run 2).
+
+  #873's fix (#1096) is in the pin but off this path: it changes `damage_component`, which the harness never calls.
+  So a pass re-validates the row AT THE PIN. A fail does not, by itself, point at the decomposition.
+- **NOT under test.** #1230 (the GL2a accessor: `runtime/executor.py`, `embodiment/tool_bridge.py`,
+  `tools/discovery.py`), #1231 (#1200: `agent_loop` bridge-booked failures), #1232 (#1134: the fail-loud loop) and
+  #1233 (B0 provenance fields: `scripts/_provenance.py`, `scripts/_evidence_records.py`) merged on `main` after the
+  pin, on 2026-10-11, and so did anything later. Each is walked against T1-13's triggers in its own PR. This run
+  cannot be cited for any of them.
+- **The code pin and the chain.** The pin is `baf0e15f`, the merge commit of the harness PR #1223. The water check,
+  the trials and the verdict all run at the pin, or at a descendant whose `code_tree_sha256` over `src/` +
+  `scripts/` (with the `.gitignore` rules) equals the pin's. `main` is past the pin, so the rig NEVER checks out or
+  pulls `main` during the re-run. The order is a chain:
+  1. this amendment, on a branch cut from the pin (commit A, a docs-only child of `baf0e15f`);
+  2. the water check, run at A, after A's PR has merged;
+  3. its record, committed on a branch from A (commit R), and merged;
+  4. the trials, run at R;
+  5. the trials data and the verdict, on a branch from R.
+
+  Every chain PR merges with a MERGE COMMIT, never a squash (brief rule 3: the merge keeps A and R reachable from
+  `main` with their own trees). The digest, run at the repo root in the checkout under test:
+
+  `python -c "import sys; sys.path.insert(0, 'scripts'); import _provenance as P; print(P.code_tree_sha256('.'), P.working_tree_difference('.'))"`
+
+  It must print the pin's digest followed by `None` (a clean tree). Measured at `baf0e15f` on a clean dev-box
+  checkout, 2026-10-11: `0bbb257932829b1be0428bca53cb437a4e355c2fcb22d0b607c8cd972e627444`. A cheaper check that
+  works on any box, before any checkout, is `git diff --quiet baf0e15f <commit> -- src scripts
+  ':(glob)**/.gitignore' && echo same-code`. On a clean checkout the two agree, because a clean tree's digest is
+  fixed by its HEAD. The digest is the authority, and every record stamps it.
+- **Records are checked against the pin.** Every row, the apparatus record and the verdict carry
+  `provenance.code_tree_sha256`. Each one must equal the pin's digest, with `working_tree_dirty_src_scripts: false`
+  and no `allow_dirty`. `--allow-dirty` is never passed. A record that misses any of these is not evidence for this
+  re-run.
+- **The design is unchanged.** The arms are FEAR then ABLATED, as in Run 2. The seeds are the frozen 11–15,
+  **5 seeds per arm**, a fresh agent per seed × arm. Everything else is §Design (iii) as frozen: K = 10, 6
+  placements per probe, every preflight and refusal.
+  - **A fresh 3-cycle water apparatus check is the run's apparatus record.** The committed records are pre-M1b, and
+    `instrument_check_authorizes` refuses them.
+  - **The caps follow the frozen rules, with no new number.** The probe cap is the new record's measured pain edge
+    (min) − 0.75 s. The training cap is the anchor's measured damage onset (min) − 1 s.
+  - **The geometry gate record stays `exp60_geometry_2026-09-15b.json`.** The pool is unchanged, and the live
+    cluster-distinct preflight re-checks every seed.
+  - **One risk is disclosed, not gated.** Run 2's first post placement per FEAR seed took 2.9–3.3 s because of the
+    `flee` tie-break. A re-measured cap below ~3.4 s would censor those placements. The gates read as frozen
+    regardless.
+- **The pass criterion is the five frozen gates, unchanged.** `exp60_run.py verdict` returns EARNED over exactly 5
+  clean seeds per arm, and every gate holds:
+  1. FEAR post median P(surface before the US) **≥ 0.5**;
+  2. ABLATED post median **≤ 0.2**;
+  3. every FEAR seed's post **>** its own pre (strict);
+  4. the exact two-sample permutation test over 252 relabellings, one-sided FEAR > ABLATED on post P(surface),
+     **p < 0.05**;
+  5. specificity on every FEAR seed, **|shore fear| < 0.2·|water fear|**.
+
+  For reference, Run 2 measured 1.0 v 0.0, p = 1/252 = 0.004, and shore 0.0 v water −1.0. The secondaries are
+  reported, not gated: latency (Run 2's median 1.72 s, max 3.34 s), the `flee`-first tie-break, ABLATED's executor
+  calls (Run 2: zero), and the positive escape links. A drift in any of them is disclosed and explained, not
+  graded.
+- **The status each outcome moves.**
+  - **EARNED:** T1-13 moves to `MAINTAINED <date>`, the verdict record's UTC date.
+  - **NULL** (a gate fails after every preflight passed): T1-13 moves to `BROKEN <date>`. That blocks the 1.3.2
+    cut. The null ships as a null, and its cause is bisected against the known-good `2708e208`.
+  - **INCOMPLETE:** not data. It moves nothing. T1-13 stays `EARNED 2026-09-16` with its structural discharges,
+    the cause is named, and the attempt policy below applies.
+
+  T1-14 (Exp 61) and T1-15 (Exp 62 rung A) keep `EARNED` with their structural discharges whatever the outcome.
+  This run corroborates them, but it is never their Evidence.
+
+  The ledger edit is its own PR, later than the data PR, with a review from a different reader (brief rule 5). It
+  cites the new verdict and its trials file as `**Evidence:**`. The evidence gate then needs that verdict to be:
+  - newly cited;
+  - ESTABLISHED and prereg-PASS;
+  - from a clean tree, written after the commit that set the row's previous status;
+  - over the complete-run set: exactly one run per arm with seeds {11..15}, refused rows included, scoped
+    `all_rows`.
+
+  The committed 2026-09-16 verdict is unstamped legacy and is never new support. The same ledger PR updates the
+  README and experiments-index rows tagged `<!-- claim: T1-13 -->` (`lint_claims_sync.py`).
+- **One apparatus record per verdict.** All of a verdict's rows run under one `--apparatus-record`. Rows that name
+  two records (by path + sha256) make the verdict INCOMPLETE (`incomplete_cause: "mixed_apparatus_records"`). The
+  harness enforces this, judged over the whole file.
+- **No `--run-id` at verdict time.** Each attempt's `--out` holds exactly that attempt, both arms in one file, so
+  the verdict's scope is `all_rows`. A file holding anything else is not a complete-run set.
+- **INCOMPLETE attempts are context only.** Their rows and verdicts are committed, because an absent record must
+  mean "never ran". They are linked from the ledger row's history prose as context, and NEVER listed in T1-13's
+  `**Evidence:**`. A typed abort is not data.
+- **Each attempt lands on `main` before the next starts.** That means its own merge-commit data PR, verdict
+  included (reproduction.md §5).
+- **Data layout.** One dated entry, `docs/experiments/data/rerun_exp60_2026-10-11/`:
+  - the water check's record is `water_apparatus.json`;
+  - attempt 1 writes `attempt1/trials.jsonl` (its `--out`, both arms) and `attempt1/verdict.json`; attempt 2, if
+    one runs, writes `attempt2/` the same way;
+  - a second water check, if one is needed, writes `water_apparatus_2.json`.
+
+  The entry's date is the UTC date of its first record, the water check. If the rig hour slips off that date, the
+  data goes to a new dated entry, `rerun_exp60_<DATE>/`, declared by a further scoped PRE-DATA amendment that is on
+  `main` before its first record. The same holds for an attempt run on a later date. `lint_prereg_precedes_data.py`
+  fails an undeclared entry.
+- **The anchor.** Between the apparatus record and the end of the ABLATED arm, nothing may touch the anchor
+  (`~/.maxim/exp60_water_classroom.json`):
+  - no `exp60_water_check` run on the default anchor;
+  - no `setup_world.py water_classroom` rebuild;
+  - nothing else that writes it.
+
+  The harness requires the anchor's `measured` block to be the record's own check (the same `ts`). A re-stamp
+  therefore makes the next arm refuse, and the attempt ends INCOMPLETE. The water check itself re-stamps the
+  anchor's `measured` block, which Exp 61 and R3 read next. This is disclosed. Neither can run live until #1215
+  anyway.
+- **Attempts.**
+  - The cap is **2**.
+  - The first complete attempt (verdict EARNED or NULL) decides, and no attempt follows it.
+  - A second attempt runs only after an INCOMPLETE whose cause is named, with the first attempt's data merged.
+  - **Two INCOMPLETE attempts mean the 1.3.2 cut waits.** Structural discharges are not substituted for the
+    measurement, and no override is taken. Any further attempt needs its own PRE-DATA amendment (owner decision, 2026-10-11).
+
+  Accounting:
+  - An attempt begins when its `--out` receives its first row, refused or clean. (Owner decision, 2026-10-11.)
+  - A `run` invocation that exits before writing any row has measured nothing, so it is not an attempt. This covers
+    a provenance, append, apparatus-record or anchor refusal, all of which come before any RCON or bridge
+    connection. It is disclosed in the data PR.
+  - An attempt whose FEAR arm wrote a refused row is already INCOMPLETE, and the ABLATED arm may be skipped. Its
+    verdict is still computed and committed.
+  - **Owner decision, 2026-10-11 (the strict option):** an operator-error INCOMPLETE COUNTS toward the cap. That covers
+    an anchor re-stamp mid-attempt and a `mixed_apparatus_records` verdict.
+  - **Owner decision, 2026-10-11 (the strict option):** a water check that FAILs or ends in an instrument error also
+    counts as an INCOMPLETE attempt. Its record is committed as context. Otherwise the apparatus check could be
+    re-run until its measured pain edge, and so the probe cap, suited the run.
+- **The offline dry run.** Before the rig hour, the dev box runs the offline gates at the pin, including the slow
+  end-to-end `test_offline_run_both_arms_then_verdict_stamp_the_named_apparatus_record`. That verdict is stamped
+  `mock: false`, because the harness has no mock mode. So offline output never goes under `docs/experiments/data/`:
+  it stays in a temp directory and is never committed. A dry-run file in the data tree would read as a real
+  record.
+
 ## Operator runbook (the frozen protocol, executed from a clean main checkout at or after the freeze)
+
+This is Run 2's runbook. The 1.3.2 re-run follows §Re-run runbook (Amendment 8) below instead. Its rig never runs
+step 1's `git checkout main && git pull`, because `main` is past the code pin.
 
 1. big-mac-mini: `git checkout main && git pull`; RESTART the bridge **with `--state_interval_ms=100`**
    (Amendment 4; `flee` and `is_in_water` also changed in #728/#730) and confirm its `spawn state:` line
@@ -406,6 +575,135 @@ under this amendment, after a one-seed diagnostic shows executed calls.
    (pass `--run-id` only if the JSONL holds a re-run).
 4. One merge-commit data PR with `exp60_trials.jsonl` + `exp60_verdict.json`; then §Outcome is
    written from the verdict (EARNED / NULL / INCOMPLETE), never before.
+
+## Re-run runbook (Amendment 8: the 1.3.2 closing re-run, `rerun_exp60_2026-10-11`)
+
+**Rig facts.** These live in [docs/agents/simulation-experiments.md](../agents/simulation-experiments.md) §5, under
+"Operating the live rig" and "A timing test's failure message is written for a QUIET box":
+- The repo is at `~/RMSrv/scripts/Maxim` on big-mac-mini.
+- tmux `minecraft` is the survival Paper 1.20.4 server (cwd `~/maxim-mc-survival-1.20`); `mc-survival` is only a
+  shell. tmux `minecraft-bridge` holds the bridge.
+- The game port is 25565 and RCON is 25575. The Exp 56 server defaults to the same ports.
+- Paper needs Java 17: `"$(/usr/libexec/java_home -v 17)/bin/java"`.
+- The rig's zsh does NOT treat `#` as a comment. Paste the commands below exactly; they carry no inline comments.
+
+`<rcon-password>` is a placeholder. The real value never goes into a committed file, a commit message or a PR
+body. `<A>` and `<R>` are the full SHAs of the chain's commits A and R (Amendment 8).
+
+1. **Dev box, before the rig hour, in a clean checkout at the pin.** Any failure here stops the rig hour.
+
+   ```
+   git checkout --detach baf0e15f
+   export PYTHONPATH="$PWD/src"
+   python -m pytest tests/unit/test_exp60_run.py tests/unit/test_water_trial_smoke.py tests/unit/test_agent_loop_selection_golden.py tests/unit/test_substrate_primary_wake.py tests/unit/test_cluster_fear.py tests/unit/test_exp60_water_classroom.py tests/unit/test_m1b_writer_stamps_5a3.py -q
+   python -c "import sys; sys.path.insert(0, 'scripts'); import _provenance as P; print(P.code_tree_sha256('.'), P.working_tree_difference('.'))"
+   ```
+
+   - The suite includes the slow offline end-to-end run (both arms, then the verdict, all in temp paths), the
+     offline reproduction of Run 2's verdict, and the Wire-4 golden arm that must select `escape_water`.
+   - The digest line must print `0bbb257932829b1be0428bca53cb437a4e355c2fcb22d0b607c8cd972e627444 None`.
+2. **Amendment 8 merges first,** with a merge commit. A is the amendment's own commit on its branch, not the merge
+   commit.
+3. **Rig: make sure the box is quiet.**
+   - `tmux ls`
+   - `ps aux | grep -i maxim`
+   - `ps aux | grep -i "node index.js"`
+   - `lsof -nP -iTCP:25565 -iTCP:25575 -iTCP:25567 -sTCP:LISTEN`
+
+   Stop `exp56-server` AND `exp56-bridge` if they are live: a second bridge logs a second player in. Nothing else
+   may run: no sim, no pytest, no Exp 61/62/R3 job, no `l11_geometry_probe`. `pkill -f "maxim.*sim"` misses some
+   processes, so match on `maxim` and verify.
+4. **Rig: check out A.**
+
+   ```
+   cd ~/RMSrv/scripts/Maxim
+   git fetch origin
+   git checkout --detach <A>
+   git merge-base --is-ancestor <A> origin/main && echo on-main
+   git status --porcelain -- src scripts .gitignore
+   source .venv/bin/activate
+   export PYTHONPATH="$PWD/src"
+   python -c "import maxim; print(maxim.__file__)"
+   python -c "import sys; sys.path.insert(0, 'scripts'); import _provenance as P; print(P.code_tree_sha256('.'), P.working_tree_difference('.'))"
+   ```
+
+   Confirm:
+   - `on-main` is printed;
+   - the status line is empty;
+   - `maxim.__file__` is under `~/RMSrv/scripts/Maxim/src`;
+   - the digest line is the pin's digest followed by `None`.
+
+   A rig digest that differs from the dev box's at the same commit means an untracked code-scope file on the rig.
+   Stop and find it.
+5. **Rig: start the server and restart the bridge.** The server runs in tmux `minecraft`; if it is down, start it
+   from that window with `"$(/usr/libexec/java_home -v 17)/bin/java" -jar paper-1.20.4.jar nogui`. In tmux
+   `minecraft-bridge`, stop the old bridge, which serves old code after a checkout, and run:
+
+   ```
+   cd ~/RMSrv/scripts/Maxim/scripts/minecraft_bridge && node index.js --mc_host=127.0.0.1 --mc_port=25565 --bridge_port=25567 --username=maxim --state_interval_ms=100
+   ```
+
+   The echoed settings must show `state_interval_ms` 100 and `--system_messages` off, and the `spawn state:` line
+   must carry `is_in_water`.
+6. **Rig: the water apparatus check, at A.** Run it on the default anchor (no `--anchor-file`):
+
+   ```
+   python scripts/survival_world/exp60_water_check.py --out docs/experiments/data/rerun_exp60_2026-10-11/water_apparatus.json --rcon-password '<rcon-password>' --username maxim --write-experiment-results
+   ```
+
+   - Exit 0 is a PASS, and the check stamps the anchor's `measured` block.
+   - Exit 4 is a FAIL or an instrument error. The record is still committed, as context, and Amendment 8's attempt
+     accounting applies.
+   - From here to the end of the ABLATED arm, nothing touches the anchor.
+7. **The record PR.**
+   - Commit only `water_apparatus.json`, on a branch from A; that commit is R. The rig cannot sign, so re-sign on
+     the dev box with `git commit-tree -S` on the same tree and parent (reproduction.md §5).
+   - Merge it with a merge commit.
+   - Then, on the rig, confirm the untracked copy is the committed bytes. Remove it, and check out R:
+
+   ```
+   shasum -a 256 docs/experiments/data/rerun_exp60_2026-10-11/water_apparatus.json
+   git fetch origin
+   git show <R>:docs/experiments/data/rerun_exp60_2026-10-11/water_apparatus.json | shasum -a 256
+   rm docs/experiments/data/rerun_exp60_2026-10-11/water_apparatus.json
+   git checkout --detach <R>
+   git merge-base --is-ancestor <R> origin/main && echo on-main
+   python -c "import sys; sys.path.insert(0, 'scripts'); import _provenance as P; print(P.code_tree_sha256('.'), P.working_tree_difference('.'))"
+   ```
+
+   The two hashes must match, `on-main` must print, and the digest line must again be the pin's followed by
+   `None`. The bridge keeps running; it is the same code.
+8. **Rig: the trials, at R.** FEAR first, then ABLATED, both into the same fresh `--out`:
+
+   ```
+   python scripts/survival_world/exp60_run.py run --arm fear --apparatus-record docs/experiments/data/rerun_exp60_2026-10-11/water_apparatus.json --rcon-password '<rcon-password>' --username maxim --out docs/experiments/data/rerun_exp60_2026-10-11/attempt1/trials.jsonl --write-experiment-results
+   python scripts/survival_world/exp60_run.py run --arm ablated --apparatus-record docs/experiments/data/rerun_exp60_2026-10-11/water_apparatus.json --rcon-password '<rcon-password>' --username maxim --out docs/experiments/data/rerun_exp60_2026-10-11/attempt1/trials.jsonl --write-experiment-results
+   ```
+
+   The prereg budgets 8–9 min per seed; Run 2's ten seeds took 56 min. A refused FEAR seed already makes the
+   attempt INCOMPLETE, so ABLATED may be skipped.
+9. **Rig: the verdict, at R, with no `--run-id`.**
+
+   ```
+   python scripts/survival_world/exp60_run.py verdict --data docs/experiments/data/rerun_exp60_2026-10-11/attempt1/trials.jsonl --json docs/experiments/data/rerun_exp60_2026-10-11/attempt1/verdict.json --write-experiment-results
+   python -c "import json, pathlib; d = pathlib.Path('docs/experiments/data/rerun_exp60_2026-10-11'); rs = [json.loads(x) for x in (d / 'attempt1/trials.jsonl').read_text().splitlines() if x.strip()] + [json.loads((d / n).read_text()) for n in ('water_apparatus.json', 'attempt1/verdict.json')]; print({(r['provenance']['code_tree_sha256'], r['provenance']['working_tree_dirty_src_scripts'], r['provenance'].get('allow_dirty')) for r in rs})"
+   ```
+
+   The set must hold exactly one tuple: the pin's digest, `False`, `None`.
+10. **The data PR.**
+    - It is a branch from R holding `attempt1/`, re-signed like step 7 and merged with a merge commit.
+    - Before opening it, run `python scripts/lint_prereg_precedes_data.py --json`. The entry must read PASS, and as
+      a re-run declared by this amendment.
+    - The PR body names any `run` invocation that exited before writing a row.
+    - The ledger PR comes later, separately, with a different reader (Amendment 8, "The status each outcome
+      moves").
+11. **A second attempt runs only if attempt 1 was INCOMPLETE,** its cause is named, and its data PR has merged.
+    - If the anchor still carries the record's check, the second attempt runs at R, with `--out
+      docs/experiments/data/rerun_exp60_2026-10-11/attempt2/trials.jsonl`, and its verdict goes to
+      `attempt2/verdict.json`.
+    - Otherwise a new check writes `water_apparatus_2.json` at R. It goes through its own record PR, step 7's way,
+      and the trials then run at that record's commit.
+    - On a different UTC date than the entry's, stop: a further scoped PRE-DATA amendment comes first.
 
 ## The claim
 
