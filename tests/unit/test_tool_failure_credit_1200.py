@@ -207,6 +207,46 @@ def test_a_record_outcome_call_without_the_stamp_is_a_type_error() -> None:
         )
 
 
+def test_the_bridge_books_nothing_without_a_started_invocation() -> None:
+    """No pending entry (never started, a human driving, a speculative call): ``None``, nothing booked."""
+    from maxim.bridges.tool_pain_bridge import ToolPainBridge
+
+    nac = NAc(NACConfig())
+    bridge = ToolPainBridge(nac=nac, pain_detector=None)
+    assert bridge.record_tool_failure(TOOL, "never-started") is None
+    assert nac._links == {}
+
+
+def test_a_failure_whose_event_is_gone_carries_no_stamp_and_no_surprise() -> None:
+    """The event aged out or was consumed before the booking: no link, so no stamp (dispatch books as before) and
+    no surprise noted (``rpe`` stays unmeasured, not a measured 0.0)."""
+    executor, nac = _executor(_Flaky())
+    real_start = executor._tool_pain_bridge.record_tool_start
+
+    def _start_then_lose_the_event(tool_name: str, invocation_id: str, **kw: Any) -> Any:
+        out = real_start(tool_name, invocation_id, **kw)
+        nac._pending_events.clear()  # stands in for the 300 s window expiring mid-run
+        return out
+
+    executor._tool_pain_bridge.record_tool_start = _start_then_lose_the_event
+    out = executor.execute({"tool_name": TOOL, "params": {}})
+    assert (out.nac_failure_booked, out.rpe) == (None, None)
+
+
+def test_a_bridge_error_degrades_to_dispatch_booking() -> None:
+    """A raising bridge never fails the call: the output carries no stamp, so dispatch books the NEGATIVE."""
+    executor, nac = _executor(_Flaky())
+
+    def _boom(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("bridge down")
+
+    executor._tool_pain_bridge.record_tool_failure = _boom
+    out = executor.execute({"tool_name": TOOL, "params": {}})  # the executor's own contract: it does not raise
+    assert (out.success, out.nac_failure_booked) == (False, None)
+    _execute_and_learn(executor, nac, {"tool_name": TOOL, "params": {}})
+    assert [link.outcome_type for link in _links(nac, f"tool:{TOOL}", Valence.NEGATIVE)] == ["tool_result"]
+
+
 def _prefetch(ok: bool) -> NAc:
     from maxim.runtime.prefetch import SpeculativePrefetcher
 
