@@ -625,6 +625,18 @@ def stamp_instrument_check(report: dict, *, mock: bool, passed: bool) -> dict:
     return report
 
 
+def is_ancestor_of_main(repo_root: Path | str, sha: str) -> bool:
+    """True when commit ``sha`` is an ancestor of ``origin/main`` (fetched first, best effort: an offline box
+    judges against the ``origin/main`` it has). Any git failure reads False: unknown is never "on main". Lifted
+    from ``r3_run`` (the gauntlet's cal hash), shared with ``exp60_run`` (the apparatus record's commit)."""
+    try:
+        subprocess.run(["git", "fetch", "-q", "origin", "main"], cwd=repo_root, check=False, timeout=60)
+        rc = subprocess.run(["git", "merge-base", "--is-ancestor", sha, "origin/main"], cwd=repo_root).returncode
+        return rc == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def instrument_check_authorizes(record: dict) -> str | None:
     """Why an apparatus record does NOT authorize a live run, or None when it does (M1b PR 5a-2): it must be a
     stamped, real ``instrument_check`` that ended ``ok`` and passed at its frozen parameters. ``all_pass`` alone
