@@ -64,6 +64,7 @@ import time
 from collections.abc import Callable
 from typing import Any, Mapping
 
+from maxim.utils.logging import log_swallowed_exception
 from maxim.models.language.cancellation import is_shutdown_requested
 from maxim.models.language.config import LLMConfig
 from maxim.models.language.types import (
@@ -401,7 +402,8 @@ class _MaximPeerBackend:
                 timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=3.0, total_s=4.0),
             )
             return json.loads(resp.content or b"{}")
-        except Exception:  # noqa: BLE001 — discovery is best-effort
+        except Exception as e:  # noqa: BLE001 — every probe here is best effort; a down leader is routine
+            log_swallowed_exception(e, site="peer_backend.get_json", logger=logger, level=logging.DEBUG)
             return None
 
     @staticmethod
