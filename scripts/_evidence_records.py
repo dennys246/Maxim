@@ -273,6 +273,13 @@ def judge_provenance(prov, j: Judgement, ctx: Ctx, label: str, *, allow_dirty_ok
             j.allowed_dirty = True
         else:
             j.fail(f"{label}: working_tree_dirty_src_scripts is {dirty!r} without a granted allow_dirty")
+    elif prov.get("allow_dirty") is True:
+        # An allowance granted on a CLEAN tree: an apparatus input waived past its committed-on-main check
+        # (exp60_run --allow-dirty). Established like any allowance, and never support; refused where none is accepted.
+        if allow_dirty_ok:
+            j.allowed_dirty = True
+        else:
+            j.fail(f"{label}: allow_dirty is granted where no allowance is accepted")
     return tree
 
 

@@ -282,7 +282,10 @@ Owner decisions (2026-09-30), in order:
   passing instrument check (`_provenance.instrument_check_authorizes`), no longer on `all_pass` — so a pre-M1b
   apparatus record is refused and the check must be re-run before the next live campaign (R3 reads the DATED
   record `exp60_water_apparatus_2026-09-17.json`, Exp 60/61 `exp60_water_apparatus.json`: the re-check's `--out`
-  must be the path each harness reads, #1019); a verdict's `mock` is
+  must be the path each harness reads, #1019). **Superseded 2026-10-10:** that remedy is closed, since both
+  records are in the shrink-only `evidence_legacy.json` and an overwrite fails the gate. Exp 60 names its fresh
+  check with `exp60_run.py run --apparatus-record PATH` (committed on main for a gated `--out`, bound to the
+  anchor's `measured` block); Exp 61, R3 and `r3_pilot` cannot run live until #1215; a verdict's `mock` is
   judged over the WHOLE file for every verdict writer (smokes go in their own files).
 
 - **Event logs** (`orient_backbone/live_common.py::JsonlLog`, 10 constructions): `mock` and `evidence` are
@@ -524,7 +527,7 @@ name; unknown → NOT-ESTABLISHED. Outcomes: ESTABLISHED / LEGACY (in the snapsh
   (`completed`, `max_turns`, `complete`, `all_encounters_complete`, `campaign_end:*`; pinned against
   `sim_types.SIMULATION_FAILURE_FINISH_REASONS`), `resume_loaded` true when resumed.
 - **harness_row file:** only `harness_row` + `harness_header` lines; any `mock` not `false` sinks the file; every
-  non-`failed` row established (full hash, clean or `allow_dirty`; a header's or failed row's provenance is judged
+  non-`failed` row established (full hash, clean or `allow_dirty`; an `allow_dirty: true` on a CLEAN tree, which `exp60_run --allow-dirty` stamps when it waives an uncommitted apparatus record, is an allowance too: allowed-dirty, never sole support, refused on a verdict (2026-10-10); a header's or failed row's provenance is judged
   too); `harness_family` is `spawning` or `in_process`;
   a `spawning` row's non-empty `sims[]` judged by the sim rules on the echoed fields, an `in_process` row carries
   none; one `code_tree_sha256` per file.
