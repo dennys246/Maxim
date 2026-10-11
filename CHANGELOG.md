@@ -33,8 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   outside `available_tools`, non-mapping params or a non-finite confidence); `None` means idle, never a fallback.
   Threaded through `run_agentic_loop(substrate_policy=)`, `loop_substrate.substrate_tick` and
   `minecraft_harness.run_minecraft_aut` / `_loop_kwargs`, each forwarding it only when given, so a run without a
-  policy is unchanged. No production caller yet: the B1 floor harness is its first
-  (docs/plans/baseline_floors_b1_build.md).
+  policy is unchanged. NAc still books credit from the executed pick (the policy only never reads it), and a
+  raising policy ends the loop. No production caller yet: the B1 floor harness is its first
+  (`docs/plans/baseline_floors.md` §B1, #1224).
 
 ### Added
 

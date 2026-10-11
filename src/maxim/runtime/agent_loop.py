@@ -944,7 +944,7 @@ def run_agentic_loop(
     aut_mode: str = "llm-primary",  # "llm-primary" | "substrate-primary" — Phase -1 of grounded_language_acquisition.md
     substrate_telemetry: Any
     | None = None,  # SubstrateTelemetry writer (Phase 0). Called after each substrate-primary tick when set.
-    substrate_policy: Any | None = None,  # SubstratePolicy picking in place of recommend_action (baseline floors B1)
+    substrate_policy: _sp.SubstratePolicy | None = None,  # in place of recommend_action (B1); a raise ends the loop
     substrate_action_gate: Any | None = None,  # Callable[[], bool] — turn-scoped action budget for the
     # substrate-primary branch (the Exp 48 thrashing fix). When set and returning False, the branch
     # skips proposing this cadence tick (telemetry still fires with proposal=None). The orchestrator

@@ -127,7 +127,9 @@ def test_a_pick_outside_the_available_tools_raises(aut, pick):
         _propose(aut, _Policy(pick=pick))
 
 
-@pytest.mark.parametrize("bad", [{"params": [1, 2]}, {"confidence": float("inf")}, {"confidence": True}])
+@pytest.mark.parametrize(
+    "bad", [{"params": [1, 2]}, {"confidence": float("inf")}, {"confidence": True}, {"confidence": "high"}]
+)
 def test_malformed_params_or_confidence_raise(aut, bad):
     tool = next(t for t in aut.executor.registry.list() if t.endswith("escape_water"))
     with pytest.raises(SubstratePolicyError):
@@ -147,6 +149,10 @@ def test_without_a_policy_recommend_action_runs_with_its_usual_arguments(aut, mo
         "current_clusters",
         "min_confidence",
     }
+    from maxim.runtime.substrate_proposal import _resolve_min_confidence
+
+    assert kw["current_cluster_id"] == (kw["current_clusters"] or {}).get("interoception")
+    assert kw["min_confidence"] == _resolve_min_confidence(None)
 
 
 @pytest.mark.timeout(120)
@@ -199,3 +205,13 @@ def test_harness_kwargs_carry_the_policy_only_when_given(aut):
         ]
         is policy
     )
+
+
+@pytest.mark.parametrize("pick_extra", [{}, {"confidence": None}])
+def test_an_absent_or_none_confidence_reports_at_the_min_confidence_floor(aut, pick_extra):
+    from maxim.runtime.substrate_proposal import _resolve_min_confidence
+
+    tool = next(t for t in aut.executor.registry.list() if t.endswith("escape_water"))
+    proposal = _propose(aut, _Policy(pick={"tool_name": tool, "reasoning": None, **pick_extra}))
+    assert proposal is not None and math.isclose(proposal.confidence, _resolve_min_confidence(None))
+    assert proposal.reasoning == "[_Policy]"

@@ -47,7 +47,10 @@ import logging
 import socket
 import threading
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from maxim.runtime.substrate_proposal import SubstratePolicy
 
 logger = logging.getLogger(__name__)
 
@@ -338,7 +341,7 @@ def _loop_kwargs(
     stop_event: threading.Event,
     target_hz: float,
     substrate_telemetry: Any | None = None,
-    substrate_policy: Any | None = None,
+    substrate_policy: "SubstratePolicy | None" = None,
 ) -> dict[str, Any]:
     """The `run_agentic_loop` keyword set — a DETERMINISTIC function (it mints a fresh
     autonomy controller per call, so not pure) so the ship
@@ -391,7 +394,7 @@ def run_minecraft_aut(
     target_hz: float = 4.0,
     stop_event: "threading.Event | None" = None,
     substrate_telemetry: Any | None = None,
-    substrate_policy: Any | None = None,
+    substrate_policy: "SubstratePolicy | None" = None,
 ) -> None:
     """Run one AUT's full agent loop (blocking; run each AUT on a thread)."""
     from maxim.agents.maxim_agent import MaximAgent

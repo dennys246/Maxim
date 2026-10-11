@@ -555,7 +555,13 @@ class SubstratePolicy(Protocol):
     channel values that encode read. It receives no NAc and no drives, so a policy cannot read Maxim's
     learning (the learned threat need, causal links or fear). It returns ``recommend_action``'s dict shape
     (``tool_name``, optional ``params``, ``confidence``, ``reasoning``) or ``None`` for idle; ``None`` never
-    falls back to ``recommend_action``. A policy bypasses ``min_confidence`` by design.
+    falls back to ``recommend_action``. A policy bypasses ``min_confidence`` by design; a pick with no (or a
+    ``None``) confidence is reported at the ``min_confidence`` floor, and ``params=None`` becomes ``{}``.
+
+    NAc still books credit from the EXECUTED pick (the proposal carries this tick's clusters, so
+    ``record_outcome`` writes causal links and cluster reward bias): the policy only never READS it, so a
+    baseline arm needs its own persistence. A policy that raises (``SubstratePolicyError`` included) ends
+    ``run_agentic_loop`` without its final persist or ``end_bio_session``; callers treat that as a refused run.
     """
 
     def select(
@@ -588,7 +594,10 @@ def _validated_pick(pick: Any, available_tools: Sequence[str]) -> dict[str, Any]
     conf = pick.get("confidence")
     if conf is not None and (isinstance(conf, bool) or not isinstance(conf, (int, float)) or not math.isfinite(conf)):
         raise SubstratePolicyError(f"substrate policy confidence must be finite, got {conf!r}")
-    return dict(pick)
+    out = dict(pick)
+    if conf is None:
+        out.pop("confidence", None)  # absent and None both report at the min_confidence floor
+    return out
 
 
 def _select_action(
@@ -598,6 +607,7 @@ def _select_action(
     agent_id: str,
     available_tools: list[str],
     drives: dict[str, float],
+    cluster_id: str | None,
     clusters: dict[str, str],
     channel_values: dict[str, dict[str, float]],
     min_confidence: float,
@@ -609,7 +619,7 @@ def _select_action(
             agent_id=agent_id,
             available_tools=available_tools,
             current_drives=drives or None,
-            current_cluster_id=clusters.get(INTEROCEPTION_TAG),
+            current_cluster_id=cluster_id,
             current_clusters=clusters or None,
             min_confidence=min_confidence,
         )
@@ -623,7 +633,7 @@ def _select_action(
         available_tools,
     )
     if pick is not None:
-        pick["reasoning"] = f"[{type(policy).__name__}] {pick.get('reasoning', '')}".rstrip()
+        pick["reasoning"] = f"[{type(policy).__name__}] {pick.get('reasoning') or ''}".rstrip()
     return pick
 
 
@@ -848,7 +858,7 @@ def propose_via_substrate(
     resolved_min_confidence = _resolve_min_confidence(min_confidence)
     recommendation = _select_action(
         nac=nac, policy=policy, agent_id=agent_id, available_tools=available_tools, drives=drives,
-        clusters=clusters, channel_values=channel_values, min_confidence=resolved_min_confidence,
+        cluster_id=cluster_id, clusters=clusters, channel_values=channel_values, min_confidence=resolved_min_confidence,
     )  # fmt: skip
     if recommendation is None:
         return None
