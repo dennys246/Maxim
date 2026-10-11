@@ -939,6 +939,21 @@ def test_a_symlink_is_not_evidence(rig) -> None:
     assert j.status == G.NOT_ESTABLISHED and any("symlink" in r for r in j.reasons), j.reasons
 
 
+def test_an_allowance_on_a_clean_tree_is_still_an_allowance(rig) -> None:
+    """exp60_run --allow-dirty waives an uncommitted apparatus record on a CLEAN tree: the row carries
+    `allow_dirty: true` with `working_tree_dirty_src_scripts: false`, and is judged allowed-dirty (never sole
+    support), not clean; a verdict, which accepts no allowance, is refused for it."""
+    rig.base(STALE_BOTH)
+    waived = _row(rig, provenance=_prov(rig, allow_dirty=True))
+    rig.write(f"{DATA}/waived.jsonl", json.dumps(waived) + "\n")
+    rig.commit("rows", HEAD_DATE)
+    j = _judge(rig, f"{DATA}/waived.jsonl")
+    assert j.status == G.ESTABLISHED and j.allowed_dirty, j.reasons
+    jv = R.Judgement(path="v")
+    R.judge_provenance(_prov(rig, allow_dirty=True), jv, _ctx(rig), "verdict provenance", allow_dirty_ok=False)
+    assert jv.status == R.NOT_ESTABLISHED and any("no allowance is accepted" in r for r in jv.reasons), jv.reasons
+
+
 def test_an_allowance_establishes_but_never_supports(rig) -> None:
     rig.base(STALE_BOTH)
     granted = _row(rig, provenance=_prov(rig, working_tree_dirty_src_scripts=True, allow_dirty=True))

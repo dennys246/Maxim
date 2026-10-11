@@ -9,8 +9,10 @@ with the changes the four design lenses required. Per seed × arm:
 
   1. PREFLIGHTS (all before any measurement; refusal = exit 3/4, no behavioural data):
      - both gated records on main PASS (the apparatus check through
-       ``_provenance.instrument_check_authorizes``, M1b PR 5a-2; geometry gate
-       ``run_gate.pass``) and the anchor carries the check's stamped ``measured`` onset;
+       ``_provenance.instrument_check_authorizes``, M1b PR 5a-2, and — for a gated ``--out`` —
+       committed on main byte for byte, ``committed_record_problem``; geometry gate
+       ``run_gate.pass``, whose on-main state is NOT checked) and the anchor carries the check's
+       stamped ``measured`` onset from the SAME check (``anchor_record_mismatch``);
      - frozen-apparatus fingerprint asserted + stamped — fear α/cap/θ/allowlist (WITH
        ``drive:oxygen``), encoder threshold, explore weight, the OXYGEN drive spec, and the
        declared ranges of ``is_in_water``/``oxygen``/``saturation`` (they decide separability);
@@ -66,20 +68,34 @@ preflight refuses a loop that does not reach its substrate branch >= 4 times in 
     (cd scripts/minecraft_bridge && node index.js --mc_host=127.0.0.1 --mc_port=25565 \\
         --bridge_port=25567 --username=maxim --state_interval_ms=100)
     export PYTHONPATH="$PWD/src"
-    python scripts/survival_world/exp60_run.py run --arm fear --rcon-password '<pw>' \\
-        --username maxim --out docs/experiments/data/exp60_trials_<date>.jsonl --write-experiment-results
-    python scripts/survival_world/exp60_run.py run --arm ablated ...   # same --out, other arm, same tree
-    python scripts/survival_world/exp60_run.py verdict --data docs/experiments/data/exp60_trials_<date>.jsonl \\
-        --json docs/experiments/data/exp60_verdict.json --write-experiment-results
+    python scripts/survival_world/exp60_run.py run --arm fear \\
+        --apparatus-record docs/experiments/data/rerun_exp60_<date>/water_apparatus.json --rcon-password '<pw>' \\
+        --username maxim --out docs/experiments/data/rerun_exp60_<date>/trials.jsonl --write-experiment-results
+    python scripts/survival_world/exp60_run.py run --arm ablated ...   # same --out + record, other arm, same tree
+    python scripts/survival_world/exp60_run.py verdict --data docs/experiments/data/rerun_exp60_<date>/trials.jsonl \\
+        --json docs/experiments/data/rerun_exp60_<date>/verdict.json --write-experiment-results
+
+``--apparatus-record`` names the water check that authorizes the run (default ``APPARATUS_RECORD``, the
+committed pre-M1b record, which ``instrument_check_authorizes`` refuses: a re-run passes the fresh check's
+``--out``). A named record goes through the same rule as the default and must be the check that last stamped the
+anchor's ``measured`` block (same ``ts``); a missing or refused record ends the run (exit 3), never the default in
+its place. ENFORCED for a gated ``--out`` (under ``docs/experiments/data/``): the record is tracked, its bytes equal
+its blob at HEAD, and HEAD is an ancestor of ``origin/main`` (``committed_record_problem``), else exit 3 before any
+RCON or bridge connection; ``--allow-dirty`` passes it, stamped as ``apparatus_record_check`` in every row. Every row stamps ``apparatus_record`` (the path read), ``apparatus_record_sha256`` and
+``apparatus_record_ts``, and the verdict lists them as ``apparatus_records``. One verdict is one apparatus record:
+rows naming more than one (by path + sha256; a legacy row with neither never matches a named one) make the verdict
+INCOMPLETE with ``incomplete_cause: "mixed_apparatus_records"``.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import itertools
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -98,6 +114,8 @@ from _provenance import (  # noqa: E402
     in_process_code_provenance,
     append_refusal,
     instrument_check_authorizes,
+    is_ancestor_of_main,
+    is_gated_path,
     stamp_harness_row,
     stamp_verdict,
     any_not_stamped_real,
@@ -232,16 +250,81 @@ def select_run(
     return rows, dups
 
 
+def apparatus_records_used(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Every distinct apparatus record the rows say authorized them, as ``{path, sha256, ts}`` (pure).
+
+    A verdict names what its rows were run under: the path and bytes digest since ``--apparatus-record``
+    (rows from before it carry only ``apparatus_record_ts``, so their path and digest read ``None``)."""
+    seen = {
+        (r.get("apparatus_record"), r.get("apparatus_record_sha256"), r.get("apparatus_record_ts")): None
+        for r in records
+    }
+    return [{"path": p, "sha256": s, "ts": t} for p, s, t in sorted(seen, key=repr)]
+
+
+def apparatus_identity(row: dict[str, Any]) -> tuple[Any, ...]:
+    """Which apparatus record a row ran under, for the one-record-per-verdict rule (pure).
+
+    Named by ``(path, sha256)``. A row missing either (a legacy row from before ``--apparatus-record``) cannot say
+    which bytes it read, so it is keyed by what it does carry, ``("unnamed", path, sha256, ts)``: it never matches a
+    named record (a mix of legacy and named rows is refused), and legacy rows match each other only when they agree
+    on every field, the ``ts`` included."""
+    path, sha = row.get("apparatus_record"), row.get("apparatus_record_sha256")
+    if path is not None and sha is not None:
+        return ("named", path, sha)
+    return ("unnamed", path, sha, row.get("apparatus_record_ts"))
+
+
+def anchor_record_mismatch(measured: Any, apparatus: dict[str, Any]) -> str | None:
+    """Why the anchor's ``measured`` block is NOT the given apparatus check's, or None when it is (pure).
+
+    ``exp60_water_check`` stamps its measured edges into the anchor on a PASS, carrying the report's own ``ts``. The
+    run takes its probe cap from the record and its training cap from the anchor, so the two must be one check: the
+    same ``ts`` and the same earliest pain edge."""
+    if not isinstance(measured, dict):
+        return "the anchor carries no measured block — run exp60_water_check first"
+    ts = apparatus.get("ts")
+    if isinstance(ts, bool) or not isinstance(ts, (int, float)):
+        return f"the apparatus record carries no epoch ts ({ts!r})"
+    if measured.get("ts") != ts:
+        return (
+            f"the anchor's measured edges are from the check at ts {measured.get('ts')!r}, the record is the check at "
+            f"ts {ts!r} — pass the record of the check that last stamped the anchor, or re-run the check"
+        )
+    edge = min_pain_edge_s(apparatus)
+    if measured.get("t_pain_edge_min_s") != edge:
+        return f"the anchor's pain edge {measured.get('t_pain_edge_min_s')!r} is not the record's {edge!r}"
+    return None
+
+
 def compute_verdict(
     records: list[dict[str, Any]], *, gates: dict[str, Any] = GATES, run_id: "list[str] | str | None" = None
 ) -> dict[str, Any]:
     """The prereg's gate decision from per-seed records (pure).
 
     ``verdict`` ∈ {"EARNED", "NULL", "INCOMPLETE"}: INCOMPLETE when either arm has fewer
-    clean seeds than the prereg requires or duplicate (arm, seed) rows are present
-    (refusals are named, never silently dropped); NULL when the arms have the seeds but a
+    clean seeds than the prereg requires, duplicate (arm, seed) rows are present, or the rows
+    name more than one apparatus record (judged over the whole file, before ``run_id``; see
+    :func:`apparatus_identity`); each INCOMPLETE names its ``incomplete_cause``: ``mixed_apparatus_records``,
+    ``duplicate_arm_seed_rows``, ``too_few_clean_seeds`` or ``no_clean_placements`` (refusals are named, never silently dropped); NULL when the arms have the seeds but a
     gate fails (a null ships as a null).
     """
+    # One apparatus record per verdict (owner decision 2026-10-10): the probe cap is the record's, so arms (or seeds)
+    # run under two records are not one experiment. Judged over the WHOLE file, before `--run-id` selects rows, so a
+    # killed run under one record beside complete runs under another still refuses; refused rows count too.
+    identities = {apparatus_identity(r) for r in records}
+    if len(identities) > 1:
+        return {
+            "_format_version": "1.0",
+            "record_kind": "verdict",
+            "kind": "exp60_verdict",
+            "verdict": "INCOMPLETE",
+            "incomplete_cause": "mixed_apparatus_records",
+            "reason": f"the file's rows name {len(identities)} apparatus records (by path + sha256; a legacy row with "
+            "no path or digest never matches a named one; judged before --run-id) — one verdict is one apparatus "
+            "record: re-run into a fresh --out under one --apparatus-record",
+            "apparatus_records": apparatus_records_used(records),
+        }
     records, dups = select_run(records, run_id)
     if dups:
         return {
@@ -249,8 +332,10 @@ def compute_verdict(
             "record_kind": "verdict",  # M1b (#1003)
             "kind": "exp60_verdict",
             "verdict": "INCOMPLETE",
+            "incomplete_cause": "duplicate_arm_seed_rows",
             "reason": f"duplicate (arm, seed) rows: {dups} — pass --run-id ONCE PER ARM (each arm invocation mints its own id)",
             "duplicates": dups,
+            "apparatus_records": apparatus_records_used(records),
         }
     clean = [r for r in records if r.get("refusal") is None and "post" in r and "pre" in r]
     refused = [
@@ -281,9 +366,11 @@ def compute_verdict(
         "per_seed": per_seed,
         "refused": refused,
         "n_clean": {arm: len(rows) for arm, rows in by_arm.items()},
+        "apparatus_records": apparatus_records_used(records),
     }
     if any(len(by_arm.get(arm, [])) != need for arm in ("fear", "ablated")):
         out["verdict"] = "INCOMPLETE"
+        out["incomplete_cause"] = "too_few_clean_seeds"
         out["reason"] = f"expected exactly {need} clean seeds per arm: {out['n_clean']} (refusals: {len(refused)})"
         return out
     fear_post = [s["post_p_surface"] for s in per_seed["fear"] if s["post_p_surface"] is not None]
@@ -291,6 +378,7 @@ def compute_verdict(
     abl_post = [s["post_p_surface"] for s in per_seed["ablated"] if s["post_p_surface"] is not None]
     if len(fear_post) < need or len(abl_post) < need or len(fear_pre) < need:
         out["verdict"] = "INCOMPLETE"
+        out["incomplete_cause"] = "no_clean_placements"
         out["reason"] = "a seed has no clean placements in a probe (all dirty/never-submerged)"
         return out
     perm = exact_permutation_p(fear_post, abl_post)
@@ -324,6 +412,88 @@ def compute_verdict(
 
 
 # ─────────────────────────────────── live ───────────────────────────────────
+
+
+class ApparatusRecordError(Exception):
+    """A named apparatus record that cannot be read as one: the run refuses (exit 3), never falls back."""
+
+
+def load_apparatus_record(arg: "str | Path") -> dict[str, Any]:
+    """Read the apparatus record ``arg`` names (relative = under the repo root) ONCE: its parsed ``record``, the
+    ``path`` to stamp (repo-relative when inside the repo, else absolute) and the ``sha256`` of the bytes parsed.
+    Raises :class:`ApparatusRecordError` when it is missing, unreadable, not JSON or not an object."""
+    raw = Path(arg).expanduser()
+    p = raw if raw.is_absolute() else (C.REPO_ROOT / raw)
+    try:
+        data = p.read_bytes()
+    except OSError as exc:
+        raise ApparatusRecordError(
+            f"apparatus record {p} cannot be read ({type(exc).__name__}) — it must exist (on main) before live trials"
+        ) from exc
+    try:
+        record = json.loads(data)
+    except ValueError as exc:
+        raise ApparatusRecordError(f"apparatus record {p} is not JSON ({exc})") from exc
+    if not isinstance(record, dict):
+        raise ApparatusRecordError(f"apparatus record {p} is not a JSON object")
+    resolved = p.resolve()
+    try:
+        shown = resolved.relative_to(Path(C.REPO_ROOT).resolve()).as_posix()
+    except ValueError:
+        shown = str(resolved)
+    return {
+        "record": record,
+        "path": shown,
+        "abs_path": resolved,
+        "bytes": data,
+        "sha256": hashlib.sha256(data).hexdigest(),
+    }
+
+
+def committed_record_problem(repo_root: "str | Path", path: "str | Path", data: bytes) -> str | None:
+    """Why the apparatus record is NOT the committed, on-main record a gated run needs, or None when it is.
+
+    The bytes the run read and hashed (``data``) must be: (a) a path inside the repo that git tracks, (b) equal to
+    that path's blob at HEAD, and (c) from a HEAD that is an ancestor of ``origin/main``
+    (``_provenance.is_ancestor_of_main``, shared with R3). Any git failure is a problem: unknown is never committed.
+    """
+    root = Path(repo_root).resolve()
+    resolved = Path(path).resolve()
+    try:
+        rel = resolved.relative_to(root).as_posix()
+    except ValueError:
+        return f"{resolved} is outside the repo ({root}) — a gated run reads a record committed on main"
+    try:
+        tracked = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", "--", rel], cwd=root, capture_output=True, timeout=30
+        )
+        if tracked.returncode != 0:
+            return f"{rel} is not tracked by git — commit it (and merge it to main) first"
+        blob = subprocess.run(["git", "cat-file", "blob", f"HEAD:{rel}"], cwd=root, capture_output=True, timeout=30)
+        if blob.returncode != 0:
+            return f"{rel} is not in HEAD — commit it (and merge it to main) first"
+        if blob.stdout != data:
+            return f"{rel} on disk differs from its blob at HEAD — the run must read the committed bytes"
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, timeout=30)
+        if head.returncode != 0:
+            return f"HEAD cannot be read ({head.stderr.strip()})"
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"git could not establish the record ({type(exc).__name__}: {exc})"
+    sha = head.stdout.strip()
+    if not is_ancestor_of_main(root, sha):
+        try:
+            ref = subprocess.run(
+                ["git", "rev-parse", "--verify", "--quiet", "origin/main^{commit}"],
+                cwd=root,
+                capture_output=True,
+                timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return f"origin/main cannot be read ({type(exc).__name__}: {exc})"
+        if ref.returncode != 0:
+            return "origin/main is not a valid ref (fetch it) — the record cannot be shown to be on main"
+        return f"HEAD {sha[:12]} is not an ancestor of origin/main — the record is not on main"
+    return None
 
 
 def _write_row(out_path: Path, record: dict) -> None:
@@ -368,11 +538,36 @@ def _run(args: argparse.Namespace) -> int:
             print(f"[FAIL] gated record missing: {p} — it must be on main before live trials")
             raise SystemExit(3)
 
-    apparatus = _load(APPARATUS_RECORD)
+    # The record THIS run is authorized by: `--apparatus-record`, default the module's APPARATUS_RECORD. No fallback:
+    # a named record that is missing, unreadable or refused ends the run here, never the default in its place.
+    try:
+        apparatus_used = load_apparatus_record(args.apparatus_record)
+    except ApparatusRecordError as exc:
+        print(f"[FAIL] {exc}")
+        return 3
+    apparatus, apparatus_path = apparatus_used["record"], apparatus_used["path"]
+    # A GATED run (rows into docs/experiments/data/) reads the record COMMITTED on main, byte for byte: enforced
+    # here, before any RCON or bridge connection. --allow-dirty passes it through, stamped into every row.
+    gated = is_gated_path(C.REPO_ROOT, out_path)
+    record_problem = (
+        committed_record_problem(C.REPO_ROOT, apparatus_used["abs_path"], apparatus_used["bytes"]) if gated else None
+    )
+    if record_problem is not None and not args.allow_dirty:
+        print(
+            f"[FAIL] apparatus record {apparatus_path} is not the committed record on main a gated run needs: "
+            f"{record_problem} (or pass --allow-dirty, stamped into every row)"
+        )
+        return 3
+    if record_problem is not None:
+        print(f"WARNING: --allow-dirty: apparatus record {apparatus_path} is not committed on main: {record_problem}")
+        # The waiver the ledger gate reads (`_evidence_records.judge_provenance`: allowed-dirty, never sole support),
+        # even on a clean tree; `apparatus_record_check` below keeps the detail.
+        provenance = {**provenance, "allow_dirty": True}
+    apparatus_check = {"gated": gated, "problem": record_problem, "allow_dirty": record_problem is not None}
     gate = _load(args.gate_record)
     refusal = instrument_check_authorizes(apparatus)
     if refusal is not None:
-        print(f"[FAIL] apparatus record {APPARATUS_RECORD} does not authorize a run: {refusal}")
+        print(f"[FAIL] apparatus record {apparatus_path} does not authorize a run: {refusal}")
         return 3
     if not (gate.get("run_gate") or {}).get("pass"):
         print(f"[FAIL] geometry gate record does not carry run_gate.pass=true: {args.gate_record}")
@@ -388,8 +583,14 @@ def _run(args: argparse.Namespace) -> int:
         return 3
     if pain_edge_min is None:
         print(
-            f"[FAIL] apparatus record carries no measured t_pain_edge — the probe cap cannot be set: {APPARATUS_RECORD}"
+            f"[FAIL] apparatus record carries no measured t_pain_edge — the probe cap cannot be set: {apparatus_path}"
         )
+        return 3
+    # The probe cap comes from the record, the training cap from the anchor's `measured` block: both must be the
+    # SAME check's, or the run would mix two apparatus measurements (a record chosen by flag makes that easy).
+    mismatch = anchor_record_mismatch(geom.get("measured"), apparatus)
+    if mismatch is not None:
+        print(f"[FAIL] anchor {ANCHOR_FILE} and apparatus record {apparatus_path} disagree: {mismatch}")
         return 3
     probe_cap_s = pain_edge_min - FROZEN["probe_cap_margin_s"]  # US-FREE window
     train_cap_s = onset_min - FROZEN["train_cap_margin_s"]  # pre-damage conditioning
@@ -437,7 +638,14 @@ def _run(args: argparse.Namespace) -> int:
                 "train_cap_s": train_cap_s,
                 "pain_edge_min_s": pain_edge_min,
                 "provenance": provenance,
+                # The apparatus record this run read (M1b: what authorized it, not only when that check ran):
+                # its path (repo-relative when inside the repo), the sha256 of the bytes read, and its `ts`.
+                "apparatus_record": apparatus_path,
+                "apparatus_record_sha256": apparatus_used["sha256"],
                 "apparatus_record_ts": apparatus.get("ts"),
+                # gated: was the committed-on-main preflight applied; problem: why it failed (only with --allow-dirty)
+                "apparatus_record_check": apparatus_check,
+                "anchor_measured": geom.get("measured"),
                 "gate_record_code_hash": gate.get("code_hash"),
                 "refusal": None,
             }
@@ -554,7 +762,7 @@ def _verdict(args: argparse.Namespace) -> int:
         scope={"run_ids": args.run_id} if args.run_id else {"all_rows": True},
     )
     print(json.dumps({k: v[k] for k in v if k not in ("per_seed", "gates")}, indent=2))
-    print(f"VERDICT: {v['verdict']}")
+    print(f"VERDICT: {v['verdict']}" + (f" ({v['incomplete_cause']})" if v.get("incomplete_cause") else ""))
     if args.json:
         # The verdict is the HEADLINE record: the same gated-evidence path as `run`
         # (dirty-tree refusal + the --write-experiment-results redirect), not the
@@ -585,6 +793,17 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--arm", choices=("fear", "ablated"), required=True)
     r.add_argument("--seeds", type=int, default=len(FROZEN["seeds"]))
     r.add_argument("--out", required=True, help="a fresh rows file; both arms go into the same one for `verdict`")
+    r.add_argument(
+        "--apparatus-record",
+        default=APPARATUS_RECORD,
+        help="the water apparatus check that authorizes this run (repo-relative or absolute; default %(default)s). "
+        "It passes the same rule as the default (a stamped, real, passing instrument check with a measured pain "
+        "edge, from the same check as the anchor's `measured` block); a missing or refused record ends the run, "
+        "never falls back to the default. With a gated --out (under docs/experiments/data/) it must also be "
+        "tracked, byte-equal to its blob at HEAD, and HEAD an ancestor of origin/main (--allow-dirty overrides, "
+        "stamped). Its path (repo-relative; absolute when outside the repo, which a gated run refuses) and sha256 "
+        "are stamped into every row and the verdict",
+    )
     r.add_argument("--gate-record", default=GATE_RECORD)
     r.add_argument("--bridge-host", default="127.0.0.1")
     r.add_argument("--bridge-port", type=int, default=25567)
