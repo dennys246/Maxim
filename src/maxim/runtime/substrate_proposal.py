@@ -23,7 +23,9 @@ import logging
 import math
 import os
 import time
-from typing import TYPE_CHECKING, Any
+import types
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Protocol
 
 from maxim.agents.llm_worker import LLMProposal
 from maxim.embodiment.sensory_streams import AUDIO_TAG, INTEROCEPTION_TAG, WORLD_TAG, ModalityChannel
@@ -545,6 +547,96 @@ class _NoSituationCue:
 NO_SITUATION_CUE = _NoSituationCue()
 
 
+class SubstratePolicy(Protocol):
+    """What picks the substrate proposal in place of ``NAc.recommend_action`` (baseline floors B1).
+
+    ``select`` receives this tick's ``available_tools`` (after the introspection filter and any whitelist),
+    the active per-modality ``clusters`` from the encode, and ``observation``: a read-only copy of the WORLD
+    channel values that encode read. It receives no NAc and no drives, so a policy cannot read Maxim's
+    learning (the learned threat need, causal links or fear). It returns ``recommend_action``'s dict shape
+    (``tool_name``, optional ``params``, ``confidence``, ``reasoning``) or ``None`` for idle; ``None`` never
+    falls back to ``recommend_action``. A policy bypasses ``min_confidence`` by design; a pick with no (or a
+    ``None``) confidence is reported at the ``min_confidence`` floor, and ``params=None`` becomes ``{}``.
+
+    NAc still books credit from the EXECUTED pick (the proposal carries this tick's clusters, so
+    ``record_outcome`` writes causal links and cluster reward bias): the policy only never READS it, so a
+    baseline arm needs its own persistence. A policy that raises (``SubstratePolicyError`` included) ends
+    ``run_agentic_loop`` without its final persist or ``end_bio_session``; callers treat that as a refused run.
+    """
+
+    def select(
+        self,
+        *,
+        agent_id: str,
+        available_tools: Sequence[str],
+        clusters: Mapping[str, str] | None,
+        observation: Mapping[str, float],
+    ) -> Mapping[str, Any] | None: ...
+
+
+class SubstratePolicyError(ValueError):
+    """A substrate policy returned something the proposal cannot carry: a tool outside ``available_tools``,
+    non-mapping params, or a non-finite confidence. Raised, never silently dropped."""
+
+
+def _validated_pick(pick: Any, available_tools: Sequence[str]) -> dict[str, Any] | None:
+    """A policy's pick, checked: ``None`` stays idle; anything else must name an available tool."""
+    if pick is None:
+        return None
+    if not isinstance(pick, Mapping):
+        raise SubstratePolicyError(f"a substrate policy must return a mapping or None, got {type(pick).__name__}")
+    tool = pick.get("tool_name")
+    if not isinstance(tool, str) or tool not in available_tools:
+        raise SubstratePolicyError(f"substrate policy picked {tool!r}, which is not an available tool")
+    params = pick.get("params", {})
+    if params is not None and not isinstance(params, Mapping):
+        raise SubstratePolicyError(f"substrate policy params must be a mapping, got {type(params).__name__}")
+    conf = pick.get("confidence")
+    if conf is not None and (isinstance(conf, bool) or not isinstance(conf, (int, float)) or not math.isfinite(conf)):
+        raise SubstratePolicyError(f"substrate policy confidence must be finite, got {conf!r}")
+    out = dict(pick)
+    if conf is None:
+        out.pop("confidence", None)  # absent and None both report at the min_confidence floor
+    return out
+
+
+def _select_action(
+    *,
+    nac: Any,
+    policy: SubstratePolicy | None,
+    agent_id: str,
+    available_tools: list[str],
+    drives: dict[str, float],
+    cluster_id: str | None,
+    clusters: dict[str, str],
+    channel_values: dict[str, dict[str, float]],
+    min_confidence: float,
+) -> dict[str, Any] | None:
+    """The one selection step of ``propose_via_substrate``: ``NAc.recommend_action`` by default, or the given
+    policy (validated)."""
+    if policy is None:
+        return nac.recommend_action(
+            agent_id=agent_id,
+            available_tools=available_tools,
+            current_drives=drives or None,
+            current_cluster_id=cluster_id,
+            current_clusters=clusters or None,
+            min_confidence=min_confidence,
+        )
+    pick = _validated_pick(
+        policy.select(
+            agent_id=agent_id,
+            available_tools=tuple(available_tools),
+            clusters=types.MappingProxyType(dict(clusters)) if clusters else None,
+            observation=types.MappingProxyType(dict(channel_values.get(WORLD_TAG) or {})),
+        ),
+        available_tools,
+    )
+    if pick is not None:
+        pick["reasoning"] = f"[{type(policy).__name__}] {pick.get('reasoning') or ''}".rstrip()
+    return pick
+
+
 def propose_via_substrate(
     *,
     nac: Any,
@@ -553,8 +645,9 @@ def propose_via_substrate(
     situation_cue: "Callable[[str, dict[str, str] | None], Any] | _NoSituationCue",
     min_confidence: float | None = None,
     sensor_encoder: Any | None = None,
+    policy: SubstratePolicy | None = None,
 ) -> LLMProposal | None:
-    """Build an ``LLMProposal`` from ``NAc.recommend_action`` — no LLM call.
+    """Build an ``LLMProposal`` from ``NAc.recommend_action`` (or a :class:`SubstratePolicy`) — no LLM call.
 
     Called from the agent loop when ``aut_mode == "substrate-primary"`` in
     place of ``llm_worker.submit_context``. Returns ``None`` when the
@@ -579,6 +672,8 @@ def propose_via_substrate(
             nodes during substrate-primary runs — without it the
             text-only ``LinguisticEncoder`` path is the substrate's only
             front door, so substrate-primary mode never produces EC nodes.
+        policy: Optional :class:`SubstratePolicy` that picks in place of ``recommend_action``; everything
+            before (filter, encode, cluster note, cue, pain tick) and after the pick is shared. ``None``: today.
     """
     if situation_cue is None or not (situation_cue is NO_SITUATION_CUE or callable(situation_cue)):
         raise TypeError(
@@ -761,14 +856,10 @@ def propose_via_substrate(
         drives["threat"] = max(float(drives.get("threat", 0.0) or 0.0), fear_need)
 
     resolved_min_confidence = _resolve_min_confidence(min_confidence)
-    recommendation = nac.recommend_action(
-        agent_id=agent_id,
-        available_tools=available_tools,
-        current_drives=drives or None,
-        current_cluster_id=cluster_id,
-        current_clusters=clusters or None,
-        min_confidence=resolved_min_confidence,
-    )
+    recommendation = _select_action(
+        nac=nac, policy=policy, agent_id=agent_id, available_tools=available_tools, drives=drives,
+        cluster_id=cluster_id, clusters=clusters, channel_values=channel_values, min_confidence=resolved_min_confidence,
+    )  # fmt: skip
     if recommendation is None:
         return None
 

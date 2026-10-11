@@ -47,7 +47,10 @@ import logging
 import socket
 import threading
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from maxim.runtime.substrate_proposal import SubstratePolicy
 
 logger = logging.getLogger(__name__)
 
@@ -338,6 +341,7 @@ def _loop_kwargs(
     stop_event: threading.Event,
     target_hz: float,
     substrate_telemetry: Any | None = None,
+    substrate_policy: "SubstratePolicy | None" = None,
 ) -> dict[str, Any]:
     """The `run_agentic_loop` keyword set — a DETERMINISTIC function (it mints a fresh
     autonomy controller per call, so not pure) so the ship
@@ -347,7 +351,8 @@ def _loop_kwargs(
     ``substrate_telemetry`` (a ``SubstrateTelemetry`` writer) is forwarded ONLY when
     given — a harness that must SEE what the loop proposed per tick (Exp 60 chunk iii:
     120 probe windows with zero executed actions and no telemetry to say why) passes
-    it; the kwargs are otherwise byte-identical to the pinned set."""
+    it; the kwargs are otherwise byte-identical to the pinned set. ``substrate_policy`` (a
+    ``SubstratePolicy``, baseline floors B1) is likewise forwarded only when given."""
     from maxim.agents.autonomy import AutonomyController, AutonomyLevel
 
     kwargs: dict[str, Any] = {
@@ -377,6 +382,8 @@ def _loop_kwargs(
     }
     if substrate_telemetry is not None:
         kwargs["substrate_telemetry"] = substrate_telemetry
+    if substrate_policy is not None:
+        kwargs["substrate_policy"] = substrate_policy
     return kwargs
 
 
@@ -387,6 +394,7 @@ def run_minecraft_aut(
     target_hz: float = 4.0,
     stop_event: "threading.Event | None" = None,
     substrate_telemetry: Any | None = None,
+    substrate_policy: "SubstratePolicy | None" = None,
 ) -> None:
     """Run one AUT's full agent loop (blocking; run each AUT on a thread)."""
     from maxim.agents.maxim_agent import MaximAgent
@@ -417,6 +425,7 @@ def run_minecraft_aut(
                 stop_event=stop_event or threading.Event(),
                 target_hz=target_hz,
                 substrate_telemetry=substrate_telemetry,
+                substrate_policy=substrate_policy,
             ),
         )
     finally:

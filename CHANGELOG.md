@@ -23,6 +23,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (baseline floors B1, PR-A)
+
+- **A `SubstratePolicy` can pick the substrate proposal in place of `NAc.recommend_action`.**
+  `propose_via_substrate(..., policy=None)` runs the same filter, encode, cluster note, situation cue and pain
+  tick, then asks the policy instead of `recommend_action`. The policy sees this tick's `available_tools`, its
+  clusters and a read-only copy of the world channel values the encode used, and nothing of NAc or the drives,
+  so a baseline policy cannot read Maxim's learning. Its pick is validated (`SubstratePolicyError` for a tool
+  outside `available_tools`, non-mapping params or a non-finite confidence); `None` means idle, never a fallback.
+  Threaded through `run_agentic_loop(substrate_policy=)`, `loop_substrate.substrate_tick` and
+  `minecraft_harness.run_minecraft_aut` / `_loop_kwargs`, each forwarding it only when given, so a run without a
+  policy is unchanged. NAc still books credit from the executed pick (the policy only never reads it), and a
+  raising policy ends the loop. No production caller yet: the B1 floor harness is its first
+  (`docs/plans/baseline_floors.md` §B1, #1224).
+
 ### Added
 
 - **A sim report now records which models answered its LLM calls, its scenario inputs and its session

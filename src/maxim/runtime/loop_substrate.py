@@ -46,6 +46,7 @@ def substrate_tick(
     memory_hub: Any | None,
     substrate_action_gate: Any | None,
     substrate_telemetry: Any | None,
+    substrate_policy: _sp.SubstratePolicy | None,
     _loop_nac: Any,
     _loop_agent_id: str,
     _loop_situation_cue: Any,
@@ -65,6 +66,9 @@ def substrate_tick(
     # and the next propose_via_substrate applies the accumulated dt.
     _substrate_gate_denied = substrate_action_gate is not None and not substrate_action_gate()
     substrate_proposal = None
+    # Forwarded only when set, so a run without a policy calls the proposer exactly as before (the pinned
+    # kwarg set in test_loop_substrate_characterization::test_the_proposer_gets_the_runs_handles_by_identity).
+    policy_kw: dict[str, Any] = {"policy": substrate_policy} if substrate_policy is not None else {}
     if not _substrate_gate_denied:
         substrate_proposal = _sp.propose_via_substrate(
             nac=_loop_nac,
@@ -72,6 +76,7 @@ def substrate_tick(
             executor=executor,
             situation_cue=_loop_situation_cue,
             sensor_encoder=_loop_sensor_encoder,
+            **policy_kw,
         )
     ctrl.last_llm_submit_time = now
     if substrate_proposal is not None:

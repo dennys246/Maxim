@@ -151,7 +151,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "run_agentic_loop",
-      "lines": 2432
+      "lines": 2434
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -191,7 +191,7 @@
     {
       "file": "src/maxim/runtime/substrate_proposal.py",
       "qualname": "propose_via_substrate",
-      "lines": 250
+      "lines": 249
     },
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
@@ -300,6 +300,15 @@
       "date": "2026-10-11",
       "ref": "#1200",
       "reason": "Tool-failure credit Stage 2, TF8 (agreed between Sessions A and C): the loop's own two rec_outcome sites pass bridge_booked=, one keyword line each (the hard rejection passes None: the tool never ran; the agent fallback's except passes the executed action's stamp, so a bridge-booked failure is not booked twice), and the agent fallback binds result = None before each action, so an execute that raised cannot leave an earlier action's stamp for the except to read. The agent fallback's routing through execute_and_learn, which would retire both sites, is #1147's."
+    },
+    {
+      "file": "src/maxim/runtime/agent_loop.py",
+      "qualname": "run_agentic_loop",
+      "from": 2432,
+      "to": 2434,
+      "date": "2026-10-11",
+      "ref": "#1224",
+      "reason": "Baseline floors B1, PR-A (docs/plans/baseline_floors_b1_build.md): the substrate_policy keyword (a SubstratePolicy that picks in place of recommend_action) is one signature line and one forwarding line to loop_substrate.substrate_tick; the selection itself lives in substrate_proposal._select_action, so nothing else in the loop grows."
     }
   ],
   "history": [
