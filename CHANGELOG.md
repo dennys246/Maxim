@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **An affordance tool's declaration and cause are read through public accessors (#1195).**
+  `ModulatorAffordanceTool` gains read-only `affordance_name`, `affordance_schema` and `acting_entity`; the
+  executor's GL2a record (`Executor._outcome_start`), `tools/discovery.py` (twice), `simulation/foundry.py` and
+  `always_active_sem_tools` use them instead of `getattr` on the privates, where a rename would have silently
+  emptied a record's drives and cause or skipped an affordance. No behaviour change; a structural test holds
+  every module outside `tool_bridge.py` (in `src/`, `tests/` and `scripts/`) to the accessors, and two test doubles
+  that mocked the private now mock the accessor on a spec'd tool.
 - **The loop controller and loop state report every swallowed exception (#1134; fail-loud Stage 1 instrumentation + the
   Stage 4 lock, Stage 3 narrowing not attempted).**
   `runtime/loop_controller.py` (the prompt reset, the input-to-memory record, the pre-fetch) and
