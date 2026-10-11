@@ -383,6 +383,7 @@ def _record_outcome_calls_missing_the_stamp() -> dict[str, int]:
             rel = str(path.relative_to(root))
             tree = ast.parse(path.read_text(encoding="utf-8"))
             names = {"rec_outcome", "_rec_outcome"}
+            imported: set[str] = set()  # ``record_outcome`` itself, under whatever name it was imported
             modules: set[str] = set()
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
@@ -392,20 +393,24 @@ def _record_outcome_calls_missing_the_stamp() -> dict[str, int]:
                 if isinstance(node, ast.ImportFrom) and node.level and (node.module or "").endswith("tool_dispatch"):
                     raise AssertionError(f"{rel}: a relative import of tool_dispatch is not followed")
                 if isinstance(node, ast.ImportFrom) and node.module == "maxim.runtime.tool_dispatch":
-                    names |= {a.asname or a.name for a in node.names if a.name == "record_outcome"}
+                    imported |= {a.asname or a.name for a in node.names if a.name == "record_outcome"}
                 if isinstance(node, ast.ImportFrom) and node.module == "maxim.runtime":
                     modules |= {a.asname or a.name for a in node.names if a.name == "tool_dispatch"}
-            in_dispatch = path.name == "tool_dispatch.py"
+            if path.name == "tool_dispatch.py":
+                imported.add("record_outcome")
+            names |= imported
             called: set[int] = set()
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call):
                     continue
                 f = node.func
-                hit = (isinstance(f, ast.Name) and (f.id in names or (in_dispatch and f.id == "record_outcome"))) or (
+                hit = (isinstance(f, ast.Name) and f.id in names) or (
+                    # a bound recorder reached as an attribute (``run.rec_outcome(...)``), or the module's own
                     isinstance(f, ast.Attribute)
-                    and f.attr == "record_outcome"
-                    and isinstance(f.value, ast.Name)
-                    and f.value.id in modules
+                    and (
+                        f.attr in ("rec_outcome", "_rec_outcome")
+                        or (f.attr == "record_outcome" and isinstance(f.value, ast.Name) and f.value.id in modules)
+                    )
                 )
                 if hit:
                     called.add(id(f))
@@ -417,7 +422,7 @@ def _record_outcome_calls_missing_the_stamp() -> dict[str, int]:
                     and node.attr == "record_outcome"
                     and isinstance(node.value, ast.Name)
                     and node.value.id in modules
-                )
+                ) or (isinstance(node, ast.Name) and node.id in imported and isinstance(node.ctx, ast.Load))
                 if ref and id(node) not in called:
                     missing[f"{rel}:non-call reference"] = missing.get(f"{rel}:non-call reference", 0) + 1
     return missing
