@@ -340,6 +340,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The SCN no longer crashes when the capture worker registers while sleep or save reads it (#1217).**
+  `time/scn.py::SCN` held its bins and signatures with no lock. `register` runs on the Hippocampus capture worker
+  (`MemoryHub._on_memory_captured_scn`, after the store's write lock is released) while sleep (`get_all_clusters`,
+  `get_bin_populations`) and save (`dump`) iterate the same dicts on other threads: "dictionary changed size during
+  iteration", and `BoundedBin.add`'s eviction racing another add (`IndexError`). Reproduced on a quiet box with a
+  1 us switch interval (33 failures in 10 trials). Every method that reads or writes the bins, signatures, priors or
+  oscillator now runs under one re-entrant lock; `save` snapshots through `dump` under it and writes the file outside.
 - **The agent loop's agent-fallback no longer books a bridge-booked tool failure twice ([#1200](https://github.com/dennys246/Maxim/issues/1200)
   Stage 2, TF8).** The loop's two own `record_outcome` sites now pass `bridge_booked=`.
   - **Agent fallback (`agent.propose_intent`).** Its except branch passes the executed action's

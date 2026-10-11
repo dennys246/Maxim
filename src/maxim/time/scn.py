@@ -11,8 +11,10 @@ indexing for fast queries; the coupled-oscillator submodule
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
+import threading
 import time as _time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -151,6 +153,18 @@ class BoundedBin:
         return bb
 
 
+def _locked(method):
+    """Run an SCN method under the instance's re-entrant lock (#1217): its bins, signatures, priors and oscillator
+    are written by the Hippocampus capture worker while sleep, save and enrichment read them on other threads."""
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
+
+
 @dataclass
 class SCN(StoreFileOwnership):
     """Suprachiasmatic Nucleus - temporal rhythm indexing.
@@ -200,6 +214,9 @@ class SCN(StoreFileOwnership):
     # save. Kept as ``persistence_path`` (public, typed) instead of the old
     # untyped ``_persistence_path`` attribute.
     persistence_path: str | None = None
+    # Guards every read and write of the bins, signatures, priors and oscillator (#1217). Re-entrant: some methods
+    # call others (``remove_memory`` -> ``unregister``). Not state: excluded from repr and comparison, never dumped.
+    _lock: Any = field(default_factory=threading.RLock, repr=False, compare=False)
 
     # StoreFileOwnership (#971): never saves over a file it did not read. ClassVar, so not a field.
     _store_name: ClassVar[str] = "scn"
@@ -209,6 +226,7 @@ class SCN(StoreFileOwnership):
     # migrations land at the envelope layer. See memory/snapshot.py docstring.
     schema_version: ClassVar[int] = 1
 
+    @_locked
     def register(
         self,
         memory_id: str,
@@ -234,6 +252,7 @@ class SCN(StoreFileOwnership):
         if self._oscillator is not None:
             self._oscillator.observe(signature)
 
+    @_locked
     def register_external(
         self,
         memory_id: str,
@@ -270,6 +289,7 @@ class SCN(StoreFileOwnership):
             corrected = signature  # Fall back to uncorrected
         self.register(memory_id, corrected, significance)
 
+    @_locked
     def unregister(self, memory_id: str) -> None:
         """Remove a memory from all temporal indices.
 
@@ -286,30 +306,36 @@ class SCN(StoreFileOwnership):
         self._monthly_bins[week_bin].discard(memory_id)
         self._annual_bins[month_bin].discard(memory_id)
 
+    @_locked
     def remove_memory(self, memory_id: str) -> None:
         """Alias for unregister for deletion callback compatibility."""
         self.unregister(memory_id)
 
+    @_locked
     def query_hour(self, hour: int) -> set[str]:
         """Get all memory_ids from a specific hour (0-23)."""
         b = self._circadian_bins.get(hour % 24)
         return b.get_ids() if b else set()
 
+    @_locked
     def query_day(self, day: int) -> set[str]:
         """Get all memory_ids from a specific day (0=Monday, 6=Sunday)."""
         b = self._weekly_bins.get(day % 7)
         return b.get_ids() if b else set()
 
+    @_locked
     def query_week_of_month(self, week: int) -> set[str]:
         """Get all memory_ids from a specific week of month (0-3)."""
         b = self._monthly_bins.get(week % 4)
         return b.get_ids() if b else set()
 
+    @_locked
     def query_month(self, month: int) -> set[str]:
         """Get all memory_ids from a specific month (0=Jan, 11=Dec)."""
         b = self._annual_bins.get(month % 12)
         return b.get_ids() if b else set()
 
+    @_locked
     def query_similar_time(
         self,
         signature: TemporalSignature,
@@ -335,6 +361,7 @@ class SCN(StoreFileOwnership):
 
         return result
 
+    @_locked
     def query_intersection(
         self,
         hour: int | None = None,
@@ -382,10 +409,12 @@ class SCN(StoreFileOwnership):
 
         return result
 
+    @_locked
     def get_signature(self, memory_id: str) -> TemporalSignature | None:
         """Retrieve the temporal signature for a memory."""
         return self._signatures.get(memory_id)
 
+    @_locked
     def find_rhythmic_patterns(
         self,
         min_occurrences: int = 3,
@@ -424,6 +453,7 @@ class SCN(StoreFileOwnership):
 
         return patterns
 
+    @_locked
     def add_temporal_prior(self, pattern_name: str, hour_bin: int) -> None:
         """Add a temporal prior for cold start.
 
@@ -433,6 +463,7 @@ class SCN(StoreFileOwnership):
         """
         self._priors[pattern_name].add(hour_bin % 24)
 
+    @_locked
     def get_threshold_adjustment(
         self,
         signature: TemporalSignature,
@@ -465,6 +496,7 @@ class SCN(StoreFileOwnership):
     # Temporal Clustering Support (for sleep consolidation)
     # ─────────────────────────────────────────────────────────────────────────
 
+    @_locked
     def get_bin_populations(self) -> dict[tuple[int, int], int]:
         """Get population counts for each (hour, day) bin.
 
@@ -480,6 +512,7 @@ class SCN(StoreFileOwnership):
 
         return dict(populations)
 
+    @_locked
     def get_bins(self, memory_id: str) -> tuple[int, int] | None:
         """Get (hour_bin, day_bin) for a memory.
 
@@ -495,6 +528,7 @@ class SCN(StoreFileOwnership):
         hour_bin, day_bin, _, _ = sig.to_bins()
         return (hour_bin, day_bin)
 
+    @_locked
     def get_temporal_cluster(
         self,
         hour: int,
@@ -515,6 +549,7 @@ class SCN(StoreFileOwnership):
         day_ids = db.get_ids() if db else set()
         return hour_ids & day_ids
 
+    @_locked
     def get_all_clusters(self) -> dict[tuple[int, int], set[str]]:
         """Get all non-empty temporal clusters.
 
@@ -533,6 +568,7 @@ class SCN(StoreFileOwnership):
 
         return clusters
 
+    @_locked
     def is_sole_representative(self, memory_id: str) -> bool:
         """Check if memory is the only one in its temporal bin.
 
@@ -553,6 +589,7 @@ class SCN(StoreFileOwnership):
         cluster = self.get_temporal_cluster(hour, day)
         return len(cluster) == 1 and memory_id in cluster
 
+    @_locked
     def is_rhythmic_bin(self, memory_id: str, min_occurrences: int = 5) -> bool:
         """Check if memory belongs to a rhythmic pattern bin.
 
@@ -574,6 +611,7 @@ class SCN(StoreFileOwnership):
         b = self._circadian_bins.get(hour_bin)
         return len(b) >= min_occurrences if b else False
 
+    @_locked
     def stats(self) -> dict[str, Any]:
         """Return SCN statistics."""
         s: dict[str, Any] = {
@@ -591,6 +629,7 @@ class SCN(StoreFileOwnership):
             s["oscillator_enabled"] = False
         return s
 
+    @_locked
     def __bool__(self) -> bool:
         """A store that EXISTS is truthy even when EMPTY (#839).
 
@@ -601,6 +640,7 @@ class SCN(StoreFileOwnership):
         """
         return True
 
+    @_locked
     def __len__(self) -> int:
         """Number of memories with temporal signatures."""
         return len(self._signatures)
@@ -609,6 +649,7 @@ class SCN(StoreFileOwnership):
     # Coupled Oscillator Network
     # ─────────────────────────────────────────────────────────────────────────
 
+    @_locked
     def enable_oscillator(self, config: Any = None) -> None:
         """Enable the coupled oscillator network.
 
@@ -625,6 +666,7 @@ class SCN(StoreFileOwnership):
         """Access the oscillator network (None if disabled)."""
         return self._oscillator
 
+    @_locked
     def observe_event(self, event_signature: str, signature: TemporalSignature) -> None:
         """Record an event type's occurrence for anticipatory prediction.
 
@@ -638,6 +680,7 @@ class SCN(StoreFileOwnership):
         if self._oscillator is not None:
             self._oscillator.observe_event(event_signature, signature)
 
+    @_locked
     def get_anticipatory_signatures(self, min_imminence: float = 0.5) -> dict[str, float]:
         """Return event signatures predicted to be imminent.
 
@@ -654,6 +697,7 @@ class SCN(StoreFileOwnership):
             return {}
         return self._oscillator.get_anticipatory_signatures(min_imminence)
 
+    @_locked
     def predict_next_occurrence(self, target_hour: float, max_hours: float = 168.0) -> float | None:
         """Predict hours until the circadian oscillator reaches target phase.
 
@@ -669,6 +713,7 @@ class SCN(StoreFileOwnership):
         target_phase = target_hour / 24.0
         return self._oscillator.predict_next_occurrence(target_phase, oscillator=0, max_hours=max_hours)
 
+    @_locked
     def phase_coherence(self) -> float | None:
         """Kuramoto order parameter — how synchronized are the oscillators?
 
@@ -678,6 +723,7 @@ class SCN(StoreFileOwnership):
             return None
         return self._oscillator.phase_coherence()
 
+    @_locked
     def coupling_strength(self, osc_a: int, osc_b: int) -> float | None:
         """Read coupling weight between two oscillators.
 
@@ -687,6 +733,7 @@ class SCN(StoreFileOwnership):
             return None
         return self._oscillator.coupling_strength_between(osc_a, osc_b)
 
+    @_locked
     def temporal_anomaly_score(self, signature: TemporalSignature) -> float | None:
         """Score how anomalous a temporal signature is vs predicted phases.
 
@@ -700,6 +747,7 @@ class SCN(StoreFileOwnership):
     # Persistence
     # ─────────────────────────────────────────────────────────────────────────
 
+    @_locked
     def dump(self) -> dict[str, Any]:
         """Return SCN state as a JSON-serializable dict.
 
@@ -720,6 +768,7 @@ class SCN(StoreFileOwnership):
             data["oscillator"] = self._oscillator.to_dict()
         return data
 
+    @_locked
     def load_state(self, state: dict[str, Any]) -> None:
         """Mutate self in place from a state dict.
 

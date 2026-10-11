@@ -20,7 +20,6 @@ from maxim.time.scn import SCN
 from maxim.time.temporal_signature import TemporalSignature
 
 
-@pytest.mark.xfail(strict=True, reason="#1217: SCN has no lock; concurrent register vs readers crash")
 def test_concurrent_register_and_readers_under_forced_switching() -> None:
     errors: list[str] = []
     old = sys.getswitchinterval()
