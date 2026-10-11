@@ -136,13 +136,11 @@ No new env var (`MAXIM_LLM_SEED` exists, with no side effect, so no conftest scr
 carries `_format_version`; `public_format_freeze.md` freezes the substrate bundles only, so new keys inside
 `provenance` are additive.
 
-## Companion edits owed when #1224 is on main
+## Companion edits (made 2026-10-10, after #1224 merged)
 
-`baseline_floors.md` §B0 still lists a provenance `arm` equal to the row `arm`, `top_p` and a world seed, and
-its matching-controls row says "server version (stamped by B0)"; M46 says "Needs B0's `arm` stamp". B0's PR
-rebases on main after #1224 merges and corrects them to this note: no arm verification in B0, temperatures
-only, `global_seed`, `leader_disk_head` (not code identity), AUT attribution in B0b, and M46's model-parity
-check waits for B0b.
+`baseline_floors.md` §B0 now records what was built and how it differs from its list; its matching-controls
+row no longer claims a server version; M46 now needs B0b's AUT attribution and an `arm_effective` stamp
+rather than "B0's `arm` stamp".
 
 ## Out of scope
 
