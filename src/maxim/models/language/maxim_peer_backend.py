@@ -61,8 +61,10 @@ import os
 import socket
 import ssl
 import time
+from collections.abc import Callable
 from typing import Any, Mapping
 
+from maxim.utils.logging import log_swallowed_exception
 from maxim.models.language.cancellation import is_shutdown_requested
 from maxim.models.language.config import LLMConfig
 from maxim.models.language.types import (
@@ -127,6 +129,11 @@ def _register_byte_received_safe() -> None:
 # both directions to avoid circular deps; moving them here eliminates the
 # cycle entirely. ``ProbeResult`` stays in ``llm_server.py`` as the public
 # type used by callers outside ``models/language/``.
+
+
+def _leader_root(base_url: str) -> str:
+    base = base_url.rstrip("/")
+    return base[: -len("/v1")] if base.endswith("/v1") else base
 
 
 def _build_probe_url(base_url: str) -> str:
@@ -369,17 +376,23 @@ class _MaximPeerBackend:
         if self._served_model or self._served_model_discovery_attempted:
             return
         self._served_model_discovery_attempted = True
+        served = self._served_model_id(self._get_json(_build_probe_url))
+        if served:
+            self._served_model = served
+
+    def _get_json(self, url_for: Callable[[str], str]) -> Any:
+        """GET ``url_for(base)`` with this backend's key and address policy; the parsed body, or ``None`` on
+        any failure (callers treat every probe here as best effort)."""
         base = self._resolve_base_url()
         if not base:
-            return
-        probe_url = _build_probe_url(base)
+            return None
         headers: dict[str, str] = {}
         api_key = self._get_api_key()
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         try:
             resp = _http.fetch_url(
-                probe_url,
+                url_for(base),
                 method="GET",
                 headers=headers,
                 # #921: the same connect-time rule as inference, from the provider's allow_local
@@ -388,18 +401,31 @@ class _MaximPeerBackend:
                 ),
                 timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=3.0, total_s=4.0),
             )
-            body = json.loads(resp.content or b"{}")
-        except Exception:  # noqa: BLE001 — discovery is best-effort
-            return
+            return json.loads(resp.content or b"{}")
+        except Exception as e:  # noqa: BLE001 — every probe here is best effort; a down leader is routine
+            log_swallowed_exception(e, site="peer_backend.get_json", logger=logger, level=logging.DEBUG)
+            return None
+
+    @staticmethod
+    def _served_model_id(body: Any) -> str:
         data = body.get("data") if isinstance(body, dict) else None
-        if not isinstance(data, list) or not data:
-            return
-        first = data[0]
-        if not isinstance(first, dict):
-            return
-        served = first.get("id")
-        if isinstance(served, str) and served:
-            self._served_model = served
+        if not isinstance(data, list) or not data or not isinstance(data[0], dict):
+            return ""
+        served = data[0].get("id")
+        return served if isinstance(served, str) else ""
+
+    def probe_served_model(self) -> str:
+        """A fresh ``/v1/models`` read, uncached ("" when it fails). Baseline floors B0 compares it with the
+        id cached at first use to see a model swapped during a run."""
+        return self._served_model_id(self._get_json(_build_probe_url))
+
+    def probe_leader_disk_head(self) -> str | None:
+        """The leader's ``/v1/debug/version`` git hash: the HEAD on its disk when asked (a leader that pulled
+        but did not restart reads new), short and without a dirty flag. Never code identity. ``None`` when the
+        probe fails or the leader reports none."""
+        body = self._get_json(lambda base: _leader_root(base) + "/v1/debug/version")
+        head = body.get("git_hash") if isinstance(body, dict) else None
+        return head if isinstance(head, str) and head else None
 
     def unload(self) -> None:
         """The shared httpx client is registry-owned. Nothing to unload."""

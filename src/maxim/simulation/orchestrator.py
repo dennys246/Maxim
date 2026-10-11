@@ -300,6 +300,15 @@ class _AdoptedAgent:
         self.lease = _CampaignToolLease.snapshot(self.registry)
 
 
+def _sim_provenance(
+    start: dict[str, Any], orch_worker: Any, aut_worker: Any, resume: Any, adopted: Any, goal: str
+) -> dict[str, Any]:
+    """The report's provenance (M1 + baseline floors B0): extracted so ``start_simulation_mode`` does not grow."""
+    return run_provenance(
+        start, llm_worker=orch_worker, aut_worker=aut_worker, resume=resume, adopted=adopted is not None, goal=goal
+    )
+
+
 def _adopt_persistent_agent(persistent_agent: Any) -> _AdoptedAgent:
     """Validate + adopt a live persistent AgentInstance for a campaign run.
 
@@ -678,7 +687,7 @@ def start_simulation_mode(
     )
 
     start_time = time.time()
-    start_provenance = capture_start_provenance()  # the code this run imported, taken now (M1)
+    start_provenance = capture_start_provenance(scenario_objects=(dm_campaign, pre_campaign_turns))  # M1; B0
 
     # ── HANDLE seam (a): adopt an injected persistent agent EARLY ────────
     # Validation is loud + first so a mis-built instance fails before any
@@ -3510,9 +3519,7 @@ def start_simulation_mode(
         # timestamp and diverge from the JSONL log's session_id field.
         session_id=session_id,
         started_at=start_time,
-        provenance=run_provenance(
-            start_provenance, llm_worker=orch_llm_worker, aut_worker=aut_llm_worker, resume=resume_record
-        ),
+        provenance=_sim_provenance(start_provenance, orch_llm_worker, aut_llm_worker, resume_record, _adopted, goal),
     )
 
     # Attach fixture/substrate metrics if present

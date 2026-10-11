@@ -23,6 +23,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A sim report now records which models answered its LLM calls, its scenario inputs and its session
+  (baseline floors B0, `docs/plans/baseline_floors_b0.md`).** `report.json`'s `provenance` gains
+  `provenance_schema: 2`; `llm_calls` (per router serial: each served call's provider, model, backend
+  kind, endpoint, served id, seed and whether the backend honours it, temperature and count, plus the
+  router's started/terminal-outcome counts), the joined model `identity` and `identity_source`
+  (`local_file` SHA-256 of an owned server's or the in-process backend's GGUF, `server_reported`
+  `/v1/models` id, or `provider_name`) and the owned server's actual KV-cache type; `sampling_complete`,
+  `model_changed_during_run`, `concurrent_sims`, `leader_disk_heads`, `scenario_inputs` and
+  `scenario_sha256`, `global_seed` and `session_index`. Every `LLMRouter` takes a serial at construction and
+  each dispatch records exactly one terminal outcome (`models/language/call_accounting.py`); the report
+  covers only the sim's own window. It does NOT say which model served the agent under test
+  (`aut_model_attribution: "not_established"`): part of the AUT runs on the narrator's router today (#1228)
+  and per-agent call identity is unreliable (#1227). The evidence gate checks the new fields on any record
+  whose executed code writes schema 2, read from that commit's source, never from the record.
+  `run_provenance` takes two new required keyword arguments, `adopted` and `goal`.
+
 ### Changed
 
 - **An affordance tool's declaration and cause are read through public accessors (#1195).**
