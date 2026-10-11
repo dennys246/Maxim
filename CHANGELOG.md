@@ -25,7 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **The loop controller and loop state report every swallowed exception (#1134, fail-loud Stage 3).**
+- **The loop controller and loop state report every swallowed exception (#1134; fail-loud Stage 1 instrumentation + the
+  Stage 4 lock, Stage 3 narrowing not attempted).**
   `runtime/loop_controller.py` (the prompt reset, the input-to-memory record, the pre-fetch) and
   `runtime/loop_state.py` (the state persistence, the B4 prior-attempt retrieval) each had a bare
   `except Exception: pass` or a broad handler that logged without an event; all five now report through
