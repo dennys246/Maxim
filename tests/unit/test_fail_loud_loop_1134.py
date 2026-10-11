@@ -27,7 +27,6 @@ def _lint():
     return module
 
 
-@pytest.mark.xfail(strict=True, reason="#1134: a bare swallow and unreported broad handlers in each file")
 @pytest.mark.parametrize("rel", FILES)
 def test_every_broad_handler_reports(rel: str) -> None:
     lint = _lint()
@@ -35,6 +34,5 @@ def test_every_broad_handler_reports(rel: str) -> None:
     assert (lint.swallow_hits(text), lint.unreported_swallow_hits(text)) == ([], [])
 
 
-@pytest.mark.xfail(strict=True, reason="#1134: neither file is on the measurement path yet")
 def test_both_files_are_on_the_measurement_path() -> None:
     assert set(FILES) <= set(_lint().MEASUREMENT_PATH)
