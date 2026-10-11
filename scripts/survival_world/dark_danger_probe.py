@@ -264,6 +264,7 @@ def main() -> int:
             record_outcome(
                 agent_id=AGENT_ID,
                 tool_name=probe_tool,
+                bridge_booked=getattr(out, "nac_failure_booked", None),  # #1200 Stage 2
                 success=bool(getattr(out, "success", False)),
                 result_summary=str(getattr(out, "output", ""))[:80] or None,
                 error=getattr(out, "error", None),

@@ -15,8 +15,11 @@ This file tracks decisions that affect public behavior, repo structure, and long
 4. **TF7. The cut is exact-signature only:** dispatch skips its NEGATIVE `tool_result` link only when its
    signature equals the one the bridge booked (the executor stamps it); compound and aliased signatures book
    as today.
-5. **TF8. Session A's fenced `agent_loop.py` is coordinated, not edited:** `record_outcome`'s new keyword is
-   required, and Session A lands the loop's two call-site lines (hard rejection, agent-fallback except).
+5. **TF8. Session A's fenced `agent_loop.py` is coordinated, not edited** (sequence agreed with Session A and the
+   owner, 2026-10-10): this PR adds `record_outcome`'s keyword with a TEMPORARY `None` default plus a guard test
+   holding every other caller to it (agent_loop's two sites allowed by exact count); Session A then lands the
+   loop's two call-site lines (hard rejection, agent-fallback except); a follow-up drops the default, which a
+   strict red gate in this PR pins (`#1221`).
 6. **TF9. Speculative calls book nothing:** prefetch runs its calls inside the executor's `speculative_calls()`
    context (never a model-writable action key) and the bridge books neither
    valence for them (the agent did not choose them), which also removes today's speculative POSITIVE links.
