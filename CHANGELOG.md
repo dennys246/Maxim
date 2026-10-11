@@ -249,6 +249,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Concurrent observations no longer crash Hippocampus (#1135).** `Hippocampus.store_observation`'s dedup
+  tracker was checked, updated and pruned without a lock, so a thread rebuilding it while another wrote it raised
+  `RuntimeError: dictionary changed size during iteration` (seen as a full-suite flake under load; reproduced
+  10/10 with a 1 us switch interval; `AgentPool.run_turn` swallows that error, so a concurrent caller there would
+  silently drop an observation instead; no shipped path calls one instance concurrently). The check, the update and the prune are now one step under a dedicated
+  lock (the capture itself stays unlocked), and the concurrent-capture test records each thread's traceback.
 - **What the model is shown and what dispatch enforces read ONE operational mode** ([#963](https://github.com/dennys246/Maxim/issues/963);
   owner decisions 2026-10-09). The operator's launch grant (`--operational-mode`, #829) decided dispatch, but the
   agent loop's other mode readers each read the loop state's run mode with their own default. Under a passive grant

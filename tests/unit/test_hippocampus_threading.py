@@ -53,7 +53,6 @@ class TestConcurrentCapture:
         memories = hippo.recall(limit=100, query="Thread")
         assert len(memories) >= 0  # At least no crash
 
-    @pytest.mark.xfail(strict=True, reason="#1135: the observation dedup dict is rebuilt while other threads write it")
     def test_concurrent_observations_under_forced_switching(self, tmp_path):
         """#1135, made reproducible: the full-suite flake needed a load average near 17. A one-microsecond switch
         interval interleaves the capturers the same way (10 of 10 runs failed on the pre-fix code), so the race
@@ -79,6 +78,7 @@ class TestConcurrentCapture:
                     t.start()
                 for t in threads:
                     t.join(timeout=30)
+                assert not any(t.is_alive() for t in threads), "a capturer is still running (deadlock?)"
         finally:
             sys.setswitchinterval(old)
         assert not errors, errors[0]
