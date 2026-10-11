@@ -537,8 +537,10 @@ class SenseToolsTool(Tool):
                 # "sword") that won't match substrate concepts.
                 decompose_target = tool_name
                 try:
+                    from maxim.embodiment.tool_bridge import ModulatorAffordanceTool
+
                     tool_obj = self._registry.get(tool_name)
-                    aff_name = getattr(tool_obj, "_affordance_name", None)
+                    aff_name = tool_obj.affordance_name if isinstance(tool_obj, ModulatorAffordanceTool) else None
                     if aff_name:
                         decompose_target = aff_name
                 except KeyError:
@@ -596,12 +598,12 @@ def select_goal_relevant_tools(
         # active regardless of goal overlap — declared via `always_active: true`
         # on the affordance. Without this a body cannot use its own listen/turn
         # unless the static goal happens to mention them.
-        if getattr(getattr(tool, "_affordance_schema", None), "always_active", False):
+        if tool.affordance_schema.always_active:
             always.append(tool_name)
             continue
         tool_words = set(tool.description.lower().split())
-        tool_words.add(tool._modulator.name.lower())
-        tool_words.add(tool._entity.name.lower())
+        tool_words.add(tool.modulator.name.lower())
+        tool_words.add(tool.acting_entity.name.lower())
         overlap = len(goal_keywords & tool_words)
         if overlap > 0:
             scores.append((tool_name, float(overlap)))
