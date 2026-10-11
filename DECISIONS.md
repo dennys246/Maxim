@@ -2,6 +2,31 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-10-10 — Tool-failure credit Stage 2 (#1200): TF4–TF9
+
+### Decision
+
+1. **TF4. No reflexion for tool failures** until the memory-strength Phase 2c tag counts one event once
+   (`site` is recorded but read by nothing): the Hippocampus trace count and recall stay unchanged.
+2. **TF5. No temporal event and no SCN registration** for a tool failure: eligibility and the SCN stay exactly
+   as today (#1180 is parked).
+3. **TF6. Interactive writers documented, not gated:** `tool_dispatch.record_outcome` and `PlanHistoryBridge` are
+   named as ungated NAc writers in the interactive-gate invariant; gating them is a separate change.
+4. **TF7. The cut is exact-signature only:** dispatch skips its NEGATIVE `tool_result` link only when its
+   signature equals the one the bridge booked (the executor stamps it); compound and aliased signatures book
+   as today.
+5. **TF8. Session A's fenced `agent_loop.py` is coordinated, not edited:** `record_outcome`'s new keyword is
+   required, and Session A lands the loop's two call-site lines (hard rejection, agent-fallback except).
+6. **TF9. Speculative calls book nothing:** prefetch runs its calls inside the executor's `speculative_calls()`
+   context (never a model-writable action key) and the bridge books neither
+   valence for them (the agent did not choose them), which also removes today's speculative POSITIVE links.
+
+### Rationale
+
+Each option chosen keeps Stage 2 to what TF1 asked for (one attributed NEGATIVE with a real RPE per failure
+that ran) and leaves every other learning surface measurable as unchanged by the stage's fingerprints
+(`docs/plans/tool_failure_credit.md`, Stage 2 design).
+
 ## 2026-10-10 — Tool-failure credit (#1200): TF1–TF3
 
 ### Decision
