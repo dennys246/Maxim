@@ -38,7 +38,8 @@ on the narrator's router. A schema the record declares about itself would let a 
    owner, 2026-10-10): this PR adds `record_outcome`'s keyword with a TEMPORARY `None` default plus a guard test
    holding every other caller to it (agent_loop's two sites allowed by exact count); Session A then lands the
    loop's two call-site lines (hard rejection, agent-fallback except); a follow-up drops the default, which a
-   strict red gate in this PR pins (`#1221`).
+   strict red gate in this PR pins (`#1221`). **Done 2026-10-11:** Session A's sites landed in #1231 and the
+   default was dropped under #1221; the keyword is required.
 6. **TF9. Speculative calls book nothing:** prefetch runs its calls inside the executor's `speculative_calls()`
    context (never a model-writable action key) and the bridge books neither
    valence for them (the agent did not choose them), which also removes today's speculative POSITIVE links.

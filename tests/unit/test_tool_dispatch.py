@@ -75,6 +75,7 @@ class TestRecordOutcome:
         outcomes: list = []
         pool = self._make_context_pool()
         record_outcome(
+            bridge_booked=None,
             agent_id="test",
             tool_name="look",
             success=True,
@@ -94,6 +95,7 @@ class TestRecordOutcome:
         outcomes: list = [{"tool": f"t{i}"} for i in range(5)]
         pool = self._make_context_pool()
         record_outcome(
+            bridge_booked=None,
             agent_id="test",
             tool_name="new_tool",
             success=True,
@@ -112,6 +114,7 @@ class TestRecordOutcome:
         worker = MagicMock()
         pool = self._make_context_pool()
         record_outcome(
+            bridge_booked=None,
             agent_id="test",
             tool_name="say",
             success=True,
@@ -131,6 +134,7 @@ class TestRecordOutcome:
     def test_records_to_context_pool(self):
         pool = self._make_context_pool()
         record_outcome(
+            bridge_booked=None,
             agent_id="test",
             tool_name="examine",
             success=False,
@@ -153,6 +157,7 @@ class TestRecordOutcome:
         nac = MagicMock()
         pool = self._make_context_pool()
         record_outcome(
+            bridge_booked=None,
             agent_id="test",
             tool_name="move",
             success=True,
@@ -173,6 +178,7 @@ class TestRecordOutcome:
         nac = MagicMock()
         pool = self._make_context_pool()
         record_outcome(
+            bridge_booked=None,
             agent_id="test",
             tool_name="heavy_compute",
             success=True,
@@ -193,6 +199,7 @@ class TestRecordOutcome:
         pool = self._make_context_pool()
         # Should not raise even with nac=None
         record_outcome(
+            bridge_booked=None,
             agent_id="test",
             tool_name="look",
             success=True,
@@ -212,6 +219,7 @@ class TestRecordOutcome:
         pool = self._make_context_pool()
         # Should not raise — NAc errors are logged, not propagated
         record_outcome(
+            bridge_booked=None,
             agent_id="test",
             tool_name="look",
             success=True,
@@ -256,7 +264,7 @@ class TestClusterRewardMotorCredit:
             cluster_id="cluster-xyz",
         )
         kwargs.update(overrides)
-        record_outcome(**kwargs)
+        record_outcome(bridge_booked=None, **kwargs)
         if not nac.update_cluster_reward.called:
             return None
         return nac.update_cluster_reward.call_args.kwargs["reward"]
@@ -368,7 +376,7 @@ class TestOperantOnlyCreditMode:
             cluster_id="cluster-xyz",
         )
         kwargs.update(overrides)
-        record_outcome(**kwargs)
+        record_outcome(bridge_booked=None, **kwargs)
         return nac
 
     def test_driveless_action_books_no_tool_success_floor(self, monkeypatch):
@@ -397,6 +405,7 @@ class TestOperantOnlyCreditMode:
         pool.add_outcome = MagicMock()
         nac = MagicMock()
         record_outcome(
+            bridge_booked=None,
             agent_id="a",
             tool_name="turn_left",
             success=True,
@@ -570,6 +579,7 @@ class TestAgentIdAttribution:
 
         with pytest.raises(TypeError, match="agent_id"):
             record_outcome(  # type: ignore[call-arg]
+                bridge_booked=None,
                 tool_name="look",
                 success=True,
                 result_summary="ok",
@@ -585,6 +595,7 @@ class TestAgentIdAttribution:
         nac = MagicMock()
         pool = self._make_context_pool()
         record_outcome(
+            bridge_booked=None,
             agent_id="alpha",
             tool_name="move",
             success=True,
@@ -606,6 +617,7 @@ class TestAgentIdAttribution:
         nac = MagicMock()
         pool = self._make_context_pool()
         record_outcome(
+            bridge_booked=None,
             agent_id="alpha",
             tool_name="t",
             success=True,
@@ -619,6 +631,7 @@ class TestAgentIdAttribution:
             nac=nac,
         )
         record_outcome(
+            bridge_booked=None,
             agent_id="bravo",
             tool_name="t",
             success=True,
@@ -771,7 +784,7 @@ class TestNeutralOutcomeTier:
             active_goal="find_the_sound",
         )
         kwargs.update(overrides)
-        record_outcome(**kwargs)
+        record_outcome(bridge_booked=None, **kwargs)
         return nac
 
     # ── the causal surface: the collapse no flag could suppress ──
@@ -837,8 +850,15 @@ class TestNeutralOutcomeTier:
         )
 
         nac = NAc(NACConfig())
-        record_outcome(nac=nac, tool_name="clamped_turn", success=True, outcome_valence=Valence.NEUTRAL, **common)
-        record_outcome(nac=nac, tool_name="real_turn", success=True, outcome_valence=None, **common)
+        record_outcome(
+            bridge_booked=None,
+            nac=nac,
+            tool_name="clamped_turn",
+            success=True,
+            outcome_valence=Valence.NEUTRAL,
+            **common,
+        )
+        record_outcome(bridge_booked=None, nac=nac, tool_name="real_turn", success=True, outcome_valence=None, **common)
 
         clamped_sig = build_tool_signature("clamped_turn", None)
         real_sig = build_tool_signature("real_turn", None)

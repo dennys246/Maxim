@@ -359,6 +359,7 @@ def _record(nac, *, clusters=None, cluster_id=None, drive_potential_diff=None, s
     from maxim.runtime.tool_dispatch import record_outcome
 
     record_outcome(
+        bridge_booked=None,
         agent_id="a",
         tool_name="turn_left",
         success=success,
@@ -688,6 +689,7 @@ class TestMultiDriveOrientLearnsEndToEnd:
             # Production outcome path: registers the pending operant action
             # (keyed on the audio cluster) and routes any generic credit.
             record_outcome(
+                bridge_booked=None,
                 agent_id="infant",
                 tool_name=action,
                 success=True,
