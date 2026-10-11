@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`tool_dispatch.record_outcome(bridge_booked=)` is now a required keyword (#1221, owner decision TF8 step 3).**
+  #1200 Stage 2 shipped it with a temporary `None` default while Session A landed `agent_loop.py`'s two call
+  sites (#1231); with every caller now passing it, the default is dropped, so a caller that forgets the stamp is a
+  `TypeError` instead of a silent double-booked failure. The strict red gate flips and the AST caller guard's
+  allow-list is gone; tests that call `record_outcome` directly pass `bridge_booked=None`.
 - **An affordance tool's declaration and cause are read through public accessors (#1195).**
   `ModulatorAffordanceTool` gains read-only `affordance_name`, `affordance_schema` and `acting_entity`; the
   executor's GL2a record (`Executor._outcome_start`), `tools/discovery.py` (twice), `simulation/foundry.py` and
@@ -305,7 +310,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     carry the same signature, so dispatch would skip the failure's only booking. On the first fallback action the
     read would raise inside the except handler, and nothing would be recorded at all.
   - **Hard rejection.** It passes `bridge_booked=None` explicitly: the tool never ran. It books exactly as before.
-  - `tool_dispatch.record_outcome` still defaults the keyword. Dropping the default is the next step (TF8 step 3).
+  - Dropping `tool_dispatch.record_outcome`'s default followed under #1221 (TF8 step 3): the keyword is now required.
   - **Not fixed here (#1147).** The fallback's `try` also wraps the audit and capture steps after `execute`, so a
     successful tool followed by a raise in those steps is still booked as a tool failure. Routing the fallback
     through `execute_and_learn` (#1147) covers it.
