@@ -2,6 +2,38 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-10-11 — B1, the Exp 60 floor: design decisions (OD1–OD5)
+
+### Decision
+
+1. **OD1. The binding BF2 tabular floor for Exp 60 is Q_EXPLORE** (a model-free learner given 10 executed
+   training episodes), not Q_YOKED (same experience, no executed actions), which cannot lose because the pain is
+   independent of the proposed action. RANDOM is the random floor.
+2. **OD2. Eight seeds per arm (11–18); the raw-sensor arm Q_EXPLORE_RAW is run** to separate the EC's split from
+   Wire-4.
+3. **OD3. The Q-learners' per-tick cost is game-native:** −(20 − oxygen)/20 while in water, plus any pain publish.
+4. **OD4. T1-13 is annotated now** (prose, no status change) with the run-2 finding that only the first post
+   placement is a fear-only read, and that the escape comes from a designer-specified defensive prior.
+5. **OD5 (after the harness build). The tabular learner runs with γ = 1 and Q₀ = −2** (the pain components of a pain
+   episode; any Q₀ from −1 to −10 works once γ = 1), not v3's γ = 0.9, Q₀ = 0.
+
+### Rationale
+
+OD5: an offline toy model driving the real learner with live timings
+(docs/experiments/rationale/b1-exp60-floor/learner_sim.py) put v3's Q_EXPLORE at ≈ 0.10 on the first post
+placement (RANDOM ≈ 0.15): every untried action outranked a tried escape, which pays for its ≈ 2.6 s of blocking,
+so the floor explored instead of learning and would have lost by construction. With γ = 1 and Q₀ = −2 all three Q
+arms reach ≈ 1.0 at K = 10, so the expected H2 tie stands against a competent floor. The rejected options were
+keeping v3 and amending H2 (a strawman floor) and raising K to 30 (≈ 0.33). The same build found two credit defects
+(a surfacing credited to a pick made after the head cleared; a shore pick before the teleport executing in the
+window), fixed as prereg rules 16–17.
+
+The four-lens design review (docs/experiments/rationale/b1-exp60-floor/) found v1's floors either unable to lose
+(Q_YOKED) or unable to win (a sparse pain-only reward), the primary DV contaminated by a positive-link habit, and
+the claim crediting Wire-4 with the prior's choice of act. The strict option was taken on every decision. The
+expected outcome, stated before data: FEAR beats RANDOM; Q_EXPLORE ties; the Exp 60 row then takes
+`PARTIAL (narrow: floor matched)` with the sample-efficiency gap (zero executed training actions) recorded.
+
 ## 2026-10-10 — Baseline floors B0: split, and the gate reads the schema from the code that ran
 
 ### Decision
