@@ -187,11 +187,8 @@ def test_a_tool_cannot_set_its_own_failure_stamp() -> None:
     assert executor.execute({"tool_name": TOOL, "params": {}}).nac_failure_booked is None
 
 
-@pytest.mark.xfail(
-    strict=True, reason="#1221 / TF8: bridge_booked keeps a temporary default until it is dropped (TF8 step 3)"
-)
 def test_a_record_outcome_call_without_the_stamp_is_a_type_error() -> None:
-    """Flips when the default is dropped (TF8 step 3): forgetting the stamp then fails loudly."""
+    """TF8 step 3 (#1221): the default is gone, so forgetting the stamp fails loudly."""
     with pytest.raises(TypeError):
         tool_dispatch.record_outcome(
             agent_id="aut_1200",
@@ -540,11 +537,11 @@ def _negatives(nac: NAc) -> list[tuple[str, int]]:
     return sorted((link.outcome_type, link.observation_count) for link in _links(nac, f"tool:{TOOL}", Valence.NEGATIVE))
 
 
-# Red on main (#1200, TF8): the hard-rejection call omits bridge_booked, so it rides the temporary default
+# Red on main before #1231 (#1200, TF8): the hard-rejection call omitted bridge_booked; since #1221 that is a TypeError
 def test_a_hard_rejection_records_with_no_failure_stamp(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
     """The tool never ran, so nothing was bridge-booked: the call says so EXPLICITLY (``bridge_booked=None``), and
-    keeps working once the default is dropped (TF8 step 3), when an omitted keyword is a ``TypeError``. The
-    rejection's own booking is unchanged (``None`` is the default's value)."""
+    the keyword is required since #1221 (TF8 step 3), so an omitted one is a ``TypeError``. The rejection's own
+    booking is unchanged (``None`` books as before)."""
     from tests.unit._execute_learn_driver import run_once
 
     tool = "probe_reject_1200"
@@ -593,10 +590,6 @@ def test_an_agent_fallback_raise_before_execute_returns_reads_no_earlier_result(
 
 
 # ── every caller passes the stamp (TF8) ───────────────────────────────────────────────────────────────
-
-# Session A's fenced file: its two ``_rec_outcome`` sites (the hard rejection and the agent fallback) landed
-# ``bridge_booked`` in their own PR (owner decision TF8, 2026-10-10), so nothing awaits; the follow-up drops the default.
-_AWAITING_SESSION_A: dict[str, int] = {}
 
 
 def _record_outcome_calls_missing_the_stamp() -> dict[str, int]:
@@ -666,5 +659,6 @@ _SANCTIONED_REFERENCES = {"src/maxim/runtime/loop_setup.py:non-call reference": 
 
 def test_every_record_outcome_caller_passes_the_failure_stamp() -> None:
     """A caller that forgets ``bridge_booked`` books a bridge-booked failure twice, silently (the adversarial
-    design pass's D1). Enforced here until the default is dropped and the type does it."""
-    assert _record_outcome_calls_missing_the_stamp() == {**_AWAITING_SESSION_A, **_SANCTIONED_REFERENCES}
+    design pass's D1). The type enforces it since #1221; this guard stays because test spies
+    (``lambda **kw``) and attribute calls bypass the signature check."""
+    assert _record_outcome_calls_missing_the_stamp() == _SANCTIONED_REFERENCES

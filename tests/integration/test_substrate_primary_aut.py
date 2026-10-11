@@ -577,6 +577,7 @@ class TestG4ClusterRewardWire:
                 pass
 
         record_outcome(
+            bridge_booked=None,
             agent_id="agent_a",
             tool_name="pick_up_food",
             success=True,
@@ -599,6 +600,7 @@ class TestG4ClusterRewardWire:
         # Now fail the same tool — net should still be positive but smaller.
         before = bias
         record_outcome(
+            bridge_booked=None,
             agent_id="agent_a",
             tool_name="pick_up_food",
             success=False,
@@ -633,6 +635,7 @@ class TestG4ClusterRewardWire:
                 pass
 
         record_outcome(
+            bridge_booked=None,
             agent_id="agent_a",
             tool_name="pick_up_food",
             success=True,

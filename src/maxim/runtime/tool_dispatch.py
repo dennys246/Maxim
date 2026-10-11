@@ -226,12 +226,12 @@ def record_outcome(
     drive_credit_withheld: bool = False,
     drive_relief_channel: str | None = None,
     outcome_valence: "_V | None" = None,
-    bridge_booked: str | None = None,
+    bridge_booked: str | None,
 ) -> None:
     """Record a tool outcome to all sinks including NAc causal learning.
 
     ``bridge_booked``: the signature the tool-pain bridge booked THIS failure under (``ToolOutput.nac_failure_booked``,
-    #1200 Stage 2); see ``_observe_tool_result``. Every caller passes it (TF8: the default is temporary).
+    #1200 Stage 2); see ``_observe_tool_result``. REQUIRED (TF8): forgetting it is a ``TypeError``, not a double count.
 
     Appends to recent_outcomes, records reasoning carryover on llm_worker,
     adds to context_pool, and (if NAc is wired) records a causal observation
