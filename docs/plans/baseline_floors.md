@@ -228,7 +228,7 @@ serial.
 2. **Four `MAXIM_DISABLE_*` vars have no reader in `src/` or `tests/`:** `MAXIM_DISABLE_PFC_PREAMBLE`,
    `MAXIM_DISABLE_ACTING_COACH`, `MAXIM_DISABLE_SIM_SANDBOX_TEXT`, `MAXIM_NO_DEFAULT_PERSONA`. They are kept
    on purpose in `scripts/run_v1_phases.sh` for the Exp 12 reproduction
-   ([archive/v1_refinement.md](archive/v1_refinement.md) §R1). Never map them to arms. Not an issue; recorded
+   ([archive/v1_refinement.md](archive/v1_refinement.md) §V2, its Disposition paragraph). Never map them to arms. Not an issue; recorded
    so nobody builds an arm on them.
 3. **Exp 37's narrator is a cross-session memory channel.** T1-2's re-run must hold it fixed; the
    historical B−A numbers mix it in. A ledger annotation on T1-2, not a status change (T1-2 is already
