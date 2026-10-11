@@ -49,6 +49,7 @@
     "tests/unit/test_docker_sandbox.py::TestDockerSandboxIntegration::test_timeout_kills_container_side_process",
     "tests/unit/test_docker_sandbox.py::TestDockerSandboxIntegration::test_unprivileged_user_cannot_read_etc_shadow",
     "tests/unit/test_docker_sandbox.py::TestDockerSandboxIntegration::test_workspace_write_visible_on_host",
+    "tests/unit/test_exp60_run.py::test_offline_run_both_arms_then_verdict_stamp_the_named_apparatus_record",
     "tests/unit/test_exp62_precheck.py::test_all_four_rows_against_a_two_pool_scripted_bridge",
     "tests/unit/test_exp62_run.py::test_one_row_of_each_arm_against_a_two_pool_scripted_bridge",
     "tests/unit/test_m1b_writer_stamps.py::test_the_exp56_mock_runs_write_stamped_records[exp56/instrument_check.py-phase0.json]",

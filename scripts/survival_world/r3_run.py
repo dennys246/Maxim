@@ -52,6 +52,7 @@ from _provenance import (  # noqa: E402
     campaign_out_path,
     safe_campaign_id,
     instrument_check_authorizes,
+    is_ancestor_of_main,
     stamp_harness_row,
 )
 from exp56 import common as C  # noqa: E402
@@ -468,12 +469,7 @@ def reclassify_under_amendments(rows: list[dict[str, Any]]) -> tuple[list[dict[s
 
 
 def _is_ancestor_of_main(sha: str) -> bool:
-    try:
-        subprocess.run(["git", "fetch", "-q", "origin", "main"], cwd=C.REPO_ROOT, check=False, timeout=60)
-        rc = subprocess.run(["git", "merge-base", "--is-ancestor", sha, "origin/main"], cwd=C.REPO_ROOT).returncode
-        return rc == 0
-    except (OSError, subprocess.SubprocessError):
-        return False
+    return is_ancestor_of_main(C.REPO_ROOT, sha)  # the one helper, shared with exp60_run's record preflight
 
 
 # ── the live campaign ──
