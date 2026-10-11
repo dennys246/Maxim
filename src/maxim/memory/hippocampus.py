@@ -481,8 +481,11 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         self._capture_worker_thread: threading.Thread | None = None
         self._capture_stop = threading.Event()
 
-        # Dedup tracking: hash of recent observations → timestamp
+        # Dedup tracking: hash of recent observations → timestamp. The class is documented thread-safe for
+        # concurrent access, so the check, the update and the prune run as one step under this lock (#1135:
+        # the unlocked prune raced concurrent ``store_observation`` callers on one instance).
         self._recent_observations: dict[int, float] = {}
+        self._recent_observations_lock = threading.Lock()
 
         # ─────────────────────────────────────────────────────────────
         # P3a Stage 1 — Episode binding surface
@@ -1013,18 +1016,19 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         Returns:
             Memory ID (UUID string), or empty string if deduped.
         """
-        # Dedup check — reject near-identical observations within window
+        # Dedup check — reject near-identical observations within window. Check, record and prune are one
+        # step under the lock, so two threads cannot both admit the same observation and a prune never
+        # iterates the tracker while another thread writes it (#1135). The capture itself runs unlocked.
         obs_hash = hash(text.strip().lower()[:200])
-        now = time.time()
         window = self.config.dedup_window_s
-        last_seen = self._recent_observations.get(obs_hash)
-        if last_seen is not None and (now - last_seen) < window:
-            return ""  # Deduped
-
-        # Update dedup tracker (prune old entries)
-        self._recent_observations[obs_hash] = now
-        cutoff = now - window
-        self._recent_observations = {h: t for h, t in self._recent_observations.items() if t > cutoff}
+        with self._recent_observations_lock:
+            now = time.time()
+            last_seen = self._recent_observations.get(obs_hash)
+            if last_seen is not None and (now - last_seen) < window:
+                return ""  # Deduped
+            self._recent_observations[obs_hash] = now
+            cutoff = now - window
+            self._recent_observations = {h: t for h, t in self._recent_observations.items() if t > cutoff}
 
         perception = Perception(
             observations={"text": text, **(metadata or {})},
