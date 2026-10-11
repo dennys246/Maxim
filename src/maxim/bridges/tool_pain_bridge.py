@@ -390,6 +390,33 @@ class ToolPainBridge:
             return rpe
         return 0.0
 
+    def record_tool_failure(self, tool_name: str, invocation_id: str) -> str | None:
+        """Book a failure of an invocation that RAN (#1200 Stage 2; owner decisions TF1-TF9).
+
+        One NEGATIVE on the invocation's own NAc event (Stage 1's by-id attribution) and its surprise noted
+        for the executor's ``ToolOutput.rpe``. Returns the event signature it booked under, or ``None`` when
+        nothing was booked: no pending entry (a human driving, a speculative call, a call that never
+        started) or no link written (the run outlasted NAc's window, or an unattributed match consumed the
+        event). ``tool_dispatch.record_outcome`` skips its own NEGATIVE only for that exact signature, so a
+        failure is booked once and a ``None`` leaves dispatch booking as before.
+
+        Deliberately narrower than ``_on_pain``'s tool branch: no reflexion (TF4: the memory-strength 2c tag
+        does not yet count one event once), no temporal event or SCN registration (TF5), no CAUSES edges, no
+        learned-index update, and no ``agent_id`` in the context (a failures-only Welford would read as a
+        reliable action). It pops ``_pending_tools`` / ``_pending_contexts`` only: ``_book_invocation`` reads
+        the event id and ``finish_invocation`` retires it.
+        """
+        with self._lock:
+            event_signature = self._pending_tools.pop((tool_name, invocation_id), None)
+            self._pending_contexts.pop((tool_name, invocation_id), None)
+        if not event_signature:
+            return None
+        links = self._book_invocation(tool_name, invocation_id, event_signature, Valence.NEGATIVE)
+        if not links:
+            return None  # nothing attributed: no surprise to note (``pop_invocation_rpe`` then reads None)
+        self._note_invocation_rpe(invocation_id, max((lnk.last_rpe or 0.0) for lnk in links))
+        return event_signature
+
     def record_tool_embodiment_failure(
         self,
         tool_name: str,
@@ -531,6 +558,10 @@ class ToolPainBridge:
             self._on_embodiment_pain(signal)
             return
 
+        # Dormant since 2026-10-10 for executor-invoked failures (#1200 Stage 2): the executor books a failure that
+        # ran through ``record_tool_failure`` BEFORE ``_report_failure`` signals the detector, so the pending entry is
+        # gone when that signal arrives here and this branch books nothing (no reflexion, SCN or temporal event,
+        # TF4/TF5). It stays wired for a TOOL_* signal from any other source; Stage 3 deletes it.
         if signal.pain_type not in (
             PainType.TOOL_FAILURE,
             PainType.TOOL_TIMEOUT,

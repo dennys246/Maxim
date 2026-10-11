@@ -831,6 +831,15 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   **Now:** Groundwork item 5. **Default: no coding-world `src/` before the 1.4.0 cut**, so nothing here
   gates 1.4.0; never active in an E1–E3 arm; rig per Track C item 4. Claims are candidate 1.5 headlines.
 
+- **Baseline floors** ([baseline_floors.md](baseline_floors.md), PROPOSED 2026-10-10; owner decisions
+  BF1–BF2): a bare LLM (`bare_llm`), a generic-memory LLM (`llm_notes`) and a non-LLM learner
+  (`tabular_q`, `random`) beside every claim, so a result reports its gain over a plain agent on the same
+  model, tools and seeds. **Touches the ladder only as declared arms:** under BF2 a new substrate-path
+  claim earns only over `tabular_q` and `random`, so E1–E3's preregs declare those two arms at their
+  design reviews and each rung's harness builds them. Its first rig work is the Exp 60 floor (B1, no LLM;
+  its seam is a design-review decision); the bare loop (B2) waits for the `start_simulation_mode`
+  decomposition, so no new LLM-path claim can be EARNED before it. Not Phase 0 item 2 (that item adds no public names) and not a benchmark framework (below).
+
 ## What is NOT in 1.4
 
 - **Shared perception** — deferred on a physical trigger (a second body); Stage A unchanged on
@@ -844,7 +853,8 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
 - **Intrinsic motivation (1.3 Phase 6)** — a parallel line, not this ladder (§Phase 5).
 - **Hostile classrooms, crafting, farming, shelter** — behind R4's routing audit and E3.
 - **Hivemind promotion** — unchanged from 1.2's WRITE-ONLY posture.
-- **A benchmark framework.** Phase 0 extracts what three harnesses share and stops.
+- **A benchmark framework.** Phase 0 extracts what three harnesses share and stops. *(2026-10-10: the
+  baseline floors line adds arms and provenance fields, not a framework; §Parallel lines.)*
 - **Coding-world claims** (Exp W's confirmatory stage, Exp K, Exp 55, external safety suites,
   outreach) — a parallel line whose claims are candidate 1.5 headlines ([coding_world.md](coding_world.md)).
 
@@ -945,6 +955,11 @@ DECISIONS.md 2026-10-09; the fold is [grounding.md](grounding.md) §GL1.
 GL2a; the type, sequencer, session-id source and resume land together at the post-fence resume stage,
 G17; `embodiment/event_id.py` leaves the exempt set; GL4 S1's exemption is moot); GL4 S0a is Phase 5's
 audit (G18); the GL5 claim lives in the cradle (G19); the L0 gate is a measurement only (G20).
+
+*2026-10-10 (baseline floors):* §Parallel lines gains "Baseline floors"; §What is NOT in 1.4 gains a
+dated note on the benchmark-framework line. Companion edits: [README.md](README.md) (§Active entry),
+[outstanding.md](outstanding.md) (M46), [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md)
+(§Why this is a living gate, the floor rule), DECISIONS.md 2026-10-10 (BF1–BF2).
 
 ## Review record (v1 → v2, 2026-09-18)
 

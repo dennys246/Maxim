@@ -111,6 +111,7 @@ def run(*, with_distractor, seed, ticks=1500):
             record_outcome(
                 agent_id=AGENT,
                 tool_name=SENSE,
+                bridge_booked=None,  # no executor: nothing was booked by a bridge (#1200 Stage 2)
                 success=True,
                 result_summary="ok",
                 error=None,
@@ -133,6 +134,7 @@ def run(*, with_distractor, seed, ticks=1500):
         record_outcome(
             agent_id=AGENT,
             tool_name=action,
+            bridge_booked=None,  # no executor: nothing was booked by a bridge (#1200 Stage 2)
             success=True,
             result_summary="ok",
             error=None,

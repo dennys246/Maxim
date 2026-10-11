@@ -445,6 +445,7 @@ class BenchSession:
         record_outcome(
             agent_id=self.agent_id,
             tool_name=tool_name,
+            bridge_booked=getattr(out, "nac_failure_booked", None),  # #1200 Stage 2
             success=bool(getattr(out, "success", False)),
             result_summary=str(getattr(out, "output", ""))[:80] or None,
             error=getattr(out, "error", None),

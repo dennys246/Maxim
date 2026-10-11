@@ -43,6 +43,9 @@ def _expected(**overrides: Any) -> dict[str, Any]:
     base = {
         "active_goal": None,
         "agent_id": HUB_AGENT_ID,
+        # #1200 Stage 2: the signature the bridge booked a failure under, read off the output; the driver's stub
+        # executor stamps none.
+        "bridge_booked": None,
         "cluster_id": CLUSTERS["interoception"],
         "clusters": CLUSTERS,
         "drive_credit_withheld": False,
