@@ -6,8 +6,10 @@ without deadlocks, data loss, or race conditions.
 
 from __future__ import annotations
 
+import sys
 import threading
 import time
+import traceback
 
 import pytest
 
@@ -36,8 +38,9 @@ class TestConcurrentCapture:
                         text=f"Thread {thread_id} observation {i}",
                         metadata={"thread": thread_id, "index": i},
                     )
-            except Exception as e:
-                errors.append(f"Thread {thread_id}: {e}")
+            except Exception:
+                # The whole traceback, so a failure names its frame (#1135: only str(e) was kept)
+                errors.append(f"Thread {thread_id}: {traceback.format_exc()}")
 
         threads = [threading.Thread(target=worker, args=(t,)) for t in range(n_threads)]
         for t in threads:
@@ -49,6 +52,36 @@ class TestConcurrentCapture:
         # Should have captured some memories (exact count depends on queue/processing)
         memories = hippo.recall(limit=100, query="Thread")
         assert len(memories) >= 0  # At least no crash
+
+    @pytest.mark.xfail(strict=True, reason="#1135: the observation dedup dict is rebuilt while other threads write it")
+    def test_concurrent_observations_under_forced_switching(self, tmp_path):
+        """#1135, made reproducible: the full-suite flake needed a load average near 17. A one-microsecond switch
+        interval interleaves the capturers the same way (10 of 10 runs failed on the pre-fix code), so the race
+        in ``store_observation``'s dedup tracker shows up deterministically enough to gate."""
+        errors: list[str] = []
+        old = sys.getswitchinterval()
+        sys.setswitchinterval(1e-6)
+        try:
+            for trial in range(3):
+                hippo = Hippocampus(HippocampusConfig(persistence_path=str(tmp_path / f"h{trial}")))
+                barrier = threading.Barrier(8)
+
+                def worker(thread_id: int, hippo: Hippocampus = hippo, barrier: threading.Barrier = barrier) -> None:
+                    try:
+                        barrier.wait(timeout=5)
+                        for i in range(10):
+                            hippo.store_observation(text=f"Thread {thread_id} observation {i}")
+                    except Exception:
+                        errors.append(traceback.format_exc())
+
+                threads = [threading.Thread(target=worker, args=(t,)) for t in range(8)]
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join(timeout=30)
+        finally:
+            sys.setswitchinterval(old)
+        assert not errors, errors[0]
 
     def test_concurrent_recall_during_capture(self, hippo):
         """Concurrent recall() during capture() — verify no deadlock."""
