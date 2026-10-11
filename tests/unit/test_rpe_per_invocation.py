@@ -2,8 +2,8 @@
 
 The bridge used to keep one ``_last_rpe`` slot that nothing reset; ``capture_episodic_memory`` read
 it through ``executor.get_last_rpe()`` on every capture. Any invocation that produced no surprise of
-its own -- here, a repeat failure inside the pain detector's cooldown, which never reaches the
-bridge -- inherited the previous invocation's surprise into its salience.
+its own (originally a repeat failure inside the pain detector's cooldown; since #1200 Stage 2, which books
+every failure that ran, a speculative call) inherited the previous invocation's surprise into its salience.
 """
 
 from __future__ import annotations
@@ -58,10 +58,16 @@ def _capture_salience(executor: Executor, result: Any) -> float:
 def test_back_to_back_failures_capture_their_own_salience():
     """Red on main for the RIGHT reason: it never touches ``.rpe`` -- only what the capture stores.
 
-    On untouched main both captures store 0.75 (the second inherits the first's surprise)."""
+    On pre-#847 code both captures store 0.75 (the second inherits the first's surprise); the known-answer
+    surprise-free construction is now the speculative call in the test below. Since #1200 Stage 2
+    the second failure reaches the bridge too and carries its OWN, smaller surprise (its link already exists),
+    so the two saliences differ: 0.5 + 0.5 * 0.5 and 0.5 + 0.5 * ~0.43."""
+    import pytest
+
     executor = _executor()
     saliences = [_capture_salience(executor, executor.execute({"tool_name": "grab", "params": {}})) for _ in range(2)]
-    assert saliences == [0.75, 0.5]
+    assert saliences[0] == 0.75
+    assert saliences[1] == pytest.approx(0.715, abs=0.01)
 
 
 def test_world_driven_embodiment_pain_does_not_boost_the_next_capture():
@@ -100,12 +106,17 @@ def test_a_tool_cannot_set_its_own_surprise():
 
 
 def test_a_surprise_free_invocation_does_not_inherit_the_previous_one():
+    """Since #1200 Stage 2 every failure that ran reaches the bridge, so the surprise-free invocation is a
+    speculative one (no invocation is started for it, TF9) rather than a repeat failure inside the cooldown."""
+    from maxim.runtime.executor import speculative_calls
+
     executor = _executor()
     first = executor.execute({"tool_name": "grab", "params": {}})
-    second = executor.execute({"tool_name": "grab", "params": {}})  # inside the cooldown
+    with speculative_calls():
+        second = executor.execute({"tool_name": "grab", "params": {}})
 
     assert first.rpe is not None and first.rpe > 0.0  # first contact is surprising
-    assert second.rpe is None  # its failure never reached the bridge: no surprise of its own
+    assert second.rpe is None  # it never reached the bridge: no surprise of its own
     assert _capture_salience(executor, first) > 0.5
     assert _capture_salience(executor, second) == 0.5  # pre-#847: 0.5 + first.rpe * 0.5
 

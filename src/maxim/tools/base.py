@@ -110,6 +110,10 @@ class ToolOutput:
     # ``repr=False`` is load-bearing (#1189): ``str(ToolOutput)`` is persisted and substring-searched by
     # the Hippocampus, so a printed record would put its numbers and nouns into memory retrieval.
     interoceptive_outcome: InteroceptiveOutcome | None = field(default=None, repr=False)
+    # The event signature the tool-pain bridge booked THIS invocation's failure under (#1200 Stage 2), else
+    # None: ``tool_dispatch.record_outcome`` skips its own NEGATIVE for exactly that signature, so a failure
+    # is booked once. Stamped by the executor; tools never set it. ``repr=False`` for the same reason as above.
+    nac_failure_booked: str | None = field(default=None, repr=False)
 
 
 # Backward-compat alias — existing tools that import ToolResult keep working.

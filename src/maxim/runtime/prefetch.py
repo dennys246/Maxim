@@ -1005,8 +1005,12 @@ class SpeculativePrefetcher:
             return None
 
         try:
+            from maxim.runtime.executor import speculative_calls
+
             action = {"tool_name": tool_name, "params": params}
-            result = self._executor.execute(action)
+            # The agent did not choose this call: no NAc credit for either outcome (#1200 TF9).
+            with speculative_calls():
+                result = self._executor.execute(action)
 
             if getattr(result, "success", False):
                 output = getattr(result, "output", None)

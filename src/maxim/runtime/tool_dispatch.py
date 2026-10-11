@@ -171,6 +171,37 @@ def build_tool_signature(tool_name: str, tool_params: dict[str, Any] | None = No
     return f"tool:{tool_name}"
 
 
+def _observe_tool_result(
+    nac: Any,
+    sig: str,
+    learn_valence: _V,
+    valence: _V,
+    outcome_summary: str,
+    elapsed_s: float,
+    ctx: dict[str, Any],
+    bridge_booked: str | None,
+) -> Any:
+    """Dispatch's own ``tool_result`` link for one outcome, or ``None`` when it is skipped (#1200 Stage 2, TF7).
+
+    Skipped only for a failure the tool-pain bridge already booked under this EXACT signature (the executor's
+    ``ToolOutput.nac_failure_booked`` stamp), so the failure is booked once; every other sink in
+    ``record_outcome`` (goal credit, cluster reward, the operant action, energy, the plan bridge) is unchanged.
+    A compound (``tool:use:<action>``) or aliased signature, ``None`` (no bridge, a human driving, a speculative
+    or never-run call) or a non-failure books as before.
+    """
+    if bridge_booked is not None and bridge_booked == sig and learn_valence is _V.NEGATIVE:
+        return None
+    return nac.observe(
+        event_type="tool",
+        event_signature=sig,
+        outcome_type="tool_result",
+        outcome_signature=f"{_OUTCOME_TOKEN[learn_valence]}:{outcome_summary}",
+        outcome_valence=valence,
+        delta_seconds=elapsed_s,
+        context=ctx,
+    )
+
+
 def record_outcome(
     *,
     agent_id: str,
@@ -195,8 +226,12 @@ def record_outcome(
     drive_credit_withheld: bool = False,
     drive_relief_channel: str | None = None,
     outcome_valence: "_V | None" = None,
+    bridge_booked: str | None = None,
 ) -> None:
     """Record a tool outcome to all sinks including NAc causal learning.
+
+    ``bridge_booked``: the signature the tool-pain bridge booked THIS failure under (``ToolOutput.nac_failure_booked``,
+    #1200 Stage 2); see ``_observe_tool_result``. Every caller passes it (TF8: the default is temporary).
 
     Appends to recent_outcomes, records reasoning carryover on llm_worker,
     adds to context_pool, and (if NAc is wired) records a causal observation
@@ -358,14 +393,8 @@ def record_outcome(
             ctx: dict[str, Any] = {"agent_id": agent_id}
             if reasoning:
                 ctx["goal"] = reasoning[:100]
-            link = nac.observe(
-                event_type="tool",
-                event_signature=sig,
-                outcome_type="tool_result",
-                outcome_signature=f"{_OUTCOME_TOKEN[learn_valence]}:{outcome_summary}",
-                outcome_valence=valence,
-                delta_seconds=elapsed_s,
-                context=ctx,
+            link = _observe_tool_result(
+                nac, sig, learn_valence, valence, outcome_summary, elapsed_s, ctx, bridge_booked
             )
             # Goal-level credit: if deliberation was active under a goal,
             # credit/penalize that goal so ThoughtGate learns whether
@@ -687,6 +716,7 @@ def execute_parallel_actions(
                     "_drive_potential_diff": _side.drive_potential_diff,
                     "_drive_credit_withheld": _side.drive_credit_withheld,
                     "_drive_relief_channel": _side.drive_relief_channel,
+                    "_failure_booked": getattr(result, "nac_failure_booked", None),
                 }
             )
 
@@ -734,6 +764,8 @@ def execute_parallel_actions(
             drive_potential_diff=pr.get("_drive_potential_diff"),
             drive_credit_withheld=bool(pr.get("_drive_credit_withheld")),
             drive_relief_channel=pr.get("_drive_relief_channel"),
+            # #1200 Stage 2: the signature the bridge booked a failure under (rejected / raised entries: None).
+            bridge_booked=pr.get("_failure_booked"),
             cluster_id=cluster_id,
             clusters=clusters,
             # Phase 1 guardrail must reach the BATCH path too: without this, an
@@ -858,6 +890,7 @@ def book_refusal(
         active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
         cluster_id=getattr(source, "cluster_id", None),
         clusters=getattr(source, "clusters", None),
+        bridge_booked=None,  # refused: the tool never ran (#1200 Stage 2)
     )
 
 
@@ -898,6 +931,7 @@ def book_machine_refusal(
         active_goal=None,
         cluster_id=None,
         clusters=None,
+        bridge_booked=None,  # refused: the tool never ran (#1200 Stage 2)
     )
 
 
@@ -1156,6 +1190,7 @@ def execute_and_learn(
             tool_params=action.get("params"),
             cluster_id=getattr(proposal, "cluster_id", None),
             clusters=getattr(proposal, "clusters", None),
+            bridge_booked=getattr(result, "nac_failure_booked", None),
             embodiment_failed=_embodiment_failed,
             drive_potential_diff=_drive_potential_diff,
             drive_credit_withheld=_drive_credit_withheld,
@@ -1295,6 +1330,7 @@ def execute_and_learn(
             active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
             cluster_id=getattr(proposal, "cluster_id", None),
             clusters=getattr(proposal, "clusters", None),
+            bridge_booked=getattr(result, "nac_failure_booked", None),
         )
 
         # Mark failure in state

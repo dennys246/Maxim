@@ -234,9 +234,9 @@
       ]
      ],
      "drive_relief": null,
-     "encoding_tag": 0.0,
+     "encoding_tag": 0.5,
      "pain": 0.0,
-     "storage_strength": 10000000.0,
+     "storage_strength": 15000000.0,
      "tool": "minecraft_player_flee"
     },
     {
@@ -536,5 +536,5 @@
    ]
   }
  },
- "generated_at_commit": "d9e89f5a4a872e634fc01160a3085a319472887e"
+ "generated_at_commit": "55db246183bbb65919269a880bb58b34747904e1"
 }
