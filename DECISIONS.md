@@ -2,7 +2,7 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
-## 2026-10-11 — B1, the Exp 60 floor: design decisions (OD1–OD4)
+## 2026-10-11 — B1, the Exp 60 floor: design decisions (OD1–OD5)
 
 ### Decision
 
@@ -14,8 +14,19 @@ This file tracks decisions that affect public behavior, repo structure, and long
 3. **OD3. The Q-learners' per-tick cost is game-native:** −(20 − oxygen)/20 while in water, plus any pain publish.
 4. **OD4. T1-13 is annotated now** (prose, no status change) with the run-2 finding that only the first post
    placement is a fear-only read, and that the escape comes from a designer-specified defensive prior.
+5. **OD5 (after the harness build). The tabular learner runs with γ = 1 and Q₀ = −2** (the worst terminal return:
+   an untried action is assumed to end in the pain), not v3's γ = 0.9, Q₀ = 0.
 
 ### Rationale
+
+OD5: an offline toy model driving the real learner with live timings
+(docs/experiments/rationale/b1-exp60-floor/learner_sim.py) put v3's Q_EXPLORE at ≈ 0.10 on the first post
+placement (RANDOM ≈ 0.15): every untried action outranked a tried escape, which pays for its ≈ 2.6 s of blocking,
+so the floor explored instead of learning and would have lost by construction. With γ = 1 and Q₀ = −2 all three Q
+arms reach ≈ 1.0 at K = 10, so the expected H2 tie stands against a competent floor. The rejected options were
+keeping v3 and amending H2 (a strawman floor) and raising K to 30 (≈ 0.33). The same build found two credit defects
+(a surfacing credited to a pick made after the head cleared; a shore pick before the teleport executing in the
+window), fixed as prereg rules 16–17.
 
 The four-lens design review (docs/experiments/rationale/b1-exp60-floor/) found v1's floors either unable to lose
 (Q_YOKED) or unable to win (a sparse pain-only reward), the primary DV contaminated by a positive-link habit, and

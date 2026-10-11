@@ -1,7 +1,8 @@
-# B1 (DRAFT v3, 2026-10-11) — the Exp 60 floor: what does the learned drowning-avoidance add over chance and over a model-free learner?
+# B1 (DRAFT v4, 2026-10-11) — the Exp 60 floor: what does the learned drowning-avoidance add over chance and over a model-free learner?
 
-> **STATUS: DRAFT v3, design settled; implementation rules frozen (§Frozen implementation rules, from the
-> build-plan review, [../plans/baseline_floors_b1_build.md](../plans/baseline_floors_b1_build.md)).** The four-lens design review ran on v1 (2026-10-11; reports preserved
+> **STATUS: DRAFT v4, design settled; implementation rules frozen (§Frozen implementation rules, from the
+> build-plan review, [../plans/baseline_floors_b1_build.md](../plans/baseline_floors_b1_build.md); v4 adds rules
+> 15–17 from the harness build and owner decision OD5).** The four-lens design review ran on v1 (2026-10-11; reports preserved
 > verbatim in [rationale/b1-exp60-floor/](rationale/b1-exp60-floor/)). Every lens returned DO-NOT-BUILD on v1; v2
 > folds all of them (§What the review changed). Owner decisions OD1–OD4 TAKEN 2026-10-11 (§Owner decisions; all
 > as recommended). Not frozen: the harness is built and code-reviewed next, then dry-run, then this document is
@@ -80,7 +81,8 @@ prior) is Wire-4 by construction; FEAR vs ABLATED already measures "the prior wi
 encoded that tick (Wire-4's keys; per agent, never compared across agents). Actions = the stamped set, each with
 `params={}`. The cost and the RAW key read `observation`, the encoder's own world values that tick (OD3, taken;
 exact form in §Frozen implementation rules). Update order: at select t, read the interval's reward, update
-Q(s_{t−1}, a_{t−1}) for the action that EXECUTED, then choose a_t. α = 0.5, γ = 0.9, Q initialised to 0; ε = 0.2
+Q(s_{t−1}, a_{t−1}) for the action that EXECUTED, then choose a_t. α = 0.5, γ = 1, Q initialised to −2 (OD5, rule
+15); ε = 0.2
 in training, 0 in the probes, where the table keeps updating online from executed outcomes (FEAR's NAc also
 learns inside probes; a frozen greedy learner would repeat a failing act forever). The policy RNG is seeded per
 seed × arm; the class, constants and seed are stamped.
@@ -98,7 +100,7 @@ are not Maxim's learning): a floor structurally cannot read Maxim's learning. Th
 (`MAXIM_SUBSTRATE_TOOL_WHITELIST` asserted unset), the encode, `note_active_clusters`, the situation cue, the
 pain tick, the cadence, the same-tool cap (a greedy policy loses one tick in six to it, as FEAR does), autonomy,
 `execute_and_learn`, telemetry. `policy=None` is byte-identical to today. The policy is ARMED immediately before the
-teleport (t_arm stamped) and disarmed at rescue; the shore roam runs ARMED for every arm; loop liveness, the shore
+teleport (t_arm stamped; water-only in placements and training, rule 17) and disarmed at rescue; the shore roam runs ARMED for every arm; loop liveness, the shore
 warm-up and the recovery ticks run disarmed (FEAR returns nothing on
 the shore; a floor would otherwise act there and an action begun on the shore could block the window). Rejected
 alternative: replacing `nac.recommend_action` on the instance (an untyped monkeypatch of a bio class).
@@ -148,12 +150,15 @@ action with `params={}` can move the bot into water, so only call counts are rep
 (the episode of first surfacing in training, and the greedy action in the water state after episodes 1, 2, 5
 and 10); executed training actions to criterion (FEAR: zero in training, one failed `flee` per first placement).
 
-- **H1 (FEAR > RANDOM; gated).** RANDOM's chance of drawing `escape_water` in time: about 4–5 useful draws from
-  26 tools, 1 − (25/26)^5 ≈ 0.18, so RANDOM's first-placement rate ≈ 0.2. FEAR's ≈ 1.0 (Exp 60: 5/5).
+- **H1 (FEAR > RANDOM; gated).** RANDOM's chance of drawing `escape_water` in time: about 4 useful draws from
+  26 tools (escape blocks ≈ 2.6 s, so only a draw in the first ≈ 1.7 s surfaces before the 4.3 s cap),
+  1 − (25/26)^4 ≈ 0.15, so RANDOM's first-placement rate ≈ 0.15. FEAR's ≈ 1.0 (Exp 60: 5/5).
 - **FEAR sanity gate.** FEAR's first-placement rate must be ≥ 6/8, or the verdict is INCOMPLETE with cause (a
   collapsed FEAR is not a floor match).
 - **H2 (FEAR vs Q_EXPLORE; gated as FEAR > Q_EXPLORE).** Expected: with a per-tick oxygen cost and 10 executed
-  episodes, Q_EXPLORE finds `escape_water` (ending the cost early) and its first-placement rate ≈ 0.8–1.0. **A tie
+  episodes, Q_EXPLORE finds `escape_water` (ending the cost early) and its first-placement rate ≈ 0.8–1.0 (the
+  v4 learner in the offline toy model, [rationale/b1-exp60-floor/learner_sim.py](rationale/b1-exp60-floor/learner_sim.py):
+  ≈ 1.0 for all three Q arms; the v3 constants gave ≈ 0.10, which is why OD5 changed them). **A tie
   is the expected result**, and under BF2 the Exp 60 row then takes `PARTIAL (narrow: floor matched)`, recorded
   with the sample-efficiency gap (FEAR: zero executed training actions; Q_EXPLORE: the count to criterion).
 - **H3 (Q_EXPLORE_PRIOR; reported).** Expected to reach criterion within one or two episodes: the prior carries
@@ -218,6 +223,24 @@ equivalence test is claimed for a tie: a tie is reported as "FEAR > Q_EXPLORE no
     whose key was visited in training with `escape_water` tried, and the number of distinct water keys per arm.
 14. **Calls.** Every call's start and return time is recorded (the executor spy's `t`/`t_return`); a call in flight
     at the teleport is derived from them.
+15. **Learner constants (v4, OD5).** γ = 1 (an undiscounted cost-to-go: every episode terminates) and Q₀ = −2, the
+    worst terminal return (the −1 pain terminal plus the saturating pain's own intensity): an untried action is
+    assumed to end in the pain. With v3's γ = 0.9 and Q₀ = 0, every untried action outranks a tried escape (which
+    pays for its ≈ 2.6 s of blocking), so the learner explored instead of learning: Q_EXPLORE ≈ 0.10 on the first
+    post placement in the toy model, a floor that loses by construction. The toy model is committed with this
+    document; it is not data and gates nothing.
+16. **In-water credit (v4).** Only a pick made while `observation` reads water is credited. The first select whose
+    observation reads air after a water pick ends the episode there (surfaced, terminal 0); `end_episode` then
+    truncates any later pick. A shore pick (the roam, or a select before the teleport lands) is never credited.
+    Without this, a pick the loop made between the head clearing and the harness's 4 Hz read took the surfacing's
+    credit, and the escape was bootstrapped as a non-terminal step.
+17. **Water-only arming (v4).** In placements and training episodes the armed policy idles until its own
+    observation reads water; the shore roam is armed without the gate. The policy is still armed immediately before
+    the teleport, but a select made on the shore before the teleport lands returns nothing, so no floor executes in
+    the window an action chosen from the shore (on the scripted bridge every training episode was otherwise ended by
+    a blind shore `escape_water` that no update could credit). FEAR is unchanged: it carries no fear on the shore,
+    so it proposes nothing there at the first post placement; its placements 2–6 shore picks are the habit finding
+    above. The count of dry selects skipped is recorded.
 
 ## Owner decisions (taken 2026-10-11, all as recommended)
 
@@ -225,6 +248,9 @@ equivalence test is claimed for a tie: a tie is reported as "FEAR > Q_EXPLORE no
   row PARTIAL). The alternative the review rejected: Q_YOKED, which cannot lose.
 - **OD2. Scope and seeds:** 8 seeds per arm (11–18), and Q_EXPLORE_RAW IS run (≈ 8 × 3.5 min ≈ 30 min more rig).
 - **OD3. Q's per-tick cost:** −(20 − oxygen)/20 in water (game-native, from the sensor), plus any pain publish.
+- **OD5 (2026-10-11, after the harness build). The learner's constants are γ = 1, Q₀ = −2** (rule 15), as
+  recommended over keeping v3's and amending H2 (a strawman floor) or raising K to 30 (toy ≈ 0.33). Rules 16–17
+  are implementation fixes found by the scripted smoke, disclosed with it.
 - **OD4. Exp 60 records:** T1-13 annotated 2026-10-11 with the placement-2–6 habit finding and the prior (prose
   only, no status change; this re-run decides the status).
 

@@ -73,6 +73,13 @@ def test_cluster_keys_are_the_sorted_tuple_of_all_active_clusters():
     assert FP.cluster_key(None) == ("clusters", ())
 
 
+def test_the_frozen_learner_is_undiscounted_with_a_pessimistic_start():
+    assert FP.GAMMA == 1.0 and FP.Q_INIT == -2.0
+    policy, _, _ = _q()
+    _select(policy)
+    assert set(policy.q[FP.cluster_key({"world": "w1"})].values()) == {FP.Q_INIT}
+
+
 def test_ties_are_broken_by_the_seeded_rng_not_by_name():
     picks = {FP.argmax_ties_random({"b": 0.0, "a": 0.0, "c": 0.0}, random.Random(s)) for s in range(40)}
     assert picks == {"a", "b", "c"}  # name order would always give "a"
@@ -112,8 +119,25 @@ def test_the_update_credits_the_previous_executed_action_with_the_interval_cost(
     _select(policy, obs={"is_in_water": 1.0, "oxygen": 10})
     (u,) = policy.updates
     assert u["action"] == first and not u["terminal"]
-    # reward = -(0.5 deficit * 1.0 s / 0.5) - 0.25 pain = -1.25; alpha 0.5 from 0 -> -0.625
-    assert u["reward"] == pytest.approx(-1.25) and u["q_after"] == pytest.approx(-0.625)
+    # reward = -(0.5 deficit * 1.0 s / 0.5) - 0.25 pain = -1.25; alpha 0.5 from Q_INIT (-2) -> -1.625
+    assert u["reward"] == pytest.approx(-1.25) and u["q_after"] == pytest.approx(-1.625)
+
+
+def test_the_first_select_in_air_ends_the_episode_and_a_shore_pick_is_never_credited():
+    policy, clock, _ = _q()
+    first = _select(policy, obs={"is_in_water": 1.0, "oxygen": 18})["tool_name"]
+    clock.t += 1.0
+    _select(policy, obs=SHORE)  # the head cleared the water before the harness read it
+    (u,) = policy.updates
+    assert u["action"] == first and u["terminal"] and u["reward"] == pytest.approx(-0.1)  # trapezoid 0.1→0 over 1 s
+    clock.t += 0.5
+    policy.end_episode("surfaced")  # the shore pick made after the surfacing is truncated, not credited
+    assert len(policy.updates) == 1
+    policy.clear_pending()
+    _select(policy, obs=SHORE)  # armed on the shore just before the teleport
+    clock.t += 0.5
+    _select(policy, obs=WATER)
+    assert len(policy.updates) == 1 and policy.drops[-1]["why"] == "made_out_of_water"
 
 
 def test_a_pick_that_never_executed_is_not_credited():
@@ -213,6 +237,16 @@ def test_a_raise_or_params_is_recorded_and_dropped_never_raised(inner):
     armed.arm()
     assert armed.select(agent_id="a", available_tools=TOOLS, clusters=None, observation=WATER) is None
     assert armed.all_violations()
+
+
+def test_a_water_only_arming_idles_on_the_shore():
+    armed = FP.ArmedPolicy(FP.RandomPolicy(1))
+    armed.arm("pre-placement-0", water_only=True)
+    assert armed.select(agent_id="a", available_tools=TOOLS, clusters=None, observation=SHORE) is None
+    assert armed.idle_dry == 1
+    assert armed.select(agent_id="a", available_tools=TOOLS, clusters=None, observation=WATER) is not None
+    armed.arm("pre-roam")  # the roam acts on the shore
+    assert armed.select(agent_id="a", available_tools=TOOLS, clusters=None, observation=SHORE) is not None
 
 
 def test_random_is_uniform_and_reproducible():

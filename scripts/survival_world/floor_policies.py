@@ -26,12 +26,17 @@ from typing import Any
 
 # Frozen constants (prereg §The tabular learner + §Frozen implementation rules).
 ALPHA = 0.5
-GAMMA = 0.9
+GAMMA = 1.0  # undiscounted: an episodic cost-to-go that always terminates (owner decision OD5, 2026-10-11)
 EPSILON_TRAIN = 0.2
 EPSILON_PROBE = 0.0
 OXYGEN_REST = 20.0  # the oxygen drive's set point; the cost is the deficit below it
 COST_TICK_S = 0.5  # the cost is in 0.5 s units (one proposal interval)
 PAIN_TERMINAL = -1.0  # the saturating oxygen pain, as a terminal reward
+SATURATING_PAIN = 1.0  # that pain's own intensity, which the interval reward also charges
+# Q₀: the worst terminal return (the pain terminal plus the saturating pain's intensity) — an untried action is assumed
+# to end in the pain. With Q₀ = 0 every untried action outranks a tried escape, so the floor explored instead of
+# learning (rationale/b1-exp60-floor/learner_sim.py; owner decision OD5, 2026-10-11).
+Q_INIT = PAIN_TERMINAL - SATURATING_PAIN
 RAW_OXYGEN_BINS = (5.0, 10.0, 15.0)  # [0,5) [5,10) [10,15) [15,40]
 PRIOR_SUFFIXES = ("_flee", "_escape_water")  # the `threat` affinity's tools on this body (asserted exactly two)
 TERMINAL_REASONS = ("surfaced", "pain", "cap", "dirty", "never_submerged")
@@ -62,6 +67,10 @@ def cluster_key(clusters: Mapping[str, str] | None) -> tuple[Any, ...]:
     return ("clusters", tuple(sorted((clusters or {}).items())))
 
 
+def in_water(observation: Mapping[str, float]) -> bool:
+    return float(observation.get("is_in_water", 0.0) or 0.0) >= 0.5
+
+
 def argmax_ties_random(values: Mapping[str, float], rng: random.Random) -> str:
     """The best action, ties broken uniformly by ``rng`` (never by name; the candidates are sorted first so the draw
     is reproducible from the seed alone)."""
@@ -76,6 +85,7 @@ class RandomPolicy:
     def __init__(self, seed: int) -> None:
         self.rng = random.Random(seed)
         self.picks: list[dict[str, Any]] = []
+        self.phase: str | None = None  # the harness's window label, stamped on each pick
 
     def select(
         self,
@@ -86,7 +96,9 @@ class RandomPolicy:
         observation: Mapping[str, float],
     ) -> dict[str, Any] | None:
         tool = self.rng.choice(sorted(available_tools))
-        self.picks.append({"t": time.monotonic(), "action": tool})
+        self.picks.append(
+            {"t": time.monotonic(), "action": tool, "in_water": in_water(observation), "phase": self.phase}
+        )
         return {"tool_name": tool, "params": {}, "confidence": 1.0, "reasoning": "uniform"}
 
     def end_episode(self, reason: str, *, now: float | None = None) -> None:
@@ -129,6 +141,7 @@ class TabularQPolicy:
         self.drops: list[dict[str, Any]] = []
         self.actions: tuple[str, ...] | None = None
         self.violations: list[str] = []
+        self.phase: str | None = None  # the harness's window label, stamped on each pick
 
     # ── the pure pieces ──────────────────────────────────────────────────────────────────────────────
     def _key(self, clusters: Mapping[str, str] | None, observation: Mapping[str, float]) -> tuple[Any, ...]:
@@ -136,12 +149,12 @@ class TabularQPolicy:
 
     def _row(self, key: tuple[Any, ...]) -> dict[str, float]:
         assert self.actions is not None
-        return self.q.setdefault(key, {a: 0.0 for a in self.actions})
+        return self.q.setdefault(key, {a: Q_INIT for a in self.actions})
 
     def _credit(self, pending: dict[str, Any], reward: float, next_key: tuple[Any, ...] | None, now: float) -> None:
         """One Q update for ``pending``'s action; ``next_key`` None is terminal. Skipped if the pick never executed."""
         if not self.was_executed(pending["action"], pending["t"]):
-            self.drops.append({"t": now, "key": pending["key"], "action": pending["action"]})
+            self.drops.append({"t": now, "key": pending["key"], "action": pending["action"], "why": "not_executed"})
             return
         row = self._row(pending["key"])
         future = 0.0 if next_key is None else max(self._row(next_key).values())
@@ -152,6 +165,17 @@ class TabularQPolicy:
             {"t": now, "key": pending["key"], "action": pending["action"], "reward": reward, "target": target,
              "terminal": next_key is None, "q_before": before, "q_after": row[pending["action"]]}
         )  # fmt: skip
+
+    def _close(self, p: dict[str, Any], *, deficit: float, next_key: tuple[Any, ...] | None, now: float) -> None:
+        """Credit the pending pick at the next select. Only a pick made IN WATER is credited (on the shore there is no
+        cost and no terminal; a shore pick before the teleport did not move the body). The first select that sees air
+        after a water pick ends the episode there: surfacing is terminal 0 (``next_key`` None), so a pick the loop
+        made between the head clearing the water and the harness reading it is never credited with the surfacing."""
+        if not p["in_water"]:
+            self.drops.append({"t": now, "key": p["key"], "action": p["action"], "why": "made_out_of_water"})
+            return
+        reward = -interval_cost(p["deficit"], deficit, now - p["t"]) - self.pain_since()
+        self._credit(p, reward, next_key, now)
 
     # ── the SubstratePolicy surface (loop thread) ────────────────────────────────────────────────────
     def select(
@@ -173,26 +197,29 @@ class TabularQPolicy:
                 self.actions = tuple(tools)
             key = self._key(clusters, observation)
             deficit = oxygen_deficit(observation)
+            water = in_water(observation)
             if self._pending is not None:
-                p = self._pending
-                reward = -interval_cost(p["deficit"], deficit, now - p["t"]) - self.pain_since()
-                self._credit(p, reward, key, now)
+                self._close(self._pending, deficit=deficit, next_key=key if water else None, now=now)
             row = self._row(key)
             explored = self.rng.random() < self.epsilon
             action = self.rng.choice(sorted(row)) if explored else argmax_ties_random(row, self.rng)
-            self._pending = {"key": key, "action": action, "t": now, "deficit": deficit}
-            self.picks.append({"t": now, "key": key, "action": action, "explored": explored, "q": dict(row)})
+            self._pending = {"key": key, "action": action, "t": now, "deficit": deficit, "in_water": water}
+            self.picks.append(
+                {"t": now, "key": key, "action": action, "explored": explored, "q": dict(row),
+                 "in_water": water, "phase": self.phase}
+            )  # fmt: skip
             return {"tool_name": action, "params": {}, "confidence": 1.0, "reasoning": f"q={row[action]:.3f}"}
 
     # ── the harness surface (harness thread) ─────────────────────────────────────────────────────────
     def end_episode(self, reason: str, *, now: float | None = None) -> None:
         """Close the pending (s, a): surfaced → terminal 0; pain → terminal −1.0; cap/dirty/never_submerged →
-        truncated (no update). The final interval's cost is the last deficit held to ``now``."""
+        truncated (no update). The final interval's cost is the last deficit held to ``now``. A pending pick made
+        out of water (after the surfacing the policy already credited at its select) is truncated."""
         if reason not in TERMINAL_REASONS:
             raise ValueError(f"unknown episode end {reason!r}")
         with self._lock:
             p, self._pending = self._pending, None
-            if p is None or reason not in ("surfaced", "pain"):
+            if p is None or reason not in ("surfaced", "pain") or not p["in_water"]:
                 return
             t = self.clock() if now is None else now
             reward = -interval_cost(p["deficit"], p["deficit"], t - p["t"]) - self.pain_since()
@@ -220,10 +247,19 @@ class ArmedPolicy:
         self._armed = threading.Event()
         self.violations: list[str] = []
         self.t_arm: float | None = None
+        self.tool_sets: list[tuple[str, ...]] = []  # every distinct available-tool set the loop offered (stamped)
+        self.water_only = False
+        self.idle_dry = 0  # selects skipped while armed water-only and the observation read dry
 
-    def arm(self) -> float:
+    def arm(self, phase: str | None = None, *, water_only: bool = False) -> float:
+        """Arm for a window. ``water_only`` (placements and training episodes): idle until the policy's own
+        observation reads water, so a pick made on the shore before the teleport lands never executes in the
+        water window (it would act on what it has not seen, and the learner could not credit what it caused)."""
         if hasattr(self.inner, "clear_pending"):
             self.inner.clear_pending()
+        if hasattr(self.inner, "phase"):
+            self.inner.phase = phase
+        self.water_only = water_only
         self.t_arm = time.monotonic()
         self._armed.set()
         return self.t_arm
@@ -246,7 +282,13 @@ class ArmedPolicy:
         clusters: Mapping[str, str] | None,
         observation: Mapping[str, float],
     ) -> Mapping[str, Any] | None:
+        tools = tuple(sorted(available_tools))
+        if tools not in self.tool_sets:
+            self.tool_sets.append(tools)
         if not self._armed.is_set():
+            return None
+        if self.water_only and not in_water(observation):
+            self.idle_dry += 1
             return None
         try:
             pick = self.inner.select(
