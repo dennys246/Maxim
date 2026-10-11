@@ -11,25 +11,39 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 _PRIVATE = {"_affordance_name", "_affordance_schema"}
+_PRIVATE_READS = {"_entity", "_modulator"}  # common names: flagged only as non-``self`` READS (tests assign them)
 _PRIVATE_BY_NAME = _PRIVATE | {"_entity"}  # ``getattr(tool, "_entity")``: ``_entity`` is common, so by string only
 
 
 def _private_reads() -> list[str]:
-    """Reads of an affordance tool's private attributes outside ``embodiment/tool_bridge.py`` (its owner):
+    """Reads of an affordance tool's private attributes outside ``embodiment/tool_bridge.py`` (its owner), in
+    ``src/``, ``tests/`` and ``scripts/``:
     ``x._affordance_*`` on anything but ``self``, and ``getattr``/``hasattr`` with one of the names."""
     found: list[str] = []
-    for path in sorted((ROOT / "src" / "maxim").rglob("*.py")):
+    paths = [
+        *(ROOT / "src" / "maxim").rglob("*.py"),
+        *(ROOT / "tests").rglob("*.py"),
+        *(ROOT / "scripts").rglob("*.py"),
+    ]
+    for path in sorted(paths):
         rel = str(path.relative_to(ROOT))
-        if rel == "src/maxim/embodiment/tool_bridge.py":
+        # The owner, and this file (its name lists): a test double must mock the accessor, not the private.
+        if rel in ("src/maxim/embodiment/tool_bridge.py", "tests/unit/test_affordance_accessor_1195.py"):
             continue
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if (
                 isinstance(node, ast.Attribute)
                 and node.attr in _PRIVATE
+                and not (isinstance(node.value, ast.Name) and node.value.id == "self")
+            ):
+                found.append(f"{rel}:{node.lineno} .{node.attr}")
+            if (
+                isinstance(node, ast.Attribute)
+                and node.attr in _PRIVATE_READS
+                and isinstance(node.ctx, ast.Load)
                 and not (isinstance(node.value, ast.Name) and node.value.id == "self")
             ):
                 found.append(f"{rel}:{node.lineno} .{node.attr}")
@@ -45,15 +59,13 @@ def _private_reads() -> list[str]:
     return found
 
 
-@pytest.mark.xfail(strict=True, reason="#1195: the executor, discovery and the foundry read the tool's privates")
 def test_no_module_reads_an_affordance_tools_privates() -> None:
     assert _private_reads() == []
 
 
-@pytest.mark.xfail(strict=True, reason="#1195: ModulatorAffordanceTool has no public read-only accessors")
 def test_the_tool_exposes_read_only_accessors() -> None:
     from maxim.embodiment.tool_bridge import ModulatorAffordanceTool
 
-    for name in ("affordance_name", "affordance_schema", "acting_entity"):
+    for name in ("affordance_name", "affordance_schema", "acting_entity", "modulator"):
         attr = getattr(ModulatorAffordanceTool, name, None)
         assert isinstance(attr, property) and attr.fset is None, name
