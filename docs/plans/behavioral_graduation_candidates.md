@@ -52,10 +52,12 @@ Each entry below is an engineering invariant (or family) from CLAUDE.md whose bi
 earning meant beating one of Maxim's own ablations; no row was ever compared with an agent lacking the bio
 layers. From that date a NEW claim on the LLM path earns only if the full arm beats `bare_llm` (and
 `llm_notes` for a cross-session claim), and a NEW substrate-path claim earns only if it beats `tabular_q` and
-`random`, on the same model, seeds and state keys. A claim that does not beat its floor is recorded as a
-boundary result in its row's prose, not raised. Rows earned earlier keep their status and carry
-`floor: not measured` in their prose until their next trigger re-run after their harness gains the floor
-arm. Regression guard: process invariant — mechanization backlog M46.
+`random`, on the same model, seeds and state keys. A row that does not beat its floor takes `PARTIAL <date>`
+with the qualifier `(narrow: floor matched)`, and its boundary result goes in the status prose. Rows earned
+earlier keep their status and owe the floor at their next trigger re-run once their harness has the floor
+arm; one that loses then moves to `PARTIAL (narrow: floor matched)`, not `BROKEN`, since its ablation result
+still stands. Until then such a row gains `floor: not measured` in its status prose (never the qualifier)
+at its next ledger touch. Regression guard: process invariant — mechanization backlog M46.
 
 ## Three-tier scope
 

@@ -12,9 +12,12 @@ This file tracks decisions that affect public behavior, repo structure, and long
    `start_simulation_mode` decomposition.
 2. **BF2. A new claim earns only over its floor, strict by default.** LLM path: the full arm beats
    `bare_llm`, and `llm_notes` for a cross-session claim. Substrate path: it beats `tabular_q` and
-   `random`. A claim that does not is recorded as a boundary result. Rows earned before 2026-10-10 keep
-   their status and owe the floor at their next trigger re-run once their harness has the arm. Enforcement
-   is mechanization backlog M46 until the evidence-gate check lands.
+   `random`. A row that does not takes `PARTIAL (narrow: floor matched)` with its boundary result in the
+   prose. Rows earned before 2026-10-10 keep their status and owe the floor at their next trigger re-run
+   once their harness has the arm; losing then moves them to `PARTIAL`, not `BROKEN`. Consequence: no new
+   LLM-path claim can be EARNED until the bare loop exists (and `llm_notes`, for a cross-session claim), which waits for the
+   `start_simulation_mode` decomposition. Enforcement is mechanization backlog M46 until the evidence-gate
+   check lands.
 
 ### Rationale
 
@@ -27,8 +30,8 @@ a benchmark framework, so the line cannot live there (BF1). The strict option wa
 ### Tradeoffs
 
 E1–E3's preregs grow two declared arms each, and B1 (the Exp 60 floor) may show a tabular learner matching
-the earned fear, which would narrow that claim to what a tabular learner does not do (transfer between
-agents and across pools). Both costs are the point of the rule.
+the earned fear, which would narrow that claim to what a tabular learner on the same keys does not do
+(transfer between agents; cross-pool transfer is credited to the EC's keying, which both arms share). Both costs are the point of the rule.
 
 ## 2026-10-10 — Tool-failure credit (#1200): TF1–TF3
 

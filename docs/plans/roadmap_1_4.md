@@ -835,9 +835,10 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   BF1–BF2): a bare LLM (`bare_llm`), a generic-memory LLM (`llm_notes`) and a non-LLM learner
   (`tabular_q`, `random`) beside every claim, so a result reports its gain over a plain agent on the same
   model, tools and seeds. **Touches the ladder only as declared arms:** under BF2 a new substrate-path
-  claim earns only over `tabular_q` and `random`, so E1–E3's preregs declare those two arms. Its first
-  rig work is the Exp 60 floor (B1, no LLM); the bare loop (B2) waits for the `start_simulation_mode`
-  decomposition. Not Phase 0 item 2 (that item adds no public names) and not a benchmark framework (below).
+  claim earns only over `tabular_q` and `random`, so E1–E3's preregs declare those two arms at their
+  design reviews and each rung's harness builds them. Its first rig work is the Exp 60 floor (B1, no LLM;
+  its seam is a design-review decision); the bare loop (B2) waits for the `start_simulation_mode`
+  decomposition, so no new LLM-path claim can be EARNED before it. Not Phase 0 item 2 (that item adds no public names) and not a benchmark framework (below).
 
 ## What is NOT in 1.4
 
