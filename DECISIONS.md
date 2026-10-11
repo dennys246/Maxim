@@ -2,6 +2,25 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-10-10 — Baseline floors B0: split, and the gate reads the schema from the code that ran
+
+### Decision
+
+1. **Split (owner decision).** B0 records which models served a sim's calls, per router object, plus its
+   scenario inputs, global seed and session index; it makes NO claim about which model served the agent
+   under test (`aut_model_attribution: "not_established"`). AUT attribution is B0b, after #1227 (a call-site
+   identity the request dict cannot override) and #1228 (the AUT's FearAgent and ExecAgent use the AUT's
+   router).
+2. **The evidence gate reads `PROVENANCE_SCHEMA` from the executed commit's `src/maxim/simulation/report.py`**
+   (a plain top-level int assignment), anchored at the first first-parent commit on main that defines it;
+   a descendant may not carry a lower value, and no anchor in a shallow clone fails the gate.
+
+### Rationale
+
+Fifteen adversarial passes on the design (docs/plans/baseline_floors_b0.md) showed every scheme attributing
+calls to agents failed on request-context identity, and router-object attribution cannot see AUT calls made
+on the narrator's router. A schema the record declares about itself would let a record opt out of the checks.
+
 ## 2026-10-10 — Tool-failure credit Stage 2 (#1200): TF4–TF9
 
 ### Decision
@@ -19,7 +38,8 @@ This file tracks decisions that affect public behavior, repo structure, and long
    owner, 2026-10-10): this PR adds `record_outcome`'s keyword with a TEMPORARY `None` default plus a guard test
    holding every other caller to it (agent_loop's two sites allowed by exact count); Session A then lands the
    loop's two call-site lines (hard rejection, agent-fallback except); a follow-up drops the default, which a
-   strict red gate in this PR pins (`#1221`).
+   strict red gate in this PR pins (`#1221`). **Done 2026-10-11:** Session A's sites landed in #1231 and the
+   default was dropped under #1221; the keyword is required.
 6. **TF9. Speculative calls book nothing:** prefetch runs its calls inside the executor's `speculative_calls()`
    context (never a model-writable action key) and the bridge books neither
    valence for them (the agent did not choose them), which also removes today's speculative POSITIVE links.

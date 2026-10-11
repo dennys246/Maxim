@@ -944,6 +944,7 @@ def run_agentic_loop(
     aut_mode: str = "llm-primary",  # "llm-primary" | "substrate-primary" — Phase -1 of grounded_language_acquisition.md
     substrate_telemetry: Any
     | None = None,  # SubstrateTelemetry writer (Phase 0). Called after each substrate-primary tick when set.
+    substrate_policy: _sp.SubstratePolicy | None = None,  # in place of recommend_action (B1); a raise ends the loop
     substrate_action_gate: Any | None = None,  # Callable[[], bool] — turn-scoped action budget for the
     # substrate-primary branch (the Exp 48 thrashing fix). When set and returning False, the branch
     # skips proposing this cadence tick (telemetry still fires with proposal=None). The orchestrator
@@ -1821,6 +1822,7 @@ def run_agentic_loop(
                             )
 
                             if can_execute:
+                                result = None  # per action: a raised execute must not leave an EARLIER stamp (#1200)
                                 try:
                                     if callable(on_event):
                                         try:
@@ -1937,6 +1939,7 @@ def run_agentic_loop(
                                         active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                                         cluster_id=getattr(ctrl.pending_proposal, "cluster_id", None),
                                         clusters=getattr(ctrl.pending_proposal, "clusters", None),
+                                        bridge_booked=getattr(result, "nac_failure_booked", None),
                                     )
                             else:
                                 # Log rejected action
@@ -2269,6 +2272,7 @@ def run_agentic_loop(
                         active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                         cluster_id=ctrl.pending_proposal.cluster_id,
                         clusters=ctrl.pending_proposal.clusters,
+                        bridge_booked=None,  # the tool never ran: nothing was bridge-booked
                     )
                     logger.info("Hard rejection recorded for LLM: %s", rejection_msg)
                 ctrl.pending_proposal = None
@@ -2321,6 +2325,7 @@ def run_agentic_loop(
                 memory_hub=memory_hub,
                 substrate_action_gate=substrate_action_gate,
                 substrate_telemetry=substrate_telemetry,
+                substrate_policy=substrate_policy,
                 _loop_nac=_loop_nac,
                 _loop_agent_id=_loop_agent_id,
                 _loop_situation_cue=_loop_situation_cue,

@@ -110,6 +110,8 @@ MEASUREMENT_PATH = [
     "src/maxim/runtime/substrate_proposal.py",  # the substrate proposer + sensor readers, moved from agent_loop.py (slice 3)
     "src/maxim/runtime/loop_planning.py",  # the PLANNING approved path (section 5), from agent_loop.py (slice 4, #1085)
     "src/maxim/runtime/loop_perception.py",  # imagination, auto-sense, audio orientation (1.1-1.16), from agent_loop.py (slice 5)
+    "src/maxim/runtime/loop_controller.py",  # the controller's phase handlers (1.3.2 slice 2), fail-loud Stage 3 (#1134)
+    "src/maxim/runtime/loop_state.py",  # loop state + wake predicates (1.3.2 slice 2), fail-loud Stage 3 (#1134)
     "src/maxim/similarity/encoder.py",
     "src/maxim/similarity/ec.py",
     "src/maxim/bridges/tool_pain_bridge.py",

@@ -135,10 +135,20 @@ _tree_dirty = code_tree.tree_dirty
 # a harness row names its session.
 HARNESS_RUN_ID_ENV = "MAXIM_HARNESS_RUN_ID"
 
+# The provenance block's schema (baseline floors B0). The evidence gate reads this literal from the EXECUTED
+# commit's source, so it must stay a plain top-level ``NAME = <int>`` assignment
+# (docs/plans/baseline_floors_b0.md §What the gate checks).
+PROVENANCE_SCHEMA = 2
 
-def capture_start_provenance() -> dict[str, Any]:
+# The token of this sim's serving start capture (held in simulation/serving_provenance.py, so the stamp stays
+# plain JSON); run_provenance pops it.
+SERVING_TOKEN_KEY = "serving_token"
+
+
+def capture_start_provenance(*, scenario_objects: tuple[Any, ...] = ()) -> dict[str, Any]:
     """What a sim runs with, taken at its start (M1): the imported code, the interpreter, and the
-    configured context window.
+    configured context window. ``scenario_objects`` are scenario objects the sim was handed already loaded (a DM
+    campaign), whose files enter its scenario inputs (baseline floors B0).
 
     A commit is claimed only when the imported ``maxim`` is the ``src/`` of a git checkout; a PyPI install
     stamps ``"unknown"``. As in ``scripts/_provenance.py``, a tree whose state cannot be established counts
@@ -154,8 +164,11 @@ def capture_start_provenance() -> dict[str, Any]:
     except ConfigurationError as e:  # a malformed env value must not cost the run its start
         logger.warning("report provenance: llm.n_ctx unresolved (%s: %s)", type(e).__name__, e)
         n_ctx, n_ctx_source = None, f"unresolved: {type(e).__name__}"
+    from maxim.simulation.serving_provenance import capture_serving_start
+
     run_id = os.environ.get(HARNESS_RUN_ID_ENV, "").strip()
     return {
+        SERVING_TOKEN_KEY: capture_serving_start(scenario_objects=scenario_objects),
         **_code_stamp(Path(maxim.__file__).resolve()),
         **({"harness_run_id": run_id} if run_id else {}),
         "python": sys.executable,
@@ -167,7 +180,13 @@ def capture_start_provenance() -> dict[str, Any]:
 
 
 def run_provenance(
-    start: dict[str, Any], *, llm_worker: Any | None, aut_worker: Any | None, resume: dict[str, Any] | None
+    start: dict[str, Any],
+    *,
+    llm_worker: Any | None,
+    aut_worker: Any | None,
+    resume: dict[str, Any] | None,
+    adopted: bool,
+    goal: str,
 ) -> dict[str, Any]:
     """``start`` (from :func:`capture_start_provenance`) plus what each LLM role actually ran with.
 
@@ -180,9 +199,17 @@ def run_provenance(
     would stamp the model the run ended on.
 
     ``resume`` is ``None`` for a fresh run, else what the ``--resume-sim`` restore actually did
-    (:func:`resume_stamp`); required, so a caller cannot forget to say whether the run resumed.
+    (:func:`resume_stamp`); required, so a caller cannot forget to say whether the run resumed. ``adopted``
+    (an injected persistent agent) and ``goal`` feed the serving/scenario/session fields
+    (``simulation/serving_provenance.py``, baseline floors B0); required for the same reason.
     """
     import maxim
+
+    from maxim.simulation.serving_provenance import serving_provenance
+
+    start = dict(start)
+    serving_token = start.pop(SERVING_TOKEN_KEY, None)
+    resume_record = resume_stamp(resume) if resume is not None else None
 
     end = _code_stamp(Path(maxim.__file__).resolve())
     changed = any(end[k] != start.get(k) for k in end)
@@ -201,7 +228,16 @@ def run_provenance(
         "code_changed_during_run": changed,
         "end_executed_git_hash": end["executed_git_hash"],
         "end_code_tree_sha256": end["code_tree_sha256"],
-        **({"resume": resume_stamp(resume)} if resume is not None else {}),
+        **({"resume": resume_record} if resume_record is not None else {}),
+        "provenance_schema": PROVENANCE_SCHEMA,
+        **serving_provenance(
+            serving_token,
+            llm_worker=llm_worker,
+            aut_worker=aut_worker,
+            resume=resume_record,
+            adopted=adopted,
+            goal=goal,
+        ),
     }
 
 
