@@ -77,6 +77,36 @@ A follow-up review round gets exactly the delta since the last round ("check onl
 is meant to verify, and the stop rule from §1. It reads the rest only to judge the delta. First rounds
 keep the full three-lens brief ([../CODE_REVIEW.md](../CODE_REVIEW.md); the third lens, wire integrity, since 2026-10-05).
 
+## 7. From the Session B follow-up cleanup (2026-10-08 to 10-10)
+
+Each of these cost a round or a red main once; most now have a check, and the rest are habits.
+
+- **Stacked PRs: check every base after each merge.** GitHub merged #1183 into its parent branch, not `main`, so its
+  parent #1182 then carried both changes. After any stacked merge, confirm the next PR's base is `main` before
+  merging it.
+- **"Closes #N" once per issue.** "Closes: #1, #2, #3" closes only the first; repeat the keyword for each.
+- **A lint that scans tracked files is tested with its own new files tracked.** #1175's backlog lint was green only
+  because its test file was untracked; once tracked, the lint failed on its own examples. Run it after
+  `git add -N <new files>` before pushing.
+- **Delegated agents never `git stash` and never `git checkout -- <file>` to undo a probe.** The stash stack is shared
+  across worktrees and sessions, and checkout reverts uncommitted work; both happened once. Probes copy the file
+  to the scratchpad and copy it back.
+- **A dependency that arrives only transitively will vanish.** CI installed the package with `--no-deps`, so
+  `httpx`/`httpcore` came only through `huggingface-hub`; its 2.x release dropped them and `main` went red at an
+  unchanged commit (#1188). When the same commit goes green to red, audit the install, not the code. Regression
+  guard: `tests/unit/test_ci_workflow_shape.py::test_no_job_installs_the_package_without_its_core_dependencies`.
+- **Reproduce where it fails.** Two identical local runs never showed #1103's coverage flip; two CI runs of one
+  commit, diffed by `executed_lines`, named it in one step (the fast suite was reaching the runner's real Docker
+  daemon).
+- **Pin settings to what the platform offers.** #1171 pinned a GitHub setting the repo cannot enable, and the
+  nightly stayed red until it was re-pinned from a `--snapshot` (#1205). Snapshot first; a decision that needs a
+  setting the platform lacks goes back to the owner.
+- **Parallel PRs collide on the next backlog number.** Three did (M39–M41). Take the number from `main` right before
+  pushing; `scripts/lint_backlog_ids.py` now fails a duplicate or a dangling citation.
+- **A leaked credential is closed by rotating it, then proving it.** Rotate on the machine that checks the key (the
+  leader), update every client (peers), then confirm: old key 401, new key 200, no key 401. Redacting the text
+  only cleans the tip of history.
+
 ## `scripts/suite_at_commit.sh`
 
 ```bash
