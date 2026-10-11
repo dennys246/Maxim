@@ -470,6 +470,11 @@ from the plan that owns it:
     decisions 2026-10-08: the O19 campaign cap is read from the merge-base (a raise is its own PR); "consider"-grade NITs are
     fixed when cheap and fail-closed, the rest closed with a recorded reason; #1010 items 8–9 (orchestrator) go to the
     orchestrator characterization slice. Each gate change gets an approach note and an adversarial design pass first.
+    **All merged 2026-10-08/10** (#1169, #1170, #1171, #1182 with #1183, #1184, #1188, #1196 for [#1175](https://github.com/dennys246/Maxim/issues/1175),
+    #1199 for [#1166](https://github.com/dennys246/Maxim/issues/1166), #1205). Its follow-ups wait on triggers, each linked from the doc read at that moment:
+    [#1168](https://github.com/dennys246/Maxim/issues/1168) and [#1173](https://github.com/dennys246/Maxim/issues/1173) before the next O19 campaign (reproduction.md checklist step 0);
+    [#1172](https://github.com/dennys246/Maxim/issues/1172) at the first non-O19 redaction and [#1174](https://github.com/dennys246/Maxim/issues/1174) at the first same-experiment earn-back
+    (m1b §Redaction); [#1197](https://github.com/dennys246/Maxim/issues/1197) at the next `cradle_mother` or `exp49` run (simulation-experiments brief).
   - [#1120](https://github.com/dennys246/Maxim/issues/1120) (with the real encoder, the affordance-transfer
     negative controls form no water concept; two strict red gates) → Session C, beside the substrate work.
     Trigger: before any claim rests on IT-1's positive transfer (`tests/integration/test_affordance_transfer.py`).

@@ -748,6 +748,11 @@ path, so a forced redaction could only merge by bypassing the ruleset.
   `test_the_retired_field_is_required`; `test_a_mode_change_with_the_listed_bytes_is_refused`;
   `test_a_malformed_record_still_retires`; `test_a_judge_that_cannot_place_its_own_campaign_fails_the_freeze_loudly`;
   each mechanism deletion-probed).
+- **Open follow-ups, each with its trigger:** [#1172](https://github.com/dennys246/Maxim/issues/1172) (a redaction path for data outside O19 campaigns: the
+  prereg lint's frozen lists have none; trigger: the first non-O19 redaction); [#1173](https://github.com/dennys246/Maxim/issues/1173) (the O19 harness
+  preflight refuses a retired chain, so no rig time is spent on an attempt the gate will refuse; trigger: before the
+  next O19 campaign, with #1168, listed in reproduction.md's checklist); [#1174](https://github.com/dennys246/Maxim/issues/1174) (same-experiment earn-back
+  after a retirement; trigger: the first redaction whose ledger row must be earned back by the same experiment).
 
 ### Bootstrap
 5b-1's own PR moves no row (the pass table is not on main yet). T1-1 / T3-9 move in a later PR, once the table
