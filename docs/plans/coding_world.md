@@ -346,7 +346,7 @@ The cheapest honest version of the hand-off's question, on an EARNED fear, D1-le
 
 ### C5 — external suites, then outreach
 
-**Entry:** Exp K EARNED. Only as a **substrate-veto arm over LLM proposals against an LLM-only baseline**
+**Entry:** Exp K EARNED. Only as a **substrate-veto arm over LLM proposals against an LLM-only baseline (`bare_llm`, [baseline_floors.md](baseline_floors.md))**
 (otherwise the suite measures the LLM); Inspect / inspect_evals as the harness; ImpossibleBench first.
 Outreach is the owner's call and comes after everything else.
 
