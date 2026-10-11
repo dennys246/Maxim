@@ -563,7 +563,7 @@ def run_gauntlet(
         from maxim.decisions.nac import NAc, NACConfig
         from maxim.embodiment.body import Embodiment
         from maxim.embodiment.spec import _parse_entity, normalize_llm_entity_spec
-        from maxim.embodiment.tool_bridge import generate_tools_for_entity
+        from maxim.embodiment.tool_bridge import ModulatorAffordanceTool, generate_tools_for_entity
         from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
         from maxim.proprioception.pain_bus import build_pain_bus
         from maxim.runtime.bootstrap import build_executor
@@ -597,11 +597,7 @@ def run_gauntlet(
         executor.embodiment = embodiment
 
         # Collect affordance tool names for testing
-        affordance_tools = [
-            t.name
-            for t in tools
-            if hasattr(t, "_affordance_name")  # ModulatorAffordanceTool
-        ]
+        affordance_tools = [t.name for t in tools if isinstance(t, ModulatorAffordanceTool)]
 
         if not affordance_tools:
             result.status = "partial"

@@ -9,6 +9,7 @@ on a hand-edited file judges nothing.
 
 from __future__ import annotations
 
+import ast
 import gzip
 import hashlib
 import importlib.util
@@ -126,6 +127,15 @@ class Repo:
     def is_ancestor(self, commit: str, of: str) -> bool:
         out = subprocess.run(["git", "merge-base", "--is-ancestor", commit, of], cwd=self.root, capture_output=True)
         return out.returncode == 0
+
+    def ancestry(self, commit: str, of: str) -> bool | None:
+        """Like :meth:`is_ancestor`, but ``None`` when git cannot decide (exit 128: a missing object, as in a
+        shallow clone), so a caller can fail closed instead of reading "undecidable" as "no"."""
+        out = subprocess.run(["git", "merge-base", "--is-ancestor", commit, of], cwd=self.root, capture_output=True)
+        return {0: True, 1: False}.get(out.returncode)
+
+    def is_shallow(self) -> bool:
+        return self.git("rev-parse", "--is-shallow-repository").strip() == "true"
 
     def commit_time(self, ref: str) -> int:
         key = f"ct:{ref}"
@@ -329,6 +339,148 @@ def judge_sim_fields(sim: dict, j: Judgement, ctx: Ctx, label: str, tree: str | 
         j.fail(f"{label}: executed {executed!r} is not a full commit on main")
     else:
         check_skew(sim.get("ts"), executed, j, ctx, label)
+        judge_b0_fields(sim, j, ctx, label, executed)
+
+
+# Baseline floors B0 (docs/plans/baseline_floors_b0.md): which schema a record must carry is read from the code
+# that RAN, never from the record. The writer's literal lives in this file at the executed commit.
+PROVENANCE_SCHEMA_PATH = "src/maxim/simulation/report.py"
+PROVENANCE_SCHEMA_NAME = "PROVENANCE_SCHEMA"
+B0_IDENTITY_SOURCES = frozenset({"local_file", "server_reported", "provider_name"})
+B0_OUTCOMES = ("success", "exhausted", "budget_reject", "raised")
+UNPARSEABLE = "unparseable"
+
+
+def provenance_schema_in(source: bytes | None):
+    """The ``PROVENANCE_SCHEMA`` a ``report.py`` source defines: ``None`` when it never binds the name, the int
+    of its last plain top-level single-target assignment of an int literal, and :data:`UNPARSEABLE` for any
+    other binding (annotated, augmented, conditional, multi-target, tuple, non-int)."""
+    if source is None:
+        return None
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return UNPARSEABLE
+    value = None
+    top = set()
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            if node.targets[0].id == PROVENANCE_SCHEMA_NAME:
+                top.add(id(node))
+                ok = isinstance(node.value, ast.Constant) and type(node.value.value) is int
+                value = node.value.value if ok else UNPARSEABLE
+    for node in ast.walk(tree):
+        if id(node) in top:
+            continue
+        names = []
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for t in targets:
+                names += [n.id for n in ast.walk(t) if isinstance(n, ast.Name)]
+        if PROVENANCE_SCHEMA_NAME in names:
+            return UNPARSEABLE
+    return value
+
+
+def provenance_schema_anchor(repo: Repo, base: str) -> tuple[str, int] | None:
+    """The first commit on ``base``'s first-parent history that defines ``PROVENANCE_SCHEMA``, and its value.
+    ``None`` only when there is none AND the clone is complete (a base that predates B0); a shallow clone with
+    no anchor raises, so it cannot silently switch the B0 checks off."""
+    key = f"b0-anchor:{base}"
+    if key not in repo._cache:
+        found = None
+        log = repo.git(
+            "log",
+            "--first-parent",
+            "--diff-merges=first-parent",
+            "--reverse",
+            "--format=%H",
+            f"-G^{PROVENANCE_SCHEMA_NAME}[[:space:]]*=",  # POSIX class: git's -G regex has no \\s
+            base,
+            "--",
+            PROVENANCE_SCHEMA_PATH,
+        )
+        for commit in log.split():
+            value = provenance_schema_in(repo.blob(commit, PROVENANCE_SCHEMA_PATH))
+            if isinstance(value, int):
+                found = (commit, value)
+                break
+        if found is None and repo.is_shallow():
+            raise GateError("no PROVENANCE_SCHEMA anchor and the clone is shallow: B0's checks cannot be placed")
+        repo._cache[key] = found
+    return repo._cache[key]  # type: ignore[return-value]
+
+
+def judge_b0_fields(sim: dict, j: Judgement, ctx: Ctx, label: str, executed: str) -> None:
+    """The B0 serving/scenario/session fields, when the executed code writes schema >= 2."""
+    value = provenance_schema_in(ctx.repo.blob(executed, PROVENANCE_SCHEMA_PATH))
+    anchor = provenance_schema_anchor(ctx.repo, ctx.base)
+    if anchor is not None:
+        descends = ctx.repo.ancestry(anchor[0], executed)
+        if descends is None:
+            j.fail(f"{label}: cannot decide whether {executed} descends from the schema anchor")
+            return
+        if descends and not (isinstance(value, int) and value >= anchor[1]):
+            j.fail(f"{label}: executed code defines PROVENANCE_SCHEMA {value!r}, below the anchor's {anchor[1]}")
+            return
+    if value == UNPARSEABLE:
+        j.fail(f"{label}: executed code's PROVENANCE_SCHEMA is not a plain int assignment")
+        return
+    if not isinstance(value, int) or value < 2:
+        return
+    if sim.get("provenance_schema") != value:
+        j.fail(f"{label}: provenance_schema {sim.get('provenance_schema')!r}, its code writes {value}")
+        return
+    for key, want in (("concurrent_sims", False), ("sampling_complete", True), ("model_changed_during_run", False)):
+        if sim.get(key) is not want:
+            j.fail(f"{label}: {key} is {sim.get(key)!r}")
+    if sim.get("aut_model_attribution") != "not_established":
+        j.fail(f"{label}: aut_model_attribution {sim.get('aut_model_attribution')!r}")
+    if not isinstance(sim.get("scenario_sha256"), str) or not HEX64.match(sim["scenario_sha256"]):
+        j.fail(f"{label}: no scenario_sha256")
+    index = sim.get("session_index")
+    if index is not None and (type(index) is not int or index < 0):
+        j.fail(f"{label}: session_index {index!r}")
+    roles = [k[: -len("_profile")] for k in sim if isinstance(k, str) and k.endswith("_profile") and sim[k]]
+    if not roles:
+        return
+    calls = sim.get("llm_calls")
+    if not isinstance(calls, dict):
+        j.fail(f"{label}: ran an LLM role without llm_calls")
+        return
+    for role in roles:
+        serial = sim.get(f"{role}_router_serial")
+        if type(serial) is not int or str(serial) not in calls:
+            j.fail(f"{label}: {role}_router_serial {serial!r} is not a router in llm_calls")
+    for serial, r in calls.items():
+        judge_b0_router(r, j, f"{label} router {serial}")
+
+
+def judge_b0_router(r, j: Judgement, label: str) -> None:
+    counts = r.get("counts") if isinstance(r, dict) else None
+    entries = r.get("entries") if isinstance(r, dict) else None
+    if not isinstance(counts, dict) or not isinstance(entries, list):
+        j.fail(f"{label}: malformed")
+        return
+    if any(type(counts.get(k)) is not int or counts[k] < 0 for k in ("started", *B0_OUTCOMES)):
+        j.fail(f"{label}: malformed counts {counts!r}")
+        return
+    if counts["started"] != sum(counts[o] for o in B0_OUTCOMES):
+        j.fail(f"{label}: {counts['started']} started, outcomes {counts!r}")
+    ns = [e.get("n") if isinstance(e, dict) else None for e in entries]
+    if any(type(n) is not int or n <= 0 for n in ns) or sum(ns) != counts["success"]:  # type: ignore[arg-type]
+        j.fail(f"{label}: entries do not sum to its {counts['success']} successes")
+        return
+    for e in entries:
+        source, identity = e.get("identity_source"), e.get("identity")
+        if source not in B0_IDENTITY_SOURCES:
+            j.fail(f"{label}: identity_source {source!r} is not established")
+        elif source == "local_file" and not (isinstance(identity, str) and HEX64.match(identity)):
+            j.fail(f"{label}: local_file identity {identity!r} is not a sha256")
+        elif not (isinstance(identity, str) and identity):
+            j.fail(f"{label}: no identity")
+        if type(e.get("seed_honoured")) is not bool:
+            j.fail(f"{label}: seed_honoured {e.get('seed_honoured')!r}")
 
 
 def judge_sim_report(report, j: Judgement, ctx: Ctx) -> None:

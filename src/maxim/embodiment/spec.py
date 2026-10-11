@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml
+from maxim.utils.scenario_inputs import read_recorded
 
 from maxim.embodiment.sem import (
     AffordanceSchema,
@@ -55,6 +55,8 @@ _TYPE_MAP: dict[str, type] = {
     "str": str,
     "bool": bool,
 }
+
+import yaml
 
 
 @dataclass
@@ -234,8 +236,7 @@ def load_spec(path: str | Path, registry: Any | None = None) -> EmbodimentSpec:
     if not path.exists():
         raise FileNotFoundError(f"Embodiment spec not found: {path}")
 
-    with open(path) as f:
-        raw = yaml.safe_load(f)
+    raw = yaml.safe_load(read_recorded(path))
 
     if not isinstance(raw, dict):
         raise ValueError(f"Expected YAML dict, got {type(raw).__name__}")

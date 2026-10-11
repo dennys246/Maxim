@@ -1821,6 +1821,7 @@ def run_agentic_loop(
                             )
 
                             if can_execute:
+                                result = None  # per action: a raised execute must not leave an EARLIER stamp (#1200)
                                 try:
                                     if callable(on_event):
                                         try:
@@ -1937,6 +1938,7 @@ def run_agentic_loop(
                                         active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                                         cluster_id=getattr(ctrl.pending_proposal, "cluster_id", None),
                                         clusters=getattr(ctrl.pending_proposal, "clusters", None),
+                                        bridge_booked=getattr(result, "nac_failure_booked", None),
                                     )
                             else:
                                 # Log rejected action
@@ -2269,6 +2271,7 @@ def run_agentic_loop(
                         active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                         cluster_id=ctrl.pending_proposal.cluster_id,
                         clusters=ctrl.pending_proposal.clusters,
+                        bridge_booked=None,  # the tool never ran: nothing was bridge-booked
                     )
                     logger.info("Hard rejection recorded for LLM: %s", rejection_msg)
                 ctrl.pending_proposal = None

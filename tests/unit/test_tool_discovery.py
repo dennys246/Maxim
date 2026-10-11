@@ -880,9 +880,12 @@ class TestAffordanceTransferAnnotations:
         entity_map.list_scene_entities.return_value = []
 
         registry = MagicMock()
-        registry.list_all.return_value = ["rusty_sword_fire_slash"]
-        mock_tool = MagicMock(description="Flaming slash attack")
-        mock_tool._affordance_name = "fire_slash"
+        from maxim.embodiment.tool_bridge import ModulatorAffordanceTool
+
+        # A tool name that does NOT contain the affordance (#1195): only the accessor can supply "fire_slash".
+        registry.list_all.return_value = ["rusty_sword_attack_7"]
+        mock_tool = MagicMock(spec=ModulatorAffordanceTool, description="Flaming slash attack")
+        mock_tool.affordance_name = "fire_slash"
         registry.get.return_value = mock_tool
         registry.get_tool_scene.return_value = "scene-1"
         registry.is_tool_active.return_value = True
@@ -895,4 +898,4 @@ class TestAffordanceTransferAnnotations:
             agent_id="aut-1",
         )
         # The affordance "fire_slash" decomposes, and "fire" matches the ATL concept.
-        assert tool._nac_annotation("rusty_sword_fire_slash") == expected
+        assert tool._nac_annotation("rusty_sword_attack_7") == expected

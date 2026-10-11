@@ -9,6 +9,8 @@ from maxim.agents.llm_types import LLMAttemptState
 from maxim.modes.definitions import DEFAULT_RUN_MODE
 from maxim.utils.atomic_io import atomic_write_json
 
+from maxim.utils.logging import log_swallowed_exception
+
 logger = logging.getLogger(__name__)
 
 
@@ -56,7 +58,7 @@ def _persist_state_json(state: Any, path: str, *, meta: dict[str, Any]) -> None:
         abs_path = os.path.abspath(path)
         atomic_write_json(abs_path, with_format_version({"saved_at": time.time(), **meta, **snap}))
     except Exception:
-        pass  # Non-critical: state persistence is best-effort
+        log_swallowed_exception()  # state persistence is best-effort, but a failure is reported (#1134)
 
 
 def _get_failure_strategy(intent: dict, action: dict) -> str:
@@ -129,7 +131,7 @@ def _build_replan_context(
                     prior_attempt_summaries.append(summary or "prior attempt")
                     rendered.append(ep)
         except Exception:
-            logger.debug("B4 prior-attempt retrieval failed", exc_info=True)
+            log_swallowed_exception()  # B4 prior-attempt retrieval is best-effort (#1134)
         else:
             from maxim.memory.layer import activate_after_use
 

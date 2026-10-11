@@ -312,8 +312,10 @@ def test_a_prefix_resume_is_stamped_as_not_loaded(tmp_path: Path, monkeypatch) -
 
 def test_the_report_carries_the_resume_only_for_a_resume() -> None:
     start = report_mod.capture_start_provenance()
-    assert "resume" not in run_provenance(start, llm_worker=None, aut_worker=None, resume=None)
-    prov = run_provenance(start, llm_worker=None, aut_worker=None, resume=_resume(None, None, {}, loaded=False))
+    assert "resume" not in run_provenance(start, llm_worker=None, aut_worker=None, resume=None, adopted=False, goal="")
+    prov = run_provenance(
+        start, llm_worker=None, aut_worker=None, resume=_resume(None, None, {}, loaded=False), adopted=False, goal=""
+    )
     assert prov["resume"]["resume_loaded"] is False
     assert inspect.signature(run_provenance).parameters["resume"].default is inspect.Parameter.empty
 

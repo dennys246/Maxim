@@ -151,7 +151,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "run_agentic_loop",
-      "lines": 2429
+      "lines": 2432
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -226,7 +226,7 @@
     {
       "file": "src/maxim/simulation/orchestrator.py",
       "qualname": "start_simulation_mode",
-      "lines": 3229
+      "lines": 3227
     },
     {
       "file": "src/maxim/simulation/orchestrator.py",
@@ -291,6 +291,15 @@
       "date": "2026-10-10",
       "ref": "#1200",
       "reason": "Tool-failure credit Stage 2 (owner decisions TF1-TF9): both rec_outcome calls pass bridge_booked=, the signature the tool-pain bridge booked the failure under, so dispatch books it once (one keyword line each, the try and the except branch). The guarded observe it feeds was extracted from record_outcome into tool_dispatch._observe_tool_result (record_outcome 415 -> 413). Splitting execute_and_learn stays #1150's."
+    },
+    {
+      "file": "src/maxim/runtime/agent_loop.py",
+      "qualname": "run_agentic_loop",
+      "from": 2429,
+      "to": 2432,
+      "date": "2026-10-11",
+      "ref": "#1200",
+      "reason": "Tool-failure credit Stage 2, TF8 (agreed between Sessions A and C): the loop's own two rec_outcome sites pass bridge_booked=, one keyword line each (the hard rejection passes None: the tool never ran; the agent fallback's except passes the executed action's stamp, so a bridge-booked failure is not booked twice), and the agent fallback binds result = None before each action, so an execute that raised cannot leave an earlier action's stamp for the except to read. The agent fallback's routing through execute_and_learn, which would retire both sites, is #1147's."
     }
   ],
   "history": [
@@ -329,6 +338,7 @@
     "run_agentic_loop tightened 2783 -> 2720 on 2026-10-08 (roadmap 1.3.2 decomposition, slice 4; #1085) when section 5, the PLANNING approved path, was replaced by one call to runtime/loop_planning.py::drain_approved (under 200 lines), which runs each approved action through tool_dispatch.execute_and_learn(human_involved=True); the hand-rolled dispatch and the module-level _approved_situation were deleted. execute_and_learn 389 -> 388 (the human_involved retry gate paid for by tightening its docstring).",
     "run_agentic_loop tightened 2720 -> 2717 on 2026-10-09 (#963) when the maxim_runtime run-mode copy moved into loop_state.py::seed_runtime_run_mode and every mode read became one loop_state.operational_mode(executor, state) call (owner decision Q7: the agent_loop line edits land in #963's PR).",
     "run_agentic_loop tightened 2717 -> 2429 on 2026-10-10 (roadmap 1.3.2 decomposition, slice 5) when sections 1.1-1.16 (imagination, auto-sense, audio orientation) moved verbatim to runtime/loop_perception.py: perceive composes imagine (43), auto_sense (126) and orient_to_audio (136), each under 200 lines, so no exception record; next_observation and state.update stay at the call site.",
-    "record_outcome tightened 415 -> 413 on 2026-10-10 (#1200 Stage 2) when its tool_result observe moved into _observe_tool_result with the failure cut; execute_and_learn raised 388 -> 390 by the #1200 exception record."
+    "record_outcome tightened 415 -> 413 on 2026-10-10 (#1200 Stage 2) when its tool_result observe moved into _observe_tool_result with the failure cut; execute_and_learn raised 388 -> 390 by the #1200 exception record.",
+    "run_agentic_loop raised 2429 -> 2432 on 2026-10-11 (#1200 Stage 2, TF8) by the #1200 exception record: bridge_booked= at the hard rejection and the agent fallback's except, and the fallback's per-action result = None."
   ]
 }
