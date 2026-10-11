@@ -34,6 +34,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from maxim.utils import scenario_inputs
+from maxim.utils.scenario_inputs import read_recorded
 import yaml
 
 log = logging.getLogger(__name__)
@@ -154,6 +156,9 @@ class ComponentRegistry:
         self._index: dict[str, ComponentInfo] = {}  # ref -> info
         self._file_map: dict[str, Path] = {}  # ref -> YAML path
         self._spec_cache: dict[str, dict] = {}  # ref -> resolved spec
+        # ref -> the YAML files its resolution read (baseline floors B0), re-recorded on every cache hit so a
+        # later sim served from the cache still lists them in its scenario inputs.
+        self._spec_inputs: dict[str, list[dict[str, str]]] = {}
         # Session-scoped ephemeral overlay (imagined entities)
         self._ephemeral_index: dict[str, ComponentInfo] = {}
         self._ephemeral_specs: dict[str, dict] = {}
@@ -197,7 +202,11 @@ class ComponentRegistry:
 
         with self._lock:
             if ref not in self._spec_cache:
+                start = scenario_inputs.mark()
                 self._spec_cache[ref] = self._resolve(ref, _visited=set())
+                self._spec_inputs[ref] = scenario_inputs.since(start)
+            else:
+                scenario_inputs.renote(self._spec_inputs.get(ref, ()))
 
         return copy.deepcopy(self._spec_cache[ref])
 
@@ -325,6 +334,7 @@ class ComponentRegistry:
         with self._lock:
             self._index[ref] = info
             self._spec_cache[ref] = spec
+            self._spec_inputs.pop(ref, None)  # registered inline: no file read to re-record
             self._file_map[ref] = Path(source_path)
 
     # -- ephemeral (session-scoped) registration ----------------------------
@@ -375,6 +385,7 @@ class ComponentRegistry:
             # Also clear any spec_cache entries for ephemeral refs
             for ref in refs:
                 self._spec_cache.pop(ref, None)
+                self._spec_inputs.pop(ref, None)
         if refs:
             log.debug("ComponentRegistry: cleared %d ephemeral components", len(refs))
         return refs
@@ -472,8 +483,7 @@ class ComponentRegistry:
         if path is None:
             raise KeyError(f"No file mapped for component '{ref}'")
 
-        with open(path) as f:
-            raw = yaml.safe_load(f)
+        raw = yaml.safe_load(read_recorded(path))
 
         return raw
 

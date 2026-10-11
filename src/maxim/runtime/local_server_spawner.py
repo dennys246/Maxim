@@ -244,6 +244,18 @@ class LocalServerSpawner:
         return self._n_ctx
 
     @property
+    def model_path(self) -> str:
+        """The GGUF this spawner launches the server with (public for the same reason as :attr:`n_ctx`)."""
+        return self._model_path
+
+    @property
+    def kv_cache_type(self) -> str:
+        """The KV-cache type the spawn command passes: ``q8_0``/``q4_0`` as ``--type_k``/``--type_v``, else
+        llama-cpp-server's default ``f16`` (no flag). :meth:`_build_cmd` reads this, so the stamp and the
+        command cannot disagree."""
+        return self._kv_quant_mode if self._kv_quant_mode in ("q8_0", "q4_0") else "f16"
+
+    @property
     def is_running(self) -> bool:
         return self._process is not None and self._process.poll() is None
 
@@ -371,13 +383,13 @@ class LocalServerSpawner:
         # llama-cpp-server's default, so only emit flags for q8_0/q4_0 — keeps
         # the spawn cmdline backward-compatible with older llama_cpp_python
         # builds that didn't recognize --type_k/--type_v.
-        if self._kv_quant_mode in ("q8_0", "q4_0"):
+        if self.kv_cache_type != "f16":
             cmd.extend(
                 [
                     "--type_k",
-                    self._kv_quant_mode,
+                    self.kv_cache_type,
                     "--type_v",
-                    self._kv_quant_mode,
+                    self.kv_cache_type,
                 ]
             )
         return cmd

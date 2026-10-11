@@ -95,6 +95,41 @@ What the passes established, so B0b does not relearn it:
 - Walking objects for routers cannot work: AUT-side state lives in separate locals, and routers passed as
   arguments are held by nothing.
 
+## As built (deviations from the design, 2026-10-10, after the code review)
+
+- **Why not existing infrastructure.** `runtime/llm_call_registry.py` tracks only calls in flight and drops
+  them at their end; `llm_server.register_router`'s weak references lose the counts of collected routers. So
+  the accumulator is its own module, `models/language/call_accounting.py`, written at the same site.
+- **The served call is built once, by the attempt.** `_try_provider` builds it from its own provider, model,
+  backend and temperature (`_served_call_for`), guarded: accounting never changes a dispatch, and a failure
+  leaves the window incomplete. The key is `(provider_key, model, backend_kind, endpoint, served_id,
+  quantization, seed, seed_honoured, temp)`, recorded at call time so identity can be joined for routers the
+  report holds no object for; the endpoint is the configured base URL (no DNS at call time). `quantization`
+  is recorded only for the in-process llama backend. The transformers and other backends fall to
+  `provider_name`: a model name, attested, even for a local file.
+- **The start stamp stays plain JSON.** The capture (call snapshot, scenario mark, spawner) is held in
+  `simulation/serving_provenance.py`; the stamp carries an integer `serving_token`.
+- **Sims register per thread**, so a sim that dies before its report never taints a later one: a new sim on
+  the same thread drops the earlier registration, a dead thread's registration is dropped, and only a live
+  sim on another thread marks overlap. A sub-sim run synchronously on its parent's thread replaces the
+  parent's registration.
+- **The owned server is hashed from its spawn** (`runtime/llm_server.py::set_active_spawner`, used by
+  `lane_backends`), so a server spawned inside the window is a fresh spawn, not a model change; a replaced
+  server or a changed file is. Spawner state is read through public accessors (`active_spawner()`,
+  `active_spawner_digest()`, `LocalServerSpawner.model_path` / `kv_cache_type`, which the spawn command also
+  reads). Peer probes go through `LLMRouter.serving_probes()`.
+- **Scenario files loaded before the sim count.** Loaders read through `utils/scenario_inputs.py::read_recorded`
+  and parse the bytes it returns (the hash covers what was parsed); the window lists each distinct file once;
+  scenario data handed over as `pre_campaign_turns` enters `scenario_sha256` by content; a DM campaign carries `source_inputs` and the sim re-records them after
+  its mark; the component registry re-records a ref's files on every cache hit.
+- **Report time waits for in-flight calls.** Each role router gets up to 30 s (`LLMRouter.wait_idle`) before
+  the end snapshot.
+- **Completeness is judged on routers active in the window**, balanced in the window and at both snapshots;
+  idle non-role routers are left out of `llm_calls`.
+- **No anchor on the gate's base counts as pre-B0 unless the clone is shallow** (then the gate fails): inside
+  B0's own PR, main has no anchor yet. The `-G` pattern uses `[[:space:]]`; git's regex has no `\s`.
+- **The mock report writers are unchanged**: the gate refuses mock records before judging fields.
+
 ## Persistence and env
 
 No new env var (`MAXIM_LLM_SEED` exists, with no side effect, so no conftest scrub). `report.json` already

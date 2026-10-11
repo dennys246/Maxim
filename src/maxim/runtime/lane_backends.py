@@ -2649,7 +2649,7 @@ def _maybe_auto_spawn_server(
         return lane_configs
 
     # Track active spawner for hot-swap via `maxim peer llm <model>`
-    _server_mod._active_spawner = spawner
+    _server_mod.set_active_spawner(spawner)
     _server_mod._active_model = effective_profile
     _server_mod._llm_start_time = time.time()
 
@@ -2882,7 +2882,7 @@ def _stop_active_server(logger_obj: Any | None) -> None:
         if logger_obj is not None:
             logger_obj.info("LLM swap: stopping current server (model=%s)", _server_mod._active_model)
         _server_mod._active_spawner.stop()
-        _server_mod._active_spawner = None
+        _server_mod.set_active_spawner(None)
         _server_mod._active_model = None
 
 
@@ -3008,7 +3008,7 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
             logger_obj=logger,
         )
 
-        _server_mod._active_spawner = spawner
+        _server_mod.set_active_spawner(spawner)
         _server_mod._active_model = resolved
         _server_mod._llm_start_time = time.time()
         _write_persisted_model(resolved)

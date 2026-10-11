@@ -677,8 +677,18 @@ _EVIDENCE_PROVENANCE = (
     "code_changed_during_run",
     "configured_n_ctx",
     "resume",
+    # Baseline floors B0 (docs/plans/baseline_floors_b0.md): the fields the evidence gate judges.
+    "provenance_schema",
+    "llm_calls",
+    "sampling_complete",
+    "model_changed_during_run",
+    "concurrent_sims",
+    "scenario_sha256",
+    "global_seed",
+    "session_index",
+    "aut_model_attribution",
 )
-_EVIDENCE_ROLE_SUFFIXES = ("_profile", "_router_n_ctx", "_budget_n_ctx")
+_EVIDENCE_ROLE_SUFFIXES = ("_profile", "_router_n_ctx", "_budget_n_ctx", "_router_serial")
 
 
 def sim_evidence(session_dir: Path | str, report: dict | None) -> dict[str, object]:

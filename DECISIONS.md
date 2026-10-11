@@ -2,6 +2,25 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-10-10 — Baseline floors B0: split, and the gate reads the schema from the code that ran
+
+### Decision
+
+1. **Split (owner decision).** B0 records which models served a sim's calls, per router object, plus its
+   scenario inputs, global seed and session index; it makes NO claim about which model served the agent
+   under test (`aut_model_attribution: "not_established"`). AUT attribution is B0b, after #1227 (a call-site
+   identity the request dict cannot override) and #1228 (the AUT's FearAgent and ExecAgent use the AUT's
+   router).
+2. **The evidence gate reads `PROVENANCE_SCHEMA` from the executed commit's `src/maxim/simulation/report.py`**
+   (a plain top-level int assignment), anchored at the first first-parent commit on main that defines it;
+   a descendant may not carry a lower value, and no anchor in a shallow clone fails the gate.
+
+### Rationale
+
+Fifteen adversarial passes on the design (docs/plans/baseline_floors_b0.md) showed every scheme attributing
+calls to agents failed on request-context identity, and router-object attribution cannot see AUT calls made
+on the narrator's router. A schema the record declares about itself would let a record opt out of the checks.
+
 ## 2026-10-10 — Tool-failure credit (#1200): TF1–TF3
 
 ### Decision
