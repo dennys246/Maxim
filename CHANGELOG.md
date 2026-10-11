@@ -295,6 +295,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The agent loop's agent-fallback no longer books a bridge-booked tool failure twice ([#1200](https://github.com/dennys246/Maxim/issues/1200)
+  Stage 2, TF8).** The loop's two own `record_outcome` sites now pass `bridge_booked=`.
+  - **Agent fallback (`agent.propose_intent`).** Its except branch passes the executed action's
+    `ToolOutput.nac_failure_booked`. Before, a failure the bridge had already booked gained a second NEGATIVE
+    from dispatch when a later step in the try (the audit, say) raised.
+  - **Stale read, guarded with it (never shipped: main's except does not read `result`).** `result` is now bound to `None` before each fallback action. Reading it in
+    the except would otherwise pick up an EARLIER action's result when `execute` itself raised. That stamp would
+    carry the same signature, so dispatch would skip the failure's only booking. On the first fallback action the
+    read would raise inside the except handler, and nothing would be recorded at all.
+  - **Hard rejection.** It passes `bridge_booked=None` explicitly: the tool never ran. It books exactly as before.
+  - `tool_dispatch.record_outcome` still defaults the keyword. Dropping the default is the next step (TF8 step 3).
+  - **Not fixed here (#1147).** The fallback's `try` also wraps the audit and capture steps after `execute`, so a
+    successful tool followed by a raise in those steps is still booked as a tool failure. Routing the fallback
+    through `execute_and_learn` (#1147) covers it.
 - **Concurrent observations no longer crash Hippocampus (#1135).** `Hippocampus.store_observation`'s dedup
   tracker was checked, updated and pruned without a lock, so a thread rebuilding it while another wrote it raised
   `RuntimeError: dictionary changed size during iteration` (seen as a full-suite flake under load; reproduced
