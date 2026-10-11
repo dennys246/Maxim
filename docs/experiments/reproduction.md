@@ -117,6 +117,9 @@ The orderings above compare the rig's clock (row `ts`, tagger dates) with GitHub
 
 ## Checklist for the next re-run
 
+0. Before a NEW O19 campaign opens, land its two pending gates, whose trigger is this checklist: [#1168](https://github.com/dennys246/Maxim/issues/1168) (the
+   evidence gate re-verifies a cited campaign's start markers and rows history itself, rather than trusting the
+   verdict record) and [#1173](https://github.com/dennys246/Maxim/issues/1173) (the harness preflight refuses a campaign whose chain a redaction retired).
 1. The re-run prereg is merged to `main` from the template, with its Scope line, numeric gates and the stop rule.
 2. The tag ruleset exists and predates the first marker. Do not edit it.
 3. `maxim config` holds the model and `n_ctx`, `maxim doctor` agrees, and the box is quiet.

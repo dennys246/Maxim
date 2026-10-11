@@ -14,6 +14,7 @@ movement commands before execution, without requiring historical data.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -23,7 +24,7 @@ from maxim.harm.movement import MovementHarmConfig
 from maxim.harm.joint_limit import JointLimitConfig
 
 if TYPE_CHECKING:
-    from maxim.decisions.causal_link import OutcomePrediction
+    from maxim.decisions.causal_link import CausalLink, OutcomePrediction, Valence
     from maxim.decisions.nac import NAc
     from maxim.harm.predictor import HarmPrediction
     from maxim.proprioception.pain import PainDetector, PainSignal
@@ -64,6 +65,21 @@ class PainBridgeConfig:
     yaw_limit: float = 45.0  # degrees
     pitch_limit: float = 30.0  # degrees
     use_learned_bounds: bool = True  # Use WorkspaceBoundsLearner data
+
+
+@dataclass(frozen=True, eq=False)
+class _PendingMovement:
+    """One movement awaiting its outcome: its signature, its OWN NAc event id, start time and context.
+
+    One record instead of parallel fields (#1209), so a movement cannot exist without its event id, and a
+    reader that takes it once sees one consistent movement even while the movement thread replaces it.
+    Runtime-ephemeral: never persisted and never crosses a wire (out of CC3 scope).
+    """
+
+    signature: str
+    event_id: str
+    started_at: float
+    context: dict[str, Any]
 
 
 class PainCircuitBridge:
@@ -111,11 +127,10 @@ class PainCircuitBridge:
         self._detector = pain_detector
         self.config = config or PainBridgeConfig()
 
-        # Current action tracking
-        self._pending_action: str | None = None
-        self._pending_event_id: str | None = None
-        self._action_start_time: float = 0.0
-        self._action_context: dict[str, Any] = {}
+        # The movement awaiting its outcome (#1209). Movements start on the command path while pain arrives
+        # on the PainBus / detector path, so it is replaced and cleared only under ``_pending_lock``.
+        self._pending: _PendingMovement | None = None
+        self._pending_lock = threading.Lock()
 
         # Statistics
         self._total_pain_attributed = 0
@@ -195,16 +210,18 @@ class PainCircuitBridge:
         Returns:
             Event ID for tracking.
         """
-        self._pending_action = action_signature
-        self._action_start_time = time.time()
-        self._action_context = context or {}
-
-        # Register with NAc
-        self._pending_event_id = self._nac.record_event(
+        # A new action replaces the pending one, whose NAc event is retired unbooked (#1209). The new
+        # movement is installed only once NAc has accepted its event, so a start that raises leaves nothing
+        # pending rather than the previous movement under the new name.
+        self._retire(self._pending)
+        event_id = self._nac.record_event(
             event_type="movement",
             event_signature=action_signature,
             context=context,
         )
+        pending = _PendingMovement(action_signature, event_id, time.time(), context or {})
+        with self._pending_lock:
+            self._pending = pending
 
         # Set movement target for failure detection (if any targets provided)
         has_target = any(t is not None for t in (target_yaw, target_pitch, target_x, target_y, target_z, target_roll))
@@ -219,9 +236,9 @@ class PainCircuitBridge:
                 action_signature=action_signature,
             )
 
-        logger.debug("Action started: %s (event_id=%s)", action_signature, self._pending_event_id)
+        logger.debug("Action started: %s (event_id=%s)", action_signature, event_id)
 
-        return self._pending_event_id
+        return event_id
 
     def record_action_complete(self, success: bool = True) -> None:
         """Record that an action completed without pain.
@@ -232,33 +249,26 @@ class PainCircuitBridge:
         Args:
             success: Whether the action was successful.
         """
-        if not self._pending_action or not self.config.enable_learning:
-            # Still clear movement target even if not learning
+        pending = self._pending
+        try:
+            # Clear the movement target whether or not we learn: the action has ended either way
             self._detector.clear_movement_target()
-            return
+            if pending is None or not self.config.enable_learning:
+                return
 
-        from maxim.decisions.causal_link import Valence
+            from maxim.decisions.causal_link import Valence
 
-        # Clear movement target since action completed normally
-        self._detector.clear_movement_target()
-
-        # Determine valence based on success
-        valence = Valence.POSITIVE if success else Valence.NEUTRAL
-
-        self._nac.record_outcome(
-            event_type="movement",
-            event_id=self._pending_action,
-            outcome_valence=valence,
-            context={"success": success, **self._action_context},
-        )
-
-        logger.debug(
-            "Action completed without pain: %s (valence=%s)",
-            self._pending_action,
-            valence.value,
-        )
-
-        self._clear_pending_action()
+            # Determine valence based on success
+            valence = Valence.POSITIVE if success else Valence.NEUTRAL
+            booked = self._book(pending, valence, {"success": success, **pending.context})
+            logger.debug(
+                "Action completed without pain: %s (valence=%s, links=%d)",
+                pending.signature,
+                valence.value,
+                len(booked),
+            )
+        finally:
+            self._retire(pending)
 
     def _on_pain(self, signal: "PainSignal") -> None:
         """Handle detected pain signal.
@@ -270,68 +280,96 @@ class PainCircuitBridge:
         if not self.config.enable_learning:
             return
 
-        # Check if we have a pending action and it's not too old
-        if not self._pending_action:
+        # Take the pending movement once: the movement thread may replace it while this pain is handled
+        pending = self._pending
+        if pending is None:
             logger.debug("Pain detected but no pending action to attribute")
             return
 
-        elapsed = time.time() - self._action_start_time
-        if elapsed > self.config.action_timeout_seconds:
-            logger.debug(
-                "Pain detected but action too old (%.1fs > %.1fs)",
-                elapsed,
-                self.config.action_timeout_seconds,
+        try:
+            elapsed = time.time() - pending.started_at
+            if elapsed > self.config.action_timeout_seconds:
+                logger.debug(
+                    "Pain detected but action too old (%.1fs > %.1fs)",
+                    elapsed,
+                    self.config.action_timeout_seconds,
+                )
+                return
+
+            from maxim.decisions.causal_link import Valence
+
+            # Determine valence from pain intensity
+            if signal.intensity >= self.config.pain_to_valence_threshold:
+                valence = Valence.NEGATIVE
+            else:
+                valence = Valence.NEUTRAL
+
+            # Report to NAc
+            booked = self._book(
+                pending,
+                valence,
+                {
+                    "pain_type": signal.pain_type.value,
+                    "intensity": signal.intensity,
+                    "angular_velocity": signal.angular_velocity,
+                    "translation_velocity": signal.translation_velocity,
+                    "direction_reversals": signal.direction_reversals,
+                    **pending.context,
+                },
             )
-            self._clear_pending_action()
-            return
+            if not booked:
+                # Its NAc event was already consumed (another producer's context-similarity booking) or aged
+                # out: nothing was learned, so nothing is counted or reported as attributed.
+                logger.info("Pain for action %s booked nothing: its NAc event is gone", pending.signature)
+                return
 
-        from maxim.decisions.causal_link import Valence
+            self._total_pain_attributed += 1
 
-        # Determine valence from pain intensity
-        if signal.intensity >= self.config.pain_to_valence_threshold:
-            valence = Valence.NEGATIVE
-        else:
-            valence = Valence.NEUTRAL
+            # Log at WARNING for negative valence (high pain), INFO otherwise
+            log_msg = "Pain attributed to action: %s -> %s (intensity=%.2f, valence=%s)"
+            log_args = (
+                pending.signature,
+                signal.pain_type.value,
+                signal.intensity,
+                valence.value,
+            )
 
-        # Report to NAc
-        self._nac.record_outcome(
-            event_type="movement",
-            event_id=self._pending_action,
+            if valence.value == "negative":
+                logger.warning(log_msg, *log_args)
+            else:
+                logger.info(log_msg, *log_args)
+        finally:
+            self._retire(pending)
+
+    def _book(self, pending: _PendingMovement, valence: "Valence", context: dict[str, Any]) -> "list[CausalLink]":
+        """Book an outcome on ``pending``'s OWN NAc event (#1209); returns the links written.
+
+        By id, never by signature: a signature booking also matched every other pending event with that
+        signature in NAc's window (a look_at that never completes, another producer's event). The outcome
+        signature is the one ``NAc.record_outcome`` builds, so the link identity, and every link learned
+        before #1209, is unchanged.
+        """
+        return self._nac.record_outcome_full(
+            outcome_type="result",
+            outcome_signature=f"{pending.signature}:{valence.value}",
             outcome_valence=valence,
-            context={
-                "pain_type": signal.pain_type.value,
-                "intensity": signal.intensity,
-                "angular_velocity": signal.angular_velocity,
-                "translation_velocity": signal.translation_velocity,
-                "direction_reversals": signal.direction_reversals,
-                **self._action_context,
-            },
+            context=context,
+            attributed_event_id=pending.event_id,
         )
 
-        self._total_pain_attributed += 1
+    def _retire(self, pending: _PendingMovement | None) -> None:
+        """End ``pending``'s lifecycle and retire its NAc event (#1209).
 
-        # Log at WARNING for negative valence (high pain), INFO otherwise
-        log_msg = "Pain attributed to action: %s -> %s (intensity=%.2f, valence=%s)"
-        log_args = (
-            self._pending_action,
-            signal.pain_type.value,
-            signal.intensity,
-            valence.value,
-        )
-
-        if valence.value == "negative":
-            logger.warning(log_msg, *log_args)
-        else:
-            logger.info(log_msg, *log_args)
-
-        self._clear_pending_action()
-
-    def _clear_pending_action(self) -> None:
-        """Clear the pending action tracking."""
-        self._pending_action = None
-        self._pending_event_id = None
-        self._action_start_time = 0.0
-        self._action_context = {}
+        An event an outcome already consumed makes the discard a no-op; one replaced, timed out or ended
+        unlearned is retired unbooked, so no later outcome can book it. ``pending`` is cleared only if it is
+        still the current movement: a late retire never wipes a newer movement the command path started.
+        """
+        if pending is None:
+            return
+        with self._pending_lock:
+            if self._pending is pending:
+                self._pending = None
+        self._nac.discard_pending_event(pending.event_id)
 
     def predict_pain(
         self,
@@ -587,7 +625,7 @@ class PainCircuitBridge:
             "gated_actions": self._gated_actions,
             "predictive_gates": self._predictive_gates,
             "learned_gates": self._learned_gates,
-            "has_pending_action": self._pending_action is not None,
+            "has_pending_action": self._pending is not None,
             "predictive_harm_enabled": self._harm_registry is not None,
             "joint_limit_prediction_enabled": self._joint_limit_predictor is not None,
             "detector_stats": self._detector.get_stats(),
