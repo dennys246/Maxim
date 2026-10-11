@@ -905,11 +905,12 @@ class WaterTrial:
         time.sleep(self.frozen["loop_warm_s"])  # loop boot is NOT inside the window
         samples: list[dict[str, Any]] = []
         stale = 0
-        t0 = enter()
+        t0: float | None = None
         t_rescue = None
         stuck = False
         exited_early = False
         try:
+            t0 = enter()  # inside the try: a failed submerge still stops this window's loop
             while time.monotonic() - t0 < seconds:
                 s = self.sample(t0)
                 if s is None:
@@ -923,19 +924,21 @@ class WaterTrial:
                         break
                 time.sleep(0.25)
         finally:
-            if before_rescue is not None:
-                before_rescue(samples, t0)
-            t_rescue = time.monotonic()
-            exited_early = not loop.is_alive()
             try:
-                self.rcon.teleport(self.username, self.shore)  # rescue BEFORE the loop drains
-            except Exception as exc:
-                print(f"WARNING: rescue teleport raised: {exc!r}")
-            stop.set()
-            loop.join(timeout=20.0)
-            stuck = loop.is_alive()
-            self.stop_motion()
-            self.reopen_hub_session()
+                if before_rescue is not None and t0 is not None:
+                    before_rescue(samples, t0)
+            finally:  # a raising callback never skips the rescue or the stop
+                t_rescue = time.monotonic()
+                exited_early = not loop.is_alive()
+                try:
+                    self.rcon.teleport(self.username, self.shore)  # rescue BEFORE the loop drains
+                except Exception as exc:
+                    print(f"WARNING: rescue teleport raised: {exc!r}")
+                stop.set()
+                loop.join(timeout=20.0)
+                stuck = loop.is_alive()
+                self.stop_motion()
+                self.reopen_hub_session()
         if stuck:
             raise Refusal(f"{label}: loop thread did not stop")
         succeeded = list(getattr(self.aut.executor, "_tools_succeeded", []) or [])[actions0:]

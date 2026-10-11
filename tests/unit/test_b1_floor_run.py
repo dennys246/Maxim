@@ -116,10 +116,11 @@ def test_rig_problems():
     now = 10_000.0
     idle = {"infer_lane": {"in_flight": 0}}
     assert B.rig_problems(None, None, 20.0, now=now) == []  # no proxy on the box: passes
-    assert B.rig_problems(idle, {"recent": [{"ts": now - 500}]}, 20.0, now=now) == []
+    assert B.rig_problems(idle, {"recent": [{"timestamp": now - 500}]}, 20.0, now=now) == []
     assert B.rig_problems({"infer_lane": {"in_flight": 1}}, {"recent": []}, 20.0, now=now)
     assert B.rig_problems({"infer_lane": {}}, {"recent": []}, 20.0, now=now)  # idle cannot be shown
-    assert B.rig_problems(idle, {"recent": [{"ts": now - 30}]}, 20.0, now=now)
+    assert B.rig_problems(idle, {"recent": [{"timestamp": now - 30}]}, 20.0, now=now)  # the proxy's own field
+    assert B.rig_problems(idle, {"recent": [{"ts": now - 500}]}, 20.0, now=now)  # no `timestamp`: not shown idle
     assert B.rig_problems(idle, {"recent": []}, 19.0, now=now)
     assert B.rig_problems(None, None, None, now=now)
 
@@ -175,6 +176,17 @@ def test_fear_beating_both_floors_is_floors_beaten():
     v = B.compute_verdict(_campaign({"fear": 8, "random": 0, "q_explore": 0, "q_explore_prior": 8}))
     assert v["verdict"] == "FLOORS_BEATEN" and v["holm_shown"] == {"H1": True, "H2": True}
     assert v["first_post_rate"]["q_explore_prior"] == 1.0 and v["n_clean"]["q_explore_raw"] == 0
+
+
+def test_a_beaten_floor_that_never_tried_escape_is_annotated_under_explored():
+    rows = _campaign({"fear": 8, "random": 0, "q_explore": 0})
+    assert B.compute_verdict(rows)["annotation"] == "floor under-explored"  # no coverage recorded = not shown tried
+    for r in rows:
+        if r.get("arm") == "q_explore":
+            r["key_coverage"] = {"first_select_key_tried": True}
+    v = B.compute_verdict(rows)
+    assert v["verdict"] == "FLOORS_BEATEN" and v["annotation"] == "floor: beaten"
+    assert v["q_explore_under_explored_seeds"] == []
 
 
 def test_a_q_tie_is_floor_matched_q():
@@ -256,7 +268,14 @@ def test_training_summary_and_key_coverage():
         {"key": ["clusters", [["world", "x"]]], "action": "mc_flee", "phase": "post-placement-0", "in_water": True},
     ]
     cov = B.key_coverage({"picks": picks})
-    assert cov == {"first_post_selects": 2, "share_visited_with_escape_tried": 0.5, "distinct_water_keys": 2}
+    assert cov == {
+        "first_post_selects": 2,
+        "share_visited_with_escape_tried": 0.5,
+        "first_select_key_tried": True,
+        "distinct_water_keys": 2,
+    }
+    picks.append({"key": ["clusters", [["world", "x"]]], "action": "mc_escape_water", "phase": "pre-placement-3"})
+    assert B.key_coverage({"picks": picks})["share_visited_with_escape_tried"] == 1.0  # the pre-probe counts
     assert B.training_summary({"training": None}) is None and B.key_coverage(None) is None
 
 
@@ -441,6 +460,9 @@ def test_the_prior_learner_learns_to_escape_through_the_real_loop(tmp_path):
     assert inner.actions == ("minecraft_player_escape_water", "minecraft_player_flee")
     assert training["episodes"][-1]["greedy_in_water"]["best"] == ["minecraft_player_escape_water"], training
     assert post["placements"][0]["surfaced"], post["placements"][0]
+    # the surfacing is credited to the escape that caused it (rule 16: the harness's end_episode closes it)
+    terminal = [u for u in inner.updates if u["terminal"]]
+    assert terminal and all(u["action"].endswith("_escape_water") for u in terminal), terminal
     # every credited update is for an action the loop started executing (rule 5)
     started = {s["tool"] for s in trial.started}
     assert inner.updates and all(u["action"] in started for u in inner.updates)
@@ -477,3 +499,106 @@ def test_random_acts_across_the_repertoire_and_fear_runs_without_a_policy(tmp_pa
     finally:
         close()
     assert out["placements"][0]["calls"] == []  # no fear: the structural floor, as in Exp 60
+
+
+@pytest.mark.timeout(300)
+@pytest.mark.parametrize("arm", ["random", "q_explore_prior"])
+def test_run_arm_seed_end_to_end_writes_a_serialisable_row_and_tears_down(tmp_path, monkeypatch, arm):
+    """The live per-arm-seed path itself (not an AST of it) on the scripted bridge, with the fingerprint, rig and
+    pool re-verify stubbed (no live server). A crash in the row's derived fields used to skip the teardown."""
+    import argparse
+    import json
+    import os
+
+    from survival_world.scripted_water import ScriptedWaterBridge, ScriptedWaterControl
+
+    for k, v in {"loop_warm_s": 0.5, "placements_per_probe": 1, "shore_roam_s": 1.0, "K_executed_episodes": 2}.items():
+        monkeypatch.setitem(B.FROZEN, k, v)
+    monkeypatch.setitem(B.FROZEN, "fingerprint", {})
+    monkeypatch.setattr(B, "reverify_apparatus", lambda rcon, geom, trial: 10)
+    monkeypatch.setattr(B.FloorWaterTrial, "check_fingerprint", lambda self, m: {})
+    monkeypatch.setattr(B, "rig_check", lambda rcon, url: {"proxy": "not_checked"})
+    srv = ScriptedWaterBridge(shore=SHORE, submerged=SUBMERGED, escape_blocks=True)
+    rcon = ScriptedWaterControl(srv)
+    args = argparse.Namespace(bridge_host="127.0.0.1", bridge_port=srv.port, username="maxim", proxy_url="")
+    ses = B.Session(
+        args, campaign_id="c", run_ids={a: a for a in B.ARMS}, provenance={}, apparatus={}, apparatus_path="p",
+        apparatus_sha256="s", apparatus_check={}, geom={**GEOM, "surface_y": 61}, build_geom={}, probe_cap_s=3.0,
+        train_caps={a: 5.0 for a in B.ARMS}, rcon=rcon,
+    )  # fmt: skip
+    cwd = os.getcwd()
+    try:
+        rec = B.run_arm_seed(ses, arm, 99, 1)
+    finally:
+        srv.close()
+    assert os.getcwd() == cwd
+    json.dumps(rec)  # strict: the writer no longer stringifies a non-JSON value
+    assert rec["refusal"] is None, (rec["refusal_step"], rec["refusal"])
+    assert rec["policy"]["class"] == ("RandomPolicy" if arm == "random" else "TabularQPolicy")
+    assert (rec["key_coverage"] is None) == (arm == "random")
+    assert rec["post"]["placements"][0]["t_first_water"] is not None
+
+
+@pytest.mark.timeout(120)
+def test_a_raising_before_rescue_never_skips_the_rescue(tmp_path):
+    """The shared WaterTrial.loop_window: a callback that raises still lets the rescue teleport and the loop stop run
+    (the bot is never left submerged with its loop alive)."""
+    trial, rcon, close = _trial(tmp_path, "random")
+
+    def boom(samples, t0):
+        raise RuntimeError("callback failed")
+
+    try:
+        trial.resolve_tools()
+        n = len(rcon.commands)
+        with pytest.raises(RuntimeError, match="callback failed"):
+            trial.loop_window(1.0, enter=lambda: trial.submerge("x"), on_sample=lambda s: False, label="x",
+                              before_rescue=boom)  # fmt: skip
+        tps = [c for c in rcon.commands[n:] if c.startswith("tp ")]
+        assert tps and tps[-1] == f"tp maxim {SHORE['x']} {SHORE['y']} {SHORE['z']}", tps
+    finally:
+        close()
+
+
+def test_was_executed_reads_the_start_spy_and_stops_at_since():
+    trial = B.FloorWaterTrial.__new__(B.FloorWaterTrial)
+    trial.started = [{"t": 1.0, "tool": "a"}, {"t": 2.0, "tool": "b"}, {"t": 3.0, "tool": "c"}]
+    assert trial.was_executed("b", 1.5) and trial.was_executed("c", 3.0)
+    assert not trial.was_executed("a", 1.5)  # started before the pick: not this pick's execution
+    assert not trial.was_executed("z", 0.0)
+
+
+def test_a_missing_observation_key_is_a_recorded_violation():
+    armed = FP.ArmedPolicy(FP.RandomPolicy(1))
+    armed.arm()
+    armed.select(agent_id="a", available_tools=("t",), clusters=None, observation={"is_in_water": 1.0})
+    assert armed.all_violations() == ["observation lacks ['oxygen']"]
+
+
+@pytest.mark.timeout(120)
+def test_liveness_runs_the_policy_disarmed(tmp_path):
+    trial, _rcon, close = _trial(tmp_path, "random")
+    try:
+        assert trial.check_liveness() >= 1
+    finally:
+        close()
+    assert trial.armed.tool_sets, "liveness never asked the (disarmed) policy: the forwarding is gone"
+    assert trial.armed.inner.picks == []
+
+
+@pytest.mark.timeout(120)
+def test_a_policy_that_kills_the_loop_refuses_the_window(tmp_path):
+    trial, _rcon, close = _trial(tmp_path, "fear")
+
+    class Bad:  # unwrapped: the hook's validation raises SubstratePolicyError and the loop thread dies
+        def select(self, **kw):
+            return {"tool_name": "no_such_tool", "params": {}}
+
+    trial.substrate_policy = Bad()
+    try:
+        trial.resolve_tools()
+        trial.deaths0 = trial.deaths()
+        with pytest.raises(B.Refusal, match="exited before"):
+            trial.placement("pre-placement-0")
+    finally:
+        close()

@@ -243,8 +243,10 @@ def test_a_water_only_arming_idles_on_the_shore():
     armed = FP.ArmedPolicy(FP.RandomPolicy(1))
     armed.arm("pre-placement-0", water_only=True)
     assert armed.select(agent_id="a", available_tools=TOOLS, clusters=None, observation=SHORE) is None
-    assert armed.idle_dry == 1
+    assert (armed.idle_dry_before, armed.idle_dry_after) == (1, 0)
     assert armed.select(agent_id="a", available_tools=TOOLS, clusters=None, observation=WATER) is not None
+    assert armed.select(agent_id="a", available_tools=TOOLS, clusters=None, observation=SHORE) is None
+    assert (armed.idle_dry_before, armed.idle_dry_after) == (1, 1)
     armed.arm("pre-roam")  # the roam acts on the shore
     assert armed.select(agent_id="a", available_tools=TOOLS, clusters=None, observation=SHORE) is not None
 

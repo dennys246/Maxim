@@ -14,8 +14,8 @@ This file tracks decisions that affect public behavior, repo structure, and long
 3. **OD3. The Q-learners' per-tick cost is game-native:** −(20 − oxygen)/20 while in water, plus any pain publish.
 4. **OD4. T1-13 is annotated now** (prose, no status change) with the run-2 finding that only the first post
    placement is a fear-only read, and that the escape comes from a designer-specified defensive prior.
-5. **OD5 (after the harness build). The tabular learner runs with γ = 1 and Q₀ = −2** (the worst terminal return:
-   an untried action is assumed to end in the pain), not v3's γ = 0.9, Q₀ = 0.
+5. **OD5 (after the harness build). The tabular learner runs with γ = 1 and Q₀ = −2** (the pain components of a pain
+   episode; any Q₀ from −1 to −10 works once γ = 1), not v3's γ = 0.9, Q₀ = 0.
 
 ### Rationale
 

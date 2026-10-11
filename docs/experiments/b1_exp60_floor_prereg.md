@@ -144,21 +144,36 @@ deleted.
 ## DVs, hypotheses and gates (directions and numbers before data)
 
 **Primary DV:** P(surface before the US) on the FIRST post placement, per seed (binary). **Secondary
-(reported):** P(surface) over all 6 post placements (labelled "fear plus positive link plus habit" for FEAR);
-latency; shore-roam affordance calls per arm (water ENTRY is about 0 for every arm by construction, since no
-action with `params={}` can move the bot into water, so only call counts are reported); Q arms' learning curve
+(reported):** P(surface) over all 6 post placements (labelled "fear plus positive link plus habit" for FEAR, and
+**not comparable across arms**: rule 17 denies the floors the shore-launched act FEAR's placements 2–6 habit
+performs, so no rate over placements 2–6 is compared across arms); latency, and the first in-water select's
+latency per arm (the floors' gate reads `is_in_water` at eye height, FEAR keys on the EC world cluster; both are
+derivable from each row's ticks and calls); shore-roam affordance calls per arm (water ENTRY is about 0 for every
+arm by construction, since no action with `params={}` can move the bot into water, so only call counts are
+reported; under rule 16 the floors' shore rows are never credited, so their roam calls are at chance by
+construction and bound FEAR's shore habit only); Q arms' surfacing per pre-probe placement and learning curve
 (the episode of first surfacing in training, and the greedy action in the water state after episodes 1, 2, 5
-and 10); executed training actions to criterion (FEAR: zero in training, one failed `flee` per first placement).
+and 10); executed actions to criterion, pre-probe included (FEAR: zero in training, one failed `flee` per first
+placement).
 
-- **H1 (FEAR > RANDOM; gated).** RANDOM's chance of drawing `escape_water` in time: about 4 useful draws from
-  26 tools (escape blocks ≈ 2.6 s, so only a draw in the first ≈ 1.7 s surfaces before the 4.3 s cap),
-  1 − (25/26)^4 ≈ 0.15, so RANDOM's first-placement rate ≈ 0.15. FEAR's ≈ 1.0 (Exp 60: 5/5).
+- **H1 (FEAR > RANDOM; gated).** RANDOM (water-only armed like every floor, rule 17) has about 4–5 useful draws
+  from 26 tools: escape blocks ≈ 2.0–2.6 s to the head clearing (2.6 s if Exp 60's latency excludes the 600 ms
+  post-clear hold), so only a draw in the first ≈ 1.7–2.3 s surfaces before the 4.3 s cap: 1 − (25/26)^4..5 ≈
+  0.15–0.18 (range 0.11–0.18 across timing assumptions). FEAR's ≈ 1.0 (Exp 60: 5/5). FEAR can pass the sanity
+  gate and still fail H1 (6/8 v 2/8 gives p ≈ 0.066 → `FLOOR_MATCHED_CHANCE`); that is an honest outcome, not an
+  instrument fault.
 - **FEAR sanity gate.** FEAR's first-placement rate must be ≥ 6/8, or the verdict is INCOMPLETE with cause (a
   collapsed FEAR is not a floor match).
-- **H2 (FEAR vs Q_EXPLORE; gated as FEAR > Q_EXPLORE).** Expected: with a per-tick oxygen cost and 10 executed
-  episodes, Q_EXPLORE finds `escape_water` (ending the cost early) and its first-placement rate ≈ 0.8–1.0 (the
-  v4 learner in the offline toy model, [rationale/b1-exp60-floor/learner_sim.py](rationale/b1-exp60-floor/learner_sim.py):
-  ≈ 1.0 for all three Q arms; the v3 constants gave ≈ 0.10, which is why OD5 changed them). **A tie
+- **H2 (FEAR vs Q_EXPLORE; gated as FEAR > Q_EXPLORE).** Expected: with a per-tick oxygen cost, Q_EXPLORE finds
+  `escape_water` (ending the cost early) and its first-placement rate ≈ 0.8–1.0. The learner is named wherever N
+  or the efficiency gap is quoted: **tabular Q, α = 0.5, γ = 1, Q₀ = −2, ε = 0.2** (rule 15). In the offline toy
+  model ([rationale/b1-exp60-floor/learner_sim.py](rationale/b1-exp60-floor/learner_sim.py); not data) all three
+  Q arms reach ≈ 1.0, and they reach criterion **during the greedy pre-probe** (≈ 48 in-water picks eliminating
+  the 26 tools; K = 0 also gives ≈ 1.0), so the executed training episodes are expected to add little; with the
+  optimistic default Q₀ = 0 the same learner did not reach criterion in 10 episodes (≈ 0.10). **Floor
+  competence:** a `FLOORS_BEATEN` verdict carries "floor under-explored" instead of "floor: beaten" when, on any
+  Q_EXPLORE seed, the key read at the first post placement's first select never had `escape_water` tried before
+  the post probe. **A tie
   is the expected result**, and under BF2 the Exp 60 row then takes `PARTIAL (narrow: floor matched)`, recorded
   with the sample-efficiency gap (FEAR: zero executed training actions; Q_EXPLORE: the count to criterion).
 - **H3 (Q_EXPLORE_PRIOR; reported).** Expected to reach criterion within one or two episodes: the prior carries
@@ -176,8 +191,10 @@ equivalence test is claimed for a tie: a tie is reported as "FEAR > Q_EXPLORE no
 ## The claim, stated per outcome (in advance)
 
 - H1 passes, H2 ties (expected): "Wire-4 learns from context conditioning alone WHEN to act; WHICH act comes
-  from a designer-specified defensive prior. It needs no executed training actions; a model-free learner over
-  the full repertoire needs N executed actions to match it, and fewer (H3) when given the same prior." The Exp 60
+  from a designer-specified defensive prior. It needs no executed training actions. A tabular learner (α = 0.5,
+  γ = 1, Q₀ = −2, ε = 0.2) armed only in water — the harness supplies WHEN — needs N executed actions to match its
+  first-placement escape over the full repertoire, and fewer (H3) when given the same prior. B1 does not test WHEN
+  against a floor; that rests on FEAR vs ABLATED." The Exp 60
   row: `PARTIAL (narrow: floor matched)` with that sentence and the FEAR-vs-ABLATED contrast standing.
 - H1 and H2 both pass (`FLOORS_BEATEN`): the row stays EARNED with a "floor: beaten" annotation citing this
   verdict; the same sentence about the prior applies.
@@ -220,27 +237,37 @@ equivalence test is claimed for a tie: a tie is reported as "FEAR > Q_EXPLORE no
 13. **Cadence.** The loop runs at 4 Hz and proposes at 2 Hz in every loop window; FEAR's propose-only training runs
     at 4 Hz direct calls (Exp 60's, unchanged). The difference in EC exposure between FEAR's and the Q arms'
     training is disclosed, and a key-coverage diagnostic is reported: the share of first-post-placement selects
-    whose key was visited in training with `escape_water` tried, and the number of distinct water keys per arm.
+    whose key had `escape_water` tried before the post probe (pre-probe or training), whether the first select's
+    key had, and the number of distinct water keys per arm.
 14. **Calls.** Every call's start and return time is recorded (the executor spy's `t`/`t_return`); a call in flight
     at the teleport is derived from them.
 15. **Learner constants (v4, OD5).** γ = 1 (an undiscounted cost-to-go: every episode terminates) and Q₀ = −2, the
-    worst terminal return (the −1 pain terminal plus the saturating pain's own intensity): an untried action is
-    assumed to end in the pain. With v3's γ = 0.9 and Q₀ = 0, every untried action outranks a tried escape (which
+    pain components of a pain episode only (the −1 terminal plus the saturating pain's own intensity; the full
+    return of a pain episode, with ≈ 2.4 units of oxygen cost, is ≈ −4.4). Q₀ is the same for every action and
+    state: it encodes the scale of the bad outcome, not which act is defensive. It is not a tuned value: the
+    confounding lens's sweep gives ≥ 0.99 for any Q₀ from −1 to −10 once γ = 1 (the condition is Q₀ below the
+    escape's own return, ≈ −0.45). The floors' training signal is a graded interoceptive deficit while FEAR's is
+    the pain publish; the difference favours the floor. With v3's γ = 0.9 and Q₀ = 0, every untried action outranks a tried escape (which
     pays for its ≈ 2.6 s of blocking), so the learner explored instead of learning: Q_EXPLORE ≈ 0.10 on the first
     post placement in the toy model, a floor that loses by construction. The toy model is committed with this
     document; it is not data and gates nothing.
-16. **In-water credit (v4).** Only a pick made while `observation` reads water is credited. The first select whose
-    observation reads air after a water pick ends the episode there (surfaced, terminal 0); `end_episode` then
-    truncates any later pick. A shore pick (the roam, or a select before the teleport lands) is never credited.
-    Without this, a pick the loop made between the head clearing and the harness's 4 Hz read took the surfacing's
-    credit, and the escape was bootstrapped as a non-terminal step.
+16. **In-water credit (v4).** Only a pick made while `observation` reads water is credited; a shore pick (the roam,
+    or a select before the teleport lands) never is. Inside placements and training the episode is closed by the
+    harness's 4 Hz `end_episode("surfaced")`: the live `escape_water` holds `jump` 600 ms after the head clears, so
+    the harness reads air while the escape is still in flight and the loop is blocked, and the pending pick it
+    credits (terminal 0) is the escape. As a backstop the first select whose observation reads air after a water
+    pick is terminal there and `end_episode` truncates any later pick (under rule 17 that path runs only if the
+    gate and the observation disagree). Without this, a pick the loop made between the head clearing and the
+    harness's read took the surfacing's credit, and the escape was bootstrapped as a non-terminal step.
 17. **Water-only arming (v4).** In placements and training episodes the armed policy idles until its own
     observation reads water; the shore roam is armed without the gate. The policy is still armed immediately before
     the teleport, but a select made on the shore before the teleport lands returns nothing, so no floor executes in
     the window an action chosen from the shore (on the scripted bridge every training episode was otherwise ended by
     a blind shore `escape_water` that no update could credit). FEAR is unchanged: it carries no fear on the shore,
     so it proposes nothing there at the first post placement; its placements 2–6 shore picks are the habit finding
-    above. The count of dry selects skipped is recorded.
+    above. That FEAR claim is CHECKED: a FEAR first-post success whose surfacing call started before the first
+    in-water sample refuses the arm-seed (behavioural; rule 6), which holds FEAR to the floors' gate. The count of
+    dry selects skipped is recorded, split into before the first water read and after it.
 
 ## Owner decisions (taken 2026-10-11, all as recommended)
 
@@ -256,5 +283,7 @@ equivalence test is claimed for a tie: a tie is reported as "FEAR > Q_EXPLORE no
 
 ## Not claimed
 
-That Maxim beats reinforcement learning in general; any result outside this pool and geometry; anything about
+That Maxim beats reinforcement learning in general, or that a model-free learner in general needs N actions (N is
+this learner's); WHEN-to-act against a floor (the floors are armed only in water; a floor that had to learn WHEN
+would need an explicit idle action credited on the shore, not built); any result outside this pool and geometry; anything about
 Exp 61/62 (their floors are their own); that the defensive prior is learned.

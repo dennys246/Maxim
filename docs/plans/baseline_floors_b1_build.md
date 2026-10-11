@@ -88,14 +88,33 @@
   failing; `ScriptedWaterControl` gains `execute if block` replies), so Q learning is shown offline, not only
   wiring.
 
+### As built (PR-B, 2026-10-11) — changes from this plan
+
+- Data: one CAMPAIGN per file (`campaign_id`), a `session` header (`stamp_harness_header`, never counted) and one
+  `row` per arm-seed ATTEMPT, each with its arm's `run_id`, `attempt` and `refusal_cause`. Rule 6's rerun puts a
+  refused row and a clean row under one key, which `seeds_per_run_arm` refuses ("repeats an (arm, seed)"), so the
+  complete-run rule is PR-C's decision (below), not `seeds_per_run_arm` unchanged.
+- The learner's constants changed after a toy model (owner decision OD5: γ = 1, Q₀ = −2), and the scripted smoke
+  found two credit defects (prereg rules 16–17). A delta design review (confounding + bio-faithful,
+  `rationale/b1-exp60-floor/*-v4.md`) ran on v4 and is folded.
+- The rig check waits (≤ 10 min) for a quiet rig before an attempt, so rule 11 never spends an attempt; transport
+  faults (`OSError`) are recorded instrument refusals; programming errors crash (resume with `--resume`).
+
 ### PR-C — freeze + evidence (docs + the pass table; merges with or after PR-B)
+
+- **Complete-run rule (decide with the approach note).** A new `_campaign_rule("seed", "row", allowed={"row",
+  "session"}, required={"session"})` instance fits the data. Open: (a) its frozen sets name all five arms × 11–18
+  (40 keys) though the verdict gates on three; (b) `_campaign_rule` refuses only two CLEAN rows per key, so the
+  rerun discipline (attempt ≤ 2, a rerun only after an instrument-cause refusal, one `run_id` per arm) lives only
+  in `compute_verdict` — the recommended strict option puts it in the rule; (c) keep the verdict's scope
+  `{"all_rows": True}` with no `campaign_id`.
 
 - The prereg frozen on main before the first gated row.
 - `evidence_pass_table.json` gains `b1_verdict`: rows `T1-13`, `scopes: ["narrow"]`, targets `PARTIAL` only, with
   the verdict values frozen in the prereg (`FLOOR_MATCHED_Q`, `FLOOR_MATCHED_CHANCE`; `FLOORS_BEATEN` moves no
   status and becomes a "floor: beaten" annotation on the EARNED row). The status change re-dates the row, so it
-  needs this newly cited, established, prereg-PASS verdict. Complete rule `seeds_per_run_arm` over the GATED arms
-  (FEAR, RANDOM, Q_EXPLORE) × 11–18, with its FROZEN pin test. A pass-table edit is a gate change: its own
+  needs this newly cited, established, prereg-PASS verdict. The complete-run rule (above), with its FROZEN pin
+  test. A pass-table edit is a gate change: its own
   adversarial approach note first.
 - Roadmap 1.4 item 2 gains one line: B1 is a consumer the extraction absorbs, and `b1_floor_run verdict` over
   committed rows joins its acceptance check (i).
@@ -111,10 +130,10 @@
 
 ## Owner decisions (taken 2026-10-11, both as recommended)
 
-- **BD1. Name: the `b1` token is kept** ( B1 is a floor on an existing claim, `r2_`/`r3_` set the
-  precedent, and the lint has no collision) or take `exp64`.
-- **BD2. B1 is not Exp 60's trigger re-run** ( no ABLATED arm
-  and different seeds, so the gate could not use it), or adds an ABLATED arm (≈ 30 min) so it can.
+- **BD1. Name: the `b1` token is kept** (B1 is a floor on an existing claim, `r2_`/`r3_` set the precedent, and
+  the lint has no collision), not `exp64`.
+- **BD2. B1 is not Exp 60's trigger re-run** (no ABLATED arm and different seeds, so the gate could not use it);
+  no ABLATED arm is added.
 
 ## Review record (v1 → v2, 2026-10-11)
 

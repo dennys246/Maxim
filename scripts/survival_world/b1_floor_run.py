@@ -58,6 +58,7 @@ from _provenance import (  # noqa: E402
     in_process_code_provenance,
     instrument_check_authorizes,
     is_gated_path,
+    stamp_harness_header,
     stamp_harness_row,
     stamp_verdict,
 )
@@ -209,7 +210,10 @@ def rig_problems(
         if not isinstance(recent, list):
             problems.append("the leader proxy's last-requests ring cannot be read")
         else:
-            late = [r for r in recent if isinstance(r, Mapping) and (r.get("ts") or 0) > now - FROZEN["rig_idle_s"]]
+            stamps = [r.get("timestamp") if isinstance(r, Mapping) else None for r in recent]
+            if any(isinstance(t, bool) or not isinstance(t, (int, float)) for t in stamps):
+                problems.append("a leader-proxy request entry carries no numeric `timestamp`")
+            late = [t for t in stamps if isinstance(t, (int, float)) and t > now - FROZEN["rig_idle_s"]]
             if late:
                 problems.append(f"{len(late)} leader-proxy request(s) in the last {FROZEN['rig_idle_s']:.0f} s")
     if tps is None:
@@ -325,6 +329,7 @@ def compute_verdict(records: list[dict[str, Any]], *, gates: dict[str, Any] = GA
                 "pre_p_surface": p_surface(r["pre"]),
                 "shore_roam_calls": len(((r["post"].get("shore_roam") or {}).get("calls")) or []),
                 "training": (r.get("training_summary") or None),
+                "key_coverage": r.get("key_coverage"),
             }
         )
     n_clean = {a: len(v) for a, v in per_arm.items()}
@@ -369,7 +374,22 @@ def compute_verdict(records: list[dict[str, Any]], *, gates: dict[str, Any] = GA
         if shown["H1"] and shown["H2"]
         else ("FLOOR_MATCHED_Q" if shown["H1"] else "FLOOR_MATCHED_CHANCE")
     )
-    return {**out, "tests": tests, "holm_shown": shown, "verdict": verdict}
+    # Floor competence (prereg H2): a beaten floor that never tried escape in the key it read at the first post
+    # placement is "floor under-explored", never "floor: beaten" (the verdict value itself stays frozen).
+    under = sorted(
+        s["seed"] for s in per_arm["q_explore"] if not (s.get("key_coverage") or {}).get("first_select_key_tried")
+    )
+    annotation = None
+    if verdict == "FLOORS_BEATEN":
+        annotation = "floor under-explored" if under else "floor: beaten"
+    return {
+        **out,
+        "tests": tests,
+        "holm_shown": shown,
+        "verdict": verdict,
+        "q_explore_under_explored_seeds": under,
+        "annotation": annotation,
+    }
 
 
 def training_summary(row: dict[str, Any]) -> dict[str, Any] | None:
@@ -396,15 +416,18 @@ def training_summary(row: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def key_coverage(policy_record: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Rule 13's diagnostic from a Q policy's picks (pure): the share of first-post-placement selects whose key was
-    visited in training with ``escape_water`` tried, and the number of distinct water keys."""
+    """Rule 13's diagnostic from a Q policy's picks (pure): the share of first-post-placement selects whose key had
+    ``escape_water`` tried before the post probe, whether the first select's key had, and the distinct water keys."""
     if not policy_record or "picks" not in policy_record:
         return None
     picks = policy_record["picks"]
-    tried = {
+    if any("key" not in p for p in picks):
+        return None  # RANDOM keeps no state keys
+    tried = {  # before the post probe: the pre-probe placements and the training episodes (the learning happens there)
         json.dumps(p["key"])
         for p in picks
-        if str(p.get("phase", "")).startswith("qtrain") and str(p["action"]).endswith("_escape_water")
+        if str(p.get("phase", "")).startswith(("pre-placement", "qtrain"))
+        and str(p["action"]).endswith("_escape_water")
     }
     first = [p for p in picks if p.get("phase") == "post-placement-0"]
     return {
@@ -412,6 +435,7 @@ def key_coverage(policy_record: dict[str, Any] | None) -> dict[str, Any] | None:
         "share_visited_with_escape_tried": (
             sum(1 for p in first if json.dumps(p["key"]) in tried) / len(first) if first else None
         ),
+        "first_select_key_tried": (json.dumps(first[0]["key"]) in tried) if first else None,
         "distinct_water_keys": len({json.dumps(p["key"]) for p in picks if p.get("in_water")}),
     }
 
@@ -477,9 +501,14 @@ class FloorWaterTrial(WaterTrial):
             self.armed.arm(self._arm_next, water_only=True)
 
     def _end(self, label: str, reason: str) -> None:
-        """Disarm, then ``end_episode`` (before the rescue teleport; the frozen order)."""
+        """Disarm, then ``end_episode`` (before the rescue teleport; the frozen order). The loop executes a pass's
+        proposal on its NEXT pass, so at a pain terminal the newest pick may not have started yet; the harness waits
+        two loop periods (still submerged, before the rescue) so it starts and is credited with the terminal it was
+        chosen into, rather than dropped as never executed with the −1 booked to nothing."""
         if self.armed is not None:
             self.armed.disarm()
+            if reason == "pain":
+                time.sleep(2.0 / float(self.frozen["loop_hz"]))
             end = getattr(self.armed.inner, "end_episode", None)
             if end is not None:
                 end(reason)
@@ -490,7 +519,8 @@ class FloorWaterTrial(WaterTrial):
         if self.armed is not None and self.armed.all_violations():
             raise BehaviouralRefusal(f"{label}: policy fault: {self.armed.all_violations()}")
         if win is not None and win.get("loop_exited_early"):
-            raise BehaviouralRefusal(f"{label}: the loop thread exited before it was told to stop")
+            # policy faults are recorded as violations (above), so an early exit without one is the instrument's
+            raise Refusal(f"{label}: the loop thread exited before it was told to stop")
 
     def check_death_cap(self) -> None:
         if self.deaths() - self.deaths0 > self.frozen["death_cap"]:
@@ -499,6 +529,8 @@ class FloorWaterTrial(WaterTrial):
     def placement(self, label: str, *, window_label: str | None = None, before_rescue: Any = None) -> dict[str, Any]:
         def _end_placement(samples: list[dict[str, Any]], t0: float) -> None:
             self._end(label, episode_end_reason(samples, pains=self.pain_between(t0, time.monotonic())))
+            if before_rescue is not None:  # a caller's own callback still runs, after the episode end
+                before_rescue(samples, t0)
 
         self._arm_next = label
         try:
@@ -509,6 +541,11 @@ class FloorWaterTrial(WaterTrial):
                 self.armed.disarm()
         self.check_window(label, self.last_window)
         cls["end_reason"] = self.ends[-1]["reason"] if self.ends and self.ends[-1]["label"] == label else None
+        cls["t_first_water"] = next(
+            (s["t"] for s in (self.last_window or {}).get("samples", []) if s["in_water"]), None
+        )
+        if self.armed is not None:
+            cls["idle_dry"] = {"before_water": self.armed.idle_dry_before, "after_water": self.armed.idle_dry_after}
         return cls
 
     def probe(
@@ -756,7 +793,14 @@ def rig_check(rcon: Any, proxy_url: str | None) -> dict[str, Any]:
 def _write_row(out_path: Path, record: dict[str, Any]) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "a") as fh:
-        fh.write(json.dumps(stamp_harness_row(record, mock=False), default=str) + "\n")
+        fh.write(json.dumps(stamp_harness_row(record, mock=False)) + "\n")
+
+
+def _write_header(out_path: Path, record: dict[str, Any]) -> None:
+    """The campaign's session row: a configuration, never a counted run (``stamp_harness_header``)."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "a") as fh:
+        fh.write(json.dumps(stamp_harness_header(record, mock=False)) + "\n")
 
 
 class Session:
@@ -795,42 +839,47 @@ def run_arm_seed(ses: Session, arm: str, seed: int, attempt: int) -> dict[str, A
         "refusal": None,
         "refusal_cause": None,
     }
-    step = "connect"
-    client = MinecraftClient(args.bridge_host, args.bridge_port)
-    client.connect(confirm_timeout_s=4.0, retries=8, backoff_s=0.5)
-    aut = build_minecraft_aut(
-        agent_id=agent_id,
-        bridge_port=args.bridge_port,
-        bridge_host=args.bridge_host,
-        persistence_dir=persistence_dir,
-        entity_ref="bodies/minecraft_player",
-        client=client,
-    )
-    encoder = make_fresh_encoder(aut)
-    pump = MinecraftSyncPump(aut, interval_s=0.25)
-    pump.start()
+    step = "rig"
+    aut: Any = None
+    pump: Any = None
+    trial: FloorWaterTrial | None = None
     prev_cwd = os.getcwd()
-    os.chdir(persistence_dir)
-    trial = FloorWaterTrial(
-        arm=arm,
-        aut=aut,
-        rcon=ses.rcon,
-        username=args.username,
-        geom=ses.geom,
-        frozen=FROZEN,
-        probe_cap_s=ses.probe_cap_s,
-        train_cap_s=ses.train_caps[arm],
-        persistence_dir=persistence_dir,
-        agent_id=agent_id,
-        encoder=encoder,
-    )
-    trial.attach_instruments()
-    inner = make_policy(arm, seed, trial)
-    if inner is not None:
-        trial.set_policy(inner)
     try:
-        step = "rig"
-        record["rig"] = rig_check(ses.rcon, args.proxy_url)
+        # wait (bounded) for a quiet rig BEFORE an agent exists: a recent proxy request would otherwise refuse this
+        # attempt and its immediate rerun inside the same 2-minute window (rule 11)
+        record["rig"] = wait_for_quiet_rig(ses.rcon, args.proxy_url)
+        step = "connect"
+        client = MinecraftClient(args.bridge_host, args.bridge_port)
+        client.connect(confirm_timeout_s=4.0, retries=8, backoff_s=0.5)
+        aut = build_minecraft_aut(
+            agent_id=agent_id,
+            bridge_port=args.bridge_port,
+            bridge_host=args.bridge_host,
+            persistence_dir=persistence_dir,
+            entity_ref="bodies/minecraft_player",
+            client=client,
+        )
+        encoder = make_fresh_encoder(aut)
+        pump = MinecraftSyncPump(aut, interval_s=0.25)
+        pump.start()
+        os.chdir(persistence_dir)
+        trial = FloorWaterTrial(
+            arm=arm,
+            aut=aut,
+            rcon=ses.rcon,
+            username=args.username,
+            geom=ses.geom,
+            frozen=FROZEN,
+            probe_cap_s=ses.probe_cap_s,
+            train_cap_s=ses.train_caps[arm],
+            persistence_dir=persistence_dir,
+            agent_id=agent_id,
+            encoder=encoder,
+        )
+        trial.attach_instruments()
+        inner = make_policy(arm, seed, trial)
+        if inner is not None:
+            trial.set_policy(inner)
         step = "apparatus"
         record["apparatus_checks_before"] = reverify_apparatus(ses.rcon, ses.build_geom, trial)
         step = "preflight"
@@ -876,10 +925,23 @@ def run_arm_seed(ses: Session, arm: str, seed: int, attempt: int) -> dict[str, A
         post = trial.probe("post")
         record["post"] = post
         first = post["placements"][0]
+        if (
+            first.get("surfaced")
+            and first.get("t_first_water") is not None
+            and any(
+                str(c["tool"]).endswith("_escape_water") and c["t"] < first["t_first_water"] for c in first["calls"]
+            )
+        ):
+            # rule 17's FEAR half, checked: the first post placement must be won from the water, not launched on the
+            # shore before the body read water (the floors cannot, by their gate)
+            raise BehaviouralRefusal(
+                "the first post placement's escape started before the first in-water read — a shore-launched act"
+            )
         if first.get("dirty") or first.get("never_submerged"):
             # damage (a health drop, no pain needed) is behavioural; a pain inside the US-free window or a placement
             # that never submerged is the apparatus's (the probe cap or the teleport), rerun once
-            damaged = (first.get("arrival_health") or 20.0) < 20.0 or (
+            arrival = first.get("arrival_health")
+            damaged = (arrival is not None and arrival < 20.0) or (
                 first.get("end_reason") == "dirty" and not first["us_events"]
             )
             msg = f"the first post placement is not clean ({first.get('end_reason')}) — refused, never substituted"
@@ -901,19 +963,43 @@ def run_arm_seed(ses: Session, arm: str, seed: int, attempt: int) -> dict[str, A
         record.update(getattr(exc, "partial", None) or {})
         record["refusal"], record["refusal_cause"], record["refusal_step"] = str(exc), "instrument", step
         print(f"REFUSED (instrument) {arm} seed {seed}: {exc}")
+    except OSError as exc:  # a transport fault (RCON socket, bridge ConnectionError, a timeout) on a 3-hour run: an
+        # instrument refusal, recorded. A programming error is NOT caught: it crashes the campaign (--resume exists).
+        record["refusal"], record["refusal_cause"], record["refusal_step"] = (
+            f"{type(exc).__name__}: {exc}",
+            "instrument",
+            step,
+        )
+        record["refusal_exception"] = type(exc).__name__
+        print(f"REFUSED (instrument, {type(exc).__name__}) {arm} seed {seed}: {exc}")
     finally:
-        record["policy"] = policy_record(trial.armed, arm, seed, t_ref)
-        record["episode_ends"] = [{**e, "t": round(e["t"] - t_ref, 3)} for e in trial.ends]
-        record["training_summary"] = training_summary(record)
-        record["key_coverage"] = key_coverage(record["policy"])
-        record["calls_all"] = [{**c, "t": round(c["t"] - t_ref, 3), "t_return": round(c["t_return"] - t_ref, 3)}
-                               for c in trial.calls]  # fmt: skip
+        try:
+            if trial is not None:
+                record["policy"] = policy_record(trial.armed, arm, seed, t_ref)
+                record["episode_ends"] = [{**e, "t": round(e["t"] - t_ref, 3)} for e in trial.ends]
+                record["calls_all"] = [
+                    {**c, "t": round(c["t"] - t_ref, 3), "t_return": round(c["t_return"] - t_ref, 3)}
+                    for c in trial.calls
+                ]
+            record["training_summary"] = training_summary(record)
+            record["key_coverage"] = key_coverage(record.get("policy"))
+        finally:  # the row's derived fields never skip the teardown
+            _teardown(trial, pump, aut)
+            os.chdir(prev_cwd)
+            shutil.rmtree(persistence_dir, ignore_errors=True)
+    return record
+
+
+def _teardown(trial: FloorWaterTrial | None, pump: Any, aut: Any) -> None:
+    if trial is not None:
         trial.detach_instruments()
         trial.final_rescue()
+    if pump is not None:
         try:
             pump.stop()
         except Exception as exc:
             print(f"WARNING: pump stop raised: {exc!r}")
+    if aut is not None:
         try:
             aut.bio.on_session_end()
         except Exception as exc:
@@ -922,9 +1008,21 @@ def run_arm_seed(ses: Session, arm: str, seed: int, attempt: int) -> dict[str, A
             aut.client.close()
         except (OSError, ConnectionError) as exc:
             print(f"WARNING: client close raised: {exc!r}")
-        os.chdir(prev_cwd)
-        shutil.rmtree(persistence_dir, ignore_errors=True)
-    return record
+
+
+def wait_for_quiet_rig(
+    rcon: Any, proxy_url: str | None, *, max_wait_s: float = 600.0, poll_s: float = 15.0
+) -> dict[str, Any]:
+    """``rig_check`` until it passes or ``max_wait_s`` elapses (then its refusal stands). Records the wait."""
+    t0 = time.monotonic()
+    while True:
+        try:
+            rec = rig_check(rcon, proxy_url)
+            return {**rec, "waited_s": round(time.monotonic() - t0, 1)}
+        except InstrumentError:
+            if time.monotonic() - t0 + poll_s > max_wait_s:
+                raise
+            time.sleep(poll_s)
 
 
 def _read_rows(path: Path) -> list[dict[str, Any]]:
@@ -949,6 +1047,9 @@ def _run(args: argparse.Namespace) -> int:
             print(f"[FAIL] --resume: {len(session_rows)} session rows in the file (need 1)")
             return 3
         campaign_id, run_ids = session_rows[0]["campaign_id"], dict(session_rows[0]["run_ids"])
+        if bool(session_rows[0].get("diagnostic")) != bool(args.diagnostic):
+            print("[FAIL] --resume: --diagnostic must match the campaign's session row (never pool seed 99)")
+            return 3
         out_arg = resume_path
     else:
         campaign_id = ("diag-" if args.diagnostic else "") + uuid.uuid4().hex[:12]
@@ -1050,7 +1151,7 @@ def _run(args: argparse.Namespace) -> int:
     exit_code = 0
     try:
         if not args.resume:
-            _write_row(
+            _write_header(
                 out_path,
                 {
                     "kind": "session",
@@ -1068,7 +1169,6 @@ def _run(args: argparse.Namespace) -> int:
                     "gate_record_code_hash": gate.get("code_hash"),
                     "probe_cap_s": probe_cap_s,
                     "train_caps": train_caps,
-                    "refusal": None,
                 },
             )
         done = attempts_done(prior_rows)
@@ -1129,7 +1229,7 @@ def _verdict(args: argparse.Namespace) -> int:
             C.REPO_ROOT, maxim.__file__, out_path=out, allow_dirty=args.allow_dirty
         )
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps(v, indent=2, default=str) + "\n")
+        out.write_text(json.dumps(v, indent=2) + "\n")
         print(f"[verdict] wrote -> {out}")
     return 0
 

@@ -140,8 +140,8 @@ class ScriptedWaterBridge:
 
         ``escape_blocks`` (default False = the reply comes at once and the head clears ``escape_delay_s`` later,
         unchanged) makes ``escape_water`` reply only after the head has cleared, as the live bridge does (it holds
-        `jump` until the head block is air, then a 600 ms hold): B1's learner credits the escape at the first select
-        that sees air, which needs the loop blocked for the rise. Wall-time mode only."""
+        `jump` until the head block is air, then a 600 ms hold): the loop is blocked for the rise, so B1's harness
+        reads the surfacing while the escape is still the pending pick it credits. Wall-time mode only."""
         self._clock = clock
         self._escape_blocks = escape_blocks
         self._now = clock.now if clock is not None else time.monotonic

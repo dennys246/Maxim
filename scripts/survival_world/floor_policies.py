@@ -33,9 +33,10 @@ OXYGEN_REST = 20.0  # the oxygen drive's set point; the cost is the deficit belo
 COST_TICK_S = 0.5  # the cost is in 0.5 s units (one proposal interval)
 PAIN_TERMINAL = -1.0  # the saturating oxygen pain, as a terminal reward
 SATURATING_PAIN = 1.0  # that pain's own intensity, which the interval reward also charges
-# Q₀: the worst terminal return (the pain terminal plus the saturating pain's intensity) — an untried action is assumed
-# to end in the pain. With Q₀ = 0 every untried action outranks a tried escape, so the floor explored instead of
-# learning (rationale/b1-exp60-floor/learner_sim.py; owner decision OD5, 2026-10-11).
+# Q₀: the pain components of a pain episode (the terminal plus the saturating pain's intensity; the full return, with
+# its oxygen cost, is ≈ −4.4). Any Q₀ from −1 to −10 works once γ = 1 (rationale/b1-exp60-floor/confounding-v4.md);
+# with Q₀ = 0 every untried action outranks a tried escape, so the floor explored instead of learning
+# (rationale/b1-exp60-floor/learner_sim.py; owner decision OD5, 2026-10-11).
 Q_INIT = PAIN_TERMINAL - SATURATING_PAIN
 RAW_OXYGEN_BINS = (5.0, 10.0, 15.0)  # [0,5) [5,10) [10,15) [15,40]
 PRIOR_SUFFIXES = ("_flee", "_escape_water")  # the `threat` affinity's tools on this body (asserted exactly two)
@@ -168,9 +169,10 @@ class TabularQPolicy:
 
     def _close(self, p: dict[str, Any], *, deficit: float, next_key: tuple[Any, ...] | None, now: float) -> None:
         """Credit the pending pick at the next select. Only a pick made IN WATER is credited (on the shore there is no
-        cost and no terminal; a shore pick before the teleport did not move the body). The first select that sees air
-        after a water pick ends the episode there: surfacing is terminal 0 (``next_key`` None), so a pick the loop
-        made between the head clearing the water and the harness reading it is never credited with the surfacing."""
+        cost and no terminal; a shore pick before the teleport did not move the body). In B1's placements and training
+        the episode is closed by the harness's ``end_episode("surfaced")`` (water-only arming means this policy never
+        sees a dry select there); as a backstop, a select that sees air after a water pick is terminal 0 (``next_key``
+        None), so a pick made after the head cleared is never credited with the surfacing."""
         if not p["in_water"]:
             self.drops.append({"t": now, "key": p["key"], "action": p["action"], "why": "made_out_of_water"})
             return
@@ -249,7 +251,11 @@ class ArmedPolicy:
         self.t_arm: float | None = None
         self.tool_sets: list[tuple[str, ...]] = []  # every distinct available-tool set the loop offered (stamped)
         self.water_only = False
-        self.idle_dry = 0  # selects skipped while armed water-only and the observation read dry
+        # selects skipped while armed water-only and the observation read dry: before the first water read of the
+        # window (the teleport landing) and after it (the surfacing)
+        self.idle_dry_before = 0
+        self.idle_dry_after = 0
+        self._seen_water = False
 
     def arm(self, phase: str | None = None, *, water_only: bool = False) -> float:
         """Arm for a window. ``water_only`` (placements and training episodes): idle until the policy's own
@@ -260,6 +266,8 @@ class ArmedPolicy:
         if hasattr(self.inner, "phase"):
             self.inner.phase = phase
         self.water_only = water_only
+        self.idle_dry_before = self.idle_dry_after = 0
+        self._seen_water = False
         self.t_arm = time.monotonic()
         self._armed.set()
         return self.t_arm
@@ -285,10 +293,19 @@ class ArmedPolicy:
         tools = tuple(sorted(available_tools))
         if tools not in self.tool_sets:
             self.tool_sets.append(tools)
+        missing = [k for k in ("is_in_water", "oxygen") if k not in observation]
+        if missing and not any("observation lacks" in v for v in self.violations):
+            # the learner's cost, its RAW key and the water gate all read these; a default would read as "no cost"
+            self.violations.append(f"observation lacks {missing}")
         if not self._armed.is_set():
             return None
-        if self.water_only and not in_water(observation):
-            self.idle_dry += 1
+        if in_water(observation):
+            self._seen_water = True
+        elif self.water_only:
+            if self._seen_water:
+                self.idle_dry_after += 1
+            else:
+                self.idle_dry_before += 1
             return None
         try:
             pick = self.inner.select(
@@ -299,5 +316,10 @@ class ArmedPolicy:
             return None
         if pick is not None and (pick.get("params") or {}):
             self.violations.append(f"non-empty params {pick.get('params')!r} for {pick.get('tool_name')!r}")
+            return None
+        if pick is not None and pick.get("tool_name") not in available_tools:
+            # the hook would raise SubstratePolicyError and end the loop; recorded instead, so a loop that ends early
+            # without a recorded violation is the instrument's
+            self.violations.append(f"pick {pick.get('tool_name')!r} is not among this tick's available tools")
             return None
         return pick
