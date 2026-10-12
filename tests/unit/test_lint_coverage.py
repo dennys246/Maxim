@@ -181,6 +181,7 @@ def repo(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(L, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(L, "MIN_PACKAGE_STATEMENTS", N)
     monkeypatch.delenv("GITHUB_EVENT_NAME", raising=False)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)  # CI's suite runs with it set; --local refuses it
     return tmp_path
 
 
@@ -1177,3 +1178,127 @@ def test_a_small_scope_gets_the_K_MIN_tolerance(repo, capsys):
     _cov(repo, missing={A: {9, 10}, B: {6, 7, 8, 9, 10}, small: set(range(229, 297))})  # 228: beyond k
     rc, _, err = _run(capsys)
     assert rc == 1 and "maxim/gamma: 77.03% is below its floor 79.3% by more than the 5-statement" in err
+
+
+# ── --local: the pre-push check scripts/suite_at_commit.sh runs ─────────────────────────────────────
+
+
+def _run_local(capsys) -> tuple[int, str, str]:
+    rc = L.main(["--local"])
+    c = capsys.readouterr()
+    return rc, c.out, c.err
+
+
+def test_local_mode_only_notes_a_floor_of_a_package_the_diff_does_not_touch(repo, capsys):
+    """Floors are measured in CI's environment, so a local run cannot gate an UNTOUCHED package on them (the diff
+    touches only beta here); it prints the finding instead. The default (CI) run still fails on it."""
+    _write(repo, B, _lines(10, "b") + "zz = 0  # pragma: no cover\n# touched\n")  # touches beta: a comment, no code
+    _commit(repo)
+    _cov(repo, missing={A: set(range(2, 11)), B: {6, 7, 8, 9, 10}})
+    rc_ci, _, _ = _run(capsys)
+    rc, out, err = _run_local(capsys)
+    assert rc_ci == 1
+    assert rc == 0, err
+    assert "maxim/alpha: 10.00% is below its floor" in out and "untouched" in out
+
+
+def test_local_mode_still_gates_a_floor_of_a_package_the_diff_touches(repo, capsys):
+    """The #1240 shape: the PR's own tests lift a touched package above its band, so the floor must be raised."""
+    _write(repo, A, _lines(10, "a") + "na = 1\n")
+    _commit(repo)
+    _cov(repo, missing={A: set(), B: {6, 7, 8, 9, 10}})
+    rc, _, err = _run_local(capsys)
+    assert rc == 1 and "maxim/alpha: 100.00% is more than 1.0 pt above its floor" in err
+
+
+def test_local_mode_still_gates_diff_coverage(repo, capsys):
+    """The #1232 shape: changed lines no test executes."""
+    _write(repo, A, _lines(10, "a") + "n0 = 0\nn1 = 1\nn2 = 2\n")
+    _commit(repo)
+    _cov(repo, missing={A: {9, 10, 12, 13}, B: {6, 7, 8, 9, 10}})
+    _write(repo, L.FLOORS_REL, _floors(overall=(56.5, 9), alpha=(69.2, 4)))
+    _commit(repo)
+    rc, _, err = _run_local(capsys)
+    assert rc == 1 and "diff coverage 33.3% is below 80%" in err
+
+
+def test_local_mode_is_refused_inside_github_actions(repo, capsys, monkeypatch):
+    """A belt beside ci_step_rules (which already pins the CI step to the bare command): --local can never soften
+    the CI gate."""
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    rc, _, err = _run_local(capsys)
+    assert rc == 2 and "--local" in err
+
+
+def test_the_suite_script_measures_with_cis_own_command():
+    """M47: scripts/suite_at_commit.sh is the pre-push check only if it measures exactly as CI does and then runs the
+    local ratchet; a drifted copy of the command would measure something CI does not."""
+    text = (Path(__file__).resolve().parents[2] / "scripts" / "suite_at_commit.sh").read_text(encoding="utf-8")
+    flat = " ".join(text.replace("\\\n", " ").split())
+    clean, measure, local = (
+        flat.find(L.CI_CLEAN),
+        flat.find(L.CI_COV_ARGS),
+        flat.find("python scripts/lint_coverage.py --local"),
+    )
+    assert -1 < clean < measure < local, (clean, measure, local)  # clean, then measure, then the local ratchet
+    assert '-m "not slow" --ignore=tests/integration/test_memory_hub.py' in flat
+
+
+def test_local_mode_gates_a_package_a_changed_test_imports(repo, capsys):
+    """The #1201 shape: a test-only PR lifts a package its src diff never touches; the changed test imports it."""
+    _write(repo, "tests/test_lift.py", "from maxim.alpha import a  # noqa: F401\n\ndef test_lift():\n    assert True\n")
+    _commit(repo)
+    _cov(repo, missing={A: set(), B: {6, 7, 8, 9, 10}})
+    rc, _, err = _run_local(capsys)
+    assert rc == 1 and "maxim/alpha: 100.00% is more than 1.0 pt above its floor" in err
+
+
+def test_local_mode_only_notes_a_floor_pin_edit(repo, capsys):
+    """A PR's floor edits are CI measurements; locally they are printed, not verified."""
+    _cov(repo, missing={A: set(), B: {6, 7, 8, 9, 10}})
+    _write(repo, L.FLOORS_REL, _floors(overall=(75.0, 5), alpha=(100.0, 3)))  # pins missing 3 above the measured 0
+    _commit(repo)
+    rc, out, err = _run_local(capsys)
+    rc_ci, _, _ = _run(capsys)
+    assert rc_ci == 1
+    assert rc == 0, err
+    assert "floor pin rule, verified in CI, not gated" in out
+
+
+def test_floor_head_rules_only_skips_an_untouched_package_without_a_floor(repo):
+    """The second ``only`` filter: a measured package with no floor, outside the touched set, is not a failure."""
+    fl = L.parse_floors(_floors())
+    overall = L.ScopeCov(statements=20, covered=13)
+    pkgs = {
+        "maxim/alpha": L.ScopeCov(statements=10, covered=8),
+        "maxim/beta": L.ScopeCov(statements=10, covered=5),
+        "maxim/gamma": L.ScopeCov(statements=9, covered=9),
+    }
+    assert any("maxim/gamma" in m for m in L.floor_head_rules(repo, fl, overall, pkgs))
+    assert not any("maxim/gamma" in m for m in L.floor_head_rules(repo, fl, overall, pkgs, only={"maxim/alpha"}))
+
+
+def test_the_suite_scripts_version_check_runs():
+    """The pre-suite coverage-version check is an inline heredoc; run it exactly as the script holds it (a first cut
+    loaded lint_coverage unregistered, so its dataclasses failed and every default run exited before pytest)."""
+    import subprocess
+    import sys as _sys
+
+    root = Path(__file__).resolve().parents[2]
+    text = (root / "scripts" / "suite_at_commit.sh").read_text(encoding="utf-8")
+    body = text.split("<<'PY'", 1)[1].split("\n", 1)[1].split("\nPY\n", 1)[0]  # from the line after the opener
+    out = subprocess.run([_sys.executable, "-c", body], cwd=root, capture_output=True, text=True)
+    from importlib.metadata import version  # not `import coverage`: the gate bans the coverage API in tests (S4)
+
+    if version("coverage") == L.COVERAGE_VERSION:
+        assert out.returncode == 0, out.stderr
+    else:
+        assert out.returncode != 0 and L.COVERAGE_VERSION in out.stderr
+
+
+def test_the_suite_script_is_parsed_whole_before_it_runs():
+    """Bash reads a script as it runs: an edit during a run made the tail parse at the wrong offset, skip the
+    ratchet and still exit 0. The body is one function, invoked (with its exit) on the file's last line."""
+    lines = (Path(__file__).resolve().parents[2] / "scripts" / "suite_at_commit.sh").read_text().rstrip().splitlines()
+    assert lines[-1] == 'main "$@"; exit "$?"'
+    assert "main() {" in lines and lines[-2] == "}"
