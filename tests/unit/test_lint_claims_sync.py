@@ -41,8 +41,8 @@ def test_a_results_row_without_a_marker_FAILS():
 
 def test_a_row_that_does_not_display_the_ledger_status_FAILS():
     """The 2026-09-27 class: a public row saying something other than the ledger's status."""
-    out = _fails(readme=_swap(README, "**EARNED 2026-09-16**", "**EARNED 2026-09-15**"))
-    assert any("does not display its ledger status `EARNED 2026-09-16`" in f for f in out), out
+    out = _fails(readme=_swap(README, "**MAINTAINED 2026-10-12**", "**MAINTAINED 2026-10-11**"))
+    assert any("does not display its ledger status `MAINTAINED 2026-10-12`" in f for f in out), out
 
 
 def test_a_row_showing_a_second_status_token_FAILS():
@@ -61,9 +61,9 @@ def test_a_scoped_claim_must_show_its_scope_word_after_the_status():
 
 
 def test_a_barred_status_cannot_sit_under_what_it_has_shown():
-    ledger = _swap(LEDGER, "**Status: EARNED 2026-09-16**", "**Status: DORMANT 2026-09-16**")
-    readme = _swap(README, "**EARNED 2026-09-16**", "**DORMANT 2026-09-16**")
-    index = _swap(INDEX, "**EARNED 2026-09-16** — complete", "**DORMANT 2026-09-16** — complete")
+    ledger = _swap(LEDGER, "**Status: MAINTAINED 2026-10-12**", "**Status: DORMANT 2026-10-12**")
+    readme = _swap(README, "**MAINTAINED 2026-10-12**", "**DORMANT 2026-10-12**")
+    index = _swap(INDEX, "**MAINTAINED 2026-10-12** — complete", "**DORMANT 2026-10-12** — complete")
     out = _fails(readme=readme, index=index, ledger=ledger)
     assert any("T1-13 is `DORMANT`" in f and "does not belong" in f for f in out), out
 
@@ -120,7 +120,7 @@ def test_a_superseded_row_must_name_its_successor():
 
 def test_every_tier1_row_is_cited_by_the_index():
     out = _fails(index=_swap(INDEX, "<!-- claim: T1-13 --> ", ""))
-    assert any("Tier 1 row T1-13 (EARNED) is cited by no index entry" in f for f in out), out
+    assert any("Tier 1 row T1-13 (MAINTAINED) is cited by no index entry" in f for f in out), out
 
 
 def test_an_index_marker_outside_a_status_table_FAILS():
