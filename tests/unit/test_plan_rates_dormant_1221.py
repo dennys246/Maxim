@@ -12,8 +12,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -26,7 +24,6 @@ def _calls_get_tool_success_rate(rel: str) -> list[int]:
     ]
 
 
-@pytest.mark.xfail(strict=True, reason="#1221: plan_manager calls a get_tool_success_rate the Statistician lacks")
 def test_the_planner_calls_no_success_rate_method_that_does_not_exist() -> None:
     from maxim.agents.statistician_agent import StatisticianAgent
 
@@ -42,4 +39,4 @@ def test_the_dormant_rate_method_has_no_caller() -> None:
         rel = str(path.relative_to(ROOT))
         if rel != "src/maxim/bridges/planning_bridge.py" and _calls_get_tool_success_rate(rel):
             callers.append(rel)
-    assert callers == [] or callers == ["src/maxim/planning/plan_manager.py"]  # the latter until #1221's fix
+    assert callers == []
