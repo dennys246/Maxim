@@ -1188,11 +1188,10 @@ def _run_local(capsys) -> tuple[int, str, str]:
     return rc, c.out, c.err
 
 
-@pytest.mark.xfail(strict=True, reason="--local not implemented: every floor gates, environment noise included")
 def test_local_mode_only_notes_a_floor_of_a_package_the_diff_does_not_touch(repo, capsys):
     """Floors are measured in CI's environment, so a local run cannot gate an UNTOUCHED package on them (the diff
     touches only beta here); it prints the finding instead. The default (CI) run still fails on it."""
-    _write(repo, B, _lines(10, "b") + "zz = 0  # pragma: no cover\nnb = 1\n")
+    _write(repo, B, _lines(10, "b") + "zz = 0  # pragma: no cover\n# touched\n")  # touches beta: a comment, no code
     _commit(repo)
     _cov(repo, missing={A: set(range(2, 11)), B: {6, 7, 8, 9, 10}})
     rc_ci, _, _ = _run(capsys)
@@ -1222,10 +1221,18 @@ def test_local_mode_still_gates_diff_coverage(repo, capsys):
     assert rc == 1 and "diff coverage 33.3% is below 80%" in err
 
 
-@pytest.mark.xfail(strict=True, reason="--local not implemented: it is not refused inside GitHub Actions")
 def test_local_mode_is_refused_inside_github_actions(repo, capsys, monkeypatch):
     """A belt beside ci_step_rules (which already pins the CI step to the bare command): --local can never soften
     the CI gate."""
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     rc, _, err = _run_local(capsys)
     assert rc == 2 and "--local" in err
+
+
+def test_the_suite_script_measures_with_cis_own_command():
+    """M47: scripts/suite_at_commit.sh is the pre-push check only if it measures exactly as CI does and then runs the
+    local ratchet; a drifted copy of the command would measure something CI does not."""
+    text = (Path(__file__).resolve().parents[2] / "scripts" / "suite_at_commit.sh").read_text(encoding="utf-8")
+    flat = " ".join(text.replace("\\\n", " ").split())
+    assert L.CI_CLEAN in flat and L.CI_COV_ARGS in flat
+    assert "python scripts/lint_coverage.py --local" in flat

@@ -438,7 +438,11 @@ def _fmt_pct(x: float) -> str:
     return f"{x:.2f}%"
 
 
-def floor_head_rules(root: Path, fl: Floors, overall: ScopeCov, pkgs: dict[str, ScopeCov]) -> list[str]:
+def floor_head_rules(
+    root: Path, fl: Floors, overall: ScopeCov, pkgs: dict[str, ScopeCov], only: set[str] | None = None
+) -> list[str]:
+    """The HEAD floor rules. ``only`` (``--local``) restricts the per-scope checks to those packages and skips
+    ``overall``; the file-format checks always run. CI never passes it."""
     out: list[str] = []
     if fl.version != FLOORS_FORMAT_VERSION:
         out.append(f"{FLOORS_REL}: floors_format_version must be {FLOORS_FORMAT_VERSION}, got {fl.version!r}")
@@ -466,8 +470,11 @@ def floor_head_rules(root: Path, fl: Floors, overall: ScopeCov, pkgs: dict[str, 
                 f'{{"percent": {round_down(m.percent)}, "missing": {m.missing}}}'
             )
 
-    check("overall", fl.overall, overall)
+    if only is None:
+        check("overall", fl.overall, overall)
     for pkg, f in sorted(fl.packages.items()):
+        if only is not None and pkg not in only:
+            continue
         if not package_present(root, pkg):
             out.append(f"{pkg}: floored package has no directory at HEAD (orphan) — remove the entry")
         elif pkg not in pkgs or pkgs[pkg].statements == 0:
@@ -475,6 +482,8 @@ def floor_head_rules(root: Path, fl: Floors, overall: ScopeCov, pkgs: dict[str, 
         else:
             check(pkg, f, pkgs[pkg])
     for pkg, m in sorted(pkgs.items()):
+        if only is not None and pkg not in only:
+            continue
         if pkg not in fl.packages and m.statements >= MIN_PACKAGE_STATEMENTS:
             out.append(
                 f"{pkg}: {m.statements} statements (>= {MIN_PACKAGE_STATEMENTS}) and no floor — add "
@@ -1188,6 +1197,15 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         print(json.dumps(merge_floors([Path(a).read_text(encoding="utf-8") for a in argv[1:]]), indent=2))
         return 0
+    # --local: the pre-push run scripts/suite_at_commit.sh makes on the exact commit to be pushed. Floors are measured
+    # in CI's environment, so locally only the floors of packages the diff TOUCHES gate (the "raise it" a PR's own
+    # tests cause, #1240); the overall floor and untouched packages are printed as notes. Every other rule, diff
+    # coverage included (#1232), gates exactly as in CI. Never in CI: ci_step_rules pins the step to the bare command,
+    # and this refuses to run under GitHub Actions.
+    local = argv[:1] == ["--local"]
+    if local and os.environ.get("GITHUB_ACTIONS"):
+        print("coverage: --local is the pre-push check and cannot run inside GitHub Actions", file=sys.stderr)
+        return 2
     started = time.monotonic()
     root = REPO_ROOT
     event = os.environ.get("GITHUB_EVENT_NAME")
@@ -1210,7 +1228,19 @@ def main(argv: list[str] | None = None) -> int:
     overall, pkgs = measure_scopes(cov)
     _print_totals(overall, pkgs, fl)
     if fl is not None:
-        failures += floor_head_rules(root, fl, overall, pkgs)
+        if local:
+            try:
+                touched = {package_of(rel) for rel in changed_lines(root, base_ref(root))}
+            except GitUnavailable as e:
+                print(f"coverage: --local needs a base to know which packages the diff touches ({e})", file=sys.stderr)
+                return 2
+            gating = floor_head_rules(root, fl, overall, pkgs, only=touched)
+            for note in floor_head_rules(root, fl, overall, pkgs):
+                if note not in gating:
+                    print(f"coverage (local, untouched scope, measured in CI's environment, not gated): {note}")
+            failures += gating
+        else:
+            failures += floor_head_rules(root, fl, overall, pkgs)
         if fl.overall.percent is None or any(f.percent is None for f in fl.packages.values()):
             print(f"coverage: measured floors for {FLOORS_REL} (rounded down to 0.1; review before committing):")
             print(json.dumps(suggested_floors(fl, overall, pkgs), indent=2))
