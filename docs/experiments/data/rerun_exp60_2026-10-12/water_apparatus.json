@@ -1,0 +1,884 @@
+{
+  "ts": 1791763237.862883,
+  "gates": {
+    "cycles": 3,
+    "in_water_within_s": 3.0,
+    "sink_hold_s": 6.0,
+    "oxygen_pain_edge": 13.0,
+    "damage_onset_window_s": [
+      12.0,
+      20.0
+    ],
+    "rescue_health_min": 16.0,
+    "recover_within_s": 10.0,
+    "surface_within_s": 6.0,
+    "hostile_horizon": 64.0
+  },
+  "provenance": {
+    "executed_maxim_file": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "bcf23fa165b801bc21c434b9370061ae60023370",
+    "harness_run_id": "7d42dc5b911d474d9a05536363be2248",
+    "harness_family": "in_process",
+    "working_tree_dirty_src_scripts": false,
+    "code_tree_sha256": "0bbb257932829b1be0428bca53cb437a4e355c2fcb22d0b607c8cd972e627444",
+    "python": "/Users/dennys/RMSrv/scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/src"
+  },
+  "cycles": [
+    {
+      "cycle": 0,
+      "w1_shore": {
+        "is_in_water": 0.0,
+        "on_ground": 1.0,
+        "oxygen": 20.0,
+        "health": 20.0,
+        "y_altitude": 71.0,
+        "hostile_count": 1.0,
+        "nearest_hostile_dist": 54.378304497290095,
+        "distance_from_spawn": 3.9370039370059056,
+        "light_level": 15.0,
+        "time_of_day": 0.041666666666666664,
+        "pass": false
+      },
+      "w2_dive": {
+        "t_in_water": 0.338,
+        "sink_hold": true,
+        "oxygen_monotone": true,
+        "t_pain_edge": 5.041,
+        "t_oxygen_zero": 14.752,
+        "t_damage_onset": 16.205,
+        "health_at_rescue": 18.0,
+        "n_samples": 46,
+        "pass": true,
+        "reasons": [],
+        "series": [
+          [
+            0.0,
+            20.0,
+            20.0
+          ],
+          [
+            0.338,
+            20.0,
+            20.0
+          ],
+          [
+            0.692,
+            19.0,
+            20.0
+          ],
+          [
+            1.047,
+            19.0,
+            20.0
+          ],
+          [
+            1.359,
+            18.0,
+            20.0
+          ],
+          [
+            1.754,
+            18.0,
+            20.0
+          ],
+          [
+            2.267,
+            17.0,
+            20.0
+          ],
+          [
+            2.558,
+            17.0,
+            20.0
+          ],
+          [
+            2.809,
+            16.0,
+            20.0
+          ],
+          [
+            3.209,
+            16.0,
+            20.0
+          ],
+          [
+            3.605,
+            15.0,
+            20.0
+          ],
+          [
+            3.996,
+            15.0,
+            20.0
+          ],
+          [
+            4.257,
+            14.0,
+            20.0
+          ],
+          [
+            4.653,
+            14.0,
+            20.0
+          ],
+          [
+            5.041,
+            13.0,
+            20.0
+          ],
+          [
+            5.437,
+            13.0,
+            20.0
+          ],
+          [
+            5.835,
+            12.0,
+            20.0
+          ],
+          [
+            6.226,
+            12.0,
+            20.0
+          ],
+          [
+            6.566,
+            11.0,
+            20.0
+          ],
+          [
+            6.954,
+            11.0,
+            20.0
+          ],
+          [
+            7.354,
+            10.0,
+            20.0
+          ],
+          [
+            7.749,
+            10.0,
+            20.0
+          ],
+          [
+            8.121,
+            9.0,
+            20.0
+          ],
+          [
+            8.513,
+            9.0,
+            20.0
+          ],
+          [
+            8.914,
+            8.0,
+            20.0
+          ],
+          [
+            9.302,
+            8.0,
+            20.0
+          ],
+          [
+            9.571,
+            7.0,
+            20.0
+          ],
+          [
+            9.931,
+            7.0,
+            20.0
+          ],
+          [
+            10.258,
+            7.0,
+            20.0
+          ],
+          [
+            10.618,
+            6.0,
+            20.0
+          ],
+          [
+            11.014,
+            5.0,
+            20.0
+          ],
+          [
+            11.405,
+            5.0,
+            20.0
+          ],
+          [
+            11.729,
+            4.0,
+            20.0
+          ],
+          [
+            12.007,
+            4.0,
+            20.0
+          ],
+          [
+            12.271,
+            4.0,
+            20.0
+          ],
+          [
+            12.569,
+            3.0,
+            20.0
+          ],
+          [
+            12.967,
+            3.0,
+            20.0
+          ],
+          [
+            13.362,
+            2.0,
+            20.0
+          ],
+          [
+            13.748,
+            2.0,
+            20.0
+          ],
+          [
+            14.098,
+            1.0,
+            20.0
+          ],
+          [
+            14.352,
+            1.0,
+            20.0
+          ],
+          [
+            14.752,
+            0.0,
+            20.0
+          ],
+          [
+            15.087,
+            0.0,
+            20.0
+          ],
+          [
+            15.479,
+            0.0,
+            20.0
+          ],
+          [
+            15.814,
+            0.0,
+            20.0
+          ],
+          [
+            16.205,
+            0.0,
+            18.0
+          ]
+        ]
+      },
+      "w3_recover": {
+        "t_recover": 3.883,
+        "pass": true,
+        "context_on_timeout": null
+      },
+      "w4_escape": {
+        "t_surface": 1.574,
+        "t_sinkback": 2.257,
+        "n_samples": 7,
+        "pass": true,
+        "reasons": [],
+        "tool": "minecraft_player_escape_water",
+        "executor": {
+          "success": true,
+          "error": null,
+          "output": "{'entity': 'minecraft_player', 'affordance': 'escape_water', 'success': True, 'entity_state': {'health': 20.0, 'food': 20.0, 'light_level': 0.0, 'y_altitude': 3",
+          "detail": null
+        }
+      },
+      "w5_sinkback_s": 2.257,
+      "pass": false
+    },
+    {
+      "cycle": 1,
+      "w1_shore": {
+        "is_in_water": 0.0,
+        "on_ground": 1.0,
+        "oxygen": 20.0,
+        "health": 20.0,
+        "y_altitude": 40.0,
+        "hostile_count": 0.0,
+        "nearest_hostile_dist": 64.0,
+        "distance_from_spawn": 69.17369442208505,
+        "light_level": 0.0,
+        "time_of_day": 0.041666666666666664,
+        "pass": true
+      },
+      "w2_dive": {
+        "t_in_water": 0.345,
+        "sink_hold": true,
+        "oxygen_monotone": true,
+        "t_pain_edge": 5.177,
+        "t_oxygen_zero": 14.902,
+        "t_damage_onset": 16.387,
+        "health_at_rescue": 18.0,
+        "n_samples": 46,
+        "pass": true,
+        "reasons": [],
+        "series": [
+          [
+            0.0,
+            20.0,
+            20.0
+          ],
+          [
+            0.345,
+            20.0,
+            20.0
+          ],
+          [
+            0.719,
+            19.0,
+            20.0
+          ],
+          [
+            1.112,
+            19.0,
+            20.0
+          ],
+          [
+            1.508,
+            18.0,
+            20.0
+          ],
+          [
+            1.825,
+            18.0,
+            20.0
+          ],
+          [
+            2.219,
+            17.0,
+            20.0
+          ],
+          [
+            2.589,
+            17.0,
+            20.0
+          ],
+          [
+            2.979,
+            16.0,
+            20.0
+          ],
+          [
+            3.355,
+            16.0,
+            20.0
+          ],
+          [
+            3.738,
+            15.0,
+            20.0
+          ],
+          [
+            4.137,
+            15.0,
+            20.0
+          ],
+          [
+            4.398,
+            14.0,
+            20.0
+          ],
+          [
+            4.786,
+            14.0,
+            20.0
+          ],
+          [
+            5.177,
+            13.0,
+            20.0
+          ],
+          [
+            5.571,
+            13.0,
+            20.0
+          ],
+          [
+            5.961,
+            12.0,
+            20.0
+          ],
+          [
+            6.361,
+            12.0,
+            20.0
+          ],
+          [
+            6.713,
+            11.0,
+            20.0
+          ],
+          [
+            7.087,
+            11.0,
+            20.0
+          ],
+          [
+            7.481,
+            10.0,
+            20.0
+          ],
+          [
+            7.88,
+            10.0,
+            20.0
+          ],
+          [
+            8.21,
+            9.0,
+            20.0
+          ],
+          [
+            8.605,
+            9.0,
+            20.0
+          ],
+          [
+            8.985,
+            8.0,
+            20.0
+          ],
+          [
+            9.385,
+            8.0,
+            20.0
+          ],
+          [
+            9.771,
+            7.0,
+            20.0
+          ],
+          [
+            10.064,
+            7.0,
+            20.0
+          ],
+          [
+            10.418,
+            6.0,
+            20.0
+          ],
+          [
+            10.771,
+            6.0,
+            20.0
+          ],
+          [
+            11.15,
+            5.0,
+            20.0
+          ],
+          [
+            11.537,
+            5.0,
+            20.0
+          ],
+          [
+            11.837,
+            4.0,
+            20.0
+          ],
+          [
+            12.16,
+            4.0,
+            20.0
+          ],
+          [
+            12.44,
+            3.0,
+            20.0
+          ],
+          [
+            12.736,
+            3.0,
+            20.0
+          ],
+          [
+            13.11,
+            3.0,
+            20.0
+          ],
+          [
+            13.493,
+            2.0,
+            20.0
+          ],
+          [
+            13.771,
+            2.0,
+            20.0
+          ],
+          [
+            14.169,
+            1.0,
+            20.0
+          ],
+          [
+            14.503,
+            1.0,
+            20.0
+          ],
+          [
+            14.902,
+            0.0,
+            20.0
+          ],
+          [
+            15.302,
+            0.0,
+            20.0
+          ],
+          [
+            15.667,
+            0.0,
+            20.0
+          ],
+          [
+            16.061,
+            0.0,
+            20.0
+          ],
+          [
+            16.387,
+            0.0,
+            18.0
+          ]
+        ]
+      },
+      "w3_recover": {
+        "t_recover": 3.879,
+        "pass": true,
+        "context_on_timeout": null
+      },
+      "w4_escape": {
+        "t_surface": 1.367,
+        "t_sinkback": 2.527,
+        "n_samples": 8,
+        "pass": true,
+        "reasons": [],
+        "tool": "minecraft_player_escape_water",
+        "executor": {
+          "success": true,
+          "error": null,
+          "output": "{'entity': 'minecraft_player', 'affordance': 'escape_water', 'success': True, 'entity_state': {'health': 20.0, 'food': 20.0, 'light_level': 0.0, 'y_altitude': 3",
+          "detail": null
+        }
+      },
+      "w5_sinkback_s": 2.527,
+      "pass": true
+    },
+    {
+      "cycle": 2,
+      "w1_shore": {
+        "is_in_water": 0.0,
+        "on_ground": 1.0,
+        "oxygen": 20.0,
+        "health": 20.0,
+        "y_altitude": 40.0,
+        "hostile_count": 0.0,
+        "nearest_hostile_dist": 64.0,
+        "distance_from_spawn": 69.17369442208505,
+        "light_level": 0.0,
+        "time_of_day": 0.041666666666666664,
+        "pass": true
+      },
+      "w2_dive": {
+        "t_in_water": 0.384,
+        "sink_hold": true,
+        "oxygen_monotone": true,
+        "t_pain_edge": 5.304,
+        "t_oxygen_zero": 14.708,
+        "t_damage_onset": 16.118,
+        "health_at_rescue": 18.0,
+        "n_samples": 44,
+        "pass": true,
+        "reasons": [],
+        "series": [
+          [
+            0.0,
+            20.0,
+            20.0
+          ],
+          [
+            0.384,
+            20.0,
+            20.0
+          ],
+          [
+            0.768,
+            19.0,
+            20.0
+          ],
+          [
+            1.08,
+            19.0,
+            20.0
+          ],
+          [
+            1.473,
+            18.0,
+            20.0
+          ],
+          [
+            1.854,
+            18.0,
+            20.0
+          ],
+          [
+            2.252,
+            17.0,
+            20.0
+          ],
+          [
+            2.646,
+            17.0,
+            20.0
+          ],
+          [
+            3.035,
+            16.0,
+            20.0
+          ],
+          [
+            3.408,
+            16.0,
+            20.0
+          ],
+          [
+            3.803,
+            15.0,
+            20.0
+          ],
+          [
+            4.176,
+            15.0,
+            20.0
+          ],
+          [
+            4.555,
+            14.0,
+            20.0
+          ],
+          [
+            4.937,
+            14.0,
+            20.0
+          ],
+          [
+            5.304,
+            13.0,
+            20.0
+          ],
+          [
+            5.6,
+            13.0,
+            20.0
+          ],
+          [
+            5.997,
+            12.0,
+            20.0
+          ],
+          [
+            6.388,
+            12.0,
+            20.0
+          ],
+          [
+            6.771,
+            11.0,
+            20.0
+          ],
+          [
+            7.157,
+            11.0,
+            20.0
+          ],
+          [
+            7.549,
+            10.0,
+            20.0
+          ],
+          [
+            7.862,
+            10.0,
+            20.0
+          ],
+          [
+            8.253,
+            9.0,
+            20.0
+          ],
+          [
+            8.645,
+            9.0,
+            20.0
+          ],
+          [
+            9.045,
+            8.0,
+            20.0
+          ],
+          [
+            9.421,
+            8.0,
+            20.0
+          ],
+          [
+            9.798,
+            7.0,
+            20.0
+          ],
+          [
+            10.177,
+            7.0,
+            20.0
+          ],
+          [
+            10.569,
+            6.0,
+            20.0
+          ],
+          [
+            10.963,
+            5.0,
+            20.0
+          ],
+          [
+            11.342,
+            5.0,
+            20.0
+          ],
+          [
+            11.696,
+            5.0,
+            20.0
+          ],
+          [
+            12.094,
+            4.0,
+            20.0
+          ],
+          [
+            12.495,
+            3.0,
+            20.0
+          ],
+          [
+            12.813,
+            3.0,
+            20.0
+          ],
+          [
+            13.192,
+            2.0,
+            20.0
+          ],
+          [
+            13.573,
+            2.0,
+            20.0
+          ],
+          [
+            13.964,
+            2.0,
+            20.0
+          ],
+          [
+            14.345,
+            1.0,
+            20.0
+          ],
+          [
+            14.708,
+            0.0,
+            20.0
+          ],
+          [
+            15.098,
+            0.0,
+            20.0
+          ],
+          [
+            15.47,
+            0.0,
+            20.0
+          ],
+          [
+            15.751,
+            0.0,
+            20.0
+          ],
+          [
+            16.118,
+            0.0,
+            18.0
+          ]
+        ]
+      },
+      "w3_recover": {
+        "t_recover": 3.691,
+        "pass": true,
+        "context_on_timeout": null
+      },
+      "w4_escape": {
+        "t_surface": 1.462,
+        "t_sinkback": 2.164,
+        "n_samples": 7,
+        "pass": true,
+        "reasons": [],
+        "tool": "minecraft_player_escape_water",
+        "executor": {
+          "success": true,
+          "error": null,
+          "output": "{'entity': 'minecraft_player', 'affordance': 'escape_water', 'success': True, 'entity_state': {'health': 20.0, 'food': 20.0, 'light_level': 0.0, 'y_altitude': 3",
+          "detail": null
+        }
+      },
+      "w5_sinkback_s": 2.164,
+      "pass": true
+    }
+  ],
+  "instrument_error": null,
+  "apparatus": {
+    "anchor_file": "/Users/dennys/.maxim/exp60_water_classroom.json",
+    "pool_id": "pool1",
+    "shore": [
+      -393,
+      40,
+      -312
+    ],
+    "submerged": [
+      -388,
+      35,
+      -312
+    ],
+    "depth": 5
+  },
+  "all_pass": false,
+  "frozen_params": true,
+  "record_kind": "instrument_check",
+  "status": "ok",
+  "mock": false,
+  "pass": false
+}
