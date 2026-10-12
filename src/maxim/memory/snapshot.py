@@ -136,7 +136,7 @@ class BioSystemSnapshot(Protocol):
 
     Locking caveat (Round 2 Arch important #5): ``dump()`` on most
     bio-systems acquires the bio-system's internal read lock (ATL
-    rwlock, NAc mutex, Hippocampus rwlock, PerceptTraceBuffer mutex)
+    rwlock, NAc mutex, Hippocampus rwlock, PerceptTraceBuffer mutex, SCN RLock since #1217)
     to produce a point-in-time consistent dict. Callers that want to
     snapshot a running system from a hot-path thread should spawn the
     ``dump()`` call on a worker thread rather than blocking the hot
