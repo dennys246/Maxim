@@ -416,6 +416,30 @@ class ModulatorAffordanceTool(Tool):
         self._entity_map = entity_map
         super().__init__()
 
+    # Read-only surface for the modules that need this tool's declaration and cause (#1195): the executor's
+    # GL2a record, tool discovery and the foundry. Reading the privates instead let a rename silently empty a
+    # record's drives and cause, or skip an affordance.
+    @property
+    def affordance_name(self) -> str:
+        """The affordance this tool performs (``turn_left``, ``slash``, ``escape_water``)."""
+        return self._affordance_name
+
+    @property
+    def affordance_schema(self) -> AffordanceSchema:
+        """The affordance's declaration: its ``self_effect`` drives, ``always_active`` flag, params, timeout. The
+        schema is frozen but its dicts are live (``self_effect`` is what this tool applies): read, never mutate."""
+        return self._affordance_schema
+
+    @property
+    def acting_entity(self) -> Entity:
+        """The entity the affordance belongs to (the body itself for the body's own modulators)."""
+        return self._entity
+
+    @property
+    def modulator(self) -> Modulator:
+        """The modulator the affordance is executed through."""
+        return self._modulator
+
     def _resolve_target_body(self, target_arg: Any) -> Entity | None:
         """Resolve a ``target=`` kwarg to a body :class:`Entity`.
 
@@ -1160,8 +1184,7 @@ def always_active_sem_tools(registry: Any) -> list[Any]:
     out: list[Any] = []
     try:
         for tool in registry.get_tools_by_kind("sem-modulator-derived"):
-            schema = getattr(tool, "_affordance_schema", None)
-            if schema is not None and getattr(schema, "always_active", False):
+            if isinstance(tool, ModulatorAffordanceTool) and tool.affordance_schema.always_active:
                 out.append(tool)
     except Exception:
         log.debug("always_active_sem_tools enumeration failed", exc_info=True)

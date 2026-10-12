@@ -107,7 +107,7 @@ Every arm differs from its neighbour in one named thing. Everything below is hel
 |---|---|
 | Information | The baseline sees everything the environment shows: the same observation text and sensor values. A starved baseline is the fastest way to lose a reviewer. |
 | Prompt effort | A competent bare prompt, written and frozen in the prereg by a different reader from the one who wrote Maxim's prompt; or a published ReAct format verbatim. No task hints, no sandbagging. |
-| Model and serving | Same weights, quantization, KV quantization, n_ctx, backend and server version (stamped by B0). |
+| Model and serving | Same weights, quantization, KV quantization, n_ctx and backend (stamped by B0 for the run's routers; for the agent under test only after B0b). |
 | Sampling | Same temperature, top_p, and seed per paired trial. Exp 37's harness records a seed but never passes it to the sim (`run_one_sim` has no seed parameter), so B4 plumbs it. |
 | Action handling | Same tool-call parser and repair (`<think>` stripping, the `_llm_unavailable` fallback), invalid-action handling and retry policy: shared code, not a copy (B2 pulls them into bio-free modules). |
 | Executor wrappers | `FearGatedExecutor` costs one extra LLM review per tool call and can block. Keep it on every arm or drop it on every arm. |
@@ -145,22 +145,18 @@ The bare arm stays bare without anyone watching:
 
 Each stage is one PR or more and goes through the reviews its kind requires.
 
-- **B0. Provenance fields.** No rig, no dependency; can start now.
-  - Add the missing fields to **both** producers: `report.py::run_provenance` and
-    `_provenance.py::in_process_code_provenance`, and each new key to `_provenance.py::_EVIDENCE_PROVENANCE`
-    so rows carry it. Fields: model identity, quantization, KV quantization (authoritative source
-    `runtime/worker_pool.py::LaneConfig.kv_quant_mode`), server version and upstream model id, temperature,
-    top_p, sampling seed, scenario hash, world seed, session index, and a provenance `arm` that must equal
-    the row-level `arm`.
-  - **Model identity comes from the server**, not a local file hash: under peer routing (Exp 37's normal
-    mode) the harness cannot read a GGUF on the leader box. Where the server cannot report it, the field is
-    marked operator-attested, which the weak-evidence rule already says cannot gate alone.
-  - Presence checks in `scripts/_evidence_records.py` are scoped by a provenance schema key, not by date, so
-    pre-B0 records stay valid; the gate checks that provenance `arm` matches the row's.
-  - The mock report writers (`scripts/o19_rerun.py`'s mock report, `benchmark_cross_session.py`'s mock
-    `report.json`) get the fields or an explicit mock exemption.
-  - The untracked vLLM self-hosting draft wants the same model-identity and server fields
-    (`upstream_model_id`, `served_n_ctx`); whichever lands first defines them and the other reuses them.
+- **B0. Provenance fields. BUILT 2026-10-10** ([baseline_floors_b0.md](baseline_floors_b0.md), owner decision:
+  split). A sim report now records which models answered its calls (per router object: provider, model, the
+  joined identity, an owned server's actual KV-cache type, each call's temperature, the seed and whether the
+  backend honours it), a completeness check, model-change and concurrent-sim stamps, the scenario files read
+  and handed-over turn content, the global seed and the session index; the evidence gate reads the schema
+  from the code that ran. What changed from this list, and why (fifteen design passes and a three-lens
+  review): no run-level `temperature`/`top_p` (temperature is per call); no provenance `arm` (the row-level
+  `arm` stays canonical; checking that a sub-sim ran its arm, `arm_effective`, enters with M46/B4); the leader
+  reports its on-disk git HEAD (`leader_disk_heads`), not a server version, and it is never code identity; the
+  global seed, not a world seed. **B0 does not say which model served the agent under test**
+  (`aut_model_attribution: "not_established"`): that is **B0b**, after #1227 and #1228, and until then M46
+  cannot check model parity for the AUT.
 - **B1. The survival world's floor: `tabular_q` + `random` on Exp 60.** Derivative design: confounding +
   bio-faithful lenses. No LLM, so no contention with qwen32b on the rig box. It carries a real threat,
   which is its value: with about two relevant states (shore, submerged), a one-step learner may match FEAR

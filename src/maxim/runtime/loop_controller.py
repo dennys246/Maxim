@@ -313,7 +313,7 @@ class LoopController:
                 display.set_prompt("> ")
                 display.set_urgent(False)
         except Exception:
-            pass
+            log_swallowed_exception()  # a display that cannot reset its prompt must not stop the loop (#1134)
 
     @staticmethod
     def _display_confirmed_outcome(pc: PendingConfirmation, outcome: ExecutionOutcome) -> None:
@@ -590,8 +590,8 @@ class LoopController:
             try:
                 self.memory.record_command(cli_text)
                 logger.debug("Recorded %s input to memory: %s", source_type, cli_text[:50])
-            except Exception as e:
-                logger.warning("Failed to record %s input: %s", source_type, e)
+            except Exception:
+                log_swallowed_exception(context={"source_type": source_type})  # memory is best-effort (#1134)
 
     # ── Phase: Speculative pre-fetch ─────────────────────────────────────
 
@@ -641,8 +641,8 @@ class LoopController:
                         )
                 elif self.pending_prefetch.file_contents:
                     logger.info("Pre-fetch: Gathered %d files for context", len(self.pending_prefetch.file_contents))
-        except Exception as e:
-            logger.debug("Pre-fetch failed (non-critical): %s", e)
+        except Exception:
+            log_swallowed_exception()  # pre-fetch is non-critical, but its failure is reported (#1134)
             self.pending_prefetch = None
 
     # ── Phase: Configure Default Network for mode ────────────────────────

@@ -20,10 +20,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml
+from maxim.utils import scenario_inputs
+from maxim.utils.scenario_inputs import read_recorded
 
 log = logging.getLogger(__name__)
 
+import yaml
 
 # ---------------------------------------------------------------------------
 # Dataclasses
@@ -143,6 +145,9 @@ class CampaignDef:
     party_mode: bool = False
     genre: str = ""  # Genre tag for SEM component filtering (e.g., "fantasy", "cyberpunk")
     permissions: dict[str, Any] = field(default_factory=dict)  # Per-character enforced permission YAML
+    # The YAML files loading this campaign read, with their SHA-256 (baseline floors B0): the CLI loads a
+    # campaign before the sim starts, so the sim re-records these into its scenario inputs.
+    source_inputs: list[dict[str, str]] = field(default_factory=list)
 
     @property
     def encounter_order(self) -> list[str]:
@@ -231,8 +236,8 @@ def load_campaign(
         ValueError: If required fields are missing.
     """
     path = Path(path)
-    with open(path) as f:
-        raw = yaml.safe_load(f)
+    inputs_start = scenario_inputs.mark()
+    raw = yaml.safe_load(read_recorded(path))
 
     campaign = raw.get("campaign", {})
     name = campaign.get("name", path.stem)
@@ -324,6 +329,7 @@ def load_campaign(
         permissions = {}
 
     return CampaignDef(
+        source_inputs=scenario_inputs.since(inputs_start),
         name=name,
         goal=goal,
         seed=seed,

@@ -375,7 +375,7 @@ def test_each_role_stamps_the_profile_and_the_budget_it_ran_with() -> None:
     language = LLMWorker(llm=_Router("qwen-32b", 32768, 16384), n_ctx=32768)
     aut = LLMWorker(llm=_Router("mistral-7b", 8192, 8192), n_ctx=8192)
     start = capture_start_provenance()
-    prov = run_provenance(start, llm_worker=language, aut_worker=aut, resume=None)
+    prov = run_provenance(start, llm_worker=language, aut_worker=aut, resume=None, adopted=False, goal="")
     assert (prov["language_profile"], prov["language_router_n_ctx"], prov["language_budget_n_ctx"]) == (
         "qwen-32b",
         32768,
@@ -383,14 +383,19 @@ def test_each_role_stamps_the_profile_and_the_budget_it_ran_with() -> None:
     )
     assert (prov["aut_profile"], prov["aut_budget_n_ctx"]) == ("mistral-7b", 8192)
     assert prov["code_changed_during_run"] is False
-    none = run_provenance(start, llm_worker=None, aut_worker=None, resume=None)
+    none = run_provenance(start, llm_worker=None, aut_worker=None, resume=None, adopted=False, goal="")
     assert (none["aut_profile"], none["aut_router_n_ctx"], none["aut_budget_n_ctx"]) == (None, None, None)
 
 
 @pytest.mark.parametrize("key, value", [("executed_git_hash", "0" * 40), ("code_tree_sha256", "0" * 64)])
 def test_code_that_moved_during_the_run_is_flagged(key, value) -> None:
     start = {**capture_start_provenance(), key: value}
-    assert run_provenance(start, llm_worker=None, aut_worker=None, resume=None)["code_changed_during_run"] is True
+    assert (
+        run_provenance(start, llm_worker=None, aut_worker=None, resume=None, adopted=False, goal="")[
+            "code_changed_during_run"
+        ]
+        is True
+    )
 
 
 def test_the_run_is_dirty_if_either_stamp_saw_a_dirty_tree(monkeypatch) -> None:
@@ -398,27 +403,37 @@ def test_the_run_is_dirty_if_either_stamp_saw_a_dirty_tree(monkeypatch) -> None:
     start = {**capture_start_provenance(), "working_tree_dirty_src_scripts": False}
     monkeypatch.setattr(report_mod, "_tree_dirty", lambda repo: True)  # dirtied during the run
     assert (
-        run_provenance(start, llm_worker=None, aut_worker=None, resume=None)["working_tree_dirty_src_scripts"] is True
+        run_provenance(start, llm_worker=None, aut_worker=None, resume=None, adopted=False, goal="")[
+            "working_tree_dirty_src_scripts"
+        ]
+        is True
     )
     monkeypatch.setattr(report_mod, "_tree_dirty", lambda repo: False)
     dirty_start = {**start, "working_tree_dirty_src_scripts": True}
     assert (
-        run_provenance(dirty_start, llm_worker=None, aut_worker=None, resume=None)["working_tree_dirty_src_scripts"]
+        run_provenance(dirty_start, llm_worker=None, aut_worker=None, resume=None, adopted=False, goal="")[
+            "working_tree_dirty_src_scripts"
+        ]
         is True
     )
     assert (
-        run_provenance(start, llm_worker=None, aut_worker=None, resume=None)["working_tree_dirty_src_scripts"] is False
+        run_provenance(start, llm_worker=None, aut_worker=None, resume=None, adopted=False, goal="")[
+            "working_tree_dirty_src_scripts"
+        ]
+        is False
     )
     unknown_start = {k: v for k, v in start.items() if k != "working_tree_dirty_src_scripts"}
     assert (
-        run_provenance(unknown_start, llm_worker=None, aut_worker=None, resume=None)["working_tree_dirty_src_scripts"]
+        run_provenance(unknown_start, llm_worker=None, aut_worker=None, resume=None, adopted=False, goal="")[
+            "working_tree_dirty_src_scripts"
+        ]
         is True
     )
 
 
 def test_the_report_keeps_the_end_stamp_beside_the_start_one() -> None:
     start = {**capture_start_provenance(), "code_tree_sha256": "0" * 64}
-    prov = run_provenance(start, llm_worker=None, aut_worker=None, resume=None)
+    prov = run_provenance(start, llm_worker=None, aut_worker=None, resume=None, adopted=False, goal="")
     assert prov["code_tree_sha256"] == "0" * 64  # the start digest: what a harness stamped at ITS start
     assert prov["end_code_tree_sha256"] == capture_start_provenance()["code_tree_sha256"]
     assert prov["end_executed_git_hash"] == start["executed_git_hash"]
@@ -493,5 +508,12 @@ def test_the_sim_passes_its_start_and_its_workers_to_the_report() -> None:
     keywords = {kw.arg: kw.value for kw in call.keywords}
     assert ast.unparse(keywords["started_at"]) == "start_time"
     assert ast.unparse(keywords["provenance"]) == (
-        "run_provenance(start_provenance, llm_worker=orch_llm_worker, aut_worker=aut_llm_worker, resume=resume_record)"
+        "_sim_provenance(start_provenance, orch_llm_worker, aut_llm_worker, resume_record, _adopted, goal)"
     )
+    from maxim.simulation import orchestrator
+
+    (inner,) = _calls(ast.parse(inspect.getsource(orchestrator._sim_provenance)), "run_provenance")
+    assert {kw.arg: ast.unparse(kw.value) for kw in inner.keywords} == {
+        "llm_worker": "orch_worker", "aut_worker": "aut_worker", "resume": "resume",
+        "adopted": "adopted is not None", "goal": "goal",
+    }  # fmt: skip

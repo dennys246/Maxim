@@ -22,6 +22,7 @@ from typing import Any
 # cradle_mother is a lightweight module (no maxim imports at module level → no
 # cycle) — imported at runtime so BUILTIN_ARCS can construct MotherScaffold acts.
 from maxim.simulation.cradle_mother import DEFAULT_MOTHERESE, MotherScaffold
+from maxim.utils.scenario_inputs import read_recorded
 
 import yaml
 
@@ -730,8 +731,7 @@ def load_arc_yaml(path: str | Path) -> NarrativeArc:
     if not path.exists():
         raise FileNotFoundError(f"Arc YAML not found: {path}")
 
-    with open(path) as f:
-        data = yaml.safe_load(f)
+    data = yaml.safe_load(read_recorded(path))
 
     if not isinstance(data, dict):
         raise ValueError(f"Arc YAML must be a dict, got {type(data).__name__}")

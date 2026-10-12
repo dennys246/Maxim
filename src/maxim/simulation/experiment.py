@@ -79,8 +79,9 @@ def load_campaign_turns(campaign_path: str) -> list[dict[str, Any]]:
     if not path.exists():
         raise FileNotFoundError(f"Campaign file not found: {campaign_path}")
 
-    with open(path) as f:
-        data = yaml.safe_load(f)
+    from maxim.utils.scenario_inputs import read_recorded
+
+    data = yaml.safe_load(read_recorded(path))
 
     percepts = data.get("percepts", [])
     turns = []

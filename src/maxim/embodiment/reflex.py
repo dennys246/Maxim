@@ -63,6 +63,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Literal
 
 from maxim.tools.base import ToolOutput
+from maxim.utils.scenario_inputs import read_recorded
 from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
@@ -449,8 +450,7 @@ def load_reflex_specs(path: Path) -> tuple[ReflexSpec, ...]:
     if not path.exists():
         raise FileNotFoundError(f"Reflex file not found: {path}")
 
-    with open(path) as f:
-        data = yaml.safe_load(f)
+    data = yaml.safe_load(read_recorded(path))
 
     if not isinstance(data, dict) or "reflexes" not in data:
         raise ValueError(f"Reflex file must contain a 'reflexes' key: {path}")

@@ -100,8 +100,8 @@
       "missing": 754
     },
     "maxim/models": {
-      "percent": 56.2,
-      "missing": 2425
+      "percent": 57.6,
+      "missing": 2421
     },
     "maxim/modes": {
       "percent": 79.2,
@@ -152,8 +152,8 @@
       "missing": 372
     },
     "maxim/time": {
-      "percent": 81.4,
-      "missing": 105
+      "percent": 84.2,
+      "missing": 100
     },
     "maxim/tools": {
       "percent": 61.9,

@@ -24,6 +24,56 @@ _active_spawner: Any | None = None
 _active_model: str | None = None
 _llm_start_time: float | None = None
 _swap_lock = threading.Lock()
+# (spawner, BackgroundDigest of its model file), started when the spawner becomes active (baseline floors B0):
+# a report reads the model's identity from here, so a server spawned during a sim is hashed from its spawn.
+_spawn_digest: tuple[Any, Any] | None = None
+# Set once this process starts a sim (simulation/serving_provenance.py): only then are model files hashed at
+# spawn, so a leader that never writes a sim report never reads its GGUF twice.
+_digests_requested = False
+
+
+def request_spawn_digests() -> None:
+    """Hash owned servers' model files from their spawn from now on (and the running one now)."""
+    global _digests_requested  # noqa: PLW0603
+    _digests_requested = True
+    active_spawner_digest()
+
+
+def set_active_spawner(spawner: Any | None) -> None:
+    """Make ``spawner`` the process's owned server; in a process that runs sims, start hashing its model file in
+    the background."""
+    global _active_spawner, _spawn_digest  # noqa: PLW0603
+    from maxim.utils.file_digest import BackgroundDigest
+
+    _active_spawner = spawner
+    path = getattr(spawner, "model_path", None)
+    if _digests_requested and isinstance(path, str) and path:
+        _spawn_digest = (spawner, BackgroundDigest(path))
+    else:
+        _spawn_digest = None
+
+
+def active_spawner() -> Any | None:
+    """The process's owned server when it is running, else ``None``."""
+    spawner = _active_spawner
+    return spawner if spawner is not None and spawner.is_running else None
+
+
+def active_spawner_digest() -> Any | None:
+    """The running owned server's model-file digest, started at its spawn; a server made active without
+    :func:`set_active_spawner` gets one started now. ``None`` when no owned server runs."""
+    global _spawn_digest  # noqa: PLW0603
+    from maxim.utils.file_digest import BackgroundDigest
+
+    spawner = active_spawner()
+    if spawner is None:
+        return None
+    if _spawn_digest is None or _spawn_digest[0] is not spawner:
+        path = getattr(spawner, "model_path", None)
+        if not (isinstance(path, str) and path):
+            return None
+        _spawn_digest = (spawner, BackgroundDigest(path))
+    return _spawn_digest[1]
 
 
 _LAZY_MIGRATION_DONE = False
@@ -67,10 +117,11 @@ def stop_active_spawner() -> None:
     Called during Maxim shutdown so the server doesn't linger until
     the atexit handler fires (which may never run if shutdown hangs).
     """
-    global _active_spawner, _active_model, _llm_start_time  # noqa: PLW0603
+    global _active_spawner, _active_model, _llm_start_time, _spawn_digest  # noqa: PLW0603
     with _swap_lock:
         spawner = _active_spawner
         _active_spawner = None
+        _spawn_digest = None
         _active_model = None
         _llm_start_time = None
     if spawner is not None:
