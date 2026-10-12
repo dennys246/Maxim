@@ -944,3 +944,21 @@ class TestServedModelDiscovery:
         with patch.object(_http, "fetch_url", return_value=empty):
             assert backend.warmup() is True
         assert backend.served_model == ""
+
+
+def test_a_failed_probe_is_reported_not_swallowed_silently(monkeypatch) -> None:
+    """Baseline floors B0: the shared probe helper returns nothing on failure and REPORTS the error (the
+    no-silent-swallows rule), for the served-model and leader-version probes alike."""
+    from maxim.models.language import maxim_peer_backend as mod
+
+    reported = []
+    monkeypatch.setattr(mod, "log_swallowed_exception", lambda e, **kw: reported.append((type(e).__name__, kw["site"])))
+
+    def boom(*_a, **_k):
+        raise ConnectionError("leader down")
+
+    monkeypatch.setattr(mod._http, "fetch_url", boom)
+    backend = _make_backend()
+    assert backend.probe_served_model() == ""
+    assert backend.probe_leader_disk_head() is None
+    assert reported == [("ConnectionError", "peer_backend.get_json")] * 2

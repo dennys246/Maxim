@@ -48,10 +48,11 @@ def _annotations(nac, atl) -> tuple[str, str]:
 def _sense_tools(nac, atl):
     from unittest.mock import MagicMock
 
+    from maxim.embodiment.tool_bridge import ModulatorAffordanceTool
     from maxim.tools.discovery import SenseToolsTool
 
     registry = MagicMock()
-    registry.get.return_value = MagicMock(_affordance_name=AFFORDANCE)
+    registry.get.return_value = MagicMock(spec=ModulatorAffordanceTool, affordance_name=AFFORDANCE)
     return SenseToolsTool(entity_map=MagicMock(), tool_registry=registry, nac=nac, atl=atl, agent_id="a")
 
 

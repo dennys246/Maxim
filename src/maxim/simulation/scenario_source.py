@@ -15,6 +15,7 @@ from typing import Any
 import yaml
 
 from maxim.agents.bus import Percept
+from maxim.utils.scenario_inputs import read_recorded
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +73,7 @@ class ScenarioDefinition:
 def load_scenario(path: Path) -> ScenarioDefinition:
     """Load and parse a scenario YAML file."""
     try:
-        with open(path) as f:
-            raw = yaml.safe_load(f)
+        raw = yaml.safe_load(read_recorded(path))
     except yaml.YAMLError as e:
         raise ValueError(f"Failed to parse scenario YAML {path}: {e}") from e
 
