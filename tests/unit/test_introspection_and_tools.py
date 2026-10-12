@@ -108,16 +108,14 @@ class FakeEC:
         return 5
 
 
-class FakeSCN:
-    def current_phase(self):
-        return {"phase": "active", "cycle_position": 0.5}
-
-
 class FakeMemoryHub:
     def __init__(self):
         self.atl = FakeATL()
         self.ec = FakeEC()
-        self.scn = FakeSCN()
+        # A REAL SCN (#1239): a fake that defined ``current_phase`` hid that the real SCN never had it.
+        from maxim.time.scn import SCN
+
+        self.scn = SCN()
 
 
 class FakeEnergyRegistry:
@@ -229,7 +227,7 @@ class TestObserver:
         intro = self._make_introspector()
         result = intro.temporal_patterns()
         assert result["available"] is True
-        assert "current_phase" in result
+        assert "error" not in result and "current_phase" in result
 
     def test_dispatch_routes_correctly(self):
         intro = self._make_introspector()
