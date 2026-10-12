@@ -1276,3 +1276,29 @@ def test_floor_head_rules_only_skips_an_untouched_package_without_a_floor(repo):
     }
     assert any("maxim/gamma" in m for m in L.floor_head_rules(repo, fl, overall, pkgs))
     assert not any("maxim/gamma" in m for m in L.floor_head_rules(repo, fl, overall, pkgs, only={"maxim/alpha"}))
+
+
+def test_the_suite_scripts_version_check_runs():
+    """The pre-suite coverage-version check is an inline heredoc; run it exactly as the script holds it (a first cut
+    loaded lint_coverage unregistered, so its dataclasses failed and every default run exited before pytest)."""
+    import subprocess
+    import sys as _sys
+
+    root = Path(__file__).resolve().parents[2]
+    text = (root / "scripts" / "suite_at_commit.sh").read_text(encoding="utf-8")
+    body = text.split("<<'PY'", 1)[1].split("\n", 1)[1].split("\nPY\n", 1)[0]  # from the line after the opener
+    out = subprocess.run([_sys.executable, "-c", body], cwd=root, capture_output=True, text=True)
+    from importlib.metadata import version  # not `import coverage`: the gate bans the coverage API in tests (S4)
+
+    if version("coverage") == L.COVERAGE_VERSION:
+        assert out.returncode == 0, out.stderr
+    else:
+        assert out.returncode != 0 and L.COVERAGE_VERSION in out.stderr
+
+
+def test_the_suite_script_is_parsed_whole_before_it_runs():
+    """Bash reads a script as it runs: an edit during a run made the tail parse at the wrong offset, skip the
+    ratchet and still exit 0. The body is one function, invoked (with its exit) on the file's last line."""
+    lines = (Path(__file__).resolve().parents[2] / "scripts" / "suite_at_commit.sh").read_text().rstrip().splitlines()
+    assert lines[-1] == 'main "$@"; exit "$?"'
+    assert "main() {" in lines and lines[-2] == "}"
