@@ -1177,3 +1177,55 @@ def test_a_small_scope_gets_the_K_MIN_tolerance(repo, capsys):
     _cov(repo, missing={A: {9, 10}, B: {6, 7, 8, 9, 10}, small: set(range(229, 297))})  # 228: beyond k
     rc, _, err = _run(capsys)
     assert rc == 1 and "maxim/gamma: 77.03% is below its floor 79.3% by more than the 5-statement" in err
+
+
+# ── --local: the pre-push check scripts/suite_at_commit.sh runs ─────────────────────────────────────
+
+
+def _run_local(capsys) -> tuple[int, str, str]:
+    rc = L.main(["--local"])
+    c = capsys.readouterr()
+    return rc, c.out, c.err
+
+
+@pytest.mark.xfail(strict=True, reason="--local not implemented: every floor gates, environment noise included")
+def test_local_mode_only_notes_a_floor_of_a_package_the_diff_does_not_touch(repo, capsys):
+    """Floors are measured in CI's environment, so a local run cannot gate an UNTOUCHED package on them (the diff
+    touches only beta here); it prints the finding instead. The default (CI) run still fails on it."""
+    _write(repo, B, _lines(10, "b") + "zz = 0  # pragma: no cover\nnb = 1\n")
+    _commit(repo)
+    _cov(repo, missing={A: set(range(2, 11)), B: {6, 7, 8, 9, 10}})
+    rc_ci, _, _ = _run(capsys)
+    rc, out, err = _run_local(capsys)
+    assert rc_ci == 1
+    assert rc == 0, err
+    assert "maxim/alpha: 10.00% is below its floor" in out and "untouched" in out
+
+
+def test_local_mode_still_gates_a_floor_of_a_package_the_diff_touches(repo, capsys):
+    """The #1240 shape: the PR's own tests lift a touched package above its band, so the floor must be raised."""
+    _write(repo, A, _lines(10, "a") + "na = 1\n")
+    _commit(repo)
+    _cov(repo, missing={A: set(), B: {6, 7, 8, 9, 10}})
+    rc, _, err = _run_local(capsys)
+    assert rc == 1 and "maxim/alpha: 100.00% is more than 1.0 pt above its floor" in err
+
+
+def test_local_mode_still_gates_diff_coverage(repo, capsys):
+    """The #1232 shape: changed lines no test executes."""
+    _write(repo, A, _lines(10, "a") + "n0 = 0\nn1 = 1\nn2 = 2\n")
+    _commit(repo)
+    _cov(repo, missing={A: {9, 10, 12, 13}, B: {6, 7, 8, 9, 10}})
+    _write(repo, L.FLOORS_REL, _floors(overall=(56.5, 9), alpha=(69.2, 4)))
+    _commit(repo)
+    rc, _, err = _run_local(capsys)
+    assert rc == 1 and "diff coverage 33.3% is below 80%" in err
+
+
+@pytest.mark.xfail(strict=True, reason="--local not implemented: it is not refused inside GitHub Actions")
+def test_local_mode_is_refused_inside_github_actions(repo, capsys, monkeypatch):
+    """A belt beside ci_step_rules (which already pins the CI step to the bare command): --local can never soften
+    the CI gate."""
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    rc, _, err = _run_local(capsys)
+    assert rc == 2 and "--local" in err
