@@ -1501,6 +1501,118 @@ def test_exp62_a_campaign_needs_its_replay_and_apparatus_rows(rig) -> None:
     _assert_refused(_complete(rig, bad), "no ['replay'] row")
 
 
+# B1 (docs/plans/baseline_floors_b1_evidence.md §2): the campaign rule plus the rerun discipline and run structure.
+
+B1_SETS = REAL_TABLE["b1_verdict"]["complete"]["sets"]
+
+
+def _b1_header(rig: Rig, kind: str, **kw) -> dict:
+    return {"record_kind": "harness_header", "mock": False, "ts": 2e9, "provenance": _prov(rig), "kind": kind,
+            "campaign_id": "c1", **kw}  # fmt: skip
+
+
+def _b1_attempt(rig: Rig, arm: str, seed: int, attempt: int = 1, refusal=None, cause=None) -> list[dict]:
+    # The start header comes from the HARNESS's own writer (the PR-C review's blocker: a hand-built synthetic header
+    # carried provenance the real one lacked, so no real campaign could be established and no test saw it).
+    sys.path.insert(0, str(REPO / "scripts"))
+    from _provenance import stamp_harness_header
+    from survival_world.b1_floor_run import attempt_start_record
+
+    start = stamp_harness_header(
+        attempt_start_record("c1", f"r-{arm}", arm, seed, attempt, provenance=_prov(rig)), mock=False
+    )
+    row = _row(rig, kind="row", campaign_id="c1", run_id=f"r-{arm}", arm=arm, seed=seed, attempt=attempt,
+               refusal=refusal, refusal_cause=cause, status="failed" if refusal else "ok")  # fmt: skip
+    return [start, row]
+
+
+def _b1_campaign(rig: Rig) -> list[dict]:
+    lines = [_b1_header(rig, "session", run_ids={a: f"r-{a}" for a in B1_SETS}, diagnostic=False)]
+    for arm, seeds in B1_SETS.items():
+        for seed in seeds:
+            lines += _b1_attempt(rig, arm, seed)
+    return lines
+
+
+def _v_b1(rig: Rig, lines: list[dict], name: str = "b1.jsonl") -> R.Judgement:
+    return _complete(rig, _verdict_over(rig, name, lines, "b1_verdict", {"all_rows": True}))
+
+
+def test_b1_a_complete_campaign_is_established(rig) -> None:
+    rig.base(STALE_BOTH)
+    assert _v_b1(rig, _b1_campaign(rig)).status == G.ESTABLISHED
+
+
+def test_b1_an_instrument_rerun_is_established(rig) -> None:
+    rig.base(STALE_BOTH)
+    lines = _b1_campaign(rig)
+    i = next(n for n, r in enumerate(lines) if r.get("kind") == "row" and (r["arm"], r["seed"]) == ("random", 11))
+    lines[i] = {**lines[i], "refusal": "rig", "refusal_cause": "instrument", "status": "failed"}
+    lines += _b1_attempt(rig, "random", 11, attempt=2)
+    assert _v_b1(rig, lines).status == G.ESTABLISHED
+
+
+def _b1_edit_row(lines, arm, seed, **kw):
+    i = next(n for n, r in enumerate(lines) if r.get("kind") == "row" and (r["arm"], r["seed"]) == (arm, seed))
+    lines[i] = {**lines[i], **kw}
+
+
+@pytest.mark.parametrize(
+    ("edit", "why"),
+    [
+        # item 1: kinds tied to record kinds; exactly one session
+        (lambda rig, ls: ls.append({**ls[0]}), "2 session headers"),
+        (lambda rig, ls: ls.__setitem__(2, {**ls[2], "record_kind": "harness_header", "status": None}), "is stamped"),
+        # item 2: the header is coherent with the rows
+        (lambda rig, ls: ls.__setitem__(0, {**ls[0], "diagnostic": True}), "diagnostic campaign"),
+        (lambda rig, ls: _b1_edit_row(ls, "fear", 11, run_id="other"), "run_id is not the session header's"),
+        # item 3: well-formed fields
+        (lambda rig, ls: _b1_edit_row(ls, "fear", 11, attempt=True), "malformed"),
+        (lambda rig, ls: _b1_edit_row(ls, "fear", 11, refusal_cause="instrument"), "malformed"),
+        (
+            lambda rig, ls: _b1_edit_row(ls, "fear", 11, refusal_cause="weather", refusal="x", status="failed"),
+            "malformed",
+        ),
+        # items 4-5: attempt numbering and the rerun rule
+        (
+            lambda rig, ls: ls.extend(_b1_attempt(rig, "fear", 11, attempt=3, refusal="r", cause="instrument")),
+            "attempts are not 1..n",
+        ),
+        (
+            lambda rig, ls: (
+                _b1_edit_row(ls, "fear", 11, refusal="b", refusal_cause="behavioural", status="failed"),
+                ls.extend(_b1_attempt(rig, "fear", 11, attempt=2)),
+            ),
+            "rerun after",
+        ),
+        (
+            lambda rig, ls: (
+                _b1_edit_row(ls, "fear", 11, refusal="u", refusal_cause="unrecorded", status="failed"),
+                ls.extend(_b1_attempt(rig, "fear", 11, attempt=2)),
+            ),
+            "rerun after",
+        ),
+        # item 6: every start has exactly one row and every row its start
+        (lambda rig, ls: ls.pop(1), "every attempt_start needs exactly one row"),
+        (
+            lambda rig, ls: ls.append(
+                _b1_header(rig, "attempt_start", arm="fear", seed=11, attempt=2, run_id="r-fear")
+            ),
+            "every attempt_start needs exactly one row",
+        ),
+        # the base campaign rule still applies
+        (lambda rig, ls: ls.pop(2), "frozen key(s) missing"),
+        (lambda rig, ls: ls.__setitem__(1, {**ls[1], "run_id": "other"}), "attempt_start's run_id"),
+        (lambda rig, ls: ls.__setitem__(1, {**ls[1], "seed": "11"}), "every attempt_start needs exactly one row"),
+    ],
+)
+def test_b1_campaign_structure_refusals(rig, edit, why) -> None:
+    rig.base(STALE_BOTH)
+    lines = _b1_campaign(rig)
+    edit(rig, lines)
+    _assert_refused(_v_b1(rig, lines), why)
+
+
 # Exp 53: one gate-I phase-1 run and one complete primary run per file, pinned and alone in ok log groups.
 
 MANIFEST53 = REAL_TABLE["exp53_verdict"]["complete"]["manifest"]
@@ -1653,6 +1765,13 @@ def test_the_real_pass_table_is_well_formed_and_pinned_to_each_harness() -> None
             want61[a].append(seed)
     assert sets["exp61_verdict"] == want61 and all(len(v) == f61["arms"][a] for a, v in want61.items())
     assert sets["exp62_verdict"] == {a: list(v) for a, v in exp62_run.FROZEN["seeds"].items()}
+    from survival_world import b1_floor_run
+
+    assert sets["b1_verdict"] == {a: list(b1_floor_run.SEEDS) for a in b1_floor_run.ARMS}
+    assert R.B1_MAX_ATTEMPTS == b1_floor_run.FROZEN["max_attempts"]
+    assert R.B1_REFUSAL_CAUSES == b1_floor_run.REFUSAL_CAUSES
+    assert REAL_TABLE["b1_verdict"]["targets"] == {"PARTIAL": ["FLOOR_MATCHED_Q", "FLOOR_MATCHED_CHANCE"]}
+    assert REAL_TABLE["b1_verdict"]["scopes"] == ["narrow"]
     pins = REAL_TABLE["exp53_verdict"]["complete"]
     manifest = json.loads((REPO / pins["manifest"]).read_text())
     assert pins["start"]["experiment"] == manifest["experiment"]
@@ -2878,14 +2997,25 @@ def test_the_merge_base_checks_scopes_structure_only() -> None:
 
 
 def test_the_real_pass_table_scopes_match_each_rows_current_head() -> None:
-    """The migration (#1141): every entry supports its rows' heads as the ledger stands, so the next re-date of any
-    row passes the scope check."""
+    """The migration (#1141): every entry that can re-date a row AT its current token supports that row's head as the
+    ledger stands, so the next re-date passes the scope check. An entry that only targets another token (b1_verdict:
+    PARTIAL (narrow) for an EARNED row, the BF2 demotion) is out of this invariant by design."""
+    # Every skip is a reviewed decision (architecture review, PR-C S2): a new one fails until it is named here.
+    exempt = {
+        ("b1_verdict", "T1-13"): "targets only PARTIAL (narrow): the BF2 demotion of an EARNED row, never a re-date",
+        ("exp10_verdict", "T1-1"): "T1-1 is SUPERSEDED; no re-date of a superseded row is supported",
+    }
     rows = {r.id: r for r in G.L.parse((REPO / G.L.LEDGER_PATH).read_text())[0]}
+    skipped = set()
     for kind, entry in REAL_TABLE.items():
         if kind.startswith("_"):
             continue
         for row_id in entry["rows"]:
+            if rows[row_id].token not in entry["targets"]:
+                skipped.add((kind, row_id))
+                continue
             assert G.row_scope(rows[row_id]) in entry["scopes"], (kind, row_id)
+    assert skipped <= set(exempt), sorted(skipped - set(exempt))
 
 
 def test_a_new_scope_in_the_pass_table_is_noted() -> None:
@@ -3693,3 +3823,15 @@ def test_entering_by_tests_from_an_unparsed_base_status_names_it(rig) -> None:
     )
     _, notes = rig.run()
     assert any("T1-2: enters RE-VALIDATED-BY-TESTS from an unparsed status" in n for n in notes), notes
+
+
+def test_the_gate_refuses_removing_an_obliges_block_from_main(rig) -> None:
+    """Wired, not just written: `gate()` runs `obliges_change_problems` against the merge-base pass table."""
+    rig.base(STALE_BOTH)
+    table = json.loads((rig.root / G.PASS_TABLE).read_text())
+    assert "obliges" in table["b1_verdict"]
+    table["b1_verdict"] = {k: v for k, v in table["b1_verdict"].items() if k != "obliges"}
+    rig.write(G.PASS_TABLE, json.dumps(table))
+    rig.head(STALE_BOTH.replace("claim T1-1", "claim T1-1 reworded"))
+    failures, _ = rig.run()
+    assert any("`obliges` block on main may not be removed" in f for f in failures), failures

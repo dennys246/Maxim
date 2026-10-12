@@ -187,11 +187,8 @@ def test_a_tool_cannot_set_its_own_failure_stamp() -> None:
     assert executor.execute({"tool_name": TOOL, "params": {}}).nac_failure_booked is None
 
 
-@pytest.mark.xfail(
-    strict=True, reason="#1221 / TF8: bridge_booked keeps a temporary default until agent_loop passes it"
-)
 def test_a_record_outcome_call_without_the_stamp_is_a_type_error() -> None:
-    """Flips when the default is dropped (TF8 step 3): forgetting the stamp then fails loudly."""
+    """TF8 step 3 (#1221): the default is gone, so forgetting the stamp fails loudly."""
     with pytest.raises(TypeError):
         tool_dispatch.record_outcome(
             agent_id="aut_1200",
@@ -401,11 +398,198 @@ def test_a_speculative_failure_carries_no_stamp() -> None:
     assert nac._links.get(f"tool:{TOOL}", []) == []
 
 
-# ── every caller passes the stamp (TF8) ───────────────────────────────────────────────────────────────
+# ── agent_loop's two recorder sites (TF8, Session A) ──────────────────────────────────────────────────
 
-# Session A's fenced file: its two ``_rec_outcome`` sites land ``bridge_booked`` in their own PR (owner decision
-# TF8, 2026-10-10). The count is exact, so that PR shrinks it to 0 and the follow-up drops the default.
-_AWAITING_SESSION_A = {"src/maxim/runtime/agent_loop.py": 2}
+
+class _Hub:
+    """The few MemoryHub members the loop reads, carrying the SAME real NAc the executor's bridge books into."""
+
+    agent_id = "hub_aut_1200"
+    ec = None
+    hippocampus = None
+
+    def __init__(self, nac: NAc) -> None:
+        from maxim.runtime.substrate_proposal import NO_SITUATION_CUE
+
+        self.nac = nac
+        self.situation_cue = NO_SITUATION_CUE
+
+    def on_session_start(self) -> dict[str, Any]:
+        return {}
+
+    def on_session_end(self) -> dict[str, Any]:
+        return {}
+
+    def on_session_end_lightweight(self) -> dict[str, Any]:
+        return {}
+
+    def record_plan_outcome(self, **kw: Any) -> None:
+        return None
+
+
+def _run_agent_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+    *,
+    actions: int,
+    execute_raises_on: int | None = None,
+    log_raises_on: int | None = None,
+) -> tuple[NAc, list[dict[str, Any]]]:
+    """Drive the REAL ``run_agentic_loop``'s §3 agent-fallback (``agent.propose_intent``) ``actions`` times with
+    ``_Flaky`` (a returned failure, so the production bridge books it and stamps the output). No LLM worker and no
+    substrate proposal, so every action is the agent's own. ``execute_raises_on=k``: the k-th (0-based)
+    ``executor.execute`` raises before it returns (the tool never runs). ``log_raises_on=k``: the k-th action's
+    audit ``log_action("executed")`` raises, AFTER ``execute`` returned. Returns the NAc and every recorder call."""
+    import threading
+
+    from maxim.agents.autonomy import AutonomyController, AutonomyLevel
+    from maxim.environment.filesystem_env import FileSystemEnv
+    from maxim.runtime import agent_loop as AL
+    from maxim.runtime import substrate_proposal
+    from maxim.runtime.bootstrap import build_decision_engine, build_memory
+    from maxim.runtime.loop_controller import LoopController
+    from maxim.runtime.state import RuntimeState
+    from maxim.simulation import sim_logger
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sim_logger, "_interactive_mode", sim_logger.InteractiveMode.OFF)
+    executor, nac = _executor(_Flaky())
+
+    calls = {"execute": 0}
+    real_execute = executor.execute
+
+    def _execute(action: dict[str, Any], *a: Any, **k: Any) -> Any:
+        n = calls["execute"]
+        calls["execute"] += 1
+        if n == execute_raises_on:
+            raise RuntimeError("probe: execute raised before it returned")
+        return real_execute(action, *a, **k)
+
+    monkeypatch.setattr(executor, "execute", _execute)
+
+    proposed = {"n": 0}
+
+    class _Agent:
+        name = "fallback-probe-1200"
+
+        def propose_intent(self, state: Any, memory: Any) -> dict[str, Any] | None:
+            if proposed["n"] >= actions:
+                return None
+            proposed["n"] += 1
+            return {"goal": {"tool_name": TOOL, "params": {}}, "confidence": 0.9, "source": "probe"}
+
+    controller = AutonomyController(initial_level=AutonomyLevel.AUTONOMOUS)
+    logged = {"n": 0}
+    real_log = controller.log_action
+
+    def _log_action(*, action_type: str, **kw: Any) -> Any:
+        if action_type == "executed":
+            n = logged["n"]
+            logged["n"] += 1
+            if n == log_raises_on:
+                raise RuntimeError("probe: the audit broke after execute returned")
+        return real_log(action_type=action_type, **kw)
+
+    monkeypatch.setattr(controller, "log_action", _log_action)
+
+    recorded: list[dict[str, Any]] = []
+    real_record = tool_dispatch.record_outcome
+
+    def _spy(**kw: Any) -> Any:
+        recorded.append(dict(kw))
+        return real_record(**kw)
+
+    monkeypatch.setattr(tool_dispatch, "record_outcome", _spy)
+    monkeypatch.setattr(substrate_proposal, "propose_via_substrate", lambda **_kw: None)
+    real_init = LoopController.__init__
+
+    def _init(self: Any, *a: Any, **k: Any) -> None:
+        real_init(self, *a, **k)
+        self.llm_submit_interval = 0.0  # the substrate cadence wakes every pass, so §3 runs every pass
+
+    monkeypatch.setattr(LoopController, "__init__", _init)
+
+    (tmp_path / "ws").mkdir(exist_ok=True)
+    state = RuntimeState()
+    state.data["mode"] = "active"
+    AL.run_agentic_loop(
+        _Agent(),
+        FileSystemEnv(str(tmp_path / "ws")),
+        state,
+        build_memory(),
+        build_decision_engine(),
+        executor,
+        autonomy_controller=controller,
+        memory_hub=_Hub(nac),
+        aut_mode="substrate-primary",
+        max_steps=actions + 3,
+        target_hz=200.0,
+        idle_sleep_s=0.0,
+        stop_event=threading.Event(),
+    )
+    assert calls["execute"] == actions, calls  # every proposed action reached the executor
+    return nac, [kw for kw in recorded if kw.get("tool_name") == TOOL]
+
+
+def _negatives(nac: NAc) -> list[tuple[str, int]]:
+    """The tool's NEGATIVE links as (family, observation count): ``result`` is the bridge's, ``tool_result``
+    dispatch's."""
+    return sorted((link.outcome_type, link.observation_count) for link in _links(nac, f"tool:{TOOL}", Valence.NEGATIVE))
+
+
+# Red on main before #1231 (#1200, TF8): the hard-rejection call omitted bridge_booked; since #1221 that is a TypeError
+def test_a_hard_rejection_records_with_no_failure_stamp(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """The tool never ran, so nothing was bridge-booked: the call says so EXPLICITLY (``bridge_booked=None``), and
+    the keyword is required since #1221 (TF8 step 3), so an omitted one is a ``TypeError``. The rejection's own
+    booking is unchanged (``None`` books as before)."""
+    from tests.unit._execute_learn_driver import run_once
+
+    tool = "probe_reject_1200"
+    obs = run_once(monkeypatch, tmp_path, tool=tool, level="supervised", policy={"forbidden_tools": {tool}})
+    assert obs.executed == []
+    [kw] = obs.outcomes
+    assert kw["error"].startswith("Rejected by autonomy") and kw["success"] is False
+    assert [o["outcome_type"] for o in obs.nac_observations if o["event_signature"] == f"tool:{tool}"] == [
+        "tool_result"
+    ]
+    assert "bridge_booked" in kw, sorted(kw)
+    assert kw["bridge_booked"] is None
+
+
+# Red on main (#1200, TF8): the agent-fallback's except books dispatch's NEGATIVE on top of the bridge's
+def test_an_agent_fallback_raise_after_execute_books_the_failure_once(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    """``execute`` returned a failure the bridge booked and stamped; the audit then raised, so the except branch
+    records. It passes the stamp, so dispatch skips its NEGATIVE: one booking, the bridge's."""
+    nac, recorded = _run_agent_fallback(monkeypatch, tmp_path, actions=1, log_raises_on=0)
+    [kw] = recorded
+    assert kw["success"] is False and "audit broke" in kw["error"]
+    assert _negatives(nac) == [("result", 1)]
+    assert kw.get("bridge_booked") == f"tool:{TOOL}"
+
+
+# Red on main (#1200, TF8): the except omits bridge_booked; its behavioural half guards the stale read the fix
+# would otherwise create (``result`` is bound only by a RETURNED ``execute``)
+@pytest.mark.parametrize("earlier", [False, True], ids=["first_action", "after_a_booked_failure"])
+def test_an_agent_fallback_raise_before_execute_returns_reads_no_earlier_result(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any, earlier: bool
+) -> None:
+    """``execute`` raised, so the tool never ran and nothing was bridge-booked: dispatch books the NEGATIVE.
+    ``after_a_booked_failure``: an EARLIER fallback action failed and was bridge-booked, so a stale ``result``
+    would carry ITS stamp (same signature) and dispatch would skip this failure's only booking. ``first_action``:
+    no ``result`` was ever bound, so reading it would raise inside the except and record nothing."""
+    nac, recorded = _run_agent_fallback(
+        monkeypatch, tmp_path, actions=2 if earlier else 1, execute_raises_on=1 if earlier else 0
+    )
+    kw = recorded[-1]
+    assert kw["success"] is False and "raised before it returned" in kw["error"]
+    assert _negatives(nac) == ([("result", 1), ("tool_result", 1)] if earlier else [("tool_result", 1)])
+    assert "bridge_booked" in kw, sorted(kw)
+    assert kw["bridge_booked"] is None
+
+
+# ── every caller passes the stamp (TF8) ───────────────────────────────────────────────────────────────
 
 
 def _record_outcome_calls_missing_the_stamp() -> dict[str, int]:
@@ -475,5 +659,6 @@ _SANCTIONED_REFERENCES = {"src/maxim/runtime/loop_setup.py:non-call reference": 
 
 def test_every_record_outcome_caller_passes_the_failure_stamp() -> None:
     """A caller that forgets ``bridge_booked`` books a bridge-booked failure twice, silently (the adversarial
-    design pass's D1). Enforced here until the default is dropped and the type does it."""
-    assert _record_outcome_calls_missing_the_stamp() == {**_AWAITING_SESSION_A, **_SANCTIONED_REFERENCES}
+    design pass's D1). The type enforces it since #1221; this guard stays because test spies
+    (``lambda **kw``) and attribute calls bypass the signature check."""
+    assert _record_outcome_calls_missing_the_stamp() == _SANCTIONED_REFERENCES

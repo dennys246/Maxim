@@ -79,6 +79,7 @@ def _record(nac, *, success, embodiment_failed):
     from maxim.runtime.tool_dispatch import record_outcome
 
     record_outcome(
+        bridge_booked=None,
         agent_id="a",
         tool_name="hearth_warm_self",
         success=success,

@@ -9,6 +9,7 @@ on a hand-edited file judges nothing.
 
 from __future__ import annotations
 
+import ast
 import gzip
 import hashlib
 import importlib.util
@@ -126,6 +127,15 @@ class Repo:
     def is_ancestor(self, commit: str, of: str) -> bool:
         out = subprocess.run(["git", "merge-base", "--is-ancestor", commit, of], cwd=self.root, capture_output=True)
         return out.returncode == 0
+
+    def ancestry(self, commit: str, of: str) -> bool | None:
+        """Like :meth:`is_ancestor`, but ``None`` when git cannot decide (exit 128: a missing object, as in a
+        shallow clone), so a caller can fail closed instead of reading "undecidable" as "no"."""
+        out = subprocess.run(["git", "merge-base", "--is-ancestor", commit, of], cwd=self.root, capture_output=True)
+        return {0: True, 1: False}.get(out.returncode)
+
+    def is_shallow(self) -> bool:
+        return self.git("rev-parse", "--is-shallow-repository").strip() == "true"
 
     def commit_time(self, ref: str) -> int:
         key = f"ct:{ref}"
@@ -329,6 +339,148 @@ def judge_sim_fields(sim: dict, j: Judgement, ctx: Ctx, label: str, tree: str | 
         j.fail(f"{label}: executed {executed!r} is not a full commit on main")
     else:
         check_skew(sim.get("ts"), executed, j, ctx, label)
+        judge_b0_fields(sim, j, ctx, label, executed)
+
+
+# Baseline floors B0 (docs/plans/baseline_floors_b0.md): which schema a record must carry is read from the code
+# that RAN, never from the record. The writer's literal lives in this file at the executed commit.
+PROVENANCE_SCHEMA_PATH = "src/maxim/simulation/report.py"
+PROVENANCE_SCHEMA_NAME = "PROVENANCE_SCHEMA"
+B0_IDENTITY_SOURCES = frozenset({"local_file", "server_reported", "provider_name"})
+B0_OUTCOMES = ("success", "exhausted", "budget_reject", "raised")
+UNPARSEABLE = "unparseable"
+
+
+def provenance_schema_in(source: bytes | None):
+    """The ``PROVENANCE_SCHEMA`` a ``report.py`` source defines: ``None`` when it never binds the name, the int
+    of its last plain top-level single-target assignment of an int literal, and :data:`UNPARSEABLE` for any
+    other binding (annotated, augmented, conditional, multi-target, tuple, non-int)."""
+    if source is None:
+        return None
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return UNPARSEABLE
+    value = None
+    top = set()
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            if node.targets[0].id == PROVENANCE_SCHEMA_NAME:
+                top.add(id(node))
+                ok = isinstance(node.value, ast.Constant) and type(node.value.value) is int
+                value = node.value.value if ok else UNPARSEABLE
+    for node in ast.walk(tree):
+        if id(node) in top:
+            continue
+        names = []
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for t in targets:
+                names += [n.id for n in ast.walk(t) if isinstance(n, ast.Name)]
+        if PROVENANCE_SCHEMA_NAME in names:
+            return UNPARSEABLE
+    return value
+
+
+def provenance_schema_anchor(repo: Repo, base: str) -> tuple[str, int] | None:
+    """The first commit on ``base``'s first-parent history that defines ``PROVENANCE_SCHEMA``, and its value.
+    ``None`` only when there is none AND the clone is complete (a base that predates B0); a shallow clone with
+    no anchor raises, so it cannot silently switch the B0 checks off."""
+    key = f"b0-anchor:{base}"
+    if key not in repo._cache:
+        found = None
+        log = repo.git(
+            "log",
+            "--first-parent",
+            "--diff-merges=first-parent",
+            "--reverse",
+            "--format=%H",
+            f"-G^{PROVENANCE_SCHEMA_NAME}[[:space:]]*=",  # POSIX class: git's -G regex has no \\s
+            base,
+            "--",
+            PROVENANCE_SCHEMA_PATH,
+        )
+        for commit in log.split():
+            value = provenance_schema_in(repo.blob(commit, PROVENANCE_SCHEMA_PATH))
+            if isinstance(value, int):
+                found = (commit, value)
+                break
+        if found is None and repo.is_shallow():
+            raise GateError("no PROVENANCE_SCHEMA anchor and the clone is shallow: B0's checks cannot be placed")
+        repo._cache[key] = found
+    return repo._cache[key]  # type: ignore[return-value]
+
+
+def judge_b0_fields(sim: dict, j: Judgement, ctx: Ctx, label: str, executed: str) -> None:
+    """The B0 serving/scenario/session fields, when the executed code writes schema >= 2."""
+    value = provenance_schema_in(ctx.repo.blob(executed, PROVENANCE_SCHEMA_PATH))
+    anchor = provenance_schema_anchor(ctx.repo, ctx.base)
+    if anchor is not None:
+        descends = ctx.repo.ancestry(anchor[0], executed)
+        if descends is None:
+            j.fail(f"{label}: cannot decide whether {executed} descends from the schema anchor")
+            return
+        if descends and not (isinstance(value, int) and value >= anchor[1]):
+            j.fail(f"{label}: executed code defines PROVENANCE_SCHEMA {value!r}, below the anchor's {anchor[1]}")
+            return
+    if value == UNPARSEABLE:
+        j.fail(f"{label}: executed code's PROVENANCE_SCHEMA is not a plain int assignment")
+        return
+    if not isinstance(value, int) or value < 2:
+        return
+    if sim.get("provenance_schema") != value:
+        j.fail(f"{label}: provenance_schema {sim.get('provenance_schema')!r}, its code writes {value}")
+        return
+    for key, want in (("concurrent_sims", False), ("sampling_complete", True), ("model_changed_during_run", False)):
+        if sim.get(key) is not want:
+            j.fail(f"{label}: {key} is {sim.get(key)!r}")
+    if sim.get("aut_model_attribution") != "not_established":
+        j.fail(f"{label}: aut_model_attribution {sim.get('aut_model_attribution')!r}")
+    if not isinstance(sim.get("scenario_sha256"), str) or not HEX64.match(sim["scenario_sha256"]):
+        j.fail(f"{label}: no scenario_sha256")
+    index = sim.get("session_index")
+    if index is not None and (type(index) is not int or index < 0):
+        j.fail(f"{label}: session_index {index!r}")
+    roles = [k[: -len("_profile")] for k in sim if isinstance(k, str) and k.endswith("_profile") and sim[k]]
+    if not roles:
+        return
+    calls = sim.get("llm_calls")
+    if not isinstance(calls, dict):
+        j.fail(f"{label}: ran an LLM role without llm_calls")
+        return
+    for role in roles:
+        serial = sim.get(f"{role}_router_serial")
+        if type(serial) is not int or str(serial) not in calls:
+            j.fail(f"{label}: {role}_router_serial {serial!r} is not a router in llm_calls")
+    for serial, r in calls.items():
+        judge_b0_router(r, j, f"{label} router {serial}")
+
+
+def judge_b0_router(r, j: Judgement, label: str) -> None:
+    counts = r.get("counts") if isinstance(r, dict) else None
+    entries = r.get("entries") if isinstance(r, dict) else None
+    if not isinstance(counts, dict) or not isinstance(entries, list):
+        j.fail(f"{label}: malformed")
+        return
+    if any(type(counts.get(k)) is not int or counts[k] < 0 for k in ("started", *B0_OUTCOMES)):
+        j.fail(f"{label}: malformed counts {counts!r}")
+        return
+    if counts["started"] != sum(counts[o] for o in B0_OUTCOMES):
+        j.fail(f"{label}: {counts['started']} started, outcomes {counts!r}")
+    ns = [e.get("n") if isinstance(e, dict) else None for e in entries]
+    if any(type(n) is not int or n <= 0 for n in ns) or sum(ns) != counts["success"]:  # type: ignore[arg-type]
+        j.fail(f"{label}: entries do not sum to its {counts['success']} successes")
+        return
+    for e in entries:
+        source, identity = e.get("identity_source"), e.get("identity")
+        if source not in B0_IDENTITY_SOURCES:
+            j.fail(f"{label}: identity_source {source!r} is not established")
+        elif source == "local_file" and not (isinstance(identity, str) and HEX64.match(identity)):
+            j.fail(f"{label}: local_file identity {identity!r} is not a sha256")
+        elif not (isinstance(identity, str) and identity):
+            j.fail(f"{label}: no identity")
+        if type(e.get("seed_honoured")) is not bool:
+            j.fail(f"{label}: seed_honoured {e.get('seed_honoured')!r}")
 
 
 def judge_sim_report(report, j: Judgement, ctx: Ctx) -> None:
@@ -476,25 +628,43 @@ def select_scope(scope, rows: list[dict]) -> list[dict] | None:
     ]
 
 
-def judge_verdict(rec: dict, j: Judgement, ctx: Ctx) -> None:
-    j.record = rec
+def verdict_data_path_problem(rec: dict, retired) -> str | None:
+    """Why a verdict's ``data`` is not a usable path (None = it is): under the data root with no ``..``, and not retired
+    by a redaction. Shared by the gate (``judge_verdict``) and the BF2 obligation lint, so the two cannot drift."""
     data_rel = rec.get("data")
     if not isinstance(data_rel, str) or not data_rel.startswith(DATA_ROOT + "/") or ".." in data_rel.split("/"):
-        j.fail(f"verdict data {data_rel!r} is not a path under {DATA_ROOT}/")
+        return f"verdict data {data_rel!r} is not a path under {DATA_ROOT}/"
+    if hit := retired_by(retired, data_rel):
+        return f"verdict data {data_rel} is retired by redaction {hit[1]!r} ({hit[0]}): it supports nothing"
+    return None
+
+
+def verdict_data_bytes(rec: dict, repo: Repo, ref: str) -> tuple[bytes | None, str | None]:
+    """The verdict's bound data bytes at ``ref`` (raw blob), or why not: tracked, not a symlink, and sha256 of the raw
+    blob equal to ``data_sha256``. Call after :func:`verdict_data_path_problem`. Shared like it."""
+    data_rel = rec["data"]
+    entry = repo.tree(ref).get(data_rel)
+    if entry is None or entry[0] == "120000":
+        return None, f"verdict data {data_rel} is not a tracked file (or is a symlink)"
+    data = repo.blob(ref, data_rel) or b""
+    if sha256(data) != rec.get("data_sha256"):
+        return None, f"verdict data {data_rel}: sha256 differs from data_sha256"
+    return data, None
+
+
+def judge_verdict(rec: dict, j: Judgement, ctx: Ctx) -> None:
+    j.record = rec
+    problem = verdict_data_path_problem(rec, ctx.retired)
+    if problem is not None:
+        j.fail(problem)
         return
-    if hit := retired_by(ctx.retired, data_rel):
-        j.fail(f"verdict data {data_rel} is retired by redaction {hit[1]!r} ({hit[0]}): it supports nothing")
-        return
+    data_rel = rec["data"]
     j.data_prereg = ctx.prereg_status(data_rel)
     if j.data_prereg not in PREREG_OK:
         j.fail(f"verdict data {data_rel}: prereg status {j.data_prereg}")
-    entry = ctx.repo.tree(ctx.ref).get(data_rel)
-    if entry is None or entry[0] == "120000":
-        j.fail(f"verdict data {data_rel} is not a tracked file (or is a symlink)")
-        return
-    data = ctx.repo.blob(ctx.ref, data_rel) or b""
-    if sha256(data) != rec.get("data_sha256"):
-        j.fail(f"verdict data {data_rel}: sha256 differs from data_sha256")
+    data, problem = verdict_data_bytes(rec, ctx.repo, ctx.ref)
+    if data is None:
+        j.fail(problem or f"verdict data {data_rel} could not be read")
         return
     rows = json_lines(decompressed(data_rel, data))
     scoped = select_scope(rec.get("scope"), rows)
@@ -545,6 +715,7 @@ COMPLETE_RULES = {
     "exp60_verdict": "seeds_per_run_arm",
     "exp61_verdict": "campaign_pairs",
     "exp62_verdict": "campaign_seeds",
+    "b1_verdict": "b1_campaign",
 }
 
 
@@ -774,11 +945,80 @@ def _exp53_run_pinned(rid: str, lines: list[dict], rows: list[dict], counted: se
             return
 
 
+B1_MAX_ATTEMPTS = 2  # prereg rule 6: one mechanical rerun for an instrument cause (pinned to b1_floor_run.FROZEN)
+B1_REFUSAL_CAUSES = (None, "instrument", "behavioural", "unrecorded")  # pinned to b1_floor_run.REFUSAL_CAUSES
+_b1_base = _campaign_rule("seed", "row", frozenset({"row", "session", "attempt_start"}), frozenset({"session"}))
+
+
+def b1_campaign(rec, rows, scoped, counted, spec, j: Judgement, ctx: Ctx) -> None:
+    """B1 (docs/plans/baseline_floors_b1_evidence.md §2): the campaign rule, plus the rerun discipline and the run
+    structure, re-derived from the bound bytes. Items: (1) kinds tied to record kinds, one session header;
+    (2) the header coherent with the rows; (3) well-formed row fields; (4) attempts 1..n per key, n <= MAX;
+    (5) every non-final attempt refused for an instrument cause; (6) starts 1..m per key, each with exactly one row."""
+    before = len(j.reasons)
+    _b1_base(rec, rows, scoped, counted, spec, j, ctx)
+    if len(j.reasons) > before:
+        return
+    want_record = {"session": "harness_header", "attempt_start": "harness_header", "row": "harness_row"}
+    sessions, starts, keyed = [], [], []
+    for i, r in enumerate(rows, 1):
+        kind = str_field(r, "kind")
+        if kind_of(r) != want_record.get(kind or ""):
+            j.fail(
+                f"complete-run: row {i} kind {kind!r} is stamped {kind_of(r)!r}, not {want_record.get(kind or '')!r}"
+            )
+            return
+        (sessions if kind == "session" else starts if kind == "attempt_start" else keyed).append(r)
+    if len(sessions) != 1:
+        j.fail(f"complete-run: the campaign has {len(sessions)} session headers (exactly one)")
+        return
+    session = sessions[0]
+    run_ids = session.get("run_ids")
+    if not isinstance(run_ids, dict) or set(run_ids) != set(spec["sets"]) or session.get("diagnostic") is not False:
+        j.fail("complete-run: the session header's run_ids are not the frozen arms, or it is a diagnostic campaign")
+        return
+    attempts: dict[tuple, list[dict]] = {}
+    for i, r in enumerate(keyed, 1):
+        att, cause = r.get("attempt"), r.get("refusal_cause")
+        if type(att) is not int or cause not in B1_REFUSAL_CAUSES or (r.get("refusal") is None) != (cause is None):
+            j.fail(
+                f"complete-run: a row's attempt / refusal / refusal_cause is malformed ({r.get('arm')}/{r.get('seed')})"
+            )
+            return
+        if r.get("run_id") != run_ids.get(r.get("arm")):
+            j.fail(f"complete-run: a {r.get('arm')!r} row's run_id is not the session header's for its arm")
+            return
+        attempts.setdefault((r["arm"], r["seed"]), []).append(r)
+    for key, group in attempts.items():
+        group.sort(key=lambda r: r["attempt"])
+        if [r["attempt"] for r in group] != list(range(1, len(group) + 1)) or len(group) > B1_MAX_ATTEMPTS:
+            j.fail(f"complete-run: {key[0]}/{key[1]} attempts are not 1..n with n <= {B1_MAX_ATTEMPTS}")
+            return
+        if any(r.get("refusal") is None or r.get("refusal_cause") != "instrument" for r in group[:-1]):
+            j.fail(f"complete-run: {key[0]}/{key[1]} was rerun after a clean row or a non-instrument refusal")
+            return
+    start_keys: dict[tuple, int] = {}
+    for s in starts:
+        att = s.get("attempt")
+        if type(att) is not int:
+            j.fail("complete-run: an attempt_start's attempt is not an int")
+            return
+        if s.get("run_id") != run_ids.get(s.get("arm")):
+            j.fail(f"complete-run: a {s.get('arm')!r} attempt_start's run_id is not the session header's for its arm")
+            return
+        k = (s.get("arm"), s.get("seed"), att)
+        start_keys[k] = start_keys.get(k, 0) + 1
+    row_keys = {(r["arm"], r["seed"], r["attempt"]) for r in keyed}  # unique: attempts are 1..n per key (item 4)
+    if any(n != 1 for n in start_keys.values()) or set(start_keys) != row_keys:
+        j.fail("complete-run: every attempt_start needs exactly one row and every row its attempt_start")
+
+
 RULES = {
     "exp53_runs": exp53_runs,
     "seeds_per_run_arm": seeds_per_run_arm,
     "campaign_pairs": campaign_pairs,
     "campaign_seeds": campaign_seeds,
+    "b1_campaign": b1_campaign,
 }
 
 

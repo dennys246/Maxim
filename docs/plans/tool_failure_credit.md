@@ -188,7 +188,8 @@ emitted event adds is an eligibility trace. **This design supersedes the bullets
   REQUIRED keyword (no default: a caller that forgets it is a `TypeError`, not a silent double count) once
   Session A's two `agent_loop.py` sites pass it (TF8). Until then it carries a temporary `None` default and
   `tests/unit/test_tool_failure_credit_1200.py::test_every_record_outcome_caller_passes_the_failure_stamp`
-  (an AST scan of `src/` and `scripts/`) holds every other caller to it, with exactly those two sites allowed. It skips
+  (an AST scan of `src/` and `scripts/`) holds every other caller to it, with exactly those two sites allowed.
+  **Done 2026-10-11:** #1231 landed the two sites and #1221 dropped the default, so the keyword is required. It skips
   ONLY its `nac.observe(event_type="tool", outcome_type="tool_result", ...)` and only when `bridge_booked` equals
   its own `build_tool_signature(tool_name, tool_params)`; a compound or aliased signature, or a `None`, books as
   today. Goal credit, cluster reward, the operant pending action, the energy observe and the plan bridge are

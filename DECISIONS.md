@@ -2,6 +2,78 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-10-11 — B1 evidence: the BF2 obligation lint and lost attempts (D1–D2)
+
+### Decision
+
+1. **D1. The BF2 obligation is enforced for T1-13 now** (`scripts/lint_bf2_obligation.py`, in the CI lint job): if the
+   newest counted `b1_verdict` (floor-matched at any status, or an ESTABLISHED `FLOORS_BEATEN`) is floor-matched, T1-13 sits below PARTIAL or at `PARTIAL (narrow: …)` re-dated on or
+   after the verdict's data; B1 verdicts are append-only by (data_sha256, value); only an ESTABLISHED `FLOORS_BEATEN`
+   clears it. The obligation is pass-table data (`obliges` on the `b1_verdict` entry), read from the merge-base so a PR
+   cannot loosen its own. A partial mechanization of backlog M46.
+2. **D2. A lost attempt is consumed, never rerun:** the harness writes an `attempt_start` header before each attempt,
+   and `--resume` closes every orphan start with an `unrecorded` refusal row; the `b1_campaign` rule requires each start
+   to have exactly one row.
+
+### Rationale
+
+The adversarial design pass on the approach note (docs/plans/baseline_floors_b1_evidence.md, five rounds) found that a
+FEAR-only Exp 60 re-run could re-earn EARNED over a floor-matched B1 verdict (the gate gates moves, not missing moves),
+and that a crash mid-attempt let `--resume` restart the key after its outcome was seen. Both were taken as the strict
+option. The cost of D2 is that an accidental crash on a gated arm makes the campaign INCOMPLETE; a harness bug fix
+already forces a fresh campaign file (one code tree per file).
+
+## 2026-10-11 — B1, the Exp 60 floor: design decisions (OD1–OD5)
+
+### Decision
+
+1. **OD1. The binding BF2 tabular floor for Exp 60 is Q_EXPLORE** (a model-free learner given 10 executed
+   training episodes), not Q_YOKED (same experience, no executed actions), which cannot lose because the pain is
+   independent of the proposed action. RANDOM is the random floor.
+2. **OD2. Eight seeds per arm (11–18); the raw-sensor arm Q_EXPLORE_RAW is run** to separate the EC's split from
+   Wire-4.
+3. **OD3. The Q-learners' per-tick cost is game-native:** −(20 − oxygen)/20 while in water, plus any pain publish.
+4. **OD4. T1-13 is annotated now** (prose, no status change) with the run-2 finding that only the first post
+   placement is a fear-only read, and that the escape comes from a designer-specified defensive prior.
+5. **OD5 (after the harness build). The tabular learner runs with γ = 1 and Q₀ = −2** (the pain components of a pain
+   episode; any Q₀ from −1 to −10 works once γ = 1), not v3's γ = 0.9, Q₀ = 0.
+
+### Rationale
+
+OD5: an offline toy model driving the real learner with live timings
+(docs/experiments/rationale/b1-exp60-floor/learner_sim.py) put v3's Q_EXPLORE at ≈ 0.10 on the first post
+placement (RANDOM ≈ 0.15): every untried action outranked a tried escape, which pays for its ≈ 2.6 s of blocking,
+so the floor explored instead of learning and would have lost by construction. With γ = 1 and Q₀ = −2 all three Q
+arms reach ≈ 1.0 at K = 10, so the expected H2 tie stands against a competent floor. The rejected options were
+keeping v3 and amending H2 (a strawman floor) and raising K to 30 (≈ 0.33). The same build found two credit defects
+(a surfacing credited to a pick made after the head cleared; a shore pick before the teleport executing in the
+window), fixed as prereg rules 16–17.
+
+The four-lens design review (docs/experiments/rationale/b1-exp60-floor/) found v1's floors either unable to lose
+(Q_YOKED) or unable to win (a sparse pain-only reward), the primary DV contaminated by a positive-link habit, and
+the claim crediting Wire-4 with the prior's choice of act. The strict option was taken on every decision. The
+expected outcome, stated before data: FEAR beats RANDOM; Q_EXPLORE ties; the Exp 60 row then takes
+`PARTIAL (narrow: floor matched)` with the sample-efficiency gap (zero executed training actions) recorded.
+
+## 2026-10-10 — Baseline floors B0: split, and the gate reads the schema from the code that ran
+
+### Decision
+
+1. **Split (owner decision).** B0 records which models served a sim's calls, per router object, plus its
+   scenario inputs, global seed and session index; it makes NO claim about which model served the agent
+   under test (`aut_model_attribution: "not_established"`). AUT attribution is B0b, after #1227 (a call-site
+   identity the request dict cannot override) and #1228 (the AUT's FearAgent and ExecAgent use the AUT's
+   router).
+2. **The evidence gate reads `PROVENANCE_SCHEMA` from the executed commit's `src/maxim/simulation/report.py`**
+   (a plain top-level int assignment), anchored at the first first-parent commit on main that defines it;
+   a descendant may not carry a lower value, and no anchor in a shallow clone fails the gate.
+
+### Rationale
+
+Fifteen adversarial passes on the design (docs/plans/baseline_floors_b0.md) showed every scheme attributing
+calls to agents failed on request-context identity, and router-object attribution cannot see AUT calls made
+on the narrator's router. A schema the record declares about itself would let a record opt out of the checks.
+
 ## 2026-10-10 — Tool-failure credit Stage 2 (#1200): TF4–TF9
 
 ### Decision
@@ -19,7 +91,8 @@ This file tracks decisions that affect public behavior, repo structure, and long
    owner, 2026-10-10): this PR adds `record_outcome`'s keyword with a TEMPORARY `None` default plus a guard test
    holding every other caller to it (agent_loop's two sites allowed by exact count); Session A then lands the
    loop's two call-site lines (hard rejection, agent-fallback except); a follow-up drops the default, which a
-   strict red gate in this PR pins (`#1221`).
+   strict red gate in this PR pins (`#1221`). **Done 2026-10-11:** Session A's sites landed in #1231 and the
+   default was dropped under #1221; the keyword is required.
 6. **TF9. Speculative calls book nothing:** prefetch runs its calls inside the executor's `speculative_calls()`
    context (never a model-writable action key) and the bridge books neither
    valence for them (the agent did not choose them), which also removes today's speculative POSITIVE links.

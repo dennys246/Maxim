@@ -175,9 +175,11 @@ def pass_table_problems(table, where: str, *, at_base: bool = False) -> list[str
                 t in L.RANK and isinstance(v, list) and all(isinstance(x, str) for x in v) for t, v in targets.items()
             )
             or not isinstance(require, dict)
-            or set(entry) - {"rows", "targets", "require", "note", "complete", "scopes"}
+            or set(entry) - {"rows", "targets", "require", "note", "complete", "scopes", "obliges"}
         ):
             out.append(f"{PASS_TABLE} at {where}: entry {kind!r} is malformed (rows / targets / require)")
+        elif obliges_problem(entry):
+            out.append(f"{PASS_TABLE} at {where}: entry {kind!r}: {obliges_problem(entry)}")
         elif "REPRODUCED" in targets and kind not in O19_KINDS:
             # #1059 S5: REPRODUCED is a successor O19 campaign's label; no other kind has campaigns.
             out.append(f"{PASS_TABLE} at {where}: entry {kind!r} targets REPRODUCED, which only an O19 kind may")
@@ -187,6 +189,29 @@ def pass_table_problems(table, where: str, *, at_base: bool = False) -> list[str
             problem = complete_problem(kind, entry.get("complete"), at_base=at_base)
             out.append(f"{PASS_TABLE} at {where}: entry {kind!r}: {problem}")
     return out
+
+
+def obliges_problem(entry: dict) -> str | None:
+    """`obliges` (BF2, docs/plans/baseline_floors_b1_evidence.md §3): read by scripts/lint_bf2_obligation.py from the
+    MERGE-BASE table, so a PR cannot loosen its own obligation. Shape: {row: one of the entry's rows, values: the
+    non-empty obliging verdict values (each a value the entry's targets list), clears: the clearing values}."""
+    ob = entry.get("obliges")
+    if ob is None:
+        return None
+    supported = {v for vs in (entry.get("targets") or {}).values() for v in vs}
+    if (
+        not isinstance(ob, dict)
+        or set(ob) != {"row", "values", "clears"}
+        or ob["row"] not in (entry.get("rows") or [])
+        or not isinstance(ob["values"], list)
+        or not ob["values"]
+        or not isinstance(ob["clears"], list)
+        or not all(isinstance(v, str) for v in ob["values"] + ob["clears"])  # before any set(): unhashable items
+        or not set(ob["values"]) <= supported
+        or set(ob["values"]) & set(ob["clears"])
+    ):
+        return "`obliges` must be {row: one of its rows, values: obliging values its targets list, clears: [values]}"
+    return None
 
 
 def scopes_problem(kind: str, entry: dict, *, at_base: bool = False) -> str | None:
@@ -246,6 +271,32 @@ def scope_change_notes(base_table, head_table) -> list[str]:
         )
     if first:
         out.append(f"{PASS_TABLE}: {len(first)} kind(s) declare their first `scopes` (bootstrap): {', '.join(first)}")
+    return out
+
+
+def obliges_change_problems(base_table, head_table) -> list[str]:
+    """An `obliges` block on main may only tighten (delta review, PR-C): the lint reads the MERGE-BASE copy, so a PR
+    that removes the block, drops an obliging value, adds a clearing value or re-points the row is still bound by it,
+    but would silently disarm the rule from the next PR on. Loosening one is a reviewed owner exception, not a table
+    edit (backlog M46/M50)."""
+    if not isinstance(base_table, dict) or not isinstance(head_table, dict):
+        return []
+    out = []
+    for kind, old in base_table.items():
+        ob = old.get("obliges") if isinstance(old, dict) else None
+        if not isinstance(ob, dict):
+            continue
+        new = (head_table.get(kind) or {}).get("obliges") if isinstance(head_table.get(kind), dict) else None
+        if not isinstance(new, dict):
+            out.append(f"{PASS_TABLE}: {kind}'s `obliges` block on main may not be removed (it would disarm BF2)")
+            continue
+        dropped = set(ob.get("values") or ()) - set(new.get("values") or ())
+        added = set(new.get("clears") or ()) - set(ob.get("clears") or ())
+        if new.get("row") != ob.get("row") or dropped or added:
+            out.append(
+                f"{PASS_TABLE}: {kind}'s `obliges` may only tighten: row {ob.get('row')!r} -> {new.get('row')!r}, "
+                f"obliging values dropped {sorted(dropped)}, clearing values added {sorted(added)}"
+            )
     return out
 
 
@@ -563,6 +614,36 @@ def judged_class(row: L.Row) -> bool:
     return row.token in L.POSITIVE or row.token in ("PARTIAL", L.BY_TESTS)
 
 
+def build_ctx(repo: Repo, base: str, *, prereg: dict[str, str] | None = None) -> tuple[Ctx, list[str]]:
+    """The gate's judging context at HEAD, and the prereg lint's failures: the merge-base pass table, HEAD's legacy
+    snapshot, the redaction records' retired directories (base U HEAD) and the prereg classification. Shared by
+    :func:`gate` and the BF2 obligation lint (scripts/lint_bf2_obligation.py), so a record is judged the same way by
+    both."""
+    table = load_json(repo, base, PASS_TABLE, {})
+    head_snap = load_json(repo, "HEAD", LEGACY_SNAPSHOT, None) or {}
+    redactions = redaction_records(load_json(repo, base, EXCEPTIONS, [])) + redaction_records(
+        load_json(repo, "HEAD", EXCEPTIONS, [])
+    )
+    failures: list[str] = []
+    if prereg is None:
+        try:
+            envelope = P.classify_all(repo.root, base)
+        except P.LintError as exc:
+            raise GateError(f"the prereg classification could not run: {exc}") from exc
+        failures += [f"prereg lint: {f}" for f in envelope.get("failures") or []]
+        prereg = {e["entry"]: e["status"] for e in envelope.get("entries") or []}
+    ctx = Ctx(
+        repo=repo,
+        base=base,
+        ref="HEAD",
+        legacy=head_snap if isinstance(head_snap, dict) else {},
+        prereg=prereg,
+        table=table if isinstance(table, dict) else {},
+        retired=retired_dirs(repo, base, redactions),
+    )
+    return ctx, failures
+
+
 def gate(
     repo_root: Path = REPO_ROOT, *, base: str | None = None, prereg: dict[str, str] | None = None
 ) -> tuple[list[str], list[str], list[RowResult]]:
@@ -585,6 +666,7 @@ def gate(
     head_table = load_json(repo, "HEAD", PASS_TABLE, {})
     failures += pass_table_problems(head_table, "HEAD")
     failures += ruled_scope_problems(table, head_table)
+    failures += obliges_change_problems(table, head_table)
     notes += scope_change_notes(table, head_table)
     head_snap = load_json(repo, "HEAD", LEGACY_SNAPSHOT, None)
     base_snap = load_json(repo, base, LEGACY_SNAPSHOT, None)
@@ -597,16 +679,11 @@ def gate(
     failures += exceptions_problems(base_exc, head_exc, repo, base)
     # #1081 item 7: redaction records AUTHORIZE byte changes from the merge-base only, and RETIRE from base U HEAD.
     base_redactions, head_redactions = redaction_records(base_exc), redaction_records(head_exc)
-    retired = retired_dirs(repo, base, base_redactions + head_redactions)
     base_retired = retired_dirs(repo, base, base_redactions)
-    if prereg is None:
-        try:
-            envelope = P.classify_all(repo.root, base)
-        except P.LintError as exc:
-            raise GateError(f"the prereg classification could not run: {exc}") from exc
-        failures += [f"prereg lint: {f}" for f in envelope.get("failures") or []]
-        prereg = {e["entry"]: e["status"] for e in envelope.get("entries") or []}
-    ctx = Ctx(repo=repo, base=base, ref="HEAD", legacy=head_snap, prereg=prereg, table=table, retired=retired)
+    ctx, prereg_failures = build_ctx(repo, base, prereg=prereg)
+    failures += prereg_failures
+    prereg = ctx.prereg
+    retired = ctx.retired
     changed = repo.changed(base)
     # #1050 half B: a judge edit may not change any existing O19 verdict, cited by a row or not (strict).
     if O19_JUDGE in changed:

@@ -757,13 +757,14 @@ class Executor:
         from maxim.embodiment.sem import CauseRef, _read_sensor_value, affordance_declared_drives
 
         try:
+            from maxim.embodiment.tool_bridge import ModulatorAffordanceTool
+
             drive_specs = getattr(root, "drive_specs", {}) or {}
-            # A ModulatorAffordanceTool's own declaration and cause. tool_bridge has no public accessor
-            # for them and is outside GL2a's file set, so they are read by attribute; any other tool
-            # (a sensor read or sense of an entity included) declares no drives and names no entity.
-            schema = getattr(tool, "_affordance_schema", None)
+            # A ModulatorAffordanceTool's own declaration and cause, through its read-only accessors (#1195);
+            # any other tool (a sensor read or sense of an entity included) declares no drives and names no entity.
+            affordance_tool = tool if isinstance(tool, ModulatorAffordanceTool) else None
             declared = affordance_declared_drives(
-                getattr(schema, "self_effect", None),
+                affordance_tool.affordance_schema.self_effect if affordance_tool is not None else None,
                 drive_specs,
                 getattr(embodiment, "live_world_set_sensors", None) or (),
             )
@@ -771,8 +772,8 @@ class Executor:
             # Only an affordance acts, so only an affordance names a causing entity, and that entity is
             # never the sufferer: an affordance of the body's own modulators (``turn_left``,
             # ``escape_water``) names none; the affordance and tool still name the act.
-            affordance = str(getattr(tool, "_affordance_name", "") or "")
-            acting = getattr(tool, "_entity", None) if affordance else None
+            affordance = affordance_tool.affordance_name if affordance_tool is not None else ""
+            acting = affordance_tool.acting_entity if affordance_tool is not None and affordance else None
             cause = CauseRef(
                 entity="" if acting is None or acting is root else str(getattr(acting, "name", "") or ""),
                 affordance=affordance,

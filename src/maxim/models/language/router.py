@@ -7,11 +7,12 @@ from dataclasses import replace
 from collections.abc import Callable
 from typing import Any
 
-from maxim.utils.logging import info, warn
+from maxim.utils.logging import info, log_swallowed_exception, warn
 from maxim.utils.optional_deps import OptionalDependencyError
 
 logger = logging.getLogger(__name__)
 from maxim.utils.structured_logging import log_agentic, log_structured
+from maxim.models.language import call_accounting
 from maxim.models.language.cost_tracker import CostTracker
 from maxim.utils.cloud_redaction import CloudRedactionFilter, RedactionResult
 from maxim.utils.cloud_audit import CloudAuditEntry, CloudAuditLogger
@@ -136,6 +137,10 @@ class LLMRouter:
         auto_drain_callback: Callable[[str, str], None] | None = None,
     ) -> None:
         self.cfg = cfg or load_llm_config()
+        # Baseline floors B0: this router's calls are counted under its own serial (call_accounting).
+        self.call_serial = call_accounting.register_router()
+        # The served call of the dispatch in progress, set by the successful attempt (under _inference_lock).
+        self._dispatch_served: call_accounting.ServedCall | None = None
         self._backend: Any | None = None
         self._backends: dict[str, Any] = {}
         self._backend_lock = threading.Lock()
@@ -996,9 +1001,128 @@ class LLMRouter:
         thinking: dict[str, Any] | None = None,
         stream: bool = False,
     ) -> tuple[str, dict[str, Any] | None]:
-        """Actual inference — called under _inference_lock."""
+        """Actual inference — called under _inference_lock.
+
+        Each dispatch records one start and exactly one terminal outcome in ``call_accounting`` (baseline
+        floors B0). The outcome is whatever :meth:`_dispatch_locked` names on its return path, or ``"raised"``;
+        a path that names none leaves the router's counts unbalanced, which the report stamps as incomplete.
+        """
+        call_accounting.record_start(self.call_serial)
+        outcome: str | None = None
+        served: call_accounting.ServedCall | None = None
+        try:
+            text, usage, outcome, served = self._dispatch_locked(
+                system,
+                user,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                provider_hint=provider_hint,
+                request_context=request_context,
+                tools=tools,
+                thinking=thinking,
+                stream=stream,
+            )
+            return text, usage
+        except BaseException:
+            outcome, served = "raised", None
+            raise
+        finally:
+            call_accounting.record_outcome(self.call_serial, outcome, served)
+
+    def _invoke_backend_noted(self, **kwargs: Any) -> tuple[str, dict[str, Any] | None]:
+        """:meth:`_invoke_backend`, and on a non-empty answer the dispatch's served call, built from this attempt's
+        own provider, model, backend and temperature (baseline floors B0)."""
+        text, usage = self._invoke_backend(**kwargs)
+        if text:
+            self._dispatch_served = self._served_call_for(
+                kwargs["provider_key"],
+                kwargs["model_override"] or kwargs["model"],
+                kwargs["backend"],
+                kwargs["temperature"],
+            )
+        return text, usage
+
+    def _served_call_for(
+        self, provider_key: str, model: str, backend: Any, temperature: float
+    ) -> call_accounting.ServedCall | None:
+        """What a successful attempt ran, from the attempt's own values: the provider, the model it sent, the
+        backend's kind (by type), endpoint (the configured base URL, no DNS) and cached served id, and the
+        backend's own seed, honoured only by the in-process llama backend (an owned local server is spawned
+        without ``--seed``). Never raises: accounting must not change a dispatch (``None`` reads as an
+        incomplete window)."""
+        from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+
+        try:
+            backend_cfg = getattr(backend, "cfg", None)
+            seed = getattr(backend_cfg, "seed", None)
+            quantization = None
+            if isinstance(backend, _LlamaCppBackend):
+                kind, endpoint, served = "llama", str(getattr(backend_cfg, "model_path", "") or ""), ""
+                quantization = getattr(backend_cfg, "quantization", None)
+            elif isinstance(backend, _MaximPeerBackend):
+                kind, endpoint, served = "peer", str(backend._raw_base_url() or ""), str(backend.served_model or "")
+            else:
+                provider_cfg = self._providers.get(provider_key, {})
+                kind, endpoint, served = "other", str(provider_cfg.get("base_url") or ""), ""
+            return call_accounting.ServedCall(
+                provider_key=provider_key,
+                model=str(model or ""),
+                backend_kind=kind,
+                endpoint=endpoint,
+                served_id=served,
+                quantization=quantization if isinstance(quantization, str) else None,
+                seed=int(seed) if isinstance(seed, int) and seed != -1 else None,
+                seed_honoured=isinstance(backend, _LlamaCppBackend),
+                temp=float(temperature),
+            )
+        except Exception as e:  # noqa: BLE001 — instrumentation only observes
+            log_swallowed_exception(e, site="router.served_call", logger=logger)
+            return None
+
+    def wait_idle(self, timeout: float) -> bool:
+        """Wait up to ``timeout`` seconds for an in-flight call to finish (acquire and release the inference
+        lock); whether the router was idle. A report calls it before its end snapshot so a call still running at
+        shutdown does not read as an incomplete window."""
+        if not self._inference_lock.acquire(timeout=timeout):
+            return False
+        self._inference_lock.release()
+        return True
+
+    def serving_probes(self) -> list[dict[str, Any]]:
+        """For each peer backend this router has built: its configured base URL, the served id cached at first
+        use, a fresh ``/v1/models`` read, and the leader's on-disk git HEAD (baseline floors B0; best effort)."""
+        from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+
+        out = []
+        for backend in list(self._backends.values()):
+            if isinstance(backend, _MaximPeerBackend):
+                out.append(
+                    {
+                        "endpoint": str(backend._raw_base_url() or ""),
+                        "cached_served_id": backend.served_model,
+                        "fresh_served_id": backend.probe_served_model(),
+                        "leader_disk_head": backend.probe_leader_disk_head(),
+                    }
+                )
+        return out
+
+    def _dispatch_locked(
+        self,
+        system: str,
+        user: str,
+        *,
+        temperature: float,
+        max_tokens: int,
+        provider_hint: str | None,
+        request_context: dict[str, Any] | None,
+        tools: list[dict[str, Any]] | None,
+        thinking: dict[str, Any] | None,
+        stream: bool,
+    ) -> tuple[str, dict[str, Any] | None, str, call_accounting.ServedCall | None]:
+        """One dispatch over the candidate providers: ``(text, usage, outcome, served)``."""
         prompt_tokens = self._estimate_prompt_tokens(system, user)
         now = time.time()
+        self._dispatch_served = None
 
         providers, budget_tier, _totals = self._candidate_providers(prompt_tokens, max_tokens, now)
         if provider_hint and provider_hint in providers:
@@ -1019,7 +1143,7 @@ class LLMRouter:
                     "Run `maxim --list-models` to check model status, "
                     "or set an API key (e.g. ANTHROPIC_API_KEY)"
                 )
-            return "", None
+            return "", None, "exhausted", None
 
         # Plan 3 R2.5: reset the per-dispatch attempt log at the top of
         # every dispatch. Populated by ``_record_attempt_outcome`` inside
@@ -1083,10 +1207,10 @@ class LLMRouter:
                     # need an aggregated WARN even if earlier providers in
                     # the priority list failed.
                     self._dispatch_attempts.clear()
-                    return text, usage
+                    return text, usage, "success", self._dispatch_served
                 if status == "budget_reject":
                     self._dispatch_attempts.clear()
-                    return "", None
+                    return "", None, "budget_reject", None
                 # status == "failed" → try next provider
 
             # All providers failed — emit one aggregated WARN with the
@@ -1097,7 +1221,7 @@ class LLMRouter:
                 total_elapsed_ms=total_elapsed_ms,
                 drained_keys=self._last_drained_keys or None,
             )
-            return "", None
+            return "", None, "exhausted", None
         finally:
             register_call_end(call_id)
 
@@ -1170,7 +1294,7 @@ class LLMRouter:
         # (R2c initially classified HTTPAuthError as inference_broken
         # because the generic catch came first).
         try:
-            text, usage = self._invoke_backend(
+            text, usage = self._invoke_backend_noted(
                 backend=backend,
                 provider_key=provider_key,
                 redacted_system=redacted_system,
