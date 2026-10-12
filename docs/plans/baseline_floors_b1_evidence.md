@@ -134,11 +134,11 @@ one of two conditions:
 
     The only way out is a fresh campaign (a new data sha) whose ESTABLISHED `FLOORS_BEATEN` becomes the newest
     verdict. A bug in the verdict code over good data cannot be fixed by re-judging, because a second value over the
-    same sha fails the grouping. That costs rig time. A B1 retirement route is backlog row **M49**.
+    same sha fails the grouping. That costs rig time. A B1 retirement route is backlog row **M50**.
 
     One more state has no escape: a floor-matched verdict whose data is lost after merge stays red permanently, and
     a fresh campaign cannot clear it. A green merge cannot reach that state, because the data PR must carry the data
-    and deleting the data fails in the PR that deletes it. Only an admin bypass gets there. Recorded under M49.
+    and deleting the data fails in the PR that deletes it. Only an admin bypass gets there. Recorded under M50.
   - The lint never relies on what the ledger row happens to cite.
 - **Data time:** the latest `ts` over the `harness_row` lines of the bound data file, read from the git tree at that
   revision, never the working tree.
@@ -188,8 +188,11 @@ one of two conditions:
 scheduled re-run, could otherwise support PARTIAL → EARNED, undoing BF2 without any floor being run.
 
 **Where it runs.** In the lint job, as `scripts/lint_bf2_obligation.py`, with a test file that drives each branch.
-It is scoped to T1-13 by a small code-owned table (`{"b1_verdict": "T1-13"}`). M46 replaces that table with the
-general rule.
+The obligation is pass-table data: an `obliges` block (`{row, values, clears}`) on the `b1_verdict` entry, read from
+the MERGE-BASE like the gate's own rule data, so a PR cannot loosen its own obligation (code review, PR-C). The
+evidence gate checks the block's shape (`obliges_problem`), and a block on main may only tighten
+(`obliges_change_problems`: no removal, no dropped obliging value, no added clearing value, no re-pointed row), so the
+rule cannot be disarmed in two steps either. M46 generalises it.
 
 ## 4. Every input, and how each could lie
 
@@ -203,13 +206,13 @@ general rule.
 | `attempt` | Gaps, duplicates, a bool, a third attempt | Rule items 3–4. |
 | `refusal` / `refusal_cause` | Inconsistent, or "clean" with a cause | Rule item 3. |
 | A crash mid-attempt | Resume restarts the key at attempt 1 after the outcome was seen | Rule item 6 and the harness's `attempt_start`. |
-| `refusal_cause` label | A behavioural refusal labelled "instrument" to buy a rerun | **Not caught.** The label is writer-stamped by reviewed code: `run_arm_seed` classifies by exception class, and the verdict lists every cause and step. Backlog row **M47**. |
+| `refusal_cause` label | A behavioural refusal labelled "instrument" to buy a rerun | **Not caught.** The label is writer-stamped by reviewed code: `run_arm_seed` classifies by exception class, and the verdict lists every cause and step. Backlog row **M48**. |
 | Rows from another code tree | Mixed after a fix | `append_refusal` refuses at write time; the gate's one-code-tree judgment refuses at the gate. |
 | The verdict record | A wrong value, or computed over other rows | The value is trusted from its stamped writer. It is bound to the data by path + sha256. Scope `{"all_rows": true}` with no `campaign_id`. |
 | The ledger qualifier | PARTIAL at another scope, or unqualified | Exactly `narrow` (`support_problem`), and §3. |
 | Timing | Data predates the prereg | The prereg lint and the gate's `prereg == PASS`. |
-| A second campaign file | Run campaigns until one looks good, commit only that one | **Not caught:** the gate cannot see files that were never committed. The process rule is that every campaign file started is committed. Backlog row **M48**. |
-| A deliberate kill | Kill the run after seeing a bad gated-arm result, so the key turns `unrecorded` and the verdict becomes INCOMPLETE, which avoids the demotion | **Not caught.** The kill cannot buy a rerun, and it shows up in the verdict's `refused` list. It is no stronger than not committing the file. Recorded under **M48**. |
+| A second campaign file | Run campaigns until one looks good, commit only that one | **Not caught:** the gate cannot see files that were never committed. The process rule is that every campaign file started is committed. Backlog row **M49**. |
+| A deliberate kill | Kill the run after seeing a bad gated-arm result, so the key turns `unrecorded` and the verdict becomes INCOMPLETE, which avoids the demotion | **Not caught.** The kill cannot buy a rerun, and it shows up in the verdict's `refused` list. It is no stronger than not committing the file. Recorded under **M49**. |
 | A later Exp 60 verdict | Re-earns EARNED over a floor-matched B1 | §3. |
 | Deleting or rewriting a B1 verdict | Drops the obligation in one PR, then re-raises the row in the next | Append-only by (`data_sha256`, value) (§3). |
 
@@ -229,7 +232,7 @@ No DO-NOT-BUILD. Folded:
 - **S3:** a crash was an unrecorded attempt. → rule item 6 and `attempt_start` (D2).
 - **S4:** item 1 was missing from the base rule; kind ↔ record_kind; header coherence. → items 1–2.
 - **S5:** exact predicates. → items 3–4 and the pins.
-- **S6:** the blind spots needed backlog rows. → M47, M48.
+- **S6:** the blind spots needed backlog rows. → M48, M49.
 - **N1:** a demotion does not re-date by itself. → §1 states the re-date, and §3 enforces it.
 - **N2:** STALE → PARTIAL is allowed. → stated in §1.
 - **N3:** the annotation is not re-checked. Agreed.
@@ -260,12 +263,12 @@ No DO-NOT-BUILD. Folded:
 - **N4:** data time vs the gate's time; float ordering. → stated.
 - **N5:** where the resume closing rows are written. → item 6.
 - **N6:** the in-memory rows after closing. → item 6.
-- **N7:** a deliberate kill acts as a veto. → §4 and M48.
+- **N7:** a deliberate kill acts as a veto. → §4 and M49.
 
 **v4 round, 2026-10-11.** No DO-NOT-BUILD. Folded:
 - **S1:** the data-time bytes were not tied to `data_sha256`, so backdating the data could make an older clearing
   verdict "newest". → bytes must match the binding, with a test.
-- **S2:** the escape from a mistaken verdict was undocumented. → stated in §3, plus backlog row M49.
+- **S2:** the escape from a mistaken verdict was undocumented. → stated in §3, plus backlog row M50.
 - **N1:** "any path" meant any path under the data root. → stated.
 - **N2:** identity omits the other fields. → stated.
 - **N3:** INCOMPLETE verdicts are append-only too. → stated.
@@ -276,4 +279,4 @@ class. Folded as wording:
 - reuse `judge_verdict`'s binding through one shared helper;
 - the data-time read covers counted verdicts only;
 - the hash is over the raw blob;
-- lost data after merge is reachable only by an admin bypass (M49).
+- lost data after merge is reachable only by an admin bypass (M50).
