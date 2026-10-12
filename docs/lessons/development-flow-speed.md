@@ -110,8 +110,9 @@ Each of these cost a round or a red main once; most now have a check, and the re
 ## `scripts/suite_at_commit.sh`
 
 ```bash
-scripts/suite_at_commit.sh            # the suite at HEAD, in a throwaway worktree
-scripts/suite_at_commit.sh <commit>   # ... at any commit
+scripts/suite_at_commit.sh                     # the suite + the coverage ratchet at HEAD, in a throwaway worktree
+scripts/suite_at_commit.sh <commit>            # ... at any commit
+scripts/suite_at_commit.sh --no-cov <commit>   # the suite only: quicker, NOT the pre-push check
 ```
 
 It creates a uniquely named `.worktrees/suite-<sha>.XXXXXX` under the MAIN checkout (so concurrent runs on
@@ -120,3 +121,12 @@ suite and `test_memory_hub.py` there with an absolute `PYTHONPATH` (so the insta
 it), prints the commit next to the result, and removes the worktree. No `-x`, deliberately: the full
 failure list is worth more than the first. It tests a commit by design: untracked files are exactly what
 it keeps out of the run.
+
+**Since M47 (2026-10-11) it is also the coverage pre-check.** By default the fast suite runs with CI's exact
+measuring command and is followed by `scripts/lint_coverage.py --local`, so `PASSED` now also means the coverage
+ratchet passed. `--local` gates diff coverage (>= 80% of changed `src/maxim` lines) and the floors of the TOUCHED
+packages (changed `src` files, deletions and moves included, plus the packages the changed tests import); the overall
+floor, untouched packages and a PR's own floor-pin edits are printed as notes, because floors are measured in CI's
+environment. A touched floor breached within noise needs CI's number. The script checks the installed coverage
+version before the suite runs. #1201, #1213, #1232 and #1240 each failed CI on the ratchet because no local run
+measured coverage.

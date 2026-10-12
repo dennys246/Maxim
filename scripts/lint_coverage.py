@@ -1189,6 +1189,46 @@ def merge_floors(texts: list[str]) -> dict:
     }
 
 
+def _package_of_module(root: Path, dotted: str) -> str | None:
+    """``maxim.x.y`` -> ``maxim/x`` when ``src/maxim/x`` is a package directory, else ``maxim/<root>``."""
+    parts = dotted.split(".")
+    if parts[0] != "maxim":
+        return None
+    if len(parts) == 1:
+        return ROOT_PACKAGE
+    return f"maxim/{parts[1]}" if (root / SCOPE / parts[1]).is_dir() else ROOT_PACKAGE
+
+
+def local_touched_packages(root: Path, base: str) -> set[str]:
+    """``--local``'s gating scopes: the packages of every ``src/maxim`` file the working tree changes against
+    ``base`` (added, modified, deleted or moved: rename detection off, so a move marks both ends), plus the
+    ``maxim`` packages the changed test files import -- a test-only PR lifts a package its ``src`` diff never
+    touches (#1201)."""
+    names = git(root, "-c", "core.quotePath=false", "diff", "--name-only", "--no-renames", base, "--", SCOPE, "tests")
+    touched: set[str] = set()
+    for rel in names.splitlines():
+        if rel.startswith(SCOPE + "/") and rel.endswith(".py"):
+            touched.add(package_of(rel))
+        elif rel.startswith("tests/") and rel.endswith(".py") and (root / rel).is_file():
+            try:
+                tree = ast.parse((root / rel).read_text(encoding="utf-8"))
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                dotted: list[str] = []
+                if isinstance(node, ast.Import):
+                    dotted = [a.name for a in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+                    dotted = [node.module] + (
+                        [f"{node.module}.{a.name}" for a in node.names] if node.module == "maxim" else []
+                    )
+                for d in dotted:
+                    pkg = _package_of_module(root, d)
+                    if pkg is not None and (pkg != ROOT_PACKAGE or d.count(".") >= 1):
+                        touched.add(pkg)
+    return touched
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] == ["--merge-floors"]:
@@ -1198,10 +1238,12 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(merge_floors([Path(a).read_text(encoding="utf-8") for a in argv[1:]]), indent=2))
         return 0
     # --local: the pre-push run scripts/suite_at_commit.sh makes on the exact commit to be pushed. Floors are measured
-    # in CI's environment, so locally only the floors of packages the diff TOUCHES gate (the "raise it" a PR's own
-    # tests cause, #1240); the overall floor and untouched packages are printed as notes. Every other rule, diff
-    # coverage included (#1232), gates exactly as in CI. Never in CI: ci_step_rules pins the step to the bare command,
-    # and this refuses to run under GitHub Actions.
+    # in CI's environment, so locally only the floors of TOUCHED packages gate (local_touched_packages: changed src
+    # files, deletions and moves included, plus the packages changed tests import -- #1240's and #1201's "raise it");
+    # the overall floor, untouched packages and a PR's own floor-pin edits are printed as notes. Touched floors gate
+    # DESPITE the environment difference (no --require-extras, no netns, macOS): a breach within noise of a floor needs
+    # CI's number. Diff coverage (#1232) and every other rule gate exactly as in CI. Never in CI: ci_step_rules pins
+    # the step to the bare command, and this refuses to run under GitHub Actions.
     local = argv[:1] == ["--local"]
     if local and os.environ.get("GITHUB_ACTIONS"):
         print("coverage: --local is the pre-push check and cannot run inside GitHub Actions", file=sys.stderr)
@@ -1230,7 +1272,7 @@ def main(argv: list[str] | None = None) -> int:
     if fl is not None:
         if local:
             try:
-                touched = {package_of(rel) for rel in changed_lines(root, base_ref(root))}
+                touched = local_touched_packages(root, base_ref(root))
             except GitUnavailable as e:
                 print(f"coverage: --local needs a base to know which packages the diff touches ({e})", file=sys.stderr)
                 return 2
@@ -1262,7 +1304,12 @@ def main(argv: list[str] | None = None) -> int:
                         except FileFormatError as e:
                             failures.append(f"{FLOORS_REL} at the base: {e}")
                         else:
-                            failures += floor_diff_rules(root, base_fl, fl, overall, pkgs, package_renames(root, base))
+                            pin = floor_diff_rules(root, base_fl, fl, overall, pkgs, package_renames(root, base))
+                            if local:  # a PR's floor edits are CI measurements: CI verifies them, not this box
+                                for note in pin:
+                                    print(f"coverage (local, floor pin rule, verified in CI, not gated): {note}")
+                            else:
+                                failures += pin
                     else:
                         print(f"coverage: {FLOORS_REL} absent at the base — bootstrap, every floor is new")
                         empty = Floors(fl.band, fl.min_statements, fl.version, Floor(None, None))

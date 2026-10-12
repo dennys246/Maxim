@@ -181,6 +181,7 @@ def repo(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(L, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(L, "MIN_PACKAGE_STATEMENTS", N)
     monkeypatch.delenv("GITHUB_EVENT_NAME", raising=False)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)  # CI's suite runs with it set; --local refuses it
     return tmp_path
 
 
@@ -1234,5 +1235,44 @@ def test_the_suite_script_measures_with_cis_own_command():
     local ratchet; a drifted copy of the command would measure something CI does not."""
     text = (Path(__file__).resolve().parents[2] / "scripts" / "suite_at_commit.sh").read_text(encoding="utf-8")
     flat = " ".join(text.replace("\\\n", " ").split())
-    assert L.CI_CLEAN in flat and L.CI_COV_ARGS in flat
-    assert "python scripts/lint_coverage.py --local" in flat
+    clean, measure, local = (
+        flat.find(L.CI_CLEAN),
+        flat.find(L.CI_COV_ARGS),
+        flat.find("python scripts/lint_coverage.py --local"),
+    )
+    assert -1 < clean < measure < local, (clean, measure, local)  # clean, then measure, then the local ratchet
+    assert '-m "not slow" --ignore=tests/integration/test_memory_hub.py' in flat
+
+
+def test_local_mode_gates_a_package_a_changed_test_imports(repo, capsys):
+    """The #1201 shape: a test-only PR lifts a package its src diff never touches; the changed test imports it."""
+    _write(repo, "tests/test_lift.py", "from maxim.alpha import a  # noqa: F401\n\ndef test_lift():\n    assert True\n")
+    _commit(repo)
+    _cov(repo, missing={A: set(), B: {6, 7, 8, 9, 10}})
+    rc, _, err = _run_local(capsys)
+    assert rc == 1 and "maxim/alpha: 100.00% is more than 1.0 pt above its floor" in err
+
+
+def test_local_mode_only_notes_a_floor_pin_edit(repo, capsys):
+    """A PR's floor edits are CI measurements; locally they are printed, not verified."""
+    _cov(repo, missing={A: set(), B: {6, 7, 8, 9, 10}})
+    _write(repo, L.FLOORS_REL, _floors(overall=(75.0, 5), alpha=(100.0, 3)))  # pins missing 3 above the measured 0
+    _commit(repo)
+    rc, out, err = _run_local(capsys)
+    rc_ci, _, _ = _run(capsys)
+    assert rc_ci == 1
+    assert rc == 0, err
+    assert "floor pin rule, verified in CI, not gated" in out
+
+
+def test_floor_head_rules_only_skips_an_untouched_package_without_a_floor(repo):
+    """The second ``only`` filter: a measured package with no floor, outside the touched set, is not a failure."""
+    fl = L.parse_floors(_floors())
+    overall = L.ScopeCov(statements=20, covered=13)
+    pkgs = {
+        "maxim/alpha": L.ScopeCov(statements=10, covered=8),
+        "maxim/beta": L.ScopeCov(statements=10, covered=5),
+        "maxim/gamma": L.ScopeCov(statements=9, covered=9),
+    }
+    assert any("maxim/gamma" in m for m in L.floor_head_rules(repo, fl, overall, pkgs))
+    assert not any("maxim/gamma" in m for m in L.floor_head_rules(repo, fl, overall, pkgs, only={"maxim/alpha"}))
