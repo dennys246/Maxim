@@ -32,6 +32,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any
 
+from maxim.utils.logging import log_swallowed_exception
+
 log = logging.getLogger(__name__)
 
 
@@ -190,7 +192,9 @@ class AgentPool:
                         metadata={"agent_id": agent_id, "type": "npc_percept"},
                     )
                 except Exception:
-                    pass
+                    # An NPC turn must not fail over its memory, but a lost observation is reported (#1217): this
+                    # bare pass hid #1135's race in production.
+                    log_swallowed_exception()
 
             # For NPC agents, generate a simple response based on personality
             response = self._generate_npc_response(instance, percept, **kwargs)
@@ -209,7 +213,7 @@ class AgentPool:
                         delta_seconds=0.0,
                     )
                 except Exception:
-                    pass
+                    log_swallowed_exception()  # the response stands; a lost NAc observation is reported (#1217)
 
             elapsed = (time.time() - start) * 1000
             return TurnResult(
