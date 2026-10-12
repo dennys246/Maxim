@@ -340,6 +340,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **ATL counts every query under concurrent recalls, and AgentPool reports a lost NPC observation (#1217).**
+  `ATL.recall` incremented the persisted `_stats["queries"]` counter outside any lock, while concurrent recalls
+  (which share the read lock) and `dump`/`stats` touched the same dict: counts were lost under contention (pre-fix,
+  every trial of a 1 us switch-interval reproduction lost increments). A dedicated leaf lock now guards every read and
+  write of the counters. `AgentPool.run_turn`'s bare `except Exception: pass` around `store_observation`, which hid
+  #1135's race in production, now reports through `log_swallowed_exception`; the turn still completes. Closes #1217
+  with the SCN lock (#1240).
 - **The Observer's `temporal_patterns` reports the SCN's phase instead of always failing (#1239).** It called
   `SCN.current_phase()`, a method the SCN never had, and a blanket `except` turned the `AttributeError` into
   `{"error": "SCN query failed"}` on every call (`session.observe("temporal")`, the sim's `temporal` query); its unit
