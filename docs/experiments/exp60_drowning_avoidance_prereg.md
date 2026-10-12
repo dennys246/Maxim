@@ -20,6 +20,10 @@
 > `baf0e15f`. It is governed by Amendment 8 (after Amendment 7, in §Design (iii)) and §Re-run runbook (Amendment 8).
 > Nothing above changes.
 >
+> **RE-DATED 2026-10-11 (PRE-DATA, Amendment 9):** the re-run did not start on 2026-10-11. No water check,
+> no trial and no record was made under `rerun_exp60_2026-10-11`. Its entry is now `rerun_exp60_2026-10-12`.
+> Nothing else in Amendment 8 changes.
+>
 > **Amendment 2 — 2026-09-15, POST-DATA, the freeze.** POST-DATA relative to the apparatus and gate
 > records (#724, #725, #727) that this document governs; PRE-DATA relative to the trials, which
 > may not begin before this header is on main. The status text above and the two section-header
@@ -558,6 +562,26 @@ each outcome moves. The procedure is §Re-run runbook (Amendment 8) below.
   `mock: false`, because the harness has no mock mode. So offline output never goes under `docs/experiments/data/`:
   it stays in a temp directory and is never committed. A dry-run file in the data tree would read as a real
   record.
+
+
+**Amendment 9 — 2026-10-11, PRE-DATA, for `rerun_exp60_2026-10-12`, the re-dated 1.3.2 closing re-run (owner
+decision 2026-10-11):** Amendment 8's date could not be met. Amendment 8 merged at 21:10 UTC on 2026-10-11, and
+what remained (the water check, the record PR's CI and merge, then about 1.5–2 h of trials) could not finish
+that UTC day. **Nothing was run under `rerun_exp60_2026-10-11`:** no water check, no trial, no record. This
+amendment only re-dates the entry. Everything else Amendment 8 declares stands unchanged: the pin, the design,
+the pass criterion, the ledger moves, the attempt rules and owner decisions, and the runbook steps.
+
+- **The entry.** Wherever Amendment 8 and §Re-run runbook (Amendment 8) name `rerun_exp60_2026-10-11` (the data
+  directory, the `--out` and `--json` paths, the record path), read `rerun_exp60_2026-10-12`.
+- **The chain root moves to this amendment's commit.** This commit is a direct child of Amendment 8's commit
+  (`8ad86053`), which is a direct child of the pin `baf0e15f`. Both commits are docs-only, so this commit's
+  `code_tree_sha256` over `src/`+`scripts/` equals the pin's
+  (`0bbb257932829b1be0428bca53cb437a4e355c2fcb22d0b607c8cd972e627444`). Runbook step "A" (the commit the water
+  check runs at, and from which the record branch is cut) is now **this amendment's commit**. It is merged with a
+  merge commit, so it stays an ancestor of main. Every later link is unchanged.
+- **The attempt count is unaffected.** No attempt began under the old date. Under Amendment 8's own rule, an
+  attempt begins at its first written row.
+- **A further slip** needs another PRE-DATA amendment before any data is made, in the same shape.
 
 ## Operator runbook (the frozen protocol, executed from a clean main checkout at or after the freeze)
 

@@ -387,6 +387,11 @@ class WaterTrial:
         self.escape_tool: str | None = None
         self.flee_tool: str | None = None
         self.deaths0 = 0
+        # Baseline floors B1 (docs/plans/baseline_floors_b1_build.md PR-B): a SubstratePolicy forwarded to the loop in
+        # every window, and the last probe's roam window. Dormant for every other harness (None; rows unchanged).
+        self.substrate_policy: Any = None
+        self.last_roam: dict[str, Any] | None = None
+        self.last_window: dict[str, Any] | None = None
 
     # ── instruments ──────────────────────────────────────────────────────────────────
 
@@ -635,12 +640,17 @@ class WaterTrial:
     def submerge(self, label: str) -> float:
         """Teleport to the pool floor; returns the TELEPORT time (the window's clock)."""
         self.stop_motion()
+        self.before_teleport(label)
         t_tp = time.monotonic()
         self.rcon.teleport(self.username, self.sub)
         if settle_until(self.aut, lambda vm: _f(vm, "is_in_water", 0) >= 0.5, timeout_s=IN_WATER_WITHIN_S) is None:
             self.rescue(label)
             raise Refusal(f"{label}: is_in_water did not reflect the submerged teleport")
         return t_tp
+
+    def before_teleport(self, label: str) -> None:
+        """Runs just before the submerging teleport. A no-op here; B1's subclass arms its policy (prereg
+        b1_exp60_floor §The hook: armed immediately before the teleport)."""
 
     def encode_world_cluster(self) -> str | None:
         from maxim.runtime.substrate_proposal import _encode_current_clusters
@@ -775,6 +785,7 @@ class WaterTrial:
                 "target_hz": self.frozen["loop_hz"],
                 "stop_event": live_stop,
                 "substrate_telemetry": live_telem,
+                **({"substrate_policy": self.substrate_policy} if self.substrate_policy is not None else {}),
             },
             daemon=True,
         )
@@ -862,10 +873,14 @@ class WaterTrial:
 
     # ── the loop window, the placement, the probe ────────────────────────────────────
 
-    def loop_window(self, seconds: float, *, enter: Any, on_sample: Any, label: str) -> dict[str, Any]:
+    def loop_window(
+        self, seconds: float, *, enter: Any, on_sample: Any, label: str, before_rescue: Any = None
+    ) -> dict[str, Any]:
         """WARM the full loop on the shore, `enter()` the situation (returns the window's t0),
         sample at 4 Hz until `on_sample` says stop or the cap; then RESCUE FIRST (teleport to the
-        shore) and only then stop/join the loop."""
+        shore) and only then stop/join the loop. `before_rescue(samples, t0)` (B1; default None) runs
+        after sampling ends and BEFORE the rescue teleport; `loop_exited_early` records a loop thread
+        that ended before it was told to stop."""
         from maxim.simulation.minecraft_harness import run_minecraft_aut
         from maxim.simulation.substrate_telemetry import SubstrateTelemetry
 
@@ -882,6 +897,7 @@ class WaterTrial:
                 "target_hz": self.frozen["loop_hz"],
                 "stop_event": stop,
                 "substrate_telemetry": telem,
+                **({"substrate_policy": self.substrate_policy} if self.substrate_policy is not None else {}),
             },
             daemon=True,
         )
@@ -889,10 +905,12 @@ class WaterTrial:
         time.sleep(self.frozen["loop_warm_s"])  # loop boot is NOT inside the window
         samples: list[dict[str, Any]] = []
         stale = 0
-        t0 = enter()
+        t0: float | None = None
         t_rescue = None
         stuck = False
+        exited_early = False
         try:
+            t0 = enter()  # inside the try: a failed submerge still stops this window's loop
             while time.monotonic() - t0 < seconds:
                 s = self.sample(t0)
                 if s is None:
@@ -906,16 +924,21 @@ class WaterTrial:
                         break
                 time.sleep(0.25)
         finally:
-            t_rescue = time.monotonic()
             try:
-                self.rcon.teleport(self.username, self.shore)  # rescue BEFORE the loop drains
-            except Exception as exc:
-                print(f"WARNING: rescue teleport raised: {exc!r}")
-            stop.set()
-            loop.join(timeout=20.0)
-            stuck = loop.is_alive()
-            self.stop_motion()
-            self.reopen_hub_session()
+                if before_rescue is not None and t0 is not None:
+                    before_rescue(samples, t0)
+            finally:  # a raising callback never skips the rescue or the stop
+                t_rescue = time.monotonic()
+                exited_early = not loop.is_alive()
+                try:
+                    self.rcon.teleport(self.username, self.shore)  # rescue BEFORE the loop drains
+                except Exception as exc:
+                    print(f"WARNING: rescue teleport raised: {exc!r}")
+                stop.set()
+                loop.join(timeout=20.0)
+                stuck = loop.is_alive()
+                self.stop_motion()
+                self.reopen_hub_session()
         if stuck:
             raise Refusal(f"{label}: loop thread did not stop")
         succeeded = list(getattr(self.aut.executor, "_tools_succeeded", []) or [])[actions0:]
@@ -929,9 +952,10 @@ class WaterTrial:
             "t0": t0,
             "t_rescue": t_rescue,
             "us_events": self.pain_between(t0, t_rescue),
+            "loop_exited_early": exited_early,
         }
 
-    def placement(self, label: str, *, window_label: str | None = None) -> dict[str, Any]:
+    def placement(self, label: str, *, window_label: str | None = None, before_rescue: Any = None) -> dict[str, Any]:
         """One US-free placement on the pool floor with the full loop live — Exp 60's DV unit.
         Rescues before and after; classifies from bridge truth; marks DIRTY on any US or damage."""
         self.rescue(label)
@@ -948,8 +972,13 @@ class WaterTrial:
             return seen["water"]  # first head-in-air read after being submerged
 
         win = self.loop_window(
-            self.probe_cap_s, enter=lambda: self.submerge(label), on_sample=_until, label=window_label or label
+            self.probe_cap_s,
+            enter=lambda: self.submerge(label),
+            on_sample=_until,
+            label=window_label or label,
+            before_rescue=before_rescue,
         )
+        self.last_window = win
         arrival_health = self.rescue(f"{label}-after")
         cls = classify_placement(win["samples"], cap_s=self.probe_cap_s)
         cls["actions"] = win["actions"]
@@ -976,18 +1005,26 @@ class WaterTrial:
         if self.deaths() - self.deaths0 > self.frozen["death_cap"]:
             raise Refusal(f"death cap exceeded ({self.deaths() - self.deaths0})")
 
-    def probe(self, label: str) -> dict[str, Any]:
-        """Exp 60's probe: P placements + a shore free-roam window (activity control)."""
+    def probe(
+        self, label: str, *, before_rescue: Any = None, roam_enter: Any = None, roam_before_rescue: Any = None
+    ) -> dict[str, Any]:
+        """Exp 60's probe: P placements + a shore free-roam window (activity control). The keyword hooks
+        (B1; default None) let a subclass arm a policy per placement and for the roam."""
         placements = []
         for i in range(self.frozen["placements_per_probe"]):
-            placements.append(self.placement(f"{label}-placement-{i}", window_label=label))
+            placements.append(self.placement(f"{label}-placement-{i}", window_label=label, before_rescue=before_rescue))
             self.check_death_cap()
         # Shore free-roam: activity control + P(enter water) secondary (structurally near 0 v 0 —
         # no drive fires on the shore; it re-tests specificity, recorded not gated)
         self.rescue(f"{label}-roam")
         roam = self.loop_window(
-            self.frozen["shore_roam_s"], enter=time.monotonic, on_sample=lambda s: s["in_water"], label=f"{label}-roam"
+            self.frozen["shore_roam_s"],
+            enter=roam_enter or time.monotonic,
+            on_sample=lambda s: s["in_water"],
+            label=f"{label}-roam",
+            before_rescue=roam_before_rescue,
         )
+        self.last_roam = roam
         self.rescue(f"{label}-roam-end")
         return {
             "placements": placements,

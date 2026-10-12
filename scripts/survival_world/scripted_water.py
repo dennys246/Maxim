@@ -125,6 +125,7 @@ class ScriptedWaterBridge:
         respawn_saturation: float = 5.0,
         respawn_lag_s: float | None = None,
         clock: StepClock | None = None,
+        escape_blocks: bool = False,
     ) -> None:
         """``damage_onset_s`` (default None = no damage, the Exp 60/61 smoke) turns on a SCRIPTED
         DROWNING: submerged past that many seconds the bot loses ``damage_per_s`` health per second
@@ -135,8 +136,14 @@ class ScriptedWaterBridge:
         ``clock`` (default None = wall time, unchanged) runs the scripted world on a
         :class:`StepClock` the harness advances (#951): drain, damage, death, respawn lag and the
         escape delay all read it, and each snapshot carries ``_scripted_t``, the world time it
-        shows (a test asserts the harness read a stepped world)."""
+        shows (a test asserts the harness read a stepped world).
+
+        ``escape_blocks`` (default False = the reply comes at once and the head clears ``escape_delay_s`` later,
+        unchanged) makes ``escape_water`` reply only after the head has cleared, as the live bridge does (it holds
+        `jump` until the head block is air, then a 600 ms hold): the loop is blocked for the rise, so B1's harness
+        reads the surfacing while the escape is still the pending pick it credits. Wall-time mode only."""
         self._clock = clock
+        self._escape_blocks = escape_blocks
         self._now = clock.now if clock is not None else time.monotonic
         self._surface_at: float | None = None  # lockstep mode: the escape lands at this world time
         self.shore = dict(shore)
@@ -296,6 +303,9 @@ class ScriptedWaterBridge:
                 time.sleep(self._escape_delay)
                 self.set_anchor(self.shore)
 
+            if self._escape_blocks:
+                _surface()
+                return True, "surfaced"
             threading.Thread(target=_surface, daemon=True).start()
             return True, "surfaced"
         if name == "flee":
@@ -374,6 +384,11 @@ class ScriptedWaterControl:
             }
         )
         self.commands: list[str] = []
+        # B1: `execute if block` commands that answer "Test failed" (every other block check passes), the server's
+        # `tick query` reply, and the bread count `clear <player> minecraft:bread 0` reports
+        self.failing_blocks: set[str] = set()
+        self.tick_query = "The game is running normally\nTarget tick rate: 20.0 per second.\nAverage time per tick: 3.1ms (Target: 50.0ms)"
+        self.bread = 64
 
     def teleport(self, bot_name: str, pos: dict[str, float]) -> None:
         # logged like the real client's `tp` (which goes through `command`), so a test can assert ORDER
@@ -406,6 +421,16 @@ class ScriptedWaterControl:
             return f"Teleported {parts[1]}"
         if parts and parts[0] == "execute" and "minecraft:air" in cmd:
             return "Test passed" if srv.surface_air else "Test failed"
+        if parts[:3] == ["execute", "if", "block"]:
+            return "Test failed" if cmd in self.failing_blocks else "Test passed"
+        if parts[:2] == ["tick", "query"]:
+            return self.tick_query
+        if parts and parts[0] == "clear" and len(parts) >= 4 and parts[3] == "0":
+            return (
+                f"Found {self.bread} matching item(s) on player {parts[1]}"
+                if self.bread
+                else f"No items were found on player {parts[1]}"
+            )
         if parts and parts[:3] == ["data", "get", "entity"] and len(parts) >= 5:
             field = parts[4]
             vals = {"foodLevel": "20", "foodSaturationLevel": f"{srv._sat_true:.1f}f", "foodExhaustionLevel": "0.0f"}
