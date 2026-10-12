@@ -1,7 +1,7 @@
 """#1221 item 1: the planner's tool-success-rate chain is Dormant, and it no longer swallows a call into nothing.
 
 ``plan_manager`` called ``svc.statistician.get_tool_success_rate(...)``; ``StatisticianAgent`` never had that
-method, so every call raised ``AttributeError`` into an ``except Exception: pass`` and ``PhaseContext.
+method, so every call raised ``AttributeError`` into an ``except Exception: pass`` and ``ReplanContext.
 tool_success_rates`` was always empty. Nothing renders that field, and ``PlanHistoryBridge.get_tool_success_rate``
 (which counted links, not observations) has no caller. Owner decision 2026-10-12: mark the chain Dormant and stop
 the swallow, rather than wire a new planning signal or delete a persisted field.

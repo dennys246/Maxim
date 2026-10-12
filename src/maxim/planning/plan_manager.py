@@ -96,6 +96,7 @@ class PlanServices:
     nac: Any = None  # NAc
     hippocampus: Any = None  # Hippocampus
     plan_history: Any = None  # PlanHistoryBridge
+    # Dormant since 2026-10-12 (#1221): wired by MaximAgent, read by nothing.
     statistician: Any = None  # StatisticianAgent
 
 
@@ -562,7 +563,7 @@ class PlanManager:
             time_elapsed=time.time() - plan.created_at,
             similar_past_failures=similar_past_failures,
             alternative_approaches=alternative_approaches,
-            tool_success_rates={},  # Dormant since 2026-10-12 (#1221): see PhaseContext.tool_success_rates
+            tool_success_rates={},  # Dormant since 2026-10-12 (#1221): see ReplanContext.tool_success_rates
             pattern_warnings=[],
             coding_context=coding_context,
             prior_attempt_actions=prior_attempt_actions,
