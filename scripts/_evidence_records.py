@@ -628,25 +628,43 @@ def select_scope(scope, rows: list[dict]) -> list[dict] | None:
     ]
 
 
-def judge_verdict(rec: dict, j: Judgement, ctx: Ctx) -> None:
-    j.record = rec
+def verdict_data_path_problem(rec: dict, retired) -> str | None:
+    """Why a verdict's ``data`` is not a usable path (None = it is): under the data root with no ``..``, and not retired
+    by a redaction. Shared by the gate (``judge_verdict``) and the BF2 obligation lint, so the two cannot drift."""
     data_rel = rec.get("data")
     if not isinstance(data_rel, str) or not data_rel.startswith(DATA_ROOT + "/") or ".." in data_rel.split("/"):
-        j.fail(f"verdict data {data_rel!r} is not a path under {DATA_ROOT}/")
+        return f"verdict data {data_rel!r} is not a path under {DATA_ROOT}/"
+    if hit := retired_by(retired, data_rel):
+        return f"verdict data {data_rel} is retired by redaction {hit[1]!r} ({hit[0]}): it supports nothing"
+    return None
+
+
+def verdict_data_bytes(rec: dict, repo: Repo, ref: str) -> tuple[bytes | None, str | None]:
+    """The verdict's bound data bytes at ``ref`` (raw blob), or why not: tracked, not a symlink, and sha256 of the raw
+    blob equal to ``data_sha256``. Call after :func:`verdict_data_path_problem`. Shared like it."""
+    data_rel = rec["data"]
+    entry = repo.tree(ref).get(data_rel)
+    if entry is None or entry[0] == "120000":
+        return None, f"verdict data {data_rel} is not a tracked file (or is a symlink)"
+    data = repo.blob(ref, data_rel) or b""
+    if sha256(data) != rec.get("data_sha256"):
+        return None, f"verdict data {data_rel}: sha256 differs from data_sha256"
+    return data, None
+
+
+def judge_verdict(rec: dict, j: Judgement, ctx: Ctx) -> None:
+    j.record = rec
+    problem = verdict_data_path_problem(rec, ctx.retired)
+    if problem is not None:
+        j.fail(problem)
         return
-    if hit := retired_by(ctx.retired, data_rel):
-        j.fail(f"verdict data {data_rel} is retired by redaction {hit[1]!r} ({hit[0]}): it supports nothing")
-        return
+    data_rel = rec["data"]
     j.data_prereg = ctx.prereg_status(data_rel)
     if j.data_prereg not in PREREG_OK:
         j.fail(f"verdict data {data_rel}: prereg status {j.data_prereg}")
-    entry = ctx.repo.tree(ctx.ref).get(data_rel)
-    if entry is None or entry[0] == "120000":
-        j.fail(f"verdict data {data_rel} is not a tracked file (or is a symlink)")
-        return
-    data = ctx.repo.blob(ctx.ref, data_rel) or b""
-    if sha256(data) != rec.get("data_sha256"):
-        j.fail(f"verdict data {data_rel}: sha256 differs from data_sha256")
+    data, problem = verdict_data_bytes(rec, ctx.repo, ctx.ref)
+    if data is None:
+        j.fail(problem or f"verdict data {data_rel} could not be read")
         return
     rows = json_lines(decompressed(data_rel, data))
     scoped = select_scope(rec.get("scope"), rows)
@@ -697,6 +715,7 @@ COMPLETE_RULES = {
     "exp60_verdict": "seeds_per_run_arm",
     "exp61_verdict": "campaign_pairs",
     "exp62_verdict": "campaign_seeds",
+    "b1_verdict": "b1_campaign",
 }
 
 
@@ -926,11 +945,80 @@ def _exp53_run_pinned(rid: str, lines: list[dict], rows: list[dict], counted: se
             return
 
 
+B1_MAX_ATTEMPTS = 2  # prereg rule 6: one mechanical rerun for an instrument cause (pinned to b1_floor_run.FROZEN)
+B1_REFUSAL_CAUSES = (None, "instrument", "behavioural", "unrecorded")  # pinned to b1_floor_run.REFUSAL_CAUSES
+_b1_base = _campaign_rule("seed", "row", frozenset({"row", "session", "attempt_start"}), frozenset({"session"}))
+
+
+def b1_campaign(rec, rows, scoped, counted, spec, j: Judgement, ctx: Ctx) -> None:
+    """B1 (docs/plans/baseline_floors_b1_evidence.md §2): the campaign rule, plus the rerun discipline and the run
+    structure, re-derived from the bound bytes. Items: (1) kinds tied to record kinds, one session header;
+    (2) the header coherent with the rows; (3) well-formed row fields; (4) attempts 1..n per key, n <= MAX;
+    (5) every non-final attempt refused for an instrument cause; (6) starts 1..m per key, each with exactly one row."""
+    before = len(j.reasons)
+    _b1_base(rec, rows, scoped, counted, spec, j, ctx)
+    if len(j.reasons) > before:
+        return
+    want_record = {"session": "harness_header", "attempt_start": "harness_header", "row": "harness_row"}
+    sessions, starts, keyed = [], [], []
+    for i, r in enumerate(rows, 1):
+        kind = str_field(r, "kind")
+        if kind_of(r) != want_record.get(kind or ""):
+            j.fail(
+                f"complete-run: row {i} kind {kind!r} is stamped {kind_of(r)!r}, not {want_record.get(kind or '')!r}"
+            )
+            return
+        (sessions if kind == "session" else starts if kind == "attempt_start" else keyed).append(r)
+    if len(sessions) != 1:
+        j.fail(f"complete-run: the campaign has {len(sessions)} session headers (exactly one)")
+        return
+    session = sessions[0]
+    run_ids = session.get("run_ids")
+    if not isinstance(run_ids, dict) or set(run_ids) != set(spec["sets"]) or session.get("diagnostic") is not False:
+        j.fail("complete-run: the session header's run_ids are not the frozen arms, or it is a diagnostic campaign")
+        return
+    attempts: dict[tuple, list[dict]] = {}
+    for i, r in enumerate(keyed, 1):
+        att, cause = r.get("attempt"), r.get("refusal_cause")
+        if type(att) is not int or cause not in B1_REFUSAL_CAUSES or (r.get("refusal") is None) != (cause is None):
+            j.fail(
+                f"complete-run: a row's attempt / refusal / refusal_cause is malformed ({r.get('arm')}/{r.get('seed')})"
+            )
+            return
+        if r.get("run_id") != run_ids.get(r.get("arm")):
+            j.fail(f"complete-run: a {r.get('arm')!r} row's run_id is not the session header's for its arm")
+            return
+        attempts.setdefault((r["arm"], r["seed"]), []).append(r)
+    for key, group in attempts.items():
+        group.sort(key=lambda r: r["attempt"])
+        if [r["attempt"] for r in group] != list(range(1, len(group) + 1)) or len(group) > B1_MAX_ATTEMPTS:
+            j.fail(f"complete-run: {key[0]}/{key[1]} attempts are not 1..n with n <= {B1_MAX_ATTEMPTS}")
+            return
+        if any(r.get("refusal") is None or r.get("refusal_cause") != "instrument" for r in group[:-1]):
+            j.fail(f"complete-run: {key[0]}/{key[1]} was rerun after a clean row or a non-instrument refusal")
+            return
+    start_keys: dict[tuple, int] = {}
+    for s in starts:
+        att = s.get("attempt")
+        if type(att) is not int:
+            j.fail("complete-run: an attempt_start's attempt is not an int")
+            return
+        if s.get("run_id") != run_ids.get(s.get("arm")):
+            j.fail(f"complete-run: a {s.get('arm')!r} attempt_start's run_id is not the session header's for its arm")
+            return
+        k = (s.get("arm"), s.get("seed"), att)
+        start_keys[k] = start_keys.get(k, 0) + 1
+    row_keys = {(r["arm"], r["seed"], r["attempt"]) for r in keyed}  # unique: attempts are 1..n per key (item 4)
+    if any(n != 1 for n in start_keys.values()) or set(start_keys) != row_keys:
+        j.fail("complete-run: every attempt_start needs exactly one row and every row its attempt_start")
+
+
 RULES = {
     "exp53_runs": exp53_runs,
     "seeds_per_run_arm": seeds_per_run_arm,
     "campaign_pairs": campaign_pairs,
     "campaign_seeds": campaign_seeds,
+    "b1_campaign": b1_campaign,
 }
 
 

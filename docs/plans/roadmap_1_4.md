@@ -177,7 +177,9 @@ row now carries `node_gate.read_margin` beside the node id.
   imports nothing from `exp61_run.py`, `exp61_run.py` nothing from `exp60_run.py` except `FROZEN` /
   record paths; (iii) no public name that did not exist in one of the three harnesses (a NEW name is a
   design and needs its own reason); (iv) the Exp 60/61 unit tests and the R3 offline campaign test
-  (`slow` lane) pass unchanged; (v) net `scripts/` LOC negative. **The first NEW consumer is
+  (`slow` lane) pass unchanged; (v) net `scripts/` LOC negative. *B1 (2026-10-11):* `scripts/survival_world/b1_floor_run.py` is a fourth
+  copy the extraction absorbs (its campaign file, `attempt_start` headers and resume rule are frozen by the
+  `b1_campaign` evidence rule), and once its rows are committed, `b1_floor_run verdict` over them joins check (i). **The first NEW consumer is
   `exp62_run.py`** — a fourth copy is the D43 test of whether the seam is real.
 - **(4) Primitive motor verbs on the real bridge.** `recommend_action` returns `"params": {}` for
   every substrate proposal, and `build_tool_signature` keys `tool:<name>` only — a parameterized
@@ -839,6 +841,10 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   design reviews and each rung's harness builds them. Its first rig work is the Exp 60 floor (B1, no LLM;
   its seam is a design-review decision); the bare loop (B2) waits for the `start_simulation_mode`
   decomposition, so no new LLM-path claim can be EARNED before it. Not Phase 0 item 2 (that item adds no public names) and not a benchmark framework (below).
+  *B1 status (2026-10-11):* the hook and the harness merged (#1236, #1238); the `b1_verdict` evidence entry, its
+  `b1_campaign` rule and the BF2 obligation lint for T1-13 land next
+  ([baseline_floors_b1_evidence.md](baseline_floors_b1_evidence.md)); the prereg freezes after the seed 99 rig
+  diagnostic, then the run.
 
 ## What is NOT in 1.4
 
