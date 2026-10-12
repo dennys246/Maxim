@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -121,6 +122,10 @@ class ATL(StoreFileOwnership, MemoryLayer):
 
         # Stats
         self._stats: dict[str, int] = {"concepts_stored": 0, "queries": 0}
+        # Guards every read and write of ``_stats`` (#1217): ``recall`` counts under the SHARED read lock, so the
+        # RWLock alone cannot serialize two recalls' increments or a copy against them. A leaf lock: nothing is
+        # called while holding it.
+        self._stats_lock = threading.Lock()
         self._compressed_count: int = 0
 
     # ------------------------------------------------------------------
@@ -169,7 +174,8 @@ class ATL(StoreFileOwnership, MemoryLayer):
             # Add graph node
             self._graph.add_node(record.id, record.id)
 
-            self._stats["concepts_stored"] += 1
+            with self._stats_lock:
+                self._stats["concepts_stored"] += 1
 
         # Fire callbacks outside lock
         for cb in self._on_concept_captured:
@@ -250,7 +256,8 @@ class ATL(StoreFileOwnership, MemoryLayer):
         property_key, property_value, include_compressed,
         substrate_modality.
         """
-        self._stats["queries"] = self._stats.get("queries", 0) + 1
+        with self._stats_lock:
+            self._stats["queries"] = self._stats.get("queries", 0) + 1
 
         name = filters.get("name")
         category = filters.get("category")
@@ -348,7 +355,7 @@ class ATL(StoreFileOwnership, MemoryLayer):
                 "concepts": {cid: c.to_dict() for cid, c in self._concepts.items()},
                 "graph": self._graph.to_dict(),
                 "registry": self._semantics.registry.to_dict(),
-                "stats": dict(self._stats),
+                "stats": self._stats_copy(),
                 "compressed_count": self._compressed_count,
             }
 
@@ -389,7 +396,9 @@ class ATL(StoreFileOwnership, MemoryLayer):
             if reg_data:
                 self._semantics._registry = RelationshipRegistry.from_dict(reg_data)
 
-            self._stats = state.get("stats", {"concepts_stored": 0, "queries": 0})
+            with self._stats_lock:
+                # A copy over the defaults: a caller never holds the live dict, and a missing key cannot raise (#1217).
+                self._stats = {"concepts_stored": 0, "queries": 0, **(state.get("stats") or {})}
             self._compressed_count = state.get("compressed_count", self._compressed_count)
 
     def save(self, path: str | None = None, *, overwrite: bool = False) -> None:
@@ -520,10 +529,15 @@ class ATL(StoreFileOwnership, MemoryLayer):
     ) -> None:
         self._on_concept_deleted.append(callback)
 
+    def _stats_copy(self) -> dict[str, int]:
+        """A point-in-time copy of the counters, taken under ``_stats_lock`` (#1217)."""
+        with self._stats_lock:
+            return dict(self._stats)
+
     def stats(self) -> dict[str, Any]:
         with self._rwlock.read():
             return {
-                **self._stats,
+                **self._stats_copy(),
                 "total_concepts": len(self._concepts),
                 "compressed_count": self._compressed_count,
                 "full_count": len(self._concepts) - self._compressed_count,
