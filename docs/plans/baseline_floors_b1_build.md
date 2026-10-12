@@ -100,7 +100,21 @@
 - The rig check waits (≤ 10 min) for a quiet rig before an attempt, so rule 11 never spends an attempt; transport
   faults (`OSError`) are recorded instrument refusals; programming errors crash (resume with `--resume`).
 
-### PR-C — freeze + evidence (docs + the pass table; merges with or after PR-B)
+### PR-C as built (2026-10-11): the evidence half; the freeze is its own step
+
+Design: [baseline_floors_b1_evidence.md](baseline_floors_b1_evidence.md) (five adversarial rounds, owner decisions
+D1–D2). Built:
+- the `b1_verdict` pass-table entry (PARTIAL at scope `narrow` from a floor-matched verdict only);
+- the `b1_campaign` complete-run rule (`scripts/_evidence_records.py`), on top of `_campaign_rule`;
+- the BF2 obligation lint (`scripts/lint_bf2_obligation.py`, in the CI lint job), sharing the gate's verdict-data
+  binding helpers and a `build_ctx` extracted from `lint_evidence_gate.gate()`;
+- the harness's `attempt_start` headers and resume closing rows (`unrecorded`, never rerun);
+- the pin test, and backlog rows M48–M50.
+
+**The prereg freeze is a separate, later PR:** it follows the seed 99 rig diagnostic, so anything the diagnostic finds
+changes the rules before they freeze, not by amendment.
+
+### PR-C — freeze + evidence (the original plan; superseded by the section above)
 
 - **Complete-run rule (decide with the approach note).** A new `_campaign_rule("seed", "row", allowed={"row",
   "session"}, required={"session"})` instance fits the data. Open: (a) its frozen sets name all five arms × 11–18
