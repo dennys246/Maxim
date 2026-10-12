@@ -199,6 +199,7 @@ class Observer:
         ``current_phase`` is NOW in the SCN's own frame: the circadian, weekly, week-of-month and annual bins every
         memory is indexed under (``TemporalSignature.now().to_bins()``); ``signatures`` is how many memories the SCN
         indexes, and ``phase_coherence`` the oscillator network's synchrony (``None`` while the oscillator is off).
+        ``current_phase`` is wall-clock, so ``full_analysis`` (and the reports built from it) differ across runs.
         """
         hub = self._memory_hub
         if hub is None or not hasattr(hub, "scn") or hub.scn is None:
@@ -207,11 +208,12 @@ class Observer:
             from maxim.time.temporal_signature import TemporalSignature
 
             hour, day, week, month = TemporalSignature.now().to_bins()
+            stats = hub.scn.stats()  # one locked snapshot for both values
             return {
                 "available": True,
                 "current_phase": {"hour_bin": hour, "day_bin": day, "week_of_month_bin": week, "month_bin": month},
-                "signatures": hub.scn.stats().get("total_signatures", 0),
-                "phase_coherence": hub.scn.phase_coherence(),
+                "signatures": stats.get("total_signatures", 0),
+                "phase_coherence": stats.get("oscillator_coherence"),
             }
         except Exception:
             log_swallowed_exception()  # an observer query never fails the caller, but the failure is reported

@@ -10,13 +10,19 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 
 from maxim.simulation.introspection import Observer
 from maxim.time.scn import SCN
 from maxim.time.temporal_signature import TemporalSignature
 
 
-def test_temporal_patterns_reports_the_real_scns_phase() -> None:
+def test_temporal_patterns_reports_the_real_scns_phase(monkeypatch: pytest.MonkeyPatch) -> None:
+    import time
+
+    frozen = time.time()
+    monkeypatch.setattr(time, "time", lambda: frozen)  # one instant for both reads: no hour-boundary flake
     scn = SCN()
     scn.register("m1", TemporalSignature.now())
     out = Observer(memory_hub=SimpleNamespace(scn=scn)).temporal_patterns()

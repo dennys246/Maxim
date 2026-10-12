@@ -227,7 +227,7 @@ class TestObserver:
         intro = self._make_introspector()
         result = intro.temporal_patterns()
         assert result["available"] is True
-        assert "current_phase" in result
+        assert "error" not in result and "current_phase" in result
 
     def test_dispatch_routes_correctly(self):
         intro = self._make_introspector()
