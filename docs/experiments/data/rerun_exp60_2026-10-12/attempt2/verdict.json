@@ -1,0 +1,134 @@
+{
+  "_format_version": "1.0",
+  "record_kind": "verdict",
+  "kind": "exp60_verdict",
+  "gates": {
+    "seeds_per_arm": 5,
+    "fear_post_p_surface_min": 0.5,
+    "ablated_post_p_surface_max": 0.2,
+    "fear_post_minus_pre_min": 0.0,
+    "permutation_alpha": 0.05,
+    "specificity_ratio": 0.2
+  },
+  "per_seed": {
+    "fear": [
+      {
+        "seed": 11,
+        "pre_p_surface": 0.0,
+        "post_p_surface": 1.0,
+        "water_fear": -1.0,
+        "shore_fear": 0.0
+      },
+      {
+        "seed": 12,
+        "pre_p_surface": 0.0,
+        "post_p_surface": 1.0,
+        "water_fear": -1.0,
+        "shore_fear": 0.0
+      },
+      {
+        "seed": 13,
+        "pre_p_surface": 0.0,
+        "post_p_surface": 1.0,
+        "water_fear": -1.0,
+        "shore_fear": 0.0
+      },
+      {
+        "seed": 14,
+        "pre_p_surface": 0.0,
+        "post_p_surface": 1.0,
+        "water_fear": -1.0,
+        "shore_fear": 0.0
+      },
+      {
+        "seed": 15,
+        "pre_p_surface": 0.0,
+        "post_p_surface": 1.0,
+        "water_fear": -1.0,
+        "shore_fear": 0.0
+      }
+    ],
+    "ablated": [
+      {
+        "seed": 11,
+        "pre_p_surface": 0.0,
+        "post_p_surface": 0.0,
+        "water_fear": 0.0,
+        "shore_fear": 0.0
+      },
+      {
+        "seed": 12,
+        "pre_p_surface": 0.0,
+        "post_p_surface": 0.0,
+        "water_fear": 0.0,
+        "shore_fear": 0.0
+      },
+      {
+        "seed": 13,
+        "pre_p_surface": 0.0,
+        "post_p_surface": 0.0,
+        "water_fear": 0.0,
+        "shore_fear": 0.0
+      },
+      {
+        "seed": 14,
+        "pre_p_surface": 0.0,
+        "post_p_surface": 0.0,
+        "water_fear": 0.0,
+        "shore_fear": 0.0
+      },
+      {
+        "seed": 15,
+        "pre_p_surface": 0.0,
+        "post_p_surface": 0.0,
+        "water_fear": 0.0,
+        "shore_fear": 0.0
+      }
+    ]
+  },
+  "refused": [],
+  "n_clean": {
+    "fear": 5,
+    "ablated": 5
+  },
+  "apparatus_records": [
+    {
+      "path": "docs/experiments/data/rerun_exp60_2026-10-12/water_apparatus_2.json",
+      "sha256": "8a35905002776088a2f0fdd0024521e55ddf4cba85366fc56ef4aceed94c8206",
+      "ts": 1791774047.272597
+    }
+  ],
+  "fear_post_median": 1.0,
+  "fear_pre_median": 0.0,
+  "ablated_post_median": 0.0,
+  "permutation": {
+    "observed_diff": 1.0,
+    "p_one_sided": 0.003968253968253968,
+    "relabellings": 252
+  },
+  "checks": {
+    "fear_post_median_ge_min": true,
+    "ablated_post_median_le_max": true,
+    "fear_post_gt_pre_every_seed": true,
+    "permutation_p_lt_alpha": true,
+    "fear_specificity_every_seed": true
+  },
+  "verdict": "EARNED",
+  "run_ids": null,
+  "data": "docs/experiments/data/rerun_exp60_2026-10-12/attempt2/trials.jsonl",
+  "data_sha256": "f25d09d5ca0e0492fa252d285a79b7455a4e472568944a6c7fa699c55a5d5d21",
+  "scope": {
+    "all_rows": true
+  },
+  "mock": false,
+  "provenance": {
+    "executed_maxim_file": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "13c2c33281e00108baf941b33716c188788f2ca8",
+    "harness_run_id": "41bb483a0c724dd19c4714e10df7e285",
+    "harness_family": "in_process",
+    "working_tree_dirty_src_scripts": false,
+    "code_tree_sha256": "0bbb257932829b1be0428bca53cb437a4e355c2fcb22d0b607c8cd972e627444",
+    "python": "/Users/dennys/RMSrv/scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/src"
+  }
+}
