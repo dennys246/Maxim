@@ -10,14 +10,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import pytest
 
 from maxim.simulation.introspection import Observer
 from maxim.time.scn import SCN
 from maxim.time.temporal_signature import TemporalSignature
 
 
-@pytest.mark.xfail(strict=True, reason="#1239: temporal_patterns calls SCN.current_phase(), which does not exist")
 def test_temporal_patterns_reports_the_real_scns_phase() -> None:
     scn = SCN()
     scn.register("m1", TemporalSignature.now())

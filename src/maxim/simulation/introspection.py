@@ -15,6 +15,7 @@ import logging
 from typing import Any
 
 from maxim.memory.types import record_active_goal, record_success
+from maxim.utils.logging import log_swallowed_exception
 
 logger = logging.getLogger(__name__)
 
@@ -193,17 +194,27 @@ class Observer:
         }
 
     def temporal_patterns(self) -> dict:
-        """Query SCN temporal rhythm state."""
+        """Query SCN temporal rhythm state (#1239: through methods the SCN actually has).
+
+        ``current_phase`` is NOW in the SCN's own frame: the circadian, weekly, week-of-month and annual bins every
+        memory is indexed under (``TemporalSignature.now().to_bins()``); ``signatures`` is how many memories the SCN
+        indexes, and ``phase_coherence`` the oscillator network's synchrony (``None`` while the oscillator is off).
+        """
         hub = self._memory_hub
         if hub is None or not hasattr(hub, "scn") or hub.scn is None:
             return {"available": False, "reason": "SCN not wired"}
         try:
-            current = hub.scn.current_phase()
+            from maxim.time.temporal_signature import TemporalSignature
+
+            hour, day, week, month = TemporalSignature.now().to_bins()
             return {
                 "available": True,
-                "current_phase": current if isinstance(current, dict) else str(current),
+                "current_phase": {"hour_bin": hour, "day_bin": day, "week_of_month_bin": week, "month_bin": month},
+                "signatures": hub.scn.stats().get("total_signatures", 0),
+                "phase_coherence": hub.scn.phase_coherence(),
             }
         except Exception:
+            log_swallowed_exception()  # an observer query never fails the caller, but the failure is reported
             return {"available": True, "error": "SCN query failed"}
 
     def pain_stats(self) -> dict:

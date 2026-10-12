@@ -108,16 +108,14 @@ class FakeEC:
         return 5
 
 
-class FakeSCN:
-    def current_phase(self):
-        return {"phase": "active", "cycle_position": 0.5}
-
-
 class FakeMemoryHub:
     def __init__(self):
         self.atl = FakeATL()
         self.ec = FakeEC()
-        self.scn = FakeSCN()
+        # A REAL SCN (#1239): a fake that defined ``current_phase`` hid that the real SCN never had it.
+        from maxim.time.scn import SCN
+
+        self.scn = SCN()
 
 
 class FakeEnergyRegistry:

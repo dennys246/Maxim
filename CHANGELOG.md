@@ -340,6 +340,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The Observer's `temporal_patterns` reports the SCN's phase instead of always failing (#1239).** It called
+  `SCN.current_phase()`, a method the SCN never had, and a blanket `except` turned the `AttributeError` into
+  `{"error": "SCN query failed"}` on every call (`session.observe("temporal")`, the sim's `temporal` query); its unit
+  test passed only because its fake SCN defined the method. It now returns `current_phase` as NOW in the SCN's own
+  frame (the hour, day, week-of-month and month bins memories are indexed under), the indexed `signatures` count and
+  the oscillator's `phase_coherence` (`None` while it is off), and a failure is reported through
+  `log_swallowed_exception`. The test uses a real SCN.
 - **The SCN no longer crashes when the capture worker registers while sleep or save reads it (#1217).**
   `time/scn.py::SCN` held its bins and signatures with no lock. `register` runs on the Hippocampus capture worker
   (`MemoryHub._on_memory_captured_scn`, after the store's write lock is released) while sleep (`get_all_clusters`,
