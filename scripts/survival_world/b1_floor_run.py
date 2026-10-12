@@ -15,9 +15,11 @@ A floor policy reaches the loop through the ``SubstratePolicy`` hook (``WaterTri
 otherwise (loop liveness and the shore warm-up run disarmed). Every placement and episode ends with ``end_episode``
 in the frozen order (disarm → ``end_episode`` → RCON rescue → loop stop → bridge ``stop``).
 
-Data: one CAMPAIGN per file (``campaign_id``, the session), a ``session`` row first, then one ``row`` per arm-seed
-attempt, each with its arm's own ``run_id``. An instrument-cause refusal reruns that arm-seed once (rule 6), so a
-key can carry a refused row and a clean one; the verdict refuses anything else. Data names are ``b1_*`` only.
+Data: one CAMPAIGN per file (``campaign_id``, the session), a ``session`` row first, then per arm-seed attempt an
+``attempt_start`` header followed by one ``row``, each with its arm's own ``run_id``. A start left without a row (the
+process died mid-attempt) is closed on ``--resume`` by an ``unrecorded`` row, never rerun. An instrument-cause
+refusal reruns that arm-seed once (rule 6), so a key can carry a refused row and a clean one; the verdict refuses
+anything else. Data names are ``b1_*`` only.
 
     export PYTHONPATH="$PWD/src"
     python scripts/survival_world/b1_floor_run.py run --apparatus-record docs/experiments/data/<check>.json \\
@@ -135,6 +137,11 @@ GATES: dict[str, Any] = {
     "family_alpha": 0.05,  # H1 + H2, Holm-corrected
 }
 VERDICTS = ("FLOOR_MATCHED_CHANCE", "FLOOR_MATCHED_Q", "FLOORS_BEATEN", "INCOMPLETE")
+# A row's ``refusal_cause`` (None = clean). Only "instrument" is ever rerun (rule 6); "unrecorded" closes an attempt
+# that started but wrote no row (the process ended mid-attempt; owner decision D2: consumed, never rerun). Pinned to
+# the evidence gate's ``b1_campaign`` rule.
+REFUSAL_CAUSES = (None, "instrument", "behavioural", "unrecorded")
+UNRECORDED_REFUSAL = "unrecorded: the attempt started but wrote no row (the process ended mid-attempt)"
 
 
 class BehaviouralRefusal(Refusal):
@@ -223,22 +230,83 @@ def rig_problems(
     return problems
 
 
+def key_done(row: Mapping[str, Any], attempt: int) -> bool:
+    """Whether a key is finished after ``row``, its attempt number ``attempt`` (pure; the one rule ``attempts_done``,
+    ``_after_attempt`` and ``compute_verdict`` share): a clean row, any cause other than "instrument" ("behavioural"
+    and "unrecorded" are final), or ``max_attempts`` attempts."""
+    return row.get("refusal") is None or row.get("refusal_cause") != "instrument" or attempt >= FROZEN["max_attempts"]
+
+
 def attempts_done(rows: list[dict[str, Any]]) -> dict[tuple[str, int], dict[str, Any]]:
-    """Per (arm, seed): the attempts recorded and whether another is owed (resume; pure). A key is DONE when it has
-    a clean row, a behavioural refusal, or ``max_attempts`` attempts."""
-    out: dict[tuple[str, int], dict[str, Any]] = {}
+    """Per (arm, seed): the attempts recorded and whether another is owed (resume; pure). Rows are read in attempt
+    order (never file order); a key is DONE once any of its rows satisfies :func:`key_done`."""
+    by_key: dict[tuple[str, int], list[dict[str, Any]]] = {}
     for r in rows:
-        if r.get("kind") != "row":
-            continue
-        key = (r["arm"], r["seed"])
-        entry = out.setdefault(key, {"attempts": 0, "done": False})
-        entry["attempts"] += 1
-        if (
-            r.get("refusal") is None
-            or r.get("refusal_cause") != "instrument"
-            or entry["attempts"] >= FROZEN["max_attempts"]
-        ):
-            entry["done"] = True
+        if r.get("kind") == "row":
+            by_key.setdefault((r["arm"], r["seed"]), []).append(r)
+    out: dict[tuple[str, int], dict[str, Any]] = {}
+    for key, attempts in by_key.items():
+        attempts = sorted(attempts, key=lambda r: r.get("attempt", 1))
+        out[key] = {
+            "attempts": len(attempts),
+            "done": any(key_done(r, i) for i, r in enumerate(attempts, 1)),
+        }
+    return out
+
+
+def _attempt_key(r: Mapping[str, Any]) -> tuple[Any, Any, Any]:
+    return (r.get("arm"), r.get("seed"), r.get("attempt"))
+
+
+def attempt_start_record(
+    campaign_id: str, run_id: str, arm: str, seed: int, attempt: int, *, provenance: dict[str, Any]
+) -> dict[str, Any]:
+    """The header line written before every arm-seed attempt (rule item 6 of the ``b1_campaign`` gate rule). The gate
+    judges every header's provenance, so ``provenance`` is a REQUIRED keyword: a start without it would make the whole
+    campaign file unestablishable (the PR-C review's blocker), and forgetting it is now a TypeError."""
+    return {
+        "kind": "attempt_start",
+        "ts": time.time(),
+        "campaign_id": campaign_id,
+        "run_id": run_id,
+        "arm": arm,
+        "seed": seed,
+        "attempt": attempt,
+        "provenance": provenance,
+    }
+
+
+def orphan_starts(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Every ``attempt_start`` with no ``row`` of the same (arm, seed, attempt), in file order, once each (pure)."""
+    recorded = {_attempt_key(r) for r in rows if r.get("kind") == "row"}
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[Any, Any, Any]] = set()
+    for r in rows:
+        k = _attempt_key(r)
+        if r.get("kind") == "attempt_start" and k not in recorded and k not in seen:
+            seen.add(k)
+            out.append(r)
+    return out
+
+
+def closing_rows(rows: list[dict[str, Any]], base: Any) -> list[dict[str, Any]]:
+    """One ``unrecorded`` row per orphan start (resume; D2: the attempt is consumed, never rerun). ``base(arm, seed,
+    attempt)`` gives the fields a normal row carries (provenance, apparatus); the start's own campaign and run ids
+    are kept."""
+    out = []
+    for start in orphan_starts(rows):
+        row = base(start["arm"], start["seed"], start["attempt"])
+        row.update(
+            {
+                "ts": time.time(),
+                "campaign_id": start.get("campaign_id"),
+                "run_id": start.get("run_id"),
+                "refusal": UNRECORDED_REFUSAL,
+                "refusal_cause": "unrecorded",
+                "refusal_step": "unrecorded",
+            }
+        )
+        out.append(row)
     return out
 
 
@@ -266,6 +334,7 @@ def compute_verdict(records: list[dict[str, Any]], *, gates: dict[str, Any] = GA
         return {**base, "verdict": "INCOMPLETE", "incomplete_cause": cause, "reason": reason, **extra}
 
     rows = [r for r in records if r.get("kind") == "row"]
+    starts = [r for r in records if r.get("kind") == "attempt_start"]  # read only for the campaign and pairing checks
     campaigns = {r.get("campaign_id") for r in records}
     if len(campaigns) != 1:
         return incomplete("mixed_campaigns", f"the rows name {len(campaigns)} campaigns (one per file)")
@@ -304,9 +373,28 @@ def compute_verdict(records: list[dict[str, Any]], *, gates: dict[str, Any] = GA
         for earlier in attempts[:-1]:
             if earlier.get("refusal") is None:
                 return incomplete("rerun_after_clean_row", f"{key}: a clean row was rerun")
-            if earlier.get("refusal_cause") != "instrument":
-                return incomplete("rerun_after_behavioural_refusal", f"{key}: a behavioural refusal was rerun")
+            cause = earlier.get("refusal_cause")
+            if cause != "instrument":  # only an instrument cause is rerun-eligible; "unrecorded" never is
+                if cause == "unrecorded":
+                    return incomplete("rerun_after_unrecorded_attempt", f"{key}: an unrecorded attempt was rerun")
+                return incomplete("rerun_after_behavioural_refusal", f"{key}: a {cause!r} refusal was rerun")
         final[key] = attempts[-1]
+    # Every row has exactly one attempt_start and every attempt_start exactly one row (D2): a deleted row leaves its
+    # start behind, and an orphan start is never a present key.
+    n_starts: dict[tuple[Any, Any, Any], int] = {}
+    n_rows: dict[tuple[Any, Any, Any], int] = {}
+    for r in starts:
+        n_starts[_attempt_key(r)] = n_starts.get(_attempt_key(r), 0) + 1
+    for r in rows:
+        n_rows[_attempt_key(r)] = n_rows.get(_attempt_key(r), 0) + 1
+    unpaired = sorted(
+        (k for k in set(n_starts) | set(n_rows) if n_starts.get(k, 0) != 1 or n_rows.get(k, 0) != 1), key=repr
+    )
+    if unpaired:
+        return incomplete(
+            "attempt_start_mismatch",
+            f"(arm, seed, attempt) without exactly one attempt_start and one row: {unpaired}",
+        )
     clean = {k: r for k, r in final.items() if r.get("refusal") is None}
     refused = [
         {"arm": a, "seed": s, "attempt": r.get("attempt"), "cause": r.get("refusal_cause"), "refusal": r["refusal"]}
@@ -797,7 +885,8 @@ def _write_row(out_path: Path, record: dict[str, Any]) -> None:
 
 
 def _write_header(out_path: Path, record: dict[str, Any]) -> None:
-    """The campaign's session row: a configuration, never a counted run (``stamp_harness_header``)."""
+    """A header line (the campaign's session row, or an attempt_start): never a counted run
+    (``stamp_harness_header``)."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "a") as fh:
         fh.write(json.dumps(stamp_harness_header(record, mock=False)) + "\n")
@@ -811,17 +900,9 @@ class Session:
         self.__dict__.update(kw)
 
 
-def run_arm_seed(ses: Session, arm: str, seed: int, attempt: int) -> dict[str, Any]:
-    """One arm-seed attempt on a fresh agent. Returns its row (a refusal carries ``refusal`` + ``refusal_cause``)."""
-    from maxim.simulation.minecraft import MinecraftClient
-    from maxim.simulation.minecraft_harness import MinecraftSyncPump, build_minecraft_aut
-    from survival_world.common import make_fresh_encoder
-
-    args = ses.args
-    t_ref = time.monotonic()
-    persistence_dir = tempfile.mkdtemp(prefix=f"b1_{arm}_{seed}_a{attempt}_")
-    agent_id = f"b1_{arm}_s{seed}_a{attempt}"
-    record: dict[str, Any] = {
+def row_base(ses: Session, arm: str, seed: int, attempt: int) -> dict[str, Any]:
+    """The fields every row of an arm-seed attempt carries (provenance, apparatus), before any outcome."""
+    return {
         "kind": "row",
         "ts": time.time(),
         "campaign_id": ses.campaign_id,
@@ -839,6 +920,19 @@ def run_arm_seed(ses: Session, arm: str, seed: int, attempt: int) -> dict[str, A
         "refusal": None,
         "refusal_cause": None,
     }
+
+
+def run_arm_seed(ses: Session, arm: str, seed: int, attempt: int) -> dict[str, Any]:
+    """One arm-seed attempt on a fresh agent. Returns its row (a refusal carries ``refusal`` + ``refusal_cause``)."""
+    from maxim.simulation.minecraft import MinecraftClient
+    from maxim.simulation.minecraft_harness import MinecraftSyncPump, build_minecraft_aut
+    from survival_world.common import make_fresh_encoder
+
+    args = ses.args
+    t_ref = time.monotonic()
+    persistence_dir = tempfile.mkdtemp(prefix=f"b1_{arm}_{seed}_a{attempt}_")
+    agent_id = f"b1_{arm}_s{seed}_a{attempt}"
+    record = row_base(ses, arm, seed, attempt)
     step = "rig"
     aut: Any = None
     pump: Any = None
@@ -1171,6 +1265,16 @@ def _run(args: argparse.Namespace) -> int:
                     "train_caps": train_caps,
                 },
             )
+        # Resume: close every orphan start (an attempt the process died inside) with an "unrecorded" row, AFTER the
+        # provenance stamp and append_refusal passed (a changed tree is refused first, leaving its orphan to fail the
+        # file), and BEFORE attempts_done reads the rows — so that key is consumed, never rerun (D2).
+        for closing in closing_rows(prior_rows, lambda a, s, n: row_base(ses, a, s, n)):
+            _write_row(out_path, closing)
+            prior_rows.append(closing)
+            exit_code = 4
+            print(
+                f"[resume] closed an unrecorded attempt: {closing['arm']} seed {closing['seed']} #{closing['attempt']}"
+            )
         done = attempts_done(prior_rows)
         for seed in seeds:
             for arm in ORDER[seed]:
@@ -1181,6 +1285,10 @@ def _run(args: argparse.Namespace) -> int:
                 while not entry["done"]:
                     attempt += 1
                     print(f"\n=== seed={seed} arm={arm} attempt={attempt} ===")
+                    _write_header(
+                        out_path,
+                        attempt_start_record(campaign_id, run_ids[arm], arm, seed, attempt, provenance=provenance),
+                    )
                     rec = run_arm_seed(ses, arm, seed, attempt)
                     _write_row(out_path, rec)
                     if rec["refusal"] is not None:
@@ -1194,8 +1302,7 @@ def _run(args: argparse.Namespace) -> int:
 
 def _after_attempt(rec: dict[str, Any], attempt: int) -> dict[str, Any]:
     """Whether this key is done after ``rec`` (the ``attempts_done`` rule for one key)."""
-    done = rec["refusal"] is None or rec["refusal_cause"] != "instrument" or attempt >= FROZEN["max_attempts"]
-    return {"attempts": attempt, "done": done}
+    return {"attempts": attempt, "done": key_done(rec, attempt)}
 
 
 def _verdict(args: argparse.Namespace) -> int:

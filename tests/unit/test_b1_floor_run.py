@@ -165,11 +165,33 @@ def _row(arm, seed, surfaced, *, attempt=1, refusal=None, cause=None, campaign="
     }
 
 
+def _start(arm, seed, attempt=1, campaign="c1"):
+    return {
+        "kind": "attempt_start",
+        "campaign_id": campaign,
+        "run_id": f"run-{arm}",
+        "arm": arm,
+        "seed": seed,
+        "attempt": attempt,
+    }
+
+
+def _attempt(arm, seed, surfaced, **kw):
+    """An attempt as the harness writes it: its attempt_start header, then its row."""
+    row = _row(arm, seed, surfaced, **kw)
+    return [_start(arm, seed, row["attempt"], row["campaign_id"]), row]
+
+
 def _campaign(rates):
     rows = [{"kind": "session", "campaign_id": "c1"}]
     for arm, hits in rates.items():
-        rows += [_row(arm, s, i < hits) for i, s in enumerate(B.SEEDS)]
+        for i, s in enumerate(B.SEEDS):
+            rows += _attempt(arm, s, i < hits)
     return rows
+
+
+def _drop_key(rows, arm, seed):
+    return [r for r in rows if not (r.get("arm") == arm and r.get("seed") == seed)]
 
 
 def test_fear_beating_both_floors_is_floors_beaten():
@@ -212,22 +234,274 @@ def test_a_collapsed_fear_is_incomplete_not_a_floor_match():
 
 def test_a_missing_gated_seed_is_incomplete():
     rows = _campaign({"fear": 8, "random": 0, "q_explore": 0})
-    rows = [r for r in rows if not (r.get("arm") == "random" and r.get("seed") == 18)]
-    v = B.compute_verdict(rows)
+    v = B.compute_verdict(_drop_key(rows, "random", 18))
     assert v["verdict"] == "INCOMPLETE" and v["incomplete_cause"] == "too_few_clean_seeds"
 
 
-def test_an_instrument_rerun_counts_and_a_behavioural_rerun_refuses():
+def test_an_instrument_rerun_counts_and_a_behavioural_or_unrecorded_rerun_refuses():
     rows = _campaign({"fear": 8, "random": 0, "q_explore": 0})
     first = _row("random", 11, False, refusal="rig", cause="instrument")
-    rerun = {**_row("random", 11, False), "attempt": 2}
-    rows = [r for r in rows if not (r.get("arm") == "random" and r.get("seed") == 11)] + [first, rerun]
+    rows = _drop_key(rows, "random", 11) + [_start("random", 11, 1), first] + _attempt("random", 11, False, attempt=2)
     v = B.compute_verdict(rows)
     assert v["verdict"] == "FLOORS_BEATEN" and v["attempts"]["random/11"] == 2
-    rows[-2] = {**first, "refusal_cause": "behavioural"}
+    i = rows.index(first)
+    rows[i] = {**first, "refusal_cause": "behavioural"}
     assert B.compute_verdict(rows)["incomplete_cause"] == "rerun_after_behavioural_refusal"
-    rows[-2] = {**first, "refusal": None}
+    rows[i] = {**first, "refusal": B.UNRECORDED_REFUSAL, "refusal_cause": "unrecorded"}
+    assert B.compute_verdict(rows)["incomplete_cause"] == "rerun_after_unrecorded_attempt"
+    rows[i] = {**first, "refusal": None}
     assert B.compute_verdict(rows)["incomplete_cause"] == "rerun_after_clean_row"
+
+
+# ── attempt_start pairing and the unrecorded cause (approach note §2 item 6, D2) ─────────────────────
+
+
+def test_a_row_without_its_attempt_start_is_incomplete():
+    rows = _campaign({"fear": 8, "random": 0, "q_explore": 0})
+    rows.remove(_start("random", 13))
+    v = B.compute_verdict(rows)
+    assert v["verdict"] == "INCOMPLETE" and v["incomplete_cause"] == "attempt_start_mismatch"
+    assert "'random', 13, 1" in v["reason"]
+
+
+def test_an_attempt_start_without_its_row_is_incomplete():
+    """A deleted row leaves its start behind: never read as an absent (or present) key."""
+    rows = _campaign({"fear": 8, "random": 0, "q_explore": 0, "q_explore_prior": 1})
+    rows = [r for r in rows if not (r.get("kind") == "row" and r["arm"] == "q_explore_prior" and r["seed"] == 11)]
+    v = B.compute_verdict(rows)
+    assert v["verdict"] == "INCOMPLETE" and v["incomplete_cause"] == "attempt_start_mismatch"
+
+
+def test_a_duplicated_attempt_start_is_incomplete():
+    rows = _campaign({"fear": 8, "random": 0, "q_explore": 0})
+    rows.append(_start("fear", 12))
+    assert B.compute_verdict(rows)["incomplete_cause"] == "attempt_start_mismatch"
+
+
+def test_attempt_starts_count_for_the_one_campaign_check():
+    rows = _campaign({"fear": 8, "random": 0, "q_explore": 0})
+    rows.append(_start("fear", 12, 2, campaign="c2"))
+    assert B.compute_verdict(rows)["incomplete_cause"] == "mixed_campaigns"
+
+
+def test_an_unrecorded_final_attempt_is_a_refused_key():
+    unrec = {"refusal": B.UNRECORDED_REFUSAL, "cause": "unrecorded"}
+    rows = _campaign({"fear": 8, "random": 0, "q_explore": 0, "q_explore_prior": 0})
+    rows = _drop_key(rows, "q_explore_prior", 14) + _attempt("q_explore_prior", 14, False, **unrec)
+    v = B.compute_verdict(rows)  # a reported arm: the verdict stands, the refusal is listed
+    assert v["verdict"] == "FLOORS_BEATEN" and v["n_clean"]["q_explore_prior"] == 7
+    assert [(r["arm"], r["cause"]) for r in v["refused"]] == [("q_explore_prior", "unrecorded")]
+    rows = _drop_key(rows, "fear", 14) + _attempt("fear", 14, False, **unrec)
+    assert B.compute_verdict(rows)["incomplete_cause"] == "too_few_clean_seeds"  # a gated arm lost a key
+
+
+def test_the_refusal_cause_vocabulary():
+    assert B.REFUSAL_CAUSES == (None, "instrument", "behavioural", "unrecorded")
+    assert B.FROZEN["max_attempts"] == 2
+
+
+@pytest.mark.parametrize("cause", B.REFUSAL_CAUSES)
+@pytest.mark.parametrize("attempt", [1, 2])
+def test_key_done_is_the_one_rule_for_resume_and_the_live_loop(cause, attempt):
+    row = {
+        "kind": "row",
+        "arm": "fear",
+        "seed": 11,
+        "attempt": attempt,
+        "refusal": cause and "x",
+        "refusal_cause": cause,
+    }
+    want = cause != "instrument" or attempt >= B.FROZEN["max_attempts"]
+    assert B.key_done(row, attempt) is want
+    assert B._after_attempt(row, attempt) == {"attempts": attempt, "done": want}
+    prior = [{**row, "attempt": 1, "refusal": "x", "refusal_cause": "instrument"}] if attempt == 2 else []
+    assert B.attempts_done([*prior, row])[("fear", 11)] == {"attempts": attempt, "done": want}
+
+
+def test_attempts_done_treats_unrecorded_as_final():
+    rows = [{"kind": "row", "arm": "fear", "seed": 11, "attempt": 1, "refusal": "x", "refusal_cause": "unrecorded"}]
+    assert B.attempts_done(rows)[("fear", 11)] == {"attempts": 1, "done": True}
+
+
+def test_orphan_starts_and_their_closing_rows():
+    rows = [
+        {"kind": "session", "campaign_id": "c1"},
+        _start("fear", 11),
+        _row("fear", 11, True),
+        _start("random", 11),  # the process died inside this attempt
+        _start("random", 11),  # a duplicate start is closed once
+    ]
+    orphans = B.orphan_starts(rows)
+    assert [B._attempt_key(r) for r in orphans] == [("random", 11, 1)]
+
+    def base(arm, seed, attempt):
+        return {"kind": "row", "arm": arm, "seed": seed, "attempt": attempt, "provenance": {"p": 1}, "refusal": None}
+
+    closing = B.closing_rows(rows, base)
+    assert len(closing) == 1
+    c = closing[0]
+    assert (c["arm"], c["seed"], c["attempt"], c["campaign_id"], c["run_id"]) == ("random", 11, 1, "c1", "run-random")
+    assert c["refusal_cause"] == "unrecorded" and c["refusal_step"] == "unrecorded"
+    assert c["refusal"] == B.UNRECORDED_REFUSAL and c["provenance"] == {"p": 1}
+    assert isinstance(c["ts"], float)
+    assert B.attempts_done(rows + closing)[("random", 11)] == {"attempts": 1, "done": True}
+    assert B.orphan_starts(rows + closing) == []
+
+
+# ── _run itself: the write order and the resume close (the live path, rig and agent stubbed) ─────────
+
+
+def _stub_run(monkeypatch, tmp_path, *, tree_refusal=None, real_append_refusal=False):
+    import json as _json
+
+    gate = tmp_path / "gate.json"
+    gate.write_text(_json.dumps({"run_gate": {"pass": True}}))
+    anchor = tmp_path / "anchor.json"
+    anchor.write_text(_json.dumps({"measured": {"t_damage_onset_min_s": 20.0}}))
+    monkeypatch.delenv("MAXIM_SUBSTRATE_TOOL_WHITELIST", raising=False)
+    monkeypatch.setattr(B, "evidence_out_paths_or_exit", lambda root, paths, **kw: [Path(paths[0])])
+    monkeypatch.setattr(B, "in_process_code_provenance", lambda *a, **k: {"code_tree_sha256": "t"})
+    if not real_append_refusal:
+        monkeypatch.setattr(B, "append_refusal", lambda out, prov: tree_refusal)
+    monkeypatch.setattr(
+        B,
+        "load_apparatus_record",
+        lambda p: {"record": {"ts": 1.0}, "path": "a.json", "sha256": "abc", "abs_path": p, "bytes": b""},
+    )
+    monkeypatch.setattr(B, "is_gated_path", lambda root, p: False)
+    monkeypatch.setattr(B, "instrument_check_authorizes", lambda a: None)
+    monkeypatch.setattr(B, "min_pain_edge_s", lambda a: 10.0)
+    monkeypatch.setattr(B, "ANCHOR_FILE", anchor)
+    monkeypatch.setattr(B, "anchor_record_mismatch", lambda m, a: None)
+    monkeypatch.setattr(B, "apparatus_geometry", lambda g: {})
+
+    class _Rcon:
+        def __init__(self, *a):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(B.C, "RconControl", _Rcon)
+    calls = []
+
+    def fake_run_arm_seed(ses, arm, seed, attempt):
+        last = _json.loads(Path(ses.out_path_for_test).read_text().splitlines()[-1])
+        calls.append(((arm, seed, attempt), last))
+        return B.row_base(ses, arm, seed, attempt)
+
+    monkeypatch.setattr(B, "run_arm_seed", fake_run_arm_seed)
+    return gate, calls
+
+
+def _run_args(gate, out, **kw):
+    import argparse
+
+    base = dict(
+        arms="fear,random", diagnostic=True, resume=None, out=str(out), write_experiment_results=False,
+        allow_dirty=False, apparatus_record="a.json", gate_record=str(gate), proxy_url="", rcon_host="h",
+        rcon_port=1, rcon_password="p", username="maxim",
+    )  # fmt: skip
+    base.update(kw)
+    return argparse.Namespace(**base)
+
+
+def _patch_session_out(monkeypatch, out):
+    orig = B.Session.__init__
+
+    def init(self, args, **kw):
+        orig(self, args, **kw)
+        self.out_path_for_test = out
+
+    monkeypatch.setattr(B.Session, "__init__", init)
+
+
+def _lines(path):
+    import json as _json
+
+    return [_json.loads(ln) for ln in path.read_text().splitlines() if ln.strip()]
+
+
+def test_run_writes_an_attempt_start_before_every_attempt(monkeypatch, tmp_path):
+    gate, calls = _stub_run(monkeypatch, tmp_path)
+    out = tmp_path / "b1.jsonl"
+    _patch_session_out(monkeypatch, out)
+    assert B._run(_run_args(gate, out)) == 0
+    # at each attempt's start, the newest line on disk is that attempt's own attempt_start header
+    for key, last in calls:
+        assert last["kind"] == "attempt_start" and B._attempt_key(last) == key
+        assert last["record_kind"] == "harness_header" and last["mock"] is False
+    kinds = [(r["kind"], r.get("arm")) for r in _lines(out)]
+    assert kinds == [
+        ("session", None),
+        ("attempt_start", "fear"),
+        ("row", "fear"),
+        ("attempt_start", "random"),
+        ("row", "random"),
+    ]
+    starts = [r for r in _lines(out) if r["kind"] == "attempt_start"]
+    session = _lines(out)[0]
+    assert all(
+        s["run_id"] == session["run_ids"][s["arm"]] and s["campaign_id"] == session["campaign_id"] for s in starts
+    )
+
+
+def test_resume_closes_an_orphan_start_and_never_reruns_it(monkeypatch, tmp_path):
+    import json as _json
+
+    gate, calls = _stub_run(monkeypatch, tmp_path)
+    out = tmp_path / "b1.jsonl"
+    _patch_session_out(monkeypatch, out)
+    session = {"kind": "session", "campaign_id": "diag-c", "run_ids": {a: f"r-{a}" for a in B.ARMS}, "diagnostic": True}
+    orphan = {**_start("fear", 99, campaign="diag-c"), "run_id": "r-fear", "ts": 1.0, "record_kind": "harness_header"}
+    out.write_text(_json.dumps(session) + "\n" + _json.dumps(orphan) + "\n")
+    assert B._run(_run_args(gate, out, resume=str(out))) == 4  # a refusal row was written
+    assert [k for k, _ in calls] == [("random", 99, 1)]  # fear is consumed, not rerun
+    lines = _lines(out)
+    closing = lines[2]
+    assert closing["kind"] == "row" and B._attempt_key(closing) == ("fear", 99, 1)
+    assert closing["refusal_cause"] == "unrecorded" and closing["record_kind"] == "harness_row"
+    assert closing["run_id"] == "r-fear" and closing["campaign_id"] == "diag-c"
+    assert closing["provenance"] == {"code_tree_sha256": "t"} and closing["apparatus_record_sha256"] == "abc"
+    assert B.orphan_starts(lines) == []
+
+
+def test_a_harness_written_campaign_crashed_mid_attempt_resumes_through_the_real_append_refusal(monkeypatch, tmp_path):
+    """The PR-C review's blocker 2: the starts the HARNESS writes must carry its provenance, or the real
+    `append_refusal` refuses every resume ("another code tree (None)") and D2's closing path is dead. Here the harness
+    writes its own campaign, dies inside the second attempt, and is resumed with the real `append_refusal`."""
+    gate, calls = _stub_run(monkeypatch, tmp_path, real_append_refusal=True)
+    out = tmp_path / "b1.jsonl"
+    _patch_session_out(monkeypatch, out)
+    real = B.run_arm_seed
+
+    def dies_in_random(ses, arm, seed, attempt):
+        if arm == "random":
+            raise KeyboardInterrupt  # the process ends mid-attempt: its start is on disk, its row never is
+        return real(ses, arm, seed, attempt)
+
+    monkeypatch.setattr(B, "run_arm_seed", dies_in_random)
+    with pytest.raises(KeyboardInterrupt):
+        B._run(_run_args(gate, out))
+    assert [r["kind"] for r in _lines(out)] == ["session", "attempt_start", "row", "attempt_start"]
+    assert all(r["provenance"] == {"code_tree_sha256": "t"} for r in _lines(out))
+    monkeypatch.setattr(B, "run_arm_seed", real)
+    assert B._run(_run_args(gate, out, resume=str(out))) == 4  # resumed (not refused) and the orphan closed
+    lines = _lines(out)
+    assert lines[-1]["kind"] == "row" and lines[-1]["refusal_cause"] == "unrecorded"
+    assert B._attempt_key(lines[-1]) == ("random", 99, 1) and B.orphan_starts(lines) == []
+
+
+def test_a_resume_on_a_changed_tree_is_refused_before_closing_anything(monkeypatch, tmp_path):
+    import json as _json
+
+    gate, calls = _stub_run(monkeypatch, tmp_path, tree_refusal="another code tree")
+    out = tmp_path / "b1.jsonl"
+    session = {"kind": "session", "campaign_id": "diag-c", "run_ids": {a: f"r-{a}" for a in B.ARMS}, "diagnostic": True}
+    body = _json.dumps(session) + "\n" + _json.dumps(_start("fear", 99, campaign="diag-c")) + "\n"
+    out.write_text(body)
+    assert B._run(_run_args(gate, out, resume=str(out))) == 2
+    assert out.read_text() == body and calls == []
 
 
 @pytest.mark.parametrize(
@@ -247,7 +521,8 @@ def test_structural_refusals(mutate, cause):
 
 def test_an_unclean_first_post_in_a_clean_row_refuses():
     rows = _campaign({"fear": 8, "random": 0, "q_explore": 0})
-    rows[1]["post"]["placements"][0] = {**rows[1]["post"]["placements"][0], "dirty": True}
+    assert rows[2]["kind"] == "row"
+    rows[2]["post"]["placements"][0] = {**rows[2]["post"]["placements"][0], "dirty": True}
     assert B.compute_verdict(rows)["incomplete_cause"] == "unclean_first_post_in_clean_row"
 
 

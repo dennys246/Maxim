@@ -2,6 +2,27 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-10-11 — B1 evidence: the BF2 obligation lint and lost attempts (D1–D2)
+
+### Decision
+
+1. **D1. The BF2 obligation is enforced for T1-13 now** (`scripts/lint_bf2_obligation.py`, in the CI lint job): if the
+   newest counted `b1_verdict` (floor-matched at any status, or an ESTABLISHED `FLOORS_BEATEN`) is floor-matched, T1-13 sits below PARTIAL or at `PARTIAL (narrow: …)` re-dated on or
+   after the verdict's data; B1 verdicts are append-only by (data_sha256, value); only an ESTABLISHED `FLOORS_BEATEN`
+   clears it. The obligation is pass-table data (`obliges` on the `b1_verdict` entry), read from the merge-base so a PR
+   cannot loosen its own. A partial mechanization of backlog M46.
+2. **D2. A lost attempt is consumed, never rerun:** the harness writes an `attempt_start` header before each attempt,
+   and `--resume` closes every orphan start with an `unrecorded` refusal row; the `b1_campaign` rule requires each start
+   to have exactly one row.
+
+### Rationale
+
+The adversarial design pass on the approach note (docs/plans/baseline_floors_b1_evidence.md, five rounds) found that a
+FEAR-only Exp 60 re-run could re-earn EARNED over a floor-matched B1 verdict (the gate gates moves, not missing moves),
+and that a crash mid-attempt let `--resume` restart the key after its outcome was seen. Both were taken as the strict
+option. The cost of D2 is that an accidental crash on a gated arm makes the campaign INCOMPLETE; a harness bug fix
+already forces a fresh campaign file (one code tree per file).
+
 ## 2026-10-11 — B1, the Exp 60 floor: design decisions (OD1–OD5)
 
 ### Decision
