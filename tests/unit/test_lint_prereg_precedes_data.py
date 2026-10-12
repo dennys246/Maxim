@@ -8,6 +8,7 @@ without `--first-parent` (the review-round BLOCKER); the others fail with the `<
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -15,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts import _provenance as PROV
 from scripts import lint_prereg_precedes_data as L
 
 T0 = 1_800_000_000  # epoch seconds; commits are placed relative to this
@@ -963,3 +965,259 @@ def test_an_allowance_on_an_excepted_ungoverned_rerun_names_the_fix(repo: Repo, 
     repo.commit("clause", T0 + 300)
     assert run(repo) == 1
     assert "land a re-run pre-registration" in capsys.readouterr().err
+
+
+# ── A derived verdict is dated by its bound rows, not by its own `ts` (owner decision 2026-10-12) ──────────────
+# `scripts/_provenance.py::stamp_verdict` never stamps `ts`. A verdict bound to its rows by `data` + `data_sha256`
+# hashes those rows' bytes, so it post-dates them; it is exempt from the re-run `ts` rule only while that binding
+# holds. Each spoof below must still FAIL, and each was deletion-probed against its condition.
+
+_RR = "rerun_exp61_v"
+_RR_DIR = f"docs/experiments/data/{_RR}"
+_TS_RULE = "carries `ts` on every record"
+
+
+def _rows(n: int = 3, **extra) -> list[dict]:
+    return [
+        {"record_kind": "harness_row", "ts": T0 + 300 + i, "status": "ok", "mock": False, **extra} for i in range(n)
+    ]
+
+
+def _bound_rerun(
+    repo: Repo,
+    *,
+    rows: list[dict] | None = None,
+    rows_name: str = "attempt/rows.jsonl",
+    verdict_name: str = "attempt/verdict.json",
+    mutate=None,
+    text=None,
+    before_commit=None,
+) -> None:
+    """The exp60 re-run shape: a scoped PRE-DATA re-run with a dated instrument check, dated rows, and a verdict
+    written by the REAL `stamp_verdict` (no `ts`). ``mutate(verdict)`` edits it; ``text(verdict)`` serialises it."""
+    _governed(repo, f"**Amendment 1 — 2026-10-01, PRE-DATA, for `{_RR}`, the re-run.**\n")
+    repo.commit("prereg", T0)
+    repo.data("61_results.jsonl", [T0 + 100])
+    repo.write(f"{_RR_DIR}/water.json", json.dumps({"record_kind": "instrument_check", "ts": T0 + 250, "pass": True}))
+    body = rows if rows is not None else _rows()
+    rows_path = repo.write(f"{_RR_DIR}/{rows_name}", "".join(json.dumps(r) + "\n" for r in body))
+    verdict = PROV.stamp_verdict(
+        {"verdict": "PASS"},
+        repo_root=repo.root,
+        kind="exp61_verdict",
+        data=rows_path,
+        data_bytes=rows_path.read_bytes(),
+        scope={"all_rows": True},
+        mock=False,
+    )
+    assert "ts" not in verdict  # the canonical writer's shape this exemption exists for
+    if mutate is not None:
+        mutate(verdict)
+    repo.write(f"{_RR_DIR}/{verdict_name}", text(verdict) if text else json.dumps(verdict))
+    if before_commit is not None:
+        before_commit()
+    repo.commit("data", T0 + 400)
+
+
+def _fails_ts_rule(repo: Repo, capsys) -> str:
+    assert run(repo) == 1
+    err = capsys.readouterr().err
+    assert _TS_RULE in err, err
+    return err
+
+
+def test_a_verdict_bound_to_its_dated_rows_is_exempt_from_the_rerun_ts_rule(repo: Repo, capsys) -> None:
+    """The rerun_exp60_2026-10-12 shape (instrument check + rows with `ts` + a `ts`-less stamped verdict) passes,
+    and says why the verdict needed no `ts`."""
+    _bound_rerun(repo)
+    assert run(repo) == 0, capsys.readouterr().err
+    out = capsys.readouterr().out
+    assert "exempt" in out and f"{_RR_DIR}/attempt/rows.jsonl" in out
+
+
+def test_a_record_labelled_verdict_without_the_stamped_fields_is_not_exempt(repo: Repo, capsys) -> None:
+    _bound_rerun(repo, mutate=lambda v: v.pop("scope"))
+    assert "stamp_verdict" in _fails_ts_rule(repo, capsys)
+
+
+def test_a_verdict_whose_rows_lack_ts_fails(repo: Repo, capsys) -> None:
+    rows = _rows()
+    del rows[1]["ts"]
+    _bound_rerun(repo, rows=rows)
+    assert "attempt/rows.jsonl" in _fails_ts_rule(repo, capsys)
+
+
+def test_a_verdict_bound_to_rows_in_another_entry_is_not_exempt(repo: Repo, capsys) -> None:
+    def other(v: dict) -> None:
+        other_path = repo.root / "docs/experiments/data/61_results.jsonl"
+        v["data"] = "docs/experiments/data/61_results.jsonl"
+        v["data_sha256"] = hashlib.sha256(other_path.read_bytes()).hexdigest()
+
+    _bound_rerun(repo, mutate=other)
+    assert "not a file this rule read" in _fails_ts_rule(repo, capsys)
+
+
+def test_a_verdict_bound_to_rows_this_lint_cannot_read_is_not_exempt(repo: Repo, capsys) -> None:
+    """`.gz` rows (the evidence gate decompresses them; this lint does not read them, so cannot date them)."""
+    _bound_rerun(repo, rows_name="attempt/rows.jsonl.gz")
+    assert "not a file this rule read" in _fails_ts_rule(repo, capsys)
+
+
+@pytest.mark.parametrize("spelling", ["./{p}", "{p}/", "docs/experiments/data/{e}/attempt/../attempt/rows.jsonl"])
+def test_a_verdict_data_path_is_compared_exactly_not_normalised(repo: Repo, capsys, spelling: str) -> None:
+    def respell(v: dict) -> None:
+        v["data"] = spelling.format(p=v["data"], e=_RR)
+
+    _bound_rerun(repo, mutate=respell)
+    _fails_ts_rule(repo, capsys)
+
+
+def test_a_verdict_whose_rows_changed_after_it_is_not_exempt(repo: Repo, capsys) -> None:
+    def append_row() -> None:
+        with (repo.root / _RR_DIR / "attempt/rows.jsonl").open("a") as fh:
+            fh.write(json.dumps(_rows(1)[0]) + "\n")
+
+    _bound_rerun(repo, before_commit=append_row)
+    err = _fails_ts_rule(repo, capsys)
+    assert "attempt/verdict.json" in err and "data_sha256" in err  # SF5: the file and the failed condition
+
+
+def test_a_verdict_bound_to_symlinked_rows_is_not_exempt(repo: Repo, capsys) -> None:
+    def link_rows() -> None:
+        real = repo.write("docs/experiments/rows_elsewhere.jsonl", "")
+        rows = repo.root / _RR_DIR / "attempt/rows.jsonl"
+        real.write_bytes(rows.read_bytes())
+        rows.unlink()
+        rows.symlink_to(real)
+
+    _bound_rerun(repo, before_commit=link_rows)
+    assert "symlink" in _fails_ts_rule(repo, capsys)
+
+
+def test_a_symlinked_verdict_is_not_exempt(repo: Repo, capsys) -> None:
+    def link_verdict() -> None:
+        v = repo.root / _RR_DIR / "attempt/verdict.json"
+        real = repo.write("docs/experiments/verdict_elsewhere.json", v.read_text())
+        v.unlink()
+        v.symlink_to(real)
+
+    _bound_rerun(repo, before_commit=link_verdict)
+    assert "symlink" in _fails_ts_rule(repo, capsys)
+
+
+def test_a_jsonl_verdict_is_not_exempt(repo: Repo, capsys) -> None:
+    _bound_rerun(repo, verdict_name="attempt/verdicts.jsonl", text=lambda v: json.dumps(v) + "\n")
+    assert "single-object" in _fails_ts_rule(repo, capsys)
+
+
+def test_a_json_list_of_verdicts_is_not_exempt(repo: Repo, capsys) -> None:
+    _bound_rerun(repo, text=lambda v: json.dumps([v]))
+    assert "single-object" in _fails_ts_rule(repo, capsys)
+
+
+def test_a_verdict_bound_to_a_verdict_is_not_exempt(repo: Repo, capsys) -> None:
+    """No chaining: a verdict is outside the evidence gate's verdict-data kinds, so a verdict's bound file cannot be
+    another verdict."""
+
+    def chain() -> None:
+        inner = repo.root / _RR_DIR / "attempt/verdict.json"
+        outer = PROV.stamp_verdict(
+            {"verdict": "PASS"},
+            repo_root=repo.root,
+            kind="exp61_verdict",
+            data=inner,
+            data_bytes=inner.read_bytes(),
+            scope={"all_rows": True},
+            mock=False,
+        )
+        repo.write(f"{_RR_DIR}/attempt/meta_verdict.json", json.dumps(outer))
+
+    _bound_rerun(repo, before_commit=chain)
+    err = _fails_ts_rule(repo, capsys)
+    assert "meta_verdict.json" in err and "attempt/verdict.json (" not in err  # the inner one stays exempt
+
+
+def test_a_verdict_bound_to_an_empty_file_is_not_exempt(repo: Repo, capsys) -> None:
+    _bound_rerun(repo, rows=[])
+    assert "holds no record" in _fails_ts_rule(repo, capsys)
+
+
+def test_a_case_variant_record_kind_is_not_exempt(repo: Repo, capsys) -> None:
+    _bound_rerun(repo, mutate=lambda v: v.update(record_kind="Verdict"))
+    _fails_ts_rule(repo, capsys)
+
+
+@pytest.mark.parametrize("bad_ts", [None, "", False, "not a time"])
+def test_a_verdict_with_a_present_but_broken_ts_is_not_exempt(repo: Repo, capsys, bad_ts) -> None:
+    """SF2: only an ABSENT `ts` is the canonical writer's shape; a broken one is a broken record."""
+    _bound_rerun(repo, mutate=lambda v: v.update(ts=bad_ts))
+    _fails_ts_rule(repo, capsys)
+
+
+def test_a_bound_verdict_still_answers_for_its_dirty_stamp(repo: Repo, capsys) -> None:
+    """SF1: the exemption skips only the missing-`ts` count; dirty / allow_dirty / run-id accounting still runs."""
+    _bound_rerun(repo, mutate=lambda v: v.update(provenance={"working_tree_dirty_src_scripts": True}))
+    assert run(repo) == 1
+    err = capsys.readouterr().err
+    assert "without allow_dirty: true" in err and _TS_RULE not in err
+
+
+def test_a_verdict_bound_to_its_entrys_instrument_check_is_not_exempt(repo: Repo, capsys) -> None:
+    """N1: a dated file is not enough; the bound file holds the evidence gate's verdict-data kinds only."""
+
+    def to_water(v: dict) -> None:
+        water = repo.root / _RR_DIR / "water.json"
+        v["data"] = f"{_RR_DIR}/water.json"
+        v["data_sha256"] = hashlib.sha256(water.read_bytes()).hexdigest()
+
+    _bound_rerun(repo, mutate=to_water)
+    assert "verdict-data sets" in _fails_ts_rule(repo, capsys)
+
+
+def test_a_verdict_bound_to_rows_mixing_row_and_event_kinds_is_not_exempt(repo: Repo, capsys) -> None:
+    rows = _rows(2) + [{"record_kind": "harness_event", "ts": T0 + 310, "mock": False}]
+    _bound_rerun(repo, rows=rows)
+    assert "verdict-data sets" in _fails_ts_rule(repo, capsys)
+
+
+def test_a_verdict_bound_to_an_event_log_is_exempt(repo: Repo, capsys) -> None:
+    rows = [
+        {"record_kind": "harness_event", "ts": T0 + 300, "mock": False},
+        {"record_kind": "harness_run_end", "ts": T0 + 301, "mock": False},
+    ]
+    _bound_rerun(repo, rows=rows)
+    assert run(repo) == 0, capsys.readouterr().err
+
+
+def test_a_verdict_reason_survives_an_earlier_undated_record_in_the_same_file(repo: Repo, capsys) -> None:
+    """N3: the failure names why the verdict is not exempt even after a plain undated record in its file."""
+    _bound_rerun(
+        repo,
+        verdict_name="attempt/verdicts.jsonl",
+        text=lambda v: json.dumps({"record_kind": "diagnosis"}) + "\n" + json.dumps(v) + "\n",
+    )
+    assert "single-object" in _fails_ts_rule(repo, capsys)
+
+
+def test_verdict_data_kinds_are_the_evidence_gates_own_sets() -> None:
+    """The exemption is never looser than `_evidence_records.py::judge_verdict` about what a verdict's data holds."""
+    import ast
+
+    tree = ast.parse((Path(L.__file__).parent / "_evidence_records.py").read_text())
+    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "judge_verdict")
+    sets = {
+        frozenset(ast.literal_eval(c.comparators[0]))
+        for c in ast.walk(fn)
+        if isinstance(c, ast.Compare)
+        and isinstance(c.ops[0], ast.LtE)
+        and isinstance(c.left, ast.Name)
+        and c.left.id == "kinds"
+        and isinstance(c.comparators[0], ast.Set)
+    }
+    assert sets == set(L.VERDICT_DATA_KINDS)
+
+
+def test_a_verdict_bound_to_rows_with_an_unhashable_kind_names_the_condition(repo: Repo, capsys) -> None:
+    """A non-string `record_kind` is coerced as the gate's `kind_of` does: the lint names the condition, never crashes."""
+    _bound_rerun(repo, rows=_rows(2) + [{"record_kind": ["harness_row"], "ts": T0 + 310}])
+    assert "verdict-data sets" in _fails_ts_rule(repo, capsys)

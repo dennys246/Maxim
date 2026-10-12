@@ -102,6 +102,18 @@ What it checks, for every experiment token that has a pre-registration:
   must meet the grammar.
 * **``ts`` and session directories.** A re-run first committed after the freeze carries ``ts`` on every
   record. A directory of session ``report.json`` files is timed from those reports only.
+* **A derived verdict is dated by its rows (owner decision 2026-10-12).** The ``ts`` rule applies to every record
+  read except a bound verdict (rows, ``report.json``, instrument checks, diagnoses, headers, …). A verdict written by
+  ``scripts/_provenance.py::stamp_verdict`` (which never stamps ``ts``) is exempt when its ``ts`` key is ABSENT and
+  it is bound to its rows: ``record_kind == "verdict"``; it is the single object of a ``.json`` file; it carries
+  ``kind``/``data``/``data_sha256``/``scope``; ``data`` is, as an exact string, a file this lint read in the SAME
+  entry; neither file is a symlink; the rows' working-tree bytes hash to ``data_sha256``; and the rows file holds at
+  least one record, all of one of the evidence gate's verdict-data kind sets (``VERDICT_DATA_KINDS``). The time argument: ``data_sha256`` hashes the rows' bytes, so the
+  verdict post-dates them, and their own ``ts`` (judged by this rule, since they are read here) date the data. A
+  ``ts``-less verdict adds nothing to ``first_ts`` and leaves the fallback unchanged, so it can never hide an
+  earlier data time, but only while the binding holds. Any failed condition leaves it counted, and the failure
+  names the file and the condition. The exemption skips only the ``ts`` count: a verdict's dirty flag, allowance
+  and run ids are judged like any record's.
 * **The allow_dirty echo.** It now needs a result doc that names the entry (on a path boundary, or by a
   ``harness_run_id`` from its records), in the paragraph that mentions ``allow_dirty``.
 * **Frozen exception lists.** ``GRANDFATHERED`` / ``UNGOVERNED_RERUNS`` / ``NOT_GOVERNED`` may only SHRINK
@@ -138,7 +150,9 @@ hand (2026-09-27: ~3.5 min before the first trial ``ts``).
 edited in place after data with no amendment header are only visible through
 the post-data-commit NOTE; a POST-DATA label written where PRE-DATA was true
 is trusted; a record written elsewhere without provenance and moved in is
-only caught if it carries the dirty flag. It is a forcing function for the
+only caught if it carries the dirty flag; a ``ts``-less record self-labelled
+``record_kind: "verdict"`` and sha-bound to dated rows is exempt whatever
+else it carries. It is a forcing function for the
 honest author, not a security boundary.
 
 Exits: 0 clean; 1 violations (stderr); 2 cannot check (shallow repo, git
@@ -544,9 +558,8 @@ def _parse_ts(value: object) -> tuple[float | None, bool]:
     return None, False
 
 
-def _records(path: Path):
-    text = path.read_text(errors="replace")
-    if path.suffix == ".jsonl":
+def _parse_records(suffix: str, text: str):
+    if suffix == ".jsonl":
         for line in text.splitlines():
             line = line.strip()
             if not line:
@@ -557,7 +570,7 @@ def _records(path: Path):
                 continue
             if isinstance(obj, dict):
                 yield obj
-    elif path.suffix == ".json":
+    elif suffix == ".json":
         try:
             obj = json.loads(text)
         except json.JSONDecodeError:
@@ -579,7 +592,17 @@ def _allow_flag(rec: dict) -> bool:
 
 
 class DataFacts:
-    __slots__ = ("first_ts", "naive", "allow_dirty", "dirty_unallowed", "has_records", "missing_ts", "run_ids")
+    __slots__ = (
+        "first_ts",
+        "naive",
+        "allow_dirty",
+        "dirty_unallowed",
+        "has_records",
+        "missing_ts",
+        "missing",
+        "exempt",
+        "run_ids",
+    )
 
     def __init__(self) -> None:
         self.first_ts: float | None = None
@@ -587,23 +610,93 @@ class DataFacts:
         self.allow_dirty = False
         self.dirty_unallowed = 0
         self.has_records = False
-        self.missing_ts = 0  # records (session reports) with no `ts`
+        self.missing_ts = 0  # records with no usable `ts` (a bound verdict's ABSENT `ts` is not counted)
+        self.missing: dict[str, str | None] = {}  # file -> why a ts-less VERDICT in it is not exempt (None: not one)
+        self.exempt: list[str] = []  # "<verdict> -> <rows>" for each ts-less verdict its binding exempted
         self.run_ids: set[str] = set()
 
 
-def data_facts(entry: Path) -> DataFacts:
+_VERDICT_FIELDS: tuple[tuple[str, type], ...] = (("kind", str), ("data", str), ("data_sha256", str), ("scope", dict))
+# The record kinds a verdict's data may hold: the evidence gate's own sets (scripts/_evidence_records.py::judge_verdict,
+# pinned equal by a test), so this rule exempts no verdict that gate would refuse for its data's kinds.
+VERDICT_DATA_KINDS: tuple[frozenset[str], ...] = (
+    frozenset({"harness_row", "harness_header"}),
+    frozenset({"harness_event", "harness_run_end"}),
+)
+
+
+def _exemptible(rec: dict) -> bool:
+    """A record the ``ts`` rule MAY exempt: a derived verdict (``record_kind == "verdict"`` exactly) whose ``ts`` key
+    is ABSENT, the shape ``scripts/_provenance.py::stamp_verdict`` writes. A present-but-broken ``ts`` is a broken
+    record, never this shape. Whether it IS exempt is its binding's question (:func:`_verdict_binding_problem`)."""
+    return rec.get("record_kind") == "verdict" and _TS_KEY not in rec
+
+
+def _single_object_json(path: Path, raw: bytes) -> bool:
+    if path.suffix != ".json":
+        return False
+    try:
+        return isinstance(json.loads(raw.decode("utf-8", errors="replace")), dict)
+    except json.JSONDecodeError:
+        return False
+
+
+def _verdict_binding_problem(rec: dict, rel: str, read: dict[str, tuple[Path, bytes, list[dict]]]) -> str | None:
+    """Why a ts-less verdict is NOT bound to dated rows (None: it is, and it is exempt from the ``ts`` rule).
+    ``rel`` is the verdict's own file; ``read`` maps the exact repo-relative posix path of every file
+    :func:`data_facts` read for this entry to (the path, its bytes read ONCE, the records parsed from those bytes), so
+    the bytes hashed here are the bytes whose ``ts`` this rule dated.
+
+    The time argument (owner decision 2026-10-12): ``data_sha256`` hashes the rows' bytes, so the verdict was
+    written after them. Its rows' own ``ts`` date the data, and this same rule judges them, because the rows must
+    be a file read here. A verdict with no ``ts`` adds nothing to ``first_ts`` and leaves ``fallback`` unchanged,
+    so exempting it can never hide an earlier data time. That holds only while the binding holds: every condition
+    below is load-bearing, and any failure leaves the record counted (fail closed)."""
+    path, raw, _ = read[rel]
+    if not _single_object_json(path, raw):
+        return "not a single-object .json verdict file (a .jsonl line or a list element)"
+    lacking = [k for k, t in _VERDICT_FIELDS if not isinstance(rec.get(k), t)]
+    if lacking:
+        return f"lacks the stamp_verdict field(s) {', '.join(lacking)}"
+    bound = read.get(rec["data"])  # the exact string, never normalised
+    if bound is None:
+        return f"`data` {rec['data']!r} is not a file this rule read in this entry"
+    rows_path, rows_raw, rows = bound
+    if path.is_symlink() or rows_path.is_symlink():
+        return f"the verdict or its rows file {rec['data']} is a symlink"
+    if hashlib.sha256(rows_raw).hexdigest() != rec["data_sha256"]:
+        return f"the bytes of {rec['data']} do not hash to its data_sha256"
+    kinds = {k if isinstance(k := r.get("record_kind"), str) else f"<{type(k).__name__}>" for r in rows}  # as kind_of
+    if not rows or not any(kinds <= allowed for allowed in VERDICT_DATA_KINDS):
+        return (
+            f"{rec['data']} holds no record, or record kinds outside one of the evidence gate's verdict-data sets "
+            "(harness_row/harness_header, or harness_event/harness_run_end): no verdict chaining"
+        )
+    return None
+
+
+def data_facts(entry: Path, *, repo_root: Path) -> DataFacts:
     """A directory holding session ``report.json`` files is judged by those reports ONLY — its time, dirty flag,
     allowance and run ids (restored agent state and harness rows beside them are not read here; binding a sim to
     the harness row that allowed it is the evidence gate's job, M1b decision 4); otherwise every JSON / JSONL file
-    under the entry."""
+    under the entry. A ts-less verdict bound to its rows is not counted as missing ``ts``
+    (:func:`_verdict_binding_problem`); its dirty flag, allowance and run ids are counted like any record's."""
     facts = DataFacts()
     if entry.is_file():
         files = [entry]
     else:
         reports = sorted(entry.rglob("report.json"))
         files = reports or sorted(p for p in entry.rglob("*") if p.suffix in (".json", ".jsonl"))
-    for f in files:
-        for rec in _records(f):
+    read: dict[str, tuple[Path, bytes, list[dict]]] = {}
+    for f in files:  # each file's bytes are read ONCE: parsed, dated and (if a verdict binds them) hashed
+        raw = f.read_bytes()
+        read[f.relative_to(repo_root).as_posix()] = (
+            f,
+            raw,
+            list(_parse_records(f.suffix, raw.decode("utf-8", errors="replace"))),
+        )
+    for rel, (f, _raw, recs) in read.items():
+        for rec in recs:
             facts.has_records = True
             if _allow_flag(rec):
                 facts.allow_dirty = True
@@ -615,7 +708,17 @@ def data_facts(entry: Path) -> DataFacts:
                     facts.run_ids.add(rid)
             ts, naive = _parse_ts(rec.get(_TS_KEY))
             if ts is None:
+                why = None
+                if _exemptible(rec):
+                    why = _verdict_binding_problem(rec, rel, read)
+                    if why is None:  # skip ONLY the missing-`ts` count: the accounting above already ran
+                        facts.exempt.append(f"{rel} -> {rec['data']}")
+                        continue
+                elif rec.get("record_kind") == "verdict":
+                    why = "its `ts` is present but does not parse"
                 facts.missing_ts += 1
+                if facts.missing.get(rel) is None:  # keep a verdict's reason over a plain record's None
+                    facts.missing[rel] = why
                 continue
             facts.naive |= naive
             if facts.first_ts is None or ts < facts.first_ts:
@@ -721,7 +824,12 @@ def record_form_problems(ix: _Index, entry: Path, *, facts, fallback: bool, adde
     if fallback and entry.suffix == ".jsonl" and facts.has_records and added is not None and added >= TS_REQUIRED_FROM:
         out.append("a .jsonl record file committed after 2026-08-29 must carry epoch `ts` on its records")
     if rerun and (added is None or added >= EXCEPTIONS_FROZEN) and (fallback or facts.missing_ts):
-        out.append("a re-run recorded after the M1b PR 4 freeze carries `ts` on every record (every report.json)")
+        msg = "a re-run recorded after the M1b PR 4 freeze carries `ts` on every record (every report.json, if any)"
+        if facts.missing:
+            msg += "; no `ts` in: " + "; ".join(
+                f"{f} (a verdict, not exempt: {why})" if why else f for f, why in sorted(facts.missing.items())
+            )
+        out.append(msg)
     if facts.naive:
         out.append("`ts` is a naive ISO-8601 string (no UTC offset) — its zone is unknowable; write epoch seconds")
     if facts.dirty_unallowed:
@@ -791,7 +899,7 @@ def classify(
             out["notes"].append(f"UNGOVERNED RE-RUN (listed) — {ungoverned_reruns[key]}")
         elif key in excepted:
             # The clause excuses the missing pre-registration only: the records' own form is still judged.
-            facts = data_facts(entry)
+            facts = data_facts(entry, repo_root=repo_root)
             _when, _how, fallback = data_time(repo_root, ref, rel, facts)
             added = first_commit_time(repo_root, ref, rel)
             hygiene = record_form_problems(ix, entry, facts=facts, fallback=fallback, added=added, governing=set())
@@ -813,7 +921,7 @@ def classify(
         out["status"] = "FAIL"
         out["problems"].append("listed as UNGOVERNED_RERUNS but a pre-registration governs it — remove the stale entry")
         return out
-    facts = data_facts(entry)
+    facts = data_facts(entry, repo_root=repo_root)
     when, how, fallback = data_time(repo_root, ref, rel, facts)
     problems, notes = out["problems"], out["notes"]
     added = first_commit_time(repo_root, ref, rel)
@@ -829,6 +937,10 @@ def classify(
     )
     if fallback:
         notes.append(f"no `ts` in any record — judged at commit granularity ({how})")
+    notes.extend(
+        f"verdict {v} carries no `ts`: exempt, bound by data_sha256 to rows whose records date the data"
+        for v in facts.exempt
+    )
     declared = False
     for prereg in sorted(governing):
         if not (repo_root / prereg).exists():
