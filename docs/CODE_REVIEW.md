@@ -9,7 +9,7 @@ concrete failure scenario. The table below summarises each lens; the review prom
 
 | Lens | Reads | Asks (summary) |
 |---|---|---|
-| **Executor** | the code inside the diff's hunks and its path to the production entry point | Does it work on the real path, fail when the mechanism is deleted, and refuse when it should? |
+| **Executor** | the code inside the diff's hunks and its path to the production entry point | Does it work on the real path, fail when the mechanism is deleted, and refuse when it should? Does a test make every new handler, branch and return path RUN (list each changed line none executes: the coverage ratchet's 80% diff gate, run before push by `scripts/suite_at_commit.sh`, M47)? |
 | **Architecture** | the diff against the codebase's design | Is it the root cause, the right layer and owner, true to the invariants and honest in its docs? |
 | **Wire integrity** | every line **outside** the hunks that produces or consumes a contract the diff touches | What does each neighbouring producer, consumer, store, hook and learner get, before and after? |
 
