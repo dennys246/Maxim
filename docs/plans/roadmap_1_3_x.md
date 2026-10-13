@@ -234,9 +234,10 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
    uncovered statements did not grow, and its pinned `missing` never rises, so no PR chain can walk a floor
    down; a scope fails below its floor or more than 1.0 pt above it; diff coverage
    ≥ 80% of changed executable `src/maxim` statements against the merge-base, with moved code counted as
-   changed. `scripts/coverage_floors.json` holds an overall floor and one per package (first path
+   changed. `scripts/coverage_floors.json` holds an overall floor, one per package (first path
    component; top-level modules as `maxim/<root>`; 200 statements or more, kept while the directory
-   exists), each with its pinned `missing` count: a floor drops only when `missing` does not rise (a
+   exists) and, since format v2 (2026-10-13), opt-in per-file floors (`files`, with the split rule and
+   `retired_files`; section 1b of the lint's docstring), each with its pinned `missing` count: a floor drops only when `missing` does not rise (a
    deletion of covered code). It is committed with `null` values: the gate PR's first CI run prints
    the measured floors, and they are committed on the same branch. `scripts/coverage_exclusions.json` is
    the reviewed exclusion list (today only `embodied_runtime/selfy.py`, with its reason) plus an

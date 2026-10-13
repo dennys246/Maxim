@@ -1,5 +1,5 @@
 {
-  "floors_format_version": 1,
+  "floors_format_version": 2,
   "band": 1.0,
   "min_package_statements": 200,
   "overall": {
@@ -167,5 +167,7 @@
       "percent": 60.2,
       "missing": 2213
     }
-  }
+  },
+  "files": {},
+  "retired_files": []
 }
