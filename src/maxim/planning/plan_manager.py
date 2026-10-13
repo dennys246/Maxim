@@ -96,6 +96,7 @@ class PlanServices:
     nac: Any = None  # NAc
     hippocampus: Any = None  # Hippocampus
     plan_history: Any = None  # PlanHistoryBridge
+    # Dormant since 2026-10-12 (#1221): wired by MaximAgent, read by nothing.
     statistician: Any = None  # StatisticianAgent
 
 
@@ -513,17 +514,6 @@ class PlanManager:
             except Exception:
                 pass
 
-        tool_success_rates: dict[str, float] = {}
-        if svc.statistician:
-            try:
-                for sg in phase.sub_goals:
-                    if sg.tool_name:
-                        rate = svc.statistician.get_tool_success_rate(sg.tool_name)
-                        if rate is not None:
-                            tool_success_rates[sg.tool_name] = rate
-            except Exception:
-                pass
-
         # Extract coding-specific context if available
         coding_context = _extract_coding_context(phase)
 
@@ -573,7 +563,7 @@ class PlanManager:
             time_elapsed=time.time() - plan.created_at,
             similar_past_failures=similar_past_failures,
             alternative_approaches=alternative_approaches,
-            tool_success_rates=tool_success_rates,
+            tool_success_rates={},  # Dormant since 2026-10-12 (#1221): see ReplanContext.tool_success_rates
             pattern_warnings=[],
             coding_context=coding_context,
             prior_attempt_actions=prior_attempt_actions,

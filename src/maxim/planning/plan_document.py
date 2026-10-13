@@ -255,6 +255,10 @@ class ReplanContext:
     alternative_approaches: list[str] = field(default_factory=list)
 
     # Statistical context
+    # Dormant since 2026-10-12 (#1221): never populated and never read. The planner asked
+    # StatisticianAgent for a get_tool_success_rate it never had, swallowing the AttributeError,
+    # and no prompt renders this field. Kept (it round-trips through to_dict/from_dict) rather
+    # than deleted; reviving it needs a real producer AND a consumer that renders it.
     tool_success_rates: dict[str, float] = field(default_factory=dict)
     pattern_warnings: list[str] = field(default_factory=list)
 
