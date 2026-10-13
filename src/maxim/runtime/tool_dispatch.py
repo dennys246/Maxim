@@ -190,8 +190,8 @@ def _observe_tool_result(
     or never-run call) or a non-failure books as before.
     """
     if bridge_booked is not None and bridge_booked == sig and learn_valence is _V.NEGATIVE:
-        return None
-    return nac.observe(
+        return None  # the bridge's booking traced itself (NAc's sim_nac_learn); nothing to trace here (#1221 3)
+    link = nac.observe(
         event_type="tool",
         event_signature=sig,
         outcome_type="tool_result",
@@ -200,6 +200,10 @@ def _observe_tool_result(
         delta_seconds=elapsed_s,
         context=ctx,
     )
+    from maxim.simulation.sim_logger import sim_nac  # contained: never raises (#863)
+
+    sim_nac(sig, valence.value, getattr(link, "last_rpe", 0.0) or 0.0, getattr(link, "confidence", 0.5))
+    return link
 
 
 def record_outcome(
@@ -393,9 +397,7 @@ def record_outcome(
             ctx: dict[str, Any] = {"agent_id": agent_id}
             if reasoning:
                 ctx["goal"] = reasoning[:100]
-            link = _observe_tool_result(
-                nac, sig, learn_valence, valence, outcome_summary, elapsed_s, ctx, bridge_booked
-            )
+            _observe_tool_result(nac, sig, learn_valence, valence, outcome_summary, elapsed_s, ctx, bridge_booked)
             # Goal-level credit: if deliberation was active under a goal,
             # credit/penalize that goal so ThoughtGate learns whether
             # deliberation under this goal type produces good outcomes.
@@ -584,18 +586,6 @@ def record_outcome(
                         # not crash the agent loop.
                         logger.debug("update_cluster_reward raised", exc_info=True)
 
-            # Sim trace
-            try:
-                from maxim.simulation.sim_logger import sim_nac
-
-                sim_nac(
-                    f"tool:{tool_name}",
-                    valence.value,
-                    getattr(link, "last_rpe", 0.0) or 0.0,
-                    getattr(link, "confidence", 0.5),
-                )
-            except Exception:
-                log_swallowed_exception()  # sim trace is best-effort
         except Exception as e:
             logger.warning("NAc reward signal failed for tool %s: %s", tool_name, e)
 
@@ -674,6 +664,7 @@ def execute_parallel_actions(
 
     for idx, parallel_action in enumerate(actions):
         tool_name = parallel_action.get("tool_name", "unknown")
+        recorded = len(parallel_results)  # one result per action: a later raise must not add a second (#1221 2b)
         try:
             # Check autonomy for each action
             can_exec, reason = autonomy_controller.can_execute_action(parallel_action, confidence=confidence)
@@ -731,6 +722,8 @@ def execute_parallel_actions(
 
         except Exception as e:
             logger.error("Parallel action %s failed: %s", tool_name, e)
+            if len(parallel_results) > recorded:
+                continue  # its outcome is recorded, carrying the failure stamp when the bridge booked one
             parallel_results.append(
                 {
                     "tool": tool_name,

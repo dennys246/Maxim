@@ -468,10 +468,8 @@ class Executor:
             with self._lock:
                 self._running = None
             result = ToolOutput(success=False, error=f"Tool {tool_name!r} execution failed: {e}")
-            booked = self._book_failure(tool_name, invocation_id, suppress_nac=suppress_nac)
-            self._report_failure(tool_name, invocation_id, result, params)
             # raised: no record
-            return self._stamp_invocation(result, invocation_id, pressure_before, failure_booked=booked)
+            return self._fail_ran(tool_name, invocation_id, result, params, pressure_before, suppress_nac=suppress_nac)
 
         with self._lock:
             self._running = None
@@ -543,13 +541,41 @@ class Executor:
                         bridge_err,
                     )
         else:
-            booked = self._book_failure(tool_name, invocation_id, suppress_nac=suppress_nac)
+            return self._fail_ran(
+                tool_name, invocation_id, result, params, pressure_before, suppress_nac=suppress_nac, outcome=outcome
+            )
+
+        return self._stamp_invocation(result, invocation_id, pressure_before, outcome=outcome)
+
+    def _fail_ran(
+        self,
+        tool_name: str,
+        invocation_id: str,
+        result: ToolOutput,
+        params: dict[str, Any],
+        pressure_before: tuple[tuple[str, float], ...] | None,
+        *,
+        suppress_nac: bool,
+        outcome: _OutcomeStart | None = None,
+    ) -> ToolOutput:
+        """Book, report and stamp a failure that RAN as one step (#1221 item 2c).
+
+        Once the bridge has booked, the stamp must reach the caller: a raise in the pain detector or the stamp
+        after the booking used to escape ``execute`` without it, and dispatch then booked a second NEGATIVE.
+        Such a raise is reported and the failure returned carrying the booked signature (what it loses is the
+        other reporting fields). With nothing booked there is no stamp to keep, and the raise propagates.
+        """
+        booked = self._book_failure(tool_name, invocation_id, suppress_nac=suppress_nac)
+        try:
             self._report_failure(tool_name, invocation_id, result, params)
             return self._stamp_invocation(
                 result, invocation_id, pressure_before, outcome=outcome, failure_booked=booked
             )
-
-        return self._stamp_invocation(result, invocation_id, pressure_before, outcome=outcome)
+        except Exception:
+            if booked is None or not isinstance(result, ToolOutput):
+                raise
+            log_swallowed_exception(site="executor.py:_fail_ran")
+            return dataclasses.replace(result, nac_failure_booked=booked)
 
     def _book_failure(self, tool_name: str, invocation_id: str, *, suppress_nac: bool) -> str | None:
         """Book a failure that RAN through the tool-pain bridge (#1200 Stage 2, TF2); returns the event signature

@@ -340,6 +340,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A tool failure the bridge booked is booked once even when something raises after the booking (#1221 items 2
+  and 3).** The tool-pain bridge books a failure, and `ToolOutput.nac_failure_booked` carries the signature to
+  dispatch so it skips its own NEGATIVE. Three raises lost that stamp, and dispatch then booked the failure twice:
+  - (a) NAc's provenance collector raising after the link was written. NAc now reports this raise instead of
+    propagating it, as it already did for the sim trace beside it.
+  - (b) A raise after a parallel action's result was recorded, which appended a second, unstamped failure dict for
+    the same action. The batch now keeps one result per action.
+  - (c) The pain detector or the output stamp raising after `Executor._book_failure`. Book, report and stamp are
+    now one step, `Executor._fail_ran`: once something is booked, such a raise is reported and the failure comes
+    back stamped. With nothing booked, it propagates as before.
+
+  Item 3: `record_outcome` no longer traces a failure it skipped with a placeholder confidence of 0.5 and RPE of
+  0.0. The trace moved into `_observe_tool_result` and runs only for the link dispatch books. The bridge's booking
+  already traces itself through NAc. The trace's event is now the observed signature (`tool:use:<action>` for a
+  compound) instead of `tool:<name>`.
+
 - **The planner no longer swallows a call into a method that does not exist; its tool success-rate chain is Dormant
   (#1221 item 1).** `plan_manager` asked `svc.statistician.get_tool_success_rate(...)` for each sub-goal's tool, but
   `StatisticianAgent` (which `MaximAgent` wires into `PlanServices.statistician`) never had that method: whenever a

@@ -685,7 +685,6 @@ def _kinds(nac: NAc, tool: str = TOOL) -> list[str]:
     return sorted(link.outcome_type for link in _links(nac, f"tool:{tool}", Valence.NEGATIVE))
 
 
-@pytest.mark.xfail(strict=True, reason="#1221 2a: NAc's collector raises after the link is written; booked reads None")
 def test_a_collector_raise_after_the_link_is_written_books_the_failure_once() -> None:
     executor, nac = _executor(_Flaky())
     nac._collector = _RaisingCollector()
@@ -693,7 +692,6 @@ def test_a_collector_raise_after_the_link_is_written_books_the_failure_once() ->
     assert _kinds(nac) == ["result"]
 
 
-@pytest.mark.xfail(strict=True, reason="#1221 2b: a raise after the dict is appended adds a second, unstamped dict")
 def test_a_raise_after_a_parallel_result_is_recorded_keeps_one_result(monkeypatch: pytest.MonkeyPatch) -> None:
     real = tool_dispatch.log_agentic
 
@@ -723,7 +721,6 @@ def test_a_raise_after_a_parallel_result_is_recorded_keeps_one_result(monkeypatc
     assert _kinds(nac) == ["result"]
 
 
-@pytest.mark.xfail(strict=True, reason="#1221 2c: a raise after _book_failure escapes execute without the stamp")
 @pytest.mark.parametrize("where", ["detector", "stamp"])
 @pytest.mark.parametrize("tool", ["returned", "raised"])
 def test_a_raise_after_the_bridge_booked_returns_the_stamp(where: str, tool: str) -> None:
@@ -763,7 +760,6 @@ def _traced(monkeypatch: pytest.MonkeyPatch) -> list[tuple[Any, ...]]:
     return calls
 
 
-@pytest.mark.xfail(strict=True, reason="#1221 3: a skipped observe still traces confidence 0.5 / rpe 0.0")
 def test_a_bridge_booked_failure_is_not_traced_by_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = _traced(monkeypatch)
     _record(NAc(NACConfig()), success=False, bridge_booked=f"tool:{TOOL}")

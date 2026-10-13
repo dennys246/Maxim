@@ -1346,18 +1346,22 @@ class NAc(StoreFileOwnership):
 
         self._enforce_limits()
 
-        # Log causal learning activity (P3g — Tier 2)
+        # Log causal learning activity (P3g — Tier 2). The links are already written: a raise here
+        # would report a booked outcome as unbooked, and the caller would book it again (#1221 2a).
         if hasattr(self, "_collector") and self._collector and self._collector.verbosity >= 1:
             from maxim.provenance.types import PipelineStage, ProvenanceRef
 
-            for link in updated_links:
-                self._collector.log_activity(
-                    PipelineStage.LEARNING,
-                    "nac",
-                    f"Causal: {link.event_signature} → {link.outcome_signature} "
-                    f"(V={link.predicted_value:.2f}, n={link.observation_count})",
-                    sources=[ProvenanceRef("nac", link.id, link.event_signature)],
-                )
+            try:
+                for link in updated_links:
+                    self._collector.log_activity(
+                        PipelineStage.LEARNING,
+                        "nac",
+                        f"Causal: {link.event_signature} → {link.outcome_signature} "
+                        f"(V={link.predicted_value:.2f}, n={link.observation_count})",
+                        sources=[ProvenanceRef("nac", link.id, link.event_signature)],
+                    )
+            except Exception:
+                log_swallowed_exception(site="nac.py:_record_outcome_impl:collector")
 
         # Simulation verbosity — use structured sim_nac_learn for display + JSONL
         for link in updated_links:
