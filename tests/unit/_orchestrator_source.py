@@ -61,7 +61,67 @@ SIMULATION = Path(__file__).resolve().parents[2] / "src" / "maxim" / "simulation
 
 # (module file under src/maxim/simulation/, function name). The first entry is the function itself;
 # each extraction slice appends the functions it moved out of it.
-PARTS: tuple[tuple[str, str], ...] = (("orchestrator.py", "start_simulation_mode"),)
+PARTS: tuple[tuple[str, str], ...] = (
+    ("orchestrator.py", "start_simulation_mode"),
+    # slice 0 (owner decision SF-4, 2026-10-13): the TTY read loops, moved verbatim to the coverage-excluded
+    # tty_stdin.py (the nested _stdin_reader_raw and the post-sim raw prompt loop)
+    ("tty_stdin.py", "stdin_reader_raw"),
+    ("tty_stdin.py", "read_post_sim_goal_raw"),
+)
+
+# Every module a slice moved ``start_simulation_mode`` code into, as a dotted name. The slice that creates one
+# appends it here in the same commit as the move, and appends its functions to ``PARTS``.
+# ``test_orchestrator_source.py`` holds the registry complete (its docstring lists the checks and their limits).
+EXTRACTION_MODULES: tuple[str, ...] = ("maxim.simulation.tty_stdin",)
+
+# Top-level functions of an extraction module that are NOT the run's code, with the reason: module-level
+# helpers of ``orchestrator.py`` that moved with the code they serve. They are not in ``PARTS``, so a pin on
+# the run cannot be satisfied by their text.
+MOVED_MODULE_HELPERS: dict[tuple[str, str], str] = {
+    ("tty_stdin.py", "_restore_terminal"): "module level in orchestrator.py at 17710609 (the atexit/SIGTERM "
+    "terminal restore), moved with the raw reader that arms it",
+    ("tty_stdin.py", "_sigterm_handler"): "module level in orchestrator.py at 17710609 (the SIGTERM hook the raw "
+    "reader installs), moved with it",
+}
+
+# What ``orchestrator.py`` looked like at main 17710609, before any extraction slice, frozen: every ``maxim``
+# module it imported (``maxim_imports``, resolved as ``maxim_imports()`` resolves them) and the top-level
+# function names of each ``maxim.simulation`` module among them. Generated once from ``git show 17710609:...``;
+# never regenerated.
+PRE_SLICE_SNAPSHOT = Path(__file__).resolve().parents[1] / "fixtures" / "orchestrator_pre_slice_snapshot.json"
+
+# A ``maxim`` module ``orchestrator.py`` imports that it did not at 17710609, and that is NOT an extraction
+# module (a fix needing a new dependency), with the reason. Empty at slice 0.
+NEW_ORCHESTRATOR_IMPORTS: dict[str, str] = {}
+
+# A new top-level function in a pre-slice ``maxim.simulation`` module that is NOT code moved out of the run
+# (ordinary new code in, e.g., ``report.py``), as (file, name) with the reason. Empty at slice 0.
+NEW_PRE_SLICE_MODULE_FUNCTIONS: dict[tuple[str, str], str] = {}
+
+
+def maxim_imports(text: str, package: str = "maxim.simulation") -> set[str]:
+    """Every ``maxim`` module a source text imports, at any depth of the file, in every static form:
+    ``import maxim.x``, ``from maxim.x import y``, ``from maxim.pkg import mod`` (``maxim.pkg.mod`` when
+    ``maxim/pkg`` is a package) and relative imports, resolved against ``package`` (the file's own)."""
+    src = SIMULATION.parents[1]
+    out: set[str] = set()
+    for n in ast.walk(ast.parse(text)):
+        if isinstance(n, ast.Import):
+            out |= {a.name for a in n.names if a.name == "maxim" or a.name.startswith("maxim.")}
+        elif isinstance(n, ast.ImportFrom):
+            if n.level:
+                base = package.split(".")
+                base = base[: len(base) - (n.level - 1)]
+                module = ".".join(base + ([n.module] if n.module else []))
+            else:
+                module = n.module or ""
+            if module != "maxim" and not module.startswith("maxim."):
+                continue
+            if (src / module.replace(".", "/") / "__init__.py").is_file():  # a package: its names may be modules
+                out |= {f"{module}.{a.name}" for a in n.names}
+            else:
+                out.add(module)
+    return out
 
 
 def _function(path: Path, name: str) -> tuple[ast.FunctionDef, str]:

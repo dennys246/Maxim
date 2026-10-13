@@ -599,7 +599,7 @@ UNCHANGED, in the same PR (built in slice 0, owner decisions 2026-10-05):
 
 A slice that cannot show all of them does not merge. **A golden is regenerated only from the
 pre-slice commit, in its own commit** with the diff justified (the `--regen` entry point refuses a
-dirty `src/`), never by pasting a slice's output. A source pin that says "the loop's code contains
+dirty `src/`), never by pasting a slice's output; the check that would enforce it is mechanization backlog M53 ([outstanding.md](outstanding.md)). A source pin that says "the loop's code contains
 X" reads `tests/unit/_loop_source.py` (`agent_loop.py` plus every `runtime/loop_*.py`), so it survives
 an extraction. **Function-specific pins** (an ordering or region inside one function) are listed by
 owning slice in that module's docstring and are updated consciously by that slice: slice 1
@@ -620,6 +620,23 @@ auto-sense, §1.16 audio and `state.update(observation)`; only text pins touch t
 non-sim adapter, a sim percept source for the reflex tier, a capturing worker, the real
 `bodies/reachy_mini_infant`), the block's statement coverage 27% → 100%. It pins, unchanged, the percept-text
 divergence filed as #1202.
+
+**Characterization owed before the orchestrator's report, teardown and stall slices** (the review of
+orchestrator slice 0, 2026-10-13). `tests/unit/test_orchestrator_characterization_golden.py` (driver:
+`tests/unit/_orch_harness.py`) runs three arms, all on a fresh throwaway AUT. Before the slice that moves §13
+teardown or §14 report/save, it needs an **adopted `persistent_agent` arm** (the HANDLE seam's branches 3 and 4:
+no session AUT snapshot, the tool-lease restore, the DefaultNetwork pain-bridge unsubscribe), an
+**imagination-enabled arm** (§7) and a **`/new` arm** (the post-sim reader faked to return a goal, so the run
+re-enters `start_simulation_mode`). Before the slice that moves §11, it needs a **stall-detector arm** that reaches
+the detector's injections; today's arms stay under its first diversity checkpoint and its 30 s idle threshold on
+purpose. Already pinned by slice 0's review fold: the report's provenance by value (only the keys that name the
+checkout and the interpreter are masked, by name), the whole `MAXIM_DATA_HOME` file set (the orchestrator's own
+`shutdown()` stores included; `agents/*/runtime/` excluded for #1264), the threads a run leaves alive (#1263,
+pinned as current behaviour), the saved AUT NAc's causal links and the `actions.jsonl` records, and what each
+report writer is handed.
+**The `orchestrator.py` per-file coverage floor** is pinned from CI's measurement once #1266 (per-file floors
+with the split rule; merged to main 2026-10-13) is on the slice branch, not from a local run; slice 0 does not
+touch `scripts/coverage_floors.json`.
 
 **Typing rides along, scoped:** every module the decomposition creates enters CI's mypy set. The
 repo-wide ratchet from 1.3.1 holds the rest. Full coverage is not promised.
