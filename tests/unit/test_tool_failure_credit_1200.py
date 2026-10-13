@@ -662,3 +662,162 @@ def test_every_record_outcome_caller_passes_the_failure_stamp() -> None:
     design pass's D1). The type enforces it since #1221; this guard stays because test spies
     (``lambda **kw``) and attribute calls bypass the signature check."""
     assert _record_outcome_calls_missing_the_stamp() == _SANCTIONED_REFERENCES
+
+
+# ── #1221 item 2: a raise AFTER the bridge booked must not lose the stamp ──────────────────────────────
+
+
+class _RaisingCollector:
+    """A provenance collector whose logging fails: NAc calls it after the link is already written."""
+
+    verbosity = 1
+
+    def log_activity(self, *args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("collector down")
+
+
+class _RaisingDetector:
+    def record_tool_error(self, **kwargs: Any) -> None:
+        raise RuntimeError("detector down")
+
+
+def _kinds(nac: NAc, tool: str = TOOL) -> list[str]:
+    return sorted(link.outcome_type for link in _links(nac, f"tool:{tool}", Valence.NEGATIVE))
+
+
+def test_a_collector_raise_after_the_link_is_written_books_the_failure_once() -> None:
+    executor, nac = _executor(_Flaky())
+    nac._collector = _RaisingCollector()
+    _execute_and_learn(executor, nac, {"tool_name": TOOL, "params": {}})
+    assert _kinds(nac) == ["result"]
+
+
+def test_a_raise_after_a_parallel_result_is_recorded_keeps_one_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    real = tool_dispatch.log_agentic
+
+    def _log(source: str, event: str, data: Any = None, **kwargs: Any) -> None:
+        if event == "parallel_action_complete":
+            raise RuntimeError("log down")
+        real(source, event, data, **kwargs)
+
+    monkeypatch.setattr(tool_dispatch, "log_agentic", _log)
+    executor, nac = _executor(_Flaky())
+    autonomy = MagicMock()
+    autonomy.can_execute_action.return_value = (True, "")
+    results, _ = tool_dispatch.execute_parallel_actions(
+        agent_id="aut_1200",
+        actions=[{"tool_name": TOOL, "params": {}}],
+        executor=executor,
+        autonomy_controller=autonomy,
+        confidence=0.9,
+        reasoning="probe",
+        recent_outcomes=[],
+        max_recent=5,
+        llm_worker=None,
+        context_pool=MagicMock(),
+        nac=nac,
+    )
+    assert [r["tool"] for r in results] == [TOOL]
+    assert _kinds(nac) == ["result"]
+
+
+@pytest.mark.parametrize("where", ["detector", "stamp"])
+@pytest.mark.parametrize("tool", ["returned", "raised"])
+def test_a_raise_after_the_bridge_booked_returns_the_stamp(where: str, tool: str) -> None:
+    executor, nac = _executor(_Flaky(), _Raiser())
+    name = TOOL if tool == "returned" else "raiser_1200"
+    if where == "detector":
+        executor._pain_detector = _RaisingDetector()
+    else:
+
+        def _boom(result: Any) -> Any:
+            raise RuntimeError("relief down")
+
+        executor._drive_relief = _boom
+    out = executor.execute({"tool_name": name, "params": {}})
+    assert (out.success, out.nac_failure_booked) == (False, f"tool:{name}")
+    _execute_and_learn(executor, nac, {"tool_name": name, "params": {}})
+    assert _kinds(nac, name) == ["result"]
+
+
+def test_a_raise_after_the_bridge_wrote_its_links_still_returns_the_stamp() -> None:
+    """The bridge's own step after the write (noting the surprise) is the same window (#1221 review)."""
+    executor, nac = _executor(_Flaky())
+
+    def _boom(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("rpe map down")
+
+    executor._tool_pain_bridge._note_invocation_rpe = _boom
+    out = executor.execute({"tool_name": TOOL, "params": {}})
+    assert out.nac_failure_booked == f"tool:{TOOL}"
+    _execute_and_learn(executor, nac, {"tool_name": TOOL, "params": {}})
+    assert _kinds(nac) == ["result"]
+
+
+def test_the_stamped_fallback_retires_the_invocations_surprise() -> None:
+    """A post-booking raise still pops the invocation's surprise and pain: neither outlives it (2S-c)."""
+    executor, _ = _executor(_Flaky())
+    executor._pain_detector = _RaisingDetector()
+    out = executor.execute({"tool_name": TOOL, "params": {}})
+    assert out.rpe is not None and out.rpe > 0.0
+    bridge = executor._tool_pain_bridge
+    assert (bridge._rpe_by_invocation, bridge._pain_by_invocation) == ({}, {})
+
+
+def test_a_raise_before_a_parallel_result_is_recorded_keeps_the_stamp(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The batch's except reads the stamp off the result it already has, as dispatch's other two callers do."""
+
+    def _boom(result: Any) -> Any:
+        raise RuntimeError("side effects unreadable")
+
+    monkeypatch.setattr(tool_dispatch, "read_learning_side_effects", _boom)
+    executor, nac = _executor(_Flaky())
+    autonomy = MagicMock()
+    autonomy.can_execute_action.return_value = (True, "")
+    results, _ = tool_dispatch.execute_parallel_actions(
+        agent_id="aut_1200",
+        actions=[{"tool_name": TOOL, "params": {}}],
+        executor=executor,
+        autonomy_controller=autonomy,
+        confidence=0.9,
+        reasoning="probe",
+        recent_outcomes=[],
+        max_recent=5,
+        llm_worker=None,
+        context_pool=MagicMock(),
+        nac=nac,
+    )
+    assert [(r["tool"], r["success"]) for r in results] == [(TOOL, False)]
+    assert _kinds(nac) == ["result"]  # the batch strips its private keys: the stamp shows in what was booked
+
+
+def test_a_raise_after_a_failure_nothing_booked_still_propagates() -> None:
+    """With nothing booked there is no stamp to keep, so the post-booking raise reaches the caller as before."""
+    executor, _ = _executor(_Flaky())
+    executor._tool_pain_bridge = None
+    executor._pain_detector = _RaisingDetector()
+    with pytest.raises(RuntimeError, match="detector down"):
+        executor.execute({"tool_name": TOOL, "params": {}})
+
+
+# ── #1221 item 3: dispatch traces only the link it books ──────────────────────────────────────────────
+
+
+def _traced(monkeypatch: pytest.MonkeyPatch) -> list[tuple[Any, ...]]:
+    import maxim.simulation.sim_logger as sim_logger
+
+    calls: list[tuple[Any, ...]] = []
+    monkeypatch.setattr(sim_logger, "sim_nac", lambda *a, **k: calls.append(a))
+    return calls
+
+
+def test_a_bridge_booked_failure_is_not_traced_by_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _traced(monkeypatch)
+    _record(NAc(NACConfig()), success=False, bridge_booked=f"tool:{TOOL}")
+    assert calls == []
+
+
+def test_a_booked_outcome_is_still_traced(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _traced(monkeypatch)
+    _record(NAc(NACConfig()), success=False, bridge_booked=None)
+    assert [c[:2] for c in calls] == [(f"tool:{TOOL}", "negative")]
