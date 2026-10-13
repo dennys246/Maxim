@@ -13,7 +13,7 @@ HOW IT RUNS. ``tests/unit/_orch_harness.py`` (read its docstring) runs the REAL 
   - the real threads, on the wall clock, with the real 3 s settle;
   - class-level hooks on ``SimulationBridge`` for causal synchronisation.
 
-Three arms: ``precampaign``, ``narrator`` and ``stdin``.
+Three arms: ``precampaign``, ``narrator`` (with the AUT on its own router build) and ``stdin``.
 
 WHAT IS RECORDED. Only causally ordered facts:
 
@@ -25,10 +25,15 @@ WHAT IS RECORDED. Only causally ordered facts:
   - the ``finish_context`` each ``bridge.finish()`` saw;
   - the ``display_status``/``display_summary`` lifecycle lines;
   - the ``SimulationResult`` (timestamps and the live introspector dropped);
-  - the deterministic ``report.json`` fields (provenance by its keys);
-  - the report writers called, in order (``save_report`` twice: before and after the roundup), and the
-    ``sim_reports`` file set;
-  - any ``sim.*`` thread still alive after the run.
+  - the deterministic ``report.json`` fields, provenance by VALUE (the keys that name the checkout and
+    the interpreter are masked by name, ``_PROVENANCE_MASKED``);
+  - the report writers called, in order (``save_report`` twice: before and after the roundup), with
+    what each was handed (the report's session, the bridge, the AUT stores and which of them hold
+    which, the router's build, the paths), and the ``sim_reports`` file set;
+  - the whole ``MAXIM_DATA_HOME`` file set: the reports, the sandbox and the orchestrator's own
+    persisted stores, which only its ``shutdown()`` writes;
+  - the saved AUT NAc's causal links and every ``actions.jsonl`` record, times dropped;
+  - any ``sim.*`` thread still alive after the run, and every thread the run started that outlives it.
 
 CANONICAL FORM. ``json.dumps(sort_keys=True)``. Floats are rounded to 9 decimals, and paths and stamps
 become placeholders. Every value the harness excludes or masks is a named constant there, with the
@@ -40,31 +45,47 @@ the pre-change commit, never by pasting a slice's output. The command is
 and records ``generated_at_commit``. An intentional behaviour change regenerates in its own commit,
 with the diff justified in the PR.
 
-SRC BEHAVIOUR THIS GOLDEN PINS AS-IS (findings from building it, 2026-10-12; none fixed here):
+SRC BEHAVIOUR THIS GOLDEN PINS AS-IS (findings from building it, 2026-10-12; none fixed here). A fix
+regenerates the fixture in its own commit:
 
-  - ``finish_simulation`` does not end the run. The tool finishes the bridge and the narrator source,
+  - #1259: ``finish_simulation`` does not end the run. The tool finishes the bridge and the narrator source,
     but nothing sets ``stop_event``. The narrator loop has no ``action_sink``, so
     ``SimAdapter.check_exhaustion`` never tightens its 180 s grace, and the stall detector keeps
     nudging the finished narrator every 30 s until that grace expires. A probe saw six post-finish
     narrator calls over about 180 s. The narrator arm therefore follows the finish with an operator
     ``/cancel`` (harness docstring).
-  - ``TOOL_DESCRIPTIONS.update`` in §5 is process-global, so the AUT's prompt advertises
+  - #1260: ``TOOL_DESCRIPTIONS.update`` in §5 is process-global, so the AUT's prompt advertises
     ``respond: NOT AVAILABLE. Use send_message instead.``, and the AUT's ``respond`` gets a ``process``
     follow-up. That follow-up is the ``say`` every turn pins.
-  - The bridge's ``response`` is the ``respond`` tool's RECEIPT (``{'delivered': True, 'mode': 'cli'}``),
+  - #1261: the bridge's ``response`` is the ``respond`` tool's RECEIPT (``{'delivered': True, 'mode': 'cli'}``),
     not the AUT's words. The narrator and ``report.response_texts`` never see what the AUT said through
     ``respond``.
-  - ``/pause`` does not stop the narrator mid follow-up chain. In the stdin arm the operator pauses after
+  - #1262: ``/pause`` does not stop the narrator mid follow-up chain. In the stdin arm the operator pauses after
     turn 1 and the narrator still sends turn 2. The pause reaches it only as a queued SYSTEM percept,
     and its loop answers the pending ``send_message`` follow-up first, so the pause, resume and guidance
     percepts are never planned before the ``/cancel``.
-  - Teardown leaves threads running. It never stops the AUT's DefaultNetwork (the ``DefaultNetwork`` and
-    ``DN-BackgroundTasks`` threads), the two agents' ``plan-logger``/``plan-dashboard`` writers or the
-    ``memctx_*`` pool. Each run in one process (the menu loop, ``maxim.campaign()``) leaves them alive.
-    The golden records only the ``sim.*`` threads, which all exit.
+  - #1263: teardown leaves threads running. It never stops the AUT's DefaultNetwork (the
+    ``DefaultNetwork`` and ``DN-BackgroundTasks`` threads), the two agents' ``plan-logger``/
+    ``plan-dashboard`` writers or the ``memctx_*`` pool. Each run in one process (the menu loop,
+    ``maxim.campaign()``) leaves them alive. ``threads_left_alive`` pins the ones the run adds; the
+    ``memctx`` pool is class-level and process-wide, so only its being alive afterwards is pinned
+    (``_THREADS_EXCLUDED``). The ``sim.*`` threads all exit.
+
+NEUTRALISED, NOT PINNED (the harness takes them out of the trace, so a fix does not change the golden):
+
+  - #1264: the AUT and narrator loops race on one CWD-relative ``state_<second>.json`` and a shared
+    ``.tmp``. How many state files land, under which second, is the race itself, so the data-home file
+    set excludes ``agents/*/runtime/`` (``_DATA_HOME_EXCLUDED``).
+  - #1265: the report's ``lane_breakdown`` and latency percentiles read the process-global lane
+    ``MetricsRegistry``, never session-scoped. The harness hands each run a fresh registry
+    (``_GlobalState``), so an earlier sim's (or test's) metrics cannot leak in; a run reading only its
+    own is what a fix would produce, which is why it is not pinned as the leak.
 
 PROVEN ABLE TO FAIL: the deletion probes on ``src/maxim/simulation/orchestrator.py``
-(``python -B``, 2026-10-12) are recorded in the slice-0 PR.
+(``python -B``, 2026-10-12) are recorded in the slice-0 PR. The review fold (2026-10-13) added probes,
+each red: ``_sim_provenance`` handed ``goal[:5]``, the AUT and narrator workers swapped, and
+``aut_worker=None``; the AUT build's ``MAXIM_LLM_PROFILE`` override deleted, and its restore deleted; ``_orch_instance.shutdown()`` dropped; a teardown that stops the AUT DefaultNetwork
+(a simulated #1263 fix); ``save_aut_state`` handed the narrator's NAc.
 """
 
 from __future__ import annotations
@@ -82,6 +103,8 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:  # run as a script 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from tests.unit._orch_harness import (  # noqa: E402
+    _MASKED,
+    _PROVENANCE_MASKED,
     ARMS,
     REPO_ROOT,
     FakeRouter,
@@ -186,12 +209,28 @@ def test_the_golden_is_non_vacuous() -> None:
         assert t["turns"] and all(turn["actions"] for turn in t["turns"]), name
         assert {"<STAMP>/report.json", "<STAMP>/actions.jsonl"} <= set(t["sim_reports_files"]), name
         assert t["report_json_emitted"] is True, name
-        assert t["report"]["provenance_keys"], name
+        prov = t["report"]["provenance"]
+        assert {k for k, v in prov.items() if v == _MASKED} == set(_PROVENANCE_MASKED), name
+        assert prov["serving_captured"] is True and prov["configured_n_ctx_source"] == "default", name
+        assert "orchestrator/nac.json" in t["data_home_files"], name  # written only by the narrator's shutdown()
+        assert {"DefaultNetwork", "plan-logger"} <= set(t["threads_left_alive"]["added"]), name  # #1263
+        assert t["aut_nac"]["links"], name
+        assert [r.get("_record_kind") for r in t["action_log"][:1]] == ["header"], name
+        assert len(t["action_log"]) - 1 == t["result"]["total_actions"], name
+        (aut_state,) = [w for w in t["report_writer_args"] if w["writer"] == "save_aut_state"]
+        assert aut_state["kwargs"]["nac"] == {"type": "NAc"}, name
         assert t["result"]["summary"] == "golden roundup", name
         assert t["report_writes"].count("save_report") == 2, name  # before and after the roundup
         statuses = [line for line in t["lifecycle"] if line.startswith("status: ")]
         assert statuses[0] == "status: SIMULATION MODE — generative" and len(statuses) >= 10, name
     assert len(arms["narrator"]["narrator_calls"]) == 3
+    # The narrator arm's AUT runs on its own router build, so the two roles' provenance differs.
+    prov = arms["narrator"]["report"]["provenance"]
+    assert (prov["language_router_serial"], prov["aut_router_serial"]) == ("<build-1>", "<build-2>")
+    assert sorted(prov["llm_calls"]) == ["<build-1>", "<build-2>"]  # registered like real routers, zero calls
+    # The AUT's build ran under its profile override, and the override was undone after it.
+    assert (prov["language_profile"], prov["aut_profile"]) == (None, ARMS["narrator"]["aut_model"])
+    assert all("MAXIM_LLM_PROFILE" not in t["maxim_env_after"] for t in arms.values())
 
 
 def test_the_fake_router_fails_closed() -> None:

@@ -14,14 +14,29 @@ uses. Three arms (owner decision (a), 2026-10-13):
   1. ``precampaign``: three ``pre_campaign_turns`` and no narrator LLM. The runner ends the run.
   2. ``narrator``: the fake narrator calls ``send_message`` twice and then ``finish_simulation``.
      This arm exercises the narrator loop on the calling thread (§12), the stall-detector polling
-     and the LLM-finish path.
+     and the LLM-finish path. It also passes ``aut_model``, so the AUT gets its OWN router build
+     (the dual-router path, §4) and the two roles' provenance can be told apart.
   3. ``stdin``: operator commands fed through a queue-backed ``sys.stdin``: ``/status``, ``/pause``,
      free text while paused (which goes to the AUT), ``/resume``, free text while running (which
      goes to the narrator as guidance), and ``/cancel``.
 
-The TTY paths (``_stdin_reader_raw``, the post-sim raw-mode prompt) are deliberately left
-uncharacterized (owner decision (e)). Every arm runs non-interactive (``InteractiveMode.OFF``, the
-``--interactive false`` path), so the line reader is the one exercised.
+The TTY read loops (the raw-mode stdin reader and the post-sim raw-mode "new goal" prompt) are
+deliberately left uncharacterized (owner decision (e)). Every arm runs non-interactive
+(``InteractiveMode.OFF``, the ``--interactive false`` path), so the line reader is the one exercised.
+
+ROUTER BUILDS. Every ``build_primary_router`` call returns a ``_RouterView``: the one shared
+``FakeRouter`` (one call log) under that build's own ``call_serial``, registered with
+``call_accounting.register_router()`` exactly as a real ``LLMRouter`` registers its own. Build 1 is the
+language router; build 2, made only when ``aut_model`` is passed, is the AUT's. The report's provenance
+names each role's router by that serial, so a run that hands the AUT's worker to the narrator's slot
+shows. Each view also carries ``cfg.profile``: the ``MAXIM_LLM_PROFILE`` in force at its build, which the
+run sets to ``aut_model`` around the AUT's build, so the provenance's ``aut_profile`` pins that override.
+CALL ACCOUNTING IS NOT PINNED: ``FakeRouter`` never books a call, so ``provenance.llm_calls`` holds only
+the builds' zero counts. The serial NUMBER depends on how many routers the process built before (the full suite builds
+real ones), so the trace records each as its build label, ``<build-1>``/``<build-2>``
+(``_label_serials``); a serial the run did not build stays a number, which is a finding. (A first
+version numbered the views 1, 2 itself: in the full suite an earlier test's real router held serial 1,
+and the report's ``llm_calls`` showed it.)
 
 THREADS STAY ON, ON THE WALL CLOCK (unlike the loop golden's step clock). The run keeps its real
 threads and its real 3 s settle, so the trace records only CAUSALLY ORDERED facts:
@@ -30,8 +45,14 @@ threads and its real 3 s settle, so the trace records only CAUSALLY ORDERED fact
   - each bridge turn, its percept text and what the AUT did in it;
   - the ``display_status``/``display_summary`` lifecycle lines;
   - ``finish_reason`` and ``finish_context``;
-  - the report writers called, in order, and the ``sim_reports`` file set;
-  - the deterministic ``report.json`` fields;
+  - the report writers called, in order, with WHAT each was handed (``_writer_arg``, ``_shared_refs``), and the
+    ``sim_reports`` file set;
+  - the whole ``MAXIM_DATA_HOME`` file set (``_DATA_HOME_EXCLUDED``), which shows the orchestrator's
+    own persisted stores, the sandbox and the reports;
+  - the deterministic ``report.json`` fields, provenance by VALUE (``_PROVENANCE_MASKED``);
+  - the saved AUT NAc's causal links and the ``actions.jsonl`` records, times dropped
+    (``_NAC_DROPPED``, ``_ACTION_DROPPED``);
+  - the threads the run started that are still alive after it returns (``_threads_left``);
   - the ``SimulationResult`` with its timestamps dropped.
 
 It never records a cross-thread interleaving or a stall-detector injection. The arms stay shorter
@@ -51,11 +72,14 @@ wherever a slice moves the CALLER:
     ``completed``, because the LLM's ``finish_context`` outranks the operator stop.
 
 NONDETERMINISM, NEUTRALISED. Every exclusion is a named constant below with its reason
-(``_RESULT_DROPPED``, ``_REPORT_DROPPED``, ``_HIPPO_PINNED``, ``_LIFECYCLE_MASKS``, ``_scrub``):
+(``_RESULT_DROPPED``, ``_REPORT_DROPPED``, ``_PROVENANCE_MASKED``, ``_DATA_HOME_EXCLUDED``,
+``_THREADS_EXCLUDED``, ``_NAC_DROPPED``, ``_ACTION_DROPPED``, ``_HIPPO_PINNED``, ``_LIFECYCLE_MASKS``,
+``_scrub``):
 
   - session ids, stamps, tmpdir suffixes and the work path become placeholders;
   - times, latencies and durations are dropped;
-  - provenance is pinned by its keys;
+  - provenance is pinned by value, except the keys that describe the CHECKOUT and the interpreter
+    rather than the run (measured: two narrator runs differed in nothing else);
   - the SCN's calendar-derived ``temporal`` block is pinned by its keys;
   - the hippocampus memory count, which counts idle-tick captures that race the next percept, is masked;
   - EC node ids come from a counter, as in phase 1.
@@ -72,6 +96,10 @@ GLOBAL STATE. A run mutates process-global state, all of which ``run_arm`` snaps
 
   - ``modes.definitions.TOOL_DESCRIPTIONS``, the ``maxim`` logger level and every ``MAXIM_*`` env var
     (including ``MAXIM_ALLOW_BASH`` and ``MAXIM_REPORT_JSON``);
+  - the user config: ``XDG_CONFIG_HOME`` points into the work dir and the config cache is reset, so the
+    pinned ``configured_n_ctx`` is the default, not whatever ``~/.config/maxim/config.json`` holds on
+    the box running ``--regen``;
+  - the global seed (``utils.seeding``), which the provenance stamps;
   - the sim display/interactive globals, the JSON parse counters, the LLM cancellation flag and the
     lane ``MetricsRegistry`` the report reads (a fresh one for the run: an earlier test's lane metrics
     leaked into ``report.lane_breakdown`` in the full suite);
@@ -95,6 +123,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -112,7 +141,7 @@ _PRECAMPAIGN_TURNS: list[dict[str, Any]] = [
 ]
 ARMS: dict[str, dict[str, Any]] = {
     "precampaign": {"max_turns": 10, "pre_campaign_turns": _PRECAMPAIGN_TURNS},
-    "narrator": {"max_turns": 10},
+    "narrator": {"max_turns": 10, "aut_model": "orch-golden-aut"},
     "stdin": {"max_turns": 10},
 }
 # The report writers the run calls, in order (a removed or reordered save shows even when a later
@@ -271,6 +300,21 @@ class FakeRouter:
         return {"entities": []}
 
 
+class _RouterView:
+    """One ``build_primary_router`` build: the shared ``FakeRouter`` under that build's own ``call_serial``
+    (module docstring, ROUTER BUILDS). Every other attribute is the shared router's."""
+
+    def __init__(self, router: FakeRouter, serial: int, profile: str | None) -> None:
+        self._router = router
+        self.call_serial = serial
+        # What a real build reads: the profile in force when it is built (``MAXIM_LLM_PROFILE``, which the run
+        # sets to ``aut_model`` around the AUT's build). ``report.run_provenance`` reads ``router.cfg.profile``.
+        self.cfg = SimpleNamespace(profile=profile)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._router, name)
+
+
 def _act(tool: str, **params: Any) -> dict[str, Any]:
     return {"action": {"tool_name": tool, "params": params}, "confidence": 0.9, "reasoning": f"scripted {tool}"}
 
@@ -411,6 +455,9 @@ class _GlobalState:
         )
         self.json_stats = (json_parser._json_first_try, json_parser._json_total, json_parser._json_repaired)
         self.shutdown = cancellation.is_shutdown_requested()
+        from maxim.utils import seeding
+
+        self.global_seed = seeding._global_seed
         # The report reads the process-global lane MetricsRegistry (``report.lane_breakdown`` and the
         # latency percentiles), which nothing resets per sim: in the full suite an earlier test left a
         # ``large`` lane in it and the golden went red. The run gets a fresh registry; the old one is put back.
@@ -442,6 +489,11 @@ class _GlobalState:
         with json_parser._json_lock:
             json_parser._json_first_try, json_parser._json_total, json_parser._json_repaired = self.json_stats
         (cancellation.request_shutdown if self.shutdown else cancellation.reset_shutdown)()
+        from maxim.runtime.config_loader import reset_config_cache
+        from maxim.utils import seeding
+
+        seeding._global_seed = self.global_seed
+        reset_config_cache()  # after the env restore: the next reader sees the caller's config again
         from maxim.models.language import lane_metrics
 
         with lane_metrics._registry_lock:
@@ -469,6 +521,16 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     lifecycle: list[str] = []
     finish_calls: list[dict[str, Any]] = []
     report_writes: list[str] = []
+    writer_args: list[dict[str, Any]] = []
+    builds: list[int] = []  # the call_serial of each build_primary_router call, in order
+
+    def _build_router(*_a: Any, **_k: Any) -> tuple[_RouterView, None]:
+        from maxim.models.language import call_accounting
+
+        serial = call_accounting.register_router()
+        builds.append(serial)
+        return _RouterView(router, serial, os.environ.get("MAXIM_LLM_PROFILE")), None
+
     stdin_feed: list[dict[str, Any]] = []
     stdin = QueueStdin() if arm in ("narrator", "stdin") else io.StringIO("")
     counter = iter(range(1, 1_000_000))
@@ -543,6 +605,14 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
 
         def spy(*args: Any, **kwargs: Any) -> Any:
             report_writes.append(name)
+            writer_args.append(
+                {
+                    "writer": name,
+                    "args": [_writer_arg(a) for a in args],
+                    "kwargs": {k: _writer_arg(v) for k, v in kwargs.items()},
+                    "shared_refs": _shared_refs(kwargs),
+                }
+            )
             return orig(*args, **kwargs)
 
         return spy
@@ -557,7 +627,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
         (SL, "display_status", display_status),
         (SL, "display_summary", display_summary),
         (ec_mod, "uuid4", lambda: uuid.UUID(int=next(counter))),
-        (LB, "build_primary_router", lambda *a, **k: (router, None)),
+        (LB, "build_primary_router", _build_router),
         *((report_mod, n, _report_spy(n)) for n in _REPORT_WRITERS),
     ]
     saved = [(obj, name, getattr(obj, name)) for obj, name, _ in patches]
@@ -569,9 +639,15 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
         MAXIM_SIM_HARD_ABORT="0",
         MAXIM_DATA_HOME=str(work / "data"),
         MAXIM_REPORT_JSON=str(work / "report_json.json"),
+        XDG_CONFIG_HOME=str(work / "xdg-config"),  # module docstring: never the user's config
     )
     os.environ.pop("TERM_PROGRAM", None)
     _reset_caches()
+    from maxim.runtime.config_loader import reset_config_cache
+    from maxim.utils import seeding
+
+    reset_config_cache()
+    seeding._global_seed = None
     os.chdir(work)
     sys.stdin = stdin
     SL.reset_sim_display_state()
@@ -580,6 +656,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     reset_shutdown()
     for obj, name, replacement in patches:
         setattr(obj, name, replacement)
+    threads_before = threading.enumerate()
     t0 = time.monotonic()
     try:
         result = orch.start_simulation_mode(
@@ -587,9 +664,13 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
             max_turns=spec["max_turns"],
             sandbox_backend="tmpdir",
             pre_campaign_turns=copy.deepcopy(spec.get("pre_campaign_turns")),
+            aut_model=spec.get("aut_model"),
         )
         elapsed = time.monotonic() - t0
         stragglers = _join_sim_threads()
+        threads_left = _threads_left(threads_before)
+        env_after = {k: v for k, v in os.environ.items() if k.startswith("MAXIM_")}
+        session_dir = Path(result.session_dir)
         report_json = work / "report_json.json"
         trace = {
             "arm": arm,
@@ -601,14 +682,20 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
             "stdin_lines": stdin_feed,
             "bridge_finish_calls": finish_calls,
             "report_writes": report_writes,
+            "report_writer_args": writer_args,
             "lifecycle": [_mask_lifecycle(line) for line in lifecycle],
             "result": _result_view(result),
-            "report": _report_view(Path(result.session_dir) / "report.json"),
+            "report": _report_view(session_dir / "report.json"),
             "report_json_emitted": report_json.is_file(),
             "sim_reports_files": _files(work / "data" / "sim_reports"),
+            "data_home_files": _data_home_files(work / "data"),
+            "aut_nac": _nac_view(session_dir / "aut_nac.json"),
+            "action_log": _action_log_view(session_dir / "actions.jsonl"),
             "live_sim_threads_after": stragglers,
+            "threads_left_alive": threads_left,
+            "maxim_env_after": env_after,
         }
-        canon = _canon(trace, work)
+        canon = _canon(_label_serials(trace, builds), work)
         canon["_elapsed_s"] = round(elapsed, 1)  # dropped by the test before comparing (timing only)
         return canon
     finally:
@@ -617,6 +704,30 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
         if isinstance(stdin, QueueStdin):
             stdin.eof()  # unblock a reader still waiting for a line
         state.restore()
+
+
+def _label_serials(trace: dict[str, Any], builds: list[int]) -> dict[str, Any]:
+    """Each router serial the run built becomes its build label (module docstring, ROUTER BUILDS): in the
+    provenance's ``*_router_serial`` values and ``llm_calls`` keys, and in the report writers' arguments."""
+    labels = {serial: f"<build-{i}>" for i, serial in enumerate(builds, 1)}
+
+    def label(value: Any) -> Any:
+        if isinstance(value, int) and not isinstance(value, bool) and value in labels:
+            return labels[value]
+        if isinstance(value, str) and value.isdigit() and int(value) in labels:
+            return labels[int(value)]
+        return value
+
+    prov = trace["report"].get("provenance") or {}
+    for key in [k for k in prov if k.endswith("_router_serial")]:
+        prov[key] = label(prov[key])
+    if isinstance(prov.get("llm_calls"), dict):
+        prov["llm_calls"] = {label(k): v for k, v in prov["llm_calls"].items()}
+    for write in trace["report_writer_args"]:
+        for arg in [*write["args"], *write["kwargs"].values()]:
+            if isinstance(arg, dict) and "call_serial" in arg:
+                arg["call_serial"] = label(arg["call_serial"])
+    return trace
 
 
 def _join_sim_threads() -> list[str]:
@@ -634,6 +745,117 @@ def _join_sim_threads() -> list[str]:
 
 def _files(root: Path) -> list[str]:
     return sorted(str(p.relative_to(root)) for p in root.rglob("*") if p.is_file()) if root.is_dir() else []
+
+
+# Threads the run leaves alive that are NOT pinned in ``threads_left_alive``, by name prefix, with the reason.
+_THREADS_EXCLUDED = {
+    "memctx_": "MemoryAgent._context_pool is a CLASS-level ThreadPoolExecutor, created by the first MemoryAgent "
+    "in the PROCESS and never shut down (#1263). Whether THIS run adds its threads depends on what ran earlier "
+    "in the process (test order and selection), so the added set is not deterministic; only the pool being "
+    "alive after the run is pinned (``memctx_pool_alive``).",
+}
+
+
+def _threads_left(before: list[threading.Thread]) -> dict[str, Any]:
+    """The threads the run started that are still alive after it returned (and after ``_join_sim_threads``),
+    numeric suffixes normalised (``Thread-12`` -> ``Thread-<N>``), duplicates kept, sorted. This pins #1263
+    (teardown leaves the AUT DefaultNetwork and both agents' plan writers running) as CURRENT behaviour:
+    a slice that stops one of them, or leaks a new one, changes it."""
+    added = [t for t in threading.enumerate() if t.is_alive() and not any(t is b for b in before)]
+    names = sorted(re.sub(r"\d+", "<N>", t.name) for t in added if not t.name.startswith(tuple(_THREADS_EXCLUDED)))
+    pool = any(t.name.startswith("memctx_") and t.is_alive() for t in threading.enumerate())
+    return {"added": names, "memctx_pool_alive": pool}
+
+
+# ``MAXIM_DATA_HOME`` files not pinned, by glob relative to the data home (``*`` matches within ONE path segment,
+# ``_segment_match``), with the reason.
+_DATA_HOME_EXCLUDED = {
+    "agents/*/runtime/*": "#1264: the AUT and narrator loops race on one CWD-relative state_<second>.json (and a "
+    "shared .tmp), so how many state files land, and under which second, is a race. NEUTRALISED, not pinned.",
+}
+
+
+def _data_home_files(root: Path) -> list[str]:
+    """Every file under the run's ``MAXIM_DATA_HOME`` (stamps and random suffixes scrubbed by ``_canon``)."""
+    return [f for f in _files(root) if not any(_segment_match(f, g) for g in _DATA_HOME_EXCLUDED)]
+
+
+def _segment_match(path: str, pattern: str) -> bool:
+    """``fnmatch`` per ``/``-separated segment, with the same segment count: ``*`` never crosses a ``/``."""
+    import fnmatch
+
+    parts, pats = path.split("/"), pattern.split("/")
+    return len(parts) == len(pats) and all(fnmatch.fnmatchcase(a, b) for a, b in zip(parts, pats))
+
+
+def _writer_arg(value: Any) -> Any:
+    """WHAT a report writer was handed: a scalar or path as itself, an object by its type and its identifying
+    attributes (``agent_id``, ``session_id``, ``call_serial``) -- never ``repr`` (memory addresses) or a size
+    that counts idle-tick captures (``_HIPPO_PINNED``)."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    view: dict[str, Any] = {"type": type(value).__name__}
+    for attr in ("agent_id", "session_id", "call_serial"):
+        try:
+            got = object.__getattribute__(value, attr) if not isinstance(value, _RouterView) else getattr(value, attr)
+        except AttributeError:
+            continue
+        if got is None or isinstance(got, (bool, int, float, str)):
+            view[attr] = got
+    return view
+
+
+def _shared_refs(kwargs: dict[str, Any]) -> list[str]:
+    """Which of a writer's object arguments hold another of its arguments, by instance attribute
+    (``hippocampus._scn -> scn``): the stores handed to ``save_aut_state`` are one agent's where they refer to
+    each other, and a store from another agent breaks the relation even where its type is the same. Measured
+    2026-10-13: only the Hippocampus holds a store passed beside it (the SCN), so a wrong NAc shows in
+    ``aut_nac``'s content instead."""
+    objs = {k: v for k, v in kwargs.items() if hasattr(v, "__dict__") and not isinstance(v, (str, Path))}
+    return sorted(
+        f"{name}.{attr} -> {other}"
+        for name, obj in objs.items()
+        for attr, held in vars(obj).items()
+        for other, target in objs.items()
+        if other != name and held is target
+    )
+
+
+# Per-link NAc fields not pinned (``aut_nac``), with the reason, and the file-level ones.
+_NAC_DROPPED = {
+    "last_observed": "wall clock (epoch seconds)",
+    "temporal_delta": "the measured gap between an action and its outcome, in wall-clock seconds",
+    "saved_at": "wall clock (file level)",
+}
+
+
+def _nac_view(path: Path) -> Any:
+    """The saved AUT NAc: every causal link's content, times dropped (``_NAC_DROPPED``). The order of the
+    links under one signature and of the ``outcome_index`` ids is not pinned (it is the order threads booked
+    them in); both are sorted by link id, which is a content hash."""
+    if not path.is_file():
+        return None
+    data = json.loads(path.read_text())
+    view = {k: v for k, v in data.items() if k not in _NAC_DROPPED}
+    view["links"] = {
+        sig: sorted(
+            ({k: v for k, v in link.items() if k not in _NAC_DROPPED} for link in links), key=lambda x: str(x.get("id"))
+        )
+        for sig, links in (data.get("links") or {}).items()
+    }
+    view["outcome_index"] = {k: sorted(v) for k, v in (data.get("outcome_index") or {}).items()}
+    return view
+
+
+_ACTION_DROPPED = {"timestamp": "wall clock"}
+
+
+def _action_log_view(path: Path) -> list[dict[str, Any]] | None:
+    """Every ``actions.jsonl`` record (the header included), in file order, times dropped."""
+    if not path.is_file():
+        return None
+    lines = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    return [{k: v for k, v in rec.items() if k not in _ACTION_DROPPED} for rec in lines]
 
 
 # Fields excluded from the pinned views, each with the reason (also the report's own docstring).
@@ -712,8 +934,27 @@ def _mask_lifecycle(line: str) -> str:
     return line
 
 
+# Provenance keys pinned by NAME only (value masked), with the reason. They describe the checkout and the
+# interpreter the golden runs from, not the run: measured 2026-10-13, two narrator runs differed in nothing
+# else, and a regen box, a worktree and CI each differ in these.
+_PROVENANCE_MASKED = {
+    "python": "the interpreter path",
+    "pythonpath": "the PYTHONPATH the golden runs under (a worktree's, CI's)",
+    "executed_maxim_file": "the checkout's path",
+    "executed_git_hash": "HEAD of the checkout",
+    "end_executed_git_hash": "HEAD of the checkout",
+    "code_tree_sha256": "the checkout's src/ tree",
+    "end_code_tree_sha256": "the checkout's src/ tree",
+    "maxim_version": "moves with every release cut",
+    "working_tree_dirty_src_scripts": "a slice's uncommitted work-in-progress tree is dirty, its commit is not",
+}
+_MASKED = "<MASKED>"
+
+
 def _report_view(path: Path) -> dict[str, Any]:
     data = json.loads(path.read_text())
     view = {k: v for k, v in data.items() if k not in _REPORT_DROPPED and k != "provenance"}
-    view["provenance_keys"] = sorted((data.get("provenance") or {}).keys())
+    view["provenance"] = {
+        k: (_MASKED if k in _PROVENANCE_MASKED else v) for k, v in (data.get("provenance") or {}).items()
+    }
     return view
