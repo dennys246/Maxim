@@ -877,3 +877,13 @@ def test_a_policy_that_kills_the_loop_refuses_the_window(tmp_path):
             trial.placement("pre-placement-0")
     finally:
         close()
+
+
+@pytest.mark.parametrize(("sub", "flag"), [("run", "--out"), ("verdict", "--data")])
+def test_the_real_command_line_parser_builds(sub, flag, capsys):
+    """The CLI itself, as the rig invokes it: building the parser crashed every invocation (a help string called
+    `campaign_out_path` with a placeholder id it rejects) and no test ever constructed the real parser."""
+    with pytest.raises(SystemExit) as exc:
+        B.main([sub, "--help"])
+    assert exc.value.code == 0
+    assert flag in capsys.readouterr().out

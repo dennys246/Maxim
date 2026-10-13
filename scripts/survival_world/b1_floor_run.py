@@ -1347,7 +1347,13 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("run", help="LIVE: every arm × seed in the frozen order (one campaign)")
     r.add_argument("--arms", default=None, help="comma-separated subset (diagnostics); default all five")
     r.add_argument("--diagnostic", action="store_true", help=f"seed {DIAGNOSTIC_SEED} only (never pooled)")
-    r.add_argument("--out", default=None, help=f"default {campaign_out_path(DATA_STEM, '<campaign_id>')}")
+    # A static help string: campaign_out_path validates its id, so a placeholder like "<campaign_id>" raised here and
+    # crashed every invocation before any argument was read (rig, 2026-10-12).
+    r.add_argument(
+        "--out",
+        default=None,
+        help=f"default docs/experiments/data/{DATA_STEM}_<campaign_id>.jsonl (one campaign per file)",
+    )
     r.add_argument("--resume", default=None, help="continue the campaign in this rows file (same code tree)")
     r.add_argument("--apparatus-record", default=APPARATUS_RECORD)
     r.add_argument("--gate-record", default=GATE_RECORD)
