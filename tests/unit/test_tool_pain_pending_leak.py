@@ -157,7 +157,8 @@ def test_an_inactive_scene_tool_leaves_nothing_pending():
 
 def test_an_exception_escaping_execute_still_retires_the_invocation(monkeypatch):
     """The retire is a ``finally``, not a step after the call: an exception that escapes ``execute()`` (here a
-    failure report that raises) must not leave the entry pending."""
+    failure report that raises) must not leave the entry pending. Nothing is booked (the bridge books nothing), so
+    the raise escapes: once the bridge books, ``_fail_ran`` returns the failure stamped instead (#1221 2c)."""
     import pytest
 
     executor, bridge, _ = _rig(detector=None)
@@ -166,6 +167,7 @@ def test_an_exception_escaping_execute_still_retires_the_invocation(monkeypatch)
         raise RuntimeError("report failed")
 
     monkeypatch.setattr(executor, "_report_failure", _boom)
+    monkeypatch.setattr(bridge, "record_tool_failure", lambda *_a, **_k: None)
     with pytest.raises(RuntimeError, match="report failed"):
         executor.execute({"tool_name": "grab", "params": {}})
     assert bridge._pending_tools == {}

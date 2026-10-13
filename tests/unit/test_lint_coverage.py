@@ -77,21 +77,33 @@ def _pyproject(omit: list[str] | None = None, extra: str = "") -> str:
     )
 
 
-def _floors(overall=(65.0, 7), alpha=(80.0, 2), beta=(50.0, 5), band=1.0, n=N, **more) -> str:
+def _floors(
+    overall=(65.0, 7),
+    alpha=(80.0, 2),
+    beta=(50.0, 5),
+    band=1.0,
+    n=N,
+    *,
+    files: dict | None = None,
+    retired: list | None = None,
+    version: int = 2,
+    **more,
+) -> str:
     def f(v):
         return {"percent": v[0], "missing": v[1]} if v is not None else {"percent": None, "missing": None}
 
     pk = {"maxim/alpha": alpha, "maxim/beta": beta, **more}
-    return json.dumps(
-        {
-            "floors_format_version": 1,
-            "band": band,
-            "min_package_statements": n,
-            "overall": f(overall),
-            "packages": {k: f(v) for k, v in pk.items() if v != "drop"},
-        },
-        indent=1,
-    )
+    doc = {
+        "floors_format_version": version,
+        "band": band,
+        "min_package_statements": n,
+        "overall": f(overall),
+        "packages": {k: f(v) for k, v in pk.items() if v != "drop"},
+    }
+    if version != 1:
+        doc["files"] = {k: f(v) for k, v in (files or {}).items()}
+        doc["retired_files"] = retired or []
+    return json.dumps(doc, indent=1)
 
 
 def _ledger(kind: str, file: str, count: int, ref: str | None = None, reason: str = "r") -> dict:
@@ -803,7 +815,7 @@ def test_merge_floors_takes_the_per_scope_minimum(tmp_path, capsys):
     b = {"overall": {"percent": 65.8, "missing": 101}, "packages": {"maxim/x": {"percent": 50.1, "missing": 8}}}
     (tmp_path / "a.json").write_text(json.dumps(a))
     (tmp_path / "b.json").write_text(json.dumps(b))
-    assert L.main(["--merge-floors", str(tmp_path / "a.json"), str(tmp_path / "b.json")]) == 0
+    assert L.main(["--merge-floors", "--all-scopes", str(tmp_path / "a.json"), str(tmp_path / "b.json")]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["overall"] == {"percent": 65.8, "missing": 100}
     assert out["packages"]["maxim/x"] == {"percent": 50.0, "missing": 8}
@@ -996,9 +1008,13 @@ def test_the_two_run_minimum_of_a_small_package_passes_against_either_run(repo, 
         f.write_text(json.dumps(_printed_floors(out)))
         runs.append(f)
     assert L.main(["--merge-floors", *map(str, runs)]) == 0
-    merged = capsys.readouterr().out
-    assert json.loads(merged)["packages"]["maxim/gamma"] == {"percent": 86.7, "missing": 86}
-    _write(repo, L.FLOORS_REL, merged)
+    merged = json.loads(capsys.readouterr().out)
+    assert merged["packages"]["maxim/gamma"] == {"percent": 86.7, "missing": 86}
+    assert set(merged) == {"overall", "packages"}  # only the new scopes (SF-A4): copy only the new entries
+    doc = json.loads((repo / L.FLOORS_REL).read_text())
+    doc["overall"] = merged["overall"]
+    doc["packages"].update(merged["packages"])
+    _write(repo, L.FLOORS_REL, json.dumps(doc))
     _commit(repo)
     for covered in (572, 571):
         _cov(repo, missing={A: {9, 10}, B: {6, 7, 8, 9, 10}, big: set(range(covered + 1, 659))})
@@ -1274,8 +1290,10 @@ def test_floor_head_rules_only_skips_an_untouched_package_without_a_floor(repo):
         "maxim/beta": L.ScopeCov(statements=10, covered=5),
         "maxim/gamma": L.ScopeCov(statements=9, covered=9),
     }
-    assert any("maxim/gamma" in m for m in L.floor_head_rules(repo, fl, overall, pkgs))
-    assert not any("maxim/gamma" in m for m in L.floor_head_rules(repo, fl, overall, pkgs, only={"maxim/alpha"}))
+    assert any("maxim/gamma" in m for m in L.floor_head_rules(repo, fl, overall, pkgs, files={}))
+    assert not any(
+        "maxim/gamma" in m for m in L.floor_head_rules(repo, fl, overall, pkgs, only={"maxim/alpha"}, files={})
+    )
 
 
 def test_the_suite_scripts_version_check_runs():
@@ -1302,3 +1320,959 @@ def test_the_suite_script_is_parsed_whole_before_it_runs():
     lines = (Path(__file__).resolve().parents[2] / "scripts" / "suite_at_commit.sh").read_text().rstrip().splitlines()
     assert lines[-1] == 'main "$@"; exit "$?"'
     assert "main() {" in lines and lines[-2] == "}"
+
+
+# ── per-file floors (format v2, owner decisions 2026-10-13: SF-1, SF-2, SF-3) ──────────────────────────────
+
+G = "src/maxim/gamma/g.py"  # a 100-statement floored file: k = K_MIN = 5 statements = 5.0 pt
+G2 = "src/maxim/gamma/g2.py"
+
+
+def _to_base(repo: Path) -> None:
+    """Make the current feature commit the base (main), as if it had merged."""
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "merge", "-q", "--ff-only", "feature")
+    _git(repo, "checkout", "-q", "feature")
+
+
+def _g_cov(repo: Path, g_missing: set[int], **more: set[int]) -> None:
+    _cov(repo, missing={A: {9, 10}, B: {6, 7, 8, 9, 10}, G: g_missing, **more})
+
+
+def _g_floors(g=(90.0, 10), gamma=(90.0, 10), overall=(85.8, 17), files=None, **kw) -> str:
+    return _floors(overall=overall, files={G: g} if files is None else files, **{"maxim/gamma": gamma}, **kw)
+
+
+def _g_base(repo: Path, **kw) -> None:
+    """Base on main: G (100 statements, 90 covered) with a file floor (90.0, 10) and its package floor."""
+    _write(repo, G, _lines(100, "g"))
+    _write(repo, L.FLOORS_REL, _g_floors(**kw))
+    _commit(repo)
+    _to_base(repo)
+    _g_cov(repo, set(range(91, 101)))
+
+
+def test_a_file_floor_within_k_passes_and_prints_its_line(repo, capsys):
+    _g_base(repo)
+    _g_cov(repo, set(range(86, 101)))  # 85 covered: exactly k = 5 under the 90.0 floor
+    rc, out, err = _run(capsys)
+    assert rc == 0, err
+    assert f"  {G}: 85.00% of 100 statements, missing 15; branches 100.00% of 0 floor 90.0% (missing 10)" in out
+
+
+def test_a_file_floor_k_plus_1_under_FAILS(repo, capsys):
+    _g_base(repo, gamma=(85.0, 15), overall=(81.6, 22))  # the package has headroom: only the file fails
+    _g_cov(repo, set(range(85, 101)))  # 84 covered
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{G}: 84.00% is below its floor 90.0% by more than the 5-statement noise tolerance" in err
+    assert err.count("  - ") == 1, err
+
+
+def test_a_file_floor_more_than_the_band_under_the_measurement_FAILS(repo, capsys):
+    _g_base(repo, gamma=(91.0, 9), overall=(86.3, 16))
+    _g_cov(repo, set(range(93, 101)))  # 92 covered: more than 1.0 pt over the 90.0 floor
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f'{G}: 92.00% is more than 1.0 pt above its floor 90.0% — raise it to {{"percent": 92.0' in err
+
+
+def test_only_the_package_floor_fails_while_the_file_floor_holds(repo, capsys):
+    """The two scopes are enforced independently: unfloored g2.py loses coverage, g.py holds."""
+    _write(repo, G2, _lines(100, "q"))
+    _g_base(repo, gamma=(90.0, 20), overall=(86.8, 27))
+    _g_cov(repo, set(range(91, 101)), **{G2: set(range(81, 101))})  # g2: 80 covered; package 170/200 = 85%
+    rc, _, err = _run(capsys)
+    assert rc == 1 and "maxim/gamma: 85.00% is below its floor 90.0%" in err
+    assert G not in err, err
+
+
+def test_only_the_file_floor_fails_while_the_package_floor_holds(repo, capsys):
+    _write(repo, G2, _lines(100, "q"))
+    _g_base(repo, gamma=(89.1, 20), overall=(86.8, 27))
+    _g_cov(repo, set(range(85, 101)), **{G2: set(range(91, 101))})  # g: 84 covered; package 174/200 = 87%
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{G}: 84.00% is below its floor 90.0%" in err
+    assert "maxim/gamma:" not in err and "overall:" not in err, err
+
+
+def test_a_null_file_floor_fails_closed_and_prints_the_pin(repo, capsys):
+    _g_base(repo, g=None)
+    rc, out, err = _run(capsys)
+    assert (
+        rc == 1 and f'floor missing: {G} measured 90.00% (missing 10) — pin {{"percent": 90.0, "missing": 10}}' in err
+    )
+    assert _printed_floors(out)["files"] == {G: {"percent": 90.0, "missing": 10}}
+
+
+def test_an_orphan_file_floor_FAILS(repo, capsys):
+    _write(repo, L.FLOORS_REL, _floors(files={"src/maxim/alpha/ghost.py": (50.0, 1)}))
+    _commit(repo)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and "src/maxim/alpha/ghost.py: floored file not found at HEAD (case-exact) — orphan" in err
+
+
+def test_a_case_variant_file_key_FAILS(repo, capsys):
+    """APFS answers is_file() True for `A.py`; the case-exact listing does not (NIT-1)."""
+    _write(repo, L.FLOORS_REL, _floors(files={"src/maxim/alpha/A.py": (80.0, 2)}))
+    _commit(repo)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and "src/maxim/alpha/A.py: floored file not found at HEAD (case-exact)" in err
+
+
+@pytest.mark.parametrize("link,target", [("src/maxim/alpha/link.py", "a.py"), ("src/maxim/linked", "alpha")])
+def test_a_symlink_file_key_FAILS(repo, capsys, link, target):
+    os.symlink(target, repo / link)
+    key = link if link.endswith(".py") else f"{link}/a.py"
+    _write(repo, L.FLOORS_REL, _floors(files={key: (80.0, 2)}))
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{key}: a file floor's key may not be (or pass through) a symlink" in err
+
+
+def test_an_excluded_floored_file_FAILS(repo, capsys):
+    _write(repo, L.FLOORS_REL, _floors(files={HW: (50.0, 1)}))
+    _commit(repo)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{HW}: floored file has no measured statements" in err
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "./src/maxim/alpha/a.py",
+        "/src/maxim/alpha/a.py",
+        "src/maxim//alpha/a.py",
+        "src/maxim/beta/../alpha/a.py",
+        "src\\maxim\\alpha\\a.py",
+        "src/maxim/alpha/a.pyc",
+        "scripts/x.py",
+    ],
+)
+def test_a_malformed_file_key_is_a_format_error(repo, capsys, key):
+    _write(repo, L.FLOORS_REL, _floors(files={key: (80.0, 2)}))
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{L.FLOORS_REL}: file key {key!r} must be a normalized repo-relative path" in err
+
+
+@pytest.mark.parametrize("rel", [L.FLOORS_REL, L.EXCLUSIONS_REL])
+def test_a_duplicate_json_key_is_a_format_error(repo, capsys, rel):
+    """NIT-2: json.loads keeps the LAST value; a reviewer reads the first."""
+    text = (repo / rel).read_text()
+    dup = (
+        text.replace('"band": 1.0,', '"band": 1.0,\n "band": 1.0,')
+        if rel == L.FLOORS_REL
+        else text.replace('"ledger":', '"exclusions": [],\n "ledger":')
+    )
+    assert dup != text
+    _write(repo, rel, dup)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{rel}: duplicate JSON key" in err
+
+
+def test_a_duplicate_nested_key_is_a_format_error():
+    text = _floors().replace('"maxim/alpha": {', '"maxim/alpha": {"percent": 1.0,', 1)
+    with pytest.raises(L.FileFormatError, match="duplicate JSON key 'percent'"):
+        L.parse_floors(text)
+
+
+# PR rules (a file floor is verified data, the same rules as packages)
+
+
+def test_a_new_file_floor_pinned_from_the_measurement_passes(repo, capsys):
+    _write(repo, L.FLOORS_REL, _floors(files={A: (80.0, 2)}))
+    _commit(repo)
+    rc, _, err = _run(capsys)
+    assert rc == 0, err
+
+
+@pytest.mark.parametrize(
+    "pin,needle",
+    [
+        ((84.9, 15), "new floor 84.9% is below the measured 90.00% less 5 statement(s) of run-to-run noise (85.0%)"),
+        ((90.0, 11), "floor pins missing 11 above the measured 10"),
+    ],
+)
+def test_a_new_file_floor_is_verified_against_the_measurement(repo, capsys, pin, needle):
+    _write(repo, G, _lines(100, "g"))
+    _write(repo, L.FLOORS_REL, _g_floors(g=pin))
+    _commit(repo)
+    _g_cov(repo, set(range(91, 101)))
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{G}: {needle}" in err
+
+
+def test_a_files_only_PR_cannot_lower_a_file_floor(repo, capsys):
+    _g_base(repo)
+    _write(repo, L.FLOORS_REL, _g_floors(g=(89.0, 10)))
+    _commit(repo)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{G}: floor lowered to 89.0%, below the measurement 90.00%" in err
+
+
+def test_a_file_floor_cannot_raise_its_missing_pin(repo, capsys):
+    _g_base(repo)
+    _write(repo, L.FLOORS_REL, _g_floors(g=(90.0, 11)))
+    _commit(repo)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{G}: floor pins missing 11 above min(measured 10, base 10)" in err
+
+
+def test_lowering_a_file_floor_after_adding_uncovered_code_FAILS(repo, capsys):
+    _g_base(repo)
+    _write(repo, G, _lines(110, "g"))
+    _g_cov(repo, set(range(91, 111)))  # 90/110 = 81.8%, missing 20
+    _write(repo, L.FLOORS_REL, _g_floors(g=(81.8, 20), gamma=(81.8, 20), overall=(79.6, 27)))
+    _commit(repo)
+    rc, _, err = _run(capsys)
+    assert (
+        rc == 1 and f"{G}: floor lowered 90.0% -> 81.8% but measured missing 20 > the base's pinned missing 10" in err
+    )
+
+
+def test_lowering_a_file_floor_after_moving_covered_code_out_passes_at_round_down(repo, capsys):
+    """Covered statements leave (deleted here; a move to an unfloored EXISTING file is the documented residual)."""
+    _g_base(repo)
+    _write(repo, G, _lines(80, "g"))
+    _g_cov(repo, set(range(71, 81)))  # 70/80 = 87.5%, missing still 10
+    _write(repo, L.FLOORS_REL, _g_floors(g=(87.4, 10), gamma=(87.5, 10), overall=(83.0, 17)))
+    _commit(repo)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{G}: floor lowered to 87.4%, below the measurement 87.50%" in err
+    _write(repo, L.FLOORS_REL, _g_floors(g=(87.5, 10), gamma=(87.5, 10), overall=(83.0, 17)))
+    _commit(repo)
+    rc, _, err = _run(capsys)
+    assert rc == 0, err
+
+
+def test_a_file_floor_removed_while_its_file_exists_FAILS(repo, capsys):
+    _g_base(repo)
+    _write(repo, L.FLOORS_REL, _g_floors(files={}))
+    _commit(repo)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{G}: floor removed while its file still exists" in err
+
+
+def test_a_file_floor_set_back_to_null_FAILS(repo, capsys):
+    _g_base(repo)
+    _write(repo, L.FLOORS_REL, _g_floors(g=None))
+    _commit(repo)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{G}: floor set back to null" in err
+
+
+def test_a_file_rename_carries_its_floor(repo, capsys):
+    _g_base(repo)
+    moved = "src/maxim/gamma/moved.py"
+    _git(repo, "mv", G, moved)
+    _write(repo, L.FLOORS_REL, _g_floors(files={moved: (90.0, 10)}))
+    _commit(repo)
+    _cov(repo, missing={A: {9, 10}, B: {6, 7, 8, 9, 10}, moved: set(range(91, 101))})
+    rc, _, err = _run(capsys)
+    assert rc == 0, err
+
+
+def test_a_file_rename_cannot_lower_the_carried_floor(repo, capsys):
+    _g_base(repo)
+    moved = "src/maxim/gamma/moved.py"
+    _git(repo, "mv", G, moved)
+    _write(repo, L.FLOORS_REL, _g_floors(files={moved: (89.0, 10)}))
+    _commit(repo)
+    _cov(repo, missing={A: {9, 10}, B: {6, 7, 8, 9, 10}, moved: set(range(91, 101))})
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{moved} (carrying {G}): floor lowered to 89.0%, below the measurement 90.00%" in err
+
+
+def test_a_file_rename_target_without_a_floor_FAILS(repo, capsys):
+    _g_base(repo)
+    moved = "src/maxim/gamma/moved.py"
+    _git(repo, "mv", G, moved)
+    _write(repo, L.FLOORS_REL, _g_floors(files={}))
+    _commit(repo)
+    _cov(repo, missing={A: {9, 10}, B: {6, 7, 8, 9, 10}, moved: set(range(91, 101))})
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{moved}: received {G}'s renamed files; the floor carries over" in err
+
+
+def test_a_case_only_rename_carries_the_floor_case_exactly(repo, capsys):
+    """NIT-1 on the removal side: on APFS `g.py` still "is_file()" after `git mv g.py G.py`; the listing says gone."""
+    _g_base(repo)
+    upper = "src/maxim/gamma/G.py"
+    _git(repo, "mv", G, upper)
+    _write(repo, L.FLOORS_REL, _g_floors(files={upper: (90.0, 10)}))
+    _commit(repo)
+    _cov(repo, missing={A: {9, 10}, B: {6, 7, 8, 9, 10}, upper: set(range(91, 101))})
+    rc, _, err = _run(capsys)
+    assert rc == 0, err
+
+
+# SF-1: a floored file does not vanish
+
+
+def _delete_g(repo: Path, retired=None) -> None:
+    _git(repo, "rm", "-q", G)
+    _write(repo, L.FLOORS_REL, _g_floors(files={}, gamma="drop", overall=(65.0, 7), retired=retired))
+    _commit(repo)
+    _cov(repo)
+
+
+def test_a_floored_file_gone_without_a_rename_FAILS_closed(repo, capsys):
+    _g_base(repo)
+    _delete_g(repo)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{G}: floored file is gone at HEAD with no detected rename" in err
+
+
+def test_a_refd_retired_files_entry_retires_a_gone_floor(repo, capsys):
+    _g_base(repo)
+    _delete_g(repo, retired=[{"path": G, "ref": "#77", "reason": "dead code"}])
+    rc, out, err = _run(capsys)
+    assert rc == 0, err
+    assert f"RETIRED FILE FLOOR {G} (ref #77): dead code" in out
+
+
+def test_a_retired_files_entry_needs_a_ref(repo, capsys):
+    _g_base(repo)
+    _delete_g(repo, retired=[{"path": G, "ref": None, "reason": "dead code"}])
+    rc, _, err = _run(capsys)
+    assert rc == 1 and "retired_files entry needs a ref" in err
+
+
+def test_retired_files_is_append_only(repo, capsys):
+    _g_base(repo)
+    _delete_g(repo, retired=[{"path": G, "ref": "#77", "reason": "dead code"}])
+    _to_base(repo)
+    _write(repo, L.FLOORS_REL, _g_floors(files={}, gamma="drop", overall=(65.0, 7), retired=[]))
+    _commit(repo)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and "retired_files is append-only" in err
+
+
+@pytest.mark.parametrize("path", [G, A])
+def test_a_retired_entry_must_name_a_floored_file_that_is_gone(repo, capsys, path):
+    _g_base(repo)
+    _write(repo, L.FLOORS_REL, _g_floors(files={}, retired=[{"path": path, "ref": "#7", "reason": "r"}]))
+    _commit(repo)
+    rc, _, err = _run(capsys)
+    needle = "the file or its floor is still here at HEAD" if path == G else "no file floor at the base to retire"
+    assert rc == 1 and f"retired_files {path}: {needle}" in err
+
+
+# SF-2: the split rule (S = 25)
+
+
+def _split(repo: Path, kept: int, g_missing: set[int], successors: dict[str, tuple[int, set[int]]], files) -> None:
+    """Shrink G to its first ``kept`` lines and ADD ``successors`` ({path: (lines, missing)})."""
+    _write(repo, G, _lines(kept, "g"))
+    for rel, (n, _) in successors.items():
+        _write(repo, rel, _lines(n, "s" + Path(rel).stem))
+    _write(repo, L.FLOORS_REL, _g_floors(files=files))
+    _commit(repo)
+    _g_cov(repo, g_missing, **{rel: miss for rel, (_, miss) in successors.items()})
+
+
+CORE = "src/maxim/gamma/core.py"
+SMALL = "src/maxim/gamma/small.py"
+
+
+def test_the_shim_trick_FAILS_a_big_successor_needs_its_own_floor(repo, capsys):
+    """A15: move everything to a new module, leave a 5-line re-export shim: the floor would stay on the shim."""
+    _g_base(repo)
+    _split(repo, 5, set(), {CORE: (95, set(range(86, 96)))}, files={G: (100.0, 0)})
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{CORE}: 95 statements (added) while this diff removed 95 of floored {G}'s statements" in err
+    assert f'needs its own file floor (split rule): add "{CORE}": {{"percent": 89.4, "missing": 10}}' in err
+
+
+def test_a_clean_split_with_a_floored_successor_passes(repo, capsys):
+    _g_base(repo)
+    _split(repo, 5, set(), {CORE: (95, set(range(86, 96)))}, files={G: (100.0, 0), CORE: (89.4, 10)})
+    rc, _, err = _run(capsys)
+    assert rc == 0, err
+
+
+def test_a_file_split_may_not_lose_the_sum_of_its_missing(repo, capsys):
+    """A17: each piece pinned honestly, but together they carry more uncovered statements than G's base pin."""
+    _g_base(repo, gamma=(88.0, 12), overall=(84.1, 19))
+    _split(repo, 5, set(), {CORE: (95, set(range(85, 96)))}, files={G: (100.0, 0), CORE: (88.4, 11)})
+    rc, _, err = _run(capsys)
+    assert rc == 1 and (
+        f"{CORE} + {G}: received {G}; together they measure missing 11 > the carried pinned missing 10 — cover 1 "
+        "statement(s) (split rule" in err
+    )
+
+
+def test_a_successor_under_25_statements_only_joins_the_sum(repo, capsys):
+    _g_base(repo)
+    _split(repo, 70, set(range(61, 71)), {SMALL: (10, set())}, files=None)  # g: 60/70, small: 10/10
+    rc, _, err = _run(capsys)
+    assert rc == 0, err
+    _g_cov(repo, set(range(61, 71)), **{SMALL: {10}})  # one uncovered small statement
+    rc, _, err = _run(capsys)
+    assert (
+        rc == 1
+        and f"{G} + {SMALL}: received {G}; together they measure missing 11 > the carried pinned missing 10" in err
+    )
+
+
+def test_an_in_place_rewrite_with_no_successor_is_held_by_the_floor_not_the_sum(repo, capsys):
+    """30 statements rewritten in place fire the trigger, but no file was added or grew: the no-tolerance sum is
+    skipped (owner decision 2026-10-13), so missing may rise within k; the HEAD floor rule still holds G."""
+    _g_base(repo)
+    _write(repo, G, _lines(10, "g") + _lines(30, "r") + _lines(100, "g")[len(_lines(40, "g")) :])
+    _commit(repo)
+    _g_cov(repo, set(range(91, 101)) | {38, 39, 40})  # missing 13 > G's pin 10, within k = 5
+    rc, _, err = _run(capsys)
+    assert rc == 0, err
+    _g_cov(repo, set(range(91, 101)) | set(range(35, 41)))  # missing 16: beyond k under the 90.0 floor
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{G}: 84.00% is below its floor 90.0% by more than the 5-statement noise tolerance" in err
+    assert "split rule" not in err, err
+
+
+@pytest.mark.parametrize("kept", [76, 75])
+def test_the_split_rule_fires_at_a_shrink_of_25_statements(repo, capsys, kept):
+    """S = 25: 24 removed statements have no successors; at 25 the unfloored 30-statement added file needs a floor."""
+    _g_base(repo)
+    _split(repo, kept, set(range(kept - 9, kept + 1)), {CORE: (30, set())}, files=None)
+    rc, _, err = _run(capsys)
+    if kept == 76:
+        assert rc == 0, err
+    else:
+        assert (
+            rc == 1 and f"{CORE}: 30 statements (added) while this diff removed 25 of floored {G}'s statements" in err
+        )
+
+
+def test_an_excluded_added_file_is_not_a_successor(repo, capsys):
+    """The TTY route: a whole-file exclusion with a ref'd `excluded_statements` ledger entry (the existing model)."""
+    _g_base(repo)
+    tty = "src/maxim/gamma/tty_input.py"
+    entry = {"path": tty, "reason": "termios read loops only", "covered_by": None, "ref": "#5"}
+    _write(repo, "pyproject.toml", _pyproject(omit=[HW, tty]))
+    _write(
+        repo,
+        L.EXCLUSIONS_REL,
+        _exclusions([HW_ENTRY, entry], BASE_LEDGER + [_ledger("excluded_statements", tty, 30, "#5")]),
+    )
+    _write(repo, tty, _lines(30, "t"))
+    _split(repo, 70, set(range(61, 71)), {}, files=None)
+    _cov(repo, {tty: None}, missing={A: {9, 10}, B: {6, 7, 8, 9, 10}, G: set(range(61, 71))})
+    rc, out, err = _run(capsys)
+    assert rc == 0, err
+    assert f"NEW EXCLUSION {tty} (ref #5)" in out
+
+
+def test_a_retired_floor_still_hands_its_code_to_added_files(repo, capsys):
+    """Gone counts as shrunk to 0: retiring G while adding its code elsewhere does not drop the floor."""
+    _g_base(repo)
+    _git(repo, "rm", "-q", G)
+    _write(repo, CORE, _lines(100, "c"))
+    _write(repo, L.FLOORS_REL, _g_floors(files={}, retired=[{"path": G, "ref": "#7", "reason": "dead"}]))
+    _commit(repo)
+    _cov(repo, missing={A: {9, 10}, B: {6, 7, 8, 9, 10}, CORE: set(range(91, 101))})
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{CORE}: 100 statements (added) while this diff removed 100 of floored {G}'s statements" in err
+
+
+def test_a_pre_created_successor_FAILS_an_existing_file_that_grew_is_a_successor(repo, capsys):
+    """Bypass 1 (review probe P1): PR1 adds a one-statement core.py; PR2 moves 95 statements into it, leaving a
+    5-line shim. core.py is EXISTING, so before the fold only ADDED files were successors and this passed."""
+    _g_base(repo)
+    _write(repo, CORE, "c0 = 0\n")
+    _commit(repo)
+    _to_base(repo)
+    _write(repo, G, _lines(5, "g"))
+    _write(repo, CORE, "c0 = 0\n" + _lines(95, "s"))
+    _write(repo, L.FLOORS_REL, _g_floors(files={G: (100.0, 0)}))
+    _commit(repo)
+    _g_cov(repo, set(), **{CORE: set(range(87, 97))})
+    rc, _, err = _run(capsys)
+    assert rc == 1 and (
+        f"{CORE}: 96 statements (grew by 95 statements) while this diff removed 95 of floored {G}'s statements — a "
+        f'successor of >= 25 statements needs its own file floor (split rule): add "{CORE}": {{"percent": 89.5, '
+        '"missing": 10}' in err
+    )
+    _write(repo, L.FLOORS_REL, _g_floors(files={G: (100.0, 0), CORE: (89.5, 10)}))  # NEW at the base: NEW rules
+    _commit(repo)
+    rc, _, err = _run(capsys)
+    assert rc == 0, err
+
+
+@pytest.mark.parametrize("removed", [24, 25])
+def test_padding_does_not_hide_removed_statements(repo, capsys, removed):
+    """Bypass 2 (review probe P3): statements moved out and as many trivial ones added back, so the NET count is
+    unchanged. The trigger counts base statements REMOVED: 24 does not fire, 25 does."""
+    _g_base(repo)
+    _write(repo, G, _lines(10, "g") + _lines(removed, "pad") + _lines(100, "g")[len(_lines(10 + removed, "g")) :])
+    _write(repo, CORE, _lines(30, "c"))
+    _write(repo, L.FLOORS_REL, _g_floors(gamma=(92.3, 10), overall=(88.6, 17)))  # core.py lifts both scopes
+    _commit(repo)
+    _g_cov(repo, set(range(91, 101)), **{CORE: set()})
+    assert L.statement_count((repo / G).read_text()) == 100
+    rc, _, err = _run(capsys)
+    if removed == 24:
+        assert rc == 0, err
+    else:
+        assert (
+            rc == 1 and f"{CORE}: 30 statements (added) while this diff removed 25 of floored {G}'s statements" in err
+        )
+
+
+def test_the_review_probes_padding_shape_FAILS(repo, capsys):
+    """P3 verbatim: 60 statements leave for a NEW file and 60 trivial ones are added back (net change 0)."""
+    _g_base(repo)
+    _write(repo, G, _lines(40, "g") + _lines(60, "pad"))
+    _write(repo, CORE, _lines(60, "c"))
+    _commit(repo)
+    _g_cov(repo, set(range(91, 101)), **{CORE: set(range(50, 61))})
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{CORE}: 60 statements (added) while this diff removed 60 of floored {G}'s statements" in err
+
+
+def test_a_symlink_left_at_the_floored_path_counts_as_gone(repo, capsys):
+    """N4 (review probe P4): G retired and replaced by a symlink to its new home; the symlink read 100 statements, so
+    nothing looked removed. A symlinked path is gone: all 100 base statements are removed."""
+    _g_base(repo)
+    _write(repo, CORE, _lines(100, "g"))
+    _git(repo, "rm", "-q", G)
+    os.symlink("core.py", repo / G)
+    _write(repo, L.FLOORS_REL, _g_floors(files={}, retired=[{"path": G, "ref": "#9", "reason": "r"}]))
+    _commit(repo)
+    _cov(repo, missing={A: {9, 10}, B: {6, 7, 8, 9, 10}, CORE: set(range(91, 101))})
+    d = json.loads((repo / "coverage.json").read_text())
+    d["files"].pop(G, None)  # coverage canonicalizes: the symlink is never a coverage.json key
+    (repo / "coverage.json").write_text(json.dumps(d))
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{CORE}: 100 statements (added) while this diff removed 100 of floored {G}'s statements" in err
+
+
+def test_split_rule_reads_a_symlinked_path_as_gone_whatever_git_reports(tmp_path):
+    """N4 on its own: git records a file -> symlink typechange as a full deletion, so the test above also passes via
+    the hunks. Here git reports nothing for G (no hunks), and only N4 sees that its path is now a symlink."""
+    _write(tmp_path, CORE, _lines(100, "g"))
+    os.symlink("core.py", tmp_path / G)
+    fd = L.FileDiff({}, {CORE}, lambda rel: _lines(100, "g") if rel == G else "")
+    base_fl, fl = L.parse_floors(_g_floors()), L.parse_floors(_g_floors(files={}))
+    out = L.split_rule(tmp_path, base_fl, fl, {}, fd, set(), set(L._src_files(tmp_path)))
+    assert any(f"{CORE}: 100 statements (added) while this diff removed 100 of floored {G}'s" in o for o in out), out
+
+
+def _gamma_with_core(repo: Path, core_floor=None) -> None:
+    """Base: G (100 statements, 10 missing, floored) and an EXISTING core.py (40 statements, its last 10 uncovered),
+    floored at the base only when ``core_floor`` is given."""
+    _write(repo, CORE, _lines(40, "c"))
+    _g_base(
+        repo,
+        gamma=(85.7, 20),
+        overall=(83.1, 27),
+        files={G: (90.0, 10), **({CORE: core_floor} if core_floor else {})},
+    )
+    _g_cov(repo, set(range(91, 101)), **{CORE: set(range(31, 41))})
+
+
+def _move_30_into_core(repo: Path, files: dict, core_missing: set[int]) -> None:
+    """Move G's first 30 (covered) statements to the end of core.py: core grows by 30."""
+    _write(repo, G, _lines(100, "g")[len(_lines(30, "g")) :])
+    _write(repo, CORE, _lines(40, "c") + _lines(30, "g"))
+    _write(repo, L.FLOORS_REL, _g_floors(files=files, gamma=(85.7, 20), overall=(83.1, 27)))
+    _commit(repo)
+    _g_cov(repo, set(range(61, 71)), **{CORE: core_missing})
+
+
+def test_an_existing_successor_already_floored_follows_the_changed_rules_and_brings_its_pin(repo, capsys):
+    _gamma_with_core(repo, core_floor=(75.0, 10))
+    _move_30_into_core(repo, {G: (85.7, 10), CORE: (85.7, 10)}, set(range(31, 41)))
+    rc, _, err = _run(capsys)
+    assert rc == 0, err  # G 10 + core 10 <= G's pin 10 + core's base pin 10
+    _move_30_into_core(repo, {G: (85.7, 10), CORE: (85.7, 11)}, set(range(31, 42)))  # CHANGED: missing never rises
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{CORE}: floor pins missing 11 above min(measured 11, base 10)" in err
+    _move_30_into_core(repo, {G: (85.7, 10), CORE: (84.2, 10)}, set(range(31, 42)))  # one moved statement uncovered
+    rc, _, err = _run(capsys)
+    assert rc == 1 and (
+        f"{CORE} + {G}: received {G}; together they measure missing 21 > the carried pinned missing 20 — cover 1" in err
+    )
+
+
+def test_an_unfloored_existing_successor_is_charged_its_whole_missing(repo, capsys):
+    """The strict charge: core.py's 10 OLD uncovered statements count against G's pin, because core.py brings no
+    base pin. The documented remedy, moving into a NEW module, passes."""
+    _gamma_with_core(repo)
+    _move_30_into_core(repo, {G: (85.7, 10), CORE: (85.7, 10)}, set(range(31, 41)))
+    rc, _, err = _run(capsys)
+    assert rc == 1 and (
+        f"{CORE} + {G}: received {G}; together they measure missing 20 > the carried pinned missing 10 — cover 10"
+        in err
+    )
+    assert "move code into NEW modules" in err and err.count("  - ") == 1, err
+    _write(repo, CORE, _lines(40, "c"))  # instead: the same 30 statements into a new module
+    _write(repo, SMALL, _lines(30, "g"))
+    _write(
+        repo, L.FLOORS_REL, _g_floors(files={G: (85.7, 10), SMALL: (100.0, 0)}, gamma=(85.7, 20), overall=(83.1, 27))
+    )
+    _commit(repo)
+    _g_cov(repo, set(range(61, 71)), **{CORE: set(range(31, 41)), SMALL: set()})
+    rc, _, err = _run(capsys)
+    assert rc == 0, err
+
+
+def test_an_existing_file_that_grew_by_fewer_than_25_is_not_a_successor(repo, capsys):
+    """The thin-slicing residual's other shape: 30 statements leave G, core.py grows by 24 (the rest deleted)."""
+    _gamma_with_core(repo)
+    _write(repo, G, _lines(100, "g")[len(_lines(30, "g")) :])
+    _write(repo, CORE, _lines(40, "c") + _lines(24, "g"))
+    _commit(repo)
+    _g_cov(repo, set(range(61, 71)), **{CORE: set(range(31, 41))})
+    rc, _, err = _run(capsys)
+    assert rc == 0, err
+
+
+_REMOVE_BASE = (
+    "def f(x):\n"  # 1
+    "    # a comment\n"  # 2
+    "    y = call(\n"  # 3
+    "        x,\n"  # 4
+    "    )\n"  # 5
+    "    try:\n"  # 6
+    "        z = 1\n"  # 7
+    "    except ValueError:\n"  # 8
+    "        z = 2\n"  # 9
+    "    return y\n"  # 10
+)
+
+
+@pytest.mark.parametrize(
+    "deleted,head,removed",
+    [
+        ({2}, _REMOVE_BASE.replace("    # a comment\n", ""), 0),  # a comment is no statement
+        ({4}, _REMOVE_BASE.replace("        x,\n", ""), 1),  # a continuation line maps to its statement
+        ({8}, _REMOVE_BASE.replace("except ValueError", "except KeyError"), 1),  # a header maps to its block
+        ({3, 4, 5}, _REMOVE_BASE.replace("    y = call(\n        x,\n    )\n", "    y = 0\n"), 1),
+    ],
+)
+def test_removed_statements_uses_the_diff_coverage_mapping(deleted, head, removed):
+    lo, n = min(deleted), len(deleted)
+    new_n = len(head.splitlines()) - len(_REMOVE_BASE.splitlines()) + n
+    assert L.removed_statements(_REMOVE_BASE, [(lo, n, lo, new_n)], head) == removed
+
+
+def test_code_wrapped_in_a_string_is_removed_though_no_line_is_deleted():
+    base = "a = 1\nb = 2\nc = 3\n"
+    assert L.removed_statements(base, [(0, 0, 1, 1)], "z = 0\n" + base) == 0  # an insertion only shifts lines
+    wrapped = 'x = """\n' + base + '"""\n'
+    assert L.removed_statements(base, [(0, 0, 1, 1), (3, 0, 5, 1)], wrapped) == 3
+
+
+def test_the_file_diff_runs_git_only_when_a_file_floor_exists_on_either_side(repo, capsys, monkeypatch):
+    """No file floor at the base or HEAD: no git call (no new exit-2 path). The first PR that adds one runs it."""
+    calls = []
+    real = L.file_diff
+    monkeypatch.setattr(L, "file_diff", lambda root, base: calls.append(base) or real(root, base))
+    rc, _, err = _run(capsys)
+    assert rc == 0 and calls == [], err
+    _write(repo, L.FLOORS_REL, _floors(files={A: (80.0, 2)}))
+    _commit(repo)
+    rc, _, err = _run(capsys)
+    assert rc == 0 and len(calls) == 1, err
+
+
+@pytest.mark.parametrize("first", ["q = 1\n", "-- 1\n"])
+def test_a_deleted_line_that_looks_like_a_diff_header_does_not_hide_later_hunks(repo, capsys, first):
+    """Delta review (2026-10-13): deleting a column-0 ``-- 1`` prints ``--- 1``; read as a file header it dropped
+    every later hunk of the file, so the 60-statement move below read as one removed statement and passed."""
+    ext = "src/maxim/delta/core.py"
+    _write(repo, G, first + _lines(99, "g"))
+    _write(repo, L.FLOORS_REL, _g_floors())
+    _commit(repo)
+    _to_base(repo)
+    _write(repo, G, _lines(39, "g") + _lines(61, "pad"))
+    _write(repo, "src/maxim/delta/__init__.py", "")
+    _write(repo, ext, "".join(f"g{i} = {i}\n" for i in range(39, 99)))
+    floors = _g_floors(g=(100.0, 0), gamma=(100.0, 0), overall=(90.5, 17), **{"maxim/delta": (83.3, 10)})
+    _write(repo, L.FLOORS_REL, floors)
+    _commit(repo)
+    _cov(repo, missing={A: {9, 10}, B: {6, 7, 8, 9, 10}, G: set(), ext: set(range(51, 61))})
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"{ext}: 60 statements (added) while this diff removed 61 of floored {G}'s statements" in err
+
+
+def test_an_added_line_that_looks_like_a_diff_header_does_not_hide_later_hunks(repo, capsys):
+    """The same shape in diff coverage (an existing rule, hardened): an added ``++ a0`` prints ``+++ a0``, which read
+    as a header and dropped the file's later hunk — its two uncovered lines went uncounted."""
+    _write(repo, A, "++ a0\n" + _lines(10, "a") + "z1 = 1\nz2 = 2\n")
+    _commit(repo)
+    assert L.changed_lines(repo, "main") == {A: {1, 12, 13}}
+    _cov(repo, missing={A: {10, 11, 12, 13}, B: {6, 7, 8, 9, 10}})
+    rc, _, err = _run(capsys)
+    assert rc == 1 and "diff coverage 33.3% is below 80% (1/3)" in err
+
+
+_ALPHA_TXT = "src/maxim/alpha/notes.txt"
+
+
+@pytest.mark.parametrize(
+    "rel,text,lines",
+    [
+        (A, _lines(10, "a") + "\x0c\nz = 1\n", {11, 12}),  # a form-feed line (legal Python whitespace)
+        (A, _lines(10, "a") + 's = "a\u2028b"\n', {11}),  # U+2028 inside a string
+        (_ALPHA_TXT, "y = 1\rz\n", None),  # a lone CR, in a non-.py file under src/maxim
+        (A, _lines(10, "a") + "# caf\x85e\nz = 1\n", {11, 12}),  # \x85 in a comment
+        (A, "".join(f"a{i} = {i}\r\n" for i in range(10)) + "z = 1\r\n", set(range(1, 12))),  # a CRLF file
+    ],
+    ids=["form-feed", "u2028", "lone-cr-txt", "x85", "crlf"],
+)
+def test_line_separators_inside_a_diff_line_do_not_break_the_diff_reader(repo, capsys, rel, text, lines):
+    """Delta review (2026-10-13): splitlines() and text-mode git split one diff line at these characters, and the
+    count-based reader then refused the diff (exit 2) on every PR. Real git, both readers, correct line numbers."""
+    _write(repo, rel, text)
+    _commit(repo)
+    assert L.changed_lines(repo, "main") == ({A: lines} if lines is not None else {})
+    hunks, modified = L._diff_hunks(repo, "main")
+    if lines is None:  # an added file: no base path, so no hunks keyed by one
+        assert hunks == {} and modified == set()
+    else:
+        assert modified == {A} and hunks[A]
+    _cov(repo)
+    rc, _, err = _run(capsys)
+    assert rc != 2 and "could not answer" not in err, err
+
+
+_DIFF_TWO_FILES = (
+    "diff --git a/src/maxim/x.py b/src/maxim/x.py\n"
+    "index 1..2 100644\n"
+    "--- a/src/maxim/x.py\n"
+    "+++ b/src/maxim/x.py\n"
+    "@@ -1,2 +1,2 @@ def f():\n"
+    "--- 1\n"  # a deleted ``-- 1``
+    "-x = 1\n"
+    "+++ y\n"  # an added ``++ y``
+    "+diff --git a/z b/z\n"  # an added line that looks like the next file's header
+    "@@ -5 +5 @@\n"  # no counts: one line each
+    "-a\n"
+    "\\ No newline at end of file\n"
+    "+b\n"
+    "\\ No newline at end of file\n"
+    "diff --git a/src/maxim/gone.py b/src/maxim/gone.py\n"
+    "deleted file mode 100644\n"
+    "--- a/src/maxim/gone.py\n"
+    "+++ /dev/null\n"
+    "@@ -1,2 +0,0 @@\n"
+    "-p = 1\n"
+    "-q = 2\n"
+    "diff --git a/src/maxim/new.py b/src/maxim/new.py\n"
+    "new file mode 100644\n"
+    "--- /dev/null\n"
+    "+++ b/src/maxim/new.py\n"
+    "@@ -0,0 +1 @@\n"
+    "++++ r\n"
+)
+
+
+def test_the_diff_parser_consumes_hunk_bodies_by_their_counts():
+    files = L.parse_unified_diff(_DIFF_TWO_FILES)
+    assert [(f.old, f.new, f.hunks) for f in files] == [
+        ("src/maxim/x.py", "src/maxim/x.py", [(1, 2, 1, 2), (5, 1, 5, 1)]),
+        ("src/maxim/gone.py", None, [(1, 2, 0, 0)]),
+        (None, "src/maxim/new.py", [(0, 0, 1, 1)]),
+    ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "diff --git a/x.py b/x.py\n--- a/x.py\n+++ b/x.py\n@@ -1,2 +1 @@\n-a\n",  # the body ends early
+        "diff --git a/x.py b/x.py\n--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-a\n-b\n",  # more than the header says
+        "diff --git a/x.py b/x.py\n--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-a\n+b\nstray\n",
+    ],
+)
+def test_the_diff_parser_refuses_output_it_cannot_account_for(text):
+    with pytest.raises(L.GitUnavailable):
+        L.parse_unified_diff(text)
+
+
+def test_a_non_ascii_rename_carries_its_file_floor(repo, capsys):
+    """core.quotePath=false on the file rules' rename map: quoted, the target read as a path that does not exist."""
+    _g_base(repo)
+    moved = "src/maxim/gamma/gé.py"
+    _git(repo, "config", "core.quotePath", "true")  # git's default, pinned against a developer's global config
+    _git(repo, "mv", G, moved)
+    _write(repo, L.FLOORS_REL, _g_floors(files={moved: (90.0, 10)}))
+    _commit(repo)
+    _cov(repo, missing={A: {9, 10}, B: {6, 7, 8, 9, 10}, moved: set(range(91, 101))})
+    rc, _, err = _run(capsys)
+    assert rc == 0, err
+
+
+# format v1 -> v2
+
+
+def test_a_v1_base_may_become_v2(repo, capsys):
+    _write(repo, L.FLOORS_REL, _floors(version=1))
+    _commit(repo)
+    _to_base(repo)
+    _write(repo, L.FLOORS_REL, _floors(files={A: (80.0, 2)}))  # every file floor is NEW against a v1 base
+    _commit(repo)
+    rc, _, err = _run(capsys)
+    assert rc == 0, err
+
+
+def test_a_v1_floors_file_at_HEAD_FAILS(repo, capsys):
+    _write(repo, L.FLOORS_REL, _floors(version=1))
+    _commit(repo)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and "floors_format_version must be 2, got 1" in err and "changed 2 -> 1" in err
+
+
+def test_a_version_past_2_FAILS(repo, capsys):
+    _write(repo, L.FLOORS_REL, _floors(version=3))
+    _commit(repo)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and "floors_format_version must be 2, got 3" in err and "changed 2 -> 3" in err
+
+
+def test_a_v2_file_without_files_is_a_format_error():
+    with pytest.raises(L.FileFormatError, match="top-level keys must be exactly"):
+        L.parse_floors(_floors(version=1).replace('"floors_format_version": 1', '"floors_format_version": 2'))
+
+
+# --local and --merge-floors
+
+
+def test_local_mode_gates_a_file_floor_only_when_its_package_is_touched(repo, capsys):
+    _g_base(repo, gamma=(85.0, 15), overall=(81.6, 22))
+    _g_cov(repo, set(range(85, 101)))  # the file is 6 statements under: beyond k
+    _write(repo, "src/maxim/alpha/note.py", "")  # touches alpha only
+    _commit(repo)
+    rc, out, err = _run_local(capsys)
+    assert rc == 0, err
+    assert f"untouched scope, measured in CI's environment, not gated): {G}: 84.00% is below its floor" in out
+    _write(repo, "src/maxim/gamma/note.py", "")  # now gamma is touched
+    _commit(repo)
+    rc, _, err = _run_local(capsys)
+    assert rc == 1 and f"{G}: 84.00% is below its floor 90.0%" in err
+
+
+def _run_doc(**files) -> str:
+    return json.dumps(
+        {
+            "overall": {"percent": 80.0, "missing": 100},
+            "packages": {},
+            "files": {k: {"percent": v[0], "missing": v[1]} for k, v in files.items()},
+            "retired_files": [],
+        }
+    )
+
+
+def _merge(tmp_path: Path, capsys, *docs: str, flags: tuple[str, ...] = ()) -> tuple[int, str, str]:
+    paths = []
+    for i, d in enumerate(docs):
+        (tmp_path / f"r{i}.json").write_text(d)
+        paths.append(str(tmp_path / f"r{i}.json"))
+    rc = L.main(["--merge-floors", *flags, *paths])
+    c = capsys.readouterr()
+    return rc, c.out, c.err
+
+
+@pytest.fixture
+def committed(tmp_path: Path, monkeypatch):
+    """The committed floors file --merge-floors reads (SF-A4): every scope pinned, no file floor, unless rewritten."""
+
+    def write(**kw) -> None:
+        _write(tmp_path, L.FLOORS_REL, _floors(**kw))
+
+    monkeypatch.setattr(L, "REPO_ROOT", tmp_path)
+    write()
+    return write
+
+
+def test_merge_floors_merges_files(tmp_path, capsys, committed):
+    rc, out, err = _merge(tmp_path, capsys, _run_doc(**{G: (90.0, 10)}), _run_doc(**{G: (89.9, 12)}))
+    assert rc == 0, err
+    assert json.loads(out) == {"files": {G: {"percent": 89.9, "missing": 10}}}  # the new entry only
+
+
+def test_merge_floors_refuses_a_spread_wider_than_k(tmp_path, capsys, committed):
+    """SF-3: 100 statements (k = 5); the runs differ by 6."""
+    rc, out, err = _merge(tmp_path, capsys, _run_doc(**{G: (90.0, 10)}), _run_doc(**{G: (84.0, 16)}))
+    assert rc == 1 and out == ""
+    assert f"{G}: the runs' missing differ by 6 statements, more than its k = 5" in err
+
+
+def test_merge_floors_refuses_a_scope_measured_in_one_run(tmp_path, capsys, committed):
+    rc, _, err = _merge(tmp_path, capsys, _run_doc(**{G: (90.0, 10)}), _run_doc())
+    assert rc == 1 and f"{G}: measured in 1 of 2 runs" in err
+
+
+def test_merge_floors_k_comes_from_a_lower_bound_on_statements(tmp_path, capsys, committed):
+    """10,000 statements at 70.0% (k = 10): a spread of 10 passes, 11 is refused."""
+    a = _run_doc(**{G: (70.0, 3000)})
+    assert _merge(tmp_path, capsys, a, _run_doc(**{G: (69.9, 3010)}))[0] == 0
+    rc, _, err = _merge(tmp_path, capsys, a, _run_doc(**{G: (69.8, 3011)}))
+    assert rc == 1 and "differ by 11 statements, more than its k = 10" in err
+
+
+def test_merge_floors_refuses_a_duplicate_key(tmp_path, capsys, committed):
+    dup = _run_doc().replace('"packages": {}', '"packages": {}, "packages": {}')
+    rc, _, err = _merge(tmp_path, capsys, dup, _run_doc())
+    assert rc == 2 and "duplicate JSON key 'packages'" in err
+
+
+def test_merge_floors_merges_only_the_scopes_null_in_the_committed_file(tmp_path, capsys, committed):
+    """SF-A4: the overall scope's runs differ by far more than its k, but overall is pinned in the committed file,
+    so it is neither merged nor allowed to block the new file floor's pin. --all-scopes merges (and refuses) it."""
+    committed(files={G: None})
+    a = _run_doc(**{G: (90.0, 10)})
+    b = _run_doc(**{G: (89.9, 11)}).replace('"missing": 100', '"missing": 140', 1)
+    rc, out, err = _merge(tmp_path, capsys, a, b)
+    assert rc == 0, err
+    assert json.loads(out) == {"files": {G: {"percent": 89.9, "missing": 10}}}
+    rc, out, err = _merge(tmp_path, capsys, a, b, flags=("--all-scopes",))
+    assert rc == 1 and out == "" and "overall: the runs' missing differ by 40 statements" in err
+
+
+def test_merge_floors_merges_a_null_overall_and_a_package_absent_from_the_committed_file(tmp_path, capsys, committed):
+    committed(overall=None)
+    a = _run_doc().replace('"packages": {}', '"packages": {"maxim/new": {"percent": 50.0, "missing": 9}}')
+    b = _run_doc().replace('"packages": {}', '"packages": {"maxim/new": {"percent": 50.1, "missing": 8}}')
+    rc, out, err = _merge(tmp_path, capsys, a, b)
+    assert rc == 0, err
+    assert json.loads(out) == {
+        "overall": {"percent": 80.0, "missing": 100},
+        "packages": {"maxim/new": {"percent": 50.0, "missing": 8}},
+    }
+
+
+def test_merge_floors_with_nothing_new_is_refused(tmp_path, capsys, committed):
+    rc, out, err = _merge(tmp_path, capsys, _run_doc(), _run_doc().replace("80.0", "80.1"))
+    assert rc == 1 and out == "" and "nothing new to pin" in err
+
+
+def test_merge_floors_refuses_byte_identical_inputs(tmp_path, capsys, committed):
+    """SF-A1's cheap hardening: the same printed block given twice is one run, not two."""
+    doc = _run_doc(**{G: (90.0, 10)})
+    rc, out, err = _merge(tmp_path, capsys, doc, doc)
+    assert rc == 1 and out == "" and "runs 1 and 2 are byte-identical" in err
+
+
+@pytest.mark.parametrize(
+    "entry,needle",
+    [
+        ({"percent": 80.0, "missing": None}, "percent and missing are pinned together"),
+        ({"percent": 80.0}, "must be exactly {percent, missing}"),
+        ({"percent": "80", "missing": 1}, "percent must be a number"),
+    ],
+)
+def test_merge_floors_validates_every_entry_as_a_floor(tmp_path, capsys, committed, entry, needle):
+    """N1: a null `missing` or a missing key is a clean format error (exit 2), not a traceback."""
+    bad = json.dumps({"overall": entry, "packages": {}, "files": {}, "retired_files": []})
+    rc, out, err = _merge(tmp_path, capsys, bad, _run_doc())
+    assert rc == 2 and out == "" and needle in err
+
+
+def test_the_committed_file_floors_are_case_exact_and_measured():
+    """Every committed `files` key names a real, case-exact, non-symlink, non-excluded src/maxim file."""
+    root = Path(__file__).resolve().parents[2]
+    fl = L.parse_floors((root / L.FLOORS_REL).read_text())
+    ex = L.parse_exclusions((root / L.EXCLUSIONS_REL).read_text())
+    assert fl.version == L.FLOORS_FORMAT_VERSION == 2
+    listing = set(L._src_files(root))
+    for rel in fl.files:
+        assert L.file_present(root, rel, listing) and rel not in ex.paths, rel

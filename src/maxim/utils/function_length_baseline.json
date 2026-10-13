@@ -201,7 +201,7 @@
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
       "qualname": "record_outcome",
-      "lines": 413
+      "lines": 399
     },
     {
       "file": "src/maxim/similarity/encoder.py",
@@ -348,6 +348,7 @@
     "run_agentic_loop tightened 2720 -> 2717 on 2026-10-09 (#963) when the maxim_runtime run-mode copy moved into loop_state.py::seed_runtime_run_mode and every mode read became one loop_state.operational_mode(executor, state) call (owner decision Q7: the agent_loop line edits land in #963's PR).",
     "run_agentic_loop tightened 2717 -> 2429 on 2026-10-10 (roadmap 1.3.2 decomposition, slice 5) when sections 1.1-1.16 (imagination, auto-sense, audio orientation) moved verbatim to runtime/loop_perception.py: perceive composes imagine (43), auto_sense (126) and orient_to_audio (136), each under 200 lines, so no exception record; next_observation and state.update stay at the call site.",
     "record_outcome tightened 415 -> 413 on 2026-10-10 (#1200 Stage 2) when its tool_result observe moved into _observe_tool_result with the failure cut; execute_and_learn raised 388 -> 390 by the #1200 exception record.",
-    "run_agentic_loop raised 2429 -> 2432 on 2026-10-11 (#1200 Stage 2, TF8) by the #1200 exception record: bridge_booked= at the hard rejection and the agent fallback's except, and the fallback's per-action result = None."
+    "run_agentic_loop raised 2429 -> 2432 on 2026-10-11 (#1200 Stage 2, TF8) by the #1200 exception record: bridge_booked= at the hard rejection and the agent fallback's except, and the fallback's per-action result = None.",
+    "record_outcome tightened 413 -> 399 on 2026-10-12 (#1221 item 3) when its sim trace moved into _observe_tool_result, so a failure the bridge booked (the skipped observe) is no longer traced with a placeholder confidence and RPE."
   ]
 }
