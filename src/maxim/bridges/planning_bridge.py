@@ -299,6 +299,10 @@ class PlanHistoryBridge:
     ) -> tuple[float, int]:
         """Get historical success rate for a tool.
 
+        Dormant since 2026-10-12 (#1221): no caller. It also counts causal LINKS, not
+        observations (a link reinforced many times counts once), so reviving it means
+        weighting by observation count first.
+
         Args:
             tool_name: Tool to query
             context: Optional context filter

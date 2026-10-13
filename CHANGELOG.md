@@ -340,6 +340,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The planner no longer swallows a call into a method that does not exist; its tool success-rate chain is Dormant
+  (#1221 item 1).** `plan_manager` asked `svc.statistician.get_tool_success_rate(...)` for each sub-goal's tool, but
+  `StatisticianAgent` (which `MaximAgent` wires into `PlanServices.statistician`) never had that method: whenever a
+  replan context was built, the call raised `AttributeError` into an `except Exception: pass`, so
+  `ReplanContext.tool_success_rates` was always `{}`. Nothing reads that field, and
+  `PlanHistoryBridge.get_tool_success_rate`, which counts causal links rather than observations, has no caller. The
+  call is removed, and the field, the bridge method and the now-unread `PlanServices.statistician` slot are marked
+  `Dormant since 2026-10-12`. The field is kept
+  because it round-trips through `ReplanContext.to_dict`/`from_dict`. There is no behaviour change: the field was
+  empty before and is empty now. Guard: `tests/unit/test_plan_rates_dormant_1221.py`, which fails if the call or a
+  caller of the bridge method returns.
+
 - **ATL counts every query under concurrent recalls, and AgentPool reports a lost NPC observation (#1217).**
   `ATL.recall` incremented the persisted `_stats["queries"]` counter outside any lock, while concurrent recalls
   (which share the read lock) and `dump`/`stats` touched the same dict: counts were lost under contention (pre-fix,
