@@ -664,7 +664,9 @@ def execute_parallel_actions(
 
     for idx, parallel_action in enumerate(actions):
         tool_name = parallel_action.get("tool_name", "unknown")
-        recorded = len(parallel_results)  # one result per action: a later raise must not add a second (#1221 2b)
+        # One result per action, carrying the stamp whichever side of the append a raise lands (#1221 2b).
+        recorded = len(parallel_results)
+        result: Any = None
         try:
             # Check autonomy for each action
             can_exec, reason = autonomy_controller.can_execute_action(parallel_action, confidence=confidence)
@@ -730,6 +732,7 @@ def execute_parallel_actions(
                     "success": False,
                     "error": str(e),
                     "result": None,
+                    "_failure_booked": getattr(result, "nac_failure_booked", None),
                 }
             )
             all_succeeded = False

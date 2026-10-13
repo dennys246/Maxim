@@ -414,7 +414,12 @@ class ToolPainBridge:
         links = self._book_invocation(tool_name, invocation_id, event_signature, Valence.NEGATIVE)
         if not links:
             return None  # nothing attributed: no surprise to note (``pop_invocation_rpe`` then reads None)
-        self._note_invocation_rpe(invocation_id, max((lnk.last_rpe or 0.0) for lnk in links))
+        # The links are written: from here the failure IS booked, and a raise must not report it as unbooked,
+        # or dispatch books it again (#1221 item 2). The surprise is lost, not the booking.
+        try:
+            self._note_invocation_rpe(invocation_id, max((lnk.last_rpe or 0.0) for lnk in links))
+        except Exception:
+            log_swallowed_exception(site="tool_pain_bridge.py:record_tool_failure")
         return event_signature
 
     def record_tool_embodiment_failure(

@@ -740,6 +740,57 @@ def test_a_raise_after_the_bridge_booked_returns_the_stamp(where: str, tool: str
     assert _kinds(nac, name) == ["result"]
 
 
+def test_a_raise_after_the_bridge_wrote_its_links_still_returns_the_stamp() -> None:
+    """The bridge's own step after the write (noting the surprise) is the same window (#1221 review)."""
+    executor, nac = _executor(_Flaky())
+
+    def _boom(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("rpe map down")
+
+    executor._tool_pain_bridge._note_invocation_rpe = _boom
+    out = executor.execute({"tool_name": TOOL, "params": {}})
+    assert out.nac_failure_booked == f"tool:{TOOL}"
+    _execute_and_learn(executor, nac, {"tool_name": TOOL, "params": {}})
+    assert _kinds(nac) == ["result"]
+
+
+def test_the_stamped_fallback_retires_the_invocations_surprise() -> None:
+    """A post-booking raise still pops the invocation's surprise and pain: neither outlives it (2S-c)."""
+    executor, _ = _executor(_Flaky())
+    executor._pain_detector = _RaisingDetector()
+    out = executor.execute({"tool_name": TOOL, "params": {}})
+    assert out.rpe is not None and out.rpe > 0.0
+    bridge = executor._tool_pain_bridge
+    assert (bridge._rpe_by_invocation, bridge._pain_by_invocation) == ({}, {})
+
+
+def test_a_raise_before_a_parallel_result_is_recorded_keeps_the_stamp(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The batch's except reads the stamp off the result it already has, as dispatch's other two callers do."""
+
+    def _boom(result: Any) -> Any:
+        raise RuntimeError("side effects unreadable")
+
+    monkeypatch.setattr(tool_dispatch, "read_learning_side_effects", _boom)
+    executor, nac = _executor(_Flaky())
+    autonomy = MagicMock()
+    autonomy.can_execute_action.return_value = (True, "")
+    results, _ = tool_dispatch.execute_parallel_actions(
+        agent_id="aut_1200",
+        actions=[{"tool_name": TOOL, "params": {}}],
+        executor=executor,
+        autonomy_controller=autonomy,
+        confidence=0.9,
+        reasoning="probe",
+        recent_outcomes=[],
+        max_recent=5,
+        llm_worker=None,
+        context_pool=MagicMock(),
+        nac=nac,
+    )
+    assert [(r["tool"], r["success"]) for r in results] == [(TOOL, False)]
+    assert _kinds(nac) == ["result"]  # the batch strips its private keys: the stamp shows in what was booked
+
+
 def test_a_raise_after_a_failure_nothing_booked_still_propagates() -> None:
     """With nothing booked there is no stamp to keep, so the post-booking raise reaches the caller as before."""
     executor, _ = _executor(_Flaky())

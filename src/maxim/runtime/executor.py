@@ -562,8 +562,9 @@ class Executor:
 
         Once the bridge has booked, the stamp must reach the caller: a raise in the pain detector or the stamp
         after the booking used to escape ``execute`` without it, and dispatch then booked a second NEGATIVE.
-        Such a raise is reported and the failure returned carrying the booked signature (what it loses is the
-        other reporting fields). With nothing booked there is no stamp to keep, and the raise propagates.
+        Such a raise is reported and the failure returned carrying the booked signature, its surprise and its
+        pain, popped here so neither outlives the invocation (2S-c); it loses the body fields (drive pressure,
+        relief, the interoceptive record). With nothing booked there is no stamp to keep, and the raise propagates.
         """
         booked = self._book_failure(tool_name, invocation_id, suppress_nac=suppress_nac)
         try:
@@ -572,10 +573,16 @@ class Executor:
                 result, invocation_id, pressure_before, outcome=outcome, failure_booked=booked
             )
         except Exception:
-            if booked is None or not isinstance(result, ToolOutput):
+            bridge = self._tool_pain_bridge  # never None once something is booked
+            if booked is None or bridge is None or not isinstance(result, ToolOutput):
                 raise
             log_swallowed_exception(site="executor.py:_fail_ran")
-            return dataclasses.replace(result, nac_failure_booked=booked)
+            return dataclasses.replace(
+                result,
+                nac_failure_booked=booked,
+                rpe=bridge.pop_invocation_rpe(invocation_id),
+                pain=bridge.pop_invocation_pain(invocation_id),
+            )
 
     def _book_failure(self, tool_name: str, invocation_id: str, *, suppress_nac: bool) -> str | None:
         """Book a failure that RAN through the tool-pain bridge (#1200 Stage 2, TF2); returns the event signature
