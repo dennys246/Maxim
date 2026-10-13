@@ -340,6 +340,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Four raises after the bridge booked a tool failure no longer get the failure booked twice (#1221 items 2 and
+  3).** The tool-pain bridge books a failure, and `ToolOutput.nac_failure_booked` carries the signature to dispatch
+  so it skips its own NEGATIVE. These raises lost that stamp, and dispatch then booked the failure again:
+  - (a) NAc's provenance collector raising after the link was written. NAc now reports this raise per link instead
+    of propagating it, as it already did for the sim trace beside it. The bridge's own step after the write,
+    noting the surprise in `ToolPainBridge.record_tool_failure`, is reported too. Once the links are written, it
+    returns the signature.
+  - (b) A raise in a parallel batch, either before an action's result was recorded or after. Before, the except
+    now reads the stamp off the result it already holds, as dispatch's other two callers do. After, it no longer
+    appends a second, unstamped dict for the same action.
+  - (c) The pain detector or the output stamp raising after `Executor._book_failure`. Book, report and stamp are
+    now one step, `Executor._fail_ran`. Once something is booked, such a raise is reported and the failure comes
+    back stamped, with its surprise and pain popped so neither outlives the invocation. With nothing booked, it
+    propagates as before.
+
+  Windows of the same kind that this change does not close are filed as #1256:
+  - `execute_and_learn` recording an outcome twice when a step after its `rec_outcome` raises;
+  - NAc raising inside `record_outcome_full` after the write;
+  - the instrumented executor's telemetry raising.
+
+  Item 3: `record_outcome` no longer traces a failure it skipped with a placeholder confidence of 0.5 and RPE of
+  0.0. The trace moved into `_observe_tool_result` and runs only for the link dispatch books. The bridge's booking
+  already traces itself through NAc's `sim_nac_learn`. The trace's event is now the observed signature, which
+  differs only for a `use` call (`tool:use:<action>`). Nothing in `src/` or `scripts/` parses that text.
+  `bio_telemetry` keys on `sim_nac_learn`.
+
 - **The planner no longer swallows a call into a method that does not exist; its tool success-rate chain is Dormant
   (#1221 item 1).** `plan_manager` asked `svc.statistician.get_tool_success_rate(...)` for each sub-goal's tool, but
   `StatisticianAgent` (which `MaximAgent` wires into `PlanServices.statistician`) never had that method: whenever a
