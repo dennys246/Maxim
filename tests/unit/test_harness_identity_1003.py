@@ -31,8 +31,6 @@ REPO = Path(maxim.__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts"))
 import _provenance  # noqa: E402
 
-ORCHESTRATOR = REPO / "src" / "maxim" / "simulation" / "orchestrator.py"
-
 
 @pytest.fixture(autouse=True)
 def _fresh_run_id():
@@ -323,9 +321,10 @@ def test_the_report_carries_the_resume_only_for_a_resume() -> None:
 # ── the orchestrator's wiring ────────────────────────────────────────────
 
 
-def _start_simulation_mode() -> ast.FunctionDef:
-    tree = ast.parse(ORCHESTRATOR.read_text())
-    return next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "start_simulation_mode")
+def _start_simulation_mode() -> ast.AST:
+    from tests.unit._orchestrator_source import orchestrator_tree
+
+    return orchestrator_tree()  # every part of start_simulation_mode, wherever its code lives (1.3.2 decomposition)
 
 
 def test_the_sim_records_what_its_resume_did() -> None:

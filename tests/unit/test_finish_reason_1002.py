@@ -12,14 +12,10 @@ from __future__ import annotations
 import ast
 import inspect
 import threading
-from pathlib import Path
 
 import pytest
 
-import maxim
 from maxim.simulation.orchestrator import _resolve_finish_reason, _stop_by_operator
-
-ORCHESTRATOR = Path(maxim.__file__).resolve().parent / "simulation" / "orchestrator.py"
 
 
 def _event(is_set: bool) -> threading.Event:
@@ -60,8 +56,11 @@ def test_a_human_stop_sets_both_events() -> None:
 
 
 def _start_simulation_mode() -> ast.FunctionDef:
-    tree = ast.parse(ORCHESTRATOR.read_text())
-    return next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "start_simulation_mode")
+    from tests.unit._orchestrator_source import start_simulation_mode_def
+
+    # FUNCTION-SPECIFIC: the operator-stop pin tells the run's own top level from its nested readers
+    # (``n is not fn``), so it needs the one FunctionDef (tests/unit/_orchestrator_source.py).
+    return start_simulation_mode_def()
 
 
 def _is_call(node: ast.AST, name: str) -> bool:
