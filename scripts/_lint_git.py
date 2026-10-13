@@ -77,14 +77,22 @@ class GitUnavailable(RuntimeError):
     """Git could not answer — the caller SKIPS the diff-scoped check, never fails it."""
 
 
-def git(repo_root: Path, *args: str, timeout: float = 60.0) -> str:
+def git(repo_root: Path, *args: str, timeout: float = 60.0, raw: bool = False) -> str:
+    """git's stdout. ``raw`` reads BYTES and decodes them as UTF-8 with ``surrogateescape``, so no newline translation
+    happens (``text=True`` turns a lone ``\\r`` inside a diff line into ``\\n``) and undecodable bytes survive.
+    Opt-in: the coverage lint's diff parser needs it; the other callers keep today's text mode."""
     try:
-        r = subprocess.run(["git", *args], cwd=repo_root, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(["git", *args], cwd=repo_root, capture_output=True, text=not raw, timeout=timeout)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise GitUnavailable(f"git {' '.join(args)}: {exc}") from exc
+    out, err = (
+        (r.stdout.decode("utf-8", "surrogateescape"), r.stderr.decode("utf-8", "replace"))
+        if raw
+        else (r.stdout, r.stderr)
+    )
     if r.returncode != 0:
-        raise GitUnavailable(f"git {' '.join(args)}: {r.stderr.strip()}")
-    return r.stdout
+        raise GitUnavailable(f"git {' '.join(args)}: {err.strip()}")
+    return out
 
 
 def base_ref(repo_root: Path) -> str:
@@ -133,15 +141,22 @@ def must_not_skip(reason: str) -> bool:
     return False
 
 
-def changed_files(repo_root: Path, base: str, scope: str, *, suffix: str = ".py") -> list[tuple[str, str]]:
+def changed_files(
+    repo_root: Path, base: str, scope: str, *, suffix: str = ".py", unquoted: bool = False
+) -> list[tuple[str, str]]:
     """[(path, path-at-base)] for files changed in ``scope``; renames map to their SOURCE.
 
     Without ``-M`` a renamed file looks new (``git show base:<newpath>`` fails), so its
     pre-existing sites read as freshly added and the ratchet fires on a pure move — which
     would make item 7's god-function decomposition (all moving code) impossible to land.
+
+    ``unquoted`` passes ``-c core.quotePath=false``, so a non-ASCII path prints as itself rather than as a
+    quoted octal escape that matches no file. Opt-in (the coverage lint's per-file rules use it); the other
+    callers keep today's output.
     """
     out: list[tuple[str, str]] = []
-    for line in git(repo_root, "diff", "--name-status", "-M", base, "HEAD", "--", scope).splitlines():
+    cfg = ["-c", "core.quotePath=false"] if unquoted else []
+    for line in git(repo_root, *cfg, "diff", "--name-status", "-M", base, "HEAD", "--", scope).splitlines():
         parts = line.split("\t")
         status = parts[0]
         if status.startswith("R") and len(parts) >= 3:

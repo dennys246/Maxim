@@ -37,7 +37,7 @@ uncovered statement count pinned with it.
   absent is an orphan. **Hysteresis:** a floored package keeps its floor while its
   directory exists, even under N.
 - pull requests (against the merge-base copy, ``git show``): ``band``/N/format may not
-  change; a new or changed floor is verified against the measurement by the rules under
+  change (format: except v1 -> v2, section 1b); a new or changed floor is verified against the measurement by the rules under
   "Every new or changed floor is verified data" below (lowered only to the measurement, only
   when uncovered statements did not grow; the ``missing`` pin never rises); a floor may be
   removed only when its directory is gone at HEAD. Package-level renames
@@ -45,10 +45,60 @@ uncovered statement count pinned with it.
   CHANGED rules against it; with no rename detected, every NEW floor in a PR that removes a
   floored package is held to each removed one the same way.
 
+**1b. Per-file floors** (owner decision 2026-10-13; format v2). ``files`` maps a normalized repo-relative POSIX
+path (``src/maxim/....py``: no ``./``, ``//``, ``..``, ``\\`` or leading ``/`` — a format error otherwise) to the
+same ``{percent, missing}`` floor. File floors are OPT-IN (no size threshold) and are enforced beside the package
+floor, independently, every run: a PR may have to edit both, and neither substitutes for the other (a package's
+~100-statement band can otherwise pay for a file's deleted tests). The file's measured scope is its own
+``coverage.json`` entry, and every rule of section 1 applies unchanged, k and ``K_MIN`` included:
+
+- every run: the k tolerance below, the band above, ``null`` fails closed printing the pin; the key must be in the
+  case-exact ``src/maxim`` directory listing (never ``Path.is_file()``, which answers True for a case variant on
+  APFS) and must not be or pass through a symlink; a floored file that is excluded (so unmeasured) fails; a key whose
+  file is gone is an orphan. Under ``--local`` a file floor gates when its package is touched;
+- pull requests: NEW/CHANGED/LOWERING exactly as for packages; set back to ``null`` fails; a file floor may be
+  removed only when its file is gone (case-exact listing); a ``-M`` rename carries the floor to its target (CHANGED
+  rules); with no rename detected every new file floor is a candidate target, and the sum rule applies. That holds
+  for a retirement PR too (N5): a ``retired_files`` entry stops the "gone" failure, but the removed floor is still
+  carried to every NEW file floor in the same diff — stricter than the design needs, fail-closed; land new file
+  floors in a separate PR from a retirement;
+- **SF-1, a floored file does not vanish:** a floored file gone at HEAD with no detected rename FAILS, unless the
+  same diff appends a ``retired_files`` entry ``{path, ref, reason}`` for it. ``retired_files`` is append-only (the
+  base list is an exact prefix, like the ledger); every entry needs a ``ref`` and a reason; a new entry is printed
+  loudly and must name a file that had a floor at the base and is gone at HEAD (file and floor);
+- **SF-2, the split rule** (``SPLIT_STATEMENTS`` = S = 25; owner decisions 2026-10-13). TRIGGER: S or more of a
+  floored file's BASE statements are EDITED OR DELETED (a modified line counts as removed) — not the net count, so padding the file back with trivial statements
+  hides nothing. A base statement is removed when a deleted line of the diff (``git diff -M -U0`` base..HEAD, ``-``
+  hunks in base line numbers, against the ``-M`` rename target for a rename) maps onto it by the diff-coverage
+  mapping (innermost enclosing ``ast.stmt``; a clause header to its block's first statement), or when its line
+  survives but no longer starts a statement of the same type (the code was wrapped in a string literal); distinct
+  statements are counted. A gone file (or one whose path is now a symlink, N4) removes all of its base statements.
+  SUCCESSORS: every non-excluded ``src/maxim`` .py file that is ADDED in the diff (absent from the base tree — which
+  includes the ``-M`` rename target of an UNRELATED file), or EXISTING (present at the base) and grown by S or more
+  AST statements against the base. Each successor of S or more statements needs its own file floor in this PR: a
+  floor it did not have at the base is NEW (NEW rules), one it had follows the CHANGED rules; a smaller ADDED
+  successor only joins the sum. SUM: the source's measured ``missing`` plus every successor's measured ``missing``
+  may not exceed the source's base ``missing`` pin plus the base pin of every successor floored at the base, with no
+  tolerance (the package sum rule's code). This is STRICT by design: an existing successor with no floor at the base
+  brings no pin, so its WHOLE measured ``missing`` — old uncovered code included — is charged to the source's pin.
+  The remedy is to move code into NEW modules (or floor the destination in an earlier PR). It closes the shim trick
+  (move everything to a new module, leave a re-export shim carrying the floor), the pre-created target (PR1 adds a
+  one-line module, PR2 moves the code into it), padding (move code out, add as many trivial statements back) and
+  laundering test erosion through a move. Its costs, accepted: an unrelated module added (or an unrelated file grown
+  by S) in the same PR as a slice joins the group, so land it separately. With NO successor the sum is skipped
+  (owner decision 2026-10-13): the code went nowhere that grew by S, so an in-place rewrite of S or more statements
+  is held by the source's own HEAD floor rule (k tolerance) and the CHANGED/LOWERING rules, not by a no-tolerance
+  sum that thread noise would false-fail; code spread over several small files is the thin-slicing residual;
+- format: ``floors_format_version`` is 2 and HEAD must be 2. The one version change a diff may make is base v1 ->
+  HEAD v2, the v1 base read as ``files = {}`` and ``retired_files = []`` (every file floor is then NEW); every other
+  change (2 -> 1, 2 -> 3) fails.
+
 **2. Diff coverage** (pull requests). Changed lines come from
 ``git -c diff.renames=false diff --no-renames --no-ext-diff --no-textconv -U0 <merge-base>
 -- src/maxim`` against the working tree, so MOVED code counts as changed (the owner's
-rule: moved code arrives tested). Each changed line that carries code maps to the start
+rule: moved code arrives tested). Hunk bodies are consumed by their header counts (:func:`parse_unified_diff`, shared
+with the split rule; hardened 2026-10-13: an added column-0 ``++x`` line once read as a ``+++`` header and silently
+dropped the file's later hunks from this existing rule). Each changed line that carries code maps to the start
 line of its innermost enclosing ``ast.stmt`` (decorator line too), deduplicated (S1); a clause
 header that is not a statement (``except ...:``, ``else:``, ``finally:``, ``case ...:``) maps to
 the first statement of its block, so widening an ``except`` reads as covered only if the
@@ -119,7 +169,25 @@ committed with ``null`` values; the lint fails closed and prints a paste-ready m
 file. Take it from TWO CI runs (re-run the job), save each as JSON and pin the per-scope minimum:
 ``python scripts/lint_coverage.py --merge-floors run1.json run2.json`` (lowest percent, lowest
 missing). That minimum passes against either run whenever the runs differ by at most ``k``
-covered statements per scope (every floor is NEW on the gate PR); a scope that varies more is flaky and needs a look. Floor diff rules
+covered statements per scope (every floor is NEW on the gate PR). **A NEW floor — the bootstrap, a new package, a
+new file floor — is pinned from 2 or more CI runs** (commit it ``null``, take the printed pins from two runs, merge);
+a CHANGED or LOWERED floor is verified against the one run of its own PR, which is what the rules above print.
+``--merge-floors`` merges and prints ONLY the scopes that are ``null`` in (or absent from) the committed floors file
+(SF-A4: a spread over k in an unrelated scope must not block a new pin; ``--all-scopes`` merges every scope, the
+bootstrap shape), and the output holds only those entries: copy only the new entry into the committed file. The
+printed floors block appears in the CI log only while some floor is ``null``; for a second run, re-run the failed
+job. The input is that printed block saved as JSON — the uploaded ``coverage.json`` artifact is NOT an accepted
+input. It enforces the spread of the runs it is given (SF-3, owner decision 2026-10-13): it exits 1 and prints no
+floors when a merged scope is measured in fewer than two of the runs, when the runs' ``missing`` differ by more than
+the scope's k, when the runs carry different ``retired_files``, or when two inputs are byte-identical (the same
+file given twice). Every entry is validated as a floor (``{percent, missing}``, both or neither null) and a bad one
+is a format error (exit 2). The gate cannot see where a pin came from: whether the inputs are two different CI
+runs, or runs of this commit, is NOT detected (two copies differing by one byte pass) — review reads the pin's
+provenance (mechanization backlog M52). A flaky scope is fixed (the non-deterministic test), never absorbed into a
+floor. The printed pins carry no statement count, so k is computed from a LOWER bound on it (``100·missing / (100 −
+percent)``, the percent being rounded down): the check can only be stricter than the HEAD tolerance. Duplicate JSON
+keys are refused in the floors file, the exclusions file and the ``--merge-floors`` inputs (``coverage.json`` is
+read with plain ``json.loads``: the coverage tool writes it). Floor diff rules
 against base do not apply (every floor is new, so it is checked against the measurement); an
 exclusion is grandfathered when its path matched a non-fixed ``omit`` pattern in the base
 ``pyproject.toml`` (today ``selfy.py``), and any other needs a ``ref``.
@@ -174,6 +242,18 @@ coverage, so the numbers live in the CI log.
   function's ``def`` keeps the file's count while hiding far more code. The ledger counts
   matches, not excluded lines; the diff rule still counts the changed ``def`` line as
   uncovered, and review must read it;
+- per-file floors, thin slicing (owner decision 2026-10-13, documented, not mechanized): the split rule fires per
+  PR, so a floored file's code can leave in steps of S − 1 = 24 removed statements per PR, and code moved within one
+  PR into several EXISTING files that each grow by fewer than S statements makes none of them a successor. Each step
+  is bounded: the moved code is changed code, so it costs 80% diff coverage, and the destination's package floor
+  holds it (its band, ~100 statements of a large package); the source's own floor still re-pins honestly.
+  Cumulative-since-pin removal tracking would close it (mechanization backlog M51);
+- a no-tolerance lowering can be refused by run-to-run noise: when covered code leaves a floored scope (a file
+  under decomposition most of all), ``m.missing`` may measure 1–2 statements over the base pin by noise alone and
+  the lowering is refused ("cover N statement(s)"). The remedy is a re-run of the job, or covering those
+  statements — never a tolerance;
+- a file floor on a small file: k = ``K_MIN`` = 5 statements is loose there (10 pt of a 50-statement file), bounded
+  and non-cumulative because pins never move with it;
 - merging floored package X into an existing floored package Y: X's floor carries to Y, so
   the merge passes only when Y's floor is at or above X's or Y's measured ``missing`` is at or
   below X's pinned ``missing``; when it is not, the merge cannot pass as one PR (move X to a
@@ -196,11 +276,13 @@ import io
 import json
 import math
 import os
+import posixpath
 import re
 import sys
 import time
 import tokenize
 import tomllib
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -225,7 +307,10 @@ TICK = 0.1  # a floor's resolution; k = max(ceil(statements * TICK / 100), K_MIN
 K_MIN = 5
 MIN_PACKAGE_STATEMENTS = 200
 DIFF_THRESHOLD = 80.0
-FLOORS_FORMAT_VERSION = 1
+FLOORS_FORMAT_VERSION = 2  # v2 (2026-10-13): per-file floors (`files`) + `retired_files`; a v1 base reads files={}
+# The split rule (owner decision 2026-10-13, SF-2): a floored file whose AST statement count falls by at least this
+# many against the base hands its code to every file the diff ADDS; a successor this size needs its own file floor.
+SPLIT_STATEMENTS = 25
 EXCLUSIONS_FORMAT_VERSION = 1
 ROOT_PACKAGE = "maxim/<root>"
 
@@ -257,7 +342,7 @@ _BANNED_IMPORT_RE = re.compile(
     r"^\s*(?:import|from)\s+(?:coverage|pytest_cov)\b|\bCoverage\.current\b|^\s*import\s+[\w.]+\s*,\s*coverage\b",
     re.MULTILINE,
 )
-_HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+_HUNK_FULL_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
 
 class MeasurementError(RuntimeError):
@@ -397,6 +482,63 @@ class Floors:
     version: int
     overall: Floor
     packages: dict[str, Floor] = field(default_factory=dict)
+    files: dict[str, Floor] = field(default_factory=dict)  # repo-relative POSIX path -> floor (v2)
+    retired: list[dict] = field(default_factory=list)  # `retired_files`: append-only {path, ref, reason} (v2)
+
+
+def _strict_pairs(pairs: list[tuple[str, object]]) -> dict:
+    """``object_pairs_hook`` for the gate files: a duplicate key is an error. ``json.loads`` keeps the LAST value,
+    so a reviewer reading the first (high) one would approve a file the gate reads low."""
+    out: dict = {}
+    for k, v in pairs:
+        if k in out:
+            raise FileFormatError(f"duplicate JSON key {k!r} (the parser would keep only the last value)")
+        out[k] = v
+    return out
+
+
+def _loads(text: str) -> object:
+    try:
+        return json.loads(text, object_pairs_hook=_strict_pairs)
+    except json.JSONDecodeError as e:
+        raise FileFormatError(f"not JSON: {e}") from e
+
+
+def file_key_problem(k: object) -> str | None:
+    """A ``files`` / ``retired_files`` key must already be the normalized repo-relative POSIX path of a
+    ``src/maxim`` ``.py`` file: one file, one spelling (``./``, ``//``, ``..``, ``\\`` or a leading ``/`` would let
+    a second key name the same file)."""
+    if not isinstance(k, str):
+        return f"file key must be a string: {k!r}"
+    if (
+        "\\" in k
+        or k.startswith("/")
+        or ".." in k.split("/")
+        or posixpath.normpath(k) != k
+        or not k.startswith(SCOPE + "/")
+        or not k.endswith(".py")
+    ):
+        return f"file key {k!r} must be a normalized repo-relative path {SCOPE}/....py (no ./, //, .., \\ or leading /)"
+    return None
+
+
+def _parse_retired(v: object) -> list[dict]:
+    if not isinstance(v, list):
+        raise FileFormatError("retired_files must be a list")
+    seen: set[str] = set()
+    for x in v:
+        if not isinstance(x, dict) or set(x) != {"path", "ref", "reason"}:
+            raise FileFormatError(f"retired_files entry must be exactly {{path, ref, reason}}: {x!r}")
+        if problem := file_key_problem(x["path"]):
+            raise FileFormatError(f"retired_files: {problem}")
+        if x["path"] in seen:
+            raise FileFormatError(f"retired_files: {x['path']} retired twice")
+        seen.add(x["path"])
+        if not ref_ok(x["ref"]):
+            raise FileFormatError(f"retired_files entry needs a ref ('#NNN' or a github.com PR/issue URL): {x!r}")
+        if not (isinstance(x["reason"], str) and x["reason"].strip()):
+            raise FileFormatError(f"retired_files entry needs a non-empty reason: {x!r}")
+    return list(v)
 
 
 def _parse_floor(name: str, v: object) -> Floor:
@@ -415,22 +557,37 @@ def _parse_floor(name: str, v: object) -> Floor:
     return Floor(float(pct) if pct is not None else None, miss)
 
 
+_V1_KEYS = frozenset({"floors_format_version", "band", "min_package_statements", "overall", "packages"})
+_V2_KEYS = _V1_KEYS | {"files", "retired_files"}
+
+
 def parse_floors(text: str) -> Floors:
-    try:
-        d = json.loads(text)
-    except json.JSONDecodeError as e:
-        raise FileFormatError(f"not JSON: {e}") from e
-    keys = {"floors_format_version", "band", "min_package_statements", "overall", "packages"}
-    if not isinstance(d, dict) or set(d) != keys:
+    """v2 (``files`` + ``retired_files``) or v1 (no per-file floors: read as ``files = {}``, one way only — HEAD
+    must be v2, :func:`floor_head_rules`; the only version change a diff may make is base v1 -> HEAD v2)."""
+    d = _loads(text)
+    if not isinstance(d, dict):
+        raise FileFormatError("the floors file must be a JSON object")
+    keys = _V1_KEYS if d.get("floors_format_version") == 1 else _V2_KEYS
+    if set(d) != keys:
         raise FileFormatError(f"top-level keys must be exactly {sorted(keys)}")
     if not isinstance(d["packages"], dict):
         raise FileFormatError("packages must be an object")
+    files: dict[str, Floor] = {}
+    if keys == _V2_KEYS:
+        if not isinstance(d["files"], dict):
+            raise FileFormatError("files must be an object")
+        for k, v in d["files"].items():
+            if problem := file_key_problem(k):
+                raise FileFormatError(problem)
+            files[k] = _parse_floor(k, v)
     return Floors(
         band=d["band"],
         min_statements=d["min_package_statements"],
         version=d["floors_format_version"],
         overall=_parse_floor("overall", d["overall"]),
         packages={k: _parse_floor(k, v) for k, v in d["packages"].items()},
+        files=files,
+        retired=_parse_retired(d["retired_files"]) if keys == _V2_KEYS else [],
     )
 
 
@@ -438,11 +595,43 @@ def _fmt_pct(x: float) -> str:
     return f"{x:.2f}%"
 
 
+def file_scopes(cov: dict[str, FileCov]) -> dict[str, ScopeCov]:
+    """Each measured file folded into a :class:`ScopeCov`, keyed by its case-exact ``coverage.json`` path."""
+    out: dict[str, ScopeCov] = {}
+    for rel, f in cov.items():
+        out[rel] = ScopeCov()
+        out[rel].add(f)
+    return out
+
+
+def _symlinked(root: Path, rel: str) -> bool:
+    """True when ``rel`` or any directory on its way down from the repo root is a symlink."""
+    p = root
+    for part in rel.split("/"):
+        p = p / part
+        if p.is_symlink():
+            return True
+    return False
+
+
+def file_present(root: Path, rel: str, listing: set[str]) -> bool:
+    """Case-exact existence (NIT-1): ``rel`` is in the ``src/maxim`` directory listing (``set(_src_files(root))``)
+    and is no symlink. ``Path.is_file()`` would answer True for a case variant on a case-insensitive filesystem."""
+    return rel in listing and not _symlinked(root, rel)
+
+
 def floor_head_rules(
-    root: Path, fl: Floors, overall: ScopeCov, pkgs: dict[str, ScopeCov], only: set[str] | None = None
+    root: Path,
+    fl: Floors,
+    overall: ScopeCov,
+    pkgs: dict[str, ScopeCov],
+    only: set[str] | None = None,
+    *,
+    files: dict[str, ScopeCov],
 ) -> list[str]:
-    """The HEAD floor rules. ``only`` (``--local``) restricts the per-scope checks to those packages and skips
-    ``overall``; the file-format checks always run. CI never passes it."""
+    """The HEAD floor rules. ``only`` (``--local``) restricts the per-scope checks to those packages (a file floor
+    gates when its package is in it) and skips ``overall``; the file-format checks always run. CI never passes it.
+    ``files`` is :func:`file_scopes` of the measurement (required: a file floor must never be skipped by omission)."""
     out: list[str] = []
     if fl.version != FLOORS_FORMAT_VERSION:
         out.append(f"{FLOORS_REL}: floors_format_version must be {FLOORS_FORMAT_VERSION}, got {fl.version!r}")
@@ -489,6 +678,19 @@ def floor_head_rules(
                 f"{pkg}: {m.statements} statements (>= {MIN_PACKAGE_STATEMENTS}) and no floor — add "
                 f'"{pkg}": {{"percent": {round_down(m.percent)}, "missing": {m.missing}}}'
             )
+    # 1b. Per-file floors: the same check, k and K_MIN unchanged, on the file's own measurement.
+    listing = set(_src_files(root)) if fl.files else set()
+    for rel, f in sorted(fl.files.items()):
+        if only is not None and package_of(rel) not in only:
+            continue
+        if _symlinked(root, rel):
+            out.append(f"{rel}: a file floor's key may not be (or pass through) a symlink — key the real file")
+        elif rel not in listing:
+            out.append(f"{rel}: floored file not found at HEAD (case-exact) — orphan: remove or carry the entry")
+        elif rel not in files or files[rel].statements == 0:
+            out.append(f"{rel}: floored file has no measured statements (excluded? a floored file must be measured)")
+        else:
+            check(rel, f, files[rel])
     return out
 
 
@@ -503,6 +705,196 @@ def package_renames(root: Path, base: str) -> dict[str, set[str]]:
     return out
 
 
+Hunk = tuple[int, int, int, int]  # (old_start, old_count, new_start, new_count) of one ``-U0`` hunk
+
+
+@dataclass
+class FileDiff:
+    """What the per-file diff rules read from git, gathered once by :func:`file_diff`."""
+
+    renames: dict[str, str]  # base path -> HEAD path (``git diff -M --name-status`` base..HEAD)
+    added: set[str]  # ``src/maxim`` .py files in the HEAD listing that the base tree does not have
+    base_text: Callable[[str], str]  # a file's content at the base ('' when it did not exist there)
+    # base path -> its ``-U0`` hunks (old_start, old_count, new_start, new_count), base..HEAD with ``-M``, so a
+    # renamed file's hunks are against its rename target; a file absent here is unchanged
+    hunks: dict[str, list[Hunk]] = field(default_factory=dict)
+    modified: set[str] = field(default_factory=set)  # changed in place: present at the base and at HEAD, same path
+
+
+@dataclass
+class DiffFile:
+    old: str | None  # the base path (``--- a/<path>``); None for an added file
+    new: str | None  # the HEAD / working-tree path (``+++ b/<path>``); None for a deleted file
+    hunks: list[Hunk] = field(default_factory=list)
+
+
+def _diff_path(header: str) -> str | None:
+    target = header[4:].split("\t", 1)[0]  # git appends a TAB after a path that contains a space
+    return target[2:] if target[:2] in ("a/", "b/") else None  # /dev/null: absent on that side
+
+
+def parse_unified_diff(text: str) -> list[DiffFile]:
+    """The ONE parser of ``git diff`` output for this lint (diff coverage and the split rule). Each hunk BODY is
+    consumed by the counts in its ``@@ -a,b +c,d @@`` header (a missing count is 1; ``\\ No newline at end of file``
+    counts for neither side), and ``diff --git`` / ``---`` / ``+++`` are recognised only in a file's header, between
+    ``diff --git`` and its first ``@@``. A deleted source line ``-- 1`` prints as ``--- 1`` and an added ``++x`` as
+    ``+++ x``: read as headers they silently dropped every later hunk of the file (the delta review of 2026-10-13;
+    the added-line half hardened diff coverage, an existing rule). Output it cannot account for raises
+    ``GitUnavailable`` (exit 2), never a partial answer. Lines split on ``\\n`` ONLY, and both callers read git's
+    output as bytes (``git(..., raw=True)``): ``splitlines()`` and text-mode newline translation would split one diff
+    line at a form feed, a lone CR, ``\\x85`` or U+2028 and turn legal source into a refused diff on every PR."""
+    out: list[DiffFile] = []
+    cur: DiffFile | None = None
+    in_header = False
+    # "\n" only: str.splitlines() also splits on \x0c, \x0b, \x1c-\x1e, \x85, U+2028/2029 (legal inside a source
+    # line), which would turn one diff line into two and make the count-based hunk read refuse the output
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    i = 0
+    while i < len(lines):
+        ln = lines[i]
+        i += 1
+        if ln.startswith("diff --git "):
+            cur = DiffFile(None, None)
+            out.append(cur)
+            in_header = True
+        elif cur is not None and in_header and ln.startswith("--- "):
+            cur.old = _diff_path(ln)
+        elif cur is not None and in_header and ln.startswith("+++ "):
+            cur.new = _diff_path(ln)
+        elif cur is not None and (m := _HUNK_FULL_RE.match(ln)):
+            in_header = False
+            h = (int(m[1]), int(m[2] if m[2] is not None else 1), int(m[3]), int(m[4] if m[4] is not None else 1))
+            cur.hunks.append(h)
+            old_left, new_left = h[1], h[3]
+            while old_left or new_left:
+                if i >= len(lines):
+                    raise GitUnavailable(f"git diff output ends inside a hunk of {cur.new or cur.old}")
+                body = lines[i]
+                i += 1
+                if body.startswith("\\"):
+                    continue
+                if body[:1] == "-" and old_left:
+                    old_left -= 1
+                elif body[:1] == "+" and new_left:
+                    new_left -= 1
+                elif body[:1] == " " and old_left and new_left:
+                    old_left, new_left = old_left - 1, new_left - 1
+                else:
+                    raise GitUnavailable(
+                        f"git diff hunk body does not match its header in {cur.new or cur.old}: {body!r}"
+                    )
+        elif in_header or ln.startswith("\\") or cur is None:
+            continue  # header lines (index, mode, similarity, rename, Binary) and a trailing no-newline marker
+        else:
+            raise GitUnavailable(f"git diff line outside any hunk or header: {ln!r}")
+    return out
+
+
+def _diff_hunks(root: Path, base: str) -> tuple[dict[str, list[Hunk]], set[str]]:
+    """({base path: its -U0 hunks}, {paths changed in place}) from ONE ``git diff -M -U0`` base..HEAD — the rename
+    pairing of :func:`changed_files` (same command, same detection), so a renamed file diffs against its target."""
+    text = git(
+        root,
+        "-c",
+        "core.quotePath=false",
+        "diff",
+        "-M",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--no-color",
+        "--no-relative",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+        "-U0",
+        base,
+        "HEAD",
+        "--",
+        SCOPE,
+        raw=True,  # bytes: no newline translation of a lone CR (parse_unified_diff)
+    )
+    hunks: dict[str, list[Hunk]] = {}
+    modified: set[str] = set()
+    for f in parse_unified_diff(text):
+        if f.old is None:
+            continue
+        hunks.setdefault(f.old, []).extend(f.hunks)
+        if f.new == f.old:
+            modified.add(f.old)
+    return hunks, modified
+
+
+def file_diff(root: Path, base: str) -> FileDiff:
+    renames = {old: new for new, old in changed_files(root, base, SCOPE, unquoted=True) if old and old != new}
+    at_base = set(git(root, "ls-tree", "-r", "-z", "--name-only", base, SCOPE).split("\0")) - {""}
+    added = {rel for rel in _src_files(root) if rel not in at_base}
+    hunks, modified = _diff_hunks(root, base)
+    return FileDiff(renames, added, lambda rel: show(root, base, rel), hunks, modified)
+
+
+#: Used when neither the base nor HEAD has a file floor: no file rule consults git then, so no git call is made (and a
+#: run without file floors gains no exit-2 path). Every file rule iterates a floors map, so an empty map reads nothing.
+NO_FILE_DIFF = FileDiff({}, set(), lambda rel: "")
+
+
+def removed_statements(base_src: str, hunks: list[Hunk], head_src: str) -> int:
+    """How many of the base file's statements a diff EDITS OR DELETES (SF-2's trigger; a modified line counts): the distinct base statements a
+    deleted line maps onto (the diff-coverage mapping, :func:`_line_statements`), plus every untouched base statement
+    whose first line no longer starts a statement of the same type at HEAD (code wrapped in a string literal: no line
+    deleted, the statements gone). Raises ``SyntaxError``/``tokenize.TokenError`` on an unparseable side."""
+    deleted: set[int] = set()
+    for os_, oc, _, _ in hunks:
+        deleted.update(range(os_, os_ + oc))
+
+    def key(n: ast.stmt) -> tuple[int, int]:
+        return n.lineno, n.col_offset  # a position, not id(): the mapping and the walk below parse separate trees
+
+    gone = {key(st.node) for _, st in _line_statements(base_src, deleted)}
+    head = {(n.lineno, type(n)) for n in ast.walk(ast.parse(head_src)) if isinstance(n, ast.stmt)}
+    for n in ast.walk(ast.parse(base_src)):
+        if not isinstance(n, ast.stmt) or key(n) in gone:
+            continue
+        if n.lineno in deleted:  # a deleted line counts only through the mapping above; it has no HEAD position
+            continue
+        # The unchanged line's HEAD number: shifted by every hunk that ends before it (an insertion, oc = 0, sits
+        # AFTER its old_start line).
+        shift = sum(nc - oc for os_, oc, _, nc in hunks if n.lineno > (os_ + oc - 1 if oc else os_))
+        if (n.lineno + shift, type(n)) not in head:
+            gone.add(key(n))
+    return len(gone)
+
+
+def _sum_rule(
+    out: list[str],
+    edges: dict[str, set[str]],
+    budget: Callable[[set[str], set[str]], int | None],
+    measured: Callable[[str], int],
+    why: str,
+) -> None:
+    """The SUM rule, shared by package splits and the per-file split rule: sources that share a target are one
+    group, and the group's targets' measured ``missing`` summed may not exceed ``budget(sources, targets)`` (no
+    tolerance). Each piece alone can sit under its pin while together they lose uncovered statements."""
+    groups: list[tuple[set[str], set[str]]] = []
+    for src in edges:
+        srcs, tgts = {src}, set(edges[src])
+        for g in [g for g in groups if g[1] & tgts]:
+            groups.remove(g)
+            srcs |= g[0]
+            tgts |= g[1]
+        groups.append((srcs, tgts))
+    for srcs, tgts in groups:
+        allowed = budget(srcs, tgts) if tgts else None
+        if allowed is None:
+            continue
+        total = sum(measured(t) for t in tgts)
+        if total > allowed:
+            out.append(
+                f"{' + '.join(sorted(tgts))}: received {', '.join(sorted(srcs))}; together they measure missing "
+                f"{total} > the carried pinned missing {allowed} — cover {total - allowed} statement(s) ({why})"
+            )
+
+
 def floor_diff_rules(
     root: Path,
     base_fl: Floors,
@@ -510,15 +902,21 @@ def floor_diff_rules(
     overall: ScopeCov,
     pkgs: dict[str, ScopeCov],
     renames: dict[str, set[str]],
+    *,
+    files: dict[str, ScopeCov],
+    fd: FileDiff,
+    excluded: set[str],
 ) -> list[str]:
+    """The pin rules against the base, for ``overall``, the ``packages`` namespace and the ``files`` namespace
+    (the same rules, run twice), plus the file-only rules: ``retired_files`` (SF-1) and the split rule (SF-2).
+    ``files``/``fd``/``excluded`` are required keyword arguments: a file rule must never be skipped by omission."""
     out: list[str] = []
-    for attr, label in (
-        ("band", "band"),
-        ("min_statements", "min_package_statements"),
-        ("version", "floors_format_version"),
-    ):
+    for attr, label in (("band", "band"), ("min_statements", "min_package_statements")):
         if getattr(base_fl, attr) != getattr(fl, attr):
             out.append(f"{label} changed {getattr(base_fl, attr)!r} -> {getattr(fl, attr)!r}: it is fixed")
+    # The one version change a diff may make: a v1 base (read as files = {}) becomes v2. One way only.
+    if base_fl.version != fl.version and not (base_fl.version == 1 and fl.version == FLOORS_FORMAT_VERSION):
+        out.append(f"floors_format_version changed {base_fl.version!r} -> {fl.version!r}: it is fixed (only 1 -> 2)")
 
     def changed_entry(name: str, b: Floor | None, h: Floor, m: ScopeCov | None) -> None:
         """NEW entry (``b`` None): the measurement within k statements, ``missing`` <= measured. CHANGED entry:
@@ -556,68 +954,210 @@ def floor_diff_rules(
                 f"{_fmt_pct(m.percent)} less {k} statement(s) of run-to-run noise ({lowest}%) — pin {round_down(m.percent)}"
             )
 
+    def namespace(
+        base_map: dict[str, Floor],
+        head_map: dict[str, Floor],
+        measured: dict[str, ScopeCov],
+        present: Callable[[str], bool],
+        renamed_to: Callable[[str], set[str]],
+        still_there: str,
+        vanished: Callable[[str], None],
+    ) -> None:
+        """One floor namespace (packages or files): removal only when gone, null-back, CHANGED/NEW verification,
+        the rename carry and the sum rule. ``vanished`` is called for a removed floor with no detected rename."""
+        removed = []
+        for key, b in sorted(base_map.items()):
+            h = head_map.get(key)
+            if h is None:
+                if b.percent is None:
+                    continue
+                if present(key):
+                    out.append(f"{key}: floor removed while its {still_there}")
+                else:
+                    removed.append((key, b))
+                continue
+            if b.percent is not None and h.percent is None:
+                out.append(f"{key}: floor set back to null")
+                continue
+            changed_entry(key, b, h, measured.get(key))
+        new_keys = sorted(k for k in head_map if k not in base_map)
+        carried: set[str] = set()
+        targets_of: dict[str, list[str]] = {}
+        for key, b in removed:
+            # A carry-over target follows the CHANGED rules against the removed floor. With no rename detected,
+            # every new floor in this diff is a candidate target (fail closed).
+            detected = sorted(renamed_to(key))
+            if not detected:
+                vanished(key)
+            targets_of[key] = detected or new_keys
+            for t in targets_of[key]:
+                h = head_map.get(t)
+                if h is None or h.percent is None:
+                    out.append(f"{t}: received {key}'s renamed files; the floor carries over — add a floor for {t}")
+                    continue
+                carried.add(t)
+                changed_entry(f"{t} (carrying {key})", b, h, measured.get(t))
+        # The group's budget is the sum of its removed floors' base `missing` plus the base `missing` of every target
+        # that already had a floor at base (a merge into an existing floored scope brings that scope's own pin).
+        base_missing = {key: b.missing for key, b in removed}
+
+        def budget(srcs: set[str], tgts: set[str]) -> int | None:
+            if any(base_missing[s] is None for s in srcs):
+                return None
+            return sum(base_missing[s] or 0 for s in srcs) + sum(
+                base_map[t].missing or 0 for t in tgts if t in base_map and t not in srcs
+            )
+
+        _sum_rule(
+            out,
+            {k: set(v) for k, v in targets_of.items()},
+            budget,
+            lambda t: measured[t].missing if t in measured else 0,
+            "a split may not lose uncovered statements between its pieces",
+        )
+        for k in new_keys:
+            if k not in carried:
+                changed_entry(k, None, head_map[k], measured.get(k))
+
     changed_entry("overall", base_fl.overall, fl.overall, overall)
     if base_fl.overall.percent is not None and fl.overall.percent is None:
         out.append("overall: floor set back to null")
-    removed = []
-    for pkg, b in sorted(base_fl.packages.items()):
-        h = fl.packages.get(pkg)
-        if h is None:
-            if b.percent is None:
-                continue
-            if package_present(root, pkg):
-                out.append(
-                    f"{pkg}: floor removed while its directory still exists (a floor stays until the package is gone)"
-                )
+    namespace(
+        base_fl.packages,
+        fl.packages,
+        pkgs,
+        lambda p: package_present(root, p),
+        lambda p: renames.get(p, set()),
+        "directory still exists (a floor stays until the package is gone)",
+        lambda p: None,  # packages >= N must carry a floor anyway; files are opt-in, hence SF-1 below
+    )
+
+    # SF-1: retired_files is append-only; a NEW entry is ref'd (parse), printed, and retires only a floor the base
+    # had for a file that is gone at HEAD. It is the ONLY way a floored file may vanish without a detected rename.
+    listing = set(_src_files(root))
+    retired_now: set[str] = set()
+    if problem := append_only_problem(base=base_fl.retired, head=fl.retired, what="retired_files is"):
+        out.append(problem)
+    else:
+        for x in fl.retired[len(base_fl.retired) :]:
+            p = x["path"]
+            print(f"coverage: RETIRED FILE FLOOR {p} (ref {x['ref']}): {x['reason']}")
+            bf = base_fl.files.get(p)
+            if bf is None or bf.percent is None:
+                out.append(f"retired_files {p}: no file floor at the base to retire")
+            elif p in fl.files or file_present(root, p, listing):
+                out.append(f"retired_files {p}: the file or its floor is still here at HEAD — retire only a gone file")
             else:
-                removed.append((pkg, b))
-            continue
-        if b.percent is not None and h.percent is None:
-            out.append(f"{pkg}: floor set back to null")
-            continue
-        changed_entry(pkg, b, h, pkgs.get(pkg))
-    new_keys = sorted(k for k in fl.packages if k not in base_fl.packages)
-    carried: set[str] = set()
-    targets_of: dict[str, list[str]] = {}
-    for pkg, b in removed:
-        # A carry-over target follows the CHANGED rules against the removed package's floor. With no rename
-        # detected, every new floor in this diff is a candidate target (fail closed).
-        targets_of[pkg] = sorted(renames.get(pkg, set())) or new_keys
-        for t in targets_of[pkg]:
-            h = fl.packages.get(t)
-            if h is None or h.percent is None:
-                out.append(f"{t}: received {pkg}'s renamed files; the floor carries over — add a floor for {t}")
-                continue
-            carried.add(t)
-            changed_entry(f"{t} (carrying {pkg})", b, h, pkgs.get(t))
-    # The SUM rule: a split must not lose uncovered statements between its pieces (each piece alone is under the
-    # carried pin; together they may not be). Removed packages that share a target are one group; the group's
-    # budget is the sum of its removed packages' base `missing` plus the base `missing` of every target that
-    # already had a floor at base (a merge into an existing package brings that package's own pin along).
-    groups: list[tuple[set[str], set[str]]] = []
-    for pkg in targets_of:
-        srcs, tgts = {pkg}, set(targets_of[pkg])
-        for g in [g for g in groups if g[1] & tgts]:
-            groups.remove(g)
-            srcs |= g[0]
-            tgts |= g[1]
-        groups.append((srcs, tgts))
-    base_missing = {pkg: b.missing for pkg, b in removed}
-    for srcs, tgts in groups:
-        if not tgts or any(base_missing[s] is None for s in srcs):
-            continue
-        budget = sum(base_missing[s] or 0 for s in srcs)
-        budget += sum(base_fl.packages[t].missing or 0 for t in tgts if t in base_fl.packages)
-        measured = sum(pkgs[t].missing for t in tgts if t in pkgs)
-        if measured > budget:
+                retired_now.add(p)
+
+    def vanished_file(rel: str) -> None:
+        if rel not in retired_now:
             out.append(
-                f"{' + '.join(sorted(tgts))}: received {', '.join(sorted(srcs))}; together they measure missing "
-                f"{measured} > the carried pinned missing {budget} — cover {measured - budget} statement(s) "
-                "(a split may not lose uncovered statements between its pieces)"
+                f"{rel}: floored file is gone at HEAD with no detected rename — a file floor does not vanish: keep the "
+                "rename detectable (git mv, then edit) so the floor carries, or append a ref'd retired_files entry "
+                '{"path": ..., "ref": "#N", "reason": ...}'
             )
-    for k in new_keys:
-        if k not in carried:
-            changed_entry(k, None, fl.packages[k], pkgs.get(k))
+
+    namespace(
+        base_fl.files,
+        fl.files,
+        files,
+        lambda r: file_present(root, r, listing),
+        lambda r: {fd.renames[r]} if r in fd.renames else set(),
+        "file still exists (a file floor stays until the file is gone)",
+        vanished_file,
+    )
+    out += split_rule(root, base_fl, fl, files, fd, excluded, listing)
+    return out
+
+
+def split_rule(
+    root: Path,
+    base_fl: Floors,
+    fl: Floors,
+    files: dict[str, ScopeCov],
+    fd: FileDiff,
+    excluded: set[str],
+    listing: set[str],
+) -> list[str]:
+    """SF-2 (owner decisions 2026-10-13): the floor follows the code. When a diff EDITS OR DELETES ``SPLIT_STATEMENTS`` or more
+    of a floored file F's base statements (:func:`removed_statements` against F's ``-M`` rename target when one was
+    detected; all of them when F is gone or its path is now a symlink), its successors are every non-excluded
+    ``src/maxim`` .py file the diff ADDS and every EXISTING one whose AST statement count grew by ``SPLIT_STATEMENTS``
+    or more. Each successor of ``SPLIT_STATEMENTS`` or more statements needs its own file floor (NEW or CHANGED rules,
+    by :func:`floor_diff_rules`' namespace pass), and F's measured ``missing`` plus every successor's may not exceed
+    F's base ``missing`` pin plus the base pins of successors floored at the base (the shared sum rule, no tolerance;
+    an existing successor with no base floor is charged its whole ``missing``). With no successor the sum is skipped."""
+    out: list[str] = []
+    edges: dict[str, set[str]] = {}
+    counts: dict[tuple[str, bool], int | None] = {}
+
+    def count(rel: str, at_base: bool) -> int | None:
+        if (rel, at_base) not in counts:
+            text = fd.base_text(rel) if at_base else (root / rel).read_text(encoding="utf-8")
+            try:
+                counts[rel, at_base] = statement_count(text)
+            except (SyntaxError, ValueError) as e:
+                out.append(f"{rel}: cannot count its statements for the split rule ({e})")
+                counts[rel, at_base] = None
+        return counts[rel, at_base]
+
+    for f_key, b in sorted(base_fl.files.items()):
+        if b.percent is None or b.missing is None:
+            continue
+        base_src = fd.base_text(f_key)
+        if not base_src:
+            continue
+        here = f_key if f_key in listing else fd.renames.get(f_key)
+        here = here if here is not None and file_present(root, here, listing) else None  # N4: a symlink is gone
+        if here is None:
+            removed = count(f_key, True)
+        else:
+            try:
+                removed = removed_statements(
+                    base_src, fd.hunks.get(f_key, []), (root / here).read_text(encoding="utf-8")
+                )
+            except (SyntaxError, ValueError, tokenize.TokenError) as e:
+                out.append(f"{f_key}: cannot map its removed statements for the split rule ({e})")
+                continue
+        if removed is None or removed < SPLIT_STATEMENTS:
+            continue
+        successors = []
+        for s in sorted((fd.added | fd.modified) - excluded - {f_key} - ({here} if here else set())):
+            if s not in listing or not s.endswith(".py"):
+                continue
+            n = count(s, False)
+            if n is None:
+                continue
+            if s not in fd.added:  # EXISTING: a successor only when it grew by S or more
+                before = count(s, True)
+                if before is None or n - before < SPLIT_STATEMENTS:
+                    continue
+            successors.append(s)
+            if s not in files and n:
+                out.append(f"{s}: successor of {f_key} (split rule) is not measured in {COVERAGE_JSON}")
+            if n >= SPLIT_STATEMENTS and s not in fl.files:
+                how = "added" if s in fd.added else f"grew by {n - (count(s, True) or 0)} statements"
+                out.append(
+                    f"{s}: {n} statements ({how}) while this diff removed {removed} of floored {f_key}'s statements "
+                    f"— a successor of >= {SPLIT_STATEMENTS} statements needs its own file floor (split rule): add "
+                    + (
+                        f'"{s}": {{"percent": {round_down(files[s].percent)}, "missing": {files[s].missing}}}'
+                        if s in files
+                        else f'"{s}": {{"percent": null, "missing": null}}'
+                    )
+                )
+        if successors:  # no successor: the HEAD floor rule (k) and the CHANGED/LOWERING rules hold the source alone
+            edges[f_key] = set(successors) | ({here} if here else set())
+    _sum_rule(
+        out,
+        edges,
+        lambda srcs, tgts: sum(base_fl.files[s].missing or 0 for s in srcs)
+        + sum(base_fl.files[t].missing or 0 for t in tgts if t in base_fl.files and t not in srcs),
+        lambda t: files[t].missing if t in files else 0,
+        f"split rule: a floored file that lost >= {SPLIT_STATEMENTS} statements keeps its pin across its successors; "
+        "an existing successor without a base floor is charged its whole missing — move code into NEW modules",
+    )
     return out
 
 
@@ -627,8 +1167,9 @@ def below_tolerance(m: ScopeCov) -> float:
     return 100.0 * missing_slack(m) / m.statements if m.statements else 0.0
 
 
-def suggested_floors(fl: Floors, overall: ScopeCov, pkgs: dict[str, ScopeCov]) -> dict:
-    """The floors file as measured: every floored package plus every package at or over N."""
+def suggested_floors(fl: Floors, overall: ScopeCov, pkgs: dict[str, ScopeCov], files: dict[str, ScopeCov]) -> dict:
+    """The floors file as measured: every floored package plus every package at or over N, every floored file (file
+    floors are opt-in, so no file is added), and ``retired_files`` as committed."""
     keys = set(fl.packages) | {k for k, m in pkgs.items() if m.statements >= MIN_PACKAGE_STATEMENTS}
 
     def pin(m: ScopeCov | None) -> dict:
@@ -640,6 +1181,8 @@ def suggested_floors(fl: Floors, overall: ScopeCov, pkgs: dict[str, ScopeCov]) -
         "min_package_statements": MIN_PACKAGE_STATEMENTS,
         "overall": pin(overall),
         "packages": {k: pin(pkgs.get(k)) for k in sorted(keys)},
+        "files": {k: pin(files.get(k)) for k in sorted(fl.files)},
+        "retired_files": list(fl.retired),
     }
 
 
@@ -664,10 +1207,7 @@ class Exclusions:
 
 
 def parse_exclusions(text: str) -> Exclusions:
-    try:
-        d = json.loads(text)
-    except json.JSONDecodeError as e:
-        raise FileFormatError(f"not JSON: {e}") from e
+    d = _loads(text)
     keys = {"exclusions_format_version", "exclusions", "ledger"}
     if not isinstance(d, dict) or set(d) != keys:
         raise FileFormatError(f"top-level keys must be exactly {sorted(keys)}")
@@ -975,22 +1515,14 @@ def changed_lines(root: Path, base: str) -> dict[str, set[int]]:
         base,
         "--",
         SCOPE,
+        raw=True,  # bytes: no newline translation of a lone CR (parse_unified_diff)
     )
     out: dict[str, set[int]] = {}
-    cur: str | None = None
-    for ln in text.splitlines():
-        if ln.startswith("+++ "):
-            target = ln[4:].split("\t", 1)[0]  # git appends a TAB after a path that contains a space
-            cur = target[2:] if target.startswith("b/") else None
-            if cur is not None and cur.endswith(".py"):
-                out.setdefault(cur, set())
-            else:
-                cur = None
-            continue
-        m = _HUNK_RE.match(ln)
-        if m and cur is not None:
-            start, n = int(m.group(1)), int(m.group(2) if m.group(2) is not None else 1)
-            out[cur].update(range(start, start + n))
+    for f in parse_unified_diff(text):  # count-based: an added ``++x`` line no longer reads as a ``+++`` header
+        if f.new is not None and f.new.endswith(".py"):
+            lines = out.setdefault(f.new, set())
+            for _, _, start, n in f.hunks:
+                lines.update(range(start, start + n))
     return out
 
 
@@ -1077,6 +1609,27 @@ def _typing_imports_only(st: _Stmt) -> bool:
     return _imports_only_tc(st.node if isinstance(st.node, ast.If) else st.parent)
 
 
+def _line_statements(text: str, lines: set[int]) -> list[tuple[int, _Stmt]]:
+    """Each line of ``lines`` that carries code, in order, with the statement it maps to: its innermost enclosing
+    ``ast.stmt`` (decorator lines included), or for a clause header that is not a statement (``except``, ``else``,
+    ``finally``, ``case``) its block's first statement. Shared by diff coverage (changed lines at HEAD) and the split
+    rule (deleted lines at the base). Raises ``SyntaxError``/``tokenize.TokenError``."""
+    stmts = _statements(ast.parse(text))
+    headers = _clause_headers(stmts)
+    code = _code_lines(text)
+    out: list[tuple[int, _Stmt]] = []
+    for ln in sorted(lines & code):
+        enclosing = [s for s in stmts if s.first <= ln <= s.end]
+        if not enclosing:
+            continue
+        st = max(enclosing, key=lambda s: (s.first, -s.end))
+        clause = [h for h in headers if h[0] <= ln <= h[1] and h[0] >= st.first]
+        if clause:
+            st = max(clause, key=lambda h: h[0])[2]
+        out.append((ln, st))
+    return out
+
+
 def diff_coverage(root: Path, base: str, cov: dict[str, FileCov], excluded: set[str]) -> tuple[list[str], list[str]]:
     """(failures, report lines)."""
     fails: list[str] = []
@@ -1092,21 +1645,12 @@ def diff_coverage(root: Path, base: str, cov: dict[str, FileCov], excluded: set[
             continue
         text = path.read_text(encoding="utf-8")
         try:
-            stmts = _statements(ast.parse(text))
-            headers = _clause_headers(stmts)
-            code = _code_lines(text)
+            mapped = _line_statements(text, lines)
         except (SyntaxError, tokenize.TokenError) as e:
             fails.append(f"{rel}: cannot parse ({e})")
             continue
         seen: dict[int, bool] = {}
-        for ln in sorted(lines & code):
-            enclosing = [s for s in stmts if s.first <= ln <= s.end]
-            if not enclosing:
-                continue
-            st = max(enclosing, key=lambda s: (s.first, -s.end))
-            clause = [h for h in headers if h[0] <= ln <= h[1] and h[0] >= st.first]
-            if clause:
-                st = max(clause, key=lambda h: h[0])[2]
+        for _, st in mapped:
             keys = (st.node.lineno, st.first)
             if st.first in seen:
                 continue
@@ -1142,9 +1686,9 @@ def diff_coverage(root: Path, base: str, cov: dict[str, FileCov], excluded: set[
 # ── main ─────────────────────────────────────────────────────────────────────
 
 
-def _print_totals(overall: ScopeCov, pkgs: dict[str, ScopeCov], fl: Floors | None) -> None:
+def _print_totals(overall: ScopeCov, pkgs: dict[str, ScopeCov], fl: Floors | None, files: dict[str, ScopeCov]) -> None:
     def line(name: str, m: ScopeCov) -> str:
-        f = (fl.overall if name == "overall" else fl.packages.get(name)) if fl else None
+        f = (fl.overall if name == "overall" else fl.packages.get(name) or fl.files.get(name)) if fl else None
         pin = "" if f is None else f" floor {f.percent}% (missing {f.missing})"
         br = 100.0 * m.covered_branches / m.branches if m.branches else 100.0
         return (
@@ -1156,6 +1700,8 @@ def _print_totals(overall: ScopeCov, pkgs: dict[str, ScopeCov], fl: Floors | Non
     print(line("overall", overall))
     for k in sorted(pkgs):
         print(line(k, pkgs[k]))
+    for k in sorted(fl.files if fl else {}):  # floored files only (opt-in)
+        print(line(k, files[k]) if k in files else f"  {k}: not measured")
 
 
 def _read(root: Path, rel: str, parse):
@@ -1167,26 +1713,96 @@ def _read(root: Path, rel: str, parse):
         return None, f"{rel}: {e}"
 
 
-def merge_floors(texts: list[str]) -> dict:
-    """The per-scope MINIMUM of several measured floors files (the paste-ready JSON a run prints): lowest
-    percent AND lowest missing (``missing`` is one-sided, so the lower pin passes against every run).
-    A scope in only one file keeps that file's value."""
-    docs = [json.loads(t) for t in texts]
+def _statements_at_least(v: dict) -> int:
+    """A LOWER bound on a scope's statement count from its printed pin: the true percent lies in [p, p + 0.1), so
+    statements = 100·missing / (100 − p_true) >= 100·missing / (100 − p). 0 when the pin carries no information."""
+    p, m = v["percent"], v["missing"]
+    if not m or p >= 100:
+        return 0
+    return math.ceil(100.0 * m / (100.0 - p) - 1e-6)
 
-    def merge(vals: list[dict]) -> dict:
+
+def merge_floors(texts: list[str], committed: Floors | None) -> tuple[dict, list[str]]:
+    """(the per-scope MINIMUM of several measured floors files, problems). The input is the paste-ready JSON a run
+    prints; the minimum is the lowest percent AND the lowest missing (``missing`` is one-sided, so the lower pin
+    passes against every run). Only the NEW scopes are merged (SF-A4): those ``null`` in, or absent from, the
+    ``committed`` floors file — every scope when ``committed`` is None (``--all-scopes``) — so a spread in an unrelated
+    scope cannot block a new pin, and the result holds only those entries. The merge REFUSES (SF-3, owner decision
+    2026-10-13) a merged scope measured in fewer than two of the runs, or whose runs' ``missing`` differ by more than
+    its k (a non-deterministic test is fixed before pinning, never absorbed into a floor), and byte-identical inputs.
+    It enforces the spread of the runs it is given; it cannot see where they came from. k is computed from a lower
+    bound on the scope's statement count (:func:`_statements_at_least`), so the spread check can only be stricter than
+    the HEAD tolerance, never looser. Every entry is validated by :func:`_parse_floor` (a ``FileFormatError``)."""
+    docs = []
+    for i, t in enumerate(texts):
+        d = _loads(t)
+        if not isinstance(d, dict) or not isinstance(d.get("overall"), dict) or not isinstance(d.get("packages"), dict):
+            raise FileFormatError(f"run {i + 1}: a run's floors JSON needs `overall` and `packages`")
+        if not isinstance(d.get("files", {}), dict):
+            raise FileFormatError(f"run {i + 1}: `files` must be an object")
+        _parse_floor("overall", d["overall"])
+        for k, v in d["packages"].items():
+            _parse_floor(k, v)
+        for k, v in d.get("files", {}).items():
+            if problem := file_key_problem(k):
+                raise FileFormatError(f"run {i + 1}: {problem}")
+            _parse_floor(k, v)
+        docs.append(d)
+    problems: list[str] = []
+    for i in range(len(texts)):
+        for j in range(i):
+            if texts[i] == texts[j]:
+                problems.append(f"runs {j + 1} and {i + 1} are byte-identical — the same run given twice is one run")
+
+    def new(name: str, have: dict[str, Floor] | None) -> bool:
+        if committed is None:
+            return True
+        f = committed.overall if name == "overall" else (have or {}).get(name)
+        return f is None or f.percent is None
+
+    def merge(name: str, vals: list[dict | None]) -> dict:
         vals = [v for v in vals if v and v.get("percent") is not None]
         if not vals:
             return {"percent": None, "missing": None}
+        if len(vals) < 2:
+            problems.append(f"{name}: measured in {len(vals)} of {len(docs)} runs — a floor is pinned from 2 or more")
+        spread = max(v["missing"] for v in vals) - min(v["missing"] for v in vals)
+        k = missing_slack(ScopeCov(statements=max(_statements_at_least(v) for v in vals)))
+        if spread > k:
+            problems.append(
+                f"{name}: the runs' missing differ by {spread} statements, more than its k = {k} — a flaky scope "
+                "needs a look (fix the non-deterministic test) before a floor is pinned from it"
+            )
         return {"percent": min(v["percent"] for v in vals), "missing": min(v["missing"] for v in vals)}
 
-    keys = sorted({k for d in docs for k in d["packages"]})
-    return {
-        "floors_format_version": FLOORS_FORMAT_VERSION,
-        "band": BAND,
-        "min_package_statements": MIN_PACKAGE_STATEMENTS,
-        "overall": merge([d["overall"] for d in docs]),
-        "packages": {k: merge([d["packages"].get(k) for d in docs]) for k in keys},
-    }
+    retired = [d.get("retired_files", []) for d in docs]
+    if any(r != retired[0] for r in retired):
+        problems.append("the runs carry different retired_files lists — they were not measured on one floors file")
+    pkg_keys = sorted(
+        k for k in {k for d in docs for k in d["packages"]} if new(k, committed.packages if committed else None)
+    )
+    file_keys = sorted(
+        k for k in {k for d in docs for k in d.get("files", {})} if new(k, committed.files if committed else None)
+    )
+    merged: dict = {}
+    if committed is None:
+        merged.update(
+            floors_format_version=FLOORS_FORMAT_VERSION, band=BAND, min_package_statements=MIN_PACKAGE_STATEMENTS
+        )
+    if new("overall", None):
+        merged["overall"] = merge("overall", [d["overall"] for d in docs])
+    if committed is None or pkg_keys:
+        merged["packages"] = {k: merge(k, [d["packages"].get(k) for d in docs]) for k in pkg_keys}
+    if committed is None or file_keys:
+        merged["files"] = {k: merge(k, [d.get("files", {}).get(k) for d in docs]) for k in file_keys}
+    if committed is None:
+        merged["retired_files"] = retired[0]
+    elif not merged:
+        problems.append(
+            f"no scope is null in (or absent from) the committed {FLOORS_REL}: nothing new to pin "
+            "(--all-scopes merges every scope)"
+        )
+    return merged, problems
 
 
 def _package_of_module(root: Path, dotted: str) -> str | None:
@@ -1232,10 +1848,24 @@ def local_touched_packages(root: Path, base: str) -> set[str]:
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] == ["--merge-floors"]:
-        if len(argv) < 3:
-            print("usage: lint_coverage.py --merge-floors RUN1.json RUN2.json [...]", file=sys.stderr)
+        every = "--all-scopes" in argv[1:]
+        runs = [a for a in argv[1:] if a != "--all-scopes"]
+        if len(runs) < 2:
+            print("usage: lint_coverage.py --merge-floors [--all-scopes] RUN1.json RUN2.json [...]", file=sys.stderr)
             return 2
-        print(json.dumps(merge_floors([Path(a).read_text(encoding="utf-8") for a in argv[1:]]), indent=2))
+        try:
+            # Only the scopes null in (or absent from) the committed floors file are merged (SF-A4).
+            committed = None if every else parse_floors((REPO_ROOT / FLOORS_REL).read_text(encoding="utf-8"))
+            merged, problems = merge_floors([Path(a).read_text(encoding="utf-8") for a in runs], committed)
+        except (OSError, FileFormatError) as e:
+            print(f"coverage: --merge-floors: {e}", file=sys.stderr)
+            return 2
+        if problems:
+            print("coverage: --merge-floors REFUSED (no floors printed):", file=sys.stderr)
+            for p in problems:
+                print(f"  - {p}", file=sys.stderr)
+            return 1
+        print(json.dumps(merged, indent=2))
         return 0
     # --local: the pre-push run scripts/suite_at_commit.sh makes on the exact commit to be pushed. Floors are measured
     # in CI's environment, so locally only the floors of TOUCHED packages gate (local_touched_packages: changed src
@@ -1268,7 +1898,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"coverage: ERROR — failing closed: {e}", file=sys.stderr)
         return 2
     overall, pkgs = measure_scopes(cov)
-    _print_totals(overall, pkgs, fl)
+    files = file_scopes(cov)
+    _print_totals(overall, pkgs, fl, files)
     if fl is not None:
         if local:
             try:
@@ -1276,16 +1907,16 @@ def main(argv: list[str] | None = None) -> int:
             except GitUnavailable as e:
                 print(f"coverage: --local needs a base to know which packages the diff touches ({e})", file=sys.stderr)
                 return 2
-            gating = floor_head_rules(root, fl, overall, pkgs, only=touched)
-            for note in floor_head_rules(root, fl, overall, pkgs):
+            gating = floor_head_rules(root, fl, overall, pkgs, only=touched, files=files)
+            for note in floor_head_rules(root, fl, overall, pkgs, files=files):
                 if note not in gating:
                     print(f"coverage (local, untouched scope, measured in CI's environment, not gated): {note}")
             failures += gating
         else:
-            failures += floor_head_rules(root, fl, overall, pkgs)
-        if fl.overall.percent is None or any(f.percent is None for f in fl.packages.values()):
+            failures += floor_head_rules(root, fl, overall, pkgs, files=files)
+        if fl.overall.percent is None or any(f.percent is None for f in [*fl.packages.values(), *fl.files.values()]):
             print(f"coverage: measured floors for {FLOORS_REL} (rounded down to 0.1; review before committing):")
-            print(json.dumps(suggested_floors(fl, overall, pkgs), indent=2))
+            print(json.dumps(suggested_floors(fl, overall, pkgs, files), indent=2))
 
     if event in (None, "", "pull_request", "push"):  # push: against the last green push (_lint_git.push_base, #1089)
         try:
@@ -1297,6 +1928,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             try:
                 if fl is not None:
+                    excluded = set(ex.paths) if ex is not None else set()
                     base_text = show(root, base, FLOORS_REL)
                     if base_text:
                         try:
@@ -1304,7 +1936,19 @@ def main(argv: list[str] | None = None) -> int:
                         except FileFormatError as e:
                             failures.append(f"{FLOORS_REL} at the base: {e}")
                         else:
-                            pin = floor_diff_rules(root, base_fl, fl, overall, pkgs, package_renames(root, base))
+                            # git is asked only when a file floor exists on either side (NO_FILE_DIFF's note)
+                            fd = file_diff(root, base) if base_fl.files or fl.files else NO_FILE_DIFF
+                            pin = floor_diff_rules(
+                                root,
+                                base_fl,
+                                fl,
+                                overall,
+                                pkgs,
+                                package_renames(root, base),
+                                files=files,
+                                fd=fd,
+                                excluded=excluded,
+                            )
                             if local:  # a PR's floor edits are CI measurements: CI verifies them, not this box
                                 for note in pin:
                                     print(f"coverage (local, floor pin rule, verified in CI, not gated): {note}")
@@ -1313,7 +1957,10 @@ def main(argv: list[str] | None = None) -> int:
                     else:
                         print(f"coverage: {FLOORS_REL} absent at the base — bootstrap, every floor is new")
                         empty = Floors(fl.band, fl.min_statements, fl.version, Floor(None, None))
-                        failures += floor_diff_rules(root, empty, fl, overall, pkgs, {})
+                        fd = file_diff(root, base) if fl.files else NO_FILE_DIFF
+                        failures += floor_diff_rules(
+                            root, empty, fl, overall, pkgs, {}, files=files, fd=fd, excluded=excluded
+                        )
                 if ex is not None:
                     base_text = show(root, base, EXCLUSIONS_REL)
                     try:
