@@ -217,3 +217,45 @@ def test_every_robots_hop_carries_the_policys_public_only(monkeypatch, public_on
     assert http_fetch.check_robots_txt("https://example.com/page", public_only=public_only) == (True, None)
     assert [u for u, _ in seen] == ["https://example.com/robots.txt", "https://www.example.com/robots.txt"]
     assert all(p is public_only for _, p in seen)
+
+
+# ── #966: the pre-check's other refusals (coverage of the security branches) ───────────────────────
+
+
+@pytest.mark.parametrize("host", ["localhost", "0.0.0.0", "printer.local", "api.localhost"])
+def test_local_names_are_refused_as_private_without_dns(monkeypatch, host):
+    def no_dns(*args, **kwargs):
+        raise AssertionError("a local name must be refused before any DNS lookup")
+
+    monkeypatch.setattr(ia, "_cached_getaddrinfo", no_dns)
+    reason = ia.InternetAccessPolicy().url_refusal(f"http://{host}/")
+    assert reason is not None and "private" in reason.lower()
+
+
+def test_a_name_that_resolves_to_a_private_address_is_refused(monkeypatch):
+    """DNS rebinding's early half: ANY resolved address that is not public refuses (the connect check still decides)."""
+    monkeypatch.setattr(
+        ia,
+        "_cached_getaddrinfo",
+        lambda *a, **k: [(socket.AF_INET, 0, 0, "", ("93.184.216.34", 0)), (socket.AF_INET, 0, 0, "", ("10.0.0.5", 0))],
+    )
+    reason = ia.InternetAccessPolicy().url_refusal("https://rebind.example/")
+    assert reason is not None and "private" in reason.lower()
+
+
+def test_any_other_resolver_failure_is_reported_as_unresolved(monkeypatch):
+    def broken(*args, **kwargs):
+        raise RuntimeError("resolver crashed")
+
+    monkeypatch.setattr(ia, "_cached_getaddrinfo", broken)
+    reason = ia.InternetAccessPolicy().url_refusal("https://example.org/")
+    assert reason is not None and "resolve" in reason.lower() and "private" not in reason.lower()
+
+
+def test_a_non_http_failure_reading_robots_txt_is_unreadable(monkeypatch):
+    def boom(*args, **kwargs):
+        raise RuntimeError("socket closed mid-read")
+
+    monkeypatch.setattr(_http, "fetch_url", boom)
+    allowed, reason = http_fetch.check_robots_txt("https://example.com/page")
+    assert allowed is False and "could not be read" in (reason or "")
