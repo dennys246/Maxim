@@ -10,14 +10,14 @@ Enabled by:
   - Always on in leader mode
 
 Heartbeat line format:
-  [heartbeat] gpu=87% vram=6.2/16G 72C | cpu=23% ram=8.1/16G | large: 5 calls/10s p50=280ms | loop: idle=2.1s
+  [heartbeat] gpu=87% vram=6.2/16G 72C | cpu=23% ram=8.1/16G | large: 5 calls/10s p50=280ms | loop: planning planning_turn=2.1s runs=1
 
 Stall detection (#1268 dormant producer 1; owner decisions 2026-10-14):
   A stall is a STUCK PLANNING TURN. Each agent-loop run registers its LLM worker
   through the loop-state hook (``runtime/loop_state.py::loop_liveness_scope``);
-  a stall is a planning attempt outstanding (queued, running, or its result not
-  yet consumed) for longer than ``stall_threshold.compute_stall_threshold``
-  (floor ``MAXIM_HEARTBEAT_STALL_S``) while ``stall_threshold.stall_suppression``
+  a stall is a planning attempt waiting on the provider (queued or running) for
+  longer than ``stall_threshold.compute_stall_threshold`` (floor
+  ``MAXIM_HEARTBEAT_STALL_S``) while ``stall_threshold.stall_suppression``
   finds no live planning-lane call. Waiting for a human, running a tool and quiet
   perception are never stalls; a loop that stops submitting at all is not caught
   (a known limit). It emits a WARNING and a ``heartbeat_stall`` notification.

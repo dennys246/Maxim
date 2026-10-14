@@ -1864,7 +1864,9 @@ def _health_serving(app: Any) -> Any:
 def _health_message(kind: str, data: dict[str, Any]) -> str:
     """One human line for a health event on /ws (the payload is in ``data``)."""
     if kind == "health_stall":
-        return f"stall: agent loop idle {data.get('idle_s', '?')}s (state={data.get('state', '?')})"
+        wedged = data.get("wedged_s")
+        why = "no call in flight" if wedged is None else f"its call wedged {wedged:.0f}s"
+        return f"stall: a planning turn outstanding {data.get('outstanding_s', 0):.0f}s ({why})"
     return ""
 
 

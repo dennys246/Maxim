@@ -50,8 +50,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `run_agentic_loop` carries `loop_state.loop_liveness_scope`, which keeps one liveness entry per run. While any run
     is alive, it registers the process heartbeat monitor's loop-state hook, and it clears the entry in a `finally`.
     `pre_tick_gate` records the run's `llm_worker`.
-  - `LLMWorker.outstanding_attempt_s` reports how long the latest planning attempt has been outstanding: queued,
-    running, or its result not yet consumed.
+  - `LLMWorker.outstanding_attempt_s` reports how long the latest planning attempt has been waiting on the provider
+    (queued or running). A result the provider returned but the loop has not consumed yet, for example while paused,
+    is not outstanding.
   - The heartbeat flags a stall only when that age exceeds `compute_stall_threshold` and `stall_suppression` finds no
     live planning-lane call.
   - The floor is `MAXIM_HEARTBEAT_STALL_S`, now clamped to 5–3600 (a non-number falls back to 30). There is no

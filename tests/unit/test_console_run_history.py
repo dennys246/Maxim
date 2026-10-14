@@ -1375,6 +1375,17 @@ def _stalled_run(mon, *, outstanding: float | None, in_flight: bool):
     run()
 
 
+def test_the_ws_stall_line_reads_the_stall_payload():
+    """The /ws line for a ``health_stall`` reads the heartbeat's stall keys (outstanding_s, wedged_s): a renamed key
+    would print "?" on every stall the console pushes."""
+    from maxim.console.server import _health_message
+
+    assert _health_message("health_stall", {"outstanding_s": 62.4, "wedged_s": None}) == (
+        "stall: a planning turn outstanding 62s (no call in flight)"
+    )
+    assert _health_message("health_stall", {"outstanding_s": 90.0, "wedged_s": 75.2}).endswith("(its call wedged 75s)")
+
+
 @pytest.mark.parametrize(
     ("outstanding", "in_flight", "stalls"),
     [(10_000.0, False, 1), (10_000.0, True, 0), (None, False, 0), (5.0, False, 0)],

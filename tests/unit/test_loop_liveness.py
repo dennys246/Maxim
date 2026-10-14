@@ -116,9 +116,10 @@ def test_the_gate_records_the_runs_worker():
     assert "llm_worker" in inspect.signature(loop_gates.pre_tick_gate).parameters
 
 
-def test_a_real_worker_reports_its_planning_turn_until_the_loop_consumes_it():
-    """LLMWorker.outstanding_attempt_s: an age while the attempt is queued, running or unconsumed; None once the loop
-    pops the result."""
+def test_a_real_worker_reports_its_planning_turn_only_while_the_provider_works():
+    """LLMWorker.outstanding_attempt_s: an age while the attempt is queued or running; None once the provider answered,
+    even before the loop consumes the result (a paused loop is not stuck)."""
+    from maxim.agents.llm_types import LLMAttemptState
     from maxim.agents.llm_worker import LLMWorker
     from tests.unit.test_llm_worker_pool import FakeLLM, _submit_test_context
 
@@ -128,12 +129,12 @@ def test_a_real_worker_reports_its_planning_turn_until_the_loop_consumes_it():
         assert worker.outstanding_attempt_s() is None
         assert _submit_test_context(worker)
         assert worker.outstanding_attempt_s() is not None
-        proposal = None
         for _ in range(60):
-            proposal = worker.get_latest_proposal()
-            if proposal is not None:
+            if worker.latest_attempt_state() is LLMAttemptState.COMPLETED:
                 break
             time.sleep(0.1)
-        assert proposal is not None and worker.outstanding_attempt_s() is None
+        assert worker.latest_attempt_state() is LLMAttemptState.COMPLETED
+        assert worker.outstanding_attempt_s() is None  # answered, not yet consumed: not a stuck turn
+        assert worker.get_latest_proposal() is not None and worker.outstanding_attempt_s() is None
     finally:
         worker.stop()
