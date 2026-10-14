@@ -3,7 +3,7 @@
   "narrator": {
    "action_log": [
     {
-     "_format_version": "1.1",
+     "_format_version": "1.2",
      "_record_kind": "header",
      "session_id": "<STAMP>"
     },
@@ -13,10 +13,13 @@
      "blocked": false,
      "entity_class": null,
      "error": null,
+     "nac_failure_booked": null,
      "output": "{'delivered': True, 'mode': 'cli'}",
+     "pain": null,
      "params": {
       "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
      },
+     "rpe": 0.5,
      "session_id": "<STAMP>",
      "success": true,
      "tool": "respond"
@@ -27,10 +30,13 @@
      "blocked": false,
      "entity_class": null,
      "error": null,
+     "nac_failure_booked": null,
      "output": "{'said': 'That is all.', 'mode': 'narrative'}",
+     "pain": null,
      "params": {
       "text": "That is all."
      },
+     "rpe": 0.5,
      "session_id": "<STAMP>",
      "success": true,
      "tool": "say"
@@ -41,10 +47,13 @@
      "blocked": false,
      "entity_class": null,
      "error": null,
+     "nac_failure_booked": null,
      "output": "{'delivered': True, 'mode': 'cli'}",
+     "pain": null,
      "params": {
       "message": "I heard: what is your favourite colour"
      },
+     "rpe": 0.5,
      "session_id": "<STAMP>",
      "success": true,
      "tool": "respond"
@@ -55,10 +64,13 @@
      "blocked": false,
      "entity_class": null,
      "error": null,
+     "nac_failure_booked": null,
      "output": "{'said': 'That is all.', 'mode': 'narrative'}",
+     "pain": null,
      "params": {
       "text": "That is all."
      },
+     "rpe": 0.43,
      "session_id": "<STAMP>",
      "success": true,
      "tool": "say"
@@ -1235,7 +1247,7 @@
   "precampaign": {
    "action_log": [
     {
-     "_format_version": "1.1",
+     "_format_version": "1.2",
      "_record_kind": "header",
      "session_id": "<STAMP>"
     },
@@ -1245,10 +1257,13 @@
      "blocked": false,
      "entity_class": null,
      "error": null,
+     "nac_failure_booked": null,
      "output": "{'delivered': True, 'mode': 'cli'}",
+     "pain": null,
      "params": {
       "message": "I heard: you wake in a quiet room."
      },
+     "rpe": 0.5,
      "session_id": "<STAMP>",
      "success": true,
      "tool": "respond"
@@ -1259,10 +1274,13 @@
      "blocked": false,
      "entity_class": null,
      "error": null,
+     "nac_failure_booked": null,
      "output": "{'said': 'That is all.', 'mode': 'narrative'}",
+     "pain": null,
      "params": {
       "text": "That is all."
      },
+     "rpe": 0.5,
      "session_id": "<STAMP>",
      "success": true,
      "tool": "say"
@@ -1273,10 +1291,13 @@
      "blocked": false,
      "entity_class": null,
      "error": null,
+     "nac_failure_booked": null,
      "output": "{'delivered': True, 'mode': 'cli'}",
+     "pain": null,
      "params": {
       "message": "I heard: a bell rings twice."
      },
+     "rpe": 0.5,
      "session_id": "<STAMP>",
      "success": true,
      "tool": "respond"
@@ -1287,10 +1308,13 @@
      "blocked": false,
      "entity_class": null,
      "error": null,
+     "nac_failure_booked": null,
      "output": "{'said': 'That is all.', 'mode': 'narrative'}",
+     "pain": null,
      "params": {
       "text": "That is all."
      },
+     "rpe": 0.43,
      "session_id": "<STAMP>",
      "success": true,
      "tool": "say"
@@ -1301,10 +1325,13 @@
      "blocked": false,
      "entity_class": null,
      "error": null,
+     "nac_failure_booked": null,
      "output": "{'delivered': True, 'mode': 'cli'}",
+     "pain": null,
      "params": {
       "message": "I heard: the room goes dark."
      },
+     "rpe": 0.5,
      "session_id": "<STAMP>",
      "success": true,
      "tool": "respond"
@@ -1315,10 +1342,13 @@
      "blocked": false,
      "entity_class": null,
      "error": null,
+     "nac_failure_booked": null,
      "output": "{'said': 'That is all.', 'mode': 'narrative'}",
+     "pain": null,
      "params": {
       "text": "That is all."
      },
+     "rpe": 0.3698,
      "session_id": "<STAMP>",
      "success": true,
      "tool": "say"
@@ -2524,7 +2554,7 @@
   "stdin": {
    "action_log": [
     {
-     "_format_version": "1.1",
+     "_format_version": "1.2",
      "_record_kind": "header",
      "session_id": "<STAMP>"
     },
@@ -2534,10 +2564,13 @@
      "blocked": false,
      "entity_class": null,
      "error": null,
+     "nac_failure_booked": null,
      "output": "{'delivered': True, 'mode': 'cli'}",
+     "pain": null,
      "params": {
       "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
      },
+     "rpe": 0.5,
      "session_id": "<STAMP>",
      "success": true,
      "tool": "respond"
@@ -2548,10 +2581,13 @@
      "blocked": false,
      "entity_class": null,
      "error": null,
+     "nac_failure_booked": null,
      "output": "{'said': 'That is all.', 'mode': 'narrative'}",
+     "pain": null,
      "params": {
       "text": "That is all."
      },
+     "rpe": 0.5,
      "session_id": "<STAMP>",
      "success": true,
      "tool": "say"
@@ -2562,10 +2598,13 @@
      "blocked": false,
      "entity_class": null,
      "error": null,
+     "nac_failure_booked": null,
      "output": "{'delivered': True, 'mode': 'cli'}",
+     "pain": null,
      "params": {
       "message": "Hello! How can I help you?"
      },
+     "rpe": 0.5,
      "session_id": "<STAMP>",
      "success": true,
      "tool": "respond"
@@ -2576,10 +2615,13 @@
      "blocked": false,
      "entity_class": null,
      "error": null,
+     "nac_failure_booked": null,
      "output": "{'said': 'That is all.', 'mode': 'narrative'}",
+     "pain": null,
      "params": {
       "text": "That is all."
      },
+     "rpe": 0.43,
      "session_id": "<STAMP>",
      "success": true,
      "tool": "say"
@@ -2590,10 +2632,13 @@
      "blocked": false,
      "entity_class": null,
      "error": null,
+     "nac_failure_booked": null,
      "output": "{'delivered': True, 'mode': 'cli'}",
+     "pain": null,
      "params": {
       "message": "I heard: what is your favourite colour"
      },
+     "rpe": 0.5,
      "session_id": "<STAMP>",
      "success": true,
      "tool": "respond"
@@ -2604,10 +2649,13 @@
      "blocked": false,
      "entity_class": null,
      "error": null,
+     "nac_failure_booked": null,
      "output": "{'said': 'That is all.', 'mode': 'narrative'}",
+     "pain": null,
      "params": {
       "text": "That is all."
      },
+     "rpe": 0.3698,
      "session_id": "<STAMP>",
      "success": true,
      "tool": "say"
@@ -3883,5 +3931,5 @@
    "unsorted_prompts": []
   }
  },
- "generated_at_commit": "b8b6fc788ea0"
+ "generated_at_commit": "2a3dd9b784e9"
 }
