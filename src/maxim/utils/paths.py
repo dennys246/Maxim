@@ -122,6 +122,16 @@ def sim_reports() -> Path:
     return p
 
 
+def console_health_log() -> Path:
+    """The console's health log — ``~/.maxim/console/health.jsonl``.
+
+    Heartbeat snapshots (downsampled), stalls and swallowed-exception deltas,
+    bounded to 7 days / 50 MB by ``console/health.py::HealthLog``. Declared here
+    with the rest of the data layout; the directory is created by the writer.
+    """
+    return data_home() / "console" / "health.jsonl"
+
+
 def model_dir() -> Path:
     """Downloaded models — ``~/.maxim/models/``."""
     p = data_home() / "models"
@@ -233,6 +243,11 @@ def looks_like_run_path(raw: str) -> bool:
 
 def resolve_run_dir(id_or_path: str, *, kinds: tuple[str, ...] = ("sim", "agent")) -> Path:
     """The directory a user means by ``id_or_path`` -- a simulation's or an agent's (1.3.1).
+
+    **Not for request data.** A path-like argument returns ANY directory on disk, the CWD is searched
+    first, and symlinks are followed out of the run roots — all correct for an operator's own CLI input,
+    all wrong for a value a remote caller controls. Network surfaces resolve run ids through
+    ``maxim.console.run_store.open_console_run`` instead.
 
     The ONE answer to "which directory is run X" for the CLI (several places used to answer it on their
     own, and the substrate CLI looked in a directory nothing writes). Creates no run directory.

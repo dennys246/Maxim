@@ -304,7 +304,10 @@ class ConsoleEvent(BaseModel):
     """
 
     # Lowercased sim_log subsystem ("hippocampus", "nac", "deliberation", …)
-    # plus the meta-kinds: "heartbeat" | "run" | "dropped" | "display".
+    # plus the meta-kinds: "heartbeat" | "run" | "dropped" | "display" | "identity",
+    # plus the OPT-IN kinds (0.6.0, delivered only when a SubscribeFrame names
+    # them): "health" | "health_stall". The name `health` is RESERVED: a future
+    # sim_log HEALTH subsystem would collide with it on the wire.
     # "run" data carries status: "started" | "ended" | "failed" (+ run_id,
     # sim_session_id, report_path on "ended").
     kind: str
@@ -340,9 +343,15 @@ class SubscribeFrame(BaseModel):
     Semantics: axes AND together; within the subsystem axis, ``channels`` and
     ``kinds`` union. ``tier`` passes events whose tier ≤ the requested tier
     (requesting "clean" = headline only; "debug" = everything). No frame (or
-    all-None) = everything. Meta-kinds (heartbeat/run/dropped and the agent's
-    "display" suggestions) bypass filtering — they carry stream/UI state, not
-    subsystem traffic.
+    all-None) = every ordinary event. Meta-kinds (heartbeat/run/dropped and the
+    agent's "display" suggestions) bypass filtering — they carry stream/UI
+    state, not subsystem traffic.
+
+    OPT-IN kinds (0.6.0: ``health``, ``health_stall``) are never sent unless
+    named in ``kinds``, and naming them ADDS them rather than filtering:
+    ``{"kinds": ["health"]}`` = every ordinary event plus health;
+    ``{"tier": "clean", "kinds": ["health"]}`` = the clean tier plus health.
+    Only the ordinary kinds in ``kinds`` narrow the stream.
 
     OpenAPI does not model WS payloads, so ``GET /events/subscribe-frame``
     documents this shape for type-gen (same trick as ``/events/envelope``).
@@ -351,3 +360,162 @@ class SubscribeFrame(BaseModel):
     channels: list[str] | None = None  # _CHANNEL_MAP names ("bio", "memory", …) or raw subsystem names
     tier: Literal["clean", "bio", "debug"] | None = None
     kinds: list[str] | None = None  # exact kinds, case-insensitive
+
+
+# ── run history + health (contract 0.6.0) ────────────────────────────────────
+#
+# Read-only views over `sim_reports/{id}/` and the console process's health
+# log. Every field a reader cannot rely on is Optional: the on-disk shapes
+# predate this contract (most local report.json files predate `ts`; credit
+# fields exist only on actions written by a credit-recording (1.2) writer), and
+# a missing value must read as "not recorded", never as a fake zero.
+
+
+class RunSummary(BaseModel):
+    """One row of the run list. ``has_report`` False = an aborted run dir."""
+
+    session_id: str
+    started_at: float | None = Field(
+        default=None,
+        description="Start epoch: report.ts if present, else parsed from a %Y%m%d_%H%M%S id, else null.",
+    )
+    has_report: bool
+    mode: str | None = None
+    goal: str | None = None
+    finish_reason: str | None = None
+    turns: int | None = None
+    duration_s: float | None = None
+    cost_usd: float | None = None
+    total_actions: int | None = None
+
+
+class RunPage(BaseModel):
+    runs: list[RunSummary]
+    next_cursor: str | None = None
+
+
+class RunReport(BaseModel):
+    """A named subset of ``SimulationReport`` — never the substrate (``aut_*``) files."""
+
+    session_id: str
+    started_at: float | None = None
+    ended_at: float | None = Field(
+        default=None, description="End epoch, from report.timestamp (the build time, written as local time)."
+    )
+    format_version: str | None = None
+    goal: str | None = None
+    mode: str | None = None
+    finish_reason: str | None = None
+    duration_s: float | None = None
+    turns: int | None = None
+    total_actions: int | None = None
+    blocked_actions: int | None = None
+    cost_usd: float | None = None
+    total_input_tokens: int | None = None
+    total_output_tokens: int | None = None
+    latency_p50_ms: float | None = None
+    latency_p99_ms: float | None = None
+    language_model: str | None = None
+    aut_model: str | None = None
+    tool_usage: dict[str, int] = Field(default_factory=dict)
+    tool_success_rates: dict[str, float] = Field(default_factory=dict)
+    pain_events_count: int | None = None
+    fear_blocks_count: int | None = None
+    learn_events_count: int | None = None
+    llm_finish_status: str | None = None
+    llm_finish_summary: str | None = None
+    llm_summary: str | None = None
+    response_texts: list[str] = Field(default_factory=list)
+
+
+class ActionRecord(BaseModel):
+    """One ``actions.jsonl`` line. Credit fields are null when the line predates them."""
+
+    timestamp: float | None = None
+    tool: str | None = None
+    params: dict[str, Any] = Field(default_factory=dict)
+    success: bool | None = None
+    blocked: bool | None = None
+    block_reason: str | None = None
+    error: str | None = None
+    output: str | None = None
+    agent_id: str | None = None
+    entity_class: str | None = None
+    rpe: float | None = Field(default=None, description="ToolOutput.rpe — the surprise.")
+    pain: float | None = None
+    nac_failure_booked: str | None = Field(
+        default=None,
+        description="The signature the tool-pain bridge booked this failure under (dispatch then skipped its own).",
+    )
+    credit_recorded: bool = Field(
+        default=False,
+        description=(
+            "True when the run's actions file records per-action credit (format 1.2+). False = unknown, "
+            "not zero: no released writer records it yet, so every current run reads False."
+        ),
+    )
+
+
+class ActionPage(BaseModel):
+    session_id: str
+    available: bool = Field(description="False = this run recorded no actions file (aborted, or a talk/rest run).")
+    reason: str | None = None
+    format_version: str | None = Field(
+        default=None, description="actions.jsonl header version; per-action credit exists from 1.2."
+    )
+    actions: list[ActionRecord]
+    next_cursor: str | None = None
+    skipped: int = Field(default=0, description="Malformed or oversized lines skipped on this page.")
+
+
+class HealthRecord(BaseModel):
+    kind: Literal["health", "health_stall"]
+    ts: float
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class HealthResponse(BaseModel):
+    """The console process's health: latest snapshot, stalls and a downsampled series.
+
+    Snapshots are allow-listed (gpu, cpu, memory, disk, lanes, loop): never
+    network interfaces, Wi-Fi identity, hostnames or paths.
+    """
+
+    monitoring: bool = Field(description="False = this server is not sampling health (build_app without the monitor).")
+    stall_detection: bool = Field(
+        description=(
+            "False = stalls CANNOT be detected here (the agent loop registers no loop-state hook yet), so an "
+            "empty `stalls` means unknown, not healthy."
+        )
+    )
+    recorded_since: float | None = Field(
+        default=None, description="Earliest record this view covers; null = nothing recorded yet."
+    )
+    dropped_records: int = Field(
+        default=0,
+        description="Records this server could not persist (a full queue, a busy lock, a failed write). Nonzero = gaps.",
+    )
+    latest: dict[str, Any] | None = None
+    stalls: list[HealthRecord] = Field(default_factory=list)
+    series: list[HealthRecord] = Field(default_factory=list)
+
+
+class DegradedSite(BaseModel):
+    """``swallowed_exception`` fires grouped by site — the "degraded silently" signal."""
+
+    site: str
+    count: int
+    first_seen: float
+    last_seen: float
+    exc_type: str | None = None
+    sample: str | None = Field(default=None, description="One exception message, truncated to 300 chars.")
+
+
+class DegradedResponse(BaseModel):
+    """Stage-1 sites only (the explicit `exc=`/`operation=` form carries no event)."""
+
+    since: float
+    counted_since: float | None = Field(
+        default=None, description="Counts cover fires from this time on (the log's retained window)."
+    )
+    sites: list[DegradedSite]

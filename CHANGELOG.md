@@ -23,6 +23,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (console run history + health — contract 0.6.0)
+
+- **The Console can open past runs.** Five read-only routes: `GET /api/runs` (newest first, keyset-paged),
+  `/api/runs/{session_id}` (the report — never the `aut_*` substrate files), `/api/runs/{session_id}/actions` (in
+  order, header-skipped), `/api/health` and `/api/health/degraded`. All bearer-gated, refused under sandbox mode, and
+  tagged `history` for PR 4's viewer/operator split. `session_id` is the sim session id (the `sim_reports` dir name);
+  the console's own run id shares its format, and the join from a console run is the `/ws` `run` event's
+  `sim_session_id`. Identity gains three seams: `runs`, `health` (live only while this server samples) and
+  `degraded` (live whenever it serves, so a device that does not sample still shows it). Contract 0.5.0 → 0.6.0,
+  additive.
+- **What is DORMANT, said plainly.** Three producers this contract reads are not in this release, each pinned by a
+  strict red gate in `tests/unit/test_console_run_history.py`: (1) **stalls** — nothing calls
+  `HeartbeatMonitor.set_loop_state_hook`, so `heartbeat_stall` cannot fire; `/api/health` reports
+  `stall_detection: false` so an empty `stalls` reads as unknown, not healthy; (2) **per-action credit** —
+  `actions.jsonl` is 1.1 and records no `rpe`/`pain`/`nac_failure_booked`, so every current run reads
+  `credit_recorded: false` (the reader keys it off a 1.2 header, never off key presence); (3) **the per-run event
+  trail** — nothing writes `events.jsonl`, so the `/events` route is NOT in 0.6.0 and ships with its writer.
+- **Run ids go through a new resolver, `console/run_store.py`, never `utils/paths.resolve_run_dir`.** The old one
+  returns any directory for a path-like argument, searches the CWD first and follows symlinks out of `sim_reports`
+  (its docstring now says so). Ids are `[A-Za-z0-9_-]{1,64}`; every open is anchored to a directory fd (root, then
+  the run dir with `O_DIRECTORY|O_NOFOLLOW`, then members) so a run dir swapped for a symlink cannot be followed;
+  members are opened by fixed name, non-blocking, and refused unless a single-linked regular file; every refusal is
+  the same 404. Hostile contents (deep nesting, non-objects, wrong types) never 500. Paging cursors are opaque,
+  HMAC-signed per process, bound to run and file, and must land on a line boundary. Hosts without anchored opens
+  (Windows) report the `runs` seam closed rather than serve a weaker boundary.
+- **`maxim serve` samples health** (never under sandbox — the gate is at the producer, so `/ws` cannot leak what
+  REST refuses). Snapshots go to OPT-IN `/ws` kinds `health` and `health_stall`, published without a `run_id`: a
+  client that never names them sees no change, and naming them in `SubscribeFrame.kinds` ADDS them to whatever else
+  it receives (`{"kinds": ["health"]}` = everything plus health), never narrows the stream. The
+  console keeps `<data_home>/console/health.jsonl` (`utils/paths.console_health_log`): snapshots downsampled to one a
+  minute, stalls always, swallowed exceptions as per-site count deltas, every record `_format_version`-stamped,
+  retained 7 days or 50 MB, aged out on time as well as size. Snapshots are allow-listed (gpu, cpu, memory, disk
+  without its path, lanes, loop); exception samples are truncated and scrubbed of home paths, URL credentials and
+  token-shaped strings. All disk I/O runs on the log's own writer thread, which survives any bad record; appends
+  and the age-out rewrite hold a `filelock.FileLock`; an unreadable file is skipped with a warning; shutdown is
+  bounded even with a full queue; any record it could not persist is counted in `/api/health`'s
+  `dropped_records`. One log per file per process, shared by every console app (each app brings its own `/ws`
+  publisher, so a sandbox app on the same data home cannot silence another's stream); start/stop of the log and
+  of the shared monitor are serialized, so an app arriving as the last one leaves always gets a live writer and
+  sampler. `stall_detection` is read live, so it turns true the moment the agent
+  loop registers its hook. `build_app(health_monitor=False)` stays the default for tests and embedders.
+- **Two producer seams.** `HeartbeatMonitor.register_listener(fn(kind, data))` (plus `is_running`,
+  `has_loop_state_hook`) and `utils.logging.register_swallow_listener(fn(site, exc_type, exc))`, Stage-1 sites only.
+  Listeners rather than log handlers: the heartbeat logs at DEBUG and a site's repeat swallows log at DEBUG, so a
+  handler would miss the snapshots and undercount every site to 1. A raising listener is contained (and the swallow
+  seam warns once per listener).
+
 ### Added (baseline floors B1, PR-A)
 
 - **A `SubstratePolicy` can pick the substrate proposal in place of `NAc.recommend_action`.**
