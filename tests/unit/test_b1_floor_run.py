@@ -887,3 +887,41 @@ def test_the_real_command_line_parser_builds(sub, flag, capsys):
         B.main([sub, "--help"])
     assert exc.value.code == 0
     assert flag in capsys.readouterr().out
+
+
+def test_rig_problems_say_whether_waiting_can_clear_them():
+    now = 10_000.0
+    idle = {"infer_lane": {"in_flight": 0}}
+    assert [p.transient for p in B.rig_problems({"infer_lane": {"in_flight": 1}}, {"recent": []}, 20.0, now=now)] == [
+        True
+    ]
+    assert [p.transient for p in B.rig_problems(idle, {"recent": [{"timestamp": now - 30}]}, 20.0, now=now)] == [True]
+    assert [p.transient for p in B.rig_problems(idle, {"recent": []}, 19.0, now=now)] == [True]
+    assert [p.transient for p in B.rig_problems({"infer_lane": None}, {"recent": []}, 20.0, now=now)] == [False]
+    assert [p.transient for p in B.rig_problems(idle, {"recent": None}, 20.0, now=now)] == [False]
+    assert [p.transient for p in B.rig_problems(None, None, None, now=now)] == [False]
+
+
+def test_a_refusal_that_cannot_clear_stands_at_once_and_a_transient_one_is_waited_out(monkeypatch):
+    calls = []
+
+    def stuck(rcon, url):
+        calls.append(1)
+        raise B.RigNotQuiet("no lane metrics", transient=False)
+
+    monkeypatch.setattr(B, "rig_check", stuck)
+    monkeypatch.setattr(B.time, "sleep", lambda s: None)
+    with pytest.raises(B.RigNotQuiet):
+        B.wait_for_quiet_rig(None, "http://x", max_wait_s=600, poll_s=15)
+    assert calls == [1]  # no polling
+
+    seq = [B.RigNotQuiet("busy", transient=True), {"proxy": "present"}]
+
+    def busy_then_idle(rcon, url):
+        item = seq.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    monkeypatch.setattr(B, "rig_check", busy_then_idle)
+    assert B.wait_for_quiet_rig(None, "http://x", max_wait_s=600, poll_s=15)["proxy"] == "present"

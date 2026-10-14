@@ -44,7 +44,7 @@ import time
 import uuid
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1]
 if str(SCRIPTS_DIR) not in sys.path:
@@ -201,33 +201,55 @@ def parse_tick_query(resp: str) -> float | None:
     return rate if mspt <= 0 else min(rate, 1000.0 / mspt)
 
 
+class RigProblem(NamedTuple):
+    """One reason the rig is not quiet. ``transient``: waiting can clear it (a job in flight, a recent request, a
+    TPS dip); otherwise it cannot, and the attempt refuses at once instead of polling (rig, 2026-10-13: a leader
+    proxy with no lane metrics sat out every attempt's full wait and was refused anyway)."""
+
+    message: str
+    transient: bool
+
+
 def rig_problems(
     status: Mapping[str, Any] | None, last_requests: Mapping[str, Any] | None, tps: float | None, *, now: float
-) -> list[str]:
+) -> list[RigProblem]:
     """Why the rig is not quiet (rule 11; pure). ``status``/``last_requests`` None = no leader proxy on this box
-    (passes; recorded by the caller)."""
+    (passes; recorded by the caller). A present proxy that reports no lane metrics REFUSES (idle cannot be shown):
+    run B1 with the leader down, recorded ``absent``."""
     problems = []
     if status is not None:
         lane = status.get("infer_lane")
         if not isinstance(lane, Mapping) or lane.get("in_flight") is None:
-            problems.append("the leader proxy reports no infer_lane.in_flight (idle cannot be shown)")
+            problems.append(
+                RigProblem("the leader proxy reports no infer_lane.in_flight (idle cannot be shown)", False)
+            )
         elif lane["in_flight"] != 0:
-            problems.append(f"an inference job is in flight on this box ({lane['in_flight']})")
+            problems.append(RigProblem(f"an inference job is in flight on this box ({lane['in_flight']})", True))
         recent = (last_requests or {}).get("recent")
         if not isinstance(recent, list):
-            problems.append("the leader proxy's last-requests ring cannot be read")
+            problems.append(RigProblem("the leader proxy's last-requests ring cannot be read", False))
         else:
             stamps = [r.get("timestamp") if isinstance(r, Mapping) else None for r in recent]
             if any(isinstance(t, bool) or not isinstance(t, (int, float)) for t in stamps):
-                problems.append("a leader-proxy request entry carries no numeric `timestamp`")
+                problems.append(RigProblem("a leader-proxy request entry carries no numeric `timestamp`", False))
             late = [t for t in stamps if isinstance(t, (int, float)) and t > now - FROZEN["rig_idle_s"]]
             if late:
-                problems.append(f"{len(late)} leader-proxy request(s) in the last {FROZEN['rig_idle_s']:.0f} s")
+                problems.append(
+                    RigProblem(f"{len(late)} leader-proxy request(s) in the last {FROZEN['rig_idle_s']:.0f} s", True)
+                )
     if tps is None:
-        problems.append("server TPS could not be read from `tick query`")
+        problems.append(RigProblem("server TPS could not be read from `tick query`", False))
     elif tps < FROZEN["rig_tps_min"]:
-        problems.append(f"server TPS {tps:.2f} < {FROZEN['rig_tps_min']}")
+        problems.append(RigProblem(f"server TPS {tps:.2f} < {FROZEN['rig_tps_min']}", True))
     return problems
+
+
+class RigNotQuiet(InstrumentError):
+    """The rig check refused. ``transient`` is True only when every problem can clear by waiting."""
+
+    def __init__(self, message: str, *, transient: bool) -> None:
+        super().__init__(message)
+        self.transient = transient
 
 
 def key_done(row: Mapping[str, Any], attempt: int) -> bool:
@@ -857,9 +879,10 @@ def rig_check(rcon: Any, proxy_url: str | None) -> dict[str, Any]:
         except http.HTTPConnectionError:
             status = last = None  # no proxy on this box: passes, recorded
         except (http.HTTPError, ValueError) as exc:
-            raise InstrumentError(
-                f"rig check: the leader proxy answered but idle cannot be shown ({type(exc).__name__})"
-            )
+            raise RigNotQuiet(
+                f"rig check: the leader proxy answered but idle cannot be shown ({type(exc).__name__})",
+                transient=False,
+            ) from exc
     tps_reply = str(rcon.command("tick query"))
     tps = parse_tick_query(tps_reply)
     problems = rig_problems(status, last, tps, now=time.time())
@@ -868,10 +891,10 @@ def rig_check(rcon: Any, proxy_url: str | None) -> dict[str, Any]:
         "in_flight": ((status or {}).get("infer_lane") or {}).get("in_flight") if status else None,
         "recent_requests": len((last or {}).get("recent") or []) if last else None,
         "tps": tps,
-        "problems": problems,
+        "problems": [p.message for p in problems],
     }
     if problems:
-        raise InstrumentError(f"rig check: {problems}")
+        raise RigNotQuiet(f"rig check: {[p.message for p in problems]}", transient=all(p.transient for p in problems))
     return record
 
 
@@ -1107,14 +1130,15 @@ def _teardown(trial: FloorWaterTrial | None, pump: Any, aut: Any) -> None:
 def wait_for_quiet_rig(
     rcon: Any, proxy_url: str | None, *, max_wait_s: float = 600.0, poll_s: float = 15.0
 ) -> dict[str, Any]:
-    """``rig_check`` until it passes or ``max_wait_s`` elapses (then its refusal stands). Records the wait."""
+    """``rig_check`` until it passes or ``max_wait_s`` elapses (then its refusal stands). Records the wait. A refusal
+    that waiting cannot clear (``RigNotQuiet.transient`` False) stands at once."""
     t0 = time.monotonic()
     while True:
         try:
             rec = rig_check(rcon, proxy_url)
             return {**rec, "waited_s": round(time.monotonic() - t0, 1)}
-        except InstrumentError:
-            if time.monotonic() - t0 + poll_s > max_wait_s:
+        except RigNotQuiet as exc:
+            if not exc.transient or time.monotonic() - t0 + poll_s > max_wait_s:
                 raise
             time.sleep(poll_s)
 
