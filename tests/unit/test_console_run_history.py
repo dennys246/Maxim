@@ -1368,6 +1368,49 @@ def test_gate_actions_jsonl_records_per_action_credit(tmp_path):
     assert lines[1]["rpe"] == -0.4 and lines[1]["nac_failure_booked"] == "tool:t:failure"
 
 
+@pytest.mark.xfail(strict=True, reason="InstrumentedExecutor drops ToolOutput credit: ActionRecord has no field for it")
+def test_a_bridge_booked_failure_reaches_the_console_with_its_credit(runs):
+    """End to end: a failure the tool-pain bridge books, run through the sim's instrumented executor and sink, saved by
+    save_action_log and read back by the console, carries its credit. The writer-only gate above feeds save_action_log
+    a stand-in that already has the fields; this one proves the real records carry them."""
+    from types import SimpleNamespace
+
+    from maxim.console import run_store
+    from maxim.decisions.nac import NAc, NACConfig
+    from maxim.runtime.bootstrap import build_executor
+    from maxim.simulation.instrumented_executor import InstrumentedExecutor
+    from maxim.simulation.report import save_action_log
+    from maxim.simulation.sinks import RecordingSink
+    from maxim.tools.base import Tool, ToolOutput
+    from maxim.tools.registry import ToolRegistry
+
+    class _Fails(Tool):
+        name = "flaky_credit"
+        description = "stub"
+        input_schema: dict = {}
+
+        def execute(self, **kwargs):
+            return ToolOutput(success=False, error="boom")
+
+    registry = ToolRegistry()
+    registry.register(_Fails())
+    sink = RecordingSink()
+    executor = InstrumentedExecutor(
+        build_executor(registry, pain_bus=None, permissions=None, nac=NAc(NACConfig())), sink
+    )
+    out = executor.execute({"tool_name": "flaky_credit", "params": {}})
+    assert out.nac_failure_booked == "tool:flaky_credit"
+
+    session_id = "20261013_000001"
+    save_action_log(SimpleNamespace(get_all_actions=lambda: sink.actions), str(runs), session_id)
+    _reset_caches()
+    page = run_store.page_actions(session_id, cursor=None, limit=10, signer=run_store.CursorSigner())
+    [action] = page["actions"]
+    assert action["credit_recorded"] is True
+    assert action["nac_failure_booked"] == "tool:flaky_credit"
+    assert action["rpe"] == out.rpe and action["rpe"] is not None
+
+
 @pytest.mark.xfail(strict=True, reason="no writer produces a per-run events.jsonl trail yet")
 def test_gate_a_run_writes_its_event_trail():
     writers = [p for p in (_SRC / "simulation").rglob("*.py") if "events.jsonl" in p.read_text(errors="replace")]
