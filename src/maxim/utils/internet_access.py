@@ -188,15 +188,17 @@ def normalize_host(name: str) -> str:
     """A host name in the one form every list check compares: stripped, lowercased, no trailing dot,
     and punycode for a non-ASCII name. ``ValueError`` when it is not a valid IDNA name.
 
-    The codec is Python's IDNA 2003: for the few deviation characters (``ß``, ``ς``, ZWJ/ZWNJ) it
-    maps differently from the IDNA 2008 form a URL may carry, so an entry such as ``straße.de`` does
-    not match ``xn--strae-oqa.de`` (#968). Use the punycode form in the policy for those names.
+    IDNA 2008 (UTS 46, non-transitional), the form browsers and URLs carry: a deviation character
+    (``ß``, ``ς``, ZWJ/ZWNJ) is kept, so an entry ``straße.de`` matches the ``xn--strae-oqa.de`` host
+    (#968). Python's own ``"idna"`` codec is IDNA 2003, which maps ``ß`` to ``ss`` and missed it.
     """
     host = name.strip().lower().rstrip(".")
     if host and not host.isascii():
+        import idna
+
         try:
-            host = host.encode("idna").decode("ascii")
-        except UnicodeError as e:
+            host = idna.encode(host, uts46=True, transitional=False).decode("ascii")
+        except (idna.IDNAError, UnicodeError) as e:
             raise ValueError(f"not a valid domain name: {name!r} ({e})") from e
     return host
 
@@ -308,68 +310,53 @@ class InternetAccessPolicy:
         if parsed.scheme not in ("http", "https"):
             return f"Scheme '{parsed.scheme}' not allowed (only http/https)"
         hostname = parsed.hostname or ""
-        if self.block_private_ips and self._is_private_ip(hostname):
-            return "Access to private/internal IPs is blocked"
+        if self.block_private_ips:
+            refusal = self._address_refusal(hostname)
+            if refusal is not None:
+                return refusal
         return self.domain_refusal(hostname)
 
-    def _is_private_ip(self, hostname: str) -> bool:
-        """Check if hostname resolves to a private IP -- a policy PRE-check.
+    def _address_refusal(self, hostname: str) -> str | None:
+        """Why the private-address PRE-check refuses ``hostname``, or None (#966).
 
-        This resolves the name separately from the fetch (and through a 5-minute cache), so on its
-        own it cannot stop DNS rebinding: a host can answer public here and private to the connect.
-        The enforcement is at connect time, on the address actually dialled
-        (``maxim.utils.http.fetch_url(public_only=True)``, #824); this check refuses the obvious cases
-        early with a clear reason.
+        It classifies with the same ``utils/net.py::is_public_address`` the connect-time check uses
+        (#824, #921), so the two agree (CGNAT included), and it says WHY: a private or internal address,
+        or a name that did not resolve, which is not the same refusal and must not read as one. This
+        resolves the name separately from the fetch (through a 5-minute cache), so on its own it cannot
+        stop DNS rebinding: a host can answer public here and private to the connect. The enforcement
+        is at connect time, on the address actually dialled (``fetch_url(public_only=True)``); this
+        check refuses the obvious cases early with a clear reason.
         """
-        # Check obvious cases first
-        if hostname in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
-            return True
+        from maxim.utils.net import is_public_address
 
-        # Check if it's a local hostname pattern
-        if hostname.endswith(".local") or hostname.endswith(".localhost"):
-            return True
-
-        # Try to parse as IP address first
+        private = "Access to private/internal IPs is blocked"
+        if hostname in ("localhost", "0.0.0.0") or hostname.endswith((".local", ".localhost")):
+            return private
         try:
-            ip = ipaddress.ip_address(hostname)
-            return self._check_ip_is_private(ip)
+            ipaddress.ip_address(hostname)
         except ValueError:
-            # Not an IP address - resolve via DNS and check ALL resolved IPs
-            pass
-
-        # Resolve hostname and check all resulting IPs (using cached DNS)
+            pass  # a name: resolve it below
+        else:
+            return None if is_public_address(hostname) else private
         try:
-            # getaddrinfo returns all resolved addresses (IPv4 and IPv6)
             addr_info = _cached_getaddrinfo(hostname, None)
-            for family, _, _, _, sockaddr in addr_info:
-                ip_str = sockaddr[0]
-                try:
-                    ip = ipaddress.ip_address(ip_str)
-                    if self._check_ip_is_private(ip):
-                        logger.warning(f"DNS rebinding protection: {_redact_hostname(hostname)} resolved to private IP")
-                        return True
-                except ValueError:
-                    continue
         except socket.gaierror as e:
-            # DNS resolution failed - block to be safe
             logger.warning(f"DNS resolution failed for {_redact_hostname(hostname)}: {type(e).__name__}")
-            return True
-        except Exception as e:
-            # Any other error - block to be safe
-            logger.warning(f"Error checking hostname {_redact_hostname(hostname)}: {type(e).__name__}")
-            return True
-
-        return False
-
-    def _check_ip_is_private(self, ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-        """Check if an IP address is private, loopback, link-local, or reserved."""
-        return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+            return f"Host '{hostname}' could not be resolved"
+        except Exception as e:  # noqa: BLE001 -- any other resolver failure refuses, and says it is not a privacy refusal
+            logger.warning(f"Error resolving {_redact_hostname(hostname)}: {type(e).__name__}")
+            return f"Host '{hostname}' could not be resolved"
+        for _family, _, _, _, sockaddr in addr_info:  # EVERY address must be public
+            if not is_public_address(str(sockaddr[0])):
+                logger.warning(f"DNS rebinding protection: {_redact_hostname(hostname)} resolved to private IP")
+                return private
+        return None
 
     def summary(self) -> str:
         """The operator's rules in one line (the on/off state is the effective view's)."""
         parts = []
         if self.require_robots_ok:
-            parts.append("Must respect robots.txt.")
+            parts.append("Must respect robots.txt (a robots.txt that cannot be read refuses the fetch).")
         if self.block_paywalled:
             parts.append("Paywalled content blocked.")
         if self.unsafe_content_checks:
@@ -528,6 +515,12 @@ def _operator_policy(path: Path) -> InternetAccessPolicy | None:
 
             check_format_version(data, "internet_policy", log=logger)
             policy = InternetAccessPolicy.from_dict(data)
+            if not policy.block_private_ips:  # a security switch in a hand-editable file: say it is off (#966)
+                logger.warning(
+                    "Internet policy %s sets block_private_ips=false: BOTH the private-address pre-check and the "
+                    "connect-time check are off, so fetches can reach private and internal addresses.",
+                    path,
+                )
         except (OSError, ValueError, TypeError) as e:
             # FAIL CLOSED: the file exists, so it may carry a block list; silently falling back to
             # an unrestricted default would drop that control (#822 review).

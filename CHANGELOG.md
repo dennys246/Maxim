@@ -431,6 +431,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The internet policy's batch-1 review findings: #966, #967 and #968.** Owner decisions 2026-10-14.
+  - **#966:** the private-address PRE-check now classifies through the one shared `utils/net.py::is_public_address`.
+    It agrees with the connect-time check, and refuses CGNAT (100.64.0.0/10) up front instead of at connect. A name
+    that does not resolve now reads `Host '...' could not be resolved` instead of "Access to private/internal IPs is
+    blocked". Loading a policy with `block_private_ips: false` logs a WARNING, because that one switch turns off BOTH
+    checks. `InternetAccessPolicy._is_private_ip`/`_check_ip_is_private` are replaced by `_address_refusal`, which
+    returns the reason.
+  - **#967 (owner: fail closed):** a robots.txt that cannot be read refuses the fetch, and the refusal is not cached,
+    so the next request retries. That covers a 5xx, a timeout or a network failure. It used to allow the fetch on
+    any error while the policy claimed "Must respect robots.txt". A missing robots.txt (a 4xx) still means no
+    restrictions, per RFC 9309. The policy summary now says an unreadable robots.txt refuses.
+  - **#968:** domain entries normalise with IDNA 2008 (UTS 46, non-transitional) through the `idna` package, now a
+    declared dependency. So `straße.de` blocks the `xn--strae-oqa.de` host a URL carries. Python's own codec is IDNA
+    2003, which mapped it to `strasse.de`.
+
+  Gates: `tests/unit/test_internet_policy_966_967_968.py`.
+
 - **Four raises after the bridge booked a tool failure no longer get the failure booked twice (#1221 items 2 and
   3).** The tool-pain bridge books a failure, and `ToolOutput.nac_failure_booked` carries the signature to dispatch
   so it skips its own NEGATIVE. These raises lost that stamp, and dispatch then booked the failure again:

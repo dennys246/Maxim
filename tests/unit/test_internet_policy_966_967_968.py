@@ -22,8 +22,6 @@ from maxim.tools import http_fetch
 from maxim.utils import http as _http
 from maxim.utils import internet_access as ia
 
-_GATE = pytest.mark.xfail(strict=True, reason="#966/#967/#968 not fixed yet")
-
 
 @pytest.fixture(autouse=True)
 def _fresh_caches():
@@ -35,7 +33,6 @@ def _fresh_caches():
 # ── #966 ────────────────────────────────────────────────────────────────────────────────────────────
 
 
-@_GATE
 def test_the_precheck_refuses_cgnat_like_the_connect_check():
     from maxim.utils.net import is_public_address
 
@@ -44,7 +41,6 @@ def test_the_precheck_refuses_cgnat_like_the_connect_check():
     assert reason is not None and "private" in reason.lower()
 
 
-@_GATE
 def test_a_dns_failure_gets_its_own_reason(monkeypatch):
     def nx(*args, **kwargs):
         raise socket.gaierror(socket.EAI_NONAME, "name not known")
@@ -54,7 +50,6 @@ def test_a_dns_failure_gets_its_own_reason(monkeypatch):
     assert reason is not None and "resolve" in reason.lower() and "private" not in reason.lower()
 
 
-@_GATE
 def test_turning_off_private_ip_blocking_warns_at_load(tmp_path: Path, caplog):
     path = tmp_path / "internet_policy.json"
     path.write_text(json.dumps({"_format_version": "1.0", "block_private_ips": False}))
@@ -79,7 +74,6 @@ def _fetch_raising(exc: Exception):
     return fetch
 
 
-@_GATE
 @pytest.mark.parametrize(
     "exc",
     [
@@ -109,7 +103,6 @@ def test_a_disallow_rule_still_refuses(monkeypatch):
     assert allowed is False and "disallowed" in (reason or "")
 
 
-@_GATE
 def test_the_policy_summary_says_an_unreadable_robots_txt_refuses():
     assert "cannot be read" in ia.InternetAccessPolicy().summary()
 
@@ -117,14 +110,12 @@ def test_the_policy_summary_says_an_unreadable_robots_txt_refuses():
 # ── #968 ────────────────────────────────────────────────────────────────────────────────────────────
 
 
-@_GATE
 def test_a_deviation_character_entry_blocks_the_idna_2008_host():
     assert ia.normalize_host("straße.de") == "xn--strae-oqa.de"
     policy = ia.InternetAccessPolicy(block_domains=frozenset({"straße.de"}))
     assert policy.domain_refusal("xn--strae-oqa.de") is not None
 
 
-@_GATE
 def test_idna_is_a_declared_dependency():
     import tomllib
 

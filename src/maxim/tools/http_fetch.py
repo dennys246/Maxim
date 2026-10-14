@@ -55,14 +55,17 @@ class RobotsCache:
 _robots_cache = RobotsCache()
 
 
-def _fetch_robots_txt(domain: str, timeout_s: float = 5.0, *, public_only: bool = True) -> set[str]:
-    """Fetch and parse robots.txt for a domain."""
+def _fetch_robots_txt(domain: str, timeout_s: float = 5.0, *, public_only: bool = True) -> set[str] | None:
+    """Fetch and parse robots.txt for a domain: the disallowed paths, or ``None`` when it could not be read.
+
+    RFC 9309: a 4xx means there is no robots.txt, so no restrictions (an empty set); a 5xx, a timeout or a
+    network failure means it could not be read (``None``), which refuses the fetch (#967, owner decision
+    2026-10-14: fail closed, as the policy promises).
+    """
     from maxim.utils import http as _http
 
-    disallowed: set[str] = set()
-
+    url = f"https://{domain}/robots.txt"
     try:
-        url = f"https://{domain}/robots.txt"
         resp = _http.fetch_url(
             url,
             method="GET",
@@ -72,53 +75,48 @@ def _fetch_robots_txt(domain: str, timeout_s: float = 5.0, *, public_only: bool 
             public_only=public_only,  # ...so is the address it connects to (#824)
         )
         content = resp.text
+    except _http.HTTPError as e:
+        if e.status is not None and 400 <= e.status < 500:
+            return set()  # no robots.txt: no restrictions
+        logger.debug("robots.txt for %s could not be read: %s", domain, type(e).__name__)
+        return None
+    except Exception as e:  # noqa: BLE001 -- any other failure to read it is unreadable, never "allowed"
+        logger.debug("robots.txt for %s could not be read: %s", domain, type(e).__name__)
+        return None
 
-        # Parse robots.txt (simple parser for User-agent: * rules)
-        current_agent = None
-        for line in content.split("\n"):
-            line = line.strip().lower()
-
-            if line.startswith("user-agent:"):
-                agent = line.split(":", 1)[1].strip()
-                current_agent = agent
-
-            elif line.startswith("disallow:") and current_agent in ("*", "maxim"):
-                path = line.split(":", 1)[1].strip()
-                if path:
-                    disallowed.add(path)
-
-    except Exception as e:
-        logger.debug(f"Failed to fetch robots.txt for {domain}: {e}")
-
+    # Parse robots.txt (simple parser for User-agent: * rules)
+    disallowed: set[str] = set()
+    current_agent = None
+    for line in content.split("\n"):
+        line = line.strip().lower()
+        if line.startswith("user-agent:"):
+            current_agent = line.split(":", 1)[1].strip()
+        elif line.startswith("disallow:") and current_agent in ("*", "maxim"):
+            path = line.split(":", 1)[1].strip()
+            if path:
+                disallowed.add(path)
     return disallowed
 
 
 def check_robots_txt(url: str, timeout_s: float = 5.0, *, public_only: bool = True) -> tuple[bool, str | None]:
-    """Check if URL is allowed by robots.txt.
+    """Check if URL is allowed by robots.txt. Returns (allowed, reason).
 
-    Returns (allowed, reason).
+    FAILS CLOSED (#967): a robots.txt that cannot be read refuses the fetch, and is not cached, so the next
+    request tries again. A missing robots.txt (4xx) imposes no restrictions.
     """
-    try:
-        parsed = urlparse(url)
-        domain = parsed.hostname or ""
-        path = parsed.path or "/"
-
-        # Check cache first
-        disallowed = _robots_cache.get_disallowed(domain)
+    parsed = urlparse(url)
+    domain = parsed.hostname or ""
+    path = parsed.path or "/"
+    disallowed = _robots_cache.get_disallowed(domain)
+    if disallowed is None:
+        disallowed = _fetch_robots_txt(domain, timeout_s, public_only=public_only)
         if disallowed is None:
-            disallowed = _fetch_robots_txt(domain, timeout_s, public_only=public_only)
-            _robots_cache.set_disallowed(domain, disallowed)
-
-        # Check if path matches any disallowed pattern
-        for pattern in disallowed:
-            if path.startswith(pattern):
-                return False, f"Path '{path}' disallowed by robots.txt"
-
-        return True, None
-
-    except Exception as e:
-        logger.debug(f"robots.txt check error: {e}")
-        return True, None  # Allow on error (fail open for now)
+            return False, f"robots.txt for {domain} could not be read; the fetch is refused until it can be"
+        _robots_cache.set_disallowed(domain, disallowed)
+    for pattern in disallowed:
+        if path.startswith(pattern):
+            return False, f"Path '{path}' disallowed by robots.txt"
+    return True, None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
