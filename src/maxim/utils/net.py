@@ -27,7 +27,7 @@ _EMBEDS_IPV4 = tuple(ipaddress.ip_network(n) for n in ("64:ff9b::/96", "::ffff:0
 def is_public_address(address: str) -> bool:
     """Globally routable -- the classifier ``validate_base_url`` and the connect-time checks in
     ``utils/http.py`` share (#824, #921), so the two can never disagree (they did on CGNAT,
-    100.64.0.0/10). ``InternetAccessPolicy``'s pre-check keeps its own; the connect check decides. Judged explicitly rather than by ``is_global`` alone, which calls multicast,
+    100.64.0.0/10). ``InternetAccessPolicy``'s pre-check uses it too (#966); the connect check decides. Judged explicitly rather than by ``is_global`` alone, which calls multicast,
     site-local and NAT64-around-10.x addresses global (and varies across Python versions). An IPv6
     answer that embeds an IPv4 address is judged by that IPv4 address. An unparseable address is not
     public (fail closed)."""

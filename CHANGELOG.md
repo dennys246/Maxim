@@ -439,12 +439,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     checks. `InternetAccessPolicy._is_private_ip`/`_check_ip_is_private` are replaced by `_address_refusal`, which
     returns the reason.
   - **#967 (owner: fail closed):** a robots.txt that cannot be read refuses the fetch, and the refusal is not cached,
-    so the next request retries. That covers a 5xx, a timeout or a network failure. It used to allow the fetch on
-    any error while the policy claimed "Must respect robots.txt". A missing robots.txt (a 4xx) still means no
-    restrictions, per RFC 9309. The policy summary now says an unreadable robots.txt refuses.
+    so the next request retries. That covers a 5xx, a 429, a timeout or a network failure. It used to allow the
+    fetch on any error while the policy claimed "Must respect robots.txt". Also, per RFC 9309:
+    - A missing robots.txt (any other 4xx, 401/403 included) still means no restrictions (owner decision).
+    - Redirects are followed for up to five hops, each with the same private-address protection (owner decision).
+      A redirect's body used to parse as "no rules".
+    - The robots.txt is the URL's own origin's (scheme, host and port, IPv6 brackets kept). It used to be
+      `https://host` always, which would now have refused every http-only and non-443 site.
+
+    The policy summary now says an unreadable robots.txt refuses.
   - **#968:** domain entries normalise with IDNA 2008 (UTS 46, non-transitional) through the `idna` package, now a
     declared dependency. So `straße.de` blocks the `xn--strae-oqa.de` host a URL carries. Python's own codec is IDNA
-    2003, which mapped it to `strasse.de`.
+    2003, which mapped it to `strasse.de`. Two consequences follow. First, a deviation-character entry now blocks
+    the IDNA 2008 host, not the mapped one (`faß.de` used to block `fass.de`). Second, IDNA 2008 rejects a few
+    names IDNA 2003 accepted, such as symbol and emoji domains (`☃.net`). **A policy file listing one now fails to
+    load, and the internet is then disabled (fail closed) until the entry is rewritten in its punycode `xn--`
+    form.** The error names the entry and says so.
+  - The pre-check is also a little stricter: through the shared classifier it now refuses multicast, the
+    unspecified address, and NAT64/6to4 addresses that wrap a private IPv4 address. The connect-time check already
+    refused these.
 
   Gates: `tests/unit/test_internet_policy_966_967_968.py`.
 

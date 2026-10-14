@@ -64,7 +64,7 @@ def test_turning_off_private_ip_blocking_warns_at_load(tmp_path: Path, caplog):
 
 class _Resp:
     def __init__(self, text: str) -> None:
-        self.text = text
+        self.text, self.status, self.headers = text, 200, {}
 
 
 def _fetch_raising(exc: Exception):
@@ -123,3 +123,79 @@ def test_idna_is_a_declared_dependency():
         "dependencies"
     ]
     assert any(d.split(">")[0].split("=")[0].split("<")[0].strip() == "idna" for d in deps)
+
+
+# ── #967 review folds (owner decisions 2026-10-14: follow redirects; 401/403 allow) ─────────────────
+
+
+class _R:
+    def __init__(self, status: int = 200, text: str = "", headers: dict | None = None) -> None:
+        self.status, self.text, self.headers = status, text, headers or {}
+
+
+def _serve(monkeypatch, routes: dict):
+    """A fake fetch_url serving ``routes[url]``: a _R, or an exception to raise. Records the URLs asked."""
+    asked: list[str] = []
+
+    def fetch(url, **kwargs):
+        asked.append(url)
+        r = routes[url]
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+    monkeypatch.setattr(_http, "fetch_url", fetch)
+    return asked
+
+
+def test_a_429_is_unreadable_not_missing(monkeypatch):
+    _serve(monkeypatch, {"https://example.com/robots.txt": _http.HTTPRateLimited("robots", status=429)})
+    allowed, reason = http_fetch.check_robots_txt("https://example.com/page")
+    assert allowed is False and "could not be read" in (reason or "")
+
+
+@pytest.mark.parametrize("status", [401, 403, 404, 410])
+def test_any_other_4xx_means_no_restrictions(monkeypatch, status):
+    _serve(monkeypatch, {"https://example.com/robots.txt": _http.HTTPClientError("robots", status=status)})
+    assert http_fetch.check_robots_txt("https://example.com/page") == (True, None)
+
+
+def test_the_robots_txt_is_the_urls_own_origin(monkeypatch):
+    asked = _serve(
+        monkeypatch,
+        {
+            "http://example.com:8080/robots.txt": _R(text="User-agent: *\nDisallow: /x\n"),
+            "http://[2001:db8::1]/robots.txt": _R(text=""),
+        },
+    )
+    assert http_fetch.check_robots_txt("http://user:pw@example.com:8080/x/y")[0] is False
+    assert http_fetch.check_robots_txt("http://[2001:db8::1]/page") == (True, None)
+    assert asked == ["http://example.com:8080/robots.txt", "http://[2001:db8::1]/robots.txt"]
+
+
+def test_a_redirect_is_followed_and_its_target_rules_apply(monkeypatch):
+    _serve(
+        monkeypatch,
+        {
+            "https://example.com/robots.txt": _R(
+                status=301, headers={"Location": "https://www.example.com/robots.txt"}
+            ),
+            "https://www.example.com/robots.txt": _R(text="User-agent: *\nDisallow: /private\n"),
+        },
+    )
+    allowed, reason = http_fetch.check_robots_txt("https://example.com/private/x")
+    assert allowed is False and "disallowed" in (reason or "")
+
+
+def test_too_many_redirects_or_no_location_is_unreadable(monkeypatch):
+    loop = {f"https://a.example/{i}": _R(status=302, headers={"location": f"/{i + 1}"}) for i in range(10)}
+    loop["https://a.example/robots.txt"] = _R(status=302, headers={"location": "/0"})
+    loop["https://b.example/robots.txt"] = _R(status=301)
+    _serve(monkeypatch, loop)
+    assert http_fetch.check_robots_txt("https://a.example/page")[0] is False
+    assert http_fetch.check_robots_txt("https://b.example/page")[0] is False
+
+
+def test_an_idna_2003_only_entry_names_the_punycode_form():
+    with pytest.raises(ValueError, match="punycode"):
+        ia.normalize_host("☃.net")

@@ -12,7 +12,7 @@ import re
 import threading
 import time
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlsplit
 
 from maxim.tools.base import Tool, ToolResult
 
@@ -55,33 +55,54 @@ class RobotsCache:
 _robots_cache = RobotsCache()
 
 
-def _fetch_robots_txt(domain: str, timeout_s: float = 5.0, *, public_only: bool = True) -> set[str] | None:
-    """Fetch and parse robots.txt for a domain: the disallowed paths, or ``None`` when it could not be read.
+_ROBOTS_MAX_REDIRECTS = 5  # RFC 9309 2.3.1.2: follow at least five consecutive redirects
 
-    RFC 9309: a 4xx means there is no robots.txt, so no restrictions (an empty set); a 5xx, a timeout or a
-    network failure means it could not be read (``None``), which refuses the fetch (#967, owner decision
-    2026-10-14: fail closed, as the policy promises).
+
+def _robots_origin(url: str) -> str:
+    """``scheme://authority`` of ``url``, the origin whose robots.txt governs it (RFC 9309 2.3: same scheme, host
+    and port; userinfo dropped). ``urlsplit`` keeps an IPv6 literal's brackets."""
+    parts = urlsplit(url)
+    return f"{parts.scheme}://{parts.netloc.rsplit('@', 1)[-1]}"
+
+
+def _fetch_robots_txt(origin: str, timeout_s: float = 5.0, *, public_only: bool = True) -> set[str] | None:
+    """Fetch and parse ``origin``'s robots.txt: the disallowed paths, or ``None`` when it could not be read.
+
+    RFC 9309, with fail-closed as the owner decided (#967, 2026-10-14):
+    - a 4xx other than 429 means there is no robots.txt, so no restrictions (an empty set), 401/403 included;
+    - a 5xx, a 429, a timeout or a network failure means it could not be read (``None``), which refuses the fetch;
+    - a redirect is followed, up to five hops, each through ``fetch_url`` with the same ``public_only``; a redirect
+      without a ``Location`` or one hop too many is unreadable.
     """
     from maxim.utils import http as _http
 
-    url = f"https://{domain}/robots.txt"
+    url = f"{origin}/robots.txt"
     try:
-        resp = _http.fetch_url(
-            url,
-            method="GET",
-            headers={"User-Agent": "Maxim/1.0 (Research Assistant)"},
-            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=timeout_s, total_s=timeout_s + 1.0),
-            max_bytes=512_000,  # the robots.txt host is chosen by the model's URL (#825)
-            public_only=public_only,  # ...so is the address it connects to (#824)
-        )
+        for _hop in range(_ROBOTS_MAX_REDIRECTS + 1):
+            resp = _http.fetch_url(
+                url,
+                method="GET",
+                headers={"User-Agent": "Maxim/1.0 (Research Assistant)"},
+                timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=timeout_s, total_s=timeout_s + 1.0),
+                max_bytes=512_000,  # the robots.txt host is chosen by the model's URL (#825)
+                public_only=public_only,  # ...so is every address it connects to, redirects included (#824)
+            )
+            if not 300 <= resp.status < 400:
+                break
+            location = next((v for k, v in resp.headers.items() if k.lower() == "location"), None)
+            if not location:
+                return None
+            url = urljoin(url, location)
+        else:
+            return None  # too many redirects
         content = resp.text
     except _http.HTTPError as e:
-        if e.status is not None and 400 <= e.status < 500:
+        if e.status is not None and 400 <= e.status < 500 and e.status != 429:
             return set()  # no robots.txt: no restrictions
-        logger.debug("robots.txt for %s could not be read: %s", domain, type(e).__name__)
+        logger.debug("robots.txt at %s could not be read: %s", origin, type(e).__name__)
         return None
     except Exception as e:  # noqa: BLE001 -- any other failure to read it is unreadable, never "allowed"
-        logger.debug("robots.txt for %s could not be read: %s", domain, type(e).__name__)
+        logger.debug("robots.txt at %s could not be read: %s", origin, type(e).__name__)
         return None
 
     # Parse robots.txt (simple parser for User-agent: * rules)
@@ -102,17 +123,17 @@ def check_robots_txt(url: str, timeout_s: float = 5.0, *, public_only: bool = Tr
     """Check if URL is allowed by robots.txt. Returns (allowed, reason).
 
     FAILS CLOSED (#967): a robots.txt that cannot be read refuses the fetch, and is not cached, so the next
-    request tries again. A missing robots.txt (4xx) imposes no restrictions.
+    request tries again. A missing robots.txt (a 4xx other than 429) imposes no restrictions. The robots.txt
+    is the URL's own origin's (scheme, host and port), and the cache is keyed on that origin.
     """
-    parsed = urlparse(url)
-    domain = parsed.hostname or ""
-    path = parsed.path or "/"
-    disallowed = _robots_cache.get_disallowed(domain)
+    origin = _robots_origin(url)
+    path = urlsplit(url).path or "/"
+    disallowed = _robots_cache.get_disallowed(origin)
     if disallowed is None:
-        disallowed = _fetch_robots_txt(domain, timeout_s, public_only=public_only)
+        disallowed = _fetch_robots_txt(origin, timeout_s, public_only=public_only)
         if disallowed is None:
-            return False, f"robots.txt for {domain} could not be read; the fetch is refused until it can be"
-        _robots_cache.set_disallowed(domain, disallowed)
+            return False, f"robots.txt for {origin} could not be read; the fetch is refused until it can be"
+        _robots_cache.set_disallowed(origin, disallowed)
     for pattern in disallowed:
         if path.startswith(pattern):
             return False, f"Path '{path}' disallowed by robots.txt"

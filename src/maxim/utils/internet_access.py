@@ -199,7 +199,9 @@ def normalize_host(name: str) -> str:
         try:
             host = idna.encode(host, uts46=True, transitional=False).decode("ascii")
         except (idna.IDNAError, UnicodeError) as e:
-            raise ValueError(f"not a valid domain name: {name!r} ({e})") from e
+            raise ValueError(
+                f"not a valid IDNA 2008 domain name: {name!r} ({e}); list it in its punycode (xn--) form instead"
+            ) from e
     return host
 
 
