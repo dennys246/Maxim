@@ -52,7 +52,6 @@ def fake_voice(monkeypatch, tmp_path):
     return tmp_path / "tts", fetched, served
 
 
-@pytest.mark.xfail(strict=True, reason="#1268 F1: Piper voice provisioning not built yet")
 def test_every_registered_voice_file_is_pinned_and_hashed():
     for name, info in dl.TTS_MODELS.items():
         for f in info["files"]:
@@ -61,7 +60,6 @@ def test_every_registered_voice_file_is_pinned_and_hashed():
             assert re.fullmatch(r"[0-9a-f]{64}", f["sha256"])
 
 
-@pytest.mark.xfail(strict=True, reason="#1268 F1: Piper voice provisioning not built yet")
 def test_a_download_whose_hash_does_not_match_is_rejected(fake_voice):
     tts_dir, _, served = fake_voice
     served["fake.onnx"] = b"x" * len(_ONNX)  # right size, wrong bytes
@@ -72,7 +70,6 @@ def test_a_download_whose_hash_does_not_match_is_rejected(fake_voice):
     assert not dest.exists() and not list(tts_dir.glob("*.partial"))
 
 
-@pytest.mark.xfail(strict=True, reason="#1268 F1: Piper voice provisioning not built yet")
 def test_a_present_file_with_wrong_bytes_is_replaced(fake_voice):
     tts_dir, fetched, _ = fake_voice
     dest = tts_dir / "fake.onnx"
@@ -84,7 +81,6 @@ def test_a_present_file_with_wrong_bytes_is_replaced(fake_voice):
     assert dest.read_bytes() == _ONNX and fetched == ["fake.onnx"]
 
 
-@pytest.mark.xfail(strict=True, reason="#1268 F1: Piper voice provisioning not built yet")
 def test_ensure_tts_voice_provisions_verifies_and_is_idempotent(fake_voice):
     tts_dir, fetched, _ = fake_voice
     assert dl.ensure_tts_voice("fake", auto=True, models_dir=tts_dir)
@@ -97,14 +93,12 @@ def test_ensure_tts_voice_provisions_verifies_and_is_idempotent(fake_voice):
     assert not dl.ensure_tts_voice("no-such-voice", auto=True, models_dir=tts_dir)
 
 
-@pytest.mark.xfail(strict=True, reason="#1268 F1: Piper voice provisioning not built yet")
 def test_ensure_tts_voice_without_consent_downloads_nothing(fake_voice):
     tts_dir, fetched, _ = fake_voice
     assert not dl.ensure_tts_voice("fake", auto=False, interactive=False, models_dir=tts_dir)
     assert fetched == []
 
 
-@pytest.mark.xfail(strict=True, reason="#1268 F1: Piper voice provisioning not built yet")
 def test_a_model_download_in_another_process_does_not_block_the_voice(fake_voice):
     """The voice takes its own lock: a 40 GB GGUF download holding download.lock must not hold up a robot's sign-in."""
     from maxim.utils.paths import data_home
@@ -115,7 +109,6 @@ def test_a_model_download_in_another_process_does_not_block_the_voice(fake_voice
         assert dl.ensure_tts_voice("fake", auto=True, models_dir=tts_dir)
 
 
-@pytest.mark.xfail(strict=True, reason="#1268 F1: Piper voice provisioning not built yet")
 def test_the_provisioner_arms_only_once_the_voice_loads_and_retries_until_then(monkeypatch, tmp_path):
     from maxim.models.audio import tts
 
@@ -142,12 +135,12 @@ def test_the_provisioner_arms_only_once_the_voice_loads_and_retries_until_then(m
         prov.stop()
 
 
-@pytest.mark.xfail(strict=True, reason="#1268 F1: Piper voice provisioning not built yet")
 def test_without_piper_installed_the_provisioner_never_arms(monkeypatch, tmp_path):
     from maxim.models.audio import tts
 
     monkeypatch.setattr(dl, "ensure_tts_voice", lambda *a, **k: True)
     monkeypatch.setattr(tts, "_piper_installed", lambda: False)
+    monkeypatch.setattr(tts.TTSEngine, "load", lambda self: None)  # would load: only the piper check refuses
     prov = tts.VoiceProvisioner(models_dir=tmp_path, retry_s=0.01, max_retry_s=0.02)
     prov.start()
     try:
@@ -159,7 +152,41 @@ def test_without_piper_installed_the_provisioner_never_arms(monkeypatch, tmp_pat
 
 def test_maxim_serve_never_provisions_a_voice():
     """Only a device bootstrap arms an announcer; a desktop `maxim serve` must not download a voice."""
+    import ast
+
     src = Path(__file__).resolve().parents[2] / "src" / "maxim"
+    banned = {"ensure_tts_voice", "VoiceProvisioner"}
     for rel in ("console/server.py", "cli.py"):
-        text = (src / rel).read_text(encoding="utf-8")
-        assert "ensure_tts_voice" not in text and "VoiceProvisioner" not in text, rel
+        tree = ast.parse((src / rel).read_text(encoding="utf-8"))
+        used = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+        used |= {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
+        used |= {a.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) for a in n.names}
+        assert not used & banned, (rel, used & banned)  # code, not docstrings: a doc may name the device path
+
+
+def test_a_raise_inside_an_attempt_is_a_retry_not_a_dead_thread(monkeypatch, tmp_path):
+    """A lock, stat or storage error inside ensure_tts_voice must not kill the provisioner: the device would stay
+    paste-only until a restart, the failure this exists to self-heal (three-lens review)."""
+    from maxim.models.audio import tts
+
+    calls: list[int] = []
+
+    def ensure(*args, **kwargs):
+        calls.append(1)
+        if len(calls) < 3:
+            raise OSError("lock dir unwritable")
+        return True
+
+    monkeypatch.setattr(dl, "ensure_tts_voice", ensure)
+    monkeypatch.setattr(tts, "_piper_installed", lambda: True)
+    monkeypatch.setattr(tts.TTSEngine, "load", lambda self: None)
+    prov = tts.VoiceProvisioner(models_dir=tmp_path, retry_s=0.01, max_retry_s=0.02)
+    prov.start()
+    try:
+        for _ in range(300):
+            if prov.is_ready():
+                break
+            time.sleep(0.01)
+        assert prov.is_ready() and len(calls) == 3
+    finally:
+        prov.stop()

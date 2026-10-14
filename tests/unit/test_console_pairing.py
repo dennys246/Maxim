@@ -264,19 +264,29 @@ class TestArmWhenReady:
     appears once the voice is ready, with no restart (owner decision 2026-10-14). Readiness is read on every request;
     the pairing field's shape is unchanged."""
 
-    @pytest.mark.xfail(strict=True, reason="#1268 F1: build_app has no pairing_ready yet")
     def test_hello_and_request_follow_readiness_live(self, _isolated):
         ready = [False]
         announcer = _Announcer()
         app = build_app(None, auth_token=_TOKEN, pairing_announcer=announcer, pairing_ready=lambda: ready[0])
         c = TestClient(app)
         assert c.get("/api/hello").json()["pairing"] == "none"
-        assert c.post("/api/pair/request").status_code == 409
+        assert c.post("/api/pair/request", json={}).status_code == 409
         ready[0] = True
         assert c.get("/api/hello").json()["pairing"] == "available"
-        assert c.post("/api/pair/request").status_code == 202
+        assert c.post("/api/pair/request", json={}).status_code == 202
 
-    @pytest.mark.xfail(strict=True, reason="#1268 F1: build_app has no pairing_ready yet")
     def test_readiness_without_an_announcer_is_refused_at_build_time(self, _isolated):
         with pytest.raises(ConfigurationError):
             build_app(None, auth_token=_TOKEN, pairing_ready=lambda: True)
+
+    def test_a_raising_readiness_fails_closed_not_500(self, _isolated):
+        """/api/hello is the unauthenticated surface the paste path needs: an embedder's raising pairing_ready must
+        read as "not ready", never break the login screen."""
+
+        def broken() -> bool:
+            raise RuntimeError("provisioner state unreadable")
+
+        c = TestClient(build_app(None, auth_token=_TOKEN, pairing_announcer=_Announcer(), pairing_ready=broken))
+        r = c.get("/api/hello")
+        assert r.status_code == 200 and r.json()["pairing"] == "none"
+        assert c.post("/api/pair/request", json={}).status_code == 409

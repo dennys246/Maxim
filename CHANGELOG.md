@@ -86,6 +86,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Piper voice provisioning, and a way for a device to arm spoken-code pairing only once it can speak (#1268
+  follow-up F1). These are CAPABILITIES with no pymaxim caller yet.** The device bootstrap that wires them is owed in
+  maxim-pulse's Reachy app, or in the pending device-console facade.
+  The Reachy app's spoken-code pairing used a Piper voice that nothing provisioned. `models/audio/tts.py` documented a
+  manual `wget`. Without the voice, the announcer failed silently while the sign-in page told the owner to listen.
+  - **Pinned voices.** Every `TTS_MODELS` voice is pinned to one HF commit of `rhasspy/piper-voices`, with size and
+    sha256 per file. Each was computed by downloading and hashing the file; how to re-pin is in a comment.
+  - **Verified downloads.** `download_file(expected_sha256=)` verifies the download before the atomic rename. It
+    also verifies a file that is already present and replaces it on a mismatch. Without a hash, a present file is
+    trusted as before, so the LLM GGUFs are unchanged. `download_tts` passes both checks and stops at the first
+    failed file.
+  - **`ensure_tts_voice`.** The new `models/download.py::ensure_tts_voice` hashes the present files, then runs the
+    storage preflight and asks for consent. It takes the voice's OWN lock, so a GGUF download holding
+    `download.lock` never blocks a robot's sign-in voice.
+  - **`VoiceProvisioner`.** The new `models/audio/tts.py::VoiceProvisioner` retries in the background with backoff
+    until the voice is provisioned, `piper` is installed, and the voice LOADS. `TTSEngine.load()` makes the load
+    eager.
+  - **`build_app(pairing_ready=)`.** It is read on every request: until it returns True, `/api/hello` reports
+    `pairing: "none"` and `/api/pair/*` refuse with 409. A raising callable fails closed. So a robot that booted before Wi-Fi offers only the paste
+    path, and the by-ear path appears once the voice loads, without a restart (owner decision 2026-10-14). There is
+    no contract change.
+  - **Desktop.** A plain `maxim serve` never provisions a voice. `PiperTTS.is_available` now probes `piper` through the
+    canonical `optional_dependency_available`, and `size_mb` reads the real ~63 MB.
+
+  Gates: `tests/unit/test_tts_voice_provisioning.py` and `tests/unit/test_console_pairing.py::TestArmWhenReady`.
+
 - **A sim report now records which models answered its LLM calls, its scenario inputs and its session
   (baseline floors B0, `docs/plans/baseline_floors_b0.md`).** `report.json`'s `provenance` gains
   `provenance_schema: 2`; `llm_calls` (per router serial: each served call's provider, model, backend
