@@ -490,8 +490,9 @@ found 1.3.2 not ready. The owner decided:
   [`evidence_exceptions.json`](../experiments/evidence_exceptions.json), a `release` clause that names the row,
   its STALE status and 1.3.2 only (M25's form; `lint_evidence_gate.py` checks its shape). It moves no status:
   only a run can. Why the strict default was not kept:
-  - The row carries no EARNED claim. Its cross-session override claim was pulled in June, and the 1.3.1 walk
-    released over the same kind of fired trigger on that ground.
+  - The row carries no EARNED claim: its cross-session override claim was pulled in June. The 1.3.1 walk
+    released over a fired trigger on that ground, but the row was PARTIAL then. This is the first release over a
+    STALE row, which is why it takes a committed exception.
   - A re-fire now would most likely be INCONCLUSIVE. Arm A's baseline moved from 0.42 to 0.71–0.75 on the same
     commit ([L8](../limits/README.md), BINDING), so the June gate has no headroom left to measure.
   - The prerequisite [#1226](https://github.com/dennys246/Maxim/issues/1226) is parked. Exp 37's cradle goals
