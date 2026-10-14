@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -154,6 +155,10 @@ def support_problem(
 
 EXCEPTION_FIELDS = ("id", "kind", "row", "to", "to_date", "path", "sha256", "owner", "reason", "date")
 SUPERSEDED_FIELDS = ("id", "kind", "row", "by", "to_date", "owner", "reason", "date")  # lint_ledger_format's (D3)
+# M25: an owner's decision that a STALE or BROKEN row does not block ONE named release. It moves no status (the row
+# keeps its token); the release transaction reads it (publication_guide.md, until M25 mechanizes the check).
+RELEASE_FIELDS = ("id", "kind", "row", "status", "release", "owner", "reason", "ref", "date")
+RELEASE_BLOCKING = ("STALE", "BROKEN")
 
 
 def pass_table_problems(table, where: str, *, at_base: bool = False) -> list[str]:
@@ -369,6 +374,19 @@ def load_json(repo: Repo, ref: str, path: str, default):
         raise GateError(f"{path} at {ref[:12]} is not JSON") from exc
 
 
+def release_exception_problem(e: dict) -> str | None:
+    """A ``release`` clause names one row, the blocking status it holds and one release (``X.Y.Z``): an exception
+    for 1.3.2 says nothing about 1.3.3, and one for a STALE row does not cover it once it is BROKEN."""
+    missing = [f for f in RELEASE_FIELDS if not isinstance(e.get(f), str) or not e.get(f)]
+    if missing:
+        return f"lacks a required field: {', '.join(missing)}"
+    if e["status"] not in RELEASE_BLOCKING:
+        return f"names status {e['status']!r}; only {'/'.join(RELEASE_BLOCKING)} block a release"
+    if not re.fullmatch(r"\d+\.\d+\.\d+", e["release"]):
+        return f"names release {e['release']!r}, not one X.Y.Z version"
+    return None
+
+
 def exceptions_problems(base_list, head_list, repo: Repo | None = None, base: str | None = None) -> list[str]:
     """The exceptions file's shape, append-only against the merge-base. ``repo`` / ``base``: a NEW clause's pin is
     checked against them (a new redaction record without them is refused, never waved through)."""
@@ -382,8 +400,14 @@ def exceptions_problems(base_list, head_list, repo: Repo | None = None, base: st
             out.append(f"{EXCEPTIONS}: an entry on main was edited or removed (append-only): {label!r}"[:200])
     out += [f"{EXCEPTIONS}: {p}"[:300] for p in redaction_pair_problems(base_list, head_list)]
     for e in head_list:
-        if not isinstance(e, dict) or e.get("kind") not in ("ledger", "prereg", "superseded", "redaction"):
-            out.append(f"{EXCEPTIONS}: an entry is not a ledger/prereg/superseded/redaction exception: {e!r}"[:200])
+        if not isinstance(e, dict) or e.get("kind") not in ("ledger", "prereg", "superseded", "redaction", "release"):
+            out.append(
+                f"{EXCEPTIONS}: an entry is not a ledger/prereg/superseded/redaction/release exception: {e!r}"[:200]
+            )
+        elif e["kind"] == "release":
+            problem = release_exception_problem(e)
+            if problem:
+                out.append(f"{EXCEPTIONS}: release exception {e.get('id')!r} {problem}"[:300])
         elif e["kind"] == "redaction":
             # #1081 item 7: the gate owns this shape (lint_ledger_format and the prereg lint ignore the kind).
             problem = redaction_record_problem(e, repo, base, new=e not in base_list)

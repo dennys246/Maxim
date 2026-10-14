@@ -3835,3 +3835,51 @@ def test_the_gate_refuses_removing_an_obliges_block_from_main(rig) -> None:
     rig.head(STALE_BOTH.replace("claim T1-1", "claim T1-1 reworded"))
     failures, _ = rig.run()
     assert any("`obliges` block on main may not be removed" in f for f in failures), failures
+
+
+RELEASE_CLAUSE = {
+    "id": "release-1.3.2-T1-2",
+    "kind": "release",
+    "row": "T1-2",
+    "status": "STALE",
+    "release": "1.3.2",
+    "owner": "owner",
+    "reason": "re-scoped",
+    "ref": "docs/plans/roadmap_1_3_x.md",
+    "date": "2026-10-14",
+}
+
+
+def test_a_release_exception_is_a_known_kind() -> None:
+    """M25: an owner's 'this Stale row does not block release X' is a committed, machine-readable clause."""
+    assert G.exceptions_problems([], [RELEASE_CLAUSE]) == []
+
+
+@pytest.mark.parametrize(
+    "edit, why",
+    [
+        ({"ref": ""}, "lacks a required field: ref"),
+        ({"release": None}, "lacks a required field: release"),
+        ({"status": "PARTIAL"}, "only STALE/BROKEN block a release"),
+        ({"release": "1.3"}, "not one X.Y.Z version"),
+        ({"release": "1.3.x"}, "not one X.Y.Z version"),
+    ],
+)
+def test_a_release_exception_names_one_row_status_and_version(edit, why) -> None:
+    problems = G.exceptions_problems([], [{**RELEASE_CLAUSE, **edit}])
+    assert any(why in p for p in problems), problems
+
+
+def test_a_release_exception_moves_no_row() -> None:
+    """It is not a ledger clause: it never supplies support for a status change."""
+    row = G.L.Row(id="T1-2", table="Tier 1", line=1, cells={}, token="STALE", date="2026-10-02")
+    assert G.active_exceptions([RELEASE_CLAUSE], row, row) == []
+    as_ledger = {
+        **RELEASE_CLAUSE,
+        "kind": "ledger",
+        "to": "STALE",
+        "to_date": "2026-10-02",
+        "path": "p",
+        "from": "STALE",
+    }
+    assert G.active_exceptions([as_ledger], row, row), "positive control: a ledger clause for the same row acts"
