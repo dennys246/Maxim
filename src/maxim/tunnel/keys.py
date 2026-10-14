@@ -157,7 +157,11 @@ def require_leader_key() -> str:
     here, loudly, instead of serving without auth.
     """
     path = key_file_path(MESH_KEY_NAME)
-    if not path.is_file():
+    try:
+        present = path.is_file()
+    except OSError as e:  # an unreadable parent directory: say so, typed, with the path
+        raise LeaderKeyError(path=path, reason=f"cannot stat key file ({type(e).__name__})") from e
+    if not present:
         raise LeaderKeyError(path=path, reason="no key file")
     if platform.system() != "Windows":
         try:
