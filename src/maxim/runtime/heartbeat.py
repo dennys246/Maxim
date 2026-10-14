@@ -12,10 +12,15 @@ Enabled by:
 Heartbeat line format:
   [heartbeat] gpu=87% vram=6.2/16G 72C | cpu=23% ram=8.1/16G | large: 5 calls/10s p50=280ms | loop: idle=2.1s
 
-Stall detection:
-  If no LLM calls have been recorded for MAXIM_HEARTBEAT_STALL_S (default 30s),
-  emits a WARNING with the last known state. This would have caught the
-  'respond success=False → 60s dead zone' bug instantly.
+Stall detection (#1268 dormant producer 1; owner decision 2026-10-14):
+  The agent loop reports its liveness through the loop-state hook
+  (``runtime/loop_state.py::loop_liveness_scope``). A stall is a WORKING loop
+  (not idle, not acting) that made no progress for longer than
+  ``stall_threshold.compute_stall_threshold`` (floor ``MAXIM_HEARTBEAT_STALL_S``,
+  no lane-timeout ceiling: this is loop idleness, not call latency) while
+  ``stall_threshold.stall_suppression`` finds nothing alive in flight. It emits a
+  WARNING and a ``heartbeat_stall`` notification. Without a registered loop there
+  is no stall detection at all (``has_loop_state_hook`` is False).
 """
 
 from __future__ import annotations
@@ -29,7 +34,6 @@ from typing import Any
 logger = logging.getLogger("maxim.heartbeat")
 
 DEFAULT_INTERVAL_S = 10
-DEFAULT_STALL_THRESHOLD_S = 30
 
 
 class HeartbeatMonitor:
@@ -39,7 +43,6 @@ class HeartbeatMonitor:
         self,
         *,
         interval_s: float | None = None,
-        stall_threshold_s: float | None = None,
     ) -> None:
         if interval_s is None:
             interval_s = float(
@@ -48,20 +51,12 @@ class HeartbeatMonitor:
                     str(DEFAULT_INTERVAL_S),
                 )
             )
-        if stall_threshold_s is None:
-            stall_threshold_s = float(
-                os.environ.get(
-                    "MAXIM_HEARTBEAT_STALL_S",
-                    str(DEFAULT_STALL_THRESHOLD_S),
-                )
-            )
         self._interval = interval_s
-        self._stall_threshold = stall_threshold_s
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
         # External state hooks (set by caller)
-        self._loop_state_fn: Any = None  # () -> dict with last_event_time, state
+        self._loop_state_fn: Any = None  # () -> {"state", "idle_s", "loops"} or None (loop_state.py)
         self._last_stall_warn: float = 0.0
         # Structured listeners (the console's health strip, console/health.py).
         # The records already go to the "maxim.heartbeat" logger, but at DEBUG,
@@ -107,10 +102,10 @@ class HeartbeatMonitor:
                     )
 
     def set_loop_state_hook(self, fn: Any) -> None:
-        """Register a callable that returns agent loop state dict.
+        """Register (or, with ``None``, clear) the callable returning the agent loops' liveness.
 
-        Expected keys: last_event_time (float), state (str).
-        Called every heartbeat interval.
+        It returns ``{"state": "working" | "idle", "idle_s": float, "loops": int}`` for the worst live loop, or
+        ``None`` when no loop runs; ``runtime/loop_state.py`` owns the only producer. Called every interval.
         """
         self._loop_state_fn = fn
 
@@ -128,7 +123,7 @@ class HeartbeatMonitor:
         logger.info(
             "Heartbeat monitor started (interval=%ds, stall_threshold=%ds)",
             int(self._interval),
-            int(self._stall_threshold),
+            int(_stall_threshold_s()),
         )
 
     def stop(self) -> None:
@@ -240,46 +235,59 @@ class HeartbeatMonitor:
             )
 
     def _check_stall(self, data: dict[str, Any]) -> None:
-        """Warn if no LLM calls have happened within the stall threshold."""
-        lanes = data.get("lanes", {})
-        large = lanes.get("large")
-        if not isinstance(large, dict):
-            return
+        """Warn when the agent loop is WORKING but has made no progress past the canonical threshold, and no LLM
+        call is alive in flight (the llm-routing stall-threshold invariant: one threshold derivation, one
+        suppression decision). An idle loop, an acting loop or no registered loop is never a stall."""
+        from maxim.runtime.stall_threshold import stall_suppression
 
-        total_calls = large.get("jobs_completed", 0) + large.get("jobs_failed", 0)
-        if total_calls == 0:
-            return  # no calls yet, not a stall
-
-        # Check loop idle time
         loop = data.get("loop")
-        if isinstance(loop, dict):
-            idle_s = loop.get("idle_s", 0)
-            if idle_s > self._stall_threshold:
-                now = time.time()
-                # Don't spam — warn at most once per stall threshold
-                if now - self._last_stall_warn > self._stall_threshold:
-                    self._last_stall_warn = now
-                    stall = {
-                        "idle_s": idle_s,
-                        "state": loop.get("state"),
-                        "threshold_s": self._stall_threshold,
-                        "p50_latency_ms": large.get("p50_latency_ms"),
-                        "failure_rate": large.get("failure_rate"),
-                        "jobs_completed": large.get("jobs_completed"),
-                        "jobs_failed": large.get("jobs_failed"),
-                    }
-                    self._notify("heartbeat_stall", stall)
-                    logger.warning(
-                        "[heartbeat] STALL DETECTED — agent loop idle for %.0fs "
-                        "(state=%s, threshold=%ds). Last large-tier call: p50=%s ms, "
-                        "failure_rate=%s",
-                        idle_s,
-                        loop.get("state", "?"),
-                        int(self._stall_threshold),
-                        large.get("p50_latency_ms", "?"),
-                        large.get("failure_rate", "?"),
-                        extra={"event": "heartbeat_stall", "data": stall},
-                    )
+        if not isinstance(loop, dict) or loop.get("state") != "working":
+            return
+        idle_s = loop.get("idle_s")
+        threshold = _stall_threshold_s()
+        if not isinstance(idle_s, (int, float)) or idle_s <= threshold:
+            return
+        suppress, wedged_s = stall_suppression(turn_in_progress=False)
+        if suppress:
+            return  # a planning call is in flight and alive: busy, not stalled
+        now = time.time()
+        if now - self._last_stall_warn <= threshold:
+            return  # at most one warning per threshold
+        self._last_stall_warn = now
+        large = (data.get("lanes") or {}).get("large")
+        large = large if isinstance(large, dict) else {}
+        stall = {
+            "idle_s": idle_s,
+            "state": loop.get("state"),
+            "loops": loop.get("loops"),
+            "threshold_s": threshold,
+            "wedged_s": wedged_s,
+            "p50_latency_ms": large.get("p50_latency_ms"),
+            "failure_rate": large.get("failure_rate"),
+            "jobs_completed": large.get("jobs_completed"),
+            "jobs_failed": large.get("jobs_failed"),
+        }
+        self._notify("heartbeat_stall", stall)
+        logger.warning(
+            "[heartbeat] STALL DETECTED — agent loop working but idle for %.0fs (threshold=%ds, "
+            "in-flight call wedged for %s s). Last large-tier call: p50=%s ms, failure_rate=%s",
+            idle_s,
+            int(threshold),
+            "-" if wedged_s is None else f"{wedged_s:.0f}",
+            large.get("p50_latency_ms", "?"),
+            large.get("failure_rate", "?"),
+            extra={"event": "heartbeat_stall", "data": stall},
+        )
+
+
+def _stall_threshold_s() -> float:
+    """The heartbeat's stall threshold, from the canonical derivation: its own floor (``MAXIM_HEARTBEAT_STALL_S``)
+    and no lane-timeout ceiling, since loop idleness is not call latency (stall_detector_timeout_awareness.md
+    Stage 2, Executor review I3); in-flight calls are handled by ``stall_suppression``, not by the threshold."""
+    from maxim.agents.llm_types import PLANNING_LANE
+    from maxim.runtime.stall_threshold import compute_stall_threshold
+
+    return compute_stall_threshold(lane_tier=PLANNING_LANE, floor_env_var="MAXIM_HEARTBEAT_STALL_S")
 
 
 # ─── module-level singleton ───────────────────────────────────────────────

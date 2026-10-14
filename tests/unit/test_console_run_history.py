@@ -1269,9 +1269,9 @@ class TestProducerSeams:
             "maxim.models.language.lane_metrics.get_metrics_registry",
             lambda: type("R", (), {"snapshot": lambda self: {"large": large}})(),
         )
-        mon = hb.HeartbeatMonitor(interval_s=60, stall_threshold_s=30)
+        mon = hb.HeartbeatMonitor(interval_s=60)
         assert mon.has_loop_state_hook is False and mon.is_running is False
-        mon.set_loop_state_hook(lambda: {"idle_s": 45.0, "state": "deliberate"})
+        mon.set_loop_state_hook(lambda: {"idle_s": 45.0, "state": "working", "loops": 1})  # past the 30 s floor
         assert mon.has_loop_state_hook is True
         seen: list[tuple[str, dict]] = []
         listener = lambda kind, data: seen.append((kind, data))  # noqa: E731
@@ -1368,7 +1368,6 @@ def _stalled_run(mon, *, state: str, in_flight: bool):
     run()
 
 
-@pytest.mark.xfail(strict=True, reason="stall detection dormant: nothing registers the loop-state hook")
 @pytest.mark.parametrize(
     ("state", "in_flight", "stalls"), [("working", False, 1), ("working", True, 0), ("idle", False, 0)]
 )
@@ -1382,19 +1381,6 @@ def test_a_working_loop_idle_past_the_threshold_is_one_stall_on_api_health(runs,
         body = _get(c, "/api/health").json()
         assert len(body["stalls"]) == stalls, body["stalls"]
         assert body["stall_detection"] is False  # the run ended: no loop is registered, so no stale stall source
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason="no production caller registers HeartbeatMonitor.set_loop_state_hook, so heartbeat_stall cannot fire",
-)
-def test_gate_the_agent_loop_registers_the_stall_hook():
-    callers = [
-        p
-        for p in _SRC.rglob("*.py")
-        if p.name != "heartbeat.py" and "set_loop_state_hook(" in p.read_text(errors="replace")
-    ]
-    assert callers, "stall detection is dormant: wire set_loop_state_hook from the agent loop"
 
 
 @pytest.mark.xfail(strict=True, reason="save_action_log does not record per-action credit (actions.jsonl is 1.1)")

@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import contextvars
+import functools
 import logging
 import os
+import threading
 import time
-from typing import Any
+from collections.abc import Callable
+from typing import Any, ParamSpec, TypeVar
 
 from maxim.agents.llm_types import LLMAttemptState
 from maxim.modes.definitions import DEFAULT_RUN_MODE
+from maxim.runtime import heartbeat as _heartbeat  # module-level: imported before any run, looked up per call
 from maxim.utils.atomic_io import atomic_write_json
 
 from maxim.utils.logging import log_swallowed_exception
@@ -254,3 +259,119 @@ def _planning_attempt_is_active(state: LLMAttemptState) -> bool:
     how many control-loop ticks response parsing should take.
     """
     return state in _ACTIVE_PLANNING_ATTEMPT_STATES
+
+
+# ── loop liveness: what the heartbeat's stall rule reads (#1268 dormant producer 1) ──────────────────────────────
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+class LoopLiveness:
+    """One RUN's liveness. ``state``: "working" while the pre-tick gate runs the cycle, "idle" while it idles (nothing
+    to react to, paused) and "acting" while ``execute_and_learn`` runs a tool; only a working loop can stall.
+    ``last_progress_at`` (monotonic) moves when an action finishes or the loop goes idle or starts working."""
+
+    __slots__ = ("state", "last_progress_at")
+
+    def __init__(self) -> None:
+        self.state = "idle"
+        self.last_progress_at = time.monotonic()
+
+    def note_tick(self, *, running: bool) -> None:
+        if not running:
+            self.state, self.last_progress_at = "idle", time.monotonic()
+        elif self.state == "idle":
+            self.state, self.last_progress_at = "working", time.monotonic()
+
+
+_LIVE: dict[int, LoopLiveness] = {}  # keyed per RUN (id of its entry): several loops share one process
+_LIVE_LOCK = threading.Lock()
+_CURRENT: contextvars.ContextVar[LoopLiveness | None] = contextvars.ContextVar("maxim_loop_liveness", default=None)
+_LIVENESS_WRAPPED: set[Callable[..., Any]] = set()  # the decorated functions, for the structural tests
+
+
+def current_liveness() -> LoopLiveness | None:
+    """The liveness entry of the run executing in this context, or None outside a run."""
+    return _CURRENT.get()
+
+
+def _loop_state_snapshot() -> dict[str, Any] | None:
+    """The heartbeat's loop-state hook: the worst WORKING loop, or None when no run is registered."""
+    now = time.monotonic()
+    with _LIVE_LOCK:
+        entries = [(e.state, e.last_progress_at) for e in _LIVE.values()]
+    if not entries:
+        return None
+    working = [now - at for state, at in entries if state == "working"]
+    if not working:
+        return {"state": "idle", "idle_s": 0.0, "loops": len(entries)}
+    return {"state": "working", "idle_s": max(working), "loops": len(entries)}
+
+
+def _set_hook(on: bool) -> None:
+    """Called under ``_LIVE_LOCK`` so a register and the last unregister cannot interleave."""
+    _heartbeat.get_heartbeat_monitor().set_loop_state_hook(_loop_state_snapshot if on else None)
+
+
+def loop_liveness_scope(fn: Callable[_P, _R]) -> Callable[_P, _R]:
+    """Decorates ``run_agentic_loop``: one liveness entry per run, registered with the process heartbeat monitor and
+    cleared in a ``finally`` (the loop has no ``finally`` of its own, and eight callers). The hook stays set while any
+    run is alive and is cleared with the last, so an idle server never reports a stale loop as stalled."""
+
+    @functools.wraps(fn)
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+        live = LoopLiveness()
+        token = _CURRENT.set(live)
+        with _LIVE_LOCK:
+            _LIVE[id(live)] = live
+            if len(_LIVE) == 1:
+                _set_hook(True)
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            with _LIVE_LOCK:
+                _LIVE.pop(id(live), None)
+                if not _LIVE:
+                    _set_hook(False)
+            _CURRENT.reset(token)
+
+    _LIVENESS_WRAPPED.add(wrapper)
+    return wrapper
+
+
+def notes_loop_tick(is_running: Callable[[Any], bool]) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
+    """Decorates ``pre_tick_gate``: every return path notes the tick working or idle on the current run."""
+
+    def decorate(fn: Callable[_P, _R]) -> Callable[_P, _R]:
+        @functools.wraps(fn)
+        def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+            outcome = fn(*args, **kwargs)
+            live = _CURRENT.get()
+            if live is not None:
+                live.note_tick(running=is_running(outcome))
+            return outcome
+
+        _LIVENESS_WRAPPED.add(wrapper)
+        return wrapper
+
+    return decorate
+
+
+def notes_loop_action(fn: Callable[_P, _R]) -> Callable[_P, _R]:
+    """Decorates ``tool_dispatch.execute_and_learn``: "acting" while the tool runs (a long tool is not a stall), then
+    progress, however the call exits."""
+
+    @functools.wraps(fn)
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+        live = _CURRENT.get()
+        if live is None:
+            return fn(*args, **kwargs)
+        live.state = "acting"
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            live.state, live.last_progress_at = "working", time.monotonic()
+
+    _LIVENESS_WRAPPED.add(wrapper)
+    return wrapper

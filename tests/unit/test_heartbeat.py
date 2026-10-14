@@ -111,7 +111,7 @@ class TestHeartbeatMonitor:
     """HeartbeatMonitor lifecycle and sampling."""
 
     def test_start_stop(self) -> None:
-        monitor = HeartbeatMonitor(interval_s=0.1, stall_threshold_s=1.0)
+        monitor = HeartbeatMonitor(interval_s=0.1)
         monitor.start()
         assert monitor._thread is not None
         assert monitor._thread.is_alive()
@@ -147,9 +147,9 @@ class TestHeartbeatMonitor:
         assert data["loop"] is None
 
     def test_stall_detection(self) -> None:
-        """Stall detection warns when loop idle exceeds threshold."""
-        monitor = HeartbeatMonitor(interval_s=0.1, stall_threshold_s=0.5)
-        monitor.set_loop_state_hook(lambda: {"idle_s": 2.0, "state": "stalled"})
+        """Stall detection warns when a WORKING loop's idle exceeds the canonical threshold (floor 30 s)."""
+        monitor = HeartbeatMonitor(interval_s=0.1)
+        monitor.set_loop_state_hook(lambda: {"idle_s": 60.0, "state": "working", "loops": 1})
 
         # Record some calls so stall detection activates
         from maxim.models.language.lane_metrics import LaneMetrics
@@ -164,6 +164,23 @@ class TestHeartbeatMonitor:
         # Check stall — should set _last_stall_warn
         monitor._check_stall(data)
         assert monitor._last_stall_warn > 0
+
+    @pytest.mark.parametrize(
+        ("loop", "floor"),
+        [
+            ({"idle_s": 60.0, "state": "idle", "loops": 1}, None),  # an idle loop is never stalled
+            ({"idle_s": 60.0, "state": "acting", "loops": 1}, None),  # a long tool is not a stall
+            ({"idle_s": 20.0, "state": "working", "loops": 1}, None),  # under the 30 s floor
+            ({"idle_s": 60.0, "state": "working", "loops": 1}, "120"),  # MAXIM_HEARTBEAT_STALL_S still sets the floor
+            (None, None),  # no registered loop: no stall detection
+        ],
+    )
+    def test_no_stall(self, monkeypatch: pytest.MonkeyPatch, loop: dict | None, floor: str | None) -> None:
+        if floor is not None:
+            monkeypatch.setenv("MAXIM_HEARTBEAT_STALL_S", floor)
+        monitor = HeartbeatMonitor(interval_s=60)
+        monitor._check_stall({"lanes": {}, "loop": loop})
+        assert monitor._last_stall_warn == 0.0
 
     def test_heartbeat_emits_without_crash(self) -> None:
         """A full heartbeat cycle (collect + emit) should never crash."""

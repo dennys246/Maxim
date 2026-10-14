@@ -34,12 +34,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `degraded` (live whenever it serves, so a device that does not sample still shows it). Contract 0.5.0 → 0.6.0,
   additive.
 - **What is DORMANT, said plainly.** Three producers this contract reads are not in this release, each pinned by a
-  strict red gate in `tests/unit/test_console_run_history.py`: (1) **stalls** — nothing calls
-  `HeartbeatMonitor.set_loop_state_hook`, so `heartbeat_stall` cannot fire; `/api/health` reports
-  `stall_detection: false` so an empty `stalls` reads as unknown, not healthy; (2) **per-action credit** —
+  strict red gate in `tests/unit/test_console_run_history.py`: (1) **stalls** — CLOSED by the stall-detection
+  bullet below; with no agent loop running, `/api/health` still reports `stall_detection: false` so an empty `stalls`
+  reads as unknown, not healthy; (2) **per-action credit** —
   `actions.jsonl` is 1.1 and records no `rpe`/`pain`/`nac_failure_booked`, so every current run reads
   `credit_recorded: false` (the reader keys it off a 1.2 header, never off key presence); (3) **the per-run event
   trail** — nothing writes `events.jsonl`, so the `/events` route is NOT in 0.6.0 and ships with its writer.
+- **Stall detection is live, on the canonical stall surface, closing dormant producer (1) above.**
+  `run_agentic_loop` carries `loop_state.loop_liveness_scope`, which gives each run one liveness entry and registers the
+  process heartbeat monitor's loop-state hook while any run is alive. It clears the entry in a `finally`, so a run that
+  raises leaves no stale loop. `pre_tick_gate` notes each tick working or idle, and `execute_and_learn` marks the run
+  acting while a tool runs, then notes progress. The heartbeat flags a stall only for a WORKING loop that stays idle past
+  `compute_stall_threshold`. The floor is `MAXIM_HEARTBEAT_STALL_S`, and there is no lane-timeout ceiling. A stall also
+  requires `stall_suppression` to find nothing alive in flight. The heartbeat's own hardcoded 30 s rule and its "large
+  lane had calls" precondition are gone, as is the CI grep's `heartbeat.py` allowlist. This is
+  `stall_detector_timeout_awareness.md` Stage 2, with no opt-in knob: the old rule never fired, because nothing
+  registered the hook. Owner decision 2026-10-14. `HeartbeatMonitor(stall_threshold_s=...)` is removed; the threshold
+  comes from the canonical derivation. Gates: `/api/health` end to end (one stall for a working loop idle past the
+  threshold, none with a live call in flight or an idle loop) and `tests/unit/test_loop_liveness.py`.
 - **Run ids go through a new resolver, `console/run_store.py`, never `utils/paths.resolve_run_dir`.** The old one
   returns any directory for a path-like argument, searches the CWD first and follows symlinks out of `sim_reports`
   (its docstring now says so). Ids are `[A-Za-z0-9_-]{1,64}`; every open is anchored to a directory fd (root, then

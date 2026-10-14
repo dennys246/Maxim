@@ -12,8 +12,6 @@ import threading
 
 import pytest
 
-pytestmark = pytest.mark.xfail(strict=True, reason="loop liveness not built yet (#1268 dormant producer 1)")
-
 
 @pytest.fixture()
 def monitor(monkeypatch):
@@ -84,3 +82,34 @@ def test_the_gate_and_dispatch_note_liveness(monitor):
 
     assert loop_gates.pre_tick_gate in loop_state._LIVENESS_WRAPPED
     assert tool_dispatch.execute_and_learn in loop_state._LIVENESS_WRAPPED
+
+
+def test_a_running_tool_marks_the_run_acting_then_progressed(monitor):
+    """A long tool is not a stall: the run is "acting" while execute_and_learn runs, then working with fresh
+    progress, however the call exits."""
+    from maxim.runtime import loop_state
+
+    seen: list[str] = []
+
+    @loop_state.notes_loop_action
+    def tool(fail: bool) -> None:
+        seen.append(loop_state.current_liveness().state)
+        if fail:
+            raise RuntimeError("tool broke")
+
+    @loop_state.loop_liveness_scope
+    def run():
+        live = loop_state.current_liveness()
+        live.note_tick(running=True)
+        for fail in (False, True):
+            live.last_progress_at -= 500.0
+            stale = live.last_progress_at
+            if fail:
+                with pytest.raises(RuntimeError):
+                    tool(fail)
+            else:
+                tool(fail)
+            assert live.state == "working" and live.last_progress_at > stale
+
+    run()
+    assert seen == ["acting", "acting"]
