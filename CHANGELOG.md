@@ -36,9 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **What is DORMANT, said plainly.** Three producers this contract reads are not in this release, each pinned by a
   strict red gate in `tests/unit/test_console_run_history.py`: (1) **stalls** — nothing calls
   `HeartbeatMonitor.set_loop_state_hook`, so `heartbeat_stall` cannot fire; `/api/health` reports
-  `stall_detection: false` so an empty `stalls` reads as unknown, not healthy; (2) **per-action credit** —
-  `actions.jsonl` is 1.1 and records no `rpe`/`pain`/`nac_failure_booked`, so every current run reads
-  `credit_recorded: false` (the reader keys it off a 1.2 header, never off key presence); (3) **the per-run event
+  `stall_detection: false` so an empty `stalls` reads as unknown, not healthy; (2) **per-action credit** — CLOSED by
+  the `actions.jsonl` 1.2 bullet below; runs written before it read `credit_recorded: false` (the reader keys it off a
+  1.2 header, never off key presence); (3) **the per-run event
   trail** — nothing writes `events.jsonl`, so the `/events` route is NOT in 0.6.0 and ships with its writer.
 - **Per-action credit is now recorded (`actions.jsonl` 1.2), closing dormant producer (2) above.** `ActionRecord`
   gains three optional trailing fields, `rpe`, `pain` and `nac_failure_booked`. `InstrumentedExecutor` copies them

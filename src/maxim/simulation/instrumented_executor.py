@@ -130,9 +130,9 @@ class InstrumentedExecutor:
                 result_error=result.error,
                 blocked=is_blocked,
                 block_reason=result.error if is_blocked else None,
-                rpe=getattr(result, "rpe", None),
-                pain=getattr(result, "pain", None),
-                nac_failure_booked=getattr(result, "nac_failure_booked", None),
+                rpe=result.rpe,
+                pain=result.pain,
+                nac_failure_booked=result.nac_failure_booked,
                 **self._telemetry_fields(tool_name, params),
             )
         )

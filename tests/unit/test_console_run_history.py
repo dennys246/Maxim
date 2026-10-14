@@ -1407,6 +1407,7 @@ def test_a_bridge_booked_failure_reaches_the_console_with_its_credit(runs):
     assert action["credit_recorded"] is True
     assert action["nac_failure_booked"] == "tool:flaky_credit"
     assert action["rpe"] == out.rpe and action["rpe"] is not None
+    assert action["pain"] == out.pain  # None here (no pain source watched): pinned so a dropped copy shows
 
 
 @pytest.mark.xfail(strict=True, reason="no writer produces a per-run events.jsonl trail yet")
