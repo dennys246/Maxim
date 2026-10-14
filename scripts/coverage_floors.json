@@ -3,8 +3,8 @@
   "band": 1.0,
   "min_package_statements": 200,
   "overall": {
-    "percent": 66.9,
-    "missing": 30723
+    "percent": 68.6,
+    "missing": 29278
   },
   "packages": {
     "maxim/<root>": {
@@ -20,8 +20,8 @@
       "missing": 81
     },
     "maxim/attention": {
-      "percent": 32.5,
-      "missing": 590
+      "percent": 37.1,
+      "missing": 554
     },
     "maxim/bridges": {
       "percent": 54.4,
@@ -44,8 +44,8 @@
       "missing": 143
     },
     "maxim/default_network": {
-      "percent": 40.6,
-      "missing": 1317
+      "percent": 47.3,
+      "missing": 1172
     },
     "maxim/doctor": {
       "percent": 69.9,
@@ -60,8 +60,8 @@
       "missing": 600
     },
     "maxim/energy": {
-      "percent": 64.8,
-      "missing": 104
+      "percent": 65.8,
+      "missing": 101
     },
     "maxim/hardware": {
       "percent": 78.0,
@@ -88,8 +88,8 @@
       "missing": 430
     },
     "maxim/interactive": {
-      "percent": 33.7,
-      "missing": 480
+      "percent": 34.9,
+      "missing": 476
     },
     "maxim/math": {
       "percent": 45.1,
@@ -132,8 +132,8 @@
       "missing": 54
     },
     "maxim/runtime": {
-      "percent": 73.5,
-      "missing": 3400
+      "percent": 75.2,
+      "missing": 3204
     },
     "maxim/salience": {
       "percent": 68.6,
@@ -144,12 +144,12 @@
       "missing": 444
     },
     "maxim/simulation": {
-      "percent": 63.4,
-      "missing": 3693
+      "percent": 71.6,
+      "missing": 2885
     },
     "maxim/spatial": {
-      "percent": 29.9,
-      "missing": 372
+      "percent": 40.1,
+      "missing": 322
     },
     "maxim/time": {
       "percent": 84.2,
@@ -170,8 +170,8 @@
   },
   "files": {
     "src/maxim/simulation/orchestrator.py": {
-      "percent": null,
-      "missing": null
+      "percent": 54.0,
+      "missing": 619
     }
   },
   "retired_files": []
