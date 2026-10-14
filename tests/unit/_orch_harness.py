@@ -139,6 +139,10 @@ _PRECAMPAIGN_TURNS: list[dict[str, Any]] = [
     {"text": "A bell rings twice.", "phase": "middle", "salience": 0.9},
     {"text": "The room goes dark.", "phase": "end", "novelty": 0.5},
 ]
+# Arms OUTSIDE the characterization golden (whose arm set is exactly ARMS): a test registers its own here, e.g. a
+# resume arm (#1226), and may pass ``extra_kwargs`` through to ``start_simulation_mode``.
+EXTRA_ARMS: dict[str, dict[str, Any]] = {}
+
 ARMS: dict[str, dict[str, Any]] = {
     "precampaign": {"max_turns": 10, "pre_campaign_turns": _PRECAMPAIGN_TURNS},
     "narrator": {"max_turns": 10, "aut_model": "orch-golden-aut"},
@@ -514,7 +518,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     from maxim.simulation import sim_logger as SL
     from maxim.utils.paths import _reset_caches
 
-    spec = ARMS[arm]
+    spec = ARMS[arm] if arm in ARMS else EXTRA_ARMS[arm]
     work = workdir.resolve()
     router = FakeRouter(arm)
     turns: list[dict[str, Any]] = []
@@ -665,6 +669,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
             sandbox_backend="tmpdir",
             pre_campaign_turns=copy.deepcopy(spec.get("pre_campaign_turns")),
             aut_model=spec.get("aut_model"),
+            **spec.get("extra_kwargs", {}),
         )
         elapsed = time.monotonic() - t0
         stragglers = _join_sim_threads()

@@ -450,6 +450,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "Restores AUT memory state and provides previous findings as context.",
     )
     sim.add_argument(
+        "--fresh-narrator",
+        action="store_true",
+        help="With --resume-sim: restore the AUT's memory but start the narrator fresh, without the previous "
+        "session's summary, so only the agent remembers (cross-session experiment arms, #1226).",
+    )
+    sim.add_argument(
         "--sim-report",
         type=str,
         default=None,

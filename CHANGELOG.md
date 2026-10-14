@@ -93,6 +93,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A resumed simulation can keep the agent's memory while the narrator starts fresh: `--fresh-narrator` (#1226).**
+  On `--resume-sim`, the sim narrator used to be handed the previous session's summary, findings and
+  recommendations. That is a cross-session memory channel beside the agent's own memory, and no Exp 37 arm ablated
+  it.
+  - `start_simulation_mode(narrator_resume=False)` (CLI `--fresh-narrator`) still restores the AUT's stores, and
+    the store restore is untouched. The narrator gets the fresh kickoff.
+  - The report's `provenance.resume.narrator_resumed` records which the run had. It is `None` on records from
+    before this change.
+  - The default is True, so every existing caller is unchanged.
+  - The narrow T1-2 re-fire uses it (owner decision 2026-10-14), so that a cross-session arm differs from its
+    control only in the agent's memory.
+  - Session A approved the fence touches (`orchestrator.py`, `cli.py`).
+  - The narrator's opening is now one helper, `_narrator_opening`, so `start_simulation_mode` shrank (pin 3003 →
+    3001). `_main_impl` (+2) and `_build_parser` (+6) carry reviewed exception entries.
+
+  Gates: `tests/unit/test_narrator_resume_1226.py`. Its composition test drives the real `start_simulation_mode`
+  offline through a resume, using `tests/unit/_orch_harness.py`'s new `EXTRA_ARMS`; the characterization golden's
+  arm set is unchanged.
+
 - **Piper voice provisioning, and a way for a device to arm spoken-code pairing only once it can speak (#1268
   follow-up F1). These are CAPABILITIES with no pymaxim caller yet.** The device bootstrap that wires them is owed in
   maxim-pulse's Reachy app, or in the pending device-console facade.

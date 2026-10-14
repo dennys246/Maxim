@@ -90,6 +90,7 @@ Running `maxim` with no arguments launches a Rich interactive menu with campaign
 | `--aut-mode` | str | `llm-primary` | **[experimental]** AUT action-selection mode. `llm-primary` (default) proposes actions via the LLM. `substrate-primary` skips the LLM and proposes via `NAc.recommend_action()` — the path Exp 42 / 52 / 53b were measured on (see `docs/substrate_primary.md`). See [docs/plans/grounded_language_acquisition.md](../plans/grounded_language_acquisition.md) and [substrate_primary.md](../substrate_primary.md). |
 | `--campaign` | str | None | Campaign YAML(s) for research mode. Glob patterns accepted. |
 | `--resume-sim` | str | None | Resume a previous simulation session by ID or date prefix |
+| `--fresh-narrator` | flag | off | With `--resume-sim`: restore the AUT's memory but start the narrator without the previous session's summary, so only the agent remembers (cross-session experiment arms, #1226) |
 | `--sandbox` | str | `auto` | Sandbox type: `auto` (Docker if available, else tmpdir), `docker`, `tmpdir` |
 | `--sandbox-image` | str | `python:3.12-slim` | Docker image for sandbox container |
 | `--sandbox-network` | str | `none` | Container network: `none` (isolated), `bridge` (outbound), `host` (shared) |

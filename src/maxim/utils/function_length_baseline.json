@@ -16,12 +16,12 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1678
+      "lines": 1680
     },
     {
       "file": "src/maxim/cli_parser.py",
       "qualname": "_build_parser",
-      "lines": 652
+      "lines": 658
     },
     {
       "file": "src/maxim/console/server.py",
@@ -226,7 +226,7 @@
     {
       "file": "src/maxim/simulation/orchestrator.py",
       "qualname": "start_simulation_mode",
-      "lines": 3003
+      "lines": 3001
     },
     {
       "file": "src/maxim/simulation/orchestrator.py",
@@ -309,6 +309,24 @@
       "date": "2026-10-11",
       "ref": "#1224",
       "reason": "Baseline floors B1, PR-A (docs/plans/baseline_floors_b1_build.md): the substrate_policy keyword (a SubstratePolicy that picks in place of recommend_action) is one signature line and one forwarding line to loop_substrate.substrate_tick; the selection itself lives in substrate_proposal._select_action, so nothing else in the loop grows."
+    },
+    {
+      "file": "src/maxim/cli.py",
+      "qualname": "_main_impl",
+      "from": 1678,
+      "to": 1680,
+      "date": "2026-10-14",
+      "ref": "#1226",
+      "reason": "--fresh-narrator (#1226, owner decision 2026-10-14: the T1-2 re-fire needs a non-resumed narrator): one narrator_resume= forwarding line at each of the two start_simulation_mode call sites, beside their resume_session=. Session A approved the fence touch."
+    },
+    {
+      "file": "src/maxim/cli_parser.py",
+      "qualname": "_build_parser",
+      "from": 652,
+      "to": 658,
+      "date": "2026-10-14",
+      "ref": "#1226",
+      "reason": "The --fresh-narrator flag (#1226): one sim.add_argument block (store_true plus its help text); a new flag can only grow the parser."
     }
   ],
   "history": [
@@ -350,6 +368,7 @@
     "record_outcome tightened 415 -> 413 on 2026-10-10 (#1200 Stage 2) when its tool_result observe moved into _observe_tool_result with the failure cut; execute_and_learn raised 388 -> 390 by the #1200 exception record.",
     "run_agentic_loop raised 2429 -> 2432 on 2026-10-11 (#1200 Stage 2, TF8) by the #1200 exception record: bridge_booked= at the hard rejection and the agent fallback's except, and the fallback's per-action result = None.",
     "record_outcome tightened 413 -> 399 on 2026-10-12 (#1221 item 3) when its sim trace moved into _observe_tool_result, so a failure the bridge booked (the skipped observe) is no longer traced with a placeholder confidence and RPE.",
-    "build_app tightened 338 -> 333 on 2026-10-14 (#1268 follow-up F1) when its spoken-code pairing validation and state moved to console/server.py::_install_pairing, paying for the new pairing_ready argument and its docstring."
+    "build_app tightened 338 -> 333 on 2026-10-14 (#1268 follow-up F1) when its spoken-code pairing validation and state moved to console/server.py::_install_pairing, paying for the new pairing_ready argument and its docstring.",
+    "start_simulation_mode tightened 3003 -> 3001 on 2026-10-14 (#1226) when the narrator injection became one _narrator_opening call (the resume and fresh branches fold into the helper), paying for the narrator_resume keyword."
   ]
 }

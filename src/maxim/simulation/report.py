@@ -252,7 +252,8 @@ def resume_stamp(resume: dict[str, Any]) -> dict[str, Any]:
     context loaded from the SAME directory the stores were read from, that directory exists, and every store
     either loaded or was never written by the prior session (``absent``). A store written but not loaded
     (``failed:<Exc>``, ``skipped_persistent_agent``) or not attempted (``not_restored``) makes it false.
-    ``resumed_from_session`` names the resolved directory, and only when the resume loaded."""
+    ``resumed_from_session`` names the resolved directory, and only when the resume loaded. ``narrator_resumed``
+    says whether the narrator was handed the previous session (#1226)."""
     stores = dict(resume.get("stores") or {})
     state_dir, context_dir = resume.get("state_dir"), resume.get("context_dir")
     loaded = bool(
@@ -269,6 +270,9 @@ def resume_stamp(resume: dict[str, Any]) -> dict[str, Any]:
         "context_loaded": bool(resume.get("context_loaded")),
         "stores": {name: stores.get(name, "not_restored") for name in RESUME_STORES},
         "resume_loaded": loaded,
+        # #1226: False = the AUT's memory restored but the narrator opened fresh; None = a record from before the
+        # switch existed (every resume then seeded the narrator).
+        "narrator_resumed": resume.get("narrator_resumed"),
     }
     if loaded:
         out["resumed_from_session"] = Path(state_dir).name

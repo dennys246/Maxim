@@ -213,7 +213,7 @@ These tools are also available without `--interactive` but behave differently â€
 maxim --sim "continue testing" --resume-sim 20260403_142315
 ```
 
-This restores the AUT's memory and causal links from the previous run, and tells the orchestrator what was already found. Use a date prefix for fuzzy matching (`--resume-sim 20260403`).
+This restores the AUT's memory and causal links from the previous run, and tells the orchestrator what was already found. Use a date prefix for fuzzy matching (`--resume-sim 20260403`). Add `--fresh-narrator` to restore the agent's memory while the orchestrator starts fresh, with no summary of the previous run: then only the agent remembers, which is what a cross-session experiment arm needs (#1226).
 
 ### Session Reports
 

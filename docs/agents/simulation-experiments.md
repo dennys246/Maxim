@@ -66,7 +66,7 @@ Core retains the three session-killing bullets (`--interactive false` from scrip
 - **Prefer `--sandbox tmpdir` for debugging** unless specifically testing Docker — no pull/startup cost.
 - **Use `--debug` sparingly** — great for diagnosing stalls, floods the terminal otherwise.
 - **Don't invoke sims from test suites** unless the test is specifically for sim machinery — real LLM calls can 2–3× suite runtime. Tests mock LLM calls. Kill stale sims before test runs: `pkill -f "maxim.*sim"`.
-- **Re-use sessions with `--resume-sim SESSION_ID`** to skip setup/warm-up when iterating. (NAc restore on resume uses `apply_decay=False` — sims are tick-anchored.)
+- **Re-use sessions with `--resume-sim SESSION_ID`** to skip setup/warm-up when iterating. (NAc restore on resume uses `apply_decay=False` — sims are tick-anchored.) **A resume also hands the NARRATOR the previous session's summary** — a cross-session memory channel beside the agent's. A cross-session experiment arm that must vary only the agent's memory passes `--fresh-narrator` (`start_simulation_mode(narrator_resume=False)`, #1226); the run's `provenance.resume.narrator_resumed` records which it had.
 - **Local models > Claude for loop-testing.** `--language-model mistral-7b` for sanity checks; save Claude for verifying final behavior.
 - **Watch `Cost:` in the final report.** $0.05–$0.15 per short run is normal; $0.50+ means the sim is too broad or too long.
 - **Interactive changes get a logged session:** `MAXIM_LOG_FILE=/tmp/maxim.jsonl maxim --sim "test basic recall" --interactive --sim-max-turns 3`, then read the JSONL for percepts, tool calls, and `ACTION_FOLLOWUP` entries. `MAXIM_BACKEND_TRACE=1` for per-call token/latency.

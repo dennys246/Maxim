@@ -402,6 +402,26 @@ def _finish_runner(
     stop_event.set()
 
 
+def _narrator_opening(
+    resume_data: dict[str, Any] | None,
+    goal: str,
+    mode: str,
+    *,
+    resumed: bool,
+    observe_only: bool,
+    tools_block: str,
+) -> str:
+    """The narrator's first message: the previous session's summary when ``resumed``, else the fresh kickoff.
+
+    ``start_simulation_mode(narrator_resume=False)`` (``--fresh-narrator``) restores the AUT's memory but opens the
+    narrator fresh, so a cross-session arm differs from its control only in the agent's memory (#1226: the resumed
+    narrator was a memory channel no Exp 37 arm ablated). A resume whose session was not found opens fresh too.
+    """
+    if resumed and resume_data:
+        return _build_resume_prompt(resume_data, goal, mode, observe_only=observe_only, tools_block=tools_block)
+    return _build_kickoff_prompt(goal, tools_block=tools_block, observe_only=observe_only)
+
+
 def _restore_aut_from_session(
     resume_session: str | None,
     *,
@@ -537,6 +557,7 @@ def start_simulation_mode(
     # Deprecated alias kept for backward compat with older callers.
     sim_debug: bool | None = None,
     resume_session: str | None = None,
+    narrator_resume: bool = True,
     continuous: bool = False,
     no_sim_env: bool = False,
     sandbox_backend: str = "auto",
@@ -2262,20 +2283,17 @@ def start_simulation_mode(
         resume_record.update(context_dir=str(resume_dir) if resume_dir else None, context_loaded=bool(resume_data))
         if not resume_data:
             logger.warning("Resume session '%s' not found, starting fresh", resume_session)
-    if resume_data:
-        resume_prompt = _build_resume_prompt(
-            resume_data, goal, mode, observe_only=_is_observe_only, tools_block=_tools_block
-        )
-        orchestrator_source.inject_cli(resume_prompt, salience=1.0, novelty=1.0)
+    narrator_resumed = bool(resume_data) and narrator_resume  # False: the AUT's memory restored, the narrator fresh
+    if resume_record is not None:  # a resume: say which narrator it had (#1226)
+        resume_record["narrator_resumed"] = narrator_resumed
+    opening = _narrator_opening(
+        resume_data, goal, mode, resumed=narrator_resumed, observe_only=_is_observe_only, tools_block=_tools_block
+    )
+    orchestrator_source.inject_cli(opening, salience=1.0, novelty=1.0)
+    if narrator_resumed and resume_data:
         display_status(f"Resuming session: {resume_session}")
         display_status(
             f"Previous turns: {resume_data.get('turns', '?')}, actions: {resume_data.get('total_actions', '?')}"
-        )
-    else:  # a fresh start, or a resume whose session was not found
-        orchestrator_source.inject_cli(
-            _build_kickoff_prompt(goal, tools_block=_tools_block, observe_only=_is_observe_only),
-            salience=1.0,
-            novelty=1.0,
         )
 
     # ── Start stdin reader thread ────────────────────────────────────────
