@@ -567,3 +567,69 @@ def test_peer_llm_status_sends_the_key(monkeypatch) -> None:
     monkeypatch.setattr(http, "fetch_url", _fetch)
     peer_cli._cmd_llm_status([])
     assert sent and sent[0].get("Authorization") == f"Bearer {GOOD_KEY}"
+
+
+def test_doctor_exposure_and_remote_admin_edges(monkeypatch) -> None:
+    from maxim.doctor import checks
+    from maxim.runtime import local_server_spawner as lss
+
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen()
+    port = listener.getsockname()[1]
+    monkeypatch.setattr(lss, "verify_llm_server_exposure", lambda *a, **k: None)
+    monkeypatch.setenv("MAXIM_AUTO_SPAWN_PORT", "not-a-port")
+    try:
+        assert checks.check_llm_server_exposure(port).status == "ok"
+        assert checks.check_llm_server_exposure().name == "LLM server exposure"  # bad env port falls back to 8100
+    finally:
+        listener.close()
+    monkeypatch.setenv("MAXIM_ROLE", "leader")
+    monkeypatch.setenv("MAXIM_PROXY_ALLOW_REMOTE_UPDATE", "maybe")
+    assert checks.check_remote_admin().status == "warn"  # malformed opt-in: refused, said so
+    monkeypatch.delenv("MAXIM_PROXY_ALLOW_REMOTE_UPDATE")
+    monkeypatch.setenv("MAXIM_ALLOW_REMOTE_UPDATE", "1")
+    row = checks.check_remote_admin()
+    assert row.status == "warn" and "IGNORED" in row.message and "disabled" in row.message
+
+
+def test_primary_ipv4_address_never_reports_loopback_or_raises(monkeypatch) -> None:
+    from maxim.utils import net
+
+    class _Sock:
+        def __init__(self, *a, addr="127.0.0.1", fail=False):
+            self._addr, self._fail = addr, fail
+
+        def connect(self, _):
+            if self._fail:
+                raise OSError("no route")
+
+        def getsockname(self):
+            return (self._addr, 0)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(net.socket, "socket", lambda *a: _Sock())
+    assert net.primary_ipv4_address() is None  # loopback is not a LAN address
+    monkeypatch.setattr(net.socket, "socket", lambda *a: _Sock(addr="192.168.1.20"))
+    assert net.primary_ipv4_address() == "192.168.1.20"
+    monkeypatch.setattr(net.socket, "socket", lambda *a: _Sock(fail=True))
+    assert net.primary_ipv4_address() is None
+
+    def _no_socket(*a):
+        raise OSError("no sockets")
+
+    monkeypatch.setattr(net.socket, "socket", _no_socket)
+    assert net.primary_ipv4_address() is None
+
+
+def test_an_unreadable_leader_key_is_refused_not_treated_as_absent(monkeypatch) -> None:
+    path = _write_key(GOOD_KEY)
+
+    def _boom(*a, **k):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(type(path), "read_text", _boom)
+    with pytest.raises(LeaderKeyError, match="cannot read key file"):
+        require_leader_key()
