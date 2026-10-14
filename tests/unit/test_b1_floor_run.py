@@ -374,6 +374,7 @@ def _stub_run(monkeypatch, tmp_path, *, tree_refusal=None, real_append_refusal=F
     monkeypatch.setattr(B, "ANCHOR_FILE", anchor)
     monkeypatch.setattr(B, "anchor_record_mismatch", lambda m, a: None)
     monkeypatch.setattr(B, "apparatus_geometry", lambda g: {})
+    monkeypatch.setattr(B, "wait_for_quiet_rig", lambda rcon, url, **kw: {"proxy": "not_checked"})
 
     class _Rcon:
         def __init__(self, *a):
@@ -887,3 +888,147 @@ def test_the_real_command_line_parser_builds(sub, flag, capsys):
         B.main([sub, "--help"])
     assert exc.value.code == 0
     assert flag in capsys.readouterr().out
+
+
+def test_rig_problems_say_whether_waiting_can_clear_them():
+    now = 10_000.0
+    idle = {"infer_lane": {"in_flight": 0}}
+    assert [p.transient for p in B.rig_problems({"infer_lane": {"in_flight": 1}}, {"recent": []}, 20.0, now=now)] == [
+        True
+    ]
+    assert [p.transient for p in B.rig_problems(idle, {"recent": [{"timestamp": now - 30}]}, 20.0, now=now)] == [True]
+    assert [p.transient for p in B.rig_problems(idle, {"recent": []}, 19.0, now=now)] == [True]
+    assert [p.transient for p in B.rig_problems({"infer_lane": None}, {"recent": []}, 20.0, now=now)] == [False]
+    assert [p.transient for p in B.rig_problems(idle, {"recent": None}, 20.0, now=now)] == [False]
+    assert [p.transient for p in B.rig_problems(None, None, None, now=now)] == [False]
+
+
+class _Clock:
+    """A fake monotonic clock that ``sleep`` advances, so a polling regression fails in milliseconds."""
+
+    def __init__(self):
+        self.t = 1000.0
+
+    def monotonic(self):
+        return self.t
+
+    def sleep(self, s):
+        self.t += s
+
+
+def test_a_refusal_that_cannot_clear_stands_at_once_and_a_transient_one_is_waited_out(monkeypatch):
+    calls = []
+
+    def stuck(rcon, url):
+        calls.append(1)
+        raise B.RigNotQuiet("no lane metrics", transient=False)
+
+    clock = _Clock()
+    monkeypatch.setattr(B.time, "monotonic", clock.monotonic)
+    monkeypatch.setattr(B.time, "sleep", clock.sleep)
+    monkeypatch.setattr(B, "rig_check", stuck)
+    with pytest.raises(B.RigNotQuiet):
+        B.wait_for_quiet_rig(None, "http://x", max_wait_s=600, poll_s=15)
+    assert calls == [1]  # no polling
+
+    seq = [B.RigNotQuiet("busy", transient=True), {"proxy": "present"}]
+
+    def busy_then_idle(rcon, url):
+        item = seq.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    monkeypatch.setattr(B, "rig_check", busy_then_idle)
+    rec = B.wait_for_quiet_rig(None, "http://x", max_wait_s=600, poll_s=15)
+    assert rec["proxy"] == "present" and rec["waited_s"] == 15.0
+
+
+@pytest.mark.parametrize(
+    ("exc_name", "transient"),
+    [("HTTPTimeout", True), ("HTTPServerError", True), ("HTTPRateLimited", True), ("HTTPAuthError", False)],
+)
+def test_a_busy_proxy_is_transient_and_a_refusing_one_is_not(monkeypatch, exc_name, transient):
+    from maxim.utils import http
+
+    exc_cls = getattr(http, exc_name)
+
+    def boom(*a, **k):
+        raise exc_cls.__new__(exc_cls)
+
+    monkeypatch.setattr(http, "fetch_url", boom)
+
+    class _R:
+        def command(self, cmd):
+            return "Target tick rate: 20.0 per second.\nAverage time per tick: 3.0ms"
+
+    with pytest.raises(B.RigNotQuiet) as info:
+        B.rig_check(_R(), "http://127.0.0.1:8099")
+    assert info.value.transient is transient
+
+
+def test_a_rig_that_cannot_clear_refuses_the_campaign_before_any_attempt(monkeypatch, tmp_path):
+    gate, calls = _stub_run(monkeypatch, tmp_path)
+    out = tmp_path / "b1.jsonl"
+    _patch_session_out(monkeypatch, out)
+
+    def stuck(rcon, url, **kw):
+        raise B.RigNotQuiet("no lane metrics", transient=False)
+
+    monkeypatch.setattr(B, "wait_for_quiet_rig", stuck)
+    assert B._run(_run_args(gate, out)) == 3
+    assert calls == [] and (not out.exists() or out.read_text() == "")
+
+
+def test_a_non_transient_rig_refusal_mid_campaign_stops_without_spending_the_rerun(monkeypatch, tmp_path):
+    gate, calls = _stub_run(monkeypatch, tmp_path)
+    out = tmp_path / "b1.jsonl"
+    _patch_session_out(monkeypatch, out)
+
+    def rig_goes_bad(ses, arm, seed, attempt):
+        calls.append(((arm, seed, attempt), None))
+        return {**B.row_base(ses, arm, seed, attempt), "refusal": "rig", "refusal_cause": "instrument",
+                "refusal_step": "rig", "rig_refusal_transient": False}  # fmt: skip
+
+    monkeypatch.setattr(B, "run_arm_seed", rig_goes_bad)
+    assert B._run(_run_args(gate, out)) == 3
+    assert [k for k, _ in calls] == [("fear", 99, 1)]  # stopped: no rerun, no next arm
+
+    # the rig is fixed: --resume gets that key's rerun back (its refusal is an instrument cause on attempt 1)
+    def ok(ses, arm, seed, attempt):
+        calls.append(((arm, seed, attempt), None))
+        return B.row_base(ses, arm, seed, attempt)
+
+    monkeypatch.setattr(B, "run_arm_seed", ok)
+    assert B._run(_run_args(gate, out, resume=str(out))) == 0
+    assert [k for k, _ in calls][1:] == [("fear", 99, 2), ("random", 99, 1)]
+
+
+def test_the_apparatus_check_must_be_from_the_campaigns_utc_day():
+    import datetime as dt
+
+    noon = dt.datetime(2026, 10, 14, 12, tzinfo=dt.timezone.utc).timestamp()
+    assert B.apparatus_day_problem(noon - 3600, noon) is None
+    assert "not today" in B.apparatus_day_problem(noon - 86400, noon)
+    late = dt.datetime(2026, 10, 14, 23, 50, tzinfo=dt.timezone.utc).timestamp()
+    assert "not today" in B.apparatus_day_problem(late, late + 1200)  # across UTC midnight: a fresh check
+    assert "no epoch ts" in B.apparatus_day_problem(None, noon)
+    assert "no epoch ts" in B.apparatus_day_problem(True, noon)
+
+
+@pytest.mark.parametrize(
+    ("kw", "want"),
+    [({"diagnostic": False}, 3), ({"diagnostic": True}, 0)],
+)
+def test_a_gated_campaign_refuses_a_water_check_from_another_utc_day(monkeypatch, tmp_path, kw, want):
+    """The same-UTC-day rule at its real call site in _run (not only the pure helper)."""
+    gate, calls = _stub_run(monkeypatch, tmp_path)
+    out = tmp_path / "b1.jsonl"
+    _patch_session_out(monkeypatch, out)
+    monkeypatch.setattr(B, "is_gated_path", lambda root, p: True)
+    monkeypatch.setattr(B, "committed_record_problem", lambda *a: None)
+    stale = {"record": {"ts": 1.0}, "path": "a.json", "sha256": "abc", "abs_path": "a.json", "bytes": b""}
+    monkeypatch.setattr(B, "load_apparatus_record", lambda p: stale)  # ts 1.0 = 1970: never today
+    assert B._run(_run_args(gate, out, **kw)) == want
+    if want == 3:
+        assert calls == [] and (not out.exists() or out.read_text() == "")

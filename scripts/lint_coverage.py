@@ -895,6 +895,23 @@ def _sum_rule(
             )
 
 
+def pin_rises(base_fl: Floors, fl: Floors) -> list[str]:
+    """The measurement-free half of ``floor_diff_rules``' "a pinned missing never rises": every floor present at both
+    base and head under the same key (overall, a package, a file) whose head ``missing`` exceeds its base ``missing``.
+    It compares the two floor files only, so ``--local`` gates it exactly as CI does (#1270: #1268 raised
+    maxim/console 173 -> 207 and its local run printed that as a note). Renames and splits stay CI's: their pins carry
+    across keys and are verified against measurements."""
+    pairs = [("overall", base_fl.overall, fl.overall)]
+    pairs += [(k, base_fl.packages.get(k), h) for k, h in fl.packages.items()]
+    pairs += [(k, base_fl.files.get(k), h) for k, h in fl.files.items()]
+    return [
+        f"{name}: floor pins missing {h.missing} above the base's pinned {b.missing} — a pinned missing never rises;"
+        f" cover {h.missing - b.missing} statement(s) and keep the pin at {b.missing}"
+        for name, b, h in pairs
+        if b is not None and b.missing is not None and h.missing is not None and h.missing > b.missing
+    ]
+
+
 def floor_diff_rules(
     root: Path,
     base_fl: Floors,
@@ -1870,9 +1887,10 @@ def main(argv: list[str] | None = None) -> int:
     # --local: the pre-push run scripts/suite_at_commit.sh makes on the exact commit to be pushed. Floors are measured
     # in CI's environment, so locally only the floors of TOUCHED packages gate (local_touched_packages: changed src
     # files, deletions and moves included, plus the packages changed tests import -- #1240's and #1201's "raise it");
-    # the overall floor, untouched packages and a PR's own floor-pin edits are printed as notes. Touched floors gate
-    # DESPITE the environment difference (no --require-extras, no netns, macOS): a breach within noise of a floor needs
-    # CI's number. Diff coverage (#1232) and every other rule gate exactly as in CI. Never in CI: ci_step_rules pins
+    # the overall floor, untouched packages and a PR's own floor-pin edits are printed as notes -- except a pinned
+    # ``missing`` that rose above its base, which reads no measurement and gates as in CI (pin_rises, #1270; a stale
+    # origin/main can misplace the base: fetch first). Touched floors gate DESPITE the environment difference (no
+    # --require-extras, no netns, macOS): a breach within noise of a floor needs CI's number. Diff coverage (#1232) and every other rule gate exactly as in CI. Never in CI: ci_step_rules pins
     # the step to the bare command, and this refuses to run under GitHub Actions.
     local = argv[:1] == ["--local"]
     if local and os.environ.get("GITHUB_ACTIONS"):
@@ -1949,9 +1967,14 @@ def main(argv: list[str] | None = None) -> int:
                                 fd=fd,
                                 excluded=excluded,
                             )
-                            if local:  # a PR's floor edits are CI measurements: CI verifies them, not this box
+                            if local:  # a PR's floor edits are CI measurements: CI verifies them, not this box,
+                                # except the half that reads no measurement: a pinned missing that rose (#1270)
+                                rises = pin_rises(base_fl, fl)
+                                failures += rises
+                                gated = {r.split(":", 1)[0] for r in rises}  # gated above: not also a "not gated" note
                                 for note in pin:
-                                    print(f"coverage (local, floor pin rule, verified in CI, not gated): {note}")
+                                    if note.split(":", 1)[0] not in gated:
+                                        print(f"coverage (local, floor pin rule, verified in CI, not gated): {note}")
                             else:
                                 failures += pin
                     else:

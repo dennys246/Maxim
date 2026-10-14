@@ -1272,13 +1272,53 @@ def test_local_mode_gates_a_package_a_changed_test_imports(repo, capsys):
 def test_local_mode_only_notes_a_floor_pin_edit(repo, capsys):
     """A PR's floor edits are CI measurements; locally they are printed, not verified."""
     _cov(repo, missing={A: set(), B: {6, 7, 8, 9, 10}})
-    _write(repo, L.FLOORS_REL, _floors(overall=(75.0, 5), alpha=(100.0, 3)))  # pins missing 3 above the measured 0
+    # pins missing 2 above the measured 0 (CI refuses: <= measured); not above its base pin 2, so no measurement-free rule
+    _write(repo, L.FLOORS_REL, _floors(overall=(75.0, 5), alpha=(100.0, 2)))
     _commit(repo)
     rc, out, err = _run_local(capsys)
     rc_ci, _, _ = _run(capsys)
     assert rc_ci == 1
     assert rc == 0, err
     assert "floor pin rule, verified in CI, not gated" in out
+
+
+@pytest.mark.parametrize("scope", ["package", "file", "overall"])
+def test_local_mode_gates_a_missing_pin_that_rises(repo, capsys, scope):
+    """The #1268 shape: new code adds uncovered statements, and the PR raises the package's ``missing`` pin to match
+    (console 173 -> 207). "A pinned missing never rises" compares the two floor files, no measurement, so the local run
+    gates it exactly as CI does."""
+    _cov(repo, missing={A: {8, 9, 10}, B: {6, 7, 8, 9, 10}})  # alpha measured missing 3, one above its base pin 2
+    if scope == "package":
+        edit = _floors(alpha=(70.0, 3))
+    elif scope == "file":
+        _write(repo, L.FLOORS_REL, _floors(files={A: (70.0, 2)}))
+        _commit(repo)
+        _git(repo, "checkout", "-q", "main")
+        _git(repo, "merge", "-q", "--ff-only", "feature")
+        _git(repo, "checkout", "-q", "feature")
+        edit = _floors(files={A: (70.0, 3)})
+    else:
+        edit = _floors(overall=(65.0, 8))
+    _write(repo, L.FLOORS_REL, edit)
+    _commit(repo)
+    rc_ci, _, err_ci = _run(capsys)
+    rc, out, err = _run_local(capsys)
+    assert rc_ci == 1 and "a pinned missing never rises" in err_ci
+    assert rc == 1 and "a pinned missing never rises" in err, err
+    key = {"package": "maxim/alpha", "file": A, "overall": "overall"}[scope]
+    assert f"not gated): {key}:" not in out, out  # gated once: not also printed as a contradicting note
+
+
+def test_pin_rises_fires_only_on_a_same_key_pin_above_its_base():
+    """The guards that keep --local from failing what CI accepts (#1270 review): a NEW key, a rename carried to a new
+    key, and a null base pin are never a "rise" (CI judges them against measurements); a same-key rise always is."""
+    base = L.parse_floors(_floors(alpha=(None, None), files={A: (80.0, 2)}))
+    head = L.parse_floors(
+        _floors(alpha=(80.0, 9), beta="drop", files={A: (80.0, 2), B: (50.0, 9)}, **{"maxim/gamma": (50.0, 9)})
+    )
+    assert L.pin_rises(base, head) == []  # alpha's base pin null; gamma new (beta's rename target); file B new
+    rose = L.parse_floors(_floors(overall=(65.0, 8), beta=(50.0, 6), files={A: (80.0, 3)}))
+    assert [m.split(":", 1)[0] for m in L.pin_rises(base, rose)] == ["overall", "maxim/beta", A]
 
 
 def test_floor_head_rules_only_skips_an_untouched_package_without_a_floor(repo):
