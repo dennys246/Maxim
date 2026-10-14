@@ -1414,3 +1414,286 @@ def test_a_bridge_booked_failure_reaches_the_console_with_its_credit(runs):
 def test_gate_a_run_writes_its_event_trail():
     writers = [p for p in (_SRC / "simulation").rglob("*.py") if "events.jsonl" in p.read_text(errors="replace")]
     assert writers, "the run event trail has no writer: the /api/runs/{id}/events route waits on it"
+
+
+# ── refusal and fallback paths (each asserts the refusal, not just reaches it) ─
+
+
+class TestCursorRefusals:
+    def _forge(self, signer, body: bytes) -> str:
+        from maxim.console.run_store import _b64e
+
+        return f"{_b64e(body)}.{_b64e(signer._mac(body))}"
+
+    def test_undecodable_base64_is_refused(self):
+        # One base64 character is never a valid length: the decoder RAISES
+        # (non-alphabet characters, by contrast, are silently discarded).
+        from maxim.console.run_store import BadCursor, CursorSigner
+
+        with pytest.raises(BadCursor, match="malformed"):
+            CursorSigner().verify("A.A")
+
+    def test_a_correctly_signed_body_that_is_not_json_is_refused(self):
+        from maxim.console.run_store import BadCursor, CursorSigner
+
+        signer = CursorSigner()
+        with pytest.raises(BadCursor, match="malformed"):
+            signer.verify(self._forge(signer, b"not json at all"))
+
+    def test_a_correctly_signed_body_that_is_not_an_object_is_refused(self):
+        from maxim.console.run_store import BadCursor, CursorSigner
+
+        signer = CursorSigner()
+        with pytest.raises(BadCursor, match="malformed"):
+            signer.verify(self._forge(signer, b"[1, 2]"))
+
+    @posix_only
+    def test_a_signed_runs_cursor_with_wrong_key_types_is_refused(self, client):
+        forged = client.app.state.cursor_signer.issue({"listing": "runs", "k": "late", "n": 7})
+        assert _get(client, "/api/runs", cursor=forged).status_code == 400
+
+    @posix_only
+    def test_a_cursor_on_a_run_without_actions_is_refused(self, client):
+        forged = client.app.state.cursor_signer.issue(
+            {"run": ABORTED, "file": "actions.jsonl", "offset": 0, "state": {}}
+        )
+        assert _get(client, f"/api/runs/{ABORTED}/actions", cursor=forged).status_code == 400
+
+
+@posix_only
+class TestRunStoreFallbacks:
+    def test_an_unopenable_root_is_not_found(self, runs, monkeypatch, tmp_path):
+        from maxim.console import run_store
+
+        monkeypatch.setattr(run_store, "_root", lambda: tmp_path / "no-such-root")
+        with pytest.raises(run_store.RunNotFound):
+            run_store.open_console_run(NEWEST)
+
+    def test_a_member_outside_the_allow_list_is_refused(self, runs):
+        from maxim.console import run_store
+
+        fd = run_store.open_console_run(NEWEST)
+        try:
+            with pytest.raises(run_store.RunNotFound):
+                run_store._open_member(fd, "aut_hippocampus.json")
+        finally:
+            os.close(fd)
+
+    def test_an_oversized_report_is_not_served(self, runs, monkeypatch):
+        from maxim.console import run_store
+
+        monkeypatch.setattr(run_store, "MAX_REPORT_BYTES", 64)
+        with pytest.raises(run_store.RunNotFound):
+            run_store.read_report(NEWEST)
+
+    @pytest.mark.parametrize(
+        ("run_id", "report", "started"),
+        [
+            ("bisect-abc123", None, None),  # no timestamp in the id, no ts
+            ("20261399_999999", None, None),  # timestamp-shaped, not a date
+            (NEWEST, {"ts": 100.0}, 100.0),
+        ],
+    )
+    def test_start_time_derivation(self, run_id, report, started):
+        from maxim.console.run_store import _started_at
+
+        assert _started_at(run_id, report) == started
+
+    @pytest.mark.parametrize(
+        ("report", "ended"),
+        [
+            ({"ts": 100.0, "duration_s": 5.0}, 105.0),  # timezone-safe when both exist
+            ({"timestamp": 12345}, None),  # not a string
+            ({"timestamp": "yesterday-ish"}, None),  # not the written format
+        ],
+    )
+    def test_end_time_derivation(self, report, ended):
+        from maxim.console.run_store import _ended_at
+
+        assert _ended_at(report) == ended
+
+    @pytest.mark.parametrize(("raw", "parsed"), [(None, None), (12, None), ("1.x", None), ("1.2", (1, 2))])
+    def test_version_parsing(self, raw, parsed):
+        from maxim.console.run_store import _version_tuple
+
+        assert _version_tuple(raw) == parsed
+
+    def test_an_unparseable_header_version_never_reads_as_recorded_credit(self, runs, client):
+        _new_run(
+            runs,
+            "20260905_000003",
+            report=_report("v"),
+            actions=[{"_format_version": "1.x", "_record_kind": "header"}, {"tool": "t", "rpe": 0.5}],
+        )
+        page = _get(client, "/api/runs/20260905_000003/actions").json()
+        assert page["actions"][0]["credit_recorded"] is False
+
+    def test_an_entry_that_cannot_be_stat_ed_is_skipped_not_fatal(self, runs, monkeypatch):
+        from maxim.console import run_store
+
+        real_scandir = os.scandir
+
+        class _Broken:
+            name = "20260906_000000"
+
+            def is_dir(self, follow_symlinks=True):
+                raise OSError("vanished")
+
+        class _Wrap:
+            def __init__(self, path):
+                self._it = real_scandir(path)
+
+            def __enter__(self):
+                return iter([*self._it, _Broken()])
+
+            def __exit__(self, *exc):
+                self._it.close()
+
+        monkeypatch.setattr(run_store.os, "scandir", _Wrap)
+        ids = [
+            r["session_id"] for r in run_store.list_runs(cursor=None, limit=50, signer=run_store.CursorSigner())["runs"]
+        ]
+        assert "20260906_000000" not in ids and NEWEST in ids
+
+    def test_a_file_that_shrank_after_fstat_ends_the_page_cleanly(self, runs, monkeypatch):
+        # fstat reports more bytes than the file holds (truncated mid-read):
+        # readline returns b"" and the page ends, with the oversized tail drained.
+        from maxim.console import run_store
+
+        path = runs / NEWEST / "actions.jsonl"
+        with open(path, "ab") as f:
+            f.write(b'{"tool": "' + b"y" * (run_store.MAX_LINE_BYTES + 10))  # oversized, unterminated
+        real_fstat = os.fstat
+
+        def inflated(fd):
+            st = real_fstat(fd)
+            if stat_is_reg(st):
+                return os.stat_result((*st[:6], st.st_size + 4096, *st[7:]))
+            return st
+
+        import stat as _stat
+
+        def stat_is_reg(st):
+            return _stat.S_ISREG(st.st_mode)
+
+        monkeypatch.setattr(run_store.os, "fstat", inflated)
+        page = run_store.page_actions(NEWEST, cursor=None, limit=500, signer=run_store.CursorSigner())
+        assert [a["tool"] for a in page["actions"]] == ["sense_tools", "sense_tools", "respond"]
+        assert page["skipped"] == 1
+
+
+class TestHealthLogFallbacks:
+    def test_deeply_nested_values_are_capped_not_recursed_forever(self):
+        from maxim.console.health import _finite
+
+        nested: dict = {}
+        cur = nested
+        for _ in range(12):
+            cur["x"] = {}
+            cur = cur["x"]
+        out = _finite(nested)
+        depth = 0
+        while isinstance(out, dict):
+            out, depth = out.get("x"), depth + 1
+        assert out is None and depth <= 10
+
+    def test_start_is_idempotent(self, tmp_path):
+        log = _log(tmp_path)
+        writer = log._writer
+        log.start()
+        assert log._writer is writer
+        log.stop()
+
+    def test_a_long_series_is_downsampled_for_the_wire(self, tmp_path, monkeypatch):
+        from maxim.console import health
+
+        monkeypatch.setattr(health, "_MAX_SERIES_POINTS", 10)
+        log = _log(tmp_path, persist_interval_s=0.0)
+        for i in range(60):
+            log.on_heartbeat("heartbeat", {"cpu": {"usage_pct": float(i)}})
+        assert len(log.view(since=0.0)["series"]) <= 10
+        log.stop()
+
+    def test_aged_out_records_are_pruned_from_memory_as_new_ones_arrive(self, tmp_path):
+        log = _log(tmp_path, keep_s=3600)
+        old = time.time() - 7200
+        log._history.append({"kind": "health", "ts": old, "data": {}})
+        log._stalls.append({"kind": "health_stall", "ts": old, "data": {}})
+        log._sites["old.py:f"] = {"site": "old.py:f", "count": 1, "first_seen": old, "last_seen": old,
+                                  "exc_type": None, "sample": None, "unflushed": 0, "flushed_at": 0.0}  # fmt: skip
+        log._recorded_since = old
+        log.on_heartbeat("heartbeat_stall", {"idle_s": 31.0})  # an insert triggers the prune
+        assert [r["data"] for r in log._history] == []
+        assert [r["data"].get("idle_s") for r in log._stalls] == [31.0]
+        assert "old.py:f" not in log._sites
+        assert log._recorded_since >= time.time() - 3600 - 5
+        log.stop()
+
+    def test_a_raising_publisher_never_stops_health_capture(self, tmp_path):
+        def boom(kind, data):
+            raise RuntimeError("ws is down")
+
+        log = _log(tmp_path, publish=boom)
+        log.on_heartbeat("heartbeat_stall", {"idle_s": 33.0})  # must not raise
+        assert log.view(since=0.0)["stalls"][0]["data"]["idle_s"] == 33.0
+        log.stop()
+
+    def test_a_log_that_is_not_started_writes_nothing(self, tmp_path):
+        from maxim.console.health import HealthLog
+
+        log = HealthLog(tmp_path / "health.jsonl")  # never started: no writer
+        log.on_heartbeat("heartbeat_stall", {"idle_s": 40.0})
+        assert not (tmp_path / "health.jsonl").exists()
+        assert log.view(since=0.0)["stalls"][0]["data"]["idle_s"] == 40.0  # memory still serves
+
+    def test_a_pathless_log_serves_from_memory_only(self):
+        from maxim.console.health import HealthLog
+
+        log = HealthLog(None)
+        log.start()
+        assert log._writer is None
+        log.on_swallowed("s", "E", "m")
+        assert log.degraded(since=0.0)["sites"][0]["count"] == 1
+        log.stop()
+
+    def test_a_busy_lock_drops_the_batch_and_says_so(self, tmp_path, monkeypatch):
+        from filelock import FileLock
+
+        from maxim.console import health
+
+        monkeypatch.setattr(health, "_LOCK_TIMEOUT_S", 0.05)
+        log = _log(tmp_path, persist_interval_s=0.0)
+        with FileLock(str(tmp_path / "health.jsonl") + ".lock"):  # another process holds it
+            log.on_heartbeat("heartbeat_stall", {"idle_s": 40.0})
+            deadline = time.time() + 5
+            while log.dropped == 0 and time.time() < deadline:
+                time.sleep(0.02)
+        assert log.dropped >= 1
+        assert log.view(since=0.0)["dropped_records"] >= 1
+        log.stop()
+
+    def test_a_file_far_past_the_cap_is_not_parsed_at_start(self, tmp_path, monkeypatch):
+        from maxim.console import health
+
+        _write_jsonl(
+            tmp_path / "health.jsonl",
+            [{"_format_version": "1.0", "kind": "health_stall", "ts": time.time(), "data": {"idle_s": 1.0}}],
+        )
+        monkeypatch.setattr(health, "_MAX_LOAD_BYTES", 10)
+        log = _log(tmp_path)
+        assert log.view(since=0.0)["stalls"] == []
+        log.stop()
+
+    def test_lines_that_are_not_records_or_of_unknown_kind_are_skipped(self, tmp_path):
+        _write_jsonl(
+            tmp_path / "health.jsonl",
+            [
+                "[1, 2]",
+                {"_format_version": "1.0", "kind": "mystery", "ts": time.time(), "data": {"x": 1}},
+                {"_format_version": "1.0", "kind": "health_stall", "ts": time.time(), "data": {"idle_s": 36.0}},
+            ],
+        )
+        log = _log(tmp_path)
+        view = log.view(since=0.0)
+        assert [s["data"]["idle_s"] for s in view["stalls"]] == [36.0]
+        log.stop()
