@@ -61,7 +61,7 @@ TORN_TAIL_STALE_S = 60.0  # an unterminated last line older than this is a crash
 _MAX_CURSOR_CHARS = 1024
 _ID_TIMESTAMP_RE = re.compile(r"(?:^|_)(\d{8}_\d{6})$")
 # Per-action credit (rpe, pain, nac_failure_booked) is recorded from this
-# actions.jsonl header version on. No released writer produces it yet.
+# actions.jsonl header version on (simulation/report.py::save_action_log writes 1.2).
 CREDIT_FORMAT_VERSION = (1, 2)
 
 
