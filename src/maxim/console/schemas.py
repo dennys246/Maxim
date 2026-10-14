@@ -451,7 +451,7 @@ class ActionRecord(BaseModel):
         default=False,
         description=(
             "True when the run's actions file records per-action credit (format 1.2+). False = unknown, "
-            "not zero: runs written before the 1.2 writer read False."
+            "not zero: no released writer records it yet, so every current run reads False."
         ),
     )
 
