@@ -395,7 +395,7 @@ class TestInstallHttpFailures:
         assert rc == 1
         msg = capsys.readouterr().err
         assert "Install disabled" in msg
-        assert "MAXIM_ALLOW_REMOTE_UPDATE" in msg
+        assert "proxy.allow_remote_update" in msg
 
     def test_http_401_returns_1_with_auth_hint(self, stub_peer_config, no_probe_clear, capsys):
         from maxim.peer import cli as peer_cli

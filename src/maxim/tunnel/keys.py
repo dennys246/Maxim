@@ -1,8 +1,9 @@
 """Maxim API key generation and storage for securing peer access.
 
-When a leader exposes its spawned llama-cpp-server via a Cloudflare tunnel,
-anyone who knows the hostname could hit the endpoint. This module generates
-and persists a Bearer token that the server validates via its --api_key flag.
+A leader serves inference through its LeaderProxy (:8099), reachable on the
+LAN and through a Cloudflare tunnel. This module generates and persists the
+Bearer token the proxy requires; the leader's loopback llama-cpp-server gets
+the same key through its environment (``API_KEY``), never argv.
 
 Layout:
 - Key file:  ~/.config/maxim/api_key  (POSIX; Windows uses %APPDATA%\\maxim\\api_key)
@@ -17,6 +18,8 @@ import os
 import platform
 import secrets
 from pathlib import Path
+
+from maxim.exceptions import LeaderRefusal
 
 
 KEY_BYTES = 32  # 256-bit random key → 43 char base64url-ish string
@@ -116,6 +119,68 @@ def rotate_key() -> str:
     """Generate a new mesh key, overwrite the file, return the new value."""
     key = generate_key()
     write_key(key)
+    return key
+
+
+# ─── leader key (fail-closed read for the leader role) ─────────────────────
+
+# A generated key is 43 chars; a shorter one is a typo or a placeholder.
+MIN_LEADER_KEY_CHARS = 16
+
+_LEADER_KEY_FIX = "Run `maxim tunnel key rotate` on the leader, then `maxim peer key set <key>` on each peer."
+
+
+class LeaderKeyError(LeaderRefusal):
+    """The leader role has no usable mesh key, so the leader refuses to start.
+
+    A leader serves inference and admin endpoints on every interface; without a
+    key it would serve them to anyone who can reach it. ``read_key`` returns
+    None for every failure (its non-leader callers want that), so the leader
+    path reads through :func:`require_leader_key` instead, and every way the
+    key can be unusable is a distinct ``reason`` naming the resolved ``path``.
+    """
+
+    def __init__(self, *, path: Path, reason: str, fix_hint: str = _LEADER_KEY_FIX) -> None:
+        self.path = path
+        self.reason = reason
+        self.fix_hint = fix_hint
+        super().__init__(f"leader key unusable ({reason}): {path}")
+
+
+def require_leader_key() -> str:
+    """Return the mesh key for a leader, or raise :class:`LeaderKeyError`.
+
+    Refuses a missing, unreadable, empty, short, non-ASCII or whitespace-bearing
+    key, and on POSIX a key file group- or world-readable (the host may have
+    other users). The path is resolved from ``XDG_CONFIG_HOME``/``HOME`` like
+    every other key read, so a service started under a different home fails
+    here, loudly, instead of serving without auth.
+    """
+    path = key_file_path(MESH_KEY_NAME)
+    if not path.is_file():
+        raise LeaderKeyError(path=path, reason="no key file")
+    if platform.system() != "Windows":
+        try:
+            mode = path.stat().st_mode & 0o777
+        except OSError as e:
+            raise LeaderKeyError(path=path, reason=f"cannot stat key file ({type(e).__name__})") from e
+        if mode & 0o077:
+            raise LeaderKeyError(
+                path=path,
+                reason=f"key file mode is {mode:o}, readable by other users",
+                fix_hint=f"Run `chmod 600 {path}` on the leader.",
+            )
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as e:
+        raise LeaderKeyError(path=path, reason=f"cannot read key file ({type(e).__name__})") from e
+    key = raw.lstrip("\ufeff").strip()
+    if not key:
+        raise LeaderKeyError(path=path, reason="key file is empty")
+    if not key.isascii() or any(c.isspace() for c in key):
+        raise LeaderKeyError(path=path, reason="key contains non-ASCII or whitespace characters")
+    if len(key) < MIN_LEADER_KEY_CHARS:
+        raise LeaderKeyError(path=path, reason=f"key is shorter than {MIN_LEADER_KEY_CHARS} characters")
     return key
 
 

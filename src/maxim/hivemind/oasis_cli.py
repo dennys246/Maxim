@@ -25,9 +25,6 @@ def _default_root() -> Path:
     return data_home() / "oasis"
 
 
-_LOOPBACK = ("127.0.0.1", "::1", "localhost")
-
-
 def _open_store(args: argparse.Namespace, *, migrate: bool = True) -> OasisStore:
     """The store; for the WRITING verbs (serve, publish), releases published before release format v2 are
     first moved to their payload-identity ids. ``status`` is read-only: it reports pending ones instead."""
@@ -85,35 +82,49 @@ def _parse_queen_keys(entries: list[str] | None) -> dict[str, str]:
 def _run_serve(args: argparse.Namespace) -> int:
     import threading
 
-    from maxim.runtime.leader_proxy import DEFAULT_PROXY_PORT, start_leader_proxy
-    from maxim.tunnel.keys import read_key
+    from maxim.runtime.leader_proxy import DEFAULT_PROXY_PORT, ProxyAuth, ProxyAuthError, start_leader_proxy
+    from maxim.tunnel.keys import LeaderKeyError, key_exists, require_leader_key
 
     store = _open_store(args)
-    api_key = read_key()
-    # Fail closed: an unauthenticated `/v1/substrate/contribute` (a WRITE) on a
-    # non-loopback interface is an open door to the LAN/internet. Refuse unless
-    # the operator explicitly opts into it with --insecure.
-    if api_key is None and args.bind_host not in _LOOPBACK and not args.insecure:
+    # A key file that exists is read by the leader's strict reader (one validator):
+    # a short, malformed or group-readable key is refused, never downgraded to "no key".
+    api_key: str | None = None
+    if key_exists():
+        try:
+            api_key = require_leader_key()
+        except LeaderKeyError as exc:
+            print(f"error: {exc}. {exc.fix_hint}", file=sys.stderr)
+            return 2
+    # Fail closed: an unauthenticated `/v1/substrate/contribute` (a WRITE) is an
+    # open door. Loopback is not a safe exception: a cloudflared tunnel's ingress
+    # is http://localhost:<port>, so a loopback bind can be the internet
+    # (2026-10-14). Without a key, serve only when the operator passes --insecure.
+    if api_key is None and not args.insecure:
         print(
             f"error: refusing to serve on {args.bind_host} without auth. Set up a bearer key "
-            "(`maxim tunnel setup`), or bind loopback (`--bind-host 127.0.0.1`), or pass --insecure "
-            "to deliberately serve auth-off on this interface.",
+            "(`maxim tunnel key rotate`), or pass --insecure to deliberately serve auth-off "
+            "(anyone who can reach this port, including through a tunnel, may push contributions).",
             file=sys.stderr,
         )
         return 2
     if api_key is None:
         print(
-            "warning: serving substrate endpoints WITHOUT auth (no api_key). "
+            "warning: serving substrate endpoints WITHOUT auth (--insecure). "
             "Anyone who can reach this address may read releases and push contributions.",
             file=sys.stderr,
         )
+    auth = ProxyAuth.bearer(api_key) if api_key is not None else ProxyAuth.insecure_no_auth()
     port = args.port or DEFAULT_PROXY_PORT
-    server = start_leader_proxy(
-        proxy_port=port,
-        api_key=api_key,
-        bind_host=args.bind_host,
-        oasis_store=store,
-    )
+    try:
+        server = start_leader_proxy(
+            proxy_port=port,
+            auth=auth,
+            bind_host=args.bind_host,
+            oasis_store=store,
+        )
+    except ProxyAuthError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     if server is None:
         print(
             f"error: could not bind the Oasis server on {args.bind_host}:{port} (port in use?).",
@@ -216,7 +227,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_serve.add_argument(
         "--insecure",
         action="store_true",
-        help="allow serving auth-off on a non-loopback interface (default: refuse without a bearer key)",
+        help="serve auth-off on any interface, loopback included (default: refuse without a bearer key)",
     )
     p_serve.set_defaults(func=_run_serve)
 

@@ -1675,8 +1675,12 @@ def check_vram_pressure(port: int = 8100) -> CheckResult:
 # ─── LAN access ────────────────────────────────────────────────────────────
 
 
-def check_lan_access(info: PlatformInfo, port: int = 8100) -> CheckResult:
-    """Platform-specific LAN-access guidance for exposing the local server.
+def check_lan_access(info: PlatformInfo, port: int = 8099) -> CheckResult:
+    """Platform-specific LAN-access guidance for exposing the leader to peers.
+
+    The port is the LeaderProxy's (8099): since 2026-10-14 the llama-cpp-server
+    (8100) listens on loopback only, and the authenticated proxy is a leader's
+    one network ingress.
 
     Doesn't test reachability from an external host (can't, from here). Just
     prints what the user needs to do to make the server LAN-reachable, with
@@ -1698,7 +1702,8 @@ def check_lan_access(info: PlatformInfo, port: int = 8100) -> CheckResult:
             f"       netsh interface portproxy add v4tov4 listenport={port} listenaddress=0.0.0.0 connectport={port} connectaddress={wsl_ip}\n"
             f'       netsh advfirewall firewall add rule name="Maxim LLM" dir=in action=allow protocol=TCP localport={port}\n\n'
             f"  2. Run Maxim as leader:\n"
-            f"       MAXIM_ROLE=leader maxim\n\n"
+            f"       maxim tunnel key rotate          # a leader refuses to start without a key\n"
+            f"       maxim config set role leader && maxim\n\n"
             f"  3. Peers connect via your Windows LAN IP:\n"
             f"       http://{host_ip}:{port}/v1\n"
         )
@@ -1738,7 +1743,8 @@ def check_lan_access(info: PlatformInfo, port: int = 8100) -> CheckResult:
         fix = (
             f"Linux peers reach you directly via your LAN IP:\n"
             f"  1. Run Maxim as leader:\n"
-            f"       MAXIM_ROLE=leader maxim\n\n"
+            f"       maxim tunnel key rotate          # a leader refuses to start without a key\n"
+            f"       maxim config set role leader && maxim\n\n"
             f"  2. Allow port {port} in your firewall (if active):\n"
             f"       {firewall_hint}\n\n"
             f"  3. Peers connect:\n"
@@ -1758,7 +1764,8 @@ def check_lan_access(info: PlatformInfo, port: int = 8100) -> CheckResult:
         fix = (
             f"macOS peers reach you directly via your LAN IP:\n"
             f"  1. Run Maxim as leader:\n"
-            f"       MAXIM_ROLE=leader maxim\n\n"
+            f"       maxim tunnel key rotate          # a leader refuses to start without a key\n"
+            f"       maxim config set role leader && maxim\n\n"
             f"  2. If macOS firewall is enabled, allow Python in:\n"
             f"       System Settings → Network → Firewall → Options\n\n"
             f"  3. Peers connect:\n"
@@ -1966,9 +1973,23 @@ def check_tunnel_config_sync() -> CheckResult:
 
 
 def check_api_key() -> CheckResult:
-    from maxim.tunnel.keys import key_exists, key_file_path
+    from maxim.runtime.role import resolved_role
+    from maxim.tunnel.keys import LeaderKeyError, key_exists, key_file_path, require_leader_key
 
-    if not key_exists():
+    if resolved_role()[0] == "leader":
+        # The same fail-closed read the leader's startup does, so doctor and
+        # `maxim` agree on whether this leader can start.
+        try:
+            require_leader_key()
+        except LeaderKeyError as e:
+            return CheckResult(
+                name="API key",
+                status="fail",
+                message=f"leader cannot start: {e.reason} ({e.path})",
+                fix=e.fix_hint,
+                retry_id="key-auth",
+            )
+    elif not key_exists():
         return CheckResult(
             name="API key",
             status="warn",
@@ -1986,6 +2007,76 @@ def check_api_key() -> CheckResult:
         status="ok",
         message=f"{_REDACTED} at {key_file_path()}",
     )
+
+
+def check_remote_admin() -> CheckResult:
+    """Whether this leader accepts remote update/install/restart/llm-swap, and why."""
+    import os
+
+    from maxim.runtime.config_loader import ConfigurationError, resolve_setting
+    from maxim.runtime.role import resolved_role
+
+    if resolved_role()[0] != "leader":
+        return CheckResult(name="Remote admin", status="info", message="not a leader — no remote admin surface")
+    legacy = bool(os.environ.get("MAXIM_ALLOW_REMOTE_UPDATE", "").strip())
+    try:
+        value, source = resolve_setting("proxy.allow_remote_update")
+    except ConfigurationError as e:
+        return CheckResult(
+            name="Remote admin",
+            status="warn",
+            message=f"proxy.allow_remote_update is malformed, so remote admin is refused ({e})",
+        )
+    note = "; MAXIM_ALLOW_REMOTE_UPDATE is set and IGNORED (older leaders set it themselves)" if legacy else ""
+    if value is True:
+        return CheckResult(
+            name="Remote admin",
+            status="warn" if legacy else "info",
+            message=f"enabled (source={source}): peers holding the key can update, install, restart and swap models{note}",
+        )
+    return CheckResult(
+        name="Remote admin",
+        status="warn" if legacy else "info",
+        message=f"disabled (opt in: maxim config set proxy.allow_remote_update true){note}",
+    )
+
+
+def check_llm_server_exposure(port: int | None = None) -> CheckResult:
+    """The startup exposure check, run from doctor (``local_server_spawner.verify_llm_server_exposure``).
+
+    A running llama-cpp-server must refuse an unauthenticated request when this
+    leader has a key, and must not answer on the LAN address. Doctor is the
+    stricter reader: it fails an authenticated server still bound to every
+    interface (an upgrade leftover), which startup only warns about and reuses.
+    """
+    import os
+
+    if port is None:
+        try:
+            port = int(os.environ.get("MAXIM_AUTO_SPAWN_PORT", "8100"))
+        except ValueError:
+            port = 8100
+    import socket
+
+    from maxim.runtime.local_server_spawner import LLMServerExposureError, verify_llm_server_exposure
+    from maxim.runtime.role import resolved_role
+    from maxim.tunnel.keys import read_key
+
+    try:
+        socket.create_connection(("127.0.0.1", port), timeout=1.0).close()
+    except OSError:
+        return CheckResult(name="LLM server exposure", status="info", message=f"nothing on :{port} — skipped")
+    key = read_key() if resolved_role()[0] == "leader" else None
+    try:
+        verify_llm_server_exposure(port, api_key=key, allow_authenticated_lan=False)
+    except LLMServerExposureError as e:
+        return CheckResult(
+            name="LLM server exposure",
+            status="fail",
+            message=str(e),
+            fix="Stop that llama-cpp-server and restart maxim (it binds loopback with its key in the env).",
+        )
+    return CheckResult(name="LLM server exposure", status="ok", message=f":{port} loopback-only, auth as expected")
 
 
 def check_key_age() -> CheckResult:
@@ -3521,6 +3612,7 @@ def run_all_checks(
                     check_context_window(),
                     check_vram_pressure(),
                     check_inference_coherence(),
+                    check_llm_server_exposure(),
                 ],
             ),
             (
@@ -3542,6 +3634,7 @@ def run_all_checks(
                 "API key",
                 [
                     check_api_key(),
+                    check_remote_admin(),
                     check_key_age(),
                     check_key_permissions(),
                     check_key_auth_smoke(),
@@ -3584,6 +3677,8 @@ __all__ = [
     "check_context_window",
     "check_vram_pressure",
     "check_lan_access",
+    "check_remote_admin",
+    "check_llm_server_exposure",
     "check_cloudflared",
     "check_tunnel_config",
     "check_tunnel_config_sync",

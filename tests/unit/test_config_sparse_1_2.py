@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from maxim.runtime.config_loader import load_config, resolve_setting
+from maxim.runtime.config_loader import CONFIG_FORMAT_VERSION, load_config, resolve_setting
 
 
 def _file(tmp_path: Path) -> Path:
@@ -41,7 +41,7 @@ def test_setting_the_default_value_pins_it(tmp_path) -> None:
 
     path = _file(tmp_path)
     set_field("llm.n_ctx", "8192", path=path)  # the O19 rig's command; 8192 is the schema default
-    assert json.loads(path.read_text()) == {"_format_version": "1.2", "llm": {"n_ctx": 8192}}
+    assert json.loads(path.read_text()) == {"_format_version": CONFIG_FORMAT_VERSION, "llm": {"n_ctx": 8192}}
     assert _src(path, "llm.n_ctx") == (8192, "config")
     set_field("llm.profile", "mistral-7b", path=path)
     assert _src(path, "llm.n_ctx") == (8192, "config")  # a later set keeps the earlier pin
@@ -58,7 +58,7 @@ def test_unset_and_null_return_a_field_to_its_default(tmp_path) -> None:
     assert _src(path, "llm.n_ctx")[1] == "default"
     set_field("cloud.session_budget_usd", None, path=path)  # null = unset (peer forget's form)
     assert _src(path, "cloud.session_budget_usd")[1] == "default"
-    assert json.loads(path.read_text()) == {"_format_version": "1.2"}
+    assert json.loads(path.read_text()) == {"_format_version": CONFIG_FORMAT_VERSION}
 
 
 def test_cloud_enabled_false_is_an_explicit_choice(tmp_path) -> None:
@@ -121,7 +121,7 @@ def test_the_first_write_converts_a_1_1_dump_keeping_only_its_choices(tmp_path) 
     path = _full_dump_1_1(tmp_path, profile="mistral-7b", n_ctx=8192)
     set_field("llm.n_ctx", "8192", path=path)  # the rig's conversion step
     assert json.loads(path.read_text()) == {
-        "_format_version": "1.2",
+        "_format_version": CONFIG_FORMAT_VERSION,
         "llm": {"profile": "mistral-7b", "n_ctx": 8192},
     }
     assert _src(path, "llm.n_ctx") == (8192, "config")

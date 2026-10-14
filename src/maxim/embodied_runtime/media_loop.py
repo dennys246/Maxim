@@ -9,7 +9,7 @@ from typing import Optional
 import numpy as np
 from maxim.utils.audio import resample_audio, to_int16
 from maxim.utils.data_management import CLIInputLogger, TrainingSampleLogger, build_home
-from maxim.utils.logging import configure_logging, log_swallowed_exception, warn
+from maxim.utils.logging import configure_logging, log_swallowed_exception, warn, warn_unless_refusal
 from maxim.data.camera.display import prepare_display, show_photo
 from maxim.inference.observation import display_detections, passive_observation
 from maxim.utils.gpu_compat import detect_blackwell
@@ -164,7 +164,7 @@ class MediaLoopMixin:
             try:
                 self._start_agentic_runtime()
             except Exception as e:
-                warn("Failed to start agentic runtime: %s", e, logger=self.log)
+                warn_unless_refusal("Failed to start agentic runtime: %s", e, logger=self.log)
 
         frame_obs_queue: queue.Queue = queue.Queue(maxsize=1)
         frame_save_queue: queue.Queue = queue.Queue(maxsize=512)

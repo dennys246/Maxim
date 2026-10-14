@@ -177,7 +177,7 @@ maxim peer update && maxim peer restart
 git push origin main && maxim peer update --dev && maxim peer restart
 ```
 
-Use `--dry-run` first if unsure; `--version X.Y.Z` pins a PyPI version; `--force` (dev mode) clears untracked-file blocks. Troubleshooting: [docs/troubleshooting/remote_update.md](docs/troubleshooting/remote_update.md).
+Use `--dry-run` first if unsure; `--version X.Y.Z` pins a PyPI version; `--force` (dev mode) clears untracked-file blocks. Every one of these, dry runs included, needs the leader's opt-in (`maxim config set proxy.allow_remote_update true`, off by default since 2026-10-14). Troubleshooting: [docs/troubleshooting/remote_update.md](docs/troubleshooting/remote_update.md).
 
 **Important for Claude agents:** `maxim peer update --dry-run`, `maxim peer version`, `maxim peer logs`, `maxim peer llm --status`, and `maxim peer deps` are safe and read-only. `maxim peer update`, `maxim peer restart`, `maxim peer llm <model>`, and `maxim peer install <extras>` modify leader state — only run when explicitly asked by the user.
 

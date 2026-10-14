@@ -793,6 +793,63 @@ def _sim_turn_caps(args: Any) -> dict[str, int]:
     return {"max_turns": max_turns, "min_finish_turns": max_turns if getattr(args, "sim_run_full_turns", False) else 0}
 
 
+def _early_leader_boot() -> int | None:
+    """Start the LeaderProxy for a leader before anything heavy; return an exit code to stop, or None.
+
+    Runs BEFORE ``_normalize_args``, which can trigger heavy imports (llama_cpp,
+    torch; 5-15s on CUDA), so the proxy is reachable right after an ``os.execv``
+    restart and ``maxim peer update|restart|logs|version`` keep working whatever
+    mode maxim enters. The proxy is a daemon thread: it dies with the process.
+
+    A leader that cannot serve safely (no usable key, a port held by a listener
+    that answers without auth) returns 2 with the reason, the role's source and
+    the fix (2026-10-14: it used to warn and serve without auth).
+    """
+    from maxim.exceptions import LeaderRefusal
+
+    detected_role = None
+    try:
+        from maxim.runtime.leader_mode import detect_role
+
+        detected_role = detect_role()
+        if detected_role.role == "leader":
+            from maxim.runtime.leader_proxy import start_leader_proxy_for_role
+
+            # Fails closed: no usable mesh key, or the port held by something
+            # that is not an authenticated LeaderProxy, raises here and the
+            # handler below exits before anything else starts.
+            start_leader_proxy_for_role(detected_role.bind_host)
+    except LeaderRefusal as _e:
+        _fix = getattr(_e, "fix_hint", "Run `maxim doctor` for diagnostics.")
+        _why = detected_role.reason if detected_role is not None else "unknown"
+        print(
+            f"\n  ✗ Refusing to start as leader ({_why}): {_e}\n    → {_fix}\n"
+            "    → Not meant to be a leader? `maxim config set role solo`\n",
+            file=sys.stderr,
+        )
+        logging.getLogger(__name__).error("leader boot refused: %s", _e)
+        return 2
+    except Exception as _e:
+        # Only surface to operators when role resolved to leader. Solo users
+        # should never see leader-boot noise.
+        if detected_role is not None and detected_role.role == "leader":
+            from maxim.utils.logging import user_warn
+
+            user_warn(
+                f"Early proxy boot failed: {_e}",
+                fix="See traceback above; usually a port conflict or missing CUDA. Run `maxim doctor` for diagnostics.",
+                source="leader-boot",
+                event="leader_boot_exception",
+                data={"exc_type": type(_e).__name__},
+            )
+            import traceback as _tb
+
+            _tb.print_exc()
+        else:
+            logging.getLogger(__name__).debug("Early proxy boot skipped: %s", _e)
+    return None
+
+
 def _main_impl(argv: Sequence[str] | None = None) -> int:
     """Original ``main`` body.  Wrapped by :func:`main` for typed-error surfacing."""
     # Detect Blackwell GPU and apply GStreamer guards BEFORE any CUDA-touching
@@ -1041,69 +1098,12 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
     _sig.signal(_sig.SIGINT, _force_exit_handler)
 
-    # ── Early leader proxy bootstrap ─────────────────────────────────
-    # Start the LeaderProxy BEFORE _normalize_args — that function can
-    # trigger heavy imports (llama_cpp, torch) for model validation,
-    # which takes 5-15s on CUDA systems. The proxy must be reachable
-    # immediately after os.execv restart so peers don't time out.
-    # via the Cloudflare tunnel, regardless of what mode maxim enters
-    # (sim, interactive, agentic, etc.). This ensures `maxim peer update`,
-    # `maxim peer restart`, `maxim peer logs`, and `maxim peer version`
-    # always work. The proxy is a daemon thread — it dies with the process.
-    detected_role = None
-    try:
-        from maxim.runtime.leader_mode import detect_role
+    # ── Early leader proxy bootstrap (before _normalize_args; see _early_leader_boot) ──
+    from maxim.exceptions import LeaderRefusal
 
-        detected_role = detect_role()
-        if detected_role.role == "leader":
-            import os as _os
-
-            _os.environ.setdefault("MAXIM_ALLOW_REMOTE_UPDATE", "1")
-            from maxim.runtime.leader_proxy import start_leader_proxy
-
-            _api_key = None
-            try:
-                from maxim.tunnel.keys import read_key
-
-                _api_key = read_key()
-            except Exception:
-                # Real leader: surface to operator. See docs/troubleshooting/leader_proxy_debug.md
-                from maxim.utils.logging import user_warn
-
-                user_warn(
-                    "Could not read API key — proxy will run without auth",
-                    fix="Run `maxim tunnel setup` to configure auth, or set MAXIM_API_KEY.",
-                    source="leader-boot",
-                    event="leader_boot_no_api_key",
-                )
-            _proxy = start_leader_proxy(api_key=_api_key, bind_host=detected_role.bind_host)
-            if _proxy is None:
-                from maxim.utils.logging import user_warn
-
-                user_warn(
-                    "LeaderProxy failed to start",
-                    fix="Check that the listen port is free (`lsof -i :8099`) or set MAXIM_LEADER_PROXY_PORT.",
-                    source="leader-boot",
-                    event="leader_boot_proxy_failed",
-                )
-    except Exception as _e:
-        # Only surface to operators when role resolved to leader. Solo users
-        # should never see leader-boot noise.
-        if detected_role is not None and detected_role.role == "leader":
-            from maxim.utils.logging import user_warn
-
-            user_warn(
-                f"Early proxy boot failed: {_e}",
-                fix="See traceback above; usually a port conflict or missing CUDA. Run `maxim doctor` for diagnostics.",
-                source="leader-boot",
-                event="leader_boot_exception",
-                data={"exc_type": type(_e).__name__},
-            )
-            import traceback as _tb
-
-            _tb.print_exc()
-        else:
-            logging.getLogger(__name__).debug("Early proxy boot skipped: %s", _e)
+    _boot_rc = _early_leader_boot()
+    if _boot_rc is not None:
+        return _boot_rc
 
     # ── Normalize args (after proxy boot — can trigger heavy CUDA imports) ──
     _normalize_args(args)
@@ -2389,6 +2389,12 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                     else:
                         logger.warning("LLM server did not start")
                         print("  WARNING: LLM server failed to start (check model config)")
+                except LeaderRefusal as _refusal:
+                    # A security refusal is not "run without the LLM": a server mode that
+                    # kept going would leave the proxy forwarding to what it refused.
+                    print(f"\n  ✗ Refusing to serve: {_refusal}\n", file=sys.stderr)
+                    logger.error("server mode refused: %s", _refusal)
+                    return 2
                 except Exception as _srv_err:
                     logger.warning("LLM server init failed: %s", _srv_err)
                     print(f"  WARNING: LLM server init failed: {_srv_err}")

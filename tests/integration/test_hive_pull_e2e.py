@@ -20,7 +20,7 @@ from maxim.hivemind.bundle import compose_bundle
 from maxim.hivemind.hive_cli import run_hive_subcommand
 from maxim.hivemind.registry import HiveRegistry
 from maxim.hivemind.store import OasisStore
-from maxim.runtime.leader_proxy import start_leader_proxy
+from maxim.runtime.leader_proxy import ProxyAuth, start_leader_proxy
 from maxim.utils.optional_deps import optional_dependency_available
 
 _HAS_CRYPTO = optional_dependency_available("cryptography") and optional_dependency_available("rfc8785")
@@ -55,7 +55,7 @@ def _wait_ready(port: int, timeout: float = 5.0) -> None:
 
 def _start(store):
     port = _free_port()
-    server = start_leader_proxy(proxy_port=port, api_key=_KEY, bind_host="127.0.0.1", oasis_store=store)
+    server = start_leader_proxy(proxy_port=port, auth=ProxyAuth.bearer(_KEY), bind_host="127.0.0.1", oasis_store=store)
     assert server is not None
     _wait_ready(port)
     return server, f"http://127.0.0.1:{port}"

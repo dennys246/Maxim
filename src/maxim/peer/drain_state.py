@@ -118,16 +118,18 @@ def _role() -> str:
     ``detect_and_apply_role`` runs there IS no other happy path, so
     a mismatch means either the operator mis-set the env var or a
     caller skipped the required detect-and-apply call. Both should
-    be loud. The genuine ``""`` case (env var absent) still falls
-    back to ``leader`` to handle tests and standalone scripts.
+    be loud. The genuine ``""`` case (env var absent: tests, standalone
+    scripts, Python-API sessions) asks ``role.resolved_role`` -- the
+    same answer the CLI would have exported.
     """
     raw = os.environ.get("MAXIM_ROLE", "").strip().lower()
     if raw in ("leader", "peer", "solo"):
         return raw
     if raw == "":
-        # Env var genuinely absent — tests and standalone scripts
-        # that skip detect_and_apply_role get a sensible default.
-        return "leader"
+        # Env var genuinely absent: resolve it the way the CLI would have.
+        from maxim.runtime.role import resolved_role
+
+        return resolved_role()[0]
     # Non-empty, non-matching value is a caller bug: either
     # detect_and_apply_role wasn't called, or the operator set
     # MAXIM_ROLE to something invalid.

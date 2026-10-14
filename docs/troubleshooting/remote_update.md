@@ -15,7 +15,7 @@ Peer runs: maxim peer update
   ├── POST /v1/admin/update {"mode": "auto"} to leader
   │
   ▼ Leader detects no .git directory → pip mode:
-  ├── Checks MAXIM_ALLOW_REMOTE_UPDATE=1
+  ├── Checks the remote-admin opt-in (proxy.allow_remote_update / MAXIM_PROXY_ALLOW_REMOTE_UPDATE)
   ├── Checks disk space (6GB for torch extras, 1GB otherwise)
   ├── Pre-caches current version locally (for network-independent rollback)
   ├── pip install --upgrade --index-url https://pypi.org/simple/ pymaxim[detected-extras]
@@ -30,7 +30,7 @@ Peer runs: maxim peer update --dev
   ├── POST /v1/admin/update {"mode": "dev"} to leader
   │
   ▼ Leader detects .git directory → dev mode:
-  ├── Checks MAXIM_ALLOW_REMOTE_UPDATE=1
+  ├── Checks the remote-admin opt-in (proxy.allow_remote_update / MAXIM_PROXY_ALLOW_REMOTE_UPDATE)
   ├── Checks working tree is clean (git status --porcelain)
   ├── git fetch origin main
   ├── git -c pull.rebase=true pull origin main
@@ -100,7 +100,7 @@ maxim peer --node mac-studio llm qwen2.5-14b         # drain → swap → resume
 maxim peer update
 │
 ├── "Connection failed" ──────────── Tunnel/network issue. Run: maxim peer test <url>
-├── "Remote update is disabled" ──── Leader not in leader mode, or MAXIM_ALLOW_REMOTE_UPDATE=0
+├── "Remote update is disabled" ──── Remote admin not opted in on the leader (off by default since 2026-10-14)
 ├── HTTP 404 ─────────────────────── LeaderProxy not running, or tunnel pointing at port 8100
 │
 ├─── Pip mode (auto-detected or --version):
@@ -124,7 +124,7 @@ maxim peer update
 maxim peer restart
 │
 ├── "Connection failed" ──────────── Tunnel/network issue. Run: maxim peer test <url>
-├── "Remote restart is disabled" ──── MAXIM_ALLOW_REMOTE_UPDATE=0 on leader
+├── "Remote restart is disabled" ──── Remote admin not opted in on the leader
 ├── "Leader is restarting" ────────── Success! Leader will be back in ~2s.
 └── HTTP 404 ─────────────────────── LeaderProxy not running, or old version without restart endpoint
 ```
@@ -147,18 +147,18 @@ maxim peer restart
    - Check on leader: `ss -ltnp | grep 8099`
    - Restart maxim
 
-**Verification:** `curl -s -H "User-Agent: maxim-peer/1.0" https://yourhost/v1/debug/status` should return JSON with GPU info. If it returns `{"detail":"Not Found"}`, the tunnel is hitting llama-cpp-server, not the proxy.
+**Verification:** `curl -s -H "User-Agent: maxim-peer/1.0" -H "Authorization: Bearer $KEY" https://yourhost/v1/debug/status` should return JSON with GPU info (debug routes need the key, from loopback too, since 2026-10-14). If it returns `{"detail":"Not Found"}`, the tunnel is hitting llama-cpp-server, not the proxy.
 
 ### HTTP 403 — Remote update disabled
 
 **Symptom:** `Remote update is disabled on the leader.`
 
-**Cause:** `MAXIM_ALLOW_REMOTE_UPDATE` is not set to `1` on the leader process.
+**Cause:** remote admin (update, install, restart, llm-swap) is off by default since 2026-10-14. Until then every leader switched it on implicitly.
 
-**Fix:** Leaders in leader mode auto-enable this. If it's still disabled:
-- Leader may not be detected as leader. Check: `maxim doctor` → Role section
-- Role detection checks (first match wins): `MAXIM_ROLE=leader` env var, `config.json::role=leader`, `mesh.yml` exists, cloudflared config found at `~/.cloudflared/` or `/etc/cloudflared/`, `peer.yml` exists, `--llm` flag, default
-- Explicitly: `MAXIM_ALLOW_REMOTE_UPDATE=1 maxim`
+**Fix:** opt in on the leader, then restart it:
+- `maxim config set proxy.allow_remote_update true` (or `MAXIM_PROXY_ALLOW_REMOTE_UPDATE=1 maxim` for one run)
+- `maxim doctor` → API key section shows a "Remote admin" row with the source.
+- The leader must also authenticate with a key; a leader without one refuses to start. A `--insecure` Oasis server never serves admin.
 
 ### HTTP 409 — No git repository (dev mode on pip leader)
 

@@ -1032,3 +1032,27 @@ def test_a_gated_campaign_refuses_a_water_check_from_another_utc_day(monkeypatch
     assert B._run(_run_args(gate, out, **kw)) == want
     if want == 3:
         assert calls == [] and (not out.exists() or out.read_text() == "")
+
+
+def test_the_rig_check_sends_this_boxs_key_to_a_loopback_proxy_only(monkeypatch):
+    """The proxy's debug routes need the key, loopback included (2026-10-14); a remote URL never gets it."""
+    from maxim.utils import http
+
+    sent: list[dict] = []
+
+    def _fetch(url, **kw):
+        sent.append(kw.get("headers") or {})
+        raise http.HTTPConnectionError("x")
+
+    monkeypatch.setattr(http, "fetch_url", _fetch)
+    monkeypatch.setattr("maxim.tunnel.keys.read_key", lambda *a, **k: "k" * 43)
+
+    class _R:
+        def command(self, cmd):
+            return "Target tick rate: 20.0 per second.\nAverage time per tick: 3.0ms"
+
+    B.rig_check(_R(), "http://127.0.0.1:8099")
+    assert sent[0] == {"Authorization": "Bearer " + "k" * 43}
+    sent.clear()
+    B.rig_check(_R(), "http://leader.example:8099")
+    assert sent[0] == {}

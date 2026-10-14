@@ -29,6 +29,10 @@ import subprocess
 import sys
 import threading
 import time
+from dataclasses import dataclass
+from typing import Literal
+
+from maxim.exceptions import LeaderRefusal
 
 # ── Input validation ─────────────────────────────────────────────────────────
 
@@ -92,15 +96,81 @@ _install_status: dict[str, Any] = {
 
 
 def _remote_update_allowed() -> bool:
-    """True iff ``MAXIM_ALLOW_REMOTE_UPDATE`` is set to a truthy value."""
-    return os.environ.get("MAXIM_ALLOW_REMOTE_UPDATE", "").strip().lower() in (
-        "1",
-        "true",
-        "t",
-        "yes",
-        "y",
-        "on",
-    )
+    """True iff the operator opted in to remote update/install/restart/llm-swap.
+
+    The ONE check every ``/v1/admin/*`` handler calls, via
+    ``resolve_setting("proxy.allow_remote_update")``: env
+    ``MAXIM_PROXY_ALLOW_REMOTE_UPDATE`` (read per request) > ``config.json``
+    (read through the cached config, so a change there needs a restart) >
+    ``False``. Nothing sets it by default; until 2026-10-14 every leader
+    ``setdefault``-ed the legacy ``MAXIM_ALLOW_REMOTE_UPDATE``, which is now
+    ignored (:func:`_warn_legacy_remote_update_env`). A malformed value fails closed.
+    """
+    from maxim.runtime.config_loader import ConfigurationError, resolve_setting
+
+    try:
+        value, _source = resolve_setting("proxy.allow_remote_update")
+    except ConfigurationError as e:
+        logger.warning("remote update refused: proxy.allow_remote_update is malformed (%s)", e)
+        return False
+    return value is True
+
+
+_REMOTE_UPDATE_DISABLED = (
+    "Remote admin is disabled on this leader. Opt in on the leader with "
+    "`maxim config set proxy.allow_remote_update true` (or MAXIM_PROXY_ALLOW_REMOTE_UPDATE=1), then restart it."
+)
+
+
+class ProxyAuthError(LeaderRefusal):
+    """The proxy was asked to serve in a way its auth does not allow."""
+
+
+@dataclass(frozen=True)
+class ProxyAuth:
+    """How the LeaderProxy authenticates callers. Runtime-only: never persisted, never on a wire.
+
+    Two kinds, and no way to build a third:
+
+    - ``ProxyAuth.bearer(key)``: every route needs ``Authorization: Bearer <key>``.
+    - ``ProxyAuth.insecure_no_auth()``: every inference and debug route is open.
+      Only ``maxim oasis serve --insecure`` builds it, and an operator typed that flag.
+
+    A loopback peer address is never treated as authentication. A cloudflared tunnel
+    (ingress ``http://localhost:<port>``) and any ``ssh -R`` forward arrive from 127.0.0.1,
+    so "local" would mean "anyone on the internet". ``/v1/admin/*`` additionally requires the
+    bearer kind, so an insecure proxy never exposes update/install/restart/llm-swap.
+    """
+
+    kind: Literal["bearer", "insecure"]
+    key: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.kind == "bearer":
+            if not isinstance(self.key, str) or not self.key or not self.key.isascii():
+                raise ValueError("ProxyAuth.bearer needs a non-empty ASCII key")
+            if any(c.isspace() for c in self.key):
+                raise ValueError("ProxyAuth.bearer key must not contain whitespace")
+        elif self.kind == "insecure":
+            if self.key is not None:
+                raise ValueError("ProxyAuth.insecure_no_auth carries no key")
+        else:
+            raise ValueError(f"unknown ProxyAuth kind {self.kind!r}")
+
+    @classmethod
+    def bearer(cls, key: str) -> "ProxyAuth":
+        return cls(kind="bearer", key=key)
+
+    @classmethod
+    def insecure_no_auth(cls) -> "ProxyAuth":
+        return cls(kind="insecure")
+
+    @property
+    def is_bearer(self) -> bool:
+        return self.kind == "bearer"
+
+    def __repr__(self) -> str:  # never print the key
+        return f"ProxyAuth(kind={self.kind!r})"
 
 
 def _validate_branch(branch: str) -> str:
@@ -767,8 +837,9 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     # timeout). HTTP/1.1 is a superset of HTTP/1.0 for all non-proxy paths.
     protocol_version = "HTTP/1.1"
 
-    # Set by the server factory (class-level attrs)
-    api_key: str | None = None
+    # Set by the server factory (class-level attrs). ``None`` means the factory
+    # never configured auth: every request is refused (fail closed).
+    auth: ProxyAuth | None = None
     upstream_url: str = "http://127.0.0.1:8100"
     request_log: _RequestLog | None = None
     lane_metrics: Any = None  # LaneMetrics instance for the large tier
@@ -875,8 +946,14 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         format-freeze). Scheme names are matched case-insensitively per
         RFC 7235; the credential comparison stays constant-time.
         """
-        if not self.api_key:
+        if self.auth is None:
+            logger.error("LeaderProxy has no auth configured; refusing peer=%s", self.client_address[0])
+            self._send_json(500, {"error": "proxy auth not configured"})
+            return False
+        if not self.auth.is_bearer:
             return True
+        api_key = self.auth.key
+        assert api_key is not None  # ProxyAuth.__post_init__ guarantees it for the bearer kind
         auth = self.headers.get("Authorization", "")
         scheme, _, credential = auth.partition(" ")
 
@@ -889,7 +966,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             # ``Authorization: Bearer <non-ascii>`` yields a clean 401
             # instead of an unhandled 500 from the request handler.
             try:
-                credential_ok = secrets.compare_digest(credential, self.api_key)
+                credential_ok = secrets.compare_digest(credential, api_key)
             except TypeError:
                 credential_ok = False
             if credential_ok:
@@ -917,6 +994,22 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             scheme if scheme else "<none>",
         )
         self._send_json(401, {"error": "Unsupported or missing authorization scheme"})
+        return False
+
+    def _admin_refused(self, action: str) -> bool:
+        """Send 403 and return True unless this proxy may run ``/v1/admin/<action>``.
+
+        Called by every admin handler after ``_check_auth`` passed. Two conditions,
+        both required: the proxy authenticates with a bearer key (an insecure
+        proxy never exposes admin), and the operator opted in
+        (:func:`_remote_update_allowed`).
+        """
+        if self.auth is None or not self.auth.is_bearer:
+            self._send_json(403, {"error": f"Remote {action} needs a bearer-authenticated proxy."})
+            return True
+        if not _remote_update_allowed():
+            self._send_json(403, {"error": _REMOTE_UPDATE_DISABLED})
+            return True
         return False
 
     # ─── debug endpoints (served directly, not proxied) ───────────────
@@ -1033,7 +1126,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 "service": "LeaderProxy",
                 "proxy_port": self.server.server_address[1],
                 "upstream": self.upstream_url,
-                "auth_enabled": bool(self.api_key),
+                "auth_enabled": self.auth is not None and self.auth.is_bearer,
                 "uptime_s": round(time.time() - self.start_time, 1),
                 "llm_ready": llm_ready,
             },
@@ -1054,8 +1147,8 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 
         probe = f"{self.upstream_url}/v1/models"
         headers: dict[str, str] = {}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        if self.auth is not None and self.auth.is_bearer:
+            headers["Authorization"] = f"Bearer {self.auth.key}"
         try:
             resp = _http.fetch_url(
                 probe,
@@ -1550,7 +1643,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     def _handle_admin_update(self) -> None:
         """POST /v1/admin/update — update the leader via git or pip.
 
-        Requires MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader process.
+        Requires a bearer-authenticated proxy and the remote-admin opt-in (``_admin_refused``).
         Accepts JSON body::
 
             {"mode": "auto", "branch": "main", "dry_run": true,
@@ -1563,11 +1656,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 
         dry_run defaults to True (safe-by-default).
         """
-        if not _remote_update_allowed():
-            self._send_json(
-                403,
-                {"error": "Remote update disabled. Set MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader."},
-            )
+        if self._admin_refused("update"):
             return
 
         body = self._parse_admin_update_body()
@@ -2121,15 +2210,11 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     def _handle_admin_install(self) -> None:
         """POST /v1/admin/install — install packages on the leader.
 
-        Requires MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader process.
+        Requires a bearer-authenticated proxy and the remote-admin opt-in (``_admin_refused``).
         Accepts JSON body: {"extras": ["semantic", "llm-torch"], "packages": ["some-pkg"]}
         Extras are installed as pymaxim[extra], raw packages via pip install.
         """
-        if not _remote_update_allowed():
-            self._send_json(
-                403,
-                {"error": "Remote install disabled. Set MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader."},
-            )
+        if self._admin_refused("install"):
             return
 
         try:
@@ -2281,27 +2366,14 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         """POST /v1/admin/restart — soft-restart the maxim process via os.execv.
 
         Replaces the current process image with a fresh Python invocation,
-        reloading all code. Same PID, clean import cycle. Gated by
-        MAXIM_ALLOW_REMOTE_UPDATE (if you trust remote code pulls, you
-        trust remote restarts).
+        reloading all code. Same PID, clean import cycle. Gated like
+        update (``_admin_refused``): if you trust remote code pulls, you
+        trust remote restarts.
 
         Accepts JSON body: {"delay_s": 1.5} (default 1.5s delay so the
         HTTP response reaches the peer before the process replaces itself).
         """
-        if os.environ.get("MAXIM_ALLOW_REMOTE_UPDATE", "").strip().lower() not in (
-            "1",
-            "true",
-            "t",
-            "yes",
-            "y",
-            "on",
-        ):
-            self._send_json(
-                403,
-                {
-                    "error": "Remote restart disabled. Set MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader.",
-                },
-            )
+        if self._admin_refused("restart"):
             return
 
         # Parse optional delay from body
@@ -2370,18 +2442,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 
         Body: {"model": "qwen2.5-14b"}
         """
-        if os.environ.get("MAXIM_ALLOW_REMOTE_UPDATE", "").strip().lower() not in (
-            "1",
-            "true",
-            "t",
-            "yes",
-            "y",
-            "on",
-        ):
-            self._send_json(
-                403,
-                {"error": "Remote LLM swap disabled. Set MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader."},
-            )
+        if self._admin_refused("llm-swap"):
             return
 
         raw = self._read_body(max_size=4096)  # Admin body should be tiny
@@ -2425,17 +2486,13 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 
     # ─── HTTP method dispatchers ──────────────────────────────────────
 
-    def _is_localhost(self) -> bool:
-        """Check if the request originates from localhost."""
-        addr = self.client_address[0] if self.client_address else ""
-        return addr in ("127.0.0.1", "::1", "localhost")
-
     def do_GET(self) -> None:  # noqa: N802
-        # Debug endpoints: require auth OR restrict to localhost.
-        # Prevents information disclosure (GPU state, model info, logs) to
-        # unauthenticated remote callers via tunnel.
+        # Debug endpoints need auth like everything else. A loopback peer is NOT
+        # local: a cloudflared tunnel's ingress is http://localhost:<port>, so
+        # every request from the internet arrives from 127.0.0.1 (2026-10-14:
+        # the old localhost bypass served /v1/debug/logs to the internet).
         if self._is_debug_path(self.path):
-            if self._is_localhost() or self._check_auth():
+            if self._check_auth():
                 self._route_debug(self.path)
             return
         stripped = self.path.split("?")[0].rstrip("/")
@@ -2497,6 +2554,13 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
+        if code >= 400:
+            # An error can be sent before the request body was read (an auth or
+            # admin refusal). On a kept-alive HTTP/1.1 connection the unread body
+            # would be parsed as the next request line, so close it, as
+            # http.server's own send_error does.
+            self.send_header("Connection", "close")
+            self.close_connection = True
         # Security headers
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
@@ -2585,16 +2649,24 @@ _leader_proxy_server: HTTPServer | None = None
 
 def start_leader_proxy(
     *,
+    auth: ProxyAuth,
+    bind_host: str,
     proxy_port: int | None = None,
     upstream_port: int | None = None,
-    api_key: str | None = None,
-    bind_host: str = "0.0.0.0",
     oasis_store: Any = None,
 ) -> HTTPServer | None:
     """Start the LeaderProxy in a daemon thread.
 
-    Returns the HTTPServer instance (for shutdown), or None on failure.
-    Idempotent — returns the existing server if already started.
+    ``auth`` and ``bind_host`` are required keyword-only with no default: the
+    caller decides how the proxy authenticates and where it listens, and an
+    old ``api_key=`` call is a ``TypeError`` (2026-10-14: ``api_key=None``
+    used to mean "serve everyone"). A leader goes through
+    :func:`start_leader_proxy_for_role`, which reads the key fail-closed.
+
+    Returns the HTTPServer instance (for shutdown), or None when the port is
+    in use. Idempotent on the default port: returns the server this process
+    already started, and raises :class:`ProxyAuthError` if that server was
+    started with different auth.
 
     ``oasis_store`` (an :class:`maxim.hivemind.store.OasisStore`) enables the
     ``/v1/substrate/*`` exchange endpoints (1.2 P2P Slice B). Default ``None``
@@ -2611,7 +2683,15 @@ def start_leader_proxy(
         )
     # Idempotent guard for the default port (production). Tests use custom
     # ports and should always get fresh servers.
+    if not isinstance(auth, ProxyAuth):
+        raise TypeError(f"start_leader_proxy: auth must be a ProxyAuth, not {type(auth).__name__}")
     if _leader_proxy_server is not None and proxy_port == DEFAULT_PROXY_PORT:
+        existing = getattr(_leader_proxy_server.RequestHandlerClass, "auth", None)
+        if existing != auth:
+            raise ProxyAuthError(
+                "a LeaderProxy already runs in this process on the default port with different auth; "
+                "refusing to hand it out as if it had the auth asked for"
+            )
         return _leader_proxy_server
     if upstream_port is None:
         upstream_port = int(
@@ -2668,7 +2748,7 @@ def start_leader_proxy(
         "ProxyHandler",
         (_ProxyHandler,),
         {
-            "api_key": api_key,
+            "auth": auth,
             "upstream_url": upstream_url,
             "request_log": request_log,
             "lane_metrics": infer_metrics,
@@ -2703,8 +2783,14 @@ def start_leader_proxy(
         bind_host,
         proxy_port,
         upstream_url,
-        "on" if api_key else "off",
+        "on" if auth.is_bearer else "OFF (--insecure)",
     )
+    if not auth.is_bearer:
+        logger.warning(
+            "LeaderProxy on %s:%d serves inference and debug routes WITHOUT auth (operator passed --insecure)",
+            bind_host,
+            proxy_port,
+        )
     # Only record the singleton for the DEFAULT port — that is the only port the
     # idempotency guard above honors. Stashing a custom-port server (every test,
     # every `maxim oasis serve` on a non-default port) would make a later
@@ -2714,4 +2800,85 @@ def start_leader_proxy(
     return server
 
 
-__all__ = ["start_leader_proxy", "DEFAULT_PROXY_PORT", "DEFAULT_UPSTREAM_PORT"]
+def start_leader_proxy_for_role(bind_host: str) -> HTTPServer | None:
+    """Start the LeaderProxy for a process whose role is ``leader``. Fails closed.
+
+    Reads the mesh key with :func:`maxim.tunnel.keys.require_leader_key`, so a
+    leader with no usable key raises :class:`maxim.tunnel.keys.LeaderKeyError`
+    before anything binds. The CLI turns that into an exit with the key path and
+    the fix; the Python API lets it propagate.
+
+    If the port is already taken, whatever holds it is probed WITHOUT the key
+    (sending the key to an unknown listener would hand it to any local user who
+    bound the port first). It must refuse an unauthenticated ``/v1/debug/ping``
+    with 401, as an authenticated LeaderProxy does; that is the normal case for
+    a second maxim process on a leader box (a notebook, a sub-sim), which then
+    shares it (returns None, with a warning). Anything that answers without the
+    key (an older maxim serving without auth, a foreign server) raises
+    :class:`ProxyAuthError`.
+    """
+    from maxim.tunnel.keys import require_leader_key
+
+    _warn_legacy_remote_update_env()
+    key = require_leader_key()
+    server = start_leader_proxy(auth=ProxyAuth.bearer(key), bind_host=bind_host)
+    if server is not None:
+        return server
+    port = int(os.environ.get("MAXIM_LEADER_PROXY_PORT", str(DEFAULT_PROXY_PORT)))
+    if _port_refuses_unauthenticated(port):
+        logger.warning(
+            "LeaderProxy port %d is held by a listener that demands auth (another maxim leader process?); "
+            "this process will not serve its own proxy",
+            port,
+        )
+        return None
+    raise ProxyAuthError(
+        f"port {port} is held by something that answers WITHOUT auth (an older maxim proxy?) or is not a "
+        "LeaderProxy. Stop it, or set MAXIM_LEADER_PROXY_PORT."
+    )
+
+
+def _port_refuses_unauthenticated(port: int) -> bool:
+    """True iff ``127.0.0.1:<port>/v1/debug/ping`` refuses a request that carries no key with 401."""
+    from maxim.utils import http as _http
+
+    try:
+        _http.fetch_url(
+            f"http://127.0.0.1:{port}/v1/debug/ping",
+            method="GET",
+            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=3.0, total_s=4.0),
+        )
+    except _http.HTTPAuthError as e:
+        return e.status == 401
+    except _http.HTTPError as e:
+        logger.warning("LeaderProxy port %d: unauthenticated ping failed (%s)", port, type(e).__name__)
+        return False
+    return False  # answered without the key
+
+
+_LEGACY_REMOTE_UPDATE_ENV = "MAXIM_ALLOW_REMOTE_UPDATE"
+
+
+def _warn_legacy_remote_update_env() -> None:
+    """Say so when the legacy opt-in is set: it is ignored.
+
+    Leaders before 2026-10-14 ``setdefault``-ed it to "1" themselves, and a
+    remote restart (``os.execv``) carries the parent's env into the new
+    process, so its presence says nothing about the operator's intent.
+    """
+    if os.environ.get(_LEGACY_REMOTE_UPDATE_ENV, "").strip():
+        logger.warning(
+            "%s is set and IGNORED (older leaders set it automatically). Remote admin is off unless "
+            "`maxim config set proxy.allow_remote_update true` or MAXIM_PROXY_ALLOW_REMOTE_UPDATE=1.",
+            _LEGACY_REMOTE_UPDATE_ENV,
+        )
+
+
+__all__ = [
+    "DEFAULT_PROXY_PORT",
+    "DEFAULT_UPSTREAM_PORT",
+    "ProxyAuth",
+    "ProxyAuthError",
+    "start_leader_proxy",
+    "start_leader_proxy_for_role",
+]

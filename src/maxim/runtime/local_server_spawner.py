@@ -19,6 +19,7 @@ from __future__ import annotations
 import atexit
 import logging
 import os
+import socket
 import subprocess
 import sys
 import threading
@@ -28,6 +29,7 @@ import time
 logger = logging.getLogger(__name__)
 from pathlib import Path
 
+from maxim.exceptions import LeaderRefusal
 from maxim.utils.gpu_compat import get_original_cuda_devices
 
 
@@ -194,6 +196,73 @@ def kill_stale_llm_servers(port: int = DEFAULT_PORT) -> int:
     return killed
 
 
+_SCRUBBED_ENV = frozenset({"HOST", "PORT", "CONFIG_FILE"})
+
+
+class LLMServerExposureError(LeaderRefusal):
+    """A llama-cpp-server on our port is reachable more widely, or less authenticated, than intended."""
+
+
+def verify_llm_server_exposure(port: int, *, api_key: str | None, allow_authenticated_lan: bool) -> None:
+    """Check the server on ``127.0.0.1:<port>`` from the outside, or raise :class:`LLMServerExposureError`.
+
+    Two observations, not configuration: (1) an unauthenticated ``/v1/models`` must be
+    refused with 401 when a key is configured (a key the server ignored would otherwise
+    fail open silently); (2) the port must not accept connections on this host's LAN
+    address unless the server demands auth AND ``allow_authenticated_lan`` (the reuse of
+    a server an older maxim bound to every interface with a key: warned, not refused).
+
+    The LAN half is defense in depth: it probes the default-route address only
+    (not every interface or a VPN bridge). The real controls are the loopback
+    ``--host`` and the scrubbed ``HOST``/``CONFIG_FILE`` env.
+    """
+    from maxim.utils import http as _http
+    from maxim.utils.net import primary_ipv4_address
+
+    try:
+        _http.fetch_url(
+            f"http://127.0.0.1:{port}/v1/models",
+            method="GET",
+            timeout=_http.TimeoutPolicy(connect_s=1.0, read_s=3.0, total_s=4.0),
+        )
+        unauth = "open"
+    except _http.HTTPAuthError:
+        unauth = "refused"
+    except _http.HTTPError as e:
+        unauth = f"unknown ({type(e).__name__})"
+    if api_key and unauth != "refused":
+        raise LLMServerExposureError(
+            f"llama-cpp-server on port {port} was given a key but an unauthenticated request got {unauth}; "
+            "refusing to serve inference without auth"
+        )
+    lan = primary_ipv4_address()
+    if lan is None:
+        return
+    try:
+        with socket.create_connection((lan, port), timeout=0.5):
+            reachable = True
+    except OSError:
+        reachable = False
+    if not reachable:
+        return
+    if unauth != "refused":
+        raise LLMServerExposureError(
+            f"llama-cpp-server on port {port} answers WITHOUT auth on the LAN address {lan}. "
+            "Stop it (it was probably started by an older maxim bound to 0.0.0.0) and restart maxim."
+        )
+    if not allow_authenticated_lan:
+        raise LLMServerExposureError(
+            f"llama-cpp-server on port {port} should listen on loopback only but accepts connections on {lan} "
+            "(a HOST/CONFIG_FILE env override?)"
+        )
+    logger.warning(
+        "llama-cpp-server on port %d listens on the LAN address %s (it demands auth). It was started by an "
+        "older maxim; restart it so it binds loopback only.",
+        port,
+        lan,
+    )
+
+
 class LocalServerSpawner:
     """Manage a llama-cpp-python server subprocess.
 
@@ -264,7 +333,10 @@ class LocalServerSpawner:
 
         Returns the base URL on success, None on failure (missing model file,
         subprocess crash, readiness timeout). Failures are logged; callers
-        should fall back to in-process inference.
+        should fall back to in-process inference. A server that came up but is
+        exposed beyond what was asked (see :func:`verify_llm_server_exposure`)
+        is stopped and raises :class:`LLMServerExposureError` instead: that is
+        not an availability failure to fall back from.
         """
         with self._lock:
             if self.is_running:
@@ -314,6 +386,11 @@ class LocalServerSpawner:
                 self._atexit_registered = True
 
         if self._wait_ready(timeout_s):
+            try:
+                verify_llm_server_exposure(self._port, api_key=self._api_key, allow_authenticated_lan=False)
+            except LLMServerExposureError:
+                self.stop()
+                raise
             return self.base_url
         # Timed out — kill and report
         self.stop()
@@ -377,8 +454,8 @@ class LocalServerSpawner:
             "--chat_format",
             self._chat_format,
         ]
-        if self._api_key:
-            cmd.extend(["--api_key", self._api_key])
+        # The key travels in the child's env (API_KEY), never argv: argv is
+        # world-readable through `ps` on a shared host.
         # KV cache quantization (peer_leader_flexibility_plan P4c). f16 is
         # llama-cpp-server's default, so only emit flags for q8_0/q4_0 — keeps
         # the spawn cmdline backward-compatible with older llama_cpp_python
@@ -395,8 +472,21 @@ class LocalServerSpawner:
         return cmd
 
     def _build_subprocess_env(self) -> dict[str, str]:
-        """Inherit parent env but restore CUDA_VISIBLE_DEVICES if Blackwell hid it."""
+        """Inherit the parent env, minus anything that would override where the server listens or its key.
+
+        llama_cpp.server reads ``HOST``/``PORT`` straight from the env over ``--host``/``--port``
+        (``uvicorn.run(host=os.getenv("HOST", ...))``), lets ``CONFIG_FILE`` replace every
+        setting, and its pydantic settings read ``api_key`` from the env in any case. An
+        inherited ``HOST=0.0.0.0`` (common in containers) would silently rebind a loopback
+        server to every interface, so those are dropped and ``API_KEY`` is set from ours.
+        Also restores ``CUDA_VISIBLE_DEVICES`` if Blackwell hid it.
+        """
         env = os.environ.copy()
+        for name in list(env):
+            if name in _SCRUBBED_ENV or name.lower() == "api_key":
+                del env[name]
+        if self._api_key:
+            env["API_KEY"] = self._api_key
         original_cuda = get_original_cuda_devices()
         if original_cuda is not None and env.get("CUDA_VISIBLE_DEVICES") == "":
             env["CUDA_VISIBLE_DEVICES"] = original_cuda
@@ -440,7 +530,9 @@ class LocalServerSpawner:
 
 
 __all__ = [
+    "LLMServerExposureError",
     "LocalServerSpawner",
+    "verify_llm_server_exposure",
     "DEFAULT_PORT",
     "DEFAULT_N_CTX",
     "find_stale_llm_servers",

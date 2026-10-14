@@ -543,8 +543,9 @@ Each of Maxim's three WorkerPool lanes (`large`, `medium`, `small`) can independ
 **Typical scenario: large model on GPU server, small/medium routed locally.**
 
 ```bash
-# Large tier → powerful 32B model on your home GPU server
-export MAXIM_LANE_LARGE_REMOTE_URL=http://192.168.1.10:8100/v1
+# Large tier → powerful 32B model on your home GPU server (a maxim leader: dial its
+# LeaderProxy on 8099; its llama-cpp-server on 8100 listens on loopback only)
+export MAXIM_LANE_LARGE_REMOTE_URL=http://192.168.1.10:8099/v1
 export MAXIM_LANE_LARGE_REMOTE_MODEL=qwen2.5-32b-instruct
 export MAXIM_LANE_LARGE_TIMEOUT_S=300
 
@@ -589,8 +590,8 @@ Checks:
 - Platform (OS, runtime — WSL1/WSL2/native/docker, Linux distro, arch)
 - GPU / CUDA availability and VRAM
 - `llama_cpp.server` installed (the `[llm-server]` extra)
-- Auto-spawn server reachable on port 8100
-- Leader mode / bind address
+- Auto-spawn server reachable on port 8100 (loopback only; peers use the LeaderProxy on 8099)
+- Leader mode / bind address, the leader's key (a leader without one refuses to start), remote-admin opt-in
 - **LAN access with platform-specific fix commands** (WSL2 netsh, Linux ufw/firewalld, macOS settings hint, Windows `New-NetFirewallRule`)
 - `cloudflared` installed (with OS-specific install command)
 - Tunnel config file + API key
@@ -626,7 +627,7 @@ For public URLs (tunnel hostnames), `is_cloud: true` is detected automatically a
 Run from a peer machine to verify the leader is reachable and correctly authenticated:
 
 ```bash
-maxim peer test http://192.168.1.47:8100/v1
+maxim peer test http://192.168.1.47:8099/v1
 maxim peer test https://maxim.yourdomain.com/v1 --key sk-ant-xxx
 ```
 
@@ -722,9 +723,10 @@ Run `maxim doctor` to see the "Resolved Config" section with every absorbed fiel
 #### Peer authentication — API key
 
 Once your tunnel is public, anyone who knows the hostname could hit your LLM.
-Maxim generates a **256-bit API key** during `tunnel setup` and wires it into
-the spawned llama-cpp-server via `--api_key`. Peers must present the key as a
-Bearer token or get 401.
+Maxim generates a **256-bit API key** during `tunnel setup`. The LeaderProxy
+(:8099) requires it on every route, and the leader's loopback llama-cpp-server
+gets it through its environment (`API_KEY`, never argv). Peers must present the
+key as a Bearer token or get 401. A leader without a usable key refuses to start.
 
 **Key file locations:**
 
