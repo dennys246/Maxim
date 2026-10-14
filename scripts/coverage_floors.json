@@ -3,8 +3,8 @@
   "band": 1.0,
   "min_package_statements": 200,
   "overall": {
-    "percent": 66.9,
-    "missing": 30723
+    "percent": 69.0,
+    "missing": 29255
   },
   "packages": {
     "maxim/<root>": {
@@ -20,8 +20,8 @@
       "missing": 81
     },
     "maxim/attention": {
-      "percent": 32.5,
-      "missing": 590
+      "percent": 37.1,
+      "missing": 549
     },
     "maxim/bridges": {
       "percent": 54.4,
@@ -44,8 +44,8 @@
       "missing": 143
     },
     "maxim/default_network": {
-      "percent": 40.6,
-      "missing": 1317
+      "percent": 47.3,
+      "missing": 1167
     },
     "maxim/doctor": {
       "percent": 69.9,
@@ -60,8 +60,8 @@
       "missing": 600
     },
     "maxim/energy": {
-      "percent": 64.8,
-      "missing": 104
+      "percent": 65.8,
+      "missing": 96
     },
     "maxim/hardware": {
       "percent": 78.0,
@@ -88,8 +88,8 @@
       "missing": 430
     },
     "maxim/interactive": {
-      "percent": 33.7,
-      "missing": 480
+      "percent": 34.9,
+      "missing": 471
     },
     "maxim/math": {
       "percent": 45.1,
@@ -100,8 +100,8 @@
       "missing": 754
     },
     "maxim/models": {
-      "percent": 57.6,
-      "missing": 2421
+      "percent": 59.3,
+      "missing": 2369
     },
     "maxim/modes": {
       "percent": 79.2,
@@ -132,8 +132,8 @@
       "missing": 54
     },
     "maxim/runtime": {
-      "percent": 73.5,
-      "missing": 3400
+      "percent": 75.2,
+      "missing": 3195
     },
     "maxim/salience": {
       "percent": 68.6,
@@ -144,12 +144,12 @@
       "missing": 444
     },
     "maxim/simulation": {
-      "percent": 63.4,
-      "missing": 3693
+      "percent": 71.6,
+      "missing": 2880
     },
     "maxim/spatial": {
-      "percent": 29.9,
-      "missing": 372
+      "percent": 40.1,
+      "missing": 317
     },
     "maxim/time": {
       "percent": 84.2,
@@ -164,10 +164,15 @@
       "missing": 190
     },
     "maxim/utils": {
-      "percent": 60.2,
-      "missing": 2213
+      "percent": 61.3,
+      "missing": 2188
     }
   },
-  "files": {},
+  "files": {
+    "src/maxim/simulation/orchestrator.py": {
+      "percent": 54.0,
+      "missing": 614
+    }
+  },
   "retired_files": []
 }

@@ -26,7 +26,6 @@ from maxim.simulation import report as report_mod
 from maxim.simulation.report import build_report, capture_start_provenance, run_provenance, save_report
 
 REPO = Path(maxim.__file__).resolve().parents[2]
-ORCHESTRATOR = REPO / "src" / "maxim" / "simulation" / "orchestrator.py"
 
 
 def _load_script(name: str):
@@ -479,8 +478,10 @@ def test_the_saved_report_carries_the_stamps_the_prereg_lint_reads(tmp_path) -> 
 
 
 def _start_simulation_mode() -> ast.FunctionDef:
-    tree = ast.parse(ORCHESTRATOR.read_text())
-    return next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "start_simulation_mode")
+    from tests.unit._orchestrator_source import start_simulation_mode_def
+
+    # FUNCTION-SPECIFIC: a lineno ordering inside the one function (tests/unit/_orchestrator_source.py).
+    return start_simulation_mode_def()
 
 
 def _calls(fn: ast.AST, name: str) -> list[ast.Call]:

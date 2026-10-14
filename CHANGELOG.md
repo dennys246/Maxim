@@ -36,10 +36,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **What is DORMANT, said plainly.** Three producers this contract reads are not in this release, each pinned by a
   strict red gate in `tests/unit/test_console_run_history.py`: (1) **stalls** — CLOSED by the stall-detection
   bullet below; with no agent loop running, `/api/health` still reports `stall_detection: false` so an empty `stalls`
-  reads as unknown, not healthy; (2) **per-action credit** —
-  `actions.jsonl` is 1.1 and records no `rpe`/`pain`/`nac_failure_booked`, so every current run reads
-  `credit_recorded: false` (the reader keys it off a 1.2 header, never off key presence); (3) **the per-run event
-  trail** — nothing writes `events.jsonl`, so the `/events` route is NOT in 0.6.0 and ships with its writer.
+  reads as unknown, not healthy; (2) **per-action credit** — CLOSED by the `actions.jsonl` 1.2 bullet below; runs
+  written before it read `credit_recorded: false` (the reader keys it off a 1.2 header, never off key presence); (3)
+  **the per-run event trail** — nothing writes `events.jsonl`, so the `/events` route is NOT in 0.6.0 and ships with its
+  writer.
+- **Per-action credit is now recorded (`actions.jsonl` 1.2), closing dormant producer (2) above.** `ActionRecord`
+  gains three optional trailing fields, `rpe`, `pain` and `nac_failure_booked`. `InstrumentedExecutor` copies them
+  off the `ToolOutput` the executor stamped, `RecordingSink`'s compression keeps them, and `save_action_log` writes
+  them under a 1.2 header. A run's actions in the Console now show whether the tool-pain bridge booked each failure,
+  and with what surprise and pain. Runs written before this read `credit_recorded: false`, which means unknown, not
+  none. Gate: `tests/unit/test_console_run_history.py::test_a_bridge_booked_failure_reaches_the_console_with_its_credit`
+  drives a real bridge-booked failure from the executor to `run_store.page_actions`.
 - **Stall detection is live: a stuck planning turn, judged on the canonical stall surface. This closes dormant
   producer (1) above.** Owner decisions, 2026-10-14:
   - A stall is a planning turn outstanding past the threshold with no live call. It is not loop idleness, which
@@ -117,6 +124,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Piper voice provisioning, and a way for a device to arm spoken-code pairing only once it can speak (#1268
+  follow-up F1). These are CAPABILITIES with no pymaxim caller yet.** The device bootstrap that wires them is owed in
+  maxim-pulse's Reachy app, or in the pending device-console facade.
+  The Reachy app's spoken-code pairing used a Piper voice that nothing provisioned. `models/audio/tts.py` documented a
+  manual `wget`. Without the voice, the announcer failed silently while the sign-in page told the owner to listen.
+  - **Pinned voices.** Every `TTS_MODELS` voice is pinned to one HF commit of `rhasspy/piper-voices`, with size and
+    sha256 per file. Each was computed by downloading and hashing the file; how to re-pin is in a comment.
+  - **Verified downloads.** `download_file(expected_sha256=)` verifies the download before the atomic rename. It
+    also verifies a file that is already present and replaces it on a mismatch. Without a hash, a present file is
+    trusted as before, so the LLM GGUFs are unchanged. `download_tts` passes both checks and stops at the first
+    failed file.
+  - **`ensure_tts_voice`.** The new `models/download.py::ensure_tts_voice` hashes the present files, then runs the
+    storage preflight and asks for consent. It takes the voice's OWN lock, so a GGUF download holding
+    `download.lock` never blocks a robot's sign-in voice.
+  - **`VoiceProvisioner`.** The new `models/audio/tts.py::VoiceProvisioner` retries in the background with backoff
+    until the voice is provisioned, `piper` is installed, and the voice LOADS. `TTSEngine.load()` makes the load
+    eager.
+  - **`build_app(pairing_ready=)`.** It is read on every request: until it returns True, `/api/hello` reports
+    `pairing: "none"` and `/api/pair/*` refuse with 409. A raising callable fails closed. So a robot that booted before Wi-Fi offers only the paste
+    path, and the by-ear path appears once the voice loads, without a restart (owner decision 2026-10-14). There is
+    no contract change.
+  - **Desktop.** A plain `maxim serve` never provisions a voice. `PiperTTS.is_available` now probes `piper` through the
+    canonical `optional_dependency_available`, and `size_mb` reads the real ~63 MB.
+
+  Gates: `tests/unit/test_tts_voice_provisioning.py` and `tests/unit/test_console_pairing.py::TestArmWhenReady`.
+
 - **A sim report now records which models answered its LLM calls, its scenario inputs and its session
   (baseline floors B0, `docs/plans/baseline_floors_b0.md`).** `report.json`'s `provenance` gains
   `provenance_schema: 2`; `llm_calls` (per router serial: each served call's provider, model, backend
@@ -135,6 +168,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The simulation's TTY read loops moved to `simulation/tty_stdin.py` (1.3.2 orchestrator decomposition, slice 0;
+  owner decision SF-4, 2026-10-13).** `start_simulation_mode`'s nested raw-mode stdin reader and its post-sim
+  "new goal or Enter" raw prompt loop are now the module functions `stdin_reader_raw` and
+  `read_post_sim_goal_raw`, moved verbatim apart from the closure-to-keyword-parameter rewrite (the post-sim
+  goal is now the return value), with the escape-sequence keymap and the terminal-restore atexit/SIGTERM hook
+  they own. No behaviour change. The module holds only TTY read loops and is on the coverage exclusion list
+  (`scripts/coverage_exclusions.json`, with an `excluded_statements` ledger entry of 204), because every
+  line needs a real TTY; `start_simulation_mode`'s length pin drops 3227 -> 3003. The non-TTY line reader and
+  the command parser stay in `orchestrator.py`, and `tty_stdin.py` joins CI's targeted mypy set. Guards:
+  `tests/unit/test_tty_stdin.py`, and `tests/unit/test_orchestrator_source.py` (every function of a module the
+  decomposition extracts into is a registered part of the run's source).
 - **`tool_dispatch.record_outcome(bridge_booked=)` is now a required keyword (#1221, owner decision TF8 step 3).**
   #1200 Stage 2 shipped it with a temporary `None` default while Session A landed `agent_loop.py`'s two call
   sites (#1231); with every caller now passing it, the default is dropped, so a caller that forgets the stamp is a

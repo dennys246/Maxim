@@ -576,13 +576,16 @@ def save_report(report: SimulationReport, base_dir: str | None = None) -> Path:
     return report_path
 
 
-_ACTIONS_JSONL_FORMAT_VERSION = "1.1"
+_ACTIONS_JSONL_FORMAT_VERSION = "1.2"
 """actions.jsonl ``_format_version``. Per release_0_9_1.md Stage 0b
-("Cross-cutting: persistence schema"), this file ships at "1.1" — the
-addition of the header line + ``agent_id`` / ``session_id`` /
-``entity_class`` per-record fields is a minor bump from the pre-0b
-unversioned ("0.x" per CC1) format. A future change that requires
-readers to handle a removed field is a major bump."""
+("Cross-cutting: persistence schema"), "1.1" added the header line +
+``agent_id`` / ``session_id`` / ``entity_class`` per-record fields, a minor
+bump from the pre-0b unversioned ("0.x" per CC1) format. "1.2" adds the
+per-action credit fields ``rpe`` / ``pain`` / ``nac_failure_booked``: the
+console's run history (``console/run_store.py``) reads credit only from a 1.2+
+header, so a 1.1 file reads as "credit not recorded" rather than "no credit".
+A future change that requires readers to handle a removed field is a major
+bump."""
 
 
 def save_action_log(bridge: Any, base_dir: str, session_id: str) -> Path | None:
@@ -602,6 +605,9 @@ def save_action_log(bridge: Any, base_dir: str, session_id: str) -> Path | None:
     ``None`` when the context was unbound at execution time (e.g.,
     pre-0b sims, headless API runs) or when ``entity_class`` couldn't
     be derived from tool params.
+
+    Since 1.2 every record also carries ``rpe``, ``pain`` and
+    ``nac_failure_booked`` (``None`` where the action carried none).
 
     Format-version evolution rule: appending optional fields to the
     per-action record is back-compat (existing parsers ignore unknown
@@ -639,6 +645,10 @@ def save_action_log(bridge: Any, base_dir: str, session_id: str) -> Path | None:
                     "agent_id": a.agent_id,
                     "session_id": a.session_id,
                     "entity_class": a.entity_class,
+                    # 1.2: per-action credit off the executor's ToolOutput stamp.
+                    "rpe": a.rpe,
+                    "pain": a.pain,
+                    "nac_failure_booked": a.nac_failure_booked,
                 }
                 f.write(json.dumps(entry, default=str) + "\n")
         logger.info("Action log saved: %s (%d records)", log_path, len(bridge.get_all_actions()))

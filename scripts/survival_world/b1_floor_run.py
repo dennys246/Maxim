@@ -44,7 +44,7 @@ import time
 import uuid
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1]
 if str(SCRIPTS_DIR) not in sys.path:
@@ -201,33 +201,55 @@ def parse_tick_query(resp: str) -> float | None:
     return rate if mspt <= 0 else min(rate, 1000.0 / mspt)
 
 
+class RigProblem(NamedTuple):
+    """One reason the rig is not quiet. ``transient``: waiting can clear it (a job in flight, a recent request, a
+    TPS dip); otherwise it cannot, and the attempt refuses at once instead of polling (rig, 2026-10-13: a leader
+    proxy with no lane metrics sat out every attempt's full wait and was refused anyway)."""
+
+    message: str
+    transient: bool
+
+
 def rig_problems(
     status: Mapping[str, Any] | None, last_requests: Mapping[str, Any] | None, tps: float | None, *, now: float
-) -> list[str]:
+) -> list[RigProblem]:
     """Why the rig is not quiet (rule 11; pure). ``status``/``last_requests`` None = no leader proxy on this box
-    (passes; recorded by the caller)."""
+    (passes; recorded by the caller). A present proxy that reports no lane metrics REFUSES (idle cannot be shown):
+    run B1 with the leader down, recorded ``absent``."""
     problems = []
     if status is not None:
         lane = status.get("infer_lane")
         if not isinstance(lane, Mapping) or lane.get("in_flight") is None:
-            problems.append("the leader proxy reports no infer_lane.in_flight (idle cannot be shown)")
+            problems.append(
+                RigProblem("the leader proxy reports no infer_lane.in_flight (idle cannot be shown)", False)
+            )
         elif lane["in_flight"] != 0:
-            problems.append(f"an inference job is in flight on this box ({lane['in_flight']})")
+            problems.append(RigProblem(f"an inference job is in flight on this box ({lane['in_flight']})", True))
         recent = (last_requests or {}).get("recent")
         if not isinstance(recent, list):
-            problems.append("the leader proxy's last-requests ring cannot be read")
+            problems.append(RigProblem("the leader proxy's last-requests ring cannot be read", False))
         else:
             stamps = [r.get("timestamp") if isinstance(r, Mapping) else None for r in recent]
             if any(isinstance(t, bool) or not isinstance(t, (int, float)) for t in stamps):
-                problems.append("a leader-proxy request entry carries no numeric `timestamp`")
+                problems.append(RigProblem("a leader-proxy request entry carries no numeric `timestamp`", False))
             late = [t for t in stamps if isinstance(t, (int, float)) and t > now - FROZEN["rig_idle_s"]]
             if late:
-                problems.append(f"{len(late)} leader-proxy request(s) in the last {FROZEN['rig_idle_s']:.0f} s")
+                problems.append(
+                    RigProblem(f"{len(late)} leader-proxy request(s) in the last {FROZEN['rig_idle_s']:.0f} s", True)
+                )
     if tps is None:
-        problems.append("server TPS could not be read from `tick query`")
+        problems.append(RigProblem("server TPS could not be read from `tick query`", False))
     elif tps < FROZEN["rig_tps_min"]:
-        problems.append(f"server TPS {tps:.2f} < {FROZEN['rig_tps_min']}")
+        problems.append(RigProblem(f"server TPS {tps:.2f} < {FROZEN['rig_tps_min']}", True))
     return problems
+
+
+class RigNotQuiet(InstrumentError):
+    """The rig check refused. ``transient`` is True only when every problem can clear by waiting."""
+
+    def __init__(self, message: str, *, transient: bool) -> None:
+        super().__init__(message)
+        self.transient = transient
 
 
 def key_done(row: Mapping[str, Any], attempt: int) -> bool:
@@ -235,6 +257,21 @@ def key_done(row: Mapping[str, Any], attempt: int) -> bool:
     ``_after_attempt`` and ``compute_verdict`` share): a clean row, any cause other than "instrument" ("behavioural"
     and "unrecorded" are final), or ``max_attempts`` attempts."""
     return row.get("refusal") is None or row.get("refusal_cause") != "instrument" or attempt >= FROZEN["max_attempts"]
+
+
+def apparatus_day_problem(apparatus_ts: Any, now: float) -> str | None:
+    """Why the apparatus record is not from the campaign's UTC start day, or None (prereg §Run runbook step 1, "same
+    day", mechanized; pure). Applied at a fresh gated campaign's start only: a ``--resume`` keeps its campaign's one
+    record (the verdict refuses a file that names two), and a diagnostic is never gated."""
+    import datetime as dt
+
+    if isinstance(apparatus_ts, bool) or not isinstance(apparatus_ts, (int, float)):
+        return f"the apparatus record carries no epoch ts ({apparatus_ts!r})"
+    day = dt.datetime.fromtimestamp(float(apparatus_ts), tz=dt.timezone.utc).date()
+    today = dt.datetime.fromtimestamp(now, tz=dt.timezone.utc).date()
+    if day != today:
+        return f"the apparatus check ran on {day} (UTC), not today ({today}): run a fresh check (runbook step 1)"
+    return None
 
 
 def attempts_done(rows: list[dict[str, Any]]) -> dict[tuple[str, int], dict[str, Any]]:
@@ -843,7 +880,8 @@ def food_state(rcon: Any, username: str, trial: WaterTrial) -> dict[str, Any]:
 
 
 def rig_check(rcon: Any, proxy_url: str | None) -> dict[str, Any]:
-    """Rule 11, recorded with no URL or auth in the data. Raises InstrumentError when the rig is not quiet."""
+    """Rule 11, recorded with no URL or auth in the data. Raises :class:`RigNotQuiet` when the rig is not quiet, saying
+    whether waiting can clear it."""
     from maxim.utils import http
 
     status = last = None
@@ -856,10 +894,14 @@ def rig_check(rcon: Any, proxy_url: str | None) -> dict[str, Any]:
             proxy = "present"
         except http.HTTPConnectionError:
             status = last = None  # no proxy on this box: passes, recorded
+        except (http.HTTPTimeout, http.HTTPServerError, http.HTTPRateLimited) as exc:
+            # a busy leader: its debug read timed out or failed server-side, which waiting can clear
+            raise RigNotQuiet(f"rig check: the leader proxy is busy ({type(exc).__name__})", transient=True) from exc
         except (http.HTTPError, ValueError) as exc:
-            raise InstrumentError(
-                f"rig check: the leader proxy answered but idle cannot be shown ({type(exc).__name__})"
-            )
+            raise RigNotQuiet(
+                f"rig check: the leader proxy answered but idle cannot be shown ({type(exc).__name__})",
+                transient=False,
+            ) from exc
     tps_reply = str(rcon.command("tick query"))
     tps = parse_tick_query(tps_reply)
     problems = rig_problems(status, last, tps, now=time.time())
@@ -868,10 +910,10 @@ def rig_check(rcon: Any, proxy_url: str | None) -> dict[str, Any]:
         "in_flight": ((status or {}).get("infer_lane") or {}).get("in_flight") if status else None,
         "recent_requests": len((last or {}).get("recent") or []) if last else None,
         "tps": tps,
-        "problems": problems,
+        "problems": [p.message for p in problems],
     }
     if problems:
-        raise InstrumentError(f"rig check: {problems}")
+        raise RigNotQuiet(f"rig check: {[p.message for p in problems]}", transient=all(p.transient for p in problems))
     return record
 
 
@@ -1056,6 +1098,8 @@ def run_arm_seed(ses: Session, arm: str, seed: int, attempt: int) -> dict[str, A
     except (Refusal, InstrumentError) as exc:
         record.update(getattr(exc, "partial", None) or {})
         record["refusal"], record["refusal_cause"], record["refusal_step"] = str(exc), "instrument", step
+        if isinstance(exc, RigNotQuiet):
+            record["rig_refusal_transient"] = exc.transient
         print(f"REFUSED (instrument) {arm} seed {seed}: {exc}")
     except OSError as exc:  # a transport fault (RCON socket, bridge ConnectionError, a timeout) on a 3-hour run: an
         # instrument refusal, recorded. A programming error is NOT caught: it crashes the campaign (--resume exists).
@@ -1107,14 +1151,15 @@ def _teardown(trial: FloorWaterTrial | None, pump: Any, aut: Any) -> None:
 def wait_for_quiet_rig(
     rcon: Any, proxy_url: str | None, *, max_wait_s: float = 600.0, poll_s: float = 15.0
 ) -> dict[str, Any]:
-    """``rig_check`` until it passes or ``max_wait_s`` elapses (then its refusal stands). Records the wait."""
+    """``rig_check`` until it passes or ``max_wait_s`` elapses (then its refusal stands). Records the wait. A refusal
+    that waiting cannot clear (``RigNotQuiet.transient`` False) stands at once."""
     t0 = time.monotonic()
     while True:
         try:
             rec = rig_check(rcon, proxy_url)
             return {**rec, "waited_s": round(time.monotonic() - t0, 1)}
-        except InstrumentError:
-            if time.monotonic() - t0 + poll_s > max_wait_s:
+        except RigNotQuiet as exc:
+            if not exc.transient or time.monotonic() - t0 + poll_s > max_wait_s:
                 raise
             time.sleep(poll_s)
 
@@ -1199,6 +1244,11 @@ def _run(args: argparse.Namespace) -> int:
     if not (gate.get("run_gate") or {}).get("pass"):
         print(f"[FAIL] geometry gate record does not carry run_gate.pass=true: {args.gate_record}")
         return 3
+    if gated and not args.diagnostic and not args.resume:
+        day_problem = apparatus_day_problem(apparatus.get("ts"), time.time())
+        if day_problem is not None:
+            print(f"[FAIL] {day_problem}")
+            return 3
     pain_edge_min = min_pain_edge_s(apparatus)
     try:
         geom = json.loads(ANCHOR_FILE.read_text())
@@ -1244,6 +1294,17 @@ def _run(args: argparse.Namespace) -> int:
     )
     exit_code = 0
     try:
+        # A rig problem waiting cannot clear is a property of the CAMPAIGN, not of one key: refuse it here, before any
+        # attempt is spent (code review: otherwise every key's attempt and its rerun refuse in seconds and the
+        # campaign ends unresumable).
+        try:
+            wait_for_quiet_rig(rcon, args.proxy_url)
+        except RigNotQuiet as exc:
+            print(f"[FAIL] {exc} -- fix the rig (rule 11: run B1 with the leader down), then start the campaign")
+            return 3
+        except OSError as exc:  # RCON unreachable before anything was written: a clean refusal, not a traceback
+            print(f"[FAIL] rig check: RCON failed ({type(exc).__name__}: {exc})")
+            return 3
         if not args.resume:
             _write_header(
                 out_path,
@@ -1291,6 +1352,13 @@ def _run(args: argparse.Namespace) -> int:
                     )
                     rec = run_arm_seed(ses, arm, seed, attempt)
                     _write_row(out_path, rec)
+                    if rec.get("rig_refusal_transient") is False:
+                        # the rig went bad mid-campaign in a way waiting cannot clear: stop, never spend the rerun;
+                        # `--resume` gets it back once the rig is fixed (the refusal is an instrument cause)
+                        print(
+                            f"[FAIL] the rig check refused mid-campaign ({rec['refusal']}); stopping. Resume once fixed."
+                        )
+                        return 3
                     if rec["refusal"] is not None:
                         exit_code = 4
                     entry = _after_attempt(rec, attempt)
