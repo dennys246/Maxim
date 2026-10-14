@@ -214,7 +214,7 @@ These variables are **debug / experimental**: useful for diagnostics or workarou
 | `MAXIM_BACKEND_TRACE` | Bumps `_MaximPeerBackend` `peer_backend_call` events from DEBUG to INFO. Pair with `MAXIM_LOG_FILE` for per-call JSONL. | 0 |
 | `MAXIM_HEARTBEAT` | System health heartbeat every 10s (GPU/CPU/RAM/disk/WiFi + stall detection). | 0 |
 | `MAXIM_HEARTBEAT_INTERVAL_S` | Heartbeat sample interval. | 10 |
-| `MAXIM_HEARTBEAT_STALL_S` | Warn after this many seconds with no LLM calls. | 30 |
+| `MAXIM_HEARTBEAT_STALL_S` | Stall floor: warn when a planning turn has been outstanding this long with no live LLM call. Clamped to 5–3600; a non-number falls back to 30. | 30 |
 | `MAXIM_LANE_TRACE` | Per-request LLM trace logs (also enables heartbeat). | 0 |
 | `MAXIM_PEER_LOG_REQUESTS` | JSON log per outbound peer call. | 0 |
 | `MAXIM_HIPPO_TRACE` / `MAXIM_NAC_TRACE` / `MAXIM_ATL_TRACE` / `MAXIM_EC_TRACE` / `MAXIM_SCN_TRACE` / `MAXIM_PAIN_TRACE` / `MAXIM_FEAR_TRACE` / `MAXIM_DEFAULT_NET_TRACE` | Enable bio-subsystem traces. Set by the `--trace` CLI flag. | 0 |
