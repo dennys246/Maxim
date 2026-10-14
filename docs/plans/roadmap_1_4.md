@@ -841,10 +841,9 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   design reviews and each rung's harness builds them. Its first rig work is the Exp 60 floor (B1, no LLM;
   its seam is a design-review decision); the bare loop (B2) waits for the `start_simulation_mode`
   decomposition, so no new LLM-path claim can be EARNED before it. Not Phase 0 item 2 (that item adds no public names) and not a benchmark framework (below).
-  *B1 status (2026-10-11):* the hook and the harness merged (#1236, #1238); the `b1_verdict` evidence entry, its
-  `b1_campaign` rule and the BF2 obligation lint for T1-13 land next
-  ([baseline_floors_b1_evidence.md](baseline_floors_b1_evidence.md)); the prereg freezes after the seed 99 rig
-  diagnostic, then the run.
+  *B1 status (2026-10-13):* the hook, the harness, its evidence entry and the BF2 obligation lint are merged (#1236,
+  #1238, #1245, #1258). The seed 99 rig diagnostic passed every liveness check, and the prereg is FROZEN v5. Next is
+  the run (§Run runbook): a same-day water check and its record PR first.
 
 ## What is NOT in 1.4
 
