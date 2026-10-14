@@ -4,7 +4,7 @@ import logging
 import os
 import sys
 import threading
-from typing import Optional
+from typing import Callable, Optional
 
 DEFAULT_DATEFMT = "%H:%M:%S"
 DEFAULT_FORMAT = "%(asctime)s | %(levelname)s | %(message)s"
@@ -313,6 +313,53 @@ def _reset_swallow_seen_for_test() -> None:
         _swallow_seen.clear()
 
 
+# Listeners on the Stage-1 swallow events (the console's "degraded" view,
+# console/health.py). A seam rather than a log handler on purpose: a site's
+# SECOND and later fires log at DEBUG, which a WARNING-level logger drops before
+# any handler runs, so a handler would see each site once and report a count of
+# 1 for a site that fired a thousand times. Listeners see every fire, regardless
+# of logger level or MAXIM_LOG_FILE. Called synchronously from inside an
+# `except` block on the failing thread: keep them O(1) and never raising. A
+# raising listener is contained and WARNED once per listener through the plain
+# logger (the `sim_logger._dispatch_to_sinks` precedent) — never reported back
+# through log_swallowed_exception, which would re-enter this very path.
+SwallowListener = Callable[[str, Optional[str], Optional[str]], None]
+_swallow_listeners: list[SwallowListener] = []
+_swallow_listeners_lock = threading.Lock()
+
+
+def register_swallow_listener(fn: SwallowListener) -> None:
+    """Register ``fn(site, exc_type, exc_text)`` for every Stage-1 swallow."""
+    with _swallow_listeners_lock:
+        if fn not in _swallow_listeners:
+            _swallow_listeners.append(fn)
+
+
+def unregister_swallow_listener(fn: SwallowListener) -> None:
+    with _swallow_listeners_lock:
+        if fn in _swallow_listeners:
+            _swallow_listeners.remove(fn)
+
+
+_swallow_listener_warned: set[SwallowListener] = set()  # the fn itself: an id() can be reused
+
+
+def _notify_swallowed(site: str, exc_type: str | None, exc_text: str | None) -> None:
+    with _swallow_listeners_lock:
+        listeners = list(_swallow_listeners)
+    for fn in listeners:
+        try:
+            fn(site, exc_type, exc_text)
+        except Exception as e:  # a listener bug must not reach the failing site
+            if fn not in _swallow_listener_warned:
+                _swallow_listener_warned.add(fn)
+                logging.getLogger("maxim").warning(
+                    "swallow listener %r raised %s; further failures of this listener are not reported",
+                    getattr(fn, "__qualname__", fn),
+                    type(e).__name__,
+                )
+
+
 def log_swallowed_exception(
     exc: BaseException | None = None,
     *,
@@ -398,6 +445,12 @@ def log_swallowed_exception(
             ctx_str = f" [{', '.join(ctx_parts)}]"
 
         if stage1_form:
+            if _swallow_listeners:  # no str(exc) on the failing thread unless someone listens
+                _notify_swallowed(
+                    operation,
+                    type(exc).__name__ if exc is not None else None,
+                    str(exc) if exc is not None else None,
+                )
             # The `extra` event/data pair is LOAD-BEARING (review fold, PR #487):
             # the MAXIM_LOG_FILE JSONL handler's StructuredFormatter serializes
             # ONLY record.event + record.data and discards the printf message
