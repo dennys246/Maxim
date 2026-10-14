@@ -482,6 +482,29 @@ from the plan that owns it:
   - [#1100](https://github.com/dennys246/Maxim/issues/1100) (flaky: `test_store_guard_971` NAc round trip across
     wall-clock decay) → batch 0, CI truth, the #951/#954 timing class. Trigger: its next CI firing.
 
+**Release-readiness audit, 2026-10-14: owner decisions and recorded moves.** A read-only audit of `main` @ 26fcaf1b
+found 1.3.2 not ready. The owner decided:
+- **T1-2 (Exp 37) is STALE, and the release WAITS for its re-run.** This is the strict default: a Stale row
+  blocks the next release, and no exception is taken. The prerequisite is
+  [#1226](https://github.com/dennys246/Maxim/issues/1226): a non-resumed narrator on every cross-session arm, so
+  that only the agent's memory differs. The re-run's design lives in baseline-floors Stage B4
+  ([baseline_floors.md](baseline_floors.md)) and goes through the four-lens design review before the harness is
+  built.
+- **Batch 1's review findings [#966](https://github.com/dennys246/Maxim/issues/966),
+  [#967](https://github.com/dennys246/Maxim/issues/967) and [#968](https://github.com/dennys246/Maxim/issues/968)
+  are fixed in 1.3.2** (Session C, one PR).
+  - #967 FAILS CLOSED: a robots.txt that cannot be read (5xx, 429, timeout, network) refuses the fetch.
+  - Following RFC 9309: any other 4xx, 401/403 included, means no restrictions; redirects are followed for up to
+    five hops; the robots.txt is the URL's own origin's.
+- **Moved, so batches 0–3 read true:**
+  - [#954](https://github.com/dennys246/Maxim/issues/954), the scripted water-trial tests still on wall time
+    (batch 0's timing class): moved to 1.3.3, Session B, CI truth.
+  - [#984](https://github.com/dennys246/Maxim/issues/984), [#985](https://github.com/dennys246/Maxim/issues/985),
+    [#988](https://github.com/dennys246/Maxim/issues/988) and [#989](https://github.com/dennys246/Maxim/issues/989),
+    batch 2's follow-ups: moved to 1.3.3, Session C.
+  - [#863](https://github.com/dennys246/Maxim/issues/863) step 2, the sites outside the loop (`orchestrator.py` and
+    `cli.py::_main_impl`): moved with those slices. It stays open on #863, home recorded.
+
 **Done when:**
 - Batches 0–2 are closed.
 - Each of batches 3–4 is closed, or moved as recorded above.
@@ -531,7 +554,7 @@ recorded-but-unused memory system. That is 1.4's work ([roadmap_1_4.md](roadmap_
    2,717 with #963, merged as #1198). Slice 5, §1.1–§1.16 perception (imagination, auto-sense, audio orientation)
    → `runtime/loop_perception.py::perceive -> PerceptionOutcome` (`imagine`, `auto_sense`, `orient_to_audio`, each
    verbatim and under 200 lines; `next_observation` and `state.update` stay at the call site), built 2026-10-10,
-   PR pending: 2,717 → 2,429 lines; the same PR applies rule (c) below.)*
+   merged as #1210: 2,717 → 2,429 lines; the same PR applied rule (c) below.)*
 2. **`start_simulation_mode`** (`simulation/orchestrator.py`, 3,322). Its tests cover **11%** of its lines
    (the Codex card's measurement at `v1.3.1`), so it is NOT decomposed blind: characterization tests
    first, then an orchestrator coverage floor set from them (item 5 above), then slices under the same

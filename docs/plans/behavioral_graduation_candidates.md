@@ -938,11 +938,15 @@ Not every architectural change should trigger every re-run — maintenance cost 
 
 ### Honest accounting — dispositioned 2026-08-30
 
-**Current, 2026-09-30 (the table is authoritative; the 2026-08-30 account below is history):**
+**Current, 2026-10-14 (the table is authoritative; the 2026-08-30 account below is history):**
 - 13 `DROPPED` (T3-16 moved from PARTIAL on 2026-09-09);
 - 2 `DORMANT` (T3-4, T3-7);
 - 4 `TIER-2` (T3-17 and T3-20 were decided on 2026-09-05);
-- 1 `STALE` (T3-9: its 2026-09-24 re-run was a typed abort).
+- 1 `PARTIAL` (T3-9, STALE until 2026-10-03; its 2026-09-24 re-run was a typed abort).
+
+Outside this Tier-3 account, Tier-1 row T1-2 (Exp 37) has been `STALE` since 2026-10-02. It blocks the next
+release, and the owner decided on 2026-10-14 that 1.3.2 waits for its re-run (roadmap_1_3_x.md §1.3.2,
+release-readiness audit).
 
 **The 16 rows the score card named now carry dispositions.** Rows 1–8, 10–15 and 18–19 were
 resolved on 2026-08-30 (1.1.2 Cluster C); the card's Research-integrity condition (4) named
