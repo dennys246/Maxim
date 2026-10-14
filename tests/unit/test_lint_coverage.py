@@ -1302,9 +1302,11 @@ def test_local_mode_gates_a_missing_pin_that_rises(repo, capsys, scope):
     _write(repo, L.FLOORS_REL, edit)
     _commit(repo)
     rc_ci, _, err_ci = _run(capsys)
-    rc, _, err = _run_local(capsys)
+    rc, out, err = _run_local(capsys)
     assert rc_ci == 1 and "a pinned missing never rises" in err_ci
     assert rc == 1 and "a pinned missing never rises" in err, err
+    key = {"package": "maxim/alpha", "file": A, "overall": "overall"}[scope]
+    assert f"not gated): {key}:" not in out, out  # gated once: not also printed as a contradicting note
 
 
 def test_pin_rises_fires_only_on_a_same_key_pin_above_its_base():
