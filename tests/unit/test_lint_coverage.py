@@ -1282,7 +1282,6 @@ def test_local_mode_only_notes_a_floor_pin_edit(repo, capsys):
     assert "floor pin rule, verified in CI, not gated" in out
 
 
-@pytest.mark.xfail(strict=True, reason="#1270: --local notes a raised missing pin that CI refuses")
 @pytest.mark.parametrize("scope", ["package", "file", "overall"])
 def test_local_mode_gates_a_missing_pin_that_rises(repo, capsys, scope):
     """The #1268 shape: new code adds uncovered statements, and the PR raises the package's ``missing`` pin to match
