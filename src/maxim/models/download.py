@@ -156,46 +156,64 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
     },
 }
 
+# Piper voices are pinned to ONE commit of rhasspy/piper-voices, and every file carries its size and sha256, verified
+# on download and when already present (#1268 follow-up F1: a robot provisions its voice unattended). To re-pin:
+# pick a commit, download each file from ``resolve/<commit>/...`` and record ``stat`` size + ``shasum -a 256``
+# (for an LFS ``.onnx`` HF's ``x-linked-etag`` header is the same sha256; a ``.json``'s etag is a git sha1, not it).
+_PIPER_VOICES = "https://huggingface.co/rhasspy/piper-voices/resolve/c10ece1aade47bb51c153c893d14e5bf8e5b7117/"
+
 TTS_MODELS: dict[str, dict[str, Any]] = {
     "en_US-lessac-medium": {
         "description": "English US - Lessac voice (medium quality, recommended)",
-        "size_mb": 75,
+        "size_mb": 63,
         "files": [
             {
-                "url": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx",
+                "url": _PIPER_VOICES + "en/en_US/lessac/medium/en_US-lessac-medium.onnx",
                 "filename": "en_US-lessac-medium.onnx",
+                "expected_bytes": 63201294,
+                "sha256": "5efe09e69902187827af646e1a6e9d269dee769f9877d17b16b1b46eeaaf019f",
             },
             {
-                "url": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json",
+                "url": _PIPER_VOICES + "en/en_US/lessac/medium/en_US-lessac-medium.onnx.json",
                 "filename": "en_US-lessac-medium.onnx.json",
+                "expected_bytes": 4885,
+                "sha256": "efe19c417bed055f2d69908248c6ba650fa135bc868b0e6abb3da181dab690a0",
             },
         ],
     },
     "en_US-amy-medium": {
         "description": "English US - Amy voice (female, medium quality)",
-        "size_mb": 75,
+        "size_mb": 63,
         "files": [
             {
-                "url": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx",
+                "url": _PIPER_VOICES + "en/en_US/amy/medium/en_US-amy-medium.onnx",
                 "filename": "en_US-amy-medium.onnx",
+                "expected_bytes": 63201294,
+                "sha256": "b3a6e47b57b8c7fbe6a0ce2518161a50f59a9cdd8a50835c02cb02bdd6206c18",
             },
             {
-                "url": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx.json",
+                "url": _PIPER_VOICES + "en/en_US/amy/medium/en_US-amy-medium.onnx.json",
                 "filename": "en_US-amy-medium.onnx.json",
+                "expected_bytes": 4882,
+                "sha256": "95a23eb4d42909d38df73bb9ac7f45f597dbfcde2d1bf9526fdeaf5466977d77",
             },
         ],
     },
     "en_GB-alan-medium": {
         "description": "English UK - Alan voice (British male)",
-        "size_mb": 75,
+        "size_mb": 63,
         "files": [
             {
-                "url": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/medium/en_GB-alan-medium.onnx",
+                "url": _PIPER_VOICES + "en/en_GB/alan/medium/en_GB-alan-medium.onnx",
                 "filename": "en_GB-alan-medium.onnx",
+                "expected_bytes": 63201294,
+                "sha256": "0a309668932205e762801f1efc2736cd4b0120329622adf62be09e56339d3330",
             },
             {
-                "url": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/medium/en_GB-alan-medium.onnx.json",
+                "url": _PIPER_VOICES + "en/en_GB/alan/medium/en_GB-alan-medium.onnx.json",
                 "filename": "en_GB-alan-medium.onnx.json",
+                "expected_bytes": 4888,
+                "sha256": "c0f0d124e5895c00e7c03b35dcc8287f319a6998a365b182deb5c8e752ee8c1e",
             },
         ],
     },
@@ -288,12 +306,26 @@ def _progress_hook(block_num: int, block_size: int, total_size: int) -> None:
             sys.stdout.flush()
 
 
+def _file_matches(path: Path, expected_bytes: int | None, expected_sha256: str) -> bool:
+    """True when ``path`` has the expected size (if given) and sha256."""
+    import hashlib
+
+    if expected_bytes is not None and path.stat().st_size != expected_bytes:
+        return False
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest() == expected_sha256.lower()
+
+
 def download_file(
     url: str,
     dest_path: Path,
     desc: str = "",
     *,
     expected_bytes: int | None = None,
+    expected_sha256: str | None = None,
 ) -> bool:
     """Download a file atomically with progress indicator.
 
@@ -314,6 +346,12 @@ def download_file(
             ``LLM_MODELS[<profile>]["expected_bytes"]``. ``None`` skips
             the size check (legacy profiles that have not been verified
             against HuggingFace yet).
+        expected_sha256: If provided, the downloaded file's sha256 must
+            match before the atomic rename, AND a file already at
+            ``dest_path`` is verified the same way and replaced when it does
+            not match (an earlier unverified download of a moving URL, a
+            same-size corruption). Without it a present file is trusted, as
+            before (the LLM GGUFs).
 
     Returns:
         True if the file exists at ``dest_path`` after the call (either
@@ -323,8 +361,12 @@ def download_file(
     dest_path.parent.mkdir(parents=True, exist_ok=True)
 
     if dest_path.exists():
-        print(f"  Already exists: {dest_path}")
-        return True
+        if expected_sha256 is None:
+            print(f"  Already exists: {dest_path}")
+            return True
+        if _file_matches(dest_path, expected_bytes, expected_sha256):
+            return True
+        logger.warning("%s does not match its pinned size/sha256; downloading it again", dest_path.name)
 
     tmp_path = dest_path.with_suffix(dest_path.suffix + ".partial")
     # Clean up any stale partial from a prior crashed run before starting.
@@ -378,6 +420,13 @@ def download_file(
                 pass
             print(f"  Download size mismatch: got {actual_bytes} bytes, expected {expected_bytes}. File rejected.")
             return False
+    if expected_sha256 is not None and not _file_matches(tmp_path, None, expected_sha256):
+        try:
+            tmp_path.unlink()
+        except OSError:
+            pass
+        logger.warning("%s: downloaded bytes do not match the pinned sha256; file rejected", dest_path.name)
+        return False
 
     try:
         import os as _os
@@ -711,13 +760,92 @@ def download_tts(
     print(f"  {model_info['description']}")
     print(f"  Size: ~{model_info['size_mb']} MB")
 
-    success = True
     for file_info in model_info["files"]:
         dest_path = models_dir / file_info["filename"]
-        if not download_file(file_info["url"], dest_path, file_info["filename"]):
-            success = False
+        if not download_file(
+            file_info["url"],
+            dest_path,
+            file_info["filename"],
+            expected_bytes=file_info.get("expected_bytes"),
+            expected_sha256=file_info.get("sha256"),
+        ):
+            logger.warning("TTS voice %s: %s failed to download or verify", model_name, file_info["filename"])
+            return False  # stop at the first failure: a half-provisioned voice is reported, not loaded
+    return True
 
-    return success
+
+def ensure_tts_voice(
+    model_name: str = DEFAULT_TTS,
+    *,
+    auto: bool | None = None,
+    interactive: bool | None = None,
+    models_dir: str | Path | None = None,
+) -> bool:
+    """Make sure a Piper voice is on disk and VERIFIED; download it if not (#1268 follow-up F1).
+
+    The voice's files are pinned in :data:`TTS_MODELS` (one HF commit, size + sha256 each). Present files are hashed
+    (about a second for ~63 MB), so an earlier unverified or corrupted copy is replaced, not trusted. Otherwise, in
+    order: the storage preflight, consent (``auto``, else ``MAXIM_AUTO_DOWNLOAD_MODELS``, else a tty prompt; a
+    headless caller without consent is refused), then the voice's OWN lock (``download-tts-<name>.lock``, so a long
+    GGUF download holding ``download.lock`` never blocks a robot's sign-in voice), a re-check, and the download.
+
+    A device bootstrap calls this through :class:`maxim.models.audio.tts.VoiceProvisioner` with ``auto=True``
+    (deploying the robot app is the consent); a desktop ``maxim serve`` never calls it.
+
+    Returns True iff every file of the voice is present and verified after the call.
+    """
+    import sys
+
+    from maxim.utils.paths import data_home
+    from maxim.utils.process_lock import LockContended, file_lock
+    from maxim.utils.storage import can_download
+
+    info = TTS_MODELS.get(model_name)
+    if info is None:
+        logger.warning("Unknown TTS voice %r (known: %s)", model_name, ", ".join(TTS_MODELS))
+        return False
+    tts_dir = Path(models_dir) if models_dir is not None else Path(_tts_dir())
+
+    def verified() -> bool:
+        for f in info["files"]:
+            path = tts_dir / f["filename"]
+            sha = f.get("sha256")
+            if not path.exists() or (sha is not None and not _file_matches(path, f.get("expected_bytes"), sha)):
+                return False
+        return True
+
+    if verified():
+        return True
+    ok, reason = can_download(float(info.get("size_mb", 0)) / 1024.0, headroom_gb=0.5, soft_budget_gb=_soft_budget_gb())
+    if not ok:
+        logger.warning("Cannot download TTS voice %s: %s", model_name, reason)
+        return False
+    consent = _auto_download_enabled() if auto is None else bool(auto)
+    if not consent:
+        try:
+            is_tty = (sys.stdin.isatty() if interactive is None else bool(interactive)) if sys.stdin else False
+        except ValueError:  # a closed stdin (a daemon): not a terminal
+            is_tty = False
+        answer = (
+            _prompt_yes_no_with_timeout(
+                f"\n  Maxim wants to download the TTS voice '{model_name}' (~{info.get('size_mb')} MB). Proceed? [y/N] "
+            )
+            if is_tty
+            else None
+        )
+        if not answer:
+            logger.warning(
+                "TTS voice %s is not provisioned; run `python -m maxim.models.download --tts %s`",
+                model_name,
+                model_name,
+            )
+            return False
+    try:
+        with file_lock(data_home() / "util" / f"download-tts-{model_name}.lock"):
+            return verified() or (download_tts(model_name, tts_dir) and verified())
+    except LockContended:
+        logger.warning("Another process is downloading TTS voice %s; try again shortly", model_name)
+        return False
 
 
 def download_vision(
