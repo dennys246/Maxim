@@ -257,3 +257,26 @@ class TestHygiene:
         c = TestClient(app)
         r = c.post("/api/pair/request", json={}, headers={"Origin": "https://evil.example"})
         assert r.status_code == 403
+
+
+class TestArmWhenReady:
+    """A device whose voice is still provisioning (no network at boot) offers only the paste path, and the by-ear path
+    appears once the voice is ready, with no restart (owner decision 2026-10-14). Readiness is read on every request;
+    the pairing field's shape is unchanged."""
+
+    @pytest.mark.xfail(strict=True, reason="#1268 F1: build_app has no pairing_ready yet")
+    def test_hello_and_request_follow_readiness_live(self, _isolated):
+        ready = [False]
+        announcer = _Announcer()
+        app = build_app(None, auth_token=_TOKEN, pairing_announcer=announcer, pairing_ready=lambda: ready[0])
+        c = TestClient(app)
+        assert c.get("/api/hello").json()["pairing"] == "none"
+        assert c.post("/api/pair/request").status_code == 409
+        ready[0] = True
+        assert c.get("/api/hello").json()["pairing"] == "available"
+        assert c.post("/api/pair/request").status_code == 202
+
+    @pytest.mark.xfail(strict=True, reason="#1268 F1: build_app has no pairing_ready yet")
+    def test_readiness_without_an_announcer_is_refused_at_build_time(self, _isolated):
+        with pytest.raises(ConfigurationError):
+            build_app(None, auth_token=_TOKEN, pairing_ready=lambda: True)
