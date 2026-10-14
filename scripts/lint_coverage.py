@@ -1888,9 +1888,9 @@ def main(argv: list[str] | None = None) -> int:
     # in CI's environment, so locally only the floors of TOUCHED packages gate (local_touched_packages: changed src
     # files, deletions and moves included, plus the packages changed tests import -- #1240's and #1201's "raise it");
     # the overall floor, untouched packages and a PR's own floor-pin edits are printed as notes -- except a pinned
-    # ``missing`` that rose above its base, which reads no measurement and gates as in CI (pin_rises, #1270). Touched floors gate
-    # DESPITE the environment difference (no --require-extras, no netns, macOS): a breach within noise of a floor needs
-    # CI's number. Diff coverage (#1232) and every other rule gate exactly as in CI. Never in CI: ci_step_rules pins
+    # ``missing`` that rose above its base, which reads no measurement and gates as in CI (pin_rises, #1270; a stale
+    # origin/main can misplace the base: fetch first). Touched floors gate DESPITE the environment difference (no
+    # --require-extras, no netns, macOS): a breach within noise of a floor needs CI's number. Diff coverage (#1232) and every other rule gate exactly as in CI. Never in CI: ci_step_rules pins
     # the step to the bare command, and this refuses to run under GitHub Actions.
     local = argv[:1] == ["--local"]
     if local and os.environ.get("GITHUB_ACTIONS"):
@@ -1969,9 +1969,12 @@ def main(argv: list[str] | None = None) -> int:
                             )
                             if local:  # a PR's floor edits are CI measurements: CI verifies them, not this box,
                                 # except the half that reads no measurement: a pinned missing that rose (#1270)
-                                failures += pin_rises(base_fl, fl)
+                                rises = pin_rises(base_fl, fl)
+                                failures += rises
+                                gated = {r.split(":", 1)[0] for r in rises}  # gated above: not also a "not gated" note
                                 for note in pin:
-                                    print(f"coverage (local, floor pin rule, verified in CI, not gated): {note}")
+                                    if note.split(":", 1)[0] not in gated:
+                                        print(f"coverage (local, floor pin rule, verified in CI, not gated): {note}")
                             else:
                                 failures += pin
                     else:

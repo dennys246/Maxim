@@ -1307,6 +1307,18 @@ def test_local_mode_gates_a_missing_pin_that_rises(repo, capsys, scope):
     assert rc == 1 and "a pinned missing never rises" in err, err
 
 
+def test_pin_rises_fires_only_on_a_same_key_pin_above_its_base():
+    """The guards that keep --local from failing what CI accepts (#1270 review): a NEW key, a rename carried to a new
+    key, and a null base pin are never a "rise" (CI judges them against measurements); a same-key rise always is."""
+    base = L.parse_floors(_floors(alpha=(None, None), files={A: (80.0, 2)}))
+    head = L.parse_floors(
+        _floors(alpha=(80.0, 9), beta="drop", files={A: (80.0, 2), B: (50.0, 9)}, **{"maxim/gamma": (50.0, 9)})
+    )
+    assert L.pin_rises(base, head) == []  # alpha's base pin null; gamma new (beta's rename target); file B new
+    rose = L.parse_floors(_floors(overall=(65.0, 8), beta=(50.0, 6), files={A: (80.0, 3)}))
+    assert [m.split(":", 1)[0] for m in L.pin_rises(base, rose)] == ["overall", "maxim/beta", A]
+
+
 def test_floor_head_rules_only_skips_an_untouched_package_without_a_floor(repo):
     """The second ``only`` filter: a measured package with no floor, outside the touched set, is not a failure."""
     fl = L.parse_floors(_floors())
