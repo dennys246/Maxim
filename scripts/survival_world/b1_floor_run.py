@@ -259,6 +259,21 @@ def key_done(row: Mapping[str, Any], attempt: int) -> bool:
     return row.get("refusal") is None or row.get("refusal_cause") != "instrument" or attempt >= FROZEN["max_attempts"]
 
 
+def apparatus_day_problem(apparatus_ts: Any, now: float) -> str | None:
+    """Why the apparatus record is not from the campaign's UTC start day, or None (prereg §Run runbook step 1, "same
+    day", mechanized; pure). Applied at a fresh gated campaign's start only: a ``--resume`` keeps its campaign's one
+    record (the verdict refuses a file that names two), and a diagnostic is never gated."""
+    import datetime as dt
+
+    if isinstance(apparatus_ts, bool) or not isinstance(apparatus_ts, (int, float)):
+        return f"the apparatus record carries no epoch ts ({apparatus_ts!r})"
+    day = dt.datetime.fromtimestamp(float(apparatus_ts), tz=dt.timezone.utc).date()
+    today = dt.datetime.fromtimestamp(now, tz=dt.timezone.utc).date()
+    if day != today:
+        return f"the apparatus check ran on {day} (UTC), not today ({today}): run a fresh check (runbook step 1)"
+    return None
+
+
 def attempts_done(rows: list[dict[str, Any]]) -> dict[tuple[str, int], dict[str, Any]]:
     """Per (arm, seed): the attempts recorded and whether another is owed (resume; pure). Rows are read in attempt
     order (never file order); a key is DONE once any of its rows satisfies :func:`key_done`."""
@@ -865,7 +880,8 @@ def food_state(rcon: Any, username: str, trial: WaterTrial) -> dict[str, Any]:
 
 
 def rig_check(rcon: Any, proxy_url: str | None) -> dict[str, Any]:
-    """Rule 11, recorded with no URL or auth in the data. Raises InstrumentError when the rig is not quiet."""
+    """Rule 11, recorded with no URL or auth in the data. Raises :class:`RigNotQuiet` when the rig is not quiet, saying
+    whether waiting can clear it."""
     from maxim.utils import http
 
     status = last = None
@@ -878,6 +894,9 @@ def rig_check(rcon: Any, proxy_url: str | None) -> dict[str, Any]:
             proxy = "present"
         except http.HTTPConnectionError:
             status = last = None  # no proxy on this box: passes, recorded
+        except (http.HTTPTimeout, http.HTTPServerError, http.HTTPRateLimited) as exc:
+            # a busy leader: its debug read timed out or failed server-side, which waiting can clear
+            raise RigNotQuiet(f"rig check: the leader proxy is busy ({type(exc).__name__})", transient=True) from exc
         except (http.HTTPError, ValueError) as exc:
             raise RigNotQuiet(
                 f"rig check: the leader proxy answered but idle cannot be shown ({type(exc).__name__})",
@@ -1079,6 +1098,8 @@ def run_arm_seed(ses: Session, arm: str, seed: int, attempt: int) -> dict[str, A
     except (Refusal, InstrumentError) as exc:
         record.update(getattr(exc, "partial", None) or {})
         record["refusal"], record["refusal_cause"], record["refusal_step"] = str(exc), "instrument", step
+        if isinstance(exc, RigNotQuiet):
+            record["rig_refusal_transient"] = exc.transient
         print(f"REFUSED (instrument) {arm} seed {seed}: {exc}")
     except OSError as exc:  # a transport fault (RCON socket, bridge ConnectionError, a timeout) on a 3-hour run: an
         # instrument refusal, recorded. A programming error is NOT caught: it crashes the campaign (--resume exists).
@@ -1223,6 +1244,11 @@ def _run(args: argparse.Namespace) -> int:
     if not (gate.get("run_gate") or {}).get("pass"):
         print(f"[FAIL] geometry gate record does not carry run_gate.pass=true: {args.gate_record}")
         return 3
+    if gated and not args.diagnostic and not args.resume:
+        day_problem = apparatus_day_problem(apparatus.get("ts"), time.time())
+        if day_problem is not None:
+            print(f"[FAIL] {day_problem}")
+            return 3
     pain_edge_min = min_pain_edge_s(apparatus)
     try:
         geom = json.loads(ANCHOR_FILE.read_text())
@@ -1268,6 +1294,14 @@ def _run(args: argparse.Namespace) -> int:
     )
     exit_code = 0
     try:
+        # A rig problem waiting cannot clear is a property of the CAMPAIGN, not of one key: refuse it here, before any
+        # attempt is spent (code review: otherwise every key's attempt and its rerun refuse in seconds and the
+        # campaign ends unresumable).
+        try:
+            wait_for_quiet_rig(rcon, args.proxy_url)
+        except RigNotQuiet as exc:
+            print(f"[FAIL] {exc} -- fix the rig (rule 11: run B1 with the leader down), then start the campaign")
+            return 3
         if not args.resume:
             _write_header(
                 out_path,
@@ -1315,6 +1349,13 @@ def _run(args: argparse.Namespace) -> int:
                     )
                     rec = run_arm_seed(ses, arm, seed, attempt)
                     _write_row(out_path, rec)
+                    if rec.get("rig_refusal_transient") is False:
+                        # the rig went bad mid-campaign in a way waiting cannot clear: stop, never spend the rerun;
+                        # `--resume` gets it back once the rig is fixed (the refusal is an instrument cause)
+                        print(
+                            f"[FAIL] the rig check refused mid-campaign ({rec['refusal']}); stopping. Resume once fixed."
+                        )
+                        return 3
                     if rec["refusal"] is not None:
                         exit_code = 4
                     entry = _after_attempt(rec, attempt)

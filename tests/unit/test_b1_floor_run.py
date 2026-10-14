@@ -374,6 +374,7 @@ def _stub_run(monkeypatch, tmp_path, *, tree_refusal=None, real_append_refusal=F
     monkeypatch.setattr(B, "ANCHOR_FILE", anchor)
     monkeypatch.setattr(B, "anchor_record_mismatch", lambda m, a: None)
     monkeypatch.setattr(B, "apparatus_geometry", lambda g: {})
+    monkeypatch.setattr(B, "wait_for_quiet_rig", lambda rcon, url, **kw: {"proxy": "not_checked"})
 
     class _Rcon:
         def __init__(self, *a):
@@ -902,6 +903,19 @@ def test_rig_problems_say_whether_waiting_can_clear_them():
     assert [p.transient for p in B.rig_problems(None, None, None, now=now)] == [False]
 
 
+class _Clock:
+    """A fake monotonic clock that ``sleep`` advances, so a polling regression fails in milliseconds."""
+
+    def __init__(self):
+        self.t = 1000.0
+
+    def monotonic(self):
+        return self.t
+
+    def sleep(self, s):
+        self.t += s
+
+
 def test_a_refusal_that_cannot_clear_stands_at_once_and_a_transient_one_is_waited_out(monkeypatch):
     calls = []
 
@@ -909,8 +923,10 @@ def test_a_refusal_that_cannot_clear_stands_at_once_and_a_transient_one_is_waite
         calls.append(1)
         raise B.RigNotQuiet("no lane metrics", transient=False)
 
+    clock = _Clock()
+    monkeypatch.setattr(B.time, "monotonic", clock.monotonic)
+    monkeypatch.setattr(B.time, "sleep", clock.sleep)
     monkeypatch.setattr(B, "rig_check", stuck)
-    monkeypatch.setattr(B.time, "sleep", lambda s: None)
     with pytest.raises(B.RigNotQuiet):
         B.wait_for_quiet_rig(None, "http://x", max_wait_s=600, poll_s=15)
     assert calls == [1]  # no polling
@@ -924,4 +940,68 @@ def test_a_refusal_that_cannot_clear_stands_at_once_and_a_transient_one_is_waite
         return item
 
     monkeypatch.setattr(B, "rig_check", busy_then_idle)
-    assert B.wait_for_quiet_rig(None, "http://x", max_wait_s=600, poll_s=15)["proxy"] == "present"
+    rec = B.wait_for_quiet_rig(None, "http://x", max_wait_s=600, poll_s=15)
+    assert rec["proxy"] == "present" and rec["waited_s"] == 15.0
+
+
+@pytest.mark.parametrize(
+    ("exc_name", "transient"),
+    [("HTTPTimeout", True), ("HTTPServerError", True), ("HTTPRateLimited", True), ("HTTPAuthError", False)],
+)
+def test_a_busy_proxy_is_transient_and_a_refusing_one_is_not(monkeypatch, exc_name, transient):
+    from maxim.utils import http
+
+    exc_cls = getattr(http, exc_name)
+
+    def boom(*a, **k):
+        raise exc_cls.__new__(exc_cls)
+
+    monkeypatch.setattr(http, "fetch_url", boom)
+
+    class _R:
+        def command(self, cmd):
+            return "Target tick rate: 20.0 per second.\nAverage time per tick: 3.0ms"
+
+    with pytest.raises(B.RigNotQuiet) as info:
+        B.rig_check(_R(), "http://127.0.0.1:8099")
+    assert info.value.transient is transient
+
+
+def test_a_rig_that_cannot_clear_refuses_the_campaign_before_any_attempt(monkeypatch, tmp_path):
+    gate, calls = _stub_run(monkeypatch, tmp_path)
+    out = tmp_path / "b1.jsonl"
+    _patch_session_out(monkeypatch, out)
+
+    def stuck(rcon, url, **kw):
+        raise B.RigNotQuiet("no lane metrics", transient=False)
+
+    monkeypatch.setattr(B, "wait_for_quiet_rig", stuck)
+    assert B._run(_run_args(gate, out)) == 3
+    assert calls == [] and (not out.exists() or out.read_text() == "")
+
+
+def test_a_non_transient_rig_refusal_mid_campaign_stops_without_spending_the_rerun(monkeypatch, tmp_path):
+    gate, calls = _stub_run(monkeypatch, tmp_path)
+    out = tmp_path / "b1.jsonl"
+    _patch_session_out(monkeypatch, out)
+
+    def rig_goes_bad(ses, arm, seed, attempt):
+        calls.append(((arm, seed, attempt), None))
+        return {**B.row_base(ses, arm, seed, attempt), "refusal": "rig", "refusal_cause": "instrument",
+                "refusal_step": "rig", "rig_refusal_transient": False}  # fmt: skip
+
+    monkeypatch.setattr(B, "run_arm_seed", rig_goes_bad)
+    assert B._run(_run_args(gate, out)) == 3
+    assert [k for k, _ in calls] == [("fear", 99, 1)]  # stopped: no rerun, no next arm
+
+
+def test_the_apparatus_check_must_be_from_the_campaigns_utc_day():
+    import datetime as dt
+
+    noon = dt.datetime(2026, 10, 14, 12, tzinfo=dt.timezone.utc).timestamp()
+    assert B.apparatus_day_problem(noon - 3600, noon) is None
+    assert "not today" in B.apparatus_day_problem(noon - 86400, noon)
+    late = dt.datetime(2026, 10, 14, 23, 50, tzinfo=dt.timezone.utc).timestamp()
+    assert "not today" in B.apparatus_day_problem(late, late + 1200)  # across UTC midnight: a fresh check
+    assert "no epoch ts" in B.apparatus_day_problem(None, noon)
+    assert "no epoch ts" in B.apparatus_day_problem(True, noon)

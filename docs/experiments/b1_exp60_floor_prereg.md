@@ -143,24 +143,28 @@ Q_EXPLORE must show one update per select and nonzero costs while in water. A un
 always-`escape_water` policy through `run_agentic_loop` on the fake bridge and goes RED when the hook wiring is
 deleted.
 
-**Result (seed 99, 2026-10-13, rig at `b17b6f21`; raw rows and summary in
+**Result (seed 99, 2026-10-13, rig at `d9822dd4`, before v5's rig-check change; raw rows and summary in
 [rationale/b1-exp60-floor/](rationale/b1-exp60-floor/diagnostic_seed99.md); never pooled, rule 12). Every check
 passes:**
-- **Identity:** in every floor arm, across all 12 placement windows, the policy's picks, the telemetry's proposals
-  and the executor's calls are identical.
+- **Identity:** in every floor arm, across all 12 placement windows, the executor's calls are the policy's picks and
+  the telemetry's proposals, in order. The one exception is at most one final pick per window, which the window's
+  close cut off before it ran.
 - **RANDOM** executed all 26 tools.
-- **The Q arms** booked one update per credited in-water pick (Q_EXPLORE: 31 updates, 33 in-water picks), with
-  non-zero costs. Every drop is a shore pick (`made_out_of_water`); none is a pick that never executed.
+- **The Q arms** booked one update per in-water pick (Q_EXPLORE: 31 updates, 33 in-water picks), with non-zero
+  costs. The difference is in-water picks still pending when a window ended at its cap, which rule 4 truncates by
+  design. Every drop is a shore pick (`made_out_of_water`); none is a pick that never executed.
 - **Hygiene:** no policy violations, one tool set of 26, and `turn` / `place_block` / `mine_block` fail on `{}`
   before the bridge. FEAR's first post escape started after its first in-water read (rule 17's check).
 - **The rig check** recorded the proxy `absent` and TPS 20.0.
 
 **The assumptions it settled:**
-- `escape_water` calls take a median of 1.83 s, and surfacing lands 2.3–2.6 s after the teleport (the toy model's
-  2.6 s holds).
+- `escape_water` calls take a median of 1.82 s (70 surfacing calls, 0.71–1.94 s), and surfacing lands 2.3–2.6 s
+  after the teleport (the toy model's 2.6 s holds).
 - The cluster keys did **not** split the water state: Q_EXPLORE saw 1 water key (RAW 2, its oxygen bins).
-- The Q arms reach criterion in the pre-probe, as predicted. Executed actions to the first surfacing: PRIOR 16,
-  Q_EXPLORE 29, RAW 40 (FEAR 0).
+- The Q arms learn the escape in the pre-probe, as predicted, and training episode 1 surfaces in every Q arm.
+  - Executed actions to the first surfacing: PRIOR 2, Q_EXPLORE 11, RAW 27.
+  - Executed actions to criterion, pre-probe included: PRIOR 16, Q_EXPLORE 29, RAW 40.
+  - FEAR: 0 in training.
 - The seed's first post placement: FEAR, Q_EXPLORE, PRIOR and RAW surfaced; RANDOM was censored. A hint about the
   run, not evidence.
 
@@ -260,8 +264,12 @@ equivalence test is claimed for a tie: a tie is reported as "FEAR > Q_EXPLORE no
       request returns) REFUSES: idle cannot be shown. B1 makes no LLM calls, so the run is done with the leader
       down, recorded `absent`.
     - A problem that waiting cannot clear refuses at once: no lane metrics, an unreadable request ring, an
-      untimestamped entry, or unreadable TPS. Only a transient one is waited out, up to 10 minutes: a job in
-      flight, a recent request, or a TPS dip.
+      untimestamped entry, unreadable TPS, or a proxy that refuses the read. Only a transient one is waited out, up
+      to 10 minutes: a job in flight, a recent request, a TPS dip, or a busy proxy (a timeout, 5xx or rate limit).
+    - Such a problem belongs to the campaign, not to one key. The rig is checked once before the campaign's first
+      attempt, and a non-transient refusal there exits 3 with nothing spent. A non-transient rig refusal mid-campaign
+      stops the campaign after writing that row, without spending the rerun; `--resume` gets it back once the rig
+      is fixed.
 12. **Diagnostic seed.** 99, never pooled with 11–18.
 13. **Cadence.** The loop runs at 4 Hz and proposes at 2 Hz in every loop window; FEAR's propose-only training runs
     at 4 Hz direct calls (Exp 60's, unchanged). The difference in EC exposure between FEAR's and the Q arms'
@@ -306,18 +314,28 @@ equivalence test is claimed for a tie: a tie is reported as "FEAR > Q_EXPLORE no
 Run on the bridge box at current `main`, on a quiet box. `<rcon-password>` is a placeholder, and the real value never
 goes into a commit or PR. Paste the commands as written, with no inline comments.
 
-1. **Same day: the water apparatus check.** It is a gated record, under the `b1_` data name:
+1. **After this FROZEN v5 PR is merged and pulled on the rig: the water apparatus check.** The prereg lint dates
+   the prereg from its first add, so it cannot enforce this ordering; the runbook does. The check is a gated record,
+   under the `b1_` data name:
 
    ```
    python scripts/survival_world/exp60_water_check.py --out docs/experiments/data/b1_exp60_floor_apparatus_<YYYY-MM-DD>.json --rcon-password '<rcon-password>' --username maxim --write-experiment-results
    ```
 
-   Exit 0 is a PASS and stamps the anchor. Exit 4 refuses the run for that day.
+   - **Exit 0** is a PASS and stamps the anchor.
+   - **Exit 4** is a FAIL. Its record is still written and is committed as context, and no second check runs that
+     UTC day (re-checking until one passes is a garden of forking paths).
+   - **Exits 2 and 3** write no record.
+   - **"Same day" means the UTC date of the check's `ts` equals the campaign's UTC start date.** The harness refuses a
+     fresh gated campaign otherwise (`apparatus_day_problem`). A `--resume` the next UTC day keeps the campaign's one
+     record (the verdict refuses a file that names two).
+   - No other water check may run between this step and step 4: the run refuses unless the anchor's stamped `ts` is
+     this record's (`anchor_record_mismatch`).
 2. **The record PR.** Commit only that record, merge it with a merge commit, then pull it on the rig. A gated run
    reads its apparatus record byte for byte from main (`committed_record_problem`).
 3. **Take the leader down** (rule 11), restart the bridge, and confirm with `lsof -nP -iTCP:8099 -sTCP:LISTEN`
    (empty).
-4. **The run.** Every arm and seed, in the frozen order, into the default campaign file
+4. **The run, from the repo root.** Every arm and seed, in the frozen order, into the default campaign file
    `docs/experiments/data/b1_exp60_floor_<campaign_id>.jsonl`:
 
    ```
@@ -333,7 +351,8 @@ goes into a commit or PR. Paste the commands as written, with no inline comments
    ```
 
 6. **The data PR** carries the rows, the verdict, and T1-13's move under §The claim, stated per outcome. A
-   floor-matched verdict obliges the move in the same PR (`scripts/lint_bf2_obligation.py`). Every campaign file
+   floor-matched verdict obliges the move in the same PR: T1-13 at `PARTIAL (narrow: floor matched)`, dated on or
+   after the UTC date of the newest harness row's `ts` (`scripts/lint_bf2_obligation.py`). Every campaign file
    started is committed, aborted ones included (backlog M49). Merge it with a merge commit.
 
 ## Owner decisions (taken 2026-10-11, all as recommended)
