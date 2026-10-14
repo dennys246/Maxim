@@ -268,21 +268,14 @@ _R = TypeVar("_R")
 
 
 class LoopLiveness:
-    """One RUN's liveness. ``state``: "working" while the pre-tick gate runs the cycle, "idle" while it idles (nothing
-    to react to, paused) and "acting" while ``execute_and_learn`` runs a tool; only a working loop can stall.
-    ``last_progress_at`` (monotonic) moves when an action finishes or the loop goes idle or starts working."""
+    """One RUN's liveness: the LLM worker its planning turns go through, noted by ``pre_tick_gate`` each tick. A stall
+    is a planning turn stuck past the threshold (owner decision 2026-10-14), so a run is "planning" while its worker
+    has an attempt outstanding and "idle" otherwise: waiting for a human, running a tool or perceiving never counts."""
 
-    __slots__ = ("state", "last_progress_at")
+    __slots__ = ("worker",)
 
     def __init__(self) -> None:
-        self.state = "idle"
-        self.last_progress_at = time.monotonic()
-
-    def note_tick(self, *, running: bool) -> None:
-        if not running:
-            self.state, self.last_progress_at = "idle", time.monotonic()
-        elif self.state == "idle":
-            self.state, self.last_progress_at = "working", time.monotonic()
+        self.worker: Any = None
 
 
 _LIVE: dict[int, LoopLiveness] = {}  # keyed per RUN (id of its entry): several loops share one process
@@ -296,17 +289,26 @@ def current_liveness() -> LoopLiveness | None:
     return _CURRENT.get()
 
 
-def _loop_state_snapshot() -> dict[str, Any] | None:
-    """The heartbeat's loop-state hook: the worst WORKING loop, or None when no run is registered."""
-    now = time.monotonic()
-    with _LIVE_LOCK:
-        entries = [(e.state, e.last_progress_at) for e in _LIVE.values()]
-    if not entries:
+def _outstanding_s(worker: Any) -> float | None:
+    try:
+        age = worker.outstanding_attempt_s() if worker is not None else None
+    except Exception:  # a worker the hook cannot read is no evidence of a stall
+        log_swallowed_exception(site="loop_state.py:_outstanding_s")
         return None
-    working = [now - at for state, at in entries if state == "working"]
-    if not working:
-        return {"state": "idle", "idle_s": 0.0, "loops": len(entries)}
-    return {"state": "working", "idle_s": max(working), "loops": len(entries)}
+    return age if isinstance(age, (int, float)) else None
+
+
+def _loop_state_snapshot() -> dict[str, Any] | None:
+    """The heartbeat's loop-state hook: the longest-outstanding planning turn over every live run, or None when no
+    run is registered. ``outstanding_s`` is that turn's age; an idle snapshot reports 0.0."""
+    with _LIVE_LOCK:
+        workers = [e.worker for e in _LIVE.values()]
+    if not workers:
+        return None
+    ages = [age for w in workers if (age := _outstanding_s(w)) is not None]
+    if not ages:
+        return {"state": "idle", "outstanding_s": 0.0, "loops": len(workers)}
+    return {"state": "planning", "outstanding_s": max(ages), "loops": len(workers)}
 
 
 def _set_hook(on: bool) -> None:
@@ -340,38 +342,16 @@ def loop_liveness_scope(fn: Callable[_P, _R]) -> Callable[_P, _R]:
     return wrapper
 
 
-def notes_loop_tick(is_running: Callable[[Any], bool]) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
-    """Decorates ``pre_tick_gate``: every return path notes the tick working or idle on the current run."""
-
-    def decorate(fn: Callable[_P, _R]) -> Callable[_P, _R]:
-        @functools.wraps(fn)
-        def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
-            outcome = fn(*args, **kwargs)
-            live = _CURRENT.get()
-            if live is not None:
-                live.note_tick(running=is_running(outcome))
-            return outcome
-
-        _LIVENESS_WRAPPED.add(wrapper)
-        return wrapper
-
-    return decorate
-
-
-def notes_loop_action(fn: Callable[_P, _R]) -> Callable[_P, _R]:
-    """Decorates ``tool_dispatch.execute_and_learn``: "acting" while the tool runs (a long tool is not a stall), then
-    progress, however the call exits."""
+def notes_loop_worker(fn: Callable[_P, _R]) -> Callable[_P, _R]:
+    """Decorates ``pre_tick_gate``: each tick records the run's ``llm_worker`` (keyword-only there), so the hook reads
+    the planning attempt of the worker the run actually uses."""
 
     @functools.wraps(fn)
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
         live = _CURRENT.get()
-        if live is None:
-            return fn(*args, **kwargs)
-        live.state = "acting"
-        try:
-            return fn(*args, **kwargs)
-        finally:
-            live.state, live.last_progress_at = "working", time.monotonic()
+        if live is not None:
+            live.worker = kwargs.get("llm_worker")
+        return fn(*args, **kwargs)
 
     _LIVENESS_WRAPPED.add(wrapper)
     return wrapper

@@ -1271,7 +1271,7 @@ class TestProducerSeams:
         )
         mon = hb.HeartbeatMonitor(interval_s=60)
         assert mon.has_loop_state_hook is False and mon.is_running is False
-        mon.set_loop_state_hook(lambda: {"idle_s": 45.0, "state": "working", "loops": 1})  # past the 30 s floor
+        mon.set_loop_state_hook(lambda: {"outstanding_s": 45.0, "state": "planning", "loops": 1})  # past the floor
         assert mon.has_loop_state_hook is True
         seen: list[tuple[str, dict]] = []
         listener = lambda kind, data: seen.append((kind, data))  # noqa: E731
@@ -1280,7 +1280,7 @@ class TestProducerSeams:
         mon._emit(data)
         mon._check_stall(data)
         assert [k for k, _ in seen] == ["heartbeat", "heartbeat_stall"]
-        assert seen[1][1]["idle_s"] == 45.0 and seen[1][1]["p50_latency_ms"] == 800.0
+        assert seen[1][1]["outstanding_s"] == 45.0 and seen[1][1]["p50_latency_ms"] == 800.0
         mon.unregister_listener(listener)
         mon._emit(data)
         assert len(seen) == 2  # unregistered: no more notifications
@@ -1348,15 +1348,22 @@ def _real_monitor(monkeypatch):
     return mon
 
 
-def _stalled_run(mon, *, state: str, in_flight: bool):
-    """Drive one heartbeat tick inside a decorated run whose loop last made progress well past the threshold."""
+def _stalled_run(mon, *, outstanding: float | None, in_flight: bool):
+    """Drive one heartbeat tick inside a decorated run whose gate saw a worker with a planning turn ``outstanding``
+    seconds old (None: no turn outstanding)."""
     from maxim.runtime import llm_call_registry, loop_state
+
+    class _Worker:
+        def outstanding_attempt_s(self):
+            return outstanding
+
+    @loop_state.notes_loop_worker
+    def tick(*, llm_worker):
+        return None
 
     @loop_state.loop_liveness_scope
     def run():
-        live = loop_state.current_liveness()
-        live.note_tick(running=state == "working")
-        live.last_progress_at -= 10_000.0  # idle far past any threshold
+        tick(llm_worker=_Worker())
         call = llm_call_registry.register_call_start(tier="large", allowed_s=600.0) if in_flight else None
         try:
             assert mon.has_loop_state_hook
@@ -1369,18 +1376,20 @@ def _stalled_run(mon, *, state: str, in_flight: bool):
 
 
 @pytest.mark.parametrize(
-    ("state", "in_flight", "stalls"), [("working", False, 1), ("working", True, 0), ("idle", False, 0)]
+    ("outstanding", "in_flight", "stalls"),
+    [(10_000.0, False, 1), (10_000.0, True, 0), (None, False, 0), (5.0, False, 0)],
 )
-def test_a_working_loop_idle_past_the_threshold_is_one_stall_on_api_health(runs, monkeypatch, state, in_flight, stalls):
-    """End to end (#1268 dormant producer 1, owner decision 2026-10-14): a run registers its liveness through the
-    decorator; the real monitor's tick declares a stall only for a WORKING loop idle past compute_stall_threshold with
-    nothing alive in flight (stall_suppression); /api/health shows it. An idle loop, or a live LLM call, is no stall."""
+def test_a_stuck_planning_turn_is_one_stall_on_api_health(runs, monkeypatch, outstanding, in_flight, stalls):
+    """End to end (#1268 dormant producer 1, owner decisions 2026-10-14): a stall is a STUCK PLANNING TURN. A run
+    registers its worker through the decorators; the real monitor's tick declares a stall only for a turn outstanding
+    past compute_stall_threshold with no live call (stall_suppression); /api/health shows it. A live call, no turn
+    (waiting for a human) or a young turn is no stall."""
     mon = _real_monitor(monkeypatch)
     with TestClient(build_app(None, auth_token=_TOKEN, health_monitor=True)) as c:
-        _stalled_run(mon, state=state, in_flight=in_flight)
+        _stalled_run(mon, outstanding=outstanding, in_flight=in_flight)
         body = _get(c, "/api/health").json()
         assert len(body["stalls"]) == stalls, body["stalls"]
-        assert body["stall_detection"] is False  # the run ended: no loop is registered, so no stale stall source
+        assert body["stall_detection"] is False  # the run ended: no run is registered, so no stale stall source
 
 
 @pytest.mark.xfail(strict=True, reason="save_action_log does not record per-action credit (actions.jsonl is 1.1)")

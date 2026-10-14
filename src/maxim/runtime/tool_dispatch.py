@@ -18,7 +18,7 @@ from typing import Any
 
 from maxim.decisions.causal_link import Valence as _V
 from maxim.runtime.bio_integration import capture_loop_action, record_plan_outcome as _record_plan_outcome
-from maxim.runtime.loop_state import notes_loop_action, operational_mode
+from maxim.runtime.loop_state import operational_mode
 from maxim.runtime.loop_types import ActionFollowup
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import log_agentic
@@ -953,7 +953,6 @@ class ExecutionOutcome:
     followup: ActionFollowup | None
 
 
-@notes_loop_action  # the run is acting while a tool runs, then makes progress (#1268 stall detection)
 def execute_and_learn(
     *,
     agent: Any,

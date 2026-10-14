@@ -1,16 +1,25 @@
-"""Loop liveness: the per-run state the heartbeat's stall rule reads (#1268 dormant producer 1).
+"""Loop liveness: what the heartbeat's stall rule reads (#1268 dormant producer 1).
 
-``loop_state.loop_liveness_scope`` (on ``run_agentic_loop``) registers one entry per RUN with the process heartbeat
-monitor's loop-state hook and clears it in a ``finally``; ``pre_tick_gate`` notes each tick working or idle, and
-``tool_dispatch.execute_and_learn`` notes progress. Several loops share one process (phase-1 tests, multi-agent sims),
-so the hook reports the worst WORKING loop and is cleared only when the last run ends.
+A stall is a STUCK PLANNING TURN (owner decision 2026-10-14): ``loop_state.loop_liveness_scope`` (on
+``run_agentic_loop``) registers one entry per RUN with the process heartbeat monitor's loop-state hook and clears it in
+a ``finally``; ``pre_tick_gate`` records the run's ``llm_worker``; the hook reports the longest-outstanding planning
+attempt over every live run (``LLMWorker.outstanding_attempt_s``). Waiting for a human or running a tool is no attempt.
 """
 
 from __future__ import annotations
 
 import threading
+import time
 
 import pytest
+
+
+class _Worker:
+    def __init__(self, outstanding: float | None) -> None:
+        self.outstanding = outstanding
+
+    def outstanding_attempt_s(self) -> float | None:
+        return self.outstanding
 
 
 @pytest.fixture()
@@ -35,16 +44,18 @@ def test_a_run_registers_and_clears_its_entry_even_when_it_raises(monitor):
     assert not monitor.has_loop_state_hook and loop_state.current_liveness() is None
 
 
-def test_entries_are_per_run_and_the_hook_reports_the_worst_working_loop(monitor):
+def test_entries_are_per_run_and_the_hook_reports_the_longest_outstanding_turn(monitor):
     from maxim.runtime import loop_state
 
     inside, release, done = threading.Event(), threading.Event(), threading.Event()
 
+    @loop_state.notes_loop_worker
+    def tick(*, llm_worker):
+        return None
+
     @loop_state.loop_liveness_scope
     def long_run():
-        live = loop_state.current_liveness()
-        live.note_tick(running=True)
-        live.last_progress_at -= 500.0
+        tick(llm_worker=_Worker(500.0))
         inside.set()
         release.wait(5)
 
@@ -54,15 +65,35 @@ def test_entries_are_per_run_and_the_hook_reports_the_worst_working_loop(monitor
 
     @loop_state.loop_liveness_scope
     def short_run():
-        loop_state.current_liveness().note_tick(running=False)
-        state = monitor._loop_state_fn()
-        assert state["state"] == "working" and state["idle_s"] >= 500.0 and state["loops"] == 2
+        tick(llm_worker=_Worker(None))  # waiting for a human: no attempt outstanding
+        assert monitor._loop_state_fn() == {"state": "planning", "outstanding_s": 500.0, "loops": 2}
 
     short_run()
     assert monitor.has_loop_state_hook  # the other run is still alive: its entry stays
     release.set()
     t.join(5)
     assert done.is_set() and not monitor.has_loop_state_hook
+
+
+def test_no_outstanding_turn_is_idle_and_an_unreadable_worker_is_no_evidence(monitor):
+    from maxim.runtime import loop_state
+
+    class _Broken:
+        def outstanding_attempt_s(self):
+            raise RuntimeError("worker torn down")
+
+    @loop_state.notes_loop_worker
+    def tick(*, llm_worker):
+        return None
+
+    @loop_state.loop_liveness_scope
+    def run():
+        tick(llm_worker=None)
+        assert monitor._loop_state_fn() == {"state": "idle", "outstanding_s": 0.0, "loops": 1}
+        tick(llm_worker=_Broken())
+        assert monitor._loop_state_fn()["state"] == "idle"
+
+    run()
 
 
 def test_run_agentic_loop_is_wrapped_and_keeps_its_signature():
@@ -75,41 +106,34 @@ def test_run_agentic_loop_is_wrapped_and_keeps_its_signature():
     assert inspect.signature(fn) == inspect.signature(fn.__wrapped__)
 
 
-def test_the_gate_and_dispatch_note_liveness(monitor):
-    """pre_tick_gate notes a tick (working or idle) and execute_and_learn notes progress: structurally, through the one
-    decorator each, so no return path of the gate escapes it."""
-    from maxim.runtime import loop_gates, loop_state, tool_dispatch
+def test_the_gate_records_the_runs_worker():
+    """pre_tick_gate records the run's llm_worker on every tick, through the one decorator."""
+    import inspect
+
+    from maxim.runtime import loop_gates, loop_state
 
     assert loop_gates.pre_tick_gate in loop_state._LIVENESS_WRAPPED
-    assert tool_dispatch.execute_and_learn in loop_state._LIVENESS_WRAPPED
+    assert "llm_worker" in inspect.signature(loop_gates.pre_tick_gate).parameters
 
 
-def test_a_running_tool_marks_the_run_acting_then_progressed(monitor):
-    """A long tool is not a stall: the run is "acting" while execute_and_learn runs, then working with fresh
-    progress, however the call exits."""
-    from maxim.runtime import loop_state
+def test_a_real_worker_reports_its_planning_turn_until_the_loop_consumes_it():
+    """LLMWorker.outstanding_attempt_s: an age while the attempt is queued, running or unconsumed; None once the loop
+    pops the result."""
+    from maxim.agents.llm_worker import LLMWorker
+    from tests.unit.test_llm_worker_pool import FakeLLM, _submit_test_context
 
-    seen: list[str] = []
-
-    @loop_state.notes_loop_action
-    def tool(fail: bool) -> None:
-        seen.append(loop_state.current_liveness().state)
-        if fail:
-            raise RuntimeError("tool broke")
-
-    @loop_state.loop_liveness_scope
-    def run():
-        live = loop_state.current_liveness()
-        live.note_tick(running=True)
-        for fail in (False, True):
-            live.last_progress_at -= 500.0
-            stale = live.last_progress_at
-            if fail:
-                with pytest.raises(RuntimeError):
-                    tool(fail)
-            else:
-                tool(fail)
-            assert live.state == "working" and live.last_progress_at > stale
-
-    run()
-    assert seen == ["acting", "acting"]
+    worker = LLMWorker(llm=FakeLLM(delay=0.3), stale_threshold_s=30.0)
+    worker.start()
+    try:
+        assert worker.outstanding_attempt_s() is None
+        assert _submit_test_context(worker)
+        assert worker.outstanding_attempt_s() is not None
+        proposal = None
+        for _ in range(60):
+            proposal = worker.get_latest_proposal()
+            if proposal is not None:
+                break
+            time.sleep(0.1)
+        assert proposal is not None and worker.outstanding_attempt_s() is None
+    finally:
+        worker.stop()

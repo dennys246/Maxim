@@ -385,6 +385,7 @@ class LLMWorker:
         self._last_job_id: str | None = None
         self._last_attempt_rejected = False
         self._last_attempt_consumed = False
+        self._last_attempt_started_at: float | None = None  # monotonic; the stall rule's age (#1268 producer 1)
         self._resubmit_seq = 0
 
         # Acting Coach config (B3): set after construction to inject
@@ -548,11 +549,23 @@ class LLMWorker:
             JobStatus.CANCELLED: LLMAttemptState.CANCELLED,
         }.get(status, LLMAttemptState.MISSING)
 
+    def outstanding_attempt_s(self) -> float | None:
+        """Seconds the latest planning attempt has been outstanding (queued, running, or its result not yet consumed
+        by the loop), or ``None`` when no attempt is outstanding. The heartbeat's stall rule reads it: a planning turn
+        stuck past the stall threshold with no live provider call is a stall (owner decision 2026-10-14)."""
+        from maxim.runtime.loop_state import _planning_attempt_is_active
+
+        started = self._last_attempt_started_at
+        if started is None or not _planning_attempt_is_active(self.latest_attempt_state()):
+            return None
+        return time.monotonic() - started
+
     def _begin_attempt(self, job_id: str) -> None:
         """Install one exact job as the lifecycle source of truth."""
         self._last_job_id = job_id
         self._last_attempt_rejected = False
         self._last_attempt_consumed = False
+        self._last_attempt_started_at = time.monotonic()
 
     def _reject_attempt(self) -> None:
         self._last_attempt_rejected = True

@@ -48,7 +48,7 @@ from maxim.runtime.loop_controller import _handle_planning_failure, _handle_plan
 from maxim.runtime.loop_state import (
     _planning_attempt_is_active,
     _substrate_tick_due,
-    notes_loop_tick,
+    notes_loop_worker,
     operational_mode,
     shutdown_requested,
 )
@@ -80,7 +80,7 @@ class GateOutcome(enum.Enum):
     EXHAUSTED = "exhausted"
 
 
-@notes_loop_tick(lambda outcome: outcome is GateOutcome.RUN)  # every return notes the run's liveness (#1268)
+@notes_loop_worker  # the run's planning worker, for the heartbeat's stall rule (#1268)
 def pre_tick_gate(
     *,
     step_num: int,

@@ -40,18 +40,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `actions.jsonl` is 1.1 and records no `rpe`/`pain`/`nac_failure_booked`, so every current run reads
   `credit_recorded: false` (the reader keys it off a 1.2 header, never off key presence); (3) **the per-run event
   trail** — nothing writes `events.jsonl`, so the `/events` route is NOT in 0.6.0 and ships with its writer.
-- **Stall detection is live, on the canonical stall surface, closing dormant producer (1) above.**
-  `run_agentic_loop` carries `loop_state.loop_liveness_scope`, which gives each run one liveness entry and registers the
-  process heartbeat monitor's loop-state hook while any run is alive. It clears the entry in a `finally`, so a run that
-  raises leaves no stale loop. `pre_tick_gate` notes each tick working or idle, and `execute_and_learn` marks the run
-  acting while a tool runs, then notes progress. The heartbeat flags a stall only for a WORKING loop that stays idle past
-  `compute_stall_threshold`. The floor is `MAXIM_HEARTBEAT_STALL_S`, and there is no lane-timeout ceiling. A stall also
-  requires `stall_suppression` to find nothing alive in flight. The heartbeat's own hardcoded 30 s rule and its "large
-  lane had calls" precondition are gone, as is the CI grep's `heartbeat.py` allowlist. This is
-  `stall_detector_timeout_awareness.md` Stage 2, with no opt-in knob: the old rule never fired, because nothing
-  registered the hook. Owner decision 2026-10-14. `HeartbeatMonitor(stall_threshold_s=...)` is removed; the threshold
-  comes from the canonical derivation. Gates: `/api/health` end to end (one stall for a working loop idle past the
-  threshold, none with a live call in flight or an idle loop) and `tests/unit/test_loop_liveness.py`.
+- **Stall detection is live: a stuck planning turn, judged on the canonical stall surface. This closes dormant
+  producer (1) above.** Owner decisions, 2026-10-14:
+  - A stall is a planning turn outstanding past the threshold with no live call. It is not loop idleness, which
+    false-stalled whenever the loop waited for a human.
+  - The threshold and suppression come from the canonical stall surface.
+
+  How it works:
+  - `run_agentic_loop` carries `loop_state.loop_liveness_scope`, which keeps one liveness entry per run. While any run
+    is alive, it registers the process heartbeat monitor's loop-state hook, and it clears the entry in a `finally`.
+    `pre_tick_gate` records the run's `llm_worker`.
+  - `LLMWorker.outstanding_attempt_s` reports how long the latest planning attempt has been outstanding: queued,
+    running, or its result not yet consumed.
+  - The heartbeat flags a stall only when that age exceeds `compute_stall_threshold` and `stall_suppression` finds no
+    live planning-lane call.
+  - The floor is `MAXIM_HEARTBEAT_STALL_S`, now clamped to 5–3600 (a non-number falls back to 30). There is no
+    lane-timeout ceiling. Tier: innate prior.
+
+  Removed:
+  - the heartbeat's own hardcoded 30 s idle rule and its "large lane had calls" precondition;
+  - `HeartbeatMonitor(stall_threshold_s=...)`;
+  - the CI grep's `heartbeat.py` allowlist.
+
+  This completes `stall_detector_timeout_awareness.md` Stage 2. Operators with `MAXIM_HEARTBEAT=1` will now see
+  `heartbeat_stall` WARNINGs, which never fired before. Waiting for a human, a long tool and quiet perception are never
+  stalls. A loop that stops submitting altogether is not caught; that is #1272, along with the floor's tier trigger.
+
+  Gates:
+  - `/api/health` end to end: one stall for a turn stuck past the threshold; none with a live call, no turn, or a
+    young turn;
+  - `tests/unit/test_loop_liveness.py`, which includes a real `LLMWorker`.
 - **Run ids go through a new resolver, `console/run_store.py`, never `utils/paths.resolve_run_dir`.** The old one
   returns any directory for a path-like argument, searches the CWD first and follows symlinks out of `sim_reports`
   (its docstring now says so). Ids are `[A-Za-z0-9_-]{1,64}`; every open is anchored to a directory fd (root, then

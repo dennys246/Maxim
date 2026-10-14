@@ -147,9 +147,9 @@ class TestHeartbeatMonitor:
         assert data["loop"] is None
 
     def test_stall_detection(self) -> None:
-        """Stall detection warns when a WORKING loop's idle exceeds the canonical threshold (floor 30 s)."""
+        """Stall detection warns when a planning turn is outstanding past the canonical threshold (floor 30 s)."""
         monitor = HeartbeatMonitor(interval_s=0.1)
-        monitor.set_loop_state_hook(lambda: {"idle_s": 60.0, "state": "working", "loops": 1})
+        monitor.set_loop_state_hook(lambda: {"outstanding_s": 60.0, "state": "planning", "loops": 1})
 
         # Record some calls so stall detection activates
         from maxim.models.language.lane_metrics import LaneMetrics
@@ -168,10 +168,9 @@ class TestHeartbeatMonitor:
     @pytest.mark.parametrize(
         ("loop", "floor"),
         [
-            ({"idle_s": 60.0, "state": "idle", "loops": 1}, None),  # an idle loop is never stalled
-            ({"idle_s": 60.0, "state": "acting", "loops": 1}, None),  # a long tool is not a stall
-            ({"idle_s": 20.0, "state": "working", "loops": 1}, None),  # under the 30 s floor
-            ({"idle_s": 60.0, "state": "working", "loops": 1}, "120"),  # MAXIM_HEARTBEAT_STALL_S still sets the floor
+            ({"outstanding_s": 0.0, "state": "idle", "loops": 1}, None),  # no turn outstanding: never a stall
+            ({"outstanding_s": 20.0, "state": "planning", "loops": 1}, None),  # under the 30 s floor
+            ({"outstanding_s": 60.0, "state": "planning", "loops": 1}, "120"),  # MAXIM_HEARTBEAT_STALL_S sets the floor
             (None, None),  # no registered loop: no stall detection
         ],
     )
