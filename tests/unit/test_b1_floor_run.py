@@ -994,6 +994,15 @@ def test_a_non_transient_rig_refusal_mid_campaign_stops_without_spending_the_rer
     assert B._run(_run_args(gate, out)) == 3
     assert [k for k, _ in calls] == [("fear", 99, 1)]  # stopped: no rerun, no next arm
 
+    # the rig is fixed: --resume gets that key's rerun back (its refusal is an instrument cause on attempt 1)
+    def ok(ses, arm, seed, attempt):
+        calls.append(((arm, seed, attempt), None))
+        return B.row_base(ses, arm, seed, attempt)
+
+    monkeypatch.setattr(B, "run_arm_seed", ok)
+    assert B._run(_run_args(gate, out, resume=str(out))) == 0
+    assert [k for k, _ in calls][1:] == [("fear", 99, 2), ("random", 99, 1)]
+
 
 def test_the_apparatus_check_must_be_from_the_campaigns_utc_day():
     import datetime as dt
@@ -1005,3 +1014,21 @@ def test_the_apparatus_check_must_be_from_the_campaigns_utc_day():
     assert "not today" in B.apparatus_day_problem(late, late + 1200)  # across UTC midnight: a fresh check
     assert "no epoch ts" in B.apparatus_day_problem(None, noon)
     assert "no epoch ts" in B.apparatus_day_problem(True, noon)
+
+
+@pytest.mark.parametrize(
+    ("kw", "want"),
+    [({"diagnostic": False}, 3), ({"diagnostic": True}, 0)],
+)
+def test_a_gated_campaign_refuses_a_water_check_from_another_utc_day(monkeypatch, tmp_path, kw, want):
+    """The same-UTC-day rule at its real call site in _run (not only the pure helper)."""
+    gate, calls = _stub_run(monkeypatch, tmp_path)
+    out = tmp_path / "b1.jsonl"
+    _patch_session_out(monkeypatch, out)
+    monkeypatch.setattr(B, "is_gated_path", lambda root, p: True)
+    monkeypatch.setattr(B, "committed_record_problem", lambda *a: None)
+    stale = {"record": {"ts": 1.0}, "path": "a.json", "sha256": "abc", "abs_path": "a.json", "bytes": b""}
+    monkeypatch.setattr(B, "load_apparatus_record", lambda p: stale)  # ts 1.0 = 1970: never today
+    assert B._run(_run_args(gate, out, **kw)) == want
+    if want == 3:
+        assert calls == [] and (not out.exists() or out.read_text() == "")

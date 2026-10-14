@@ -267,9 +267,11 @@ equivalence test is claimed for a tie: a tie is reported as "FEAR > Q_EXPLORE no
       untimestamped entry, unreadable TPS, or a proxy that refuses the read. Only a transient one is waited out, up
       to 10 minutes: a job in flight, a recent request, a TPS dip, or a busy proxy (a timeout, 5xx or rate limit).
     - Such a problem belongs to the campaign, not to one key. The rig is checked once before the campaign's first
-      attempt, and a non-transient refusal there exits 3 with nothing spent. A non-transient rig refusal mid-campaign
-      stops the campaign after writing that row, without spending the rerun; `--resume` gets it back once the rig
-      is fixed.
+      attempt, and any refusal there (a non-transient one at once, a transient one after its 10-minute wait) exits 3
+      with nothing spent.
+    - A non-transient rig refusal mid-campaign stops the campaign after writing that row. On a key's first attempt
+      the rerun is not spent, and `--resume` gets it back once the rig is fixed. On a key's last attempt the
+      refusal is final, and the verdict counts the key as refused.
 12. **Diagnostic seed.** 99, never pooled with 11–18.
 13. **Cadence.** The loop runs at 4 Hz and proposes at 2 Hz in every loop window; FEAR's propose-only training runs
     at 4 Hz direct calls (Exp 60's, unchanged). The difference in EC exposure between FEAR's and the Q arms'

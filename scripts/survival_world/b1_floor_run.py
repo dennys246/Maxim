@@ -1302,6 +1302,9 @@ def _run(args: argparse.Namespace) -> int:
         except RigNotQuiet as exc:
             print(f"[FAIL] {exc} -- fix the rig (rule 11: run B1 with the leader down), then start the campaign")
             return 3
+        except OSError as exc:  # RCON unreachable before anything was written: a clean refusal, not a traceback
+            print(f"[FAIL] rig check: RCON failed ({type(exc).__name__}: {exc})")
+            return 3
         if not args.resume:
             _write_header(
                 out_path,
