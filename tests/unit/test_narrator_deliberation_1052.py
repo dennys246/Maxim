@@ -125,8 +125,8 @@ def test_the_loop_says_it_deliberates_only_when_it_has_a_pipeline() -> None:
 )
 def test_a_resumed_session_gets_the_same_first_action_line_as_a_fresh_one(goal, observe_only, expect) -> None:
     """One chooser for both: the fresh kickoff calls it, and so does the resume prompt (every mode)."""
-    from maxim.simulation import orchestrator
     from maxim.simulation.sim_types import build_resume_prompt, kickoff_instruction
+    from tests.unit._orchestrator_source import orchestrator_source
 
     line = kickoff_instruction(goal, observe_only=observe_only, resumed=True)
     assert expect in line
@@ -138,7 +138,7 @@ def test_a_resumed_session_gets_the_same_first_action_line_as_a_fresh_one(goal, 
     assert resumed.endswith(line)
     if observe_only:
         assert "send_message NOW" not in resumed and "continue probing" not in resumed
-    src = inspect.getsource(orchestrator.start_simulation_mode)
+    src = orchestrator_source()  # start_simulation_mode, wherever its code lives (1.3.2 decomposition)
     # Every opening goes through sim_types (the fresh kickoff and the not-found fallback share build_kickoff_prompt,
     # which calls kickoff_instruction; the resume prompt calls it with resumed=True).
     assert "_build_kickoff_prompt(goal, tools_block=_tools_block, observe_only=_is_observe_only)" in src

@@ -561,9 +561,9 @@ class TestLoopWiringPins:
         assert param.default is False
 
     def test_orchestrator_opts_in_and_aut_does_not(self):
-        from maxim.simulation import orchestrator
+        from tests.unit._orchestrator_source import orchestrator_source
 
-        src = inspect.getsource(orchestrator.start_simulation_mode)
+        src = orchestrator_source()  # start_simulation_mode, wherever its code lives (1.3.2 decomposition)
         assert src.count("planning_liveness=True") == 1
         # The opt-in must sit on the orchestrator's own loop call, which is
         # the one passing percept_source=orchestrator_source.
@@ -716,9 +716,9 @@ class TestSpinnerPlanningWindow:
 class TestOrchestratorWiringPins:
     @pytest.fixture(scope="class")
     def orch_src(self):
-        from maxim.simulation import orchestrator
+        from tests.unit._orchestrator_source import orchestrator_source
 
-        return inspect.getsource(orchestrator.start_simulation_mode)
+        return orchestrator_source()  # start_simulation_mode, wherever its code lives (1.3.2 decomposition)
 
     def test_stall_detector_consults_spinner_truth(self, orch_src):
         assert "spinner_truth_message(" in orch_src
@@ -875,9 +875,9 @@ class TestDeadAutIsSurfaced:
     campaign produced a full run of empty turns that looked like data."""
 
     def test_aut_worker_terminates_the_sim_on_loop_failure(self):
-        from maxim.simulation import orchestrator
+        from tests.unit._orchestrator_source import orchestrator_source
 
-        src = inspect.getsource(orchestrator.start_simulation_mode)
+        src = orchestrator_source()  # start_simulation_mode, wherever its code lives (1.3.2 decomposition)
         handler = src.split("aut_error.append(e)", 1)[1][:2600]
         assert '"status": "aut_died"' in handler
         assert "stop_event.set()" in handler

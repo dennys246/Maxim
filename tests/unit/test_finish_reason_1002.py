@@ -12,14 +12,10 @@ from __future__ import annotations
 import ast
 import inspect
 import threading
-from pathlib import Path
 
 import pytest
 
-import maxim
 from maxim.simulation.orchestrator import _resolve_finish_reason, _stop_by_operator
-
-ORCHESTRATOR = Path(maxim.__file__).resolve().parent / "simulation" / "orchestrator.py"
 
 
 def _event(is_set: bool) -> threading.Event:
@@ -60,8 +56,11 @@ def test_a_human_stop_sets_both_events() -> None:
 
 
 def _start_simulation_mode() -> ast.FunctionDef:
-    tree = ast.parse(ORCHESTRATOR.read_text())
-    return next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "start_simulation_mode")
+    from tests.unit._orchestrator_source import start_simulation_mode_def
+
+    # FUNCTION-SPECIFIC: the operator-stop pin tells the run's own top level from its nested readers
+    # (``n is not fn``), so it needs the one FunctionDef (tests/unit/_orchestrator_source.py).
+    return start_simulation_mode_def()
 
 
 def _is_call(node: ast.AST, name: str) -> bool:
@@ -80,30 +79,40 @@ def _calls(fn: ast.AST, name: str) -> list[ast.Call]:
 def test_only_a_human_stop_marks_the_operator_stop() -> None:
     """The operator stop is set only through the helper, and the helper is called only from the reader's
     /cancel, Ctrl+C and interrupt paths and the top-level KeyboardInterrupt handler -- never where a
-    runner finishes."""
-    fn = _start_simulation_mode()
+    runner finishes.
+
+    Walks EVERY part (``orchestrator_tree()``): slice 0 (SF-4) moved the raw reader, and with it the Ctrl+C
+    branch, to ``simulation/tty_stdin.py``. The top-level handler is still told apart from the readers'
+    with ``n is not fn``, ``fn`` being the run itself."""
+    from tests.unit._orchestrator_source import orchestrator_tree
+
+    tree = orchestrator_tree()
+    (fn,) = [d for d in tree.body if isinstance(d, ast.FunctionDef) and d.name == "start_simulation_mode"]
     direct = [
         n
-        for n in ast.walk(fn)
+        for n in ast.walk(tree)
         if isinstance(n, ast.Call)
         and isinstance(n.func, ast.Attribute)
         and ast.unparse(n.func.value) == "operator_stop"
     ]
     assert direct == []
-    helper_calls = _calls(fn, "_stop_by_operator")
+    helper_calls = _calls(tree, "_stop_by_operator")
     handlers = [
         h
-        for h in ast.walk(fn)
+        for h in ast.walk(tree)
         if isinstance(h, ast.ExceptHandler) and h.type is not None and "KeyboardInterrupt" in ast.unparse(h.type)
     ]
     in_interrupt_handlers = [c for c in helper_calls if any(c in list(ast.walk(h)) for h in handlers)]
-    cancel_branch = next(n for n in ast.walk(fn) if isinstance(n, ast.If) and "/cancel" in ast.unparse(n.test))
+    cancel_branch = next(n for n in ast.walk(tree) if isinstance(n, ast.If) and "/cancel" in ast.unparse(n.test))
     in_cancel = [c for c in helper_calls if c in list(ast.walk(cancel_branch))]
-    ctrl_c = next(n for n in ast.walk(fn) if isinstance(n, ast.If) and ast.unparse(n.test) == "ch == '\\x03'")
+    # Two Ctrl+C branches exist (the reader's and the post-sim prompt's); only the READER's stops the run, so
+    # the branch is selected inside ``stdin_reader_raw``: a stop moved to the post-sim prompt's branch fails.
+    (reader,) = [d for d in tree.body if isinstance(d, ast.FunctionDef) and d.name == "stdin_reader_raw"]
+    (ctrl_c,) = [n for n in ast.walk(reader) if isinstance(n, ast.If) and ast.unparse(n.test) == "ch == '\\x03'"]
     in_ctrl_c = [c for c in helper_calls if c in list(ast.walk(ctrl_c))]
     assert len(in_cancel) == 1 and len(in_ctrl_c) == 1
     assert len(helper_calls) == len(in_interrupt_handlers) + 2
-    nested = [n for n in ast.walk(fn) if isinstance(n, ast.FunctionDef) and n is not fn]
+    nested = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n is not fn]
     top_level = [h for h in handlers if not any(h in list(ast.walk(d)) for d in nested)]
     assert top_level, "the run's own KeyboardInterrupt handler is gone: re-pin"
     for handler in top_level:  # the run's own Ctrl+C, not a reader thread's

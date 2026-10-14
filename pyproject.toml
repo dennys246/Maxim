@@ -304,6 +304,7 @@ omit = [
     # statement-count ratchet per entry live there). scripts/lint_coverage.py fails on any other
     # entry, on any other [tool.coverage] change, and on a coverage config file anywhere else.
     "src/maxim/embodied_runtime/selfy.py",
+    "src/maxim/simulation/tty_stdin.py",
 ]
 branch = true
 
