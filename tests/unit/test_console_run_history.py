@@ -1350,7 +1350,6 @@ def test_gate_the_agent_loop_registers_the_stall_hook():
     assert callers, "stall detection is dormant: wire set_loop_state_hook from the agent loop"
 
 
-@pytest.mark.xfail(strict=True, reason="save_action_log does not record per-action credit (actions.jsonl is 1.1)")
 def test_gate_actions_jsonl_records_per_action_credit(tmp_path):
     from types import SimpleNamespace
 
@@ -1368,7 +1367,6 @@ def test_gate_actions_jsonl_records_per_action_credit(tmp_path):
     assert lines[1]["rpe"] == -0.4 and lines[1]["nac_failure_booked"] == "tool:t:failure"
 
 
-@pytest.mark.xfail(strict=True, reason="InstrumentedExecutor drops ToolOutput credit: ActionRecord has no field for it")
 def test_a_bridge_booked_failure_reaches_the_console_with_its_credit(runs):
     """End to end: a failure the tool-pain bridge books, run through the sim's instrumented executor and sink, saved by
     save_action_log and read back by the console, carries its credit. The writer-only gate above feeds save_action_log
