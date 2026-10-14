@@ -63,6 +63,48 @@ class HeartbeatMonitor:
         # External state hooks (set by caller)
         self._loop_state_fn: Any = None  # () -> dict with last_event_time, state
         self._last_stall_warn: float = 0.0
+        # Structured listeners (the console's health strip, console/health.py).
+        # The records already go to the "maxim.heartbeat" logger, but at DEBUG,
+        # so a log handler would only see them when MAXIM_LOG_FILE forces the
+        # root to DEBUG. Listeners get every snapshot and stall regardless.
+        self._listeners: list[Any] = []
+        self._listeners_lock = threading.Lock()
+        self._listener_warned: set[Any] = set()
+
+    @property
+    def is_running(self) -> bool:
+        return self._thread is not None
+
+    @property
+    def has_loop_state_hook(self) -> bool:
+        """Stall detection needs this hook; without it `heartbeat_stall` cannot fire."""
+        return self._loop_state_fn is not None
+
+    def register_listener(self, fn: Any) -> None:
+        """Register ``fn(kind, data)``; kind is "heartbeat" or "heartbeat_stall"."""
+        with self._listeners_lock:
+            if fn not in self._listeners:
+                self._listeners.append(fn)
+
+    def unregister_listener(self, fn: Any) -> None:
+        with self._listeners_lock:
+            if fn in self._listeners:
+                self._listeners.remove(fn)
+
+    def _notify(self, kind: str, data: dict[str, Any]) -> None:
+        with self._listeners_lock:
+            listeners = list(self._listeners)
+        for fn in listeners:
+            try:
+                fn(kind, data)
+            except Exception as e:  # a listener bug must not stop the sampler — but must not hide
+                if fn not in self._listener_warned:
+                    self._listener_warned.add(fn)
+                    logger.warning(
+                        "heartbeat listener %r raised %s; further failures of this listener are not reported",
+                        getattr(fn, "__qualname__", fn),
+                        type(e).__name__,
+                    )
 
     def set_loop_state_hook(self, fn: Any) -> None:
         """Register a callable that returns agent loop state dict.
@@ -137,7 +179,8 @@ class HeartbeatMonitor:
         return data
 
     def _emit(self, data: dict[str, Any]) -> None:
-        """Format and log the heartbeat line."""
+        """Notify listeners, then format and log the heartbeat line."""
+        self._notify("heartbeat", data)
         parts: list[str] = []
 
         # GPU
@@ -216,6 +259,16 @@ class HeartbeatMonitor:
                 # Don't spam — warn at most once per stall threshold
                 if now - self._last_stall_warn > self._stall_threshold:
                     self._last_stall_warn = now
+                    stall = {
+                        "idle_s": idle_s,
+                        "state": loop.get("state"),
+                        "threshold_s": self._stall_threshold,
+                        "p50_latency_ms": large.get("p50_latency_ms"),
+                        "failure_rate": large.get("failure_rate"),
+                        "jobs_completed": large.get("jobs_completed"),
+                        "jobs_failed": large.get("jobs_failed"),
+                    }
+                    self._notify("heartbeat_stall", stall)
                     logger.warning(
                         "[heartbeat] STALL DETECTED — agent loop idle for %.0fs "
                         "(state=%s, threshold=%ds). Last large-tier call: p50=%s ms, "
@@ -225,18 +278,7 @@ class HeartbeatMonitor:
                         int(self._stall_threshold),
                         large.get("p50_latency_ms", "?"),
                         large.get("failure_rate", "?"),
-                        extra={
-                            "event": "heartbeat_stall",
-                            "data": {
-                                "idle_s": idle_s,
-                                "state": loop.get("state"),
-                                "threshold_s": self._stall_threshold,
-                                "p50_latency_ms": large.get("p50_latency_ms"),
-                                "failure_rate": large.get("failure_rate"),
-                                "jobs_completed": large.get("jobs_completed"),
-                                "jobs_failed": large.get("jobs_failed"),
-                            },
-                        },
+                        extra={"event": "heartbeat_stall", "data": stall},
                     )
 
 

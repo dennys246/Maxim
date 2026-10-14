@@ -26,7 +26,7 @@
     {
       "file": "src/maxim/console/server.py",
       "qualname": "build_app",
-      "lines": 362
+      "lines": 338
     },
     {
       "file": "src/maxim/decisions/nac.py",
