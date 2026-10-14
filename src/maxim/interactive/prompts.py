@@ -369,7 +369,7 @@ class SimPromptHandler(PromptHandler):
     def prompt(self, request: PromptRequest) -> PromptResponse:
         """Post the prompt and wait for the raw stdin reader to deliver a response.
 
-        The raw terminal stdin reader (``_stdin_reader_raw`` in orchestrator.py)
+        The raw terminal stdin reader (``stdin_reader_raw`` in simulation/tty_stdin.py)
         renders the question + typed characters inside the Live panel via
         ``display.set_prompt()``. No Live pause needed — the reader handles
         echo suppression via termios and renders in-panel. This method just

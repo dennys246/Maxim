@@ -37,9 +37,9 @@ def test_the_kickoff_names_exactly_the_narrators_registered_tools() -> None:
 
 
 def test_the_orchestrator_builds_every_narrator_opening_from_its_registry() -> None:
-    from maxim.simulation import orchestrator
+    from tests.unit._orchestrator_source import orchestrator_source
 
-    src = inspect.getsource(orchestrator.start_simulation_mode)
+    src = orchestrator_source()  # start_simulation_mode, wherever its code lives (1.3.2 decomposition)
     assert "_narrator_tools_block(orch_registry)" in src
     assert "internet_search" not in src and "Do NOT use respond" not in src
 
@@ -162,14 +162,14 @@ def test_only_the_run_full_turns_flag_sets_the_finish_floor_and_an_observer_is_e
     """Owner decisions 2026-10-02: opt-in (other harnesses pass --sim-max-turns and keep early finishing)."""
     from maxim import cli
     from maxim.cli_parser import _build_parser
-    from maxim.simulation import orchestrator
+    from tests.unit._orchestrator_source import orchestrator_source
 
     plain = _build_parser().parse_args(["--sim", "g", "--sim-max-turns", "8"])
     full = _build_parser().parse_args(["--sim", "g", "--sim-max-turns", "8", "--sim-run-full-turns"])
     assert cli._sim_turn_caps(plain) == {"max_turns": 8, "min_finish_turns": 0}
     assert cli._sim_turn_caps(full) == {"max_turns": 8, "min_finish_turns": 8}
     assert inspect.getsource(cli._main_impl).count("**_sim_turn_caps(args)") >= 3, "every sim launch passes both caps"
-    src = inspect.getsource(orchestrator.start_simulation_mode)
+    src = orchestrator_source()  # start_simulation_mode, wherever its code lives (1.3.2 decomposition)
     assert "min_turns=0 if _is_observe_only else min_finish_turns" in src
     assert src.index("_is_observe_only = ") < src.index("FinishSimulationTool("), "known before the tool is built"
 

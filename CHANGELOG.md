@@ -137,6 +137,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The simulation's TTY read loops moved to `simulation/tty_stdin.py` (1.3.2 orchestrator decomposition, slice 0;
+  owner decision SF-4, 2026-10-13).** `start_simulation_mode`'s nested raw-mode stdin reader and its post-sim
+  "new goal or Enter" raw prompt loop are now the module functions `stdin_reader_raw` and
+  `read_post_sim_goal_raw`, moved verbatim apart from the closure-to-keyword-parameter rewrite (the post-sim
+  goal is now the return value), with the escape-sequence keymap and the terminal-restore atexit/SIGTERM hook
+  they own. No behaviour change. The module holds only TTY read loops and is on the coverage exclusion list
+  (`scripts/coverage_exclusions.json`, with an `excluded_statements` ledger entry of 204), because every
+  line needs a real TTY; `start_simulation_mode`'s length pin drops 3227 -> 3003. The non-TTY line reader and
+  the command parser stay in `orchestrator.py`, and `tty_stdin.py` joins CI's targeted mypy set. Guards:
+  `tests/unit/test_tty_stdin.py`, and `tests/unit/test_orchestrator_source.py` (every function of a module the
+  decomposition extracts into is a registered part of the run's source).
 - **`tool_dispatch.record_outcome(bridge_booked=)` is now a required keyword (#1221, owner decision TF8 step 3).**
   #1200 Stage 2 shipped it with a temporary `None` default while Session A landed `agent_loop.py`'s two call
   sites (#1231); with every caller now passing it, the default is dropped, so a caller that forgets the stamp is a

@@ -31,6 +31,7 @@ from maxim.simulation.orchestrator import (
 )
 from maxim.tools.base import Tool, ToolOutput
 from maxim.tools.registry import ToolRegistry
+from tests.unit._orchestrator_source import orchestrator_source
 
 
 def _stub_tool(tool_name: str) -> Tool:
@@ -292,7 +293,7 @@ class TestNonePathUnchanged:
         """Source pins for branches 1-3 (matching the branch-5 pin below):
         reverting any of these gates would silently mis-route learning while
         every helper-level test still passes (review fold: Exec #9)."""
-        src = inspect.getsource(start_simulation_mode)
+        src = orchestrator_source()  # start_simulation_mode, wherever its code lives (1.3.2 decomposition)
         # Branch 1: factory call skipped on adoption
         assert "_aut_instance = _adopted.instance" in src
         # Branch 2: resume-session file-load gated. The restore moved to a module-level helper (#1003), so
@@ -391,7 +392,7 @@ class TestStopConsolidation:
         """Wiring pin (branch 5): the AUT's run_agentic_loop call carries the
         explicit "full" override for an injected persistent agent and None
         (today's derive-from-sim-flag behavior) otherwise."""
-        src = inspect.getsource(start_simulation_mode)
+        src = orchestrator_source()  # start_simulation_mode, wherever its code lives (1.3.2 decomposition)
         assert 'consolidation="full" if persistent_agent is not None else None' in src
 
 
@@ -474,7 +475,7 @@ class TestRepeatedSessions:
         assert len(bus._pain_signal_subs) == before, "unsubscribe must fully un-pin the sim DN"
 
         # Wiring pin: the orchestrator's adopted teardown performs this.
-        src = inspect.getsource(start_simulation_mode)
+        src = orchestrator_source()  # start_simulation_mode, wherever its code lives (1.3.2 decomposition)
         assert "aut_pain_bus.unsubscribe(_dn_bridge._on_pain)" in src
 
 
