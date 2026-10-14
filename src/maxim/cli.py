@@ -1283,6 +1283,9 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
             print('  Usage: maxim --sim "test goal" --resume-sim SESSION_ID')
             print('         maxim --sim agent --goal "continue" --resume-sim SESSION_ID')
             sys.exit(1)
+        if getattr(args, "fresh_narrator", False) and getattr(args, "resume_sim", None) is None:
+            print("Error: --fresh-narrator only applies to a resume; pass --resume-sim SESSION_ID too (#1226).")
+            sys.exit(1)
 
     # Simulation mode if requested — runs full agentic pipeline with fake percepts
     if sim_path is not None:

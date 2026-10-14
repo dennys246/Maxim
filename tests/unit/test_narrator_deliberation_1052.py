@@ -141,7 +141,7 @@ def test_a_resumed_session_gets_the_same_first_action_line_as_a_fresh_one(goal, 
     src = orchestrator_source()  # start_simulation_mode, wherever its code lives (1.3.2 decomposition)
     # Every opening goes through sim_types (the fresh kickoff and the not-found fallback share build_kickoff_prompt,
     # which calls kickoff_instruction; the resume prompt calls it with resumed=True).
-    assert "_build_kickoff_prompt(goal, tools_block=_tools_block, observe_only=_is_observe_only)" in src
+    assert "_build_kickoff_prompt(goal, tools_block=tools_block, observe_only=observe_only)" in src  # _narrator_opening
     assert "observe_only=_is_observe_only, tools_block=_tools_block" in src
     assert "OBSERVE ONLY" not in src, "the kickoff text lives in one place"
 

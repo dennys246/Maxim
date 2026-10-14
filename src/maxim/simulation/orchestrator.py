@@ -2290,8 +2290,8 @@ def start_simulation_mode(
         resume_data, goal, mode, resumed=narrator_resumed, observe_only=_is_observe_only, tools_block=_tools_block
     )
     orchestrator_source.inject_cli(opening, salience=1.0, novelty=1.0)
-    if narrator_resumed and resume_data:
-        display_status(f"Resuming session: {resume_session}")
+    if resume_data:  # the agent's memory resumed; say whether the narrator did too
+        display_status(f"Resuming session: {resume_session}" + ("" if narrator_resumed else " (narrator fresh)"))
         display_status(
             f"Previous turns: {resume_data.get('turns', '?')}, actions: {resume_data.get('total_actions', '?')}"
         )

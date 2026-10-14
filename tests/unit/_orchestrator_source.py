@@ -67,6 +67,9 @@ PARTS: tuple[tuple[str, str], ...] = (
     # tty_stdin.py (the nested _stdin_reader_raw and the post-sim raw prompt loop)
     ("tty_stdin.py", "stdin_reader_raw"),
     ("tty_stdin.py", "read_post_sim_goal_raw"),
+    # #1226 (Session A approved the fence touch, 2026-10-14): the narrator's opening, the fresh kickoff or the
+    # resume prompt, moved out of start_simulation_mode into this top-level helper
+    ("orchestrator.py", "_narrator_opening"),
 )
 
 # Every module a slice moved ``start_simulation_mode`` code into, as a dotted name. The slice that creates one

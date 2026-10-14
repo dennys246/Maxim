@@ -16,7 +16,7 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1680
+      "lines": 1683
     },
     {
       "file": "src/maxim/cli_parser.py",
@@ -314,10 +314,10 @@
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
       "from": 1678,
-      "to": 1680,
+      "to": 1683,
       "date": "2026-10-14",
       "ref": "#1226",
-      "reason": "--fresh-narrator (#1226, owner decision 2026-10-14: the T1-2 re-fire needs a non-resumed narrator): one narrator_resume= forwarding line at each of the two start_simulation_mode call sites, beside their resume_session=. Session A approved the fence touch."
+      "reason": "--fresh-narrator (#1226, owner decision 2026-10-14: the T1-2 re-fire needs a non-resumed narrator): one narrator_resume= forwarding line at each of the two start_simulation_mode call sites, beside their resume_session=, and a three-line refusal of --fresh-narrator without --resume-sim, beside the existing --resume-sim-without---sim refusal. Session A approved the fence touch."
     },
     {
       "file": "src/maxim/cli_parser.py",
