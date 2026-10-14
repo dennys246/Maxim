@@ -23,10 +23,12 @@ to one per ``persist_interval_s`` (a minute); stalls are always kept;
 swallowed exceptions are persisted as per-site count DELTAS at most once a
 minute per site.
 
-**What it cannot say yet** (honest flags on the wire): stall detection needs
-the agent loop to register ``HeartbeatMonitor.set_loop_state_hook``, which no
-production code does yet, so ``stall_detection`` is False and ``stalls`` is
-empty for that reason, not because nothing stalled.
+**What it cannot say** (honest flags on the wire): a stall is a stuck planning
+turn, detectable only while an agent loop runs in this process
+(``runtime/loop_state.py::loop_liveness_scope`` registers the monitor's
+loop-state hook per run and clears it with the last). With no run,
+``stall_detection`` is False and an empty ``stalls`` means unknown, not healthy;
+a loop that stops submitting altogether is never reported.
 
 **Privacy.** Snapshots are ALLOW-LISTED (:data:`ALLOWED_KEYS`): never network
 interfaces, Wi-Fi identity, platform/hostname or ``disk.path``. Exception

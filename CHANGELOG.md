@@ -34,12 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `degraded` (live whenever it serves, so a device that does not sample still shows it). Contract 0.5.0 → 0.6.0,
   additive.
 - **What is DORMANT, said plainly.** Three producers this contract reads are not in this release, each pinned by a
-  strict red gate in `tests/unit/test_console_run_history.py`: (1) **stalls** — nothing calls
-  `HeartbeatMonitor.set_loop_state_hook`, so `heartbeat_stall` cannot fire; `/api/health` reports
-  `stall_detection: false` so an empty `stalls` reads as unknown, not healthy; (2) **per-action credit** — CLOSED by
-  the `actions.jsonl` 1.2 bullet below; runs written before it read `credit_recorded: false` (the reader keys it off a
-  1.2 header, never off key presence); (3) **the per-run event
-  trail** — nothing writes `events.jsonl`, so the `/events` route is NOT in 0.6.0 and ships with its writer.
+  strict red gate in `tests/unit/test_console_run_history.py`: (1) **stalls** — CLOSED by the stall-detection
+  bullet below; with no agent loop running, `/api/health` still reports `stall_detection: false` so an empty `stalls`
+  reads as unknown, not healthy; (2) **per-action credit** — CLOSED by the `actions.jsonl` 1.2 bullet below; runs
+  written before it read `credit_recorded: false` (the reader keys it off a 1.2 header, never off key presence); (3)
+  **the per-run event trail** — nothing writes `events.jsonl`, so the `/events` route is NOT in 0.6.0 and ships with its
+  writer.
 - **Per-action credit is now recorded (`actions.jsonl` 1.2), closing dormant producer (2) above.** `ActionRecord`
   gains three optional trailing fields, `rpe`, `pain` and `nac_failure_booked`. `InstrumentedExecutor` copies them
   off the `ToolOutput` the executor stamped, `RecordingSink`'s compression keeps them, and `save_action_log` writes
@@ -47,6 +47,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and with what surprise and pain. Runs written before this read `credit_recorded: false`, which means unknown, not
   none. Gate: `tests/unit/test_console_run_history.py::test_a_bridge_booked_failure_reaches_the_console_with_its_credit`
   drives a real bridge-booked failure from the executor to `run_store.page_actions`.
+- **Stall detection is live: a stuck planning turn, judged on the canonical stall surface. This closes dormant
+  producer (1) above.** Owner decisions, 2026-10-14:
+  - A stall is a planning turn outstanding past the threshold with no live call. It is not loop idleness, which
+    false-stalled whenever the loop waited for a human.
+  - The threshold and suppression come from the canonical stall surface.
+
+  How it works:
+  - `run_agentic_loop` carries `loop_state.loop_liveness_scope`, which keeps one liveness entry per run. While any run
+    is alive, it registers the process heartbeat monitor's loop-state hook, and it clears the entry in a `finally`.
+    `pre_tick_gate` records the run's `llm_worker`.
+  - `LLMWorker.outstanding_attempt_s` reports how long the latest planning attempt has been waiting on the provider
+    (queued or running). A result the provider returned but the loop has not consumed yet, for example while paused,
+    is not outstanding.
+  - The heartbeat flags a stall only when that age exceeds `compute_stall_threshold` and `stall_suppression` finds no
+    live planning-lane call.
+  - The floor is `MAXIM_HEARTBEAT_STALL_S`, now clamped to 5–3600 (a non-number falls back to 30). There is no
+    lane-timeout ceiling. Tier: innate prior.
+
+  Removed:
+  - the heartbeat's own hardcoded 30 s idle rule and its "large lane had calls" precondition;
+  - `HeartbeatMonitor(stall_threshold_s=...)`;
+  - the CI grep's `heartbeat.py` allowlist.
+
+  This completes `stall_detector_timeout_awareness.md` Stage 2. Operators with `MAXIM_HEARTBEAT=1` will now see
+  `heartbeat_stall` WARNINGs, which never fired before. Waiting for a human, a long tool and quiet perception are never
+  stalls. A loop that stops submitting altogether is not caught; that is #1272, along with the floor's tier trigger.
+
+  Gates:
+  - `/api/health` end to end: one stall for a turn stuck past the threshold; none with a live call, no turn, or a
+    young turn;
+  - `tests/unit/test_loop_liveness.py`, which includes a real `LLMWorker`.
 - **Run ids go through a new resolver, `console/run_store.py`, never `utils/paths.resolve_run_dir`.** The old one
   returns any directory for a path-like argument, searches the CWD first and follows symlinks out of `sim_reports`
   (its docstring now says so). Ids are `[A-Za-z0-9_-]{1,64}`; every open is anchored to a directory fd (root, then
