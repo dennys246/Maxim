@@ -1337,6 +1337,53 @@ class TestProducerSeams:
 # ── strict red gates: the producers this contract reads but does not ship ────
 
 
+def _real_monitor(monkeypatch):
+    """The real HeartbeatMonitor (so its stall rule runs), with the system sampler stubbed and a long interval: the
+    test drives each tick itself."""
+    from maxim.runtime import heartbeat
+
+    monkeypatch.setattr("maxim.runtime.system_metrics.collect_all", lambda: {})
+    mon = heartbeat.HeartbeatMonitor(interval_s=3600.0)
+    monkeypatch.setattr(heartbeat, "get_heartbeat_monitor", lambda: mon)
+    return mon
+
+
+def _stalled_run(mon, *, state: str, in_flight: bool):
+    """Drive one heartbeat tick inside a decorated run whose loop last made progress well past the threshold."""
+    from maxim.runtime import llm_call_registry, loop_state
+
+    @loop_state.loop_liveness_scope
+    def run():
+        live = loop_state.current_liveness()
+        live.note_tick(running=state == "working")
+        live.last_progress_at -= 10_000.0  # idle far past any threshold
+        call = llm_call_registry.register_call_start(tier="large", allowed_s=600.0) if in_flight else None
+        try:
+            assert mon.has_loop_state_hook
+            mon._check_stall(mon._collect())
+        finally:
+            if call is not None:
+                llm_call_registry.register_call_end(call)
+
+    run()
+
+
+@pytest.mark.xfail(strict=True, reason="stall detection dormant: nothing registers the loop-state hook")
+@pytest.mark.parametrize(
+    ("state", "in_flight", "stalls"), [("working", False, 1), ("working", True, 0), ("idle", False, 0)]
+)
+def test_a_working_loop_idle_past_the_threshold_is_one_stall_on_api_health(runs, monkeypatch, state, in_flight, stalls):
+    """End to end (#1268 dormant producer 1, owner decision 2026-10-14): a run registers its liveness through the
+    decorator; the real monitor's tick declares a stall only for a WORKING loop idle past compute_stall_threshold with
+    nothing alive in flight (stall_suppression); /api/health shows it. An idle loop, or a live LLM call, is no stall."""
+    mon = _real_monitor(monkeypatch)
+    with TestClient(build_app(None, auth_token=_TOKEN, health_monitor=True)) as c:
+        _stalled_run(mon, state=state, in_flight=in_flight)
+        body = _get(c, "/api/health").json()
+        assert len(body["stalls"]) == stalls, body["stalls"]
+        assert body["stall_detection"] is False  # the run ended: no loop is registered, so no stale stall source
+
+
 @pytest.mark.xfail(
     strict=True,
     reason="no production caller registers HeartbeatMonitor.set_loop_state_hook, so heartbeat_stall cannot fire",
