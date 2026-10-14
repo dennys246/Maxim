@@ -199,3 +199,21 @@ def test_too_many_redirects_or_no_location_is_unreadable(monkeypatch):
 def test_an_idna_2003_only_entry_names_the_punycode_form():
     with pytest.raises(ValueError, match="punycode"):
         ia.normalize_host("☃.net")
+
+
+@pytest.mark.parametrize("public_only", [True, False])
+def test_every_robots_hop_carries_the_policys_public_only(monkeypatch, public_only):
+    """Each hop, redirects included, goes through fetch_url with the policy's public_only (#824): a hop sent
+    without it could reach a private address (delta review: deleting it passed every other test)."""
+    seen: list[tuple[str, object]] = []
+
+    def fetch(url, **kwargs):
+        seen.append((url, kwargs.get("public_only")))
+        if url == "https://example.com/robots.txt":
+            return _R(status=301, headers={"location": "https://www.example.com/robots.txt"})
+        return _R(text="")
+
+    monkeypatch.setattr(_http, "fetch_url", fetch)
+    assert http_fetch.check_robots_txt("https://example.com/page", public_only=public_only) == (True, None)
+    assert [u for u, _ in seen] == ["https://example.com/robots.txt", "https://www.example.com/robots.txt"]
+    assert all(p is public_only for _, p in seen)
