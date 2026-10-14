@@ -19,11 +19,16 @@ properties and adds **sandbox mode** (``MAXIM_CONSOLE_SANDBOX=1``, see the
 ``_refuse_in_sandbox`` block), which closes the surfaces that act on the host
 rather than on the agent. Three surfaces:
 
-* ``/api/*`` — JSON facade, 1:1 with ``api.py`` verbs. Existing structured verbs
-  (``/api/models``, ``/api/diagnose``) are live; the seams (``/api/probe``,
-  ``/api/setup/*``, ``/api/recall``, ``/api/run``) are typed **501 stubs** — their
-  Pydantic shapes are in OpenAPI so the maxim-pulse kit can generate the full
-  ``FacadeClient`` now (Phase 1 fills in the bodies without touching the schema).
+* ``/api/*`` — the JSON facade. Most routes front ``api.py`` verbs and seams
+  (``/api/models``, ``/api/diagnose``, ``/api/probe``, ``/api/setup/*``,
+  ``/api/recall``, ``/api/run``); ``/api/identity``, ``/api/hello`` and
+  ``/api/pair/*`` describe and sign in to this server. **Console-only, not
+  ``api.py`` verbs:** the read-only history routes ``/api/runs*`` and
+  ``/api/health*`` (contract 0.6.0), which read run artefacts through
+  ``console/run_store.py`` (a security boundary — never
+  ``utils/paths.resolve_run_dir``) and the console's own health log. All shapes
+  are Pydantic models in the OpenAPI the maxim-pulse kit generates its
+  ``FacadeClient`` from.
 * ``/ws`` — the EventClient stream (the EVENT seam, LIVE —
   [reachy_app_maxim_seams.md] § EVENT): ``sim_log`` records bridged via
   ``register_sim_sink`` into per-connection bounded queues (drop-oldest +
@@ -43,6 +48,7 @@ import asyncio
 import contextlib
 import dataclasses
 import json
+import math
 import logging
 import secrets
 import threading
@@ -52,17 +58,20 @@ from typing import Any, Sequence
 
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from maxim.console.schemas import (
+    ActionPage,
     CampaignInfo,
     CampaignsResponse,
     CloudSetupRequest,
     ConsoleEvent,
+    DegradedResponse,
     DiagnoseResponse,
     DiagnoseSection,
+    HealthResponse,
     HelloResponse,
     IdentityResponse,
     MeshSetupRequest,
@@ -76,6 +85,8 @@ from maxim.console.schemas import (
     ProbeResult,
     RecallResponse,
     RunAccepted,
+    RunPage,
+    RunReport,
     RunRequest,
     SeamStatus,
     SetupResult,
@@ -686,6 +697,112 @@ def post_pair_claim(body: PairClaimRequest, request: Request) -> PairClaimResult
     return PairClaimResult(token=request.app.state.auth_token)
 
 
+# ── run history + health (contract 0.6.0) ───────────────────────────────────
+#
+# Read-only views for exploring what an agent did and why (maxim-pulse
+# docs/plans/log_explorer.md). Every route: GET only, bearer-gated by the
+# guard middleware, refused under sandbox mode (a public visitor must never
+# read the host's run history or health), and NO route takes a path — run ids
+# go through `run_store.open_console_run`, never `utils/paths.resolve_run_dir`.
+# Every refusal of a run id is a 404, so the routes are not an existence oracle.
+
+
+def _finite(name: str, value: float | None) -> float | None:
+    if value is not None and not math.isfinite(value):
+        raise HTTPException(status_code=400, detail=f"{name} must be a finite number")
+    return value
+
+
+def _run_call(fn: Any, *args: Any, **kwargs: Any) -> Any:
+    from maxim.console.run_store import BadCursor, RunNotFound
+
+    try:
+        return fn(*args, **kwargs)
+    except RunNotFound as e:
+        raise HTTPException(status_code=404, detail="No such run.") from e
+    except BadCursor as e:
+        raise HTTPException(status_code=400, detail=f"Bad cursor: {e}") from e
+
+
+@api.get(
+    "/runs",
+    response_model=RunPage,
+    summary="Past runs, newest first (read-only)",
+    dependencies=[Depends(_refuse_in_sandbox)],
+    tags=["facade", "history"],
+)
+def get_runs(
+    request: Request,
+    cursor: str | None = Query(default=None, max_length=1024),
+    limit: int = Query(default=50, ge=1, le=100),
+) -> RunPage:
+    from maxim.console import run_store
+
+    return RunPage(**_run_call(run_store.list_runs, cursor=cursor, limit=limit, signer=request.app.state.cursor_signer))
+
+
+@api.get(
+    "/runs/{session_id}",
+    response_model=RunReport,
+    summary="One run's report (never its substrate files)",
+    dependencies=[Depends(_refuse_in_sandbox)],
+    tags=["facade", "history"],
+)
+def get_run(session_id: str) -> RunReport:
+    """``session_id`` is the SIM session id (the sim_reports dir name), not the
+    console's own run id — the two share a format. The join from a console run
+    is the /ws ``run`` event's ``sim_session_id``."""
+    from maxim.console import run_store
+
+    return RunReport(**_run_call(run_store.read_report, session_id))
+
+
+@api.get(
+    "/runs/{session_id}/actions",
+    response_model=ActionPage,
+    summary="One run's actions in order, with per-action credit where recorded",
+    dependencies=[Depends(_refuse_in_sandbox)],
+    tags=["facade", "history"],
+)
+def get_run_actions(
+    session_id: str,
+    request: Request,
+    cursor: str | None = Query(default=None, max_length=1024),
+    limit: int = Query(default=200, ge=1, le=500),
+) -> ActionPage:
+    from maxim.console import run_store
+
+    return ActionPage(
+        **_run_call(
+            run_store.page_actions, session_id, cursor=cursor, limit=limit, signer=request.app.state.cursor_signer
+        )
+    )
+
+
+@api.get(
+    "/health",
+    response_model=HealthResponse,
+    summary="This server's health: latest snapshot, stalls and a downsampled series",
+    dependencies=[Depends(_refuse_in_sandbox)],
+    tags=["facade", "history"],
+)
+def get_health(request: Request, since: float = 0.0) -> HealthResponse:
+    _finite("since", since)
+    return HealthResponse(**request.app.state.health_log.view(since=since))
+
+
+@api.get(
+    "/health/degraded",
+    response_model=DegradedResponse,
+    summary="swallowed_exception fires grouped by site — what degraded silently",
+    dependencies=[Depends(_refuse_in_sandbox)],
+    tags=["facade", "history"],
+)
+def get_health_degraded(request: Request, since: float = 0.0) -> DegradedResponse:
+    _finite("since", since)
+    return DegradedResponse(**request.app.state.health_log.degraded(since=since))
+
+
 @api.get("/models", response_model=ModelsResponse, summary="List LLM profiles")
 def get_models() -> ModelsResponse:
     import maxim
@@ -716,6 +833,9 @@ _SEAM_DECLARATIONS: tuple[tuple[str, str], ...] = (
     ("adventure", "/api/run mode=adventure"),
     ("rest", "/api/run mode=rest"),
     ("sim", "/api/run mode=sim"),
+    ("runs", "/api/runs (run history, read-only)"),
+    ("health", "/api/health + /ws kind=health (sampling)"),
+    ("degraded", "/api/health/degraded (live whenever the server serves)"),
 )
 
 
@@ -748,7 +868,11 @@ def _git_identity() -> tuple[str | None, str | None]:
 
 
 def build_identity(
-    ui_dist: Path | str | None = None, ui_source: str = "none", *, sandbox: _SandboxPolicy | None = None
+    ui_dist: Path | str | None = None,
+    ui_source: str = "none",
+    *,
+    sandbox: _SandboxPolicy | None = None,
+    health_live: bool = False,
 ) -> IdentityResponse:
     """Assemble the backend's self-description (shared by /api/identity + /ws)."""
     import sys as _sys
@@ -763,13 +887,28 @@ def build_identity(
     # `setup`'s cloud half stay open so the cloud wizard still works — which
     # the detail spells out; a consumer gating the cloud wizard on these two
     # seams would be wrong, and `live` here is value-level (no contract change).
-    _sandbox_closed = {"probe": "url form closed in sandbox mode", "setup": "mesh closed in sandbox mode"}
+    _sandbox_closed = {
+        "probe": "url form closed in sandbox mode",
+        "setup": "mesh closed in sandbox mode",
+        "runs": "closed in sandbox mode",
+        "health": "closed in sandbox mode",
+        "degraded": "closed in sandbox mode",
+    }
 
     def _seam(n: str, d: str) -> SeamStatus:
         if n == "sim":
             return SeamStatus(name=n, live=False, detail=f"{d} — use the CLI (`maxim --sim`)")
         if sandbox is not None and n in _sandbox_closed:
             return SeamStatus(name=n, live=False, detail=f"{d} — {_sandbox_closed[n]}")
+        if n == "runs":
+            from maxim.console.run_store import HISTORY_SUPPORTED
+
+            if not HISTORY_SUPPORTED:
+                return SeamStatus(name=n, live=False, detail=f"{d} — needs a POSIX host (anchored opens)")
+        if n == "health" and not health_live:
+            # Live only while this server SAMPLES: an embedder that built the
+            # app without the monitor serves an empty health view forever.
+            return SeamStatus(name=n, live=False, detail=f"{d} — this server is not sampling health")
         return SeamStatus(name=n, live=True, detail=d)
 
     seams = [_seam(n, d) for n, d in _SEAM_DECLARATIONS]
@@ -786,12 +925,22 @@ def build_identity(
     )
 
 
+def _identity_for(app: Any) -> IdentityResponse:
+    """The served identity, as /api/identity and the /ws identity frame report it."""
+    return build_identity(
+        _SERVED_UI_DIST[0],
+        _SERVED_UI_DIST[1],
+        sandbox=_sandbox_of(app),
+        health_live=app.state.health_log.monitoring,
+    )
+
+
 @api.get("/identity", response_model=IdentityResponse, summary="Which backend is this?")
 def get_identity(request: Request) -> IdentityResponse:
     # Answers the question a debugging session would otherwise have to guess:
     # which pymaxim, which branch, which contract, which seams are live, and
     # which UI bundle is being served.
-    return build_identity(_SERVED_UI_DIST[0], _SERVED_UI_DIST[1], sandbox=_sandbox_of(request.app))
+    return _identity_for(request.app)
 
 
 @api.get(
@@ -1433,6 +1582,14 @@ def get_subscribe_frame() -> SubscribeFrame:
 # (heartbeat/run/dropped/display) bypass filters — they carry stream/UI state.
 
 _META_KINDS = frozenset({"heartbeat", "run", "dropped", "display", "identity"})
+# OPT-IN kinds (contract 0.6.0): delivered ONLY to a connection whose
+# SubscribeFrame names them in `kinds`. A new clean-tier kind is otherwise a
+# broadcast to every unfiltered client, and existing consumers switch on
+# "kind != X" — pulse's TurnStatus treats any non-heartbeat event as proof a
+# turn is moving, so a health sample every 10 s would make a hung run look
+# alive, and 360 samples an hour would crowd its 2000-event history ring.
+# These are host samples, not run events: published without a run_id.
+_OPT_IN_KINDS = frozenset({"health", "health_stall"})
 _WS_QUEUE_MAXSIZE = 512
 _TIER_ORDER = {"clean": 0, "bio": 1, "debug": 2}
 
@@ -1454,7 +1611,8 @@ class _WsConn:
         # Compiled filter (None on every axis = everything).
         self._tier_max: int | None = None
         self._subsystems: set[str] | None = None  # subsystem names, uppercased for matching
-        self._kinds: set[str] | None = None  # lowercase kinds
+        self._kinds: set[str] | None = None  # lowercase ORDINARY kinds (a filter)
+        self._opt_in: set[str] = set()  # opt-in kinds this connection asked for (additive)
 
     def apply_frame(self, frame: SubscribeFrame) -> None:
         """Each frame REPLACES the filter (send a full frame; all-None resets)."""
@@ -1465,9 +1623,24 @@ class _WsConn:
         # the one mixed-case canonical subsystem, "NAc", was unreachable via
         # raw-name channels — "nac"→"NAC" never equaled "NAc").
         self._subsystems = {s.upper() for s in expand_channels(frame.channels)} if frame.channels is not None else None
-        self._kinds = {k.strip().lower() for k in frame.kinds} if frame.kinds is not None else None
+        kinds = {k.strip().lower() for k in frame.kinds} if frame.kinds is not None else None
+        # Opt-in kinds named in `kinds` are ADDED to the stream, never a filter:
+        # {kinds:["health"]} = everything plus health; {tier:"clean",
+        # kinds:["health"]} = the clean tier plus health. Only the remaining
+        # (ordinary) kinds narrow. Otherwise opting into health would starve a
+        # client of every other event (delta review B-1).
+        self._opt_in = (kinds & _OPT_IN_KINDS) if kinds is not None else set()
+        if kinds is None:
+            self._kinds = None
+        else:
+            ordinary = kinds - _OPT_IN_KINDS
+            # Only-opt-ins → no ordinary filter (everything plus health). An
+            # EXPLICITLY empty list keeps its 0.5.0 meaning: no ordinary events.
+            self._kinds = None if (not ordinary and self._opt_in) else ordinary
 
     def matches(self, kind: str, tier: str, subsystem: str) -> bool:
+        if kind in _OPT_IN_KINDS:
+            return kind in self._opt_in
         if kind in _META_KINDS:
             return True
         if self._tier_max is not None and _TIER_ORDER.get(tier, 1) > self._tier_max:
@@ -1570,11 +1743,15 @@ class _EventHub:
         except RuntimeError:  # loop shut down between the check and the call
             return
 
-    def publish(self, kind: str, message: str, data: dict[str, Any]) -> None:
-        """Console-side meta-events (kind='run'), from any thread."""
+    def publish(self, kind: str, message: str, data: dict[str, Any], *, run_scoped: bool = True) -> None:
+        """Console-side events (kind='run', the opt-in health kinds), from any thread.
+
+        ``run_scoped=False`` for events that are not about the active run (host
+        health): stamping the run id would attribute a host sample to a run.
+        """
         with self._lock:
             loop = self._loop
-            run_id = self._run_id
+            run_id = self._run_id if run_scoped else None
         if loop is None or loop.is_closed():
             return
         evt = {
@@ -1607,6 +1784,90 @@ class _EventHub:
 _event_hub = _EventHub()
 
 
+def _trust_with_extra_origins(extra_trusted_origins: Sequence[str], sandbox: _SandboxPolicy | None) -> _TrustPolicy:
+    """The trust policy, widened by an embedder's ``extra_trusted_origins`` (A9). Extracted from build_app."""
+    trust = _trust_policy()
+    if extra_trusted_origins:
+        from maxim.runtime.config_loader import ConfigurationError
+
+        if isinstance(extra_trusted_origins, str):  # a bare string iterates as characters — baffle loudly
+            raise ConfigurationError(
+                "build_app: extra_trusted_origins must be a sequence of origins, not a bare string — "
+                f"pass [{extra_trusted_origins!r}]"
+            )
+        if sandbox is not None:
+            # Cross-confirmed review BLOCKER: sandbox mode is the ONE state
+            # with bearer auth OFF (the authenticating proxy owns the edge);
+            # admitting a LAN origin there serves a TOKENLESS console to that
+            # LAN. The two deployment claims cannot both be true — refuse.
+            raise ConfigurationError(
+                "build_app: extra_trusted_origins cannot be combined with console.sandbox — sandbox "
+                "turns engine auth OFF for an authenticating proxy's edge; a device embedder must "
+                "run with sandbox off so the bearer token guards its LAN bind"
+            )
+        extra = _canonical_origin_list(
+            extra_trusted_origins, source="build_app(extra_trusted_origins=…)"
+        )  # loud on junk, like the config list
+        extra_hosts = {h for origin in extra if (h := urlsplit(origin).hostname)}
+        trust = _TrustPolicy(
+            allowed_origins=trust.allowed_origins | extra,
+            allowed_hosts=trust.allowed_hosts | frozenset(extra_hosts),
+        )
+    return trust
+
+
+def _install_history_state(app: Any, *, sandbox: _SandboxPolicy | None, health_monitor: bool) -> None:
+    """Run history + health state (contract 0.6.0), set once at build_app."""
+    from maxim.console.health import shared_health_log
+    from maxim.console.run_store import CursorSigner
+    from maxim.utils.paths import console_health_log
+
+    app.state.cursor_signer = CursorSigner()  # per app: a cursor never outlives its server
+    app.state.health_monitor = bool(health_monitor)
+    # ONE log per file per process: two apps on one data home share it. Each
+    # app brings its OWN publisher on acquire (none under sandbox), so the
+    # first app on a path cannot decide whether a later one streams health.
+    app.state.health_log = shared_health_log(console_health_log())
+    # Not about the active run → no run_id. (`_event_hub` is process-global:
+    # the producer gate is exact for one app per process, the deployment shape.)
+    app.state.health_publish = (
+        None
+        if sandbox is not None
+        else (lambda kind, data: _event_hub.publish(kind, _health_message(kind, data), data, run_scoped=False))
+    )
+
+
+@contextlib.contextmanager
+def _health_serving(app: Any) -> Any:
+    """Health capture for the life of the server (contract 0.6.0).
+
+    Swallowed exceptions are captured whenever the app is serving (the degraded
+    view needs every fire); the sampler only when asked — it shells out
+    (nvidia-smi, memory probes) every interval, so `maxim serve` opts in and
+    tests/embedders do not by default. NEVER under sandbox: health is closed to
+    a public visitor on every surface, and the producer is where that gate
+    belongs — a REST refusal is no refusal if the same data rides /ws.
+
+    A context manager of its own so its teardown can never skip the lifespan's
+    drain/stop of the handle, which persists a Talk-only session's substrate.
+    """
+    health_log = app.state.health_log
+    sample = bool(app.state.health_monitor) and _sandbox_of(app) is None
+    publish = app.state.health_publish
+    health_log.acquire(sample=sample, publish=publish)
+    try:
+        yield
+    finally:
+        health_log.release(sample=sample, publish=publish)
+
+
+def _health_message(kind: str, data: dict[str, Any]) -> str:
+    """One human line for a health event on /ws (the payload is in ``data``)."""
+    if kind == "health_stall":
+        return f"stall: agent loop idle {data.get('idle_s', '?')}s (state={data.get('state', '?')})"
+    return ""
+
+
 # ── app factory ─────────────────────────────────────────────────────────────
 
 
@@ -1635,6 +1896,7 @@ def build_app(
     auth_token: Any = _READ_TOKEN_FROM_DISK,
     extra_trusted_origins: Sequence[str] = (),
     pairing_announcer: Any = None,
+    health_monitor: bool = False,
 ) -> FastAPI:
     """Construct the Console FastAPI app. ``ui_dist`` = the built static bundle.
 
@@ -1703,7 +1965,8 @@ def build_app(
         # print path, neither of which a server wants.
         register_sim_sink(_event_hub.sink)
         try:
-            yield
+            with _health_serving(app):
+                yield
         finally:
             # Shutdown: server exit mid-campaign would otherwise kill the
             # daemon run thread with the hippocampus capture queue unflushed —
@@ -1734,34 +1997,8 @@ def build_app(
         lifespan=_lifespan,
     )
     app.state.sandbox = sandbox
-    trust = _trust_policy()
-    if extra_trusted_origins:
-        from maxim.runtime.config_loader import ConfigurationError
-
-        if isinstance(extra_trusted_origins, str):  # a bare string iterates as characters — baffle loudly
-            raise ConfigurationError(
-                "build_app: extra_trusted_origins must be a sequence of origins, not a bare string — "
-                f"pass [{extra_trusted_origins!r}]"
-            )
-        if sandbox is not None:
-            # Cross-confirmed review BLOCKER: sandbox mode is the ONE state
-            # with bearer auth OFF (the authenticating proxy owns the edge);
-            # admitting a LAN origin there serves a TOKENLESS console to that
-            # LAN. The two deployment claims cannot both be true — refuse.
-            raise ConfigurationError(
-                "build_app: extra_trusted_origins cannot be combined with console.sandbox — sandbox "
-                "turns engine auth OFF for an authenticating proxy's edge; a device embedder must "
-                "run with sandbox off so the bearer token guards its LAN bind"
-            )
-        extra = _canonical_origin_list(
-            extra_trusted_origins, source="build_app(extra_trusted_origins=…)"
-        )  # loud on junk, like the config list
-        extra_hosts = {h for origin in extra if (h := urlsplit(origin).hostname)}
-        trust = _TrustPolicy(
-            allowed_origins=trust.allowed_origins | extra,
-            allowed_hosts=trust.allowed_hosts | frozenset(extra_hosts),
-        )
-    app.state.trust = trust
+    _install_history_state(app, sandbox=sandbox, health_monitor=health_monitor)
+    app.state.trust = _trust_with_extra_origins(extra_trusted_origins, sandbox)
     if pairing_announcer is not None and sandbox is not None:
         from maxim.runtime.config_loader import ConfigurationError
 
@@ -1849,7 +2086,7 @@ def build_app(
         # every connection, violating the monotonic-seq contract this branch
         # itself bumped. Enqueued BEFORE add_conn so it cannot be overtaken.
         try:
-            ident = build_identity(_SERVED_UI_DIST[0], _SERVED_UI_DIST[1], sandbox=_sandbox_of(websocket.app))
+            ident = _identity_for(websocket.app)
             conn.enqueue(
                 ConsoleEvent(
                     kind="identity",
@@ -2170,7 +2407,9 @@ def run_serve(argv: list[str]) -> int:
 
         token = ensure_console_token()
 
-    app = build_app(ui_dist, ui_source)
+    # `maxim serve` samples health (owner decision 2026-10-13: the console always
+    # runs the heartbeat); build_app keeps it off for tests and embedders.
+    app = build_app(ui_dist, ui_source, health_monitor=True)
 
     import uvicorn
 

@@ -77,7 +77,24 @@ logger = logging.getLogger(__name__)
 #           (defaulted — a 0.4.0 client never notices). Both endpoints refuse
 #           409 on deployments with no announcer, so only device embeds
 #           actually expose them.
-CONSOLE_CONTRACT_VERSION = "0.5.0"
+#   0.6.0 — run history + health (maxim-pulse docs/plans/log_explorer.md):
+#           GET /api/runs, /api/runs/{session_id}, /api/runs/{session_id}/
+#           actions, /api/health, /api/health/degraded — all read-only,
+#           bearer-gated, refused under sandbox, tagged "history" for PR 4's
+#           viewer/operator split; `session_id` is the SIM session id (the
+#           sim_reports dir name; the join from a console run is the /ws `run`
+#           event's sim_session_id). Run ids resolve through
+#           console/run_store.py, never utils/paths.resolve_run_dir. New /ws
+#           kinds `health` / `health_stall` are OPT-IN: delivered only to a
+#           connection whose SubscribeFrame names them — and naming them ADDS
+#           them, never narrows — so a 0.5.0 client's stream is unchanged.
+#           Identity gains seams `runs` (POSIX hosts), `health` (live only while
+#           the server samples) and `degraded` (live while serving). DORMANT until their
+#           producers land (strict red gates in test_console_run_history.py):
+#           stalls (no set_loop_state_hook caller), per-action credit
+#           (actions.jsonl is 1.1), and the per-run event trail — the
+#           `/events` route is deliberately NOT in 0.6.0.
+CONSOLE_CONTRACT_VERSION = "0.6.0"
 
 #: Manifest filename the pulse build writes into every bundle.
 UI_MANIFEST_NAME = "maxim-ui.json"
