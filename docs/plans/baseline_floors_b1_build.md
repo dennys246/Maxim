@@ -111,7 +111,7 @@ D1–D2). Built:
 - the harness's `attempt_start` headers and resume closing rows (`unrecorded`, never rerun);
 - the pin test, and backlog rows M48–M50.
 
-**The prereg freeze is a separate, later PR:** it follows the seed 99 rig diagnostic, so anything the diagnostic finds
+**The prereg freeze is a separate, later PR (done 2026-10-13, FROZEN v5, after the seed 99 diagnostic):** it follows the seed 99 rig diagnostic, so anything the diagnostic finds
 changes the rules before they freeze, not by amendment.
 
 ### PR-C — freeze + evidence (the original plan; superseded by the section above)
