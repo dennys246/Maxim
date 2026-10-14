@@ -100,8 +100,8 @@
       "missing": 754
     },
     "maxim/models": {
-      "percent": 60.7,
-      "missing": 2289
+      "percent": 59.3,
+      "missing": 2369
     },
     "maxim/modes": {
       "percent": 79.2,
@@ -140,8 +140,8 @@
       "missing": 221
     },
     "maxim/similarity": {
-      "percent": 74.0,
-      "missing": 405
+      "percent": 71.2,
+      "missing": 444
     },
     "maxim/simulation": {
       "percent": 71.6,
@@ -160,7 +160,7 @@
       "missing": 1518
     },
     "maxim/tunnel": {
-      "percent": 72.0,
+      "percent": 70.5,
       "missing": 190
     },
     "maxim/utils": {
