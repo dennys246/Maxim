@@ -2998,11 +2998,14 @@ def test_the_merge_base_checks_scopes_structure_only() -> None:
 
 def test_the_real_pass_table_scopes_match_each_rows_current_head() -> None:
     """The migration (#1141): every entry that can re-date a row AT its current token supports that row's head as the
-    ledger stands, so the next re-date passes the scope check. An entry that only targets another token (b1_verdict:
-    PARTIAL (narrow) for an EARNED row, the BF2 demotion) is out of this invariant by design."""
+    ledger stands, so the next re-date passes the scope check. An entry that only targets another token is out of
+    this invariant by design, and each such skip is named below (the set must match exactly: a stale name fails too)."""
     # Every skip is a reviewed decision (architecture review, PR-C S2): a new one fails until it is named here.
     exempt = {
-        ("b1_verdict", "T1-13"): "targets only PARTIAL (narrow): the BF2 demotion of an EARNED row, never a re-date",
+        ("exp60_verdict", "T1-13"): (
+            "T1-13 is PARTIAL (narrow: floor matched) under BF2 since B1 (2026-10-14); an Exp 60 re-run targets only "
+            "EARNED/MAINTAINED, which lint_bf2_obligation refuses until an ESTABLISHED FLOORS_BEATEN b1_verdict"
+        ),
         ("exp10_verdict", "T1-1"): "T1-1 is SUPERSEDED; no re-date of a superseded row is supported",
     }
     rows = {r.id: r for r in G.L.parse((REPO / G.L.LEDGER_PATH).read_text())[0]}
@@ -3015,7 +3018,7 @@ def test_the_real_pass_table_scopes_match_each_rows_current_head() -> None:
                 skipped.add((kind, row_id))
                 continue
             assert G.row_scope(rows[row_id]) in entry["scopes"], (kind, row_id)
-    assert skipped <= set(exempt), sorted(skipped - set(exempt))
+    assert skipped == set(exempt), (sorted(skipped - set(exempt)), sorted(set(exempt) - skipped))
 
 
 def test_a_new_scope_in_the_pass_table_is_noted() -> None:
