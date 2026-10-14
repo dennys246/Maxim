@@ -236,6 +236,9 @@ class TestCompressionPreservesTelemetry:
                     agent_id=f"agent_{i}",
                     session_id="shared_session",
                     entity_class=f"class_{i}",
+                    rpe=0.1 * i,
+                    pain=0.2,
+                    nac_failure_booked=f"tool:tool_{i}",
                 )
             )
         # Compression fires when len > max — verified by checking
@@ -248,6 +251,8 @@ class TestCompressionPreservesTelemetry:
             assert rec.agent_id is not None
             assert rec.session_id == "shared_session"
             assert rec.entity_class is not None
+            # Per-action credit (actions.jsonl 1.2) survives too: the run history reads it per action.
+            assert (rec.rpe, rec.pain, rec.nac_failure_booked) == (0.1 * rec.timestamp, 0.2, f"tool:{rec.tool_name}")
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -273,10 +278,10 @@ class TestSaveActionLog:
         assert log_path is not None
         lines = log_path.read_text().splitlines()
         header = json.loads(lines[0])
-        # Plan release_0_9_1.md § "Cross-cutting: persistence schema"
-        # pins this at "1.1" — minor bump from pre-0b unversioned ("0.x").
-        assert _ACTIONS_JSONL_FORMAT_VERSION == "1.1"
-        assert header["_format_version"] == "1.1"
+        # Plan release_0_9_1.md § "Cross-cutting: persistence schema": "1.1" was
+        # the 0b minor bump from unversioned ("0.x"); "1.2" added per-action credit.
+        assert _ACTIONS_JSONL_FORMAT_VERSION == "1.2"
+        assert header["_format_version"] == "1.2"
         assert header["_record_kind"] == "header"
         assert header["session_id"] == "sid"
 
@@ -346,7 +351,7 @@ class TestSaveActionLog:
         assert log_path is not None
         lines = log_path.read_text().splitlines()
         assert len(lines) == 1
-        assert json.loads(lines[0])["_format_version"] == "1.1"
+        assert json.loads(lines[0])["_format_version"] == "1.2"
 
 
 # ─────────────────────────────────────────────────────────────────────

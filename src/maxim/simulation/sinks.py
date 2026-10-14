@@ -54,6 +54,13 @@ class ActionRecord:
     pain-aversion exposure normalization in Roy-3 analysis. All three
     are optional ``None`` defaults so existing test fixtures and
     third-party ``ActionSink`` implementations keep working.
+
+    Per-action credit (``rpe``, ``pain``, ``nac_failure_booked``): copied
+    by ``InstrumentedExecutor`` off the ``ToolOutput`` the executor stamped
+    (the surprise, the pain, and the signature the tool-pain bridge booked a
+    failure under), so ``actions.jsonl`` 1.2 and the console's run history can
+    show what each action was credited with. ``None`` on synthetic records
+    (blocks, markers) and for actions that carried none.
     """
 
     timestamp: float
@@ -71,6 +78,10 @@ class ActionRecord:
     # Stage 0b: entity classification for exposure-count normalization.
     # Best-effort — derived from tool_args target where present.
     entity_class: str | None = None
+    # Per-action credit, from the executor's ToolOutput stamp (actions.jsonl 1.2).
+    rpe: float | None = None
+    pain: float | None = None
+    nac_failure_booked: str | None = None
 
 
 @runtime_checkable
@@ -135,6 +146,10 @@ class RecordingSink:
                     agent_id=rec.agent_id,
                     session_id=rec.session_id,
                     entity_class=rec.entity_class,
+                    # Credit is tiny and is what the run history reads per action.
+                    rpe=rec.rpe,
+                    pain=rec.pain,
+                    nac_failure_booked=rec.nac_failure_booked,
                 )
             )
         self._actions = compressed + self._actions[half:]
