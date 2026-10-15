@@ -471,6 +471,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A heartbeat restart can no longer leave two samplers running** (F2, #1268 follow-up). `HeartbeatMonitor.stop()`
+  joins with a timeout, so a slow sample could outlive it; a `start()` after that cleared the one shared stop Event,
+  and the old thread kept sampling beside the new one. Each sampler thread now owns its stop Event and `stop()` sets
+  only the one it took, as `console/health.py`'s writer does; start and stop take a lock for the check-and-set.
+  Guard: `tests/unit/test_heartbeat.py::test_a_restart_after_a_timed_out_stop_leaves_one_sampler`.
 - **The simulation narrator now sees what the agent said (#1261).** The production `respond` tool returns a
   delivery receipt (`{"delivered": True, "mode": "cli"}`), and the AUT's words were only in its `message`
   argument. The bridge's per-turn `response`, which `send_message` hands the narrator, `report.response_texts` and

@@ -53,8 +53,11 @@ class HeartbeatMonitor:
                 )
             )
         self._interval = interval_s
-        self._stop_event = threading.Event()
+        # Each sampler thread owns its stop Event (F2, as console/health.py's writer does): stop() can time out on a
+        # slow sample, and a later start() must not revive the thread it left behind by clearing a shared one.
         self._thread: threading.Thread | None = None
+        self._thread_stop: threading.Event | None = None
+        self._life_lock = threading.Lock()
 
         # External state hooks (set by caller)
         self._loop_state_fn: Any = None  # () -> {"state", "outstanding_s", "loops"} or None (loop_state.py)
@@ -69,6 +72,7 @@ class HeartbeatMonitor:
 
     @property
     def is_running(self) -> bool:
+        """Whether a sampler is current: False from the moment stop() takes it (a slow sample may still finish)."""
         return self._thread is not None
 
     @property
@@ -113,15 +117,13 @@ class HeartbeatMonitor:
 
     def start(self) -> None:
         """Start the heartbeat thread."""
-        if self._thread is not None:
-            return
-        self._stop_event.clear()
-        self._thread = threading.Thread(
-            target=self._run,
-            daemon=True,
-            name="heartbeat-monitor",
-        )
-        self._thread.start()
+        with self._life_lock:
+            if self._thread is not None:
+                return
+            stop_event = threading.Event()
+            thread = threading.Thread(target=self._run, args=(stop_event,), daemon=True, name="heartbeat-monitor")
+            thread.start()
+            self._thread, self._thread_stop = thread, stop_event
         logger.info(
             "Heartbeat monitor started (interval=%ds, stall_threshold=%ds)",
             int(self._interval),
@@ -129,26 +131,29 @@ class HeartbeatMonitor:
         )
 
     def stop(self) -> None:
-        """Stop the heartbeat thread."""
-        self._stop_event.set()
-        if self._thread is not None:
-            self._thread.join(timeout=self._interval + 1)
-            self._thread = None
+        """Stop the heartbeat thread: bounded, and acting only on the thread it took (a slow sample may outlive the
+        join; that thread exits after it, whatever a later start() does)."""
+        with self._life_lock:
+            thread, stop_event = self._thread, self._thread_stop
+            self._thread, self._thread_stop = None, None
+        if thread is not None and stop_event is not None:
+            stop_event.set()
+            thread.join(timeout=self._interval + 1)
 
     def snapshot(self) -> dict[str, Any]:
         """On-demand snapshot (used by /v1/debug/heartbeat endpoint)."""
         return self._collect()
 
-    def _run(self) -> None:
-        """Main heartbeat loop."""
-        while not self._stop_event.is_set():
+    def _run(self, stop_event: threading.Event) -> None:
+        """Main heartbeat loop, until ``stop_event`` (this thread's own) is set."""
+        while not stop_event.is_set():
             try:
                 data = self._collect()
                 self._emit(data)
                 self._check_stall(data)
             except Exception as e:
                 logger.warning("Heartbeat error: %s", e)
-            self._stop_event.wait(self._interval)
+            stop_event.wait(self._interval)
 
     def _collect(self) -> dict[str, Any]:
         """Collect system + LLM metrics."""
