@@ -9,5 +9,33 @@
     "reason": "Re-scoped, released without a re-fire. T1-2 carries no EARNED claim (its cross-session override claim was pulled in June), so its STALE status bounds no release claim; the cross-model Goldilocks map stays cited only with L8's caveat. The owed re-fire is L8's dose-response design in 1.4 (baseline_floors.md Stage B4, four-lens design review): a re-fire on today's stack would most likely land INCONCLUSIVE, because Arm A's baseline moved 0.42 -> 0.71-0.75 (L8). The row stays STALE until that run lands; this clause covers 1.3.2 only.",
     "ref": "docs/plans/roadmap_1_3_x.md, Release-readiness audit 2026-10-14",
     "date": "2026-10-14"
+  },
+  {
+    "id": "ledger-T1-14-floor-analytical",
+    "kind": "ledger",
+    "row": "T1-14",
+    "from": "EARNED",
+    "to": "PARTIAL",
+    "to_date": "2026-10-15",
+    "to_qualifier": "narrow: floor matched, analytical",
+    "path": "docs/experiments/data/exp61_verdict.json",
+    "sha256": "a5d032c6673fb8f4e4e1ebf484ba5c8089bd02d8423afd40e5864a110d5e29d0",
+    "owner": "Denny Schaedig (owner decision 2026-10-15)",
+    "reason": "Owner decision 2026-10-15, after B1 (FLOOR_MATCHED_Q, T1-13 PARTIAL): BF2 applied ANALYTICALLY, without a rig run. The row rests on the same Wire-4 fear, and its floor matches by construction: a floor the harness arms in water, with the same defensive prior, surfaced on its first-ever submersion with zero experience (B1 Q_EXPLORE_PRIOR, pre-probe placement 0, 8/8, docs/experiments/data/b1_exp60_floor_48ce40118c20.jsonl); and the fair floor for learning WHEN from passive pain is a state-value learner, which with the same prior is Wire-4 by construction (B1 prereg, Analytical, not run; an action-value learner cannot learn there, bio-faithful D1). What the row shows beyond its controls is the transport of the fear between agents, not behaviour beyond a no-bio learner. A demotion in the conservative direction with no new record to cite, so it needs this clause; the mechanism-twin arm is to be RUN inside E1's floor design (baseline_floors.md), not on this row.",
+    "date": "2026-10-15"
+  },
+  {
+    "id": "ledger-T1-15-floor-analytical",
+    "kind": "ledger",
+    "row": "T1-15",
+    "from": "EARNED",
+    "to": "PARTIAL",
+    "to_date": "2026-10-15",
+    "to_qualifier": "rung A: floor matched, analytical",
+    "path": "docs/experiments/data/exp62_verdict.json",
+    "sha256": "d29d37f6e43326e5a2615ebd5ca493a4e44badbae2dbf863155d62c2abefd9e8",
+    "owner": "Denny Schaedig (owner decision 2026-10-15)",
+    "reason": "Owner decision 2026-10-15, after B1 (FLOOR_MATCHED_Q, T1-13 PARTIAL): BF2 applied ANALYTICALLY, without a rig run. The row rests on the same Wire-4 fear, and its floor matches by construction: a floor the harness arms in water, with the same defensive prior, surfaced on its first-ever submersion with zero experience (B1 Q_EXPLORE_PRIOR, pre-probe placement 0, 8/8, docs/experiments/data/b1_exp60_floor_48ce40118c20.jsonl); and the fair floor for learning WHEN from passive pain is a state-value learner, which with the same prior is Wire-4 by construction (B1 prereg, Analytical, not run; an action-value learner cannot learn there, bio-faithful D1). And the cross-pool transfer lives in the key the floors share: the pool-2 reading resolves to the trained world node (Exp 62's NODE gate, 12/12), and B1's raw key (in water, oxygen bin) holds no altitude or spawn distance. A demotion in the conservative direction with no new record to cite, so it needs this clause; the mechanism-twin arm is to be RUN inside E1's floor design (baseline_floors.md), not on this row.",
+    "date": "2026-10-15"
   }
 ]
