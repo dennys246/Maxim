@@ -1042,6 +1042,34 @@ class TestHealthRoutes:
         finally:
             b.__exit__(None, None, None)
 
+    @pytest.mark.xfail(strict=True, reason="F3: two apps on one hub each register a publisher into it")
+    def test_two_streaming_apps_publish_each_health_event_once(self, runs, monkeypatch):
+        """F3 (#1268 follow-up): the /ws hub is process-global, so two apps' publishers fanned every health event out
+        to the same clients twice. One heartbeat reaches the hub once while both serve, and still once after one
+        leaves."""
+        from maxim.console import server
+
+        _fake_monitor(monkeypatch)
+        sent: list[str] = []
+        monkeypatch.setattr(server._event_hub, "publish", lambda kind, *a, **k: sent.append(kind))
+        a = TestClient(build_app(None, auth_token=_TOKEN, health_monitor=True))
+        b = TestClient(build_app(None, auth_token=_TOKEN, health_monitor=True))
+        a.__enter__()
+        b.__enter__()
+        log = a.app.state.health_log
+        try:
+            log.on_heartbeat("heartbeat_stall", {"outstanding_s": 40.0})
+            assert sent == ["health_stall"], sent
+            a.__exit__(None, None, None)
+            sent.clear()
+            log.on_heartbeat("heartbeat_stall", {"outstanding_s": 41.0})
+            assert sent == ["health_stall"], "B still streams after A leaves"
+        finally:
+            b.__exit__(None, None, None)
+        sent.clear()
+        log.on_heartbeat("heartbeat_stall", {"outstanding_s": 42.0})
+        assert sent == [], "no app serving: nothing streams"
+
     def test_each_app_on_a_shared_log_brings_its_own_publisher(self, runs, monkeypatch):
         # Second delta SF-3: a sandbox app registering first must not silence a
         # later non-sandbox app's health stream (or vice versa).
