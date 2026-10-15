@@ -23,16 +23,17 @@ Nothing was declared its replacement, but its jobs are covered elsewhere:
 | Block actions | `FearGatedExecutor` (static), the DefaultNetwork movement gate |
 | Learn from false alarms | **Nothing.** As the bridge was built, this isn't learnable either: nobody can know whether a blocked call would have done harm |
 
-It is marked `Dormant since 2026-10-04` (#840). The only fear mechanism with earned ledger rows is **NAc Wire 4
-situation fear**: T1-13 (Exp 60), T1-14 (Exp 61, fear transfers between agents) and T1-15 (Exp 62).
+It is marked `Dormant since 2026-10-04` (#840). The only fear mechanism with ledger rows is **NAc Wire 4
+situation fear**: T1-13 (Exp 60), T1-14 (Exp 61, fear transfers between agents) and T1-15 (Exp 62), all three
+PARTIAL since B1 (2026-10-14/15): a tabular floor matches them, measured for T1-13 and argued for T1-14/T1-15.
 
 ## Already modelled vs missing
 
 | Bio function | Maxim | Status |
 |---|---|---|
-| Pavlovian situation→fear (BLA) | Wire 4, `NAc.record_cluster_fear` | **EARNED** (Exp 60, 62) |
+| Pavlovian situation→fear (BLA) | Wire 4, `NAc.record_cluster_fear` | **PARTIAL** (Exp 60, 62; floor matched, B1) |
 | CeA output → defensive state | `anticipatory_threat_need` → `drives["threat"]` | earned with Wire 4 |
-| Social fear transfer | fear bundles | **EARNED** (Exp 61) |
+| Social fear transfer | fear bundles | **PARTIAL** (Exp 61; floor matched, argued after B1) |
 | Innate defensive repertoire | `_DRIVE_TOOL_AFFINITIES["threat"]` (flee/hide/escape/…) | hard-coded **innate prior**, chosen by tool name |
 | Immediate instrumental punishment | `update_cluster_reward` from `drive_potential_diff` | live; only the drive change during the act |
 
