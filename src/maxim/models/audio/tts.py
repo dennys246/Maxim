@@ -3,12 +3,17 @@
 Piper is a lightweight, fast, offline TTS engine suitable for
 systems with limited resources (e.g., M2 Mac with 24GB unified memory).
 
-Model download (~100MB):
-    mkdir -p data/models/tts
-    wget -O data/models/tts/en_US-lessac-medium.onnx \\
-      https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx
-    wget -O data/models/tts/en_US-lessac-medium.onnx.json \\
-      https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
+Voice provisioning (~63 MB per voice, pinned and sha256-verified in ``models/download.py::TTS_MODELS``):
+    python -m maxim.models.download --tts            # the default voice, by hand
+    maxim.models.download.ensure_tts_voice(...)      # programmatic, with consent + its own lock
+    VoiceProvisioner(...)                            # a device: background retry until the voice LOADS
+
+Intended device-bootstrap usage (the caller lives in the device's bootstrap, e.g. maxim-pulse's Reachy app; no
+pymaxim module wires it yet): arm spoken-code pairing only once the ``VoiceProvisioner`` is ready::
+
+    voice = VoiceProvisioner(); voice.start()
+    announcer = make_pairing_announcer(voice.engine, make_device_speak_sink(mini))
+    app = build_app(dist, pairing_announcer=announcer, pairing_ready=voice.is_ready)
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import io
 import logging
+import threading
 import wave
 from pathlib import Path
 from typing import Any
@@ -141,8 +147,7 @@ class PiperTTS:
 
         if not self.model_path.exists():
             raise FileNotFoundError(
-                f"TTS model not found at {self.model_path}. "
-                f"Download it from: https://huggingface.co/rhasspy/piper-voices"
+                f"TTS model not found at {self.model_path}. Provision it with: python -m maxim.models.download --tts"
             )
 
         if not self.config_path.exists():
@@ -261,13 +266,9 @@ class PiperTTS:
 
     @property
     def is_available(self) -> bool:
-        """Check if TTS is available (model exists and piper installed)."""
-        try:
-            from piper import PiperVoice  # noqa: F401
-
-            return self.model_path.exists() and self.config_path.exists()
-        except ImportError:
-            return False
+        """Check if TTS is AVAILABLE: piper installed and the voice's files present. Not that they are verified or
+        that the voice loads: :meth:`VoiceProvisioner.is_ready` answers that, for a device that must speak."""
+        return _piper_installed() and self.model_path.exists() and self.config_path.exists()
 
 
 class TTSEngine:
@@ -311,3 +312,95 @@ class TTSEngine:
     def is_available(self) -> bool:
         """Check if TTS is available."""
         return self._backend.is_available
+
+    def load(self) -> None:
+        """Load the voice now (it otherwise loads on first use), raising if it cannot: so a caller learns at
+        startup, not when it first speaks, that the voice is missing, corrupt or ``piper`` is not installed."""
+        self._backend._load_model()
+
+
+def _piper_installed() -> bool:
+    from maxim.utils.optional_deps import optional_dependency_available
+
+    return optional_dependency_available("piper")
+
+
+class VoiceProvisioner:
+    """Provision a Piper voice in the background and report when it can SPEAK (#1268 follow-up F1).
+
+    For a device: start it, build the announcer on :attr:`engine`, and pass :meth:`is_ready` to
+    ``build_app(pairing_ready=...)``. A daemon thread calls ``ensure_tts_voice(auto=True)`` (deploying the robot app is
+    the consent), checks that ``piper`` is installed and LOADS the voice; on any failure (no network at boot, the extra
+    missing, a corrupt file) it retries with backoff from ``retry_s`` up to ``max_retry_s`` until :meth:`stop`. Until
+    then the sign-in page offers only the paste path, and the by-ear path appears without a restart (owner decision
+    2026-10-14). A failure is logged by type, never with the voice's bytes or a pairing code.
+    """
+
+    def __init__(
+        self,
+        model_name: str | None = None,
+        *,
+        models_dir: str | Path | None = None,
+        retry_s: float = 15.0,
+        max_retry_s: float = 300.0,
+    ) -> None:
+        from maxim.models import download
+
+        self.model_name = model_name or download.DEFAULT_TTS
+        self._models_dir = models_dir
+        kwargs: dict[str, Any] = {"model_name": self.model_name}
+        if models_dir is not None:
+            kwargs["models_dir"] = models_dir
+        self.engine = TTSEngine(**kwargs)
+        self._retry_s, self._max_retry_s = retry_s, max_retry_s
+        self._ready = threading.Event()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def is_ready(self) -> bool:
+        return self._ready.is_set()
+
+    def start(self) -> None:
+        if self._thread is None:
+            self._thread = threading.Thread(target=self._run, daemon=True, name="tts-voice-provisioner")
+            self._thread.start()
+
+    def stop(self, timeout_s: float = 5.0) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout_s)
+
+    def _attempt(self) -> bool:
+        from maxim.models import download
+
+        if not download.ensure_tts_voice(self.model_name, auto=True, models_dir=self._models_dir):
+            return False
+        if not _piper_installed():
+            logger.warning(
+                "TTS voice %s is on disk but `piper` is not installed (pip install 'pymaxim[tts]')", self.model_name
+            )
+            return False
+        try:
+            self.engine.load()
+        except Exception as e:  # a corrupt or unloadable voice: retry, and say what kind of failure it was
+            logger.warning("TTS voice %s did not load (%s)", self.model_name, type(e).__name__)
+            return False
+        return True
+
+    def _run(self) -> None:
+        delay, failures = self._retry_s, 0
+        while not self._stop.is_set():
+            try:
+                ok = self._attempt()
+            except Exception as e:  # ANY failure (a lock, a stat, storage) is a retry, never a dead thread
+                ok = False
+                (logger.warning if failures == 0 else logger.debug)(
+                    "TTS voice %s provisioning attempt raised %s; retrying", self.model_name, type(e).__name__
+                )
+            if ok and not self._stop.is_set():
+                self._ready.set()
+                logger.info("TTS voice %s is ready", self.model_name)
+                return
+            failures += 1
+            self._stop.wait(delay)
+            delay = min(delay * 2, self._max_retry_s)

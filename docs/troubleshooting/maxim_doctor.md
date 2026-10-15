@@ -162,12 +162,12 @@ All print a loud startup banner so you don't leave them on accidentally.
 The heartbeat monitor samples system + LLM metrics every 10 seconds and logs a compact health line:
 
 ```
-[heartbeat] gpu=87% vram=6.2/16G 72C 180W | cpu=23% | ram=8.1/16G | disk=42G free | infer: 5calls p50=280ms fail=0% | loop: idle=2.1s state=waiting
+[heartbeat] gpu=87% vram=6.2/16G 72C 180W | cpu=23% | ram=8.1/16G | disk=42G free | infer: 5calls p50=280ms fail=0% | loop: planning planning_turn=2.1s runs=1
 ```
 
-**Stall detection:** if the agent loop has been idle for 30+ seconds (configurable via `MAXIM_HEARTBEAT_STALL_S`), the heartbeat emits a WARNING:
+**Stall detection:** while an agent loop runs, a planning turn outstanding for 30+ seconds (the floor, `MAXIM_HEARTBEAT_STALL_S`) with no live LLM call (queued too long, or its call wedged) emits a WARNING. Waiting for you to type, running a tool or quiet perception never counts; a loop that stops submitting altogether is not caught.
 ```
-[heartbeat] STALL DETECTED — agent loop idle for 62s (state=waiting_followup, threshold=30s)
+[heartbeat] STALL DETECTED — a planning turn has been outstanding for 62s (threshold=30s) with no call in flight.
 ```
 
 **Enable:** `MAXIM_HEARTBEAT=1` or `MAXIM_LANE_TRACE=1` (both start the monitor). Always on in leader mode.

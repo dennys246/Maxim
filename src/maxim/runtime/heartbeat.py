@@ -10,12 +10,18 @@ Enabled by:
   - Always on in leader mode
 
 Heartbeat line format:
-  [heartbeat] gpu=87% vram=6.2/16G 72C | cpu=23% ram=8.1/16G | large: 5 calls/10s p50=280ms | loop: idle=2.1s
+  [heartbeat] gpu=87% vram=6.2/16G 72C | cpu=23% ram=8.1/16G | large: 5 calls/10s p50=280ms | loop: planning planning_turn=2.1s runs=1
 
-Stall detection:
-  If no LLM calls have been recorded for MAXIM_HEARTBEAT_STALL_S (default 30s),
-  emits a WARNING with the last known state. This would have caught the
-  'respond success=False → 60s dead zone' bug instantly.
+Stall detection (#1268 dormant producer 1; owner decisions 2026-10-14):
+  A stall is a STUCK PLANNING TURN. Each agent-loop run registers its LLM worker
+  through the loop-state hook (``runtime/loop_state.py::loop_liveness_scope``);
+  a stall is a planning attempt waiting on the provider (queued or running) for
+  longer than ``stall_threshold.compute_stall_threshold`` (floor
+  ``MAXIM_HEARTBEAT_STALL_S``) while ``stall_threshold.stall_suppression``
+  finds no live planning-lane call. Waiting for a human, running a tool and quiet
+  perception are never stalls; a loop that stops submitting at all is not caught
+  (a known limit). It emits a WARNING and a ``heartbeat_stall`` notification.
+  Without a registered run there is no stall detection (``has_loop_state_hook``).
 """
 
 from __future__ import annotations
@@ -29,7 +35,6 @@ from typing import Any
 logger = logging.getLogger("maxim.heartbeat")
 
 DEFAULT_INTERVAL_S = 10
-DEFAULT_STALL_THRESHOLD_S = 30
 
 
 class HeartbeatMonitor:
@@ -39,7 +44,6 @@ class HeartbeatMonitor:
         self,
         *,
         interval_s: float | None = None,
-        stall_threshold_s: float | None = None,
     ) -> None:
         if interval_s is None:
             interval_s = float(
@@ -48,20 +52,12 @@ class HeartbeatMonitor:
                     str(DEFAULT_INTERVAL_S),
                 )
             )
-        if stall_threshold_s is None:
-            stall_threshold_s = float(
-                os.environ.get(
-                    "MAXIM_HEARTBEAT_STALL_S",
-                    str(DEFAULT_STALL_THRESHOLD_S),
-                )
-            )
         self._interval = interval_s
-        self._stall_threshold = stall_threshold_s
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
         # External state hooks (set by caller)
-        self._loop_state_fn: Any = None  # () -> dict with last_event_time, state
+        self._loop_state_fn: Any = None  # () -> {"state", "outstanding_s", "loops"} or None (loop_state.py)
         self._last_stall_warn: float = 0.0
         # Structured listeners (the console's health strip, console/health.py).
         # The records already go to the "maxim.heartbeat" logger, but at DEBUG,
@@ -107,10 +103,11 @@ class HeartbeatMonitor:
                     )
 
     def set_loop_state_hook(self, fn: Any) -> None:
-        """Register a callable that returns agent loop state dict.
+        """Register (or, with ``None``, clear) the callable returning the agent loops' liveness.
 
-        Expected keys: last_event_time (float), state (str).
-        Called every heartbeat interval.
+        It returns ``{"state": "planning" | "idle", "outstanding_s": float, "loops": int}`` (the longest-outstanding
+        planning turn over every live run), or ``None`` when no run is registered; ``runtime/loop_state.py`` owns the
+        only producer. Called every interval.
         """
         self._loop_state_fn = fn
 
@@ -128,7 +125,7 @@ class HeartbeatMonitor:
         logger.info(
             "Heartbeat monitor started (interval=%ds, stall_threshold=%ds)",
             int(self._interval),
-            int(self._stall_threshold),
+            int(_stall_threshold_s()),
         )
 
     def stop(self) -> None:
@@ -224,9 +221,10 @@ class HeartbeatMonitor:
         # Agent loop state
         loop = data.get("loop")
         if isinstance(loop, dict):
-            idle = loop.get("idle_s", 0)
-            state = loop.get("state", "unknown")
-            parts.append(f"loop: idle={idle:.1f}s state={state}")
+            outstanding = loop.get("outstanding_s", 0.0)
+            parts.append(
+                f"loop: {loop.get('state', 'unknown')} planning_turn={outstanding:.1f}s runs={loop.get('loops')}"
+            )
 
         if parts:
             # Pair the human message with structured ``data`` so
@@ -240,46 +238,60 @@ class HeartbeatMonitor:
             )
 
     def _check_stall(self, data: dict[str, Any]) -> None:
-        """Warn if no LLM calls have happened within the stall threshold."""
-        lanes = data.get("lanes", {})
-        large = lanes.get("large")
-        if not isinstance(large, dict):
-            return
+        """Warn on a STUCK PLANNING TURN: an attempt outstanding past the canonical threshold while
+        ``stall_suppression`` finds no live planning-lane call (the llm-routing stall-threshold invariant: one
+        threshold derivation, one suppression decision). ``turn_in_progress`` is False: a narrator waiting on the
+        agent's turn does so inside a tool call, outside any planning attempt of its own."""
+        from maxim.runtime.stall_threshold import stall_suppression
 
-        total_calls = large.get("jobs_completed", 0) + large.get("jobs_failed", 0)
-        if total_calls == 0:
-            return  # no calls yet, not a stall
-
-        # Check loop idle time
         loop = data.get("loop")
-        if isinstance(loop, dict):
-            idle_s = loop.get("idle_s", 0)
-            if idle_s > self._stall_threshold:
-                now = time.time()
-                # Don't spam — warn at most once per stall threshold
-                if now - self._last_stall_warn > self._stall_threshold:
-                    self._last_stall_warn = now
-                    stall = {
-                        "idle_s": idle_s,
-                        "state": loop.get("state"),
-                        "threshold_s": self._stall_threshold,
-                        "p50_latency_ms": large.get("p50_latency_ms"),
-                        "failure_rate": large.get("failure_rate"),
-                        "jobs_completed": large.get("jobs_completed"),
-                        "jobs_failed": large.get("jobs_failed"),
-                    }
-                    self._notify("heartbeat_stall", stall)
-                    logger.warning(
-                        "[heartbeat] STALL DETECTED — agent loop idle for %.0fs "
-                        "(state=%s, threshold=%ds). Last large-tier call: p50=%s ms, "
-                        "failure_rate=%s",
-                        idle_s,
-                        loop.get("state", "?"),
-                        int(self._stall_threshold),
-                        large.get("p50_latency_ms", "?"),
-                        large.get("failure_rate", "?"),
-                        extra={"event": "heartbeat_stall", "data": stall},
-                    )
+        if not isinstance(loop, dict):
+            return
+        outstanding_s = loop.get("outstanding_s")  # 0.0 when no turn is outstanding
+        threshold = _stall_threshold_s()
+        if not isinstance(outstanding_s, (int, float)) or outstanding_s <= threshold:
+            return
+        suppress, wedged_s = stall_suppression(turn_in_progress=False)
+        if suppress:
+            return  # the provider call is in flight and alive: slow, not stalled
+        now = time.time()
+        if now - self._last_stall_warn <= threshold:
+            return  # at most one warning per threshold
+        self._last_stall_warn = now
+        large = (data.get("lanes") or {}).get("large")
+        large = large if isinstance(large, dict) else {}
+        stall = {
+            "outstanding_s": outstanding_s,
+            "loops": loop.get("loops"),
+            "threshold_s": threshold,
+            "wedged_s": wedged_s,
+            "p50_latency_ms": large.get("p50_latency_ms"),
+            "failure_rate": large.get("failure_rate"),
+            "jobs_completed": large.get("jobs_completed"),
+            "jobs_failed": large.get("jobs_failed"),
+        }
+        self._notify("heartbeat_stall", stall)
+        logger.warning(
+            "[heartbeat] STALL DETECTED — a planning turn has been outstanding for %.0fs (threshold=%ds) with %s. "
+            "Last large-tier call: p50=%s ms, failure_rate=%s",
+            outstanding_s,
+            int(threshold),
+            "no call in flight" if wedged_s is None else f"its call wedged for {wedged_s:.0f}s",
+            large.get("p50_latency_ms", "?"),
+            large.get("failure_rate", "?"),
+            extra={"event": "heartbeat_stall", "data": stall},
+        )
+
+
+def _stall_threshold_s() -> float:
+    """The heartbeat's stall threshold, from the canonical derivation: its own floor (``MAXIM_HEARTBEAT_STALL_S``,
+    clamped to [5, 3600]) and no lane-timeout ceiling, since a live call is judged by ``stall_suppression`` against
+    the time IT was allowed (stall_detector_timeout_awareness.md Stage 2, Executor review I3). Tier: innate prior
+    (a hard-coded 30 s default floor), not learned."""
+    from maxim.agents.llm_types import PLANNING_LANE
+    from maxim.runtime.stall_threshold import compute_stall_threshold
+
+    return compute_stall_threshold(lane_tier=PLANNING_LANE, floor_env_var="MAXIM_HEARTBEAT_STALL_S")
 
 
 # ─── module-level singleton ───────────────────────────────────────────────

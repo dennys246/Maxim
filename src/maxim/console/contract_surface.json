@@ -1,6 +1,6 @@
 {
   "contract_version": "0.6.0",
-  "fingerprint": "72efae9a0a57d492",
+  "fingerprint": "9063230520deff96",
   "paths": [
     "/api/campaigns",
     "/api/diagnose",

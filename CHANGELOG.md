@@ -34,12 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `degraded` (live whenever it serves, so a device that does not sample still shows it). Contract 0.5.0 → 0.6.0,
   additive.
 - **What is DORMANT, said plainly.** Three producers this contract reads are not in this release, each pinned by a
-  strict red gate in `tests/unit/test_console_run_history.py`: (1) **stalls** — nothing calls
-  `HeartbeatMonitor.set_loop_state_hook`, so `heartbeat_stall` cannot fire; `/api/health` reports
-  `stall_detection: false` so an empty `stalls` reads as unknown, not healthy; (2) **per-action credit** — CLOSED by
-  the `actions.jsonl` 1.2 bullet below; runs written before it read `credit_recorded: false` (the reader keys it off a
-  1.2 header, never off key presence); (3) **the per-run event
-  trail** — nothing writes `events.jsonl`, so the `/events` route is NOT in 0.6.0 and ships with its writer.
+  strict red gate in `tests/unit/test_console_run_history.py`: (1) **stalls** — CLOSED by the stall-detection
+  bullet below; with no agent loop running, `/api/health` still reports `stall_detection: false` so an empty `stalls`
+  reads as unknown, not healthy; (2) **per-action credit** — CLOSED by the `actions.jsonl` 1.2 bullet below; runs
+  written before it read `credit_recorded: false` (the reader keys it off a 1.2 header, never off key presence); (3)
+  **the per-run event trail** — nothing writes `events.jsonl`, so the `/events` route is NOT in 0.6.0 and ships with its
+  writer.
 - **Per-action credit is now recorded (`actions.jsonl` 1.2), closing dormant producer (2) above.** `ActionRecord`
   gains three optional trailing fields, `rpe`, `pain` and `nac_failure_booked`. `InstrumentedExecutor` copies them
   off the `ToolOutput` the executor stamped, `RecordingSink`'s compression keeps them, and `save_action_log` writes
@@ -47,6 +47,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and with what surprise and pain. Runs written before this read `credit_recorded: false`, which means unknown, not
   none. Gate: `tests/unit/test_console_run_history.py::test_a_bridge_booked_failure_reaches_the_console_with_its_credit`
   drives a real bridge-booked failure from the executor to `run_store.page_actions`.
+- **Stall detection is live: a stuck planning turn, judged on the canonical stall surface. This closes dormant
+  producer (1) above.** Owner decisions, 2026-10-14:
+  - A stall is a planning turn outstanding past the threshold with no live call. It is not loop idleness, which
+    false-stalled whenever the loop waited for a human.
+  - The threshold and suppression come from the canonical stall surface.
+
+  How it works:
+  - `run_agentic_loop` carries `loop_state.loop_liveness_scope`, which keeps one liveness entry per run. While any run
+    is alive, it registers the process heartbeat monitor's loop-state hook, and it clears the entry in a `finally`.
+    `pre_tick_gate` records the run's `llm_worker`.
+  - `LLMWorker.outstanding_attempt_s` reports how long the latest planning attempt has been waiting on the provider
+    (queued or running). A result the provider returned but the loop has not consumed yet, for example while paused,
+    is not outstanding.
+  - The heartbeat flags a stall only when that age exceeds `compute_stall_threshold` and `stall_suppression` finds no
+    live planning-lane call.
+  - The floor is `MAXIM_HEARTBEAT_STALL_S`, now clamped to 5–3600 (a non-number falls back to 30). There is no
+    lane-timeout ceiling. Tier: innate prior.
+
+  Removed:
+  - the heartbeat's own hardcoded 30 s idle rule and its "large lane had calls" precondition;
+  - `HeartbeatMonitor(stall_threshold_s=...)`;
+  - the CI grep's `heartbeat.py` allowlist.
+
+  This completes `stall_detector_timeout_awareness.md` Stage 2. Operators with `MAXIM_HEARTBEAT=1` will now see
+  `heartbeat_stall` WARNINGs, which never fired before. Waiting for a human, a long tool and quiet perception are never
+  stalls. A loop that stops submitting altogether is not caught; that is #1272, along with the floor's tier trigger.
+
+  Gates:
+  - `/api/health` end to end: one stall for a turn stuck past the threshold; none with a live call, no turn, or a
+    young turn;
+  - `tests/unit/test_loop_liveness.py`, which includes a real `LLMWorker`.
 - **Run ids go through a new resolver, `console/run_store.py`, never `utils/paths.resolve_run_dir`.** The old one
   returns any directory for a path-like argument, searches the CWD first and follows symlinks out of `sim_reports`
   (its docstring now says so). Ids are `[A-Za-z0-9_-]{1,64}`; every open is anchored to a directory fd (root, then
@@ -92,6 +123,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`docs/plans/baseline_floors.md` §B1, #1224).
 
 ### Added
+
+- **Piper voice provisioning, and a way for a device to arm spoken-code pairing only once it can speak (#1268
+  follow-up F1). These are CAPABILITIES with no pymaxim caller yet.** The device bootstrap that wires them is owed in
+  maxim-pulse's Reachy app, or in the pending device-console facade.
+  The Reachy app's spoken-code pairing used a Piper voice that nothing provisioned. `models/audio/tts.py` documented a
+  manual `wget`. Without the voice, the announcer failed silently while the sign-in page told the owner to listen.
+  - **Pinned voices.** Every `TTS_MODELS` voice is pinned to one HF commit of `rhasspy/piper-voices`, with size and
+    sha256 per file. Each was computed by downloading and hashing the file; how to re-pin is in a comment.
+  - **Verified downloads.** `download_file(expected_sha256=)` verifies the download before the atomic rename. It
+    also verifies a file that is already present and replaces it on a mismatch. Without a hash, a present file is
+    trusted as before, so the LLM GGUFs are unchanged. `download_tts` passes both checks and stops at the first
+    failed file.
+  - **`ensure_tts_voice`.** The new `models/download.py::ensure_tts_voice` hashes the present files, then runs the
+    storage preflight and asks for consent. It takes the voice's OWN lock, so a GGUF download holding
+    `download.lock` never blocks a robot's sign-in voice.
+  - **`VoiceProvisioner`.** The new `models/audio/tts.py::VoiceProvisioner` retries in the background with backoff
+    until the voice is provisioned, `piper` is installed, and the voice LOADS. `TTSEngine.load()` makes the load
+    eager.
+  - **`build_app(pairing_ready=)`.** It is read on every request: until it returns True, `/api/hello` reports
+    `pairing: "none"` and `/api/pair/*` refuse with 409. A raising callable fails closed. So a robot that booted before Wi-Fi offers only the paste
+    path, and the by-ear path appears once the voice loads, without a restart (owner decision 2026-10-14). There is
+    no contract change.
+  - **Desktop.** A plain `maxim serve` never provisions a voice. `PiperTTS.is_available` now probes `piper` through the
+    canonical `optional_dependency_available`, and `size_mb` reads the real ~63 MB.
+
+  Gates: `tests/unit/test_tts_voice_provisioning.py` and `tests/unit/test_console_pairing.py::TestArmWhenReady`.
 
 - **A sim report now records which models answered its LLM calls, its scenario inputs and its session
   (baseline floors B0, `docs/plans/baseline_floors_b0.md`).** `report.json`'s `provenance` gains
@@ -441,6 +498,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     still name speech tools in a list; converging them is a follow-up (mechanization backlog M54).
   - Runs on either side of this fix are not comparable where the narrator's probes depend on the AUT's replies;
     re-assessing the affected experiment records is its own follow-up.
+- **The internet policy's batch-1 review findings: #966, #967 and #968.** Owner decisions 2026-10-14.
+  - **#966:** the private-address PRE-check now classifies through the one shared `utils/net.py::is_public_address`.
+    It agrees with the connect-time check, and refuses CGNAT (100.64.0.0/10) up front instead of at connect. A name
+    that does not resolve now reads `Host '...' could not be resolved` instead of "Access to private/internal IPs is
+    blocked". Loading a policy with `block_private_ips: false` logs a WARNING, because that one switch turns off BOTH
+    checks. `InternetAccessPolicy._is_private_ip`/`_check_ip_is_private` are replaced by `_address_refusal`, which
+    returns the reason.
+  - **#967 (owner: fail closed):** a robots.txt that cannot be read refuses the fetch, and the refusal is not cached,
+    so the next request retries. That covers a 5xx, a 429, a timeout or a network failure. It used to allow the
+    fetch on any error while the policy claimed "Must respect robots.txt". Also, per RFC 9309:
+    - A missing robots.txt (any other 4xx, 401/403 included) still means no restrictions (owner decision).
+    - Redirects are followed for up to five hops, each with the same private-address protection (owner decision).
+      A redirect's body used to parse as "no rules".
+    - The robots.txt is the URL's own origin's (scheme, host and port, IPv6 brackets kept). It used to be
+      `https://host` always, which would now have refused every http-only and non-443 site.
+
+    The policy summary now says an unreadable robots.txt refuses.
+  - **#968:** domain entries normalise with IDNA 2008 (UTS 46, non-transitional) through the `idna` package, now a
+    declared dependency. So `straße.de` blocks the `xn--strae-oqa.de` host a URL carries. Python's own codec is IDNA
+    2003, which mapped it to `strasse.de`. Two consequences follow. First, a deviation-character entry now blocks
+    the IDNA 2008 host, not the mapped one (`faß.de` used to block `fass.de`). Second, IDNA 2008 rejects a few
+    names IDNA 2003 accepted, such as symbol and emoji domains (`☃.net`). **A policy file listing one now fails to
+    load, and the internet is then disabled (fail closed) until the entry is rewritten in its punycode `xn--`
+    form.** The error names the entry and says so.
+  - The pre-check is also a little stricter: through the shared classifier it now refuses multicast, the
+    unspecified address, and NAT64/6to4 addresses that wrap a private IPv4 address. The connect-time check already
+    refused these.
+
+  Gates: `tests/unit/test_internet_policy_966_967_968.py`.
+
 - **Four raises after the bridge booked a tool failure no longer get the failure booked twice (#1221 items 2 and
   3).** The tool-pain bridge books a failure, and `ToolOutput.nac_failure_booked` carries the signature to dispatch
   so it skips its own NEGATIVE. These raises lost that stamp, and dispatch then booked the failure again:

@@ -72,8 +72,8 @@ def _fetch_tool():
     from maxim.utils.internet_access import EffectiveInternetPolicy, InternetAccessPolicy
 
     class _NoDnsPolicy(InternetAccessPolicy):
-        def _is_private_ip(self, hostname: str) -> bool:
-            return False  # the domain is fictional; skip DNS (the policy is frozen, so no instance patch)
+        def _address_refusal(self, hostname: str) -> str | None:
+            return None  # the domain is fictional; skip DNS (the policy is frozen, so no instance patch)
 
     policy = EffectiveInternetPolicy(
         policy=_NoDnsPolicy(max_fetch_bytes=1_000_000, require_robots_ok=False), enabled=True

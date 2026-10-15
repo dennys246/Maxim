@@ -54,7 +54,7 @@ import secrets
 import threading
 import time
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 from urllib.parse import urlsplit
 
@@ -592,10 +592,44 @@ class _PairingState:
         self.last_claim_at = -_PAIR_MIN_CLAIM_INTERVAL_S
 
 
+def _install_pairing(
+    app: Any, announcer: Any, ready: Callable[[], bool] | None, *, sandbox: Any, auth_token: Any
+) -> None:
+    """Validate and install ``build_app``'s spoken-code pairing arguments (see its docstring)."""
+    from maxim.runtime.config_loader import ConfigurationError
+
+    if announcer is not None and sandbox is not None:
+        raise ConfigurationError(
+            "build_app: pairing_announcer cannot be combined with console.sandbox — sandbox has "
+            "no engine token to hand out; the authenticating proxy owns that edge"
+        )
+    if announcer is not None and auth_token is None:
+        raise ConfigurationError(
+            "build_app: pairing_announcer with auth_token=None is contradictory — the explicit "
+            "fail-closed inject means there is no credential for a successful claim to hand out"
+        )
+    if ready is not None and announcer is None:
+        raise ConfigurationError("build_app: pairing_ready without a pairing_announcer has nothing to arm")
+    app.state.pairing_announcer = announcer
+    app.state.pairing_ready = ready
+    app.state.pairing = _PairingState()
+
+
 def _pairing_of(app: Any) -> tuple[Any, _PairingState] | None:
     announcer = getattr(app.state, "pairing_announcer", None)
     if announcer is None:
         return None
+    ready = getattr(app.state, "pairing_ready", None)
+    if ready is not None:
+        try:
+            armed = bool(ready())
+        except Exception:  # fail CLOSED: /api/hello is the unauthenticated surface the paste path needs
+            from maxim.utils.logging import log_swallowed_exception
+
+            log_swallowed_exception(site="server.py:_pairing_of:pairing_ready")
+            armed = False
+        if not armed:  # the device's voice is not provisioned yet: paste path only
+            return None
     return announcer, app.state.pairing
 
 
@@ -1864,7 +1898,9 @@ def _health_serving(app: Any) -> Any:
 def _health_message(kind: str, data: dict[str, Any]) -> str:
     """One human line for a health event on /ws (the payload is in ``data``)."""
     if kind == "health_stall":
-        return f"stall: agent loop idle {data.get('idle_s', '?')}s (state={data.get('state', '?')})"
+        wedged = data.get("wedged_s")
+        why = "no call in flight" if wedged is None else f"its call wedged {wedged:.0f}s"
+        return f"stall: a planning turn outstanding {data.get('outstanding_s', 0):.0f}s ({why})"
     return ""
 
 
@@ -1896,6 +1932,7 @@ def build_app(
     auth_token: Any = _READ_TOKEN_FROM_DISK,
     extra_trusted_origins: Sequence[str] = (),
     pairing_announcer: Any = None,
+    pairing_ready: Callable[[], bool] | None = None,
     health_monitor: bool = False,
 ) -> FastAPI:
     """Construct the Console FastAPI app. ``ui_dist`` = the built static bundle.
@@ -1934,6 +1971,15 @@ def build_app(
     a daemon thread; it MUST NOT log the code (A7). Refused under sandbox
     mode for the same reason as ``extra_trusted_origins``: sandbox has no
     engine token to hand out.
+
+    ``pairing_ready`` (keyword-only, needs ``pairing_announcer``) is read on
+    every request: while it returns False, ``/api/hello`` reports ``pairing:
+    "none"`` and ``/api/pair/*`` refuse with 409, exactly as without an
+    announcer. A device whose voice is still provisioning (no network at boot)
+    thus offers only the paste path, and the by-ear path appears once the voice
+    loads, without a restart (``models/audio/tts.py::VoiceProvisioner``,
+    #1268 follow-up F1). It reveals only that coarse pairing state, which
+    ``/api/hello`` already reports.
     """
     sandbox = _sandbox_policy()
     if sandbox is not None:
@@ -1999,22 +2045,7 @@ def build_app(
     app.state.sandbox = sandbox
     _install_history_state(app, sandbox=sandbox, health_monitor=health_monitor)
     app.state.trust = _trust_with_extra_origins(extra_trusted_origins, sandbox)
-    if pairing_announcer is not None and sandbox is not None:
-        from maxim.runtime.config_loader import ConfigurationError
-
-        raise ConfigurationError(
-            "build_app: pairing_announcer cannot be combined with console.sandbox — sandbox has "
-            "no engine token to hand out; the authenticating proxy owns that edge"
-        )
-    if pairing_announcer is not None and auth_token is None:
-        from maxim.runtime.config_loader import ConfigurationError
-
-        raise ConfigurationError(
-            "build_app: pairing_announcer with auth_token=None is contradictory — the explicit "
-            "fail-closed inject means there is no credential for a successful claim to hand out"
-        )
-    app.state.pairing_announcer = pairing_announcer
-    app.state.pairing = _PairingState()
+    _install_pairing(app, pairing_announcer, pairing_ready, sandbox=sandbox, auth_token=auth_token)
     # Fail-closed by construction: build_app READS the token (run_serve is the
     # one place that creates it); an embedder that never provisioned one gets
     # an app whose authed surfaces all refuse, not an open console. Tests and

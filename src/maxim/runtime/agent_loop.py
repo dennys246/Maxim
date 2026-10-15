@@ -116,6 +116,7 @@ _WIRE1_LOW_PHRASE = "reliable from prior experience"
 
 
 from maxim.runtime.loop_state import (
+    loop_liveness_scope,
     operational_mode,
     seed_runtime_run_mode,
     _planning_attempt_is_active,
@@ -910,6 +911,7 @@ def _followup_synthetic_input(followup: Any) -> str:
     return f"[ACTION_FOLLOWUP type={followup.followup_type} tool={tool} mode={followup.mode} query='{query}']: {result}"
 
 
+@loop_liveness_scope  # one liveness entry per run for the heartbeat's stall rule, cleared in a finally (#1268)
 def run_agentic_loop(
     agent: Any,
     environment: Any,

@@ -37,7 +37,7 @@ def _public_dns(monkeypatch):
     Without this, an unresolvable test domain is treated as private and refused for the wrong
     reason, and a block-list test passes with no block list at all (#822 review blocker).
     """
-    monkeypatch.setattr(ia.InternetAccessPolicy, "_is_private_ip", lambda self, host: False)
+    monkeypatch.setattr(ia.InternetAccessPolicy, "_address_refusal", lambda self, host: None)
 
 
 def test_block_list_from_the_policy_file_is_enforced_by_the_live_tool(tmp_path: Path, _public_dns) -> None:

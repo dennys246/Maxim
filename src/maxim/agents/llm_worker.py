@@ -385,6 +385,7 @@ class LLMWorker:
         self._last_job_id: str | None = None
         self._last_attempt_rejected = False
         self._last_attempt_consumed = False
+        self._last_attempt_started_at: float | None = None  # monotonic; the stall rule's age (#1268 producer 1)
         self._resubmit_seq = 0
 
         # Acting Coach config (B3): set after construction to inject
@@ -548,8 +549,21 @@ class LLMWorker:
             JobStatus.CANCELLED: LLMAttemptState.CANCELLED,
         }.get(status, LLMAttemptState.MISSING)
 
+    def outstanding_attempt_s(self) -> float | None:
+        """Seconds the latest planning attempt has been waiting on the provider (queued or running), or ``None``. The
+        heartbeat's stall rule reads it: a turn stuck past the threshold with no live call is a stall (owner decision
+        2026-10-14). A COMPLETED result the loop has not consumed yet is NOT outstanding: the provider answered, and a
+        paused loop or one running a long tool consumes it later (D13's active set keeps COMPLETED for a different
+        reason, the publication race). The state is read before the stamp, and ``_begin_attempt`` stamps first, so a
+        new job is never paired with the previous attempt's start."""
+        if self.latest_attempt_state() not in (LLMAttemptState.PENDING, LLMAttemptState.RUNNING):
+            return None
+        started = self._last_attempt_started_at
+        return None if started is None else time.monotonic() - started
+
     def _begin_attempt(self, job_id: str) -> None:
         """Install one exact job as the lifecycle source of truth."""
+        self._last_attempt_started_at = time.monotonic()  # first: a concurrent reader never pairs old start + new job
         self._last_job_id = job_id
         self._last_attempt_rejected = False
         self._last_attempt_consumed = False
