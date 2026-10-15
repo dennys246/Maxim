@@ -58,8 +58,8 @@ regenerates the fixture in its own commit:
     ``respond: NOT AVAILABLE. Use send_message instead.``, and the AUT's ``respond`` got a ``process``
     follow-up, the ``say`` every turn pinned. The narrator's entries now ride on its registry
     (``SimToolRegistry.tool_descriptions``): the AUT's ``respond`` is terminal, one action a turn, and the
-    harness asserts a run leaves ``TOOL_DESCRIPTIONS`` untouched. The fixture's regeneration for it follows
-    #1261's, which changes the same turns.
+    harness asserts a run leaves ``TOOL_DESCRIPTIONS`` untouched. The fixture was regenerated for it, after
+    #1261's, in its own commit.
   - #1261 (FIXED, no longer a pinned defect): the bridge's ``response`` was the ``respond`` tool's RECEIPT
     (``{'delivered': True, 'mode': 'cli'}``), not the AUT's words. Each turn's ``response`` and
     ``report.response_texts`` now pin the words, read from ``ActionRecord.utterance``, and include ``say``'s;
@@ -72,8 +72,8 @@ regenerates the fixture in its own commit:
   - #1263: teardown leaves threads running: the two agents' ``plan-logger``/``plan-dashboard`` writers
     and the ``memctx_*`` pool. (Its DefaultNetwork part is FIXED with #1281: the loop that starts the AUT's
     DN now stops it in a sim too, so the ``DefaultNetwork`` and ``DN-BackgroundTasks`` threads end with the
-    run, ``test_the_run_leaves_no_default_network_running_1263``; the fixture's regeneration for it, and
-    ``test_the_golden_is_non_vacuous``'s ``DefaultNetwork`` line, follow #1289.) Each run in one process (the menu loop,
+    run, ``test_the_run_leaves_no_default_network_running_1263``; the fixture was regenerated for it with
+    #1260's.) Each run in one process (the menu loop,
     ``maxim.campaign()``) leaves them alive. ``threads_left_alive`` pins the ones the run adds; the
     ``memctx`` pool is class-level and process-wide, so whether a run starts it depends on the process's
     history, and it is not pinned at all (``_THREADS_EXCLUDED``, #1263's memctx part). The ``sim.*`` threads all exit.
@@ -297,7 +297,7 @@ def test_the_golden_is_non_vacuous() -> None:
         assert {k for k, v in prov.items() if v == _MASKED} == set(_PROVENANCE_MASKED), name
         assert prov["serving_captured"] is True and prov["configured_n_ctx_source"] == "default", name
         assert "orchestrator/nac.json" in t["data_home_files"], name  # written only by the narrator's shutdown()
-        assert {"DefaultNetwork", "plan-logger"} <= set(t["threads_left_alive"]["added"]), name  # #1263
+        assert "plan-logger" in t["threads_left_alive"]["added"], name  # #1263's plan writers (its DN part is fixed)
         assert t["aut_nac"]["links"], name
         assert [r.get("_record_kind") for r in t["action_log"][:1]] == ["header"], name
         assert len(t["action_log"]) - 1 == t["result"]["total_actions"], name
