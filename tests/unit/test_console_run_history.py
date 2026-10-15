@@ -1028,7 +1028,9 @@ class TestHealthRoutes:
         assert len(mlog._swallow_listeners) == before
         assert health._monitor_users == 0
 
-    def test_two_streaming_apps_each_keep_their_publisher(self, runs, monkeypatch):
+    def test_two_streaming_apps_each_hold_a_publisher_entry(self, runs, monkeypatch):
+        """Each app's acquire adds an entry and its release removes one (F3: both are the hub's one publisher, so the
+        entry count is what tells them apart; test_two_streaming_apps_publish_each_health_event_once checks delivery)."""
         _fake_monitor(monkeypatch)
         a = TestClient(build_app(None, auth_token=_TOKEN, health_monitor=True))
         b = TestClient(build_app(None, auth_token=_TOKEN, health_monitor=True))
@@ -1038,7 +1040,7 @@ class TestHealthRoutes:
         try:
             assert log._publishers == [a.app.state.health_publish, b.app.state.health_publish]
             a.__exit__(None, None, None)
-            assert log._publishers == [b.app.state.health_publish]  # B still streams after A leaves
+            assert log._publishers == [b.app.state.health_publish]  # B's entry remains after A leaves
         finally:
             b.__exit__(None, None, None)
 
@@ -1056,14 +1058,18 @@ class TestHealthRoutes:
         a.__enter__()
         b.__enter__()
         log = a.app.state.health_log
+        a_open = True
         try:
             log.on_heartbeat("heartbeat_stall", {"outstanding_s": 40.0})
             assert sent == ["health_stall"], sent
             a.__exit__(None, None, None)
+            a_open = False
             sent.clear()
             log.on_heartbeat("heartbeat_stall", {"outstanding_s": 41.0})
             assert sent == ["health_stall"], "B still streams after A leaves"
         finally:
+            if a_open:
+                a.__exit__(None, None, None)
             b.__exit__(None, None, None)
         sent.clear()
         log.on_heartbeat("heartbeat_stall", {"outstanding_s": 42.0})

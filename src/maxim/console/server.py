@@ -1859,12 +1859,14 @@ def _install_history_state(app: Any, *, sandbox: _SandboxPolicy | None, health_m
     app.state.cursor_signer = CursorSigner()  # per app: a cursor never outlives its server
     app.state.health_monitor = bool(health_monitor)
     # ONE log per file per process: two apps on one data home share it. Each
-    # app brings its OWN publisher on acquire (none under sandbox), so the
-    # first app on a path cannot decide whether a later one streams health.
+    # app acquires with its own entry (none under sandbox), so the first app
+    # on a path cannot decide whether a later one streams health.
     app.state.health_log = shared_health_log(console_health_log())
     # Not about the active run → no run_id. `_event_hub` is process-global, so
-    # every non-sandbox app registers the SAME publisher (F3): the shared log
-    # fans an event out once per hub, however many apps serve it.
+    # every non-sandbox app's entry is the SAME publisher (F3) and the shared
+    # log fans an event out once per hub. The producer gate is still exact only
+    # for one app per process, the deployment shape: the hub reaches every
+    # app's /ws connections (#1291).
     app.state.health_publish = None if sandbox is not None else _publish_health
 
 

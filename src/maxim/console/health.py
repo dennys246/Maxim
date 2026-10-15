@@ -379,8 +379,13 @@ class HealthLog:
 
     def _emit(self, kind: str, data: dict[str, Any]) -> None:
         # ``_publishers`` holds one entry per acquire (release removes one), so a publisher two apps share, the
-        # process-wide hub's, stays until its last app leaves; it is called once per event all the same (F3).
-        for publish in dict.fromkeys(self._publishers):
+        # process-wide hub's, stays until its last app leaves; it is called once per event all the same (F3). One
+        # atomic copy, then dedupe by identity: no hashing, so no publisher can raise out of here.
+        called: list[Any] = []
+        for publish in list(self._publishers):
+            if any(publish is c for c in called):
+                continue
+            called.append(publish)
             try:
                 publish(kind, data)
             except Exception as e:  # a /ws problem must not stop health capture
@@ -564,7 +569,8 @@ _registry_lock = threading.Lock()
 def shared_health_log(path: Path) -> HealthLog:
     """The process's log for ``path``. Every console app serving from one data
     home shares it, so a swallow is counted once, not once per app; each app
-    brings its own publisher on :meth:`HealthLog.acquire`."""
+    acquires with its own publisher entry (apps on the one /ws hub pass the same
+    publisher, called once per event, F3)."""
     key = str(path)
     with _registry_lock:
         log = _registry.get(key)

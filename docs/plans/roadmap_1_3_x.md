@@ -515,6 +515,8 @@ found 1.3.2 not ready. The owner decided:
   - [#984](https://github.com/dennys246/Maxim/issues/984), [#985](https://github.com/dennys246/Maxim/issues/985),
     [#988](https://github.com/dennys246/Maxim/issues/988) and [#989](https://github.com/dennys246/Maxim/issues/989),
     batch 2's follow-ups: moved to 1.3.3, Session C.
+  - [#1291](https://github.com/dennys246/Maxim/issues/1291), a sandbox app's /ws client can opt in to another
+    app's health stream in one process (found by F3's review, predates it): 1.3.3, Session C.
   - [#1285](https://github.com/dennys246/Maxim/issues/1285), [#1286](https://github.com/dennys246/Maxim/issues/1286)
     and [#1287](https://github.com/dennys246/Maxim/issues/1287), the #1268 review's NITs (the heartbeat
     sampler's ownership, the scrub on the failing thread, one `HealthLog` shared across console tests): filed
