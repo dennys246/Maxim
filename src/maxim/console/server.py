@@ -1862,13 +1862,10 @@ def _install_history_state(app: Any, *, sandbox: _SandboxPolicy | None, health_m
     # app brings its OWN publisher on acquire (none under sandbox), so the
     # first app on a path cannot decide whether a later one streams health.
     app.state.health_log = shared_health_log(console_health_log())
-    # Not about the active run → no run_id. (`_event_hub` is process-global:
-    # the producer gate is exact for one app per process, the deployment shape.)
-    app.state.health_publish = (
-        None
-        if sandbox is not None
-        else (lambda kind, data: _event_hub.publish(kind, _health_message(kind, data), data, run_scoped=False))
-    )
+    # Not about the active run → no run_id. `_event_hub` is process-global, so
+    # every non-sandbox app registers the SAME publisher (F3): the shared log
+    # fans an event out once per hub, however many apps serve it.
+    app.state.health_publish = None if sandbox is not None else _publish_health
 
 
 @contextlib.contextmanager
@@ -1893,6 +1890,11 @@ def _health_serving(app: Any) -> Any:
         yield
     finally:
         health_log.release(sample=sample, publish=publish)
+
+
+def _publish_health(kind: str, data: dict[str, Any]) -> None:
+    """The /ws publisher for health events: one function for the one process-wide hub."""
+    _event_hub.publish(kind, _health_message(kind, data), data, run_scoped=False)
 
 
 def _health_message(kind: str, data: dict[str, Any]) -> str:

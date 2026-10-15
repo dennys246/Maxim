@@ -150,9 +150,11 @@ class HealthLog:
         self._keep_s = keep_s
         self._max_bytes = max_bytes
         self._persist_interval_s = persist_interval_s
-        # Per-app publishers: every serving app registers its own on acquire
+        # Publishers, one entry per acquire: every serving app registers one
         # (none under sandbox), so the first app on a path cannot decide for
-        # the rest. `publish` here is the standalone (unshared) form.
+        # the rest; apps on the one /ws hub register the same one, and _emit
+        # calls each distinct publisher once (F3). `publish` here is the
+        # standalone (unshared) form.
         self._publishers: list[Callable[[str, dict[str, Any]], None]] = [publish] if publish is not None else []
         self._lock = threading.Lock()
         self._ring: deque[dict[str, Any]] = deque(maxlen=ring)  # recent snapshots, every one
@@ -376,7 +378,9 @@ class HealthLog:
             self._recorded_since = floor
 
     def _emit(self, kind: str, data: dict[str, Any]) -> None:
-        for publish in list(self._publishers):
+        # ``_publishers`` holds one entry per acquire (release removes one), so a publisher two apps share, the
+        # process-wide hub's, stays until its last app leaves; it is called once per event all the same (F3).
+        for publish in dict.fromkeys(self._publishers):
             try:
                 publish(kind, data)
             except Exception as e:  # a /ws problem must not stop health capture

@@ -1042,7 +1042,6 @@ class TestHealthRoutes:
         finally:
             b.__exit__(None, None, None)
 
-    @pytest.mark.xfail(strict=True, reason="F3: two apps on one hub each register a publisher into it")
     def test_two_streaming_apps_publish_each_health_event_once(self, runs, monkeypatch):
         """F3 (#1268 follow-up): the /ws hub is process-global, so two apps' publishers fanned every health event out
         to the same clients twice. One heartbeat reaches the hub once while both serve, and still once after one
