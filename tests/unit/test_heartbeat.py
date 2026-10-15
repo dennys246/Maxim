@@ -335,7 +335,6 @@ def test_wifi_linux_without_an_association_records_nothing(monkeypatch) -> None:
     assert system_metrics.collect_wifi_signal() is None
 
 
-@pytest.mark.xfail(strict=True, reason="F2: a restart clears the shared stop Event under a thread stop() timed out on")
 def test_a_restart_after_a_timed_out_stop_leaves_one_sampler() -> None:
     """F2 (#1268 follow-up, mirroring HealthLog): stop() joins with a timeout, so a slow ``_collect`` outlives it; a
     start() after that cleared the ONE shared stop Event, and the old thread, waking, kept sampling beside the new one.

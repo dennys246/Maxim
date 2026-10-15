@@ -462,6 +462,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A heartbeat restart can no longer leave two samplers running** (F2, #1268 follow-up). `HeartbeatMonitor.stop()`
+  joins with a timeout, so a slow sample could outlive it; a `start()` after that cleared the one shared stop Event,
+  and the old thread kept sampling beside the new one. Each sampler thread now owns its stop Event and `stop()` sets
+  only the one it took, as `console/health.py`'s writer does; start and stop take a lock for the check-and-set.
+  Guard: `tests/unit/test_heartbeat.py::test_a_restart_after_a_timed_out_stop_leaves_one_sampler`.
 - **The internet policy's batch-1 review findings: #966, #967 and #968.** Owner decisions 2026-10-14.
   - **#966:** the private-address PRE-check now classifies through the one shared `utils/net.py::is_public_address`.
     It agrees with the connect-time check, and refuses CGNAT (100.64.0.0/10) up front instead of at connect. A name
