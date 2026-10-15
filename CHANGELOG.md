@@ -405,6 +405,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The simulation narrator now sees what the agent said (#1261).** The production `respond` tool returns a
+  delivery receipt (`{"delivered": True, "mode": "cli"}`), and the AUT's words were only in its `message`
+  argument. The bridge's per-turn `response`, which `send_message` hands the narrator, `report.response_texts` and
+  `analyze_results`'s `response_samples` all joined `result_output`, so each carried the receipt, and `say` and a
+  body's `speak` affordance were not joined at all. Every narrator-driven run in which the AUT replied through
+  `respond` had a narrator choosing its next probe without the reply; the generative runner's `last_aut_response`
+  and the DM's choice classifier read the same field.
+  - **What is speech is declared on the tool.** `Tool` gains a class-level `speech_params: tuple[str, ...] = ()`:
+    the params that hold the words, in the order the tool reads them, empty meaning "not speech". `respond`
+    declares `("message",)`; `speak` and `say` declare `("text", "message", "phrase")`. An embodiment affordance
+    declares it in YAML with the new `speech_param:` key, naming the one param that holds the words
+    (`AffordanceSchema.speech_param`); the spec loader refuses a value that names none of the affordance's
+    params, and the tool generator copies it onto the tool, inferring nothing from names. Set on
+    `base_humanoid`'s `communication.speak` (the body's voice), every NPC's `social.speak`, the radio's
+    `communication.transmit`, the space-station bridge's `systems.comms_hail` and the Roman forum's
+    `speak_publicly` (SEMs that extend the agent's speech).
+  - **One recording site reads it.** `ActionRecord` gains a trailing optional field, `utterance`: the words a
+    successful speech call delivered, filled by `InstrumentedExecutor.execute` from the declaration on the tool the
+    executor actually runs. It asks the executor's own resolver, the new `Executor.resolve_tool_name` (which
+    `execute` now redirects through too), so a call to an alias run as `say` (`talk`, `speech`, `dialogue`,
+    `speech_recognition`, `speechrecognition`) counts as `say`, while `tool_name` keeps the raw name. It looks the
+    tool up with the new `ToolRegistry.find` (one lookup under the registry's lock, `None` on a miss;
+    `SimToolRegistry.find` never returns its redirect decoy), so a tool another thread deregisters mid-call cannot
+    raise before dispatch; `Executor` uses `find` too, instead of reading the registry's private dict. `utterance`
+    is `None` for other tools, failed calls, blocked calls and markers.
+  - **Every reader of the words reads `utterance`:** the bridge's `response`, `report.response_texts`,
+    `analyze_results`, the narrator's per-action summaries (`send_message`, `observe_actions`,
+    `extend_simulation`, the sub-simulation report), `check_completion`'s `responses` count (now delivered speech
+    only, `say` included, a refused `respond` excluded), the interactive turn view and summary, and
+    `SimulationResult.actions` (a new `utterance` key, as returned by `maxim.imagine()`).
+  - `RespondTool`'s output is unchanged, because it feeds the NAc outcome signature. The console's
+    `_extract_reply` workaround is deleted: `talk()` reads the bridge's `response`. `actions.jsonl` is unchanged
+    (its `params` already hold the message), and `response_texts` keeps its `list[str]` shape. Six other places
+    still name speech tools in a list; converging them is a follow-up (mechanization backlog M54).
+  - Runs on either side of this fix are not comparable where the narrator's probes depend on the AUT's replies;
+    re-assessing the affected experiment records is its own follow-up.
 - **Four raises after the bridge booked a tool failure no longer get the failure booked twice (#1221 items 2 and
   3).** The tool-pain bridge books a failure, and `ToolOutput.nac_failure_booked` carries the signature to dispatch
   so it skips its own NEGATIVE. These raises lost that stamp, and dispatch then booked the failure again:

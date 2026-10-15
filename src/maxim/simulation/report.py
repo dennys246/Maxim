@@ -366,8 +366,8 @@ def build_report(
         tool_counts[a.tool_name] = tool_counts.get(a.tool_name, 0) + 1
         if a.result_success:
             tool_successes[a.tool_name] = tool_successes.get(a.tool_name, 0) + 1
-        if a.tool_name in ("respond", "speak") and a.result_output:
-            response_texts.append(str(a.result_output)[:500])
+        if a.utterance:  # the words, not respond's receipt (#1261)
+            response_texts.append(a.utterance[:500])
 
     tool_rates = {}
     for tool, count in tool_counts.items():

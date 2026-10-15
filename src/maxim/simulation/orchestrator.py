@@ -3484,6 +3484,7 @@ def start_simulation_mode(
                     "result_output": str(a.result_output)[:200] if a.result_output else None,
                     "blocked": a.blocked,
                     "block_reason": a.block_reason,
+                    "utterance": a.utterance,
                 }
             )
     except Exception as e:

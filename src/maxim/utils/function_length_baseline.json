@@ -74,11 +74,6 @@
       "lines": 224
     },
     {
-      "file": "src/maxim/embodiment/spec.py",
-      "qualname": "_parse_entity",
-      "lines": 207
-    },
-    {
       "file": "src/maxim/embodiment/tool_bridge.py",
       "qualname": "ModulatorAffordanceTool.execute",
       "lines": 502
@@ -226,7 +221,7 @@
     {
       "file": "src/maxim/simulation/orchestrator.py",
       "qualname": "start_simulation_mode",
-      "lines": 3003
+      "lines": 3004
     },
     {
       "file": "src/maxim/simulation/orchestrator.py",
@@ -309,6 +304,15 @@
       "date": "2026-10-11",
       "ref": "#1224",
       "reason": "Baseline floors B1, PR-A (docs/plans/baseline_floors_b1_build.md): the substrate_policy keyword (a SubstratePolicy that picks in place of recommend_action) is one signature line and one forwarding line to loop_substrate.substrate_tick; the selection itself lives in substrate_proposal._select_action, so nothing else in the loop grows."
+    },
+    {
+      "file": "src/maxim/simulation/orchestrator.py",
+      "qualname": "start_simulation_mode",
+      "from": 3003,
+      "to": 3004,
+      "date": "2026-10-14",
+      "ref": "#1261",
+      "reason": "The narrator sees the AUT's words: the SimulationResult.actions dict (what maxim.imagine() returns) gains one key line, \"utterance\": a.utterance, so a caller reading an action's words does not read respond's delivery receipt from result_output. Extracting the action serialization out of the run is the orchestrator decomposition's (roadmap 1.3.2), not this fix's."
     }
   ],
   "history": [
@@ -349,6 +353,7 @@
     "run_agentic_loop tightened 2717 -> 2429 on 2026-10-10 (roadmap 1.3.2 decomposition, slice 5) when sections 1.1-1.16 (imagination, auto-sense, audio orientation) moved verbatim to runtime/loop_perception.py: perceive composes imagine (43), auto_sense (126) and orient_to_audio (136), each under 200 lines, so no exception record; next_observation and state.update stay at the call site.",
     "record_outcome tightened 415 -> 413 on 2026-10-10 (#1200 Stage 2) when its tool_result observe moved into _observe_tool_result with the failure cut; execute_and_learn raised 388 -> 390 by the #1200 exception record.",
     "run_agentic_loop raised 2429 -> 2432 on 2026-10-11 (#1200 Stage 2, TF8) by the #1200 exception record: bridge_booked= at the hard rejection and the agent fallback's except, and the fallback's per-action result = None.",
-    "record_outcome tightened 413 -> 399 on 2026-10-12 (#1221 item 3) when its sim trace moved into _observe_tool_result, so a failure the bridge booked (the skipped observe) is no longer traced with a placeholder confidence and RPE."
+    "record_outcome tightened 413 -> 399 on 2026-10-12 (#1221 item 3) when its sim trace moved into _observe_tool_result, so a failure the bridge booked (the skipped observe) is no longer traced with a placeholder confidence and RPE.",
+    "_parse_entity (src/maxim/embodiment/spec.py) tightened 207 -> 195 on 2026-10-14 (#1261) when the affordance schema construction (effects and the new validated speech_param) moved to the module-level spec._affordance_schema; under the 200 threshold, so its entry is removed."
   ]
 }

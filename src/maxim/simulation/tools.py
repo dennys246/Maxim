@@ -46,6 +46,11 @@ class SimToolRegistry:
         # masquerades as 'respond' to trigger the followup).
         return _FallbackRedirectTool(requested_name=name)
 
+    def find(self, name: str) -> Tool | None:
+        """The registered tool, or ``None`` (``ToolRegistry.find``'s contract): never the redirect decoy
+        :meth:`get` hands dispatch, so a caller asking WHICH tool a name is learns that it is none."""
+        return self._tools.get(name)
+
     def deregister(self, name: str) -> bool:
         return self._tools.pop(name, None) is not None
 
@@ -109,6 +114,23 @@ class _FallbackRedirectTool(Tool):
         return ToolOutput(success=False, output=error_msg, error=error_msg)
 
 
+def _action_summary(a: Any, cap: int = 500) -> dict[str, Any]:
+    """One AUT action as the narrator reads it: tool, outcome, output and, for speech, the words (#1261).
+
+    ``output`` is the tool's result, which for ``respond`` is a delivery receipt; ``utterance`` is what the
+    agent said, so the narrator never has to recover it from the receipt. Both are cut to *cap* characters.
+    """
+    summary: dict[str, Any] = {"tool": a.tool_name, "success": a.result_success}
+    if a.blocked:
+        summary["blocked"] = True
+        summary["reason"] = a.block_reason
+    if a.result_output:
+        summary["output"] = str(a.result_output)[:cap]
+    if a.utterance:
+        summary["utterance"] = a.utterance[:cap]
+    return summary
+
+
 class SendMessageTool(Tool):
     """Send a message to the agent under test and wait for its response.
 
@@ -153,16 +175,7 @@ class SendMessageTool(Tool):
         result = self._bridge.send_and_wait(text)
 
         # Format actions for LLM readability
-        action_summaries = []
-        for a in result["actions"]:
-            summary = {"tool": a.tool_name, "success": a.result_success}
-            if a.blocked:
-                summary["blocked"] = True
-                summary["reason"] = a.block_reason
-            if a.result_output:
-                output_str = str(a.result_output)
-                summary["output"] = output_str[:500] if len(output_str) > 500 else output_str
-            action_summaries.append(summary)
+        action_summaries = [_action_summary(a) for a in result["actions"]]
 
         return ToolOutput(
             success=True,
@@ -202,20 +215,9 @@ class ObserveActionsTool(Tool):
         since = int(kwargs.get("since_index", 0))
         actions = self._bridge.get_actions_since(since) if since > 0 else self._bridge.get_all_actions()
 
-        summaries = []
-        for i, a in enumerate(actions):
-            summary: dict[str, Any] = {
-                "index": since + i,
-                "tool": a.tool_name,
-                "success": a.result_success,
-            }
-            if a.blocked:
-                summary["blocked"] = True
-                summary["reason"] = a.block_reason
-            if a.result_output:
-                output_str = str(a.result_output)
-                summary["output"] = output_str[:300] if len(output_str) > 300 else output_str
-            summaries.append(summary)
+        # The send_message summary with the action's place in the history first, so a narrator reviewing
+        # the history sees what the AUT said too (#1261), not only respond's receipt.
+        summaries = [{"index": since + i, **_action_summary(a, cap=300)} for i, a in enumerate(actions)]
 
         return ToolOutput(
             success=True,
@@ -257,7 +259,9 @@ class CheckCompletionTool(Tool):
 
         # Build a summary for self-assessment (no LLM needed for basic checks)
         blocked = [a for a in actions if a.blocked]
-        responded = [a for a in actions if a.tool_name in ("respond", "speak")]
+        # What the AUT said, by the recorded words (#1261): a failed or blocked speech call said nothing,
+        # and ``say`` or a body's ``speak`` affordance counts as much as ``respond``.
+        responded = [a for a in actions if a.utterance]
         tools_used = set(a.tool_name for a in actions if not a.blocked)
 
         assessment = {
@@ -333,8 +337,8 @@ class AnalyzeResultsTool(Tool):
                         "reason": a.block_reason or "unknown",
                     }
                 )
-            if a.tool_name in ("respond", "speak") and a.result_output:
-                response_texts.append(str(a.result_output)[:200])
+            if a.utterance:  # the words, not respond's receipt (#1261)
+                response_texts.append(a.utterance[:200])
 
         analysis: dict[str, Any] = {
             "total_actions": len(actions),
@@ -1178,16 +1182,7 @@ class ExtendSimulationTool(Tool):
 
         result = bridge.send_and_wait(f"New objective: {goal}")
 
-        action_summaries = []
-        for a in result["actions"]:
-            summary: dict[str, Any] = {"tool": a.tool_name, "success": a.result_success}
-            if a.blocked:
-                summary["blocked"] = True
-                summary["reason"] = a.block_reason
-            if a.result_output:
-                output_str = str(a.result_output)
-                summary["output"] = output_str[:500] if len(output_str) > 500 else output_str
-            action_summaries.append(summary)
+        action_summaries = [_action_summary(a) for a in result["actions"]]
 
         return ToolOutput(
             success=True,
@@ -1453,16 +1448,7 @@ class SpawnSubSimulationTool(Tool):
         self._sub_thread = sub_thread
 
         # Build sub-report
-        action_summaries = []
-        for a in result["actions"]:
-            summary: dict[str, Any] = {"tool": a.tool_name, "success": a.result_success}
-            if a.blocked:
-                summary["blocked"] = True
-                summary["reason"] = a.block_reason
-            if a.result_output:
-                output_str = str(a.result_output)
-                summary["output"] = output_str[:500] if len(output_str) > 500 else output_str
-            action_summaries.append(summary)
+        action_summaries = [_action_summary(a) for a in result["actions"]]
 
         return {
             "goal": goal,

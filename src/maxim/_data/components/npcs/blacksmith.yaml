@@ -32,6 +32,7 @@ entity:
       affordances:
         speak:
           params: {message: str}
+          speech_param: message
           description: "Talk to the blacksmith"
         haggle:
           params: {item: str, price: float}

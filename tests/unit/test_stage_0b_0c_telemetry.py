@@ -149,10 +149,19 @@ class TestEntityClassDerivation:
 
 
 class _StubExecutor:
-    """Minimal stand-in for the real Executor."""
+    """Minimal stand-in for the real Executor: the two things ``InstrumentedExecutor`` reads besides
+    ``execute`` are its alias resolver and its (here empty) registry (#1261)."""
+
+    def __init__(self) -> None:
+        from maxim.tools.registry import ToolRegistry
+
+        self.registry = ToolRegistry()
 
     def execute(self, action: dict[str, Any]) -> ToolOutput:
         return ToolOutput(success=True, output={"ok": True})
+
+    def resolve_tool_name(self, tool_name: str) -> str:  # no aliases: every name runs as itself
+        return tool_name
 
 
 class TestInstrumentedExecutorTelemetry:

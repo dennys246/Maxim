@@ -35,6 +35,7 @@ entity:
       affordances:
         speak:
           params: {message: str}
+          speech_param: message
           description: "Speak to the guard"
         interrogate:
           params: {subject: str}
