@@ -72,6 +72,7 @@ class HeartbeatMonitor:
 
     @property
     def is_running(self) -> bool:
+        """Whether a sampler is current: False from the moment stop() takes it (a slow sample may still finish)."""
         return self._thread is not None
 
     @property

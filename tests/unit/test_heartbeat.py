@@ -357,6 +357,10 @@ def test_a_restart_after_a_timed_out_stop_leaves_one_sampler() -> None:
         def _check_stall(self, data: dict) -> None:
             pass
 
+    def samplers() -> set:
+        return {t for t in threading.enumerate() if t.name == "heartbeat-monitor" and t.is_alive()}
+
+    others = samplers()  # another test's sampler (e.g. the leader path's global one) is not this test's
     monitor = Slow(interval_s=0.05)
     monitor.start()
     first = monitor._thread
@@ -370,8 +374,7 @@ def test_a_restart_after_a_timed_out_stop_leaves_one_sampler() -> None:
         release.set()
         first.join(timeout=2)
         assert not first.is_alive(), "the thread stop() took must exit once its sample returns"
-        alive = [t for t in threading.enumerate() if t.name == "heartbeat-monitor" and t.is_alive()]
-        assert alive == [monitor._thread], alive
+        assert samplers() - others == {monitor._thread}, samplers() - others
     finally:
         release.set()
         monitor.stop()
