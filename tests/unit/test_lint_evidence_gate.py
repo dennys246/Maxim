@@ -3006,6 +3006,14 @@ def test_the_real_pass_table_scopes_match_each_rows_current_head() -> None:
             "T1-13 is PARTIAL (narrow: floor matched) under BF2 since B1 (2026-10-14); an Exp 60 re-run targets only "
             "EARNED/MAINTAINED, which lint_bf2_obligation refuses until an ESTABLISHED FLOORS_BEATEN b1_verdict"
         ),
+        ("exp61_verdict", "T1-14"): (
+            "T1-14 is PARTIAL (narrow: floor matched, analytical; owner 2026-10-15) and exp61 targets only EARNED: a move back "
+            "up is a raise that needs new support"
+        ),
+        ("exp62_verdict", "T1-15"): (
+            "T1-15 is PARTIAL (rung A: floor matched, analytical; owner 2026-10-15) and exp62 targets only EARNED: a "
+            "move back up is a raise that needs new support"
+        ),
         ("exp10_verdict", "T1-1"): "T1-1 is SUPERSEDED; no re-date of a superseded row is supported",
     }
     rows = {r.id: r for r in G.L.parse((REPO / G.L.LEDGER_PATH).read_text())[0]}
