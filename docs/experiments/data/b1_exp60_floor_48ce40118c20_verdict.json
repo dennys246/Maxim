@@ -1,0 +1,4465 @@
+{
+  "_format_version": "1.0",
+  "record_kind": "verdict",
+  "kind": "b1_verdict",
+  "gates": {
+    "seeds_per_gated_arm": 8,
+    "fear_first_post_min": 6,
+    "family_alpha": 0.05
+  },
+  "per_arm": {
+    "fear": [
+      {
+        "seed": 11,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 3.036,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 0.0,
+        "shore_roam_calls": 13,
+        "training": null,
+        "key_coverage": null
+      },
+      {
+        "seed": 12,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 3.285,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 0.0,
+        "shore_roam_calls": 14,
+        "training": null,
+        "key_coverage": null
+      },
+      {
+        "seed": 13,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 3.331,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 0.0,
+        "shore_roam_calls": 14,
+        "training": null,
+        "key_coverage": null
+      },
+      {
+        "seed": 14,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 3.163,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 0.0,
+        "shore_roam_calls": 14,
+        "training": null,
+        "key_coverage": null
+      },
+      {
+        "seed": 15,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.942,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 0.0,
+        "shore_roam_calls": 13,
+        "training": null,
+        "key_coverage": null
+      },
+      {
+        "seed": 16,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.483,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 0.0,
+        "shore_roam_calls": 14,
+        "training": null,
+        "key_coverage": null
+      },
+      {
+        "seed": 17,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 3.057,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 0.0,
+        "shore_roam_calls": 14,
+        "training": null,
+        "key_coverage": null
+      },
+      {
+        "seed": 18,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 3.248,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 0.0,
+        "shore_roam_calls": 14,
+        "training": null,
+        "key_coverage": null
+      }
+    ],
+    "random": [
+      {
+        "seed": 11,
+        "first_post_surfaced": false,
+        "first_post_latency_s": null,
+        "post_p_surface": 0.0,
+        "pre_p_surface": 0.16666666666666666,
+        "shore_roam_calls": 14,
+        "training": null,
+        "key_coverage": null
+      },
+      {
+        "seed": 12,
+        "first_post_surfaced": false,
+        "first_post_latency_s": null,
+        "post_p_surface": 0.0,
+        "pre_p_surface": 0.16666666666666666,
+        "shore_roam_calls": 14,
+        "training": null,
+        "key_coverage": null
+      },
+      {
+        "seed": 13,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 3.788,
+        "post_p_surface": 0.5,
+        "pre_p_surface": 0.0,
+        "shore_roam_calls": 14,
+        "training": null,
+        "key_coverage": null
+      },
+      {
+        "seed": 14,
+        "first_post_surfaced": false,
+        "first_post_latency_s": null,
+        "post_p_surface": 0.16666666666666666,
+        "pre_p_surface": 0.0,
+        "shore_roam_calls": 13,
+        "training": null,
+        "key_coverage": null
+      },
+      {
+        "seed": 15,
+        "first_post_surfaced": false,
+        "first_post_latency_s": null,
+        "post_p_surface": 0.0,
+        "pre_p_surface": 0.5,
+        "shore_roam_calls": 14,
+        "training": null,
+        "key_coverage": null
+      },
+      {
+        "seed": 16,
+        "first_post_surfaced": false,
+        "first_post_latency_s": null,
+        "post_p_surface": 0.0,
+        "pre_p_surface": 0.0,
+        "shore_roam_calls": 13,
+        "training": null,
+        "key_coverage": null
+      },
+      {
+        "seed": 17,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 3.924,
+        "post_p_surface": 0.16666666666666666,
+        "pre_p_surface": 0.0,
+        "shore_roam_calls": 13,
+        "training": null,
+        "key_coverage": null
+      },
+      {
+        "seed": 18,
+        "first_post_surfaced": false,
+        "first_post_latency_s": null,
+        "post_p_surface": 0.16666666666666666,
+        "pre_p_surface": 0.16666666666666666,
+        "shore_roam_calls": 13,
+        "training": null,
+        "key_coverage": null
+      }
+    ],
+    "q_explore": [
+      {
+        "seed": 11,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.453,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 0.6666666666666666,
+        "shore_roam_calls": 14,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "306ac64f-5dde-4452-9388-e3a64e94b887"
+                  ],
+                  [
+                    "world",
+                    "65758190-b5c0-4da9-80a9-fa0fe40d56e6"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0130774260498585,
+                "minecraft_player_escape_water": -0.06869977617188852,
+                "minecraft_player_flee": -2.115636405150872,
+                "minecraft_player_mine_block": -2.1189417405606945,
+                "minecraft_player_move_to": -2.0955486458769883,
+                "minecraft_player_place_block": -2.0,
+                "minecraft_player_turn": -2.1744324969535227,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0579620156233434,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.1354762426475644,
+                "read_minecraft_player_is_raining": -2.0,
+                "read_minecraft_player_light_level": -2.035668766699382,
+                "read_minecraft_player_look_pitch": -2.05967997185071,
+                "read_minecraft_player_nearest_hostile_dist": -2.0942693229953875,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.0,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            },
+            "2": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "306ac64f-5dde-4452-9388-e3a64e94b887"
+                  ],
+                  [
+                    "world",
+                    "65758190-b5c0-4da9-80a9-fa0fe40d56e6"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0130774260498585,
+                "minecraft_player_escape_water": -0.12164790893448299,
+                "minecraft_player_flee": -2.115636405150872,
+                "minecraft_player_mine_block": -2.1189417405606945,
+                "minecraft_player_move_to": -2.0955486458769883,
+                "minecraft_player_place_block": -2.0,
+                "minecraft_player_turn": -2.1744324969535227,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0579620156233434,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.1354762426475644,
+                "read_minecraft_player_is_raining": -2.0,
+                "read_minecraft_player_light_level": -2.035668766699382,
+                "read_minecraft_player_look_pitch": -2.05967997185071,
+                "read_minecraft_player_nearest_hostile_dist": -2.0942693229953875,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.0,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            },
+            "5": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "306ac64f-5dde-4452-9388-e3a64e94b887"
+                  ],
+                  [
+                    "world",
+                    "65758190-b5c0-4da9-80a9-fa0fe40d56e6"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0130774260498585,
+                "minecraft_player_escape_water": -0.058382654241006554,
+                "minecraft_player_flee": -2.115636405150872,
+                "minecraft_player_mine_block": -2.1189417405606945,
+                "minecraft_player_move_to": -2.0955486458769883,
+                "minecraft_player_place_block": -2.0,
+                "minecraft_player_turn": -2.1744324969535227,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0579620156233434,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.1354762426475644,
+                "read_minecraft_player_is_raining": -2.0,
+                "read_minecraft_player_light_level": -2.035668766699382,
+                "read_minecraft_player_look_pitch": -2.05967997185071,
+                "read_minecraft_player_nearest_hostile_dist": -2.0942693229953875,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.0,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            },
+            "10": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "306ac64f-5dde-4452-9388-e3a64e94b887"
+                  ],
+                  [
+                    "world",
+                    "65758190-b5c0-4da9-80a9-fa0fe40d56e6"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0130774260498585,
+                "minecraft_player_escape_water": -0.01753262291672435,
+                "minecraft_player_flee": -2.115636405150872,
+                "minecraft_player_mine_block": -2.1189417405606945,
+                "minecraft_player_move_to": -2.0955486458769883,
+                "minecraft_player_place_block": -2.0,
+                "minecraft_player_turn": -2.1744324969535227,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0579620156233434,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.1354762426475644,
+                "read_minecraft_player_is_raining": -2.0,
+                "read_minecraft_player_light_level": -2.035668766699382,
+                "read_minecraft_player_look_pitch": -2.05967997185071,
+                "read_minecraft_player_nearest_hostile_dist": -2.0942693229953875,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.0,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            }
+          },
+          "executed_actions_to_criterion": 30,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 1
+        }
+      },
+      {
+        "seed": 12,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.092,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 0.8333333333333334,
+        "shore_roam_calls": 9,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "2194e797-3f43-4649-81ec-011fb4fb2516"
+                  ],
+                  [
+                    "world",
+                    "e7820f5e-f244-44c5-995e-655f9be2c00a"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.03915163984511309,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.059911643777741,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0572385843741356,
+                "read_minecraft_player_hostile_count": -2.0905111822503386,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.0,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.089131526001438,
+                "read_minecraft_player_nearest_hostile_dist": -2.1346122823480984,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.0176217812506367,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            },
+            "2": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "2194e797-3f43-4649-81ec-011fb4fb2516"
+                  ],
+                  [
+                    "world",
+                    "e7820f5e-f244-44c5-995e-655f9be2c00a"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.019575819922556546,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.059911643777741,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0572385843741356,
+                "read_minecraft_player_hostile_count": -2.0905111822503386,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.0,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.089131526001438,
+                "read_minecraft_player_nearest_hostile_dist": -2.1346122823480984,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.0176217812506367,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            },
+            "5": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "2194e797-3f43-4649-81ec-011fb4fb2516"
+                  ],
+                  [
+                    "world",
+                    "e7820f5e-f244-44c5-995e-655f9be2c00a"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.0024469774903195683,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.059911643777741,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0572385843741356,
+                "read_minecraft_player_hostile_count": -2.0905111822503386,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.0,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.089131526001438,
+                "read_minecraft_player_nearest_hostile_dist": -2.1346122823480984,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.0176217812506367,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            },
+            "10": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "2194e797-3f43-4649-81ec-011fb4fb2516"
+                  ],
+                  [
+                    "world",
+                    "e7820f5e-f244-44c5-995e-655f9be2c00a"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.1581371245505213,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.059911643777741,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0572385843741356,
+                "read_minecraft_player_hostile_count": -2.0905111822503386,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.0,
+                "read_minecraft_player_light_level": -1.1202264877355623,
+                "read_minecraft_player_look_pitch": -2.089131526001438,
+                "read_minecraft_player_nearest_hostile_dist": -2.1346122823480984,
+                "read_minecraft_player_nearest_player_dist": -1.0815399365527987,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.0176217812506367,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            }
+          },
+          "executed_actions_to_criterion": 27,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 1
+        }
+      },
+      {
+        "seed": 13,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.3,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 0.6666666666666666,
+        "shore_roam_calls": 13,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "9d24bcd9-97a6-444a-84ef-950bdf8de6a4"
+                  ],
+                  [
+                    "world",
+                    "c87f17a9-fc16-404e-9c19-a031cebd0357"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.098700848997396,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.20642444268050897,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.158584368832817,
+                "minecraft_player_move_to": -2.1567685249989155,
+                "minecraft_player_place_block": -2.0,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.0628562707977833,
+                "read_minecraft_player_is_raining": -2.0917116718701436,
+                "read_minecraft_player_light_level": -2.1375870489064255,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.1435732583981006,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -2.1355122562512405,
+                "read_minecraft_player_oxygen": -2.0,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0187926812504884,
+                "read_minecraft_player_time_of_day": -2.058538743799727,
+                "read_minecraft_player_xp_level": -2.05034790312493,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0524866187246515
+              }
+            },
+            "2": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "9d24bcd9-97a6-444a-84ef-950bdf8de6a4"
+                  ],
+                  [
+                    "world",
+                    "c87f17a9-fc16-404e-9c19-a031cebd0357"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.098700848997396,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.10321222134025448,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.158584368832817,
+                "minecraft_player_move_to": -2.1567685249989155,
+                "minecraft_player_place_block": -2.0,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.0628562707977833,
+                "read_minecraft_player_is_raining": -2.0917116718701436,
+                "read_minecraft_player_light_level": -2.1375870489064255,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.1435732583981006,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -2.1355122562512405,
+                "read_minecraft_player_oxygen": -2.0,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0187926812504884,
+                "read_minecraft_player_time_of_day": -2.058538743799727,
+                "read_minecraft_player_xp_level": -2.05034790312493,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0524866187246515
+              }
+            },
+            "5": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "9d24bcd9-97a6-444a-84ef-950bdf8de6a4"
+                  ],
+                  [
+                    "world",
+                    "c87f17a9-fc16-404e-9c19-a031cebd0357"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.098700848997396,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.10956975891615457,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.158584368832817,
+                "minecraft_player_move_to": -2.1567685249989155,
+                "minecraft_player_place_block": -2.0,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.0628562707977833,
+                "read_minecraft_player_is_raining": -2.0917116718701436,
+                "read_minecraft_player_light_level": -2.1375870489064255,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.1435732583981006,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -2.1355122562512405,
+                "read_minecraft_player_oxygen": -2.0,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0187926812504884,
+                "read_minecraft_player_time_of_day": -2.058538743799727,
+                "read_minecraft_player_xp_level": -2.05034790312493,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0524866187246515
+              }
+            },
+            "10": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "9d24bcd9-97a6-444a-84ef-950bdf8de6a4"
+                  ],
+                  [
+                    "world",
+                    "c87f17a9-fc16-404e-9c19-a031cebd0357"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.098700848997396,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.09209681032043947,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.158584368832817,
+                "minecraft_player_move_to": -2.1567685249989155,
+                "minecraft_player_place_block": -2.0,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.0628562707977833,
+                "read_minecraft_player_is_raining": -2.0917116718701436,
+                "read_minecraft_player_light_level": -2.1375870489064255,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.1435732583981006,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -2.1355122562512405,
+                "read_minecraft_player_oxygen": -2.0,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0187926812504884,
+                "read_minecraft_player_time_of_day": -2.058538743799727,
+                "read_minecraft_player_xp_level": -2.05034790312493,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0524866187246515
+              }
+            }
+          },
+          "executed_actions_to_criterion": 32,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 1
+        }
+      },
+      {
+        "seed": 14,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.609,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 0.3333333333333333,
+        "shore_roam_calls": 8,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "1cb7746d-e98e-4d25-b16c-b441de52ad0d"
+                  ],
+                  [
+                    "world",
+                    "db679554-7bd2-4bee-af00-8d2045fe7890"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.025866841649986,
+                "minecraft_player_eat": -2.0375868000002813,
+                "minecraft_player_escape_water": -0.3664510052258265,
+                "minecraft_player_flee": -2.123540039532236,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.05633557500114,
+                "minecraft_player_turn": -2.16856050320348,
+                "read_minecraft_player_distance_from_spawn": -2.039938695851015,
+                "read_minecraft_player_food": -2.0187532583251597,
+                "read_minecraft_player_health": -2.058562178151624,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.0926616457509226,
+                "read_minecraft_player_light_level": -2.0961333646191633,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.0972947656191536,
+                "read_minecraft_player_nearest_player_dist": -2.0965329124999696,
+                "read_minecraft_player_on_ground": -2.149076666799374,
+                "read_minecraft_player_oxygen": -2.0588681093751804,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.160041312497924,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0200497750003708,
+                "read_minecraft_player_y_altitude": -2.126315794850234,
+                "sense_minecraft_player": -2.0678601749998053
+              }
+            },
+            "2": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "1cb7746d-e98e-4d25-b16c-b441de52ad0d"
+                  ],
+                  [
+                    "world",
+                    "db679554-7bd2-4bee-af00-8d2045fe7890"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.025866841649986,
+                "minecraft_player_eat": -2.0375868000002813,
+                "minecraft_player_escape_water": -0.18322550261291326,
+                "minecraft_player_flee": -2.123540039532236,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.05633557500114,
+                "minecraft_player_turn": -2.16856050320348,
+                "read_minecraft_player_distance_from_spawn": -2.039938695851015,
+                "read_minecraft_player_food": -2.0187532583251597,
+                "read_minecraft_player_health": -2.058562178151624,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.0926616457509226,
+                "read_minecraft_player_light_level": -2.0961333646191633,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.0972947656191536,
+                "read_minecraft_player_nearest_player_dist": -2.0965329124999696,
+                "read_minecraft_player_on_ground": -2.149076666799374,
+                "read_minecraft_player_oxygen": -2.0588681093751804,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.160041312497924,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0200497750003708,
+                "read_minecraft_player_y_altitude": -2.126315794850234,
+                "sense_minecraft_player": -2.0678601749998053
+              }
+            },
+            "5": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "1cb7746d-e98e-4d25-b16c-b441de52ad0d"
+                  ],
+                  [
+                    "world",
+                    "db679554-7bd2-4bee-af00-8d2045fe7890"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.025866841649986,
+                "minecraft_player_eat": -1.1005525940742702,
+                "minecraft_player_escape_water": -0.22217275452903779,
+                "minecraft_player_flee": -2.123540039532236,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.05633557500114,
+                "minecraft_player_turn": -2.16856050320348,
+                "read_minecraft_player_distance_from_spawn": -2.039938695851015,
+                "read_minecraft_player_food": -2.0187532583251597,
+                "read_minecraft_player_health": -2.058562178151624,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.0926616457509226,
+                "read_minecraft_player_light_level": -2.0961333646191633,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.0972947656191536,
+                "read_minecraft_player_nearest_player_dist": -2.0965329124999696,
+                "read_minecraft_player_on_ground": -2.149076666799374,
+                "read_minecraft_player_oxygen": -2.0588681093751804,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.160041312497924,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0200497750003708,
+                "read_minecraft_player_y_altitude": -2.126315794850234,
+                "sense_minecraft_player": -2.0678601749998053
+              }
+            },
+            "10": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "1cb7746d-e98e-4d25-b16c-b441de52ad0d"
+                  ],
+                  [
+                    "world",
+                    "db679554-7bd2-4bee-af00-8d2045fe7890"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.025866841649986,
+                "minecraft_player_eat": -1.1005525940742702,
+                "minecraft_player_escape_water": -0.17765729862705087,
+                "minecraft_player_flee": -1.1355719356515976,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.05633557500114,
+                "minecraft_player_turn": -2.16856050320348,
+                "read_minecraft_player_distance_from_spawn": -2.039938695851015,
+                "read_minecraft_player_food": -2.0187532583251597,
+                "read_minecraft_player_health": -2.058562178151624,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.0926616457509226,
+                "read_minecraft_player_light_level": -2.0961333646191633,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.0972947656191536,
+                "read_minecraft_player_nearest_player_dist": -2.0965329124999696,
+                "read_minecraft_player_on_ground": -2.149076666799374,
+                "read_minecraft_player_oxygen": -2.0588681093751804,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.160041312497924,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0200497750003708,
+                "read_minecraft_player_y_altitude": -2.126315794850234,
+                "sense_minecraft_player": -2.0678601749998053
+              }
+            }
+          },
+          "executed_actions_to_criterion": 35,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 1
+        }
+      },
+      {
+        "seed": 15,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.683,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 0.16666666666666666,
+        "shore_roam_calls": 13,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "425d9061-0ad8-4767-b16d-80f57411d19e"
+                  ],
+                  [
+                    "world",
+                    "04a7da6f-3219-4108-bfed-a6a6870a024f"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.177989193671965,
+                "minecraft_player_eat": -2.137528256251244,
+                "minecraft_player_escape_water": -0.7144803958988633,
+                "minecraft_player_flee": -2.057450559422432,
+                "minecraft_player_mine_block": -2.086125661378901,
+                "minecraft_player_move_to": -2.112961756251752,
+                "minecraft_player_place_block": -1.6551908989204094,
+                "minecraft_player_turn": -2.139828324994596,
+                "read_minecraft_player_distance_from_spawn": -1.6390244036861987,
+                "read_minecraft_player_food": -2.1563879668014123,
+                "read_minecraft_player_health": -2.0168474604244695,
+                "read_minecraft_player_hostile_count": -2.0484745062494767,
+                "read_minecraft_player_is_in_water": -2.1337538854713785,
+                "read_minecraft_player_is_raining": -2.0979867656278657,
+                "read_minecraft_player_light_level": -2.015388807300769,
+                "read_minecraft_player_look_pitch": -2.050151831297262,
+                "read_minecraft_player_nearest_hostile_dist": -2.0599312343765632,
+                "read_minecraft_player_nearest_player_dist": -2.0177058968751225,
+                "read_minecraft_player_on_ground": -2.1521183561795625,
+                "read_minecraft_player_oxygen": -2.0582729812231264,
+                "read_minecraft_player_saturation": -2.181827989494195,
+                "read_minecraft_player_speed": -2.0393494104006096,
+                "read_minecraft_player_time_of_day": -2.017224220825301,
+                "read_minecraft_player_xp_level": -2.0198329510254553,
+                "read_minecraft_player_y_altitude": -2.0979459375012084,
+                "sense_minecraft_player": -2.158788453048328
+              }
+            },
+            "2": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "425d9061-0ad8-4767-b16d-80f57411d19e"
+                  ],
+                  [
+                    "world",
+                    "04a7da6f-3219-4108-bfed-a6a6870a024f"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.177989193671965,
+                "minecraft_player_eat": -2.137528256251244,
+                "minecraft_player_escape_water": -0.3572401979494316,
+                "minecraft_player_flee": -2.057450559422432,
+                "minecraft_player_mine_block": -2.086125661378901,
+                "minecraft_player_move_to": -2.112961756251752,
+                "minecraft_player_place_block": -1.6551908989204094,
+                "minecraft_player_turn": -2.139828324994596,
+                "read_minecraft_player_distance_from_spawn": -1.6390244036861987,
+                "read_minecraft_player_food": -2.1563879668014123,
+                "read_minecraft_player_health": -2.0168474604244695,
+                "read_minecraft_player_hostile_count": -2.0484745062494767,
+                "read_minecraft_player_is_in_water": -2.1337538854713785,
+                "read_minecraft_player_is_raining": -2.0979867656278657,
+                "read_minecraft_player_light_level": -2.015388807300769,
+                "read_minecraft_player_look_pitch": -2.050151831297262,
+                "read_minecraft_player_nearest_hostile_dist": -2.0599312343765632,
+                "read_minecraft_player_nearest_player_dist": -2.0177058968751225,
+                "read_minecraft_player_on_ground": -2.1521183561795625,
+                "read_minecraft_player_oxygen": -2.0582729812231264,
+                "read_minecraft_player_saturation": -2.181827989494195,
+                "read_minecraft_player_speed": -2.0393494104006096,
+                "read_minecraft_player_time_of_day": -2.017224220825301,
+                "read_minecraft_player_xp_level": -2.0198329510254553,
+                "read_minecraft_player_y_altitude": -2.0979459375012084,
+                "sense_minecraft_player": -2.158788453048328
+              }
+            },
+            "5": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "425d9061-0ad8-4767-b16d-80f57411d19e"
+                  ],
+                  [
+                    "world",
+                    "04a7da6f-3219-4108-bfed-a6a6870a024f"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.177989193671965,
+                "minecraft_player_eat": -2.137528256251244,
+                "minecraft_player_escape_water": -0.11182255911871834,
+                "minecraft_player_flee": -2.057450559422432,
+                "minecraft_player_mine_block": -1.2817710952400376,
+                "minecraft_player_move_to": -2.112961756251752,
+                "minecraft_player_place_block": -1.6551908989204094,
+                "minecraft_player_turn": -2.139828324994596,
+                "read_minecraft_player_distance_from_spawn": -1.6390244036861987,
+                "read_minecraft_player_food": -1.2733080782254547,
+                "read_minecraft_player_health": -2.0168474604244695,
+                "read_minecraft_player_hostile_count": -2.0484745062494767,
+                "read_minecraft_player_is_in_water": -2.1337538854713785,
+                "read_minecraft_player_is_raining": -2.0979867656278657,
+                "read_minecraft_player_light_level": -2.015388807300769,
+                "read_minecraft_player_look_pitch": -1.2907538219969865,
+                "read_minecraft_player_nearest_hostile_dist": -2.0599312343765632,
+                "read_minecraft_player_nearest_player_dist": -2.0177058968751225,
+                "read_minecraft_player_on_ground": -2.1521183561795625,
+                "read_minecraft_player_oxygen": -2.0582729812231264,
+                "read_minecraft_player_saturation": -2.181827989494195,
+                "read_minecraft_player_speed": -2.0393494104006096,
+                "read_minecraft_player_time_of_day": -2.017224220825301,
+                "read_minecraft_player_xp_level": -2.0198329510254553,
+                "read_minecraft_player_y_altitude": -2.0979459375012084,
+                "sense_minecraft_player": -2.158788453048328
+              }
+            },
+            "10": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "425d9061-0ad8-4767-b16d-80f57411d19e"
+                  ],
+                  [
+                    "world",
+                    "04a7da6f-3219-4108-bfed-a6a6870a024f"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.177989193671965,
+                "minecraft_player_eat": -2.137528256251244,
+                "minecraft_player_escape_water": -0.15580151797454106,
+                "minecraft_player_flee": -2.057450559422432,
+                "minecraft_player_mine_block": -1.2817710952400376,
+                "minecraft_player_move_to": -2.112961756251752,
+                "minecraft_player_place_block": -1.6551908989204094,
+                "minecraft_player_turn": -2.139828324994596,
+                "read_minecraft_player_distance_from_spawn": -1.6390244036861987,
+                "read_minecraft_player_food": -1.2733080782254547,
+                "read_minecraft_player_health": -2.0168474604244695,
+                "read_minecraft_player_hostile_count": -2.0484745062494767,
+                "read_minecraft_player_is_in_water": -2.1337538854713785,
+                "read_minecraft_player_is_raining": -2.0979867656278657,
+                "read_minecraft_player_light_level": -2.015388807300769,
+                "read_minecraft_player_look_pitch": -1.2907538219969865,
+                "read_minecraft_player_nearest_hostile_dist": -2.0599312343765632,
+                "read_minecraft_player_nearest_player_dist": -2.0177058968751225,
+                "read_minecraft_player_on_ground": -2.1521183561795625,
+                "read_minecraft_player_oxygen": -2.0582729812231264,
+                "read_minecraft_player_saturation": -2.181827989494195,
+                "read_minecraft_player_speed": -2.0393494104006096,
+                "read_minecraft_player_time_of_day": -2.017224220825301,
+                "read_minecraft_player_xp_level": -2.0198329510254553,
+                "read_minecraft_player_y_altitude": -2.0979459375012084,
+                "sense_minecraft_player": -2.158788453048328
+              }
+            }
+          },
+          "executed_actions_to_criterion": 46,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 1
+        }
+      },
+      {
+        "seed": 16,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.307,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 0.0,
+        "shore_roam_calls": 13,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "2a822c34-dc30-49ba-92b9-4586a9a7d40e"
+                  ],
+                  [
+                    "world",
+                    "4e47c186-da65-4850-b3e5-b7a418883388"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.114595388424641,
+                "minecraft_player_eat": -2.1386993196763795,
+                "minecraft_player_escape_water": -1.0964274603989907,
+                "minecraft_player_flee": -2.0959776093804976,
+                "minecraft_player_mine_block": -2.055091181298485,
+                "minecraft_player_move_to": -2.1120966750517254,
+                "minecraft_player_place_block": -2.148594696876535,
+                "minecraft_player_turn": -2.1371603040519402,
+                "read_minecraft_player_distance_from_spawn": -2.058284875025856,
+                "read_minecraft_player_food": -2.077200041699689,
+                "read_minecraft_player_health": -2.051624312449712,
+                "read_minecraft_player_hostile_count": -2.016745606249606,
+                "read_minecraft_player_is_in_water": -2.0191793416510335,
+                "read_minecraft_player_is_raining": -2.0193424604003667,
+                "read_minecraft_player_light_level": -2.163459354240331,
+                "read_minecraft_player_look_pitch": -2.1381022343717633,
+                "read_minecraft_player_nearest_hostile_dist": -2.0545766343493597,
+                "read_minecraft_player_nearest_player_dist": -2.0793315937480656,
+                "read_minecraft_player_on_ground": -2.1718836780564743,
+                "read_minecraft_player_oxygen": -2.0787622542004103,
+                "read_minecraft_player_saturation": -2.09541715112573,
+                "read_minecraft_player_speed": -2.089422223994916,
+                "read_minecraft_player_time_of_day": -2.142778117650596,
+                "read_minecraft_player_xp_level": -2.019926453124208,
+                "read_minecraft_player_y_altitude": -2.1682485220226226,
+                "sense_minecraft_player": -2.169126884457364
+              }
+            },
+            "2": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "2a822c34-dc30-49ba-92b9-4586a9a7d40e"
+                  ],
+                  [
+                    "world",
+                    "4e47c186-da65-4850-b3e5-b7a418883388"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.114595388424641,
+                "minecraft_player_eat": -2.1386993196763795,
+                "minecraft_player_escape_water": -0.6295363926998108,
+                "minecraft_player_flee": -2.0959776093804976,
+                "minecraft_player_mine_block": -2.055091181298485,
+                "minecraft_player_move_to": -2.1120966750517254,
+                "minecraft_player_place_block": -2.148594696876535,
+                "minecraft_player_turn": -2.1371603040519402,
+                "read_minecraft_player_distance_from_spawn": -2.058284875025856,
+                "read_minecraft_player_food": -2.077200041699689,
+                "read_minecraft_player_health": -2.051624312449712,
+                "read_minecraft_player_hostile_count": -2.016745606249606,
+                "read_minecraft_player_is_in_water": -2.0191793416510335,
+                "read_minecraft_player_is_raining": -2.0193424604003667,
+                "read_minecraft_player_light_level": -2.163459354240331,
+                "read_minecraft_player_look_pitch": -2.1381022343717633,
+                "read_minecraft_player_nearest_hostile_dist": -2.0545766343493597,
+                "read_minecraft_player_nearest_player_dist": -2.0793315937480656,
+                "read_minecraft_player_on_ground": -2.1718836780564743,
+                "read_minecraft_player_oxygen": -2.0787622542004103,
+                "read_minecraft_player_saturation": -2.09541715112573,
+                "read_minecraft_player_speed": -2.089422223994916,
+                "read_minecraft_player_time_of_day": -2.142778117650596,
+                "read_minecraft_player_xp_level": -2.019926453124208,
+                "read_minecraft_player_y_altitude": -2.1682485220226226,
+                "sense_minecraft_player": -2.169126884457364
+              }
+            },
+            "5": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "2a822c34-dc30-49ba-92b9-4586a9a7d40e"
+                  ],
+                  [
+                    "world",
+                    "4e47c186-da65-4850-b3e5-b7a418883388"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.114595388424641,
+                "minecraft_player_eat": -2.1386993196763795,
+                "minecraft_player_escape_water": -0.07869204908747635,
+                "minecraft_player_flee": -2.0959776093804976,
+                "minecraft_player_mine_block": -2.055091181298485,
+                "minecraft_player_move_to": -2.1120966750517254,
+                "minecraft_player_place_block": -2.148594696876535,
+                "minecraft_player_turn": -2.1371603040519402,
+                "read_minecraft_player_distance_from_spawn": -2.058284875025856,
+                "read_minecraft_player_food": -2.077200041699689,
+                "read_minecraft_player_health": -2.051624312449712,
+                "read_minecraft_player_hostile_count": -2.016745606249606,
+                "read_minecraft_player_is_in_water": -2.0191793416510335,
+                "read_minecraft_player_is_raining": -2.0193424604003667,
+                "read_minecraft_player_light_level": -2.163459354240331,
+                "read_minecraft_player_look_pitch": -2.1381022343717633,
+                "read_minecraft_player_nearest_hostile_dist": -2.0545766343493597,
+                "read_minecraft_player_nearest_player_dist": -2.0793315937480656,
+                "read_minecraft_player_on_ground": -2.1718836780564743,
+                "read_minecraft_player_oxygen": -2.0787622542004103,
+                "read_minecraft_player_saturation": -2.09541715112573,
+                "read_minecraft_player_speed": -2.089422223994916,
+                "read_minecraft_player_time_of_day": -2.142778117650596,
+                "read_minecraft_player_xp_level": -2.019926453124208,
+                "read_minecraft_player_y_altitude": -2.1682485220226226,
+                "sense_minecraft_player": -2.169126884457364
+              }
+            },
+            "10": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "2a822c34-dc30-49ba-92b9-4586a9a7d40e"
+                  ],
+                  [
+                    "world",
+                    "4e47c186-da65-4850-b3e5-b7a418883388"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.114595388424641,
+                "minecraft_player_eat": -2.1386993196763795,
+                "minecraft_player_escape_water": -0.26979270594155197,
+                "minecraft_player_flee": -2.0959776093804976,
+                "minecraft_player_mine_block": -2.055091181298485,
+                "minecraft_player_move_to": -1.193934838271423,
+                "minecraft_player_place_block": -2.148594696876535,
+                "minecraft_player_turn": -2.1371603040519402,
+                "read_minecraft_player_distance_from_spawn": -2.058284875025856,
+                "read_minecraft_player_food": -2.077200041699689,
+                "read_minecraft_player_health": -2.051624312449712,
+                "read_minecraft_player_hostile_count": -2.016745606249606,
+                "read_minecraft_player_is_in_water": -2.0191793416510335,
+                "read_minecraft_player_is_raining": -2.0193424604003667,
+                "read_minecraft_player_light_level": -2.163459354240331,
+                "read_minecraft_player_look_pitch": -2.1381022343717633,
+                "read_minecraft_player_nearest_hostile_dist": -2.0545766343493597,
+                "read_minecraft_player_nearest_player_dist": -2.0793315937480656,
+                "read_minecraft_player_on_ground": -2.1718836780564743,
+                "read_minecraft_player_oxygen": -2.0787622542004103,
+                "read_minecraft_player_saturation": -2.09541715112573,
+                "read_minecraft_player_speed": -2.089422223994916,
+                "read_minecraft_player_time_of_day": -2.142778117650596,
+                "read_minecraft_player_xp_level": -2.019926453124208,
+                "read_minecraft_player_y_altitude": -2.1682485220226226,
+                "sense_minecraft_player": -1.123690345126579
+              }
+            }
+          },
+          "executed_actions_to_criterion": 43,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 1
+        }
+      },
+      {
+        "seed": 17,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.518,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 1.0,
+        "shore_roam_calls": 14,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "2b97e7f6-556a-4ab2-837f-f20a1a6917b8"
+                  ],
+                  [
+                    "world",
+                    "818e119d-0f15-4b06-822e-4ede28d5a6bc"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.16037529011473453,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.034502839599736,
+                "minecraft_player_place_block": -2.069505249999929,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -1.0849804234133444,
+                "read_minecraft_player_is_raining": -2.0,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.0,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.0,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            },
+            "2": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "2b97e7f6-556a-4ab2-837f-f20a1a6917b8"
+                  ],
+                  [
+                    "world",
+                    "818e119d-0f15-4b06-822e-4ede28d5a6bc"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.1611807242564737,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.034502839599736,
+                "minecraft_player_place_block": -2.069505249999929,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -1.0849804234133444,
+                "read_minecraft_player_is_raining": -2.0,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.0,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -1.0932266179579073,
+                "read_minecraft_player_oxygen": -2.0,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            },
+            "5": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "2b97e7f6-556a-4ab2-837f-f20a1a6917b8"
+                  ],
+                  [
+                    "world",
+                    "818e119d-0f15-4b06-822e-4ede28d5a6bc"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.08930654780639885,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.034502839599736,
+                "minecraft_player_place_block": -1.1362520060634211,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -1.0849804234133444,
+                "read_minecraft_player_is_raining": -2.0,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.0,
+                "read_minecraft_player_nearest_player_dist": -1.1002592475534356,
+                "read_minecraft_player_on_ground": -1.0932266179579073,
+                "read_minecraft_player_oxygen": -2.0,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            },
+            "10": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "2b97e7f6-556a-4ab2-837f-f20a1a6917b8"
+                  ],
+                  [
+                    "world",
+                    "818e119d-0f15-4b06-822e-4ede28d5a6bc"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.0705477534534813,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.034502839599736,
+                "minecraft_player_place_block": -1.1362520060634211,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -1.0849804234133444,
+                "read_minecraft_player_is_raining": -2.0,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -1.0618704249278692,
+                "read_minecraft_player_nearest_hostile_dist": -2.0,
+                "read_minecraft_player_nearest_player_dist": -1.1002592475534356,
+                "read_minecraft_player_on_ground": -1.0932266179579073,
+                "read_minecraft_player_oxygen": -2.0,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            }
+          },
+          "executed_actions_to_criterion": 23,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 1
+        }
+      },
+      {
+        "seed": 18,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.585,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 0.5,
+        "shore_roam_calls": 4,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "422082cd-cd00-491f-9e12-8769bdda0853"
+                  ],
+                  [
+                    "world",
+                    "00e6b27a-7884-4deb-a897-1fccce4e53c6"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.1654250157036588,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.15852236874961817,
+                "minecraft_player_flee": -2.170230190626171,
+                "minecraft_player_mine_block": -2.1255124573450304,
+                "minecraft_player_move_to": -2.0486106312513583,
+                "minecraft_player_place_block": -2.0376979937485884,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0189356937495178,
+                "read_minecraft_player_health": -2.090237109376176,
+                "read_minecraft_player_hostile_count": -2.0185570645990083,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.097006718744524,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.0602332541020587,
+                "read_minecraft_player_nearest_hostile_dist": -2.0,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.1093054886048774,
+                "read_minecraft_player_saturation": -2.1786728937528097,
+                "read_minecraft_player_speed": -2.0942145416192943,
+                "read_minecraft_player_time_of_day": -2.1146531895312366,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.018179022925324,
+                "sense_minecraft_player": -2.057123403128935
+              }
+            },
+            "2": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "422082cd-cd00-491f-9e12-8769bdda0853"
+                  ],
+                  [
+                    "world",
+                    "00e6b27a-7884-4deb-a897-1fccce4e53c6"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.1654250157036588,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.24873125937465376,
+                "minecraft_player_flee": -2.170230190626171,
+                "minecraft_player_mine_block": -2.1255124573450304,
+                "minecraft_player_move_to": -2.0486106312513583,
+                "minecraft_player_place_block": -2.0376979937485884,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0189356937495178,
+                "read_minecraft_player_health": -2.090237109376176,
+                "read_minecraft_player_hostile_count": -2.0185570645990083,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.097006718744524,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.0602332541020587,
+                "read_minecraft_player_nearest_hostile_dist": -2.0,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.1093054886048774,
+                "read_minecraft_player_saturation": -2.1786728937528097,
+                "read_minecraft_player_speed": -2.0942145416192943,
+                "read_minecraft_player_time_of_day": -1.1751458041408114,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.018179022925324,
+                "sense_minecraft_player": -2.057123403128935
+              }
+            },
+            "5": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "422082cd-cd00-491f-9e12-8769bdda0853"
+                  ],
+                  [
+                    "world",
+                    "00e6b27a-7884-4deb-a897-1fccce4e53c6"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.1654250157036588,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.31425243030118966,
+                "minecraft_player_flee": -2.170230190626171,
+                "minecraft_player_mine_block": -2.1255124573450304,
+                "minecraft_player_move_to": -1.1652914584703695,
+                "minecraft_player_place_block": -2.0376979937485884,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0189356937495178,
+                "read_minecraft_player_health": -2.090237109376176,
+                "read_minecraft_player_hostile_count": -2.0185570645990083,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.097006718744524,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.0602332541020587,
+                "read_minecraft_player_nearest_hostile_dist": -2.0,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.1093054886048774,
+                "read_minecraft_player_saturation": -2.1786728937528097,
+                "read_minecraft_player_speed": -2.0942145416192943,
+                "read_minecraft_player_time_of_day": -1.1751458041408114,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -0.7064929163224747,
+                "sense_minecraft_player": -2.057123403128935
+              }
+            },
+            "10": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "422082cd-cd00-491f-9e12-8769bdda0853"
+                  ],
+                  [
+                    "world",
+                    "00e6b27a-7884-4deb-a897-1fccce4e53c6"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.1654250157036588,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.06371624105182222,
+                "minecraft_player_flee": -2.170230190626171,
+                "minecraft_player_mine_block": -2.1255124573450304,
+                "minecraft_player_move_to": -1.1652914584703695,
+                "minecraft_player_place_block": -2.0376979937485884,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0189356937495178,
+                "read_minecraft_player_health": -2.090237109376176,
+                "read_minecraft_player_hostile_count": -2.0185570645990083,
+                "read_minecraft_player_is_in_water": -1.095847445076339,
+                "read_minecraft_player_is_raining": -2.097006718744524,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.0602332541020587,
+                "read_minecraft_player_nearest_hostile_dist": -2.0,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.1093054886048774,
+                "read_minecraft_player_saturation": -2.1786728937528097,
+                "read_minecraft_player_speed": -2.0942145416192943,
+                "read_minecraft_player_time_of_day": -1.1751458041408114,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -0.7064929163224747,
+                "sense_minecraft_player": -2.057123403128935
+              }
+            }
+          },
+          "executed_actions_to_criterion": 25,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 1
+        }
+      }
+    ],
+    "q_explore_prior": [
+      {
+        "seed": 11,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.155,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 1.0,
+        "shore_roam_calls": 7,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "d0035398-c9cc-4ab6-be05-e636e2fb0274"
+                  ],
+                  [
+                    "world",
+                    "617e60ee-b401-458e-a2ba-c662f055f65f"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.0212640470687802,
+                "minecraft_player_flee": -2.0382146729010855
+              }
+            },
+            "2": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "d0035398-c9cc-4ab6-be05-e636e2fb0274"
+                  ],
+                  [
+                    "world",
+                    "617e60ee-b401-458e-a2ba-c662f055f65f"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.10853187563375286,
+                "minecraft_player_flee": -2.0382146729010855
+              }
+            },
+            "5": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "d0035398-c9cc-4ab6-be05-e636e2fb0274"
+                  ],
+                  [
+                    "world",
+                    "617e60ee-b401-458e-a2ba-c662f055f65f"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.013566484454219107,
+                "minecraft_player_flee": -2.0382146729010855
+              }
+            },
+            "10": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "d0035398-c9cc-4ab6-be05-e636e2fb0274"
+                  ],
+                  [
+                    "world",
+                    "617e60ee-b401-458e-a2ba-c662f055f65f"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.026854550420485346,
+                "minecraft_player_flee": -1.0452678828517747
+              }
+            }
+          },
+          "executed_actions_to_criterion": 20,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 1
+        }
+      },
+      {
+        "seed": 12,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.343,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 1.0,
+        "shore_roam_calls": 7,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "ccd6d6f3-7b22-414d-9d18-03e72b23f1c2"
+                  ],
+                  [
+                    "world",
+                    "a4ec1b69-b5ed-47a6-aea9-7bda59a75234"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.14012287291216124,
+                "minecraft_player_flee": -2.0547751499776497
+              }
+            },
+            "2": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "ccd6d6f3-7b22-414d-9d18-03e72b23f1c2"
+                  ],
+                  [
+                    "world",
+                    "a4ec1b69-b5ed-47a6-aea9-7bda59a75234"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.07006143645608062,
+                "minecraft_player_flee": -2.0547751499776497
+              }
+            },
+            "5": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "ccd6d6f3-7b22-414d-9d18-03e72b23f1c2"
+                  ],
+                  [
+                    "world",
+                    "a4ec1b69-b5ed-47a6-aea9-7bda59a75234"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.10803150665566932,
+                "minecraft_player_flee": -2.0547751499776497
+              }
+            },
+            "10": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "ccd6d6f3-7b22-414d-9d18-03e72b23f1c2"
+                  ],
+                  [
+                    "world",
+                    "a4ec1b69-b5ed-47a6-aea9-7bda59a75234"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.09682329913211075,
+                "minecraft_player_flee": -2.0547751499776497
+              }
+            }
+          },
+          "executed_actions_to_criterion": 13,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 1
+        }
+      },
+      {
+        "seed": 13,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.497,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 1.0,
+        "shore_roam_calls": 8,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "52f25ab5-7fa4-440d-959a-a74e451faf3d"
+                  ],
+                  [
+                    "world",
+                    "8b43c6eb-f65d-4548-90b0-a2d2e25b1b72"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.14731313441157,
+                "minecraft_player_flee": -2.018779255200934
+              }
+            },
+            "2": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "52f25ab5-7fa4-440d-959a-a74e451faf3d"
+                  ],
+                  [
+                    "world",
+                    "8b43c6eb-f65d-4548-90b0-a2d2e25b1b72"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.073656567205785,
+                "minecraft_player_flee": -2.018779255200934
+              }
+            },
+            "5": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "52f25ab5-7fa4-440d-959a-a74e451faf3d"
+                  ],
+                  [
+                    "world",
+                    "8b43c6eb-f65d-4548-90b0-a2d2e25b1b72"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.029339344338498566,
+                "minecraft_player_flee": -2.018779255200934
+              }
+            },
+            "10": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "52f25ab5-7fa4-440d-959a-a74e451faf3d"
+                  ],
+                  [
+                    "world",
+                    "8b43c6eb-f65d-4548-90b0-a2d2e25b1b72"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.010975314147944549,
+                "minecraft_player_flee": -0.5795913736439864
+              }
+            }
+          },
+          "executed_actions_to_criterion": 16,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 1
+        }
+      },
+      {
+        "seed": 14,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.674,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 1.0,
+        "shore_roam_calls": 5,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "0dc29cdb-c103-4067-9e2d-fdf8a72e18f9"
+                  ],
+                  [
+                    "world",
+                    "eebb8e7a-cfad-45bf-be97-ad00ae2007be"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.15829197629323064,
+                "minecraft_player_flee": -1.1084186939810479
+              }
+            },
+            "2": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "0dc29cdb-c103-4067-9e2d-fdf8a72e18f9"
+                  ],
+                  [
+                    "world",
+                    "eebb8e7a-cfad-45bf-be97-ad00ae2007be"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.17523845274683936,
+                "minecraft_player_flee": -0.6523025288869121
+              }
+            },
+            "5": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "0dc29cdb-c103-4067-9e2d-fdf8a72e18f9"
+                  ],
+                  [
+                    "world",
+                    "eebb8e7a-cfad-45bf-be97-ad00ae2007be"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.10362627949359933,
+                "minecraft_player_flee": -0.6523025288869121
+              }
+            },
+            "10": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "0dc29cdb-c103-4067-9e2d-fdf8a72e18f9"
+                  ],
+                  [
+                    "world",
+                    "eebb8e7a-cfad-45bf-be97-ad00ae2007be"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.03217427084714411,
+                "minecraft_player_flee": -0.6523025288869121
+              }
+            }
+          },
+          "executed_actions_to_criterion": 16,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 1
+        }
+      },
+      {
+        "seed": 15,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.42,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 1.0,
+        "shore_roam_calls": 7,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "71e974a4-e7b5-491a-a9a7-a69fa6bcb304"
+                  ],
+                  [
+                    "world",
+                    "708b229e-dcb7-4944-acf3-b22f83a966e7"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.01686401292345181,
+                "minecraft_player_flee": -2.0370470895490143
+              }
+            },
+            "2": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "71e974a4-e7b5-491a-a9a7-a69fa6bcb304"
+                  ],
+                  [
+                    "world",
+                    "708b229e-dcb7-4944-acf3-b22f83a966e7"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.10261227936257457,
+                "minecraft_player_flee": -2.0370470895490143
+              }
+            },
+            "5": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "71e974a4-e7b5-491a-a9a7-a69fa6bcb304"
+                  ],
+                  [
+                    "world",
+                    "708b229e-dcb7-4944-acf3-b22f83a966e7"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.15996800315858195,
+                "minecraft_player_flee": -2.0370470895490143
+              }
+            },
+            "10": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "71e974a4-e7b5-491a-a9a7-a69fa6bcb304"
+                  ],
+                  [
+                    "world",
+                    "708b229e-dcb7-4944-acf3-b22f83a966e7"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.11306687745980552,
+                "minecraft_player_flee": -1.157719152577633
+              }
+            }
+          },
+          "executed_actions_to_criterion": 15,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 1
+        }
+      },
+      {
+        "seed": 16,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 1.888,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 1.0,
+        "shore_roam_calls": 6,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "b22b4bb9-a3ab-4bbc-a483-06e52f837daa"
+                  ],
+                  [
+                    "world",
+                    "e9824822-7730-4218-9cc7-53bd57703681"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.019882506413205193,
+                "minecraft_player_flee": -2.0
+              }
+            },
+            "2": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "b22b4bb9-a3ab-4bbc-a483-06e52f837daa"
+                  ],
+                  [
+                    "world",
+                    "e9824822-7730-4218-9cc7-53bd57703681"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.009941253206602597,
+                "minecraft_player_flee": -2.0
+              }
+            },
+            "5": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "b22b4bb9-a3ab-4bbc-a483-06e52f837daa"
+                  ],
+                  [
+                    "world",
+                    "e9824822-7730-4218-9cc7-53bd57703681"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.04808077750068663,
+                "minecraft_player_flee": -0.5741981456317206
+              }
+            },
+            "10": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "b22b4bb9-a3ab-4bbc-a483-06e52f837daa"
+                  ],
+                  [
+                    "world",
+                    "e9824822-7730-4218-9cc7-53bd57703681"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.16486325640330834,
+                "minecraft_player_flee": -0.33161589865354596
+              }
+            }
+          },
+          "executed_actions_to_criterion": 15,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 1
+        }
+      },
+      {
+        "seed": 17,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.325,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 1.0,
+        "shore_roam_calls": 5,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "2dc23819-2b3a-4f44-a58c-060ae0c2194f"
+                  ],
+                  [
+                    "world",
+                    "4a9856e5-cd11-46d0-b982-2c804d434c63"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.015625,
+                "minecraft_player_flee": -2.0
+              }
+            },
+            "2": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "2dc23819-2b3a-4f44-a58c-060ae0c2194f"
+                  ],
+                  [
+                    "world",
+                    "4a9856e5-cd11-46d0-b982-2c804d434c63"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.10132759585103486,
+                "minecraft_player_flee": -2.0
+              }
+            },
+            "5": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "2dc23819-2b3a-4f44-a58c-060ae0c2194f"
+                  ],
+                  [
+                    "world",
+                    "4a9856e5-cd11-46d0-b982-2c804d434c63"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.054571255731934804,
+                "minecraft_player_flee": -1.090099279176502
+              }
+            },
+            "10": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "2dc23819-2b3a-4f44-a58c-060ae0c2194f"
+                  ],
+                  [
+                    "world",
+                    "4a9856e5-cd11-46d0-b982-2c804d434c63"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.15108668717417686,
+                "minecraft_player_flee": -0.6172710704869702
+              }
+            }
+          },
+          "executed_actions_to_criterion": 18,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 1
+        }
+      },
+      {
+        "seed": 18,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.233,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 1.0,
+        "shore_roam_calls": 7,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "7ca5431f-a137-4fba-a4e7-68d6b98d7d41"
+                  ],
+                  [
+                    "world",
+                    "e767d8fe-8193-41f5-bf2a-bf3da6059bfc"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.1073487233562446,
+                "minecraft_player_flee": -1.0424429613692154
+              }
+            },
+            "2": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "7ca5431f-a137-4fba-a4e7-68d6b98d7d41"
+                  ],
+                  [
+                    "world",
+                    "e767d8fe-8193-41f5-bf2a-bf3da6059bfc"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.13401656167784495,
+                "minecraft_player_flee": -1.0424429613692154
+              }
+            },
+            "5": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "7ca5431f-a137-4fba-a4e7-68d6b98d7d41"
+                  ],
+                  [
+                    "world",
+                    "e767d8fe-8193-41f5-bf2a-bf3da6059bfc"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.1152419243598331,
+                "minecraft_player_flee": -1.0424429613692154
+              }
+            },
+            "10": {
+              "key": [
+                "clusters",
+                [
+                  [
+                    "interoception",
+                    "7ca5431f-a137-4fba-a4e7-68d6b98d7d41"
+                  ],
+                  [
+                    "world",
+                    "e767d8fe-8193-41f5-bf2a-bf3da6059bfc"
+                  ]
+                ]
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_escape_water": -0.013744544767567925,
+                "minecraft_player_flee": -1.0424429613692154
+              }
+            }
+          },
+          "executed_actions_to_criterion": 18,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 1
+        }
+      }
+    ],
+    "q_explore_raw": [
+      {
+        "seed": 11,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.395,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 0.3333333333333333,
+        "shore_roam_calls": 14,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.089831119752489,
+                "minecraft_player_escape_water": -0.3604908588364196,
+                "minecraft_player_flee": -2.055750693725713,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.065504833299201,
+                "minecraft_player_place_block": -2.0567376155755484,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.174760087503819,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.07553009899857,
+                "read_minecraft_player_hostile_count": -2.175446065707365,
+                "read_minecraft_player_is_in_water": -2.085437947876926,
+                "read_minecraft_player_is_raining": -2.165418340631004,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.053964665622334,
+                "read_minecraft_player_nearest_hostile_dist": -2.028286899998784,
+                "read_minecraft_player_nearest_player_dist": -2.1171560249946197,
+                "read_minecraft_player_on_ground": -2.1875763656178604,
+                "read_minecraft_player_oxygen": -2.1363931989020783,
+                "read_minecraft_player_saturation": -2.1230139093735487,
+                "read_minecraft_player_speed": -2.0775795417503105,
+                "read_minecraft_player_time_of_day": -2.05640074062685,
+                "read_minecraft_player_xp_level": -2.1747112438228213,
+                "read_minecraft_player_y_altitude": -2.121805322973523,
+                "sense_minecraft_player": -2.016409445850877
+              }
+            },
+            "2": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.089831119752489,
+                "minecraft_player_escape_water": -0.1802454294182098,
+                "minecraft_player_flee": -2.055750693725713,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.065504833299201,
+                "minecraft_player_place_block": -2.0567376155755484,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.174760087503819,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.07553009899857,
+                "read_minecraft_player_hostile_count": -2.175446065707365,
+                "read_minecraft_player_is_in_water": -2.085437947876926,
+                "read_minecraft_player_is_raining": -2.165418340631004,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.053964665622334,
+                "read_minecraft_player_nearest_hostile_dist": -2.028286899998784,
+                "read_minecraft_player_nearest_player_dist": -2.1171560249946197,
+                "read_minecraft_player_on_ground": -2.1875763656178604,
+                "read_minecraft_player_oxygen": -2.1363931989020783,
+                "read_minecraft_player_saturation": -2.1230139093735487,
+                "read_minecraft_player_speed": -2.0775795417503105,
+                "read_minecraft_player_time_of_day": -2.05640074062685,
+                "read_minecraft_player_xp_level": -2.1747112438228213,
+                "read_minecraft_player_y_altitude": -2.121805322973523,
+                "sense_minecraft_player": -2.016409445850877
+              }
+            },
+            "5": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.089831119752489,
+                "minecraft_player_escape_water": -0.11648835992687055,
+                "minecraft_player_flee": -2.055750693725713,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.065504833299201,
+                "minecraft_player_place_block": -2.0567376155755484,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.174760087503819,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.07553009899857,
+                "read_minecraft_player_hostile_count": -2.175446065707365,
+                "read_minecraft_player_is_in_water": -2.085437947876926,
+                "read_minecraft_player_is_raining": -2.165418340631004,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.053964665622334,
+                "read_minecraft_player_nearest_hostile_dist": -2.028286899998784,
+                "read_minecraft_player_nearest_player_dist": -2.1171560249946197,
+                "read_minecraft_player_on_ground": -2.1875763656178604,
+                "read_minecraft_player_oxygen": -2.1363931989020783,
+                "read_minecraft_player_saturation": -2.1230139093735487,
+                "read_minecraft_player_speed": -2.0775795417503105,
+                "read_minecraft_player_time_of_day": -1.1314504620680053,
+                "read_minecraft_player_xp_level": -2.1747112438228213,
+                "read_minecraft_player_y_altitude": -2.121805322973523,
+                "sense_minecraft_player": -2.016409445850877
+              }
+            },
+            "10": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.089831119752489,
+                "minecraft_player_escape_water": -0.08397309874599586,
+                "minecraft_player_flee": -2.055750693725713,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.065504833299201,
+                "minecraft_player_place_block": -2.0567376155755484,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.174760087503819,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.07553009899857,
+                "read_minecraft_player_hostile_count": -2.175446065707365,
+                "read_minecraft_player_is_in_water": -2.085437947876926,
+                "read_minecraft_player_is_raining": -2.165418340631004,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.053964665622334,
+                "read_minecraft_player_nearest_hostile_dist": -2.028286899998784,
+                "read_minecraft_player_nearest_player_dist": -2.1171560249946197,
+                "read_minecraft_player_on_ground": -2.1875763656178604,
+                "read_minecraft_player_oxygen": -2.1363931989020783,
+                "read_minecraft_player_saturation": -2.1230139093735487,
+                "read_minecraft_player_speed": -2.0775795417503105,
+                "read_minecraft_player_time_of_day": -1.1314504620680053,
+                "read_minecraft_player_xp_level": -2.1747112438228213,
+                "read_minecraft_player_y_altitude": -2.121805322973523,
+                "sense_minecraft_player": -2.016409445850877
+              }
+            }
+          },
+          "executed_actions_to_criterion": 38,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 2
+        }
+      },
+      {
+        "seed": 12,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.584,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 0.8333333333333334,
+        "shore_roam_calls": 14,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.050014428151189,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.21285794603318212,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.0,
+                "minecraft_player_turn": -2.06538405000465,
+                "read_minecraft_player_distance_from_spawn": -2.039105381249101,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.179116968829476,
+                "read_minecraft_player_light_level": -2.1288202584022655,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.0,
+                "read_minecraft_player_nearest_player_dist": -2.0991864582465496,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.1344396227941616,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            },
+            "2": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.050014428151189,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.27559201881595075,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -1.1238778917664605,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.0,
+                "minecraft_player_turn": -2.06538405000465,
+                "read_minecraft_player_distance_from_spawn": -2.039105381249101,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.179116968829476,
+                "read_minecraft_player_light_level": -2.1288202584022655,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.0,
+                "read_minecraft_player_nearest_player_dist": -2.0991864582465496,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.1344396227941616,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -1.1510517636670556,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            },
+            "5": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.050014428151189,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.03444900235199384,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -1.1238778917664605,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.0,
+                "minecraft_player_turn": -2.06538405000465,
+                "read_minecraft_player_distance_from_spawn": -2.039105381249101,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.179116968829476,
+                "read_minecraft_player_light_level": -2.1288202584022655,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.0,
+                "read_minecraft_player_nearest_player_dist": -2.0991864582465496,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.1344396227941616,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -1.1510517636670556,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            },
+            "10": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.050014428151189,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.0010765313234998076,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -1.1238778917664605,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.0,
+                "minecraft_player_turn": -2.06538405000465,
+                "read_minecraft_player_distance_from_spawn": -2.039105381249101,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.179116968829476,
+                "read_minecraft_player_light_level": -2.1288202584022655,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.0,
+                "read_minecraft_player_nearest_player_dist": -2.0991864582465496,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.1344396227941616,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -1.1510517636670556,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            }
+          },
+          "executed_actions_to_criterion": 24,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 1
+        }
+      },
+      {
+        "seed": 13,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.494,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 0.0,
+        "shore_roam_calls": 13,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.166689890547423,
+                "minecraft_player_eat": -2.078421445796266,
+                "minecraft_player_escape_water": -1.0,
+                "minecraft_player_flee": -2.0566713437743602,
+                "minecraft_player_mine_block": -2.1777607342926784,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.0717224209045524,
+                "minecraft_player_turn": -2.175027237420727,
+                "read_minecraft_player_distance_from_spawn": -2.0171671145755683,
+                "read_minecraft_player_food": -2.053594037500443,
+                "read_minecraft_player_health": -2.048624765597924,
+                "read_minecraft_player_hostile_count": -2.094423750000715,
+                "read_minecraft_player_is_in_water": -2.0529960781248517,
+                "read_minecraft_player_is_raining": -2.0863853384944377,
+                "read_minecraft_player_light_level": -2.1276348937564764,
+                "read_minecraft_player_look_pitch": -2.134981641729246,
+                "read_minecraft_player_nearest_hostile_dist": -2.0553574312260023,
+                "read_minecraft_player_nearest_player_dist": -2.082555697998032,
+                "read_minecraft_player_on_ground": -2.1617723094444954,
+                "read_minecraft_player_oxygen": -2.039723297898308,
+                "read_minecraft_player_saturation": -2.209929568755615,
+                "read_minecraft_player_speed": -2.1162365603027866,
+                "read_minecraft_player_time_of_day": -2.1255169636089706,
+                "read_minecraft_player_xp_level": -2.087579130253289,
+                "read_minecraft_player_y_altitude": -2.1124604313488815,
+                "sense_minecraft_player": -2.0701909541036003
+              }
+            },
+            "2": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.166689890547423,
+                "minecraft_player_eat": -2.078421445796266,
+                "minecraft_player_escape_water": -0.5,
+                "minecraft_player_flee": -2.0566713437743602,
+                "minecraft_player_mine_block": -2.1777607342926784,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.0717224209045524,
+                "minecraft_player_turn": -2.175027237420727,
+                "read_minecraft_player_distance_from_spawn": -2.0171671145755683,
+                "read_minecraft_player_food": -2.053594037500443,
+                "read_minecraft_player_health": -2.048624765597924,
+                "read_minecraft_player_hostile_count": -2.094423750000715,
+                "read_minecraft_player_is_in_water": -2.0529960781248517,
+                "read_minecraft_player_is_raining": -2.0863853384944377,
+                "read_minecraft_player_light_level": -2.1276348937564764,
+                "read_minecraft_player_look_pitch": -2.134981641729246,
+                "read_minecraft_player_nearest_hostile_dist": -2.0553574312260023,
+                "read_minecraft_player_nearest_player_dist": -2.082555697998032,
+                "read_minecraft_player_on_ground": -2.1617723094444954,
+                "read_minecraft_player_oxygen": -2.039723297898308,
+                "read_minecraft_player_saturation": -2.209929568755615,
+                "read_minecraft_player_speed": -2.1162365603027866,
+                "read_minecraft_player_time_of_day": -2.1255169636089706,
+                "read_minecraft_player_xp_level": -2.087579130253289,
+                "read_minecraft_player_y_altitude": -2.1124604313488815,
+                "sense_minecraft_player": -2.0701909541036003
+              }
+            },
+            "5": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.166689890547423,
+                "minecraft_player_eat": -2.078421445796266,
+                "minecraft_player_escape_water": -0.0625,
+                "minecraft_player_flee": -2.0566713437743602,
+                "minecraft_player_mine_block": -2.1777607342926784,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.0717224209045524,
+                "minecraft_player_turn": -2.175027237420727,
+                "read_minecraft_player_distance_from_spawn": -2.0171671145755683,
+                "read_minecraft_player_food": -2.053594037500443,
+                "read_minecraft_player_health": -2.048624765597924,
+                "read_minecraft_player_hostile_count": -2.094423750000715,
+                "read_minecraft_player_is_in_water": -2.0529960781248517,
+                "read_minecraft_player_is_raining": -2.0863853384944377,
+                "read_minecraft_player_light_level": -2.1276348937564764,
+                "read_minecraft_player_look_pitch": -2.134981641729246,
+                "read_minecraft_player_nearest_hostile_dist": -2.0553574312260023,
+                "read_minecraft_player_nearest_player_dist": -2.082555697998032,
+                "read_minecraft_player_on_ground": -2.1617723094444954,
+                "read_minecraft_player_oxygen": -2.039723297898308,
+                "read_minecraft_player_saturation": -2.209929568755615,
+                "read_minecraft_player_speed": -2.1162365603027866,
+                "read_minecraft_player_time_of_day": -2.1255169636089706,
+                "read_minecraft_player_xp_level": -2.087579130253289,
+                "read_minecraft_player_y_altitude": -2.1124604313488815,
+                "sense_minecraft_player": -2.0701909541036003
+              }
+            },
+            "10": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.166689890547423,
+                "minecraft_player_eat": -2.078421445796266,
+                "minecraft_player_escape_water": -0.21561379560953356,
+                "minecraft_player_flee": -2.0566713437743602,
+                "minecraft_player_mine_block": -2.1777607342926784,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.0717224209045524,
+                "minecraft_player_turn": -2.175027237420727,
+                "read_minecraft_player_distance_from_spawn": -1.0995543799173904,
+                "read_minecraft_player_food": -2.053594037500443,
+                "read_minecraft_player_health": -2.048624765597924,
+                "read_minecraft_player_hostile_count": -2.094423750000715,
+                "read_minecraft_player_is_in_water": -2.0529960781248517,
+                "read_minecraft_player_is_raining": -2.0863853384944377,
+                "read_minecraft_player_light_level": -2.1276348937564764,
+                "read_minecraft_player_look_pitch": -2.134981641729246,
+                "read_minecraft_player_nearest_hostile_dist": -2.0553574312260023,
+                "read_minecraft_player_nearest_player_dist": -1.1297176240492264,
+                "read_minecraft_player_on_ground": -2.1617723094444954,
+                "read_minecraft_player_oxygen": -2.039723297898308,
+                "read_minecraft_player_saturation": -2.209929568755615,
+                "read_minecraft_player_speed": -2.1162365603027866,
+                "read_minecraft_player_time_of_day": -2.1255169636089706,
+                "read_minecraft_player_xp_level": -2.087579130253289,
+                "read_minecraft_player_y_altitude": -2.1124604313488815,
+                "sense_minecraft_player": -2.0701909541036003
+              }
+            }
+          },
+          "executed_actions_to_criterion": 43,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 2
+        }
+      },
+      {
+        "seed": 14,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.439,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 1.0,
+        "shore_roam_calls": 14,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.01952880472031211,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.0,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.0,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.0,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.0,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            },
+            "2": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.009764402360156054,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.0,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.0,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.0,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.0,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            },
+            "5": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.22938793830768137,
+                "minecraft_player_flee": -1.1029073523083184,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.0,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -1.231611170389914,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.0,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.0,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -1.0431909970301034,
+                "read_minecraft_player_oxygen": -1.1606079177816695,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -1.0688149052790663,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            },
+            "10": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.012409228800267427,
+                "minecraft_player_flee": -1.1029073523083184,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.0,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -1.231611170389914,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.0,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.0,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -1.0431909970301034,
+                "read_minecraft_player_oxygen": -1.1606079177816695,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -1.0688149052790663,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            }
+          },
+          "executed_actions_to_criterion": 21,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 1
+        }
+      },
+      {
+        "seed": 15,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 1.923,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 1.0,
+        "shore_roam_calls": 4,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.07043962577167803,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.0,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.0,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.0,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.0,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            },
+            "2": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.12208030873523512,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.0,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.0,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.0,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.0,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            },
+            "5": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -1.1387535927272523,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.37277779065271655,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.0,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -1.123435066786095,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -1.0938638209323641,
+                "read_minecraft_player_is_raining": -2.0,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.0,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -1.1701731688060222,
+                "read_minecraft_player_oxygen": -2.0,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -1.2194911875217342,
+                "sense_minecraft_player": -2.0
+              }
+            },
+            "10": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -1.1387535927272523,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.03184292992030206,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.0,
+                "minecraft_player_place_block": -2.0,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -1.123435066786095,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -1.0938638209323641,
+                "read_minecraft_player_is_raining": -2.0,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.0,
+                "read_minecraft_player_nearest_hostile_dist": -2.0,
+                "read_minecraft_player_nearest_player_dist": -2.0,
+                "read_minecraft_player_on_ground": -1.1701731688060222,
+                "read_minecraft_player_oxygen": -2.0,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.0,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -1.2194911875217342,
+                "sense_minecraft_player": -2.0
+              }
+            }
+          },
+          "executed_actions_to_criterion": 19,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 1
+        }
+      },
+      {
+        "seed": 16,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.473,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 0.3333333333333333,
+        "shore_roam_calls": 13,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.219133486550709,
+                "minecraft_player_eat": -2.0191242687491466,
+                "minecraft_player_escape_water": -0.31164259843790204,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.0385937437502433,
+                "minecraft_player_place_block": -2.079450200003339,
+                "minecraft_player_turn": -2.1448625750708743,
+                "read_minecraft_player_distance_from_spawn": -2.1656563156968334,
+                "read_minecraft_player_food": -2.11297888745612,
+                "read_minecraft_player_health": -2.134064277022844,
+                "read_minecraft_player_hostile_count": -2.1297521531232633,
+                "read_minecraft_player_is_in_water": -2.0695606332970784,
+                "read_minecraft_player_is_raining": -2.037623452101252,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.084325099000125,
+                "read_minecraft_player_nearest_hostile_dist": -2.1673155593074624,
+                "read_minecraft_player_nearest_player_dist": -2.0788442999997643,
+                "read_minecraft_player_on_ground": -2.067938791704364,
+                "read_minecraft_player_oxygen": -2.09777883325296,
+                "read_minecraft_player_saturation": -2.125978037501045,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.1589103647420416,
+                "read_minecraft_player_xp_level": -2.1578040501481155,
+                "read_minecraft_player_y_altitude": -2.0374584749981297,
+                "sense_minecraft_player": -2.05291185935057
+              }
+            },
+            "2": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.219133486550709,
+                "minecraft_player_eat": -2.0191242687491466,
+                "minecraft_player_escape_water": -0.33597037841464045,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.0385937437502433,
+                "minecraft_player_place_block": -2.079450200003339,
+                "minecraft_player_turn": -2.1448625750708743,
+                "read_minecraft_player_distance_from_spawn": -2.1656563156968334,
+                "read_minecraft_player_food": -2.11297888745612,
+                "read_minecraft_player_health": -2.134064277022844,
+                "read_minecraft_player_hostile_count": -2.1297521531232633,
+                "read_minecraft_player_is_in_water": -2.0695606332970784,
+                "read_minecraft_player_is_raining": -2.037623452101252,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.084325099000125,
+                "read_minecraft_player_nearest_hostile_dist": -2.1673155593074624,
+                "read_minecraft_player_nearest_player_dist": -2.0788442999997643,
+                "read_minecraft_player_on_ground": -2.067938791704364,
+                "read_minecraft_player_oxygen": -2.09777883325296,
+                "read_minecraft_player_saturation": -2.125978037501045,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.1589103647420416,
+                "read_minecraft_player_xp_level": -2.1578040501481155,
+                "read_minecraft_player_y_altitude": -2.0374584749981297,
+                "sense_minecraft_player": -1.2405210163720768
+              }
+            },
+            "5": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.219133486550709,
+                "minecraft_player_eat": -2.0191242687491466,
+                "minecraft_player_escape_water": -0.041996297301830056,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.0385937437502433,
+                "minecraft_player_place_block": -2.079450200003339,
+                "minecraft_player_turn": -2.1448625750708743,
+                "read_minecraft_player_distance_from_spawn": -2.1656563156968334,
+                "read_minecraft_player_food": -2.11297888745612,
+                "read_minecraft_player_health": -2.134064277022844,
+                "read_minecraft_player_hostile_count": -2.1297521531232633,
+                "read_minecraft_player_is_in_water": -2.0695606332970784,
+                "read_minecraft_player_is_raining": -2.037623452101252,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.084325099000125,
+                "read_minecraft_player_nearest_hostile_dist": -2.1673155593074624,
+                "read_minecraft_player_nearest_player_dist": -2.0788442999997643,
+                "read_minecraft_player_on_ground": -2.067938791704364,
+                "read_minecraft_player_oxygen": -2.09777883325296,
+                "read_minecraft_player_saturation": -2.125978037501045,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.1589103647420416,
+                "read_minecraft_player_xp_level": -2.1578040501481155,
+                "read_minecraft_player_y_altitude": -2.0374584749981297,
+                "sense_minecraft_player": -1.2405210163720768
+              }
+            },
+            "10": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.219133486550709,
+                "minecraft_player_eat": -2.0191242687491466,
+                "minecraft_player_escape_water": -0.18846185098711032,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.0385937437502433,
+                "minecraft_player_place_block": -2.079450200003339,
+                "minecraft_player_turn": -2.1448625750708743,
+                "read_minecraft_player_distance_from_spawn": -2.1656563156968334,
+                "read_minecraft_player_food": -2.11297888745612,
+                "read_minecraft_player_health": -2.134064277022844,
+                "read_minecraft_player_hostile_count": -2.1297521531232633,
+                "read_minecraft_player_is_in_water": -2.0695606332970784,
+                "read_minecraft_player_is_raining": -2.037623452101252,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -1.0823222087904611,
+                "read_minecraft_player_nearest_hostile_dist": -2.1673155593074624,
+                "read_minecraft_player_nearest_player_dist": -2.0788442999997643,
+                "read_minecraft_player_on_ground": -2.067938791704364,
+                "read_minecraft_player_oxygen": -2.09777883325296,
+                "read_minecraft_player_saturation": -2.125978037501045,
+                "read_minecraft_player_speed": -2.0,
+                "read_minecraft_player_time_of_day": -2.1589103647420416,
+                "read_minecraft_player_xp_level": -2.1578040501481155,
+                "read_minecraft_player_y_altitude": -2.0374584749981297,
+                "sense_minecraft_player": -1.2405210163720768
+              }
+            }
+          },
+          "executed_actions_to_criterion": 32,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 2
+        }
+      },
+      {
+        "seed": 17,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.26,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 0.5,
+        "shore_roam_calls": 14,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0783781458740123,
+                "minecraft_player_escape_water": -0.15754488021229918,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.018622022900672,
+                "minecraft_player_move_to": -2.1255447448565974,
+                "minecraft_player_place_block": -2.0956942083721515,
+                "minecraft_player_turn": -2.056576953124022,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0170688625003095,
+                "read_minecraft_player_hostile_count": -2.0909434583736584,
+                "read_minecraft_player_is_in_water": -2.054760931248893,
+                "read_minecraft_player_is_raining": -2.148472081105865,
+                "read_minecraft_player_light_level": -2.034012654199614,
+                "read_minecraft_player_look_pitch": -2.0530708593476446,
+                "read_minecraft_player_nearest_hostile_dist": -2.215991760327597,
+                "read_minecraft_player_nearest_player_dist": -2.147700959307258,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.1243681104810093,
+                "read_minecraft_player_saturation": -2.1710106780490603,
+                "read_minecraft_player_speed": -2.139589223903022,
+                "read_minecraft_player_time_of_day": -2.1484136499930173,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            },
+            "2": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0783781458740123,
+                "minecraft_player_escape_water": -0.07877244010614959,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.018622022900672,
+                "minecraft_player_move_to": -2.1255447448565974,
+                "minecraft_player_place_block": -2.0956942083721515,
+                "minecraft_player_turn": -2.056576953124022,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0170688625003095,
+                "read_minecraft_player_hostile_count": -2.0909434583736584,
+                "read_minecraft_player_is_in_water": -2.054760931248893,
+                "read_minecraft_player_is_raining": -2.148472081105865,
+                "read_minecraft_player_light_level": -2.034012654199614,
+                "read_minecraft_player_look_pitch": -2.0530708593476446,
+                "read_minecraft_player_nearest_hostile_dist": -2.215991760327597,
+                "read_minecraft_player_nearest_player_dist": -2.147700959307258,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.1243681104810093,
+                "read_minecraft_player_saturation": -2.1710106780490603,
+                "read_minecraft_player_speed": -2.139589223903022,
+                "read_minecraft_player_time_of_day": -2.1484136499930173,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            },
+            "5": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0783781458740123,
+                "minecraft_player_escape_water": -0.03388400240094143,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -2.018622022900672,
+                "minecraft_player_move_to": -2.1255447448565974,
+                "minecraft_player_place_block": -2.0956942083721515,
+                "minecraft_player_turn": -2.056576953124022,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0170688625003095,
+                "read_minecraft_player_hostile_count": -2.0909434583736584,
+                "read_minecraft_player_is_in_water": -2.054760931248893,
+                "read_minecraft_player_is_raining": -2.148472081105865,
+                "read_minecraft_player_light_level": -2.034012654199614,
+                "read_minecraft_player_look_pitch": -2.0530708593476446,
+                "read_minecraft_player_nearest_hostile_dist": -2.215991760327597,
+                "read_minecraft_player_nearest_player_dist": -2.147700959307258,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.1243681104810093,
+                "read_minecraft_player_saturation": -2.1710106780490603,
+                "read_minecraft_player_speed": -2.139589223903022,
+                "read_minecraft_player_time_of_day": -2.1484136499930173,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            },
+            "10": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0,
+                "minecraft_player_eat": -2.0783781458740123,
+                "minecraft_player_escape_water": -0.08220858210712052,
+                "minecraft_player_flee": -2.0,
+                "minecraft_player_mine_block": -1.0351661558005218,
+                "minecraft_player_move_to": -2.1255447448565974,
+                "minecraft_player_place_block": -2.0956942083721515,
+                "minecraft_player_turn": -2.056576953124022,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.0,
+                "read_minecraft_player_health": -2.0170688625003095,
+                "read_minecraft_player_hostile_count": -2.0909434583736584,
+                "read_minecraft_player_is_in_water": -2.054760931248893,
+                "read_minecraft_player_is_raining": -2.148472081105865,
+                "read_minecraft_player_light_level": -2.034012654199614,
+                "read_minecraft_player_look_pitch": -2.0530708593476446,
+                "read_minecraft_player_nearest_hostile_dist": -2.215991760327597,
+                "read_minecraft_player_nearest_player_dist": -2.147700959307258,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.1243681104810093,
+                "read_minecraft_player_saturation": -2.1710106780490603,
+                "read_minecraft_player_speed": -2.139589223903022,
+                "read_minecraft_player_time_of_day": -2.1484136499930173,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.0
+              }
+            }
+          },
+          "executed_actions_to_criterion": 35,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 2
+        }
+      },
+      {
+        "seed": 18,
+        "first_post_surfaced": true,
+        "first_post_latency_s": 2.245,
+        "post_p_surface": 1.0,
+        "pre_p_surface": 0.5,
+        "shore_roam_calls": 14,
+        "training": {
+          "first_surfaced_episode": 1,
+          "greedy_in_water_after": {
+            "1": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0870796373987104,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.15964746250647294,
+                "minecraft_player_flee": -2.0575885812490013,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.1501099499335394,
+                "minecraft_player_place_block": -2.0950059062524815,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.057963687524898,
+                "read_minecraft_player_health": -2.019189440624905,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.1009732563077703,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.152179152978351,
+                "read_minecraft_player_nearest_hostile_dist": -2.034625908351154,
+                "read_minecraft_player_nearest_player_dist": -2.129754311568104,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.101551718704286,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0955468593747355,
+                "read_minecraft_player_time_of_day": -2.1108708635962103,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.1759685435870777
+              }
+            },
+            "2": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0870796373987104,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.07982373125323647,
+                "minecraft_player_flee": -2.0575885812490013,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.1501099499335394,
+                "minecraft_player_place_block": -2.0950059062524815,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.057963687524898,
+                "read_minecraft_player_health": -2.019189440624905,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.1009732563077703,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.152179152978351,
+                "read_minecraft_player_nearest_hostile_dist": -2.034625908351154,
+                "read_minecraft_player_nearest_player_dist": -2.129754311568104,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.101551718704286,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0955468593747355,
+                "read_minecraft_player_time_of_day": -2.1108708635962103,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.1759685435870777
+              }
+            },
+            "5": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0870796373987104,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.009977966406654559,
+                "minecraft_player_flee": -2.0575885812490013,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -2.1501099499335394,
+                "minecraft_player_place_block": -2.0950059062524815,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.057963687524898,
+                "read_minecraft_player_health": -2.019189440624905,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.1009732563077703,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.152179152978351,
+                "read_minecraft_player_nearest_hostile_dist": -2.034625908351154,
+                "read_minecraft_player_nearest_player_dist": -2.129754311568104,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.101551718704286,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0955468593747355,
+                "read_minecraft_player_time_of_day": -2.1108708635962103,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.1759685435870777
+              }
+            },
+            "10": {
+              "key": [
+                "raw",
+                true,
+                3
+              ],
+              "best": [
+                "minecraft_player_escape_water"
+              ],
+              "q": {
+                "minecraft_player_attack_nearest": -2.0870796373987104,
+                "minecraft_player_eat": -2.0,
+                "minecraft_player_escape_water": -0.0923822343509322,
+                "minecraft_player_flee": -2.0575885812490013,
+                "minecraft_player_mine_block": -2.0,
+                "minecraft_player_move_to": -1.0921414770411295,
+                "minecraft_player_place_block": -2.0950059062524815,
+                "minecraft_player_turn": -2.0,
+                "read_minecraft_player_distance_from_spawn": -2.0,
+                "read_minecraft_player_food": -2.057963687524898,
+                "read_minecraft_player_health": -2.019189440624905,
+                "read_minecraft_player_hostile_count": -2.0,
+                "read_minecraft_player_is_in_water": -2.0,
+                "read_minecraft_player_is_raining": -2.1009732563077703,
+                "read_minecraft_player_light_level": -2.0,
+                "read_minecraft_player_look_pitch": -2.152179152978351,
+                "read_minecraft_player_nearest_hostile_dist": -2.034625908351154,
+                "read_minecraft_player_nearest_player_dist": -2.129754311568104,
+                "read_minecraft_player_on_ground": -2.0,
+                "read_minecraft_player_oxygen": -2.101551718704286,
+                "read_minecraft_player_saturation": -2.0,
+                "read_minecraft_player_speed": -2.0955468593747355,
+                "read_minecraft_player_time_of_day": -2.1108708635962103,
+                "read_minecraft_player_xp_level": -2.0,
+                "read_minecraft_player_y_altitude": -2.0,
+                "sense_minecraft_player": -2.1759685435870777
+              }
+            }
+          },
+          "executed_actions_to_criterion": 33,
+          "criterion_reached": true,
+          "reasons": [
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced",
+            "surfaced"
+          ]
+        },
+        "key_coverage": {
+          "first_post_selects": 1,
+          "share_visited_with_escape_tried": 1.0,
+          "first_select_key_tried": true,
+          "distinct_water_keys": 1
+        }
+      }
+    ]
+  },
+  "n_clean": {
+    "fear": 8,
+    "random": 8,
+    "q_explore": 8,
+    "q_explore_prior": 8,
+    "q_explore_raw": 8
+  },
+  "first_post_rate": {
+    "fear": 1.0,
+    "random": 0.25,
+    "q_explore": 1.0,
+    "q_explore_prior": 1.0,
+    "q_explore_raw": 1.0
+  },
+  "refused": [],
+  "attempts": {
+    "fear/11": 1,
+    "fear/12": 1,
+    "fear/13": 1,
+    "fear/14": 1,
+    "fear/15": 1,
+    "fear/16": 1,
+    "fear/17": 1,
+    "fear/18": 1,
+    "q_explore/11": 1,
+    "q_explore/12": 1,
+    "q_explore/13": 1,
+    "q_explore/14": 1,
+    "q_explore/15": 1,
+    "q_explore/16": 1,
+    "q_explore/17": 1,
+    "q_explore/18": 1,
+    "q_explore_prior/11": 1,
+    "q_explore_prior/12": 1,
+    "q_explore_prior/13": 1,
+    "q_explore_prior/14": 1,
+    "q_explore_prior/15": 1,
+    "q_explore_prior/16": 1,
+    "q_explore_prior/17": 1,
+    "q_explore_prior/18": 1,
+    "q_explore_raw/11": 1,
+    "q_explore_raw/12": 1,
+    "q_explore_raw/13": 1,
+    "q_explore_raw/14": 1,
+    "q_explore_raw/15": 1,
+    "q_explore_raw/16": 1,
+    "q_explore_raw/17": 1,
+    "q_explore_raw/18": 1,
+    "random/11": 1,
+    "random/12": 1,
+    "random/13": 1,
+    "random/14": 1,
+    "random/15": 1,
+    "random/16": 1,
+    "random/17": 1,
+    "random/18": 1
+  },
+  "apparatus_records": [
+    {
+      "path": "docs/experiments/data/b1_exp60_floor_apparatus_2026-10-14.json",
+      "sha256": "ee59b682829923edc15a01c905f18ae064d8937d0ab262c4cb0be5675783afea",
+      "ts": 1791998579.735091
+    }
+  ],
+  "tests": {
+    "H1": {
+      "observed_diff": 0.75,
+      "p_one_sided": 0.0034965034965034965,
+      "relabellings": 12870
+    },
+    "H2": {
+      "observed_diff": 0.0,
+      "p_one_sided": 1.0,
+      "relabellings": 12870
+    }
+  },
+  "holm_shown": {
+    "H1": true,
+    "H2": false
+  },
+  "verdict": "FLOOR_MATCHED_Q",
+  "q_explore_under_explored_seeds": [],
+  "annotation": null,
+  "data": "docs/experiments/data/b1_exp60_floor_48ce40118c20.jsonl",
+  "data_sha256": "321872b080a8de148d44d9668184cd4934df5bf71ceb2f70972839a506d1fb8f",
+  "scope": {
+    "all_rows": true
+  },
+  "mock": false,
+  "provenance": {
+    "executed_maxim_file": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "055621b5f6849d963275aceeb74e615cac2648a9",
+    "harness_run_id": "33ad8d4bc4be42c39ef9ac9a42533a00",
+    "harness_family": "in_process",
+    "working_tree_dirty_src_scripts": false,
+    "code_tree_sha256": "b30da369d6218f50f98adedb2e716db0c3f3b2148a224f32a1beec584dabff42",
+    "python": "/Users/dennys/RMSrv/scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/src"
+  }
+}

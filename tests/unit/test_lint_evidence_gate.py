@@ -2998,11 +2998,14 @@ def test_the_merge_base_checks_scopes_structure_only() -> None:
 
 def test_the_real_pass_table_scopes_match_each_rows_current_head() -> None:
     """The migration (#1141): every entry that can re-date a row AT its current token supports that row's head as the
-    ledger stands, so the next re-date passes the scope check. An entry that only targets another token (b1_verdict:
-    PARTIAL (narrow) for an EARNED row, the BF2 demotion) is out of this invariant by design."""
+    ledger stands, so the next re-date passes the scope check. An entry that only targets another token is out of
+    this invariant by design, and each such skip is named below (the set must match exactly: a stale name fails too)."""
     # Every skip is a reviewed decision (architecture review, PR-C S2): a new one fails until it is named here.
     exempt = {
-        ("b1_verdict", "T1-13"): "targets only PARTIAL (narrow): the BF2 demotion of an EARNED row, never a re-date",
+        ("exp60_verdict", "T1-13"): (
+            "T1-13 is PARTIAL (narrow: floor matched) under BF2 since B1 (2026-10-14); an Exp 60 re-run targets only "
+            "EARNED/MAINTAINED, which lint_bf2_obligation refuses until an ESTABLISHED FLOORS_BEATEN b1_verdict"
+        ),
         ("exp10_verdict", "T1-1"): "T1-1 is SUPERSEDED; no re-date of a superseded row is supported",
     }
     rows = {r.id: r for r in G.L.parse((REPO / G.L.LEDGER_PATH).read_text())[0]}
@@ -3015,7 +3018,7 @@ def test_the_real_pass_table_scopes_match_each_rows_current_head() -> None:
                 skipped.add((kind, row_id))
                 continue
             assert G.row_scope(rows[row_id]) in entry["scopes"], (kind, row_id)
-    assert skipped <= set(exempt), sorted(skipped - set(exempt))
+    assert skipped == set(exempt), (sorted(skipped - set(exempt)), sorted(set(exempt) - skipped))
 
 
 def test_a_new_scope_in_the_pass_table_is_noted() -> None:
@@ -3835,3 +3838,86 @@ def test_the_gate_refuses_removing_an_obliges_block_from_main(rig) -> None:
     rig.head(STALE_BOTH.replace("claim T1-1", "claim T1-1 reworded"))
     failures, _ = rig.run()
     assert any("`obliges` block on main may not be removed" in f for f in failures), failures
+
+
+RELEASE_CLAUSE = {
+    "id": "release-1.3.2-T1-1",
+    "kind": "release",
+    "row": "T1-1",
+    "status": "STALE",
+    "release": "1.3.2",
+    "owner": "owner",
+    "reason": "re-scoped",
+    "ref": "docs/plans/roadmap_1_3_x.md",
+    "date": "2026-10-14",
+}
+
+
+def _release_problems(rig: Rig, clause: dict, base_list=()) -> list[str]:
+    rig.write(G.EXCEPTIONS, json.dumps([*base_list, clause]))
+    rig.head(STALE_BOTH)
+    return G.exceptions_problems(list(base_list), [*base_list, clause], G.Repo(rig.root), rig.base_sha)
+
+
+def test_a_release_exception_is_a_known_kind(rig) -> None:
+    """M25: an owner's 'this Stale row does not block release X' is a committed, machine-readable clause."""
+    rig.base(STALE_BOTH)
+    assert _release_problems(rig, RELEASE_CLAUSE) == []
+
+
+@pytest.mark.parametrize(
+    "edit, why",
+    [
+        ({"row": "T1-01"}, "which the ledger does not have"),
+        ({"status": "BROKEN"}, "names status BROKEN but T1-1 is STALE"),
+    ],
+)
+def test_a_new_release_exception_names_a_row_that_holds_its_status(rig, edit, why) -> None:
+    rig.base(STALE_BOTH)
+    problems = _release_problems(rig, {**RELEASE_CLAUSE, **edit})
+    assert any(why in p for p in problems), problems
+
+
+def test_a_release_exception_on_main_is_checked_for_shape_only(rig) -> None:
+    """Its row may since have moved; the clause is then inert for the release check, never a failure of every PR."""
+    rig.base(STALE_BOTH)
+    gone = {**RELEASE_CLAUSE, "row": "T1-7"}
+    assert G.exceptions_problems([gone], [gone], G.Repo(rig.root), rig.base_sha) == []
+
+
+def test_a_new_release_exception_without_a_repo_is_refused() -> None:
+    problems = G.exceptions_problems([], [RELEASE_CLAUSE])
+    assert any("cannot be checked against the ledger" in p for p in problems), problems
+
+
+@pytest.mark.parametrize(
+    "edit, why",
+    [
+        ({"ref": ""}, "lacks a required field: ref"),
+        ({"release": None}, "lacks a required field: release"),
+        ({"status": 3}, "lacks a required field: status"),
+        ({"status": "PARTIAL"}, "only STALE/BROKEN block a release"),
+        ({"release": "1.3"}, "not one X.Y.Z version"),
+        ({"release": "1.3.x"}, "not one X.Y.Z version"),
+        ({"also_covers": "1.3.3"}, "fields outside the form: also_covers"),
+    ],
+)
+def test_a_release_exception_names_one_row_status_and_version(edit, why) -> None:
+    problem = G.release_exception_problem({**RELEASE_CLAUSE, **edit})
+    assert problem and why in problem, problem
+    assert G.release_exception_problem(RELEASE_CLAUSE) is None
+
+
+def test_a_release_exception_moves_no_row() -> None:
+    """It is not a ledger clause: it never supplies support for a status change."""
+    row = G.L.Row(id="T1-1", table="Tier 1", line=1, cells={}, token="STALE", date="2026-09-30")
+    assert G.active_exceptions([RELEASE_CLAUSE], row, row) == []
+    as_ledger = {
+        **RELEASE_CLAUSE,
+        "kind": "ledger",
+        "to": "STALE",
+        "to_date": "2026-09-30",
+        "path": "p",
+        "from": "STALE",
+    }
+    assert G.active_exceptions([as_ledger], row, row), "positive control: a ledger clause for the same row acts"

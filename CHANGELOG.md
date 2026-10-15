@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Evidence status at the cut (owner decision 2026-10-14)
+
+- **T1-2 (Exp 37, cross-session behavioural delta) ships STALE.** Its "prompt construction change" trigger fired
+  on 2026-10-02 and the row was not re-fired. The committed exception `release-1.3.2-T1-2`
+  (`docs/experiments/evidence_exceptions.json`, a new `kind: "release"` clause that `scripts/lint_evidence_gate.py`
+  checks) covers this release only. The row carries no EARNED claim. Cite the cross-model Goldilocks map only with
+  L8's caveat: unverifiable, not refuted. The owed re-fire is L8's dose-response design in 1.4
+  (`docs/plans/baseline_floors.md` Stage B4).
+
 ### Added (console run history + health — contract 0.6.0)
 
 - **The Console can open past runs.** Five read-only routes: `GET /api/runs` (newest first, keyset-paged),
