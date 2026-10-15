@@ -502,6 +502,10 @@ found 1.3.2 not ready. The owner decided:
   - [#984](https://github.com/dennys246/Maxim/issues/984), [#985](https://github.com/dennys246/Maxim/issues/985),
     [#988](https://github.com/dennys246/Maxim/issues/988) and [#989](https://github.com/dennys246/Maxim/issues/989),
     batch 2's follow-ups: moved to 1.3.3, Session C.
+  - [#1285](https://github.com/dennys246/Maxim/issues/1285), [#1286](https://github.com/dennys246/Maxim/issues/1286)
+    and [#1287](https://github.com/dennys246/Maxim/issues/1287), the #1268 review's NITs (the heartbeat
+    sampler's ownership, the scrub on the failing thread, one `HealthLog` shared across console tests): filed
+    2026-10-14, 1.3.3, Session C.
   - [#863](https://github.com/dennys246/Maxim/issues/863) step 2, the sites outside the loop (`orchestrator.py` and
     `cli.py::_main_impl`): moved with those slices. It stays open on #863, home recorded.
 
