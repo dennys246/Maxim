@@ -841,9 +841,12 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   design reviews and each rung's harness builds them. Its first rig work is the Exp 60 floor (B1, no LLM;
   its seam is a design-review decision); the bare loop (B2) waits for the `start_simulation_mode`
   decomposition, so no new LLM-path claim can be EARNED before it. Not Phase 0 item 2 (that item adds no public names) and not a benchmark framework (below).
-  *B1 status (2026-10-13):* the hook, the harness, its evidence entry and the BF2 obligation lint are merged (#1236,
-  #1238, #1245, #1258). The seed 99 rig diagnostic passed every liveness check, and the prereg is FROZEN v5. Next is
-  the run (§Run runbook): a same-day water check and its record PR first.
+  *B1 status (2026-10-14): RUN, `FLOOR_MATCHED_Q`.* The hook, the harness, its evidence entry and the BF2 obligation
+  lint are merged (#1236, #1238, #1245, #1258); the prereg froze at v5 (#1274) and the apparatus record is #1278.
+  Campaign `48ce40118c20`: 40/40 arm-seeds clean; first post placement surfaced FEAR 8/8, Q_EXPLORE 8/8, RANDOM 2/8
+  (FEAR > RANDOM p = 0.0035; FEAR > Q_EXPLORE not shown, p = 1.0). Under BF2, T1-13 is now `PARTIAL (narrow: floor
+  matched)`, moved in the data PR itself. The open question it leaves for E1–E3: a contingency where the floor can
+  lose (delayed credit, transfer across situations), since a one-step learner matches FEAR here.
   *B4 is T1-2's owed re-fire (owner, 2026-10-14):* L8's dose-response design, homed here. 1.3.2 released
   without it under the committed exception `release-1.3.2-T1-2`, and T1-2 stays STALE until B4's run lands.
 
