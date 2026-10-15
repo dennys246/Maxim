@@ -107,6 +107,7 @@ from tests.unit._orch_harness import (  # noqa: E402
     _PROVENANCE_MASKED,
     ARMS,
     REPO_ROOT,
+    RUN_SIDE,
     FakeRouter,
     WrongCheckout,
     assert_this_checkout,
@@ -197,6 +198,84 @@ def test_pre_campaign_turns_run_without_a_narrator(tmp_path_factory: pytest.Temp
     assert t["result"]["finish_reason"] == "completed"
     assert t["bridge_finish_calls"] and not t["bridge_finish_calls"][0], "the runner ended it, no finish_context"
     assert any(f.startswith("campaign_analysis_") for f in t["sim_reports_files"])
+
+
+# ── #1260: the narrator's tool descriptions are the narrator's alone ──────────
+#
+# Red gate (xfail strict until the fix): §5 of ``start_simulation_mode`` wrote the narrator's tool descriptions
+# into the process-global ``modes.definitions.TOOL_DESCRIPTIONS``, so the AUT, running at the same time in the
+# same process, read ``respond: NOT AVAILABLE`` and got a ``process`` follow-up after every ``respond``. These
+# read the narrator arm's real run (the trace, and ``RUN_SIDE``: the raw prompts and the dict before the harness
+# restores it).
+
+_NARRATOR_SEND_MESSAGE = "This is your PRIMARY tool for interacting with the AUT."  # the narrator's own entry
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1260: the narrator's 'respond' overrides the AUT's")
+@pytest.mark.timeout(240)
+def test_the_auts_respond_is_terminal_1260(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """The AUT's ``respond`` is terminal (builtin ``followup_type: None``): no follow-up call, one action a turn."""
+    t = _trace("narrator", tmp_path_factory)
+    assert [c["executed"] for c in t["aut_calls"] if c["kind"] == "followup"] == []
+    assert [[a["tool"] for a in turn["actions"]] for turn in t["turns"]] == [["respond"], ["respond"]]
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1260: the AUT's prompt reads the narrator's entry")
+@pytest.mark.timeout(240)
+def test_the_auts_prompt_describes_its_own_respond_1260(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Every AUT prompt describes ``respond`` with the builtin entry, never the narrator's 'NOT AVAILABLE'."""
+    from maxim.modes.definitions import TOOL_DESCRIPTIONS
+
+    _trace("narrator", tmp_path_factory)
+    aut_prompts = RUN_SIDE["narrator"]["prompts"]["aut"]
+    assert aut_prompts, "the AUT was prompted"
+    assert not [p for p in aut_prompts if "NOT AVAILABLE" in p]
+    assert not [p for p in aut_prompts if _NARRATOR_SEND_MESSAGE in p]
+    builtin = TOOL_DESCRIPTIONS["respond"]["description"]
+    assert all(builtin in p for p in aut_prompts if not p.startswith("TOOL_PROMPT|You just executed "))
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1260: section 5 writes the process-global dict")
+@pytest.mark.timeout(240)
+def test_a_run_leaves_the_global_tool_descriptions_untouched_1260(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """``TOOL_DESCRIPTIONS`` after a real run, read before the harness restores it, deep-equals it before."""
+    from maxim.modes.definitions import get_tool_followup_type
+
+    _trace("narrator", tmp_path_factory)
+    side = RUN_SIDE["narrator"]
+    assert side["tool_descriptions_after"] == side["tool_descriptions_before"]
+    assert side["tool_descriptions_after"]["respond"]["followup_type"] is None
+    assert get_tool_followup_type("respond", "active") is None  # the restored dict (the harness put it back)
+
+
+@pytest.mark.timeout(240)
+def test_the_narrators_prompt_keeps_its_own_tool_descriptions_1260(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """The narrator still reads its own entries (the fix must not take them from it): its planning prompts carry
+    the narrator's ``send_message`` text, and its ``send_message`` still gets a ``process`` follow-up."""
+    t = _trace("narrator", tmp_path_factory)
+    plans = [
+        p for p in RUN_SIDE["narrator"]["prompts"]["narrator"] if not p.startswith("TOOL_PROMPT|You just executed ")
+    ]
+    assert plans and all(_NARRATOR_SEND_MESSAGE in p for p in plans)
+    assert [c["executed"] for c in t["narrator_calls"] if c["kind"] == "followup"] == ["send_message", "send_message"]
+
+
+# ── #1263 (the DefaultNetwork part) / #1281: the loop that starts the AUT's DN stops it ──
+
+
+_DN_THREADS = ("DefaultNetwork", "DN-BackgroundTasks")
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1263/#1281: sim teardown skips the AUT DN's stop")
+@pytest.mark.timeout(240)
+@pytest.mark.parametrize("arm", sorted(ARMS))
+def test_the_run_leaves_no_default_network_running_1263(arm: str, tmp_path_factory: pytest.TempPathFactory) -> None:
+    """``run_agentic_loop`` starts the AUT's DefaultNetwork (``loop_setup.build_loop_run``) and its teardown must stop
+    it in a sim too. A leftover DN keeps ticking on the dead run's bio state and draws from the process-global
+    ``random``, which broke ``test_seeding`` later in the suite (#1281). Read off the threads the run started that are
+    still alive after it returned (``threads_left_alive.added``), not off the golden."""
+    added = _trace(arm, tmp_path_factory)["threads_left_alive"]["added"]
+    assert [name for name in added if name in _DN_THREADS] == []
 
 
 def test_the_golden_is_non_vacuous() -> None:

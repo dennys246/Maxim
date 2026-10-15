@@ -147,6 +147,10 @@ ARMS: dict[str, dict[str, Any]] = {
 # The report writers the run calls, in order (a removed or reordered save shows even when a later
 # save of the same file masks it on disk).
 _REPORT_WRITERS = ("save_report", "save_action_log", "save_aut_state", "analyze_simulation", "emit_report_json")
+# Per arm, what the LAST run left behind outside the canonical trace (so the golden does not pin it): each role's
+# raw prompts, and ``TOOL_DESCRIPTIONS`` as the run left it, read BEFORE ``_GlobalState.restore`` puts it back
+# (#1260: a narrator-only description must not reach the process-global dict).
+RUN_SIDE: dict[str, dict[str, Any]] = {}
 SETTLE_TIMEOUT_S = 30.0  # a harness wait that exceeds this is a hang, not a slow run
 _AUT_SETTLE_S = 3.0  # SimulationBridge's default settle_s: the same quiet window a turn waits for
 
@@ -204,6 +208,7 @@ class FakeRouter:
             "manifest": [],
         }
         self.unsorted: list[str] = []
+        self.prompts: dict[str, list[str]] = {role: [] for role in self.calls}  # raw, for RUN_SIDE only
         self._lock = threading.Lock()
 
     # The router surface the run touches besides generate_json.
@@ -254,6 +259,7 @@ class FakeRouter:
         call["answer"] = answer.get("action") if role in ("narrator", "aut") else sorted(answer)
         with self._lock:
             self.calls[role].append(call)
+            self.prompts[role].append(prompt)
         return copy.deepcopy(answer)
 
     # ── per-role scripts ─────────────────────────────────────────────────
@@ -703,6 +709,13 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
             setattr(obj, name, orig)
         if isinstance(stdin, QueueStdin):
             stdin.eof()  # unblock a reader still waiting for a line
+        from maxim.modes import definitions
+
+        RUN_SIDE[arm] = {
+            "prompts": router.prompts,
+            "tool_descriptions_before": state.tool_descriptions,
+            "tool_descriptions_after": copy.deepcopy(definitions.TOOL_DESCRIPTIONS),
+        }
         state.restore()
 
 
