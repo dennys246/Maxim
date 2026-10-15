@@ -43,33 +43,6 @@ from typing import Any, Literal
 logger = logging.getLogger(__name__)
 
 
-def _extract_reply(turn: dict[str, Any]) -> str | None:
-    """Pull the agent's actual words out of a bridge turn.
-
-    The bridge derives its ``response`` by joining respond/speak
-    ``result_output``, which works for the sim's ``SimRespondTool`` (its output
-    IS the text) but NOT for the production :class:`RespondTool`, whose output
-    is a delivery RECEIPT (``{"delivered": True, "mode": "cli"}``). The words
-    live in ``tool_args["message"]``. Prefer those; fall back to the bridge's
-    own field so both tool flavors work.
-    """
-    parts: list[str] = []
-    for action in turn.get("actions") or []:
-        if getattr(action, "tool_name", "") not in ("respond", "speak"):
-            continue
-        args = getattr(action, "tool_args", None) or {}
-        message = args.get("message") or args.get("text")
-        if message:
-            parts.append(str(message))
-    if parts:
-        return "\n".join(parts)
-    fallback = turn.get("response")
-    # Guard against the receipt dict leaking through as a stringified dict.
-    if isinstance(fallback, dict) or not fallback:
-        return None
-    return str(fallback)
-
-
 def _action_names(turn: dict[str, Any]) -> list[str]:
     return [str(getattr(a, "tool_name", "?")) for a in (turn.get("actions") or [])]
 
@@ -300,9 +273,9 @@ class MaximHandle:
         # echoes locally and dedupes this; a terminal/replay consumer needs it.
         sim_log("USER", text, {"text": text}, agent_id=self.agent_id)
         result = bridge.send_and_wait(text, timeout=timeout)
-        reply = _extract_reply(result)
-        # Normalize so programmatic callers and the wire agree on the text.
-        result["response"] = reply
+        # The bridge's ``response`` is the agent's words (each speech action's ``utterance``, #1261), so the
+        # wire and programmatic callers read the same text with no console-side recovery.
+        reply = result.get("response")
         # What the turn actually DID. Carried on EVERY turn, not just silent
         # ones: `sim_action` (the MOTOR record) is only emitted from
         # fear_gate.py, and the console handle builds with_fear_gate=False —

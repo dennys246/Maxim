@@ -38,6 +38,7 @@ entity:
       affordances:
         speak:
           params: {message: str}
+          speech_param: message
           description: "Talk to the fixer"
         negotiate:
           params: {offer: str}

@@ -29,6 +29,7 @@ entity:
       affordances:
         speak:
           params: {message: str}
+          speech_param: message
           description: "Say something to this character"
     physical:
       abstract: true  # capability-only — no sensors (C4)

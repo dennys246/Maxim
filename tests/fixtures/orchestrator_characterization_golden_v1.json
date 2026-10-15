@@ -638,8 +638,10 @@
     "provider_failures": {},
     "record_kind": "sim_report",
     "response_texts": [
-     "{'delivered': True, 'mode': 'cli'}",
-     "{'delivered': True, 'mode': 'cli'}"
+     "I'm Maxim, a robot assistant designed to understand reality and help people.",
+     "That is all.",
+     "I heard: what is your favourite colour",
+     "That is all."
     ],
     "session_id": "<STAMP>",
     "substrate_metrics": {},
@@ -770,7 +772,8 @@
       "tool_args": {
        "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
       },
-      "tool_name": "respond"
+      "tool_name": "respond",
+      "utterance": "I'm Maxim, a robot assistant designed to understand reality and help people."
      },
      {
       "block_reason": null,
@@ -780,7 +783,8 @@
       "tool_args": {
        "text": "That is all."
       },
-      "tool_name": "say"
+      "tool_name": "say",
+      "utterance": "That is all."
      },
      {
       "block_reason": null,
@@ -790,7 +794,8 @@
       "tool_args": {
        "message": "I heard: what is your favourite colour"
       },
-      "tool_name": "respond"
+      "tool_name": "respond",
+      "utterance": "I heard: what is your favourite colour"
      },
      {
       "block_reason": null,
@@ -800,7 +805,8 @@
       "tool_args": {
        "text": "That is all."
       },
-      "tool_name": "say"
+      "tool_name": "say",
+      "utterance": "That is all."
      }
     ],
     "blocked_actions": 0,
@@ -1209,7 +1215,7 @@
       }
      ],
      "noop_count": 0,
-     "response": "{'delivered': True, 'mode': 'cli'}",
+     "response": "I'm Maxim, a robot assistant designed to understand reality and help people.\nThat is all.",
      "text": "Hello, who are you?",
      "timed_out": false,
      "turn": 1
@@ -1236,7 +1242,7 @@
       }
      ],
      "noop_count": 0,
-     "response": "{'delivered': True, 'mode': 'cli'}",
+     "response": "I heard: what is your favourite colour\nThat is all.",
      "text": "What is your favourite colour?",
      "timed_out": false,
      "turn": 2
@@ -1883,9 +1889,12 @@
     "provider_failures": {},
     "record_kind": "sim_report",
     "response_texts": [
-     "{'delivered': True, 'mode': 'cli'}",
-     "{'delivered': True, 'mode': 'cli'}",
-     "{'delivered': True, 'mode': 'cli'}"
+     "I heard: you wake in a quiet room.",
+     "That is all.",
+     "I heard: a bell rings twice.",
+     "That is all.",
+     "I heard: the room goes dark.",
+     "That is all."
     ],
     "session_id": "<STAMP>",
     "substrate_metrics": {},
@@ -2016,7 +2025,8 @@
       "tool_args": {
        "message": "I heard: you wake in a quiet room."
       },
-      "tool_name": "respond"
+      "tool_name": "respond",
+      "utterance": "I heard: you wake in a quiet room."
      },
      {
       "block_reason": null,
@@ -2026,7 +2036,8 @@
       "tool_args": {
        "text": "That is all."
       },
-      "tool_name": "say"
+      "tool_name": "say",
+      "utterance": "That is all."
      },
      {
       "block_reason": null,
@@ -2036,7 +2047,8 @@
       "tool_args": {
        "message": "I heard: a bell rings twice."
       },
-      "tool_name": "respond"
+      "tool_name": "respond",
+      "utterance": "I heard: a bell rings twice."
      },
      {
       "block_reason": null,
@@ -2046,7 +2058,8 @@
       "tool_args": {
        "text": "That is all."
       },
-      "tool_name": "say"
+      "tool_name": "say",
+      "utterance": "That is all."
      },
      {
       "block_reason": null,
@@ -2056,7 +2069,8 @@
       "tool_args": {
        "message": "I heard: the room goes dark."
       },
-      "tool_name": "respond"
+      "tool_name": "respond",
+      "utterance": "I heard: the room goes dark."
      },
      {
       "block_reason": null,
@@ -2066,7 +2080,8 @@
       "tool_args": {
        "text": "That is all."
       },
-      "tool_name": "say"
+      "tool_name": "say",
+      "utterance": "That is all."
      }
     ],
     "blocked_actions": 0,
@@ -2207,7 +2222,7 @@
        ],
        "blocked": 0,
        "phase": "intro",
-       "response": "{'delivered': True, 'mode': 'cli'}",
+       "response": "I heard: you wake in a quiet room.\nThat is all.",
        "text_len": 25,
        "timed_out": false,
        "turn": 1
@@ -2219,7 +2234,7 @@
        ],
        "blocked": 0,
        "phase": "middle",
-       "response": "{'delivered': True, 'mode': 'cli'}",
+       "response": "I heard: a bell rings twice.\nThat is all.",
        "text_len": 19,
        "timed_out": false,
        "turn": 2
@@ -2231,7 +2246,7 @@
        ],
        "blocked": 0,
        "phase": "end",
-       "response": "{'delivered': True, 'mode': 'cli'}",
+       "response": "I heard: the room goes dark.\nThat is all.",
        "text_len": 19,
        "timed_out": false,
        "turn": 3
@@ -2489,7 +2504,7 @@
       }
      ],
      "noop_count": 0,
-     "response": "{'delivered': True, 'mode': 'cli'}",
+     "response": "I heard: you wake in a quiet room.\nThat is all.",
      "text": "You wake in a quiet room.",
      "timed_out": false,
      "turn": 1
@@ -2516,7 +2531,7 @@
       }
      ],
      "noop_count": 0,
-     "response": "{'delivered': True, 'mode': 'cli'}",
+     "response": "I heard: a bell rings twice.\nThat is all.",
      "text": "A bell rings twice.",
      "timed_out": false,
      "turn": 2
@@ -2543,7 +2558,7 @@
       }
      ],
      "noop_count": 0,
-     "response": "{'delivered': True, 'mode': 'cli'}",
+     "response": "I heard: the room goes dark.\nThat is all.",
      "text": "The room goes dark.",
      "timed_out": false,
      "turn": 3
@@ -3246,9 +3261,12 @@
     "provider_failures": {},
     "record_kind": "sim_report",
     "response_texts": [
-     "{'delivered': True, 'mode': 'cli'}",
-     "{'delivered': True, 'mode': 'cli'}",
-     "{'delivered': True, 'mode': 'cli'}"
+     "I'm Maxim, a robot assistant designed to understand reality and help people.",
+     "That is all.",
+     "Hello! How can I help you?",
+     "That is all.",
+     "I heard: what is your favourite colour",
+     "That is all."
     ],
     "session_id": "<STAMP>",
     "substrate_metrics": {},
@@ -3379,7 +3397,8 @@
       "tool_args": {
        "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
       },
-      "tool_name": "respond"
+      "tool_name": "respond",
+      "utterance": "I'm Maxim, a robot assistant designed to understand reality and help people."
      },
      {
       "block_reason": null,
@@ -3389,7 +3408,8 @@
       "tool_args": {
        "text": "That is all."
       },
-      "tool_name": "say"
+      "tool_name": "say",
+      "utterance": "That is all."
      },
      {
       "block_reason": null,
@@ -3399,7 +3419,8 @@
       "tool_args": {
        "message": "Hello! How can I help you?"
       },
-      "tool_name": "respond"
+      "tool_name": "respond",
+      "utterance": "Hello! How can I help you?"
      },
      {
       "block_reason": null,
@@ -3409,7 +3430,8 @@
       "tool_args": {
        "text": "That is all."
       },
-      "tool_name": "say"
+      "tool_name": "say",
+      "utterance": "That is all."
      },
      {
       "block_reason": null,
@@ -3419,7 +3441,8 @@
       "tool_args": {
        "message": "I heard: what is your favourite colour"
       },
-      "tool_name": "respond"
+      "tool_name": "respond",
+      "utterance": "I heard: what is your favourite colour"
      },
      {
       "block_reason": null,
@@ -3429,7 +3452,8 @@
       "tool_args": {
        "text": "That is all."
       },
-      "tool_name": "say"
+      "tool_name": "say",
+      "utterance": "That is all."
      }
     ],
     "blocked_actions": 0,
@@ -3895,7 +3919,7 @@
        "tool": "say"
       }
      ],
-     "response": "{'delivered': True, 'mode': 'cli'}",
+     "response": "I'm Maxim, a robot assistant designed to understand reality and help people.\nThat is all.",
      "text": "Hello, who are you?",
      "timed_out": false,
      "turn": 1
@@ -3922,7 +3946,7 @@
       }
      ],
      "noop_count": 0,
-     "response": "{'delivered': True, 'mode': 'cli'}",
+     "response": "I heard: what is your favourite colour\nThat is all.",
      "text": "What is your favourite colour?",
      "timed_out": false,
      "turn": 2
@@ -3931,5 +3955,5 @@
    "unsorted_prompts": []
   }
  },
- "generated_at_commit": "2a3dd9b784e9"
+ "generated_at_commit": "d47936e2789d"
 }

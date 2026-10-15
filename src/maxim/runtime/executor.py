@@ -271,7 +271,7 @@ class Executor:
                 return mode_denial
         if self._permissions is None:
             return None
-        tool = self.registry._tools.get(tool_name)
+        tool = self.registry.find(tool_name)
         kind = getattr(tool, "kind", None) if tool is not None else None
         if deny_only:
             return self._permissions.denial_reason(tool_name, kind=kind)
@@ -295,6 +295,21 @@ class Executor:
         (bugs ledger D82). No mode source and no permissions → everything permits.
         """
         return self._permission_denial(tool_name) is None
+
+    def resolve_tool_name(self, tool_name: str) -> str:
+        """The tool a call named *tool_name* runs: itself when registered, else its ``TOOL_ALIASES`` target
+        when that target is registered, else itself (unresolved; dispatch then reports it).
+
+        The one alias resolver: :meth:`execute` redirects through it, and ``InstrumentedExecutor`` asks it
+        which tool a recorded call really was, so a ``talk`` that ran as ``say`` is recorded as speech (#1261)
+        without a second copy of the table. Reads the registry as it is NOW, so a caller asks before dispatch.
+        """
+        if self.registry.find(tool_name) is not None:
+            return tool_name
+        alias_target = TOOL_ALIASES.get(tool_name.lower())
+        if alias_target and self.registry.find(alias_target) is not None:
+            return alias_target
+        return tool_name
 
     def execute(self, action: dict[str, Any]) -> ToolOutput:
         """Execute a tool action, returning raw ToolOutput.
@@ -331,24 +346,23 @@ class Executor:
 
         # ── Alias resolution ─────────────────────────────────────────
         original_name = tool_name
-        if tool_name not in self.registry._tools:
-            alias_target = TOOL_ALIASES.get(tool_name.lower())
-            if alias_target and alias_target in self.registry._tools:
-                import logging
+        alias_target = self.resolve_tool_name(tool_name)
+        if alias_target != tool_name:
+            import logging
 
-                logging.getLogger(__name__).info(
-                    "Tool alias: %s → %s",
-                    tool_name,
-                    alias_target,
-                )
-                self.alias_redirects.append((tool_name, alias_target))
-                # For choose aliases: inject the original tool name as the option param
-                if alias_target == "choose" and "option" not in params:
-                    params = {**params, "option": original_name}
-                tool_name = alias_target
-                # Update the action so downstream (bus, hippocampus) sees
-                # the real tool name
-                action = {**action, "tool_name": tool_name, "params": params}
+            logging.getLogger(__name__).info(
+                "Tool alias: %s → %s",
+                tool_name,
+                alias_target,
+            )
+            self.alias_redirects.append((tool_name, alias_target))
+            # For choose aliases: inject the original tool name as the option param
+            if alias_target == "choose" and "option" not in params:
+                params = {**params, "option": original_name}
+            tool_name = alias_target
+            # Update the action so downstream (bus, hippocampus) sees
+            # the real tool name
+            action = {**action, "tool_name": tool_name, "params": params}
 
         # Full check on the CANONICAL name (deny + allow), aliased or not.
         denial = self._permission_denial(tool_name)
@@ -434,7 +448,7 @@ class Executor:
             suggestions = [
                 t
                 for t in self.registry.find_similar(original_name, limit=5)
-                if self.permits(t) and getattr(self.registry._tools.get(t), "advertised", True)
+                if self.permits(t) and getattr(self.registry.find(t), "advertised", True)
             ][:3]
             if suggestions:
                 error_msg += f" Did you mean: {', '.join(suggestions)}?"

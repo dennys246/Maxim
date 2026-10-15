@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Evidence status at the cut (owner decision 2026-10-14)
+
+- **T1-2 (Exp 37, cross-session behavioural delta) ships STALE.** Its "prompt construction change" trigger fired
+  on 2026-10-02 and the row was not re-fired. The committed exception `release-1.3.2-T1-2`
+  (`docs/experiments/evidence_exceptions.json`, a new `kind: "release"` clause that `scripts/lint_evidence_gate.py`
+  checks) covers this release only. The row carries no EARNED claim. Cite the cross-model Goldilocks map only with
+  L8's caveat: unverifiable, not refuted. The owed re-fire is L8's dose-response design in 1.4
+  (`docs/plans/baseline_floors.md` Stage B4).
+
 ### Added (console run history + health — contract 0.6.0)
 
 - **The Console can open past runs.** Five read-only routes: `GET /api/runs` (newest first, keyset-paged),
@@ -489,6 +498,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Gates: `tests/unit/test_orchestrator_characterization_golden.py` (the `_1260` tests, on a real run; the slice-0
   harness now asserts that a run leaves `TOOL_DESCRIPTIONS` untouched instead of restoring it) and
   `tests/unit/test_narrator_tool_overlay_1260.py` (the interface, and no source writes the global dict).
+- **Two console apps in one process no longer stream each health event twice** (F3, #1268 follow-up). The /ws
+  hub is process-global, and every app registered its own publisher into it on the shared `HealthLog`, so clients
+  saw each `health` / `health_stall` event once per app. Apps now register one shared publisher
+  (`console/server.py::_publish_health`), and `HealthLog._emit` calls each distinct publisher once. It stays until
+  its last app leaves. Guard: `tests/unit/test_console_run_history.py::TestHealthRoutes::test_two_streaming_apps_publish_each_health_event_once`.
+- **A heartbeat restart can no longer leave two samplers running** (F2, #1268 follow-up). `HeartbeatMonitor.stop()`
+  joins with a timeout, so a slow sample could outlive it; a `start()` after that cleared the one shared stop Event,
+  and the old thread kept sampling beside the new one. Each sampler thread now owns its stop Event and `stop()` sets
+  only the one it took, as `console/health.py`'s writer does; start and stop take a lock for the check-and-set.
+  Guard: `tests/unit/test_heartbeat.py::test_a_restart_after_a_timed_out_stop_leaves_one_sampler`.
+- **The simulation narrator now sees what the agent said (#1261).** The production `respond` tool returns a
+  delivery receipt (`{"delivered": True, "mode": "cli"}`), and the AUT's words were only in its `message`
+  argument. The bridge's per-turn `response`, which `send_message` hands the narrator, `report.response_texts` and
+  `analyze_results`'s `response_samples` all joined `result_output`, so each carried the receipt, and `say` and a
+  body's `speak` affordance were not joined at all. Every narrator-driven run in which the AUT replied through
+  `respond` had a narrator choosing its next probe without the reply; the generative runner's `last_aut_response`
+  and the DM's choice classifier read the same field.
+  - **What is speech is declared on the tool.** `Tool` gains a class-level `speech_params: tuple[str, ...] = ()`:
+    the params that hold the words, in the order the tool reads them, empty meaning "not speech". `respond`
+    declares `("message",)`; `speak` and `say` declare `("text", "message", "phrase")`. An embodiment affordance
+    declares it in YAML with the new `speech_param:` key, naming the one param that holds the words
+    (`AffordanceSchema.speech_param`); the spec loader refuses a value that names none of the affordance's
+    params, and the tool generator copies it onto the tool, inferring nothing from names. Set on
+    `base_humanoid`'s `communication.speak` (the body's voice), every NPC's `social.speak`, the radio's
+    `communication.transmit`, the space-station bridge's `systems.comms_hail` and the Roman forum's
+    `speak_publicly` (SEMs that extend the agent's speech).
+  - **One recording site reads it.** `ActionRecord` gains a trailing optional field, `utterance`: the words a
+    successful speech call delivered, filled by `InstrumentedExecutor.execute` from the declaration on the tool the
+    executor actually runs. It asks the executor's own resolver, the new `Executor.resolve_tool_name` (which
+    `execute` now redirects through too), so a call to an alias run as `say` (`talk`, `speech`, `dialogue`,
+    `speech_recognition`, `speechrecognition`) counts as `say`, while `tool_name` keeps the raw name. It looks the
+    tool up with the new `ToolRegistry.find` (one lookup under the registry's lock, `None` on a miss;
+    `SimToolRegistry.find` never returns its redirect decoy), so a tool another thread deregisters mid-call cannot
+    raise before dispatch; `Executor` uses `find` too, instead of reading the registry's private dict. `utterance`
+    is `None` for other tools, failed calls, blocked calls and markers.
+  - **Every reader of the words reads `utterance`:** the bridge's `response`, `report.response_texts`,
+    `analyze_results`, the narrator's per-action summaries (`send_message`, `observe_actions`,
+    `extend_simulation`, the sub-simulation report), `check_completion`'s `responses` count (now delivered speech
+    only, `say` included, a refused `respond` excluded), the interactive turn view and summary, and
+    `SimulationResult.actions` (a new `utterance` key, as returned by `maxim.imagine()`).
+  - `RespondTool`'s output is unchanged, because it feeds the NAc outcome signature. The console's
+    `_extract_reply` workaround is deleted: `talk()` reads the bridge's `response`. `actions.jsonl` is unchanged
+    (its `params` already hold the message), and `response_texts` keeps its `list[str]` shape. Six other places
+    still name speech tools in a list; converging them is a follow-up (mechanization backlog M54).
+  - Runs on either side of this fix are not comparable where the narrator's probes depend on the AUT's replies;
+    re-assessing the affected experiment records is its own follow-up.
 - **The internet policy's batch-1 review findings: #966, #967 and #968.** Owner decisions 2026-10-14.
   - **#966:** the private-address PRE-check now classifies through the one shared `utils/net.py::is_public_address`.
     It agrees with the connect-time check, and refuses CGNAT (100.64.0.0/10) up front instead of at connect. A name

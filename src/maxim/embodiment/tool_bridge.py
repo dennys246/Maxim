@@ -282,6 +282,16 @@ def _resolve_tool_name(
 # ---------------------------------------------------------------------------
 
 
+def _affordance_speech_params(schema: AffordanceSchema) -> tuple[str, ...]:
+    """The ``Tool.speech_params`` of a generated affordance tool: its YAML ``speech_param`` declaration, as is.
+
+    Owner decision (2026-10-14): speech is DECLARED per affordance (``speech_param: message``), never inferred
+    from the modulator's name or a param's name. An affordance without the key is not speech, whatever it is
+    called; the spec loader has already refused a key that names none of the affordance's params.
+    """
+    return (schema.speech_param,) if schema.speech_param else ()
+
+
 class SensorReadTool(Tool):
     """Auto-generated tool: read a sensor on an entity."""
 
@@ -407,6 +417,8 @@ class ModulatorAffordanceTool(Tool):
         )
         self.input_schema: dict[str, Any] = dict(schema.params)
         self.timeout = schema.timeout
+        # The affordance's own ``speech_param`` declaration (#1261): its words are speech.
+        self.speech_params = _affordance_speech_params(schema)
         self._entity = entity
         self._modulator = modulator
         self._affordance_name = affordance_name

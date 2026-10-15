@@ -95,8 +95,14 @@ PRE_SLICE_SNAPSHOT = Path(__file__).resolve().parents[1] / "fixtures" / "orchest
 NEW_ORCHESTRATOR_IMPORTS: dict[str, str] = {}
 
 # A new top-level function in a pre-slice ``maxim.simulation`` module that is NOT code moved out of the run
-# (ordinary new code in, e.g., ``report.py``), as (file, name) with the reason. Empty at slice 0.
-NEW_PRE_SLICE_MODULE_FUNCTIONS: dict[tuple[str, str], str] = {}
+# (ordinary new code in, e.g., ``report.py``), as (file, name) with the reason. Empty at slice 0; the #1261 fix,
+# which is not a slice, added the first entries.
+NEW_PRE_SLICE_MODULE_FUNCTIONS: dict[tuple[str, str], str] = {
+    ("tools.py", "_action_summary"): (
+        "#1261: the narrator-facing per-action summary, factored out of SendMessageTool, ExtendSimulationTool and "
+        "SpawnSubSimulationTool (three identical copies) to add the utterance; not orchestrator run code"
+    ),
+}
 
 
 def maxim_imports(text: str, package: str = "maxim.simulation") -> set[str]:

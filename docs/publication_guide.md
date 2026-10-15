@@ -99,6 +99,12 @@ python -c "import maxim; r = maxim.diagnose(); print(r)"
 
 ### 4. Check for remaining blockers
 
+**Ledger rows (CLAUDE.md Principle 1; M25 mechanizes this step).** Every `STALE` or `BROKEN` row in
+[behavioral_graduation_candidates.md](plans/behavioral_graduation_candidates.md) blocks the release unless a
+`kind: "release"` clause in [evidence_exceptions.json](experiments/evidence_exceptions.json) names that row, that
+status and this exact version. Such a clause is an owner decision; it moves no status, and the release notes name
+it. Example: `release-1.3.2-T1-2`.
+
 Known items from Phase 12b that may be blocking:
 
 | Item | Status | Blocking? |

@@ -30,6 +30,7 @@ entity:
       affordances:
         speak:
           params: {message: str}
+          speech_param: message
           description: "Talk to the merchant"
         trade:
           params: {offer: str, request: str}

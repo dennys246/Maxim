@@ -207,3 +207,23 @@ entity:
 ```
 
 The registry discovers it automatically on next run.
+
+### Speech affordances
+
+An affordance that is the agent SPEAKING (a body's voice, talking to an NPC, a device that carries the agent's
+words) declares which of its params holds the words:
+
+```yaml
+  modulators:
+    social:
+      affordances:
+        speak:
+          params: {message: str}
+          speech_param: message
+          description: "Speak to the guard"
+```
+
+The simulation then records the call's `message` as what the agent said (`ActionRecord.utterance`), so the
+narrator, the report and `analyze_results` see the words. Speech is never inferred from an affordance's name or
+modulator: without `speech_param` the affordance is not speech. A `speech_param` that names none of the
+affordance's `params` fails the component load.
