@@ -1,1 +1,13 @@
-[]
+[
+  {
+    "id": "release-1.3.2-T1-2",
+    "kind": "release",
+    "row": "T1-2",
+    "status": "STALE",
+    "release": "1.3.2",
+    "owner": "Denny Schaedig (owner decision 2026-10-14)",
+    "reason": "Re-scoped, released without a re-fire. T1-2 carries no EARNED claim (its cross-session override claim was pulled in June), so its STALE status bounds no release claim; the cross-model Goldilocks map stays cited only with L8's caveat. The owed re-fire is L8's dose-response design in 1.4 (baseline_floors.md Stage B4, four-lens design review): a re-fire on today's stack would most likely land INCONCLUSIVE, because Arm A's baseline moved 0.42 -> 0.71-0.75 (L8). The row stays STALE until that run lands; this clause covers 1.3.2 only.",
+    "ref": "docs/plans/roadmap_1_3_x.md, Release-readiness audit 2026-10-14",
+    "date": "2026-10-14"
+  }
+]

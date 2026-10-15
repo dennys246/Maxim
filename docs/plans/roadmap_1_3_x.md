@@ -484,12 +484,25 @@ from the plan that owns it:
 
 **Release-readiness audit, 2026-10-14: owner decisions and recorded moves.** A read-only audit of `main` @ 26fcaf1b
 found 1.3.2 not ready. The owner decided:
-- **T1-2 (Exp 37) is STALE, and the release WAITS for its re-run.** This is the strict default: a Stale row
-  blocks the next release, and no exception is taken. The prerequisite is
-  [#1226](https://github.com/dennys246/Maxim/issues/1226): a non-resumed narrator on every cross-session arm, so
-  that only the agent's memory differs. The re-run's design lives in baseline-floors Stage B4
-  ([baseline_floors.md](baseline_floors.md)) and goes through the four-lens design review before the harness is
-  built.
+- **T1-2 (Exp 37) stays STALE, and 1.3.2 releases without its re-fire (owner, 2026-10-14; this replaces the
+  same day's first decision, "the release WAITS for its re-run").** The exception is committed and
+  machine-readable: `release-1.3.2-T1-2` in
+  [`evidence_exceptions.json`](../experiments/evidence_exceptions.json), a `release` clause that names the row,
+  its STALE status and 1.3.2 only (M25's form; `lint_evidence_gate.py` checks its shape). It moves no status:
+  only a run can. Why the strict default was not kept:
+  - The row carries no EARNED claim: its cross-session override claim was pulled in June. The 1.3.1 walk
+    released over a fired trigger on that ground, but the row was PARTIAL then. This is the first release over a
+    STALE row, which is why it takes a committed exception.
+  - A re-fire now would most likely be INCONCLUSIVE. Arm A's baseline moved from 0.42 to 0.71–0.75 on the same
+    commit ([L8](../limits/README.md), BINDING), so the June gate has no headroom left to measure.
+  - The prerequisite [#1226](https://github.com/dennys246/Maxim/issues/1226) is parked. Exp 37's cradle goals
+    run the synchronous generative campaign, which never consumes the narrator resume prompt, so the narrator
+    already starts fresh there.
+
+  **The owed re-fire becomes L8's dose-response design in 1.4**: baseline-floors Stage B4
+  ([baseline_floors.md](baseline_floors.md)), with a four-lens design review before the harness. The
+  cross-model Goldilocks map stays cited only with L8's caveat (unverifiable, not refuted). The 1.3.2 release
+  notes name the exception.
 - **Batch 1's review findings [#966](https://github.com/dennys246/Maxim/issues/966),
   [#967](https://github.com/dennys246/Maxim/issues/967) and [#968](https://github.com/dennys246/Maxim/issues/968)
   are fixed in 1.3.2** (Session C, one PR).
