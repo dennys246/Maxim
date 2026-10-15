@@ -196,7 +196,7 @@
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
       "qualname": "execute_and_learn",
-      "lines": 390
+      "lines": 392
     },
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
@@ -226,7 +226,7 @@
     {
       "file": "src/maxim/simulation/orchestrator.py",
       "qualname": "start_simulation_mode",
-      "lines": 3003
+      "lines": 2888
     },
     {
       "file": "src/maxim/simulation/orchestrator.py",
@@ -309,6 +309,15 @@
       "date": "2026-10-11",
       "ref": "#1224",
       "reason": "Baseline floors B1, PR-A (docs/plans/baseline_floors_b1_build.md): the substrate_policy keyword (a SubstratePolicy that picks in place of recommend_action) is one signature line and one forwarding line to loop_substrate.substrate_tick; the selection itself lives in substrate_proposal._select_action, so nothing else in the loop grows."
+    },
+    {
+      "file": "src/maxim/runtime/tool_dispatch.py",
+      "qualname": "execute_and_learn",
+      "from": 390,
+      "to": 392,
+      "date": "2026-10-14",
+      "ref": "#1260",
+      "reason": "#1260 review fold SF1: the run's own tool descriptions (LoopRun.tool_overlay, resolved once at setup by loop_state.tool_description_overlay, so a registry without tool_descriptions() fails the run before any action) reach the follow-up type as a REQUIRED keyword, overlay=, bound per run like rec_outcome: one signature line and one docstring line naming it. Reading it inside the function instead put the read after executor.execute, where a missing method booked an already-run success as a failure. Splitting execute_and_learn stays #1150's."
     }
   ],
   "history": [
@@ -350,6 +359,7 @@
     "record_outcome tightened 415 -> 413 on 2026-10-10 (#1200 Stage 2) when its tool_result observe moved into _observe_tool_result with the failure cut; execute_and_learn raised 388 -> 390 by the #1200 exception record.",
     "run_agentic_loop raised 2429 -> 2432 on 2026-10-11 (#1200 Stage 2, TF8) by the #1200 exception record: bridge_booked= at the hard rejection and the agent fallback's except, and the fallback's per-action result = None.",
     "record_outcome tightened 413 -> 399 on 2026-10-12 (#1221 item 3) when its sim trace moved into _observe_tool_result, so a failure the bridge booked (the skipped observe) is no longer traced with a placeholder confidence and RPE.",
-    "build_app tightened 338 -> 333 on 2026-10-14 (#1268 follow-up F1) when its spoken-code pairing validation and state moved to console/server.py::_install_pairing, paying for the new pairing_ready argument and its docstring."
+    "build_app tightened 338 -> 333 on 2026-10-14 (#1268 follow-up F1) when its spoken-code pairing validation and state moved to console/server.py::_install_pairing, paying for the new pairing_ready argument and its docstring.",
+    "start_simulation_mode tightened 3003 -> 2888 on 2026-10-14 (#1260, owner decision: a registry-scoped overlay) when section 5's process-global TOOL_DESCRIPTIONS.update was deleted and its 14 narrator-only entries moved to the module constant simulation/tools.py::NARRATOR_TOOL_DESCRIPTIONS, which the narrator's SimToolRegistry.tool_descriptions() carries."
   ]
 }

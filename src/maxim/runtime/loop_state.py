@@ -6,7 +6,7 @@ import logging
 import os
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, ParamSpec, TypeVar
 
 from maxim.agents.llm_types import LLMAttemptState
@@ -214,6 +214,24 @@ def operational_mode(executor: Any, state: Any) -> str:
     if not isinstance(mode, str):
         raise TypeError(f"effective_operational_mode() returned {type(mode).__name__}, not str or None")
     return mode
+
+
+def tool_description_overlay(executor: Any) -> Mapping[str, Mapping[str, Any]]:
+    """The run's own tool descriptions, layered over ``modes.definitions.TOOL_DESCRIPTIONS`` (#1260).
+
+    The agent's registry carries them: ``ToolRegistry.tool_descriptions()`` none, the narrator's
+    ``SimToolRegistry.tool_descriptions()`` its own entries; never the process-global dict, which the AUT running
+    beside the narrator reads too. Resolved ONCE, by ``loop_setup.build_loop_run`` (``LoopRun.tool_overlay``), and
+    handed to both readers: the prompt's tool section (``agent_loop._describe_tools_for_prompt``) and a tool's
+    follow-up type (``tool_dispatch.execute_and_learn`` -> ``get_tool_followup_type``). Both registries return
+    module constants, so one read serves the run. No executor has no overlay. A registry without the method raises
+    ``AttributeError``, and one returning a non-mapping a ``TypeError``: the run fails at setup, before any action."""
+    if executor is None:
+        return {}
+    overlay = executor.registry.tool_descriptions()
+    if not isinstance(overlay, Mapping):
+        raise TypeError(f"registry.tool_descriptions() must return a Mapping, got {type(overlay).__name__}")
+    return overlay
 
 
 # ── the loop's wake predicates (1.3.2 slice 2): read by loop_gates.pre_tick_gate AND by the loop body ──

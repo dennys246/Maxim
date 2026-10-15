@@ -88,14 +88,16 @@ The determinism tests cover the rest: the three arms run back to back in one pro
 golden, and each arm runs in fresh interpreters under two hash seeds.
 
 STATED LIMIT (wall clock). A turn closes after 3 s with no new AUT action, as it does live. The AUT's
-reply chain is two actions: ``respond``, then its follow-up ``say``, about 0.5 s apart. A box loaded
-enough to stretch that gap past 3 s would split a turn, and the golden would go red. Check what else
-is running before reading such a failure as a regression.
+reply is one terminal ``respond`` (#1260). Before that fix a narrator-only entry gave ``respond`` a
+follow-up, and the chain was ``respond`` then ``say``, about 0.5 s apart; a box loaded enough to stretch
+that gap past 3 s would split a turn. A reply chain of two or more actions brings that limit back, and
+the golden goes red on a split turn. Check what else is running before reading such a failure as a
+regression.
 
 GLOBAL STATE. A run mutates process-global state, all of which ``run_arm`` snapshots and restores:
 
-  - ``modes.definitions.TOOL_DESCRIPTIONS``, the ``maxim`` logger level and every ``MAXIM_*`` env var
-    (including ``MAXIM_ALLOW_BASH`` and ``MAXIM_REPORT_JSON``);
+  - the ``maxim`` logger level and every ``MAXIM_*`` env var (including ``MAXIM_ALLOW_BASH`` and
+    ``MAXIM_REPORT_JSON``);
   - the user config: ``XDG_CONFIG_HOME`` points into the work dir and the config cache is reset, so the
     pinned ``configured_n_ctx`` is the default, not whatever ``~/.config/maxim/config.json`` holds on
     the box running ``--regen``;
@@ -107,6 +109,11 @@ GLOBAL STATE. A run mutates process-global state, all of which ``run_arm`` snaps
 
 ``MAXIM_SIM_HARD_ABORT=0`` is mandatory: the hard-abort path calls ``os._exit(4)``, which would kill
 pytest.
+
+ASSERTED, NOT RESTORED: ``modes.definitions.TOOL_DESCRIPTIONS``. A run must leave it as it found it: the
+narrator's own entries ride on its registry (#1260), and a run that writes the process-global dict fails
+``run_arm`` (``_GlobalState.restore``) rather than being quietly put back. The dict is put back only so
+the failure does not cascade into later tests.
 """
 
 from __future__ import annotations
@@ -148,7 +155,7 @@ ARMS: dict[str, dict[str, Any]] = {
 # save of the same file masks it on disk).
 _REPORT_WRITERS = ("save_report", "save_action_log", "save_aut_state", "analyze_simulation", "emit_report_json")
 # Per arm, what the LAST run left behind outside the canonical trace (so the golden does not pin it): each role's
-# raw prompts, and ``TOOL_DESCRIPTIONS`` as the run left it, read BEFORE ``_GlobalState.restore`` puts it back
+# raw prompts, and ``TOOL_DESCRIPTIONS`` as the run left it, read BEFORE ``_GlobalState.restore`` checks it
 # (#1260: a narrator-only description must not reach the process-global dict).
 RUN_SIDE: dict[str, dict[str, Any]] = {}
 SETTLE_TIMEOUT_S = 30.0  # a harness wait that exceeds this is a hang, not a slow run
@@ -292,7 +299,7 @@ class FakeRouter:
     def _answer_aut(self, call: dict[str, Any]) -> dict[str, Any]:
         if call["kind"] == "plan":
             return _act("respond", message=f"I heard: {call['request'][:40]}")
-        if call["executed"] == "respond":
+        if call["executed"] == "respond":  # reached only if the AUT's terminal respond is followed up (#1260)
             return _act("say", text="That is all.")
         return {"action": None, "confidence": 0.9, "reasoning": "done", "ready_to_act": False}
 
@@ -483,8 +490,10 @@ class _GlobalState:
         os.environ.update(self.env)
         os.chdir(self.cwd)
         sys.stdin = self.stdin
-        definitions.TOOL_DESCRIPTIONS.clear()
-        definitions.TOOL_DESCRIPTIONS.update(self.tool_descriptions)
+        leaked = definitions.TOOL_DESCRIPTIONS != self.tool_descriptions
+        if leaked:  # put back only so the failure below does not cascade into later tests
+            definitions.TOOL_DESCRIPTIONS.clear()
+            definitions.TOOL_DESCRIPTIONS.update(self.tool_descriptions)
         logging.getLogger("maxim").setLevel(self.maxim_level)
         tier, floor, mode, esc, nick, sensors = self.display
         SL._display_tier, SL._display_floor, SL._interactive_mode, SL._escalation_expires_at = tier, floor, mode, esc
@@ -505,6 +514,10 @@ class _GlobalState:
         with lane_metrics._registry_lock:
             lane_metrics._global_registry = self.lane_registry
         _reset_caches()
+        # Asserted last, after everything else is back (module docstring, ASSERTED, NOT RESTORED).
+        assert not leaked, (
+            "the run wrote modes.definitions.TOOL_DESCRIPTIONS (#1260: an agent's own entries ride on its registry)"
+        )
 
 
 def run_arm(arm: str, workdir: Path) -> dict[str, Any]:

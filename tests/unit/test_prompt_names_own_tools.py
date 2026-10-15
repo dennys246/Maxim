@@ -295,7 +295,7 @@ def test_no_prompt_names_a_known_tool_outside_the_agents_roster(
     follow-up shape. Data is tool-free (or set aside, ``_DATA_SECTIONS``), so any known tool outside the roster
     came from the builder's own text."""
     from maxim.agents.prompt_budgeter import PromptBudgeter
-    from maxim.modes.definitions import OPERATIONAL_MODES, TOOL_DESCRIPTIONS, get_mode
+    from maxim.modes.definitions import OPERATIONAL_MODES, get_mode
     from maxim.runtime.agent_loop import _describe_tools_for_prompt
     from maxim.utils import filesystem_policy
 
@@ -322,7 +322,7 @@ def test_no_prompt_names_a_known_tool_outside_the_agents_roster(
         definition = get_mode(mode_name)
         mode = ModeInfo(name=mode_name, goal=definition.goal, context_prompt=definition.context_prompt)
         executor = SimpleNamespace(registry=narrator_registry)
-        descriptions = _describe_tools_for_prompt(roster, executor, TOOL_DESCRIPTIONS)
+        descriptions = _describe_tools_for_prompt(roster, executor, overlay=narrator_registry.tool_descriptions())
         cases = [(autonomy, "what is the score now?", stats, []) for autonomy in AutonomyLevel]
         cases += [(AutonomyLevel.AUTONOMOUS, "", {}, [])]
         cases += [(AutonomyLevel.AUTONOMOUS, "", {}, [f]) for f in _FOLLOWUPS]

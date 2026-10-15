@@ -4,8 +4,10 @@ import builtins  # ToolRegistry.list() shadows the builtin in its own annotation
 import logging
 import threading
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Iterable
+from types import MappingProxyType
+from typing import Any, Iterable
 
 from .base import Tool
 
@@ -14,6 +16,8 @@ logger = logging.getLogger(__name__)
 # Default cap on simultaneously active *scene* tools to prevent prompt overflow.
 # Core tools (registered via register()) are excluded from this count.
 DEFAULT_ACTIVE_TOOL_CAP = 20
+
+_NO_TOOL_DESCRIPTIONS: Mapping[str, Mapping[str, Any]] = MappingProxyType({})
 
 
 def _token_overlap(a: str, b: str) -> float:
@@ -134,6 +138,15 @@ class ToolRegistry:
         """
         with self._lock:
             return [name for name in self.list() if getattr(self._tools[name], "advertised", True)]
+
+    def tool_descriptions(self) -> Mapping[str, Mapping[str, Any]]:
+        """This registry's agent's own tool descriptions, layered over ``TOOL_DESCRIPTIONS`` (#1260): none.
+
+        Only the simulation narrator's registry carries any (``SimToolRegistry.tool_descriptions``). Read through
+        ``runtime/loop_state.py::tool_description_overlay`` at loop setup; every registry an executor holds must define it,
+        or the run fails at setup.
+        """
+        return _NO_TOOL_DESCRIPTIONS
 
     def list_all(self) -> builtins.list[str]:
         """Return names of ALL tools, including deactivated scene tools."""
