@@ -197,7 +197,10 @@ Each stage is one PR or more and goes through the reviews its kind requires.
 - **B3. `llm_notes`.** Notes stored in the agent's home with `atomic_write_json` + `_format_version`, one
   end-of-session reflection call through the router. Pick episodic retrieval or Reflexion first (open
   decision); the other can follow as a second arm.
-- **B4. Exp 37 / T1-2 re-run with floors.** Four-lens design review (new claim).
+- **B4. Exp 37 / T1-2 re-run with floors.** Four-lens design review (new claim). **Homed to 1.4 as L8's
+  dose-response design (owner, 2026-10-14):** 1.3.2 released without it under the committed `release` exception
+  `release-1.3.2-T1-2`, and T1-2 stays STALE until this run lands. Hold the model fixed and read where A sits
+  (L8); a fire whose A leaves no headroom is reported as such, never scored against June's numbers.
   - Arms: A, B, C (L8 is BINDING: record A/B/C and gate on B − C) plus `bare_llm`, `llm_notes`,
     `maxim_all_off`. Non-resumed narrator, #845 recall held equal or ablated, seed plumbed to the sim.
   - The new arms go in a new arm set with a `SCHEMA_VERSION` bump: `scripts/analyze_exp37.py` imports

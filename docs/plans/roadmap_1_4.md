@@ -847,6 +847,8 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   (FEAR > RANDOM p = 0.0035; FEAR > Q_EXPLORE not shown, p = 1.0). Under BF2, T1-13 is now `PARTIAL (narrow: floor
   matched)`, moved in the data PR itself. The open question it leaves for E1–E3: a contingency where the floor can
   lose (delayed credit, transfer across situations), since a one-step learner matches FEAR here.
+  *B4 is T1-2's owed re-fire (owner, 2026-10-14):* L8's dose-response design, homed here. 1.3.2 released
+  without it under the committed exception `release-1.3.2-T1-2`, and T1-2 stays STALE until B4's run lands.
 
 ## What is NOT in 1.4
 

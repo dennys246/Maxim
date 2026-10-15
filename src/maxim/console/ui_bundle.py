@@ -91,9 +91,10 @@ logger = logging.getLogger(__name__)
 #           Identity gains seams `runs` (POSIX hosts), `health` (live only while
 #           the server samples) and `degraded` (live while serving). DORMANT until their
 #           producers land (strict red gates in test_console_run_history.py):
-#           stalls (no set_loop_state_hook caller) and the per-run event trail
-#           — the `/events` route is deliberately NOT in 0.6.0. Per-action
-#           credit landed with actions.jsonl 1.2 (no schema change).
+#           the per-run event trail — the `/events` route is deliberately NOT
+#           in 0.6.0. Per-action credit landed with actions.jsonl 1.2 and stall
+#           detection (a stuck planning turn) is live while an agent loop runs
+#           (neither changed the schema).
 CONSOLE_CONTRACT_VERSION = "0.6.0"
 
 #: Manifest filename the pulse build writes into every bundle.

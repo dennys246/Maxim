@@ -484,8 +484,8 @@ class HealthResponse(BaseModel):
     monitoring: bool = Field(description="False = this server is not sampling health (build_app without the monitor).")
     stall_detection: bool = Field(
         description=(
-            "False = stalls CANNOT be detected here (the agent loop registers no loop-state hook yet), so an "
-            "empty `stalls` means unknown, not healthy."
+            "False = stalls CANNOT be detected here (no agent loop is running in this process), so an empty "
+            "`stalls` means unknown, not healthy. A stall is a planning turn stuck past the threshold."
         )
     )
     recorded_since: float | None = Field(
