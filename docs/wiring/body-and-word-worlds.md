@@ -38,7 +38,7 @@ WORD WORLD (only with MAXIM_SUBSTRATE_PATH=1; affordance NAMES only from the --s
 |---|---|---|---|---|---|---|
 | `interoception` | `SensorEncoder`, 384-d hashed sum, ungained | 0.85, frozen | `runtime/substrate_proposal.py::_read_drive_states` (+ the derived `cold` need) | live | yes (substrate-primary) | T1-6 (Exp 42), T1-9 (Exp 52) |
 | `audio` | `SensorEncoder`, 384-d, ungained | 0.85, frozen | `embodiment/audio_localization.py::DoAFeed` (live Reachy), `AzimuthDoASource` (sim) | live | yes | T1-7 (orient 45), T1-10 (Exp 53) |
-| `world` | `SensorEncoder`, 384-d, **gained** (A4 p=3.0) | 0.85, frozen | `embodiment/backends/minecraft.py::MinecraftWorldBackend.sync_world_sensors` → `world_set_axis` | live | yes | T1-11 (Exp 56), T1-14 (Exp 61), T1-15 (Exp 62); T1-12 (Exp 57) and T1-13 (Exp 60, floor matched by B1, 2026-10-14) are PARTIAL, not EARNED |
+| `world` | `SensorEncoder`, 384-d, **gained** (A4 p=3.0) | 0.85, frozen | `embodiment/backends/minecraft.py::MinecraftWorldBackend.sync_world_sensors` → `world_set_axis` | live | yes | T1-11 (Exp 56); T1-12 (Exp 57), T1-13 (Exp 60, floor matched by B1, 2026-10-14), T1-14 (Exp 61) and T1-15 (Exp 62) (both floor matched, argued after B1, 2026-10-15) are PARTIAL, not EARNED |
 | `text` | `LinguisticEncoder`, paraphrase-mpnet 768-d (384-d bag-of-words fallback without sentence-transformers) | 0.44, running mean | percepts on **any runtime**: `agents/memory_agent.py` → `integration/memory_hub.py::MemoryHub.on_percept_received` → `LinguisticEncoder.encode`; affordance NAMES only via `imagination/trigger.py::encode_entity_affordances` (only production caller: `simulation/orchestrator.py`) | `MAXIM_SUBSTRATE_PATH=1` only | no: prompt text and a `tool:*` nudge that is 0 on every recorded run (§5) | none (T1-5 is DROPPED 2026-10-08, owner decision in GL0; §5) |
 | `vision` | `LinguisticEncoder` over the percept's **text content**, under a `vision` tag (code-read) | 0.44 | `agents/perception_agent.py` (DN / robot), through the same `on_percept_received` encode | robot path, and `MAXIM_SUBSTRATE_PATH=1` only | no | none |
 
@@ -273,8 +273,8 @@ chain; T1-16 (Exp 63) is Hippocampus recall into the prompt and T1-4 rides PainB
 | Touching | Fires by its Re-run-on wording |
 |---|---|
 | `TemporalCreditDistributor` / `credit_node` write path; any positive Reaction emitter | T1-13 (Exp 60): its #888 discharge says "If a positive Reaction emitter is ever wired, this reasoning lapses and the trigger applies"; T1-14/T1-15 by inheritance; T1-14 also functionally (the staged-donor sanity assumes `_reward_bias == {}`) |
-| `recommend_action` / `cluster_reward_bias` / the drive-activation floor | T1-7, T1-11, T1-12 (PARTIAL), T1-13 (PARTIAL) (and T1-14/15) |
-| `SensorEncoder` / `_sensor_embed` / `_encode_current_clusters` / EC world modality | T1-6, T1-10, T1-11, T1-12 (PARTIAL), T1-15 (and T1-13 (PARTIAL)/14) |
+| `recommend_action` / `cluster_reward_bias` / the drive-activation floor | T1-7, T1-11, T1-12 (PARTIAL), T1-13 (PARTIAL) (and T1-14/15, PARTIAL) |
+| `SensorEncoder` / `_sensor_embed` / `_encode_current_clusters` / EC world modality | T1-6, T1-10, T1-11, T1-12 (PARTIAL), T1-15 (PARTIAL) (and T1-13/14, PARTIAL) |
 | Any positive event when a drive's breach latch clears (`minecraft_player` `oxygen`/`health` clear on every surfacing after a latched breach; `food` and the `d1` of `minecraft_bench` and `minecraft_bench57` are entropic) | T1-11, T1-12, T1-13, T1-14, T1-15, whatever the routing (owner decision G7; T1-12 added 2026-10-08) |
 | `EncodingSignals.extra` on the loop capture (flattened into the persisted trace by `EncodingSignals.to_dict`) | T1-16 ("the memory record shape"); Exp 10's memory-shape wording |
 | EC persistence (`ec.json`) / bundle manifest / `_BUNDLE_EC_NODE_FIELDS` | T1-10, T1-14 |

@@ -67,7 +67,7 @@ engineering.
 | Piece | Status |
 |---|---|
 | Substrate-primary selection: `substrate_proposal.py::propose_via_substrate` → `NAc.recommend_action`, one EC cluster per modality | **Shipped** |
-| Learned fear (`cluster_fear`, world cluster only) and want (`cluster_reward_bias`) | **Shipped**, EARNED (Exp 60/56) and transferable (Exp 61/56) |
+| Learned fear (`cluster_fear`, world cluster only) and want (`cluster_reward_bias`) | **Shipped**; EARNED for the want (Exp 56); the fear rows (Exp 60/61) are PARTIAL, floor matched (B1, 2026-10-14/15); transferable (Exp 61/56) |
 | Familiarity: EC match margin → novelty (`LLMProposal.cluster_margins`, 2S-c) | **Shipped** (#879), recorded only |
 | "No idea what to do": per-cluster fear/want history; `recommend_action` → `None` below `min_confidence` | **Shipped**; Welford outcome variance is **per tool** (`nac.py::get_action_risk_profile`), so not a per-situation signal |
 | Stakes: drive pressure; pain felt per invocation (2S-c) | **Shipped** |
