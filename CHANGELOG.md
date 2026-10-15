@@ -471,6 +471,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Two console apps in one process no longer stream each health event twice** (F3, #1268 follow-up). The /ws
+  hub is process-global, and every app registered its own publisher into it on the shared `HealthLog`, so clients
+  saw each `health` / `health_stall` event once per app. Apps now register one shared publisher
+  (`console/server.py::_publish_health`), and `HealthLog._emit` calls each distinct publisher once. It stays until
+  its last app leaves. Guard: `tests/unit/test_console_run_history.py::TestHealthRoutes::test_two_streaming_apps_publish_each_health_event_once`.
+- **A heartbeat restart can no longer leave two samplers running** (F2, #1268 follow-up). `HeartbeatMonitor.stop()`
+  joins with a timeout, so a slow sample could outlive it; a `start()` after that cleared the one shared stop Event,
+  and the old thread kept sampling beside the new one. Each sampler thread now owns its stop Event and `stop()` sets
+  only the one it took, as `console/health.py`'s writer does; start and stop take a lock for the check-and-set.
+  Guard: `tests/unit/test_heartbeat.py::test_a_restart_after_a_timed_out_stop_leaves_one_sampler`.
 - **The simulation narrator now sees what the agent said (#1261).** The production `respond` tool returns a
   delivery receipt (`{"delivered": True, "mode": "cli"}`), and the AUT's words were only in its `message`
   argument. The bridge's per-turn `response`, which `send_message` hands the narrator, `report.response_texts` and

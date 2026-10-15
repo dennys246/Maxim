@@ -333,3 +333,48 @@ def test_wifi_linux_without_an_association_records_nothing(monkeypatch) -> None:
         system_metrics.subprocess, "run", lambda *a, **k: MagicMock(returncode=0, stdout="lo  no wireless", stderr="")
     )
     assert system_metrics.collect_wifi_signal() is None
+
+
+def test_a_restart_after_a_timed_out_stop_leaves_one_sampler() -> None:
+    """F2 (#1268 follow-up, mirroring HealthLog): stop() joins with a timeout, so a slow ``_collect`` outlives it; a
+    start() after that cleared the ONE shared stop Event, and the old thread, waking, kept sampling beside the new one.
+    Each thread now owns its stop Event, and stop() sets only the one it took."""
+    import threading
+
+    release = threading.Event()
+    calls: list[str] = []
+
+    class Slow(HeartbeatMonitor):
+        def _collect(self) -> dict:
+            calls.append(threading.current_thread().name)
+            if len(calls) == 1:
+                release.wait(5)  # the first sample is slower than stop()'s join
+            return {"loop": None}
+
+        def _emit(self, data: dict) -> None:
+            pass
+
+        def _check_stall(self, data: dict) -> None:
+            pass
+
+    def samplers() -> set:
+        return {t for t in threading.enumerate() if t.name == "heartbeat-monitor" and t.is_alive()}
+
+    others = samplers()  # another test's sampler (e.g. the leader path's global one) is not this test's
+    monitor = Slow(interval_s=0.05)
+    monitor.start()
+    first = monitor._thread
+    deadline = time.time() + 2
+    while not calls and time.time() < deadline:
+        time.sleep(0.01)
+    monitor.stop()  # join(timeout=interval + 1) times out: the first thread is inside _collect
+    assert first is not None and first.is_alive(), "precondition: stop() returned with the old thread still running"
+    monitor.start()
+    try:
+        release.set()
+        first.join(timeout=2)
+        assert not first.is_alive(), "the thread stop() took must exit once its sample returns"
+        assert samplers() - others == {monitor._thread}, samplers() - others
+    finally:
+        release.set()
+        monitor.stop()

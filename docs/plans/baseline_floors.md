@@ -10,7 +10,11 @@
 
 ## Why this plan exists
 
-No ledger row, EARNED or STALE, has ever been compared with an agent that lacks the bio layers. "Earned"
+*Status 2026-10-14:* B0 is merged (#1233). B1 ran (campaign `48ce40118c20`) and returned `FLOOR_MATCHED_Q`: FEAR
+8/8, Q_EXPLORE 8/8, RANDOM 2/8 at the first post placement, so T1-13 is `PARTIAL (narrow: floor matched)`
+([prereg](../experiments/b1_exp60_floor_prereg.md)). The paragraph below is the motivation as of 2026-10-10.
+
+Until B1, no ledger row, EARNED or STALE, had been compared with an agent that lacks the bio layers. "Earned"
 today means beating one of Maxim's own ablations: Exp 60's control is FEAR vs ABLATED (fear subscriber
 detached), and Exp 37's control arms A and C run the full Maxim stack. `simulation/benchmark.py::BenchmarkRunner.baseline_path`
 compares one report with an earlier report, not with a no-bio agent. The first question a reviewer asks,
