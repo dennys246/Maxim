@@ -844,6 +844,8 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   *B1 status (2026-10-13):* the hook, the harness, its evidence entry and the BF2 obligation lint are merged (#1236,
   #1238, #1245, #1258). The seed 99 rig diagnostic passed every liveness check, and the prereg is FROZEN v5. Next is
   the run (§Run runbook): a same-day water check and its record PR first.
+  *B4 is T1-2's owed re-fire (owner, 2026-10-14):* L8's dose-response design, homed here. 1.3.2 released
+  without it under the committed exception `release-1.3.2-T1-2`, and T1-2 stays STALE until B4's run lands.
 
 ## What is NOT in 1.4
 
