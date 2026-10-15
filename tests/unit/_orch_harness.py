@@ -776,21 +776,21 @@ def _files(root: Path) -> list[str]:
 # Threads the run leaves alive that are NOT pinned in ``threads_left_alive``, by name prefix, with the reason.
 _THREADS_EXCLUDED = {
     "memctx_": "MemoryAgent._context_pool is a CLASS-level ThreadPoolExecutor, created by the first MemoryAgent "
-    "in the PROCESS and never shut down (#1263). Whether THIS run adds its threads depends on what ran earlier "
-    "in the process (test order and selection), so the added set is not deterministic; only the pool being "
-    "alive after the run is pinned (``memctx_pool_alive``).",
+    "in the PROCESS and never shut down (#1263, its memctx part). Whether THIS run adds its threads, and whether "
+    "the pool is alive at all after it, depends on what ran earlier in the process (test order and selection): "
+    "since #1260 (no AUT follow-up) the precampaign and stdin arms do not start it in a fresh process but see it "
+    "alive after an earlier arm or test started it. Neither is pinned; #1263's memctx owner fix is what pins it.",
 }
 
 
 def _threads_left(before: list[threading.Thread]) -> dict[str, Any]:
     """The threads the run started that are still alive after it returned (and after ``_join_sim_threads``),
     numeric suffixes normalised (``Thread-12`` -> ``Thread-<N>``), duplicates kept, sorted. This pins #1263
-    (teardown leaves the AUT DefaultNetwork and both agents' plan writers running) as CURRENT behaviour:
+    (teardown leaves both agents' plan writers running; the AUT DefaultNetwork stops since #1281) as CURRENT behaviour:
     a slice that stops one of them, or leaks a new one, changes it."""
     added = [t for t in threading.enumerate() if t.is_alive() and not any(t is b for b in before)]
     names = sorted(re.sub(r"\d+", "<N>", t.name) for t in added if not t.name.startswith(tuple(_THREADS_EXCLUDED)))
-    pool = any(t.name.startswith("memctx_") and t.is_alive() for t in threading.enumerate())
-    return {"added": names, "memctx_pool_alive": pool}
+    return {"added": names}
 
 
 # ``MAXIM_DATA_HOME`` files not pinned, by glob relative to the data home (``*`` matches within ONE path segment,

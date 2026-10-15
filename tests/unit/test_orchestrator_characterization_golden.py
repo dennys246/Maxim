@@ -75,8 +75,8 @@ regenerates the fixture in its own commit:
     run, ``test_the_run_leaves_no_default_network_running_1263``; the fixture's regeneration for it, and
     ``test_the_golden_is_non_vacuous``'s ``DefaultNetwork`` line, follow #1289.) Each run in one process (the menu loop,
     ``maxim.campaign()``) leaves them alive. ``threads_left_alive`` pins the ones the run adds; the
-    ``memctx`` pool is class-level and process-wide, so only its being alive afterwards is pinned
-    (``_THREADS_EXCLUDED``). The ``sim.*`` threads all exit.
+    ``memctx`` pool is class-level and process-wide, so whether a run starts it depends on the process's
+    history, and it is not pinned at all (``_THREADS_EXCLUDED``, #1263's memctx part). The ``sim.*`` threads all exit.
 
 NEUTRALISED, NOT PINNED (the harness takes them out of the trace, so a fix does not change the golden):
 
