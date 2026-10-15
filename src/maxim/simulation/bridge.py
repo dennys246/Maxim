@@ -183,7 +183,7 @@ class SimulationBridge:
         Returns:
             {
                 "turn": int,
-                "response": str | None,       # AUT's respond/speak text
+                "response": str | None,       # AUT's respond/speak/say words (ActionRecord.utterance)
                 "actions": list[ActionRecord], # all actions since inject
                 "blocked": list[ActionRecord], # actions that were blocked
                 "timed_out": bool,
@@ -277,11 +277,9 @@ class SimulationBridge:
         new_actions = self.action_sink.actions[action_count_before:]
         self._last_observed_action_idx = len(self.action_sink.actions)
 
-        # Collect response text from respond/speak actions
-        response_parts: list[str] = []
-        for a in new_actions:
-            if a.tool_name in ("respond", "speak") and a.result_output:
-                response_parts.append(str(a.result_output))
+        # The AUT's words this turn: each speech action's utterance (#1261), never its result_output,
+        # which for ``respond`` is a delivery receipt.
+        response_parts = [a.utterance for a in new_actions if a.utterance]
         response_text = "\n".join(response_parts) if response_parts else None
 
         elapsed = time.time() - start

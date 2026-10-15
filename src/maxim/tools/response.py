@@ -39,6 +39,8 @@ class RespondTool(Tool):
         "output_type": (str, "auto"),  # Optional, default "auto"
         "speak": (bool, False),  # Optional, default False
     }
+    # The words are ``message`` (#1261); the output is a delivery receipt, not the words.
+    speech_params = ("message",)
 
     def __init__(self, response_output: ResponseOutput) -> None:
         """Initialize with a ResponseOutput instance.
@@ -111,6 +113,8 @@ class SpeakTool(Tool):
         "text": str,  # Required
         "also_print": (bool, True),  # Optional, default True
     }
+    # ``execute`` reads ``text``, then the ``message``/``phrase`` aliases (#1261).
+    speech_params = ("text", "message", "phrase")
 
     def __init__(self, response_output: ResponseOutput) -> None:
         """Initialize with a ResponseOutput instance.

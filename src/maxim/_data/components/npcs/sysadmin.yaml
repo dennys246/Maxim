@@ -38,6 +38,7 @@ entity:
       affordances:
         speak:
           params: {message: str}
+          speech_param: message
           description: "Talk to the sysadmin"
         ask_for_help:
           params: {problem: str}

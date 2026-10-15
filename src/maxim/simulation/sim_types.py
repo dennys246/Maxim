@@ -92,7 +92,8 @@ class SimulationResult:
     introspector: Any = None
     # Tool usage stats (from Executor.tool_usage_stats())
     tool_stats: dict[str, Any] = field(default_factory=dict)
-    # Serialized action history (ActionRecord dicts)
+    # Serialized action history (ActionRecord dicts). Each carries ``utterance``, the words a speech action
+    # delivered (#1261), since its ``result_output`` is the tool's result (a receipt for ``respond``).
     actions: list[dict[str, Any]] = field(default_factory=list)
     # Subsystem snapshot (from AUTIntrospector.benchmark_snapshot())
     subsystem_snapshot: dict[str, Any] = field(default_factory=dict)

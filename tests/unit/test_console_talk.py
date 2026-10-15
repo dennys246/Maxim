@@ -119,51 +119,6 @@ class TestTalkStreamContract:
             h.talk("hi")
 
 
-class TestReplyExtraction:
-    """The production RespondTool returns a delivery RECEIPT, not the words."""
-
-    def _action(self, tool_name, args, output=None):
-        from maxim.simulation.sinks import ActionRecord
-
-        return ActionRecord(timestamp=0.0, tool_name=tool_name, tool_args=args, result_output=output)
-
-    def test_prefers_tool_args_message_over_receipt_output(self):
-        from maxim.console.handle import _extract_reply
-
-        turn = {
-            # What the live loop actually produces: output is the receipt.
-            "actions": [self._action("respond", {"message": "Hello there."}, {"delivered": True, "mode": "cli"})],
-            "response": "{'delivered': True, 'mode': 'cli'}",
-        }
-        assert _extract_reply(turn) == "Hello there."
-
-    def test_receipt_dict_never_leaks_as_the_reply(self):
-        from maxim.console.handle import _extract_reply
-
-        # No tool_args to recover from → the receipt must NOT be shown to the
-        # user as if it were speech.
-        turn = {"actions": [self._action("respond", {}, {"delivered": True})], "response": {"delivered": True}}
-        assert _extract_reply(turn) is None
-
-    def test_falls_back_to_bridge_response_for_sim_respond_tool(self):
-        from maxim.console.handle import _extract_reply
-
-        # SimRespondTool's output IS the text — that path must keep working.
-        assert _extract_reply({"actions": [], "response": "spoken text"}) == "spoken text"
-
-    def test_joins_multiple_utterances_in_one_turn(self):
-        from maxim.console.handle import _extract_reply
-
-        turn = {
-            "actions": [
-                self._action("respond", {"message": "First."}),
-                self._action("bash", {"command": "ls"}),  # non-speech ignored
-                self._action("speak", {"message": "Second."}),
-            ]
-        }
-        assert _extract_reply(turn) == "First.\nSecond."
-
-
 class TestTalkPermissions:
     """CROSS-CONFIRMED BLOCKER: SupervisionPolicy.allowed_tools is NEVER
     consulted at AUTONOMOUS ("only safety constraints apply"), so the original

@@ -116,25 +116,30 @@ class TestBridgeNoopHandling:
         assert timed_out is False
 
     def test_response_text_excludes_noop(self):
-        """Bridge response text extraction ignores noop markers."""
-        new_actions = [
-            ActionRecord(
-                timestamp=time.time(),
-                tool_name="_deliberation_noop",
-                result_success=True,
-                result_output="just thinking",
-            ),
-            ActionRecord(
-                timestamp=time.time(),
-                tool_name="respond",
-                result_success=True,
-                result_output="actual response",
-            ),
-        ]
-        # Simulate bridge's response text collection
-        response_parts = []
-        for a in new_actions:
-            if a.tool_name in ("respond", "speak") and a.result_output:
-                response_parts.append(str(a.result_output))
-        response_text = "\n".join(response_parts) if response_parts else None
-        assert response_text == "actual response"
+        """The real bridge's response text ignores noop markers: a marker carries no utterance (#1261)."""
+        import threading
+
+        from maxim.simulation.bridge import SimulationBridge
+
+        bridge = SimulationBridge(response_timeout=5.0, settle_s=0.3)
+
+        def fake_aut():
+            time.sleep(0.1)
+            bridge.action_sink.record_noop(reason="just thinking")
+            bridge.action_sink.record(
+                ActionRecord(
+                    timestamp=time.time(),
+                    tool_name="respond",
+                    tool_args={"message": "actual response"},
+                    result_success=True,
+                    result_output={"delivered": True, "mode": "cli"},
+                    utterance="actual response",
+                )
+            )
+
+        t = threading.Thread(target=fake_aut, daemon=True)
+        t.start()
+        result = bridge.send_and_wait("hello")
+        t.join(timeout=2)
+        assert result["noop_count"] == 1
+        assert result["response"] == "actual response"

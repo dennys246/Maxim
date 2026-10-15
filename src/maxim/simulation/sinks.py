@@ -31,6 +31,7 @@ protocol minimum is just the two members below.
 
 from __future__ import annotations
 
+import dataclasses
 import threading
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
@@ -61,6 +62,18 @@ class ActionRecord:
     failure under), so ``actions.jsonl`` 1.2 and the console's run history can
     show what each action was credited with. ``None`` on synthetic records
     (blocks, markers) and for actions that carried none.
+
+    ``utterance`` (#1261): the words a speech tool delivered, filled by
+    ``InstrumentedExecutor`` from the call's own argument named by the tool's
+    declared ``Tool.speech_params`` (``respond``, ``speak``, ``say``, and an
+    affordance whose YAML declares ``speech_param``), when the call succeeded. ``result_output`` is
+    the tool's RECEIPT (``RespondTool`` returns ``{"delivered": True, "mode":
+    "cli"}``), so every reader that wants what the agent SAID (the bridge's turn
+    ``response``, ``report.response_texts``, ``analyze_results``) reads this
+    field, never ``result_output`` and never a list of speech-tool names
+    (mechanization backlog M54 in ``docs/plans/outstanding.md``). ``None`` for
+    non-speech tools, failed or blocked calls, and markers. Not written to
+    ``actions.jsonl``: ``params`` already holds the message.
     """
 
     timestamp: float
@@ -82,6 +95,8 @@ class ActionRecord:
     rpe: float | None = None
     pain: float | None = None
     nac_failure_booked: str | None = None
+    # #1261: the words a successful speech call delivered (InstrumentedExecutor).
+    utterance: str | None = None
 
 
 @runtime_checkable
@@ -123,33 +138,23 @@ class RecordingSink:
         """Compress the oldest half of actions — strip heavy fields, keep summary.
 
         Called under self._lock. Replaces full ActionRecords with lightweight
-        copies (tool_args and result_output cleared) to free memory while
-        preserving the audit trail of what tools ran and whether they succeeded.
+        copies (tool_args, result_output and utterance cleared) to free memory
+        while preserving the audit trail of what tools ran and whether they
+        succeeded.
         """
         half = len(self._actions) // 2
         compressed = []
         for rec in self._actions[:half]:
+            # ``replace`` keeps every other field, so a field added later survives compression unless it is
+            # dropped here. Kept: the Stage 0b telemetry (tiny, and post-hoc attribution reads it across the
+            # whole stream) and the per-action credit (the run history reads it per action).
             compressed.append(
-                ActionRecord(
-                    timestamp=rec.timestamp,
-                    tool_name=rec.tool_name,
+                dataclasses.replace(
+                    rec,
                     tool_args={},  # Drop heavy args
-                    result_success=rec.result_success,
                     result_output=None,  # Drop heavy output
                     result_error=rec.result_error[:100] if rec.result_error else None,
-                    blocked=rec.blocked,
-                    block_reason=rec.block_reason,
-                    # Stage 0b telemetry fields are kept through compression —
-                    # they're tiny and the whole point of 0b is post-hoc
-                    # attribution analysis across the full action stream,
-                    # which would break if compressed records dropped them.
-                    agent_id=rec.agent_id,
-                    session_id=rec.session_id,
-                    entity_class=rec.entity_class,
-                    # Credit is tiny and is what the run history reads per action.
-                    rpe=rec.rpe,
-                    pain=rec.pain,
-                    nac_failure_booked=rec.nac_failure_booked,
+                    utterance=None,  # The words are the heavy half of the args they came from: dropped with them.
                 )
             )
         self._actions = compressed + self._actions[half:]
@@ -182,8 +187,8 @@ class RecordingSink:
         The bridge watches ``len(self.actions)`` for growth.  A NoOp
         deliberation tick records this marker so the bridge sees
         activity and doesn't timeout.  The bridge's text extraction
-        only looks for "respond"/"speak" tool_name, so this marker
-        doesn't produce response text.
+        reads only ``utterance``, which a marker never carries, so this
+        marker doesn't produce response text.
         """
         import time as _time
 

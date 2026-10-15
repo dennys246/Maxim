@@ -80,12 +80,32 @@ def _derive_entity_class(tool_name: str, params: dict[str, Any]) -> str | None:
     return None
 
 
+def _utterance(speech_params: tuple[str, ...], params: dict[str, Any], success: bool) -> str | None:
+    """The words a speech call delivered: the first non-empty of its tool's ``speech_params`` when the call
+    succeeded, else ``None``.
+
+    ``speech_params`` is ``Tool.speech_params`` of the tool the call RAN (#1261), so an aliased call is judged
+    as that tool, and a tool that is not speech declares ``()``. A failed call said nothing (``RespondTool``
+    refuses a blank message), so it is ``None`` too.
+    """
+    if not speech_params or not success:
+        return None
+    for key in speech_params:
+        value = params.get(key)
+        if value:
+            return str(value)
+    return None
+
+
 class InstrumentedExecutor:
     """Wraps an Executor to record all actions to an ActionSink.
 
     Drop-in replacement for Executor — same execute() interface.
     All calls are forwarded to the wrapped executor, and results
     are recorded in the sink.
+
+    The wrapped executor must provide ``resolve_tool_name`` and ``registry`` (directly, or forwarded by a
+    wrapper's ``__getattr__``): the recorder asks them which tool a call runs and whether it is speech (#1261).
 
     Example:
         sink = RecordingSink()
@@ -109,10 +129,28 @@ class InstrumentedExecutor:
             "entity_class": _derive_entity_class(tool_name, params),
         }
 
+    def _speech_params(self, tool_name: Any) -> tuple[str, ...]:
+        """``Tool.speech_params`` of the tool a call named *tool_name* RUNS (#1261), ``()`` when that is no tool.
+
+        The executor's own alias resolution names it (``talk`` runs as ``say``, so its words are speech), and
+        the executor's registry holds it; ``tool_name`` on the record still keeps the raw name. A non-string
+        name is refused by dispatch as an invalid action, and an unregistered one by dispatch too: neither ran,
+        so neither is speech.
+        """
+        if not isinstance(tool_name, str):
+            return ()
+        # One lookup (``find``), not a membership check then ``get``: the DM thread may deregister the tool in
+        # between, and a ``KeyError`` here would lose the action before dispatch. A tool gone by now is no
+        # speech; dispatch reports it.
+        tool = self._executor.registry.find(self._executor.resolve_tool_name(tool_name))
+        return tuple(tool.speech_params) if tool is not None else ()
+
     def execute(self, action: dict[str, Any]) -> ToolOutput:
         """Execute a tool action and record the result."""
         tool_name = action.get("tool_name", "unknown")
         params = action.get("params", {}) if isinstance(action.get("params"), dict) else {}
+        # Asked BEFORE dispatch, which may deregister the tool (an entity released mid-call).
+        speech_params = self._speech_params(tool_name)
 
         result = self._executor.execute(action)
 
@@ -133,6 +171,7 @@ class InstrumentedExecutor:
                 rpe=result.rpe,
                 pain=result.pain,
                 nac_failure_booked=result.nac_failure_booked,
+                utterance=_utterance(speech_params, params, bool(result.success)),
                 **self._telemetry_fields(tool_name, params),
             )
         )
@@ -140,7 +179,10 @@ class InstrumentedExecutor:
         return result
 
     def record_block(self, tool_name: str, reason: str, params: dict[str, Any] | None = None) -> None:
-        """Record that an action was blocked (e.g., by FearAgent or autonomy)."""
+        """Record that an action was blocked (e.g., by FearAgent or autonomy).
+
+        No ``utterance``: a blocked speech call never delivered its words (#1261).
+        """
         params = params or {}
         self._sink.record(
             ActionRecord(

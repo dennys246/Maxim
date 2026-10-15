@@ -50,6 +50,7 @@ entity:
       affordances:
         speak:
           params: {message: str}
+          speech_param: message
           description: "Address the legionary"
         give_orders:
           params: {order: str}
