@@ -57,9 +57,11 @@ regenerates the fixture in its own commit:
   - #1260: ``TOOL_DESCRIPTIONS.update`` in §5 is process-global, so the AUT's prompt advertises
     ``respond: NOT AVAILABLE. Use send_message instead.``, and the AUT's ``respond`` gets a ``process``
     follow-up. That follow-up is the ``say`` every turn pins.
-  - #1261: the bridge's ``response`` is the ``respond`` tool's RECEIPT (``{'delivered': True, 'mode': 'cli'}``),
-    not the AUT's words. The narrator and ``report.response_texts`` never see what the AUT said through
-    ``respond``.
+  - #1261 (FIXED, no longer a pinned defect): the bridge's ``response`` was the ``respond`` tool's RECEIPT
+    (``{'delivered': True, 'mode': 'cli'}``), not the AUT's words. Each turn's ``response`` and
+    ``report.response_texts`` now pin the words, read from ``ActionRecord.utterance``, and include ``say``'s;
+    each ``SimulationResult.actions`` entry carries them as ``utterance`` (the fixture was regenerated for it
+    in its own commit). The actions' ``output`` still pins the receipt, which ``RespondTool`` still returns.
   - #1262: ``/pause`` does not stop the narrator mid follow-up chain. In the stdin arm the operator pauses after
     turn 1 and the narrator still sends turn 2. The pause reaches it only as a queued SYSTEM percept,
     and its loop answers the pending ``send_message`` follow-up first, so the pause, resume and guidance

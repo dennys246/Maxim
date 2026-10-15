@@ -31,6 +31,7 @@ entity:
       affordances:
         transmit:
           params: {message: str}
+          speech_param: message
           description: "Broadcast a voice or coded message on current frequency"
         listen:
           params: {}

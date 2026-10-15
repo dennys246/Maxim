@@ -359,6 +359,40 @@ def _check_c5_direct_health(data: dict[str, Any]) -> None:
     )
 
 
+def _affordance_schema(
+    aff_spec: dict[str, Any],
+    params: dict[str, Any],
+    requires: dict[str, float],
+    where: str,
+) -> AffordanceSchema:
+    """One affordance's schema from its YAML dict (``params`` and ``requires`` already parsed), named *where*
+    (``entity.modulator.affordance``) in a load error."""
+    self_effect_raw = aff_spec.get("self_effect", {})
+    self_effect = {k: float(v) for k, v in self_effect_raw.items()} if self_effect_raw else {}
+    target_effect_raw = aff_spec.get("target_effect", {})
+    target_effect = {k: float(v) for k, v in target_effect_raw.items()} if target_effect_raw else {}
+    # #1261: speech is DECLARED, never inferred from a modulator or param name; a declaration that names no
+    # param of this affordance would record nothing, silently, so it fails the load.
+    speech_param = aff_spec.get("speech_param")
+    if speech_param is not None and not isinstance(speech_param, str):
+        raise ValueError(f"affordance {where}: speech_param {speech_param!r} must be one param name (a string)")
+    if speech_param is not None and speech_param not in params:
+        raise ValueError(
+            f"affordance {where}: speech_param {speech_param!r} names none of its declared params "
+            f"{sorted(params) or '(none)'}"
+        )
+    return AffordanceSchema(
+        params=params,
+        description=aff_spec.get("description", ""),
+        timeout=aff_spec.get("timeout", 30.0),
+        requires=requires,
+        self_effect=self_effect,
+        target_effect=target_effect,
+        always_active=bool(aff_spec.get("always_active", False)),
+        speech_param=speech_param,
+    )
+
+
 def _parse_entity(
     data: dict[str, Any],
     parent: Entity | None = None,
@@ -463,19 +497,7 @@ def _parse_entity(
                         sorted(_mod_sensor_names) or "(none)",
                         sorted(_entity_sensor_names) or "(none)",
                     )
-            self_effect_raw = aff_spec.get("self_effect", {})
-            self_effect = {k: float(v) for k, v in self_effect_raw.items()} if self_effect_raw else {}
-            target_effect_raw = aff_spec.get("target_effect", {})
-            target_effect = {k: float(v) for k, v in target_effect_raw.items()} if target_effect_raw else {}
-            affordances[aff_name] = AffordanceSchema(
-                params=params,
-                description=aff_spec.get("description", ""),
-                timeout=aff_spec.get("timeout", 30.0),
-                requires=requires,
-                self_effect=self_effect,
-                target_effect=target_effect,
-                always_active=bool(aff_spec.get("always_active", False)),
-            )
+            affordances[aff_name] = _affordance_schema(aff_spec, params, requires, f"{name}.{mod_name}.{aff_name}")
 
         # Latent motor programs (surfaces when reflexes fire)
         latent_affs: list[LatentAffordance] = []

@@ -26,6 +26,7 @@ entity:
       affordances:
         speak:
           params: {message: str}
+          speech_param: message
           description: "Say something to the ferryman"
         offer_payment:
           params: {amount: float}

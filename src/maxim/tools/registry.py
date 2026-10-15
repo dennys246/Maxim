@@ -110,6 +110,17 @@ class ToolRegistry:
                 raise KeyError(f"Tool not registered: {name}")
             return self._tools[name]
 
+    def find(self, name: str) -> Tool | None:
+        """The tool registered as *name* (active or deactivated), or ``None``: one lookup under the lock.
+
+        For a caller that must not race a concurrent :meth:`deregister` (the DM thread deregisters scene tools
+        while the AUT dispatches): checking :meth:`list_all` and then calling :meth:`get` can raise
+        ``KeyError`` between the two (#1261 review). :meth:`get` still raises on a miss for dispatch, which
+        reports an unregistered tool.
+        """
+        with self._lock:
+            return self._tools.get(name)
+
     def deregister(self, name: str) -> bool:
         """Remove a tool by name. Returns True if found and removed."""
         with self._lock:
