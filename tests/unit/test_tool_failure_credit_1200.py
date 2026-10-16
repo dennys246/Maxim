@@ -116,6 +116,7 @@ def _execute_and_learn(executor: Any, nac: NAc, action: dict[str, Any], autonomy
         context_pool=MagicMock(),
         nac=nac,
         run_id="run_1200",
+        overlay={},
         action=action,
         confidence=0.9,
         proposal=SimpleNamespace(reasoning="probe", citations=[], cluster_id=None, clusters=None, triggering_input=""),

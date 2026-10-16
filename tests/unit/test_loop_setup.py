@@ -163,6 +163,7 @@ _UNPACK = {
     "_execute_and_learn": "execute_and_learn",
     "_book_refusal": "book_refusal",
     "_book_machine_refusal": "book_machine_refusal",
+    "_tool_overlay": "tool_overlay",
 }
 
 
@@ -217,6 +218,7 @@ def test_execute_and_learn_is_bound_to_the_runs_own_handles(monkeypatch, tmp_pat
         assert kw[name] is value, name
     assert (kw["agent_id"], kw["agent_name"], kw["run_id"]) == (run.agent_id, run.agent_name, run.run_id)
     assert kw["max_recent"] == run.ctrl.max_recent_outcomes
+    assert kw["overlay"] is run.tool_overlay  # #1260: the follow-up type reads the run's own, resolved at setup
     unbound = [p for p in inspect.signature(execute_and_learn).parameters if p not in kw]
     assert unbound == ["action", "confidence", "proposal", "observation", "human_involved"]
 
@@ -558,3 +560,34 @@ def test_the_guard_catches_every_import_form(source):
 )
 def test_the_guard_ignores_strings_and_other_modules(source):
     assert agent_loop_imports(source) == []
+
+
+# ── #1260: the run's own tool descriptions are resolved once, at setup ──
+
+
+def test_the_run_carries_its_registrys_tool_descriptions(monkeypatch, tmp_path):
+    from maxim.runtime.bootstrap import build_executor
+    from maxim.simulation.tools import NARRATOR_TOOL_DESCRIPTIONS, SimToolRegistry
+
+    assert dict(_build(monkeypatch, tmp_path).tool_overlay) == {}  # a plain ToolRegistry: the builtins only
+    narrator = build_executor(SimToolRegistry(), pain_bus=None, permissions=None)  # type: ignore[arg-type]
+    assert _build(monkeypatch, tmp_path, executor=narrator).tool_overlay is NARRATOR_TOOL_DESCRIPTIONS
+
+
+@pytest.mark.parametrize(
+    "registry, error",
+    [(SimpleNamespace(), AttributeError), (SimpleNamespace(tool_descriptions=lambda: ["respond"]), TypeError)],
+)
+def test_a_registry_without_tool_descriptions_fails_the_run_at_setup(monkeypatch, tmp_path, registry, error):
+    """Before any action runs: a forgotten ``tool_descriptions()`` can neither book an already-run success as a
+    failure (the dispatch) nor turn into a per-tick warning (the prompt), because the loop never starts."""
+    from maxim.runtime.bootstrap import build_executor
+    from maxim.tools.registry import ToolRegistry
+
+    executor = build_executor(ToolRegistry(), pain_bus=None, permissions=None)
+    executor.registry = registry
+    executed: list[Any] = []
+    monkeypatch.setattr(executor, "execute", lambda *a, **k: executed.append(a))
+    with pytest.raises(error):
+        _build(monkeypatch, tmp_path, executor=executor)
+    assert executed == []

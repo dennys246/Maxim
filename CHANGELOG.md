@@ -471,6 +471,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A sim's agent loop now stops the DefaultNetwork it started (#1263, the DefaultNetwork part only; fixes CI
+  flake #1281).** `run_agentic_loop`'s teardown skipped `dn_ctrl.stop()` in sim mode ("skip in sim — no DN"),
+  a comment older than the sim AUT's DefaultNetwork. Each orchestrator sim therefore left the AUT's `DefaultNetwork`
+  and `DN-BackgroundTasks` threads ticking on the dead run's bio state, one pair per run in a long-lived process. Their
+  behaviours draw from the process-global `random`, which broke `test_seeding` later in the fast suite (#1281). The
+  skip is gone: the loop that starts the DN stops it. The `plan-logger`/`plan-dashboard` writers and the `memctx`
+  pool are still #1263's. Gate: `test_orchestrator_characterization_golden.py::test_the_run_leaves_no_default_network_running_1263`.
+- **The narrator's tool descriptions no longer reach the agent under test (#1260).** `start_simulation_mode` wrote
+  the narrator's 14 tool entries into the process-global `modes.definitions.TOOL_DESCRIPTIONS` and never undid it.
+  The AUT runs beside the narrator in the same process, so its prompt read `respond: NOT AVAILABLE. Use send_message
+  instead.`, and every AUT `respond` got a `process` follow-up: one extra LLM call and one extra action (the `say`)
+  per reply. The leak outlived the sim, into the menu loop, the console server and `maxim.campaign()`. Owner decision
+  2026-10-14: a registry-scoped overlay. The entries moved to `simulation/tools.py::NARRATOR_TOOL_DESCRIPTIONS`;
+  `SimToolRegistry.tool_descriptions()` returns them and `ToolRegistry.tool_descriptions()` returns an empty
+  read-only mapping. The loop resolves the agent's overlay ONCE at setup (`runtime/loop_state.py::tool_description_overlay`,
+  called by `loop_setup.build_loop_run`, stored as `LoopRun.tool_overlay`) and hands it to both readers: the
+  prompt's tool section (`agent_loop._describe_tools_for_prompt`, a required `overlay=`) and the follow-up type
+  (`tool_dispatch.execute_and_learn`, a required `overlay=` bound per run, into `get_tool_followup_type`, whose
+  `overlay=` is also required, so a caller cannot silently read only the builtins). An executor whose registry lacks
+  `tool_descriptions()` fails the run at setup, before any action runs: **a duck-typed custom registry passed to
+  `maxim.create`/`run` must now provide `tool_descriptions()`** (return an empty mapping if it adds none). A
+  stand-in executor that reaches
+  `build_loop_run` needs a real `.registry`. The narrator's prompt and follow-ups are unchanged; the
+  AUT's `respond` is terminal again, so orchestrator sims record one action per AUT reply where they recorded two.
+  Gates: `tests/unit/test_orchestrator_characterization_golden.py` (the `_1260` tests, on a real run; the slice-0
+  harness now asserts that a run leaves `TOOL_DESCRIPTIONS` untouched instead of restoring it) and
+  `tests/unit/test_narrator_tool_overlay_1260.py` (the interface, and no source writes the global dict).
 - **Two console apps in one process no longer stream each health event twice** (F3, #1268 follow-up). The /ws
   hub is process-global, and every app registered its own publisher into it on the shared `HealthLog`, so clients
   saw each `health` / `health_stall` event once per app. Apps now register one shared publisher

@@ -12,8 +12,8 @@ contract) will reuse this same path: it constructs a ``PerceptSource`` +
 ``ActionSink`` pair, hands them to ``run_agentic_loop``, and the loop
 treats it as ``is_sim_mode=True``. The behaviors gated by the flag are:
 
-- Skip Default Network startup (DN is robot-vision specific; external
-  adapters provide their own world state).
+- NOT the Default Network: the loop starts a passed DN and stops it at teardown whatever the flag
+  (the sim AUT's included; the old sim-mode stop skip leaked it, #1263/#1281).
 - Use sim-specific structured logging (``sim_log`` calls).
 - Skip LLM fallback proposals (wait for the real LLM rather than emit
   a placeholder action).

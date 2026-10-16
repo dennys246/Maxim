@@ -314,8 +314,13 @@
           "id": "1263.dn-stop",
           "ref": "#1263",
           "scope": "#1263's DefaultNetwork part: the loop stops the DefaultNetwork it started, in sim mode too (#1281). Ships in #1260; its evidence is that PR's red gate once it is on main.",
-          "evidence": [],
-          "red_gate": null
+          "evidence": [
+            "tests/unit/test_orchestrator_characterization_golden.py::test_the_run_leaves_no_default_network_running_1263"
+          ],
+          "red_gate": {
+            "commit": "24d7182f48b1cd7aca41785662515ca3ccf086ec",
+            "nodeid": "tests/unit/test_orchestrator_characterization_golden.py::test_the_run_leaves_no_default_network_running_1263"
+          }
         },
         {
           "id": "1263.concept-extractor",
