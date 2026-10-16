@@ -1,4 +1,84 @@
-# pymaxim.bio — website handoff (1.0.9 live audit 2026-08-19 · 1.1 audit 2026-08-25 · 1.1.4 refresh 2026-09-05 · 1.3.0 refresh 2026-09-19 · 1.3.1 refresh 2026-09-27)
+# pymaxim.bio — website handoff (1.0.9 live audit 2026-08-19 · 1.1 audit 2026-08-25 · 1.1.4 refresh 2026-09-05 · 1.3.0 refresh 2026-09-19 · 1.3.1 refresh 2026-09-27 · 1.3.2 corrections 2026-10-15)
+
+## 1.3.2 corrections — 2026-10-15 (phase 1 of the 1.3.2 refresh; not a release refresh — 1.3.2 is not on PyPI)
+
+**Framing rule.** The project applied its own stricter bar (BF2, `docs/plans/baseline_floors.md`) to
+itself and lost that comparison on its three survival-fear rows. The site says so plainly, as a
+credibility point, not a retraction: each row still beats its internal ablation; none shows behaviour
+beyond a no-bio learner. Exp 60, 61 and 62 are **never** EARNED in the present tense anywhere on the
+site. No bare-LLM floor result is implied: B0 shipped provenance only, B1 was the non-LLM floor, and
+B2 (`bare_llm`) has not run; the site says B2 is planned and that no new LLM-path claim can be EARNED
+until it exists. Nothing on the site describes the 1.3.2 release itself (version line, features,
+upgrade breaks) — that is phase 2, after `v1.3.2` is on PyPI and tagged. Site fix: **maxim-web `docs/1-3-2-corrections`**; this
+section is its engine companion.
+
+**Engine truth read on `origin/main` (`cfc3a491`), not from memory:** the graduation ledger's T1-1,
+T1-2, T1-13, T1-14, T1-15 and T1-16 rows; `docs/plans/baseline_floors.md` (BF2, §Why this plan
+exists, Stages B0–B5); `docs/experiments/b1_exp60_floor_prereg.md` (frozen v5);
+`docs/experiments/data/b1_exp60_floor_48ce40118c20_verdict.json` (`FLOOR_MATCHED_Q`; `tests.H1`
+p 0.0035, `tests.H2` p 1.0; `first_post_rate` fear 1.0 / q_explore 1.0 / random 0.25; `n_clean` 8 per
+arm); CHANGELOG `[Unreleased]` "Evidence status at the cut" (T1-2 STALE, exception
+`release-1.3.2-T1-2` — **not** carried yet, since it is a release statement); #1283, #1294, #1296;
+#1260, #1261, #1289, #1299, #1301; #1300.
+
+**Checks.** `pnpm build` clean, **156** pages (one new: the B1 manifest entry); **12,980** internal
+hrefs + fragments resolve in `dist/` (URL-decoding checker), 0 broken; all **155** sitemap routes
+present, including `/research/experiments/b1-exp60-floor/`. No snippet, CLI flag or components count
+changed, so nothing was re-checked against a wheel; that is phase 2's job, on the 1.3.2 wheel.
+
+### Findings (route → claim before → truth source → fix)
+
+| Route | Before | Truth source | Fix |
+|---|---|---|---|
+| `/research/evidence/` | Exp 60 / 61 / 62 "earned"; no floor axis; "how a claim is earned" never explained; Exp 37 "partial"; Goldilocks map without "unverifiable, not refuted"; Exp 12 cited with no caveat | T1-13/14/15 rows; `baseline_floors.md` BF2; B1 prereg + verdict; T1-2 row; L8; #1301 | New **How a claim is earned** (one BF2 paragraph: ablation vs floor, the substrate and LLM floors, `partial (narrow: floor matched)`, pre-rule rows "not measured"); summary table gains a **Floor** column beside status (matched-measured / matched-argued / not measured / —) and the three rows move below the earned ones; new **The floors** section (B1 numbers, the tie is "not shown", never "equivalent", the 31-vs-0 efficiency gap, the three analytical reasons for 61/62, what stands / what is gone / what they show instead, B2 not run, B4 in 1.4; absolute links to the prereg, the verdict and `baseline_floors.md`); a Status line on each of the three claims; Exp 37 **stale since 2026-10-02 (was partial)** with L8's caveat; Exp 12 caveat (#1261 receipts, #1260 `respond` unavailable, both fixed, raw scoring files never committed, #1301 open); four dated entries in the corrections list; "Where this is going" gains the E1–E3 obligations (mechanism twin as a run arm; a contingency a reasonable floor can lose) as planned work, plus the two engineering notes (the narrator hears the agent's words; the 1.4.0 decomposition gate, #1300) |
+| `/getting-started/` | "earned" / "earned, the headline" on the Exp 60 / 61 bullets; Exp 62 "on the engine's evidence ledger" | T1-13/14/15 rows | Both bullets carry the partial status and date; a new bullet states the stricter bar, the 8/8 tie, what still stands and the 31-vs-0 gap; Exp 62 "partial (floor matched, by argument)". The 1.3.1 version line is untouched (phase 2) |
+| landing (`index.astro`) | fear card ends on R3, no floor | same | One sentence on the stricter bar: the floor escaped as well, both results now partial, what they still show; a "The floors →" link |
+| `/research/experiments/world-seam/` | "earned" ×3 in the claim summary and the experiments table; no floor | same; B1 verdict | Partial statuses and dates; a **Then the floor** paragraph; "Behaviour beyond a no-bio learner" first under *What it does not show*; a Status line atop each of the three experiment sections; B1 row in the table |
+| `/memory/engrams/` | situation engram "EARNED ×7"; "three most recent EARNED rows", each "EARNED <date>"; "the earned drowning fear" | same | "EARNED ×4, PARTIAL ×3"; the three rows "earned <date>; PARTIAL, floor matched, <date>" with a lead paragraph saying the ablation results stand and what is gone |
+| `/systems/fear-circuit/`, `/guides/oasis/` | Exp 60 / 61 shown "to drive behavior"; Exp 62 "earned the day after 1.3.0" | same | One sentence each: partial since October 2026, what still stands (transport for Exp 61) |
+| `/research/experiments/cross-session-learning/`, `/roy-harness/` | Exp 37 "partial"; Goldilocks map uncaveated; Exp 12 "clean pass" uncaveated | T1-2 row; L8; #1301 | Exp 37 stale since 2026-10-02, re-run with floors in 1.4 (B4); "unverifiable, not refuted" wherever the map appears; Exp 12 caveat paragraph, including that the Acting Coach's "3 respond hits vs 1" is confounded by #1260 |
+| `/research/experiments/` (vocabulary) | "Earned — met its gates"; "Partial — some gates failed" | BF2 | Earned also needs the floor since 2026-10-10; partial includes *floor matched* (Exp 60–62) |
+| `src/data/experiments.json` | exp-60/61/62 `earned`; exp-12 and exp-37 uncaveated; no B1 | as above | exp-60/61/62 → `partial`, the qualifier in the summary and finding (not `phase`, which renders as "Covers:"), findings rewritten (what stands, the floor, what they show); exp-12 caveat + summary; exp-37 graduation and cross-model stale + L8 wording; new `b1-exp60-floor` entry (`reference`, follows exp-60, walkthrough to `/research/evidence/#the-floors…`) |
+
+**Left as is, deliberately.** Every Exp 60 / 61 / 62 number and scope, byte for byte — only status,
+floor and "what it shows" lines were added. Exp 56, 52, 42, 45, 53b, 49 keep EARNED with "floor: not
+measured" (BF2: pre-rule rows keep their status until their next re-run). The 1.3.1 version line, the
+upgrade guide and the components catalog (phase 2).
+
+**Not carried yet.** Anything about the 1.3.2 release: its version line, the `release-1.3.2-T1-2`
+exception wording, the release's features and upgrade breaks (phase 2,
+after PyPI + tag). **Exp 63 (T1-16)** and Exp 10's move
+to SUPERSEDED (2026-10-04): the site still shows Exp 10 "maintained (narrow), 2026-09-27", which the
+ledger no longer says; held for the owner's call on whether it lands in phase 1 or with the 1.3.2
+refresh.
+
+**Different-reader pass (before either PR).** An independent agent re-checked every changed claim against the
+sources above. Eleven findings, all folded: the Exp 61 status sentence attached "by construction" to a
+"transferred" prior (it is the same *defensive* prior; the by-construction point is the state-value
+twin); "Maxim lost that comparison" overclaimed a tie and a single measured row (now "did not beat it:
+on Exp 60 the floor matched; 61 and 62 followed by argument"); three pages applied Exp 60's measured
+8/8 to Exp 61 as if run; "Pavlovian" was unsourced and invites the prediction-error reading the B1
+prereg rules out (now "context-conditioned"); Exp 37 was said to carry both narrator defects (#1301
+says only #1260); the defects' window is 2026-04-03 to the fixes (#1299 merged 2026-10-16 UTC); the
+E1–E3 contingency is conditional on wanting to EARN over the floor, and the twin is the *mechanism*
+twin; "measures that contradiction as much as the coach" implied an unmeasured magnitude; #1260 is a
+simulator defect, not a narrator one; the status qualifier had been put in the manifest's `phase`
+field, which renders as "Covers:" (moved out; Exp 62 keeps "rung A"); and lay glosses for "tabular
+Q-learner" and "ablation" on the landing and getting-started pages.
+
+### Acceptance checks — 1.3.2 corrections
+
+- [x] No page says Exp 60, 61 or 62 is EARNED in the present tense; each shows its partial status, date and one line on the floor.
+- [x] `/research/evidence/` explains BF2 in one plain paragraph, shows the floor as an axis beside the ablation, and links the B1 prereg, the verdict and `baseline_floors.md` with absolute GitHub links.
+- [x] "Not shown" for FEAR > Q, never "equivalent"; the 31-vs-0 efficiency gap stated; what stands / what is gone / what they show instead stated.
+- [x] No sentence implies a bare-LLM result; B2 described as planned, and no new LLM-path claim earnable until it exists.
+- [x] Exp 37 stale with L8's "unverifiable, not refuted" wherever the Goldilocks map appears; Exp 12 carries the #1301 caveat, including the Acting Coach count.
+- [x] E1–E3 obligations described as planned, nothing claimed.
+- [x] Nothing describes the 1.3.2 release.
+- [x] `pnpm build` clean (156 pages); 12,980 internal links + fragments resolve; 155/155 sitemap routes present.
+- [ ] **After merge/deploy:** spot-check `/research/evidence/#the-floors-the-first-comparison-with-a-no-bio-learner`, `/research/experiments/b1-exp60-floor/` and the landing card live.
+- [ ] **Phase 2 (after `v1.3.2` is on PyPI):** the 1.3.2 refresh section, in this file's usual shape.
+
 
 ## 1.3.1 refresh — 2026-09-27 ("Hardening"; PyPI `upload_time` 2026-09-27T22:06Z, signed tag `v1.3.1` @ `7e695a58`)
 
