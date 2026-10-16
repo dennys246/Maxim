@@ -594,12 +594,19 @@ frozen status verbatim; **EARNED** per rung = every frozen gate of that rung's p
   complete: in the golden, with direct-assertion evidence, their golden case passing. (That they land BEFORE the
   slice that moves their code is enforced by that slice's review and roadmap_1_3_x.md §"Characterization owed",
   not mechanically.) Third, every listed item is satisfied by an evidence test that was once a strict red gate,
-  or retired on the record. The 30 items are #1259, #1262, #1263's six parts (the DefaultNetwork stop, #1260's,
+  or retired on the record. The original 30 items are #1259, #1262, #1263's six parts (the DefaultNetwork stop, #1260's,
   and the ConceptExtractor worker threads included), #1264, #1265, #1267, #1123's three parts, #932's resume
   lookup, #1288's four name lists, #835, #850, #845 item 1, #965, and #863's 7 DROP-class sites: the four innermost
   loop_perception wraps of #863's own close condition, and three orchestrator SEM_TRACE wraps that widen #863
   beyond its own scan (which excluded `simulation/`) by owner decision 2026-10-15, classified by its 2026-09-24
-  DROP/KEEP rule. Below 1.4.0 the lint prints the outstanding counts on every run. The diff
+  DROP/KEEP rule. Two more items were added later the same day (owner decision 2026-10-15), bringing the total to
+  32. They carry #1281's remainder after PR #1299 fixed its root cause and #1281 closed. `1305.owned-rng` (seeded
+  reproducibility, #1305): no module under `default_network/`, `attention/` or `spatial/`, nor
+  `decisions/significance.py`, draws from a process-global generator (the stdlib `random` module's functions, or
+  numpy's legacy `np.random.*` functions). Each draws from an owned generator whose seed derives from the one
+  `seed_all` last set (`get_global_seed`). `1263.thread-guard` (#1263's leaks): a conftest guard fails any
+  fast-suite test that leaves behind a loop thread it started (the `*_run_loop`, `*_writer_loop` and
+  `*_worker_loop` targets and the `memctx_*` pool workers that the item names), and its allowlist is empty. Below 1.4.0 the lint prints the outstanding counts on every run. The diff
   that bumps to 1.4.0 may not touch the gate file. **Once 1.4.0 is released** (a released `## [1.4.0]` CHANGELOG
   header and pyproject version at the diff's base), the gate closes: its item, arm, function and new-debt rules only print, and its
   shape and history rules stay enforced. Residuals that only review can catch: mechanization backlog M56
