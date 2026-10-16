@@ -46,6 +46,7 @@ htmlcov/
 nosetests.xml
 coverage.xml
 coverage.json
+fast-suite.xml
 *.cover
 *.py.cover
 .hypothesis/
