@@ -77,7 +77,7 @@ Grouped by the axis each item lifts; the "to reach" conditions come from the car
 
 | item | guard |
 |---|---|
-| **[→ 1.3.2 — SUPERSEDED by item 6]** ~~**Extend the function-length ratchet to every function over 300 lines** (18 today, one of 921; the ratchet covers 3). Pin at current length, shrink-only.~~ Item 6 below replaces it with one ratchet at **200** lines (53 functions pinned, 19 of them over 300, measured 2026-10-04). **Built 2026-10-04, PR pending.** | `scripts/lint_function_length.py` + `src/maxim/utils/function_length_baseline.json` + `tests/unit/test_lint_function_length.py` |
+| **[→ 1.3.2 — SUPERSEDED by item 6]** ~~**Extend the function-length ratchet to every function over 300 lines** (18 today, one of 921; the ratchet covers 3). Pin at current length, shrink-only.~~ Item 6 below replaces it with one ratchet at **200** lines (53 functions pinned, 19 of them over 300, measured 2026-10-04). **Built 2026-10-04, merged as #1090.** | `scripts/lint_function_length.py` + `src/maxim/utils/function_length_baseline.json` + `tests/unit/test_lint_function_length.py` |
 | **[→ 1.3.2]** **A repo-wide mypy error-count ratchet** starting at today's measurement (1,050 errors in 141 files over all of `src/maxim` — a different, earlier invocation, superseded: the ratchet's own invocation is the only count that binds; CI's typed set stays at 18 files). **Built 2026-10-04** as a per-file ratchet against the merge-base (item 4 below; 1,096 cold at the build, 1,075 at `v1.3.1` the same way). | `scripts/lint_mypy_ratchet.py` (lint job) + `tests/unit/test_lint_mypy_ratchet.py` |
 
 ### Research integrity + documentation honesty (both B+, cheap items)
@@ -225,7 +225,7 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
    raises coverage without asserting behaviour does not count. Guard: the three CI checks above; the
    floors, the changed-line threshold and the exclusion list are committed files, and the lint fails
    on a floor that drops or an exclusion without a reason.
-   **Gate half built 2026-10-04, PR pending; floors bootstrapped from CI.** `scripts/lint_coverage.py`
+   **Gate half built 2026-10-04, merged as #1092 (2026-10-05); floors bootstrapped from CI. Per-file floors (format v2) merged as #1266 (2026-10-13).** `scripts/lint_coverage.py`
    runs in the `unit-tests` job after the fast suite, which now carries `--cov` in its single run
    (`coverage==7.13.3`, `pytest-cov==7.0.0` pinned exactly; `fetch-depth: 0`; timeout 60). Owner decisions
    2026-10-04: floors measured in CI's own environment on the gate PR and pinned rounded down to 0.1 pt
@@ -349,7 +349,8 @@ never worked. Every issue open on 2026-09-27 (39) has a home: the ten already sc
 `decisions/nac.py`'s selection path or `simulation/orchestrator.py` until the 1.3.2 decomposition slices
 touching it have landed." Every batch below stays inside it. A ⟲ fix in best-effort batch 4 that lands
 after decomposition work has started is discharged by its own rows' re-runs in its own PR, never by the
-closing walk.
+closing walk. The remaining slices are not in 1.3.2 (owner decision 2026-10-15), so the fence stays up until they
+land; its end is mechanical, the 1.4.0 gate ([roadmap_1_4.md](roadmap_1_4.md) T0).
 
 **Fence exception, #1042 (owner-approved 2026-10-01):** the simulation stall detector's suppression in
 `orchestrator.py::start_simulation_mode` was dead (it queried the lane, the router registered the cost tier), and
@@ -405,7 +406,12 @@ recorded in this plan.
 *With the slice that owns the file*, each in its own PR. A fix measured on a loop mid-refactor cannot be
 told apart from the refactor.
 
-- **With the `agent_loop` slices:**
+- **With the `agent_loop` slices:** phase 1 (slices 0–5) closed 2026-10-10 with #1210 (§The decomposition).
+  #963 and #1125 landed with it (below); #835, #850, #845 item 1, #965 and #863's `agent_loop.py` sites did not, and
+  stay open with the loop's later slices, which are not in 1.3.2, per "Done when" below. **By owner decision
+  (2026-10-15) each is a 1.4.0 release-gate item** ([roadmap_1_4.md](roadmap_1_4.md) T0,
+  `scripts/release_gates.json`): #835, #850, #845 item 1, #965, and #863's four innermost `loop_perception` wraps
+  (slice 5 moved them out of `agent_loop.py`).
   - [#835](https://github.com/dennys246/Maxim/issues/835): tool results travel as synthetic human
     input. It lands after the slice that owns the follow-up channel, which #834 builds on.
   - [#850](https://github.com/dennys246/Maxim/issues/850): `NAc.last_rpe` is sticky. Its per-goal RPE
@@ -420,12 +426,18 @@ told apart from the refactor.
     operational mode per call site, so the follow-up type ignores the launch grant. The slice that owns
     the loop's mode handling makes one accessor the only capability reader, guarded against new raw
     `state.data["mode"]` reads. #829's source-pin wiring tests become behavioural in the same PR.
-  - [#1125](https://github.com/dennys246/Maxim/issues/1125) (#874's review): `Executor._drive_pressure_snapshot` misses modulator-qualified drives
+  - **[MERGED (#1164)]** [#1125](https://github.com/dennys246/Maxim/issues/1125) (#874's review): `Executor._drive_pressure_snapshot` misses modulator-qualified drives
     (`arms.thermal`, `head.thermal`, `arms.pressure`); with the slice that moves `_read_drive_ranges`.
     Record-only. Handed to Session A 2026-10-06.
   - [#863](https://github.com/dennys246/Maxim/issues/863): its `agent_loop.py` sites. Its `cli.py::_main_impl`
     sites go with that slice if it lands; if not, they stay open on #863 with this home recorded.
-- **After the orchestrator's characterization tests** (the first slice of its decomposition):
+- **After the orchestrator's characterization tests** (the first slice of its decomposition; **landed as #1269,
+  2026-10-14**). None of the three below has landed. The remaining orchestrator slices are not in 1.3.2, and by owner decision
+  (2026-10-15) they hard-gate 1.4.0 (§The decomposition), so each stays open on its issue, lands with or after the
+  slice that moves its code, and is a 1.4.0 gate item: #932's lookup (`_load_resume_context_at`) sits in §9, the
+  campaign dispatch slice; #1123's three parts (the `health` hint, the range text, the `value` default) sit in §5,
+  the `build_orchestrator` slice; and #863's three DROP-class orchestrator SEM_TRACE wraps widen #863 beyond its
+  own scan by the same decision.
   - [#932](https://github.com/dennys246/Maxim/issues/932): the `--resume-sim` lookup. Its other callers
     shipped in batch 2's PR: `session.py`, `api.py`, `research_orchestrator.py`, `campaign_runner.py` and
     `scripts/check_oscillator_coldstart.py` moved onto `resolve_run_dir` / `data_home()`; the
@@ -527,7 +539,8 @@ found 1.3.2 not ready. The owner decided:
 **Done when:**
 - Batches 0–2 are closed.
 - Each of batches 3–4 is closed, or moved as recorded above.
-- The slice-bound items have landed with their slices, or stay open with them.
+- The slice-bound items have landed with their slices, or stay open with them (each still open is a 1.4.0
+  release-gate item, owner decision 2026-10-15, [roadmap_1_4.md](roadmap_1_4.md) T0).
 - **Breaking changes in a patch release (owner, at the cut).** The release PR asks the owner whether the
   `[Unreleased]` breaking entries fit a patch: #939/#950 (`create.*`/`load.*` store guards), #932 (run-directory
   resolution, PR #980), #971 (the save guard on NAc, EC, SCN, AngularGyrus and the cross-layer graph) and #1071
@@ -574,14 +587,62 @@ recorded-but-unused memory system. That is 1.4's work ([roadmap_1_4.md](roadmap_
    → `runtime/loop_perception.py::perceive -> PerceptionOutcome` (`imagine`, `auto_sense`, `orient_to_audio`, each
    verbatim and under 200 lines; `next_observation` and `state.update` stay at the call site), built 2026-10-10,
    merged as #1210: 2,717 → 2,429 lines; the same PR applied rule (c) below.)*
+   **Phase 1 COMPLETE 2026-10-10:** slices 0–5 merged as #1114, #1127, #1136, #1157, #1187 and #1210, with
+   #1133 (#1151), #963 (#1198) and #1125 (#1164) landed alongside. `run_agentic_loop` is pinned at 2,434 lines on
+   `main` today (the function-length baseline; later fixes moved it from slice 5's 2,429). Further `agent_loop`
+   slices (phase 2) are not in 1.3.2. **By owner decision (2026-10-15) they hard-gate 1.4.0**, with the
+   loop-bound issues still open (§Issue burn-down): `run_agentic_loop` and `execute_and_learn` (392 lines today,
+   split out by #1133; its own split is #1150) must each reach 200 lines or fewer with no function-length pin, as
+   must everything split out of them (§The 1.4.0 gate, below).
 2. **`start_simulation_mode`** (`simulation/orchestrator.py`, 3,322). Its tests cover **11%** of its lines
    (the Codex card's measurement at `v1.3.1`), so it is NOT decomposed blind: characterization tests
    first, then an orchestrator coverage floor set from them (item 5 above), then slices under the same
    gates below. The coverage ratchet is what makes this decomposition safe.
+   *(Slice 0 merged as #1269, 2026-10-14: the characterization golden
+   (`tests/unit/test_orchestrator_characterization_golden.py`, driver `tests/unit/_orch_harness.py`, three arms),
+   then one verbatim move, the TTY loops (`stdin_reader_raw`, `read_post_sim_goal_raw`) to
+   `simulation/tty_stdin.py` (whole-file coverage exclusion, ref #947): 3,227 → 3,003 lines (3,004 after #1289's one line; **2,889 on `main` today**, after #1299 moved §5's 14
+   narrator-only descriptions to `simulation/tools.py::NARRATOR_TOOL_DESCRIPTIONS`). `orchestrator.py`'s per-file coverage floor (#1266, merged 2026-10-13) is pinned at **54.0%**
+   from two distinct CI runs of the slice branch (`4e1d403c`; spread 0), taken directly from the runs because
+   `--merge-floors` falsely refuses two byte-identical deterministic runs as one run given twice
+   ([#1271](https://github.com/dennys246/Maxim/issues/1271), open; the provenance gap behind it is M52).
+   The defects slice 0 surfaced are pinned as current behaviour, each fixed as a reviewed golden change:
+   #1261 merged as #1289: the narrator reads the AUT's words through the typed `ActionRecord.utterance`, and
+   speech is declared on the tool (`Tool.speech_params`, or an affordance's YAML `speech_param`). #1260 merged as
+   #1299 with #1263's DefaultNetwork part: the narrator's tool descriptions are a registry-scoped overlay
+   (`SimToolRegistry.tool_descriptions()`), no longer written into the process-global `TOOL_DESCRIPTIONS`; the loop
+   stops the DefaultNetwork it started, in sim mode too (the leak behind the CI flake #1281); and the golden was
+   regenerated in its own commit (`feb7dd5a`). #1259, #1262, #1263's remainder, #1264, #1265 and #1267 stay open,
+   each a 1.4.0 gate item.)*
+   **The remaining orchestrator slices are not in 1.3.2, and they hard-gate 1.4.0 (owner decision
+   2026-10-15).** They do not gate the 1.3.2 cut, where the function-length ratchet records the ceiling (Sizing,
+   below); 1.4.0 cannot pass CI until `start_simulation_mode` (2,889 lines) reaches 200 or fewer with no pin, with
+   everything split out of it (§The 1.4.0 gate, below). Order, tail first: report/result (§14) → teardown (§13) →
+   stall detector (§11) → stdin (§10) → campaign dispatch (§9) → `build_aut` → `build_orchestrator`. Each owes
+   the characterization arms listed below before it moves.
 3. **`_main_impl`** (`cli.py`, 1,696) — only if 1 and 2 land; it is CLI glue, the least valuable of the three.
 
 The "kicked down the road" worry that kept this to one target is answered by the rule in **Sizing**: if a
-slice stalls, 1.3.2 ships the slices that landed and the ratchet records the new ceiling.
+slice stalls, 1.3.2 ships the slices that landed and the ratchet records the new ceiling. Since 2026-10-15 the
+remainder is not an open-ended deferral: it gates 1.4.0 (below).
+
+**The 1.4.0 gate (owner decision 2026-10-15).** The owner decided that the remaining decomposition is not in
+1.3.2 and that it HARD-GATES 1.4.0. It is [roadmap_1_4.md](roadmap_1_4.md) T0, enforced by
+`scripts/lint_release_gates.py` over `scripts/release_gates.json` (PR #1300; CI's lint job plus a runtime twin in
+unit-tests), which fails every version at or above 1.4.0 until three things hold:
+- `start_simulation_mode` (2,889 lines today), `run_agentic_loop` (2,434) and `execute_and_learn` (392) are each
+  200 lines or fewer with no function-length pin, and so is everything split or moved out of them.
+- The five orchestrator characterization arms (`persistent_agent`, `imagination`, `new_goal`, `stall`,
+  `generative`; §"Characterization owed" below) are complete in the golden, with direct-assertion evidence.
+- 30 items are each satisfied by an evidence test that was once a strict red gate, or retired on the record: the
+  slice-0 defects (#1259, #1262, #1263's six parts including the DefaultNetwork stop #1299 shipped, #1264, #1265,
+  #1267); the folded issues (#1123's three parts, #932's resume lookup, #863's seven DROP-class sites: four
+  `loop_perception` wraps and three orchestrator SEM_TRACE wraps); #1288's four name lists
+  (`modes/definitions.py::CORE_TOOLS` is exempt as a mode-membership list); and the loop-bound #835, #850, #845
+  item 1 and #965.
+
+What only review can catch around it, including that an arm lands before the slice that moves its code, is
+mechanization backlog M56 ([outstanding.md](outstanding.md)).
 
 **Baseline edits per slice (the function-length ratchet, item 6).** In the same commit as the extraction:
 lower the source function's pin to the span the lint prints (or remove its entry if it is now 200 lines or
@@ -664,22 +725,34 @@ non-sim adapter, a sim percept source for the reflex tier, a capturing worker, t
 `bodies/reachy_mini_infant`), the block's statement coverage 27% → 100%. It pins, unchanged, the percept-text
 divergence filed as #1202.
 
-**Characterization owed before the orchestrator's report, teardown and stall slices** (the review of
-orchestrator slice 0, 2026-10-13). `tests/unit/test_orchestrator_characterization_golden.py` (driver:
+**Characterization owed before the orchestrator's report, teardown, stall and campaign-dispatch slices** (the
+review of orchestrator slice 0, 2026-10-13; the campaign-dispatch arm added 2026-10-15). All five arms
+below are 1.4.0 gate arms (§The 1.4.0 gate): the lint checks that each is complete, but that each lands BEFORE the
+slice that moves its code is enforced by that slice's review and this paragraph, not mechanically (M56).
+`tests/unit/test_orchestrator_characterization_golden.py` (driver:
 `tests/unit/_orch_harness.py`) runs three arms, all on a fresh throwaway AUT. Before the slice that moves §13
 teardown or §14 report/save, it needs an **adopted `persistent_agent` arm** (the HANDLE seam's branches 3 and 4:
 no session AUT snapshot, the tool-lease restore, the DefaultNetwork pain-bridge unsubscribe), an
 **imagination-enabled arm** (§7) and a **`/new` arm** (the post-sim reader faked to return a goal, so the run
 re-enters `start_simulation_mode`). Before the slice that moves §11, it needs a **stall-detector arm** that reaches
 the detector's injections; today's arms stay under its first diversity checkpoint and its 30 s idle threshold on
-purpose. Already pinned by slice 0's review fold: the report's provenance by value (only the keys that name the
+purpose. Before the slice that moves §9 (campaign dispatch), it needs a **generative-campaign arm**
+(`generative=True`). Session C found that the generative campaign runs synchronously, inside §9, and its
+`_finish_runner` sets `stop_event` BEFORE §9's resume/kickoff injection (`orchestrator_source.inject_cli`), so on
+that path the narrator never consumes the resume prompt (the reason #1226 is parked, §Issue burn-down). The arm
+pins that ordering, so the §9 slice cannot reorder it silently; changing it is a fix with its own reviewed golden
+change. Already pinned by slice 0's review fold: the report's provenance by value (only the keys that name the
 checkout and the interpreter are masked, by name), the whole `MAXIM_DATA_HOME` file set (the orchestrator's own
 `shutdown()` stores included; `agents/*/runtime/` excluded for #1264), the threads a run leaves alive (#1263,
-pinned as current behaviour), the saved AUT NAc's causal links and the `actions.jsonl` records, and what each
+pinned as current behaviour; #1299 regenerated the golden as a reviewed change in its own commit, `feb7dd5a`:
+`DefaultNetwork` and `DN-BackgroundTasks` left the leaked-thread set, and `6238109d` stopped pinning the
+order-dependent memctx pool),
+the saved AUT NAc's causal links and the `actions.jsonl` records, and what each
 report writer is handed.
-**The `orchestrator.py` per-file coverage floor** is pinned from CI's measurement once #1266 (per-file floors
-with the split rule; merged to main 2026-10-13) is on the slice branch, not from a local run; slice 0 does not
-touch `scripts/coverage_floors.json`.
+**The `orchestrator.py` per-file coverage floor** was pinned from CI's measurement on the slice-0 branch with
+#1266 (per-file floors with the split rule; merged to main 2026-10-13) on it, not from a local run: **54.0%**
+(`4e1d403c`, two distinct CI runs; see item 2 above for #1271). Later slices move it under #1266's split
+rule.
 
 **Typing rides along, scoped:** every module the decomposition creates enters CI's mypy set. The
 repo-wide ratchet from 1.3.1 holds the rest. Full coverage is not promised.
@@ -688,10 +761,17 @@ repo-wide ratchet from 1.3.1 holds the rest. Full coverage is not promised.
 `run_agentic_loop`'s idle-gate and autonomy handling) and a live re-run of Exp 60 on the rig
 (5 seeds per arm, ~1 h) to discharge them with a dated annotation, rather than an argument that a
 pure extraction changes nothing.
+**The live Exp 60 re-run is DONE:** T1-13 MAINTAINED 2026-10-12 (Exp 60 Amendments 8–9, run at the code pin
+`baf0e15f`, all five frozen gates PASS; data #1251, ledger move #1253), re-validating the row AT THE PIN only. The
+post-pin trigger walk (#1255) covers every PR merged after the pin through #1253: no re-run owed. Session A's PRs
+after #1253 (#1269, #1266, #1289, #1299 and #1300) are walked on T1-13's row (2026-10-15): no re-run owed. The
+other lanes' PRs after #1253 are walked at the cut. (T1-13 has since moved to PARTIAL 2026-10-14, narrow: floor matched, through the
+baseline-floors line's B1 run, #1283; the FEAR-vs-ABLATED contrast this re-run re-validated stands.)
 
 **Sizing, honestly:** this is the largest item on the list — several sittings of work in reviewed
 slices, plus the rig hour. If a slice stalls, the release ships the slices that landed; the ratchet
-records the new ceiling either way.
+records the new ceiling either way. For 1.3.2 that is what happened, and by owner decision (2026-10-15) the
+remainder hard-gates 1.4.0 (§The 1.4.0 gate).
 
 ---
 
@@ -707,8 +787,11 @@ records the new ceiling either way.
            Exp 10 re-run → data-safety + silent seams (#939, #840/#841, mypy) → the ratchets (FIRST among the
            enforcement items; #951/#935 precede them because they unblock CI truth and re-runs) → engram
            integrity (#908–#911) → ⟲ burn-down fixes, each discharged in its own PR → the decomposition
-           (agent_loop, then start_simulation_mode behind characterization tests; _main_impl if time)
-           → trigger walk + live Exp 60 re-run
+           (agent_loop, then start_simulation_mode behind characterization tests; _main_impl if time;
+           agent_loop phase 1 DONE #1210, start_simulation_mode slice 0 DONE #1269; the rest is not in
+           1.3.2 and hard-gates 1.4.0, owner decision 2026-10-15, roadmap_1_4.md T0)
+           → trigger walk + live Exp 60 re-run (re-run DONE 2026-10-12, #1251/#1253; post-pin walk #1255;
+           Session A's post-#1253 walk 2026-10-15)
            ‖ in parallel, inside the fence: the issue burn-down, batches 1–4 (security first)
            ‖ in parallel, no loop code: 1.4 groundwork (roadmap_1_4.md §Groundwork in parallel with 1.3.2)
   → 1.4    Phase 0 instrument on the decomposed loop, then Exp 62 → E1 → …
