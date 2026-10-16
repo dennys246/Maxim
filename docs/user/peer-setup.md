@@ -114,7 +114,7 @@ ps aux | grep -E "(maxim|llama-cpp-server)" | grep -v grep
 ps aux | grep cloudflared | grep -v grep
 
 # 3. Does the LeaderProxy respond?
-curl -sI http://127.0.0.1:8099/v1/debug/status
+curl -sI -H "Authorization: Bearer $(cat ~/.config/maxim/api_key)" http://127.0.0.1:8099/v1/debug/status
 
 # 4. Does the inference server respond directly?
 curl -sI http://127.0.0.1:8100/v1/models
@@ -205,7 +205,7 @@ On startup the logs should show the peer URL being picked up as the large-lane b
 To temporarily override for a session (without editing the saved config):
 
 ```bash
-MAXIM_LANE_LARGE_REMOTE_URL=http://other-host:8100/v1 maxim
+MAXIM_LANE_LARGE_REMOTE_URL=http://other-host:8099/v1 maxim
 ```
 
 To stop using the peer config entirely:
@@ -347,7 +347,7 @@ maxim peer update --dev feat/foo  # force git mode (specific branch)
 maxim peer update --version 0.3.1  # pin a specific PyPI version
 ```
 
-The leader must restart `maxim` after an update to load new code. Disable with `MAXIM_ALLOW_REMOTE_UPDATE=0` if you don't want peers to be able to trigger updates.
+The leader must restart `maxim` after an update to load new code. Remote update is **off by default** (since 2026-10-14): opt in on the leader with `maxim config set proxy.allow_remote_update true` (or `MAXIM_PROXY_ALLOW_REMOTE_UPDATE=1`) and restart it. The same opt-in gates `peer install`, `peer restart` and `peer llm <model>`, and dry runs. The routes also require the leader to authenticate with a key.
 
 ## Remote Package Installation
 
@@ -367,4 +367,4 @@ maxim peer deps
 
 Available extras: `semantic`, `llm-llama`, `llm-server`, `llm-torch`, `llm-anthropic`, `llm-openai`, `vision`, `audio`, `reachy`, `comms`, `search`, `temporal`, `training`, `tts`, `yolo`, `database`.
 
-Requires `MAXIM_ALLOW_REMOTE_UPDATE=1` on the leader (same as `peer update`).
+Requires the remote-admin opt-in on the leader (`maxim config set proxy.allow_remote_update true`, same as `peer update`).

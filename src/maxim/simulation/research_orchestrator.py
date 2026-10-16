@@ -13,9 +13,11 @@ from __future__ import annotations
 import json
 import logging
 import time
+from typing import Any
 from dataclasses import dataclass
 from pathlib import Path
 
+from maxim.exceptions import LeaderRefusal
 from maxim.mesh.bus import LocalMessageBus
 
 logger = logging.getLogger(__name__)
@@ -85,6 +87,33 @@ def _persist_research_result(
     )
 
 
+def _build_research_llm() -> Any:
+    """The LLM router for the Writer + Reviewer, or None (they fall back to heuristics).
+
+    A :class:`~maxim.exceptions.LeaderRefusal` (a leader with no key, an exposed
+    llama-cpp-server) propagates: a security refusal is not an availability
+    fallback.
+    """
+    research_llm = None
+    try:
+        from maxim.models.language.router import LLMRouter, load_llm_config
+        from maxim.runtime.lane_backends import build_primary_router
+
+        research_llm, _ = build_primary_router(logger=logger)
+        if research_llm is None:
+            config = load_llm_config()
+            if config.enabled:
+                research_llm = LLMRouter(config)
+        if research_llm is not None:
+            research_llm.warmup()
+            research_llm.wait_ready(timeout=120.0)
+    except LeaderRefusal:
+        raise
+    except Exception as e:
+        logger.warning("Research LLM init failed: %s — Writer/Reviewer will use heuristics", e)
+    return research_llm
+
+
 def start_research_mode(
     goal: str,
     campaign: str | None = None,
@@ -129,21 +158,7 @@ def start_research_mode(
     experiment_log = ExperimentLog(session_dir=session_dir, agent_nickname="researcher")
 
     # Build the LLM router for Writer + Reviewer (research agents)
-    research_llm = None
-    try:
-        from maxim.models.language.router import LLMRouter, load_llm_config
-        from maxim.runtime.lane_backends import build_primary_router
-
-        research_llm, _ = build_primary_router(logger=logger)
-        if research_llm is None:
-            config = load_llm_config()
-            if config.enabled:
-                research_llm = LLMRouter(config)
-        if research_llm is not None:
-            research_llm.warmup()
-            research_llm.wait_ready(timeout=120.0)
-    except Exception as e:
-        logger.warning("Research LLM init failed: %s — Writer/Reviewer will use heuristics", e)
+    research_llm = _build_research_llm()
 
     from maxim.simulation.sim_logger import display_status, display_summary
 

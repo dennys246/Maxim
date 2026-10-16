@@ -41,7 +41,7 @@ def test_env_var_wins(monkeypatch, _no_config):
 
 def test_env_var_invalid_falls_through(monkeypatch, _no_config):
     monkeypatch.setenv("MAXIM_ROLE", "bogus")
-    assert detect_role([]) == ("leader", "default")
+    assert detect_role([]) == ("solo", "default")
 
 
 def test_mesh_yml_beats_peer_yml(monkeypatch):
@@ -68,8 +68,11 @@ def test_cli_flag_equals_form(_no_config):
     assert detect_role(["--llm=mistral-7b"]) == ("solo", "cli_flag")
 
 
-def test_default_leader(_no_config):
-    assert detect_role([]) == ("leader", "default")
+def test_default_is_solo_not_leader(_no_config):
+    """2026-10-14: a machine with no role signal is solo. A leader binds every interface and serves
+    remote admin, so it is never a default (it needs MAXIM_ROLE, config.json::role or a cloudflared
+    config)."""
+    assert detect_role([]) == ("solo", "default")
 
 
 def test_apply_role_exports_env(monkeypatch, _no_config):
@@ -78,7 +81,7 @@ def test_apply_role_exports_env(monkeypatch, _no_config):
     from maxim.runtime.role import apply_role
 
     apply_role(role, "default")
-    assert os.environ["MAXIM_ROLE"] == "leader"
+    assert os.environ["MAXIM_ROLE"] == "solo"
 
 
 # ── Migration: all four pre-existing states ─────────────────────────────
@@ -133,18 +136,20 @@ def test_migration_no_old_file_noop(_isolated_home):
 
 def test_detect_and_apply_integration(monkeypatch, _isolated_home, _no_config):
     role = detect_and_apply_role([])
-    assert role == "leader"
-    assert os.environ["MAXIM_ROLE"] == "leader"
+    assert role == "solo"
+    assert os.environ["MAXIM_ROLE"] == "solo"
 
 
 # ── R2 review fixes ──────────────────────────────────────────────────────
 
 
 def test_fix2_subcommand_suppresses_llm_flag_scan(_no_config):
-    """Fix #2: `maxim tunnel --llm foo` must not flip role to solo."""
-    assert detect_role(["tunnel", "--llm", "foo"]) == ("leader", "default")
-    assert detect_role(["doctor", "--llm", "foo"]) == ("leader", "default")
-    assert detect_role(["peer", "llm", "--llm", "foo"]) == ("leader", "default")
+    """Fix #2: `maxim tunnel --llm foo` must not be read as the ``--llm`` flag. Since the default
+    became solo the ROLE is the same either way, so the SOURCE carries the assertion: the default,
+    not ``cli_flag``."""
+    assert detect_role(["tunnel", "--llm", "foo"]) == ("solo", "default")
+    assert detect_role(["doctor", "--llm", "foo"]) == ("solo", "default")
+    assert detect_role(["peer", "llm", "--llm", "foo"]) == ("solo", "default")
 
 
 def test_fix2_bare_llm_still_detects_solo(_no_config):
@@ -191,9 +196,9 @@ def test_fix7_lazy_migration_in_model_state_file(_isolated_home):
     old.write_text("legacy-model")
     # Reset the idempotent guard so the test runs fresh
     llm_server_mod._LAZY_MIGRATION_DONE = False
-    # Ensure role defaults to leader (MAXIM_ROLE unset via autouse fixture)
+    # MAXIM_ROLE unset (autouse fixture): the file follows the resolved role, solo by default
     path = llm_server_mod._model_state_file()
-    assert path.name == "active_llm_model.leader.txt"
+    assert path.name == "active_llm_model.solo.txt"
     # Legacy file should have been renamed by the lazy migration.
     assert not old.exists()
     assert path.exists()

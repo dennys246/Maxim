@@ -216,7 +216,8 @@ def install_on_target(
             body_text = e.response.text[:500]
         if e.status == 403:
             print(
-                "Install disabled on leader. Set MAXIM_ALLOW_REMOTE_UPDATE=1.",
+                "Install disabled on leader. Opt in on the leader: "
+                "`maxim config set proxy.allow_remote_update true`, then restart it.",
                 file=sys.stderr,
             )
         elif e.status == 401:

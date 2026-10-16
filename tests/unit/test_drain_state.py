@@ -167,7 +167,7 @@ class TestRoleIsolation:
     def test_case_and_whitespace_normalized(self, tmp_path, monkeypatch):
         """Plan 2 R2a defines role as lowercase {leader,peer,solo}.
         Case variations and surrounding whitespace normalize to the
-        canonical value; empty string falls back to leader.
+        canonical value; empty string resolves the role (role.resolved_role).
         """
         monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path))
         from maxim.utils import paths
@@ -179,10 +179,11 @@ class TestRoleIsolation:
             path = drain_state_path()
             assert path.name == "drained_nodes.leader.txt", f"role={weird!r} produced unexpected path {path.name!r}"
 
-        # Empty string = env var absent = leader default (tests +
-        # standalone scripts that skip detect_and_apply_role)
+        # Empty string = env var absent: the role is resolved the way the
+        # CLI would have (role.resolved_role), not assumed to be leader.
         monkeypatch.setenv("MAXIM_ROLE", "")
-        assert drain_state_path().name == "drained_nodes.leader.txt"
+        monkeypatch.setattr("maxim.runtime.role.resolved_role", lambda: ("solo", "default"))
+        assert drain_state_path().name == "drained_nodes.solo.txt"
 
         paths._reset_caches()
 

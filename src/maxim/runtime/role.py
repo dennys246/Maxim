@@ -33,7 +33,11 @@ Decision order (first match wins) — pinned in
 5. ``peer.yml`` exists → ``peer`` (DEMOTED below cloudflared — fixes
    Mac Mini Trigger #3, the stale-peer.yml-on-now-leader case)
 6. ``--llm <local>`` CLI flag + no peer/mesh/cloudflared signal → ``solo``
-7. Default → ``leader``
+   (since rank 7 is solo too, it now differs from the default only in its
+   recorded ``source``)
+7. Default → ``solo`` (2026-10-14; was ``leader``). A leader binds every
+   interface and serves remote admin, so it is never a default: a machine
+   becomes one only through ranks 1, 2 or 4.
 
 ``detect_role()`` is called from ``cli.py::main()`` BEFORE subcommand
 dispatch. If you add a new logging-dependent feature, do not move the
@@ -247,8 +251,10 @@ def detect_role(argv: list[str] | None = None) -> tuple[Role, RoleSource]:
     if argv is not None and _has_local_llm_flag(argv):
         return "solo", "cli_flag"
 
-    # Rank 7: default → leader
-    return "leader", "default"
+    # Rank 7: default → solo. Leader serves on every interface, so it needs an
+    # explicit signal (ranks 1, 2, 4); apply_role warns when a box that holds
+    # a mesh key lands here (a leader that relied on the old default).
+    return "solo", "default"
 
 
 def _has_local_llm_flag(argv: list[str]) -> bool:
@@ -325,6 +331,31 @@ def apply_role(role: Role, source: RoleSource) -> None:
             "config_json_present": config_json_present,
         },
     )
+    if source == "default" and _mesh_key_present():
+        # Until 2026-10-14 the default was leader. A box with a mesh key that
+        # lands on the default was probably a leader by default: say so, or
+        # its peers just see connection refused.
+        log_structured(
+            logger,
+            logging.WARNING,
+            event="role_default_with_mesh_key",
+            msg=(
+                "role resolved to solo by default, but this machine has a mesh key. "
+                "If it is a leader, run `maxim config set role leader` (the default is no longer leader); "
+                "as solo, a cloud API key in the env may auto-select a cloud model."
+            ),
+            data={"role": role},
+        )
+
+
+def _mesh_key_present() -> bool:
+    """Whether the mesh key file exists (a leader-side artifact). Never raises."""
+    try:
+        from maxim.tunnel.keys import key_exists
+
+        return key_exists()
+    except (ImportError, OSError):
+        return False
 
 
 def detect_and_apply_role(argv: list[str] | None = None) -> Role:
@@ -370,7 +401,8 @@ def migrate_persisted_model_file(role: Role) -> None:
     - peer role → delete old file (peer doesn't own local model state)
     - solo role → rename to ``.solo.txt``
     - leader role → rename to ``.leader.txt``
-    - unclear/default → rename to ``.leader.txt`` (conservative)
+    - default → ``detect_role``'s answer, ``solo`` since 2026-10-14 (the
+      role is passed in; there is no separate "unclear" case)
 
     Fix #4 (R2 review): failures log at WARNING, not DEBUG. A real
     filesystem error during migration is operationally significant.

@@ -218,6 +218,21 @@ def warn(message: str, *args: object, logger: Optional[logging.Logger] = None) -
         print(f"[WARN] {formatted}")
 
 
+def warn_unless_refusal(message: str, exc: BaseException, *, logger: Optional[logging.Logger] = None) -> None:
+    """``warn(message, exc)`` for a failure the caller survives, except a security refusal, which is re-raised.
+
+    For a broad ``except Exception`` around starting the LLM (``build_primary_router``,
+    the agentic runtime): degrading to "run without the LLM" is right for an outage and
+    wrong for a :class:`maxim.exceptions.LeaderRefusal` (a leader with no key, an exposed
+    llama-cpp-server), where carrying on leaves the proxy forwarding to what was refused.
+    """
+    from maxim.exceptions import LeaderRefusal
+
+    if isinstance(exc, LeaderRefusal):
+        raise exc
+    warn(message, exc, logger=logger)
+
+
 def user_warn(
     message: str,
     *,

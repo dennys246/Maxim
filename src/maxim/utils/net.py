@@ -46,6 +46,31 @@ def is_public_address(address: str) -> bool:
     return ip.is_global and not (ip.is_multicast or ip.is_reserved or ip.is_unspecified)
 
 
+def primary_ipv4_address() -> str | None:
+    """This host's primary non-loopback IPv4 address, or None.
+
+    A UDP ``connect`` to a TEST-NET-1 address (RFC 5737) picks the outbound
+    interface without sending a packet. Used to check that a server meant to
+    listen on loopback is NOT reachable on the LAN address.
+    """
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    except OSError:
+        return None
+    try:
+        sock.connect(("192.0.2.1", 9))
+        address = str(sock.getsockname()[0])
+    except OSError:
+        return None
+    finally:
+        sock.close()
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return None
+    return None if ip.is_loopback or ip.is_unspecified else address
+
+
 def is_loopback_url(url: str) -> bool:
     """True only when ``url``'s host is ``localhost`` or a literal loopback IP -- fail-closed.
 

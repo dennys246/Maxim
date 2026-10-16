@@ -15,7 +15,7 @@ import uuid
 from typing import Any
 
 from maxim.utils.gpu_compat import is_gpu_available
-from maxim.utils.logging import warn
+from maxim.utils.logging import warn, warn_unless_refusal
 
 
 def config_flag_disabled(raw: object) -> bool:
@@ -938,7 +938,7 @@ class AgenticRuntimeMixin:
             else:
                 self.log.debug("LLM disabled in config, responses will use fallback")
         except Exception as e:
-            warn("Failed to create LLM worker: %s", e, logger=self.log)
+            warn_unless_refusal("Failed to create LLM worker: %s", e, logger=self.log)
             llm_worker = None
 
         self._llm_worker = llm_worker

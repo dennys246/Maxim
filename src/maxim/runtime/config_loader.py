@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 # Schema constants (FROZEN at 1.0)
 # ─────────────────────────────────────────────────────────────────────────────
 
-CONFIG_FORMAT_VERSION: str = "1.2"
+CONFIG_FORMAT_VERSION: str = "1.3"
 """The config.json format version. Bumped per CC1 on shape changes AND on changes
 to what a key means: minor for additive fields or meanings (an older build reading
 a future minor tolerates the keys it does not know, with a warning), major (2.0)
@@ -72,7 +72,8 @@ schema: a key present is a value the operator set (``maxim config set``,
 a setup verb, a hand edit), and the writer persists exactly those keys.
 A file stamped below 1.2 is a full dump whose intent is unknowable, so it is
 read by "value != default" until it is rewritten (see
-:func:`explicit_paths_of`). Every field path is pinned per version in
+:func:`explicit_paths_of`); 1.3 (2026-10-14) adds ``proxy.allow_remote_update``
+(remote update stopped being on by default for leaders). Every field path is pinned per version in
 ``tests/fixtures/config_schema_by_version.json``, and how each version
 resolves in ``tests/fixtures/config_resolution_by_version.json``; a change
 of either without a bump fails ``tests/unit/test_config_format_version_856.py``."""
@@ -338,13 +339,18 @@ class MemoryConfigSection:
 
 @dataclass(frozen=True)
 class ProxyConfigSection:
-    """Leader-proxy admission control.
+    """Leader-proxy admission control and the remote-admin opt-in (``allow_remote_update``, 1.3).
 
     SHAPE-FROZEN at 1.0 (CC3) — path (b).
     """
 
     max_concurrent: int = 4
     rate_limit_rpm: int = 0
+    # Opt-in for the leader's /v1/admin/{update,install,restart,llm-swap}
+    # (2026-10-14: no longer on by default for leaders). Env override:
+    # MAXIM_PROXY_ALLOW_REMOTE_UPDATE. Read per request through
+    # leader_proxy._remote_update_allowed.
+    allow_remote_update: bool = False
 
 
 @dataclass(frozen=True)
@@ -561,6 +567,7 @@ _FIELD_TO_ENV: dict[str, str] = {
     "memory.retro_cutoff_us": "MAXIM_MEMORY_RETRO_CUTOFF_US",
     "proxy.max_concurrent": "MAXIM_PROXY_MAX_CONCURRENT",
     "proxy.rate_limit_rpm": "MAXIM_PROXY_RATE_LIMIT_RPM",
+    "proxy.allow_remote_update": "MAXIM_PROXY_ALLOW_REMOTE_UPDATE",
     "auto_spawn.llm_server": "MAXIM_AUTO_SPAWN_LLM_SERVER",
     "auto_spawn.tunnel": "MAXIM_AUTO_SPAWN_TUNNEL",
     "auto_spawn.port": "MAXIM_AUTO_SPAWN_PORT",
@@ -799,6 +806,7 @@ def _coerce_for_field(raw: str, field_path: str) -> Any:
         "cloud.enabled",
         "auto_spawn.llm_server",
         "auto_spawn.tunnel",
+        "proxy.allow_remote_update",
         "sim.drive_gate_enabled",
         "console.sandbox",
     }:

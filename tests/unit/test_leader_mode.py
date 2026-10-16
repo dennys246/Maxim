@@ -68,7 +68,7 @@ class TestExplicitEnvOverride:
     def test_invalid_value_ignored(self, monkeypatch):
         """Invalid MAXIM_ROLE falls through to lower ranks. With no
         cloudflared / no peer.yml / no mesh.yml / no config.json, the
-        unified detector defaults to ``leader`` at rank 7."""
+        unified detector defaults to ``solo`` at rank 7 (2026-10-14)."""
         monkeypatch.setenv("MAXIM_ROLE", "bogus")
         with patch("maxim.runtime.role._cloudflared_config_exists") as mock_cf:
             mock_cf.return_value = None
@@ -77,9 +77,8 @@ class TestExplicitEnvOverride:
                 with patch("maxim.runtime.role._mesh_yml_exists") as mock_mesh:
                     mock_mesh.return_value = False
                     d = detect_role()
-                    # Post-C3 default is leader (rank 7), not solo as
-                    # pre-C3 leader_mode used to return
-                    assert d.role == "leader"
+                    # Rank 7 is solo since 2026-10-14: leader is never a default
+                    assert d.role == "solo"
 
 
 class TestCloudflaredDetection:
@@ -97,11 +96,10 @@ class TestCloudflaredDetection:
                     assert d.role == "leader"
                     assert "cloudflared" in d.reason.lower()
 
-    def test_no_signals_defaults_to_leader(self, monkeypatch):
-        """Post-C3, the wrapper defaults to ``leader`` (rank 7) when
-        nothing else fires — this is the unified-detector behavior.
-        Pre-C3 ``leader_mode`` used to default to ``solo``, but that
-        was the symptom of the two-detector divergence C3 fixes."""
+    def test_no_signals_defaults_to_solo_on_loopback(self, monkeypatch):
+        """The wrapper follows the unified detector's rank 7, which is ``solo``
+        since 2026-10-14 (C3 made it ``leader``; a leader binds 0.0.0.0 and
+        serves remote admin, so it is never a default)."""
         monkeypatch.delenv("MAXIM_ROLE", raising=False)
         with patch("maxim.runtime.role._cloudflared_config_exists") as mock_cf:
             mock_cf.return_value = None
@@ -110,8 +108,8 @@ class TestCloudflaredDetection:
                 with patch("maxim.runtime.role._mesh_yml_exists") as mock_mesh:
                     mock_mesh.return_value = False
                     d = detect_role()
-                    assert d.role == "leader"
-                    assert d.bind_host == "0.0.0.0"
+                    assert d.role == "solo"
+                    assert d.bind_host == "127.0.0.1"
 
 
 class TestRoleDecision:

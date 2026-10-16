@@ -84,8 +84,9 @@ def _model_state_file() -> Path:
 
     Plan 2 R2a split the file per role: ``active_llm_model.{role}.txt``.
     Reads ``MAXIM_ROLE`` from env (exported by ``runtime/role.py::detect_and_apply_role``
-    at CLI startup). Falls back to ``leader`` when the env var is missing,
-    matching the conservative migration default.
+    at CLI startup). When the env var is missing (a Python-API session),
+    asks ``role.resolved_role`` -- the same answer the CLI would have
+    exported -- rather than assuming ``leader``.
 
     Fix #7 (R2 review): runs the legacy-file migration lazily on first
     access per process, so Python-API users (``import maxim``) who never
@@ -97,7 +98,11 @@ def _model_state_file() -> Path:
     from maxim.utils.paths import resolve_user_state
 
     global _LAZY_MIGRATION_DONE  # noqa: PLW0603
-    role = os.environ.get("MAXIM_ROLE", "").strip().lower() or "leader"
+    role = os.environ.get("MAXIM_ROLE", "").strip().lower()
+    if not role:
+        from maxim.runtime.role import resolved_role
+
+        role = resolved_role()[0]
     if role not in ("leader", "peer", "solo"):
         role = "leader"
     if not _LAZY_MIGRATION_DONE:

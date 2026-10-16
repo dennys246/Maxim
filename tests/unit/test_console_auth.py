@@ -3,8 +3,8 @@
 Acceptance suite for hardening PR 2 (docs/plans/deferred/console_tunnel_hardening.md,
 decisions A1–A8). Every refusal is paired with its accepting counterpart so a
 guard that refuses everything cannot pass; the fail-closed test is the
-anti-`leader_proxy._check_auth` trap (that check returns True on an EMPTY
-key — the console must do the opposite). Skips cleanly without the console
+anti-`leader_proxy._check_auth` trap (that check returned True on an EMPTY
+key until 2026-10-14, when the leader proxy's auth became a ``ProxyAuth`` type). Skips cleanly without the console
 extra.
 """
 

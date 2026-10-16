@@ -45,6 +45,19 @@ class MaximError(Exception):
         return self.message
 
 
+class LeaderRefusal(MaximError, RuntimeError):
+    """A process refused to serve because doing so would be unauthenticated or over-exposed.
+
+    Base of ``tunnel.keys.LeaderKeyError`` (a leader with no usable key),
+    ``runtime.leader_proxy.ProxyAuthError`` (a proxy port held by something
+    that is not an authenticated LeaderProxy) and
+    ``runtime.local_server_spawner.LLMServerExposureError`` (a llama-cpp-server
+    answering without its key, or reachable on the LAN). A broad
+    ``except Exception`` that would degrade to "run without the LLM" must
+    re-raise this first: a security refusal is not an availability fallback.
+    """
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Connection Errors
 # ─────────────────────────────────────────────────────────────────────────────
@@ -387,6 +400,7 @@ class AgentLoopError(MaximRuntimeError):
 __all__ = [
     # Base
     "MaximError",
+    "LeaderRefusal",
     # Connection
     "MaximConnectionError",
     "ConnectionTimeoutError",

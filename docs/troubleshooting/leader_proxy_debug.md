@@ -65,9 +65,9 @@ ls -la ~/.cloudflared/config.yml /etc/cloudflared/config.yml
 maxim config set role leader
 ```
 
-### B. API key not found → proxy starts without auth
+### B. API key not found → the leader refuses to start
 
-The early boot reads the key from `~/.config/maxim/api_key`. If that file doesn't exist, the proxy starts with `api_key=None` (no auth enforced).
+The early boot reads the key from `~/.config/maxim/api_key` with `require_leader_key`. A missing, empty, short, non-ASCII or group/world-readable key makes `maxim` print `Refusing to start as leader (...)` and exit 2 (since 2026-10-14; before that the proxy ran without auth).
 
 ```bash
 # Check key exists
@@ -77,9 +77,9 @@ cat ~/.config/maxim/api_key
 maxim tunnel key rotate
 ```
 
-### C. Port 8099 already in use → proxy silently skips
+### C. Port 8099 already in use
 
-If a stale process holds port 8099, `start_leader_proxy()` logs a warning and returns None.
+If something already holds port 8099, the leader probes it WITHOUT the key. A listener that refuses with 401 (another authenticated maxim leader process) is shared, with a warning. Anything that answers without auth (an older maxim proxy, a foreign server) makes the leader refuse to start.
 
 ```bash
 # Find what's on 8099
@@ -185,9 +185,10 @@ The early boot in `src/maxim/cli.py` now prints warnings and tracebacks
 automatically — no code edits needed. Look for `[leader-boot] WARNING:` lines
 in maxim's stdout on startup. Messages you may see:
 
-- `WARNING: could not read API key` — proxy starts without auth
-- `WARNING: LeaderProxy failed to start (port in use?)` — port 8099 is occupied
-- `WARNING: early proxy boot failed: <exception>` — with full traceback
+- `✗ Refusing to start as leader (<role source>): leader key unusable (...)`: exit 2; fix the key (§B)
+- `✗ Refusing to start as leader (...): port 8099 is held by something that answers WITHOUT auth`: §C
+- `LeaderProxy port 8099 is held by a listener that demands auth`: another leader process serves it
+- `WARNING: early proxy boot failed: <exception>`: with full traceback
 
 ## Nuclear Option: Force Proxy Start
 
@@ -197,13 +198,13 @@ If detection isn't working, force-start the proxy by setting the env var:
 MAXIM_ROLE=leader maxim
 ```
 
-This bypasses cloudflared config detection and forces leader mode, which triggers the early proxy boot.
+This bypasses cloudflared config detection and forces leader mode, which triggers the early proxy boot. A leader still needs a usable key (§B).
 
 ## Verification After Fix
 
 ```bash
-# From the leader:
-curl -s http://localhost:8099/v1/debug/ping
+# From the leader (debug routes need the key, from loopback too):
+curl -s -H "Authorization: Bearer $(cat ~/.config/maxim/api_key)" http://localhost:8099/v1/debug/ping
 # Should return: {"service": "LeaderProxy", "proxy_port": 8099, ...}
 
 # From a peer (now includes LeaderProxy identity check):
