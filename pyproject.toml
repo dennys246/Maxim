@@ -61,6 +61,7 @@ Homepage = "https://pymaxim.bio"
 Documentation = "https://pymaxim.bio/getting-started/"
 Repository = "https://github.com/dennys246/Maxim"
 Issues = "https://github.com/dennys246/Maxim/issues"
+Author = "https://www.dennyschaedig.com"
 
 [project.optional-dependencies]
 # Vision perception (OpenCV + ONNX Runtime)
