@@ -1,0 +1,527 @@
+{
+  "gate_format_version": 1,
+  "_comment": "Release gates, enforced by scripts/lint_release_gates.py (read its docstring for every rule). A version at or above a gate's key fails CI until every item and arm is satisfied (evidence + a red gate for an item; the golden key + direct-assertion evidence for an arm) or retired, every gated function is unpinned and at most max_lines, and every baseline entry outside debt_snapshot has an accepted_new_debt record. Entries are never removed or reworded: retired and accepted_new_debt are append-only. The diff that raises the version across a gate may not change this file.",
+  "gates": {
+    "1.4.0": {
+      "decided": "2026-10-15",
+      "source": "Owner decision 2026-10-15: 1.3.2 ships without the rest of the agent_loop/orchestrator decomposition, and no version >= 1.4.0 passes CI until it is done. Design: the 2026-10-15 approach note and adversarial pass (SF-1..SF-11), as folded by its review (2026-10-15); docs/plans/roadmap_1_4.md \u00a7Release thresholds T0.",
+      "functions": [
+        {
+          "file": "src/maxim/simulation/orchestrator.py",
+          "qualname": "start_simulation_mode",
+          "max_lines": 200,
+          "why": "The orchestrator decomposition (roadmap_1_3_x.md item 7); pinned at 3003 at slice 0 (#1269)."
+        },
+        {
+          "file": "src/maxim/runtime/agent_loop.py",
+          "qualname": "run_agentic_loop",
+          "max_lines": 200,
+          "why": "The agent_loop decomposition (roadmap_1_3_x.md item 7, slices 0-5 merged)."
+        },
+        {
+          "file": "src/maxim/runtime/tool_dispatch.py",
+          "qualname": "execute_and_learn",
+          "max_lines": 200,
+          "why": "Split out of run_agentic_loop by #1133; its own split is #1150. Gated with its split-outs (owner decision 2026-10-15, SF-6)."
+        }
+      ],
+      "debt_snapshot": [
+        [
+          "src/maxim/agents/llm_worker.py",
+          "LLMWorker._process_request"
+        ],
+        [
+          "src/maxim/api.py",
+          "run"
+        ],
+        [
+          "src/maxim/cli.py",
+          "_main_impl"
+        ],
+        [
+          "src/maxim/cli_parser.py",
+          "_build_parser"
+        ],
+        [
+          "src/maxim/console/server.py",
+          "build_app"
+        ],
+        [
+          "src/maxim/decisions/nac.py",
+          "NAc.__init__"
+        ],
+        [
+          "src/maxim/decisions/nac.py",
+          "NAc.recommend_action"
+        ],
+        [
+          "src/maxim/doctor/checks.py",
+          "check_env_config"
+        ],
+        [
+          "src/maxim/doctor/checks.py",
+          "check_resolved_config"
+        ],
+        [
+          "src/maxim/embodied_runtime/agentic_runtime.py",
+          "AgenticRuntimeMixin._start_agentic_runtime"
+        ],
+        [
+          "src/maxim/embodied_runtime/agentic_runtime.py",
+          "AgenticRuntimeMixin._stop_agentic_runtime"
+        ],
+        [
+          "src/maxim/embodied_runtime/media_loop.py",
+          "MediaLoopMixin.live"
+        ],
+        [
+          "src/maxim/embodied_runtime/selfy.py",
+          "Maxim.__init__"
+        ],
+        [
+          "src/maxim/embodiment/body.py",
+          "Embodiment.evaluate_failures"
+        ],
+        [
+          "src/maxim/embodiment/tool_bridge.py",
+          "ModulatorAffordanceTool.execute"
+        ],
+        [
+          "src/maxim/hivemind/bundle.py",
+          "compose_bundle"
+        ],
+        [
+          "src/maxim/hivemind/cli.py",
+          "_build_parser"
+        ],
+        [
+          "src/maxim/hivemind/ingest.py",
+          "_validate_nac_payload"
+        ],
+        [
+          "src/maxim/hivemind/ingest.py",
+          "ingest_bundle"
+        ],
+        [
+          "src/maxim/imagination/trigger.py",
+          "ImaginationTrigger.process_manifest"
+        ],
+        [
+          "src/maxim/inference/transcribe_audio.py",
+          "watch_and_transcribe"
+        ],
+        [
+          "src/maxim/models/language/config.py",
+          "load_llm_config"
+        ],
+        [
+          "src/maxim/models/language/maxim_peer_backend.py",
+          "_MaximPeerBackend._stream_response"
+        ],
+        [
+          "src/maxim/models/language/router.py",
+          "LLMRouter._try_provider"
+        ],
+        [
+          "src/maxim/peer/admin_core.py",
+          "update_on_target"
+        ],
+        [
+          "src/maxim/runtime/agent_factory.py",
+          "AgentFactory.create_full_agent"
+        ],
+        [
+          "src/maxim/runtime/agent_loop.py",
+          "_run_deliberation_cycles"
+        ],
+        [
+          "src/maxim/runtime/agent_loop.py",
+          "run_agent_loop"
+        ],
+        [
+          "src/maxim/runtime/agent_loop.py",
+          "run_agentic_loop"
+        ],
+        [
+          "src/maxim/runtime/bio_stack.py",
+          "build_bio_stack"
+        ],
+        [
+          "src/maxim/runtime/bootstrap.py",
+          "build_executor"
+        ],
+        [
+          "src/maxim/runtime/bootstrap.py",
+          "build_tool_registry"
+        ],
+        [
+          "src/maxim/runtime/lane_backends.py",
+          "_apply_lane_config_to_env"
+        ],
+        [
+          "src/maxim/runtime/lane_backends.py",
+          "_maybe_auto_spawn_server"
+        ],
+        [
+          "src/maxim/runtime/lane_backends.py",
+          "build_primary_router"
+        ],
+        [
+          "src/maxim/runtime/leader_proxy.py",
+          "_ProxyHandler._proxy_request"
+        ],
+        [
+          "src/maxim/runtime/substrate_proposal.py",
+          "propose_via_substrate"
+        ],
+        [
+          "src/maxim/runtime/tool_dispatch.py",
+          "execute_and_learn"
+        ],
+        [
+          "src/maxim/runtime/tool_dispatch.py",
+          "record_outcome"
+        ],
+        [
+          "src/maxim/similarity/encoder.py",
+          "SensorEncoder.encode_sensors"
+        ],
+        [
+          "src/maxim/simulation/fixture_orchestrator.py",
+          "FixtureDrivenOrchestrator.run"
+        ],
+        [
+          "src/maxim/simulation/generative_runner.py",
+          "run_generative_campaign"
+        ],
+        [
+          "src/maxim/simulation/interactive.py",
+          "run_interactive_sim"
+        ],
+        [
+          "src/maxim/simulation/orchestrator.py",
+          "start_simulation_mode"
+        ],
+        [
+          "src/maxim/simulation/orchestrator.py",
+          "start_simulation_mode.<locals>._stall_detector"
+        ],
+        [
+          "src/maxim/simulation/report.py",
+          "build_report"
+        ],
+        [
+          "src/maxim/simulation/research_orchestrator.py",
+          "start_research_mode"
+        ],
+        [
+          "src/maxim/simulation/roy_runner.py",
+          "run_roy_iteration"
+        ],
+        [
+          "src/maxim/tools/http_fetch.py",
+          "HttpFetchTool.execute"
+        ],
+        [
+          "src/maxim/tools/math_tool.py",
+          "MathTool.execute"
+        ],
+        [
+          "src/maxim/tools/reachy.py",
+          "FocusOnSoundTool.execute"
+        ],
+        [
+          "src/maxim/utils/response_config.py",
+          "load_phrase_responses"
+        ]
+      ],
+      "accepted_new_debt": [],
+      "arms": {
+        "golden": "tests/fixtures/orchestrator_characterization_golden_v1.json",
+        "golden_test": "tests/unit/test_orchestrator_characterization_golden.py::test_orchestrator_run_matches_the_golden",
+        "required": [
+          {
+            "arm": "persistent_agent",
+            "scope": "An adopted persistent_agent arm: the HANDLE seam's branches 3 and 4 (no session AUT snapshot, the tool-lease restore, the DefaultNetwork pain-bridge unsubscribe), owed before the slice that moves \u00a713 teardown or \u00a714 report/save (roadmap_1_3_x.md, orchestrator slice 0 review 2026-10-13).",
+            "evidence": []
+          },
+          {
+            "arm": "imagination",
+            "scope": "An imagination-enabled arm reaching \u00a77 (the ImaginationTrigger wiring and its teardown), owed before the teardown/report slices.",
+            "evidence": []
+          },
+          {
+            "arm": "new_goal",
+            "scope": "A /new arm: the post-sim reader faked to return a goal, so the run re-enters start_simulation_mode; owed before the teardown/report slices.",
+            "evidence": []
+          },
+          {
+            "arm": "stall",
+            "scope": "A stall-detector arm that reaches the detector's injections (past its first diversity checkpoint and its idle threshold), owed before the slice that moves \u00a711.",
+            "evidence": []
+          },
+          {
+            "arm": "generative",
+            "scope": "A generative-campaign arm (generative=True) pinning that the generative campaign sets stop_event before the \u00a79 resume/kickoff injection reaches the narrator.",
+            "evidence": []
+          }
+        ]
+      },
+      "items": [
+        {
+          "id": "1259",
+          "ref": "#1259",
+          "scope": "finish_simulation ends the run: once the narrator finishes, the run stops without waiting out the source's 180 s exhaustion grace, and the stall detector does not nudge a narrator that has finished.",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "1262",
+          "ref": "#1262",
+          "scope": "/pause is a state the dispatch path enforces, not a percept the narrator is asked to obey: while a run is paused, no narrator send_message reaches the agent under test.",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "1263.plan-writers",
+          "ref": "#1263",
+          "scope": "#1263 part 1: no plan-logger or plan-dashboard writer thread started by a sim's agents outlives that sim's teardown (each writer has an owner that stops it).",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "1263.memctx",
+          "ref": "#1263",
+          "scope": "#1263 part 1: the MemoryAgent memctx_* context pool has an owner that shuts it down; no memctx thread a run started is left running by teardown.",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "1263.teardown-finally",
+          "ref": "#1263",
+          "scope": "#1263 part 2: run_agentic_loop's teardown runs on every exit path, including a loop that raises, so a DefaultNetwork the loop started is stopped even when the loop fails.",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "1263.dn-restart-resubscribe",
+          "ref": "#1263",
+          "scope": "#1263 part 3: DefaultNetwork.start() after stop() restores the bus subscription stop() removed, so a restarted DefaultNetwork with a bus is not deaf.",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "1263.dn-stop",
+          "ref": "#1263",
+          "scope": "#1263's DefaultNetwork part: the loop stops the DefaultNetwork it started, in sim mode too (#1281). Ships in #1260; its evidence is that PR's red gate once it is on main.",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "1263.concept-extractor",
+          "ref": "#1263",
+          "scope": "ConceptExtractor worker threads are stopped by their owner; none outlive the test or sim that started them (#1263 part, owner decision 2026-10-15). Site: memory/concept_extractor.py::ConceptExtractor._worker_loop (about 123 still alive at the end of a fast unit run, #1281 evidence).",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "1264",
+          "ref": "#1264",
+          "scope": "The agent-under-test and narrator loops of one sim never share a runtime state path or its temp file.",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "1265",
+          "ref": "#1265",
+          "scope": "A sim report's lane_breakdown and latency percentiles count only that session's LLM calls, never an earlier sim's in the same process.",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "1267",
+          "ref": "#1267",
+          "scope": "The interactive sim's SIGTERM terminal-restore handler is actually installed (from a thread that can install it), and SIGTERM restores the saved terminal settings.",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "1123.health-hint",
+          "ref": "#1123",
+          "scope": "The orchestrator's set_entity_sensor guidance does not advertise health, which no shipped body can write.",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "1123.range-text",
+          "ref": "#1123",
+          "scope": "The orchestrator's set_entity_sensor guidance does not state a fixed 0.0-1.0 range; value mode clamps each sensor to its declared range (signed sensors are [-1, 1]).",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "1123.value-default",
+          "ref": "#1123",
+          "scope": "set_entity_sensor's schema no longer silently defaults value to 1.0 when a call gives neither value nor delta.",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "932.resume-sim",
+          "ref": "#932",
+          "scope": "The orchestrator's --resume-sim lookup goes through utils/paths.py::resolve_run_dir: an unknown session id is an error, and the lookup creates no directory.",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "1288.tool_dispatch-conversation",
+          "ref": "#1288",
+          "scope": "runtime/tool_dispatch.py::execute_and_learn adds a turn to conversation history by Tool.speech_params (the executor's registry), not by a list of speech-tool names, so say and a body's speech affordance enter it. modes/definitions.py::CORE_TOOLS is exempt: it is a mode-membership list that gates which tools a mode offers, not a reader of what was said (owner decision 2026-10-15).",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "1288.exec_agent-speak_tools",
+          "ref": "#1288",
+          "scope": "agents/exec_agent.py::ExecAgent.deliberate decides a SpeakIntent by Tool.speech_params, not by the speak_tools name set. modes/definitions.py::CORE_TOOLS is exempt: it is a mode-membership list that gates which tools a mode offers, not a reader of what was said (owner decision 2026-10-15).",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "1288.orch-stall-nudge",
+          "ref": "#1288",
+          "scope": "The orchestrator's stall nudge (start_simulation_mode's _build_stall_nudge_example) picks its 'you have spoken' text from ActionRecord.utterance or Tool.speech_params, not a list of speech-tool names. modes/definitions.py::CORE_TOOLS is exempt: it is a mode-membership list that gates which tools a mode offers, not a reader of what was said (owner decision 2026-10-15).",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "1288.console-talk-tools",
+          "ref": "#1288",
+          "scope": "console/handle.py::TALK_CONVERSATIONAL_TOOLS no longer names the speech tools in a literal list: talk()'s speech tools are derived from Tool.speech_params. modes/definitions.py::CORE_TOOLS is exempt: it is a mode-membership list that gates which tools a mode offers, not a reader of what was said (owner decision 2026-10-15).",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "835",
+          "ref": "#835",
+          "scope": "A follow-up's tool result travels as the typed ActionFollowup on its own field, not as synthetic text in cli_inputs; cli_inputs holds only human input.",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "850",
+          "ref": "#850",
+          "scope": "The RPE a goal's staging significance reads belongs to that goal: a goal with no NAc update of its own does not read an earlier, unrelated surprise, and a first-time link's surprise is the one recorded. The binding is decided in its PR.",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "845.item1",
+          "ref": "#845",
+          "scope": "#845 item 1: the replan prompt's prior-attempts section renders from real episodes (runtime/loop_state.py::_extract_episode_actions reads fields real episodes carry).",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "965",
+          "ref": "#965",
+          "scope": "Either wire a true per-turn internet policy summary (from the live getter, each sentence enforced) into the prompt, or delete the dead fields end to end (decided in its PR).",
+          "evidence": [],
+          "red_gate": null
+        },
+        {
+          "id": "863.orch.sem_trace_tools",
+          "ref": "#863",
+          "scope": "#863 step 2 at this site: the broad except no longer swallows caller logic around the sim_logger call. The wrap is dropped where the call cannot raise, narrowed to the fallible expression, or the argument construction is hoisted out of it, and a caller-side fault introduced at the site surfaces in the evidence test.",
+          "evidence": [],
+          "red_gate": null,
+          "site": {
+            "file": "src/maxim/simulation/orchestrator.py",
+            "symbol": "start_simulation_mode",
+            "pattern": "broad try (except Exception: pass) around the SEM_TRACE sim_log calls listing registered/active/goal-selected tools and entity affordances, with their joins and the entity/modulator loop inside"
+          },
+          "source": "These orchestrator sites WIDEN #863 beyond its own scan, which excluded simulation/; they are enumerated here by the owner's decision of 2026-10-15. Found by an AST scan of src/maxim/simulation/orchestrator.py at b4c2ea88 (a broad try whose body calls a sim_logger sim_* function, the innermost such try owning the call) and classified by #863's 2026-09-24 DROP/KEEP rule, not the 2026-09-23 argument criterion: DROP = the try guards only an emit whose arguments cannot raise (since #868 the wrap does nothing); KEEP = it guards real, fallible or state-changing caller logic (out of #863's scope). Only DROP-class sites are gated. KEEP-class, not gated: the enable_sim_logging wrap (it mutates the logger's global state; not an emitter, so outside DROP) and the disable_sim_logging wrap (it mutates that state and can raise on _log_file.close(); not an emitter) and the scene-manifest pre-trigger block (it guards generate_scene_manifest, an LLM call, and process_manifest, which changes state). Also not gated: display_status wraps (display calls wait for a display contract, #863 comment 2026-09-24), the get_interactive_mode wrap (a getter) and the sim_agent_context wraps (a context manager that sets the agent contextvar), none of them emitters; and #863's aside on explicit-form handlers (comment 2026-09-23, not in its close condition). Deciding reason for this site: DROP: every guarded statement is a @_contained sim_log emit or the construction of its message from typed reads (the tool-name sets, EntityMap.list_entities(), Entity.name/entity_type, Modulator.affordances keys); nothing changes state and nothing in the payload can raise."
+        },
+        {
+          "id": "863.orch.sem_trace_imagination_active",
+          "ref": "#863",
+          "scope": "#863 step 2 at this site: the broad except no longer swallows caller logic around the sim_logger call. The wrap is dropped where the call cannot raise, narrowed to the fallible expression, or the argument construction is hoisted out of it, and a caller-side fault introduced at the site surfaces in the evidence test.",
+          "evidence": [],
+          "red_gate": null,
+          "site": {
+            "file": "src/maxim/simulation/orchestrator.py",
+            "symbol": "start_simulation_mode",
+            "pattern": "broad try around sim_log('SEM_TRACE', 'ImaginationTrigger ACTIVE ...') whose f-string reads aut_imagination_trigger._enabled"
+          },
+          "source": "These orchestrator sites WIDEN #863 beyond its own scan, which excluded simulation/; they are enumerated here by the owner's decision of 2026-10-15. Found by an AST scan of src/maxim/simulation/orchestrator.py at b4c2ea88 (a broad try whose body calls a sim_logger sim_* function, the innermost such try owning the call) and classified by #863's 2026-09-24 DROP/KEEP rule, not the 2026-09-23 argument criterion: DROP = the try guards only an emit whose arguments cannot raise (since #868 the wrap does nothing); KEEP = it guards real, fallible or state-changing caller logic (out of #863's scope). Only DROP-class sites are gated. KEEP-class, not gated: the enable_sim_logging wrap (it mutates the logger's global state; not an emitter, so outside DROP) and the disable_sim_logging wrap (it mutates that state and can raise on _log_file.close(); not an emitter) and the scene-manifest pre-trigger block (it guards generate_scene_manifest, an LLM call, and process_manifest, which changes state). Also not gated: display_status wraps (display calls wait for a display contract, #863 comment 2026-09-24), the get_interactive_mode wrap (a getter) and the sim_agent_context wraps (a context manager that sets the agent contextvar), none of them emitters; and #863's aside on explicit-form handlers (comment 2026-09-23, not in its close condition). Deciding reason for this site: DROP: one @_contained emit whose argument reads an attribute ImaginationTrigger.__init__ always sets, on the object built just above; it cannot raise and changes nothing."
+        },
+        {
+          "id": "863.orch.sem_trace_imagination_failed",
+          "ref": "#863",
+          "scope": "#863 step 2 at this site: the broad except no longer swallows caller logic around the sim_logger call. The wrap is dropped where the call cannot raise, narrowed to the fallible expression, or the argument construction is hoisted out of it, and a caller-side fault introduced at the site surfaces in the evidence test.",
+          "evidence": [],
+          "red_gate": null,
+          "site": {
+            "file": "src/maxim/simulation/orchestrator.py",
+            "symbol": "start_simulation_mode",
+            "pattern": "broad try around sim_log('SEM_TRACE', 'ImaginationTrigger FAILED: {e}') in the construction handler"
+          },
+          "source": "These orchestrator sites WIDEN #863 beyond its own scan, which excluded simulation/; they are enumerated here by the owner's decision of 2026-10-15. Found by an AST scan of src/maxim/simulation/orchestrator.py at b4c2ea88 (a broad try whose body calls a sim_logger sim_* function, the innermost such try owning the call) and classified by #863's 2026-09-24 DROP/KEEP rule, not the 2026-09-23 argument criterion: DROP = the try guards only an emit whose arguments cannot raise (since #868 the wrap does nothing); KEEP = it guards real, fallible or state-changing caller logic (out of #863's scope). Only DROP-class sites are gated. KEEP-class, not gated: the enable_sim_logging wrap (it mutates the logger's global state; not an emitter, so outside DROP) and the disable_sim_logging wrap (it mutates that state and can raise on _log_file.close(); not an emitter) and the scene-manifest pre-trigger block (it guards generate_scene_manifest, an LLM call, and process_manifest, which changes state). Also not gated: display_status wraps (display calls wait for a display contract, #863 comment 2026-09-24), the get_interactive_mode wrap (a getter) and the sim_agent_context wraps (a context manager that sets the agent contextvar), none of them emitters; and #863's aside on explicit-form handlers (comment 2026-09-23, not in its close condition). Deciding reason for this site: DROP: one @_contained emit of an inert f-string over the caught exception."
+        },
+        {
+          "id": "863.loop.imagine",
+          "ref": "#863",
+          "scope": "#863 step 2 at this site: the broad except no longer swallows caller logic around the sim_logger call. The wrap is dropped where the call cannot raise, narrowed to the fallible expression, or the argument construction is hoisted out of it, and a caller-side fault introduced at the site surfaces in the evidence test.",
+          "evidence": [],
+          "red_gate": null,
+          "site": {
+            "file": "src/maxim/runtime/loop_perception.py",
+            "symbol": "imagine",
+            "pattern": "broad try around sim_log('SEM_TRACE', 'Imagination skipped ...') with the observation-keys read inside"
+          },
+          "source": "The four innermost sim_log wraps (#863's DROP class), traced from 07369b3f: #863's step-2 classification (issue comment 2026-09-24, against main @ 07369b3f), reproduced by the same scan there; they moved from run_agentic_loop to runtime/loop_perception.py with agent_loop slice 5 (#1210). Not gated: the two outer run_agentic_loop blocks #863 classifies KEEP (out of its scope), the display site (agent_loop:4206 at 07369b3f, which #863 excluded), and the explicit-form handlers #863 mentions only as an aside ('worth converting when its site is read', issue comment 2026-09-23; owner decision 2026-10-15: the gate does not widen an issue beyond its own close condition)."
+        },
+        {
+          "id": "863.loop.auto_sense",
+          "ref": "#863",
+          "scope": "#863 step 2 at this site: the broad except no longer swallows caller logic around the sim_logger call. The wrap is dropped where the call cannot raise, narrowed to the fallible expression, or the argument construction is hoisted out of it, and a caller-side fault introduced at the site surfaces in the evidence test.",
+          "evidence": [],
+          "red_gate": null,
+          "site": {
+            "file": "src/maxim/runtime/loop_perception.py",
+            "symbol": "auto_sense",
+            "pattern": "broad try around sim_log('PERCEPTION', 'auto-sense ...') with the entity count computed inside"
+          },
+          "source": "The four innermost sim_log wraps (#863's DROP class), traced from 07369b3f: #863's step-2 classification (issue comment 2026-09-24, against main @ 07369b3f), reproduced by the same scan there; they moved from run_agentic_loop to runtime/loop_perception.py with agent_loop slice 5 (#1210). Not gated: the two outer run_agentic_loop blocks #863 classifies KEEP (out of its scope), the display site (agent_loop:4206 at 07369b3f, which #863 excluded), and the explicit-form handlers #863 mentions only as an aside ('worth converting when its site is read', issue comment 2026-09-23; owner decision 2026-10-15: the gate does not widen an issue beyond its own close condition)."
+        },
+        {
+          "id": "863.loop.orient_to_audio.reflex",
+          "ref": "#863",
+          "scope": "#863 step 2 at this site: the broad except no longer swallows caller logic around the sim_logger call. The wrap is dropped where the call cannot raise, narrowed to the fallible expression, or the argument construction is hoisted out of it, and a caller-side fault introduced at the site surfaces in the evidence test.",
+          "evidence": [],
+          "red_gate": null,
+          "site": {
+            "file": "src/maxim/runtime/loop_perception.py",
+            "symbol": "orient_to_audio",
+            "pattern": "broad try around sim_log('REACTION', 'orienting reflex ...') whose f-string formats float(_az) (argument construction inside)"
+          },
+          "source": "The four innermost sim_log wraps (#863's DROP class), traced from 07369b3f: #863's step-2 classification (issue comment 2026-09-24, against main @ 07369b3f), reproduced by the same scan there; they moved from run_agentic_loop to runtime/loop_perception.py with agent_loop slice 5 (#1210). Not gated: the two outer run_agentic_loop blocks #863 classifies KEEP (out of its scope), the display site (agent_loop:4206 at 07369b3f, which #863 excluded), and the explicit-form handlers #863 mentions only as an aside ('worth converting when its site is read', issue comment 2026-09-23; owner decision 2026-10-15: the gate does not widen an issue beyond its own close condition)."
+        },
+        {
+          "id": "863.loop.orient_to_audio.percept",
+          "ref": "#863",
+          "scope": "#863 step 2 at this site: the broad except no longer swallows caller logic around the sim_logger call. The wrap is dropped where the call cannot raise, narrowed to the fallible expression, or the argument construction is hoisted out of it, and a caller-side fault introduced at the site surfaces in the evidence test.",
+          "evidence": [],
+          "red_gate": null,
+          "site": {
+            "file": "src/maxim/runtime/loop_perception.py",
+            "symbol": "orient_to_audio",
+            "pattern": "broad try around sim_log('PERCEPTION', 'audio-orient ...') (emit only)"
+          },
+          "source": "The four innermost sim_log wraps (#863's DROP class), traced from 07369b3f: #863's step-2 classification (issue comment 2026-09-24, against main @ 07369b3f), reproduced by the same scan there; they moved from run_agentic_loop to runtime/loop_perception.py with agent_loop slice 5 (#1210). Not gated: the two outer run_agentic_loop blocks #863 classifies KEEP (out of its scope), the display site (agent_loop:4206 at 07369b3f, which #863 excluded), and the explicit-form handlers #863 mentions only as an aside ('worth converting when its site is read', issue comment 2026-09-23; owner decision 2026-10-15: the gate does not widen an issue beyond its own close condition)."
+        }
+      ],
+      "retired": []
+    }
+  }
+}

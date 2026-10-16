@@ -584,6 +584,26 @@ frozen on main before the first data timestamp, a merge-committed data PR at one
 COMPLETE (or amendments folded and floor-reviewed, as R3's were), and a §Outcome that leads with the
 frozen status verbatim; **EARNED** per rung = every frozen gate of that rung's prereg PASS.
 
+- **T0 — the decomposition fence is closed, mechanically (owner decision 2026-10-15).** 1.3.2 ships without
+  the rest of the `agent_loop`/orchestrator decomposition, and **1.4.0 is gated on
+  [`scripts/release_gates.json`](../../scripts/release_gates.json)**. `scripts/lint_release_gates.py` (CI
+  lint job, plus its runtime twin in unit-tests) fails every version >= 1.4.0, pre-releases included, until
+  three things hold. First, `start_simulation_mode`, `run_agentic_loop` and `execute_and_learn` are each at most
+  200 lines with no function-length pin, and so is everything split or moved out of them. Second, the five
+  orchestrator characterization arms (`persistent_agent`, `imagination`, `new_goal`, `stall`, `generative`) are
+  complete: in the golden, with direct-assertion evidence, their golden case passing. (That they land BEFORE the
+  slice that moves their code is enforced by that slice's review and roadmap_1_3_x.md §"Characterization owed",
+  not mechanically.) Third, every listed item is satisfied by an evidence test that was once a strict red gate,
+  or retired on the record. The 30 items are #1259, #1262, #1263's six parts (the DefaultNetwork stop, #1260's,
+  and the ConceptExtractor worker threads included), #1264, #1265, #1267, #1123's three parts, #932's resume
+  lookup, #1288's four name lists, #835, #850, #845 item 1, #965, and #863's 7 DROP-class sites: the four innermost
+  loop_perception wraps of #863's own close condition, and three orchestrator SEM_TRACE wraps that widen #863
+  beyond its own scan (which excluded `simulation/`) by owner decision 2026-10-15, classified by its 2026-09-24
+  DROP/KEEP rule. Below 1.4.0 the lint prints the outstanding counts on every run. The diff
+  that bumps to 1.4.0 may not touch the gate file. **Once 1.4.0 is released** (a released `## [1.4.0]` CHANGELOG
+  header and pyproject version at the diff's base), the gate closes: its item, arm, function and new-debt rules only print, and its
+  shape and history rules stay enforced. Residuals that only review can catch: mechanization backlog M55
+  ([outstanding.md](outstanding.md)).
 - **T1 — E1's instrument shipped and proven.** Items 1a, 2 (all five acceptance checks), 4 (the
   gated apparatus record of measured primitives) merged with their offline runs; the R3 A+C variant
   baseline frozen; the nine pilot rows committed.
@@ -688,7 +708,7 @@ line reaches "ready to build" the day 1.3.2 ships.
 
 **The boundary:** paper (preregs, design reviews), offline measurements and non-loop plumbing only.
 Nothing under `runtime/agent_loop.py`, `decisions/nac.py`'s selection path or `simulation/orchestrator.py`
-until the 1.3.2 decomposition slices touching it have landed.
+until the 1.3.2 decomposition slices touching it have landed. The end of that fence is mechanical: T0 in §Release thresholds, `scripts/release_gates.json`.
 
 **Dev-box groundwork (Track B), in order of value:**
 1. **Exp 62's different-reader pass** — cheap, and it turns an EARNED ledger row into a result 1.4 may

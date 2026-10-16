@@ -122,6 +122,39 @@ Known items from Phase 12b that may be blocking:
 | Phase 1 code quality (atomic writes, rate limits, env parsing, blocklist, type annotations, error logging) | **FIXED** (2026-04-08, 19 tests) | No |
 | Store protocol wiring (1m) | **SHIPPED** (store protocol wiring complete, see substrate_binding_persistence.md) | No |
 
+### 4b. Run the release gates on the bumped tree
+
+[`scripts/release_gates.json`](../scripts/release_gates.json) gates whole versions (owner decision 2026-10-15:
+no version >= 1.4.0 until the `agent_loop`/orchestrator decomposition and its listed items are done). CI's lint
+job runs the check on every PR, but a build from a local tree would bypass CI. Run it on the exact tree you are
+about to build, AFTER the version bump and BEFORE `python -m build`:
+
+```bash
+python3 scripts/lint_release_gates.py
+# Expected: "release gates: clean". At a gated version, every gate at or below it prints ACTIVE (on the bump PR,
+# judged against the pre-release main) or CLOSED (on main after the bump merges, where the merge-base is HEAD),
+# with "0/N items outstanding, 0 functions not done", all arms satisfied and 0 unaccepted new debt.
+```
+
+A failure lists every outstanding entry, and the release waits until they are done. The bump diff may not edit
+the gate file: retiring an entry or accepting new debt goes in its own reviewed PR before the bump (the lint
+refuses it otherwise). The lint's docstring states every rule and residual.
+
+**The bump PR also updates the checkout tests in `tests/unit/test_lint_release_gates.py`.** They are a deliberate
+tripwire: `test_this_checkout_passes_below_the_gate` fails once the checkout's version reaches a gate, and
+`test_this_checkout_at_1_4_0_fails_listing_every_outstanding_item` fails once nothing is outstanding. In the same
+PR as the bump:
+
+- rename the first to `test_this_checkout_passes_at_1_4_0` and assert exit 0, `0/N items outstanding`, and that the
+  gate reads EITHER `release gate 1.4.0: ACTIVE` OR `release gate 1.4.0: CLOSED`. Both occur: the test clears the
+  CI event, so it judges against the merge-base with origin/main, which is the pre-release main on the bump PR
+  (ACTIVE) and HEAD itself on main's push run of the bump commit (CLOSED);
+- delete the second, or point its forced version at the next gate in `scripts/release_gates.json` if one exists.
+
+Once 1.4.0 is released (a `## [1.4.0]` header and pyproject version at the diff base), the gate prints `CLOSED`:
+its item, arm, function and new-debt rules only print from then on, in the lint job and the runtime twin alike,
+while its shape and history rules stay enforced.
+
 ### 5. Verify version consistency
 
 ```bash
