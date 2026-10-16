@@ -34,6 +34,7 @@ entity:
       affordances:
         speak:
           params: {message: str}
+          speech_param: message
           description: "Speak to the thief — watch your pockets"
         bribe:
           params: {amount: float}

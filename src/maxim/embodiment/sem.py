@@ -130,6 +130,11 @@ class AffordanceSchema:
     # orient affordances (listen/turn) from being deactivated turn-1 and then
     # failing "not active" when a sound actually arrives.
     always_active: bool = False
+    # #1261: the ONE declared param that holds the words when this affordance is the agent SPEAKING (a body's
+    # voice, an NPC addressed, a device carrying the agent's words), as declared in YAML (``speech_param:``).
+    # ``None`` = not speech. The tool generator copies it onto ``Tool.speech_params`` and infers nothing; the
+    # spec loader refuses a value that names no declared param.
+    speech_param: str | None = None
 
 
 # ---------------------------------------------------------------------------

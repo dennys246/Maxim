@@ -1859,16 +1859,15 @@ def _install_history_state(app: Any, *, sandbox: _SandboxPolicy | None, health_m
     app.state.cursor_signer = CursorSigner()  # per app: a cursor never outlives its server
     app.state.health_monitor = bool(health_monitor)
     # ONE log per file per process: two apps on one data home share it. Each
-    # app brings its OWN publisher on acquire (none under sandbox), so the
-    # first app on a path cannot decide whether a later one streams health.
+    # app acquires with its own entry (none under sandbox), so the first app
+    # on a path cannot decide whether a later one streams health.
     app.state.health_log = shared_health_log(console_health_log())
-    # Not about the active run → no run_id. (`_event_hub` is process-global:
-    # the producer gate is exact for one app per process, the deployment shape.)
-    app.state.health_publish = (
-        None
-        if sandbox is not None
-        else (lambda kind, data: _event_hub.publish(kind, _health_message(kind, data), data, run_scoped=False))
-    )
+    # Not about the active run → no run_id. `_event_hub` is process-global, so
+    # every non-sandbox app's entry is the SAME publisher (F3) and the shared
+    # log fans an event out once per hub. The producer gate is still exact only
+    # for one app per process, the deployment shape: the hub reaches every
+    # app's /ws connections (#1291).
+    app.state.health_publish = None if sandbox is not None else _publish_health
 
 
 @contextlib.contextmanager
@@ -1895,10 +1894,17 @@ def _health_serving(app: Any) -> Any:
         health_log.release(sample=sample, publish=publish)
 
 
+def _publish_health(kind: str, data: dict[str, Any]) -> None:
+    """The /ws publisher for health events: one function for the one process-wide hub."""
+    _event_hub.publish(kind, _health_message(kind, data), data, run_scoped=False)
+
+
 def _health_message(kind: str, data: dict[str, Any]) -> str:
     """One human line for a health event on /ws (the payload is in ``data``)."""
     if kind == "health_stall":
-        return f"stall: agent loop idle {data.get('idle_s', '?')}s (state={data.get('state', '?')})"
+        wedged = data.get("wedged_s")
+        why = "no call in flight" if wedged is None else f"its call wedged {wedged:.0f}s"
+        return f"stall: a planning turn outstanding {data.get('outstanding_s', 0):.0f}s ({why})"
     return ""
 
 

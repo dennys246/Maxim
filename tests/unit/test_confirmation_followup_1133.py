@@ -105,6 +105,7 @@ def _run(ctrl: LoopController, rec: MagicMock) -> Any:
             rec_outcome=rec,
             nac=None,
             memory_hub_enabled=False,
+            tool_overlay={},  # a plain ToolRegistry's: no own tool descriptions (#1260)
         ),
         book_refusal=_bind_book_refusal(ctrl, agent_id=_HUB, rec_outcome=rec, nac=None),
     )

@@ -54,22 +54,29 @@ regenerates the fixture in its own commit:
     nudging the finished narrator every 30 s until that grace expires. A probe saw six post-finish
     narrator calls over about 180 s. The narrator arm therefore follows the finish with an operator
     ``/cancel`` (harness docstring).
-  - #1260: ``TOOL_DESCRIPTIONS.update`` in §5 is process-global, so the AUT's prompt advertises
-    ``respond: NOT AVAILABLE. Use send_message instead.``, and the AUT's ``respond`` gets a ``process``
-    follow-up. That follow-up is the ``say`` every turn pins.
-  - #1261: the bridge's ``response`` is the ``respond`` tool's RECEIPT (``{'delivered': True, 'mode': 'cli'}``),
-    not the AUT's words. The narrator and ``report.response_texts`` never see what the AUT said through
-    ``respond``.
+  - #1260 (FIXED): ``TOOL_DESCRIPTIONS.update`` in §5 was process-global, so the AUT's prompt advertised
+    ``respond: NOT AVAILABLE. Use send_message instead.``, and the AUT's ``respond`` got a ``process``
+    follow-up, the ``say`` every turn pinned. The narrator's entries now ride on its registry
+    (``SimToolRegistry.tool_descriptions``): the AUT's ``respond`` is terminal, one action a turn, and the
+    harness asserts a run leaves ``TOOL_DESCRIPTIONS`` untouched. The fixture was regenerated for it, after
+    #1261's, in its own commit.
+  - #1261 (FIXED, no longer a pinned defect): the bridge's ``response`` was the ``respond`` tool's RECEIPT
+    (``{'delivered': True, 'mode': 'cli'}``), not the AUT's words. Each turn's ``response`` and
+    ``report.response_texts`` now pin the words, read from ``ActionRecord.utterance``, and include ``say``'s;
+    each ``SimulationResult.actions`` entry carries them as ``utterance`` (the fixture was regenerated for it
+    in its own commit). The actions' ``output`` still pins the receipt, which ``RespondTool`` still returns.
   - #1262: ``/pause`` does not stop the narrator mid follow-up chain. In the stdin arm the operator pauses after
     turn 1 and the narrator still sends turn 2. The pause reaches it only as a queued SYSTEM percept,
     and its loop answers the pending ``send_message`` follow-up first, so the pause, resume and guidance
     percepts are never planned before the ``/cancel``.
-  - #1263: teardown leaves threads running. It never stops the AUT's DefaultNetwork (the
-    ``DefaultNetwork`` and ``DN-BackgroundTasks`` threads), the two agents' ``plan-logger``/
-    ``plan-dashboard`` writers or the ``memctx_*`` pool. Each run in one process (the menu loop,
+  - #1263: teardown leaves threads running: the two agents' ``plan-logger``/``plan-dashboard`` writers
+    and the ``memctx_*`` pool. (Its DefaultNetwork part is FIXED with #1281: the loop that starts the AUT's
+    DN now stops it in a sim too, so the ``DefaultNetwork`` and ``DN-BackgroundTasks`` threads end with the
+    run, ``test_the_run_leaves_no_default_network_running_1263``; the fixture was regenerated for it with
+    #1260's.) Each run in one process (the menu loop,
     ``maxim.campaign()``) leaves them alive. ``threads_left_alive`` pins the ones the run adds; the
-    ``memctx`` pool is class-level and process-wide, so only its being alive afterwards is pinned
-    (``_THREADS_EXCLUDED``). The ``sim.*`` threads all exit.
+    ``memctx`` pool is class-level and process-wide, so whether a run starts it depends on the process's
+    history, and it is not pinned at all (``_THREADS_EXCLUDED``, #1263's memctx part). The ``sim.*`` threads all exit.
 
 NEUTRALISED, NOT PINNED (the harness takes them out of the trace, so a fix does not change the golden):
 
@@ -107,6 +114,7 @@ from tests.unit._orch_harness import (  # noqa: E402
     _PROVENANCE_MASKED,
     ARMS,
     REPO_ROOT,
+    RUN_SIDE,
     FakeRouter,
     WrongCheckout,
     assert_this_checkout,
@@ -158,7 +166,7 @@ def test_the_narrator_drives_two_turns_and_its_finish_outranks_the_operator_canc
         "finish_simulation",
     ]
     assert [turn["text"] for turn in t["turns"]] == ["Hello, who are you?", "What is your favourite colour?"]
-    assert all([a["tool"] for a in turn["actions"]] == ["respond", "say"] for turn in t["turns"])
+    assert all([a["tool"] for a in turn["actions"]] == ["respond"] for turn in t["turns"])  # terminal (#1260)
     assert t["bridge_finish_calls"][0]["initiated_by"] == "llm_finish_tool"
     assert t["stdin_lines"] == [{"after": "finish_simulation", "after_turn": 2, "line": "/cancel"}]
     assert t["result"]["finish_reason"] == "completed"
@@ -178,14 +186,16 @@ def test_operator_commands_reach_their_targets(tmp_path_factory: pytest.TempPath
         "please keep it brief",
         "/cancel",
     ]
-    assert ["status: Turns: 1", "status: Actions: 2", "status: Blocked: 0"] == [
+    assert ["status: Turns: 1", "status: Actions: 1", "status: Blocked: 0"] == [
         line for line in t["lifecycle"] if line.startswith(("status: Turns:", "status: Actions:", "status: Blocked:"))
     ]
     paused = t["turns"][0]["paused_aut_actions"]
-    assert [a["tool"] for a in paused] == ["respond", "say"]
-    assert any(c.get("request") == "hello from the operator" for c in t["aut_calls"])
+    assert [a["tool"] for a in paused] == ["respond"]
+    # The AUT's no-LLM direct answer to a greeting (``agents/llm_fallback.py``): the operator's "hello" reached it.
+    # (Until #1260 the respond's follow-up was an AUT LLM call carrying the text, which this read instead.)
+    assert paused[0]["args"] == {"message": "Hello! How can I help you?"}
     assert t["result"]["finish_reason"] == "cancel"
-    assert t["result"]["total_actions"] == 6
+    assert t["result"]["total_actions"] == 3
 
 
 @pytest.mark.timeout(240)
@@ -197,6 +207,80 @@ def test_pre_campaign_turns_run_without_a_narrator(tmp_path_factory: pytest.Temp
     assert t["result"]["finish_reason"] == "completed"
     assert t["bridge_finish_calls"] and not t["bridge_finish_calls"][0], "the runner ended it, no finish_context"
     assert any(f.startswith("campaign_analysis_") for f in t["sim_reports_files"])
+
+
+# ── #1260: the narrator's tool descriptions are the narrator's alone ──────────
+#
+# Until #1260, §5 of ``start_simulation_mode`` wrote the narrator's tool descriptions into the process-global
+# ``modes.definitions.TOOL_DESCRIPTIONS``, so the AUT, running at the same time in the same process, read
+# ``respond: NOT AVAILABLE`` and got a ``process`` follow-up after every ``respond``. They ride on the narrator's
+# registry now (``SimToolRegistry.tool_descriptions``). These read the narrator arm's real run (the trace, and ``RUN_SIDE``: the raw prompts and the dict before the harness
+# restores it).
+
+_NARRATOR_SEND_MESSAGE = "This is your PRIMARY tool for interacting with the AUT."  # the narrator's own entry
+
+
+@pytest.mark.timeout(240)
+def test_the_auts_respond_is_terminal_1260(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """The AUT's ``respond`` is terminal (builtin ``followup_type: None``): no follow-up call, one action a turn."""
+    t = _trace("narrator", tmp_path_factory)
+    assert [c["executed"] for c in t["aut_calls"] if c["kind"] == "followup"] == []
+    assert [[a["tool"] for a in turn["actions"]] for turn in t["turns"]] == [["respond"], ["respond"]]
+
+
+@pytest.mark.timeout(240)
+def test_the_auts_prompt_describes_its_own_respond_1260(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Every AUT prompt describes ``respond`` with the builtin entry, never the narrator's 'NOT AVAILABLE'."""
+    from maxim.modes.definitions import TOOL_DESCRIPTIONS
+
+    _trace("narrator", tmp_path_factory)
+    aut_prompts = RUN_SIDE["narrator"]["prompts"]["aut"]
+    assert aut_prompts, "the AUT was prompted"
+    assert not [p for p in aut_prompts if "NOT AVAILABLE" in p]
+    assert not [p for p in aut_prompts if _NARRATOR_SEND_MESSAGE in p]
+    builtin = TOOL_DESCRIPTIONS["respond"]["description"]
+    assert all(builtin in p for p in aut_prompts if not p.startswith("TOOL_PROMPT|You just executed "))
+
+
+@pytest.mark.timeout(240)
+def test_a_run_leaves_the_global_tool_descriptions_untouched_1260(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """``TOOL_DESCRIPTIONS`` after a real run, read before the harness restores it, deep-equals it before."""
+    from maxim.modes.definitions import get_tool_followup_type
+
+    _trace("narrator", tmp_path_factory)
+    side = RUN_SIDE["narrator"]
+    assert side["tool_descriptions_after"] == side["tool_descriptions_before"]
+    assert side["tool_descriptions_after"]["respond"]["followup_type"] is None
+    assert get_tool_followup_type("respond", "active", overlay={}) is None  # the dict after the run
+
+
+@pytest.mark.timeout(240)
+def test_the_narrators_prompt_keeps_its_own_tool_descriptions_1260(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """The narrator still reads its own entries (the fix must not take them from it): its planning prompts carry
+    the narrator's ``send_message`` text, and its ``send_message`` still gets a ``process`` follow-up."""
+    t = _trace("narrator", tmp_path_factory)
+    plans = [
+        p for p in RUN_SIDE["narrator"]["prompts"]["narrator"] if not p.startswith("TOOL_PROMPT|You just executed ")
+    ]
+    assert plans and all(_NARRATOR_SEND_MESSAGE in p for p in plans)
+    assert [c["executed"] for c in t["narrator_calls"] if c["kind"] == "followup"] == ["send_message", "send_message"]
+
+
+# ── #1263 (the DefaultNetwork part) / #1281: the loop that starts the AUT's DN stops it ──
+
+
+_DN_THREADS = ("DefaultNetwork", "DN-BackgroundTasks")
+
+
+@pytest.mark.timeout(240)
+@pytest.mark.parametrize("arm", sorted(ARMS))
+def test_the_run_leaves_no_default_network_running_1263(arm: str, tmp_path_factory: pytest.TempPathFactory) -> None:
+    """``run_agentic_loop`` starts the AUT's DefaultNetwork (``loop_setup.build_loop_run``) and its teardown must stop
+    it in a sim too. A leftover DN keeps ticking on the dead run's bio state and draws from the process-global
+    ``random``, which broke ``test_seeding`` later in the suite (#1281). Read off the threads the run started that are
+    still alive after it returned (``threads_left_alive.added``), not off the golden."""
+    added = _trace(arm, tmp_path_factory)["threads_left_alive"]["added"]
+    assert [name for name in added if name in _DN_THREADS] == []
 
 
 def test_the_golden_is_non_vacuous() -> None:
@@ -213,7 +297,7 @@ def test_the_golden_is_non_vacuous() -> None:
         assert {k for k, v in prov.items() if v == _MASKED} == set(_PROVENANCE_MASKED), name
         assert prov["serving_captured"] is True and prov["configured_n_ctx_source"] == "default", name
         assert "orchestrator/nac.json" in t["data_home_files"], name  # written only by the narrator's shutdown()
-        assert {"DefaultNetwork", "plan-logger"} <= set(t["threads_left_alive"]["added"]), name  # #1263
+        assert "plan-logger" in t["threads_left_alive"]["added"], name  # #1263's plan writers (its DN part is fixed)
         assert t["aut_nac"]["links"], name
         assert [r.get("_record_kind") for r in t["action_log"][:1]] == ["header"], name
         assert len(t["action_log"]) - 1 == t["result"]["total_actions"], name

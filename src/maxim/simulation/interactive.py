@@ -451,17 +451,30 @@ def _generate_continuation(
     return None
 
 
+def _action_preview(a: Any) -> str:
+    """The text shown after an action's tag: what the agent SAID, for speech (#1261).
+
+    The words are the record's ``utterance``; reading ``result_output["message"]`` for them found nothing,
+    since ``respond`` returns a receipt and ``say`` returns ``said``. A non-speech tool's own status message
+    (``result_output["message"]``, e.g. a stub robot's "No live robot connected") is still shown: it is the
+    tool's report, not the agent's words.
+    """
+    if a.utterance:
+        return f": {a.utterance}"
+    if a.result_output and isinstance(a.result_output, dict):
+        msg = a.result_output.get("message", "")
+        if msg:
+            return f": {str(msg)}"
+    return ""
+
+
 def _summarize_actions(sink: Any, from_index: int = 0) -> list[str]:
     """Summarize recent actions as strings for context."""
     summaries = []
     for a in sink.actions[from_index:]:
         tag = "[BLOCKED]" if a.blocked else ("[OK]" if a.result_success else "[FAIL]")
         name = a.tool_name
-        preview = ""
-        if a.result_output and isinstance(a.result_output, dict):
-            msg = a.result_output.get("message", "")
-            if msg:
-                preview = f": {str(msg)}"
+        preview = _action_preview(a)
         summaries.append(f"{tag} {name}{preview}")
     return summaries
 
@@ -496,12 +509,8 @@ def _show_turn_results(sink: Any, from_index: int = 0) -> None:
     for a in new_actions:
         tag = "[BLOCKED]" if a.blocked else ("[OK]" if a.result_success else "[FAIL]")
         name = a.tool_name
-        preview = ""
-        if a.result_output and isinstance(a.result_output, dict):
-            msg = a.result_output.get("message", "")
-            if msg:
-                preview = f": {str(msg)}"
-        elif a.block_reason:
+        preview = _action_preview(a)
+        if not preview and a.block_reason:
             preview = f": {str(a.block_reason)}"
         display_scene(f"  {tag} {name}{preview}")
 
@@ -514,11 +523,7 @@ def _print_summary(sink: Any) -> None:
     for a in sink.actions[:15]:
         tag = "[BLOCKED]" if a.blocked else ("[OK]" if a.result_success else "[FAIL]")
         name = a.tool_name
-        preview = ""
-        if a.result_output and isinstance(a.result_output, dict):
-            msg = a.result_output.get("message", "")
-            if msg:
-                preview = f": {str(msg)}"
+        preview = _action_preview(a)
         display_scene(f"  {tag} {name}{preview}")
     if len(sink.actions) > 15:
         display_scene(f"  ... and {len(sink.actions) - 15} more")

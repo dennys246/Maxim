@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -154,6 +155,10 @@ def support_problem(
 
 EXCEPTION_FIELDS = ("id", "kind", "row", "to", "to_date", "path", "sha256", "owner", "reason", "date")
 SUPERSEDED_FIELDS = ("id", "kind", "row", "by", "to_date", "owner", "reason", "date")  # lint_ledger_format's (D3)
+# M25: an owner's decision that a STALE or BROKEN row does not block ONE named release. It moves no status (the row
+# keeps its token); the release transaction reads it (publication_guide.md, until M25 mechanizes the check).
+RELEASE_FIELDS = ("id", "kind", "row", "status", "release", "owner", "reason", "ref", "date")
+RELEASE_BLOCKING = ("STALE", "BROKEN")
 
 
 def pass_table_problems(table, where: str, *, at_base: bool = False) -> list[str]:
@@ -369,6 +374,29 @@ def load_json(repo: Repo, ref: str, path: str, default):
         raise GateError(f"{path} at {ref[:12]} is not JSON") from exc
 
 
+def release_exception_problem(e: dict, head_rows: dict[str, L.Row] | None = None) -> str | None:
+    """A ``release`` clause names one row, the blocking status it holds and one release (``X.Y.Z``): an exception
+    for 1.3.2 says nothing about 1.3.3, and one for a STALE row does not cover it once it is BROKEN. ``head_rows``
+    (the ledger at HEAD, given for a NEW clause): the row must exist and hold that status when the clause is added."""
+    extra = sorted(set(e) - set(RELEASE_FIELDS))
+    if extra:
+        return f"carries fields outside the form: {', '.join(extra)} (one row, one status, one release)"
+    missing = [f for f in RELEASE_FIELDS if not isinstance(e.get(f), str) or not e.get(f)]
+    if missing:
+        return f"lacks a required field: {', '.join(missing)}"
+    if e["status"] not in RELEASE_BLOCKING:
+        return f"names status {e['status']!r}; only {'/'.join(RELEASE_BLOCKING)} block a release"
+    if not re.fullmatch(r"\d+\.\d+\.\d+", e["release"]):
+        return f"names release {e['release']!r}, not one X.Y.Z version"
+    if head_rows is not None:
+        row = head_rows.get(e["row"])
+        if row is None:
+            return f"names row {e['row']!r}, which the ledger does not have"
+        if row.token != e["status"]:
+            return f"names status {e['status']} but {e['row']} is {row.token} in the ledger"
+    return None
+
+
 def exceptions_problems(base_list, head_list, repo: Repo | None = None, base: str | None = None) -> list[str]:
     """The exceptions file's shape, append-only against the merge-base. ``repo`` / ``base``: a NEW clause's pin is
     checked against them (a new redaction record without them is refused, never waved through)."""
@@ -381,9 +409,26 @@ def exceptions_problems(base_list, head_list, repo: Repo | None = None, base: st
             label = e.get("id") if isinstance(e, dict) else e
             out.append(f"{EXCEPTIONS}: an entry on main was edited or removed (append-only): {label!r}"[:200])
     out += [f"{EXCEPTIONS}: {p}"[:300] for p in redaction_pair_problems(base_list, head_list)]
+    head_rows: dict[str, L.Row] | None = None
     for e in head_list:
-        if not isinstance(e, dict) or e.get("kind") not in ("ledger", "prereg", "superseded", "redaction"):
-            out.append(f"{EXCEPTIONS}: an entry is not a ledger/prereg/superseded/redaction exception: {e!r}"[:200])
+        if not isinstance(e, dict) or e.get("kind") not in ("ledger", "prereg", "superseded", "redaction", "release"):
+            out.append(
+                f"{EXCEPTIONS}: an entry is not a ledger/prereg/superseded/redaction/release exception: {e!r}"[:200]
+            )
+        elif e["kind"] == "release":
+            # A NEW clause is checked against the ledger at HEAD; one already on main is checked for shape only (its
+            # row may since have moved, which leaves it inert for the release check, M25).
+            if e in base_list:
+                problem = release_exception_problem(e)
+            elif repo is None:
+                problem = "is new and cannot be checked against the ledger (no repo given)"
+            else:
+                if head_rows is None:
+                    text = (repo.blob("HEAD", L.LEDGER_PATH) or b"").decode("utf-8", errors="replace")
+                    head_rows = {r.id: r for r in L.parse(text)[0]}
+                problem = release_exception_problem(e, head_rows)
+            if problem:
+                out.append(f"{EXCEPTIONS}: release exception {e.get('id')!r} {problem}"[:300])
         elif e["kind"] == "redaction":
             # #1081 item 7: the gate owns this shape (lint_ledger_format and the prereg lint ignore the kind).
             problem = redaction_record_problem(e, repo, base, new=e not in base_list)

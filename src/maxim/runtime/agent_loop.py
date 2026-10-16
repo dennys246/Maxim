@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import time
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Literal
 
 from maxim.evaluation.base import Evaluator
@@ -116,6 +117,7 @@ _WIRE1_LOW_PHRASE = "reliable from prior experience"
 
 
 from maxim.runtime.loop_state import (
+    loop_liveness_scope,
     operational_mode,
     seed_runtime_run_mode,
     _planning_attempt_is_active,
@@ -846,14 +848,23 @@ def _loop_bio_tick_maintenance(nac: Any) -> None:
         log_swallowed_exception(e, operation="nac_per_tick_decay")
 
 
+def _thaw(value: Any) -> Any:
+    """A read-only mapping (and any nested in it) as plain ``dict``s (#1260's overlay)."""
+    if isinstance(value, Mapping):
+        return {k: _thaw(v) for k, v in value.items()}
+    return value
+
+
 def _describe_tools_for_prompt(
     available_tools: Any,
     executor: Any,
-    builtin_descriptions: dict[str, Any],
+    *,
+    overlay: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, Any]:
     """Full tool info for the prompt (description, params, example).
 
-    Builtin tools come from ``TOOL_DESCRIPTIONS``; dynamic tools (skills,
+    Builtin tools come from ``TOOL_DESCRIPTIONS`` with the agent's own entries (``overlay``, the run's
+    ``LoopRun.tool_overlay``: the narrator's, from its registry, #1260) layered over them; dynamic tools (skills,
     protocols, SEM affordances) are described from the ``Tool`` instance
     via ``Tool.to_json_schema()`` so tools authored in either input_schema
     format render correctly. Pre-CC9 this iterated ``input_schema.items()``
@@ -861,10 +872,15 @@ def _describe_tools_for_prompt(
     tools (the ``@maxim.tool`` decorator path) via the swallow-everything
     except below. Extracted from ``run_agentic_loop`` 2026-09-04 (P21).
     """
+    # The overlay is read-only (``NARRATOR_TOOL_DESCRIPTIONS``): thawed into fresh dicts, which every downstream
+    # reader expects (the prompt builder renders only ``dict`` entries; Wire 1/3 copy-on-write over them).
+    from maxim.modes.definitions import TOOL_DESCRIPTIONS
+
+    described = {**TOOL_DESCRIPTIONS, **{name: _thaw(entry) for name, entry in overlay.items()}}
     tool_descriptions: dict[str, Any] = {}
     for name in available_tools:
-        if name in builtin_descriptions:
-            tool_descriptions[name] = builtin_descriptions[name]
+        if name in described:
+            tool_descriptions[name] = described[name]
             continue
         try:
             tool = executor.registry.get(name)
@@ -910,6 +926,7 @@ def _followup_synthetic_input(followup: Any) -> str:
     return f"[ACTION_FOLLOWUP type={followup.followup_type} tool={tool} mode={followup.mode} query='{query}']: {result}"
 
 
+@loop_liveness_scope  # one liveness entry per run for the heartbeat's stall rule, cleared in a finally (#1268)
 def run_agentic_loop(
     agent: Any,
     environment: Any,
@@ -989,7 +1006,7 @@ def run_agentic_loop(
         check_hard_stop,
     )
     from maxim.agents.llm_worker import ModeInfo
-    from maxim.modes.definitions import get_mode, TOOL_DESCRIPTIONS
+    from maxim.modes.definitions import get_mode
     from maxim.runtime.loop_types import ActionFollowup, PendingConfirmation
 
     # The setup block (1.3.2 decomposition, slice 1): built once, unpacked into the local names the
@@ -1036,7 +1053,7 @@ def run_agentic_loop(
     _loop_sensor_encoder, _loop_situation_cue = run.sensor_encoder, run.situation_cue
     _planning_liveness_on = run.planning_liveness_on
     _execute_and_learn, _book_refusal = run.execute_and_learn, run.book_refusal
-    _book_machine_refusal = run.book_machine_refusal
+    _book_machine_refusal, _tool_overlay = run.book_machine_refusal, run.tool_overlay
 
     # Mutable-container aliases — safe because in-place mutation is shared.
     # State variables (pending_proposal, pending_action_followup, etc.) use
@@ -2849,7 +2866,7 @@ def run_agentic_loop(
                             available_tools = [t for t in available_tools if executor.permits(t)]
                         last_surfaced_tools = list(available_tools)
 
-                        tool_descriptions = _describe_tools_for_prompt(available_tools, executor, TOOL_DESCRIPTIONS)
+                        tool_descriptions = _describe_tools_for_prompt(available_tools, executor, overlay=_tool_overlay)
 
                         # Wire 3: annotate degraded tools' descriptions in
                         # place with a felt-sensation phrase (bio-fidelity
@@ -3325,8 +3342,8 @@ def run_agentic_loop(
         consolidation=_resolved_consolidation,
     )
 
-    # Stop Default Network if running (skip in sim — no DN)
-    if dn_enabled and not sim.is_sim_mode:
+    # Stop the Default Network build_loop_run started, in a sim too: its owner is this loop (#1263, #1281)
+    if dn_enabled:
         ctrl.dn_ctrl.stop()
 
     # D13 planning liveness: raise AFTER teardown so state persistence and

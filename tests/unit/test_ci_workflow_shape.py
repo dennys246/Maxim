@@ -7,7 +7,9 @@ Structural pins on `.github/workflows/test.yml`, read PARSED (a comment satisfie
 - both nightly lanes install and run their tests, offline against a warmed model cache, through ONE setup action
   (.github/actions/model-cache-setup, #1117), and each is held to its exact roster (scripts/check_lane_roster.py);
 - the claims lint runs in the lint job (roadmap 1.3.2 item 8);
-- the secret scan runs in the lint job and, whole-tree, in a nightly job (#1081).
+- the secret scan runs in the lint job and, whole-tree, in a nightly job (#1081);
+- the release gate runs in the lint job, and its runtime twin reads the fast suite's JUnit report in the unit-tests
+  job (owner decision 2026-10-15; scripts/lint_release_gates.py also checks both from either side).
 """
 
 from __future__ import annotations
@@ -150,3 +152,19 @@ def test_the_secret_scan_runs_on_every_pr_and_on_the_whole_tree_nightly():
     job = WF["jobs"]["secret-scan"]
     assert "(nightly)" in job["name"] and "schedule" in job["if"]
     assert any(_run(s).strip() == "python3 scripts/lint_secrets.py --all" for s in job["steps"])
+
+
+def test_the_release_gate_runs_in_the_lint_job_and_its_twin_reads_the_fast_suites_junit():
+    """Owner decision 2026-10-15: no version >= 1.4.0 passes CI until scripts/release_gates.json is done. Both steps
+    are bare commands (no `if:`, no `continue-on-error`, no `|| true`), and the twin follows the suite that writes the
+    report it reads."""
+    lint = [s for s in _steps("lint") if "lint_release_gates.py" in _run(s)]
+    assert len(lint) == 1 and set(lint[0]) == {"name", "run"}
+    assert _run(lint[0]).strip() == "python3 scripts/lint_release_gates.py"
+    steps = _steps("unit-tests")
+    twin = [i for i, s in enumerate(steps) if "lint_release_gates.py" in _run(s)]
+    suite = [i for i, s in enumerate(steps) if "--cov" in _run(s) and "pytest" in _run(s)]
+    assert len(twin) == 1 and len(suite) == 1 and suite[0] < twin[0]
+    assert set(steps[twin[0]]) == {"name", "run"}
+    assert _run(steps[twin[0]]).strip() == "python scripts/lint_release_gates.py --junit fast-suite.xml"
+    assert _run(steps[suite[0]]).count("--junitxml=fast-suite.xml") == 1

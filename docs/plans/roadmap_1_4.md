@@ -230,7 +230,7 @@ rung's prereg freezes):**
 
 ## Phase 1 — Exp 62, cross-context transfer by the body (runs FIRST, concurrently)
 
-**EARNED 2026-09-20 — PHASE 1 IS CLOSED.** Campaign `exp62-rungA-1` at one hash, 27 rows, ZERO
+**EARNED 2026-09-20 — PHASE 1 IS CLOSED** (T1-15 is `PARTIAL (rung A: floor matched, analytical)` since 2026-10-15, after B1; Phase 1 needed a recorded outcome, which stands). Campaign `exp62-rungA-1` at one hash, 27 rows, ZERO
 refusals, 46.9 min: NODE 12/12, CROSS 12/12, SAME 12/12, ABLATED 0/3 with zero executor calls, REPLAY
 agrees; Fisher p 0.0022; cross-arm Wilson **[0.758, 1.000]** — the interval is the statistic, since
 both fear arms sit at the ceiling by design. Prereg v3 (the freeze) + §Outcome; data #790, ledger row
@@ -584,6 +584,33 @@ frozen on main before the first data timestamp, a merge-committed data PR at one
 COMPLETE (or amendments folded and floor-reviewed, as R3's were), and a §Outcome that leads with the
 frozen status verbatim; **EARNED** per rung = every frozen gate of that rung's prereg PASS.
 
+- **T0 — the decomposition fence is closed, mechanically (owner decision 2026-10-15).** 1.3.2 ships without
+  the rest of the `agent_loop`/orchestrator decomposition, and **1.4.0 is gated on
+  [`scripts/release_gates.json`](../../scripts/release_gates.json)**. `scripts/lint_release_gates.py` (CI
+  lint job, plus its runtime twin in unit-tests) fails every version >= 1.4.0, pre-releases included, until
+  three things hold. First, `start_simulation_mode`, `run_agentic_loop` and `execute_and_learn` are each at most
+  200 lines with no function-length pin, and so is everything split or moved out of them. Second, the five
+  orchestrator characterization arms (`persistent_agent`, `imagination`, `new_goal`, `stall`, `generative`) are
+  complete: in the golden, with direct-assertion evidence, their golden case passing. (That they land BEFORE the
+  slice that moves their code is enforced by that slice's review and roadmap_1_3_x.md §"Characterization owed",
+  not mechanically.) Third, every listed item is satisfied by an evidence test that was once a strict red gate,
+  or retired on the record. The original 30 items are #1259, #1262, #1263's six parts (the DefaultNetwork stop, #1260's,
+  and the ConceptExtractor worker threads included), #1264, #1265, #1267, #1123's three parts, #932's resume
+  lookup, #1288's four name lists, #835, #850, #845 item 1, #965, and #863's 7 DROP-class sites: the four innermost
+  loop_perception wraps of #863's own close condition, and three orchestrator SEM_TRACE wraps that widen #863
+  beyond its own scan (which excluded `simulation/`) by owner decision 2026-10-15, classified by its 2026-09-24
+  DROP/KEEP rule. Two more items were added later the same day (owner decision 2026-10-15), bringing the total to
+  32. They carry #1281's remainder after PR #1299 fixed its root cause and #1281 closed. `1305.owned-rng` (seeded
+  reproducibility, #1305): no module under `default_network/`, `attention/` or `spatial/`, nor
+  `decisions/significance.py`, draws from a process-global generator (the stdlib `random` module's functions, or
+  numpy's legacy `np.random.*` functions). Each draws from an owned generator whose seed derives from the one
+  `seed_all` last set (`get_global_seed`). `1263.thread-guard` (#1263's leaks): a conftest guard fails any
+  fast-suite test that leaves behind a loop thread it started (the `*_run_loop`, `*_writer_loop` and
+  `*_worker_loop` targets and the `memctx_*` pool workers that the item names), and its allowlist is empty. Below 1.4.0 the lint prints the outstanding counts on every run. The diff
+  that bumps to 1.4.0 may not touch the gate file. **Once 1.4.0 is released** (a released `## [1.4.0]` CHANGELOG
+  header and pyproject version at the diff's base), the gate closes: its item, arm, function and new-debt rules only print, and its
+  shape and history rules stay enforced. Residuals that only review can catch: mechanization backlog M56
+  ([outstanding.md](outstanding.md)).
 - **T1 — E1's instrument shipped and proven.** Items 1a, 2 (all five acceptance checks), 4 (the
   gated apparatus record of measured primitives) merged with their offline runs; the R3 A+C variant
   baseline frozen; the nine pilot rows committed.
@@ -688,10 +715,10 @@ line reaches "ready to build" the day 1.3.2 ships.
 
 **The boundary:** paper (preregs, design reviews), offline measurements and non-loop plumbing only.
 Nothing under `runtime/agent_loop.py`, `decisions/nac.py`'s selection path or `simulation/orchestrator.py`
-until the 1.3.2 decomposition slices touching it have landed.
+until the 1.3.2 decomposition slices touching it have landed. The end of that fence is mechanical: T0 in §Release thresholds, `scripts/release_gates.json`.
 
 **Dev-box groundwork (Track B), in order of value:**
-1. **Exp 62's different-reader pass** — cheap, and it turns an EARNED ledger row into a result 1.4 may
+1. **Exp 62's different-reader pass** — cheap, and it turns a ledger row (EARNED then; PARTIAL, floor matched, since 2026-10-15) into a result 1.4 may
    claim (it is not a 1.3.1 claim until this is recorded).
 2. **The grounded-language L0 offline gate** ([deferred/grounded_word_binding.md](deferred/grounded_word_binding.md)):
    frozen 2026-09-24, offline, no rig — blind-authored phrasings of five situations through Maxim's own EC
@@ -841,9 +868,18 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   design reviews and each rung's harness builds them. Its first rig work is the Exp 60 floor (B1, no LLM;
   its seam is a design-review decision); the bare loop (B2) waits for the `start_simulation_mode`
   decomposition, so no new LLM-path claim can be EARNED before it. Not Phase 0 item 2 (that item adds no public names) and not a benchmark framework (below).
-  *B1 status (2026-10-13):* the hook, the harness, its evidence entry and the BF2 obligation lint are merged (#1236,
-  #1238, #1245, #1258). The seed 99 rig diagnostic passed every liveness check, and the prereg is FROZEN v5. Next is
-  the run (§Run runbook): a same-day water check and its record PR first.
+  *B1 status (2026-10-14): RUN, `FLOOR_MATCHED_Q`.* The hook, the harness, its evidence entry and the BF2 obligation
+  lint are merged (#1236, #1238, #1245, #1258); the prereg froze at v5 (#1274) and the apparatus record is #1278.
+  Campaign `48ce40118c20`: 40/40 arm-seeds clean; first post placement surfaced FEAR 8/8, Q_EXPLORE 8/8, RANDOM 2/8
+  (FEAR > RANDOM p = 0.0035; FEAR > Q_EXPLORE not shown, p = 1.0). Under BF2, T1-13 is now `PARTIAL (narrow: floor
+  matched)`, moved in the data PR itself. The open question it leaves for E1–E3: a contingency where the floor can
+  lose (delayed credit, transfer across situations), since a one-step learner matches FEAR here.
+  *T1-14 / T1-15 (owner, 2026-10-15):* `PARTIAL (narrow: floor matched, analytical)` and `PARTIAL (rung A: floor matched,
+  analytical)`, argued after B1 without
+  a rig run (baseline_floors.md §Why). For E1–E3 this obliges the mechanism twin (TD state value + the same prior)
+  as a RUN arm and a contingency a reasonable floor can lose; both go to E1's four-lens design review.
+  *B4 is T1-2's owed re-fire (owner, 2026-10-14):* L8's dose-response design, homed here. 1.3.2 released
+  without it under the committed exception `release-1.3.2-T1-2`, and T1-2 stays STALE until B4's run lands.
 
 ## What is NOT in 1.4
 

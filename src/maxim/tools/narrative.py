@@ -45,6 +45,8 @@ class SayTool(Tool):
     input_schema = {
         "text": str,
     }
+    # ``execute`` reads ``text``, then the ``message``/``phrase`` aliases (#1261).
+    speech_params = ("text", "message", "phrase")
 
     def execute(self, **kwargs: Any) -> ToolResult:
         # Accept common LLM param aliases for the text to say

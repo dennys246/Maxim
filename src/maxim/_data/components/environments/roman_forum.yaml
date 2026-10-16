@@ -37,6 +37,7 @@ entity:
           description: "Listen to a public speaker addressing the crowd"
         speak_publicly:
           params: {message: str}
+          speech_param: message
           description: "Address the crowd from the rostra — risky if political tension is high"
         visit_stall:
           params: {stall: str}

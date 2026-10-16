@@ -12,8 +12,8 @@
       "missing": 1519
     },
     "maxim/agents": {
-      "percent": 68.3,
-      "missing": 2134
+      "percent": 69.3,
+      "missing": 2068
     },
     "maxim/analysis": {
       "percent": 86.9,
@@ -104,7 +104,7 @@
       "missing": 2369
     },
     "maxim/modes": {
-      "percent": 79.2,
+      "percent": 80.6,
       "missing": 59
     },
     "maxim/peer": {
@@ -156,8 +156,8 @@
       "missing": 100
     },
     "maxim/tools": {
-      "percent": 61.9,
-      "missing": 1518
+      "percent": 63.3,
+      "missing": 1481
     },
     "maxim/tunnel": {
       "percent": 72.3,

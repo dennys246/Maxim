@@ -111,7 +111,7 @@ class TestHeartbeatMonitor:
     """HeartbeatMonitor lifecycle and sampling."""
 
     def test_start_stop(self) -> None:
-        monitor = HeartbeatMonitor(interval_s=0.1, stall_threshold_s=1.0)
+        monitor = HeartbeatMonitor(interval_s=0.1)
         monitor.start()
         assert monitor._thread is not None
         assert monitor._thread.is_alive()
@@ -147,9 +147,9 @@ class TestHeartbeatMonitor:
         assert data["loop"] is None
 
     def test_stall_detection(self) -> None:
-        """Stall detection warns when loop idle exceeds threshold."""
-        monitor = HeartbeatMonitor(interval_s=0.1, stall_threshold_s=0.5)
-        monitor.set_loop_state_hook(lambda: {"idle_s": 2.0, "state": "stalled"})
+        """Stall detection warns when a planning turn is outstanding past the canonical threshold (floor 30 s)."""
+        monitor = HeartbeatMonitor(interval_s=0.1)
+        monitor.set_loop_state_hook(lambda: {"outstanding_s": 60.0, "state": "planning", "loops": 1})
 
         # Record some calls so stall detection activates
         from maxim.models.language.lane_metrics import LaneMetrics
@@ -164,6 +164,22 @@ class TestHeartbeatMonitor:
         # Check stall — should set _last_stall_warn
         monitor._check_stall(data)
         assert monitor._last_stall_warn > 0
+
+    @pytest.mark.parametrize(
+        ("loop", "floor"),
+        [
+            ({"outstanding_s": 0.0, "state": "idle", "loops": 1}, None),  # no turn outstanding: never a stall
+            ({"outstanding_s": 20.0, "state": "planning", "loops": 1}, None),  # under the 30 s floor
+            ({"outstanding_s": 60.0, "state": "planning", "loops": 1}, "120"),  # MAXIM_HEARTBEAT_STALL_S sets the floor
+            (None, None),  # no registered loop: no stall detection
+        ],
+    )
+    def test_no_stall(self, monkeypatch: pytest.MonkeyPatch, loop: dict | None, floor: str | None) -> None:
+        if floor is not None:
+            monkeypatch.setenv("MAXIM_HEARTBEAT_STALL_S", floor)
+        monitor = HeartbeatMonitor(interval_s=60)
+        monitor._check_stall({"lanes": {}, "loop": loop})
+        assert monitor._last_stall_warn == 0.0
 
     def test_heartbeat_emits_without_crash(self) -> None:
         """A full heartbeat cycle (collect + emit) should never crash."""
@@ -317,3 +333,48 @@ def test_wifi_linux_without_an_association_records_nothing(monkeypatch) -> None:
         system_metrics.subprocess, "run", lambda *a, **k: MagicMock(returncode=0, stdout="lo  no wireless", stderr="")
     )
     assert system_metrics.collect_wifi_signal() is None
+
+
+def test_a_restart_after_a_timed_out_stop_leaves_one_sampler() -> None:
+    """F2 (#1268 follow-up, mirroring HealthLog): stop() joins with a timeout, so a slow ``_collect`` outlives it; a
+    start() after that cleared the ONE shared stop Event, and the old thread, waking, kept sampling beside the new one.
+    Each thread now owns its stop Event, and stop() sets only the one it took."""
+    import threading
+
+    release = threading.Event()
+    calls: list[str] = []
+
+    class Slow(HeartbeatMonitor):
+        def _collect(self) -> dict:
+            calls.append(threading.current_thread().name)
+            if len(calls) == 1:
+                release.wait(5)  # the first sample is slower than stop()'s join
+            return {"loop": None}
+
+        def _emit(self, data: dict) -> None:
+            pass
+
+        def _check_stall(self, data: dict) -> None:
+            pass
+
+    def samplers() -> set:
+        return {t for t in threading.enumerate() if t.name == "heartbeat-monitor" and t.is_alive()}
+
+    others = samplers()  # another test's sampler (e.g. the leader path's global one) is not this test's
+    monitor = Slow(interval_s=0.05)
+    monitor.start()
+    first = monitor._thread
+    deadline = time.time() + 2
+    while not calls and time.time() < deadline:
+        time.sleep(0.01)
+    monitor.stop()  # join(timeout=interval + 1) times out: the first thread is inside _collect
+    assert first is not None and first.is_alive(), "precondition: stop() returned with the old thread still running"
+    monitor.start()
+    try:
+        release.set()
+        first.join(timeout=2)
+        assert not first.is_alive(), "the thread stop() took must exit once its sample returns"
+        assert samplers() - others == {monitor._thread}, samplers() - others
+    finally:
+        release.set()
+        monitor.stop()

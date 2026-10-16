@@ -447,12 +447,14 @@ def test_a_default_network_that_fails_to_start_is_disabled(monkeypatch, tmp_path
     assert dn.stops == 0  # disabled: never stopped
 
 
-def test_a_sim_run_starts_the_default_network_but_never_stops_it(monkeypatch, tmp_path):
+def test_a_sim_run_starts_the_default_network_and_stops_it(monkeypatch, tmp_path):
+    """#1263/#1281: the loop that starts the DN stops it in a sim too (it used to skip the stop there, which left
+    the sim AUT's DN ticking after the run)."""
     events: list[str] = []
     dn = _DN(events)
     run = _run(monkeypatch, tmp_path, events=events, default_network=dn, percept_source=SimpleNamespace())
     assert events.count("dn.start") == 1 and run.ctrl.dn_enabled is True
-    assert dn.stops == 0
+    assert dn.stops == 1
 
 
 # ── the bio handles: NAc, agent id, sensor encoder, situation cue ────────────

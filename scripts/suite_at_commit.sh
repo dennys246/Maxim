@@ -66,9 +66,18 @@ PY
         # CI's measuring step (lint_coverage.py: CI_CLEAN + CI_COV_ARGS), so the numbers are the gate's own.
         rm -f .coverage coverage.json coverage.xml
         python -m pytest tests/ -q -m "not slow" --ignore=tests/integration/test_memory_hub.py -p no:cacheprovider \
+            --junitxml=fast-suite.xml \
             --cov=src/maxim --cov-branch --cov-report=json:coverage.json --cov-report= || status=$?
     else
-        python -m pytest tests/ -q -m "not slow" --ignore=tests/integration/test_memory_hub.py -p no:cacheprovider || status=$?
+        python -m pytest tests/ -q -m "not slow" --ignore=tests/integration/test_memory_hub.py -p no:cacheprovider \
+            --junitxml=fast-suite.xml || status=$?
+    fi
+    # The release gate's runtime twin, as CI's unit-tests job runs it: it reads the report the suite just wrote.
+    # A commit from before the gate existed has no lint to run: say so rather than fail every snapshot of it.
+    if [ -f scripts/lint_release_gates.py ]; then
+        python scripts/lint_release_gates.py --junit fast-suite.xml || status=$?
+    else
+        echo "suite at $short: no scripts/lint_release_gates.py at this commit — release-gate twin skipped"
     fi
     python -m pytest tests/integration/test_memory_hub.py -q -p no:cacheprovider || status=$?
     if [ "$cov" -eq 1 ]; then

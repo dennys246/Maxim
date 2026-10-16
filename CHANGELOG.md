@@ -54,7 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **A port held by anything that answers without auth** is refused (`start_leader_proxy_for_role`). It is probed
     WITHOUT the key, so the probe itself never discloses it. A listener that refuses with 401 (another leader
     process) is shared, with a warning; a local process that squats the port AND answers 401 would still receive the
-    keys peers send through the tunnel. Proving the listener's identity is backlog M55 (challenge-response).
+    keys peers send through the tunnel. Proving the listener's identity is backlog M58 (challenge-response).
   - **Security refusals share one base, `maxim.exceptions.LeaderRefusal`** (`LeaderKeyError`, `ProxyAuthError`,
     `LLMServerExposureError`, all `RuntimeError`s). Server mode (`--mode server`) exits 2 on one. So do the robot
     runtime's LLM-worker start and the research orchestrator's LLM init, which used to degrade to "run without the LLM".
@@ -83,6 +83,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Peers that dialled `http://<leader>:8100` directly move to `:8099`.
 - Guards: `tests/unit/test_leader_fail_closed.py`; each test was proven by deleting its mechanism.
 
+### Evidence status at the cut (owner decisions 2026-10-14 and 2026-10-15)
+
+- **T1-2 (Exp 37, cross-session behavioural delta) ships STALE.** Its "prompt construction change" trigger fired
+  on 2026-10-02 and the row was not re-fired. The committed exception `release-1.3.2-T1-2`
+  (`docs/experiments/evidence_exceptions.json`, a new `kind: "release"` clause that `scripts/lint_evidence_gate.py`
+  checks) covers this release only. The row carries no EARNED claim. Cite the cross-model Goldilocks map only with
+  L8's caveat: unverifiable, not refuted. The owed re-fire is L8's dose-response design in 1.4
+  (`docs/plans/baseline_floors.md` Stage B4).
+
+- **The survival-world rows T1-13, T1-14 and T1-15 are PARTIAL: each matched its no-bio floor** (baseline floors
+  B1; rule BF2 says a claim earns only over a floor without the bio stack).
+  - **T1-13 (Exp 60): `PARTIAL 2026-10-14` (narrow: floor matched)**, measured
+    ([#1283](https://github.com/dennys246/Maxim/pull/1283), verdict `FLOOR_MATCHED_Q`). On the same state keys, a
+    tabular Q-learner also escaped 8/8 at the first post placement, as FEAR did. Random escaped 2/8.
+  - **T1-14 (Exp 61): `PARTIAL 2026-10-15` (narrow: floor matched, analytical)** and **T1-15 (Exp 62 rung A):
+    `PARTIAL 2026-10-15` (rung A: floor matched, analytical)**, an owner decision applied without a rig run:
+    a tabular learner given the same transferred prior matches the receiver by construction (owner exceptions
+    [#1294](https://github.com/dennys246/Maxim/pull/1294), ledger [#1296](https://github.com/dennys246/Maxim/pull/1296)).
+  - **What stands:** every FEAR-versus-ABLATED contrast, each row against its own ablated or control arms.
+    **What no longer stands:** that these rows show behaviour beyond a no-bio learner. The next survival
+    rungs (E1 to E3) need a contingency the floor can lose.
+
 ### Added (console run history + health — contract 0.6.0)
 
 - **The Console can open past runs.** Five read-only routes: `GET /api/runs` (newest first, keyset-paged),
@@ -94,12 +116,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `degraded` (live whenever it serves, so a device that does not sample still shows it). Contract 0.5.0 → 0.6.0,
   additive.
 - **What is DORMANT, said plainly.** Three producers this contract reads are not in this release, each pinned by a
-  strict red gate in `tests/unit/test_console_run_history.py`: (1) **stalls** — nothing calls
-  `HeartbeatMonitor.set_loop_state_hook`, so `heartbeat_stall` cannot fire; `/api/health` reports
-  `stall_detection: false` so an empty `stalls` reads as unknown, not healthy; (2) **per-action credit** — CLOSED by
-  the `actions.jsonl` 1.2 bullet below; runs written before it read `credit_recorded: false` (the reader keys it off a
-  1.2 header, never off key presence); (3) **the per-run event
-  trail** — nothing writes `events.jsonl`, so the `/events` route is NOT in 0.6.0 and ships with its writer.
+  strict red gate in `tests/unit/test_console_run_history.py`: (1) **stalls** — CLOSED by the stall-detection
+  bullet below; with no agent loop running, `/api/health` still reports `stall_detection: false` so an empty `stalls`
+  reads as unknown, not healthy; (2) **per-action credit** — CLOSED by the `actions.jsonl` 1.2 bullet below; runs
+  written before it read `credit_recorded: false` (the reader keys it off a 1.2 header, never off key presence); (3)
+  **the per-run event trail** — nothing writes `events.jsonl`, so the `/events` route is NOT in 0.6.0 and ships with its
+  writer.
 - **Per-action credit is now recorded (`actions.jsonl` 1.2), closing dormant producer (2) above.** `ActionRecord`
   gains three optional trailing fields, `rpe`, `pain` and `nac_failure_booked`. `InstrumentedExecutor` copies them
   off the `ToolOutput` the executor stamped, `RecordingSink`'s compression keeps them, and `save_action_log` writes
@@ -107,6 +129,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and with what surprise and pain. Runs written before this read `credit_recorded: false`, which means unknown, not
   none. Gate: `tests/unit/test_console_run_history.py::test_a_bridge_booked_failure_reaches_the_console_with_its_credit`
   drives a real bridge-booked failure from the executor to `run_store.page_actions`.
+- **Stall detection is live: a stuck planning turn, judged on the canonical stall surface. This closes dormant
+  producer (1) above.** Owner decisions, 2026-10-14:
+  - A stall is a planning turn outstanding past the threshold with no live call. It is not loop idleness, which
+    false-stalled whenever the loop waited for a human.
+  - The threshold and suppression come from the canonical stall surface.
+
+  How it works:
+  - `run_agentic_loop` carries `loop_state.loop_liveness_scope`, which keeps one liveness entry per run. While any run
+    is alive, it registers the process heartbeat monitor's loop-state hook, and it clears the entry in a `finally`.
+    `pre_tick_gate` records the run's `llm_worker`.
+  - `LLMWorker.outstanding_attempt_s` reports how long the latest planning attempt has been waiting on the provider
+    (queued or running). A result the provider returned but the loop has not consumed yet, for example while paused,
+    is not outstanding.
+  - The heartbeat flags a stall only when that age exceeds `compute_stall_threshold` and `stall_suppression` finds no
+    live planning-lane call.
+  - The floor is `MAXIM_HEARTBEAT_STALL_S`, now clamped to 5–3600 (a non-number falls back to 30). There is no
+    lane-timeout ceiling. Tier: innate prior.
+
+  Removed:
+  - the heartbeat's own hardcoded 30 s idle rule and its "large lane had calls" precondition;
+  - `HeartbeatMonitor(stall_threshold_s=...)`;
+  - the CI grep's `heartbeat.py` allowlist.
+
+  This completes `stall_detector_timeout_awareness.md` Stage 2. Operators with `MAXIM_HEARTBEAT=1` will now see
+  `heartbeat_stall` WARNINGs, which never fired before. Waiting for a human, a long tool and quiet perception are never
+  stalls. A loop that stops submitting altogether is not caught; that is #1272, along with the floor's tier trigger.
+
+  Gates:
+  - `/api/health` end to end: one stall for a turn stuck past the threshold; none with a live call, no turn, or a
+    young turn;
+  - `tests/unit/test_loop_liveness.py`, which includes a real `LLMWorker`.
 - **Run ids go through a new resolver, `console/run_store.py`, never `utils/paths.resolve_run_dir`.** The old one
   returns any directory for a path-like argument, searches the CWD first and follows symlinks out of `sim_reports`
   (its docstring now says so). Ids are `[A-Za-z0-9_-]{1,64}`; every open is anchored to a directory fd (root, then
@@ -490,6 +543,109 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (DECISIONS.md, 2026-10-01).
 
 ### Fixed
+
+- **A sim's agent loop now stops the DefaultNetwork it started (#1263, the DefaultNetwork part only; fixes CI
+  flake #1281).** `run_agentic_loop`'s teardown skipped `dn_ctrl.stop()` in sim mode ("skip in sim — no DN"),
+  a comment older than the sim AUT's DefaultNetwork. Each orchestrator sim therefore left the AUT's `DefaultNetwork`
+  and `DN-BackgroundTasks` threads ticking on the dead run's bio state, one pair per run in a long-lived process. Their
+  behaviours draw from the process-global `random`, which broke `test_seeding` later in the fast suite (#1281). The
+  skip is gone: the loop that starts the DN stops it. The `plan-logger`/`plan-dashboard` writers and the `memctx`
+  pool are still #1263's. Gate: `test_orchestrator_characterization_golden.py::test_the_run_leaves_no_default_network_running_1263`.
+- **The narrator's tool descriptions no longer reach the agent under test (#1260).** `start_simulation_mode` wrote
+  the narrator's 14 tool entries into the process-global `modes.definitions.TOOL_DESCRIPTIONS` and never undid it.
+  The AUT runs beside the narrator in the same process, so its prompt read `respond: NOT AVAILABLE. Use send_message
+  instead.`, and every AUT `respond` got a `process` follow-up: one extra LLM call and one extra action (the `say`)
+  per reply. The leak outlived the sim, into the menu loop, the console server and `maxim.campaign()`. Owner decision
+  2026-10-14: a registry-scoped overlay. The entries moved to `simulation/tools.py::NARRATOR_TOOL_DESCRIPTIONS`;
+  `SimToolRegistry.tool_descriptions()` returns them and `ToolRegistry.tool_descriptions()` returns an empty
+  read-only mapping. The loop resolves the agent's overlay ONCE at setup (`runtime/loop_state.py::tool_description_overlay`,
+  called by `loop_setup.build_loop_run`, stored as `LoopRun.tool_overlay`) and hands it to both readers: the
+  prompt's tool section (`agent_loop._describe_tools_for_prompt`, a required `overlay=`) and the follow-up type
+  (`tool_dispatch.execute_and_learn`, a required `overlay=` bound per run, into `get_tool_followup_type`, whose
+  `overlay=` is also required, so a caller cannot silently read only the builtins). An executor whose registry lacks
+  `tool_descriptions()` fails the run at setup, before any action runs: **a duck-typed custom registry passed to
+  `maxim.create`/`run` must now provide `tool_descriptions()`** (return an empty mapping if it adds none). A
+  stand-in executor that reaches
+  `build_loop_run` needs a real `.registry`. The narrator's prompt and follow-ups are unchanged; the
+  AUT's `respond` is terminal again, so orchestrator sims record one action per AUT reply where they recorded two.
+  Gates: `tests/unit/test_orchestrator_characterization_golden.py` (the `_1260` tests, on a real run; the slice-0
+  harness now asserts that a run leaves `TOOL_DESCRIPTIONS` untouched instead of restoring it) and
+  `tests/unit/test_narrator_tool_overlay_1260.py` (the interface, and no source writes the global dict).
+- **Two console apps in one process no longer stream each health event twice** (F3, #1268 follow-up). The /ws
+  hub is process-global, and every app registered its own publisher into it on the shared `HealthLog`, so clients
+  saw each `health` / `health_stall` event once per app. Apps now register one shared publisher
+  (`console/server.py::_publish_health`), and `HealthLog._emit` calls each distinct publisher once. It stays until
+  its last app leaves. Guard: `tests/unit/test_console_run_history.py::TestHealthRoutes::test_two_streaming_apps_publish_each_health_event_once`.
+- **A heartbeat restart can no longer leave two samplers running** (F2, #1268 follow-up). `HeartbeatMonitor.stop()`
+  joins with a timeout, so a slow sample could outlive it; a `start()` after that cleared the one shared stop Event,
+  and the old thread kept sampling beside the new one. Each sampler thread now owns its stop Event and `stop()` sets
+  only the one it took, as `console/health.py`'s writer does; start and stop take a lock for the check-and-set.
+  Guard: `tests/unit/test_heartbeat.py::test_a_restart_after_a_timed_out_stop_leaves_one_sampler`.
+- **The simulation narrator now sees what the agent said (#1261).** The production `respond` tool returns a
+  delivery receipt (`{"delivered": True, "mode": "cli"}`), and the AUT's words were only in its `message`
+  argument. The bridge's per-turn `response`, which `send_message` hands the narrator, `report.response_texts` and
+  `analyze_results`'s `response_samples` all joined `result_output`, so each carried the receipt, and `say` and a
+  body's `speak` affordance were not joined at all. Every narrator-driven run in which the AUT replied through
+  `respond` had a narrator choosing its next probe without the reply; the generative runner's `last_aut_response`
+  and the DM's choice classifier read the same field.
+  - **What is speech is declared on the tool.** `Tool` gains a class-level `speech_params: tuple[str, ...] = ()`:
+    the params that hold the words, in the order the tool reads them, empty meaning "not speech". `respond`
+    declares `("message",)`; `speak` and `say` declare `("text", "message", "phrase")`. An embodiment affordance
+    declares it in YAML with the new `speech_param:` key, naming the one param that holds the words
+    (`AffordanceSchema.speech_param`); the spec loader refuses a value that names none of the affordance's
+    params, and the tool generator copies it onto the tool, inferring nothing from names. Set on
+    `base_humanoid`'s `communication.speak` (the body's voice), every NPC's `social.speak`, the radio's
+    `communication.transmit`, the space-station bridge's `systems.comms_hail` and the Roman forum's
+    `speak_publicly` (SEMs that extend the agent's speech).
+  - **One recording site reads it.** `ActionRecord` gains a trailing optional field, `utterance`: the words a
+    successful speech call delivered, filled by `InstrumentedExecutor.execute` from the declaration on the tool the
+    executor actually runs. It asks the executor's own resolver, the new `Executor.resolve_tool_name` (which
+    `execute` now redirects through too), so a call to an alias run as `say` (`talk`, `speech`, `dialogue`,
+    `speech_recognition`, `speechrecognition`) counts as `say`, while `tool_name` keeps the raw name. It looks the
+    tool up with the new `ToolRegistry.find` (one lookup under the registry's lock, `None` on a miss;
+    `SimToolRegistry.find` never returns its redirect decoy), so a tool another thread deregisters mid-call cannot
+    raise before dispatch; `Executor` uses `find` too, instead of reading the registry's private dict. `utterance`
+    is `None` for other tools, failed calls, blocked calls and markers.
+  - **Every reader of the words reads `utterance`:** the bridge's `response`, `report.response_texts`,
+    `analyze_results`, the narrator's per-action summaries (`send_message`, `observe_actions`,
+    `extend_simulation`, the sub-simulation report), `check_completion`'s `responses` count (now delivered speech
+    only, `say` included, a refused `respond` excluded), the interactive turn view and summary, and
+    `SimulationResult.actions` (a new `utterance` key, as returned by `maxim.imagine()`).
+  - `RespondTool`'s output is unchanged, because it feeds the NAc outcome signature. The console's
+    `_extract_reply` workaround is deleted: `talk()` reads the bridge's `response`. `actions.jsonl` is unchanged
+    (its `params` already hold the message), and `response_texts` keeps its `list[str]` shape. Six other places
+    still name speech tools in a list; converging them is a follow-up (mechanization backlog M54).
+  - Runs on either side of this fix are not comparable where the narrator's probes depend on the AUT's replies;
+    re-assessing the affected experiment records is its own follow-up.
+- **The internet policy's batch-1 review findings: #966, #967 and #968.** Owner decisions 2026-10-14.
+  - **#966:** the private-address PRE-check now classifies through the one shared `utils/net.py::is_public_address`.
+    It agrees with the connect-time check, and refuses CGNAT (100.64.0.0/10) up front instead of at connect. A name
+    that does not resolve now reads `Host '...' could not be resolved` instead of "Access to private/internal IPs is
+    blocked". Loading a policy with `block_private_ips: false` logs a WARNING, because that one switch turns off BOTH
+    checks. `InternetAccessPolicy._is_private_ip`/`_check_ip_is_private` are replaced by `_address_refusal`, which
+    returns the reason.
+  - **#967 (owner: fail closed):** a robots.txt that cannot be read refuses the fetch, and the refusal is not cached,
+    so the next request retries. That covers a 5xx, a 429, a timeout or a network failure. It used to allow the
+    fetch on any error while the policy claimed "Must respect robots.txt". Also, per RFC 9309:
+    - A missing robots.txt (any other 4xx, 401/403 included) still means no restrictions (owner decision).
+    - Redirects are followed for up to five hops, each with the same private-address protection (owner decision).
+      A redirect's body used to parse as "no rules".
+    - The robots.txt is the URL's own origin's (scheme, host and port, IPv6 brackets kept). It used to be
+      `https://host` always, which would now have refused every http-only and non-443 site.
+
+    The policy summary now says an unreadable robots.txt refuses.
+  - **#968:** domain entries normalise with IDNA 2008 (UTS 46, non-transitional) through the `idna` package, now a
+    declared dependency. So `straße.de` blocks the `xn--strae-oqa.de` host a URL carries. Python's own codec is IDNA
+    2003, which mapped it to `strasse.de`. Two consequences follow. First, a deviation-character entry now blocks
+    the IDNA 2008 host, not the mapped one (`faß.de` used to block `fass.de`). Second, IDNA 2008 rejects a few
+    names IDNA 2003 accepted, such as symbol and emoji domains (`☃.net`). **A policy file listing one now fails to
+    load, and the internet is then disabled (fail closed) until the entry is rewritten in its punycode `xn--`
+    form.** The error names the entry and says so.
+  - The pre-check is also a little stricter: through the shared classifier it now refuses multicast, the
+    unspecified address, and NAT64/6to4 addresses that wrap a private IPv4 address. The connect-time check already
+    refused these.
+
+  Gates: `tests/unit/test_internet_policy_966_967_968.py`.
 
 - **Four raises after the bridge booked a tool failure no longer get the failure booked twice (#1221 items 2 and
   3).** The tool-pain bridge books a failure, and `ToolOutput.nac_failure_booked` carries the signature to dispatch

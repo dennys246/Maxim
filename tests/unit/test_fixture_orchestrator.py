@@ -41,12 +41,16 @@ def _fake_aut_responder(bridge: SimulationBridge, count: int = 10) -> threading.
                 if p is not None:
                     # Simulate AUT processing delay
                     time.sleep(0.05)
+                    words = f"Response to: {(p.cli_input or p.content or 'signal')[:40]}"
+                    # Production-shaped (#1261): the words in the message param and utterance, the receipt as output.
                     bridge.action_sink.record(
                         ActionRecord(
                             timestamp=time.time(),
                             tool_name="respond",
+                            tool_args={"message": words},
                             result_success=True,
-                            result_output=f"Response to: {(p.cli_input or p.content or 'signal')[:40]}",
+                            result_output={"delivered": True, "mode": "cli"},
+                            utterance=words,
                         )
                     )
                     break

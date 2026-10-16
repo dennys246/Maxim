@@ -1028,7 +1028,9 @@ class TestHealthRoutes:
         assert len(mlog._swallow_listeners) == before
         assert health._monitor_users == 0
 
-    def test_two_streaming_apps_each_keep_their_publisher(self, runs, monkeypatch):
+    def test_two_streaming_apps_each_hold_a_publisher_entry(self, runs, monkeypatch):
+        """Each app's acquire adds an entry and its release removes one (F3: both are the hub's one publisher, so the
+        entry count is what tells them apart; test_two_streaming_apps_publish_each_health_event_once checks delivery)."""
         _fake_monitor(monkeypatch)
         a = TestClient(build_app(None, auth_token=_TOKEN, health_monitor=True))
         b = TestClient(build_app(None, auth_token=_TOKEN, health_monitor=True))
@@ -1038,9 +1040,40 @@ class TestHealthRoutes:
         try:
             assert log._publishers == [a.app.state.health_publish, b.app.state.health_publish]
             a.__exit__(None, None, None)
-            assert log._publishers == [b.app.state.health_publish]  # B still streams after A leaves
+            assert log._publishers == [b.app.state.health_publish]  # B's entry remains after A leaves
         finally:
             b.__exit__(None, None, None)
+
+    def test_two_streaming_apps_publish_each_health_event_once(self, runs, monkeypatch):
+        """F3 (#1268 follow-up): the /ws hub is process-global, so two apps' publishers fanned every health event out
+        to the same clients twice. One heartbeat reaches the hub once while both serve, and still once after one
+        leaves."""
+        from maxim.console import server
+
+        _fake_monitor(monkeypatch)
+        sent: list[str] = []
+        monkeypatch.setattr(server._event_hub, "publish", lambda kind, *a, **k: sent.append(kind))
+        a = TestClient(build_app(None, auth_token=_TOKEN, health_monitor=True))
+        b = TestClient(build_app(None, auth_token=_TOKEN, health_monitor=True))
+        a.__enter__()
+        b.__enter__()
+        log = a.app.state.health_log
+        a_open = True
+        try:
+            log.on_heartbeat("heartbeat_stall", {"outstanding_s": 40.0})
+            assert sent == ["health_stall"], sent
+            a.__exit__(None, None, None)
+            a_open = False
+            sent.clear()
+            log.on_heartbeat("heartbeat_stall", {"outstanding_s": 41.0})
+            assert sent == ["health_stall"], "B still streams after A leaves"
+        finally:
+            if a_open:
+                a.__exit__(None, None, None)
+            b.__exit__(None, None, None)
+        sent.clear()
+        log.on_heartbeat("heartbeat_stall", {"outstanding_s": 42.0})
+        assert sent == [], "no app serving: nothing streams"
 
     def test_each_app_on_a_shared_log_brings_its_own_publisher(self, runs, monkeypatch):
         # Second delta SF-3: a sandbox app registering first must not silence a
@@ -1269,9 +1302,9 @@ class TestProducerSeams:
             "maxim.models.language.lane_metrics.get_metrics_registry",
             lambda: type("R", (), {"snapshot": lambda self: {"large": large}})(),
         )
-        mon = hb.HeartbeatMonitor(interval_s=60, stall_threshold_s=30)
+        mon = hb.HeartbeatMonitor(interval_s=60)
         assert mon.has_loop_state_hook is False and mon.is_running is False
-        mon.set_loop_state_hook(lambda: {"idle_s": 45.0, "state": "deliberate"})
+        mon.set_loop_state_hook(lambda: {"outstanding_s": 45.0, "state": "planning", "loops": 1})  # past the floor
         assert mon.has_loop_state_hook is True
         seen: list[tuple[str, dict]] = []
         listener = lambda kind, data: seen.append((kind, data))  # noqa: E731
@@ -1280,7 +1313,7 @@ class TestProducerSeams:
         mon._emit(data)
         mon._check_stall(data)
         assert [k for k, _ in seen] == ["heartbeat", "heartbeat_stall"]
-        assert seen[1][1]["idle_s"] == 45.0 and seen[1][1]["p50_latency_ms"] == 800.0
+        assert seen[1][1]["outstanding_s"] == 45.0 and seen[1][1]["p50_latency_ms"] == 800.0
         mon.unregister_listener(listener)
         mon._emit(data)
         assert len(seen) == 2  # unregistered: no more notifications
@@ -1337,17 +1370,70 @@ class TestProducerSeams:
 # ── strict red gates: the producers this contract reads but does not ship ────
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="no production caller registers HeartbeatMonitor.set_loop_state_hook, so heartbeat_stall cannot fire",
+def _real_monitor(monkeypatch):
+    """The real HeartbeatMonitor (so its stall rule runs), with the system sampler stubbed and a long interval: the
+    test drives each tick itself."""
+    from maxim.runtime import heartbeat
+
+    monkeypatch.setattr("maxim.runtime.system_metrics.collect_all", lambda: {})
+    mon = heartbeat.HeartbeatMonitor(interval_s=3600.0)
+    monkeypatch.setattr(heartbeat, "get_heartbeat_monitor", lambda: mon)
+    return mon
+
+
+def _stalled_run(mon, *, outstanding: float | None, in_flight: bool):
+    """Drive one heartbeat tick inside a decorated run whose gate saw a worker with a planning turn ``outstanding``
+    seconds old (None: no turn outstanding)."""
+    from maxim.runtime import llm_call_registry, loop_state
+
+    class _Worker:
+        def outstanding_attempt_s(self):
+            return outstanding
+
+    @loop_state.notes_loop_worker
+    def tick(*, llm_worker):
+        return None
+
+    @loop_state.loop_liveness_scope
+    def run():
+        tick(llm_worker=_Worker())
+        call = llm_call_registry.register_call_start(tier="large", allowed_s=600.0) if in_flight else None
+        try:
+            assert mon.has_loop_state_hook
+            mon._check_stall(mon._collect())
+        finally:
+            if call is not None:
+                llm_call_registry.register_call_end(call)
+
+    run()
+
+
+def test_the_ws_stall_line_reads_the_stall_payload():
+    """The /ws line for a ``health_stall`` reads the heartbeat's stall keys (outstanding_s, wedged_s): a renamed key
+    would print "?" on every stall the console pushes."""
+    from maxim.console.server import _health_message
+
+    assert _health_message("health_stall", {"outstanding_s": 62.4, "wedged_s": None}) == (
+        "stall: a planning turn outstanding 62s (no call in flight)"
+    )
+    assert _health_message("health_stall", {"outstanding_s": 90.0, "wedged_s": 75.2}).endswith("(its call wedged 75s)")
+
+
+@pytest.mark.parametrize(
+    ("outstanding", "in_flight", "stalls"),
+    [(10_000.0, False, 1), (10_000.0, True, 0), (None, False, 0), (5.0, False, 0)],
 )
-def test_gate_the_agent_loop_registers_the_stall_hook():
-    callers = [
-        p
-        for p in _SRC.rglob("*.py")
-        if p.name != "heartbeat.py" and "set_loop_state_hook(" in p.read_text(errors="replace")
-    ]
-    assert callers, "stall detection is dormant: wire set_loop_state_hook from the agent loop"
+def test_a_stuck_planning_turn_is_one_stall_on_api_health(runs, monkeypatch, outstanding, in_flight, stalls):
+    """End to end (#1268 dormant producer 1, owner decisions 2026-10-14): a stall is a STUCK PLANNING TURN. A run
+    registers its worker through the decorators; the real monitor's tick declares a stall only for a turn outstanding
+    past compute_stall_threshold with no live call (stall_suppression); /api/health shows it. A live call, no turn
+    (waiting for a human) or a young turn is no stall."""
+    mon = _real_monitor(monkeypatch)
+    with TestClient(build_app(None, auth_token=_TOKEN, health_monitor=True)) as c:
+        _stalled_run(mon, outstanding=outstanding, in_flight=in_flight)
+        body = _get(c, "/api/health").json()
+        assert len(body["stalls"]) == stalls, body["stalls"]
+        assert body["stall_detection"] is False  # the run ended: no run is registered, so no stale stall source
 
 
 def test_gate_actions_jsonl_records_per_action_credit(tmp_path):

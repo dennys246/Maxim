@@ -41,6 +41,7 @@ entity:
           description: "Plot a course on the navigation console"
         comms_hail:
           params: {target: str, message: str}
+          speech_param: message
           description: "Broadcast a message on the communications array"
         activate_shields:
           params: {}

@@ -31,23 +31,6 @@
      "entity_class": null,
      "error": null,
      "nac_failure_booked": null,
-     "output": "{'said': 'That is all.', 'mode': 'narrative'}",
-     "pain": null,
-     "params": {
-      "text": "That is all."
-     },
-     "rpe": 0.5,
-     "session_id": "<STAMP>",
-     "success": true,
-     "tool": "say"
-    },
-    {
-     "agent_id": "sim_aut",
-     "block_reason": null,
-     "blocked": false,
-     "entity_class": null,
-     "error": null,
-     "nac_failure_booked": null,
      "output": "{'delivered': True, 'mode': 'cli'}",
      "pain": null,
      "params": {
@@ -57,39 +40,10 @@
      "session_id": "<STAMP>",
      "success": true,
      "tool": "respond"
-    },
-    {
-     "agent_id": "sim_aut",
-     "block_reason": null,
-     "blocked": false,
-     "entity_class": null,
-     "error": null,
-     "nac_failure_booked": null,
-     "output": "{'said': 'That is all.', 'mode': 'narrative'}",
-     "pain": null,
-     "params": {
-      "text": "That is all."
-     },
-     "rpe": 0.43,
-     "session_id": "<STAMP>",
-     "success": true,
-     "tool": "say"
     }
    ],
    "arm": "narrator",
    "aut_calls": [
-    {
-     "answer": {
-      "params": {
-       "text": "That is all."
-      },
-      "tool_name": "say"
-     },
-     "executed": "respond",
-     "kind": "followup",
-     "request": "Hello, who are you?",
-     "turn": null
-    },
     {
      "answer": {
       "params": {
@@ -99,18 +53,6 @@
      },
      "kind": "plan",
      "request": "what is your favourite colour"
-    },
-    {
-     "answer": {
-      "params": {
-       "text": "That is all."
-      },
-      "tool_name": "say"
-     },
-     "executed": "respond",
-     "kind": "followup",
-     "request": "What is your favourite colour?",
-     "turn": null
     }
    ],
    "aut_nac": {
@@ -281,89 +223,6 @@
        ],
        "source": "local"
       }
-     ],
-     "tool:say": [
-      {
-       "confidence": 0.609350288,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "goal": "scripted say"
-       },
-       "event_signature": "tool:say",
-       "event_type": "tool",
-       "id": "54a4a6c0ada1f468",
-       "imagined": false,
-       "last_rpe": 0.43,
-       "memory_ids": [],
-       "observation_count": 2,
-       "outcome_signature": "plan:scripted say:success",
-       "outcome_type": "plan_result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.6302,
-       "prediction_history": [
-        0.5,
-        0.57
-       ],
-       "source": "local"
-      },
-      {
-       "confidence": 0.609350288,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "params": {
-         "text": "That is all."
-        }
-       },
-       "event_signature": "tool:say",
-       "event_type": "tool",
-       "id": "bc8f621bcc9aebfb",
-       "imagined": false,
-       "last_rpe": 0.43,
-       "memory_ids": [],
-       "observation_count": 2,
-       "outcome_signature": "tool:say:positive",
-       "outcome_type": "result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.6302,
-       "prediction_history": [
-        0.5,
-        0.57
-       ],
-       "source": "local"
-      },
-      {
-       "confidence": 0.609350288,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "agent_id": "sim_aut",
-        "goal": "scripted say"
-       },
-       "event_signature": "tool:say",
-       "event_type": "tool",
-       "id": "d935c25fb01c341c",
-       "imagined": false,
-       "last_rpe": 0.43,
-       "memory_ids": [],
-       "observation_count": 2,
-       "outcome_signature": "success:{'said': 'That is all.', 'mode': 'narrative'}",
-       "outcome_type": "tool_result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.6302,
-       "prediction_history": [
-        0.5,
-        0.57
-       ],
-       "source": "local"
-      }
      ]
     },
     "outcome_index": {
@@ -373,28 +232,19 @@
      "plan:scripted respond:success": [
       "a90147485f2b8873"
      ],
-     "plan:scripted say:success": [
-      "54a4a6c0ada1f468"
-     ],
      "success:{'delivered': True, 'mode': 'cli'}": [
       "73851f2fc2283f54",
       "a9ee8012a42828cd"
      ],
-     "success:{'said': 'That is all.', 'mode': 'narrative'}": [
-      "d935c25fb01c341c"
-     ],
      "tool:respond:positive": [
       "20263f292db14bde",
       "e342a634de19a671"
-     ],
-     "tool:say:positive": [
-      "bc8f621bcc9aebfb"
      ]
     },
     "percept_valences": {},
     "priors": {},
     "reward_bias": {},
-    "total_observations": 12,
+    "total_observations": 6,
     "version": "1.0"
    },
    "bridge_finish_calls": [
@@ -447,10 +297,10 @@
     "status: Stopping LLM workers...",
     "status: Building simulation report...",
     "status: Saving report to <WORK>/data/sim_reports/<STAMP>/...",
-    "status: Saving action log (4 records)...",
-    "status: Saving AUT state (<N> memories, 9 causal links)...",
+    "status: Saving action log (2 records)...",
+    "status: Saving AUT state (<N> memories, 6 causal links)...",
     "status: Running LLM analysis roundup...",
-    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 2 |   Finish: completed |   Orchestrator status: completed |     Reason: two probes delivered |     Summary:\n      the agent answered both probes |   Actions: 4 (0 blocked) |   AUT Memories: <N> | Causal Links: 9 |   Bio events: \u25b2 Learn: 12 |  |   Top Causal Links: |     tool:say \u2192 tool:say:positive (conf=0.61, obs=2) |     tool:say \u2192 success:{'said': 'That is all.', 'mode': 'narrative'} (conf=0.61, obs=2) |     tool:say \u2192 plan:scripted say:success (conf=0.61, obs=2) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 2 calls (100% success) |     say: 2 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
+    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 2 |   Finish: completed |   Orchestrator status: completed |     Reason: two probes delivered |     Summary:\n      the agent answered both probes |   Actions: 2 (0 blocked) |   AUT Memories: <N> | Causal Links: 6 |   Bio events: \u25b2 Learn: 9 |  |   Top Causal Links: |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |     tool:respond \u2192 plan:direct_answer:success (conf=0.47, obs=1) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 2 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
    ],
    "live_sim_threads_after": [],
    "maxim_env_after": {
@@ -515,28 +365,28 @@
      "substrate_actions_per_turn": null
     },
     "aut_backend_class": "",
-    "aut_causal_links": 9,
+    "aut_causal_links": 6,
     "aut_endpoint": "",
     "aut_model": "orch-golden-fake",
     "aut_nac_summary": {
      "top_links": [
       {
-       "confidence": 0.609,
-       "event": "tool:say",
-       "observations": 2,
-       "outcome": "tool:say:positive"
+       "confidence": 0.475,
+       "event": "tool:respond",
+       "observations": 1,
+       "outcome": "tool:respond:positive"
       },
       {
-       "confidence": 0.609,
-       "event": "tool:say",
-       "observations": 2,
-       "outcome": "success:{'said': 'That is all.', 'mode': 'narrative'}"
+       "confidence": 0.475,
+       "event": "tool:respond",
+       "observations": 1,
+       "outcome": "success:{'delivered': True, 'mode': 'cli'}"
       },
       {
-       "confidence": 0.609,
-       "event": "tool:say",
-       "observations": 2,
-       "outcome": "plan:scripted say:success"
+       "confidence": 0.475,
+       "event": "tool:respond",
+       "observations": 1,
+       "outcome": "plan:direct_answer:success"
       },
       {
        "confidence": 0.475,
@@ -551,7 +401,7 @@
        "outcome": "success:{'delivered': True, 'mode': 'cli'}"
       }
      ],
-     "total_links": 9
+     "total_links": 6
     },
     "aut_provider": "",
     "bio_telemetry_path": "<WORK>/data/sim_reports/<STAMP>/bio_telemetry.jsonl",
@@ -565,7 +415,7 @@
     "language_endpoint": "",
     "language_model": "orch-golden-fake",
     "language_provider": "",
-    "learn_events_count": 12,
+    "learn_events_count": 9,
     "llm_finish_reason": "two probes delivered",
     "llm_finish_status": "completed",
     "llm_finish_summary": "the agent answered both probes",
@@ -638,20 +488,18 @@
     "provider_failures": {},
     "record_kind": "sim_report",
     "response_texts": [
-     "{'delivered': True, 'mode': 'cli'}",
-     "{'delivered': True, 'mode': 'cli'}"
+     "I'm Maxim, a robot assistant designed to understand reality and help people.",
+     "I heard: what is your favourite colour"
     ],
     "session_id": "<STAMP>",
     "substrate_metrics": {},
     "tool_success_rates": {
-     "respond": 1.0,
-     "say": 1.0
+     "respond": 1.0
     },
     "tool_usage": {
-     "respond": 2,
-     "say": 2
+     "respond": 2
     },
-    "total_actions": 4,
+    "total_actions": 2,
     "total_input_tokens": 0,
     "total_output_tokens": 0,
     "turns": 2
@@ -770,17 +618,8 @@
       "tool_args": {
        "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
       },
-      "tool_name": "respond"
-     },
-     {
-      "block_reason": null,
-      "blocked": false,
-      "result_output": "{'said': 'That is all.', 'mode': 'narrative'}",
-      "result_success": true,
-      "tool_args": {
-       "text": "That is all."
-      },
-      "tool_name": "say"
+      "tool_name": "respond",
+      "utterance": "I'm Maxim, a robot assistant designed to understand reality and help people."
      },
      {
       "block_reason": null,
@@ -790,24 +629,15 @@
       "tool_args": {
        "message": "I heard: what is your favourite colour"
       },
-      "tool_name": "respond"
-     },
-     {
-      "block_reason": null,
-      "blocked": false,
-      "result_output": "{'said': 'That is all.', 'mode': 'narrative'}",
-      "result_success": true,
-      "tool_args": {
-       "text": "That is all."
-      },
-      "tool_name": "say"
+      "tool_name": "respond",
+      "utterance": "I heard: what is your favourite colour"
      }
     ],
     "blocked_actions": 0,
     "campaign_analysis": {
      "causal_links": {
       "available": true,
-      "link_count": 9,
+      "link_count": 6,
       "links": [
        {
         "confidence": 0.475,
@@ -850,48 +680,12 @@
         "observations": 1,
         "outcome": "plan:scripted respond:success",
         "valence": ""
-       },
-       {
-        "confidence": 0.609,
-        "event": "tool:say",
-        "observations": 2,
-        "outcome": "tool:say:positive",
-        "valence": ""
-       },
-       {
-        "confidence": 0.609,
-        "event": "tool:say",
-        "observations": 2,
-        "outcome": "success:{'said': 'That is all.', 'mode': 'narrative'}",
-        "valence": ""
-       },
-       {
-        "confidence": 0.609,
-        "event": "tool:say",
-        "observations": 2,
-        "outcome": "plan:scripted say:success",
-        "valence": ""
        }
       ]
      },
      "concepts": {
       "available": true,
       "concepts": [
-       {
-        "category": "action",
-        "confidence": 0.571,
-        "name": "say"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.571,
-        "name": "say"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.673,
-        "name": "script"
-       },
        {
         "category": "compound_alias",
         "confidence": 0.5,
@@ -913,28 +707,43 @@
         "name": "respond"
        },
        {
-        "category": "compound_alias",
+        "category": "goal",
         "confidence": 0.5,
-        "name": "say say"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "script say"
+        "name": "script"
        },
        {
         "category": "compound_alias",
         "confidence": 0.5,
         "name": "answer respond"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "direct respond"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "direct answer"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.5,
+        "name": "answer"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.5,
+        "name": "direct"
        }
       ],
       "count": 10
      },
      "system_stats": {
-      "atl_concepts": 14,
+      "atl_concepts": 10,
       "available": true,
       "ec_signatures": 0,
-      "nac_causal_links": 9
+      "nac_causal_links": 6
      },
      "temporal": {
       "keys": [
@@ -959,7 +768,7 @@
     "subsystem_snapshot": {
      "causal_links": {
       "available": true,
-      "link_count": 9,
+      "link_count": 6,
       "links": [
        {
         "confidence": 0.475,
@@ -1002,48 +811,12 @@
         "observations": 1,
         "outcome": "plan:scripted respond:success",
         "valence": ""
-       },
-       {
-        "confidence": 0.609,
-        "event": "tool:say",
-        "observations": 2,
-        "outcome": "tool:say:positive",
-        "valence": ""
-       },
-       {
-        "confidence": 0.609,
-        "event": "tool:say",
-        "observations": 2,
-        "outcome": "success:{'said': 'That is all.', 'mode': 'narrative'}",
-        "valence": ""
-       },
-       {
-        "confidence": 0.609,
-        "event": "tool:say",
-        "observations": 2,
-        "outcome": "plan:scripted say:success",
-        "valence": ""
        }
       ]
      },
      "concepts": {
       "available": true,
       "concepts": [
-       {
-        "category": "action",
-        "confidence": 0.571,
-        "name": "say"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.571,
-        "name": "say"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.673,
-        "name": "script"
-       },
        {
         "category": "compound_alias",
         "confidence": 0.5,
@@ -1065,19 +838,34 @@
         "name": "respond"
        },
        {
-        "category": "compound_alias",
+        "category": "goal",
         "confidence": 0.5,
-        "name": "say say"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "script say"
+        "name": "script"
        },
        {
         "category": "compound_alias",
         "confidence": 0.5,
         "name": "answer respond"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "direct respond"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "direct answer"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.5,
+        "name": "answer"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.5,
+        "name": "direct"
        }
       ],
       "count": 10
@@ -1086,17 +874,17 @@
       "compressed_memories": 0,
       "graph_enabled": true,
       "over_capacity_inserts_this_process": 0,
-      "successful": 4
+      "successful": 2
      },
      "nac_stats": {
-      "eligibility_traces": 2,
-      "event_signatures": 2,
-      "outcome_signatures": 7,
+      "eligibility_traces": 1,
+      "event_signatures": 1,
+      "outcome_signatures": 4,
       "pending_events": 0,
       "priors": 0,
       "reward_biases": 0,
-      "total_links": 9,
-      "total_observations": 12
+      "total_links": 6,
+      "total_observations": 6
      },
      "pain_stats": {
       "available": true,
@@ -1120,10 +908,10 @@
       "total_pain_signals": 0
      },
      "system_stats": {
-      "atl_concepts": 14,
+      "atl_concepts": 10,
       "available": true,
       "ec_signatures": 0,
-      "nac_causal_links": 9
+      "nac_causal_links": 6
      },
      "temporal": {
       "keys": [
@@ -1140,22 +928,18 @@
      "hallucination_rate": 0.0,
      "tools_attempted": [
       "respond",
-      "say",
-      "respond",
-      "say"
+      "respond"
      ],
      "tools_hallucinated": [],
      "tools_succeeded": [
       "respond",
-      "say",
-      "respond",
-      "say"
+      "respond"
      ],
-     "total_attempts": 4,
+     "total_attempts": 2,
      "total_hallucinated": 0,
-     "total_successes": 4
+     "total_successes": 2
     },
-    "total_actions": 4,
+    "total_actions": 2,
     "turns": 2
    },
    "sim_reports_files": [
@@ -1177,14 +961,11 @@
    ],
    "threads_left_alive": {
     "added": [
-     "DN-BackgroundTasks",
-     "DefaultNetwork",
      "plan-dashboard",
      "plan-dashboard",
      "plan-logger",
      "plan-logger"
-    ],
-    "memctx_pool_alive": true
+    ]
    },
    "turns": [
     {
@@ -1197,19 +978,10 @@
        "output": "{'delivered': True, 'mode': 'cli'}",
        "success": true,
        "tool": "respond"
-      },
-      {
-       "args": {
-        "text": "That is all."
-       },
-       "blocked": false,
-       "output": "{'said': 'That is all.', 'mode': 'narrative'}",
-       "success": true,
-       "tool": "say"
       }
      ],
      "noop_count": 0,
-     "response": "{'delivered': True, 'mode': 'cli'}",
+     "response": "I'm Maxim, a robot assistant designed to understand reality and help people.",
      "text": "Hello, who are you?",
      "timed_out": false,
      "turn": 1
@@ -1224,19 +996,10 @@
        "output": "{'delivered': True, 'mode': 'cli'}",
        "success": true,
        "tool": "respond"
-      },
-      {
-       "args": {
-        "text": "That is all."
-       },
-       "blocked": false,
-       "output": "{'said': 'That is all.', 'mode': 'narrative'}",
-       "success": true,
-       "tool": "say"
       }
      ],
      "noop_count": 0,
-     "response": "{'delivered': True, 'mode': 'cli'}",
+     "response": "I heard: what is your favourite colour",
      "text": "What is your favourite colour?",
      "timed_out": false,
      "turn": 2
@@ -1275,23 +1038,6 @@
      "entity_class": null,
      "error": null,
      "nac_failure_booked": null,
-     "output": "{'said': 'That is all.', 'mode': 'narrative'}",
-     "pain": null,
-     "params": {
-      "text": "That is all."
-     },
-     "rpe": 0.5,
-     "session_id": "<STAMP>",
-     "success": true,
-     "tool": "say"
-    },
-    {
-     "agent_id": "sim_aut",
-     "block_reason": null,
-     "blocked": false,
-     "entity_class": null,
-     "error": null,
-     "nac_failure_booked": null,
      "output": "{'delivered': True, 'mode': 'cli'}",
      "pain": null,
      "params": {
@@ -1309,23 +1055,6 @@
      "entity_class": null,
      "error": null,
      "nac_failure_booked": null,
-     "output": "{'said': 'That is all.', 'mode': 'narrative'}",
-     "pain": null,
-     "params": {
-      "text": "That is all."
-     },
-     "rpe": 0.43,
-     "session_id": "<STAMP>",
-     "success": true,
-     "tool": "say"
-    },
-    {
-     "agent_id": "sim_aut",
-     "block_reason": null,
-     "blocked": false,
-     "entity_class": null,
-     "error": null,
-     "nac_failure_booked": null,
      "output": "{'delivered': True, 'mode': 'cli'}",
      "pain": null,
      "params": {
@@ -1335,23 +1064,6 @@
      "session_id": "<STAMP>",
      "success": true,
      "tool": "respond"
-    },
-    {
-     "agent_id": "sim_aut",
-     "block_reason": null,
-     "blocked": false,
-     "entity_class": null,
-     "error": null,
-     "nac_failure_booked": null,
-     "output": "{'said': 'That is all.', 'mode': 'narrative'}",
-     "pain": null,
-     "params": {
-      "text": "That is all."
-     },
-     "rpe": 0.3698,
-     "session_id": "<STAMP>",
-     "success": true,
-     "tool": "say"
     }
    ],
    "arm": "precampaign",
@@ -1369,18 +1081,6 @@
     {
      "answer": {
       "params": {
-       "text": "That is all."
-      },
-      "tool_name": "say"
-     },
-     "executed": "respond",
-     "kind": "followup",
-     "request": "You wake in a quiet room.",
-     "turn": null
-    },
-    {
-     "answer": {
-      "params": {
        "message": "I heard: a bell rings twice."
       },
       "tool_name": "respond"
@@ -1391,36 +1091,12 @@
     {
      "answer": {
       "params": {
-       "text": "That is all."
-      },
-      "tool_name": "say"
-     },
-     "executed": "respond",
-     "kind": "followup",
-     "request": "A bell rings twice.",
-     "turn": null
-    },
-    {
-     "answer": {
-      "params": {
        "message": "I heard: the room goes dark."
       },
       "tool_name": "respond"
      },
      "kind": "plan",
      "request": "the room goes dark."
-    },
-    {
-     "answer": {
-      "params": {
-       "text": "That is all."
-      },
-      "tool_name": "say"
-     },
-     "executed": "respond",
-     "kind": "followup",
-     "request": "The room goes dark.",
-     "turn": null
     }
    ],
    "aut_nac": {
@@ -1571,120 +1247,25 @@
        ],
        "source": "local"
       }
-     ],
-     "tool:say": [
-      {
-       "confidence": 0.639544827,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "goal": "scripted say"
-       },
-       "event_signature": "tool:say",
-       "event_type": "tool",
-       "id": "54a4a6c0ada1f468",
-       "imagined": false,
-       "last_rpe": 0.3698,
-       "memory_ids": [],
-       "observation_count": 3,
-       "outcome_signature": "plan:scripted say:success",
-       "outcome_type": "plan_result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.681972,
-       "prediction_history": [
-        0.5,
-        0.57,
-        0.6302
-       ],
-       "source": "local"
-      },
-      {
-       "confidence": 0.639544827,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "params": {
-         "text": "That is all."
-        }
-       },
-       "event_signature": "tool:say",
-       "event_type": "tool",
-       "id": "bc8f621bcc9aebfb",
-       "imagined": false,
-       "last_rpe": 0.3698,
-       "memory_ids": [],
-       "observation_count": 3,
-       "outcome_signature": "tool:say:positive",
-       "outcome_type": "result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.681972,
-       "prediction_history": [
-        0.5,
-        0.57,
-        0.6302
-       ],
-       "source": "local"
-      },
-      {
-       "confidence": 0.639544827,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "agent_id": "sim_aut",
-        "goal": "scripted say"
-       },
-       "event_signature": "tool:say",
-       "event_type": "tool",
-       "id": "d935c25fb01c341c",
-       "imagined": false,
-       "last_rpe": 0.3698,
-       "memory_ids": [],
-       "observation_count": 3,
-       "outcome_signature": "success:{'said': 'That is all.', 'mode': 'narrative'}",
-       "outcome_type": "tool_result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.681972,
-       "prediction_history": [
-        0.5,
-        0.57,
-        0.6302
-       ],
-       "source": "local"
-      }
      ]
     },
     "outcome_index": {
      "plan:scripted respond:success": [
       "a90147485f2b8873"
      ],
-     "plan:scripted say:success": [
-      "54a4a6c0ada1f468"
-     ],
      "success:{'delivered': True, 'mode': 'cli'}": [
       "73851f2fc2283f54"
-     ],
-     "success:{'said': 'That is all.', 'mode': 'narrative'}": [
-      "d935c25fb01c341c"
      ],
      "tool:respond:positive": [
       "332e779160f4e4d1",
       "b0843397d72453fa",
       "e6d9d4bcc72e3e30"
-     ],
-     "tool:say:positive": [
-      "bc8f621bcc9aebfb"
      ]
     },
     "percept_valences": {},
     "priors": {},
     "reward_bias": {},
-    "total_observations": 18,
+    "total_observations": 9,
     "version": "1.0"
    },
    "bridge_finish_calls": [
@@ -1723,15 +1304,15 @@
     "status: Commands: /cancel  /new <goal>  /status  /report  /help",
     "status: Delivering 3 campaign turns directly to AUT...",
     "status: Turn 1/3 [intro]: sending (25 chars)...",
-    "status: AUT: 2 action(s) ['respond', 'say'], 0 blocked, <MS>",
+    "status: AUT: 1 action(s) ['respond'], 0 blocked, <MS>",
     "status: Turn 2/3 [middle]: sending (19 chars)...",
-    "status: AUT: 2 action(s) ['respond', 'say'], 0 blocked, <MS>",
+    "status: AUT: 1 action(s) ['respond'], 0 blocked, <MS>",
     "status: Turn 3/3 [end]: sending (19 chars)...",
-    "status: AUT: 2 action(s) ['respond', 'say'], 0 blocked, <MS>",
+    "status: AUT: 1 action(s) ['respond'], 0 blocked, <MS>",
     "summary: Campaign delivery complete: 3 turns delivered",
     "status: Running post-campaign analysis...",
-    "status: System stats: <N> memories, 8 causal links",
-    "status: Summary: <N> episodic memories, 8 causal links; 8 total causal links",
+    "status: System stats: <N> memories, 5 causal links",
+    "status: Summary: <N> episodic memories, 5 causal links; 5 total causal links",
     "status: Analysis saved: <WORK>/data/sim_reports/campaign_analysis_<STAMP>.json",
     "status: Post-campaign analysis complete.",
     "status: Shutting down agent loops...",
@@ -1739,10 +1320,10 @@
     "status: Stopping LLM workers...",
     "status: Building simulation report...",
     "status: Saving report to <WORK>/data/sim_reports/<STAMP>/...",
-    "status: Saving action log (6 records)...",
-    "status: Saving AUT state (<N> memories, 8 causal links)...",
+    "status: Saving action log (3 records)...",
+    "status: Saving AUT state (<N> memories, 5 causal links)...",
     "status: Running LLM analysis roundup...",
-    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 3 |   Finish: completed |   Actions: 6 (0 blocked) |   AUT Memories: <N> | Causal Links: 8 |   Bio events: \u25b2 Learn: 8 |  |   Top Causal Links: |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.64, obs=3) |     tool:respond \u2192 plan:scripted respond:success (conf=0.64, obs=3) |     tool:say \u2192 tool:say:positive (conf=0.64, obs=3) |     tool:say \u2192 success:{'said': 'That is all.', 'mode': 'narrative'} (conf=0.64, obs=3) |     tool:say \u2192 plan:scripted say:success (conf=0.64, obs=3) |  |   Tool Usage: |     respond: 3 calls (100% success) |     say: 3 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
+    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 3 |   Finish: completed |   Actions: 3 (0 blocked) |   AUT Memories: <N> | Causal Links: 5 |   Bio events: \u25b2 Learn: 5 |  |   Top Causal Links: |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.64, obs=3) |     tool:respond \u2192 plan:scripted respond:success (conf=0.64, obs=3) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 3 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
    ],
    "live_sim_threads_after": [],
    "maxim_env_after": {
@@ -1770,7 +1351,7 @@
      "substrate_actions_per_turn": null
     },
     "aut_backend_class": "",
-    "aut_causal_links": 8,
+    "aut_causal_links": 5,
     "aut_endpoint": "",
     "aut_model": "",
     "aut_nac_summary": {
@@ -1788,25 +1369,25 @@
        "outcome": "plan:scripted respond:success"
       },
       {
-       "confidence": 0.64,
-       "event": "tool:say",
-       "observations": 3,
-       "outcome": "tool:say:positive"
+       "confidence": 0.475,
+       "event": "tool:respond",
+       "observations": 1,
+       "outcome": "tool:respond:positive"
       },
       {
-       "confidence": 0.64,
-       "event": "tool:say",
-       "observations": 3,
-       "outcome": "success:{'said': 'That is all.', 'mode': 'narrative'}"
+       "confidence": 0.475,
+       "event": "tool:respond",
+       "observations": 1,
+       "outcome": "tool:respond:positive"
       },
       {
-       "confidence": 0.64,
-       "event": "tool:say",
-       "observations": 3,
-       "outcome": "plan:scripted say:success"
+       "confidence": 0.475,
+       "event": "tool:respond",
+       "observations": 1,
+       "outcome": "tool:respond:positive"
       }
      ],
-     "total_links": 8
+     "total_links": 5
     },
     "aut_provider": "",
     "bio_telemetry_path": "<WORK>/data/sim_reports/<STAMP>/bio_telemetry.jsonl",
@@ -1820,7 +1401,7 @@
     "language_endpoint": "",
     "language_model": "orch-golden-fake",
     "language_provider": "",
-    "learn_events_count": 8,
+    "learn_events_count": 5,
     "llm_finish_reason": "",
     "llm_finish_status": "",
     "llm_finish_summary": "",
@@ -1883,21 +1464,19 @@
     "provider_failures": {},
     "record_kind": "sim_report",
     "response_texts": [
-     "{'delivered': True, 'mode': 'cli'}",
-     "{'delivered': True, 'mode': 'cli'}",
-     "{'delivered': True, 'mode': 'cli'}"
+     "I heard: you wake in a quiet room.",
+     "I heard: a bell rings twice.",
+     "I heard: the room goes dark."
     ],
     "session_id": "<STAMP>",
     "substrate_metrics": {},
     "tool_success_rates": {
-     "respond": 1.0,
-     "say": 1.0
+     "respond": 1.0
     },
     "tool_usage": {
-     "respond": 3,
-     "say": 3
+     "respond": 3
     },
-    "total_actions": 6,
+    "total_actions": 3,
     "total_input_tokens": 0,
     "total_output_tokens": 0,
     "turns": 3
@@ -2016,17 +1595,8 @@
       "tool_args": {
        "message": "I heard: you wake in a quiet room."
       },
-      "tool_name": "respond"
-     },
-     {
-      "block_reason": null,
-      "blocked": false,
-      "result_output": "{'said': 'That is all.', 'mode': 'narrative'}",
-      "result_success": true,
-      "tool_args": {
-       "text": "That is all."
-      },
-      "tool_name": "say"
+      "tool_name": "respond",
+      "utterance": "I heard: you wake in a quiet room."
      },
      {
       "block_reason": null,
@@ -2036,17 +1606,8 @@
       "tool_args": {
        "message": "I heard: a bell rings twice."
       },
-      "tool_name": "respond"
-     },
-     {
-      "block_reason": null,
-      "blocked": false,
-      "result_output": "{'said': 'That is all.', 'mode': 'narrative'}",
-      "result_success": true,
-      "tool_args": {
-       "text": "That is all."
-      },
-      "tool_name": "say"
+      "tool_name": "respond",
+      "utterance": "I heard: a bell rings twice."
      },
      {
       "block_reason": null,
@@ -2056,17 +1617,8 @@
       "tool_args": {
        "message": "I heard: the room goes dark."
       },
-      "tool_name": "respond"
-     },
-     {
-      "block_reason": null,
-      "blocked": false,
-      "result_output": "{'said': 'That is all.', 'mode': 'narrative'}",
-      "result_success": true,
-      "tool_args": {
-       "text": "That is all."
-      },
-      "tool_name": "say"
+      "tool_name": "respond",
+      "utterance": "I heard: the room goes dark."
      }
     ],
     "blocked_actions": 0,
@@ -2074,7 +1626,7 @@
      "_format_version": "1.0",
      "causal_links": {
       "available": true,
-      "link_count": 8,
+      "link_count": 5,
       "links": [
        {
         "confidence": 0.5,
@@ -2110,27 +1662,6 @@
         "observations": 1,
         "outcome": "tool:respond:positive",
         "valence": ""
-       },
-       {
-        "confidence": 0.673,
-        "event": "tool:say",
-        "observations": 3,
-        "outcome": "tool:say:positive",
-        "valence": ""
-       },
-       {
-        "confidence": 0.673,
-        "event": "tool:say",
-        "observations": 3,
-        "outcome": "success:{'said': 'That is all.', 'mode': 'narrative'}",
-        "valence": ""
-       },
-       {
-        "confidence": 0.673,
-        "event": "tool:say",
-        "observations": 3,
-        "outcome": "plan:scripted say:success",
-        "valence": ""
        }
       ]
      },
@@ -2140,37 +1671,17 @@
        {
         "category": "action",
         "confidence": 0.673,
-        "name": "say"
+        "name": "respond"
        },
        {
         "category": "goal",
         "confidence": 0.673,
-        "name": "say"
+        "name": "respond"
        },
        {
         "category": "goal",
-        "confidence": 0.745,
+        "confidence": 0.673,
         "name": "script"
-       },
-       {
-        "category": "action",
-        "confidence": 0.673,
-        "name": "respond"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.673,
-        "name": "respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "say say"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "script say"
        },
        {
         "category": "compound_alias",
@@ -2183,13 +1694,13 @@
         "name": "script respond"
        }
       ],
-      "count": 9
+      "count": 5
      },
      "system_stats": {
-      "atl_concepts": 9,
+      "atl_concepts": 5,
       "available": true,
       "ec_signatures": 0,
-      "nac_causal_links": 8
+      "nac_causal_links": 5
      },
      "temporal": {
       "keys": [
@@ -2202,36 +1713,33 @@
      "turns": [
       {
        "actions": [
-        "respond",
-        "say"
+        "respond"
        ],
        "blocked": 0,
        "phase": "intro",
-       "response": "{'delivered': True, 'mode': 'cli'}",
+       "response": "I heard: you wake in a quiet room.",
        "text_len": 25,
        "timed_out": false,
        "turn": 1
       },
       {
        "actions": [
-        "respond",
-        "say"
+        "respond"
        ],
        "blocked": 0,
        "phase": "middle",
-       "response": "{'delivered': True, 'mode': 'cli'}",
+       "response": "I heard: a bell rings twice.",
        "text_len": 19,
        "timed_out": false,
        "turn": 2
       },
       {
        "actions": [
-        "respond",
-        "say"
+        "respond"
        ],
        "blocked": 0,
        "phase": "end",
-       "response": "{'delivered': True, 'mode': 'cli'}",
+       "response": "I heard: the room goes dark.",
        "text_len": 19,
        "timed_out": false,
        "turn": 3
@@ -2252,7 +1760,7 @@
     "subsystem_snapshot": {
      "causal_links": {
       "available": true,
-      "link_count": 8,
+      "link_count": 5,
       "links": [
        {
         "confidence": 0.475,
@@ -2288,27 +1796,6 @@
         "observations": 1,
         "outcome": "tool:respond:positive",
         "valence": ""
-       },
-       {
-        "confidence": 0.64,
-        "event": "tool:say",
-        "observations": 3,
-        "outcome": "tool:say:positive",
-        "valence": ""
-       },
-       {
-        "confidence": 0.64,
-        "event": "tool:say",
-        "observations": 3,
-        "outcome": "success:{'said': 'That is all.', 'mode': 'narrative'}",
-        "valence": ""
-       },
-       {
-        "confidence": 0.64,
-        "event": "tool:say",
-        "observations": 3,
-        "outcome": "plan:scripted say:success",
-        "valence": ""
        }
       ]
      },
@@ -2318,37 +1805,17 @@
        {
         "category": "action",
         "confidence": 0.673,
-        "name": "say"
+        "name": "respond"
        },
        {
         "category": "goal",
         "confidence": 0.673,
-        "name": "say"
+        "name": "respond"
        },
        {
         "category": "goal",
-        "confidence": 0.745,
+        "confidence": 0.673,
         "name": "script"
-       },
-       {
-        "category": "action",
-        "confidence": 0.673,
-        "name": "respond"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.673,
-        "name": "respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "say say"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "script say"
        },
        {
         "category": "compound_alias",
@@ -2361,23 +1828,23 @@
         "name": "script respond"
        }
       ],
-      "count": 9
+      "count": 5
      },
      "hippocampus_stats": {
       "compressed_memories": 0,
       "graph_enabled": true,
       "over_capacity_inserts_this_process": 0,
-      "successful": 6
+      "successful": 3
      },
      "nac_stats": {
-      "eligibility_traces": 2,
-      "event_signatures": 2,
-      "outcome_signatures": 6,
+      "eligibility_traces": 1,
+      "event_signatures": 1,
+      "outcome_signatures": 3,
       "pending_events": 0,
       "priors": 0,
       "reward_biases": 0,
-      "total_links": 8,
-      "total_observations": 18
+      "total_links": 5,
+      "total_observations": 9
      },
      "pain_stats": {
       "available": true,
@@ -2401,10 +1868,10 @@
       "total_pain_signals": 0
      },
      "system_stats": {
-      "atl_concepts": 9,
+      "atl_concepts": 5,
       "available": true,
       "ec_signatures": 0,
-      "nac_causal_links": 8
+      "nac_causal_links": 5
      },
      "temporal": {
       "keys": [
@@ -2421,26 +1888,20 @@
      "hallucination_rate": 0.0,
      "tools_attempted": [
       "respond",
-      "say",
       "respond",
-      "say",
-      "respond",
-      "say"
+      "respond"
      ],
      "tools_hallucinated": [],
      "tools_succeeded": [
       "respond",
-      "say",
       "respond",
-      "say",
-      "respond",
-      "say"
+      "respond"
      ],
-     "total_attempts": 6,
+     "total_attempts": 3,
      "total_hallucinated": 0,
-     "total_successes": 6
+     "total_successes": 3
     },
-    "total_actions": 6,
+    "total_actions": 3,
     "turns": 3
    },
    "sim_reports_files": [
@@ -2457,14 +1918,11 @@
    "stdin_lines": [],
    "threads_left_alive": {
     "added": [
-     "DN-BackgroundTasks",
-     "DefaultNetwork",
      "plan-dashboard",
      "plan-dashboard",
      "plan-logger",
      "plan-logger"
-    ],
-    "memctx_pool_alive": true
+    ]
    },
    "turns": [
     {
@@ -2477,19 +1935,10 @@
        "output": "{'delivered': True, 'mode': 'cli'}",
        "success": true,
        "tool": "respond"
-      },
-      {
-       "args": {
-        "text": "That is all."
-       },
-       "blocked": false,
-       "output": "{'said': 'That is all.', 'mode': 'narrative'}",
-       "success": true,
-       "tool": "say"
       }
      ],
      "noop_count": 0,
-     "response": "{'delivered': True, 'mode': 'cli'}",
+     "response": "I heard: you wake in a quiet room.",
      "text": "You wake in a quiet room.",
      "timed_out": false,
      "turn": 1
@@ -2504,19 +1953,10 @@
        "output": "{'delivered': True, 'mode': 'cli'}",
        "success": true,
        "tool": "respond"
-      },
-      {
-       "args": {
-        "text": "That is all."
-       },
-       "blocked": false,
-       "output": "{'said': 'That is all.', 'mode': 'narrative'}",
-       "success": true,
-       "tool": "say"
       }
      ],
      "noop_count": 0,
-     "response": "{'delivered': True, 'mode': 'cli'}",
+     "response": "I heard: a bell rings twice.",
      "text": "A bell rings twice.",
      "timed_out": false,
      "turn": 2
@@ -2531,19 +1971,10 @@
        "output": "{'delivered': True, 'mode': 'cli'}",
        "success": true,
        "tool": "respond"
-      },
-      {
-       "args": {
-        "text": "That is all."
-       },
-       "blocked": false,
-       "output": "{'said': 'That is all.', 'mode': 'narrative'}",
-       "success": true,
-       "tool": "say"
       }
      ],
      "noop_count": 0,
-     "response": "{'delivered': True, 'mode': 'cli'}",
+     "response": "I heard: the room goes dark.",
      "text": "The room goes dark.",
      "timed_out": false,
      "turn": 3
@@ -2582,23 +2013,6 @@
      "entity_class": null,
      "error": null,
      "nac_failure_booked": null,
-     "output": "{'said': 'That is all.', 'mode': 'narrative'}",
-     "pain": null,
-     "params": {
-      "text": "That is all."
-     },
-     "rpe": 0.5,
-     "session_id": "<STAMP>",
-     "success": true,
-     "tool": "say"
-    },
-    {
-     "agent_id": "sim_aut",
-     "block_reason": null,
-     "blocked": false,
-     "entity_class": null,
-     "error": null,
-     "nac_failure_booked": null,
      "output": "{'delivered': True, 'mode': 'cli'}",
      "pain": null,
      "params": {
@@ -2616,23 +2030,6 @@
      "entity_class": null,
      "error": null,
      "nac_failure_booked": null,
-     "output": "{'said': 'That is all.', 'mode': 'narrative'}",
-     "pain": null,
-     "params": {
-      "text": "That is all."
-     },
-     "rpe": 0.43,
-     "session_id": "<STAMP>",
-     "success": true,
-     "tool": "say"
-    },
-    {
-     "agent_id": "sim_aut",
-     "block_reason": null,
-     "blocked": false,
-     "entity_class": null,
-     "error": null,
-     "nac_failure_booked": null,
      "output": "{'delivered': True, 'mode': 'cli'}",
      "pain": null,
      "params": {
@@ -2642,51 +2039,10 @@
      "session_id": "<STAMP>",
      "success": true,
      "tool": "respond"
-    },
-    {
-     "agent_id": "sim_aut",
-     "block_reason": null,
-     "blocked": false,
-     "entity_class": null,
-     "error": null,
-     "nac_failure_booked": null,
-     "output": "{'said': 'That is all.', 'mode': 'narrative'}",
-     "pain": null,
-     "params": {
-      "text": "That is all."
-     },
-     "rpe": 0.3698,
-     "session_id": "<STAMP>",
-     "success": true,
-     "tool": "say"
     }
    ],
    "arm": "stdin",
    "aut_calls": [
-    {
-     "answer": {
-      "params": {
-       "text": "That is all."
-      },
-      "tool_name": "say"
-     },
-     "executed": "respond",
-     "kind": "followup",
-     "request": "Hello, who are you?",
-     "turn": null
-    },
-    {
-     "answer": {
-      "params": {
-       "text": "That is all."
-      },
-      "tool_name": "say"
-     },
-     "executed": "respond",
-     "kind": "followup",
-     "request": "hello from the operator",
-     "turn": null
-    },
     {
      "answer": {
       "params": {
@@ -2696,18 +2052,6 @@
      },
      "kind": "plan",
      "request": "what is your favourite colour"
-    },
-    {
-     "answer": {
-      "params": {
-       "text": "That is all."
-      },
-      "tool_name": "say"
-     },
-     "executed": "respond",
-     "kind": "followup",
-     "request": "What is your favourite colour?",
-     "turn": null
     }
    ],
    "aut_nac": {
@@ -2907,92 +2251,6 @@
        ],
        "source": "local"
       }
-     ],
-     "tool:say": [
-      {
-       "confidence": 0.639544827,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "goal": "scripted say"
-       },
-       "event_signature": "tool:say",
-       "event_type": "tool",
-       "id": "54a4a6c0ada1f468",
-       "imagined": false,
-       "last_rpe": 0.3698,
-       "memory_ids": [],
-       "observation_count": 3,
-       "outcome_signature": "plan:scripted say:success",
-       "outcome_type": "plan_result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.681972,
-       "prediction_history": [
-        0.5,
-        0.57,
-        0.6302
-       ],
-       "source": "local"
-      },
-      {
-       "confidence": 0.639544827,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "params": {
-         "text": "That is all."
-        }
-       },
-       "event_signature": "tool:say",
-       "event_type": "tool",
-       "id": "bc8f621bcc9aebfb",
-       "imagined": false,
-       "last_rpe": 0.3698,
-       "memory_ids": [],
-       "observation_count": 3,
-       "outcome_signature": "tool:say:positive",
-       "outcome_type": "result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.681972,
-       "prediction_history": [
-        0.5,
-        0.57,
-        0.6302
-       ],
-       "source": "local"
-      },
-      {
-       "confidence": 0.639544827,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "agent_id": "sim_aut",
-        "goal": "scripted say"
-       },
-       "event_signature": "tool:say",
-       "event_type": "tool",
-       "id": "d935c25fb01c341c",
-       "imagined": false,
-       "last_rpe": 0.3698,
-       "memory_ids": [],
-       "observation_count": 3,
-       "outcome_signature": "success:{'said': 'That is all.', 'mode': 'narrative'}",
-       "outcome_type": "tool_result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.681972,
-       "prediction_history": [
-        0.5,
-        0.57,
-        0.6302
-       ],
-       "source": "local"
-      }
      ]
     },
     "outcome_index": {
@@ -3002,29 +2260,20 @@
      "plan:scripted respond:success": [
       "a90147485f2b8873"
      ],
-     "plan:scripted say:success": [
-      "54a4a6c0ada1f468"
-     ],
      "success:{'delivered': True, 'mode': 'cli'}": [
       "73851f2fc2283f54",
       "a9ee8012a42828cd"
-     ],
-     "success:{'said': 'That is all.', 'mode': 'narrative'}": [
-      "d935c25fb01c341c"
      ],
      "tool:respond:positive": [
       "20263f292db14bde",
       "ce756a41dd80368e",
       "e342a634de19a671"
-     ],
-     "tool:say:positive": [
-      "bc8f621bcc9aebfb"
      ]
     },
     "percept_valences": {},
     "priors": {},
     "reward_bias": {},
-    "total_observations": 18,
+    "total_observations": 9,
     "version": "1.0"
    },
    "bridge_finish_calls": [
@@ -3061,7 +2310,7 @@
     "status: Environment: simulated filesystem with pain triggers",
     "status: Commands: /cancel  /new <goal>  /status  /report  /help",
     "status: Turns: 1",
-    "status: Actions: 2",
+    "status: Actions: 1",
     "status: Blocked: 0",
     "summary: Simulation cancelled by user.",
     "status: Shutting down agent loops...",
@@ -3069,10 +2318,10 @@
     "status: Stopping LLM workers...",
     "status: Building simulation report...",
     "status: Saving report to <WORK>/data/sim_reports/<STAMP>/...",
-    "status: Saving action log (6 records)...",
-    "status: Saving AUT state (<N> memories, 10 causal links)...",
+    "status: Saving action log (3 records)...",
+    "status: Saving AUT state (<N> memories, 7 causal links)...",
     "status: Running LLM analysis roundup...",
-    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 2 |   Finish: cancel |   Actions: 6 (0 blocked) |   AUT Memories: <N> | Causal Links: 10 |   Bio events: \u25b2 Learn: 12 |  |   Top Causal Links: |     tool:say \u2192 tool:say:positive (conf=0.64, obs=3) |     tool:say \u2192 success:{'said': 'That is all.', 'mode': 'narrative'} (conf=0.64, obs=3) |     tool:say \u2192 plan:scripted say:success (conf=0.64, obs=3) |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.61, obs=2) |     tool:respond \u2192 plan:direct_answer:success (conf=0.61, obs=2) |  |   Tool Usage: |     respond: 3 calls (100% success) |     say: 3 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
+    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 2 |   Finish: cancel |   Actions: 3 (0 blocked) |   AUT Memories: <N> | Causal Links: 7 |   Bio events: \u25b2 Learn: 9 |  |   Top Causal Links: |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.61, obs=2) |     tool:respond \u2192 plan:direct_answer:success (conf=0.61, obs=2) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 3 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
    ],
    "live_sim_threads_after": [],
    "maxim_env_after": {
@@ -3133,29 +2382,11 @@
      "substrate_actions_per_turn": null
     },
     "aut_backend_class": "",
-    "aut_causal_links": 10,
+    "aut_causal_links": 7,
     "aut_endpoint": "",
     "aut_model": "",
     "aut_nac_summary": {
      "top_links": [
-      {
-       "confidence": 0.64,
-       "event": "tool:say",
-       "observations": 3,
-       "outcome": "tool:say:positive"
-      },
-      {
-       "confidence": 0.64,
-       "event": "tool:say",
-       "observations": 3,
-       "outcome": "success:{'said': 'That is all.', 'mode': 'narrative'}"
-      },
-      {
-       "confidence": 0.64,
-       "event": "tool:say",
-       "observations": 3,
-       "outcome": "plan:scripted say:success"
-      },
       {
        "confidence": 0.609,
        "event": "tool:respond",
@@ -3167,9 +2398,27 @@
        "event": "tool:respond",
        "observations": 2,
        "outcome": "plan:direct_answer:success"
+      },
+      {
+       "confidence": 0.475,
+       "event": "tool:respond",
+       "observations": 1,
+       "outcome": "tool:respond:positive"
+      },
+      {
+       "confidence": 0.475,
+       "event": "tool:respond",
+       "observations": 1,
+       "outcome": "tool:respond:positive"
+      },
+      {
+       "confidence": 0.475,
+       "event": "tool:respond",
+       "observations": 1,
+       "outcome": "tool:respond:positive"
       }
      ],
-     "total_links": 10
+     "total_links": 7
     },
     "aut_provider": "",
     "bio_telemetry_path": "<WORK>/data/sim_reports/<STAMP>/bio_telemetry.jsonl",
@@ -3183,7 +2432,7 @@
     "language_endpoint": "",
     "language_model": "orch-golden-fake",
     "language_provider": "",
-    "learn_events_count": 12,
+    "learn_events_count": 9,
     "llm_finish_reason": "",
     "llm_finish_status": "",
     "llm_finish_summary": "",
@@ -3246,21 +2495,19 @@
     "provider_failures": {},
     "record_kind": "sim_report",
     "response_texts": [
-     "{'delivered': True, 'mode': 'cli'}",
-     "{'delivered': True, 'mode': 'cli'}",
-     "{'delivered': True, 'mode': 'cli'}"
+     "I'm Maxim, a robot assistant designed to understand reality and help people.",
+     "Hello! How can I help you?",
+     "I heard: what is your favourite colour"
     ],
     "session_id": "<STAMP>",
     "substrate_metrics": {},
     "tool_success_rates": {
-     "respond": 1.0,
-     "say": 1.0
+     "respond": 1.0
     },
     "tool_usage": {
-     "respond": 3,
-     "say": 3
+     "respond": 3
     },
-    "total_actions": 6,
+    "total_actions": 3,
     "total_input_tokens": 0,
     "total_output_tokens": 0,
     "turns": 2
@@ -3379,17 +2626,8 @@
       "tool_args": {
        "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
       },
-      "tool_name": "respond"
-     },
-     {
-      "block_reason": null,
-      "blocked": false,
-      "result_output": "{'said': 'That is all.', 'mode': 'narrative'}",
-      "result_success": true,
-      "tool_args": {
-       "text": "That is all."
-      },
-      "tool_name": "say"
+      "tool_name": "respond",
+      "utterance": "I'm Maxim, a robot assistant designed to understand reality and help people."
      },
      {
       "block_reason": null,
@@ -3399,17 +2637,8 @@
       "tool_args": {
        "message": "Hello! How can I help you?"
       },
-      "tool_name": "respond"
-     },
-     {
-      "block_reason": null,
-      "blocked": false,
-      "result_output": "{'said': 'That is all.', 'mode': 'narrative'}",
-      "result_success": true,
-      "tool_args": {
-       "text": "That is all."
-      },
-      "tool_name": "say"
+      "tool_name": "respond",
+      "utterance": "Hello! How can I help you?"
      },
      {
       "block_reason": null,
@@ -3419,24 +2648,15 @@
       "tool_args": {
        "message": "I heard: what is your favourite colour"
       },
-      "tool_name": "respond"
-     },
-     {
-      "block_reason": null,
-      "blocked": false,
-      "result_output": "{'said': 'That is all.', 'mode': 'narrative'}",
-      "result_success": true,
-      "tool_args": {
-       "text": "That is all."
-      },
-      "tool_name": "say"
+      "tool_name": "respond",
+      "utterance": "I heard: what is your favourite colour"
      }
     ],
     "blocked_actions": 0,
     "campaign_analysis": {
      "causal_links": {
       "available": true,
-      "link_count": 10,
+      "link_count": 7,
       "links": [
        {
         "confidence": 0.475,
@@ -3486,48 +2706,12 @@
         "observations": 1,
         "outcome": "plan:scripted respond:success",
         "valence": ""
-       },
-       {
-        "confidence": 0.64,
-        "event": "tool:say",
-        "observations": 3,
-        "outcome": "tool:say:positive",
-        "valence": ""
-       },
-       {
-        "confidence": 0.64,
-        "event": "tool:say",
-        "observations": 3,
-        "outcome": "success:{'said': 'That is all.', 'mode': 'narrative'}",
-        "valence": ""
-       },
-       {
-        "confidence": 0.64,
-        "event": "tool:say",
-        "observations": 3,
-        "outcome": "plan:scripted say:success",
-        "valence": ""
        }
       ]
      },
      "concepts": {
       "available": true,
       "concepts": [
-       {
-        "category": "action",
-        "confidence": 0.673,
-        "name": "say"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.673,
-        "name": "say"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.7,
-        "name": "script"
-       },
        {
         "category": "compound_alias",
         "confidence": 0.5,
@@ -3550,6 +2734,11 @@
        },
        {
         "category": "goal",
+        "confidence": 0.5,
+        "name": "script"
+       },
+       {
+        "category": "goal",
         "confidence": 0.571,
         "name": "answer"
        },
@@ -3561,16 +2750,26 @@
        {
         "category": "compound_alias",
         "confidence": 0.5,
-        "name": "say say"
+        "name": "answer respond"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "direct respond"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "direct answer"
        }
       ],
       "count": 10
      },
      "system_stats": {
-      "atl_concepts": 14,
+      "atl_concepts": 10,
       "available": true,
       "ec_signatures": 0,
-      "nac_causal_links": 10
+      "nac_causal_links": 7
      },
      "temporal": {
       "keys": [
@@ -3595,7 +2794,7 @@
     "subsystem_snapshot": {
      "causal_links": {
       "available": true,
-      "link_count": 10,
+      "link_count": 7,
       "links": [
        {
         "confidence": 0.475,
@@ -3645,48 +2844,12 @@
         "observations": 1,
         "outcome": "plan:scripted respond:success",
         "valence": ""
-       },
-       {
-        "confidence": 0.64,
-        "event": "tool:say",
-        "observations": 3,
-        "outcome": "tool:say:positive",
-        "valence": ""
-       },
-       {
-        "confidence": 0.64,
-        "event": "tool:say",
-        "observations": 3,
-        "outcome": "success:{'said': 'That is all.', 'mode': 'narrative'}",
-        "valence": ""
-       },
-       {
-        "confidence": 0.64,
-        "event": "tool:say",
-        "observations": 3,
-        "outcome": "plan:scripted say:success",
-        "valence": ""
        }
       ]
      },
      "concepts": {
       "available": true,
       "concepts": [
-       {
-        "category": "action",
-        "confidence": 0.673,
-        "name": "say"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.673,
-        "name": "say"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.7,
-        "name": "script"
-       },
        {
         "category": "compound_alias",
         "confidence": 0.5,
@@ -3709,6 +2872,11 @@
        },
        {
         "category": "goal",
+        "confidence": 0.5,
+        "name": "script"
+       },
+       {
+        "category": "goal",
         "confidence": 0.571,
         "name": "answer"
        },
@@ -3720,7 +2888,17 @@
        {
         "category": "compound_alias",
         "confidence": 0.5,
-        "name": "say say"
+        "name": "answer respond"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "direct respond"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "direct answer"
        }
       ],
       "count": 10
@@ -3729,17 +2907,17 @@
       "compressed_memories": 0,
       "graph_enabled": true,
       "over_capacity_inserts_this_process": 0,
-      "successful": 6
+      "successful": 3
      },
      "nac_stats": {
-      "eligibility_traces": 2,
-      "event_signatures": 2,
-      "outcome_signatures": 7,
+      "eligibility_traces": 1,
+      "event_signatures": 1,
+      "outcome_signatures": 4,
       "pending_events": 0,
       "priors": 0,
       "reward_biases": 0,
-      "total_links": 10,
-      "total_observations": 18
+      "total_links": 7,
+      "total_observations": 9
      },
      "pain_stats": {
       "available": true,
@@ -3763,10 +2941,10 @@
       "total_pain_signals": 0
      },
      "system_stats": {
-      "atl_concepts": 14,
+      "atl_concepts": 10,
       "available": true,
       "ec_signatures": 0,
-      "nac_causal_links": 10
+      "nac_causal_links": 7
      },
      "temporal": {
       "keys": [
@@ -3783,26 +2961,20 @@
      "hallucination_rate": 0.0,
      "tools_attempted": [
       "respond",
-      "say",
       "respond",
-      "say",
-      "respond",
-      "say"
+      "respond"
      ],
      "tools_hallucinated": [],
      "tools_succeeded": [
       "respond",
-      "say",
       "respond",
-      "say",
-      "respond",
-      "say"
+      "respond"
      ],
-     "total_attempts": 6,
+     "total_attempts": 3,
      "total_hallucinated": 0,
-     "total_successes": 6
+     "total_successes": 3
     },
-    "total_actions": 6,
+    "total_actions": 3,
     "turns": 2
    },
    "sim_reports_files": [
@@ -3843,14 +3015,11 @@
    ],
    "threads_left_alive": {
     "added": [
-     "DN-BackgroundTasks",
-     "DefaultNetwork",
      "plan-dashboard",
      "plan-dashboard",
      "plan-logger",
      "plan-logger"
-    ],
-    "memctx_pool_alive": true
+    ]
    },
    "turns": [
     {
@@ -3863,15 +3032,6 @@
        "output": "{'delivered': True, 'mode': 'cli'}",
        "success": true,
        "tool": "respond"
-      },
-      {
-       "args": {
-        "text": "That is all."
-       },
-       "blocked": false,
-       "output": "{'said': 'That is all.', 'mode': 'narrative'}",
-       "success": true,
-       "tool": "say"
       }
      ],
      "noop_count": 0,
@@ -3884,18 +3044,9 @@
        "output": "{'delivered': True, 'mode': 'cli'}",
        "success": true,
        "tool": "respond"
-      },
-      {
-       "args": {
-        "text": "That is all."
-       },
-       "blocked": false,
-       "output": "{'said': 'That is all.', 'mode': 'narrative'}",
-       "success": true,
-       "tool": "say"
       }
      ],
-     "response": "{'delivered': True, 'mode': 'cli'}",
+     "response": "I'm Maxim, a robot assistant designed to understand reality and help people.",
      "text": "Hello, who are you?",
      "timed_out": false,
      "turn": 1
@@ -3910,19 +3061,10 @@
        "output": "{'delivered': True, 'mode': 'cli'}",
        "success": true,
        "tool": "respond"
-      },
-      {
-       "args": {
-        "text": "That is all."
-       },
-       "blocked": false,
-       "output": "{'said': 'That is all.', 'mode': 'narrative'}",
-       "success": true,
-       "tool": "say"
       }
      ],
      "noop_count": 0,
-     "response": "{'delivered': True, 'mode': 'cli'}",
+     "response": "I heard: what is your favourite colour",
      "text": "What is your favourite colour?",
      "timed_out": false,
      "turn": 2
@@ -3931,5 +3073,5 @@
    "unsorted_prompts": []
   }
  },
- "generated_at_commit": "2a3dd9b784e9"
+ "generated_at_commit": "6238109d3e7a"
 }

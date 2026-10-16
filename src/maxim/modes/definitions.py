@@ -10,6 +10,7 @@ The agent enters sleep by calling the sleep tool; wakes automatically on user in
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -1129,7 +1130,12 @@ REGISTERED_TOOL_NAMES: frozenset[str] = frozenset(
 PROMPT_TOOL_NAMES: frozenset[str] = REGISTERED_TOOL_NAMES | frozenset(TOOL_DESCRIPTIONS)
 
 
-def get_tool_followup_type(tool_name: str, mode_name: str | None = None) -> str | None:
+def get_tool_followup_type(
+    tool_name: str,
+    mode_name: str | None = None,
+    *,
+    overlay: Mapping[str, Mapping[str, Any]],
+) -> str | None:
     """Get the followup type for a tool, adjusted by the operational mode.
 
     ``engage`` (respond AND offer follow-ups) is kept only in an active- or singularity-class mode; in a passive-class
@@ -1140,11 +1146,14 @@ def get_tool_followup_type(tool_name: str, mode_name: str | None = None) -> str 
     Args:
         tool_name: Name of the tool
         mode_name: The operational mode (``loop_state.operational_mode``)
+        overlay: The calling agent's own entries, which win over ``TOOL_DESCRIPTIONS``: the run's
+            ``LoopRun.tool_overlay`` (``runtime/loop_state.py::tool_description_overlay``, resolved once at setup);
+            required, so a caller cannot silently read only the builtins (#1260).
 
     Returns:
         Followup type: None, "process", "respond", or "engage"
     """
-    tool_info = TOOL_DESCRIPTIONS.get(tool_name, {})
+    tool_info = overlay[tool_name] if tool_name in overlay else TOOL_DESCRIPTIONS.get(tool_name, {})
     followup_type = tool_info.get("followup_type")
 
     if followup_type == "engage":

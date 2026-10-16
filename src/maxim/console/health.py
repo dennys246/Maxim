@@ -23,10 +23,12 @@ to one per ``persist_interval_s`` (a minute); stalls are always kept;
 swallowed exceptions are persisted as per-site count DELTAS at most once a
 minute per site.
 
-**What it cannot say yet** (honest flags on the wire): stall detection needs
-the agent loop to register ``HeartbeatMonitor.set_loop_state_hook``, which no
-production code does yet, so ``stall_detection`` is False and ``stalls`` is
-empty for that reason, not because nothing stalled.
+**What it cannot say** (honest flags on the wire): a stall is a stuck planning
+turn, detectable only while an agent loop runs in this process
+(``runtime/loop_state.py::loop_liveness_scope`` registers the monitor's
+loop-state hook per run and clears it with the last). With no run,
+``stall_detection`` is False and an empty ``stalls`` means unknown, not healthy;
+a loop that stops submitting altogether is never reported.
 
 **Privacy.** Snapshots are ALLOW-LISTED (:data:`ALLOWED_KEYS`): never network
 interfaces, Wi-Fi identity, platform/hostname or ``disk.path``. Exception
@@ -148,9 +150,11 @@ class HealthLog:
         self._keep_s = keep_s
         self._max_bytes = max_bytes
         self._persist_interval_s = persist_interval_s
-        # Per-app publishers: every serving app registers its own on acquire
+        # Publishers, one entry per acquire: every serving app registers one
         # (none under sandbox), so the first app on a path cannot decide for
-        # the rest. `publish` here is the standalone (unshared) form.
+        # the rest; apps on the one /ws hub register the same one, and _emit
+        # calls each distinct publisher once (F3). `publish` here is the
+        # standalone (unshared) form.
         self._publishers: list[Callable[[str, dict[str, Any]], None]] = [publish] if publish is not None else []
         self._lock = threading.Lock()
         self._ring: deque[dict[str, Any]] = deque(maxlen=ring)  # recent snapshots, every one
@@ -374,7 +378,14 @@ class HealthLog:
             self._recorded_since = floor
 
     def _emit(self, kind: str, data: dict[str, Any]) -> None:
+        # ``_publishers`` holds one entry per acquire (release removes one), so a publisher two apps share, the
+        # process-wide hub's, stays until its last app leaves; it is called once per event all the same (F3). One
+        # atomic copy, then dedupe by identity: no hashing, so no publisher can raise out of here.
+        called: list[Any] = []
         for publish in list(self._publishers):
+            if any(publish is c for c in called):
+                continue
+            called.append(publish)
             try:
                 publish(kind, data)
             except Exception as e:  # a /ws problem must not stop health capture
@@ -558,7 +569,8 @@ _registry_lock = threading.Lock()
 def shared_health_log(path: Path) -> HealthLog:
     """The process's log for ``path``. Every console app serving from one data
     home shares it, so a swallow is counted once, not once per app; each app
-    brings its own publisher on :meth:`HealthLog.acquire`."""
+    acquires with its own publisher entry (apps on the one /ws hub pass the same
+    publisher, called once per event, F3)."""
     key = str(path)
     with _registry_lock:
         log = _registry.get(key)

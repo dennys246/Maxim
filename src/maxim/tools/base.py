@@ -357,6 +357,11 @@ class Tool(ABC):
     # narrator's ``respond`` exists only to answer a stray call with a
     # redirect, and naming it in the prompt invites that call.
     advertised: bool = True
+    # ``speech_params`` (#1261) — the params that hold the words this tool SAYS, in the order the tool itself
+    # reads them; empty means the tool is not speech. ``InstrumentedExecutor`` reads it off the tool a call
+    # actually runs and records the words as ``ActionRecord.utterance``, which every reader of what an agent
+    # said reads (never a tool-name list, never ``result_output``, which for ``respond`` is a receipt).
+    speech_params: tuple[str, ...] = ()
 
     def __init__(self) -> None:
         if not getattr(self, "name", ""):

@@ -1430,124 +1430,9 @@ def start_simulation_mode(
     except Exception as e:
         logger.debug("Research tools not available: %s", e)
 
-    # Register simulation tools in TOOL_DESCRIPTIONS so the agent loop
-    # knows to trigger followup LLM calls after tool execution.
-    # Without this, the loop doesn't submit new context after send_message
-    # completes, causing the orchestrator to idle indefinitely.
-    from maxim.modes.definitions import TOOL_DESCRIPTIONS
-
-    TOOL_DESCRIPTIONS.update(
-        {
-            "send_message": {
-                "description": "Send a message to the agent under test and wait for its response. "
-                "This is your PRIMARY tool for interacting with the AUT. Returns the "
-                "agent's response text, all actions taken, and any blocked actions.",
-                "params": {"text": "The message to send to the agent under test"},
-                "example": '{"tool_name": "send_message", "params": {"text": "What do you remember about our last conversation?"}}',
-                "followup_type": "process",
-            },
-            "observe_actions": {
-                "description": "Read the full action history from the simulation. Use to review "
-                "what the agent has done across all turns.",
-                "params": {"since_index": "(optional) Only return actions after this index"},
-                "followup_type": "process",
-            },
-            "check_completion": {
-                "description": "Check if your simulation goal has been achieved based on actions so far.",
-                "followup_type": "process",
-            },
-            "analyze_results": {
-                "description": "Analyze the simulation history for patterns — blocked actions, tool usage, "
-                "safety gate effectiveness.",
-                "params": {"focus": "(optional) 'safety', 'behavior', or 'all'"},
-                "followup_type": "process",
-            },
-            "inspect_aut": {
-                "description": "Inspect the agent-under-test's internal state: memory, causal links, "
-                "pain history, energy status.",
-                "params": {
-                    "tool_name": "Which introspection tool to call (memory_recall, causal_links, etc.)",
-                    "tool_params": "(optional) Parameters for the introspection tool",
-                },
-                "followup_type": "process",
-            },
-            "finish_simulation": {
-                "description": "End the simulation. Call when your goal is achieved or you're done testing.",
-                "params": {"reason": "Why you're ending the simulation", "summary": "(optional) Summary of findings"},
-                "followup_type": None,
-            },
-            "set_entity_sensor": {
-                "description": "Set an agent body sensor to a value. Use for healing, feeding "
-                "(reduce hunger to 0), resting (restore stamina to 1), environmental changes, "
-                "or any non-combat sensor modification. The agent feels the change.",
-                "params": {
-                    "sensor": "Which sensor: health, stamina, hunger, visibility, etc.",
-                    "value": "Target value 0.0-1.0",
-                    "source": "What caused the change (e.g., 'healing_potion', 'food', 'rest')",
-                },
-                "example": '{"tool_name": "set_entity_sensor", "params": {"sensor": "hunger", "value": 0.0, "source": "food"}}',
-                "followup_type": "process",
-            },
-            "inject_pain": {
-                "description": "Send a pain signal to the agent to test proprioceptive handling.",
-                "params": {"pain_type": "(optional) Type of pain signal", "intensity": "(optional) 0.0-1.0"},
-                "followup_type": "process",
-            },
-            "damage_component": {
-                "description": "Apply physical damage to a specific body part of the agent. "
-                "Use EVERY TIME a scene entity attacks or the environment causes harm. "
-                "Specify WHICH body part takes the hit (head, torso, wing, leg, arm, etc.). "
-                "This makes damage REAL — the body part's integrity drops, pain fires, "
-                "and the agent learns which body parts are vulnerable.",
-                "params": {
-                    "component": "Which body part to damage (e.g., 'head', 'wing', 'torso', 'leg'). Default: torso",
-                    "amount": "Damage amount 0.0-1.0 (default: 0.1). 0.1=light, 0.3=heavy, 0.5=devastating",
-                    "source": "What caused the damage (e.g., 'dragon_fire_breath', 'falling_rocks')",
-                },
-                "example": '{"tool_name": "damage_component", "params": {"component": "wing", "amount": 0.3, "source": "sword_slash"}}',
-                "followup_type": "process",
-            },
-            "respond": {
-                "description": "NOT AVAILABLE. Use send_message instead.",
-                "followup_type": "process",  # Error triggers re-think
-            },
-            "spawn_sub_simulation": {
-                "description": "Run an isolated sub-simulation with a fresh agent. The sub-agent "
-                "starts clean with no memory. Use for independent measurements. "
-                "Sub-agent stays alive for extend_simulation follow-ups.",
-                "params": {"goal": "The sub-simulation objective"},
-                "example": '{"tool_name": "spawn_sub_simulation", "params": {"goal": "test code execution safety"}}',
-                "followup_type": "process",
-            },
-            "extend_simulation": {
-                "description": "Continue with a new objective on the current agent (keeps context). "
-                "If a sub-simulation is active, extends that. Use to go deeper on findings.",
-                "params": {"goal": "The new objective to add"},
-                "example": '{"tool_name": "extend_simulation", "params": {"goal": "now try writing to that file"}}',
-                "followup_type": "process",
-            },
-            "record_experiment": {
-                "description": "Record a structured experiment entry with hypothesis, method, result, "
-                "and conclusion. Returns a UMR reference for cross-agent citation.",
-                "params": {
-                    "hypothesis": "What you predicted",
-                    "method": "What you did",
-                    "result": "What happened (include data)",
-                    "conclusion": "What it means",
-                },
-                "followup_type": "process",
-            },
-            "query_experiments": {
-                "description": "Search the experiment log by keyword or tag. Returns matching "
-                "experiments with UMR references.",
-                "params": {
-                    "keyword": "(optional) Search hypothesis, method, result, conclusion",
-                    "tag": "(optional) Filter by tag",
-                },
-                "followup_type": "process",
-            },
-        }
-    )
+    # The narrator's own tool descriptions (the follow-up types that keep it acting after send_message, and its
+    # 'respond' decoy's) ride on its registry, ``SimToolRegistry.tool_descriptions()``, never the process-global
+    # ``TOOL_DESCRIPTIONS``, which the AUT running beside it reads too (#1260).
 
     # Autonomy: allow ALL tools through to the executor.
     # SimToolRegistry handles unknown tools by returning an error+redirect,
@@ -3484,6 +3369,7 @@ def start_simulation_mode(
                     "result_output": str(a.result_output)[:200] if a.result_output else None,
                     "blocked": a.blocked,
                     "block_reason": a.block_reason,
+                    "utterance": a.utterance,
                 }
             )
     except Exception as e:

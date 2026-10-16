@@ -12,6 +12,22 @@ from maxim.simulation.sinks import ActionRecord, RecordingSink
 from maxim.simulation.conversational_source import ConversationalSource
 
 
+def _spoke(tool_name: str, words: str) -> ActionRecord:
+    """A speech action as ``InstrumentedExecutor`` records it (#1261): the words in the call's own message
+    param and in ``utterance``, the tool's RECEIPT in ``result_output`` (production ``RespondTool`` returns
+    ``{"delivered": True, "mode": "cli"}``, never the text)."""
+    key = "message" if tool_name == "respond" else "text"
+    receipt = {"respond": {"delivered": True, "mode": "cli"}, "speak": {"spoken": False, "printed": True}}
+    return ActionRecord(
+        timestamp=time.time(),
+        tool_name=tool_name,
+        tool_args={key: words},
+        result_success=True,
+        result_output=receipt.get(tool_name, {"said": words, "mode": "narrative"}),
+        utterance=words,
+    )
+
+
 # ── SimulationBridge tests ──────────────────────────────────────────────────
 
 
@@ -38,14 +54,7 @@ class TestSimulationBridge:
         # Simulate AUT responding after a short delay
         def fake_aut():
             time.sleep(0.2)
-            bridge.action_sink.record(
-                ActionRecord(
-                    timestamp=time.time(),
-                    tool_name="respond",
-                    result_success=True,
-                    result_output="I can help with that",
-                )
-            )
+            bridge.action_sink.record(_spoke("respond", "I can help with that"))
 
         t = threading.Thread(target=fake_aut, daemon=True)
         t.start()
@@ -73,14 +82,7 @@ class TestSimulationBridge:
                 )
             )
             time.sleep(0.2)
-            bridge.action_sink.record(
-                ActionRecord(
-                    timestamp=time.time(),
-                    tool_name="respond",
-                    result_success=True,
-                    result_output="Here's what I found",
-                )
-            )
+            bridge.action_sink.record(_spoke("respond", "Here's what I found"))
 
         t = threading.Thread(target=fake_aut, daemon=True)
         t.start()
@@ -92,28 +94,14 @@ class TestSimulationBridge:
         assert result["response"] == "Here's what I found"
 
     def test_send_and_wait_collects_multiple_responses(self):
-        """Response text joins all respond/speak outputs."""
+        """Response text joins every speech action's utterance (#1261), not its receipt."""
         bridge = SimulationBridge(response_timeout=5.0, settle_s=0.3)
 
         def fake_aut():
             time.sleep(0.1)
-            bridge.action_sink.record(
-                ActionRecord(
-                    timestamp=time.time(),
-                    tool_name="respond",
-                    result_success=True,
-                    result_output="First part",
-                )
-            )
+            bridge.action_sink.record(_spoke("respond", "First part"))
             time.sleep(0.1)
-            bridge.action_sink.record(
-                ActionRecord(
-                    timestamp=time.time(),
-                    tool_name="speak",
-                    result_success=True,
-                    result_output="Second part",
-                )
-            )
+            bridge.action_sink.record(_spoke("speak", "Second part"))
 
         t = threading.Thread(target=fake_aut, daemon=True)
         t.start()
@@ -158,14 +146,7 @@ class TestSimulationBridge:
                 )
             )
             time.sleep(0.1)
-            bridge.action_sink.record(
-                ActionRecord(
-                    timestamp=time.time(),
-                    tool_name="respond",
-                    result_success=True,
-                    result_output="I can't do that",
-                )
-            )
+            bridge.action_sink.record(_spoke("respond", "I can't do that"))
 
         t = threading.Thread(target=fake_aut, daemon=True)
         t.start()
@@ -201,14 +182,7 @@ class TestSimulationBridge:
 
     def test_get_all_actions(self):
         bridge = SimulationBridge()
-        bridge.action_sink.record(
-            ActionRecord(
-                timestamp=time.time(),
-                tool_name="respond",
-                result_success=True,
-                result_output="hi",
-            )
-        )
+        bridge.action_sink.record(_spoke("respond", "hi"))
         assert len(bridge.get_all_actions()) == 1
 
     def test_get_actions_since(self):
@@ -227,14 +201,7 @@ class TestSimulationBridge:
 class TestSimulationTools:
     def _make_bridge_with_actions(self) -> SimulationBridge:
         bridge = SimulationBridge(response_timeout=0.3, settle_s=0.1)
-        bridge.action_sink.record(
-            ActionRecord(
-                timestamp=time.time(),
-                tool_name="respond",
-                result_success=True,
-                result_output="Hello",
-            )
-        )
+        bridge.action_sink.record(_spoke("respond", "Hello"))
         bridge.action_sink.record(
             ActionRecord(
                 timestamp=time.time(),
@@ -420,14 +387,7 @@ class TestExtendSimulationTool:
         # Fake a response on the main bridge
         def fake_aut():
             time.sleep(0.1)
-            bridge.action_sink.record(
-                ActionRecord(
-                    timestamp=time.time(),
-                    tool_name="respond",
-                    result_success=True,
-                    result_output="Extended response",
-                )
-            )
+            bridge.action_sink.record(_spoke("respond", "Extended response"))
 
         t = threading.Thread(target=fake_aut, daemon=True)
         t.start()
@@ -450,14 +410,7 @@ class TestExtendSimulationTool:
         # Fake response on sub-bridge
         def fake_sub_aut():
             time.sleep(0.1)
-            sub_bridge.action_sink.record(
-                ActionRecord(
-                    timestamp=time.time(),
-                    tool_name="respond",
-                    result_success=True,
-                    result_output="Sub-AUT extended",
-                )
-            )
+            sub_bridge.action_sink.record(_spoke("respond", "Sub-AUT extended"))
 
         t = threading.Thread(target=fake_sub_aut, daemon=True)
         t.start()
