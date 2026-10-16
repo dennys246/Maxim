@@ -23,6 +23,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-10-16 — "Decomposition"
+
+The decomposition release: the agent loop is taken apart under characterization tests, and the ratchets
+and gates that keep it apart are added, with **no new behavioural claim**. Breaking, but a patch release
+by owner decision (2026-10-16): each break below names its migration.
+- **Read the Security section first.** It is breaking and lists the upgrade steps.
+- **The decomposition.** `runtime/agent_loop.py` went from 5,543 lines (v1.3.1) to 3,363. Setup, the
+  pre-tick gate, perception, planning, the substrate tick and the proposer family now live in their own
+  modules (`runtime/loop_*.py`, `runtime/substrate_proposal.py`). Characterization goldens pinned every slice
+  before it moved. A function-length ratchet, per-package and per-file coverage floors, and mypy on the composition layer now
+  hold the line, and 1.4.0 is hard-gated on the rest of the decomposition (#1300).
+- **Evidence.** Each sim report stamps the code, model and context budget it ran under. The ledger is
+  machine-readable, an evidence gate checks every status change, and a typed abort is never evidence. On
+  the ledger since 1.3.1:
+  - T1-16 (Exp 63) is EARNED, narrow: carried memories take part in recall across sessions, on the
+    current goal-keyword ranker (one run, mistral-7b). That is storage into recall, not a behavioural
+    claim, and it supersedes Exp 10 (T1-1).
+  - T1-13, T1-14 and T1-15 (Exp 60/61/62) are PARTIAL. T1-13 matched its no-bio floor in B1. T1-14 and
+    T1-15 match it analytically (BF2, not run).
+  - T1-2 (Exp 37) ships STALE under the committed exception `release-1.3.2-T1-2`.
+  See "Evidence status at the cut".
+- **Defects fixed at their seams:**
+  - a tool failure is booked once, with its surprise;
+  - the Cerebellum's forward models are saved where they are loaded;
+  - the SCN and Hippocampus survive concurrent capture;
+  - a sim stops the DefaultNetwork it started;
+  - the narrator hears the agent, and the agent is offered only its own tools;
+  - the internet policy fails closed on an unreadable robots.txt (#966–#968).
+  Mechanisms that never earned weight are marked Dormant instead of left implying they work.
+- **The Console (contract 0.6.0):** run history and health, stall detection, per-action credit
+  (`actions.jsonl` 1.2) and verified Piper voice provisioning. The wheel ships the maxim-pulse v0.4.0 bundle.
+- **Open issues:** 34 at `v1.3.1`, 118 at this cut.
+
+### Security — a leader fails closed (breaking, with a migration)
+
+- **Before:** a machine with no role signal became a leader, bound to every interface. A leader with no mesh key
+  served every route unauthenticated (`_check_auth`: no key meant "allow"); the CLI's "proxy will run without auth"
+  warning fired only on an exception that never happens. Every leader `setdefault`-ed `MAXIM_ALLOW_REMOTE_UPDATE=1`,
+  so `/v1/admin/{update,install,restart,llm-swap}` were open whenever auth was. `/v1/debug/*` skipped auth for a
+  loopback peer, and a cloudflared tunnel delivers every internet request from `localhost`, so a tunnelled leader
+  served `/v1/debug/logs`, `last-requests` and `deps` to anyone with its hostname. The leader's llama-cpp-server
+  listened on `0.0.0.0` with its key in argv (readable through `ps`).
+- **Now:**
+  - **The default role is `solo`** (`role.py` rank 7). A leader needs `MAXIM_ROLE`, `config.json::role` or a
+    cloudflared config. A machine that lands on the default but holds a mesh key logs `role_default_with_mesh_key`.
+  - **A leader with no usable key refuses to start** (`tunnel/keys.py::require_leader_key`: missing, empty, short,
+    non-ASCII, or group/world-readable), exits 2 and names the key path and the fix. This applies to the CLI, the
+    Python API's auto-spawn and the model swap.
+  - **The proxy's auth is a type.** `start_leader_proxy(*, auth: ProxyAuth, bind_host: str, ...)` replaces
+    `api_key=`, and there is no unauthenticated default. An unconfigured handler refuses every request.
+  - **Loopback is never authentication**: debug routes need the key.
+  - **Remote admin needs a bearer proxy AND an opt-in:** `proxy.allow_remote_update` (new, default `false`;
+    `CONFIG_FORMAT_VERSION` 1.2 → 1.3) or its env override `MAXIM_PROXY_ALLOW_REMOTE_UPDATE`. The legacy
+    `MAXIM_ALLOW_REMOTE_UPDATE` is IGNORED with a warning: older leaders set it themselves, and a remote
+    `peer restart` (`os.execv`) carries that value into the new process. One check, `_admin_refused`, serves all four
+    routes. Accepted values are the config loader's `1/true/yes/on`; `t`/`y` no longer count.
+  - **The leader's llama-cpp-server binds `127.0.0.1`.** The LeaderProxy (:8099) is the one network ingress. The
+    key goes in the child's env, and `HOST`/`PORT`/`CONFIG_FILE`/`api_key` inherited from the parent are scrubbed.
+    After spawn, and before reusing a server another process started, the server is checked from outside: a keyed
+    server answering without the key, or an unauthenticated one reachable on the LAN address, raises
+    `LLMServerExposureError`.
+  - **A port held by anything that answers without auth** is refused (`start_leader_proxy_for_role`). It is probed
+    WITHOUT the key, so the probe itself never discloses it. A listener that refuses with 401 (another leader
+    process) is shared, with a warning; a local process that squats the port AND answers 401 would still receive the
+    keys peers send through the tunnel. Proving the listener's identity is backlog M58 (challenge-response).
+  - **Security refusals share one base, `maxim.exceptions.LeaderRefusal`** (`LeaderKeyError`, `ProxyAuthError`,
+    `LLMServerExposureError`, all `RuntimeError`s). Server mode (`--mode server`) exits 2 on one. So do the robot
+    runtime's LLM-worker start and the research orchestrator's LLM init, which used to degrade to "run without the LLM".
+  - **Spawn and hot-swap decide the server's key through one helper** (`_server_key_for_role`, on
+    `role.resolved_role`), so a Python-API leader's swapped server is keyed like its first.
+  - **Readers of the role with `MAXIM_ROLE` unset** (`llm_server._model_state_file`, `peer/drain_state`) ask
+    `role.resolved_role` instead of assuming leader.
+  - `maxim doctor` fails a leader that could not start, shows remote admin (leader only, and the ignored legacy
+    variable), and runs the startup exposure check on a live :8100 server.
+  - `maxim peer llm --status` and the B1 rig check send the key; debug routes no longer answer without it.
+  - **`maxim oasis serve` without a key refuses on any bind**, loopback included, unless `--insecure`.
+  - **Error responses close the connection**, so an unread request body can no longer be parsed as the next
+    request on a kept-alive connection.
+- **Migration, per leader. Do it ON the leader, then cold-restart it.** Do not `maxim peer update && maxim peer restart`
+  into this release: the restart re-executes with the old process's environment, and a leader whose key is missing or
+  too open now exits 2 with no remote way back. Run `maxim doctor` there first.
+  - If it was a leader only by default: `maxim config set role leader`. Its persisted `active_llm_model.leader.txt`
+    and `drained_nodes.leader.txt` are read again once it is a leader. A box that stays solo by default reads the
+    `.solo` files, and with a cloud API key in its env and no `llm.profile`, the solo cloud auto-detect may select a
+    cloud model.
+  - If it has no key: `maxim tunnel key rotate` (then `maxim peer key set <key>` on peers).
+  - If the key file is too open: `chmod 600 ~/.config/maxim/api_key`.
+  - To keep `maxim peer update|install|restart|llm`: `maxim config set proxy.allow_remote_update true` (dry runs
+    included). `MAXIM_ALLOW_REMOTE_UPDATE` no longer counts; `MAXIM_PROXY_ALLOW_REMOTE_UPDATE` accepts only
+    `1/true/yes/on` (`t`/`y` are refused).
+  - Peers that dialled `http://<leader>:8100` directly move to `:8099`.
+- Guards: `tests/unit/test_leader_fail_closed.py`; each test was proven by deleting its mechanism.
+
 ### Evidence status at the cut (owner decisions 2026-10-14 and 2026-10-15)
 
 - **T1-2 (Exp 37, cross-session behavioural delta) ships STALE.** Its "prompt construction change" trigger fired

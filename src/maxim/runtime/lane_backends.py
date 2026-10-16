@@ -2508,18 +2508,9 @@ def _maybe_auto_spawn_server(
     except ValueError:
         port = 8100
 
-    # Load API key first — leader mode uses it both for spawning (--api_key
-    # flag) and for wiring the leader's own client. Auto-discovery below
-    # also needs it so reused servers get auth-wired into the lane.
-    api_key: str | None = None
-    if role_decision.role == "leader":
-        try:
-            from maxim.tunnel.keys import read_key
-
-            api_key = read_key()
-        except Exception as e:
-            logger.warning("Failed to read tunnel API key: %s", e)
-            api_key = None
+    # The key keys the server and the leader's own client (and reused servers).
+    # Fail closed, OUTSIDE any broad except: a leader without a key raises.
+    api_key = _server_key_for_role()
 
     # Singleton check: if a llama-cpp-server is already serving the right
     # model on this port, REUSE it instead of kill+respawn. This is the
@@ -2540,6 +2531,10 @@ def _maybe_auto_spawn_server(
         logger=logger,
     )
     if decision == "reuse":
+        from maxim.runtime.local_server_spawner import verify_llm_server_exposure
+
+        # Checked from outside before we route to it (see verify_llm_server_exposure).
+        verify_llm_server_exposure(port, api_key=api_key, allow_authenticated_lan=True)
         if _server_mod._active_spawner is not None and _server_mod._active_spawner.is_running:
             # We spawned this server in this process — refresh tracking.
             _server_mod._active_model = effective_profile
@@ -2593,9 +2588,8 @@ def _maybe_auto_spawn_server(
     except Exception:
         return lane_configs
 
-    # api_key was already loaded above (before auto-discovery) — reuse here
-    # when spawning the subprocess. Solo mode (127.0.0.1 bind) has api_key=None
-    # which means the server spawns without --api_key and accepts all requests.
+    # api_key (loaded above) keys the server; solo has none. Loopback for EVERY
+    # role: the LeaderProxy (:8099) is a leader's only ingress (2026-10-14).
 
     # n_ctx precedence (peer_leader_flexibility_plan P4c):
     #   1. MAXIM_LLM_N_CTX  — explicit user override (--llm-n-ctx flag)
@@ -2621,7 +2615,7 @@ def _maybe_auto_spawn_server(
     spawner = LocalServerSpawner(
         model_path=model_path,
         port=port,
-        bind_host=role_decision.bind_host,
+        bind_host="127.0.0.1",
         n_ctx=resolved_n_ctx,
         n_gpu_layers=infer_cfg.n_gpu_layers,
         api_key=api_key,
@@ -2637,7 +2631,7 @@ def _maybe_auto_spawn_server(
             "Auto-spawning llama-cpp-server (model=%s port=%d host=%s role=%s timeout=%ds)%s",
             Path(model_path).name,
             port,
-            role_decision.bind_host,
+            "127.0.0.1",
             role_decision.role,
             int(timeout_s),
             auth_note,
@@ -2684,12 +2678,10 @@ def _maybe_auto_spawn_server(
     # server, so `maxim` on the leader brings up the full stack in one
     # command. No-op when daemon is already running (systemd service, etc.).
     if role_decision.role == "leader":
-        # Auto-enable remote update for leaders unless explicitly disabled.
-        # Leader already auth-gates all requests via Bearer token — remote
-        # update is just another auth-gated action.
-        os.environ.setdefault("MAXIM_ALLOW_REMOTE_UPDATE", "1")
+        # Remote update is opt-in (proxy.allow_remote_update); it is no longer
+        # switched on for every leader here.
         _maybe_auto_spawn_tunnel_daemon(logger)
-        _maybe_start_leader_proxy(role_decision.bind_host, api_key, logger)
+        _maybe_start_leader_proxy(role_decision.bind_host, logger)
     return out
 
 
@@ -2903,13 +2895,8 @@ def _start_swap_server(
 
     from maxim.runtime.local_server_spawner import LocalServerSpawner
 
-    bind_host = "0.0.0.0"  # noqa: S104 — leader always binds all interfaces
-    try:
-        from maxim.runtime.leader_mode import detect_role
-
-        bind_host = detect_role().bind_host
-    except Exception as e:
-        logger.debug("Could not detect leader role for bind_host: %s", e)
+    # Loopback for every role: the LeaderProxy is the only network ingress.
+    bind_host = "127.0.0.1"
 
     # P4c: re-run estimate_max_ctx for the swap target so a hot-swap from
     # qwen-14b → mistral-7b on a 16 GB card doesn't accidentally inherit
@@ -2986,14 +2973,8 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
         except ValueError:
             port = 8100
 
-        api_key: str | None = None
-        try:
-            from maxim.tunnel.keys import read_key
-
-            api_key = read_key()
-        except Exception as e:
-            if logger is not None:
-                logger.warning("Failed to read tunnel API key for swap: %s", e)
+        # The same key rule as the first spawn (one helper, one role source).
+        api_key = _server_key_for_role()
 
         previous_model = _server_mod._active_model or "none"
 
@@ -3098,9 +3079,25 @@ def _maybe_auto_spawn_tunnel_daemon(logger: Any | None) -> None:
             )
 
 
+def _server_key_for_role() -> str | None:
+    """The key this process's llama-cpp-server is spawned with: a leader's mesh key, read
+    fail-closed (``require_leader_key`` raises ``LeaderKeyError``), or None for any other role.
+
+    The ONE place spawn, reuse and hot-swap decide it, through ``role.resolved_role`` (the
+    exported ``MAXIM_ROLE`` in a CLI process, the same detection in a Python-API process), so a
+    swap can never come up keyless under a leader whose first server was keyed (2026-10-14).
+    """
+    from maxim.runtime.role import resolved_role
+
+    if resolved_role()[0] != "leader":
+        return None
+    from maxim.tunnel.keys import require_leader_key
+
+    return require_leader_key()
+
+
 def _maybe_start_leader_proxy(
     bind_host: str,
-    api_key: str | None,
     logger: Any | None,
 ) -> None:
     """Start the LeaderProxy reverse proxy in front of llama-cpp-server.
@@ -3110,13 +3107,11 @@ def _maybe_start_leader_proxy(
     should point at the proxy port (8099) instead of the inference
     server (8100).
     """
-    try:
-        from maxim.runtime.leader_proxy import start_leader_proxy
-    except Exception as e:
-        if logger is not None:
-            logger.warning("Leader proxy module not available: %s", e)
-        return
-    start_leader_proxy(api_key=api_key, bind_host=bind_host)
+    # The one leader entry point: reads the key fail-closed and refuses a
+    # port held by anything but an authenticated LeaderProxy.
+    from maxim.runtime.leader_proxy import start_leader_proxy_for_role
+
+    start_leader_proxy_for_role(bind_host)
 
     # Start heartbeat monitor in leader mode (always on for leaders)
     try:

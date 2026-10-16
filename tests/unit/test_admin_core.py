@@ -141,7 +141,7 @@ class TestUpdateOnTarget:
             rc = update_on_target("https://leader.example.com/v1", "sk-test")
 
         assert rc == 1
-        assert "MAXIM_ALLOW_REMOTE_UPDATE" in capsys.readouterr().err
+        assert "proxy.allow_remote_update" in capsys.readouterr().err
 
     def test_dirty_tree_409_returns_1(self, no_probe_clear, capsys):
         from maxim.peer.admin_core import update_on_target
@@ -241,7 +241,7 @@ class TestRestartOnTarget:
             rc = restart_on_target("https://leader.example.com/v1", "sk-test")
 
         assert rc == 1
-        assert "MAXIM_ALLOW_REMOTE_UPDATE" in capsys.readouterr().err
+        assert "proxy.allow_remote_update" in capsys.readouterr().err
 
     def test_clears_probe_cache(self, no_probe_clear, no_proxy_ping):
         from maxim.peer.admin_core import restart_on_target

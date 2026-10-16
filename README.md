@@ -299,6 +299,10 @@ pymaxim.bio equivalents deploy; delete a row here when the page is retired:
 
 Issues and PRs welcome at [github.com/dennys246/Maxim](https://github.com/dennys246/Maxim).
 
+## Author
+
+Maxim is built by [Denny Schaedig](https://www.dennyschaedig.com).
+
 ## License
 
 See [LICENSE](https://github.com/dennys246/Maxim/blob/main/LICENSE) for details.

@@ -136,10 +136,10 @@ class TestSevenRankPrecedence:
         assert result == "solo"
         assert source == "cli_flag"
 
-    def test_no_signals_at_all_defaults_to_leader(self, fake_home):
-        """Rank 7: nothing matched → leader fallback."""
+    def test_no_signals_at_all_defaults_to_solo(self, fake_home):
+        """Rank 7: nothing matched → solo (2026-10-14; leader is never a default)."""
         result, source = role.detect_role(argv=[])
-        assert result == "leader"
+        assert result == "solo"
         assert source == "default"
 
     def test_leader_mode_detect_role_returns_same_role_as_role_py(self, fake_home):
@@ -211,7 +211,7 @@ class TestAdditionalPrecedence:
     def test_env_role_invalid_falls_through(self, fake_home, monkeypatch):
         monkeypatch.setenv("MAXIM_ROLE", "boss")
         result, source = role.detect_role(argv=[])
-        assert result == "leader"
+        assert result == "solo"
         assert source == "default"
 
     def test_env_role_legacy_client_coerces_to_peer(self, fake_home, monkeypatch):
@@ -231,7 +231,7 @@ class TestAdditionalPrecedence:
         (cfg_dir / "config.json").write_text('{"_format_version": "1.0", "role": "boss"}')
         # Fall through to default
         result, source = role.detect_role(argv=[])
-        assert result == "leader"
+        assert result == "solo"
         assert source == "default"
 
     def test_config_json_parse_error_surfaces_warning(self, fake_home, caplog):
@@ -251,7 +251,7 @@ class TestAdditionalPrecedence:
             result, source = role.detect_role(argv=[])
 
         # Falls through to default leader
-        assert result == "leader"
+        assert result == "solo"
         assert source == "default"
         # WARNING was emitted (not silent debug)
         warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
@@ -270,7 +270,7 @@ class TestAdditionalPrecedence:
         )
         with caplog.at_level(logging.WARNING, logger="maxim.runtime.role"):
             result, source = role.detect_role(argv=[])
-        assert result == "leader"
+        assert result == "solo"
         assert source == "default"
         warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
         assert any("config.json failed to parse" in r.getMessage() for r in warnings)
@@ -279,7 +279,7 @@ class TestAdditionalPrecedence:
         """No config.json file → falls through to mesh.yml / peer.yml /
         cloudflared / default. With nothing else set, defaults to leader."""
         result, source = role.detect_role(argv=[])
-        assert result == "leader"
+        assert result == "solo"
         assert source == "default"
 
     def test_peer_yml_alone_resolves_to_peer_via_auto_migration(self, fake_home):
@@ -326,7 +326,7 @@ class TestAdditionalPrecedence:
         The subcommand-name guard at rank 6 prevents it."""
         result, source = role.detect_role(argv=["tunnel", "--llm", "foo"])
         # No higher rank fired → falls to default leader
-        assert result == "leader"
+        assert result == "solo"
         assert source == "default"
 
 
@@ -351,9 +351,10 @@ class TestWrapperTranslation:
         assert decision.is_leader is True
 
     def test_wrapper_returns_solo_unchanged(self, fake_home):
-        decision = leader_mode.detect_role()  # default leader actually
-        # default = leader, not solo, when no signals present
-        assert decision.role == "leader"
+        decision = leader_mode.detect_role()
+        # no signals → solo, bound to loopback (2026-10-14; was leader on 0.0.0.0)
+        assert decision.role == "solo"
+        assert decision.bind_host == "127.0.0.1"
 
     def test_wrapper_solo_when_cli_flag_only(self, fake_home, monkeypatch):
         """The wrapper doesn't see argv directly — argv-driven cells

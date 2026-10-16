@@ -93,26 +93,29 @@ class TestValidateSwapProfile:
 
 
 class TestRemoteUpdateAllowed:
-    """Truthy parser for ``MAXIM_ALLOW_REMOTE_UPDATE``."""
+    """The remote-admin opt-in: env ``MAXIM_PROXY_ALLOW_REMOTE_UPDATE`` > ``proxy.allow_remote_update`` > False.
+
+    Parsed by the config loader's bool coercion (``1/true/yes/on``); anything it
+    rejects (``t``, ``y``, garbage) fails CLOSED rather than raising in a handler."""
 
     def test_unset_returns_false(self, monkeypatch):
         from maxim.runtime.leader_proxy import _remote_update_allowed
 
-        monkeypatch.delenv("MAXIM_ALLOW_REMOTE_UPDATE", raising=False)
+        monkeypatch.delenv("MAXIM_PROXY_ALLOW_REMOTE_UPDATE", raising=False)
         assert _remote_update_allowed() is False
 
-    @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "y", "on", "t"])
+    @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on"])
     def test_truthy_values_allowed(self, monkeypatch, value):
         from maxim.runtime.leader_proxy import _remote_update_allowed
 
-        monkeypatch.setenv("MAXIM_ALLOW_REMOTE_UPDATE", value)
+        monkeypatch.setenv("MAXIM_PROXY_ALLOW_REMOTE_UPDATE", value)
         assert _remote_update_allowed() is True
 
-    @pytest.mark.parametrize("value", ["0", "false", "no", "off", ""])
+    @pytest.mark.parametrize("value", ["0", "false", "no", "off", "", "t", "y", "maybe"])
     def test_falsy_values_rejected(self, monkeypatch, value):
         from maxim.runtime.leader_proxy import _remote_update_allowed
 
-        monkeypatch.setenv("MAXIM_ALLOW_REMOTE_UPDATE", value)
+        monkeypatch.setenv("MAXIM_PROXY_ALLOW_REMOTE_UPDATE", value)
         assert _remote_update_allowed() is False
 
 

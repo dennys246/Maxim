@@ -493,7 +493,7 @@ Role (`leader | peer | solo`) is detected **once** at process startup by `runtim
    /etc/cloudflared/config.{yml,yaml} exists?            → leader (C3, promoted above peer.yml)
 5. peer.yml exists?                                      → peer (legacy, demoted below cloudflared)
 6. --llm <local> flag + no peer/mesh/cloudflared?        → solo
-7. default                                               → leader
+7. default                                               → solo (leader until 2026-10-14)
 ```
 
 **Why explicit:** the 2026-04-12 persisted-profile incident was caused by implicit role inference in three different code paths. Having a single `detect_role()` function called once at startup makes "what role am I?" unambiguous.

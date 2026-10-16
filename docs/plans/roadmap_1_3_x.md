@@ -134,6 +134,13 @@ The items marked [→ 1.3.2], the decomposition, full mypy coverage, and any new
 
 ## 1.3.2 — the decomposition
 
+> **Released as v1.3.2 "Decomposition" (2026-10-16 UTC).** The release ships: the agent_loop decomposition
+> (setup, pre-tick gate, perception, planning, substrate tick); the ratchets and the evidence gate; the batch
+> fixes; and a breaking leader security change. What did not finish moved with its home:
+> - the orchestrator slices and agent_loop phase 2 are hard-gated for 1.4.0 (#1300);
+> - the 1.3.3 moves are recorded in the release-readiness block below.
+> T1-2 ships STALE under `release-1.3.2-T1-2`.
+
 ### Carried from 1.3.1 (re-scoped 2026-09-26)
 
 The enforcement ratchets and small defects marked **[→ 1.3.2]** in §1.3.1 — the slow lane, the

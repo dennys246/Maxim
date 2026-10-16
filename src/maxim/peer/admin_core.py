@@ -32,6 +32,9 @@ if TYPE_CHECKING:
     pass
 
 
+_OPT_IN_HINT = "  Opt in on the leader: `maxim config set proxy.allow_remote_update true`, then restart it."
+
+
 def update_on_target(
     url: str,
     key: str | None,
@@ -129,7 +132,7 @@ def update_on_target(
                 data = {"error": str(e)}
         if e.status == 403:
             print("Remote update is disabled on the leader.", file=sys.stderr)
-            print("  Set MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader process.", file=sys.stderr)
+            print(_OPT_IN_HINT, file=sys.stderr)
             return 1
         if e.status == 404:
             print("Admin endpoint returned 404.", file=sys.stderr)
@@ -299,7 +302,7 @@ def restart_on_target(url: str, key: str | None) -> int:
                 data = {"error": str(e)}
         if e.status == 403:
             print("Remote restart is disabled on the leader.", file=sys.stderr)
-            print("  Set MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader process.", file=sys.stderr)
+            print(_OPT_IN_HINT, file=sys.stderr)
             return 1
         if e.status == 404:
             print("Admin endpoint returned 404.", file=sys.stderr)
@@ -468,7 +471,10 @@ def _print_404_diagnosis(base_url: str, key: str | None = None) -> None:
         print("  The endpoint may not exist in this version. Try updating the leader.", file=sys.stderr)
     else:
         print("  Quick checks on the leader machine:", file=sys.stderr)
-        print("    curl -s http://localhost:8099/v1/debug/ping", file=sys.stderr)
+        print(
+            '    curl -s -H "Authorization: Bearer $(cat ~/.config/maxim/api_key)" http://localhost:8099/v1/debug/ping',
+            file=sys.stderr,
+        )
         print("    grep service ~/.cloudflared/config.yml", file=sys.stderr)
         print("      (should show: service: http://localhost:8099)", file=sys.stderr)
         print(file=sys.stderr)

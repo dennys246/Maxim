@@ -16,7 +16,7 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1678
+      "lines": 1627
     },
     {
       "file": "src/maxim/cli_parser.py",
@@ -171,7 +171,7 @@
     {
       "file": "src/maxim/runtime/lane_backends.py",
       "qualname": "_maybe_auto_spawn_server",
-      "lines": 311
+      "lines": 303
     },
     {
       "file": "src/maxim/runtime/lane_backends.py",
@@ -236,7 +236,7 @@
     {
       "file": "src/maxim/simulation/research_orchestrator.py",
       "qualname": "start_research_mode",
-      "lines": 276
+      "lines": 262
     },
     {
       "file": "src/maxim/simulation/roy_runner.py",
@@ -365,6 +365,9 @@
     "record_outcome tightened 413 -> 399 on 2026-10-12 (#1221 item 3) when its sim trace moved into _observe_tool_result, so a failure the bridge booked (the skipped observe) is no longer traced with a placeholder confidence and RPE.",
     "_parse_entity (src/maxim/embodiment/spec.py) tightened 207 -> 195 on 2026-10-14 (#1261) when the affordance schema construction (effects and the new validated speech_param) moved to the module-level spec._affordance_schema; under the 200 threshold, so its entry is removed.",
     "build_app tightened 338 -> 333 on 2026-10-14 (#1268 follow-up F1) when its spoken-code pairing validation and state moved to console/server.py::_install_pairing, paying for the new pairing_ready argument and its docstring.",
-    "start_simulation_mode tightened 3004 -> 2889 on 2026-10-14 (#1260, owner decision: a registry-scoped overlay) when section 5's process-global TOOL_DESCRIPTIONS.update was deleted and its 14 narrator-only entries moved to the module constant simulation/tools.py::NARRATOR_TOOL_DESCRIPTIONS, which the narrator's SimToolRegistry.tool_descriptions() carries."
+    "start_simulation_mode tightened 3004 -> 2889 on 2026-10-14 (#1260, owner decision: a registry-scoped overlay) when section 5's process-global TOOL_DESCRIPTIONS.update was deleted and its 14 narrator-only entries moved to the module constant simulation/tools.py::NARRATOR_TOOL_DESCRIPTIONS, which the narrator's SimToolRegistry.tool_descriptions() carries.",
+    "_main_impl tightened 1678 -> 1662 on 2026-10-14 (leader fails closed) when the early leader boot's key read, warning and proxy start moved into runtime/leader_proxy.py::start_leader_proxy_for_role, which fails closed instead of warning.",
+    "_maybe_auto_spawn_server tightened 311 -> 309 the same day: its leader key read became the fail-closed require_leader_key (no try/except), its 0.0.0.0 leader bind became loopback, and the remote-update setdefault was deleted; the reuse exposure check is one call to local_server_spawner.verify_llm_server_exposure.",
+    "_main_impl tightened 1662 -> 1627, _maybe_auto_spawn_server 309 -> 303 and start_research_mode 276 -> 262 on 2026-10-14 (leader fail-closed review folds): the early leader boot moved to cli.py::_early_leader_boot, the spawn/swap key decision to lane_backends.py::_server_key_for_role, and the research LLM init to research_orchestrator.py::_build_research_llm, paying for the LeaderRefusal re-raises added in the same change (agentic_runtime's re-raise rides utils/logging.py::warn_unless_refusal, so _start_agentic_runtime stays at its pin)."
   ]
 }

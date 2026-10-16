@@ -76,13 +76,30 @@ class TestApiKey:
         cmd = s._build_cmd()
         assert "--api_key" not in cmd
 
-    def test_api_key_added_when_set(self, tmp_path):
+    def test_api_key_travels_in_env_never_argv(self, tmp_path):
+        """argv is world-readable through `ps` on a shared host; the child's env is not (2026-10-14)."""
         model = tmp_path / "fake.gguf"
         s = LocalServerSpawner(model_path=str(model), api_key="secret-token-123")
         cmd = s._build_cmd()
-        assert "--api_key" in cmd
-        idx = cmd.index("--api_key")
-        assert cmd[idx + 1] == "secret-token-123"
+        assert "--api_key" not in cmd
+        assert not any("secret-token-123" in part for part in cmd)
+        assert s._build_subprocess_env()["API_KEY"] == "secret-token-123"
+
+    def test_inherited_overrides_of_listen_address_and_key_are_scrubbed(self, tmp_path, monkeypatch):
+        """llama_cpp.server reads HOST/PORT from the env over --host/--port and lets CONFIG_FILE replace
+        every setting; an inherited HOST=0.0.0.0 would rebind a loopback server to every interface."""
+        monkeypatch.setenv("HOST", "0.0.0.0")
+        monkeypatch.setenv("PORT", "9999")
+        monkeypatch.setenv("CONFIG_FILE", "/tmp/evil.json")
+        monkeypatch.setenv("api_key", "stale-lowercase")
+        monkeypatch.setenv("Api_Key", "stale-mixed")
+        model = tmp_path / "fake.gguf"
+        env = LocalServerSpawner(model_path=str(model), api_key="ours")._build_subprocess_env()
+        assert "HOST" not in env and "PORT" not in env and "CONFIG_FILE" not in env
+        assert [k for k in env if k.lower() == "api_key"] == ["API_KEY"]
+        assert env["API_KEY"] == "ours"
+        no_key_env = LocalServerSpawner(model_path=str(model))._build_subprocess_env()
+        assert not [k for k in no_key_env if k.lower() == "api_key"]
 
     def test_empty_api_key_not_added(self, tmp_path):
         model = tmp_path / "fake.gguf"
