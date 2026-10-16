@@ -524,6 +524,22 @@
             "pattern": "broad try around sim_log('PERCEPTION', 'audio-orient ...') (emit only)"
           },
           "source": "The four innermost sim_log wraps (#863's DROP class), traced from 07369b3f: #863's step-2 classification (issue comment 2026-09-24, against main @ 07369b3f), reproduced by the same scan there; they moved from run_agentic_loop to runtime/loop_perception.py with agent_loop slice 5 (#1210). Not gated: the two outer run_agentic_loop blocks #863 classifies KEEP (out of its scope), the display site (agent_loop:4206 at 07369b3f, which #863 excluded), and the explicit-form handlers #863 mentions only as an aside ('worth converting when its site is read', issue comment 2026-09-23; owner decision 2026-10-15: the gate does not widen an issue beyond its own close condition)."
+        },
+        {
+          "id": "1305.owned-rng",
+          "ref": "#1305",
+          "scope": "#1305: no module under src/maxim/default_network/, src/maxim/attention/ or src/maxim/spatial/, nor src/maxim/decisions/significance.py, draws from a process-global generator (a call to a function of the stdlib random module, or to numpy's legacy np.random.* functions such as np.random.choice). Each draws from an owned generator instance (random.Random or numpy.random.Generator) whose seed derives from the seed utils/seeding.py::seed_all last set (utils/seeding.py::get_global_seed). So a draw in those modules does not advance the process-global streams, and a thread drawing there cannot disturb a seed-then-draw on another thread; after seed_all(s), the same calls on objects constructed after it yield the same draws.",
+          "evidence": [],
+          "red_gate": null,
+          "source": "#1305 (filed 2026-10-15), split from #1281's fix (a) when #1281 closed: PR #1299 removed the flake's cause (the leaked DefaultNetwork) and a 2026-10-15 probe found no leaked global draws, so what remains is seeded reproducibility (global random drawn on concurrent threads, e.g. significance._random_init on the Minecraft AUT thread). Owner decision 2026-10-15: it stays a 1.4.0 gate item."
+        },
+        {
+          "id": "1263.thread-guard",
+          "ref": "#1263",
+          "scope": "#1263's thread guard (#1281's fix (b)): a tests/conftest.py guard fails any fast-suite test for which a loop thread that appeared while the test or its fixtures ran (a thread whose target is a *_run_loop, *_writer_loop or *_worker_loop method, or a memctx_* pool worker) is still alive once the fixtures that started it have been torn down; its allowlist is empty.",
+          "evidence": [],
+          "red_gate": null,
+          "source": "#1281's fix (b), moved to #1263 when #1281 closed on 2026-10-15 (the leaks it guards are #1263's: plan-writers, memctx, ConceptExtractor; the DefaultNetwork part shipped in PR #1299). Owner decision 2026-10-15: it hard-gates 1.4.0."
         }
       ],
       "retired": []

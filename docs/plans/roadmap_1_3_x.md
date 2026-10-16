@@ -639,12 +639,14 @@ unit-tests), which fails every version at or above 1.4.0 until three things hold
   200 lines or fewer with no function-length pin, and so is everything split or moved out of them.
 - The five orchestrator characterization arms (`persistent_agent`, `imagination`, `new_goal`, `stall`,
   `generative`; §"Characterization owed" below) are complete in the golden, with direct-assertion evidence.
-- 30 items are each satisfied by an evidence test that was once a strict red gate, or retired on the record: the
+- 32 items are each satisfied by an evidence test that was once a strict red gate, or retired on the record: the
   slice-0 defects (#1259, #1262, #1263's six parts including the DefaultNetwork stop #1299 shipped, #1264, #1265,
   #1267); the folded issues (#1123's three parts, #932's resume lookup, #863's seven DROP-class sites: four
   `loop_perception` wraps and three orchestrator SEM_TRACE wraps); #1288's four name lists
   (`modes/definitions.py::CORE_TOOLS` is exempt as a mode-membership list); and the loop-bound #835, #850, #845
-  item 1 and #965.
+  item 1 and #965; and #1281's remainder after #1299 fixed its root cause (`1305.owned-rng`, owned generators in
+  `default_network/`, `attention/`, `spatial/` and `decisions/significance.py`; `1263.thread-guard`, a conftest
+  guard with an empty allowlist; added 2026-10-15 by owner decision).
 
 What only review can catch around it, including that an arm lands before the slice that moves its code, is
 mechanization backlog M56 ([outstanding.md](outstanding.md)).

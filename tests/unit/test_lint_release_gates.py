@@ -1202,6 +1202,7 @@ def test_the_real_gate_file_names_what_the_owner_decided():
         "863.loop.orient_to_audio.percept",
         "863.loop.orient_to_audio.reflex",
     ]  # review S3: #863's own close condition; no KEEP blocks, no explicit-form handlers
-    assert len(g.items) == 30
+    assert {"1305.owned-rng", "1263.thread-guard"} <= set(ids)  # owner decision 2026-10-15: #1281's remainder
+    assert len(g.items) == 32
     snapshot = {tuple(p) for p in g.raw["debt_snapshot"]}
     assert ("src/maxim/simulation/orchestrator.py", "start_simulation_mode") in snapshot
