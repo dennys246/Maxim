@@ -1155,3 +1155,26 @@ class TestBaselineComparison:
         assert mr.metrics["memory_formation_rate"] == pytest.approx(2.5)
         assert mr.score == pytest.approx(0.65)
         assert mr.expectations_passed == 4
+
+
+@pytest.mark.xfail(strict=True, reason="#1310: the expectations count and the threshold verdict share one label")
+def test_summary_labels_expectations_and_thresholds_separately():
+    """#1310: `0/3 passed [PASS]` read as "the expectations passed". The verdict comes from the suite's metric
+    thresholds and the count from the scenarios' expectations: each gets its own label."""
+    report = BenchmarkReport(
+        timestamp="20261016_132809",
+        suite="quick_check",
+        models=["mistral-7b"],
+        runs_per_model=1,
+        results={
+            "mistral-7b": ModelResult(
+                model="mistral-7b", metrics={"memory_formation_rate": 17.0}, score=0.81, passed=True,
+                expectations_passed=0, expectations_total=3,
+            )
+        },
+        overall_ranking=["mistral-7b"],
+    )  # fmt: skip
+    table = report.summary_table()
+    assert "0/3 passed [PASS]" not in table
+    line = next(ln for ln in table.splitlines() if ln.strip().startswith("mistral-7b:") and "expectations" in ln)
+    assert "expectations 0/3 met" in line and "thresholds PASS" in line, line
