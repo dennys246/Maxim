@@ -584,7 +584,7 @@ def test_an_arm_needs_its_golden_key_and_direct_evidence(repo, capsys):
 
 def test_a_slice_that_lands_before_the_arms_does_not_brick_ci(repo, capsys):
     """Review B1 (owner decision 2026-10-15): the arms are gated as COMPLETE only. When they land relative to the
-    slices is review's (M55): a history rule over the pin made one early slice fail CI at every version, for good."""
+    slices is review's (M56): a history rule over the pin made one early slice fail CI at every version, for good."""
     finish_function(repo)
     repo.commit("a slice lands first")
     land_alpha(repo)

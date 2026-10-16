@@ -230,7 +230,7 @@ rung's prereg freezes):**
 
 ## Phase 1 — Exp 62, cross-context transfer by the body (runs FIRST, concurrently)
 
-**EARNED 2026-09-20 — PHASE 1 IS CLOSED.** Campaign `exp62-rungA-1` at one hash, 27 rows, ZERO
+**EARNED 2026-09-20 — PHASE 1 IS CLOSED** (T1-15 is `PARTIAL (rung A: floor matched, analytical)` since 2026-10-15, after B1; Phase 1 needed a recorded outcome, which stands). Campaign `exp62-rungA-1` at one hash, 27 rows, ZERO
 refusals, 46.9 min: NODE 12/12, CROSS 12/12, SAME 12/12, ABLATED 0/3 with zero executor calls, REPLAY
 agrees; Fisher p 0.0022; cross-arm Wilson **[0.758, 1.000]** — the interval is the statistic, since
 both fear arms sit at the ceiling by design. Prereg v3 (the freeze) + §Outcome; data #790, ledger row
@@ -602,7 +602,7 @@ frozen status verbatim; **EARNED** per rung = every frozen gate of that rung's p
   DROP/KEEP rule. Below 1.4.0 the lint prints the outstanding counts on every run. The diff
   that bumps to 1.4.0 may not touch the gate file. **Once 1.4.0 is released** (a released `## [1.4.0]` CHANGELOG
   header and pyproject version at the diff's base), the gate closes: its item, arm, function and new-debt rules only print, and its
-  shape and history rules stay enforced. Residuals that only review can catch: mechanization backlog M55
+  shape and history rules stay enforced. Residuals that only review can catch: mechanization backlog M56
   ([outstanding.md](outstanding.md)).
 - **T1 — E1's instrument shipped and proven.** Items 1a, 2 (all five acceptance checks), 4 (the
   gated apparatus record of measured primitives) merged with their offline runs; the R3 A+C variant
@@ -711,7 +711,7 @@ Nothing under `runtime/agent_loop.py`, `decisions/nac.py`'s selection path or `s
 until the 1.3.2 decomposition slices touching it have landed. The end of that fence is mechanical: T0 in §Release thresholds, `scripts/release_gates.json`.
 
 **Dev-box groundwork (Track B), in order of value:**
-1. **Exp 62's different-reader pass** — cheap, and it turns an EARNED ledger row into a result 1.4 may
+1. **Exp 62's different-reader pass** — cheap, and it turns a ledger row (EARNED then; PARTIAL, floor matched, since 2026-10-15) into a result 1.4 may
    claim (it is not a 1.3.1 claim until this is recorded).
 2. **The grounded-language L0 offline gate** ([deferred/grounded_word_binding.md](deferred/grounded_word_binding.md)):
    frozen 2026-09-24, offline, no rig — blind-authored phrasings of five situations through Maxim's own EC
@@ -867,6 +867,10 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   (FEAR > RANDOM p = 0.0035; FEAR > Q_EXPLORE not shown, p = 1.0). Under BF2, T1-13 is now `PARTIAL (narrow: floor
   matched)`, moved in the data PR itself. The open question it leaves for E1–E3: a contingency where the floor can
   lose (delayed credit, transfer across situations), since a one-step learner matches FEAR here.
+  *T1-14 / T1-15 (owner, 2026-10-15):* `PARTIAL (narrow: floor matched, analytical)` and `PARTIAL (rung A: floor matched,
+  analytical)`, argued after B1 without
+  a rig run (baseline_floors.md §Why). For E1–E3 this obliges the mechanism twin (TD state value + the same prior)
+  as a RUN arm and a contingency a reasonable floor can lose; both go to E1's four-lens design review.
   *B4 is T1-2's owed re-fire (owner, 2026-10-14):* L8's dose-response design, homed here. 1.3.2 released
   without it under the committed exception `release-1.3.2-T1-2`, and T1-2 stays STALE until B4's run lands.
 

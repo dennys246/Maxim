@@ -89,7 +89,7 @@ intensity and source; memory, fear and credit are separate PainBus subscribers (
   paths must be **measured**.
 - **Tamper resistance and portability exist.** Ingest clamps fear to [−1, 0] and folds it by MIN
   (`hivemind/merge.py`), discounts foreign fear (`hivemind/ingest.py::FOREIGN_FEAR_DISCOUNT`, 0.75),
-  refuses unknown failure modes, and admits inherent-class markers only from the Queen. Exp 61 (EARNED) is
+  refuses unknown failure modes, and admits inherent-class markers only from the Queen. Exp 61 (EARNED; PARTIAL, floor matched, since 2026-10-15) is
   the portable "engram". The hand-off's LLM-weight forms (probe head, steering vector, LoRA) do not enter.
 - **The act-bound aversive write mostly exists too.** `NAc.update_cluster_reward` is cluster-agnostic;
   the interoception-only rule is the routing of its reward caller in `runtime/tool_dispatch.py`.

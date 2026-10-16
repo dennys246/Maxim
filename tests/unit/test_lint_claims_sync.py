@@ -107,7 +107,9 @@ def test_an_index_status_cell_must_match_the_ledger():
 
 def test_a_scope_word_matches_whole_words_only():
     """`rung A` must not be satisfied by `rung avoidance` (adversarial pass)."""
-    out = _fails(index=_swap(INDEX, "**EARNED 2026-09-20 (rung A)**", "**EARNED 2026-09-20 (rung avoidance)**"))
+    out = _fails(
+        index=_swap(INDEX, "**PARTIAL 2026-10-15** (rung A: floor", "**PARTIAL 2026-10-15** (rung avoidance: floor")
+    )
     assert any("scoped `(rung A …)`" in f for f in out), out
 
 

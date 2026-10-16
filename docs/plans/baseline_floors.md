@@ -14,6 +14,21 @@
 8/8, Q_EXPLORE 8/8, RANDOM 2/8 at the first post placement, so T1-13 is `PARTIAL (narrow: floor matched)`
 ([prereg](../experiments/b1_exp60_floor_prereg.md)). The paragraph below is the motivation as of 2026-10-10.
 
+*Owner decision 2026-10-15 (after B1): T1-14 (Exp 61) takes `PARTIAL (narrow: floor matched, analytical)` and
+T1-15 (Exp 62) `PARTIAL (rung A: floor matched, analytical)`, without a rig run (owner exceptions, #1294).* They rest on the same Wire-4 fear, and their floors match by construction:
+- a floor the harness arms in water gets WHEN for free; with the same prior it surfaced on its first-ever
+  submersion with zero experience in B1 (Q_EXPLORE_PRIOR, pre-probe placement 0: 8/8);
+- the fair floor for learning WHEN from passive pain is a state-value learner, and TD state value on the cluster
+  plus the same prior IS Wire-4 (the B1 prereg's analytical twin; an action-value learner cannot learn there, which
+  is why Q_YOKED was rejected as a strawman);
+- Exp 62's transfer lives in the EC key the floors share (its NODE gate), and B1's raw key holds no altitude.
+
+**What this obliges for E1–E3 (the ladder's floor design):** the mechanism twin (TD state value on the cluster +
+the same prior) is RUN as an explicit arm, so a rung reports its gain over the twin as well as over `tabular_q` and
+`random`; and a rung that wants to EARN over the floor needs a contingency a reasonable floor can lose, the
+candidate being generalization through EC similarity to states a reasonable tabular key treats as new. Choosing an
+over-fine floor key so that it loses is a strawman in our favour and is for the confounding lens to refuse.
+
 Until B1, no ledger row, EARNED or STALE, had been compared with an agent that lacks the bio layers. "Earned"
 today means beating one of Maxim's own ablations: Exp 60's control is FEAR vs ABLATED (fear subscriber
 detached), and Exp 37's control arms A and C run the full Maxim stack. `simulation/benchmark.py::BenchmarkRunner.baseline_path`

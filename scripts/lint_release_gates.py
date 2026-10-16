@@ -61,7 +61,7 @@ JUnit report cannot answer in CI. The lint prints every gate's outstanding count
    ``<golden_test>[<arm>]`` must pass at run time (rule 6). At an ACTIVE gate every arm must be satisfied or
    retired. WHEN the arms land (before the slice that moves their code) is not checked here: a history rule over
    the function-length pin would brick CI at every version the first time a slice landed early, with no way back
-   through an immutable gate file (review B1, owner decision 2026-10-15). It is a residual (M55).
+   through an immutable gate file (review B1, owner decision 2026-10-15). It is a residual (M56).
 6. **Runtime twin (SF-8, ``--junit <xml>``).** Static analysis cannot see a conftest fixture or
    ``pytest_collection_modifyitems`` that skips. So every evidence nodeid of a satisfied item or arm, and each
    satisfied arm's golden case, must appear in the fast suite's JUnit report (every parametrization, mapped
@@ -103,7 +103,7 @@ base, and ``GITHUB_ACTIONS`` only decides what happens when git cannot answer. I
 clone is exit 2, because the history rule would otherwise pass vacuously. Locally, the git-backed rules (3b,
 the close-out check, 7, 8) are skipped with an INFO line.
 
-**Residuals (enforced by review only; mechanization backlog M55 in docs/plans/outstanding.md).**
+**Residuals (enforced by review only; mechanization backlog M56 in docs/plans/outstanding.md).**
 
 - What a red gate actually pinned, and whether it failed for the right reason.
 - An evidence test that never ran at its red-gate commit.
@@ -919,7 +919,7 @@ def diff_base(root: Path) -> str:
     only main, through a merged PR; never ``push_base``, which calls ``gh api``). The repo also allows REBASE merges:
     a rebase-merged ``[bump, x]`` lands as two first-parent commits, and the push run of ``x`` reads CLOSED, but the
     PR's own run (merge-base, ACTIVE) is the required gate, so that is covered. Only a direct multi-commit push that
-    skips a PR is not (a residual, M55). Every other event, local runs,
+    skips a PR is not (a residual, M56). Every other event, local runs,
     pull requests, ``schedule`` and ``workflow_dispatch`` included, uses the merge-base with origin/main (then
     main): a dispatch can run on any branch head, and judging it against its own parent let a branch whose first
     commit bumped the version read as already released (review SF1). On main the merge-base is HEAD itself."""

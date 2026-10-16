@@ -67,7 +67,7 @@ never separates at any gain. Full account:
   rewarded situation is recognised no more readily than an unrewarded one.
 
 **Transfer.** `cluster_*` values and fear re-key through the aligned EC `id_map` at ingest (fear
-discounted ×0.75, `FOREIGN_FEAR_DISCOUNT`). Exp 56 (want) and Exp 61 (fear) are EARNED on this path.
+discounted ×0.75, `FOREIGN_FEAR_DISCOUNT`). Exp 56 (want) is EARNED on this path; Exp 61 (fear) earned it and is PARTIAL (floor matched, argued after B1) since 2026-10-15.
 
 ## 3. Recognition engrams (text node + `reward_bias`)
 
