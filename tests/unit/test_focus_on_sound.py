@@ -189,7 +189,7 @@ class TestWiringCoherence:
         from maxim.modes.definitions import TOOL_DESCRIPTIONS, get_tool_followup_type
 
         assert "focus_on_sound" in TOOL_DESCRIPTIONS
-        assert get_tool_followup_type("focus_on_sound") == "process"
+        assert get_tool_followup_type("focus_on_sound", overlay={}) == "process"
 
     def test_every_mode_makes_it_available(self):
         from maxim.modes.definitions import CORE_TOOLS, get_mode

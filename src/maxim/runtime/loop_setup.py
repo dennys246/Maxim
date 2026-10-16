@@ -43,13 +43,13 @@ import logging
 import os
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from maxim.runtime import tool_dispatch as _td
 from maxim.runtime.bio_integration import start_bio_session
-from maxim.runtime.loop_state import _persist_state_json, run_mode
+from maxim.runtime.loop_state import _persist_state_json, run_mode, tool_description_overlay
 from maxim.runtime.tool_dispatch import book_machine_refusal, book_refusal, execute_and_learn, safe_agent_name
 from maxim.utils.logging import log_swallowed_exception
 
@@ -112,6 +112,9 @@ class LoopRun:
     # ``tool_dispatch.book_machine_refusal`` likewise (#1085): no NAc and no situation, by signature; callers pass
     # ``tool_name``, ``error``, ``reasoning``.
     book_machine_refusal: Callable[..., None]
+    # The agent's own tool descriptions over the builtins (#1260), from its registry, read once here: the prompt's
+    # tool section reads it, and ``execute_and_learn`` has it bound (``overlay=``) for the follow-up type.
+    tool_overlay: Mapping[str, Mapping[str, Any]]
 
 
 # ── helpers moved from agent_loop.py (slice 1 review, rule (a): only the setup calls them) ──
@@ -365,11 +368,13 @@ def _bind_execute_and_learn(
     rec_outcome: Callable[..., Any],
     nac: Any,
     memory_hub_enabled: bool,
+    tool_overlay: Mapping[str, Mapping[str, Any]],
 ) -> Callable[..., ExecutionOutcome]:
     """The run's ``tool_dispatch.execute_and_learn`` with every per-run argument bound, like ``rec_outcome``
     (#1133). The loop's own handles are read off ``ctrl``, which holds the same objects the loop does for
     the whole run (the setup built it from them). ``memory_hub`` is ``None`` when the hub's session did
-    not start: that is how the function knows to skip the plan outcome."""
+    not start: that is how the function knows to skip the plan outcome. ``tool_overlay`` is the run's own tool
+    descriptions (``LoopRun.tool_overlay``, #1260), bound as ``overlay``."""
     return functools.partial(
         execute_and_learn,
         agent=ctrl.agent,
@@ -391,6 +396,7 @@ def _bind_execute_and_learn(
         context_pool=ctrl.context_pool,
         nac=nac,
         run_id=ctrl.run_id,
+        overlay=tool_overlay,
     )
 
 
@@ -476,6 +482,8 @@ def build_loop_run(
         evaluators = []
 
     executor = _prepare_executor(executor, action_sink, state)
+    # Before anything runs: a registry without tool_descriptions() fails the run here, not mid-action (#1260).
+    _tool_overlay = tool_description_overlay(executor)
 
     sim = _build_sim_adapter(
         percept_source=percept_source,
@@ -589,6 +597,7 @@ def build_loop_run(
         rec_outcome=_rec_outcome,
         nac=_loop_nac,
         memory_hub_enabled=memory_hub_enabled,
+        tool_overlay=_tool_overlay,
     )
     _book_refusal = _bind_book_refusal(ctrl, agent_id=_loop_agent_id, rec_outcome=_rec_outcome, nac=_loop_nac)
     _book_machine_refusal = _bind_book_machine_refusal(ctrl, agent_id=_loop_agent_id, rec_outcome=_rec_outcome)
@@ -620,4 +629,5 @@ def build_loop_run(
         execute_and_learn=_execute_and_learn,
         book_refusal=_book_refusal,
         book_machine_refusal=_book_machine_refusal,
+        tool_overlay=_tool_overlay,
     )

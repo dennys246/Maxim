@@ -88,14 +88,16 @@ The determinism tests cover the rest: the three arms run back to back in one pro
 golden, and each arm runs in fresh interpreters under two hash seeds.
 
 STATED LIMIT (wall clock). A turn closes after 3 s with no new AUT action, as it does live. The AUT's
-reply chain is two actions: ``respond``, then its follow-up ``say``, about 0.5 s apart. A box loaded
-enough to stretch that gap past 3 s would split a turn, and the golden would go red. Check what else
-is running before reading such a failure as a regression.
+reply is one terminal ``respond`` (#1260). Before that fix a narrator-only entry gave ``respond`` a
+follow-up, and the chain was ``respond`` then ``say``, about 0.5 s apart; a box loaded enough to stretch
+that gap past 3 s would split a turn. A reply chain of two or more actions brings that limit back, and
+the golden goes red on a split turn. Check what else is running before reading such a failure as a
+regression.
 
 GLOBAL STATE. A run mutates process-global state, all of which ``run_arm`` snapshots and restores:
 
-  - ``modes.definitions.TOOL_DESCRIPTIONS``, the ``maxim`` logger level and every ``MAXIM_*`` env var
-    (including ``MAXIM_ALLOW_BASH`` and ``MAXIM_REPORT_JSON``);
+  - the ``maxim`` logger level and every ``MAXIM_*`` env var (including ``MAXIM_ALLOW_BASH`` and
+    ``MAXIM_REPORT_JSON``);
   - the user config: ``XDG_CONFIG_HOME`` points into the work dir and the config cache is reset, so the
     pinned ``configured_n_ctx`` is the default, not whatever ``~/.config/maxim/config.json`` holds on
     the box running ``--regen``;
@@ -107,6 +109,11 @@ GLOBAL STATE. A run mutates process-global state, all of which ``run_arm`` snaps
 
 ``MAXIM_SIM_HARD_ABORT=0`` is mandatory: the hard-abort path calls ``os._exit(4)``, which would kill
 pytest.
+
+ASSERTED, NOT RESTORED: ``modes.definitions.TOOL_DESCRIPTIONS``. A run must leave it as it found it: the
+narrator's own entries ride on its registry (#1260), and a run that writes the process-global dict fails
+``run_arm`` (``_GlobalState.restore``) rather than being quietly put back. The dict is put back only so
+the failure does not cascade into later tests.
 """
 
 from __future__ import annotations
@@ -147,6 +154,10 @@ ARMS: dict[str, dict[str, Any]] = {
 # The report writers the run calls, in order (a removed or reordered save shows even when a later
 # save of the same file masks it on disk).
 _REPORT_WRITERS = ("save_report", "save_action_log", "save_aut_state", "analyze_simulation", "emit_report_json")
+# Per arm, what the LAST run left behind outside the canonical trace (so the golden does not pin it): each role's
+# raw prompts, and ``TOOL_DESCRIPTIONS`` as the run left it, read BEFORE ``_GlobalState.restore`` checks it
+# (#1260: a narrator-only description must not reach the process-global dict).
+RUN_SIDE: dict[str, dict[str, Any]] = {}
 SETTLE_TIMEOUT_S = 30.0  # a harness wait that exceeds this is a hang, not a slow run
 _AUT_SETTLE_S = 3.0  # SimulationBridge's default settle_s: the same quiet window a turn waits for
 
@@ -204,6 +215,7 @@ class FakeRouter:
             "manifest": [],
         }
         self.unsorted: list[str] = []
+        self.prompts: dict[str, list[str]] = {role: [] for role in self.calls}  # raw, for RUN_SIDE only
         self._lock = threading.Lock()
 
     # The router surface the run touches besides generate_json.
@@ -254,6 +266,7 @@ class FakeRouter:
         call["answer"] = answer.get("action") if role in ("narrator", "aut") else sorted(answer)
         with self._lock:
             self.calls[role].append(call)
+            self.prompts[role].append(prompt)
         return copy.deepcopy(answer)
 
     # ── per-role scripts ─────────────────────────────────────────────────
@@ -286,7 +299,7 @@ class FakeRouter:
     def _answer_aut(self, call: dict[str, Any]) -> dict[str, Any]:
         if call["kind"] == "plan":
             return _act("respond", message=f"I heard: {call['request'][:40]}")
-        if call["executed"] == "respond":
+        if call["executed"] == "respond":  # reached only if the AUT's terminal respond is followed up (#1260)
             return _act("say", text="That is all.")
         return {"action": None, "confidence": 0.9, "reasoning": "done", "ready_to_act": False}
 
@@ -477,8 +490,10 @@ class _GlobalState:
         os.environ.update(self.env)
         os.chdir(self.cwd)
         sys.stdin = self.stdin
-        definitions.TOOL_DESCRIPTIONS.clear()
-        definitions.TOOL_DESCRIPTIONS.update(self.tool_descriptions)
+        leaked = definitions.TOOL_DESCRIPTIONS != self.tool_descriptions
+        if leaked:  # put back only so the failure below does not cascade into later tests
+            definitions.TOOL_DESCRIPTIONS.clear()
+            definitions.TOOL_DESCRIPTIONS.update(self.tool_descriptions)
         logging.getLogger("maxim").setLevel(self.maxim_level)
         tier, floor, mode, esc, nick, sensors = self.display
         SL._display_tier, SL._display_floor, SL._interactive_mode, SL._escalation_expires_at = tier, floor, mode, esc
@@ -499,6 +514,10 @@ class _GlobalState:
         with lane_metrics._registry_lock:
             lane_metrics._global_registry = self.lane_registry
         _reset_caches()
+        # Asserted last, after everything else is back (module docstring, ASSERTED, NOT RESTORED).
+        assert not leaked, (
+            "the run wrote modes.definitions.TOOL_DESCRIPTIONS (#1260: an agent's own entries ride on its registry)"
+        )
 
 
 def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
@@ -703,6 +722,13 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
             setattr(obj, name, orig)
         if isinstance(stdin, QueueStdin):
             stdin.eof()  # unblock a reader still waiting for a line
+        from maxim.modes import definitions
+
+        RUN_SIDE[arm] = {
+            "prompts": router.prompts,
+            "tool_descriptions_before": state.tool_descriptions,
+            "tool_descriptions_after": copy.deepcopy(definitions.TOOL_DESCRIPTIONS),
+        }
         state.restore()
 
 
@@ -750,21 +776,21 @@ def _files(root: Path) -> list[str]:
 # Threads the run leaves alive that are NOT pinned in ``threads_left_alive``, by name prefix, with the reason.
 _THREADS_EXCLUDED = {
     "memctx_": "MemoryAgent._context_pool is a CLASS-level ThreadPoolExecutor, created by the first MemoryAgent "
-    "in the PROCESS and never shut down (#1263). Whether THIS run adds its threads depends on what ran earlier "
-    "in the process (test order and selection), so the added set is not deterministic; only the pool being "
-    "alive after the run is pinned (``memctx_pool_alive``).",
+    "in the PROCESS and never shut down (#1263, its memctx part). Whether THIS run adds its threads, and whether "
+    "the pool is alive at all after it, depends on what ran earlier in the process (test order and selection): "
+    "since #1260 (no AUT follow-up) the precampaign and stdin arms do not start it in a fresh process but see it "
+    "alive after an earlier arm or test started it. Neither is pinned; #1263's memctx owner fix is what pins it.",
 }
 
 
 def _threads_left(before: list[threading.Thread]) -> dict[str, Any]:
     """The threads the run started that are still alive after it returned (and after ``_join_sim_threads``),
     numeric suffixes normalised (``Thread-12`` -> ``Thread-<N>``), duplicates kept, sorted. This pins #1263
-    (teardown leaves the AUT DefaultNetwork and both agents' plan writers running) as CURRENT behaviour:
+    (teardown leaves both agents' plan writers running; the AUT DefaultNetwork stops since #1281) as CURRENT behaviour:
     a slice that stops one of them, or leaks a new one, changes it."""
     added = [t for t in threading.enumerate() if t.is_alive() and not any(t is b for b in before)]
     names = sorted(re.sub(r"\d+", "<N>", t.name) for t in added if not t.name.startswith(tuple(_THREADS_EXCLUDED)))
-    pool = any(t.name.startswith("memctx_") and t.is_alive() for t in threading.enumerate())
-    return {"added": names, "memctx_pool_alive": pool}
+    return {"added": names}
 
 
 # ``MAXIM_DATA_HOME`` files not pinned, by glob relative to the data home (``*`` matches within ONE path segment,

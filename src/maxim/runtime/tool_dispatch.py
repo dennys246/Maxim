@@ -13,7 +13,7 @@ import logging
 import os
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from maxim.decisions.causal_link import Valence as _V
@@ -974,6 +974,7 @@ def execute_and_learn(
     context_pool: Any,
     nac: Any,
     run_id: str,
+    overlay: Mapping[str, Mapping[str, Any]],
     action: dict[str, Any],
     confidence: float,
     proposal: Any,
@@ -997,7 +998,8 @@ def execute_and_learn(
     The first block is per run and is bound ONCE by ``loop_setup.build_loop_run`` as
     ``LoopRun.execute_and_learn`` (a ``functools.partial``): ``rec_outcome`` is the run's recorder (with
     ``drive_relief_only`` bound), ``agent_id`` the hub's, ``memory_hub`` ``None`` when the hub's session
-    did not start (no plan outcome then). The rest is per action: ``proposal`` is the ``LLMProposal`` the
+    did not start (no plan outcome then), ``overlay`` the run's own tool descriptions the follow-up type reads
+    (``LoopRun.tool_overlay``, #1260). The rest is per action: ``proposal`` is the ``LLMProposal`` the
     action came from (or a sourceless ``autonomy.Proposal``: no situation), carrying the reasoning, citations,
     triggering input and the situation (``clusters``/``cluster_id``/``cluster_margins``) credit and capture key to.
     ``human_involved``: the action was confirmed or approved, by a person OR a policy (the non-interactive
@@ -1163,7 +1165,7 @@ def execute_and_learn(
 
         from maxim.modes.definitions import get_tool_followup_type
 
-        followup_type = get_tool_followup_type(tool_name, current_mode)
+        followup_type = get_tool_followup_type(tool_name, current_mode, overlay=overlay)
 
         # Store more result for tools that need processing (up to 3000 chars)
         needs_processing = followup_type in ("process", "respond", "engage")

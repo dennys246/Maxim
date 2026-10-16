@@ -33,19 +33,19 @@ pytestmark = pytest.mark.timeout(60)
     ],
 )
 def test_a_passive_class_mode_downgrades_engage_to_respond(mode):
-    assert get_tool_followup_type("internet_search", mode) == "respond"
-    assert get_tool_followup_type("web_search", mode) == "respond"
+    assert get_tool_followup_type("internet_search", mode, overlay={}) == "respond"
+    assert get_tool_followup_type("web_search", mode, overlay={}) == "respond"
 
 
 # Red on main: #963 Q3: an unknown mode name keeps engage (fails open)
 def test_an_unknown_mode_name_gives_respond():
-    assert get_tool_followup_type("internet_search", "no-such-mode") == "respond"
+    assert get_tool_followup_type("internet_search", "no-such-mode", overlay={}) == "respond"
 
 
 # Red on main: #963 Q3: no mode keeps engage (fails open)
 @pytest.mark.parametrize("mode", [None, ""])
 def test_no_mode_gives_respond(mode):
-    assert get_tool_followup_type("internet_search", mode) == "respond"
+    assert get_tool_followup_type("internet_search", mode, overlay={}) == "respond"
 
 
 @pytest.mark.parametrize(
@@ -53,17 +53,22 @@ def test_no_mode_gives_respond(mode):
 )
 def test_an_active_or_singularity_class_mode_keeps_engage(mode):
     """A guard: the active- and singularity-class names keep the engage template."""
-    assert get_tool_followup_type("internet_search", mode) == "engage"
+    assert get_tool_followup_type("internet_search", mode, overlay={}) == "engage"
 
 
+@pytest.mark.parametrize("registry", ["ToolRegistry", "SimToolRegistry"])
 @pytest.mark.parametrize("mode", ["observe", "active", "no-such-mode", None])
-def test_a_tool_that_does_not_engage_is_unchanged_by_the_mode(mode):
-    """A guard: only ``engage`` is mode-dependent; every other follow-up type is the tool's own."""
+def test_a_tool_that_does_not_engage_is_unchanged_by_the_mode(mode, registry):
+    """A guard: only ``engage`` is mode-dependent; every other follow-up type is the tool's own, for a plain
+    registry (the builtins) and the narrator's (its own entries over them, #1260)."""
     from maxim.modes.definitions import TOOL_DESCRIPTIONS
+    from maxim.simulation.tools import SimToolRegistry
+    from maxim.tools.registry import ToolRegistry
 
-    for name, info in TOOL_DESCRIPTIONS.items():
+    overlay = {"ToolRegistry": ToolRegistry, "SimToolRegistry": SimToolRegistry}[registry]().tool_descriptions()
+    for name, info in {**TOOL_DESCRIPTIONS, **overlay}.items():
         if info.get("followup_type") != "engage":
-            assert get_tool_followup_type(name, mode) == info.get("followup_type"), name
+            assert get_tool_followup_type(name, mode, overlay=overlay) == info.get("followup_type"), name
 
 
 # Red on main: #963 Q3: an observe run mode (passive-class) still queues an engage follow-up
