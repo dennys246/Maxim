@@ -48,8 +48,8 @@
       "missing": 1167
     },
     "maxim/doctor": {
-      "percent": 69.9,
-      "missing": 495
+      "percent": 71.0,
+      "missing": 494
     },
     "maxim/embodied_runtime": {
       "percent": 31.7,
@@ -132,8 +132,8 @@
       "missing": 54
     },
     "maxim/runtime": {
-      "percent": 75.2,
-      "missing": 3195
+      "percent": 76.3,
+      "missing": 3118
     },
     "maxim/salience": {
       "percent": 68.6,
