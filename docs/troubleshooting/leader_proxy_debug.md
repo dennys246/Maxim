@@ -50,7 +50,7 @@ The early proxy boot in `cli.py` runs `detect_and_apply_role()` which uses the 7
 4. `~/.cloudflared/config.{yml,yaml}` or `/etc/cloudflared/config.{yml,yaml}` exists → leader
 5. `peer.yml` exists → peer (not leader)
 6. `--llm <local>` CLI flag + no peer/mesh/cloudflared → solo
-7. Default → leader
+7. Default → solo (it was leader until 1.3.2; a leader is never the default now, and it needs a usable key: present, long enough, mode 600, or it exits 2)
 
 **Fix:** If the proxy isn't starting on a machine that should be a leader:
 ```bash
