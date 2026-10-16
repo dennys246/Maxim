@@ -1182,7 +1182,7 @@ def test_summary_labels_expectations_and_thresholds_separately():
 @pytest.mark.parametrize(
     "checked, passed, verdict",
     [
-        (0, True, "thresholds none defined"),
+        (0, True, "thresholds none applied"),
         (2, True, "thresholds PASS"),
         (2, False, "thresholds FAIL"),
         (None, True, "thresholds PASS"),
@@ -1214,10 +1214,17 @@ def test_thresholds_checked_survives_save_and_load(tmp_path):
     report_dir = runner.save_report(report)
     loaded = runner._load_baseline(str(report_dir / "benchmark_report.json"))
     assert loaded is not None and loaded.results["m"].thresholds_checked == 0
-    assert "thresholds none defined" in loaded.summary_table()
+    assert "thresholds none applied" in loaded.summary_table()
 
 
-@pytest.mark.parametrize("scoring, checked", [({}, 0), ({"memory_formation_rate": {"min": 1.0}}, 1)])
+@pytest.mark.parametrize(
+    "scoring, checked",
+    [
+        ({}, 0),
+        ({"memory_formation_rate": {"pass": 1.0}}, 1),
+        ({"recall_Verath": {"pass": 1.0}}, 0),  # defined, but its metric was never measured: not applied
+    ],
+)
 def test_aggregation_records_how_many_thresholds_were_checked(tmp_path, scoring, checked):
     """The runner's aggregate is where the count is set: an empty `scoring` block is 0, the auto-pass."""
     suite = tmp_path / "suite.yaml"

@@ -79,8 +79,9 @@ class ModelResult:
     expectations_passed: int = 0
     expectations_total: int = 0
     per_scenario: dict[str, dict[str, float]] = field(default_factory=dict)
-    #: How many suite thresholds ``passed`` was checked against. 0 = the suite defines none, so ``passed`` is an
-    #: automatic pass; None = unknown (a report saved before this field existed). #1310.
+    #: How many suite thresholds ``passed`` was actually checked against: those whose metric was measured. 0 = none
+    #: applied (the suite defines none, or none of its metrics were present), so ``passed`` is an automatic pass;
+    #: None = unknown (a report saved before this field existed). #1310.
     thresholds_checked: int | None = None
 
 
@@ -190,8 +191,9 @@ class BenchmarkReport:
         for m in self.models:
             if m in self.results:
                 mr = self.results[m]
-                # A suite with no thresholds auto-passes: say so rather than print a verdict nothing was checked for.
-                status = "none defined" if mr.thresholds_checked == 0 else ("PASS" if mr.passed else "FAIL")
+                # No threshold applied (none defined, or none of their metrics measured) is an auto-pass: say so
+                # rather than print a verdict nothing was checked for.
+                status = "none applied" if mr.thresholds_checked == 0 else ("PASS" if mr.passed else "FAIL")
                 lines.append(
                     f"    {m}: expectations {mr.expectations_passed}/{mr.expectations_total} met · thresholds {status}"
                 )
@@ -640,7 +642,7 @@ class BenchmarkRunner:
             expectations_passed=total_passed,
             expectations_total=total_expected,
             per_scenario=per_scenario,
-            thresholds_checked=len(self._scoring),
+            thresholds_checked=self._applied_thresholds(aggregated),
         )
 
     def _compute_composite_score(self, metrics: dict[str, float]) -> float:
@@ -705,6 +707,10 @@ class BenchmarkRunner:
                 scenario_score = self._compute_composite_score(metrics)
             weighted += weight * scenario_score
         return weighted / total_weight if total_weight > 0 else 0.0
+
+    def _applied_thresholds(self, metrics: dict[str, float]) -> int:
+        """How many suite thresholds ``_check_thresholds`` actually applies: it skips a metric that was not measured."""
+        return sum(1 for name in self._scoring if metrics.get(name) is not None)
 
     def _check_thresholds(self, metrics: dict[str, float]) -> bool:
         """Check if metrics meet suite-level scoring thresholds."""

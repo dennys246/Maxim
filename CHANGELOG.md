@@ -28,7 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The benchmark summary no longer prints "0/3 passed [PASS]"** ([#1310](https://github.com/dennys246/Maxim/issues/1310)).
   The verdict comes from the suite's metric thresholds (`ModelResult.passed`); the count is the scenarios'
   expectations. Each now has its own label: `expectations 0/3 met · thresholds PASS`. A suite with no `scoring`
-  block (like `quick_check`) auto-passes, so it now prints `thresholds none defined`; the count is recorded as
+  block (like `quick_check`), or whose threshold metrics were never measured, auto-passes, so it now prints
+  `thresholds none applied`; the count of thresholds actually applied is recorded as
   `ModelResult.thresholds_checked` and saved in `benchmark_report.json` (older reports load it as unknown). Nothing
   parses the line, and which result `passed` reflects is unchanged; whether it should also require the expectations
   stays open on #1310. `summary.md` is now written as UTF-8. Guards: `tests/unit/test_benchmark_runner.py`
