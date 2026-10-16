@@ -1,7 +1,7 @@
 # Maxim
 
 [![PyPI version](https://img.shields.io/pypi/v/pymaxim.svg)](https://pypi.org/project/pymaxim/)
-[![Downloads](https://static.pepy.tech/badge/pymaxim/month)](https://pepy.tech/project/pymaxim)
+[![Downloads](https://img.shields.io/pypi/dm/pymaxim.svg)](https://pypi.org/project/pymaxim/)
 [![Tests](https://github.com/dennys246/Maxim/actions/workflows/test.yml/badge.svg?branch=main&event=push)](https://github.com/dennys246/Maxim/actions/workflows/test.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/dennys246/Maxim/blob/main/LICENSE)
 
