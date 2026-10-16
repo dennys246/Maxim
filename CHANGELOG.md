@@ -23,6 +23,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-10-16 — "Decomposition"
+
+The decomposition release: the agent loop is taken apart under characterization tests, and the ratchets
+and gates that keep it apart are added, with **no new behavioural claim**. Breaking, but a patch release
+by owner decision (2026-10-16): each break below names its migration.
+- **Read the Security section first.** It is breaking and lists the upgrade steps.
+- **The decomposition.** `runtime/agent_loop.py` went from 5,543 lines (v1.3.1) to 3,363. Setup, the
+  pre-tick gate, perception, planning, the substrate tick and the proposer family now live in their own
+  modules (`runtime/loop_*.py`, `runtime/substrate_proposal.py`). Characterization goldens pinned every slice
+  before it moved. A function-length ratchet, per-file coverage floors and mypy on the composition layer now
+  hold the line, and 1.4.0 is hard-gated on the rest of the decomposition (#1300).
+- **Evidence.** Each sim report stamps the code, model and context budget it ran under. The ledger is
+  machine-readable, an evidence gate checks every status change, and a typed abort is never evidence. On
+  the ledger since 1.3.1:
+  - T1-16 (Exp 63) is EARNED, narrow: carried memories take part in recall across sessions. That is
+    storage into recall, not a behavioural claim, and it supersedes Exp 10 (T1-1).
+  - T1-13, T1-14 and T1-15 (Exp 60/61/62) are PARTIAL: each matched its no-bio floor (B1).
+  - T1-2 (Exp 37) ships STALE under the committed exception `release-1.3.2-T1-2`.
+  See "Evidence status at the cut".
+- **Defects fixed at their seams:**
+  - a tool failure is booked once, with its surprise;
+  - the Cerebellum's forward models are saved where they are loaded;
+  - the SCN and Hippocampus survive concurrent capture;
+  - a sim stops the DefaultNetwork it started;
+  - the narrator hears the agent, and the agent is offered only its own tools;
+  - the internet policy fails closed on an unreadable robots.txt (#966–#968).
+  Mechanisms that never earned weight are marked Dormant instead of left implying they work.
+- **The Console (contract 0.6.0):** run history and health, stall detection, per-action credit
+  (`actions.jsonl` 1.2) and verified Piper voice provisioning. The wheel ships the maxim-pulse v0.4.0 bundle.
+- **Open issues:** 34 at `v1.3.1`, 118 at this cut.
+
 ### Security — a leader fails closed (breaking, with a migration)
 
 - **Before:** a machine with no role signal became a leader, bound to every interface. A leader with no mesh key
