@@ -1,5 +1,12 @@
 # B1 (FROZEN v5, 2026-10-13) — the Exp 60 floor: what does the learned drowning-avoidance add over chance and over a model-free learner?
 
+> **Outcome 2026-10-14: `FLOOR_MATCHED_Q`** ([verdict](data/b1_exp60_floor_48ce40118c20_verdict.json),
+> [rows](data/b1_exp60_floor_48ce40118c20.jsonl), [apparatus](data/b1_exp60_floor_apparatus_2026-10-14.json); PR
+> #1283). First post placement surfaced: FEAR 8/8, Q-explore 8/8 (all three Q variants 8/8), random 2/8, n = 8 clean
+> per arm. FEAR > random is shown; FEAR > Q is not. Under BF2 the parent row T1-13 moved from EARNED to **PARTIAL
+> (narrow: floor matched)**; T1-14 and T1-15 followed analytically on 2026-10-15. The "FROZEN v5 … before any gated
+> data" status below is kept as recorded. [Ledger](../plans/behavioral_graduation_candidates.md).
+
 > **STATUS: FROZEN v5, 2026-10-13, on main before any gated data.** v5 records the seed 99 diagnostic (§Liveness
 > ladder: all checks pass) and folds what the rig showed into rules 11 and 14, with a run runbook (§Run runbook).
 > Implementation rules: §Frozen implementation rules, from the build-plan review
@@ -10,7 +17,7 @@
 > as recommended). The harness (#1236, #1238), its evidence entry and BF2 obligation lint (#1245) and a CLI fix
 > (#1258) are merged; the dry-run is the seed 99 diagnostic. Plan: [../plans/baseline_floors.md](../plans/baseline_floors.md) Stage B1 (owner decisions
 > BF1–BF2; the seam is a `src/` proposer hook, 2026-10-10). Parent: [exp60_drowning_avoidance_prereg.md](exp60_drowning_avoidance_prereg.md)
-> (EARNED 2026-09-16, T1-13). Every Exp 60 apparatus, preflight, probe and training rule is inherited unless
+> (EARNED 2026-09-16, T1-13; PARTIAL since this run). Every Exp 60 apparatus, preflight, probe and training rule is inherited unless
 > this document changes it.
 
 ## Why

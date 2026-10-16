@@ -100,7 +100,7 @@ The sim should show:
 
 - The orchestrator LLM must understand `damage_component` from TOOL_DESCRIPTIONS. If it calls `damage_entity` instead, the deprecated shim handles it (targets torso). This is expected for the first run — the LLM needs to see the new tool description.
 - H2 (affordance blocking) depends on enough sustained damage to a single component. If the orchestrator spreads damage across many parts, no single part may cross the threshold in 10 turns. Increase `--sim-max-turns 15` if needed.
-- The PoC tests the infrastructure end-to-end. Cross-session learning (does the agent avoid attacks to its damaged parts next time?) is tested separately in the affordance concept transfer experiments.
+- The PoC tests the infrastructure end-to-end. Cross-session learning (does the agent avoid attacks to its damaged parts next time?) was to be tested in the affordance concept transfer experiments, which never ran: ledger row T1-5 was DROPPED on 2026-10-08 ([ledger](../plans/behavioral_graduation_candidates.md); the cross-modal question moved to [grounding.md](../plans/grounding.md) GL5).
 
 ## Results (2026-04-25)
 

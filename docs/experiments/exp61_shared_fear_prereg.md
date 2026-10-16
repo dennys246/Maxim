@@ -1,5 +1,11 @@
 # Exp 61 (FROZEN 2026-09-17 at v2.3 — four-lens review FOLDED, harness-reconciled, dry runs 1+2 DONE) — shared survival fear: a learned drowning-fear transfers between independent agents and drives the receiver's first loop-live submersion
 
+> **Ledger 2026-10-15: PARTIAL (narrow: floor matched, analytical), row T1-14.** An owner decision applied after
+> [B1](b1_exp60_floor_prereg.md), without a rig run: a tabular learner given the same transferred prior matches the receiver by
+> construction (owner exceptions #1294, ledger #1296). The transport of the fear between agents, against the three
+> control arms, stands; behaviour beyond a non-bio learner does not. The EARNED outcome below is kept as recorded.
+> [Ledger](../plans/behavioral_graduation_candidates.md).
+
 > **Correction 2026-09-27 — the bundles were UNSIGNED.** "The shipped signed-bundle path" (below, and
 > §Outcome) overstated it: the harness exports through the real CLI (`exp56.common.export_bundle`) without
 > `--sign`, so every bundle was schema 2, unsigned. The transfer claim rests on the shipped export and
