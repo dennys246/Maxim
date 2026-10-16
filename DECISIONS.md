@@ -2,6 +2,31 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-10-14 — A leader fails closed, shipped as a patch (L1–L5)
+
+### Decision (owner, 2026-10-14)
+
+1. **L1. The default role is `solo`.** A leader binds every interface and serves remote admin, so a machine becomes
+   one only through `MAXIM_ROLE`, `config.json::role` or a cloudflared config.
+2. **L2. A leader without a usable mesh key refuses to start**, naming the key path and the fix. There is no escape
+   flag for a leader. `maxim oasis serve --insecure` stays the one explicit, operator-typed auth-off server, and it
+   never serves remote admin.
+3. **L3. Remote admin is opt-in** (`proxy.allow_remote_update`, env `MAXIM_PROXY_ALLOW_REMOTE_UPDATE`). The legacy
+   `MAXIM_ALLOW_REMOTE_UPDATE` is ignored with a warning, because older leaders set it themselves and a remote restart
+   (`os.execv`) inherits it.
+4. **L4. The leader's llama-cpp-server binds loopback**, and peers reach it only through the LeaderProxy.
+5. **L5. It ships in the next 1.3.x patch as a security break**, under a private GitHub security advisory first
+   (SECURITY.md), with the migration in the CHANGELOG.
+
+### Rationale
+
+An audit from the AvServ side (a safety-of-life server sharing a host with a Maxim install) found that a machine with
+no configuration became an unauthenticated, LAN-reachable leader with remote restart/update/model-swap enabled. The
+pre-code design pass then found that the `/v1/debug/*` localhost bypass served logs to the internet through any
+cloudflared tunnel. Each of these was fail-open, so the strict option was taken. The semver cost (a patch that
+changes the default role, a function signature, an env var name and remote-admin availability) was accepted over
+leaving a known-open default in place until 1.4; 1.1.1 is the precedent for a behaviour change in a patch release.
+
 ## 2026-10-11 — B1 evidence: the BF2 obligation lint and lost attempts (D1–D2)
 
 ### Decision

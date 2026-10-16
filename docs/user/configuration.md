@@ -57,6 +57,7 @@ This mirrors `kubeconfig`, `gh`, `npm`, and `pyproject.toml`. Mismatches between
 | `cloud.redaction_policy` | standard / relaxed / strict | standard | `MAXIM_LLM_REDACTION_POLICY` |
 | `proxy.max_concurrent` | int ≥ 0 | 4 | `MAXIM_PROXY_MAX_CONCURRENT` |
 | `proxy.rate_limit_rpm` | int ≥ 0 | 0 | `MAXIM_PROXY_RATE_LIMIT_RPM` |
+| `proxy.allow_remote_update` | bool | false | `MAXIM_PROXY_ALLOW_REMOTE_UPDATE` |
 | `auto_spawn.llm_server` | bool | true | `MAXIM_AUTO_SPAWN_LLM_SERVER` |
 | `auto_spawn.tunnel` | bool | true | `MAXIM_AUTO_SPAWN_TUNNEL` |
 | `auto_spawn.port` | int 1..65535 | 8100 | `MAXIM_AUTO_SPAWN_PORT` |
@@ -108,7 +109,7 @@ a setting you chose. An older build reading a 1.2 file keeps the values but forg
 
 ### Format version and downgrades
 
-`config.json` carries a `_format_version` (`"1.2"` since 2026-10-01; `"1.1"` before it). A build reading a file with a NEWER
+`config.json` carries a `_format_version` (`"1.3"` since 2026-10-14, which added `proxy.allow_remote_update`; `"1.2"` since 2026-10-01; `"1.1"` before it). A build reading a file with a NEWER
 minor version tolerates the sections and keys it does not know, with a warning, instead of refusing to
 start. The 1.3.2 bump covers what shipped under `"1.0"` without one:
 - the `console`, `tools`, `sim` and `memory` sections;

@@ -166,7 +166,7 @@ DBG 200 OK connIndex=2 content-length=138
 
 **If you see the request + `ERR connection refused` →** port 8100 isn't listening:
 - Start `maxim` on the leader
-- Or start the server manually: `python -m llama_cpp.server --model ~/.maxim/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf --n_gpu_layers -1 --host 0.0.0.0 --port 8100 --n_ctx 8192 --api_key "$(cat ~/.config/maxim/api_key)"`
+- Or start the server manually, the way maxim does (loopback only, key in the env, never argv): `API_KEY="$(cat ~/.config/maxim/api_key)" python -m llama_cpp.server --model ~/.maxim/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf --n_gpu_layers -1 --host 127.0.0.1 --port 8100 --n_ctx 8192`. Peers reach it through the LeaderProxy (:8099), never :8100 directly.
 
 **If you see the request + `ERR 401` →** auth mismatch. Jump to Rung 4.
 
@@ -198,7 +198,7 @@ content-type: application/json
 
 **If loopback 200 but tunnel 403 →** Cloudflare's edge is blocking (not the server). See §Common failures.
 
-**If both 401 →** the key file on the leader doesn't match what the server was spawned with. Restart `maxim` on the leader (re-reads the key file, passes to --api_key).
+**If both 401 →** the key file on the leader doesn't match what the server was spawned with. Restart `maxim` on the leader (re-reads the key file and passes it to the server's environment as `API_KEY`).
 
 ### Rung 5 — Is the peer's Maxim making outbound LLM calls?
 

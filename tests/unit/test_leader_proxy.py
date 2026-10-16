@@ -521,7 +521,7 @@ class TestHandleDebugVram:
 
         h = object.__new__(_ProxyHandler)
         h.upstream_url = "http://127.0.0.1:8100"
-        h.api_key = None
+        h.auth = None
         h.start_time = time.time()
         h._sent: list[tuple[int, dict]] = []
         h._send_json = lambda code, body: h._sent.append((code, body))
@@ -791,7 +791,7 @@ class TestParseAdminUpdateBody:
 
         h = object.__new__(_ProxyHandler)
         h.upstream_url = "http://127.0.0.1:8100"
-        h.api_key = None
+        h.auth = None
         h.start_time = time.time()
         h._sent: list[tuple[int, dict]] = []
         h._send_json = lambda code, body: h._sent.append((code, body))
@@ -856,7 +856,7 @@ class TestPipUpdateHandler:
 
         h = object.__new__(_ProxyHandler)
         h.upstream_url = "http://127.0.0.1:8100"
-        h.api_key = None
+        h.auth = None
         h.start_time = time.time()
         h.client_address = ("127.0.0.1", 12345)
         h.request_log = None
@@ -959,7 +959,7 @@ class TestRunPipUpgrade:
 
         h = object.__new__(_ProxyHandler)
         h.upstream_url = "http://127.0.0.1:8100"
-        h.api_key = None
+        h.auth = None
         h.start_time = time.time()
         h.client_address = ("127.0.0.1", 12345)
         h._sent: list[tuple[int, dict]] = []
@@ -1078,7 +1078,7 @@ class TestDevModeResponses:
 
         h = object.__new__(_ProxyHandler)
         h.upstream_url = "http://127.0.0.1:8100"
-        h.api_key = None
+        h.auth = None
         h.start_time = time.time()
         h.client_address = ("127.0.0.1", 12345)
         h.request_log = None
@@ -1837,16 +1837,28 @@ class TestProxyAuthSchemeDispatch:
     def _handler(self, *, api_key, auth_header):
         from maxim.runtime.leader_proxy import _ProxyHandler
 
+        from maxim.runtime.leader_proxy import ProxyAuth
+
         h = object.__new__(_ProxyHandler)
-        h.api_key = api_key
+        h.auth = ProxyAuth.bearer(api_key) if api_key else None
         h.headers = {} if auth_header is None else {"Authorization": auth_header}
         h.client_address = ("10.0.0.1", 5000)
         h._sent: list[tuple[int, dict]] = []
         h._send_json = lambda code, body: h._sent.append((code, body))
         return h
 
-    def test_no_api_key_configured_allows_all(self):
+    def test_unconfigured_auth_refuses_everything(self):
+        """2026-10-14: a handler with no auth configured used to accept every request (``api_key=None``
+        meant "auth off"). Unconfigured is now a refusal, so forgetting to configure auth fails closed."""
         h = self._handler(api_key=None, auth_header=None)
+        assert h._check_auth() is False
+        assert h._sent[0][0] == 500
+
+    def test_insecure_auth_is_explicit_and_admits_without_a_header(self):
+        from maxim.runtime.leader_proxy import ProxyAuth
+
+        h = self._handler(api_key=None, auth_header=None)
+        h.auth = ProxyAuth.insecure_no_auth()
         assert h._check_auth() is True
         assert h._sent == []
 

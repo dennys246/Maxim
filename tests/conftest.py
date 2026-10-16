@@ -344,6 +344,28 @@ def _isolate_maxim_role_env():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_allow_remote_update_env():
+    """Scrub the remote-admin opt-in env vars across every test (2026-10-14).
+
+    ``MAXIM_PROXY_ALLOW_REMOTE_UPDATE`` opens the leader's
+    /v1/admin/{update,install,restart,llm-swap}; the legacy
+    ``MAXIM_ALLOW_REMOTE_UPDATE`` (which older leaders ``setdefault``-ed to
+    "1") is ignored with a warning. A value leaked from one test or the
+    developer's shell would change every later proxy test, so both are
+    unset on entry and restored after.
+    """
+    names = ("MAXIM_PROXY_ALLOW_REMOTE_UPDATE", "MAXIM_ALLOW_REMOTE_UPDATE")
+    saved = {n: os.environ.pop(n, None) for n in names}
+    try:
+        yield
+    finally:
+        for n in names:
+            os.environ.pop(n, None)
+            if saved[n] is not None:
+                os.environ[n] = saved[n]
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_memory_strategy_env():
     """Scrub the ``MAXIM_MEMORY_*`` vars across every test (memory-strength Phase 2c).
 

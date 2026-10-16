@@ -773,6 +773,7 @@ def _cmd_llm_status(argv: list[str]) -> int:
     from maxim.utils import http as _http
 
     url: str | None = None
+    key: str | None = None
     for a in argv:
         if a.startswith("http"):
             url = a
@@ -783,16 +784,19 @@ def _cmd_llm_status(argv: list[str]) -> int:
             print("No peer config. Provide a URL.", file=sys.stderr)
             return 1
         url = cfg.url
+        key = cfg.api_key
 
     base = url.rstrip("/")
     if base.endswith("/v1"):
         base = base[:-3]
 
-    # Query debug/status (no auth required for debug endpoints)
+    # Debug routes need the key (2026-10-14: the leader no longer trusts a
+    # loopback peer, and a tunnel delivers every request from localhost).
     try:
         resp = _http.fetch_url(
             f"{base}/v1/debug/status",
             method="GET",
+            headers={"Authorization": f"Bearer {key}"} if key else {},
             timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, total_s=12.0),
         )
         data = resp.json()

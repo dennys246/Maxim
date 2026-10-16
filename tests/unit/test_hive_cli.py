@@ -514,12 +514,32 @@ class TestOasisCli:
         assert "error:" in capsys.readouterr().err
 
     def test_serve_refuses_insecure_public_bind(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("maxim.tunnel.keys.read_key", lambda *a, **k: None)
+        monkeypatch.setattr("maxim.tunnel.keys.key_exists", lambda *a, **k: False)
         started: list = []
         monkeypatch.setattr("maxim.runtime.leader_proxy.start_leader_proxy", lambda **k: started.append(k) or None)
         rc = run_oasis_subcommand(["serve", "--root", str(tmp_path / "s"), "--bind-host", "0.0.0.0"])
         assert rc == 2
         assert started == []  # refused before starting a server
+
+    def test_serve_refuses_loopback_without_a_key_too(self, tmp_path, monkeypatch):
+        """2026-10-14: loopback is no exception. A cloudflared tunnel's ingress is http://localhost:<port>,
+        so an unauthenticated loopback bind can be the internet."""
+        monkeypatch.setattr("maxim.tunnel.keys.key_exists", lambda *a, **k: False)
+        started: list = []
+        monkeypatch.setattr("maxim.runtime.leader_proxy.start_leader_proxy", lambda **k: started.append(k) or None)
+        rc = run_oasis_subcommand(["serve", "--root", str(tmp_path / "s"), "--bind-host", "127.0.0.1"])
+        assert rc == 2
+        assert started == []
+
+    def test_serve_insecure_without_a_key_starts_with_explicit_insecure_auth(self, tmp_path, monkeypatch):
+        from maxim.runtime.leader_proxy import ProxyAuth
+
+        monkeypatch.setattr("maxim.tunnel.keys.key_exists", lambda *a, **k: False)
+        started: list = []
+        monkeypatch.setattr("maxim.runtime.leader_proxy.start_leader_proxy", lambda **k: started.append(k) or None)
+        rc = run_oasis_subcommand(["serve", "--root", str(tmp_path / "s"), "--bind-host", "127.0.0.1", "--insecure"])
+        assert rc == 2  # the stub returns None: "could not bind"
+        assert started and started[0]["auth"] == ProxyAuth.insecure_no_auth()
 
     def test_status_empty_store(self, tmp_path, capsys):
         rc = run_oasis_subcommand(["status", "--root", str(tmp_path / "store")])

@@ -21,7 +21,7 @@ from maxim.hivemind.signing import UNCOUNTED, SignedRelease
 from maxim.hivemind import substrate_client as sc
 from maxim.hivemind.bundle import compose_bundle
 from maxim.hivemind.store import OasisStore
-from maxim.runtime.leader_proxy import start_leader_proxy
+from maxim.runtime.leader_proxy import ProxyAuth, start_leader_proxy
 from maxim.utils import http
 from maxim.utils.optional_deps import optional_dependency_available
 
@@ -55,7 +55,8 @@ def _wait_ready(port: int, timeout: float = 5.0) -> None:
 
 def _start(store, *, api_key=_KEY):
     port = _free_port()
-    server = start_leader_proxy(proxy_port=port, api_key=api_key, bind_host="127.0.0.1", oasis_store=store)
+    auth = ProxyAuth.bearer(api_key) if api_key is not None else ProxyAuth.insecure_no_auth()
+    server = start_leader_proxy(proxy_port=port, auth=auth, bind_host="127.0.0.1", oasis_store=store)
     assert server is not None
     _wait_ready(port)
     return server, f"http://127.0.0.1:{port}"

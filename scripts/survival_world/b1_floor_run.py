@@ -887,10 +887,21 @@ def rig_check(rcon: Any, proxy_url: str | None) -> dict[str, Any]:
     status = last = None
     proxy = "not_checked" if not proxy_url else "absent"
     if proxy_url:
+        from maxim.tunnel.keys import read_key
+        from maxim.utils.net import is_loopback_url
+
         policy = http.TimeoutPolicy(connect_s=1.0, read_s=2.0, total_s=3.0)
+        # The proxy's debug routes need the key, loopback included (2026-10-14); send this box's key only to a
+        # loopback proxy, never to a remote URL.
+        key = read_key() if is_loopback_url(proxy_url) else None
+        auth = {"Authorization": f"Bearer {key}"} if key else {}
         try:
-            status = json.loads(http.fetch_url(proxy_url.rstrip("/") + "/v1/debug/status", timeout=policy).content)
-            last = json.loads(http.fetch_url(proxy_url.rstrip("/") + "/v1/debug/last-requests", timeout=policy).content)
+            status = json.loads(
+                http.fetch_url(proxy_url.rstrip("/") + "/v1/debug/status", headers=auth, timeout=policy).content
+            )
+            last = json.loads(
+                http.fetch_url(proxy_url.rstrip("/") + "/v1/debug/last-requests", headers=auth, timeout=policy).content
+            )
             proxy = "present"
         except http.HTTPConnectionError:
             status = last = None  # no proxy on this box: passes, recorded
