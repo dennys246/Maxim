@@ -181,12 +181,16 @@ class BenchmarkReport:
             lines.append("")
 
         # Expectations summary
-        lines.append("  EXPECTATIONS")
+        # Two independent results (#1310): the scenarios' expectations, and the suite's metric thresholds that
+        # decide ``ModelResult.passed``. One "[PASS]" beside the count read as "the expectations passed".
+        lines.append("  EXPECTATIONS AND THRESHOLDS")
         for m in self.models:
             if m in self.results:
                 mr = self.results[m]
                 status = "PASS" if mr.passed else "FAIL"
-                lines.append(f"    {m}: {mr.expectations_passed}/{mr.expectations_total} passed [{status}]")
+                lines.append(
+                    f"    {m}: expectations {mr.expectations_passed}/{mr.expectations_total} met · thresholds {status}"
+                )
         lines.append("")
 
         # Overall ranking

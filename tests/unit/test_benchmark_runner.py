@@ -644,8 +644,8 @@ class TestOutputFormat:
             overall_ranking=["pass_model", "fail_model"],
         )
         table = report.summary_table()
-        assert "[PASS]" in table
-        assert "[FAIL]" in table
+        assert "thresholds PASS" in table
+        assert "thresholds FAIL" in table
 
 
 # ── Phase 5: Scenario YAML validation ────────────────────────────────
@@ -1157,7 +1157,6 @@ class TestBaselineComparison:
         assert mr.expectations_passed == 4
 
 
-@pytest.mark.xfail(strict=True, reason="#1310: the expectations count and the threshold verdict share one label")
 def test_summary_labels_expectations_and_thresholds_separately():
     """#1310: `0/3 passed [PASS]` read as "the expectations passed". The verdict comes from the suite's metric
     thresholds and the count from the scenarios' expectations: each gets its own label."""

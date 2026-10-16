@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The benchmark summary no longer prints "0/3 passed [PASS]"** ([#1310](https://github.com/dennys246/Maxim/issues/1310)).
+  The verdict comes from the suite's metric thresholds (`ModelResult.passed`); the count is the scenarios'
+  expectations. Each now has its own label: `expectations 0/3 met · thresholds PASS`. Display only: nothing
+  parses the line, and which result `passed` reflects is unchanged. Guard:
+  `tests/unit/test_benchmark_runner.py::test_summary_labels_expectations_and_thresholds_separately`.
+
 ## [1.3.2] - 2026-10-16 — "Decomposition"
 
 The decomposition release: the agent loop is taken apart under characterization tests, and the ratchets
