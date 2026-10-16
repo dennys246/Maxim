@@ -1,5 +1,24 @@
 # Maxim
 
+[![PyPI version](https://img.shields.io/pypi/v/pymaxim.svg)](https://pypi.org/project/pymaxim/)
+[![Downloads](https://img.shields.io/pypi/dm/pymaxim.svg)](https://pypi.org/project/pymaxim/)
+[![Tests](https://github.com/dennys246/Maxim/actions/workflows/test.yml/badge.svg?branch=main&event=push)](https://github.com/dennys246/Maxim/actions/workflows/test.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/dennys246/Maxim/blob/main/LICENSE)
+
+**Give an AI agent a body, brain-modelled memory and experience it keeps across sessions and can share with
+other agents.**
+
+```bash
+pip install 'pymaxim[llm-anthropic]'
+export ANTHROPIC_API_KEY=sk-...
+maxim --sim "test memory recall"
+```
+
+**Results:** [what it has shown, and what it has not](https://github.com/dennys246/Maxim#what-it-has-shown--and-what-it-has-not).
+Every result is graded on the
+[ledger of record](https://github.com/dennys246/Maxim/blob/main/docs/plans/behavioral_graduation_candidates.md)
+against gates frozen before the data.
+
 A bio-inspired cognitive architecture for AI agents. Maxim gives an agent a **body** (sensors, drives,
 pain), **brain-modelled memory** (Hippocampus, NAc, ATL, EC, SCN, Angular Gyrus) and a way to **share
 what it learned** with other agents. It runs in two modes:

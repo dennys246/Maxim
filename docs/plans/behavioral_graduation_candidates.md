@@ -938,15 +938,23 @@ Not every architectural change should trigger every re-run — maintenance cost 
 
 ### Honest accounting — dispositioned 2026-08-30
 
-**Current, 2026-10-14 (the table is authoritative; the 2026-08-30 account below is history):**
+**Current, 2026-10-15 (the table is authoritative; the 2026-08-30 account below is history):**
 - 13 `DROPPED` (T3-16 moved from PARTIAL on 2026-09-09);
 - 2 `DORMANT` (T3-4, T3-7);
 - 4 `TIER-2` (T3-17 and T3-20 were decided on 2026-09-05);
 - 1 `PARTIAL` (T3-9, STALE until 2026-10-03; its 2026-09-24 re-run was a typed abort).
 
-Outside this Tier-3 account, Tier-1 row T1-2 (Exp 37) has been `STALE` since 2026-10-02. It blocks the next
-release, and the owner decided on 2026-10-14 that 1.3.2 waits for its re-run (roadmap_1_3_x.md §1.3.2,
-release-readiness audit).
+Outside this Tier-3 account, the Tier-1 rows are:
+- 1 `EARNED`: T1-16.
+- 5 `RE-VALIDATED`: T1-6, T1-7, T1-9, T1-10 and T1-11.
+- 1 `RE-VALIDATED-BY-TESTS`: T1-4.
+- 4 `PARTIAL`: T1-12, plus T1-13, T1-14 and T1-15. The last three are floor matched under BF2: T1-13 was
+  measured by B1 on 2026-10-14, and T1-14 and T1-15 were applied analytically on 2026-10-15.
+- 2 `SUPERSEDED` (T1-1, T1-8), 1 `LEGACY` (T1-3) and 1 `DROPPED` (T1-5).
+- 1 `STALE`: T1-2 (Exp 37), since 2026-10-02. A Stale row blocks the next release. The owner decided on
+  2026-10-14 that 1.3.2 releases without its re-fire, under the committed `release` exception
+  `release-1.3.2-T1-2`, which covers that release only. The re-fire is baseline-floors Stage B4, in 1.4
+  (roadmap_1_3_x.md §1.3.2, release-readiness audit).
 
 **The 16 rows the score card named now carry dispositions.** Rows 1–8, 10–15 and 18–19 were
 resolved on 2026-08-30 (1.1.2 Cluster C); the card's Research-integrity condition (4) named
