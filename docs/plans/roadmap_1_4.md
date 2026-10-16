@@ -1,5 +1,16 @@
 # Roadmap 1.4 (working title "Anticipation") — complex behaviour, sequence credit, and an instrument that can measure them
 
+**Recentered 2026-10-16, after 1.3.2 shipped** (owner decisions; a six-reader docs review):
+- **The path:** three patch releases, then 1.4.0. They are 1.3.3 (seams and the release pipeline), 1.3.4 (the
+  orchestrator decomposition) and 1.3.5 (loop phase 2, then this plan's Phase 0 instrument). Scopes, exits and
+  risks: [roadmap_1_3_x.md §Path to 1.4.0](roadmap_1_3_x.md#path-to-140-owner-decision-2026-10-16).
+- **E1 is redesigned before its harness** (§Phase 2): as drafted it cannot EARN under BF2.
+- **T1-2 (Exp 37) is resolved by B4 before 1.4.0.** If B4 has not run, 1.4.0 waits.
+- **Exp 60/61/62 (T1-13/14/15) are PARTIAL, floor matched** (B1, 2026-10-14/15). This plan's EARNED wording
+  predates that; each place is annotated below.
+- **The fence ends at T0**, and T0 is far from closed: 31 of 32 items open, no characterization arms, three
+  functions over the limit.
+
 **Status:** DRAFT v2 (2026-09-18) — v1 went to a five-lens parallel design review the same day
 (confounding, bio-faithful, wiring, environment, scope + engineering; reports preserved verbatim in
 [rationale/roadmap-1-4/](rationale/roadmap-1-4/)). Every lens returned DO-NOT-BUILD on at least one
@@ -252,6 +263,14 @@ the release transaction, else 1.3.1. T2 makes it a 1.4.0 gate as a sequencing ch
 
 ## Phase 2 — E1, the conflict rung: a want against a fear, at the food
 
+> **Owner decision 2026-10-16: E1 is redesigned before its harness.** v2's argmax, below, is "a pure function of
+> protocol constants … neither about learning". A same-prior floor learner (the mechanism twin) therefore matches
+> it, and under BF2 (M46; [baseline_floors.md](baseline_floors.md) §Why) E1 as drafted cannot EARN. E1's four-lens
+> design review starts from one question: **what contingency can a reasonable no-bio floor lose?** Delayed or
+> multi-step credit, or a learning curve rather than a fixed argmax, are the candidates. The prereg runs
+> `tabular_q`, `random` and the mechanism twin as arms, with an offline toy-model check (as B1's
+> `learner_sim.py` did) that the floor CAN lose. v2 below is kept as the starting design.
+
 **v1 said "graded by depth, a short path".** All five lenses refused it: no drive has a locomotion
 affinity, so no arm descends; the fear's key MISSES the hungry state (cos(submerged fed, submerged
 hungry) = 0.826 < 0.85, measured on committed vectors — `saturation` at 0 is a full-weight constant on
@@ -380,7 +399,7 @@ infrastructure the review located, and the full four-lens review.
   but no transfer → the write channel; transfer → the wall is further out") arms this mechanism only
   on the FAILURE branches. The dry run points at **transfer**, so on the plain reading a successful
   rung A closes the door and the measured context wall — a lit pond at 0.588, a NIGHT POOL at 0.799,
-  both under the 0.85 threshold — is left with no owner. That matters: it means Exp 60/61's EARNED
+  both under the 0.85 threshold — is left with no owner. That matters: it means Exp 60/61's EARNED (PARTIAL, floor matched, since 2026-10-14/15)
   drowning fear **misses at night** for representational reasons, and the frozen-day protocol is
   what hides it. *(Corrected 2026-09-25, [#899](https://github.com/dennys246/Maxim/issues/899): the
   0.799 is the linear `time_of_day` **wrap** just before dawn, not night — the pool holds 0.903 at
@@ -564,8 +583,8 @@ replay as its evidence.
 ## Bodies: a variant, never the shipped one — and what that does and does not shield
 
 The classroom uses `extends: bodies/minecraft_player` (deep-merge; tested; five bodies use it). This
-shields the `minecraft_player` sensor-range and body-change triggers, so the shipped body's EARNED
-rows stay EARNED. It does NOT shield: the bridge protocol change (item 4 — fires Exp 56/60/61); the
+shields the `minecraft_player` sensor-range and body-change triggers, so the shipped body's rows keep
+their status (EARNED when written; Exp 60/61/62 are PARTIAL, floor matched, since 2026-10-14/15). It does NOT shield: the bridge protocol change (item 4 — fires Exp 56/60/61); the
 recommend-event field (1a — fires Exp 56's `recommend_action` letter; discharged by the byte-identical
 guard); any credit-path write (1b, Phase 5 — fires Exp 56/61 and R3's §Outcome clause); the campaign
 core (a HARNESS change — fires R3's clause; discharged by the acceptance test); the minor-version
@@ -618,10 +637,12 @@ frozen status verbatim; **EARNED** per rung = every frozen gate of that rung's p
   choice).
 - **T3 — E1 has a recorded outcome** with the argmax and hunger-state replays committed beside it.
 - **T4 — ledger WALKED, not merely clean.** The release PR carries a trigger-walk table: every
-  Tier-1 EARNED row × every 1.4 `src/`, bridge and harness change (the recommend-event field; the
+  Tier-1 row holding a positive or PARTIAL status (written as "EARNED" in 2026-09; since B1 only T1-16 is EARNED, so
+  the walk covers EARNED, RE-VALIDATED, MAINTAINED and PARTIAL rows, owner reading 2026-10-16) × every 1.4 `src/`, bridge and harness change (the recommend-event field; the
   primitive verbs; the campaign core against R3's clause; any credit path or substrate rule that
   entered), each cell FIRED / NOT FIRED, each FIRED cell re-run or discharged with a dated annotation
-  on the row; the minor-version heartbeat walk executed and dated; no `Stale` or `Broken` token. **The
+  on the row; the minor-version heartbeat walk executed and dated; no `Stale` or `Broken` token (T1-2 is resolved by
+  B4, not by an exception, owner decision 2026-10-16). **The
   Exp 56 re-baseline on 1.20.4 is a 1.3.0 debt** (never run; Exp 61 reused the fabric without it):
   done before 1.3.0, or the row carries the dated scope annotation "1.16.5-pinned; the fabric was
   reused on 1.20.4 by Exp 61 — recorded, not re-earned" and 1.4.0 inherits nothing unstated.
@@ -687,6 +708,11 @@ prereg-before-data lint extended to cover 1.3's own experiments, `export_memorie
 reports 0, and the function-length + mypy ratchets. **1.3.2** is the `agent_loop` decomposition with
 behaviour-preservation gates and the Exp 60/61 re-run triggers discharged. Both are infrastructure
 only, no behavioural claim.
+
+*As shipped (1.3.2, 2026-10-16):* the `agent_loop` decomposition through slice 5 (`agent_loop.py` 5,543 → 3,363
+lines), plus the ratchets, the evidence gate and the 1.4.0 hard gate (#1300). The orchestrator slices and loop
+phase 2 did **not** ship. They are the 1.4.0 gate and are scheduled as 1.3.4 and 1.3.5
+([roadmap_1_3_x.md §Path to 1.4.0](roadmap_1_3_x.md#path-to-140-owner-decision-2026-10-16)).
 
 They come FIRST because Phase 0 below builds its instrument on `agent_loop.py`: decomposing
 afterwards means building that instrument twice, and refactoring while a may-fail experiment runs
@@ -761,9 +787,11 @@ until the 1.3.2 decomposition slices touching it have landed. The end of that fe
    decomposition slices.
 
 **Rig order (Track C)** — one rig, one operator; no live run on code that is still moving:
-1. the complete Exp 10 re-run (1.3.2, right after #935);
-2. the live Exp 60 re-run (1.3.2, after the decomposition — it discharges the triggers the
-   decomposition fires);
+1. ~~the complete Exp 10 re-run~~: superseded. T1-1 is SUPERSEDED by T1-16 (Exp 63, EARNED 2026-10-04).
+2. ~~the live Exp 60 re-run~~: done 2026-10-12 (T1-13 MAINTAINED), then measured against its floor by B1
+   (2026-10-14, PARTIAL);
+2b. **B4, T1-2's re-fire (L8's dose-response design)**, after 1.3.4 and 1.3.5 unblock B2, and before 1.4.0
+   (owner decision 2026-10-16);
 3. 1.4's campaigns, starting with the schedule below;
 4. after E3's campaign has run or its disposition is recorded, the parallel lines' rig work, one at a
    time: social referencing's Exp C, then the coding world's Exp W Stage 2 (only if its offline replay
@@ -796,6 +824,11 @@ E1 prereg → four-lens → freeze             →   E1 pilot → campaign
 the instrument. It declares `tabular_q`, `random` and the mechanism twin (TD state value + the same prior) as run
 arms, and carries an offline toy-model check, like B1's `learner_sim.py`, that a reasonable floor CAN lose on E1's
 contingency ([baseline_floors.md](baseline_floors.md) §Why; [lessons](../lessons/baseline-floors-b1.md)).
+
+*Reconciled 2026-10-16:* the diagram above predates T0 and B1. Its Exp 62 rows are done. Phase 0 item 1a's code
+lives in `NAc.recommend_action`, behind the fence until 1.3.5, so drafting E1's prereg "beside item 1a" means paper
+beside paper until then. That prereg starts from the owner's redesign decision (§Phase 2). The rig's next slots are
+B4 (before 1.4.0) and then E1, not the order drawn above.
 
 ## Parallel lines — outside the ladder, with their own entry conditions
 
@@ -853,7 +886,7 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   bet of its own, which is why it waits for E3 rather than sharing the release's headline.
 - **Coding world** ([coding_world.md](coding_world.md), PROPOSED 2026-09-27; revives
   [deferred/coding_habits_oasis.md](deferred/coding_habits_oasis.md) by owner request, and Exp 55 with it):
-  does an aversion learned from pain bind to the **act or to being watched**? First on Exp 60's EARNED
+  does an aversion learned from pain bind to the **act or to being watched**? First on Exp 60's EARNED (PARTIAL, floor matched, since 2026-10-14)
   fear with a second player as the observer (Exp W, D1-legal, no new mechanism — an offline key-geometry
   replay first, since the key may simply not see the watcher); then in a coding world — a second world on
   the 1.1.4 seam where Maxim applies hand-authored patch variants in a Docker sandbox, pain is measured,
