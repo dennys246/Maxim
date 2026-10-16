@@ -32,14 +32,16 @@ by owner decision (2026-10-16): each break below names its migration.
 - **The decomposition.** `runtime/agent_loop.py` went from 5,543 lines (v1.3.1) to 3,363. Setup, the
   pre-tick gate, perception, planning, the substrate tick and the proposer family now live in their own
   modules (`runtime/loop_*.py`, `runtime/substrate_proposal.py`). Characterization goldens pinned every slice
-  before it moved. A function-length ratchet, per-file coverage floors and mypy on the composition layer now
+  before it moved. A function-length ratchet, per-package and per-file coverage floors, and mypy on the composition layer now
   hold the line, and 1.4.0 is hard-gated on the rest of the decomposition (#1300).
 - **Evidence.** Each sim report stamps the code, model and context budget it ran under. The ledger is
   machine-readable, an evidence gate checks every status change, and a typed abort is never evidence. On
   the ledger since 1.3.1:
-  - T1-16 (Exp 63) is EARNED, narrow: carried memories take part in recall across sessions. That is
-    storage into recall, not a behavioural claim, and it supersedes Exp 10 (T1-1).
-  - T1-13, T1-14 and T1-15 (Exp 60/61/62) are PARTIAL: each matched its no-bio floor (B1).
+  - T1-16 (Exp 63) is EARNED, narrow: carried memories take part in recall across sessions, on the
+    current goal-keyword ranker (one run, mistral-7b). That is storage into recall, not a behavioural
+    claim, and it supersedes Exp 10 (T1-1).
+  - T1-13, T1-14 and T1-15 (Exp 60/61/62) are PARTIAL. T1-13 matched its no-bio floor in B1. T1-14 and
+    T1-15 match it analytically (BF2, not run).
   - T1-2 (Exp 37) ships STALE under the committed exception `release-1.3.2-T1-2`.
   See "Evidence status at the cut".
 - **Defects fixed at their seams:**
