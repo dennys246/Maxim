@@ -504,11 +504,16 @@ jobs:
         # Inside a loopback-only network namespace (roadmap 1.3.2 item 7, #940; owner decision 2026-10-04, no
         # OS-level exception; scripts/ci_netns.sh says how): the in-process guard cannot see a SUBPROCESS a test
         # spawns, the kernel can. MAXIM_EXPECT_NETNS=1 arms the positive control, tests/unit/test_network_boundary.py.
+        #
+        # --junitxml=fast-suite.xml feeds the release gate's runtime twin below (scripts/lint_release_gates.py
+        # rule 6: every evidence test of a satisfied gate item is collected and PASSED in THIS run, which a conftest
+        # skip would otherwise hide from the static rules). The gate checks this flag is here.
         run: |
-          rm -f .coverage coverage.json coverage.xml
+          rm -f .coverage coverage.json coverage.xml fast-suite.xml
           SUITE='"$PY" -m pytest tests/ -x -q -m "not slow" --tb=short \
             --ignore=tests/integration/test_memory_hub.py \
             --require-extras=console,sign \
+            --junitxml=fast-suite.xml \
             --cov=src/maxim --cov-branch --cov-report=json:coverage.json --cov-report='
           bash scripts/ci_netns.sh "$SUITE"
 
@@ -527,6 +532,14 @@ jobs:
         # Prints overall + per-package coverage every run. Positive control:
         # tests/unit/test_lint_coverage.py.
         run: python scripts/lint_coverage.py
+
+      - name: Release gates, runtime twin (owner decision 2026-10-15)
+        # Every evidence nodeid of a satisfied item or arm in scripts/release_gates.json, and each satisfied arm's
+        # golden case, must be in the fast suite's JUnit report with every case PASSED: static analysis cannot see
+        # a conftest skip. Runs at every version. After the coverage ratchet, because lint_coverage.ci_step_rules
+        # allows nothing between the measuring suite and its gate but MemoryHub. Its twin is the lint job's
+        # "Release gates" step; each checks the other's wiring. Positive control: tests/unit/test_lint_release_gates.py.
+        run: python scripts/lint_release_gates.py --junit fast-suite.xml
 
       - name: Upload coverage.json (#1103, diagnostic)
         # Diagnostic only, after the gate (lint_coverage.ci_step_rules allows nothing between the measuring
@@ -593,6 +606,14 @@ jobs:
         # with no "pending"/"rc"/"serves" prose (they link PyPI instead).
         # Positive control: tests/unit/test_lint_version_sync.py.
         run: python3 scripts/lint_version_sync.py
+
+      - name: Release gates (no version >= 1.4.0 until the decomposition is done; owner decision 2026-10-15)
+        # scripts/release_gates.json lists each gate's items, functions and characterization arms. At a version at
+        # or above a gate the lint fails until every one is done or retired; below it, it validates the file, every
+        # recorded evidence test and red gate, and the shrink-only history, and PRINTS the
+        # outstanding counts. The bump diff may not touch the gate file. Its twin is the unit-tests job's runtime
+        # check; each checks the other's wiring. Positive control: tests/unit/test_lint_release_gates.py.
+        run: python3 scripts/lint_release_gates.py
 
       - name: Check all Python files parse
         run: |
