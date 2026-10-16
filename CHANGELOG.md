@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Evidence status at the cut (owner decision 2026-10-14)
+### Evidence status at the cut (owner decisions 2026-10-14 and 2026-10-15)
 
 - **T1-2 (Exp 37, cross-session behavioural delta) ships STALE.** Its "prompt construction change" trigger fired
   on 2026-10-02 and the row was not re-fired. The committed exception `release-1.3.2-T1-2`
@@ -31,6 +31,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   checks) covers this release only. The row carries no EARNED claim. Cite the cross-model Goldilocks map only with
   L8's caveat: unverifiable, not refuted. The owed re-fire is L8's dose-response design in 1.4
   (`docs/plans/baseline_floors.md` Stage B4).
+
+- **The survival-world rows T1-13, T1-14 and T1-15 are PARTIAL: each matched its no-bio floor** (baseline floors
+  B1; rule BF2 says a claim earns only over a floor without the bio stack).
+  - **T1-13 (Exp 60): `PARTIAL 2026-10-14` (narrow: floor matched)**, measured
+    ([#1283](https://github.com/dennys246/Maxim/pull/1283), verdict `FLOOR_MATCHED_Q`). On the same state keys, a
+    tabular Q-learner also escaped 8/8 at the first post placement, as FEAR did. Random escaped 2/8.
+  - **T1-14 (Exp 61): `PARTIAL 2026-10-15` (narrow: floor matched, analytical)** and **T1-15 (Exp 62 rung A):
+    `PARTIAL 2026-10-15` (rung A: floor matched, analytical)**, an owner decision applied without a rig run:
+    a tabular learner given the same transferred prior matches the receiver by construction (owner exceptions
+    [#1294](https://github.com/dennys246/Maxim/pull/1294), ledger [#1296](https://github.com/dennys246/Maxim/pull/1296)).
+  - **What stands:** every FEAR-versus-ABLATED contrast, each row against its own ablated or control arms.
+    **What no longer stands:** that these rows show behaviour beyond a no-bio learner. The next survival
+    rungs (E1 to E3) need a contingency the floor can lose.
 
 ### Added (console run history + health — contract 0.6.0)
 

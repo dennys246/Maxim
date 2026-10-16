@@ -517,7 +517,8 @@ found 1.3.2 not ready. The owner decided:
   notes name the exception.
 - **Batch 1's review findings [#966](https://github.com/dennys246/Maxim/issues/966),
   [#967](https://github.com/dennys246/Maxim/issues/967) and [#968](https://github.com/dennys246/Maxim/issues/968)
-  are fixed in 1.3.2** (Session C, one PR).
+  are fixed in 1.3.2** (Session C, one PR; MERGED as [#1282](https://github.com/dennys246/Maxim/pull/1282),
+  2026-10-14).
   - #967 FAILS CLOSED: a robots.txt that cannot be read (5xx, 429, timeout, network) refuses the fetch.
   - Following RFC 9309: any other 4xx, 401/403 included, means no restrictions; redirects are followed for up to
     five hops; the robots.txt is the URL's own origin's.
@@ -533,6 +534,10 @@ found 1.3.2 not ready. The owner decided:
     and [#1287](https://github.com/dennys246/Maxim/issues/1287), the #1268 review's NITs (the heartbeat
     sampler's ownership, the scrub on the failing thread, one `HealthLog` shared across console tests): filed
     2026-10-14, 1.3.3, Session C.
+  - [#1292](https://github.com/dennys246/Maxim/issues/1292), F4: a `console.device.build_device_app` facade that
+    owns the device-app composition pulse assembles today (owner decision 2026-10-14: build in 1.3.3, after 1.3.2
+    and pulse v0.4.1 ship, design review first), Session C. F2 and F3, the other #1268 follow-ups, shipped in
+    1.3.2 ([#1290](https://github.com/dennys246/Maxim/pull/1290), [#1293](https://github.com/dennys246/Maxim/pull/1293)).
   - [#863](https://github.com/dennys246/Maxim/issues/863) step 2, the sites outside the loop (`orchestrator.py` and
     `cli.py::_main_impl`): moved with those slices. It stays open on #863, home recorded.
 

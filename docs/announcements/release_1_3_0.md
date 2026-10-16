@@ -2,6 +2,12 @@
 
 **Released 2026-09-19 (UTC — PyPI `upload_time`).** `pip install --upgrade pymaxim`
 
+> **Status since 2026-10-15:** both claims below are now **PARTIAL (floor matched)** on the
+> [ledger](https://github.com/dennys246/Maxim/blob/main/docs/plans/behavioral_graduation_candidates.md) (T1-13
+> and T1-14). A no-bio tabular learner matched each one: [B1](https://github.com/dennys246/Maxim/blob/main/docs/experiments/b1_exp60_floor_prereg.md)
+> measured it for Exp 60, and the owner applied it analytically to Exp 61. Each FEAR-versus-ablated contrast still
+> stands; what no longer stands is behaviour beyond a non-bio learner. This announcement is left as published.
+
 1.2 showed that a want a teacher put into one agent can travel to another. 1.3 takes the teacher
 out. The learning signal now comes from the world itself — the game's own pain: on a live Minecraft
 server (Paper 1.20.4), with no language model anywhere in the action path, an agent that feels
