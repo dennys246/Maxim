@@ -29,6 +29,11 @@ the same prior) is RUN as an explicit arm, so a rung reports its gain over the t
 candidate being generalization through EC similarity to states a reasonable tabular key treats as new. Choosing an
 over-fine floor key so that it loses is a strawman in our favour and is for the confounding lens to refuse.
 
+*Lessons from B1:* [docs/lessons/baseline-floors-b1.md](../lessons/baseline-floors-b1.md) (the toy model before rig
+time, floors unfair in either direction, the twin, the demotion-needs-an-exception sequence). *Next, after 1.3.2:*
+E1's prereg draft and four-lens review carry the twin and a floor-can-lose check from the start; B2 (bare LLM)
+still waits on the `start_simulation_mode` decomposition, and B0b on #1227/#1228.
+
 Until B1, no ledger row, EARNED or STALE, had been compared with an agent that lacks the bio layers. "Earned"
 today means beating one of Maxim's own ablations: Exp 60's control is FEAR vs ABLATED (fear subscriber
 detached), and Exp 37's control arms A and C run the full Maxim stack. `simulation/benchmark.py::BenchmarkRunner.baseline_path`
