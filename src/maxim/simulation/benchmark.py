@@ -79,6 +79,9 @@ class ModelResult:
     expectations_passed: int = 0
     expectations_total: int = 0
     per_scenario: dict[str, dict[str, float]] = field(default_factory=dict)
+    #: How many suite thresholds ``passed`` was checked against. 0 = the suite defines none, so ``passed`` is an
+    #: automatic pass; None = unknown (a report saved before this field existed). #1310.
+    thresholds_checked: int | None = None
 
 
 @dataclass
@@ -187,7 +190,8 @@ class BenchmarkReport:
         for m in self.models:
             if m in self.results:
                 mr = self.results[m]
-                status = "PASS" if mr.passed else "FAIL"
+                # A suite with no thresholds auto-passes: say so rather than print a verdict nothing was checked for.
+                status = "none defined" if mr.thresholds_checked == 0 else ("PASS" if mr.passed else "FAIL")
                 lines.append(
                     f"    {m}: expectations {mr.expectations_passed}/{mr.expectations_total} met · thresholds {status}"
                 )
@@ -636,6 +640,7 @@ class BenchmarkRunner:
             expectations_passed=total_passed,
             expectations_total=total_expected,
             per_scenario=per_scenario,
+            thresholds_checked=len(self._scoring),
         )
 
     def _compute_composite_score(self, metrics: dict[str, float]) -> float:
@@ -783,6 +788,7 @@ class BenchmarkRunner:
                 expectations_passed=mr_data.get("expectations_passed", 0),
                 expectations_total=mr_data.get("expectations_total", 0),
                 per_scenario=mr_data.get("per_scenario", {}),
+                thresholds_checked=mr_data.get("thresholds_checked"),
             )
 
         return BenchmarkReport(
@@ -867,6 +873,7 @@ class BenchmarkRunner:
                     "passed": mr.passed,
                     "expectations_passed": mr.expectations_passed,
                     "expectations_total": mr.expectations_total,
+                    "thresholds_checked": mr.thresholds_checked,
                     "per_scenario": mr.per_scenario,
                 }
                 for model, mr in report.results.items()
@@ -882,7 +889,7 @@ class BenchmarkRunner:
 
         # Markdown summary
         summary_path = report_dir / "summary.md"
-        with open(summary_path, "w") as f:
+        with open(summary_path, "w", encoding="utf-8") as f:
             f.write(f"# Benchmark Report — {report.suite}\n\n")
             f.write(f"**Generated:** {report.timestamp}\n")
             f.write(f"**Models:** {', '.join(report.models)}\n")
