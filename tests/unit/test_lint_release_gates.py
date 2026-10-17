@@ -562,6 +562,32 @@ def test_a_retired_function_is_not_enforced(done, capsys):
     assert f"retired function {SIM}::big" in out
 
 
+def test_a_retired_functions_split_out_leaves_the_gate_with_it(done, capsys):
+    """#1323 (owner decision 2026-10-16): retiring a gated function also retires the 200 ceiling on what was split
+    out of it, and that split-out may be accepted as new debt. A live function's split-out stays gated (the
+    ``test_a_split_out_cannot_be_blessed_by_accepted_new_debt`` counterpart)."""
+    done.write(SIM, fn("big", 5) + "\n\n" + fn("_body", 300) + "\n\n" + fn("small", 10))
+    exc = {
+        "file": SIM,
+        "qualname": "_body",
+        "from": None,
+        "to": 300,
+        "split_from": {"file": SIM, "qualname": "big"},
+        "date": "2026-10-16",
+        "ref": "#1",
+        "reason": "r",
+    }
+    done.write(BASELINE, baseline({(SIM, "_body"): 300}, [exc]))
+    retire = {"kind": "function", "key": f"{SIM}::big", "reason": "r", "ref": "#1", "date": "2026-10-16"}
+    accept = {"file": SIM, "qualname": "_body", "reason": "r", "ref": "#1", "date": "2026-10-16"}
+    done.edit_gate(lambda g: (g["retired"].append(retire), g["accepted_new_debt"].append(accept)))
+    done.commit("retire big; accept its split-out")
+    done.version("1.4.0")
+    rc, out = run(capsys)
+    assert rc == 0, out
+    assert "descendant of src/maxim/sim.py::big" not in out
+
+
 def test_span_is_def_line_to_last_line_with_decorators_excluded():
     """NIT-2: the gate measures with lint_function_length.span; pin its semantics here."""
     tree = ast.parse("@dec\n@dec2\ndef f():\n    a = 1\n\n    b = 2\n")
@@ -1155,7 +1181,7 @@ def test_this_checkout_at_1_4_0_fails_listing_every_outstanding_item(this_checko
 
 
 def test_the_real_gate_file_names_what_the_owner_decided():
-    """Owner decisions 2026-10-15: three gated functions, five arms, the four #1288 lists with CORE_TOOLS exempt, and
+    """Owner decisions 2026-10-15: three gated functions (retired 2026-10-16 for a 1,000-line item, #1323), five arms, the four #1288 lists with CORE_TOOLS exempt, and
     every #863 site with its file::symbol, pattern and source."""
     (g,) = L.parse_gates((REPO / L.GATES_REL).read_text())
     assert {(f["file"].rsplit("/", 1)[1], f["qualname"]) for f in g.functions} == {
@@ -1203,6 +1229,14 @@ def test_the_real_gate_file_names_what_the_owner_decided():
         "863.loop.orient_to_audio.reflex",
     ]  # review S3: #863's own close condition; no KEEP blocks, no explicit-form handlers
     assert {"1305.owned-rng", "1263.thread-guard"} <= set(ids)  # owner decision 2026-10-15: #1281's remainder
-    assert len(g.items) == 32
+    assert len(g.items) == 33
+    # Owner decision 2026-10-16 (#1323): the three 200-line function entries are retired, and an item bounds them, their
+    # split-outs and every def in their files at 1,000 lines.
+    assert {(r["kind"], r["key"].rsplit("/", 1)[1]) for r in g.raw["retired"]} >= {
+        ("function", "orchestrator.py::start_simulation_mode"),
+        ("function", "agent_loop.py::run_agentic_loop"),
+        ("function", "tool_dispatch.py::execute_and_learn"),
+    }
+    assert "at most 1,000 lines" in ids["1323.functions-1000"]["scope"]
     snapshot = {tuple(p) for p in g.raw["debt_snapshot"]}
     assert ("src/maxim/simulation/orchestrator.py", "start_simulation_mode") in snapshot

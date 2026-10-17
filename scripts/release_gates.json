@@ -540,9 +540,39 @@
           "evidence": [],
           "red_gate": null,
           "source": "#1281's fix (b), moved to #1263 when #1281 closed on 2026-10-15 (the leaks it guards are #1263's: plan-writers, memctx, ConceptExtractor; the DefaultNetwork part shipped in PR #1299). Owner decision 2026-10-15: it hard-gates 1.4.0."
+        },
+        {
+          "id": "1323.functions-1000",
+          "ref": "#1323",
+          "scope": "Each of src/maxim/simulation/orchestrator.py::start_simulation_mode, src/maxim/runtime/agent_loop.py::run_agentic_loop and src/maxim/runtime/tool_dispatch.py::execute_and_learn, everything split or moved out of them (the function-length baseline's split_from/moved_from closure), and every def in those three files spans at most 1,000 lines, measured with lint_function_length.span.",
+          "evidence": [],
+          "red_gate": null,
+          "source": "Owner decision 2026-10-16 (#1323), replacing the three 200-line function entries, which are retired."
         }
       ],
-      "retired": []
+      "retired": [
+        {
+          "kind": "function",
+          "key": "src/maxim/simulation/orchestrator.py::start_simulation_mode",
+          "reason": "Owner decision 2026-10-16 (#1323): 1.4.0 holds this function, what is split or moved out of it, and every def in its file to at most 1,000 lines (item 1323.functions-1000), not 200; whether 1.5 targets 200 (or about 500) is reassessed at the 1.4 release. The function-length baseline still pins it; a raise needs a committed exception.",
+          "ref": "#1323",
+          "date": "2026-10-16"
+        },
+        {
+          "kind": "function",
+          "key": "src/maxim/runtime/agent_loop.py::run_agentic_loop",
+          "reason": "Owner decision 2026-10-16 (#1323): 1.4.0 holds this function, what is split or moved out of it, and every def in its file to at most 1,000 lines (item 1323.functions-1000), not 200; whether 1.5 targets 200 (or about 500) is reassessed at the 1.4 release. The function-length baseline still pins it; a raise needs a committed exception.",
+          "ref": "#1323",
+          "date": "2026-10-16"
+        },
+        {
+          "kind": "function",
+          "key": "src/maxim/runtime/tool_dispatch.py::execute_and_learn",
+          "reason": "Owner decision 2026-10-16 (#1323): 1.4.0 holds this function, what is split or moved out of it, and every def in its file to at most 1,000 lines (item 1323.functions-1000), not 200; whether 1.5 targets 200 (or about 500) is reassessed at the 1.4 release. The function-length baseline still pins it; a raise needs a committed exception.",
+          "ref": "#1323",
+          "date": "2026-10-16"
+        }
+      ]
     }
   }
 }

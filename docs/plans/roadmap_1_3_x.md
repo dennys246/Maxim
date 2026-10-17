@@ -604,8 +604,8 @@ recorded-but-unused memory system. That is 1.4's work ([roadmap_1_4.md](roadmap_
    `main` today (the function-length baseline; later fixes moved it from slice 5's 2,429). Further `agent_loop`
    slices (phase 2) are not in 1.3.2. **By owner decision (2026-10-15) they hard-gate 1.4.0**, with the
    loop-bound issues still open (§Issue burn-down): `run_agentic_loop` and `execute_and_learn` (392 lines today,
-   split out by #1133; its own split is #1150) must each reach 200 lines or fewer with no function-length pin, as
-   must everything split out of them (§The 1.4.0 gate, below).
+   split out by #1133; its own split is #1150) must each reach 1,000 lines or fewer (owner decision 2026-10-16, #1323; it was 200), as must everything split out
+   of them (§The 1.4.0 gate, below).
 2. **`start_simulation_mode`** (`simulation/orchestrator.py`, 3,322). Its tests cover **11%** of its lines
    (the Codex card's measurement at `v1.3.1`), so it is NOT decomposed blind: characterization tests
    first, then an orchestrator coverage floor set from them (item 5 above), then slices under the same
@@ -643,10 +643,12 @@ remainder is not an open-ended deferral: it gates 1.4.0 (below).
 `scripts/lint_release_gates.py` over `scripts/release_gates.json` (PR #1300; CI's lint job plus a runtime twin in
 unit-tests), which fails every version at or above 1.4.0 until three things hold:
 - `start_simulation_mode` (2,889 lines today), `run_agentic_loop` (2,434) and `execute_and_learn` (392) are each
-  200 lines or fewer with no function-length pin, and so is everything split or moved out of them.
+  1,000 lines or fewer, and so is everything split or moved out of them and every def in their three files (item
+  `1323.functions-1000`; owner decision 2026-10-16, #1323, retiring the earlier 200-line bound; 200 or ~500 is
+  reassessed for 1.5 at the 1.4 release; their function-length pins stay, so none may grow).
 - The five orchestrator characterization arms (`persistent_agent`, `imagination`, `new_goal`, `stall`,
   `generative`; §"Characterization owed" below) are complete in the golden, with direct-assertion evidence.
-- 32 items are each satisfied by an evidence test that was once a strict red gate, or retired on the record: the
+- 33 items (32, plus #1323's bound) are each satisfied by an evidence test that was once a strict red gate, or retired on the record: the
   slice-0 defects (#1259, #1262, #1263's six parts including the DefaultNetwork stop #1299 shipped, #1264, #1265,
   #1267); the folded issues (#1123's three parts, #932's resume lookup, #863's seven DROP-class sites: four
   `loop_perception` wraps and three orchestrator SEM_TRACE wraps); #1288's four name lists
