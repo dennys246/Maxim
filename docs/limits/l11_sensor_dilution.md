@@ -1,7 +1,9 @@
 # L11 — Sensor-count dilution and the discrimination ceiling (tracking doc)
 
 **Ledger entry:** [README.md](README.md) §L11 · **Disposition:** MITIGATED (mitigation SELECTED by bake-off
-2026-09-01 — the nonlinear gain, arm A4; **not yet shipped, not yet re-measured on a real body**)
+2026-09-01 — the nonlinear gain, arm A4; **shipped in 1.1.4** as `gain_exponent` in `similarity/encoder.py`; re-measured
+2026-09-04 in the live Paper world: mitigation confirmed, not retirement-eligible (0.057 against the 0.70 bar); **the
+real-body re-measure is still owed**)
 **Instrument:** `similarity/encoder.py::_sensor_embed` → EC
 `pattern_complete_or_separate` at `SensorEncoderConfig.pattern_threshold = 0.85`.
 Applies to every substrate modality channel.

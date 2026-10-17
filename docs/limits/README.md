@@ -1,7 +1,9 @@
 # Measurement limits — the instrument ledger
 
 > **Score cards** live in [score_cards/](score_cards/). The current baseline is the v1.3.1
-> re-score, [2026-09-27-claude.md](score_cards/2026-09-27-claude.md) (its Codex twin owed). Before it,
+> re-score, [2026-09-27-claude.md](score_cards/2026-09-27-claude.md) and its Codex twin
+> [2026-09-27-codex.md](score_cards/2026-09-27-codex.md). **The v1.3.2 re-score is owed** (1.3.2 was cut 2026-10-16;
+> the cards set a re-score at every cut). Before it,
 > the v1.3.0 pair: [2026-09-19-claude.md](score_cards/2026-09-19-claude.md) and
 > [2026-09-19-codex.md](score_cards/2026-09-19-codex.md), graded blind to each other. The Claude
 > card's §Divergence compares them and shows most of the spread tracking what each assessor could
@@ -231,6 +233,11 @@ your metric can actually see.
   every run record; and score fires by position (`A`, `B`, `C` recorded every
   time, gate on `B − C`) rather than against a remembered number. Without the
   first, a future re-fire will land in exactly this position again.
+  **Status 2026-10-16: the stamping half is MITIGATED.** Each sim's `report.json` stamps its code, interpreter,
+  model profile and context budget (M1, 2026-09-29), and B0's `simulation/serving_provenance.py` (2026-10-10)
+  records which models answered each call and how they were served, with a model-file hash. The scoring half (A, B
+  and C every fire, gate on `B − C`) is a design rule for the re-fire, which is baseline-floors Stage B4, before
+  1.4.0. The June result stays unverifiable.
 - **Amends L6:** L6 says "each model's headroom is its own measurement." Too
   weak in two directions — headroom belongs to the (model, task, **serving
   environment**) triple, and it is not stable across time even with the model
@@ -457,6 +464,9 @@ grade and assigns the corrective work to 1.1 or 1.1.x.
 The scorecard is intentionally **not** an `L*` entry: these `L*` rows describe
 measured properties of experimental instruments, while the scorecard evaluates the
 engineering system and its development process.
+
+**Cadence status (2026-10-16):** the latest pair is v1.3.1's (2026-09-27, Claude and Codex). 1.3.2 was cut
+2026-10-16, so its re-score is owed. The note below is the 2026-08-27 status, kept as history.
 
 **Cadence status (2026-08-27):** the cards say re-score at each release cut; 1.1.0 was
 cut 2026-08-26 and the Claude re-score is issued at the `v1.1.0` commit as

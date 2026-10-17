@@ -3,6 +3,13 @@
 > **Audience:** Humans or AI assistants debugging remote update failures from a peer machine.
 > **Companion docs:** [peer_leader_connectivity.md](peer_leader_connectivity.md), [maxim_doctor.md](maxim_doctor.md)
 
+> **Upgrading a leader from 1.3.1 or earlier to 1.3.2: do it ON the leader, not with this command.** 1.3.2 fixes
+> [GHSA-7qh4-mp34-88v9](https://github.com/dennys246/Maxim/security/advisories/GHSA-7qh4-mp34-88v9): a remote
+> `peer restart` re-executes with the old environment, and a leader whose key is missing or too open now exits 2
+> with no remote way back. Follow [upgrading.md](../user/upgrading.md#131--132-a-leader-fails-closed) on the leader,
+> then cold-restart it. Between 1.3.2+ leaders that have opted in (`maxim config set proxy.allow_remote_update
+> true`), remote update works as below.
+
 ## How remote update works
 
 The update endpoint auto-detects the leader's install mode:
@@ -52,7 +59,7 @@ maxim peer update --dry-run
 maxim peer update
 
 # Pin to a specific version:
-maxim peer update --version 0.3.1
+maxim peer update --version 1.3.2
 
 # ── Git-checkout leaders (for development) ─────────────────────────
 
@@ -87,7 +94,7 @@ maxim peer llm --status
 
 # Mesh-aware versions (use node names from mesh.yml):
 maxim peer --node mac-studio update                  # drain → update → resume (auto-detect mode)
-maxim peer --node mac-studio update --version 0.3.1  # drain → pip update → resume
+maxim peer --node mac-studio update --version 1.3.2  # drain → pip update → resume
 maxim peer --node mac-studio update --dev feat/foo   # drain → git update → resume
 maxim peer --node mac-studio update --dry-run        # preview only, no drain
 maxim peer --node mac-studio restart                 # drain → restart → resume
@@ -105,8 +112,8 @@ maxim peer update
 │
 ├─── Pip mode (auto-detected or --version):
 │    ├── "Already at latest version" ── Nothing to upgrade
-│    ├── "0.3.0 → 0.3.1 available" ─── Dry-run preview. Run without --dry-run to apply
-│    ├── "Updated! 0.3.0 → 0.3.1" ──── Success! Run: maxim peer restart
+│    ├── "1.3.1 → 1.3.2 available" ─── Dry-run preview. Run without --dry-run to apply
+│    ├── "Updated! 1.3.1 → 1.3.2" ──── Success! Run: maxim peer restart
 │    ├── "Insufficient disk space" ──── Free space on leader (need ~6GB for torch extras)
 │    ├── "pip upgrade timed out" ────── Slow network. Check: pip show pymaxim on leader
 │    └── "pip upgrade failed, rollback" ── Dependency issue. Check stderr for details
@@ -169,7 +176,7 @@ maxim peer restart
 **Fix:** Drop the `--dev` flag — the leader will auto-detect pip mode:
 ```bash
 maxim peer update           # auto-detects pip mode
-maxim peer update --version 0.3.1  # pin specific version
+maxim peer update --version 1.3.2  # pin specific version
 ```
 
 ### HTTP 507 — Insufficient disk space
