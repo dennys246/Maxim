@@ -46,9 +46,9 @@
 - **A test that needs a credential-shaped fake** (an API key, a `Bearer` header, a PEM header) trips `scripts/lint_secrets.py` on every path: build the fake at runtime from pieces (the `fake()` helper in `tests/unit/test_lint_secrets.py`), or land an entry in `scripts/secret_scan_allowlist.json` on `main` first; the rules are in the lint's docstring and in docs/agents/simulation-experiments.md.
 - **New opt-in env vars in hot startup paths need autouse conftest scrubs in the same commit** — a test that sets the var leaks the side effect into every later runtime-constructing test (once cost a 9-minute hang on a real 1 GB model download). Template: the existing `_isolate_maxim_*` fixtures in [tests/conftest.py](../../tests/conftest.py). The ~54 autouse fixtures cost under a minute of suite time in total (2026-10-16). Full history: [docs/lessons/env-var-autouse-scrubs.md](../lessons/env-var-autouse-scrubs.md).
 - **A tree-scanning lint is tested with its own new files tracked:** run it after `git add -N <new files>` (#1175 was green only because its test file was untracked).
-- **Run every `jobs.lint` step locally before pushing**, the inline greps included, and let the lints finish before the push. `lint_fix_touches_tests.py` needs `PR_TITLE` set to the PR's title.
+- **Run `scripts/prepr.sh` on the last commit before pushing, and let it finish.** It runs every `jobs.lint` step plus the targeted mypy step, read from test.yml, and scans the PR title/body as CI does. Exit codes: 0 PASS · 1 FAIL · 2 REFUSED (it cannot reproduce CI's verdict: behind or stale origin/main, dirty tree, pin or python mismatch, PR-text mismatch, an unreproducible workflow construct) · 3 TAINTED-PASS (passed under `--allow-*`, `--no-fetch`, `--no-pr` or typed PR text). Only 0 clears a push; a `NOTE:` platform line does not change the code. Before a PR exists, pass `--title` (taints) or `--no-pr`. `--list` prints the plan (M59).
 - **Stale timing comments in test.yml:** the concurrency block's "~12 min of real work" and the `unit-tests` timeout comment's 18:26/26:46 figures predate the 15k-test suite; the 2026-10-16 numbers are in §1. The `timeout-minutes: 60` has ~20 min of headroom over the median.
-- **The mypy file list exists twice** (CLAUDE.md's required check and test.yml's step), kept in sync by hand with no test; edit both. Single-sourcing is backlog M65.
+- **The mypy file list lives only in `scripts/run_mypy_public.sh`** (M65); CI and CLAUDE.md call it, and `test_ci_workflow_shape.py` fails if a second copy appears.
 
 ### `scripts/suite_at_commit.sh` (moved from docs/lessons/development-flow-speed.md)
 
@@ -72,7 +72,7 @@ It creates a uniquely named `.worktrees/suite-<sha>.XXXXXX` under the MAIN check
 
 ## 6. Lesson archive
 
-- [docs/lessons/ci-efficiency-2026-10-16.md](../lessons/ci-efficiency-2026-10-16.md) — the 2026-10-16 measurements, owner decisions and backlog rows M59–M65
+- [docs/lessons/ci-efficiency-2026-10-16.md](../lessons/ci-efficiency-2026-10-16.md) — the 2026-10-16 measurements, owner decisions and backlog rows M59–M65 (M59/M65 shipped with prepr.sh; M66 tracks running it)
 - [docs/lessons/green-pr-with-no-tests-run.md](../lessons/green-pr-with-no-tests-run.md) (core rule in CLAUDE.md)
 - [docs/lessons/env-var-autouse-scrubs.md](../lessons/env-var-autouse-scrubs.md) (core rule in CLAUDE.md)
 - [docs/lessons/development-flow-speed.md](../lessons/development-flow-speed.md) — snapshot suites, fold batches, the M22 xdist trial
