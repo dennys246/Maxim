@@ -104,7 +104,7 @@ upgrades `/ws`.
 **Order.**
 1. tts, together with the #1332 fix, and console's `/ws`, together with #1347.
 2. The extras the robot depends on: reachy, audio.
-3. The rest, over 1.3.4 and 1.3.5.
+3. The rest, over the following patches.
 
 **The check.** Backlog **M69**: a lint that every `[project.optional-dependencies]` key has a real-library test
 marked for the matrix.
