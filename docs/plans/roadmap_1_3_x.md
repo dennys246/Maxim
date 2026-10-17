@@ -802,8 +802,9 @@ remainder hard-gates 1.4.0 (§The 1.4.0 gate).
 1.3.2 "Decomposition" shipped 2026-10-16. 1.4.0 is hard-gated by `scripts/release_gates.json` and
 `scripts/lint_release_gates.py` (#1300). At the cut that gate had 31 of 32 items open, none of its five
 characterization arms recorded, and three functions far over its then 200-line limit (1,000 since #1323): `start_simulation_mode` (2,889
-lines), `run_agentic_loop` (2,434) and `tool_dispatch.execute_and_learn` (392). The owner chose **three patch
-releases, then 1.4.0**, so the decomposition ships in steps. Each step is a release users get, and the repo keeps
+lines), `run_agentic_loop` (2,434) and `tool_dispatch.execute_and_learn` (392). The owner chose **patch releases, then 1.4.0**
+(three on 2026-10-16; four since 2026-10-17, when 1.3.3 was split so the atonia gate ships as its own 1.3.4), so the
+decomposition ships in steps. Each step is a release users get, and the repo keeps
 improving on the way. A six-reader review of `docs/` and `docs/plans/` (2026-10-16) produced the scopes below. Every
 open issue that had no home is placed here (M15).
 
@@ -812,10 +813,12 @@ Owner decisions taken with this path (2026-10-16):
   constants, so a same-prior floor learner matches it and it cannot EARN under BF2 (M46). E1's four-lens design
   review starts from one question: what contingency can a reasonable no-bio floor lose (delayed or multi-step
   credit, a learning curve rather than a fixed argmax)?
+- **1.3.3 is split (2026-10-17).** 1.3.3 ships the release pipeline and pulse's blockers fast. The atonia gate becomes
+  1.3.4, on its own clock. The orchestrator becomes 1.3.5, and loop phase 2 becomes 1.3.6.
 - **T1-2 (Exp 37) is resolved by B4 before 1.4.0.** The B4 re-fire (L8's dose-response design) runs after the
   orchestrator slices unblock B2. If it has not run, 1.4.0 waits. No second release exception is taken.
 
-### 1.3.3, "Seams and the release pipeline" (no `nac.py` selection or loop-body moves)
+### 1.3.3, "The release pipeline and the pulse seam" (no `nac.py` selection or loop-body moves; split 2026-10-17)
 - **The release pipeline:** [#938](https://github.com/dennys246/Maxim/issues/938) (a tag-triggered,
   trusted-publishing workflow and a `v*` tag ruleset), CI caching [#1318](https://github.com/dennys246/Maxim/issues/1318). Owner standard 2026-10-16: no Test PyPI;
   the exact built wheel is smoke-tested in a clean venv, then published.
@@ -843,6 +846,9 @@ Owner decisions taken with this path (2026-10-16):
   v0.4.2:
   - **[#1332](https://github.com/dennys246/Maxim/issues/1332): spoken-code pairing is silent** on every installable
     piper-tts.
+  - **[#1347](https://github.com/dennys246/Maxim/issues/1347): the `console` extra cannot serve `/ws`.** Plain
+    `uvicorn` has no WebSocket library, so a clean `pymaxim[console]` install gives the Console no live stream. The
+    fix is `uvicorn[standard]`, guarded by an R2 test: the extra alone upgrades `/ws` against a real server.
   - **[#1333](https://github.com/dennys246/Maxim/issues/1333): the wheel vendored console v0.4.0.** Vendor v0.4.1, and
     make the release check the vendored tag (R4, a gate: design pass first).
   - **The standards, first slice each:**
@@ -853,8 +859,9 @@ Owner decisions taken with this path (2026-10-16):
     - [#1336](https://github.com/dennys246/Maxim/issues/1336) (R3): typed console payloads.
   - **Cut rule:** R3's contract 0.7.0 lands only together with a pulse tag built for 0.7.0. Otherwise it slips past
     the cut, and the release vendors v0.4.1 at contract 0.6.0.
-  - **Before the cut:** pulse's `scripts/smoke-reachy-release.sh` on Linux against the candidate wheel prints
-    `SMOKE PASSED`.
+  - **Before the cut,** two checks run against the candidate wheel:
+    - pulse's `scripts/smoke-reachy-release.sh` on Linux prints `SMOKE PASSED`;
+    - pulse's browser suite `scripts/e2e.sh` prints `E2E PASSED (59/59)`.
 - **Advisor mode** ([#1315](https://github.com/dennys246/Maxim/issues/1315); [advisor_mode.md](advisor_mode.md),
   verified against v1.3.2 and reviewed 2026-10-17). It moved here from §After 1.4.0 at an external request.
   - Owner decisions AD1–AD9 were made 2026-10-17, all as recommended. AD2 is the **atonia gate**: motor output
@@ -871,8 +878,8 @@ Owner decisions taken with this path (2026-10-16):
     - item 11, `maxim doctor --advisor`;
     - item 12, a cursor the caller owns;
     - items 13 and 14, the SAR lead schema and cell sweeps (Profile A).
-  - The proposed cut adds item 9 (process-level) and item 10 to 1.3.3; the rest go to 1.3.4 (advisor_mode.md §The 1.3.3
-    cut, for the owner to confirm). As a result there is no Phase 2 drill on 1.3.3, because it needs item 4.
+  - **These items ship as 1.3.4, not in 1.3.3** (owner decision 2026-10-17; §1.3.4 below). Item 9's process-level
+    yield may land in 1.3.3 if Session H finishes it first.
   - Profile A's Phase 1 runs on 1.3.2 through a verified harness, with conditions (advisor_mode.md §Phase 1 on 1.3.2).
 - **Found while verifying plan 50:**
   - [#1342](https://github.com/dennys246/Maxim/issues/1342): `run()` writes under the CWD, and prefetch reads it
@@ -892,11 +899,11 @@ signed commit.
 | Session | Line | Owns | Shares | Starts with |
 |---|---|---|---|---|
 | **P (pipeline)** | #938 trusted publishing and the `v*` ruleset; #1333 vendoring with R4; #1318 CI caching; #1295 upgrade safety | `scripts/vendor_console_ui.py`, `scripts/audit_release_build.py`, `tests/unit/test_vendor_console_freshness.py`, `tests/unit/test_audit_release_build.py`; vendoring into `src/maxim/console/ui_dist/` (a release step, not committed) | `test.yml`: the `release-build` job hunk (its stub manifest) and the caching hunk. `console/ui_bundle.py` and `tests/unit/test_console_ui_bundle.py`: S owns them, P reads `ui_bundle.py` and edits the vendor-script test hunk. `pyproject.toml`: the release bump. `docs/publication_guide.md`: the process session's; hand over the steps | #1333, which has to be in the next wheel; then R4's design pass; then #938 |
-| **S (pulse seam)** | #1332 the piper fix; R1 #1334; R2 #1335 (tts first); R3 #1336 (stall and health kinds); #1292 F4 | `models/audio/`, `console/` except `handle.py` (schemas, announcer, server, health, `ui_bundle.py`, `openapi.json`, `contract_surface.json`), the stall-dict hunk of `runtime/heartbeat.py`, `utils/audio.py`, `utils/response_output.py`, `.github/constraints/console.txt`, `tests/unit/test_console_ui_bundle.py`, the extras in `pyproject.toml` | `console/handle.py` with V; `test.yml` (the matrix lane) | #1332's red gate against the real library |
-| **V (atonia gate)** | advisor_mode.md items 2, 3, 6, then 1 with 5, and 10 (then 4, 12, 7, 11, and Profile A's 13, 8, 14); #1338, #1342 | `tools/` except the `InternetAccessTool` hunk; `runtime/executor.py`, `runtime/bootstrap.py`, `runtime/agent_factory.py`, `runtime/prefetch.py`, `runtime/tool_dispatch.py`, `runtime/concurrent_executor.py`, `runtime/agent_pool.py`; `api.py`, `create.py`, `modes/`, `agents/autonomy.py`; `embodied_runtime/agentic_runtime.py`, `embodiment/tool_bridge.py`, `simulation/{foundry,minecraft_harness,tools,tools_dm,research_tools,campaign_runner,dm_runtime}.py`. `utils/internet_access.py` (H shares the #1345 hunk). For item 10: `utils/http.py` (the offline refusal), `models/download.py`, `models/language/{llama_backend,transformers_backend}.py`, `models/vision/`, `similarity/{encoder,semantic}.py`, `inference/transcribe_audio.py`, `simulation/container_runner.py`, `runtime/decision_log.py`; `doctor/` (item 11) | `console/handle.py` with S. `models/audio/tts.py` (the `ensure_tts_voice` hunk) with S. `tools/internet_search.py` and `tools/comms.py` with H. `runtime/config_loader.py`: the one shared 1.4 config-format bump. **`orchestrator.py` and `agent_loop.py` under the AD8 fence exception.** `cli.py` is Session A's file. Rule T applies to the pinned functions in advisor_mode.md §Order and the fence | the approach notes and design passes for items 2, 3, 1, 5 and 10, together |
+| **S (pulse seam)** | #1332 the piper fix; #1347 the console extra's `/ws`; R1 #1334; R2 #1335 (tts first); R3 #1336 (stall and health kinds); #1292 F4 | `models/audio/`, `console/` except `handle.py` (schemas, announcer, server, health, `ui_bundle.py`, `openapi.json`, `contract_surface.json`), the stall-dict hunk of `runtime/heartbeat.py`, `utils/audio.py`, `utils/response_output.py`, `.github/constraints/console.txt`, `tests/unit/test_console_ui_bundle.py`, the extras in `pyproject.toml` | `console/handle.py` with V; `test.yml` (the matrix lane) | #1332's red gate against the real library |
+| **V (atonia gate → 1.3.4)** | advisor_mode.md items 2, 3, 6, then 1 with 5, and 10 (then 4, 12, 7, 11, and Profile A's 13, 8, 14); #1338, #1342 | `tools/` except the `InternetAccessTool` hunk; `runtime/executor.py`, `runtime/bootstrap.py`, `runtime/agent_factory.py`, `runtime/prefetch.py`, `runtime/tool_dispatch.py`, `runtime/concurrent_executor.py`, `runtime/agent_pool.py`; `api.py`, `create.py`, `modes/`, `agents/autonomy.py`; `embodied_runtime/agentic_runtime.py`, `embodiment/tool_bridge.py`, `simulation/{foundry,minecraft_harness,tools,tools_dm,research_tools,campaign_runner,dm_runtime}.py`. `utils/internet_access.py` (H shares the #1345 hunk). For item 10: `utils/http.py` (the offline refusal), `models/download.py`, `models/language/{llama_backend,transformers_backend}.py`, `models/vision/`, `similarity/{encoder,semantic}.py`, `inference/transcribe_audio.py`, `simulation/container_runner.py`, `runtime/decision_log.py`; `doctor/` (item 11) | `console/handle.py` with S. `models/audio/tts.py` (the `ensure_tts_voice` hunk) with S. `tools/internet_search.py` and `tools/comms.py` with H. `runtime/config_loader.py`: the one shared 1.4 config-format bump. **`orchestrator.py` and `agent_loop.py` under the AD8 fence exception.** `cli.py` is Session A's file. Rule T applies to the pinned functions in advisor_mode.md §Order and the fence | the approach notes and design passes for items 2, 3, 1, 5 and 10, together |
 | **H (hardening)** | security #1311 #1312 #1314 #957 #997; the `node_security` remainder; fail-loud Stage 3; #1337; #1310 (the owner's strict `passed`); the comms recipient allowlist (O4, non-advisor); #1343; #1345; advisor_mode.md item 9's process-level yield, converging with #1267 on one SIGTERM installer (#1344); CI and evidence truth (#1313 #1203 #1121 #1218 …); the 1.4.0 gate items #1305 #1263 #1264 #1265 #1267; M25; the small fixes | `runtime/role.py`, `runtime/leader_mode.py`, `runtime/local_server_spawner.py` (including R1's decision on `_health_check`), `simulation/benchmark.py`, `cli_utils.py`, `comms/` and the scripts each issue names | `tools/comms.py` (the allowlist hunk) and `tools/internet_search.py` plus `utils/internet_access.py` (#1345) with V; `cli.py` (#1310's exit code, #1337, #1343's consent hunk, item 9's installer) with Session A; `test.yml` (the CI-truth hunks) | #1337 and #1310 (small, decided), then security |
 | **E (E1, paper only)** | the BF2 floor decision for E1; the argmax and hunger-state replays (offline, committed); E1's prereg draft through the four-lens design review | `docs/experiments/`, the replay scripts under `scripts/` | nothing in `src/` (the fence holds until 1.3.5) | the floor decision, presented as options to the owner |
-| **A (decomposition)** | 1.3.4 can start now: the five orchestrator characterization arms are tests only | `orchestrator.py`, `agent_loop.py` (the fence), `cli.py` (Session A's file) | grants V's AD8 hunks; V's `cli.py` hunks (the agentic-path call site, #1338's server-mode readiness); H's `cli.py` hunks (#1310, #1337, #1343, item 9's installer) | the characterization arms |
+| **A (decomposition)** | 1.3.5 can start now: the five orchestrator characterization arms are tests only | `orchestrator.py`, `agent_loop.py` (the fence), `cli.py` (Session A's file) | grants V's AD8 hunks; V's `cli.py` hunks (the agentic-path call site, #1338's server-mode readiness); H's `cli.py` hunks (#1310, #1337, #1343, item 9's installer) | the characterization arms |
 
 **At most four code sessions run at once:** P, S, V and H, or A in place of one of them. E is paper only and does not
 count. Three constraints set the limit:
@@ -908,11 +915,19 @@ count. Three constraints set the limit:
 (V's `llm.offline` is the first) appends its fields to that one entry: `tests/fixtures/config_schema_by_version.json`
 plus the downgrade transition (#974).
 
-The 1.3.3 cut waits for P (the new pipeline publishes it) and for S's #1332 and #1333, because pulse is blocked on
-them. Under the proposed cut, V's items 1 (with a minimal 5), 2, 3, 6 and 10, and H's item 9, hold the cut; V's items 4, 5
-(full), 7, 8 and 11–14 are 1.3.4. H's tail can slip to 1.3.4 without holding the cut.
+The 1.3.3 cut waits for P (the new pipeline publishes it) and for S's #1332, #1333 and #1347, because pulse is blocked on
+them. Session V's atonia items do not hold the 1.3.3 cut; they are 1.3.4 (owner decision 2026-10-17). Session H's items ship in
+1.3.3 if they are ready, and otherwise slip to the next patch without holding the cut.
 
-### 1.3.4, "The orchestrator"
+### 1.3.4, "The atonia gate" (split out of 1.3.3, owner decision 2026-10-17)
+- **[advisor_mode.md](advisor_mode.md) items 2, 3, 6, then 1 with a minimal 5, and 10** (Session V), plus item 9 if Session H
+  has not already shipped it in 1.3.3. Items 4 and 12 join it if they are ready, which starts AvServ's Phase 2 drill;
+  items 5 (full), 7, 8, 11, 13 and 14 follow in a later patch.
+- **It ships when it is done, on its own clock.** It is a security-critical gate with five design passes, so it does
+  not hold 1.3.3. The orchestrator and loop phase 2 do not wait for it, and if they are ready first they ship first.
+- **Exit:** the registration and dispatch sweeps, the builder-refusal tests and item 10's census test pass.
+
+### 1.3.5, "The orchestrator"
 - **First the five characterization arms** (`persistent_agent`, `imagination`, `new_goal`, `stall`, `generative`).
   **Then the `start_simulation_mode` slices** down to 1,000 lines or fewer, descendants included (gate rule 4;
   item `1323.functions-1000`).
@@ -922,7 +937,7 @@ them. Under the proposed cut, V's items 1 (with a minimal 5), 2, 3, 6 and 10, an
 - **Unblocks B2** (the bare LLM loop), and with it B4.
 - **Exit:** `start_simulation_mode` and its descendants pass gate rule 4, and all five arms are satisfied.
 
-### 1.3.5, "The loop, phase 2"
+### 1.3.6, "The loop, phase 2"
 - **`run_agentic_loop` and `execute_and_learn`** ([#1150](https://github.com/dennys246/Maxim/issues/1150)) to 1,000 lines or fewer
   (item `1323.functions-1000`; it was 200 until #1323).
 - **[deferred/loop_stack_builder.md](deferred/loop_stack_builder.md)** (owner decision 2026-10-17): its trigger fired
@@ -960,7 +975,7 @@ them. Under the proposed cut, V's items 1 (with a minimal 5), 2, 3, 6 and 10, an
 2. **The fence serializes E1's instrument behind the whole decomposition**, so rig time sits idle unless B1-style
    floor work fills it.
 3. **E1 may still fail BF2** after its redesign, leaving 1.4 without an Ambition-axis result.
-4. **T1-2 waits on B4**, which waits on 1.3.4 and 1.3.5. If B4 slips, 1.4.0 slips (owner decision).
+4. **T1-2 waits on B4**, which waits on 1.3.5 and 1.3.6. If B4 slips, 1.4.0 slips (owner decision).
 5. **Plan text drifts without a lint** (M2, M36). Each patch release re-reads its plans as part of its release
    transaction.
 

@@ -4,8 +4,8 @@ Status: PLAN, no code. Drafted 2026-10-17 from an external request: AvServ, a sa
 server, and its plan 50. Every claim about the code was verified against the `v1.3.2` tag and `origin/main` the same
 day. Two three-lens review rounds have been folded in.
 
-**Owner decisions AD1–AD9 were made 2026-10-17:** all as recommended, with AD2 reframed as the atonia gate. The 1.3.3
-cut below is a proposal, and it is the one open owner decision.
+**Owner decisions AD1–AD9 were made 2026-10-17:** all as recommended, with AD2 reframed as the atonia gate. AD7, the
+cut, was settled the same day: **the atonia gate ships as its own patch, 1.3.4**, split out of 1.3.3.
 
 Each gate item gets an approach note and an adversarial design pass before code (CLAUDE.md "Faster without lowering
 the bar", item 1).
@@ -34,7 +34,7 @@ The guarantee is built in three layers, named for what each one is:
 **The report is not REM's spared channel.** Talking during REM is itself a leak. The report is the one channel the
 builder deliberately leaves open: Maxim observes and speaks.
 
-**The gate does not leak on the channels it owns.** In the proposed 1.3.3 cut (items 1, 2, 3 and 10), it owns the
+**The gate does not leak on the channels it owns.** In its release, 1.3.4 (items 1, 2, 3 and 10), it owns the
 table's "Maxim's gate" rows: tool dispatch, actuation, environment, context reads and fetch egress. Each of those rows
 has its own red gate (§Red gates first). Disk and inbound stay the sandbox's job until items 7 and 4 ship
 (§The guarantee, by effect channel).
@@ -89,7 +89,7 @@ when an experiment starts.
 The request asked that "writing a report is the only effect Maxim can have". Until the item that owns a channel
 ships, **the sandbox is that channel's only guard**:
 
-| Channel | What can carry an effect today | Owned by | In 1.3.3 (proposed cut) |
+| Channel | What can carry an effect today | Owned by | In 1.3.4 |
 |---|---|---|---|
 | Tool dispatch | Any registered tool. Composite tools: the sub-sim tool spawns its own `bash`/`write_file` executor. Direct `executor.execute` callers. | items 1–3 | Maxim's gate |
 | Actuation | `embodied_runtime/movement.py`, reflexes and the Default Network, whenever an embodiment is attached | the closed builder refuses any embodiment or robot | Maxim's gate |
@@ -167,7 +167,7 @@ Owner priority: 1–3 first, then 6, 4, 5, 7, 8. AvServ's additions are items 9�
 | 5 | **A durable, append-only proposal and refusal log** | yes | 1 | S–M | O7 |
 | 7 | **Ephemeral mode:** no writes outside the caller's directory | no | none | M | O9; Disk |
 | 8 | **Corroboration** (Profile A) | no | 13 | M | (SAR leads) |
-| 9 | **A bounded yield on SIGTERM** (see below). In 1.3.3 it is process-level; the report half lands with item 4. | no | 5 (in the cut) for 1.3.3; 4 and 12 for the report half | M | #1344 |
+| 9 | **A bounded yield on SIGTERM** (see below). Its first release is process-level; the report half lands with item 4. | no | 5 (in 1.3.4) for the process half; 4 and 12 for the report half | M | #1344 |
 | 10 | **Offline: a census-backed refusal of every fetch except the local LLM** (see below) | yes | none | L | Egress (fetches) |
 | 11 | **Preflight, `maxim doctor --advisor`** (see below) | no | 2, 10 | S–M | plan 50 §12.1 |
 | 12 | **A cursor the caller owns** (Profile B) | no | 4 | S | plan 50 §12.1 |
@@ -244,7 +244,7 @@ proposal log back into a dispatch.
 
 ### Item 9: a bounded yield
 
-**Process-level in 1.3.3.**
+**Process-level first** (in 1.3.3 if Session H finishes it, otherwise in 1.3.4).
 - **One handler, installed at process entry.** `cli.py::main` installs it on the main thread. Library callers call an
   explicit `install_yield_handler()`, which raises off the main thread instead of silently failing; that silent
   failure is #1344's root cause. #1267's fix to the dead handler in the `tty_stdin.py` thread converges on this
@@ -321,7 +321,7 @@ call, a killed write leaves *no* report. That falls under "a missing report is n
 - **The atonia builder forces offline whatever the config says.** In Profile B the config file is absent or baked
   into the image, so a config default of off would fail open.
 - **The key bumps `CONFIG_FORMAT_VERSION` from 1.3 to 1.4,** with new schema-fixture entries and a downgrade
-  transition. That is one shared bump for every 1.3.3 session that adds keys (`roadmap_1_3_x.md` §1.3.3).
+  transition. That is one shared bump for every session that adds keys before the next release (`roadmap_1_3_x.md` §1.3.3).
 - **`runtime/decision_log.py`** stamps the offline state into provenance.
 
 **The red gate** first deletes the `HF_HUB_OFFLINE`/`TRANSFORMERS_OFFLINE` that `tests/conftest.py` forces. Without
@@ -406,28 +406,26 @@ shrinking the function, or recorded as a `touch_exemptions` entry (#1327).
 call sites and item 1's composition. Item 9 needs no fence change, because it uses `stop_event` and
 `request_shutdown`.
 
-### The 1.3.3 cut (proposed 2026-10-17; the owner confirms)
+### The release: 1.3.4, on its own clock (owner decision 2026-10-17)
 
-AvServ's hand-off to the owner (2026-10-17) named items 1–3, 6, the yield and offline as must-haves, and everything
-else as able to slip. Plan 50 itself has no cut line. **Proposed for 1.3.3:**
+AvServ's hand-off (2026-10-17) named items 1–3, 6, the yield and offline as must-haves. Plan 50 itself has no cut line.
+The owner split 1.3.3: it ships the release pipeline and pulse's blockers fast, and **the atonia gate ships as 1.3.4
+when it is done**:
 - items 2, 3 and 6;
 - item 1 with a minimal 5;
-- item 9 (process-level);
-- item 10.
+- item 10;
+- item 9, unless Session H has already shipped its process half in 1.3.3;
+- items 4 and 12 too, if they are ready. That is what starts AvServ's Phase 2 drill (plan 50 §10 needs item 4).
 
-**Consequence: there is no Phase 2 drill on 1.3.3.** Plan 50 §10 needs item 4 (ingestion and the report) for the
-drill, and item 4 lands in 1.3.4 along with items 5 (full), 7, 8, 11, 12, 13 and 14. Profile A does not wait: Phase 1
-runs on 1.3.2 through the harness.
-
-**If 1.3.3 must be smaller still:** keep item 10, which closes egress, and let item 9 ride on the 1.3.2 advice below
-(SIGINT or the stop event).
+Items 5 (full), 7, 8, 11, 13 and 14 follow in a later patch. Profile A does not wait: Phase 1 runs on 1.3.2 through the
+harness.
 
 **Asks this plan answers differently, and why:**
 - **"An undeclared tool fails registration with TypeError":** an undeclared tool counts as the top effect class, and
   registering it raises above a ceiling. A registry with no ceiling still accepts it, so `register_tool` keeps working
   for existing third-party tools. The sealed registry refuses it anyway (AD3).
 - **"`run()` takes a registry and an autonomy level":** waits for 1.4.0, because it is a minor-release change to a
-  stable verb. In 1.3.3, `maxim.advisor` (Experimental) fixes both (AD6).
+  stable verb. In 1.3.4, `maxim.advisor` (Experimental) fixes both (AD6).
 - **"The type has no approve path":** approval lives on the autonomy controller, which the composition replaces
   (item 1).
 
@@ -521,10 +519,10 @@ Every fix ships with a caller on the shipped path, and each item gets the three-
 | AD3 | Where does the capability class live? | **Declared on the type, enforced by the registry.** Undeclared means the top class. The sealed registry makes the declaration irrelevant inside the gate. |
 | AD4 | Is the schema versioned, and where is it documented? | **Yes.** `_format_version` plus `schema` names, documented in `docs/user/advisor.md`. Experimental tier (rule 5) through 1.3.x, frozen at 1.4.0. |
 | AD5 | Is the sandbox primary? | **No: independent.** Maxim's guard holds alone on the channels marked "Maxim's gate". |
-| AD6 | Add `run()` keyword arguments in a patch release? | **No: they wait for 1.4.0.** 1.3.3 ships `maxim.advisor` and `maxim.research` as Experimental. Adding a new Experimental namespace in a patch is accepted, as part of this decision. |
-| AD7 | The scope cut | **Reopened as the 1.3.3 cut** (§The 1.3.3 cut). It is the one owner decision still open, because AvServ's must-haves add items 9 and 10. |
+| AD6 | Add `run()` keyword arguments in a patch release? | **No: they wait for 1.4.0.** The patch that ships the gate (1.3.4) ships `maxim.advisor` as Experimental, and `maxim.research` comes with items 13 and 14. Adding a new Experimental namespace in a patch is accepted, as part of this decision. |
+| AD7 | The scope cut | **Decided 2026-10-17: 1.3.3 is split.** The atonia gate ships as 1.3.4, on its own clock (§The release). |
 | AD8 | A fence exception for item 3 | **Granted,** scoped to `ToolPolicy` call sites and item 1's composition. |
-| AD9 | What may 1.3.3 promise? | **Experimental, with the effect-channel table in its docs.** |
+| AD9 | What may the gate's release promise? | **Experimental, with the effect-channel table in its docs.** |
 
 ## Draft interfaces, for AvServ to design against (Experimental)
 
