@@ -96,8 +96,13 @@ which pins the OpenAPI generator. So that lane skips the snapshot and fingerprin
 - `test_openapi_snapshot_is_fresh`;
 - `TestContractSurfaceCannotDriftSilently`.
 
+**The second instance: #1347.** The `console` extra installs plain `uvicorn`, which has no WebSocket library, so `/ws`
+returns 404 from a clean install. The `/ws` tests use Starlette's `TestClient`, which never goes through uvicorn, so
+they could not see it. The R2 test for `console` runs a real uvicorn server from a venv holding only that extra, and
+upgrades `/ws`.
+
 **Order.**
-1. tts, together with the #1332 fix.
+1. tts, together with the #1332 fix, and console's `/ws`, together with #1347.
 2. The extras the robot depends on: reachy, audio.
 3. The rest, over 1.3.4 and 1.3.5.
 
@@ -176,6 +181,12 @@ PYMAXIM_SPEC=/path/to/pymaxim-1.3.3-py3-none-any.whl scripts/smoke-reachy-releas
 ```
 
 It must print `SMOKE PASSED`: a pairing request puts real float32 audio on the robot's speaker.
+
+Pulse's browser end-to-end suite must also pass against the same wheel. It needs `/ws` (#1347).
+
+```bash
+PYMAXIM_SPEC=/path/to/pymaxim-1.3.3-py3-none-any.whl scripts/e2e.sh   # must print E2E PASSED (59/59)
+```
 
 After the release, pulse runs `scripts/check_pymaxim_vendor.py 1.3.3`.
 
