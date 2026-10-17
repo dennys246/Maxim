@@ -815,6 +815,8 @@ Owner decisions taken with this path (2026-10-16):
   credit, a learning curve rather than a fixed argmax)?
 - **1.3.3 is split (2026-10-17).** 1.3.3 ships the release pipeline and pulse's blockers fast. The atonia gate becomes
   1.3.4, on its own clock. The orchestrator becomes 1.3.5, and loop phase 2 becomes 1.3.6.
+- **B3 runs Reflexion first** (2026-10-17), as one end-of-session reflection call. Episodic retrieval may follow as a
+  second arm.
 - **T1-2 (Exp 37) is resolved by B4 before 1.4.0.** The B4 re-fire (L8's dose-response design) runs after the
   orchestrator slices unblock B2. If it has not run, 1.4.0 waits. No second release exception is taken.
 
@@ -902,7 +904,7 @@ signed commit.
 | **S (pulse seam)** | #1332 the piper fix; #1347 the console extra's `/ws`; R1 #1334; R2 #1335 (tts first); R3 #1336 (stall and health kinds); #1292 F4 | `models/audio/`, `console/` except `handle.py` (schemas, announcer, server, health, `ui_bundle.py`, `openapi.json`, `contract_surface.json`), the stall-dict hunk of `runtime/heartbeat.py`, `utils/audio.py`, `utils/response_output.py`, `.github/constraints/console.txt`, `tests/unit/test_console_ui_bundle.py`, the extras in `pyproject.toml` | `console/handle.py` with V; `test.yml` (the matrix lane) | #1332's red gate against the real library |
 | **V (atonia gate → 1.3.4)** | advisor_mode.md items 2, 3, 6, then 1 with 5, and 10 (then 4, 12, 7, 11, and Profile A's 13, 8, 14); #1338, #1342 | `tools/` except the `InternetAccessTool` hunk; `runtime/executor.py`, `runtime/bootstrap.py`, `runtime/agent_factory.py`, `runtime/prefetch.py`, `runtime/tool_dispatch.py`, `runtime/concurrent_executor.py`, `runtime/agent_pool.py`; `api.py`, `create.py`, `modes/`, `agents/autonomy.py`; `embodied_runtime/agentic_runtime.py`, `embodiment/tool_bridge.py`, `simulation/{foundry,minecraft_harness,tools,tools_dm,research_tools,campaign_runner,dm_runtime}.py`. `utils/internet_access.py` (H shares the #1345 hunk). For item 10: `utils/http.py` (the offline refusal), `models/download.py`, `models/language/{llama_backend,transformers_backend}.py`, `models/vision/`, `similarity/{encoder,semantic}.py`, `inference/transcribe_audio.py`, `simulation/container_runner.py`, `runtime/decision_log.py`; `doctor/` (item 11) | `console/handle.py` with S. `models/audio/tts.py` (the `ensure_tts_voice` hunk) with S. `tools/internet_search.py` and `tools/comms.py` with H. `runtime/config_loader.py`: the one shared 1.4 config-format bump. **`orchestrator.py` and `agent_loop.py` under the AD8 fence exception.** `cli.py` is Session A's file. Rule T applies to the pinned functions in advisor_mode.md §Order and the fence | the approach notes and design passes for items 2, 3, 1, 5 and 10, together |
 | **H (hardening)** | security #1311 #1312 #1314 #957 #997; the `node_security` remainder; fail-loud Stage 3; #1337; #1310 (the owner's strict `passed`); the comms recipient allowlist (O4, non-advisor); #1343; #1345; advisor_mode.md item 9's process-level yield, converging with #1267 on one SIGTERM installer (#1344); CI and evidence truth (#1313 #1203 #1121 #1218 …); the 1.4.0 gate items #1305 #1263 #1264 #1265 #1267; M25; the small fixes | `runtime/role.py`, `runtime/leader_mode.py`, `runtime/local_server_spawner.py` (including R1's decision on `_health_check`), `simulation/benchmark.py`, `cli_utils.py`, `comms/` and the scripts each issue names | `tools/comms.py` (the allowlist hunk) and `tools/internet_search.py` plus `utils/internet_access.py` (#1345) with V; `cli.py` (#1310's exit code, #1337, #1343's consent hunk, item 9's installer) with Session A; `test.yml` (the CI-truth hunks) | #1337 and #1310 (small, decided), then security |
-| **E (E1, paper only)** | the BF2 floor decision for E1; the argmax and hunger-state replays (offline, committed); E1's prereg draft through the four-lens design review | `docs/experiments/`, the replay scripts under `scripts/` | nothing in `src/` (the fence holds until 1.3.5) | the floor decision, presented as options to the owner |
+| **E (E1 and B4, paper only)** | the BF2 floor decision for E1; the argmax and hunger-state replays (offline, committed); E1's prereg draft through the four-lens design review; **B4's prereg through its four-lens design review** ([#1354](https://github.com/dennys246/Maxim/issues/1354); a new claim, L8's dose-response design) | `docs/experiments/`, the replay scripts under `scripts/` | nothing in `src/` (the fence holds until 1.3.5) | the floor decision, presented as options to the owner |
 | **A (decomposition)** | 1.3.5 can start now: the five orchestrator characterization arms are tests only | `orchestrator.py`, `agent_loop.py` (the fence), `cli.py` (Session A's file) | grants V's AD8 hunks; V's `cli.py` hunks (the agentic-path call site, #1338's server-mode readiness); H's `cli.py` hunks (#1310, #1337, #1343, item 9's installer) | the characterization arms |
 
 **At most four code sessions run at once:** P, S, V and H, or A in place of one of them. E is paper only and does not
@@ -934,7 +936,8 @@ them. Session V's atonia items do not hold the 1.3.3 cut; they are 1.3.4 (owner 
 - **Riding with the slices:** [#1259](https://github.com/dennys246/Maxim/issues/1259), [#1262](https://github.com/dennys246/Maxim/issues/1262), #863's orchestrator wraps, #835, #965, #1288's stall nudge, and
   the sim-lifecycle and narrator issues [#981](https://github.com/dennys246/Maxim/issues/981), [#1005](https://github.com/dennys246/Maxim/issues/1005), [#1006](https://github.com/dennys246/Maxim/issues/1006), [#1007](https://github.com/dennys246/Maxim/issues/1007), [#1028](https://github.com/dennys246/Maxim/issues/1028), [#1033](https://github.com/dennys246/Maxim/issues/1033), [#1034](https://github.com/dennys246/Maxim/issues/1034), [#1043](https://github.com/dennys246/Maxim/issues/1043), [#1046](https://github.com/dennys246/Maxim/issues/1046), [#1272](https://github.com/dennys246/Maxim/issues/1272), [#1276](https://github.com/dennys246/Maxim/issues/1276), [#1241](https://github.com/dennys246/Maxim/issues/1241).
   Also [#1301](https://github.com/dennys246/Maxim/issues/1301): re-assess the narrator-driven evidence recorded before #1260 and #1261.
-- **Unblocks B2** (the bare LLM loop), and with it B4.
+- **Meets B2's entry condition** ([#1352](https://github.com/dennys246/Maxim/issues/1352), the bare LLM loop). B2's code
+  prerequisites land in 1.3.6.
 - **Exit:** `start_simulation_mode` and its descendants pass gate rule 4, and all five arms are satisfied.
 
 ### 1.3.6, "The loop, phase 2"
@@ -948,10 +951,21 @@ them. Session V's atonia items do not hold the 1.3.3 cut; they are 1.3.4 (owner 
     (#1200, #1227 and #1228 are already homed);
   - the mode readers [#960](https://github.com/dennys246/Maxim/issues/960), [#962](https://github.com/dennys246/Maxim/issues/962), [#1192](https://github.com/dennys246/Maxim/issues/1192), [#1193](https://github.com/dennys246/Maxim/issues/1193);
   - Entity save/load [#1159](https://github.com/dennys246/Maxim/issues/1159) and the sensor resolver [#1156](https://github.com/dennys246/Maxim/issues/1156).
+- **B2's code prerequisites are exit items** (owner decision 2026-10-17). The loop slices already make these cuts:
+  - the `_llm_unavailable` fallback leaves `run_agentic_loop` for a module with no bio imports;
+  - `tool_dispatch.execute_and_learn` becomes importable without bio modules (#1150), and callable with `nac`,
+    `hippocampus` and `memory_hub` set to `None`;
+  - the `runtime` and `agents` package `__init__`s become lazy.
 - **When the fence lifts, file by file:**
   - roadmap_1_4 Phase 0 items 1a, 2 and 4, built and run offline;
-  - B2, then **B4** (T1-2's re-fire).
-- **Exit:** `lint_release_gates.py` reports nothing outstanding for 1.4.0.
+  - the LLM-floor chain, which is serial:
+    1. **B2** ([#1352](https://github.com/dennys246/Maxim/issues/1352)), the bare loop;
+    2. **B3** ([#1353](https://github.com/dennys246/Maxim/issues/1353)), `llm_notes`, **Reflexion first** (owner decision
+       2026-10-17);
+    3. **B4** ([#1354](https://github.com/dennys246/Maxim/issues/1354)), T1-2's re-fire, whose arms need both.
+- **Exit:**
+  - `lint_release_gates.py` reports nothing outstanding for 1.4.0;
+  - B2's three prerequisites are in.
 
 ### 1.4.0
 - **T1** on the rig (pilots, primitives, the R3 A+C variant).
@@ -975,7 +989,9 @@ them. Session V's atonia items do not hold the 1.3.3 cut; they are 1.3.4 (owner 
 2. **The fence serializes E1's instrument behind the whole decomposition**, so rig time sits idle unless B1-style
    floor work fills it.
 3. **E1 may still fail BF2** after its redesign, leaving 1.4 without an Ambition-axis result.
-4. **T1-2 waits on B4**, which waits on 1.3.5 and 1.3.6. If B4 slips, 1.4.0 slips (owner decision).
+4. **T1-2 waits on B4 (#1354).** B4 waits on B2 (#1352) and B3 (#1353), which wait on 1.3.5 and 1.3.6. This is the
+   longest chain to 1.4.0, longer than E1's. If B4 slips, 1.4.0 slips (owner decision).
+   - B4's four-lens design review is paper, so it runs now in Session E's lane. Only the run waits.
 5. **Plan text drifts without a lint** (M2, M36). Each patch release re-reads its plans as part of its release
    transaction.
 
