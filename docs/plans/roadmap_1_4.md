@@ -794,7 +794,7 @@ until the 1.3.2 decomposition slices touching it have landed. The end of that fe
 1. ~~the complete Exp 10 re-run~~: superseded. T1-1 is SUPERSEDED by T1-16 (Exp 63, EARNED 2026-10-04).
 2. ~~the live Exp 60 re-run~~: done 2026-10-12 (T1-13 MAINTAINED), then measured against its floor by B1
    (2026-10-14, PARTIAL);
-2b. **B4, T1-2's re-fire (L8's dose-response design)**, after 1.3.5 and 1.3.6 unblock B2, and before 1.4.0
+2b. **B4, T1-2's re-fire (L8's dose-response design)**, after 1.3.5 and 1.3.6 unblock B2 and B3 (#1352, #1353), and before 1.4.0
    (owner decision 2026-10-16);
 3. 1.4's campaigns, starting with the schedule below;
 4. after E3's campaign has run or its disposition is recorded, the parallel lines' rig work, one at a
