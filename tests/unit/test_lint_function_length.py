@@ -39,17 +39,25 @@ def exc(qualname: str, frm, to: int, *, file: str = "src/maxim/a.py", ref: str =
     }
 
 
-def baseline(entries: dict, exceptions: list | None = None, *, threshold: int = 200, version: int = 2) -> str:
-    return json.dumps(
-        {
-            "_comment": "fixture",
-            "baseline_format_version": version,
-            "threshold": threshold,
-            "entries": [{"file": f, "qualname": q, "lines": n} for (f, q), n in entries.items()],
-            "exceptions": exceptions or [],
-            "history": [],
-        }
-    )
+def baseline(
+    entries: dict,
+    exceptions: list | None = None,
+    *,
+    threshold: int = 200,
+    version: int = 2,
+    touch_exemptions: list | None = None,
+) -> str:
+    data = {
+        "_comment": "fixture",
+        "baseline_format_version": version,
+        "threshold": threshold,
+        "entries": [{"file": f, "qualname": q, "lines": n} for (f, q), n in entries.items()],
+        "exceptions": exceptions or [],
+        "history": [],
+    }
+    if touch_exemptions is not None:
+        data["touch_exemptions"] = touch_exemptions
+    return json.dumps(data)
 
 
 def _git(root: Path, *args: str) -> str:
@@ -106,6 +114,26 @@ def head(root: Path, a: str | None = None, entries: dict | None = None, exceptio
     if a is not None:
         _write(root, "src/maxim/a.py", a)
     _write(root, _BASELINE, baseline(entries if entries is not None else {A: 300}, exceptions, **kw))
+
+
+def touch(qualname: str, touched: int, frm: int, to: int, *, file: str = "src/maxim/a.py", **kw) -> dict:
+    return {
+        "file": file,
+        "qualname": qualname,
+        "touched": touched,
+        "from": frm,
+        "to": to,
+        "date": "2026-10-16",
+        "ref": "#1",
+        "reason": "r",
+        **kw,
+    }
+
+
+def edited(name: str, n: int, changed: int, *, drop: int = 0, decorator: str = "") -> str:
+    """``fn(name, n)`` with its first ``changed`` body lines rewritten and its last ``drop`` body lines removed."""
+    lines = [f"    {'y' if i < changed else 'x'}{i} = {i}\n" for i in range(n - 1 - drop)]
+    return decorator + f"def {name}():\n" + "".join(lines)
 
 
 # ── every run: rules 1-3 ─────────────────────────────────────────────────────
@@ -294,12 +322,12 @@ def test_a_changed_body_move_FAILS_without_a_moved_from_exception(repo, capsys):
     head(repo, fn("small", 10), {B: 300})
     rc, out = run(repo, capsys)
     assert rc == 1 and "b.py::big: new entry at 300" in out
-    head(
-        repo,
-        fn("small", 10),
-        {B: 300},
-        [exc("big", 300, 300, file="src/maxim/b.py", moved_from={"file": A[0], "qualname": "big"})],
-    )
+    moved = [exc("big", 300, 300, file="src/maxim/b.py", moved_from={"file": A[0], "qualname": "big"})]
+    head(repo, fn("small", 10), {B: 300}, moved)
+    rc, out = run(repo, capsys)
+    # Rule T (2026-10-16) follows the move: every body line changed, so the recorded move alone is not enough.
+    assert rc == 1 and "b.py::big: this diff edits 299 line(s)" in out
+    head(repo, fn("small", 10), {B: 300}, moved, touch_exemptions=[touch("big", 299, 300, 300, file="src/maxim/b.py")])
     rc, out = run(repo, capsys)
     assert rc == 0, out
 
@@ -624,3 +652,95 @@ def test_K3_repairing_a_drifted_pin_is_not_a_drop_a_split_can_claim(tmp_path, mo
     )
     rc, out = run(root, capsys)
     assert rc == 1 and "split_from src/maxim/a.py::big, but that base entry's pin did not drop" in out
+
+
+# ── rule T: touch it, shrink it (owner decisions 2026-10-16) ─────────────────
+
+
+def test_t_an_edit_inside_a_pinned_function_must_shrink_it(repo, capsys):
+    head(repo, edited("big", 300, 10) + "\n\n" + fn("small", 10), {A: 300})
+    rc, out = run(repo, capsys)
+    assert rc == 1 and "a.py::big: this diff edits 10 line(s) inside a function pinned at 300" in out
+    assert "must end at 290 or fewer (it is 300)" in out
+
+
+def test_t_an_edit_that_moves_at_least_as_many_lines_out_passes(repo, capsys):
+    """10 lines rewritten, 10 body lines moved out (to a helper under the threshold): 300 -> 290."""
+    head(repo, edited("big", 300, 10, drop=10) + "\n\n" + fn("small", 10) + "\n\n" + fn("helper", 11), {A: 290})
+    assert run(repo, capsys)[0] == 0
+
+
+def test_t_one_line_short_of_the_shrink_fails(repo, capsys):
+    head(repo, edited("big", 300, 10, drop=9) + "\n\n" + fn("small", 10), {A: 291})
+    rc, out = run(repo, capsys)
+    assert rc == 1 and "must end at 290 or fewer (it is 291)" in out
+
+
+def test_t_a_matching_touch_exemption_passes_and_a_mismatched_one_does_not(repo, capsys):
+    body = edited("big", 300, 10) + "\n\n" + fn("small", 10)
+    head(repo, body, {A: 300}, touch_exemptions=[touch("big", 9, 300, 300)])  # touched is 10, not 9
+    rc, out = run(repo, capsys)
+    assert rc == 1 and "unused touch exemption for src/maxim/a.py::big (touched 9" in out
+    head(repo, body, {A: 300}, touch_exemptions=[touch("big", 10, 300, 300)])
+    assert run(repo, capsys)[0] == 0
+
+
+def test_t_touch_exemptions_are_append_only(tmp_path, monkeypatch, capsys):
+    root = make_repo(
+        tmp_path,
+        monkeypatch,
+        {"src/maxim/a.py": _BASE_A},
+        baseline({A: 300}, touch_exemptions=[touch("big", 1, 300, 300)]),
+    )
+    head(root, None, {A: 300}, touch_exemptions=[])
+    rc, out = run(root, capsys)
+    assert rc == 1 and "touch_exemptions are" in out
+
+
+def test_t_an_untouched_pinned_function_is_not_judged(repo, capsys):
+    head(repo, fn("big", 300) + "\n\n" + fn("small", 10, tag="z"), {A: 300})
+    assert run(repo, capsys)[0] == 0
+
+
+def test_t_a_decorator_edit_is_a_touch(repo, capsys):
+    """Decorators are outside the span but editing one changes the function, so it counts (design pass NIT 10)."""
+    head(repo, edited("big", 300, 0, decorator="@retry(times=3)\n") + "\n\n" + fn("small", 10), {A: 300})
+    rc, out = run(repo, capsys)
+    assert rc == 1 and "edits 1 line(s)" in out
+
+
+def test_t_still_judges_a_function_that_drops_under_the_threshold(tmp_path, monkeypatch, capsys):
+    """Design pass 9: the base entry is judged even when its pin is removed because the function fell to 200."""
+    root = make_repo(
+        tmp_path, monkeypatch, {"src/maxim/a.py": fn("big", 205) + "\n\n" + fn("small", 10)}, baseline({A: 205})
+    )
+    head(root, edited("big", 205, 10, drop=5) + "\n\n" + fn("small", 10), {})
+    rc, out = run(root, capsys)
+    assert rc == 1 and "must end at 195 or fewer (it is 200)" in out
+
+
+def test_t_a_recorded_raise_is_its_own_record(repo, capsys):
+    """Design pass 6: a pin raised through a new exception satisfies rule T for that function."""
+    head(repo, edited("big", 306, 5) + "\n\n" + fn("small", 10), {A: 306}, [exc("big", 300, 306)])
+    assert run(repo, capsys)[0] == 0
+
+
+def test_t_gitattributes_cannot_hide_an_edit(repo, capsys):
+    """Design pass 1: touched is computed from the def texts, never from git's diff output."""
+    _write(repo, "src/maxim/.gitattributes", "*.py binary\n")
+    head(repo, edited("big", 300, 10) + "\n\n" + fn("small", 10), {A: 300})
+    rc, out = run(repo, capsys)
+    assert rc == 1 and "edits 10 line(s)" in out
+
+
+def test_t_an_unused_touch_exemption_is_not_a_failure_on_a_push(repo, capsys):
+    """Design pass 5: a push bundles PRs, so an exemption whose change a later PR reverted must not turn main red."""
+    head(repo, None, {A: 300}, touch_exemptions=[touch("big", 3, 300, 300)])
+    _commit(repo)
+    m, _ = L.measure_tree(repo)
+    hb = L.parse_baseline((repo / _BASELINE).read_text())
+    base_text = L.show(repo, "main", _BASELINE)
+    assert any("unused touch exemption" in f for f in L.diff_rules(repo, "main", m, hb, base_text))
+    assert not any(
+        "unused touch exemption" in f for f in L.diff_rules(repo, "main", m, hb, base_text, report_unused_touch=False)
+    )
