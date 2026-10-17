@@ -75,6 +75,7 @@ links the file today. Add a line here when you add a lesson.
 - [scn-oscillator-default-on.md](scn-oscillator-default-on.md) — The SCN oscillator is enabled by default in `build_bio_stack` — bio-memory.md
 - [scn-record-event-intake.md](scn-record-event-intake.md) — `TemporalCreditDistributor.record_event` is the canonical intake for every temporally anchored event; no "SCN bus" — bio-memory.md
 - [scn-temporal-coupling-eligibility.md](scn-temporal-coupling-eligibility.md) — SCN temporal coupling for eligibility traces (the first SCN-substrate PoC) — bio-memory.md
+- [script-module-identity-leak.md](script-module-identity-leak.md) — A test that re-registered a script module made another test's patch miss (#1339) — ci-testing.md
 - [sensor-encoding-range-aware.md](sensor-encoding-range-aware.md) — Signed (`[-1,1]`) sensors must be encoded with their range through `SensorEncoder`, or they fold — bio-memory.md
 - [shipped-the-pieces-not-the-composition.md](shipped-the-pieces-not-the-composition.md) — A fix with no callers (D43, 2026-09-02) — CLAUDE.md
 - [silent-noop-invariants-into-types.md](silent-noop-invariants-into-types.md) — Push silent-no-op invariants into types, not helpers — CLAUDE.md, runtime-tools.md
