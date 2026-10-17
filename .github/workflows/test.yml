@@ -1305,7 +1305,10 @@ jobs:
         # equality: a shrink fails until the pin is lowered); nothing new may
         # exceed 200. On a PR, a raised pin or a new entry over 200 needs a NEW,
         # used, append-only exception record (merge-base diff; needs the job's
-        # fetch-depth: 0). Prints every pinned span + the totals each run.
+        # fetch-depth: 0). Rule T ("touch it, shrink it"): an edit inside a pinned
+        # function must shrink it by the lines touched, or the diff adds a matching
+        # touch_exemptions record (the failure prints its numbers). Prints every
+        # pinned span + the totals each run.
         # Positive control: tests/unit/test_lint_function_length.py.
         run: |
           python3 scripts/lint_function_length.py

@@ -52,6 +52,27 @@ pinned ``outer.<locals>.inner`` raises both pins and needs an exception for each
   exception" otherwise — no pre-approving a later raise);
 - ``threshold`` may not change from base.
 
+**Rule T, "touch it, shrink it"** (owner decisions 2026-10-16; adversarial design pass folded). A diff that adds or
+changes lines inside a function pinned at the merge-base must leave it smaller by AT LEAST that many lines:
+``span_HEAD <= min(base pin, base span) - touched``. ``touched`` counts the HEAD def's lines, decorators included,
+that match no line of its base def (``difflib.SequenceMatcher(autojunk=False)`` over the two def texts, never git's
+diff output, so ``.gitattributes`` cannot hide an edit), each def's own indent removed, so a move between nesting
+levels touches nothing. A pure deletion touches nothing. It applies to every base entry whose def still exists,
+including one now at 200 lines or fewer and dropped from the baseline. It follows a free or recorded move to the new
+key, comparing with the new name normalized, so a rename touches nothing; a pinned def gone at HEAD with no such move
+is followed to the new def in a changed file that shares the most lines with it, when at least half of that def's
+lines came from it (a rename that landed at 200 or fewer). A pin raised through a new exception (not a
+``moved_from`` one) is its own record, whatever it touched. Otherwise the diff adds a ``touch_exemptions`` record
+``{file, qualname, touched, from, to, date, ref, reason}`` whose numbers match exactly (one record, one change).
+``touch_exemptions`` is optional (``[]``), append-only, and an unused new record fails on a pull request. A push
+only reports it, because a push can bundle a PR that added the record with one that reverted its change.
+Residuals (mechanization backlog M67): deleting comments, blank lines or a docstring counts as shrink (review judges
+that); touched counts lines, not tokens, so wrapping a block in ``try:``/``with`` touches every line re-indented
+(extract the block instead); decorators count as touched but sit outside the span, so a decorator edit needs a body
+shrink; an edit inside a nested pinned function is charged to it and to every pinned function around it, as a raise
+is; a removed def rewritten past half under a new name is judged as new code, and half is a hard edge; a def renamed into an ambiguous qualname is not followed; a local
+run follows only committed renames; exemptions are self-approved.
+
 **The merge-base baseline must be format 2** (on ``main`` since #1090): a base with no baseline
 at ``BASELINE_REL`` (it moved or was deleted) or with any other format fails the diff rules; the
 v1 migration path was deleted with #1089.
@@ -90,16 +111,18 @@ from __future__ import annotations
 
 import ast
 import copy
+import difflib
 import json
 import os
 import re
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _lint_git import GitUnavailable, base_ref, must_not_skip, show  # noqa: E402
+from _lint_git import GitUnavailable, base_ref, changed_files, must_not_skip, show  # noqa: E402
 from _lint_allowance import append_only_problem, ref_ok  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -108,7 +131,8 @@ BASELINE_REL = "src/maxim/utils/function_length_baseline.json"
 THRESHOLD = 200  # owner decision 2026-10-04; the baseline's `threshold` must equal it
 FORMAT_VERSION = 2
 
-_TOP_KEYS = {"_comment", "baseline_format_version", "threshold", "entries", "exceptions", "history"}
+_TOP_KEYS = {"_comment", "baseline_format_version", "threshold", "entries", "exceptions", "history", "touch_exemptions"}
+_TOUCH_KEYS = {"file", "qualname", "touched", "from", "to", "date", "ref", "reason"}
 _ENTRY_KEYS = {"file", "qualname", "lines"}
 _EXC_REQUIRED = {"file", "qualname", "from", "to", "date", "ref", "reason"}
 _EXC_OPTIONAL = {"split_from", "moved_from"}
@@ -208,6 +232,7 @@ class Baseline:
     threshold: int | None
     entries: dict[Key, int]
     exceptions: list[dict]
+    touch_exemptions: list[dict] = field(default_factory=list)
 
 
 def _key_obj(v: object, what: str) -> Key:
@@ -253,7 +278,29 @@ def parse_baseline(text: str) -> Baseline:
         raise BaselineError("exceptions must be a list")
     for x in data["exceptions"]:
         _check_exception(x)
-    return Baseline(version, threshold, entries, list(data["exceptions"]))
+    touch = data.get("touch_exemptions", [])
+    if not isinstance(touch, list):
+        raise BaselineError("touch_exemptions must be a list")
+    for x in touch:
+        _check_touch_exemption(x)
+    return Baseline(version, threshold, entries, list(data["exceptions"]), list(touch))
+
+
+def _check_touch_exemption(x: object) -> None:
+    """Rule T's escape hatch: bound to ONE change by its exact ``touched``/``from``/``to`` (design pass, 2026-10-16)."""
+    if not isinstance(x, dict) or set(x) != _TOUCH_KEYS:
+        raise BaselineError(f"touch exemption must have exactly {sorted(_TOUCH_KEYS)}: {x!r}")
+    if not (isinstance(x["file"], str) and isinstance(x["qualname"], str)):
+        raise BaselineError(f"touch exemption file/qualname must be strings: {x!r}")
+    for n in ("touched", "from", "to"):
+        if not isinstance(x[n], int) or isinstance(x[n], bool) or x[n] < 0:
+            raise BaselineError(f"touch exemption `{n}` must be a non-negative int: {x!r}")
+    if not (isinstance(x["date"], str) and _DATE_RE.fullmatch(x["date"])):
+        raise BaselineError(f"touch exemption `date` must be YYYY-MM-DD: {x!r}")
+    if not ref_ok(x["ref"]):
+        raise BaselineError(f"touch exemption `ref` must be '#NNN' or a github.com PR/issue URL: {x!r}")
+    if not (isinstance(x["reason"], str) and x["reason"].strip()):
+        raise BaselineError(f"touch exemption `reason` must be non-empty: {x!r}")
 
 
 def _check_exception(x: object) -> None:
@@ -340,7 +387,9 @@ def _same(x: dict, k: Key, frm: int | None, to: int, kind: str | None, src: Key 
     return present == [kind] and _key_obj(x[kind], kind) == src
 
 
-def diff_rules(root: Path, base: str, m: Measure, head: Baseline, base_text: str) -> list[str]:
+def diff_rules(
+    root: Path, base: str, m: Measure, head: Baseline, base_text: str, *, report_unused_touch: bool = True
+) -> list[str]:
     out: list[str] = []
     if not base_text:
         # v2 has been on main since #1090, so a merge-base without the baseline means it moved or was deleted.
@@ -372,6 +421,7 @@ def diff_rules(root: Path, base: str, m: Measure, head: Baseline, base_text: str
     new_entries = {k: p for k, p in head.entries.items() if k not in bb.entries}
     base_nodes = measure_at_base(root, base, {r[0] for r in removed} | {k[0] for k in raised_or_kept})
 
+    raised_recorded: set[Key] = set()  # rule T: a recorded raise is its own record of the change
     for k, pin in sorted(raised_or_kept.items()):
         old = bb.entries[k]
         bs = base_nodes.spans.get(k)
@@ -387,7 +437,9 @@ def diff_rules(root: Path, base: str, m: Measure, head: Baseline, base_text: str
             continue
         # A drifted base (pin != measured span) is judged against what was really there: the lower of the two.
         old = min(bb.entries[k], bs)
-        if pin > old and not claim(k, old, pin):
+        if pin > old and claim(k, old, pin):
+            raised_recorded.add(k)
+        elif pin > old:
             out.append(
                 f"{_fmt(k)}: pin raised {old} -> {pin} without a new exception "
                 f'{{"file", "qualname", "from": {old}, "to": {pin}, "date", "ref", "reason"}}'
@@ -397,6 +449,7 @@ def diff_rules(root: Path, base: str, m: Measure, head: Baseline, base_text: str
     # original shrank is new debt) and an identical normalized AST; each removed entry pays for ONE move.
     unresolved: dict[Key, int] = {}
     shrunk_moves: set[Key] = set()
+    move_of: dict[Key, Key] = {}  # removed base key -> the HEAD key it moved to (rule T follows a move)
     for k, pin in sorted(new_entries.items()):
         node = m.nodes.get(k)
         free = next(
@@ -427,6 +480,7 @@ def diff_rules(root: Path, base: str, m: Measure, head: Baseline, base_text: str
                 shrunk_moves.add(free)
         if free is not None:
             consumed.add(free)
+            move_of[free] = k
         else:
             unresolved[k] = pin
 
@@ -475,12 +529,152 @@ def diff_rules(root: Path, base: str, m: Measure, head: Baseline, base_text: str
             '"from": null (+ "split_from"/"moved_from" when it came from a pinned function)'
         )
 
+    out += touch_rule(root, base, m, head, bb, base_nodes, move_of, raised_recorded, report_unused_touch)
+
     for i, x in enumerate(new_exc):
         if not used[i]:
             out.append(
                 f"unused exception for {x['file']}::{x['qualname']} ({x['from']} -> {x['to']}): no matching change in this diff"
             )
     return out
+
+
+def _def_lines(text: str, node: ast.FunctionDef | ast.AsyncFunctionDef, as_name: str | None = None) -> list[str]:
+    """A def's source lines, decorators INCLUDED (editing a decorator is touching the function), with the def's own
+    indent removed, so a move between nesting levels (method to module, ``<locals>`` to module) is not an edit, and
+    with the def renamed to ``as_name`` when given, so a move's new name is not one either (rule T)."""
+    start = min([d.lineno for d in node.decorator_list] + [node.lineno])
+    c = node.col_offset
+    lines = [ln[c:] if not ln[:c].strip() else ln for ln in text.splitlines()[start - 1 : node.end_lineno]]
+    if as_name is not None and as_name != node.name:
+        i = node.lineno - start
+        lines[i] = lines[i].replace(f"def {node.name}(", f"def {as_name}(", 1)
+    return lines
+
+
+def touched_lines(base_lines: list[str], head_lines: list[str]) -> int:
+    """Lines of the HEAD def that match no line of its base def, in order. ``autojunk=False``: difflib's default
+    treats lines frequent in a 200+-line sequence (blank lines, ``)``) as junk, exactly the sizes judged here."""
+    sm = difflib.SequenceMatcher(None, base_lines, head_lines, autojunk=False)
+    return len(head_lines) - sum(b.size for b in sm.get_matching_blocks())
+
+
+def touch_rule(
+    root: Path,
+    base: str,
+    m: Measure,
+    head: Baseline,
+    bb: Baseline,
+    base_nodes: Measure,
+    move_of: dict[Key, Key],
+    raised_recorded: set[Key],
+    report_unused: bool,
+) -> list[str]:
+    """Rule T, "touch it, shrink it" (owner decisions 2026-10-16): a diff that adds or changes lines inside a function
+    pinned at the merge-base leaves it smaller by at least that many lines, or carries a matching touch exemption."""
+    out: list[str] = []
+    if problem := append_only_problem(
+        base=bb.touch_exemptions, head=head.touch_exemptions, what="touch_exemptions are"
+    ):
+        return [problem]
+    new_touch = head.touch_exemptions[len(bb.touch_exemptions) :]
+    used = [False] * len(new_touch)
+    base_texts: dict[str, str] = {}
+    head_texts: dict[str, str] = {}
+
+    def text_at(rel: str, at_base: bool) -> str:
+        cache = base_texts if at_base else head_texts
+        if rel not in cache:
+            cache[rel] = show(root, base, rel) if at_base else (root / rel).read_text(encoding="utf-8")
+        return cache[rel]
+
+    new_defs: list[Key] | None = None  # HEAD defs under a qualname their file did not have at base (computed once)
+    for r in sorted(bb.entries):
+        base_node = base_nodes.nodes.get(r)
+        if base_node is None:
+            continue  # not one def at base: the other diff rules judge it
+        base_lines = _def_lines(text_at(r[0], True), base_node)
+        target = r if r in m.nodes else move_of.get(r)
+        if target is None:
+            # Gone at HEAD and not a move the other rules recognised (a renamed def that landed at 200 lines or
+            # fewer has no entry to move to): its successor is the new def that carries most of its lines.
+            if new_defs is None:
+                new_defs = _new_defs(root, base, m, set(move_of.values()) | set(bb.entries))
+            target = _successor(base_lines, base_node.name, new_defs, m, lambda rel: text_at(rel, False))
+            if target is None:
+                continue  # deleted, or rewritten past half: nothing at HEAD is this function
+        if target not in m.nodes:
+            continue  # several defs share the name at HEAD: residual (rules 1-3 judge only an ambiguous one over 200)
+        node = m.nodes[target]
+        touched = touched_lines(base_lines, _def_lines(text_at(target[0], False), node, base_node.name))
+        floor = min(bb.entries[r], span(base_node))
+        now = m.spans[target]
+        if touched == 0 or now <= floor - touched or target in raised_recorded:
+            continue
+        hit = next(
+            (
+                i
+                for i, x in enumerate(new_touch)
+                if not used[i]
+                and (x["file"], x["qualname"], x["touched"], x["from"], x["to"]) == (*target, touched, floor, now)
+            ),
+            None,
+        )
+        if hit is not None:
+            used[hit] = True
+            continue
+        out.append(
+            f"{_fmt(target)}: this diff edits {touched} line(s) inside a function pinned at {floor}, which must end at "
+            f"{floor - touched} or fewer (it is {now}). Move code out of it, or record a touch exemption "
+            f'{{"file", "qualname", "touched": {touched}, "from": {floor}, "to": {now}, "date", "ref", "reason"}}'
+        )
+    if report_unused:
+        out += [
+            f"unused touch exemption for {x['file']}::{x['qualname']} (touched {x['touched']}, {x['from']} -> "
+            f"{x['to']}): no matching change in this diff"
+            for i, x in enumerate(new_touch)
+            if not used[i]
+        ]
+    return out
+
+
+def _new_defs(root: Path, base: str, m: Measure, taken: set[Key]) -> list[Key]:
+    """Unambiguous HEAD defs, in files this diff changed (base..HEAD, so a local run judges committed renames only),
+    whose qualname their file (at its base path, following a file rename) did not have at the merge-base or whose
+    text changed since, so a rename into a name that already existed is followed too; ``taken`` (keys a recognised
+    move claimed, and pinned keys, which are judged as themselves) excluded."""
+    out: list[Key] = []
+    for rel, old in changed_files(root, base, SCOPE):
+        text = show(root, base, old) if old else ""
+        try:
+            had = defs_in(text, old) if old else {}
+        except (SyntaxError, ValueError):
+            had = {}
+        head_text = (root / rel).read_text(encoding="utf-8")
+        for k in m.nodes:
+            if k[0] != rel or k in taken or k not in m.spans:
+                continue
+            was = had.get(k[1], [])
+            if len(was) != 1 or _def_lines(text, was[0]) != _def_lines(head_text, m.nodes[k]):
+                out.append(k)
+    return sorted(out)
+
+
+def _successor(
+    base_lines: list[str], base_name: str, candidates: list[Key], m: Measure, head_text: Callable[[str], str]
+) -> Key | None:
+    """The candidate sharing the most lines with a removed pinned def, if at least half of its own lines came from
+    it (a rename with edits); ``None`` when no candidate is mostly that def (a deletion, or new code). Lines are
+    compared whitespace-stripped HERE ONLY, so re-indenting the body cannot make a renamed def look like new code;
+    the successor's ``touched`` is still counted on the def texts. Half is a hard edge (residual)."""
+    stripped = [ln.strip() for ln in base_lines]
+    best: tuple[int, Key] | None = None
+    for k in candidates:
+        lines = [ln.strip() for ln in _def_lines(head_text(k[0]), m.nodes[k], base_name)]
+        shared = len(lines) - touched_lines(stripped, lines)
+        if 2 * shared >= len(lines) and (best is None or shared > best[0]):
+            best = (shared, k)
+    return None if best is None else best[1]
 
 
 # ── main ─────────────────────────────────────────────────────────────────────
@@ -522,7 +716,7 @@ def main() -> int:
             print(f"INFO: no merge-base available; diff-scoped rules skipped ({e})")
         else:
             try:
-                failures += diff_rules(root, base, m, b, base_text)
+                failures += diff_rules(root, base, m, b, base_text, report_unused_touch=event != "push")
             except GitUnavailable as e:  # a base file read failed mid-check: fail closed, never a traceback
                 print(f"ERROR: git could not read the merge-base during the diff-scoped rules ({e})", file=sys.stderr)
                 return 2
