@@ -1,8 +1,12 @@
 # Colibrì world-generation smoke test
 
-> **Status 2026-10-17: upstream re-check under way (owner decision).** Upstream `c/openai_server.py` has changed a lot since 2026-07-14 (2026-08-28 "the thinking switch is real, on and off"; 2026-09-28 "return GLM-5.3 reasoning only when thinking is enabled"), so the server-level repro below is re-run on the Mac Mini. Only a clean repro revives the arms, and the arms then go through the experiment design review first.
+> **ARCHIVED 2026-10-17 (owner decision).** It was never re-run, and its weights were deleted after the July run. The
+> July data stands. Even with upstream's thinking-switch fix, the engine measured 0.05–1 tok/s, a cold prefill of
+> about 46 s for 13 tokens, and hours per foundry component. Under the pre-registered rule the cloud arm wins ties,
+> so a fixed server would almost certainly still lose. Reviving it needs a new hardware or speed argument, not just an
+> upstream fix.
 
-> **DEFERRED (2026-07-15 plans audit):** Hard-blocked upstream — colibrì's OpenAI-compatible server emits degenerate output (stuck GLM chat-template/thinking-mode bug, 2026-07-14); the engine itself works via `coli chat`. Setup gotchas + pre-registered decision rule retained here for the retry. **Revive when:** upstream fixes the `openai_server.py` degenerate-generation bug (re-check its tracker in a few weeks), or the cloud-only baseline arm is run as prep. If upstream stays dead for a quarter, escalate to archive.
+> **(Superseded by the archive note above.) DEFERRED (2026-07-15 plans audit):** Hard-blocked upstream — colibrì's OpenAI-compatible server emits degenerate output (stuck GLM chat-template/thinking-mode bug, 2026-07-14); the engine itself works via `coli chat`. Setup gotchas + pre-registered decision rule retained here for the retry. **Revive when:** upstream fixes the `openai_server.py` degenerate-generation bug (re-check its tracker in a few weeks), or the cloud-only baseline arm is run as prep. If upstream stays dead for a quarter, escalate to archive.
 
 
 **Status:** colibrì arm BLOCKED (2026-07-14) — upstream `openai_server.py` bug; engine itself works.

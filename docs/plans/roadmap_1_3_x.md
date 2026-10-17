@@ -359,6 +359,12 @@ after decomposition work has started is discharged by its own rows' re-runs in i
 closing walk. The remaining slices are not in 1.3.2 (owner decision 2026-10-15), so the fence stays up until they
 land; its end is mechanical, the 1.4.0 gate ([roadmap_1_4.md](roadmap_1_4.md) T0).
 
+**Fence exception, the atonia gate, #1315 (owner-approved 2026-10-17, AD8):** item 3 of
+[advisor_mode.md](advisor_mode.md) may touch `orchestrator.py` (the AUT and narrator executor builds) and
+`agent_loop.py` (`run_agent_loop`; and the PLANNING proposal path, for item 1's advisor composition). The scope is
+`ToolPolicy` call sites and the advisor composition only. Rule T (#1327) applies to every line touched inside a
+pinned function. Session A grants the hunks.
+
 **Fence exception, #1042 (owner-approved 2026-10-01):** the simulation stall detector's suppression in
 `orchestrator.py::start_simulation_mode` was dead (it queried the lane, the router registered the cost tier), and
 O19 Exp 10 attempt 1 aborted on the stale nudges it let through. The touch moves the decision out to
@@ -851,14 +857,29 @@ Owner decisions taken with this path (2026-10-16):
     `SMOKE PASSED`.
 - **Advisor mode** ([#1315](https://github.com/dennys246/Maxim/issues/1315); [advisor_mode.md](advisor_mode.md),
   verified against v1.3.2 and reviewed 2026-10-17). It moved here from §After 1.4.0 at an external request.
-  - Owner decisions AD1–AD9 are asked first. They include a scoped fence exception (AD8) and what 1.3.3 may promise
-    publicly (AD9).
+  - Owner decisions AD1–AD9 were made 2026-10-17, all as recommended. AD2 is the **atonia gate**: motor output
+    is inhibited below cognition and fixed at construction, while the report stays open. AD8 grants the fence
+    exception below. AD9: `maxim.advisor` ships Experimental, with its sandbox-only channels stated.
   - Items:
     - 2: `Tool.effect` and the registry ceiling;
     - 3: a required `ToolPolicy` on every executor;
     - 6: fail loud on readiness, [#1338](https://github.com/dennys246/Maxim/issues/1338);
     - 1: the closed advisor builder with a sealed registry, plus a minimal proposal log (5).
-  - Items 4, 7 and 8 go to 1.3.4 if 1.3.3 must stay small.
+  - **AvServ plan 50** (2026-10-17) adds:
+    - item 9, a bounded yield on SIGTERM ([#1344](https://github.com/dennys246/Maxim/issues/1344));
+    - item 10, offline startup and runtime;
+    - item 11, `maxim doctor --advisor`;
+    - item 12, a cursor the caller owns;
+    - items 13 and 14, the SAR lead schema and cell sweeps (Profile A).
+  - The proposed cut adds item 9 (process-level) and item 10 to 1.3.3; the rest go to 1.3.4 (advisor_mode.md §The 1.3.3
+    cut, for the owner to confirm). As a result there is no Phase 2 drill on 1.3.3, because it needs item 4.
+  - Profile A's Phase 1 runs on 1.3.2 through a verified harness, with conditions (advisor_mode.md §Phase 1 on 1.3.2).
+- **Found while verifying plan 50:**
+  - [#1342](https://github.com/dennys246/Maxim/issues/1342): `run()` writes under the CWD, and prefetch reads it
+    outside the registry (V);
+  - [#1343](https://github.com/dennys246/Maxim/issues/1343): the CLI agentic path downloads with no consent gate (H);
+  - [#1345](https://github.com/dennys246/Maxim/issues/1345): an agent can overwrite the operator's persisted
+    internet-off (H).
 - **Found while verifying:** [#1337](https://github.com/dennys246/Maxim/issues/1337): `--clear-memory` resolves
   against `./data` and misses `sessions/`.
 - **Exit:** #938 closed and 1.3.3 published through the new pipeline; the gate's open-item count down by the items
@@ -872,10 +893,10 @@ signed commit.
 |---|---|---|---|---|
 | **P (pipeline)** | #938 trusted publishing and the `v*` ruleset; #1333 vendoring with R4; #1318 CI caching; #1295 upgrade safety | `scripts/vendor_console_ui.py`, `scripts/audit_release_build.py`, `tests/unit/test_vendor_console_freshness.py`, `tests/unit/test_audit_release_build.py`; vendoring into `src/maxim/console/ui_dist/` (a release step, not committed) | `test.yml`: the `release-build` job hunk (its stub manifest) and the caching hunk. `console/ui_bundle.py` and `tests/unit/test_console_ui_bundle.py`: S owns them, P reads `ui_bundle.py` and edits the vendor-script test hunk. `pyproject.toml`: the release bump. `docs/publication_guide.md`: the process session's; hand over the steps | #1333, which has to be in the next wheel; then R4's design pass; then #938 |
 | **S (pulse seam)** | #1332 the piper fix; R1 #1334; R2 #1335 (tts first); R3 #1336 (stall and health kinds); #1292 F4 | `models/audio/`, `console/` except `handle.py` (schemas, announcer, server, health, `ui_bundle.py`, `openapi.json`, `contract_surface.json`), the stall-dict hunk of `runtime/heartbeat.py`, `utils/audio.py`, `utils/response_output.py`, `.github/constraints/console.txt`, `tests/unit/test_console_ui_bundle.py`, the extras in `pyproject.toml` | `console/handle.py` with V; `test.yml` (the matrix lane) | #1332's red gate against the real library |
-| **V (advisor)** | advisor_mode.md items 2, 3, 6, then 1 with 5 (then 4, 7, 8); #1338 | `tools/` (base, registry, the effect classification of every Tool), `runtime/executor.py`, `runtime/bootstrap.py`, `runtime/agent_factory.py`, `runtime/prefetch.py`, `runtime/tool_dispatch.py`, `runtime/concurrent_executor.py`, `runtime/agent_pool.py`, `api.py`, `create.py`, `modes/`, `agents/autonomy.py`, `embodied_runtime/agentic_runtime.py`, `embodiment/tool_bridge.py`, `simulation/{foundry,minecraft_harness,tools,tools_dm,research_tools,campaign_runner,dm_runtime}.py` | `console/handle.py` with S; `tools/comms.py` with H. **`orchestrator.py` and `agent_loop.py` need the AD8 fence exception.** `cli.py` is Session A's file: A grants V the agentic-path call site and #1338's server-mode readiness hunk. Rule T applies to five pinned functions it touches (advisor_mode.md §Rule T) | AD1–AD9, then the approach notes for items 2, 3, 1 and 5 together |
-| **H (hardening)** | security #1311 #1312 #1314 #957 #997; the `node_security` remainder; fail-loud Stage 3; #1337; #1310 (the owner's strict `passed`); the comms recipient allowlist (O4, non-advisor); CI and evidence truth (#1313 #1203 #1121 #1218 …); the 1.4.0 gate items #1305 #1263 #1264 #1265 #1267; M25; the small fixes | `runtime/role.py`, `runtime/leader_mode.py`, `runtime/local_server_spawner.py` (including R1's decision on `_health_check`), `simulation/benchmark.py`, `cli_utils.py`, `comms/` and the scripts each issue names | `tools/comms.py` (the allowlist hunk) with V; `cli.py` (#1310's exit code, #1337) with Session A; `test.yml` (the CI-truth hunks) | #1337 and #1310 (small, decided), then security |
+| **V (atonia gate)** | advisor_mode.md items 2, 3, 6, then 1 with 5, and 10 (then 4, 12, 7, 11, and Profile A's 13, 8, 14); #1338, #1342 | `tools/` except the `InternetAccessTool` hunk; `runtime/executor.py`, `runtime/bootstrap.py`, `runtime/agent_factory.py`, `runtime/prefetch.py`, `runtime/tool_dispatch.py`, `runtime/concurrent_executor.py`, `runtime/agent_pool.py`; `api.py`, `create.py`, `modes/`, `agents/autonomy.py`; `embodied_runtime/agentic_runtime.py`, `embodiment/tool_bridge.py`, `simulation/{foundry,minecraft_harness,tools,tools_dm,research_tools,campaign_runner,dm_runtime}.py`. `utils/internet_access.py` (H shares the #1345 hunk). For item 10: `utils/http.py` (the offline refusal), `models/download.py`, `models/language/{llama_backend,transformers_backend}.py`, `models/vision/`, `similarity/{encoder,semantic}.py`, `inference/transcribe_audio.py`, `simulation/container_runner.py`, `runtime/decision_log.py`; `doctor/` (item 11) | `console/handle.py` with S. `models/audio/tts.py` (the `ensure_tts_voice` hunk) with S. `tools/internet_search.py` and `tools/comms.py` with H. `runtime/config_loader.py`: the one shared 1.4 config-format bump. **`orchestrator.py` and `agent_loop.py` under the AD8 fence exception.** `cli.py` is Session A's file. Rule T applies to the pinned functions in advisor_mode.md §Order and the fence | the approach notes and design passes for items 2, 3, 1, 5 and 10, together |
+| **H (hardening)** | security #1311 #1312 #1314 #957 #997; the `node_security` remainder; fail-loud Stage 3; #1337; #1310 (the owner's strict `passed`); the comms recipient allowlist (O4, non-advisor); #1343; #1345; advisor_mode.md item 9's process-level yield, converging with #1267 on one SIGTERM installer (#1344); CI and evidence truth (#1313 #1203 #1121 #1218 …); the 1.4.0 gate items #1305 #1263 #1264 #1265 #1267; M25; the small fixes | `runtime/role.py`, `runtime/leader_mode.py`, `runtime/local_server_spawner.py` (including R1's decision on `_health_check`), `simulation/benchmark.py`, `cli_utils.py`, `comms/` and the scripts each issue names | `tools/comms.py` (the allowlist hunk) and `tools/internet_search.py` plus `utils/internet_access.py` (#1345) with V; `cli.py` (#1310's exit code, #1337, #1343's consent hunk, item 9's installer) with Session A; `test.yml` (the CI-truth hunks) | #1337 and #1310 (small, decided), then security |
 | **E (E1, paper only)** | the BF2 floor decision for E1; the argmax and hunger-state replays (offline, committed); E1's prereg draft through the four-lens design review | `docs/experiments/`, the replay scripts under `scripts/` | nothing in `src/` (the fence holds until 1.3.5) | the floor decision, presented as options to the owner |
-| **A (decomposition)** | 1.3.4 can start now: the five orchestrator characterization arms are tests only | `orchestrator.py`, `agent_loop.py` (the fence), `cli.py` (Session A's file) | grants V's AD8 hunks, V's `cli.py` hunks (the agentic-path call site, #1338's server-mode readiness), and H's `cli.py` hunks | the characterization arms |
+| **A (decomposition)** | 1.3.4 can start now: the five orchestrator characterization arms are tests only | `orchestrator.py`, `agent_loop.py` (the fence), `cli.py` (Session A's file) | grants V's AD8 hunks; V's `cli.py` hunks (the agentic-path call site, #1338's server-mode readiness); H's `cli.py` hunks (#1310, #1337, #1343, item 9's installer) | the characterization arms |
 
 **At most four code sessions run at once:** P, S, V and H, or A in place of one of them. E is paper only and does not
 count. Three constraints set the limit:
@@ -883,8 +904,13 @@ count. Three constraints set the limit:
 - `~/.maxim/` is shared across worktrees, so concurrent sims and red gates collide;
 - `test.yml`, `CHANGELOG.md` `[Unreleased]` and `outstanding.md` are hotspots every session edits.
 
+**One config-format bump.** `CONFIG_FORMAT_VERSION` moves from 1.3 to 1.4 once in 1.3.3. Every session adding a key
+(V's `llm.offline` is the first) appends its fields to that one entry: `tests/fixtures/config_schema_by_version.json`
+plus the downgrade transition (#974).
+
 The 1.3.3 cut waits for P (the new pipeline publishes it) and for S's #1332 and #1333, because pulse is blocked on
-them. V's items 4, 7 and 8 and H's tail can slip to 1.3.4 without holding the cut.
+them. Under the proposed cut, V's items 1 (with a minimal 5), 2, 3, 6 and 10, and H's item 9, hold the cut; V's items 4, 5
+(full), 7, 8 and 11–14 are 1.3.4. H's tail can slip to 1.3.4 without holding the cut.
 
 ### 1.3.4, "The orchestrator"
 - **First the five characterization arms** (`persistent_agent`, `imagination`, `new_goal`, `stall`, `generative`).
