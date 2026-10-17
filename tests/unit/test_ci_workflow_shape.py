@@ -9,12 +9,15 @@ Structural pins on `.github/workflows/test.yml`, read PARSED (a comment satisfie
 - the claims lint runs in the lint job (roadmap 1.3.2 item 8);
 - the secret scan runs in the lint job and, whole-tree, in a nightly job (#1081);
 - the release gate runs in the lint job, and its runtime twin reads the fast suite's JUnit report in the unit-tests
-  job (owner decision 2026-10-15; scripts/lint_release_gates.py also checks both from either side).
+  job (owner decision 2026-10-15; scripts/lint_release_gates.py also checks both from either side);
+- the targeted mypy check's file list lives only in scripts/run_mypy_public.sh, which the unit-tests step runs
+  (backlog M65).
 """
 
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -168,3 +171,105 @@ def test_the_release_gate_runs_in_the_lint_job_and_its_twin_reads_the_fast_suite
     assert set(steps[twin[0]]) == {"name", "run"}
     assert _run(steps[twin[0]]).strip() == "python scripts/lint_release_gates.py --junit fast-suite.xml"
     assert _run(steps[suite[0]]).count("--junitxml=fast-suite.xml") == 1
+
+
+MYPY_SCRIPT = ROOT / "scripts/run_mypy_public.sh"
+
+
+def _mypy_targets() -> list[str]:
+    body = MYPY_SCRIPT.read_text()
+    block = re.search(r"^FILES=\(\n(.*?)^\)", body, re.MULTILINE | re.DOTALL)
+    assert block, "scripts/run_mypy_public.sh must hold its file list in a FILES=( ... ) array"
+    return [ln.strip() for ln in block.group(1).splitlines() if ln.strip() and not ln.strip().startswith("#")]
+
+
+def test_the_mypy_step_runs_the_single_source_script():
+    """M65: one list. The unit-tests step installs the pinned mypy and runs the script; no step anywhere runs mypy
+    on src/ inline."""
+    steps = [s for s in _steps("unit-tests") if re.search(r"\bmypy\b", _commands(s))]
+    assert len(steps) == 1, [s.get("name") for s in steps]
+    assert _commands(steps[0]).strip() == 'pip install "mypy==1.20.0" bash scripts/run_mypy_public.sh'
+    inline = [(job, s.get("name")) for job, s in _all_steps() if re.search(r"\bmypy\s+src/", _commands(s))]
+    assert not inline, inline
+    body = MYPY_SCRIPT.read_text()
+    assert re.search(
+        r'^exec mypy "\$\{FILES\[@\]\}" --ignore-missing-imports --follow-imports=silent --warn-unused-ignores$',
+        body,
+        re.MULTILINE,
+    )
+
+
+# Frozen records that quote an old copy of the list by design, never edited to track it: the pre-diet CLAUDE.md
+# snapshot, archived plans, the score cards' captured evidence, and Exp 07's recorded reproduction recipe (a
+# five-file subset it ran, part of that experiment's record).
+FROZEN = (
+    re.compile(r"^docs/lessons/[^/]*pre-diet[^/]*$"),
+    re.compile(r"^docs/plans/archive/"),
+    re.compile(r"^docs/limits/score_cards/evidence/"),
+    re.compile(r"^docs/experiments/protocols/07_imagination_wiring_reproduction\.md$"),
+)
+WINDOW = 400
+
+
+def mypy_list_copies(text: str, targets: list[str]) -> list[int]:
+    """Offsets where a WINDOW-char span holds three or more distinct targets with `mypy` within WINDOW of it.
+
+    Character windows, not lines, so a copy split over continuation lines (or a YAML block) is still one copy; the
+    `mypy` condition keeps other lists of the same files (the swallow lint's MEASUREMENT_PATH, fixture trees) out.
+    """
+    pat = re.compile("|".join(re.escape(t) for t in sorted(targets, key=len, reverse=True)))
+    hits = [(m.start(), m.group()) for m in pat.finditer(text)]
+    out: list[int] = []
+    for i, (start, _) in enumerate(hits):
+        distinct = {g for s, g in hits[i:] if s - start < WINDOW}
+        if len(distinct) >= 3 and "mypy" in text[max(0, start - WINDOW) : start + 2 * WINDOW].lower():
+            out.append(start)
+    return out
+
+
+def test_no_other_file_carries_the_mypy_file_list():
+    """M65: every tracked text file but the script itself and the frozen records is free of a second copy."""
+    targets = _mypy_targets()
+    assert len(targets) >= 10 and "src/maxim/api.py" in targets and "src/maxim/hivemind/" in targets
+    tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+    offenders = []
+    for rel in tracked.splitlines():
+        if rel == "scripts/run_mypy_public.sh" or any(f.search(rel) for f in FROZEN):
+            continue
+        try:
+            text = (ROOT / rel).read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue  # binary, or a tracked path absent from this checkout
+        if mypy_list_copies(text, targets):
+            offenders.append(rel)
+    assert not offenders, offenders
+    stale = [f.pattern for f in FROZEN if not any(f.search(rel) for rel in tracked.splitlines())]
+    assert not stale, f"exemptions that match no tracked file: {stale}"
+
+
+def test_the_mypy_list_scan_catches_a_split_copy_and_spares_prose():
+    targets = _mypy_targets()
+    split = "mypy " + " \\\n     ".join(targets[:3]) + " --ignore-missing-imports\n"
+    assert mypy_list_copies(split, targets)
+    yaml_block = "run: |\n  mypy \\\n" + "".join(f"    {t} \\\n" for t in targets[3:6]) + "    --flag\n"
+    assert mypy_list_copies(yaml_block, targets)
+    assert not mypy_list_copies("run mypy after changing src/maxim/api.py or src/maxim/session.py", targets)
+    assert not mypy_list_copies(" ".join(targets), targets)  # no `mypy` near: some other list of these files
+    assert mypy_list_copies("MyPy: " + " ".join(targets[:3]), targets)  # case-insensitive
+
+
+def test_a_required_check_doc_points_at_the_mypy_script():
+    """M65: CLAUDE.md or a docs/agents brief names the script, so the check is findable without the list."""
+    docs = [ROOT / "CLAUDE.md", *sorted((ROOT / "docs/agents").glob("*.md"))]
+    assert any("scripts/run_mypy_public.sh" in d.read_text(encoding="utf-8") for d in docs)
+
+
+def test_no_step_name_was_truncated_by_a_yaml_comment():
+    """An unquoted `name: ... (x, #940)` parses as `... (x,`: YAML reads ` #` as a comment. Balanced parentheses in
+    every parsed step name catch that class (it cut the function-length step's name until it was quoted)."""
+    cut = [
+        (job, s.get("name"))
+        for job, s in _all_steps()
+        if str(s.get("name", "")).count("(") != str(s.get("name", "")).count(")")
+    ]
+    assert not cut, cut
