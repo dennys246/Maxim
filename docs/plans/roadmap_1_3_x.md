@@ -470,7 +470,7 @@ from the plan that owns it:
   (its F1).
 - [#848](https://github.com/dennys246/Maxim/issues/848) → memory 2S-e.
 - [#899](https://github.com/dennys246/Maxim/issues/899) → roadmap 1.4 Phase 5 keying.
-- [#784](https://github.com/dennys246/Maxim/issues/784) → [world_channel_weighting.md](world_channel_weighting.md).
+- [#784](https://github.com/dennys246/Maxim/issues/784) → [archive/world_channel_weighting.md](archive/world_channel_weighting.md).
 - [#1137](https://github.com/dennys246/Maxim/issues/1137) (compression keeps only the intent goal; a persisted-shape change) → the memory line
   ([memory_strength_and_forgetting.md](memory_strength_and_forgetting.md)). Trigger: the first path that compresses
   in a sim, or any work on sleep/consolidation in the loop (no committed store holds a compressed record today).
@@ -788,6 +788,92 @@ records the new ceiling either way. For 1.3.2 that is what happened, and by owne
 remainder hard-gates 1.4.0 (§The 1.4.0 gate).
 
 ---
+
+## Path to 1.4.0 (owner decision 2026-10-16)
+
+1.3.2 "Decomposition" shipped 2026-10-16. 1.4.0 is hard-gated by `scripts/release_gates.json` and
+`scripts/lint_release_gates.py` (#1300). At the cut that gate had 31 of 32 items open, none of its five
+characterization arms recorded, and three functions far over its 200-line limit: `start_simulation_mode` (2,889
+lines), `run_agentic_loop` (2,434) and `tool_dispatch.execute_and_learn` (392). The owner chose **three patch
+releases, then 1.4.0**, so the decomposition ships in steps. Each step is a release users get, and the repo keeps
+improving on the way. A six-reader review of `docs/` and `docs/plans/` (2026-10-16) produced the scopes below. Every
+open issue that had no home is placed here (M15).
+
+Owner decisions taken with this path (2026-10-16):
+- **E1 is redesigned before its harness.** As drafted (roadmap_1_4.md §Phase 2), its argmax is fixed by protocol
+  constants, so a same-prior floor learner matches it and it cannot EARN under BF2 (M46). E1's four-lens design
+  review starts from one question: what contingency can a reasonable no-bio floor lose (delayed or multi-step
+  credit, a learning curve rather than a fixed argmax)?
+- **T1-2 (Exp 37) is resolved by B4 before 1.4.0.** The B4 re-fire (L8's dose-response design) runs after the
+  orchestrator slices unblock B2. If it has not run, 1.4.0 waits. No second release exception is taken.
+
+### 1.3.3, "Seams and the release pipeline" (no `nac.py` selection or loop-body moves)
+- **The release pipeline:** [#938](https://github.com/dennys246/Maxim/issues/938) (a tag-triggered,
+  trusted-publishing workflow and a `v*` tag ruleset), CI caching [#1318](https://github.com/dennys246/Maxim/issues/1318). Owner standard 2026-10-16: no Test PyPI;
+  the exact built wheel is smoke-tested in a clean venv, then published.
+- **Security follow-ups:** [#1311](https://github.com/dennys246/Maxim/issues/1311), [#1312](https://github.com/dennys246/Maxim/issues/1312), [#1314](https://github.com/dennys246/Maxim/issues/1314), [#957](https://github.com/dennys246/Maxim/issues/957), [#997](https://github.com/dennys246/Maxim/issues/997), [#1295](https://github.com/dennys246/Maxim/issues/1295). The design work [#1315](https://github.com/dennys246/Maxim/issues/1315) is in "After 1.4.0" below.
+- **CI and evidence truth:** [#1313](https://github.com/dennys246/Maxim/issues/1313), [#1203](https://github.com/dennys246/Maxim/issues/1203), [#1121](https://github.com/dennys246/Maxim/issues/1121), [#1218](https://github.com/dennys246/Maxim/issues/1218), [#1220](https://github.com/dennys246/Maxim/issues/1220), [#1246](https://github.com/dennys246/Maxim/issues/1246), [#1247](https://github.com/dennys246/Maxim/issues/1247), [#1038](https://github.com/dennys246/Maxim/issues/1038), [#1024](https://github.com/dennys246/Maxim/issues/1024), [#1031](https://github.com/dennys246/Maxim/issues/1031), [#1215](https://github.com/dennys246/Maxim/issues/1215), [#1023](https://github.com/dennys246/Maxim/issues/1023).
+- **1.4.0 gate items outside the large functions:** [#1305](https://github.com/dennys246/Maxim/issues/1305) (owned RNGs), [#1263](https://github.com/dennys246/Maxim/issues/1263) (the thread guard and its
+  parts outside `start_simulation_mode`; [#1016](https://github.com/dennys246/Maxim/issues/1016) folds into it), [#1264](https://github.com/dennys246/Maxim/issues/1264), [#1265](https://github.com/dennys246/Maxim/issues/1265), [#1267](https://github.com/dennys246/Maxim/issues/1267); plus `932.resume-sim`,
+  #1123's three items and #1288's console and exec_agent lists (homed in §1.3.2).
+- **Small correctness fixes:** [#982](https://github.com/dennys246/Maxim/issues/982), [#1153](https://github.com/dennys246/Maxim/issues/1153), [#1155](https://github.com/dennys246/Maxim/issues/1155), [#1163](https://github.com/dennys246/Maxim/issues/1163), [#1225](https://github.com/dennys246/Maxim/issues/1225); the benchmark label [#1310](https://github.com/dennys246/Maxim/issues/1310) (its open question,
+  whether `passed` should require the expectations, is the owner's).
+- **Recorded 1.3.3 moves** (release-readiness block above): #954, #984, #985, #988, #989, #1285–#1287, #1291,
+  #1292 (F4, the device-app facade, after pulse v0.4.1), and console_tunnel_hardening's PR 3 (admission control),
+  whose revive trigger fired.
+- **Backlog:** M25 (the STALE/BROKEN-row release check that reads `kind: "release"` exceptions).
+- **Plans:** E1's redesigned prereg goes to its four-lens design review; it is paper only, because the fence still
+  holds.
+- **Exit:** #938 closed and 1.3.3 published through the new pipeline; the gate's open-item count down by the items
+  above.
+
+### 1.3.4, "The orchestrator"
+- **First the five characterization arms** (`persistent_agent`, `imagination`, `new_goal`, `stall`, `generative`).
+  **Then the `start_simulation_mode` slices** down to 200 lines or fewer, descendants included (gate rule 4).
+- **Riding with the slices:** [#1259](https://github.com/dennys246/Maxim/issues/1259), [#1262](https://github.com/dennys246/Maxim/issues/1262), #863's orchestrator wraps, #835, #965, #1288's stall nudge, and
+  the sim-lifecycle and narrator issues [#981](https://github.com/dennys246/Maxim/issues/981), [#1005](https://github.com/dennys246/Maxim/issues/1005), [#1006](https://github.com/dennys246/Maxim/issues/1006), [#1007](https://github.com/dennys246/Maxim/issues/1007), [#1028](https://github.com/dennys246/Maxim/issues/1028), [#1033](https://github.com/dennys246/Maxim/issues/1033), [#1034](https://github.com/dennys246/Maxim/issues/1034), [#1043](https://github.com/dennys246/Maxim/issues/1043), [#1046](https://github.com/dennys246/Maxim/issues/1046), [#1272](https://github.com/dennys246/Maxim/issues/1272), [#1276](https://github.com/dennys246/Maxim/issues/1276), [#1241](https://github.com/dennys246/Maxim/issues/1241).
+  Also [#1301](https://github.com/dennys246/Maxim/issues/1301): re-assess the narrator-driven evidence recorded before #1260 and #1261.
+- **Unblocks B2** (the bare LLM loop), and with it B4.
+- **Exit:** `start_simulation_mode` and its descendants pass gate rule 4, and all five arms are satisfied.
+
+### 1.3.5, "The loop, phase 2"
+- **`run_agentic_loop` and `execute_and_learn`** ([#1150](https://github.com/dennys246/Maxim/issues/1150)) to 200 lines or fewer.
+- **Riding with them:**
+  - #863's loop wraps, #850, #845 item 1, and the rest of #1263;
+  - the dispatch and credit issues [#1256](https://github.com/dennys246/Maxim/issues/1256), [#1145](https://github.com/dennys246/Maxim/issues/1145), [#1146](https://github.com/dennys246/Maxim/issues/1146), [#1147](https://github.com/dennys246/Maxim/issues/1147), [#1149](https://github.com/dennys246/Maxim/issues/1149), [#1054](https://github.com/dennys246/Maxim/issues/1054), [#1057](https://github.com/dennys246/Maxim/issues/1057), [#1202](https://github.com/dennys246/Maxim/issues/1202), [#1176](https://github.com/dennys246/Maxim/issues/1176), [#1177](https://github.com/dennys246/Maxim/issues/1177), [#1178](https://github.com/dennys246/Maxim/issues/1178), [#1211](https://github.com/dennys246/Maxim/issues/1211)
+    (#1200, #1227 and #1228 are already homed);
+  - the mode readers [#960](https://github.com/dennys246/Maxim/issues/960), [#962](https://github.com/dennys246/Maxim/issues/962), [#1192](https://github.com/dennys246/Maxim/issues/1192), [#1193](https://github.com/dennys246/Maxim/issues/1193);
+  - Entity save/load [#1159](https://github.com/dennys246/Maxim/issues/1159) and the sensor resolver [#1156](https://github.com/dennys246/Maxim/issues/1156).
+- **When the fence lifts, file by file:**
+  - roadmap_1_4 Phase 0 items 1a, 2 and 4, built and run offline;
+  - B2, then **B4** (T1-2's re-fire).
+- **Exit:** `lint_release_gates.py` reports nothing outstanding for 1.4.0.
+
+### 1.4.0
+- **T1** on the rig (pilots, primitives, the R3 A+C variant).
+- **T3:** E1, run under the redesigned and reviewed prereg.
+- **T4:** the trigger walk, with T1-2 resolved by B4.
+- **T4a, T7** (the release-PR caller grep) **and T8** (b) and (c).
+- **The name** follows the release rule: the highest EARNED rung.
+
+### After 1.4.0, or when a 1.4 rung names them
+- **Design work:** [#1185](https://github.com/dennys246/Maxim/issues/1185), [#1315](https://github.com/dennys246/Maxim/issues/1315), plus #922, #834 and #832 item 2.
+- **Mechanisms that enter through Phase 5 or the grounding line:** [#1026](https://github.com/dennys246/Maxim/issues/1026), [#1064](https://github.com/dennys246/Maxim/issues/1064), plus #784, #848, #880, #899,
+  #1072–#1075, #1144, #1161, #1180, #1181, #816 (the reversible-compression half) and #819 (the eviction half).
+  [#1064](https://github.com/dennys246/Maxim/issues/1064) (the recall ranker) is also a re-run trigger for T1-16.
+- **The evidence-gate tail** (trigger-gated): #1168, #1172–#1174 and #1197; also #1118 and #1226 (#1226 is parked;
+  its re-fire becomes B4).
+
+### Risks
+1. **The decomposition can hold 1.4 for a long time.** About 5,300 lines must reach functions of 200 lines or
+   fewer, and the gate is shrink-only: leaving it needs an append-only `retired` record. Neither score card asks for
+   that much.
+2. **The fence serializes E1's instrument behind the whole decomposition**, so rig time sits idle unless B1-style
+   floor work fills it.
+3. **E1 may still fail BF2** after its redesign, leaving 1.4 without an Ambition-axis result.
+4. **T1-2 waits on B4**, which waits on 1.3.4 and 1.3.5. If B4 slips, 1.4.0 slips (owner decision).
+5. **Plan text drifts without a lint** (M2, M36). Each patch release re-reads its plans as part of its release
+   transaction.
 
 ## Sequence
 
