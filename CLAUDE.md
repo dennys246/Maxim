@@ -159,7 +159,7 @@ MAXIM_SKIP_REMOTE_PROBE=1  # Bypass remote-URL probe — CI escape hatch
 
 ## Testing
 
-**Run narrow first, then wide.** Test the specific module you changed (`python -m pytest tests/unit/test_<module>.py -v`) before the full suite (15,427 tests, ~38 min serial under coverage in CI, 2026-10-16; timings + pre-push flow: [docs/agents/ci-testing.md](docs/agents/ci-testing.md)). **Kill stale sims before running tests** (`pkill -f "maxim.*sim" 2>/dev/null; sleep 2`) — a running sim holds GPU + port resources and causes hangs. Use `threading.RLock`, not `Lock`, when a locked method calls another locked method (re-entry deadlocks; a "hanging" thread test is usually deadlocked). **Don't run sims from tests** — sims call real LLMs; tests mock them. Peer/tunnel guides: [docs/troubleshooting/](docs/troubleshooting/).
+**Run narrow first, then wide.** Test the specific module you changed (`python -m pytest tests/unit/test_<module>.py -v`) before the full suite (15,427 tests; under pytest-xdist `-n auto --dist loadfile` since M22, TBD from the PR's CI run (was ~38 min serial under coverage, 2026-10-16); timings + pre-push flow: [docs/agents/ci-testing.md](docs/agents/ci-testing.md)). **Kill stale sims before running tests** (`pkill -f "maxim.*sim" 2>/dev/null; sleep 2`) — a running sim holds GPU + port resources and causes hangs. Use `threading.RLock`, not `Lock`, when a locked method calls another locked method (re-entry deadlocks; a "hanging" thread test is usually deadlocked). **Don't run sims from tests** — sims call real LLMs; tests mock them. Peer/tunnel guides: [docs/troubleshooting/](docs/troubleshooting/).
 
 ## Simulation Reports
 
