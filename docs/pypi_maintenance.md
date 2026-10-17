@@ -38,9 +38,8 @@ ruff format src/ tests/
 python -m pytest tests/ -x -q -m "not slow" \
   --ignore=tests/integration/test_memory_hub.py
 
-# 3. Public API mypy clean (if api.py / session.py / __init__.py changed)
-mypy src/maxim/__init__.py src/maxim/api.py src/maxim/session.py \
-     src/maxim/create.py src/maxim/load.py --ignore-missing-imports
+# 3. Targeted mypy clean (the script CI runs; its file list lives only there)
+bash scripts/run_mypy_public.sh
 
 # 4. Version sync confirmed
 grep -n '^version' pyproject.toml

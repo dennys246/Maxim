@@ -464,8 +464,9 @@ jobs:
           pip install -r extras-reqs.txt -c .github/constraints/console.txt
 
       - name: mypy public API surface + hivemind + composition layer
-        # CLAUDE.md required check, promoted to CI (1.0 guard promotion).
-        # --follow-imports=silent scopes error reporting to the checked
+        # CLAUDE.md required check, promoted to CI (1.0 guard promotion). The file list and flags live
+        # ONLY in scripts/run_mypy_public.sh (backlog M65), which CLAUDE.md names too; pinned by
+        # tests/unit/test_ci_workflow_shape.py. --follow-imports=silent scopes error reporting to the checked
         # files; the rest of the codebase is not mypy-clean yet.
         # hivemind/ added per 1.2 gate 8 (roadmap): the bundle format is a
         # wire boundary and 1.2 rewrites its merge path — that is where
@@ -483,18 +484,7 @@ jobs:
         # --check-untyped-defs, all of src/maxim): neither step green implies the other.
         run: |
           pip install "mypy==1.20.0"
-          mypy src/maxim/__init__.py src/maxim/api.py src/maxim/session.py \
-               src/maxim/create.py src/maxim/load.py \
-               src/maxim/hivemind/ \
-               src/maxim/runtime/executor.py src/maxim/runtime/agent_loop.py \
-               src/maxim/runtime/loop_setup.py src/maxim/runtime/loop_gates.py \
-               src/maxim/runtime/loop_substrate.py src/maxim/runtime/substrate_proposal.py \
-               src/maxim/runtime/loop_planning.py src/maxim/runtime/loop_perception.py \
-               src/maxim/runtime/loop_controller.py src/maxim/runtime/loop_state.py \
-               src/maxim/runtime/tool_dispatch.py src/maxim/runtime/loop_types.py \
-               src/maxim/simulation/tty_stdin.py \
-               src/maxim/bridges/ src/maxim/planning/ \
-               --ignore-missing-imports --follow-imports=silent --warn-unused-ignores
+          bash scripts/run_mypy_public.sh
 
       - name: Run required fast suite
         # Measured under coverage in this ONE run (roadmap 1.3.2 item 5, owner decision 2026-10-04):
@@ -1309,7 +1299,7 @@ jobs:
         run: |
           python3 scripts/lint_config_schema_append_only.py
 
-      - name: Function-length ratchet (roadmap 1.3.2 item 6, #940)
+      - name: "Function-length ratchet (roadmap 1.3.2 item 6, #940)"
         # ONE ratchet: every src/maxim function over 200 lines is pinned in
         # src/maxim/utils/function_length_baseline.json at its exact span (strict
         # equality: a shrink fails until the pin is lowered); nothing new may
