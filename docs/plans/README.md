@@ -1,24 +1,23 @@
 # Maxim Plans
 
 Current version: **1.3.2** (`pyproject.toml` + `src/maxim/__init__.py`; PyPI: https://pypi.org/project/pymaxim/ — `main` is ahead of PyPI by policy, CLAUDE.md §Versioning; checked by `scripts/lint_version_sync.py`). 1.3.2 = **"Decomposition"**: the agent loop taken apart under characterization tests plus the ratchets and gates that hold it, no new behavioural claim (a breaking security change to leader defaults, the evidence gate, T1-13/14/15 PARTIAL under B1, T1-2 STALE under `release-1.3.2-T1-2`). 1.3.1 = **"Hardening"**: fixes and their guards, no behavioural claim (security, the public format freeze + Oasis release format v2, public-API correctness, release integrity; the ledger's trigger walk with Exp 10 re-run MAINTAINED (narrow)). 1.3.0 = **"Oasis-2"**: the survival world — **Exp 60 EARNED** (anticipatory drowning-avoidance) + **Exp 61 EARNED** (the survival fear transfers between agents) + the **R3 survival benchmark** (instrument + frozen baseline) + Exp 56 re-baselined on 1.20.4. 1.2.1 = **"Spoken-code loop"** (the pairing pieces; composition unwired — corrected in 1.3.0). 1.2.0 = **"Oasis"**: **Exp 56 EARNED** + **Exp 57 PARTIAL** + the **Hivemind P2P exchange**. 1.1.4 = **"The world seam"**, 1.1.3 = **"Reachability"**, 1.1.2 = **"Decomposition"**, 1.1.1 = **"Enforcement"**.
-Now: **1.1.x follow-through** (items 1–16 in [archive/roadmap_1_1_to_1_3.md](archive/roadmap_1_1_to_1_3.md) —
-- [roadmap_1_3_x.md](roadmap_1_3_x.md) — **the 1.3.x line** (drafted 2026-09-19 from the v1.3.0 re-score; **re-scoped 2026-09-26**; **1.3.1 SHIPPED 2026-09-27 as "Hardening"**): 1.3.1 = what users need now — the security cluster, public-API correctness, release integrity (nightly lane, network block), the public format freeze and the two ingest defects it surfaced (#913/#914), plus everything on `main` since 1.3.0, each with its guard and no new behavioural claim; 1.3.2 = the enforcement ratchets carried from 1.3.1, then the `agent_loop` decomposition with behaviour-preservation gates and the ledger triggers discharged. Both before 1.4's experiments.
+Now (2026-10-16): **1.3.2 "Decomposition" shipped**; the path to 1.4.0 is three patches (owner decision 2026-10-16): **1.3.3** seams + the release pipeline, **1.3.4** the orchestrator decomposition, **1.3.5** loop phase 2 + the E1 instrument, then **1.4.0** (hard-gated by `scripts/lint_release_gates.py`, #1300). Detail: [roadmap_1_3_x.md §Path to 1.4.0](roadmap_1_3_x.md#path-to-140-owner-decision-2026-10-16).
+- [roadmap_1_3_x.md](roadmap_1_3_x.md) — **the 1.3.x line** (drafted 2026-09-19 from the v1.3.0 re-score; **re-scoped 2026-09-26**; **1.3.1 SHIPPED 2026-09-27 as "Hardening"**; **1.3.2 SHIPPED 2026-10-16 as "Decomposition"**; carries the path to 1.4.0): 1.3.1 = what users need now — the security cluster, public-API correctness, release integrity (nightly lane, network block), the public format freeze and the two ingest defects it surfaced (#913/#914), plus everything on `main` since 1.3.0, each with its guard and no new behavioural claim; 1.3.2 = the enforcement ratchets carried from 1.3.1, then the `agent_loop` decomposition with behaviour-preservation gates and the ledger triggers discharged. Both before 1.4's experiments.
 - [outstanding.md](outstanding.md) — **the standing register of owed work**, cross-cutting and not release-scoped, each entry verified at its stated date. Created 2026-09-20 after an audit found the 1.1.x item-16 block entirely shipped while CLAUDE.md still declared one of them a KNOWN GAP.
 - [roadmap_1_4.md](roadmap_1_4.md) — **the 1.4 plan** (working title "Anticipation", re-pointed 2026-09-18, five-lens reviewed): generalization + sequence credit + a trajectory instrument on the survival rig — **Exp 62 EARNED 2026-09-20 (Phase 1 closed; PARTIAL, floor matched, since 2026-10-15)** → E1 conflict → [relief store] → E2 pockets → E3 strategic breathing; primitives on a variant body; release thresholds T1–T4 set, T5/T6 conditional, T7/T8 engineering only (engram integrity; grounding truth), T9 conditional (the first grounding claim); the release name is fixed at the transaction from the highest EARNED rung.
 - [archive/roadmap_1_3.md](archive/roadmap_1_3.md) — **the 1.3 plan** ("Oasis-2", the survival world; rescoped 2026-09-09): the phased survival-loop → shared-survival-wants roadmap with per-rung mechanism-dependency markers. · [deferred/second_body_staging.md](deferred/second_body_staging.md) — **DEFERRED 2026-09-18 on a physical trigger (a second body exists); NOT the 1.4 plan** — the perception-fabric sequencing (Stage A duck → Stage B engine seam → Stage C fabric), **now the 1.4 plan** (perception fabric moved to 1.4 in the same rescope).
 - [archive/quality_burndown.md](archive/quality_burndown.md) — **the quality burndown, ARCHIVED 2026-09-20**: merged into [roadmap_1_3_x.md](roadmap_1_3_x.md) §1.3.1, which now carries its re-verified remainder; kept as the record of Batches 0–2.
-the orient/robot line is DEFERRED 2026-09-19 on a second body arriving, Exp 54 Phase B/C included) **and the gates before 1.2 Oasis + Hivemind** (gates 1–8 there),
-whose motivating case study is [oasis_case_study_taught_orient.md](archive/oasis_case_study_taught_orient.md).
 The current grading baseline is the **v1.3.1 blind re-score**
 ([../limits/score_cards/2026-09-27-claude.md](../limits/score_cards/2026-09-27-claude.md), three
-firewalled evidence agents, grades unadjusted; its Codex twin is owed). Previous: the v1.3.0 re-score
+firewalled evidence agents, grades unadjusted) and its Codex twin
+([2026-09-27-codex.md](../limits/score_cards/2026-09-27-codex.md)). **The v1.3.2 re-score is owed** (cut 2026-10-16). Previous: the v1.3.0 re-score
 ([2026-09-19-claude.md](../limits/score_cards/2026-09-19-claude.md)) and its Codex twin; the owed Codex 1.1.0 and 1.2
 cards are superseded. Historical: the Claude 1.1.0 re-score is
 [../limits/score_cards/2026-08-27-claude.md](../limits/score_cards/2026-08-27-claude.md) (Codex pairing owed).
 1.1 "Sensorimotor" shipped 2026-08-26 on two pre-registered results: Exp 52 (the want is
 learned) and Exp 53b (it reads out on the physical robot).
 
-**Directory last deeply audited 2026-09-19** (at the 1.3.0 release: 15 plans archived — 10 from the
+**Directory last deeply audited 2026-10-16** (after the 1.3.2 cut: a six-reader review of `docs/` and `docs/plans/`; one root plan archived, shipped plans that code cites by path marked SHIPPED where they stand, the index's unlisted and misfiled entries fixed, fired deferred triggers re-homed). **Before that, 2026-09-19** (at the 1.3.0 release: 15 plans archived — 10 from the
 root, 5 from `deferred/` that carried no revive trigger — and 18 moved from the root to `deferred/`
 with a trigger written on each; the root is 16 active plans). Previous deep audit 2026-08-27. Root = active work only. Superseded release checklists belong in
 `archive/`; the 1.1 cut exists only in the roadmap above.
@@ -108,11 +107,11 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
 - [fear_learning.md](fear_learning.md) — **PROPOSED 2026-10-04, plan only ([#1072](https://github.com/dennys246/Maxim/issues/1072)).** From #840's deep dive: FearCircuitBridge was never live and is Dormant. The missing fear functions are relief as a reinforcer (two-factor avoidance: learn WHICH act makes you safe, not a keyword) and extinction (fear only ever deepens today). Two Exp 60-classroom experiment sketches; four-lens review before any harness.
 - [executive_function.md](executive_function.md) — **PROPOSED 2026-10-04, plan only ([#1073](https://github.com/dennys246/Maxim/issues/1073)).** From #841's deep dive: nothing executive is validated, and the substrate path is a one-tick argmax with no maintained context. Stage 1 is a gated goal slot: a held drive as a stable context key for `recommend_action` and goal-relief credit. It rides existing NAc infrastructure and enters through roadmap 1.4's R4 credit-routing plan. Later stages: learned gating, conflict monitor, OFC expectancy, options.
 - [coding_world.md](coding_world.md) — **PROPOSED 2026-09-27, plan only; a parallel line.** Revives [deferred/coding_habits_oasis.md](deferred/coding_habits_oasis.md) by owner request. Does an aversion learned from pain bind to the act or to being watched? Exp W probes Exp 60's EARNED fear with a second player as observer (offline key-geometry replay first); Exp K asks it in a coding world (hand-authored patch variants in Docker, measured pain, harness-only oracle labels, a tamper arm), then Exp 55's transfer. The one missing mechanism is a pain producer for the existing `credit_operant_reward` write (plus the world's backend and body). Stack Overflow is not grounded text (its uses live in social_referencing and grounded_word_binding; no need to pay). Default: no `src/` before the 1.4.0 cut; claims candidate 1.5.
-- [baseline_floors.md](baseline_floors.md) — **PROPOSED 2026-10-10, a parallel line (owner decisions BF1–BF2).** A bare LLM (`bare_llm`), a generic-memory LLM (`llm_notes`) and a non-LLM learner (`tabular_q`, `random`) beside every claim; until B1, no ledger row had been compared with an agent lacking the bio layers. BF2: a new claim earns only over its floor (M46). B0 (provenance fields) is merged; B1 (the Exp 60 non-LLM floor) RAN 2026-10-14 and returned `FLOOR_MATCHED_Q` (a tabular Q-learner matched FEAR at the first post placement), so T1-13 is `PARTIAL (narrow: floor matched)`; the bare loop (B2) waits for the `start_simulation_mode` decomposition, so no new LLM-path claim can be EARNED before it. Revises the owner's 2026-10-10 draft: the Exp 60 world cannot host a fair bare-LLM arm (priors hit the ceiling on the pre-probe), and Exp 37's narrator is a cross-session memory channel.
-- [maxim_hivemind.md](maxim_hivemind.md) — **1.2 = Oasis + Hivemind.** B5 shareability
+- [baseline_floors.md](baseline_floors.md) — **Status 2026-10-16: B0 shipped and B1 ran (`FLOOR_MATCHED_Q`, 2026-10-14; T1-13/14/15 now PARTIAL). B2 waits on the orchestrator decomposition (1.3.4); B4, T1-2's re-fire, runs before 1.4.0.** **PROPOSED 2026-10-10, a parallel line (owner decisions BF1–BF2).** A bare LLM (`bare_llm`), a generic-memory LLM (`llm_notes`) and a non-LLM learner (`tabular_q`, `random`) beside every claim; until B1, no ledger row had been compared with an agent lacking the bio layers. BF2: a new claim earns only over its floor (M46). B0 (provenance fields) is merged; B1 (the Exp 60 non-LLM floor) RAN 2026-10-14 and returned `FLOOR_MATCHED_Q` (a tabular Q-learner matched FEAR at the first post placement), so T1-13 is `PARTIAL (narrow: floor matched)`; the bare loop (B2) waits for the `start_simulation_mode` decomposition, so no new LLM-path claim can be EARNED before it. Revises the owner's 2026-10-10 draft: the Exp 60 world cannot host a fair bare-LLM arm (priors hit the ceiling on the pre-probe), and Exp 37's narrator is a cross-session memory channel.
+- [maxim_hivemind.md](maxim_hivemind.md) — **Status 2026-10-16: 1.2 shipped (#651–#654); this is now the living architecture source for the Queen tier and the gauntlet that public_oasis and social_referencing consume.** **1.2 = Oasis + Hivemind.** B5 shareability
   SHIPPED (#305–#311); the Oasis ingestion contract, the re-keyed merge (gate 6) and the
   bundle action namespace (gate 7) are the 1.2 work.
-- [public_oasis.md](public_oasis.md) — **PROPOSED 2026-09-19; Phase 0 SCHEDULED 2026-09-24** (social_referencing depends on it), scoping only: a public Oasis on own
+- [public_oasis.md](public_oasis.md) — **Status 2026-10-16: Phase 0 items 1, 2, 5, 6 and 7 are done; items 3, 4 and item 5's server-side read tier remain. No longer "scoping only".** **PROPOSED 2026-09-19; Phase 0 SCHEDULED 2026-09-24** (social_referencing depends on it), scoping only: a public Oasis on own
   hardware at `oasis.pymaxim.bio`. Verdict **publish, do not accept** — Phase 1 (read-only release
   tier over a tunnel) rides entirely on shipped infrastructure and adds no trust decision; Phase 2
   (submissions) stays deferred because V1's operator allowlist IS the trust boundary and the
@@ -120,7 +119,7 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
   point 4 for publication only; the discovery-only website stance is preserved. Self-hosted sibling
   of [deferred/hf_hive_repository.md](deferred/hf_hive_repository.md).
 
-- [engram_formation.md](engram_formation.md) — **ACTIVE 2026-09-25, a 1.4 parallel line
+- [engram_formation.md](engram_formation.md) — **Status 2026-10-16: E1–E4, the T7 gate, are DONE (E3 2026-10-05, E4 2026-10-06); E5–E7 ride with other owners. T7 still owes the release-PR caller grep.** **ACTIVE 2026-09-25, a 1.4 parallel line
   ("Engram integrity", release threshold T7).** Fix list from a four-path audit of how engrams form:
   E1 Cerebellum never saved (#908, done 2026-10-04), E2 motor-engram docs overclaim + read side
   undeclared-dormant (#909, done 2026-10-04), E3 unreachable `[DANGEROUS]` annotation (#910), E4 text-only widening + drift measurement
@@ -150,7 +149,7 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
     G5). Narrated consequences are stamped `narrated` and used at a declared discount (G6); harness writes
     to a drive (rescue, heal, respawn, teacher and mother feeds) are `apparatus`, recorded and never
     trained on or credited (G16, 2026-10-09, from the GL1 design review).
-- [tool_failure_credit.md](tool_failure_credit.md) — **ACTIVE 2026-10-10 ([#1200](https://github.com/dennys246/Maxim/issues/1200)).** Tool failure was never wired into learning; putting it on the PainBus as it stands makes learning worse (the context-similarity NAc subscriber steals the bridge's event). Staged design B (owner TF1–TF3): Stage 1 a stale-success defect (#1207); Stage 2 failure credit through `ToolPainBridge.record_tool_failure` with a real RPE; Stage 3 a felt-only FRUSTRATION PainBus signal once `Reaction` carries kind.
+- [tool_failure_credit.md](tool_failure_credit.md) — **Status 2026-10-16: Stage 1 (#1207) and Stage 2 (#1229) are merged, with #1231 and #1221; Stage 3 waits for `kind` on `Reaction` (autonomic step 2).** **ACTIVE 2026-10-10 ([#1200](https://github.com/dennys246/Maxim/issues/1200)).** Tool failure was never wired into learning; putting it on the PainBus as it stands makes learning worse (the context-similarity NAc subscriber steals the bridge's event). Staged design B (owner TF1–TF3): Stage 1 a stale-success defect (#1207); Stage 2 failure credit through `ToolPainBridge.record_tool_failure` with a real RPE; Stage 3 a felt-only FRUSTRATION PainBus signal once `Reaction` carries kind.
 - [autonomic_layer.md](autonomic_layer.md) — **PROPOSED 2026-10-07, plan only (GL2).** The signed
   body-consequence record, `InteroceptiveOutcome` (deviation, pain, relief, urgency), the predictor targets.
   - **The regulatory defects the audit found:** no heat corrective need; an infant touch-burn that
@@ -217,6 +216,24 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
 are deferred on a second physical body arriving; the fabric was re-keyed 2026-10-07 (owner decision
 G4) to revive when GL3's registry+provenance stage ships AND a 1.4 rung needs cross-modal binding.*
 
+### Shipped plans kept at their path, and frozen contracts (listed 2026-10-16)
+
+These plans' work has shipped, but `src/`, `scripts/` or `tests/` cite them by path, so they stay put rather than
+break the citation. Each is a record now, not a plan.
+- [memory_2d2_retroactive_tagging.md](memory_2d2_retroactive_tagging.md): DECIDED + BUILT 2026-09-25 (#897).
+- [memory_2s_d_situation_cue.md](memory_2s_d_situation_cue.md): DECIDED + BUILT (#898); 2S-e is parked in `deferred/`.
+- [m1b_ledger_evidence_gate.md](m1b_ledger_evidence_gate.md): every PR built (3, 4, 5a–5a-3, 5b-1, 5b-2); the gate is `lint_evidence_gate.py` and `lint_ledger_format.py` (M1).
+- [baseline_floors_b0.md](baseline_floors_b0.md), [baseline_floors_b1_build.md](baseline_floors_b1_build.md), [baseline_floors_b1_evidence.md](baseline_floors_b1_evidence.md): B0 merged (#1233); B1 built and run (2026-10-14). The live plan is [baseline_floors.md](baseline_floors.md).
+- [oasis_entry_index_v2.md](oasis_entry_index_v2.md): PRs A–C shipped 2026-09-25; the format is frozen under public_format_freeze.
+- [lookback_primitive.md](lookback_primitive.md): DECIDED 2026-09-24 (no new store; #891/#892); still R4's map entry.
+
+Frozen contracts (reference, not plans):
+- [public_format_freeze.md](public_format_freeze.md): FROZEN 2026-09-26; guarded by `tests/unit/test_public_format_freeze.py`.
+- [sharing_threat_model.md](sharing_threat_model.md): FROZEN 2026-09-04 (1.2 gate 4).
+
+Approach notes for 1.3.3:
+- [upgrade_safety.md](upgrade_safety.md): `maxim doctor`'s advisory check and an upgrade manifest (#1295, approach note merged as #1297).
+
 ### Living discipline docs
 
 - [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md) —
@@ -229,7 +246,7 @@ G4) to revive when GL3's registry+provenance stage ships AND a 1.4 rung needs cr
   standards every pre-registration declares against (S4 shipped; S2 canaries = item 2).
 - [glossary.md](glossary.md) — decoder for the coded IDs. (Owes 1.1's one admitted
   mechanism — relief-sourced operant credit — and Exp 52/53/54 entries.)
-- [config_extensibility.md](config_extensibility.md) — **drafted 2026-09-22, not scheduled**:
+- [config_extensibility.md](config_extensibility.md) — **drafted 2026-09-22, not scheduled** (an unscheduled feature plan, kept at this path because `integration/memory_hub.py` cites it; revive when a third-party setting or strategy is requested, or on the #856 format-version decision):
   which config restrictions are the typo check (keep) and which merely require a fork (relax).
   Validation moves from a hard-coded frozenset to built-ins ∪ a registry, riding the existing
   `maxim.robots` entry-point pattern; plus an `extensions.*` namespace for third-party settings.
@@ -290,7 +307,7 @@ Design work preserved in [deferred/](deferred/). Each has an explicit "revive wh
   hardware by Exp 53/53b) and the place-code path. **§7 place-code default-ON = item 5.** **Revive
   trigger re-keyed 2026-10-07 (owner decision G4):** GL3's registry+provenance stage ships
   ([thalamic_relay.md](thalamic_relay.md)).
-- [console_tunnel_hardening.md](deferred/console_tunnel_hardening.md) — **ACTIVE 2026-09-03**: the
+- [console_tunnel_hardening.md](deferred/console_tunnel_hardening.md) — **Status 2026-10-16: TRIGGER FIRED: the Console line shipped in 1.3.2 (contract 0.6.0, #1268/#1279/#1293). PR 3 (admission control) is homed in 1.3.3 with the console items.** **ACTIVE 2026-09-03**: the
   console-facade security ladder (PR 1 trust guard SHIPPED on its branch; PR 2 bearer auth
   fail-closed; PR 3 admission control; PR 4 pre-GA authz tiers), motivated by the phone-app
   peer goal; folds the 2026-09-03 console security audit; supersedes the auth half of
@@ -396,6 +413,8 @@ Earlier deferrals:
 ## Archive
 
 Completed or superseded plans live in [archive/](archive/).
+
+- [archive/world_channel_weighting.md](archive/world_channel_weighting.md) — **CLOSED by measurement 2026-09-20, archived 2026-10-16**: all four lenses returned DO-NOT-BUILD; #784 stays homed in 1.4 Phase 5.
 
 Archived in the 2026-08-27 post-1.1.0 triage (each verified against code + git history; disposition banner at the top of each doc):
 **Archived in the 2026-09-19 plans audit** (shipped, superseded, or deferred without a trigger; each file says which at the top):
