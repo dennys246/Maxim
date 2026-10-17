@@ -349,7 +349,6 @@ class TestApplyLaneConfigToEnv:
         ``1`` / ``true`` / ``yes`` / ``on`` (case-insensitive) all
         trigger the short-circuit.
         """
-        import importlib
         import os
 
         from maxim.runtime import lane_backends
@@ -364,13 +363,15 @@ class TestApplyLaneConfigToEnv:
             explicit=non_default_paths(cfg_),
         )
 
-        # Test each truthy form. reset_config_cache() between iterations
-        # is handled by the module-level _lane_env_applied flag — clear
-        # it via a re-import per iteration.
+        # Test each truthy form. The module-level once-per-startup flag is
+        # cleared with the module's own test helper between iterations — never
+        # importlib.reload, which replaces the module's classes in place and
+        # leaves every other test's imported names stale (#1350: a reloaded
+        # BackendGateError stopped matching pytest.raises under xdist).
 
         for truthy in ("1", "true", "TRUE", "Yes", "on"):
             reset_config_cache()
-            importlib.reload(lane_backends)
+            lane_backends._reset_lane_env_applied()
             for env_name in (
                 "MAXIM_LANE_LARGE_REMOTE_URL",
                 "MAXIM_DISABLE_PEER_CONFIG",
