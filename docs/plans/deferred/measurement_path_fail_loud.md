@@ -1,5 +1,7 @@
 # Measurement-Path Fail-Loud Purge
 
+> **Status 2026-10-17: Stage 3 is homed in 1.3.3** (owner decision 2026-10-17; `roadmap_1_3_x.md` §Path to 1.4.0). It was scheduled for 1.3.2 and did not ship there; only #1134 and #1232 instrumented two files. The revive trigger below (a 1.4 rung names the gap) did not fire; the owner scheduled the stage directly.
+
 
 > **DEFERRED 2026-09-19** (plans audit at the 1.3.0 release; README §Rules: a deferred plan states its revive trigger). **Revive when:** a 1.4 rung names the gap it fills (`roadmap_1_4.md` Phase 5 enters a mechanism only when an experiment names it). The design below is unchanged and is not being worked on until then.
 **Status:** Stages 1 + 2 + 4 SHIPPED (1: #487; 4: the CI lock `scripts/lint_no_silent_swallows.py` 2026-08-13; 2: 2026-08-30, 1.1.2 Cluster A — **zero firings**, [artifact](../experiments/data/fail_loud_stage2/)). **Stage 3 remains open and is now green-lit** — roadmap 1.1.x item 6. (DRAFT 2026-08-10)

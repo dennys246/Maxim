@@ -1,6 +1,6 @@
 # Peer / Leader LLM Flexibility
 
-**Status:** Active, parallel to spine (does not gate 1.0). Parallel-safe with substrate_plan (zero file overlap — see "Parallel execution" section below).
+**Status:** ARCHIVED (status corrected 2026-10-17; it read "Active, parallel to spine (does not gate 1.0)"). This file does not record where its phases landed. Parallel-safe with substrate_plan (zero file overlap — see "Parallel execution" section below).
 **Target version:** 0.2.2 (ships alongside `cleanup_wave.md`).
 **Structure:** Foundation wave (F0) followed by phases P1–P9. Each phase is independently verifiable and rollback-safe.
 **Runtime blast radius:** Every `build_primary_router` call path on every peer AND every leader. This is critical-path LLM routing code. Treat it accordingly.

@@ -1,6 +1,6 @@
 # Exp 37 — SD-Shift Statistical Test Swap
 
-**Status:** AMENDMENT IN FLIGHT 2026-06-05
+**Status:** ARCHIVED (status corrected 2026-10-17; it read "AMENDMENT IN FLIGHT 2026-06-05"). Exp 37/38/40 concluded; the 1.0 gates were settled in PR #371 (plans README §Archive).
 **Author:** Denny + Claude
 **Blocks:** Exp 37 re-fire (the 65-run gate that decides
 `behavioral_graduation_candidates.md` Tier 1 row 1)

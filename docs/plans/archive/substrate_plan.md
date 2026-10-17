@@ -1,6 +1,6 @@
 # Substrate Plan — Bio-Stack Convergence + Prompt Layer
 
-**Status:** Active, gating 1.0
+**Status:** ARCHIVED (status corrected 2026-10-17; it read "Active, gating 1.0"). 1.0 shipped 2026-06-17 (plans README §1.0).
 **Supersedes:** `percept_substrate_plan.md` (v1), `salience_abstraction_plan.md`, **`embodiment_voice_plan.md`** (merged in — see Track B)
 **Structure:** Proof-obligation phases (P1–P6) on the substrate track, composition phases (B1–B5) on the prompt-layer track, gated by a Foundations phase (F0) and a falsification Pilot (P0).
 

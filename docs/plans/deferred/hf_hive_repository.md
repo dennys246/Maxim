@@ -1,5 +1,7 @@
 # HF Hive Repository — public discovery + submission channel for signed substrate bundles
 
+> **Status 2026-10-17: Phase 1 TRIGGER FIRED 2026-09-09; Phase 2 has not fired.** Phase 1's trigger is the 1.2 release transaction: 1.2.0 was released 2026-09-09 (PR #670). Its sole prerequisite, the public format freeze, merged 2026-09-26 (PR #918) and shipped in 1.3.1. Phase 2 needs all of (a)–(c) below, and (c) is not recorded: [public_oasis.md](../public_oasis.md) re-opens decision point 4 for publication only. **Phase 1 is REVIVED (owner decision 2026-10-17):** the owner is setting up the Hugging Face dataset repo now. It is a launch companion outside any release's scope, as §Revive triggers says. Q5 (license) and Q3 (the publication-privacy read of the exemplar's key material) are answered before the first upload; Q1 is answered by trying consumer path (a), a static mirror, before any code.
+
 **Status:** Deferred shell plan — tracking only, no active work. Filed 2026-09-07 from a
 1.2-window design conversation. The owner's original framing: "a Hugging Face bucket,
 alongside the already semi-thought-through Space, to be a repository for people to submit

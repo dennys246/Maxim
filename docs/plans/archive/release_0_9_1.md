@@ -1,7 +1,7 @@
 # 0.9.1 — Substrate-Annotates-LLM-Context Release
 
 **Target version:** 0.9.1 (bump from 0.9.0)
-**Status:** Active. Plan written 2026-05-13.
+**Status:** ARCHIVED (status corrected 2026-10-17; it read "Active"). Plan written 2026-05-13; 0.9.1 shipped 2026-05-25, and its follow-ups went to `sense_tool_registry.md`, `imagination_substrate_signals.md` and `cluster_reward_bias_decay_tau_split.md` (plans README §Archive).
 **Owns:** [decisions/nac.py](../../src/maxim/decisions/nac.py), [runtime/agent_loop.py](../../src/maxim/runtime/agent_loop.py), [runtime/gating.py](../../src/maxim/runtime/gating.py), [embodiment/](../../src/maxim/embodiment/), [proprioception/pain_bus.py](../../src/maxim/proprioception/pain_bus.py), [simulation/sim_logger.py](../../src/maxim/simulation/sim_logger.py), [prompts/](../../src/maxim/prompts/)
 **Companion plans:** [bio_emergent_persona_foundations.md](../deferred/bio_emergent_persona_foundations.md) (Wires 1+2+3 scoped here), [persona_convergence_crucible.md](../deferred/persona_convergence_crucible.md) (Roy iterations that motivate the release)
 

@@ -1,6 +1,6 @@
 # Audio-Visual Orienting — unified embodied attention via a shared orient-to-center substrate
 
-**Status:** Coordination plan, drafted 2026-06-28. Unifies two in-flight tracks; does NOT re-do either.
+**Status:** ARCHIVED (status corrected 2026-10-17; it read "Coordination plan, drafted 2026-06-28"). Merged up into [substrate_native_orienting.md](../deferred/substrate_native_orienting.md) (plans README §Archive).
 **Scope:** define the shared orient-to-center backbone both tracks converge on, the cross-track
 sequencing, and the fusion endgame. The deliverable is the *unification + sequence*, not new mechanism.
 **Branch state (must reconcile):** the two tracks currently live on separate branches with no common

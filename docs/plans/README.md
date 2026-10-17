@@ -77,13 +77,6 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
   its Codex twin is owed, graded blind to it. Previous: `v1.3.0`'s pair. The owed Codex 1.1.0 and 1.2 cards are
   **superseded** — they would grade states nobody works on.
 
-### Substrate representation & provenance (roadmap 1.1.x items 2, 3, 5)
-
-- [deferred/retrosplenial_spatial_frames.md](deferred/retrosplenial_spatial_frames.md)
-  — deferred design + the re-validation registry every EC-clustering change must walk. Its
-  own T3 trigger is `roadmap_1_4.md`'s E2 question verbatim, so it is read when E2's plan
-  opens (it registers triggers for other work but states none for itself — audit flag).
-
 ### Substrate-primary spine (1.2 Oasis + Hivemind)
 
 - [memory_strength_and_forgetting.md](memory_strength_and_forgetting.md) — **a 1.4 PARALLEL LINE
@@ -226,12 +219,15 @@ break the citation. Each is a record now, not a plan.
 - [baseline_floors_b0.md](baseline_floors_b0.md), [baseline_floors_b1_build.md](baseline_floors_b1_build.md), [baseline_floors_b1_evidence.md](baseline_floors_b1_evidence.md): B0 merged (#1233); B1 built and run (2026-10-14). The live plan is [baseline_floors.md](baseline_floors.md).
 - [oasis_entry_index_v2.md](oasis_entry_index_v2.md): PRs A–C shipped 2026-09-25; the format is frozen under public_format_freeze.
 - [lookback_primitive.md](lookback_primitive.md): DECIDED 2026-09-24 (no new store; #891/#892); still R4's map entry.
+- [minecraft_benchmark.md](minecraft_benchmark.md): Part I COMPLETE (Exp 56); Part II's R0–R3 shipped (R3 an instrument + frozen baseline in 1.3.0), and R4 moved to `roadmap_1_4.md` Phase 5. The ladder's own record; `src/maxim/simulation/minecraft.py` and the R1/R2 probe scripts cite it.
 
 Frozen contracts (reference, not plans):
 - [public_format_freeze.md](public_format_freeze.md): FROZEN 2026-09-26; guarded by `tests/unit/test_public_format_freeze.py`.
 - [sharing_threat_model.md](sharing_threat_model.md): FROZEN 2026-09-04 (1.2 gate 4).
 
 Approach notes for 1.3.3:
+- [advisor_mode.md](advisor_mode.md): advisor mode, Maxim as a read-only observer whose only tool is "propose"; 1.3.3 guards tool dispatch, and the sandbox alone guards disk and egress until item 7 and an egress seam ship (#1315; O1–O9 verified against v1.3.2; 1.3.3; owner decisions AD1–AD9 open).
+- [readiness_and_extras_standards.md](readiness_and_extras_standards.md): four standards R1–R4 from the pulse seam (readiness proves the capability, extras tested against the real library, typed console payloads, a checked vendoring step; #1332–#1336; 1.3.3).
 - [upgrade_safety.md](upgrade_safety.md): `maxim doctor`'s advisory check and an upgrade manifest (#1295, approach note merged as #1297).
 
 ### Living discipline docs
@@ -270,24 +266,26 @@ Design work preserved in [deferred/](deferred/). Each has an explicit "revive wh
 
 **Deferred 2026-09-18 (owner):**
 
+- **Shared perception** — [deferred/second_body_staging.md](deferred/second_body_staging.md) + the fabric, microduck and reflex-runtime plans (indexed below) + breeding — **DEFERRED 2026-09-18 (owner).** (Exp 55 left this deferral 2026-09-27 for [coding_world.md](coding_world.md): a coding body needs no hardware.) Revive when: a second body physically exists (a real backend registered through `maxim.robots`, or the operator records its arrival). Stage A (the baseline measurement) runs unchanged on revival. The files are in `deferred/`. **Split 2026-10-07 (owner decision G4):** the physical trigger now holds for the robot half only (the hardware factory in second_body_staging Stage B, the microduck and the reflex runtime). The perception fabric re-keys (it revives when GL3's registry+provenance stage ships AND a 1.4 rung needs cross-modal binding), because Minecraft already satisfies the perception abstraction.
+
 **Moved down from the root in the 2026-09-19 plans audit** (each file now carries its revive trigger at the top):
 
-- [cradle_mother.md](deferred/cradle_mother.md) — **ACTIVE — the nursery vehicle.** The
+- [cradle_mother.md](deferred/cradle_mother.md) — **Revive when:** a second robot body physically exists. The nursery vehicle: the
   mother-scaffolded feeding scenario (`simulation/cradle_mother.py`, the `cradle_mother`
   arc, `benchmark_cradle_mother.py` / `analyze_cradle_mother.py --gate v3`) that Exp 52
   GRADUATED on (relief-sourced credit, apparatus v3) and Exp 54 now runs on the
   Reachy-native body (Phase A GRADUATE 2026-08-27; Phase B/C on the robot next).
-- [substrate_native_orienting.md](deferred/substrate_native_orienting.md) — **ACTIVE umbrella**
+- [substrate_native_orienting.md](deferred/substrate_native_orienting.md) — **Revive when:** a second robot body physically exists. The umbrella
   for the whole orient line (Exp 45 → 52 → 53b → 54). Layer 1 = the orient policy
   (hardware-validated, nursery-taught, read out on the robot); Layer 2 = spatial
   co-location as the grounding substrate (gated north star).
-- [reachy_orient_live.md](deferred/reachy_orient_live.md) — **Live-rig runbook** (Steps 1–3
+- [reachy_orient_live.md](deferred/reachy_orient_live.md) — **Revive when:** a second robot body physically exists. **Live-rig runbook** (Steps 1–3
   PASSED 2026-07-15/16). The rig, preflights and probes that Exp 53/53b and Exp 54
   Phase B/C run on.
-- [sem_motor_binding.md](deferred/sem_motor_binding.md) — Phases 1–2 SHIPPED (#460/#461), Arm 1
+- [sem_motor_binding.md](deferred/sem_motor_binding.md) — **Revive when:** a second robot body physically exists. Phases 1–2 SHIPPED (#460/#461), Arm 1
   = Exp 49. Produces `ReachyOrientMotorBackend`, the motor path the readouts go through;
   open: Arm 2 + the Stage-5 pending map (a 1.3 reflex-tier prerequisite).
-- [live_audio_orient_wiring.md](deferred/live_audio_orient_wiring.md) — The live DoA feed
+- [live_audio_orient_wiring.md](deferred/live_audio_orient_wiring.md) — **Revive when:** a second robot body physically exists. The live DoA feed
   (Stages 0b–4b SHIPPED, #447). **Roadmap item 18 → 1.1.1** rides its Stage-2 surface
   (loudness/onset salience from the daemon's REST-served level registers); Stage 5 is the
   1.3 reflex tier.
@@ -297,23 +295,24 @@ Design work preserved in [deferred/](deferred/). Each has an explicit "revive wh
   (GL0 re-points it). **Revive trigger re-keyed 2026-10-07 (owner decision G4):** GL3's
   registry+provenance stage ships AND a stage is placed across a wire
   ([thalamic_relay.md](thalamic_relay.md)), a capability trigger rather than a body count.
-- [decision_provenance.md](deferred/decision_provenance.md) — Stages 1+2 SHIPPED (#504:
+- [decision_provenance.md](deferred/decision_provenance.md) — **Revive when:** a 1.4 rung names the gap it fills. Stages 1+2 SHIPPED (#504:
   `learned_margin` / `explore_decisive` — the instrument that explained Exp 52's weak
   seed and gated Exp 53's readout). **Stages 3+4 = item 2.**
-- [annotation_context_and_provenance.md](deferred/annotation_context_and_provenance.md) — S1
+- [annotation_context_and_provenance.md](deferred/annotation_context_and_provenance.md) — **Revive when:** a 1.4 rung names the gap it fills. S1
   SHIPPED (#501/#503), S4 DONE (1.1 cut item 11). **S2 + Exp 51 + S3 = item 3.**
 - [modality_resolution_and_alignment.md](deferred/modality_resolution_and_alignment.md) — the
   discrimination facts (~3 azimuth bins at the production threshold — measured on live
   hardware by Exp 53/53b) and the place-code path. **§7 place-code default-ON = item 5.** **Revive
   trigger re-keyed 2026-10-07 (owner decision G4):** GL3's registry+provenance stage ships
   ([thalamic_relay.md](thalamic_relay.md)).
-- [console_tunnel_hardening.md](deferred/console_tunnel_hardening.md) — **Status 2026-10-16: TRIGGER FIRED: the Console line shipped in 1.3.2 (contract 0.6.0, #1268/#1279/#1293). PR 3 (admission control) is homed in 1.3.3 with the console items.** **ACTIVE 2026-09-03**: the
+- [console_tunnel_hardening.md](deferred/console_tunnel_hardening.md) — **Status 2026-10-16: TRIGGER FIRED: the Console line shipped in 1.3.2 (contract 0.6.0, #1268/#1279/#1293). PR 3 (admission control) is homed in 1.3.3 with the console items.** Its trigger was: the console/UI line is scheduled into a release. Opened 2026-09-03: the
   console-facade security ladder (PR 1 trust guard SHIPPED on its branch; PR 2 bearer auth
   fail-closed; PR 3 admission control; PR 4 pre-GA authz tiers), motivated by the phone-app
   peer goal; folds the 2026-09-03 console security audit; supersedes the auth half of
   deferred/maxim_console.md's open q #1 (hosted-console non-goal unchanged).
-- [measurement_path_fail_loud.md](deferred/measurement_path_fail_loud.md) — Stages 1 + 4
-  SHIPPED (#487; CI lock). **Stages 2–3 = item 6.**
+- [measurement_path_fail_loud.md](deferred/measurement_path_fail_loud.md) — Stages 1 + 2 + 4
+  SHIPPED (1: #487; 2: 2026-08-30, zero firings; 4: the CI lock). Stage 3 (narrowing) was scheduled into 1.3.2
+  by `roadmap_1_3_x.md` and did not land there; **homed in 1.3.3** (owner decision 2026-10-17).
 - [coding_habits_oasis.md](deferred/coding_habits_oasis.md) — **REVIVED 2026-09-27 into [coding_world.md](coding_world.md); kept as the record of the 2026-09-05 design.** ADOPTED 2026-09-05: collective
   coding-safety habits. The coding gauntlet (#3) is a Queen-tier promotion INSTRUMENT
   inside the 1.2 poison-resistance work — no 1.2 claim; the habit-transfer claim
@@ -327,29 +326,24 @@ Design work preserved in [deferred/](deferred/). Each has an explicit "revive wh
 - [hybrid_substrate_reflex_runtime.md](deferred/hybrid_substrate_reflex_runtime.md) — the 1.3
   reflex tier (DN-canonical orienting reflex; sole owner of BL-1..BL-5). Physical-robot trigger
   unchanged 2026-10-07 (G4); its reflex tier is not the grounding line's GL3 `reflex` track.
-- [microduck_intent_layer.md](deferred/microduck_intent_layer.md) — the microduck (rev 2,
+- [microduck_intent_layer.md](deferred/microduck_intent_layer.md) — **Revive when:** a second robot body physically exists. The microduck (rev 2,
   2026-08-31, two-lens reviewed): the operator's design constraints worked through against
   the code. Zero code, no schedule change, no experiment number. Records what the
   constraints ride versus what is new, two inputs to 1.1.3's gate-7 design pass, and the
   finding that `last_clamped_axes` reaches no learner. Its rev 1 recommendations were
   withdrawn in review — read §2.4 and §5.2 for the arguments, not the index.
-- [reactive_peer_mesh_roadmap.md](deferred/reactive_peer_mesh_roadmap.md) — living mesh
+- [reactive_peer_mesh_roadmap.md](deferred/reactive_peer_mesh_roadmap.md) — **Revive when:** the console/UI line is scheduled into a release. Living mesh
   roadmap/index over the deferred mesh plans. §5 is stale: C10's 1.0 prep SHIPPED (#329)
   and its ship slice is 1.2 (it waits on Hivemind), not near-term.
-
-- **Shared perception** — [deferred/second_body_staging.md](deferred/second_body_staging.md) + [cross_modal_perception_fabric.md](deferred/cross_modal_perception_fabric.md) + [microduck_intent_layer.md](deferred/microduck_intent_layer.md) + [hybrid_substrate_reflex_runtime.md](deferred/hybrid_substrate_reflex_runtime.md) + breeding — **DEFERRED 2026-09-18 (owner).** (Exp 55 left this deferral 2026-09-27 for [coding_world.md](coding_world.md): a coding body needs no hardware.) Revive when: a second body physically exists (a real backend registered through `maxim.robots`, or the operator records its arrival). Stage A (the baseline measurement) runs unchanged on revival. Files stay in root because the roadmap names them. **Split 2026-10-07 (owner decision G4):** the physical trigger now holds for the robot half only (the hardware factory in second_body_staging Stage B, the microduck and the reflex runtime). The perception fabric re-keys (it revives when GL3's registry+provenance stage ships AND a 1.4 rung needs cross-modal binding), because Minecraft already satisfies the perception abstraction.
-
-**Revived 2026-08-30** by the 1.2 scoping dive:
-- [world_seam_1_1_4.md](archive/world_seam_1_1_4.md) — **the 1.1.4 implementation plan** (2026-09-03):
-  PR ladder, kickoff decisions D1–D5, the PR 0 scan-cost verdict, the non-vacuous ship gate,
-  the one-block hardware schedule.
-- [minecraft_benchmark.md](minecraft_benchmark.md) — **Part I COMPLETE** (Exp 56 PASS); **Part II = the survival ladder R0–R4, scoped 2026-09-06** (multi-seed harness → cross-layout generalization → drive premise check → survival benchmark as a 1.2 INSTRUMENT with a frozen, calibrated baseline → structure formation on the 1.3 line). No longer a splash demo. It is the
-  **instrument** for the 1.2 sharing claim and the only place the "find what was seen before"
-  coordination task is achievable (the Reachy Mini cannot translate). Seam lands 1.1.4;
-  the four-arm benchmark is the 1.2 headline.
+- [intrinsic_motivation_1_3.md](deferred/intrinsic_motivation_1_3.md) — curiosity and competence as
+  learned reward (1.3 draft, 2026-09-08); shares the mining world, not the survival claim. **Revive when:** a 1.4 rung names the gap it fills.
+- [setpoint_aware_neutral.md](deferred/setpoint_aware_neutral.md) — the set-point-aware neutral for the
+  L11 direction problem; the 2026-09-16 four-lens review returned DO-NOT-BUILD as proposed. **Revive when:** a 1.4 rung names the gap it fills. Its own
+  header narrows that: a want that structurally needs a small same-side move of one graded sensor to separate,
+  and then only as the adaptive (salience-layer) design.
 
 Deferred 2026-09-07 (filed from the 1.2-window design pass):
-- [deferred/hf_hive_repository.md](deferred/hf_hive_repository.md) — Hugging Face Hive Repository: Phase 1 read-only distribution of Queen-signed release bundles + the replay Space (revive at the 1.2 release transaction — launch companion, zero new trust surface); Phase 2 public submissions + gauntlet + main stream (revive only when the Slice-D promotion prerequisites land AND "validated bundle" has a defensible meaning AND decision point 4 is deliberately re-opened).
+- [deferred/hf_hive_repository.md](deferred/hf_hive_repository.md) — Hugging Face Hive Repository: Phase 1 read-only distribution of Queen-signed release bundles + the replay Space (revive at the 1.2 release transaction — launch companion, zero new trust surface); Phase 2 public submissions + gauntlet + main stream (revive only when the Slice-D promotion prerequisites land AND "validated bundle" has a defensible meaning AND decision point 4 is deliberately re-opened). **Phase 1's trigger fired 2026-09-09** (1.2.0, #670; its prerequisite, the format freeze, #918); **REVIVED 2026-10-17**: the owner is setting up the dataset repo.
 
 Deferred in the 2026-08-27 post-1.1.0 triage (banner + revive trigger at the top of each doc):
 - [deferred/acting_coach_body_state_ablation.md](deferred/acting_coach_body_state_ablation.md) + [deferred/exp44_overnight_runcard.md](deferred/exp44_overnight_runcard.md) — prerequisites shipped (#391), the body-state arms never validly ran, nothing owns them. Revive when graduation row #11 (B3 Acting Coach) is scheduled for a decision.
@@ -367,12 +361,18 @@ Deferred 2026-09-24 — **on a frozen condition:**
 - [deferred/transfer_non_situation_nac_rows.md](deferred/transfer_non_situation_nac_rows.md) — DEFERRED 2026-09-25: make a donor's percept valences / outcome stats / node-keyed reward bias transfer (today dropped at ingest — never readable). A behaviour change past what Exp 56/61 earned. Trigger: a design needs a transferred valence or outcome statistic (e.g. social_referencing).
 - [deferred/grounded_word_binding.md](deferred/grounded_word_binding.md) — DEFERRED 2026-09-24 on a condition (renamed from `grounded_word_binding_demo.md`): a heard word calls back its situation (substrate-primary). Its L0 offline gate — blind-authored phrasings of five situations cluster by situation through Maxim's own EC formation (criterion frozen in its header) — was its revive condition (pass → candidate 1.5 headline, fail → archive). Even a pass licenses only "labels and their paraphrases bind". **2026-10-07 (owner decision G5):** L0 runs unchanged as the grounding line's GL1 innate-prior measurement, and the "pass → candidate 1.5 headline" consequence is **RETIRED**. A pass no longer revives this plan on its own; it informs [latent_forward_model.md](latent_forward_model.md)'s word head. **Revive when:** the grounding line's word-world (innate-prior) tier opens. Whether a FAIL still archives the plan is an owner decision at GL1's start.
 
+Deferred 2026-07-22 to 2026-08-11 — **indexed 2026-10-17** (missing from this index until then):
+- [deferred/credit_on_progress_not_execution.md](deferred/credit_on_progress_not_execution.md) — DOWNGRADED 2026-07-22: credit a tool for drive or goal progress, not for executing. A probe disproved it as the embodied root cause, so it is an optional cleanliness change. States no revive trigger (audit flag).
+- [deferred/long_lived_server_config_guards.md](deferred/long_lived_server_config_guards.md) — 2026-07-26: once-per-process config guards (`_lane_env_applied`, the role export) go stale inside a long-lived `maxim serve`. Revive when the console wizard needs run → re-setup → run to re-route lanes in one `maxim serve` process, or Phase 3 talk/rest modes ship.
+- [deferred/loop_stack_builder.md](deferred/loop_stack_builder.md) — 2026-07-29: one shared `build_loop_stack()` for the hand-assembled `run_agentic_loop` stacks. Its trigger (the next hand-assembled stack) **fired 2026-09-04** (`simulation/minecraft_harness.py`, #610); **homed in 1.3.5** (owner decision 2026-10-17).
+- [deferred/scn_event_producer_gap.md](deferred/scn_event_producer_gap.md) — 2026-07-29 (updated 2026-08-29, #572): five of the SCN's six declared temporal-event categories have no producer. Revive when the oscillator earns behavioural weight and a second category is needed, or a drive-conditioned anticipatory behaviour is on the critical path.
+- [deferred/retrosplenial_spatial_frames.md](deferred/retrosplenial_spatial_frames.md) — 2026-08-11: egocentric ↔ allocentric frame translation, plus the re-validation registry every EC-clustering change must walk (§5). Revive when any §4 trigger fires: T1 place memory across motion, T2 multi-vantage identity, T3 return-to-place (`roadmap_1_4.md`'s E2 question), T4 a second frame-confusion incident.
+
 Deferred in the 2026-07-15 audit — **partially shipped, remainder paused:**
 - [deferred/llm_timeout_scalability.md](deferred/llm_timeout_scalability.md) — Stages 1–3.5 SHIPPED (per-tier timeout, admission gate, TTFT keepalive; PRs #320/#321). Stage 4 adaptive throughput model unbuilt. Revive when a big-model soak yields the `(TTFT, tok/sec)` data it needs.
-- [deferred/stall_detector_timeout_awareness.md](deferred/stall_detector_timeout_awareness.md) — Stage 1 SHIPPED (PR #324). Stage 2 heartbeat migration pending (CI grep still allowlists `heartbeat.py` for it). Revive on the next 1.0.x maintenance pass or first heartbeat false-positive.
-- [deferred/mesh_perception_transport.md](deferred/mesh_perception_transport.md) — 1.0 prep SHIPPED (PR #329); single-cut-point framing superseded by [perception_pipeline_placement.md](deferred/perception_pipeline_placement.md). Revive when a perception stage is placed across the wire (1.2+ frame transport).
+- [deferred/stall_detector_timeout_awareness.md](deferred/stall_detector_timeout_awareness.md) — Stage 1 SHIPPED (PR #324); Stage 2, the heartbeat migration, SHIPPED 2026-10-14 (PR #1268). Its trigger (the next 1.0.x maintenance pass, or a heartbeat false-positive) **fired** with 1.0.2 (2026-07-28). Stage 3 stays blocked on llm_timeout_scalability Stage 4; the stall follow-ups #1272 and #1043 are homed in 1.3.4.
+- [deferred/mesh_perception_transport.md](deferred/mesh_perception_transport.md) — 1.0 prep SHIPPED (PR #329); single-cut-point framing superseded by `perception_pipeline_placement.md`. Revive when a perception stage is placed across the wire (1.2+ frame transport).
 - [deferred/bio_emergent_persona_foundations.md](deferred/bio_emergent_persona_foundations.md) — Stages 0–3 + Wire-A SHIPPED via 0.9.1. Only Wires 4/5 remain; evidence points at encoder alignment, not these wires, as the persona blocker. Revive if a Roy iteration shows Wire 4 or 5 is load-bearing.
-- [deferred/persona_cleanup_and_mode_transition.md](archive/persona_cleanup_and_mode_transition.md) — **COMPLETE (2026-08-09).** Stage 1 shipped in PR #217; Option A decided (owner, 2026-08-07); Stages 3–6 shipped in the 1.1 persona hard-remove PR (`personas.py` deleted, `--persona` flags + `/persona` removed, `register_persona()` raises, persona→mode rename with legacy readers). Kept in deferred/ because shipped error messages reference the path.
 - [deferred/scene_actor_affordances.md](deferred/scene_actor_affordances.md) — Stages 1+2 SHIPPED (PR #213). Stages 3–5 (prompt rule, designer hint, validation experiment) revive when an adversarial sim needs narrated entity actions to hit real AUT body mechanics, or when re-evaluating agent_backed_entities.
 - [deferred/sense_tool_registry.md](deferred/sense_tool_registry.md) — 1.0 MVP SHIPPED (PR #287: `auto_fire`, `kind`, grayscale visibility). 1.1+ full plan revives if substrate→action tool visibility is re-prioritized or predictive learning needs `sensory_events.jsonl` / predicate-outcome typing.
 - [deferred/imagination_substrate_signals.md](deferred/imagination_substrate_signals.md) — Hookup 1 MVP SHIPPED (PRs #288/#292). Hookups 2+3 revive after encoder replacement, if per-tick substrate-driven imagination is the next lever.
@@ -380,8 +380,8 @@ Deferred in the 2026-07-15 audit — **partially shipped, remainder paused:**
 Deferred in the 2026-07-15 audit — **never started / blocked:**
 - [deferred/mcp_compatibility.md](deferred/mcp_compatibility.md) — Zero MCP code; CC9 prerequisite shipped. Revive when the MCP spec stabilizes AND a concrete user need appears.
 - [deferred/key_drift_detection.md](deferred/key_drift_detection.md) — Never implemented; the reactive 401-hint fold reduced urgency. Revive if stale-key confusion recurs outside the 401 path.
-- [deferred/transition_based_drive_pain.md](deferred/transition_based_drive_pain.md) — Root-cause fix for per-tick drive-pain re-firing (B8 covers channel 1 today). Revive on a second attribution consumer, a channel-2 mis-attribution incident, or any `evaluate_failures` cadence change.
-- [deferred/colibri_worldgen_smoke.md](deferred/colibri_worldgen_smoke.md) — Hard-blocked on an upstream colibrì server bug (degenerate output; engine itself works). Revive when upstream fixes `openai_server.py`; escalate to archive if dead for a quarter.
+- [deferred/transition_based_drive_pain.md](deferred/transition_based_drive_pain.md) — Root-cause fix for per-tick drive-pain re-firing. **Phases 0, 1 and 4 SHIPPED 2026-07-28** (its trigger fired 2026-07-17; the breach latch is `Embodiment._drive_breach`). Only Phase 3, the B8 disposition, remains; owner decision 2026-09-19: settle it inside 1.4's credit-routing audit, by measurement if reading the code cannot.
+- [deferred/colibri_worldgen_smoke.md](deferred/colibri_worldgen_smoke.md) — Hard-blocked on an upstream colibrì server bug (degenerate output; engine itself works). Revive when upstream fixes `openai_server.py`; escalate to archive if dead for a quarter. **Re-check under way 2026-10-17** (upstream changed the server's thinking switch).
 - [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md) — **SUBSUMED 2026-10-07 by [latent_forward_model.md](latent_forward_model.md)**: the owner reversed roadmap 1.4 decision 3, its four rules are inherited there, and the projection itself is not revived. Before that it was a 1.2+ research direction; motivating 384-vs-768-dim split still true, but Exp 35/36 resolved via threshold tuning. Revive on a structurally cross-modal problem unsolvable by threshold tuning + a passing Stage 0 paired-data audit.
 - [deferred/scn_decay_anchoring.md](deferred/scn_decay_anchoring.md) — Hardware portability of decay timescales; unstarted. Revive when a second hardware baseline joins benchmarking or decay calibration is greenlit (hard prereq of the next entry).
 - [deferred/decay_consolidation_calibration_plan.md](deferred/decay_consolidation_calibration_plan.md) — Calibration-by-simulation framework; blocked on scn_decay_anchoring. Revive when decay timescales are confirmed as the bottleneck or a new tau consumer mis-inherits a default.
@@ -389,30 +389,28 @@ Deferred in the 2026-07-15 audit — **never started / blocked:**
 Deferred in the 2026-07-15 audit — **stalled practice docs** (were "living," stopped accumulating):
 - [deferred/persona_convergence_crucible.md](deferred/persona_convergence_crucible.md) — 8 Roy iterations of real data (May 2026); halted on the encoder-alignment gap its own runs root-caused (768-vs-384-dim). Load-bearing negative evidence — do NOT archive. Revive when encoder replacement / cross-modal alignment ships; Roy-1 Adversarial then becomes runnable.
 - [deferred/behavioral_convergence_practice.md](deferred/behavioral_convergence_practice.md) — Exp 1–5 (41/41) logged in April; the validation energy migrated to [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md). Revive on a new system-level "does the agent get better" experiment.
-- [deferred/memory_consolidation_practice.md](archive/memory_consolidation_practice.md) — Zero entries ever, despite P8 shipping. Revive when a consolidation-tuning question becomes load-bearing; downgrade to archive if 1.1 ships without touching consolidation.
 
 Earlier deferrals:
 - [deferred/b5_embodiment_narrative_separation.md](deferred/b5_embodiment_narrative_separation.md) — Formalize SEM/DM prompt boundary. Revive when prompt-bleed bug surfaces.
 - [deferred/agent_backed_entities.md](deferred/agent_backed_entities.md) — 3-tier cognition + Cradle-trained cast + mesh-pressure budget. Revive if scene_actor_affordances diagnostic doesn't close the gap.
-- [deferred/goal_depth_integration.md](archive/goal_depth_integration.md) — GOAL WMS entry kind, goal-tagged episodes. Stage 3 absorbed by temporal_credit_integration. Remaining stages are enrichment, not gating.
 - [deferred/bio_system_plugin_plan.md](deferred/bio_system_plugin_plan.md) — Plugin discovery for bio-systems. Revive when external contributors appear.
 - [deferred/mother_npc_stimulus_plan.md](deferred/mother_npc_stimulus_plan.md) — Two-agent stimulus pattern. Revive when behavioral convergence hits variety ceiling.
 - [deferred/pecking_order_graph_plan.md](deferred/pecking_order_graph_plan.md) — Unified hierarchy DAG. Revive when multi-node topology matters.
-- ~~deferred/mother_maxim_plan.md~~ → **SUPERSEDED** (2026-05-09) by [maxim_hivemind.md](maxim_hivemind.md). Old plan moved to [archive/mother_maxim_plan.md](archive/mother_maxim_plan.md). Reframed for the substrate-primary world: peer-to-peer Maxim Oases (sustaining gathering places) instead of central Mother server; Maxim Hivemind (collective cognition layer) instead of Pecking Order Graph; distilled bio-substrate snapshots instead of raw episodes. ~2,100 LOC instead of 3,800. Phasing: shareability infrastructure SHIPPED in 1.0 (B5, PRs #305–#311); Oasis + full Hivemind protocol gated for 1.2.
-- [deferred/dungeon_master_extensions.md](deferred/dungeon_master_extensions.md) — DM post-MVP features.
-- [deferred/cross_platform_file_lock.md](archive/cross_platform_file_lock.md) — Unify `process_lock` + `filelock`. Tech debt, blocks nothing.
-- [deferred/mesh_doc_transport.md](archive/mesh_doc_transport.md) — Mesh-to-mesh doc exchange (C9). Not started.
+- [deferred/dungeon_master_extensions.md](deferred/dungeon_master_extensions.md) — DM post-MVP features (a maybe-list). Revive when real DM campaign usage points at one specific extension.
 - [deferred/pain_bus_bridge_subscriber_unification.md](deferred/pain_bus_bridge_subscriber_unification.md) — Bridge/subscriber attribution-asymmetry fix. Monitor; open when pending-event context enriched.
-- [deferred/node_security_simplification.md](deferred/node_security_simplification.md) — Phase 1 shipped. Phase 2 config unification deferred.
+- [deferred/node_security_simplification.md](deferred/node_security_simplification.md) — Phase 1 shipped; Phase 2's role-detector unification shipped in #318. Its trigger (Plan 4 operator visibility fully shipped) **fired** with 0.5.0. The remainder (the legacy `"client"` role and `role_divergence` shims marked "Drops in 1.2", and an auth-model doc) is **homed in 1.3.3** (owner decision 2026-10-17).
 - [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) — Multi-peer load distribution. Revive when 2+ GPU nodes.
 - [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md) — Capability-aware routing. Revive when heterogeneous mesh.
 - [deferred/llm_path_async_router.md](deferred/llm_path_async_router.md) — Async router. Revive if head-of-line blocking observed.
 - [deferred/llm_path_fair_scheduling.md](deferred/llm_path_fair_scheduling.md) — Fair-share scheduling. Revive if rate limiting insufficient.
-- ~~deferred/grounded_language_acquisition.md~~ → **PROMOTED** to [grounded_language_acquisition.md](grounded_language_acquisition.md) (2026-05-09). **Phase -1 GATE CLEARED + Phase 0 harness + EC sensor-encoding ALL SHIPPED** (PR #228 + branch `feat/phase0-sensor-encoding`, 2026-05-09): substrate produces non-LLM actions; `cradle_prelinguistic` arc + motor-only AUT prompt + per-tick telemetry; `SensorEncoder` hashes drive snapshots through EC with modality `"interoception"`. Hivemind shareability SHIPPED (PRs #305–#311, 2026-05-31). Full Phase 0 validation + Phase 1 + Phase 2 in 1.1+ (1.1-T7). Trigger: 2026-05-09 audit found 60-70% of recent engineering effort going to LLM-mitigation scaffolding (~845 LOC of band-aids) rather than substrate work; the parallel-mode pivot is the structural fix. D&D campaign survival is the bidirectional kill criterion (substrate failure OR simulation-environment failure). The existing LLM-AUT path stays as the user-facing default.
 
 ## Archive
 
 Completed or superseded plans live in [archive/](archive/).
+
+Redirects for plans that left `deferred/` (moved out of the Deferred index 2026-10-17):
+- ~~deferred/mother_maxim_plan.md~~ → **SUPERSEDED** (2026-05-09) by [maxim_hivemind.md](maxim_hivemind.md). Old plan moved to [archive/mother_maxim_plan.md](archive/mother_maxim_plan.md). Reframed for the substrate-primary world: peer-to-peer Maxim Oases (sustaining gathering places) instead of central Mother server; Maxim Hivemind (collective cognition layer) instead of Pecking Order Graph; distilled bio-substrate snapshots instead of raw episodes. ~2,100 LOC instead of 3,800. Phasing: shareability infrastructure SHIPPED in 1.0 (B5, PRs #305–#311); Oasis + full Hivemind protocol gated for 1.2.
+- ~~deferred/grounded_language_acquisition.md~~ → **PROMOTED** to [grounded_language_acquisition.md](grounded_language_acquisition.md) (2026-05-09). **Phase -1 GATE CLEARED + Phase 0 harness + EC sensor-encoding ALL SHIPPED** (PR #228 + branch `feat/phase0-sensor-encoding`, 2026-05-09): substrate produces non-LLM actions; `cradle_prelinguistic` arc + motor-only AUT prompt + per-tick telemetry; `SensorEncoder` hashes drive snapshots through EC with modality `"interoception"`. Hivemind shareability SHIPPED (PRs #305–#311, 2026-05-31). Full Phase 0 validation + Phase 1 + Phase 2 in 1.1+ (1.1-T7). Trigger: 2026-05-09 audit found 60-70% of recent engineering effort going to LLM-mitigation scaffolding (~845 LOC of band-aids) rather than substrate work; the parallel-mode pivot is the structural fix. D&D campaign survival is the bidirectional kill criterion (substrate failure OR simulation-environment failure). The existing LLM-AUT path stays as the user-facing default.
 
 - [archive/world_channel_weighting.md](archive/world_channel_weighting.md) — **CLOSED by measurement 2026-09-20, archived 2026-10-16**: all four lenses returned DO-NOT-BUILD; #784 stays homed in 1.4 Phase 5.
 
@@ -427,6 +425,12 @@ Archived in the 2026-08-27 post-1.1.0 triage (each verified against code + git h
 - [oasis_case_study_taught_orient.md](archive/oasis_case_study_taught_orient.md) — ADOPTED
   2026-08-26 as the 1.2 motivating case study: sharing the nursery-taught want; the
   claim that earns it is cross-unit readout on a second Reachy.
+- [archive/world_seam_1_1_4.md](archive/world_seam_1_1_4.md) — ARCHIVED 2026-09-19: shipped as 1.1.4 "The world seam" (2026-09-05).
+- [archive/persona_cleanup_and_mode_transition.md](archive/persona_cleanup_and_mode_transition.md) — ARCHIVED 2026-09-19: COMPLETE 2026-08-09 (Stage 1 #217; Stages 3–6 in the 1.1 persona hard-remove). `src/` cites this archive path.
+- [archive/memory_consolidation_practice.md](archive/memory_consolidation_practice.md) — ARCHIVED 2026-09-19: its own downgrade condition fired (1.1 shipped without touching consolidation).
+- [archive/goal_depth_integration.md](archive/goal_depth_integration.md) — ARCHIVED 2026-09-19: no revive trigger.
+- [archive/cross_platform_file_lock.md](archive/cross_platform_file_lock.md) — ARCHIVED 2026-09-19: no revive trigger.
+- [archive/mesh_doc_transport.md](archive/mesh_doc_transport.md) — ARCHIVED 2026-09-19: no revive trigger.
 
 - [archive/claude_md_diet.md](archive/claude_md_diet.md) — **✅ SHIPPED 2026-08-14 (#509).**
 - [archive/bio_docstring_truth_pass.md](archive/bio_docstring_truth_pass.md) — **✅ SHIPPED 2026-08-11 (#492).**
