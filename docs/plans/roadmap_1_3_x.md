@@ -628,8 +628,8 @@ recorded-but-unused memory system. That is 1.4's work ([roadmap_1_4.md](roadmap_
    each a 1.4.0 gate item.)*
    **The remaining orchestrator slices are not in 1.3.2, and they hard-gate 1.4.0 (owner decision
    2026-10-15).** They do not gate the 1.3.2 cut, where the function-length ratchet records the ceiling (Sizing,
-   below); 1.4.0 cannot pass CI until `start_simulation_mode` (2,889 lines) reaches 200 or fewer with no pin, with
-   everything split out of it (§The 1.4.0 gate, below). Order, tail first: report/result (§14) → teardown (§13) →
+   below); 1.4.0 cannot pass CI until `start_simulation_mode` (2,889 lines) reaches 1,000 or fewer, with
+   everything split out of it (the bound was 200 until #1323, owner decision 2026-10-16) (§The 1.4.0 gate, below). Order, tail first: report/result (§14) → teardown (§13) →
    stall detector (§11) → stdin (§10) → campaign dispatch (§9) → `build_aut` → `build_orchestrator`. Each owes
    the characterization arms listed below before it moves.
 3. **`_main_impl`** (`cli.py`, 1,696) — only if 1 and 2 land; it is CLI glue, the least valuable of the three.
@@ -795,7 +795,7 @@ remainder hard-gates 1.4.0 (§The 1.4.0 gate).
 
 1.3.2 "Decomposition" shipped 2026-10-16. 1.4.0 is hard-gated by `scripts/release_gates.json` and
 `scripts/lint_release_gates.py` (#1300). At the cut that gate had 31 of 32 items open, none of its five
-characterization arms recorded, and three functions far over its 200-line limit: `start_simulation_mode` (2,889
+characterization arms recorded, and three functions far over its then 200-line limit (1,000 since #1323): `start_simulation_mode` (2,889
 lines), `run_agentic_loop` (2,434) and `tool_dispatch.execute_and_learn` (392). The owner chose **three patch
 releases, then 1.4.0**, so the decomposition ships in steps. Each step is a release users get, and the repo keeps
 improving on the way. A six-reader review of `docs/` and `docs/plans/` (2026-10-16) produced the scopes below. Every
@@ -831,7 +831,8 @@ Owner decisions taken with this path (2026-10-16):
 
 ### 1.3.4, "The orchestrator"
 - **First the five characterization arms** (`persistent_agent`, `imagination`, `new_goal`, `stall`, `generative`).
-  **Then the `start_simulation_mode` slices** down to 200 lines or fewer, descendants included (gate rule 4).
+  **Then the `start_simulation_mode` slices** down to 1,000 lines or fewer, descendants included (gate rule 4;
+  item `1323.functions-1000`).
 - **Riding with the slices:** [#1259](https://github.com/dennys246/Maxim/issues/1259), [#1262](https://github.com/dennys246/Maxim/issues/1262), #863's orchestrator wraps, #835, #965, #1288's stall nudge, and
   the sim-lifecycle and narrator issues [#981](https://github.com/dennys246/Maxim/issues/981), [#1005](https://github.com/dennys246/Maxim/issues/1005), [#1006](https://github.com/dennys246/Maxim/issues/1006), [#1007](https://github.com/dennys246/Maxim/issues/1007), [#1028](https://github.com/dennys246/Maxim/issues/1028), [#1033](https://github.com/dennys246/Maxim/issues/1033), [#1034](https://github.com/dennys246/Maxim/issues/1034), [#1043](https://github.com/dennys246/Maxim/issues/1043), [#1046](https://github.com/dennys246/Maxim/issues/1046), [#1272](https://github.com/dennys246/Maxim/issues/1272), [#1276](https://github.com/dennys246/Maxim/issues/1276), [#1241](https://github.com/dennys246/Maxim/issues/1241).
   Also [#1301](https://github.com/dennys246/Maxim/issues/1301): re-assess the narrator-driven evidence recorded before #1260 and #1261.
@@ -867,8 +868,8 @@ Owner decisions taken with this path (2026-10-16):
   its re-fire becomes B4).
 
 ### Risks
-1. **The decomposition can hold 1.4 for a long time.** About 5,300 lines must reach functions of 200 lines or
-   fewer, and the gate is shrink-only: leaving it needs an append-only `retired` record. Neither score card asks for
+1. **The decomposition can hold 1.4 for a long time.** About 3,300 lines must leave `start_simulation_mode` and
+   `run_agentic_loop` to bring them to 1,000 lines or fewer (#1323; it was about 5,300 at the old 200-line bound), and the gate is shrink-only: leaving it needs an append-only `retired` record. Neither score card asks for
    that much.
 2. **The fence serializes E1's instrument behind the whole decomposition**, so rig time sits idle unless B1-style
    floor work fills it.
