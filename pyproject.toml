@@ -220,7 +220,10 @@ all = [
 test = [
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
-    "pytest-xdist>=3.5.0",  # Parallel test execution
+    # A floor, like coverage/pytest-cov here (M22): CI's measuring fast suite runs under it (`-n auto --dist loadfile`)
+    # with the EXACT version in test.yml and scripts/lint_coverage.py XDIST_VERSION, which scripts/suite_at_commit.sh's
+    # preflight enforces; this floor may not fall below that version (tests/unit/test_lint_coverage.py checks).
+    "pytest-xdist>=3.8.0",
     # A guard that fails by HANGING is not a guard — the runner kills the whole
     # job and the failure is indistinguishable from an infrastructure stall.
     # The D12 guard was exactly that shape: it asserts `elapsed < 5.0` AFTER the

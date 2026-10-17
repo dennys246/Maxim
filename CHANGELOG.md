@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     release.
   - Guards: `tests/unit/test_release_gate_function_ceiling.py` (a strict red gate until the bound is met) and
     `tests/unit/test_lint_release_gates.py::test_a_retired_functions_split_out_leaves_the_gate_with_it`.
+- **The fast suite runs in parallel (M22).** CI's measuring step and `scripts/suite_at_commit.sh` run it under
+  pytest-xdist with `-n auto --dist loadfile` (pytest-xdist pinned exactly to 3.8.0 in CI; the script refuses a
+  different version before running), and the `[test]` extra now requires `pytest-xdist>=3.8.0`.
 
 ### Fixed
 
