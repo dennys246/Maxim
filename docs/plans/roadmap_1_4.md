@@ -638,7 +638,8 @@ frozen status verbatim; **EARNED** per rung = every frozen gate of that rung's p
 - **T3 — E1 has a recorded outcome** with the argmax and hunger-state replays committed beside it.
 - **T4 — ledger WALKED, not merely clean.** The release PR carries a trigger-walk table: every
   Tier-1 row holding a positive or PARTIAL status (written as "EARNED" in 2026-09; since B1 only T1-16 is EARNED, so
-  the walk covers EARNED, RE-VALIDATED, MAINTAINED and PARTIAL rows, owner reading 2026-10-16) × every 1.4 `src/`, bridge and harness change (the recommend-event field; the
+  the walk should cover EARNED, RE-VALIDATED, MAINTAINED and PARTIAL rows; proposed 2026-10-16, for the owner to
+  confirm before 1.4.0) × every 1.4 `src/`, bridge and harness change (the recommend-event field; the
   primitive verbs; the campaign core against R3's clause; any credit path or substrate rule that
   entered), each cell FIRED / NOT FIRED, each FIRED cell re-run or discharged with a dated annotation
   on the row; the minor-version heartbeat walk executed and dated; no `Stale` or `Broken` token (T1-2 is resolved by
