@@ -26,9 +26,10 @@ CODE_TREE = REPO / "src" / "maxim" / "utils" / "code_tree.py"
 
 
 def _provenance():
-    spec = importlib.util.spec_from_file_location("_provenance", REPO / "scripts" / "_provenance.py")
+    # A private name, never "_provenance" itself (tests/script_module_guard.py).
+    spec = importlib.util.spec_from_file_location("_clean_flag_998_provenance", REPO / "scripts" / "_provenance.py")
     module = importlib.util.module_from_spec(spec)
-    sys.modules["_provenance"] = module
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -363,7 +364,7 @@ def test_a_clean_checkout_of_this_repo_reads_clean() -> None:
 
 def test_the_harness_loads_this_file_from_its_own_tree() -> None:
     assert Path(P._code_tree.__file__).resolve() == CODE_TREE.resolve()
-    assert "maxim" not in sys.modules.get("_provenance").__dict__  # it never imports the package
+    assert "maxim" not in P.__dict__  # it never imports the package
 
 
 def test_code_tree_is_stdlib_only() -> None:

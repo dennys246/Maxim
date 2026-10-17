@@ -63,6 +63,12 @@ from tests import docker_guard as _docker_guard  # noqa: E402
 
 _docker_guard.install()
 
+# No test may leave a scripts/ module replaced or removed under the name `import` resolves it to ("_provenance",
+# "scripts._lint_git", ...): a script's lazy `from _provenance import ...` then sees another object than the one a
+# later test patched, so a test's outcome depends on which files ran before it on its worker (#1339). The check runs
+# around every test, every test module and every collected module; see tests/script_module_guard.py.
+from tests import script_module_guard as _script_module_guard  # noqa: E402
+
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):  # noqa: ANN001, ANN201
     """How many calls the network guard blocked this session (each would have left the machine)."""
@@ -217,8 +223,38 @@ def pytest_runtest_makereport(item: pytest.Item, call: "pytest.CallInfo[None]"):
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_make_collect_report(collector: pytest.Collector):  # noqa: ANN201
+    before = _script_module_guard.snapshot()
     outcome = yield
-    _fail_required_extra_skip(collector.config, outcome.get_result())
+    report = outcome.get_result()
+    _fail_required_extra_skip(collector.config, report)
+    leak = _script_module_guard.check_and_restore(before)
+    if leak is not None:
+        if report.outcome == "failed":
+            report.longrepr = f"{report.longrepr}\n\n{leak}"
+        else:
+            report.outcome = "failed"
+            report.longrepr = leak
+
+
+@pytest.fixture(autouse=True)
+def _scripts_modules_not_replaced():
+    """Fail the test that left a ``scripts/`` module replaced or removed (tests/script_module_guard.py)."""
+    before = _script_module_guard.snapshot()
+    yield
+    leak = _script_module_guard.check_and_restore(before)
+    if leak is not None:
+        pytest.fail(leak, pytrace=False)
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _scripts_modules_not_replaced_by_module():
+    """The same check over a whole test module: sees module- and class-scoped fixtures, which set up before and
+    tear down after the per-test check. A leak errors the module's last test at teardown."""
+    before = _script_module_guard.snapshot()
+    yield
+    leak = _script_module_guard.check_and_restore(before)
+    if leak is not None:
+        pytest.fail(f"in this module's fixtures: {leak}", pytrace=False)
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:

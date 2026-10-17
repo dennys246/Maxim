@@ -29,9 +29,12 @@ REPO = Path(maxim.__file__).resolve().parents[2]
 
 
 def _load_script(name: str):
-    spec = importlib.util.spec_from_file_location(name, REPO / "scripts" / f"{name}.py")
+    # A private name: re-registering the script under its canonical one would hand every later test's lazy
+    # `from _provenance import ...` this copy instead of the one that test patched (tests/script_module_guard.py).
+    private = f"_report_provenance_m1_{name}"
+    spec = importlib.util.spec_from_file_location(private, REPO / "scripts" / f"{name}.py")
     module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
+    sys.modules[private] = module
     spec.loader.exec_module(module)
     return module
 
