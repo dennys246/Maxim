@@ -644,8 +644,8 @@ class TestOutputFormat:
             overall_ranking=["pass_model", "fail_model"],
         )
         table = report.summary_table()
-        assert "[PASS]" in table
-        assert "[FAIL]" in table
+        assert "thresholds PASS" in table
+        assert "thresholds FAIL" in table
 
 
 # ── Phase 5: Scenario YAML validation ────────────────────────────────
@@ -1155,3 +1155,81 @@ class TestBaselineComparison:
         assert mr.metrics["memory_formation_rate"] == pytest.approx(2.5)
         assert mr.score == pytest.approx(0.65)
         assert mr.expectations_passed == 4
+
+
+def test_summary_labels_expectations_and_thresholds_separately():
+    """#1310: `0/3 passed [PASS]` read as "the expectations passed". The verdict comes from the suite's metric
+    thresholds and the count from the scenarios' expectations: each gets its own label."""
+    report = BenchmarkReport(
+        timestamp="20261016_132809",
+        suite="quick_check",
+        models=["mistral-7b"],
+        runs_per_model=1,
+        results={
+            "mistral-7b": ModelResult(
+                model="mistral-7b", metrics={"memory_formation_rate": 17.0}, score=0.81, passed=True,
+                expectations_passed=0, expectations_total=3,
+            )
+        },
+        overall_ranking=["mistral-7b"],
+    )  # fmt: skip
+    table = report.summary_table()
+    assert "0/3 passed [PASS]" not in table
+    line = next(ln for ln in table.splitlines() if ln.strip().startswith("mistral-7b:") and "expectations" in ln)
+    assert "expectations 0/3 met" in line and "thresholds PASS" in line, line
+
+
+@pytest.mark.parametrize(
+    "checked, passed, verdict",
+    [
+        (0, True, "thresholds none applied"),
+        (2, True, "thresholds PASS"),
+        (2, False, "thresholds FAIL"),
+        (None, True, "thresholds PASS"),
+    ],
+)
+def test_summary_says_when_no_thresholds_were_checked(checked, passed, verdict):
+    """#1310 review: a suite with no `scoring` block auto-passes, so "thresholds PASS" would claim a check that never
+    ran. None (a report saved before the field existed) keeps the stored verdict."""
+    report = BenchmarkReport(
+        timestamp="t", suite="quick_check", models=["m"], runs_per_model=1,
+        results={"m": ModelResult(model="m", passed=passed, expectations_total=3, thresholds_checked=checked)},
+    )  # fmt: skip
+    line = next(
+        ln for ln in report.summary_table().splitlines() if ln.strip().startswith("m:") and "expectations" in ln
+    )
+    assert line.rstrip().endswith(verdict), line
+
+
+def test_thresholds_checked_survives_save_and_load(tmp_path):
+    """The count the summary reads must round-trip through benchmark_report.json, or a reloaded baseline would print
+    the auto-pass as a checked PASS again (#1310 review)."""
+    suite = tmp_path / "suite.yaml"
+    suite.write_text("name: test\npercepts: []\n")
+    runner = BenchmarkRunner(models=["m"], suite_path=str(suite), output_dir=str(tmp_path / "out"))
+    report = BenchmarkReport(
+        timestamp="t", suite="s", models=["m"], runs_per_model=1,
+        results={"m": ModelResult(model="m", passed=True, thresholds_checked=0)},
+    )  # fmt: skip
+    report_dir = runner.save_report(report)
+    loaded = runner._load_baseline(str(report_dir / "benchmark_report.json"))
+    assert loaded is not None and loaded.results["m"].thresholds_checked == 0
+    assert "thresholds none applied" in loaded.summary_table()
+
+
+@pytest.mark.parametrize(
+    "scoring, checked",
+    [
+        ({}, 0),
+        ({"memory_formation_rate": {"pass": 1.0}}, 1),
+        ({"recall_Verath": {"pass": 1.0}}, 0),  # defined, but its metric was never measured: not applied
+    ],
+)
+def test_aggregation_records_how_many_thresholds_were_checked(tmp_path, scoring, checked):
+    """The runner's aggregate is where the count is set: an empty `scoring` block is 0, the auto-pass."""
+    suite = tmp_path / "suite.yaml"
+    suite.write_text("name: test\npercepts: []\n")
+    runner = BenchmarkRunner(models=["m"], suite_path=str(suite), output_dir=str(tmp_path / "out"))
+    runner._scoring = scoring
+    run = RunResult(scenario="s", model="m", run_index=0, metrics={"memory_formation_rate": 2.0})
+    assert runner._aggregate_runs("m", [run]).thresholds_checked == checked
