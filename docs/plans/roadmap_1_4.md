@@ -1,8 +1,9 @@
 # Roadmap 1.4 (working title "Anticipation") — complex behaviour, sequence credit, and an instrument that can measure them
 
 **Recentered 2026-10-16, after 1.3.2 shipped** (owner decisions; a six-reader docs review):
-- **The path:** three patch releases, then 1.4.0. They are 1.3.3 (seams and the release pipeline), 1.3.4 (the
-  orchestrator decomposition) and 1.3.5 (loop phase 2, then this plan's Phase 0 instrument). Scopes, exits and
+- **The path:** four patch releases, then 1.4.0. They are 1.3.3 (the release pipeline and pulse's blockers), 1.3.4 (the
+  atonia gate, on its own clock), 1.3.5 (the orchestrator decomposition) and 1.3.6 (loop phase 2, then this plan's
+  Phase 0 instrument). 1.3.3 was split on 2026-10-17. Scopes, exits and
   risks: [roadmap_1_3_x.md §Path to 1.4.0](roadmap_1_3_x.md#path-to-140-owner-decision-2026-10-16).
 - **E1 is redesigned before its harness** (§Phase 2): as drafted it cannot EARN under BF2.
 - **T1-2 (Exp 37) is resolved by B4 before 1.4.0.** If B4 has not run, 1.4.0 waits.
@@ -714,7 +715,7 @@ only, no behavioural claim.
 
 *As shipped (1.3.2, 2026-10-16):* the `agent_loop` decomposition through slice 5 (`agent_loop.py` 5,543 → 3,363
 lines), plus the ratchets, the evidence gate and the 1.4.0 hard gate (#1300). The orchestrator slices and loop
-phase 2 did **not** ship. They are the 1.4.0 gate and are scheduled as 1.3.4 and 1.3.5
+phase 2 did **not** ship. They are the 1.4.0 gate and are scheduled as 1.3.5 and 1.3.6
 ([roadmap_1_3_x.md §Path to 1.4.0](roadmap_1_3_x.md#path-to-140-owner-decision-2026-10-16)).
 
 They come FIRST because Phase 0 below builds its instrument on `agent_loop.py`: decomposing
@@ -793,7 +794,7 @@ until the 1.3.2 decomposition slices touching it have landed. The end of that fe
 1. ~~the complete Exp 10 re-run~~: superseded. T1-1 is SUPERSEDED by T1-16 (Exp 63, EARNED 2026-10-04).
 2. ~~the live Exp 60 re-run~~: done 2026-10-12 (T1-13 MAINTAINED), then measured against its floor by B1
    (2026-10-14, PARTIAL);
-2b. **B4, T1-2's re-fire (L8's dose-response design)**, after 1.3.4 and 1.3.5 unblock B2, and before 1.4.0
+2b. **B4, T1-2's re-fire (L8's dose-response design)**, after 1.3.5 and 1.3.6 unblock B2, and before 1.4.0
    (owner decision 2026-10-16);
 3. 1.4's campaigns, starting with the schedule below;
 4. after E3's campaign has run or its disposition is recorded, the parallel lines' rig work, one at a
@@ -829,7 +830,7 @@ arms, and carries an offline toy-model check, like B1's `learner_sim.py`, that a
 contingency ([baseline_floors.md](baseline_floors.md) §Why; [lessons](../lessons/baseline-floors-b1.md)).
 
 *Reconciled 2026-10-16:* the diagram above predates T0 and B1. Its Exp 62 rows are done. Phase 0 item 1a's code
-lives in `NAc.recommend_action`, behind the fence until 1.3.5, so drafting E1's prereg "beside item 1a" means paper
+lives in `NAc.recommend_action`, behind the fence until 1.3.6, so drafting E1's prereg "beside item 1a" means paper
 beside paper until then. That prereg starts from the owner's redesign decision (§Phase 2). The rig's next slots are
 B4 (before 1.4.0) and then E1, not the order drawn above.
 
