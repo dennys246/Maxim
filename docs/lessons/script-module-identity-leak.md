@@ -38,3 +38,7 @@ test and let the next one of its kind ship, and a restore that silently changes 
 shape CLAUDE.md forbids. The guard restores only AFTER it has failed the leaker.
 
 Rule and blind spots: [docs/agents/ci-testing.md](../agents/ci-testing.md) §3.
+
+## Sibling class: reload (#1350)
+
+The identity guard cannot see `importlib.reload`: the object stays the same while its contents change. #1339's next CI run failed in `test_lane_placement_runtime.py::TestCloudPlacementCap::test_cloud_primary_placement_consumes_cap`. `test_lane_routing_via_config.py` had reloaded `lane_backends` to clear a once-per-startup flag, which redefined `BackendGateError`, and the placement test still held the old class. It reproduced serially as well, with the routing file run first. The fix swapped the reload for the module's existing reset helper (`_reset_lane_env_applied`), and the AST tripwire `tests/unit/test_no_module_reload.py` now bans reload across `tests/`.
