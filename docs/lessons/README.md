@@ -1,0 +1,92 @@
+# Lessons index
+
+One line per lesson: the file, a one-line summary taken from its title or opening stub, and where its rule lives
+(CLAUDE.md core, or the `docs/agents/` brief that links it). Most of these were archived from CLAUDE.md on
+2026-08-13 and keep the full incident narrative behind a compressed stub. "unlinked" means no brief or CLAUDE.md
+links the file today. Add a line here when you add a lesson.
+
+- [active-initiatives-history-2026.md](active-initiatives-history-2026.md) — Active initiatives: the shipped history archived from CLAUDE.md, 2026-08-13 — CLAUDE.md
+- [affordance-encoder-separate.md](affordance-encoder-separate.md) — Affordance names are encoded through a SEPARATE `LinguisticEncoder` from the percept encoder — bio-memory.md
+- [auth-in-health-probes.md](auth-in-health-probes.md) — Auth in health probes — llm-routing.md
+- [autosave-outside-rwlock-write-block.md](autosave-outside-rwlock-write-block.md) — Auto-save must not run under the hippocampus RWLock write block (read-lock-under-write self-deadlocks) — persistence-config.md
+- [b8-delta-attribution.md](b8-delta-attribution.md) — Drive-spec embodiment failures are delta-attributed: a tool is blamed only for breaches its OWN effect caused — embodiment.md
+- [backend-error-fix-hint-static.md](backend-error-fix-hint-static.md) — `BackendError.fix_hint` is never user-controllable — llm-routing.md
+- [build-bio-stack-canonical.md](build-bio-stack-canonical.md) — `runtime/bio_stack.py::build_bio_stack` is the canonical bio-pipeline construction site — runtime-tools.md
+- [build-default-network-canonical.md](build-default-network-canonical.md) — `runtime/bootstrap.py::build_default_network` is the canonical DefaultNetwork construction site — runtime-tools.md
+- [build-executor-canonical.md](build-executor-canonical.md) — `runtime/bootstrap.py::build_executor` is the canonical bridge wiring site — runtime-tools.md
+- [build-memory-hub-canonical.md](build-memory-hub-canonical.md) — `integration/memory_hub.py::build_memory_hub` is the canonical MemoryHub construction site — runtime-tools.md
+- [build-pain-bus-canonical.md](build-pain-bus-canonical.md) — `proprioception/pain_bus.py::build_pain_bus` is the canonical PainBus construction site — runtime-tools.md
+- [build-reaction-bus-canonical.md](build-reaction-bus-canonical.md) — `reactions/bus.py::build_reaction_bus` is the canonical ReactionBus construction site — runtime-tools.md
+- [ci-efficiency-2026-10-16.md](ci-efficiency-2026-10-16.md) — CI and pre-PR efficiency review: measured suite and CI timings, what CI caught, owner decisions — ci-testing.md
+- [claude-md-2026-08-13-pre-diet.md](claude-md-2026-08-13-pre-diet.md) — CLAUDE.md, frozen pre-diet snapshot (2026-08-13) — CLAUDE.md and every brief
+- [config-json-writer-canonical.md](config-json-writer-canonical.md) — `config.json` is the operator-config layer; `runtime/config_writer.py` is the canonical writer site — persistence-config.md
+- [configure-logging-before-subcommand-dispatch.md](configure-logging-before-subcommand-dispatch.md) — Subcommand dispatch in `cli.py::main` bypassed logging setup by default — runtime-tools.md
+- [context-similarity-directional-denominator.md](context-similarity-directional-denominator.md) — `NAc._context_similarity`'s denominator is `len(ctx1)`, not the key union (the function is directional) — bio-memory.md
+- [cwd-relative-api-verbs.md](cwd-relative-api-verbs.md) — CWD-relative path resolution in public API verbs is documented per verb — runtime-tools.md
+- [dead-code-orphan-grep.md](dead-code-orphan-grep.md) — Dead code accumulates silently — CLAUDE.md (stub, unlinked)
+- [declarative-vs-runtime-model-state.md](declarative-vs-runtime-model-state.md) — `config.json::llm.profile` and `active_llm_model.{role}.txt` are intentionally separate state files — llm-routing.md
+- [detect-role-single-source.md](detect-role-single-source.md) — `runtime/role.py::detect_role` is the single source of truth for role detection — persistence-config.md
+- [development-flow-speed.md](development-flow-speed.md) — Development flow: faster without lowering the bar — CLAUDE.md, ci-testing.md
+- [direct-key-over-context-similarity.md](direct-key-over-context-similarity.md) — Tool-invoked embodiment pain attributes directly, not via context similarity, when a direct lookup key exists — bio-memory.md, embodiment.md
+- [drive-pain-channel-split.md](drive-pain-channel-split.md) — Drive-pain emission is channel-split: the direct `FailureEvent` channel is state-based, the PainBus channel severity-latched — embodiment.md
+- [ec-centroid-drift.md](ec-centroid-drift.md) — Running-mean centroid drift in cosine-similarity pattern completion — bio-memory.md
+- [embodiment-tick-cycle.md](embodiment-tick-cycle.md) — The embodiment tick cycle lives in `Body.evaluate_failures()`, not percepts.py — embodiment.md
+- [env-var-autouse-scrubs.md](env-var-autouse-scrubs.md) — Opt-in env vars in hot startup paths need autouse scrubs — CLAUDE.md, ci-testing.md, runtime-tools.md
+- [experiment-prereg-precedes-data.md](experiment-prereg-precedes-data.md) — Gated experiment records come from a clean tree at a commit reachable from `main`, with the prereg on `main` first — simulation-experiments.md
+- [format-version-contract.md](format-version-contract.md) — `_format_version` is the persistence-format contract for every JSON file Maxim writes — CLAUDE.md, persistence-config.md
+- [frozen-dataclass-forward-compat.md](frozen-dataclass-forward-compat.md) — Frozen dataclasses shipping in 1.0 are forward-compat-audited — CLAUDE.md, persistence-config.md
+- [green-pr-with-no-tests-run.md](green-pr-with-no-tests-run.md) — A PR can show every check green while the test suite never ran — CLAUDE.md, ci-testing.md
+- [harness-provenance-assert-repo-interpreter.md](harness-provenance-assert-repo-interpreter.md) — An experiment harness must assert that the `maxim` its sub-sims import is its own repo — CLAUDE.md, simulation-experiments.md
+- [hivemind-substrate-sharing.md](hivemind-substrate-sharing.md) — `src/maxim/hivemind/` is the substrate-sharing layer — bio-memory.md
+- [http-via-utils-http.md](http-via-utils-http.md) — HTTP call sites must use `maxim/utils/http.py` — CLAUDE.md
+- [httpx-stream-ctx-lifetime.md](httpx-stream-ctx-lifetime.md) — httpx stream contexts must outlive their consumers — llm-routing.md
+- [keepalive-wfile-write-lock.md](keepalive-wfile-write-lock.md) — The TTFT keepalive emitter writes to `self.wfile` under a lock shared with the main chunk writer — llm-routing.md
+- [key-embedded-degenerate-statistics.md](key-embedded-degenerate-statistics.md) — Key-embedded values produce structurally degenerate statistics — bio-memory.md
+- [lane-capability-placement-split.md](lane-capability-placement-split.md) — Lane = capability tier; placement (origin) is a separate ordered axis — llm-routing.md
+- [lane-tier-names.md](lane-tier-names.md) — Lane tier names — CLAUDE.md (removed-identifiers stub, unlinked)
+- [lane-timeout-flow.md](lane-timeout-flow.md) — Per-tier `lanes.<tier>.timeout_s` flows through `LaneConfig.remote_timeout_s` to provider config without backend wiring changes — llm-routing.md
+- [leaderproxy-before-normalize-args.md](leaderproxy-before-normalize-args.md) — Startup ordering in cli.py — runtime-tools.md
+- [llm-call-registry-stall.md](llm-call-registry-stall.md) — `runtime/llm_call_registry.py` is the canonical in-flight LLM call surface; `compute_stall_threshold` the canonical stall threshold — llm-routing.md
+- [llm-entity-spec-normalizer.md](llm-entity-spec-normalizer.md) — LLM-derived entity specs route through `normalize_llm_entity_spec` before `_parse_entity` — embodiment.md
+- [llm-router-only-access.md](llm-router-only-access.md) — LLM access goes through `models/language/router.py` — CLAUDE.md
+- [mesh-declarative-vs-util-state.md](mesh-declarative-vs-util-state.md) — `mesh.yml` is declarative; `~/.maxim/util/` is mutable state — llm-routing.md
+- [mesh-yml-parser-frozen.md](mesh-yml-parser-frozen.md) — The `mesh.yml` parser dialect is frozen — llm-routing.md
+- [motor-credit-value-progress.md](motor-credit-value-progress.md) — Substrate-primary action selection is credited by the sign of drive value-progress toward comfort, not tool success — embodiment.md
+- [mutable-globals-module-extraction.md](mutable-globals-module-extraction.md) — Mutable globals + module extraction — runtime-tools.md
+- [nac-class-name.md](nac-class-name.md) — NAc class name — CLAUDE.md (removed-identifiers stub, unlinked)
+- [nac-ec-persist-pair.md](nac-ec-persist-pair.md) — NAc and EC persist as a pair in `build_bio_stack`; decay-on-load lives in `NAc.load()`, never in `load_state()` — bio-memory.md
+- [no-harness-on-leader-machine.md](no-harness-on-leader-machine.md) — Don't run the benchmark harness on the same machine as the leader — CLAUDE.md, simulation-experiments.md
+- [optional-deps-canonical-surface.md](optional-deps-canonical-surface.md) — `utils/optional_deps.py` is the canonical optional-dependency surface — CLAUDE.md, runtime-tools.md
+- [painbus-rich-reactionbus-typed.md](painbus-rich-reactionbus-typed.md) — PainBus is the permanent rich-context carrier; ReactionBus is the typed isolation surface — embodiment.md
+- [peer-backend-one-http-call.md](peer-backend-one-http-call.md) — `_MaximPeerBackend.complete_with_usage()` makes exactly one HTTP call (the load-bearing invariant for Plan 3) — llm-routing.md
+- [peer-vs-cloud-streaming-contract.md](peer-vs-cloud-streaming-contract.md) — The streaming contract difference between `_MaximPeerBackend` and `_OpenAIBackend` is intentional — llm-routing.md
+- [peer-yml-auto-migration.md](peer-yml-auto-migration.md) — `_maybe_migrate_from_peer_yml` writes peer.yml to config.json on first startup — persistence-config.md
+- [per-agent-stash-dicts.md](per-agent-stash-dicts.md) — Per-agent stash dicts (not module-level globals) for multi-agent state — runtime-tools.md
+- [percept-source-action-sink-protocols.md](percept-source-action-sink-protocols.md) — `PerceptSource` and `ActionSink` are minimal protocols with no orchestrator or tool-registry coupling — runtime-tools.md
+- [percept-wire-format.md](percept-wire-format.md) — The `Percept` wire format is distinct from the session-persistence format — llm-routing.md
+- [probe-classification-single-source.md](probe-classification-single-source.md) — Probe outcome classification lives in one place and callers do not override the returned message — llm-routing.md
+- [probe-entry-point-health-check.md](probe-entry-point-health-check.md) — The probe entry point is `_MaximPeerBackend.health_check` (Plan 3 R2.6) — llm-routing.md
+- [proxy-context-admission-gate.md](proxy-context-admission-gate.md) — The proxy's context-overflow admission gate rejects oversize inference requests before forwarding — llm-routing.md
+- [reachy-head-world-frame.md](reachy-head-world-frame.md) — Reachy head pose is world-frame: a body turn with `head=None` counter-rotates the head — CLAUDE.md, embodiment.md
+- [reachy-motion-dispatch-safety.md](reachy-motion-dispatch-safety.md) — `ReachyMiniController.goto_target` is the single clamped+locked motion dispatch point — embodiment.md
+- [reachy-ws-transport.md](reachy-ws-transport.md) — Reachy Mini transport is WS-era (SDK >= 1.5): control over `ws://<host>:8000/ws/sdk` — embodiment.md
+- [review-round-discipline.md](review-round-discipline.md) — The plan review round runs before PR merge, not after (three lenses since 2026-10-05) — CLAUDE.md
+- [role-detection-first.md](role-detection-first.md) — Role detection is the first runtime action — persistence-config.md
+- [scn-oscillator-default-on.md](scn-oscillator-default-on.md) — The SCN oscillator is enabled by default in `build_bio_stack` — bio-memory.md
+- [scn-record-event-intake.md](scn-record-event-intake.md) — `TemporalCreditDistributor.record_event` is the canonical intake for every temporally anchored event; no "SCN bus" — bio-memory.md
+- [scn-temporal-coupling-eligibility.md](scn-temporal-coupling-eligibility.md) — SCN temporal coupling for eligibility traces (the first SCN-substrate PoC) — bio-memory.md
+- [sensor-encoding-range-aware.md](sensor-encoding-range-aware.md) — Signed (`[-1,1]`) sensors must be encoded with their range through `SensorEncoder`, or they fold — bio-memory.md
+- [shipped-the-pieces-not-the-composition.md](shipped-the-pieces-not-the-composition.md) — A fix with no callers (D43, 2026-09-02) — CLAUDE.md
+- [silent-noop-invariants-into-types.md](silent-noop-invariants-into-types.md) — Push silent-no-op invariants into types, not helpers — CLAUDE.md, runtime-tools.md
+- [sim-n-ctx-config-drift.md](sim-n-ctx-config-drift.md) — Configure model + n_ctx via `maxim config`: the n_ctx drift bug (three legs) — CLAUDE.md, simulation-experiments.md
+- [stable-hash-persistence.md](stable-hash-persistence.md) — Values that cross a persistence boundary must be hashed with `stable_hash_32` / `stable_hash_64_signed`, never `hash()` — CLAUDE.md, persistence-config.md
+- [system-prompt-byte-stable.md](system-prompt-byte-stable.md) — The system prompt must be byte-stable across turns within a session — runtime-tools.md
+- [ternary-collapse-sweep-2026-08-31.md](ternary-collapse-sweep-2026-08-31.md) — The ternary-collapse sweep: good/neutral/bad representations collapsed into a boolean (2026-08-31) — embodiment.md
+- [tool-cancel-noop.md](tool-cancel-noop.md) — `Tool.cancel()` is a non-abstract no-op on the Tool ABC — runtime-tools.md
+- [tool-dual-schema.md](tool-dual-schema.md) — `Tool.input_schema` is dual-format; `Tool.to_json_schema()` is the canonical export — runtime-tools.md
+- [tool-side-effects-registry.md](tool-side-effects-registry.md) — `ToolOutput.side_effects` is the typed channel for bio-pipeline signals — runtime-tools.md
+- [typed-http-errors.md](typed-http-errors.md) — HTTP errors are typed, not string-matched — llm-routing.md
+- [typed-peer-transports.md](typed-peer-transports.md) — Peer transports are typed per purpose, not generic — llm-routing.md
+- [versioning-main-ahead-of-pypi.md](versioning-main-ahead-of-pypi.md) — Versioning: `main` is ahead of PyPI (the policy's history) — CLAUDE.md
+- [wire-integrity-review-incidents.md](wire-integrity-review-incidents.md) — Wire-integrity evidence: the two incident tables (2026-10-05) — docs/CODE_REVIEW.md
+- [wire-integrity-review.md](wire-integrity-review.md) — Wire integrity: why code review has a third lens — docs/CODE_REVIEW.md
