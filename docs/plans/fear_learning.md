@@ -1,5 +1,7 @@
 # Fear learning: relief as a reinforcer, and extinction
 
+> **DEFERRED in place 2026-10-17 (owner):** not on the path to 1.4.0. The file stays at this path because src/ cites it. **Revive when:** the Phase 5 relief-store review adopts Experiment A as its consumer (homed after 1.4.0).
+
 **Status: PROPOSED (2026-10-04).** Tracking issue: [#1072](https://github.com/dennys246/Maxim/issues/1072).
 Prompted by #840's deep dive (owner request). Nothing here is built. Each experiment gets a full four-lens design
 review (`docs/experiments/DESIGN_REVIEW.md`) before any harness, and everything enters as `[engineering]`.

@@ -1,5 +1,7 @@
 # Config extensibility — what stays closed, and what opens
 
+> **DEFERRED in place 2026-10-17 (owner):** not on the path to 1.4.0. The file stays at this path because src/ cites it. **Revive when:** a third-party setting or strategy is requested, or the [#856](https://github.com/dennys246/Maxim/issues/856) format-version decision is taken.
+
 **Status:** Drafted 2026-09-22. Not scheduled; Phase 1 is ready to sequence behind the
 memory-strength line, Phase 2 wants the `#856` format-version decision first.
 **Motivating question:** do the config restrictions we keep adding make Maxim unextendable by
