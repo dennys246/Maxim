@@ -733,14 +733,53 @@ def test_t_gitattributes_cannot_hide_an_edit(repo, capsys):
     assert rc == 1 and "edits 10 line(s)" in out
 
 
-def test_t_an_unused_touch_exemption_is_not_a_failure_on_a_push(repo, capsys):
-    """Design pass 5: a push bundles PRs, so an exemption whose change a later PR reverted must not turn main red."""
+def test_t_an_unused_touch_exemption_is_not_a_failure_on_a_push(repo, monkeypatch, capsys):
+    """Design pass 5: a push bundles PRs, so an exemption whose change a later PR reverted must not turn main red.
+    Driven through main(), so the ``event != "push"`` plumbing is pinned too (review fold, 2026-10-17)."""
+    from tests.unit._push_event_helpers import fake_push
+
     head(repo, None, {A: 300}, touch_exemptions=[touch("big", 3, 300, 300)])
-    _commit(repo)
-    m, _ = L.measure_tree(repo)
-    hb = L.parse_baseline((repo / _BASELINE).read_text())
-    base_text = L.show(repo, "main", _BASELINE)
-    assert any("unused touch exemption" in f for f in L.diff_rules(repo, "main", m, hb, base_text))
-    assert not any(
-        "unused touch exemption" in f for f in L.diff_rules(repo, "main", m, hb, base_text, report_unused_touch=False)
+    rc, out = run(repo, capsys)
+    assert rc == 1 and "unused touch exemption" in out  # a pull request: the record must be used
+    fake_push(monkeypatch, repo)
+    rc, out = run(repo, capsys, commit=False)
+    assert rc == 0 and "unused touch exemption" not in out
+
+
+def test_t_a_move_to_another_nesting_level_is_not_an_edit(tmp_path, monkeypatch, capsys):
+    """Review fold (Executor 2 + Architecture 1): a method moved unchanged to module level re-indents every line,
+    which is not an edit; the def's own indent is removed before diffing."""
+    K = ("src/maxim/a.py", "K.big")
+    root = make_repo(
+        tmp_path,
+        monkeypatch,
+        {"src/maxim/a.py": "class K:\n" + fn("big", 300, indent="    ") + "\n\n" + fn("small", 10)},
+        baseline({K: 300}),
     )
+    head(root, "class K:\n    pass\n\n\n" + fn("big", 300) + "\n\n" + fn("small", 10), {A: 300})
+    assert run(root, capsys)[0] == 0
+    head(root, "class K:\n    pass\n\n\n" + edited("big", 300, 4) + "\n\n" + fn("small", 10), {A: 300})
+    head(root, None, {A: 300}, [exc("big", 300, 300, moved_from={"file": K[0], "qualname": K[1]})])
+    rc, out = run(root, capsys)
+    assert rc == 1 and "a.py::big: this diff edits 4 line(s)" in out  # an edit made in the move still counts
+
+
+def test_t_a_rename_that_lands_under_the_threshold_is_still_judged(tmp_path, monkeypatch, capsys):
+    """Review fold (Executor 1): a renamed def at 200 lines or fewer has no entry for a move to point at; the new
+    def carrying most of the removed one's lines is its successor."""
+    root = make_repo(
+        tmp_path, monkeypatch, {"src/maxim/a.py": fn("big", 210) + "\n\n" + fn("small", 10)}, baseline({A: 210})
+    )
+    head(root, edited("renamed", 210, 100, drop=10) + "\n\n" + fn("small", 10), {})
+    rc, out = run(root, capsys)
+    assert rc == 1 and "a.py::renamed: this diff edits 100 line(s) inside a function pinned at 210" in out
+    head(root, edited("renamed", 210, 0, drop=10) + "\n\n" + fn("small", 10), {})  # a rename + pure shrink
+    assert run(root, capsys)[0] == 0
+
+
+def test_t_a_deleted_pinned_function_does_not_judge_unrelated_new_code(tmp_path, monkeypatch, capsys):
+    root = make_repo(
+        tmp_path, monkeypatch, {"src/maxim/a.py": fn("big", 210) + "\n\n" + fn("small", 10)}, baseline({A: 210})
+    )
+    head(root, fn("small", 10) + "\n\n" + fn("fresh", 150, tag="q"), {})
+    assert run(root, capsys)[0] == 0
