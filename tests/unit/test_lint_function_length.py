@@ -783,3 +783,25 @@ def test_t_a_deleted_pinned_function_does_not_judge_unrelated_new_code(tmp_path,
     )
     head(root, fn("small", 10) + "\n\n" + fn("fresh", 150, tag="q"), {})
     assert run(root, capsys)[0] == 0
+
+
+def test_t_a_rename_into_a_name_that_existed_at_base_is_followed(tmp_path, monkeypatch, capsys):
+    """Delta review SHOULD-FIX 1: the successor may take a qualname its file already had, if that def changed."""
+    root = make_repo(
+        tmp_path, monkeypatch, {"src/maxim/a.py": fn("big", 210) + "\n\n" + fn("small", 10)}, baseline({A: 210})
+    )
+    head(root, edited("small", 210, 100, drop=10), {})
+    rc, out = run(root, capsys)
+    assert rc == 1 and "a.py::small: this diff edits 100 line(s) inside a function pinned at 210" in out
+
+
+def test_t_a_renamed_and_re_indented_def_is_still_its_successor(tmp_path, monkeypatch, capsys):
+    """Delta review SHOULD-FIX 2: wrapping the renamed body in ``if True:`` must not make it look like new code."""
+    root = make_repo(
+        tmp_path, monkeypatch, {"src/maxim/a.py": fn("big", 210) + "\n\n" + fn("small", 10)}, baseline({A: 210})
+    )
+    body = edited("renamed", 209, 60, drop=10).split("\n", 1)[1]
+    wrapped = "def renamed():\n    if True:\n" + "".join(f"    {ln}\n" for ln in body.splitlines())
+    head(root, wrapped + "\n\n" + fn("small", 10), {})
+    rc, out = run(root, capsys)
+    assert rc == 1 and "a.py::renamed: this diff edits" in out

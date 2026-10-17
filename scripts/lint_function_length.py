@@ -70,7 +70,8 @@ Residuals (mechanization backlog M67): deleting comments, blank lines or a docst
 that); touched counts lines, not tokens, so wrapping a block in ``try:``/``with`` touches every line re-indented
 (extract the block instead); decorators count as touched but sit outside the span, so a decorator edit needs a body
 shrink; an edit inside a nested pinned function is charged to it and to every pinned function around it, as a raise
-is; a removed def rewritten past half under a new name is judged as new code; exemptions are self-approved.
+is; a removed def rewritten past half under a new name is judged as new code, and half is a hard edge; a def renamed into an ambiguous qualname is not followed; a local
+run follows only committed renames; exemptions are self-approved.
 
 **The merge-base baseline must be format 2** (on ``main`` since #1090): a base with no baseline
 at ``BASELINE_REL`` (it moved or was deleted) or with any other format fails the diff rules; the
@@ -598,12 +599,12 @@ def touch_rule(
             # Gone at HEAD and not a move the other rules recognised (a renamed def that landed at 200 lines or
             # fewer has no entry to move to): its successor is the new def that carries most of its lines.
             if new_defs is None:
-                new_defs = _new_defs(root, base, m, set(move_of.values()))
+                new_defs = _new_defs(root, base, m, set(move_of.values()) | set(bb.entries))
             target = _successor(base_lines, base_node.name, new_defs, m, lambda rel: text_at(rel, False))
             if target is None:
                 continue  # deleted, or rewritten past half: nothing at HEAD is this function
         if target not in m.nodes:
-            continue  # not one def at HEAD: the other diff rules judge it
+            continue  # several defs share the name at HEAD: residual (rules 1-3 judge only an ambiguous one over 200)
         node = m.nodes[target]
         touched = touched_lines(base_lines, _def_lines(text_at(target[0], False), node, base_node.name))
         floor = min(bb.entries[r], span(base_node))
@@ -638,15 +639,24 @@ def touch_rule(
 
 
 def _new_defs(root: Path, base: str, m: Measure, taken: set[Key]) -> list[Key]:
-    """Unambiguous HEAD defs, in files this diff changed, whose qualname their file (at its base path, following a
-    file rename) did not have at the merge-base; ``taken`` (keys a recognised move already claimed) excluded."""
+    """Unambiguous HEAD defs, in files this diff changed (base..HEAD, so a local run judges committed renames only),
+    whose qualname their file (at its base path, following a file rename) did not have at the merge-base or whose
+    text changed since, so a rename into a name that already existed is followed too; ``taken`` (keys a recognised
+    move claimed, and pinned keys, which are judged as themselves) excluded."""
     out: list[Key] = []
     for rel, old in changed_files(root, base, SCOPE):
+        text = show(root, base, old) if old else ""
         try:
-            had = set(defs_in(show(root, base, old), old)) if old else set()
+            had = defs_in(text, old) if old else {}
         except (SyntaxError, ValueError):
-            had = set()
-        out += [k for k in m.nodes if k[0] == rel and k[1] not in had and k not in taken and k in m.spans]
+            had = {}
+        head_text = (root / rel).read_text(encoding="utf-8")
+        for k in m.nodes:
+            if k[0] != rel or k in taken or k not in m.spans:
+                continue
+            was = had.get(k[1], [])
+            if len(was) != 1 or _def_lines(text, was[0]) != _def_lines(head_text, m.nodes[k]):
+                out.append(k)
     return sorted(out)
 
 
@@ -654,11 +664,14 @@ def _successor(
     base_lines: list[str], base_name: str, candidates: list[Key], m: Measure, head_text: Callable[[str], str]
 ) -> Key | None:
     """The candidate sharing the most lines with a removed pinned def, if at least half of its own lines came from
-    it (a rename with edits); ``None`` when no candidate is mostly that def (a deletion, or new code)."""
+    it (a rename with edits); ``None`` when no candidate is mostly that def (a deletion, or new code). Lines are
+    compared whitespace-stripped HERE ONLY, so re-indenting the body cannot make a renamed def look like new code;
+    the successor's ``touched`` is still counted on the def texts. Half is a hard edge (residual)."""
+    stripped = [ln.strip() for ln in base_lines]
     best: tuple[int, Key] | None = None
     for k in candidates:
-        lines = _def_lines(head_text(k[0]), m.nodes[k], base_name)
-        shared = len(lines) - touched_lines(base_lines, lines)
+        lines = [ln.strip() for ln in _def_lines(head_text(k[0]), m.nodes[k], base_name)]
+        shared = len(lines) - touched_lines(stripped, lines)
         if 2 * shared >= len(lines) and (best is None or shared > best[0]):
             best = (shared, k)
     return None if best is None else best[1]
