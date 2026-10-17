@@ -589,7 +589,9 @@ frozen status verbatim; **EARNED** per rung = every frozen gate of that rung's p
   [`scripts/release_gates.json`](../../scripts/release_gates.json)**. `scripts/lint_release_gates.py` (CI
   lint job, plus its runtime twin in unit-tests) fails every version >= 1.4.0, pre-releases included, until
   three things hold. First, `start_simulation_mode`, `run_agentic_loop` and `execute_and_learn` are each at most
-  200 lines with no function-length pin, and so is everything split or moved out of them. Second, the five
+  1,000 lines, and so is everything split or moved out of them and every def in their three files (item
+  `1323.functions-1000`; owner decision 2026-10-16, #1323, which retired the earlier 200-line bound; 200 or ~500 is
+  reassessed for 1.5 at the 1.4 release; the function-length pins stay, so none may grow). Second, the five
   orchestrator characterization arms (`persistent_agent`, `imagination`, `new_goal`, `stall`, `generative`) are
   complete: in the golden, with direct-assertion evidence, their golden case passing. (That they land BEFORE the
   slice that moves their code is enforced by that slice's review and roadmap_1_3_x.md §"Characterization owed",

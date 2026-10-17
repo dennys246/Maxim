@@ -48,13 +48,16 @@ JUnit report cannot answer in CI. The lint prints every gate's outstanding count
    measure, imported by path). It must be one def, span at most ``max_lines``, and have NO pin in the
    function-length baseline's ``entries``. The baseline's ``exceptions`` are append-only history and already name
    these functions, so an exception entry does not count against the condition (owner decision SF-1,
-   2026-10-15). **Descendants (SF-6):** every function reached from a gated one through the baseline exceptions'
+   2026-10-15). **Descendants (SF-6):** every function reached from a live (not retired) gated one through the baseline exceptions'
    ``split_from``/``moved_from`` records, transitively, must also be unpinned and at most 200 lines (owner:
-   anything split or moved out of a gated function). **Debt snapshot (SF-5):** ``debt_snapshot`` holds the
+   anything split or moved out of a gated function). **A retired function leaves with its descendants** (owner
+   decision 2026-10-16, #1323): neither it nor anything split or moved out of it is held to these rules, and its
+   split-outs may carry ``accepted_new_debt`` records; what replaces it is an item with its own bound and evidence.
+   **Debt snapshot (SF-5):** ``debt_snapshot`` holds the
    baseline's entry keys at gate creation. Every baseline entry outside it needs an ``accepted_new_debt`` record
    ``{file, qualname, reason, ref, date}``, which catches a rename followed by a wrapper, or a copy followed by
-   gutting the original, because neither leaves a record. An accepted record may not name a gated function or a
-   descendant: that rule has no exception. All of these are enforced at an ACTIVE gate and printed before it.
+   gutting the original, because neither leaves a record. An accepted record may not name a gated function (retired ones
+   included) or a descendant of a live one: that rule has no exception. All of these are enforced at an ACTIVE gate and printed before it.
 5. **Arms.** The orchestrator characterization arms are a separate condition, gated as COMPLETE only. An arm is
    SATISFIED when the golden file's ``arms`` carries its name and it records direct-assertion ``evidence``, which
    must pass rule 3a. It needs no red gate: a characterization pins current behaviour. Its golden case
@@ -107,6 +110,9 @@ the close-out check, 7, 8) are skipped with an INFO line.
 
 - What a red gate actually pinned, and whether it failed for the right reason.
 - An evidence test that never ran at its red-gate commit.
+- Retiring a function also frees its descendants (#1323), and nothing ties a retired function to the item that
+  replaces it (there is no ``replaced_by`` key; adding one needs a ``gate_format_version`` bump). Review checks
+  that a replacing item exists.
 - Self-approved ``retired`` and ``accepted_new_debt`` records. Each is visible and printed, but nothing proves an
   owner approved it. A function moved out of a gated one by a FREE move (an AST-identical rename, which leaves no
   record) and then blessed through ``accepted_new_debt`` is in this class.
@@ -156,6 +162,7 @@ GATES_REL = "scripts/release_gates.json"
 WORKFLOW_REL = ".github/workflows/test.yml"
 FORMAT_VERSION = 1
 MAX_LINES_CEILING = 200  # owner decision 2026-10-15 (the function-length THRESHOLD); a gate may only go lower
+# (a looser bound is a retired function plus a replacing item with its own evidence: #1323, 2026-10-16)
 LINT_JOB, TWIN_JOB = "lint", "unit-tests"
 JUNIT_FILE = "fast-suite.xml"
 LINT_RUN = "python3 scripts/lint_release_gates.py"
@@ -1200,13 +1207,17 @@ def check(root: Path) -> tuple[list[str], int]:
 
         # rule 4: functions
         roots = {(f["file"], f["qualname"]) for f in g.functions}
+        # A retired function leaves the gate WITH its descendants (owner decision 2026-10-16, #1323): whatever
+        # replaces it (an item) carries its own bound, so its split-outs are not held to the 200 ceiling and may be
+        # accepted as new debt like any other function.
+        live_roots = {k for k in roots if ("function", f"{k[0]}::{k[1]}") not in retired}
         statuses = [
             FunctionStatus(k, _measure(root, k[0], k[1]), baseline.entries.get(k), f["max_lines"])
             for f in g.functions
             if ("function", f"{f['file']}::{f['qualname']}") not in retired
             for k in [(f["file"], f["qualname"])]
         ]
-        desc = descendants(baseline, roots)
+        desc = descendants(baseline, live_roots)
         statuses += [
             FunctionStatus(k, _measure(root, k[0], k[1]), baseline.entries.get(k), MAX_LINES_CEILING, via)
             for k, via in sorted(desc.items())
@@ -1221,6 +1232,7 @@ def check(root: Path) -> tuple[list[str], int]:
 
         snapshot = {tuple(p) for p in g.raw["debt_snapshot"]}
         accepted = {(d["file"], d["qualname"]) for d in g.raw["accepted_new_debt"]}
+        # Every root, retired ones included: a gated function is never accepted as new debt (#1323 keeps this).
         for k in sorted(accepted & (roots | set(desc))):
             gate_fail.append(
                 f"accepted_new_debt names {k[0]}::{k[1]}, a gated function or one split/moved out of one — that rule "
