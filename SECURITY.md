@@ -4,7 +4,8 @@
 
 | Version | Supported |
 |---------|-----------|
-| 1.3.x   | Yes (current) |
+| 1.3.2+  | Yes (current) |
+| 1.3.0 – 1.3.1 | No: affected by [GHSA-7qh4-mp34-88v9](https://github.com/dennys246/Maxim/security/advisories/GHSA-7qh4-mp34-88v9) (a leader ran unauthenticated by default). Upgrade each leader on its own machine (see [upgrading](docs/user/upgrading.md#131--132-a-leader-fails-closed)). |
 | < 1.3   | No — upgrade  |
 
 ## Reporting a Vulnerability

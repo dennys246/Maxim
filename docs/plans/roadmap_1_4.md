@@ -792,6 +792,11 @@ credit_on_progress audit; argmax + hunger  →   R3 A+C on the variant (one cell
 E1 prereg → four-lens → freeze             →   E1 pilot → campaign
 ```
 
+*After B1 (2026-10-15):* draft E1's prereg BESIDE Phase 0 item 1a, not after item 4, so its four-lens review shapes
+the instrument. It declares `tabular_q`, `random` and the mechanism twin (TD state value + the same prior) as run
+arms, and carries an offline toy-model check, like B1's `learner_sim.py`, that a reasonable floor CAN lose on E1's
+contingency ([baseline_floors.md](baseline_floors.md) §Why; [lessons](../lessons/baseline-floors-b1.md)).
+
 ## Parallel lines — outside the ladder, with their own entry conditions
 
 None is a rung; none may silently power E1–E3. A line touching a survival rung enters as a

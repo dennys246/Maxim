@@ -1,5 +1,11 @@
 # Exp 60 (FROZEN 2026-09-15) — learned drowning-avoidance: Wire-4 situation-fear on a separable cue
 
+> **Ledger 2026-10-14: PARTIAL (narrow: floor matched), row T1-13.** The baseline-floors run
+> [B1](b1_exp60_floor_prereg.md) ran this protocol against no-bio floors: verdict `FLOOR_MATCHED_Q`. FEAR 8/8, a tabular Q-learner 8/8
+> (on the same state keys) and random 2/8 surfaced at the first post placement, so FEAR > Q is not shown. The
+> FEAR-versus-ABLATED contrast below stands; behaviour beyond a non-bio learner does not. The EARNED outcome below is
+> kept as recorded. [Ledger](../plans/behavioral_graduation_candidates.md).
+
 > **STATUS: FROZEN 2026-09-15 by be038305 (#729, chunk iv), against main's harness at db7749f3b75f (#728). OUTCOME 2026-09-16: EARNED — see
 > [§Outcome](#outcome-2026-09-16-earned--learned-anticipatory-drowning-avoidance-through-wire-4-situation-fear-on-the-is_in_water-cue)
 > (run 2, data PR #736; run 1 INCOMPLETE at the instrument, Amendments 3–7).**

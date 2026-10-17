@@ -1,6 +1,6 @@
 # Experiment 10: Cross-Session Enrichment Validation
 
-> **Status: STALE since 2026-09-30** (ledger T1-1, owner decision): every session of the 2026-09-27 re-run
+> **Status: SUPERSEDED 2026-10-04 by T1-16** ([Exp 63](exp63_carried_recall_prereg.md), EARNED narrow): the claim was re-tested as a new pre-registered experiment on current code. Before that: **STALE since 2026-09-30** (ledger T1-1, owner decision): every session of the 2026-09-27 re-run
 > ended `planning_failed`, a typed abort, which cannot back a status; the complete re-run (outstanding O19) restores it.
 >
 > **Re-runs.** Re-validated 2026-08-18/19 (the 1.1 heartbeat) and re-run 2026-09-27 for the 1.3.1

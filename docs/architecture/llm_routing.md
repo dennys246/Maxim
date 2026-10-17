@@ -1,7 +1,7 @@
 # LLM Routing Architecture
 
 **Status:** Draft — written ahead of [llm_path_refinement.md](../plans/archive/llm_path_refinement.md) implementation as a design reference
-**Last updated:** 2026-04-12
+**Last updated:** 2026-10-14 (leader fail-closed, 1.3.2)
 **Target state:** post-0.4 LLM path refinement (four sub-plans complete)
 **Maintenance contract:** this doc is the **single authoritative reference** for how LLM requests flow through Maxim. Any refinement of the routing path must update this doc in the same PR. If the doc and code disagree, the doc is wrong and must be fixed.
 
@@ -758,6 +758,6 @@ Each of these has a deferred plan documenting when to revive it.
 - **Sub-plans:** [llm_path_foundation.md](../plans/archive/llm_path_foundation.md) (Plan 1 ✅), [llm_path_typed_errors.md](../plans/archive/llm_path_typed_errors.md) (Plan 2 ✅), [llm_path_fast_failover.md](../plans/archive/llm_path_fast_failover.md) (Plan 3 ✅), [llm_path_cancellation_hygiene.md](../plans/archive/llm_path_cancellation_hygiene.md) (Plan 3.5 ✅), [llm_path_peer_failover.md](../plans/archive/llm_path_peer_failover.md) (Plan 3.6 — R5 ✅ shipped, R1–R4 draft), [llm_path_operator_visibility.md](../plans/archive/llm_path_operator_visibility.md) (Plan 4 — Stage A+B ✅ shipped, Stage C deferred)
 - **Deferred plans:** [../plans/deferred/llm_path_multi_peer_dispatch.md](../plans/deferred/llm_path_multi_peer_dispatch.md), [../plans/deferred/llm_path_async_router.md](../plans/deferred/llm_path_async_router.md), [../plans/deferred/llm_path_fair_scheduling.md](../plans/deferred/llm_path_fair_scheduling.md), [../plans/deferred/llm_mesh_capability_aware.md](../plans/deferred/llm_mesh_capability_aware.md)
 - **Operator runbook** — deferred to Plan 4 Stage C (`mesh_operations.md` does not exist yet; will be created when `mesh.yml` + admin API ship)
-- **Troubleshooting:** [../troubleshooting/http_debugging.md](../troubleshooting/http_debugging.md), [../troubleshooting/peer_backend_debug.md](../troubleshooting/peer_backend_debug.md), [../troubleshooting/mesh_debug.md](../troubleshooting/mesh_debug.md)
+- **Troubleshooting:** [../troubleshooting/http_debugging.md](../troubleshooting/http_debugging.md), [../troubleshooting/peer_diagnosis_runbook.md](../troubleshooting/peer_diagnosis_runbook.md), [../troubleshooting/mesh_debug.md](../troubleshooting/mesh_debug.md)
 - **Codebase reference:** [../reference.md](../reference.md)
 - **Project guide:** [../../CLAUDE.md](../../CLAUDE.md)
