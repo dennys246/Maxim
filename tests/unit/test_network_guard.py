@@ -90,3 +90,72 @@ def test_the_marker_lifts_the_guard_for_its_test() -> None:
 
 def test_the_guard_is_back_after_a_marked_test() -> None:
     assert network_guard.enabled is True
+
+
+def _root_conftest():
+    import sys
+    from pathlib import Path
+
+    want = Path(__file__).resolve().parents[1] / "conftest.py"
+    hits = [m for m in list(sys.modules.values()) if getattr(m, "__file__", None) and Path(m.__file__) == want]
+    assert hits, "tests/conftest.py is not loaded"
+    return hits[0]
+
+
+def test_the_summary_counts_every_xdist_worker(monkeypatch) -> None:
+    """M22: under xdist each worker blocks calls in its own process and the controller (which prints the summary)
+    runs no tests. The worker hands its counts over in pytest_sessionfinish, the controller merges them in
+    pytest_testnodedown, and the line totals them -- driven through the real conftest hooks, with stand-in objects."""
+    from types import SimpleNamespace
+
+    conftest = _root_conftest()
+    monkeypatch.setattr(network_guard, "worker_counts", {})
+    monkeypatch.setattr(network_guard, "workers_silent", 0)
+    # two workers, each with its own attempts
+    outputs = []
+    for worker_attempts in ([("dns", "a.example"), ("connect", "192.0.2.1")], [("dns", "b.example")]):
+        monkeypatch.setattr(network_guard, "attempts", list(worker_attempts))
+        session = SimpleNamespace(config=SimpleNamespace(workeroutput={}))
+        conftest.pytest_sessionfinish(session, 0)
+        outputs.append(session.config.workeroutput)
+    assert outputs == [{"network_guard_counts": {"dns": 1, "connect": 1}}, {"network_guard_counts": {"dns": 1}}]
+    # the controller: no attempts of its own, two workers going down (and one that crashed with no output)
+    monkeypatch.setattr(network_guard, "attempts", [])
+    for out in outputs:
+        conftest.pytest_testnodedown(SimpleNamespace(workeroutput=out), None)
+    conftest.pytest_testnodedown(SimpleNamespace(), "worker crashed")
+    lines: list[str] = []
+    conftest.pytest_terminal_summary(SimpleNamespace(write_line=lines.append), 0, None)
+    assert lines == ["network guard: blocked 3 outbound call(s) (connect, dns) (1 worker(s) did not report)"]
+
+
+def test_a_worker_that_never_reports_is_named_not_counted_as_zero(monkeypatch) -> None:
+    """A crashed worker's blocked calls are unknown: with nothing else blocked the line still prints, and says so."""
+    from types import SimpleNamespace
+
+    conftest = _root_conftest()
+    monkeypatch.setattr(network_guard, "worker_counts", {})
+    monkeypatch.setattr(network_guard, "workers_silent", 0)
+    monkeypatch.setattr(network_guard, "attempts", [])
+    conftest.pytest_testnodedown(SimpleNamespace(workeroutput={"network_guard_counts": {}}), None)
+    assert network_guard.summary_line() is None  # a worker that reported zero is zero
+    conftest.pytest_testnodedown(SimpleNamespace(), "crashed")
+    conftest.pytest_testnodedown(SimpleNamespace(workeroutput={}), None)
+    assert network_guard.summary_line() == "network guard: blocked 0 outbound call(s) (2 worker(s) did not report)"
+
+
+def test_a_serial_run_reports_its_own_attempts_and_hands_nothing_over(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    conftest = _root_conftest()
+    monkeypatch.setattr(network_guard, "worker_counts", {})
+    monkeypatch.setattr(network_guard, "workers_silent", 0)
+    monkeypatch.setattr(network_guard, "attempts", [("dns", "a.example"), ("dns", "b.example")])
+    session = SimpleNamespace(config=SimpleNamespace())  # no workeroutput: serial, or the xdist controller
+    conftest.pytest_sessionfinish(session, 0)
+    assert not hasattr(session.config, "workeroutput")
+    lines: list[str] = []
+    conftest.pytest_terminal_summary(SimpleNamespace(write_line=lines.append), 0, None)
+    assert lines == ["network guard: blocked 2 outbound call(s) (dns)"]
+    monkeypatch.setattr(network_guard, "attempts", [])
+    assert network_guard.summary_line() is None

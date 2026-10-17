@@ -11,6 +11,7 @@ import json
 import re
 import os
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -25,6 +26,9 @@ HW = "src/maxim/hw/robot.py"
 IMPORT_COV = "import " + "coverage"
 NO_COV = "--no-" + "cov"
 ENV_COV = "COVERAGE" + "_FILE"
+NO_XDIST = "no:" + "xdist"  # built: the lint bans the literal in the workflow and in pytest's option files
+XDIST_N = "PYTEST_XDIST_AUTO_NUM_WORKERS"
+ADDOPTS = "PYTEST_ADDOPTS"
 
 
 WORKFLOW = (
@@ -35,12 +39,14 @@ WORKFLOW = (
     "        with:\n"
     "          fetch-depth: 0\n"
     "      - name: deps\n"
-    f'        run: pip install "coverage=={L.COVERAGE_VERSION}"\n'
+    f'        run: pip install "coverage=={L.COVERAGE_VERSION}" "pytest-xdist=={L.XDIST_VERSION}"\n'
     "      - name: suite\n"
     "        run: |\n"
     f"          {L.CI_CLEAN}\n"
-    "          python -m pytest tests/ -x \\\n"
-    f"            {L.CI_COV_ARGS}\n"
+    f"          SUITE='python -m pytest tests/ -x {L.CI_PARALLEL_ARGS} \\\n"
+    f"            {L.CI_COV_ARGS} \\\n"
+    "            --junitxml=fast-suite.xml'\n"
+    '          bash scripts/ci_netns.sh "$SUITE"\n'
     "      - name: Coverage ratchet\n"
     f"        {L.CI_LINT_RUN}\n"
     "  lint:\n"
@@ -562,6 +568,10 @@ def test_a_second_coverage_config_file_FAILS(repo, capsys, rel, text):
     [
         ("pyproject.toml", _pyproject().replace('addopts = "-v"', f'addopts = "-v {NO_COV}"'), NO_COV),
         ("pytest.ini", "[pytest]\naddopts = --cov-" + "config=x\n", "--cov-" + "config"),
+        # M22: xdist disabled where pytest reads options (the measuring step's own tokens are ci_step_rules' job)
+        ("pyproject.toml", _pyproject().replace('addopts = "-v"', f'addopts = "-v -p {NO_XDIST}"'), NO_XDIST),
+        ("pytest.ini", f"[pytest]\naddopts = -p{NO_XDIST}\n", NO_XDIST),
+        ("pytest.ini", "[pytest]\naddopts = --maxprocesses=1\n", "--maxprocesses"),
         (
             ".github/workflows/test.yml",
             WORKFLOW + "env:\n  PYTEST_ADDOPTS: --cov-" + "fail-under=1\n",
@@ -902,6 +912,7 @@ def test_a_covered_by_claim_is_rejected_while_no_lane_measures_it(repo, capsys):
 
 _HUB = "      - name: MemoryHub\n        run: python -m pytest tests/integration/test_memory_hub.py -q\n"
 _GATE = f"      - name: Coverage ratchet\n        {L.CI_LINT_RUN}\n"
+_NETNS = '          bash scripts/ci_netns.sh "$SUITE"\n'
 
 
 @pytest.mark.parametrize(
@@ -919,11 +930,58 @@ _GATE = f"      - name: Coverage ratchet\n        {L.CI_LINT_RUN}\n"
             "continue-on-error is banned",
         ),
         ("  unit-tests:\n", "  unit-tests:\n    continue-on-error: true\n", "continue-on-error is banned"),
-        (f"            {L.CI_COV_ARGS}\n", "            --cov=src/maxim\n", "needs exactly one measuring step"),
+        (f"            {L.CI_COV_ARGS} \\\n", "            --cov=src/maxim \\\n", "needs exactly one measuring step"),
         (f"          {L.CI_CLEAN}\n", "", "needs exactly one measuring step"),
         ("          fetch-depth: 0\n", "          fetch-depth: 1\n", "fetch-depth: 0"),
         ("        with:\n          fetch-depth: 0\n", "        # fetch-depth: 0\n", "fetch-depth: 0"),
         (f'"coverage=={L.COVERAGE_VERSION}"', '"coverage"', "exact coverage pin"),
+        (f'"pytest-xdist=={L.XDIST_VERSION}"', '"pytest-xdist"', "exact pytest-xdist pin"),
+        (f" -x {L.CI_PARALLEL_ARGS} ", " -x ", f"must run with `{L.CI_PARALLEL_ARGS}`"),
+        # M22 hardening: the measuring step is read tokenized, so none of these satisfies (or survives) the rule.
+        (f" -x {L.CI_PARALLEL_ARGS} \\\n", " -x \\\n            # " + L.CI_PARALLEL_ARGS + "\n", "must run with"),
+        (f" -x {L.CI_PARALLEL_ARGS} ", f" -x {L.CI_PARALLEL_ARGS} -n 2 ", "more than once"),
+        (f" -x {L.CI_PARALLEL_ARGS} ", f" -x {L.CI_PARALLEL_ARGS} -n2 ", "more than once"),
+        (f" -x {L.CI_PARALLEL_ARGS} ", f" -x {L.CI_PARALLEL_ARGS} --numprocesses=2 ", "more than once"),
+        (f" -x {L.CI_PARALLEL_ARGS} ", f" -x {L.CI_PARALLEL_ARGS} --dist load ", "more than once"),
+        (f" -x {L.CI_PARALLEL_ARGS} ", f" -x {L.CI_PARALLEL_ARGS} --dist=load ", "more than once"),
+        (f" -x {L.CI_PARALLEL_ARGS} ", f" -x {L.CI_PARALLEL_ARGS} -p {NO_XDIST} ", "disables pytest-xdist"),
+        (f" -x {L.CI_PARALLEL_ARGS} ", f" -x {L.CI_PARALLEL_ARGS} -p{NO_XDIST} ", "disables pytest-xdist"),
+        (
+            f"            {L.CI_COV_ARGS} \\\n",
+            f"            # {L.CI_COV_ARGS} \\\n",
+            "needs exactly one measuring step",
+        ),
+        (
+            f"            {L.CI_COV_ARGS} \\\n",
+            f"            --cov=src/maxim  # {L.CI_COV_ARGS} \\\n",
+            "one measuring step",
+        ),
+        # the step's shape is pinned: a later rewrite of SUITE, or extra words handed to ci_netns.sh, fail it
+        (_NETNS, '          SUITE="$SUITE -n 0"\n' + _NETNS, "needs exactly one measuring step"),
+        (_NETNS, '          SUITE+=" -n0"\n' + _NETNS, "needs exactly one measuring step"),
+        (_NETNS, '          SUITE="$SUITE --dist no"\n' + _NETNS, "needs exactly one measuring step"),
+        (_NETNS, _NETNS.replace('"$SUITE"', '"$SUITE -n 0"'), "needs exactly one measuring step"),
+        (_NETNS, _NETNS + "          echo done\n", "needs exactly one measuring step"),
+        # defence in depth beside the shape: an -n/--dist on ANY command of the step counts
+        (f"          {L.CI_CLEAN}\n", f"          {L.CI_CLEAN} -n 0\n", "more than once"),
+        # bash reads `#` as a comment only at a word start: `line#x` hides nothing
+        (f" -x {L.CI_PARALLEL_ARGS} ", f" -x {L.CI_PARALLEL_ARGS} --tb=line#x -n 0 ", "more than once"),
+        (f" -x {L.CI_PARALLEL_ARGS} ", f" -x {L.CI_PARALLEL_ARGS} --maxprocesses=2 ", "sets `--maxprocesses`"),
+        (f" -x {L.CI_PARALLEL_ARGS} ", f" -x {L.CI_PARALLEL_ARGS} --maxprocesses 2 ", "sets `--maxprocesses`"),
+        (f"          {L.CI_CLEAN}\n", f"          # {L.CI_CLEAN}\n", "needs exactly one measuring step"),
+        ("on: push\njobs:\n", f"on: push\nenv:\n  {XDIST_N}: '2'\njobs:\n", f"workflow env sets {XDIST_N}"),
+        ("  unit-tests:\n", f"  unit-tests:\n    env:\n      {XDIST_N}: '2'\n", f"job env sets {XDIST_N}"),
+        (
+            "      - name: suite\n",
+            f"      - name: suite\n        env:\n          {XDIST_N}: '2'\n",
+            "step 'suite' env sets",
+        ),
+        (
+            "      - name: suite\n",
+            f"      - name: suite\n        env:\n          {ADDOPTS}: -n0\n",
+            f"env sets {ADDOPTS}",
+        ),
+        (f"          {L.CI_CLEAN}\n", f"          {L.CI_CLEAN}\n          export {XDIST_N}=2\n", "names " + XDIST_N),
         (_GATE, "      - name: rewrite\n        run: echo '{}' > coverage.json\n" + _GATE, "sits between"),
         ("on: push\njobs:\n", "on: push\ndefaults:\n  run:\n    shell: bash\njobs:\n", "`defaults`"),
         ("  unit-tests:\n", "  unit-tests:\n    defaults:\n      run:\n        shell: bash\n", "`defaults`"),
@@ -1258,6 +1316,11 @@ def test_the_suite_script_measures_with_cis_own_command():
     )
     assert -1 < clean < measure < local, (clean, measure, local)  # clean, then measure, then the local ratchet
     assert '-m "not slow" --ignore=tests/integration/test_memory_hub.py' in flat
+    # M22: both fast-suite runs (cov and --no-cov) take CI's worker mode from the preflight, which prints this commit's
+    # lint_coverage.CI_PARALLEL_ARGS (test_the_suite_scripts_xdist_preflight_runs runs it).
+    runs = [c for c in flat.split("python -m pytest tests/ ")[1:]]
+    assert len(runs) == 2 and all(r.startswith('-q -m "not slow"') and " $par --junitxml=" in r for r in runs), runs
+    assert "print(lc.CI_PARALLEL_ARGS)" in text and 'par="$(python - <<' in text
 
 
 def test_local_mode_gates_a_package_a_changed_test_imports(repo, capsys):
@@ -1336,6 +1399,15 @@ def test_floor_head_rules_only_skips_an_untouched_package_without_a_floor(repo):
     )
 
 
+def _suite_script_heredoc(needle: str) -> str:
+    """The one inline ``<<'PY'`` program of scripts/suite_at_commit.sh whose body contains ``needle``."""
+    text = (Path(__file__).resolve().parents[2] / "scripts" / "suite_at_commit.sh").read_text(encoding="utf-8")
+    bodies = [c.split("\n", 1)[1].split("\nPY\n", 1)[0] for c in text.split("<<'PY'")[1:]]  # line after the opener
+    hits = [b for b in bodies if needle in b]
+    assert len(hits) == 1, (needle, len(bodies))
+    return hits[0]
+
+
 def test_the_suite_scripts_version_check_runs():
     """The pre-suite coverage-version check is an inline heredoc; run it exactly as the script holds it (a first cut
     loaded lint_coverage unregistered, so its dataclasses failed and every default run exited before pytest)."""
@@ -1343,8 +1415,7 @@ def test_the_suite_scripts_version_check_runs():
     import sys as _sys
 
     root = Path(__file__).resolve().parents[2]
-    text = (root / "scripts" / "suite_at_commit.sh").read_text(encoding="utf-8")
-    body = text.split("<<'PY'", 1)[1].split("\n", 1)[1].split("\nPY\n", 1)[0]  # from the line after the opener
+    body = _suite_script_heredoc("lc.COVERAGE_VERSION")
     out = subprocess.run([_sys.executable, "-c", body], cwd=root, capture_output=True, text=True)
     from importlib.metadata import version  # not `import coverage`: the gate bans the coverage API in tests (S4)
 
@@ -1352,6 +1423,73 @@ def test_the_suite_scripts_version_check_runs():
         assert out.returncode == 0, out.stderr
     else:
         assert out.returncode != 0 and L.COVERAGE_VERSION in out.stderr
+
+
+def _xdist_preflight(root: Path, extra_path: str | None = None) -> "subprocess.CompletedProcess[str]":
+    import subprocess
+    import sys as _sys
+
+    env = dict(os.environ)
+    if extra_path is not None:
+        env["PYTHONPATH"] = extra_path
+    body = _suite_script_heredoc("XDIST_VERSION")
+    return subprocess.run([_sys.executable, "-c", body], cwd=root, capture_output=True, text=True, env=env)
+
+
+def test_the_suite_scripts_xdist_preflight_runs():
+    """M22: the preflight prints CI's worker args when the pinned pytest-xdist imports, and refuses (with the pip line)
+    otherwise -- run exactly as the script holds it, against this repo's lint_coverage."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    root = Path(__file__).resolve().parents[2]
+    out = _xdist_preflight(root)
+    try:
+        installed = version("pytest-xdist")
+    except PackageNotFoundError:
+        installed = None
+    if installed == L.XDIST_VERSION:
+        assert out.returncode == 0 and out.stdout.strip() == L.CI_PARALLEL_ARGS, out.stderr
+    else:
+        assert out.returncode == 1 and f'pip install "pytest-xdist=={L.XDIST_VERSION}"' in out.stderr, out
+
+
+_M22_LINT = "XDIST_VERSION = '0.0.1'\nCI_PARALLEL_ARGS = '-n 3'\n"
+
+
+@pytest.mark.parametrize(
+    "lint,xdist,code,needle,stdout",
+    [
+        (None, None, 3, "", ""),  # a commit from before the coverage gate: serial, no refusal
+        ("COVERAGE_VERSION = '7.13.3'\n", None, 3, "", ""),  # a commit from before M22: serial
+        (_M22_LINT, "__version__ = '0.0.1'\n", 0, "", "-n 3"),  # THIS commit's CI_PARALLEL_ARGS, not the script's
+        (_M22_LINT, "__version__ = '9.9.9'\n", 1, "pytest-xdist 9.9.9 installed; this commit needs 0.0.1", ""),
+        (_M22_LINT, "raise ImportError('absent')\n", 1, "not installed; this commit runs its suite under it", ""),
+    ],
+)
+def test_the_xdist_preflight_on_old_and_mismatched_commits(tmp_path, lint, xdist, code, needle, stdout):
+    """What the script does with the exit code: 3 -> run serially and say so; anything else nonzero -> exit 2. A
+    stand-in ``xdist`` package in the snapshot's cwd (first on ``python -c``'s path) plays the installed plugin."""
+    if lint is not None:
+        _write(tmp_path, "scripts/lint_coverage.py", lint)
+    if xdist is not None:
+        _write(tmp_path, "xdist/__init__.py", xdist)
+    out = _xdist_preflight(tmp_path, extra_path="")
+    assert out.returncode == code and needle in out.stderr and out.stdout.strip() == stdout, out
+    if code == 1:
+        assert 'pip install "pytest-xdist==0.0.1"' in out.stderr, out.stderr
+    text = (Path(__file__).resolve().parents[2] / "scripts" / "suite_at_commit.sh").read_text(encoding="utf-8")
+    assert '[ "$xd" -eq 3 ]' in text and 'par=""' in text and '[ "$xd" -ne 0 ]' in text
+
+
+def test_pyproject_pins_the_measuring_xdist():
+    """M22: the [test] extra's pytest-xdist floor is the version the gate pins (loose like coverage/pytest-cov there;
+    the exact version is CI's pip pin and suite_at_commit.sh's preflight)."""
+    root = Path(__file__).resolve().parents[2]
+    test_extra = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"][
+        "optional-dependencies"
+    ]["test"]
+    pins = [d for d in test_extra if d.replace(" ", "").startswith("pytest-xdist")]
+    assert pins == [f"pytest-xdist>={L.XDIST_VERSION}"], pins
 
 
 def test_the_suite_script_is_parsed_whole_before_it_runs():
