@@ -218,15 +218,24 @@ def test_an_adversarial_4MB_string_scans_in_bounded_time():
 def test_many_matches_scan_in_linear_time():
     """Review N1: 40k distinct keys in ~9 MB of escaped JSON Lines. Per-match line counting from offset 0 and a
     linear dedup scan were each quadratic in the match count (minutes); both passes now run in seconds."""
-    rows = [json.dumps({"i": i, "note": "a\nb", "k": fake("openai") + f"{i:06d}"}) for i in range(40_000)]
-    data = ("\n".join(r.ljust(225) for r in rows) + "\n").encode()
-    assert 8_000_000 < len(data) < 10_000_000
-    scan = L.Scan(L.compile_patterns(L.PATTERNS), set())
-    started = time.monotonic()
-    scan.blob(DATA + "many.jsonl", data)
-    elapsed = time.monotonic() - started
+
+    def timed(n: int) -> tuple[float, L.Scan]:
+        rows = [json.dumps({"i": i, "note": "a\nb", "k": fake("openai") + f"{i:06d}"}) for i in range(n)]
+        data = ("\n".join(r.ljust(225) for r in rows) + "\n").encode()
+        scan = L.Scan(L.compile_patterns(L.PATTERNS), set())
+        started = time.monotonic()
+        scan.blob(DATA + "many.jsonl", data)
+        return time.monotonic() - started, scan
+
+    small = min(timed(10_000)[0] for _ in range(3))  # the min of 3: one descheduled small run must not loosen the bound
+    elapsed, scan = timed(40_000)  # ~9 MB
     assert len(scan.findings) == 40_000 and scan.findings[-1].where == DATA + "many.jsonl:40000"
-    assert elapsed < 8, elapsed
+    # 4x the matches: linear is ~4x the time, quadratic ~16x. A ratio tolerates machine load far better than an
+    # absolute bound (M22: `< 8 s` failed at 8.6 s under an 8-worker xdist run plus a concurrent suite), though load
+    # that changes between the small and the large run still moves it; the absolute ceiling stays only as the
+    # "minutes, not seconds" backstop the docstring promises.
+    assert elapsed < 8 * small + 1.0, (small, elapsed)
+    assert elapsed < 60, elapsed
 
 
 # ── 2. archives ──────────────────────────────────────────────────────────────
