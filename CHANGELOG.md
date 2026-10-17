@@ -23,6 +23,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The 1.4.0 release gate bounds the decomposed functions at 1,000 lines, not 200** ([#1323](https://github.com/dennys246/Maxim/issues/1323), owner decision 2026-10-16).
+  - `start_simulation_mode`, `run_agentic_loop` and `execute_and_learn` must reach 1,000 lines or fewer, and so must
+    everything split or moved out of them and every def in their three files. Item `1323.functions-1000` holds them.
+  - The three 200-line entries in `scripts/release_gates.json` are retired, on the record. In
+    `scripts/lint_release_gates.py`, a retired function now leaves the gate with everything split out of it.
+  - Their function-length pins stay, so none may grow. Whether 1.5 targets 200, or about 500, is reassessed at the 1.4
+    release.
+  - Guards: `tests/unit/test_release_gate_function_ceiling.py` (a strict red gate until the bound is met) and
+    `tests/unit/test_lint_release_gates.py::test_a_retired_functions_split_out_leaves_the_gate_with_it`.
+
 ### Fixed
 
 - **The benchmark summary no longer prints "0/3 passed [PASS]"** ([#1310](https://github.com/dennys246/Maxim/issues/1310)).
