@@ -1,4 +1,110 @@
-# pymaxim.bio — website handoff (1.0.9 live audit 2026-08-19 · 1.1 audit 2026-08-25 · 1.1.4 refresh 2026-09-05 · 1.3.0 refresh 2026-09-19 · 1.3.1 refresh 2026-09-27 · 1.3.2 corrections 2026-10-15)
+# pymaxim.bio — website handoff (1.0.9 live audit 2026-08-19 · 1.1 audit 2026-08-25 · 1.1.4 refresh 2026-09-05 · 1.3.0 refresh 2026-09-19 · 1.3.1 refresh 2026-09-27 · 1.3.2 corrections 2026-10-15 · 1.3.2 refresh 2026-10-16)
+
+## 1.3.2 refresh — 2026-10-16 ("Decomposition"; PyPI `upload_time` 2026-10-16T20:47Z, signed tag `v1.3.2` @ `59d35ad3`)
+
+**Framing rule.** The security fix leads. For anyone who runs a leader, 1.3.2 is a security release
+([GHSA-7qh4-mp34-88v9](https://github.com/dennys246/Maxim/security/advisories/GHSA-7qh4-mp34-88v9),
+published 2026-10-16T20:51Z). The site's first words about the release say who is affected, what changed
+(default role `solo`, a leader without a usable key refuses to start, remote admin opt-in, peers on `:8099`),
+and the one upgrade rule that matters: **upgrade each leader on its own machine and cold-restart it, never via
+`maxim peer update && maxim peer restart`**. After that, the release is what it says it is: **no new
+behavioural claim**, the decomposition, breaks that each name their migration, and the evidence at the cut
+(T1-13/14/15 PARTIAL, already on the site since the corrections section below; T1-16 EARNED narrow and T1-1
+SUPERSEDED; T1-2 STALE under `release-1.3.2-T1-2`). Release links: [GitHub Release](https://github.com/dennys246/Maxim/releases/tag/v1.3.2)
+(the release notes; there is no `release_1_3_2.md`) · [PyPI 1.3.2](https://pypi.org/project/pymaxim/1.3.2/).
+Site fix: **maxim-web `docs/1-3-2`**; this section is its engine companion.
+
+**Engine truth read on `origin/main` (`59d35ad3`), not from memory:** CHANGELOG `[1.3.2]` (its body is
+byte-identical to the `[Unreleased]` the site was prepared from at `56c25d97`, plus the release header and
+the Security entry); the GitHub Release body; the published advisory; ledger rows T1-1, T1-16 (and the
+T1-2/13/14/15 rows from the corrections pass).
+
+**Verified against the artifact, not a proxy.**
+
+- **Clean venv** (`python3 -m venv` on 3.14, `pip install 'pymaxim[console]==1.3.2'`). `maxim.__version__` =
+  1.3.2. `CONSOLE_CONTRACT_VERSION` = 0.6.0; the vendored UI's `maxim-ui.json` says maxim-pulse v0.4.0,
+  contract 0.6.0. `ComponentRegistry().list_refs()` = **97** = the regenerated `components.json` count
+  (`--label "pymaxim 1.3.2 (PyPI wheel)"`); the only catalog diffs are the label and one description that
+  now names `runtime/substrate_proposal` (the `agent_loop` move).
+- **Measured in a scratch home** (throwaway `HOME`, `XDG_CONFIG_HOME`, `MAXIM_DATA_HOME`):
+  - a fresh `Hippocampus(config)` over an existing file raises `StoreOverwriteRefused` on `save()`;
+    `create.hippocampus` over it raises at construction; `overwrite=True` replaces;
+  - `~` paths expand, a missing `~` file raises `FileNotFoundError`;
+  - `load.session` with a prefix matching two runs raises `RunDirAmbiguous`; an exact id or a unique prefix loads;
+  - default role with `MAXIM_ROLE` unset resolves `('solo', 'default')`;
+  - `maxim config set proxy.allow_remote_update true` reads back `True [source=config]`; `config unset`,
+    `downgrade`, `restore-preserved` exist.
+- **CLI flags:** every `--flag` on the site — **149** unique strings — swept against the 1.3.2 wheel's
+  `--help` (top-level verbs, the argparse sharing verbs, `model add`, `roy run`, `python -m
+  maxim.models.download`). Every `maxim` flag exists; the rest are other tools' flags (pip, docker, nmcli, the
+  Reachy daemon, CSS tokens) or flags the site says do not exist (`--resume-session`, `--fixture`,
+  `--prompt-profile`, `--explore-weight` on `maxim`). One hazard for the next sweep: **`maxim tunnel setup
+  --help` ignores `--help` and runs setup**; sweep only argparse verbs.
+- **Python:** **48/48** site snippets compile; the store, reopen-and-save, session and inspect snippets run
+  on the wheel.
+- **Build:** `pnpm build` clean, **157** pages; **13,078** internal hrefs + fragments resolve, 0 broken; all
+  **156** sitemap routes present.
+
+**Engine findings while running the snippets (not filed; owner's call):**
+1. `maxim.load.hippocampus(path)` returns a store whose `config.persistence_path` is `None`, so a bare `save()`
+   raises `ValueError: No persistence path specified`; `save(path)` works. The site documents `save(path)`.
+2. The `[1.3.2]` #829 bullet says "every runtime request … may only lower" capability. Measured: the
+   model's `mode_switch` (#924) and the robot runtime's re-exec requests are lower-only, but the robot
+   runtime's phrase table ("maxim active", `StateManager.request_mode_active`) still sets the state manager's
+   mode passive → active with no capability check, and any audio in the room can say it. Per the wheel's own
+   comment in `modes/state_manager.py`, dispatch reads `Executor.effective_operational_mode()` (the launch
+   grant, else the run mode), which the phrase does not change, so the gap is in the label, not in what tools
+   run. The site states it that way.
+3. `maxim config get role` labels the default `solo` as `[source=env]` with `MAXIM_ROLE` unset.
+
+### Findings (route → claim before → truth source → fix)
+
+| Route | Before | Truth source | Fix |
+|---|---|---|---|
+| `/getting-started/` | 1.3.1 "Hardening" version line; nothing on 1.3.2 | PyPI `upload_time`; Release body; advisory; CHANGELOG `[1.3.2]` | 1.3.2 "Decomposition", 2026-10-16 UTC, links to the Release, CHANGELOG, advisory, PyPI; a **danger box first** (who was exposed, what fails closed now, upgrade on the leader + cold restart, never `peer update && peer restart`); then "no new behavioural claim", the decomposition, five what-changes bullets, the evidence at the cut (incl. Exp 63); 1.3.1 kept as its own section |
+| `/installation/` | "Upgrading to 1.3.1" only | CHANGELOG Security migration + breaks | New **Upgrading to 1.3.2**: **Leaders first** (doctor; `config set role leader`; `tunnel key rotate` + `peer key set`; `chmod 600`; `proxy.allow_remote_update`; legacy env ignored; `:8099`), then memory stores (#939/#950/#971/#1071, `save(path)` after `load.*`), runs and data (#932), configuration (format 1.3, `unset`, `downgrade`), internet (#832/#966–#968), modes and host tools (#829/#924/#949), moved internals |
+| `/guides/networking/` | leader "binds `0.0.0.0`"; default fallback **leader** (rank 7, contradicting "Solo … The default"); debug routes "Bearer-gated or localhost-only"; remote peer management unqualified | Security entry; advisory | Leader row: :8099 the one ingress, refuses to start without a key, llama-cpp-server on `127.0.0.1`; rank 7 → **solo** with the advisory link and `role_default_with_mesh_key`; a fail-closed paragraph (exit 2, loopback never auth, remote admin opt-in, legacy env ignored, peers on :8099); debug routes need the key from localhost too; two troubleshooting rows; "since 1.3.2 opt-in on the leader" |
+| `/configuration/` | `role` comment without default; no 1.3.2 commands | Security entry; #974; config format | `role` default solo; `proxy.allow_remote_update`; `config unset` / `downgrade` / `restore-preserved` with what each is for; format 1.3 |
+| `/reference/cli/` | console contract 0.5.0; UI bundle story ends at 1.2.1; pairing "no shipped command"; `oasis serve` refuses only non-loopback | `ui_bundle.py` + wheel manifest; #1268 F1; Security entry | 0.6.0 and the five run-history/health routes, stall detection and its limits, opt-in `/ws` kinds; 1.3.2 vendors pulse v0.4.0 (0.6.0); Piper provisioning as capabilities with **no pymaxim caller**; `oasis serve` refuses without a key on any bind, loopback included |
+| `/concepts/operating-modes/` | `mode_switch` refuses only code-executing modes; "passive → active is not gated (#924, open)" | #829, #924, #949, #832, #966–#968, #921 | `mode_switch` refuses any raise; new **Since 1.3.2: capability goes down, not up** (lower-only for the model and robot runtime, the human phrase still raises, `--operational-mode`, host-tool env and git opt-ins with #957's limit, internet fail-closed with the proxy limit) |
+| `/systems/hippocampus/` | caution box: the constructor silently overwrites; `~` not expanded; #939 open | #939/#950/#971/#1071; wheel runs | Rewritten for `StoreOverwriteRefused`, `create.*` refusing at construction, load-then-`save(path)` (runnable), `overwrite=True`, `~` expanded |
+| `/guides/simulation/outputs/`, `/orchestrator/` | research results under `./data/sim_reports/`; `actions.jsonl` 1.1; `load.session` prefix "newest first"; `~` not expanded | #932; `report.py` (`_ACTIONS_JSONL_FORMAT_VERSION` 1.2) | Research under `<data home>/sim_reports/research_<id>/`; 1.2 header and `rpe` / `pain` / `nac_failure_booked`; `RunDirAmbiguous`; `sessions/` note corrected (it held `maxim.run(learning=True)`'s agent through 1.3.1) |
+| `/systems/nucleus-accumbens/` | `_record_outcome()` in `runtime/agent_loop.py` | `runtime/tool_dispatch.py::record_outcome` | One dispatch path; a failure booked once by the bridge |
+| `/research/evidence/`, `/research/experiments/cross-session-learning/`, `/memory/engrams/`, `experiments.json` | Exp 10 "maintained (narrow), 2026-09-27"; no Exp 63 | T1-1 SUPERSEDED, T1-16 EARNED (narrow) | Persistence row earned (narrow) 2026-10-04 by Exp 63 with its scope and caveats (#1064, #1260, floor not measured); Exp 10's September re-run kept as the record; new `exp-63` entry superseding `exp-10`; the cross-session line's best is Exp 63 |
+| `/reference/components/` | label 1.3.1; card links pinned to `v1.1.4` | wheel registry | Label 1.3.2, links pinned to `v1.3.2` |
+
+**Left as is, deliberately.** The 1.3.1 section and "Upgrading to 1.3.1" (history; their anchors are linked).
+Every Exp 60/61/62 number and status from the corrections pass. Snippets the wheel runs unchanged.
+
+**Not carried to the site.** The decomposition's internals (slice names, ratchets, coverage floors, mypy set)
+beyond one sentence; entity file format 1.1, the provenance and evidence-gate machinery, and the removed
+internals, which the upgrade section reaches through the release notes link.
+
+**Different-reader pass (before either PR).** An independent agent re-checked every changed claim against CHANGELOG
+`[1.3.2]`, the Release, the advisory, the ledger and the installed wheel, running the store, session, config
+and internet-policy cases live in a scratch home. Nine findings, all folded. The material ones: the
+"Maxim active" phrase was described as a CLI-loop human path (it is the robot runtime's phrase table, any
+audio can say it, and it does not change what dispatch enforces); `load.atl(p).save()` is a silent no-op, not
+a `ValueError` like Hippocampus and NAc; the leader-first text under-stated who was exposed (the Python API
+reached the leader default on any GPU host, and :8100 listened on every interface with its key in argv);
+`nac_failure_booked` is the booked signature, not a boolean; `create.*` refusal is three named functions,
+not all of `create`; the bridge books a failure only where it is present; the proxy limit is downloads and
+backend URLs, not the agent's fetch; and Exp 10's manifest finding still said "measurably different
+behavior". Plus an explicit `pip install --upgrade` step on the leader and the cloud auto-detect note.
+
+### Acceptance checks — 1.3.2
+
+- [x] Version line 1.3.2 "Decomposition", 2026-10-16 (UTC upload time), links to the Release, CHANGELOG, advisory and PyPI 1.3.2; the `live-site-check` line format kept.
+- [x] The security fix leads, with the advisory link, the changed defaults (solo, remote admin opt-in, :8099) and the on-the-machine cold-restart rule; `peer update && peer restart` named as what not to do.
+- [x] "No new behavioural claim" stated; Exp 60/61/62 never EARNED in the present tense; Exp 63 narrow; Exp 37 stale.
+- [x] A different reader checked every changed claim against the CHANGELOG, Release, advisory, ledger and wheel; its 9 findings are folded.
+- [x] Every upgrade break that touches a site snippet or guide is reflected (stores, run dirs, `actions.jsonl`, config, internet, modes, host tools, console).
+- [x] 149 flags swept; 48/48 snippets compile; store/session/config snippets run on the wheel.
+- [x] Counts derived: components 97 from the wheel registry; experiments from `experiments.json`.
+- [x] `pnpm build` clean (157 pages); 13,078 internal links + fragments resolve; 156/156 sitemap routes present.
+- [ ] **After merge/deploy:** re-crawl the live sitemap; confirm the version line via `live-site-check`; spot-check `/getting-started/`, `/installation/#leaders-first-the-security-fix` and `/guides/networking/`.
+- [ ] **Human-only (carried):** visual / mobile / keyboard pass in a real browser, especially the new danger box.
+
 
 ## 1.3.2 corrections — 2026-10-15 (phase 1 of the 1.3.2 refresh; not a release refresh — 1.3.2 is not on PyPI)
 
