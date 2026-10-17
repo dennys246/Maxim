@@ -199,7 +199,8 @@ Each stage is one PR or more and goes through the reviews its kind requires.
     (`{fear, ablated}`) in `docs/experiments/evidence_pass_table.json` and T1-13's pass entry are untouched.
   - There is no offline drowning simulator (`minecraft_harness.py::FakeBridgeServer` has no water physics),
     so the arms are proven offline only for wiring; liveness preflights follow Exp 60's amendments 3–7.
-- **B2. The bare loop and its guards.** Entry condition: the `start_simulation_mode` decomposition has
+- **B2. The bare loop and its guards** ([#1352](https://github.com/dennys246/Maxim/issues/1352)). Its three code
+  prerequisites are 1.3.6 exit items (roadmap_1_3_x.md §1.3.6; owner decision 2026-10-17). Entry condition: the `start_simulation_mode` decomposition has
   landed (it is next after the agent loop; touching `orchestrator.py` before then collides with it).
   - **B2 takes no `runtime.*` or `agents.*` import.** Its first PR pulls the pieces the arms must share
     (percept intake, the `_llm_unavailable` fallback made inside `run_agentic_loop`, `<think>` stripping, a
@@ -215,9 +216,10 @@ Each stage is one PR or more and goes through the reviews its kind requires.
     runtime-tools.md in the same PR and an M38 allowlist entry once M38 lands.
   - Three-lens code review; mypy over the touched composition files.
 - **B3. `llm_notes`.** Notes stored in the agent's home with `atomic_write_json` + `_format_version`, one
-  end-of-session reflection call through the router. Pick episodic retrieval or Reflexion first (open
-  decision); the other can follow as a second arm.
-- **B4. Exp 37 / T1-2 re-run with floors.** Four-lens design review (new claim). **Homed to 1.4 as L8's
+  end-of-session reflection call through the router. **Reflexion first** (owner decision 2026-10-17,
+  [#1353](https://github.com/dennys246/Maxim/issues/1353)). Episodic retrieval can follow as a second arm.
+- **B4. Exp 37 / T1-2 re-run with floors** ([#1354](https://github.com/dennys246/Maxim/issues/1354)). Four-lens design
+  review (new claim). The review is paper and runs now, in Session E's lane; only the run waits for B2 and B3. **Homed to 1.4 as L8's
   dose-response design (owner, 2026-10-14):** 1.3.2 released without it under the committed `release` exception
   `release-1.3.2-T1-2`, and T1-2 stays STALE until this run lands. Hold the model fixed and read where A sits
   (L8); a fire whose A leaves no headroom is reported as such, never scored against June's numbers.

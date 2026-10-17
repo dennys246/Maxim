@@ -3,8 +3,9 @@
 > **PROPOSED 2026-09-24 — plan only, no code, no prereg; a PARALLEL line, not a 1.4 rung.** Split out
 > of the grounded-language plan's v3 (owner decision 2026-09-24), where it was "Track S". It needs no
 > language. **Depends on [public_oasis.md](public_oasis.md) Phase 0** (SCHEDULED 2026-09-24 for this
-> reason). **No src before 1.3.2** (the `agent_loop` decomposition — this plan's read path lands in the
-> selection code 1.3.2 is splitting). **No rig time before E3's campaign** (one rig, one operator).
+> reason). **No src before the fence lifts in 1.3.6** (it was "before 1.3.2"; renumbered 2026-10-17. This plan's read path
+> lands in the selection code the loop decomposition is splitting). Stays active as a parallel paper line (owner
+> 2026-10-17). **No rig time before E3's campaign** (one rig, one operator).
 > **Opt-in, off by default, never active in an E1–E3 arm.** **Nothing here is built.** The Design
 > section describes intended behaviour in the present tense for readability; none of it exists.
 >
