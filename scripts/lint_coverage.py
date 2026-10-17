@@ -113,7 +113,7 @@ per-file diff coverage. A PR with no executable ``src`` change passes.
 :data:`CANONICAL_CONFIG`, except ``run.omit``, which must equal the two fixed globs followed
 by exactly the exclusion list's paths; the fixed globs must match no ``src/maxim`` file. It
 fails on a ``.coveragerc``, a ``[coverage:`` section in ``setup.cfg``/``tox.ini``, a
-``--cov-config``/``--no-cov``/``--cov-fail-under``/``--cov-append``/``-p no:cov``/``-p no:xdist``/``--maxprocesses`` anywhere
+``--cov-config``/``--no-cov``/``--cov-fail-under``/``--cov-append``/``-p no:cov`` anywhere
 pytest or the workflows read options, any ``COVERAGE_*``/``COV_CORE_*`` name in a workflow,
 and ``import coverage``/``import pytest_cov``/``Coverage.current`` in ``tests/`` or ``src/``.
 ``coverage.json`` must exist and carry ``meta.version`` == the pinned coverage and
@@ -194,17 +194,8 @@ exclusion is grandfathered when its path matched a non-fixed ``omit`` pattern in
 
 **The gate checks its own wiring**, from the parsed YAML of the ``unit-tests`` job in
 ``.github/workflows/test.yml`` (a comment satisfies nothing): every checkout has
-``with.fetch-depth == 0``; a step runs the exact coverage pin and the exact pytest-xdist pin (``XDIST_VERSION``,
-M22: the measuring run is scheduled by it); exactly one step measures, and its run is exactly three commands (the ``CI_CLEAN`` cleanup, one ``SUITE=`` assignment
-holding the pytest command, and ``CI_SUITE_RUN``: ``bash scripts/ci_netns.sh "$SUITE"``), with the exact ``--cov``
-arguments and ``CI_PARALLEL_ARGS`` (``-n auto --dist loadfile``, the worker mode scripts/suite_at_commit.sh also
-runs), read TOKENIZED (comment lines and trailing comments dropped, ``\\`` continuations joined, a ``SUITE='...'``
-value split as the command it is), so an argument only in a comment satisfies nothing; that suite may not set
-``-n``/``--numprocesses``/``--dist`` twice (the last wins; counted across every command in the step) nor
-set ``--maxprocesses`` or carry ``-p no:xdist``, and no workflow, job or step
-``env:`` (nor a run line in the job) may name ``PYTEST_XDIST_AUTO_NUM_WORKERS`` or ``PYTEST_ADDOPTS``
-(``CI_BANNED_ENV``); ``no:xdist`` is also banned wherever pytest reads options (section 3); exactly one later step
-runs exactly
+``with.fetch-depth == 0``; a step runs the exact coverage pin; exactly one step measures, with the
+cleanup and the exact ``--cov`` arguments; exactly one later step runs exactly
 ``python scripts/lint_coverage.py`` and carries only ``name`` and ``run`` (no ``if:``, ``env:``,
 ``shell:``, ``with:``, ``|| true``); the only step allowed between the two is the MemoryHub step,
 matched by its run line, so nothing can rewrite ``coverage.json``; no ``continue-on-error``.
@@ -287,7 +278,6 @@ import math
 import os
 import posixpath
 import re
-import shlex
 import sys
 import time
 import tokenize
@@ -328,18 +318,6 @@ FIXED_OMIT = ["*/tests/*", "*/__pycache__/*"]
 WORKFLOW_REL = ".github/workflows/test.yml"
 CI_JOB = "unit-tests"
 CI_COV_ARGS = "--cov=src/maxim --cov-branch --cov-report=json:coverage.json --cov-report="
-# M22: the measuring suite runs under pytest-xdist (pytest-cov combines the workers). The local pre-check
-# (scripts/suite_at_commit.sh) must use the same worker mode, or a test-order-dependent line would be covered in one
-# and not the other. `--dist loadfile` keeps a file's tests on one worker (module-level state stays as serial runs saw
-# it). XDIST_VERSION moves with the test.yml pip pin and pyproject's [test] extra: the scheduler shapes the run.
-CI_PARALLEL_ARGS = "-n auto --dist loadfile"
-XDIST_VERSION = "3.8.0"
-# Env names that silently change the worker mode (or every option) of the measuring run; banned in the job.
-CI_BANNED_ENV = ("PYTEST_XDIST_AUTO_NUM_WORKERS", "PYTEST_ADDOPTS")
-# The measuring step's run is exactly: CI_CLEAN (plus its own extra files), one `SUITE='...'` assignment holding the
-# pytest command, and this argv (scripts/ci_netns.sh runs `$SUITE` in a loopback-only network namespace).
-CI_SUITE_VAR = "SUITE"
-CI_SUITE_RUN = ["bash", "scripts/ci_netns.sh", "$SUITE"]
 CI_LINT_RUN = "run: python scripts/lint_coverage.py"
 CI_CLEAN = "rm -f .coverage coverage.json coverage.xml"
 CI_BETWEEN_RUN = "python -m pytest tests/integration/test_memory_hub.py -q"  # the one step allowed in between
@@ -358,9 +336,7 @@ CANONICAL_CONFIG: dict = {
 COVERED_BY = {None}
 LEDGER_KINDS = ("pragma", "excluded_statements")
 
-_BANNED_OPTS_RE = re.compile(
-    r"--cov-config\b|--no-cov(?![\w-])|--cov-fail-under\b|--cov-append\b|no:(?:pytest_)?cov\b|no:xdist\b|--maxprocesses\b"
-)
+_BANNED_OPTS_RE = re.compile(r"--cov-config\b|--no-cov(?![\w-])|--cov-fail-under\b|--cov-append\b|no:(?:pytest_)?cov\b")
 _BANNED_ENV_RE = re.compile(r"\b(?:COVERAGE|COV_CORE)_[A-Z_]+")
 _BANNED_IMPORT_RE = re.compile(
     r"^\s*(?:import|from)\s+(?:coverage|pytest_cov)\b|\bCoverage\.current\b|^\s*import\s+[\w.]+\s*,\s*coverage\b",
@@ -1421,67 +1397,6 @@ def exclusion_diff_rules(root: Path, base: str, ex: Exclusions, base_ex: Exclusi
 # ── configuration (S4) ────────────────────────────────────────────────────────
 
 
-_ASSIGN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=(.*)$", re.DOTALL)
-
-
-def _strip_comment(line: str) -> str:
-    """``line`` up to its comment, as bash reads it: ``#`` starts a comment only at the start of a word (line start
-    or after whitespace) and outside quotes, so ``--tb=line#x -n 0`` keeps its ``-n 0`` (shlex's ``comments=True``
-    would cut at that ``#``)."""
-    quote = ""
-    i = 0
-    while i < len(line):
-        c = line[i]
-        if quote:
-            if c == "\\" and quote == '"':
-                i += 1
-            elif c == quote:
-                quote = ""
-        elif c == "\\":
-            i += 1
-        elif c in "'\"":
-            quote = c
-        elif c == "#" and (i == 0 or line[i - 1].isspace()):
-            return line[:i]
-        i += 1
-    return line
-
-
-def _split(line: str) -> list[str]:
-    return shlex.split(_strip_comment(line), comments=False)
-
-
-def _shell_lines(script: str) -> list[list[str]]:
-    """A step's run script as argv lists, one per simple command: comment lines and trailing comments dropped and
-    ``\\`` continuations joined (also inside a quoted value: the measuring step hands ``$SUITE`` to ``bash -c``).
-    A comment therefore satisfies nothing. Raises ``ValueError`` on a line shlex cannot split (an unbalanced quote)."""
-    text = "\n".join(ln for ln in script.splitlines() if not ln.lstrip().startswith("#")).replace("\\\n", " ")
-    return [a for a in (_split(line) for line in text.splitlines()) if a]
-
-
-def _assigned_command(tok: str) -> list[str] | None:
-    """The command an assignment token holds (``SUITE='... pytest ...'``), tokenized; None for any other token."""
-    m = _ASSIGN_RE.match(tok)
-    return _split(m.group(1)) if m and len(m.group(1).split()) > 1 else None
-
-
-def _has_run(argv: list[str], args: str) -> bool:
-    """``args`` (tokenized) appears in ``argv`` as one contiguous run of tokens."""
-    want = shlex.split(args)
-    return any(argv[i : i + len(want)] == want for i in range(len(argv) - len(want) + 1))
-
-
-def _option_count(argv: list[str], long: str, short: str | None = None) -> int:
-    """How many times ``argv`` sets ``--long`` (spaced or ``=``) or ``-s`` (spaced or attached, ``-n4``)."""
-    n = 0
-    for t in argv:
-        if t == long or t.startswith(long + "="):
-            n += 1
-        elif short is not None and t.startswith(short) and not t.startswith("--"):
-            n += 1
-    return n
-
-
 def ci_step_rules(root: Path) -> list[str]:
     """The gate's own CI wiring, read from the PARSED workflow (a comment satisfies nothing): a disabled,
     softened or bypassed step would make every other rule here vacuous."""
@@ -1501,13 +1416,14 @@ def ci_step_rules(root: Path) -> list[str]:
         r = s.get("run")
         return r if isinstance(r, str) else ""
 
+    def flat(s: dict) -> str:
+        return re.sub(r"\s+", " ", run(s).replace("\\\n", " ")).strip()
+
     checkout = [s for s in steps if str(s.get("uses", "")).startswith("actions/checkout@")]
     if not checkout or any((s.get("with") or {}).get("fetch-depth") != 0 for s in checkout):
         out.append(f"{where}: every checkout step needs `with: fetch-depth: 0` (the diff rules need the merge-base)")
     if not any(f'"coverage=={COVERAGE_VERSION}"' in run(s) for s in steps):
         out.append(f"{where}: missing the exact coverage pin {COVERAGE_VERSION} in a step's run")
-    if not any(f'"pytest-xdist=={XDIST_VERSION}"' in run(s) for s in steps):
-        out.append(f"{where}: missing the exact pytest-xdist pin {XDIST_VERSION} in a step's run")
     if not isinstance(job, dict):
         return [f"{where}: the job must be a mapping"]
     if "defaults" in doc or "defaults" in job:
@@ -1516,67 +1432,11 @@ def ci_step_rules(root: Path) -> list[str]:
         out.append(f"{where}: a job-level `if:` is banned on the job that carries the coverage gate")
     if "continue-on-error" in job or any("continue-on-error" in s for s in steps):
         out.append(f"{where}: continue-on-error is banned in the job that carries the coverage gate")
-    for scope, env in [("workflow", doc.get("env")), ("job", job.get("env"))] + [
-        (f"step {s.get('name')!r}", s.get("env")) for s in steps
-    ]:
-        for name in CI_BANNED_ENV:
-            if isinstance(env, dict) and name in env:
-                out.append(f"{where}: {scope} env sets {name} — it changes the measuring run's worker mode or options")
-    for s in steps:
-        for name in CI_BANNED_ENV:
-            if any(name in ln for ln in run(s).splitlines() if not ln.lstrip().startswith("#")):
-                out.append(f"{where}: step {s.get('name')!r} names {name} in its run — it changes the measuring run")
     suite = [i for i, s in enumerate(steps) if "--cov" in run(s)]
-    # The measuring step is read TOKENIZED (comments dropped), never as a substring, and its SHAPE is pinned: the
-    # cleanup, one `SUITE='...'` assignment, `bash scripts/ci_netns.sh "$SUITE"`, nothing else. A comment carrying the
-    # arguments, a later `SUITE="$SUITE -n 0"` / `SUITE+=...`, or `ci_netns.sh "$SUITE -n 0"` would otherwise make
-    # CI measure in a different worker mode than the rule read (for `-n`/`--dist` the last one wins).
-    try:
-        lines = _shell_lines(run(steps[suite[0]])) if len(suite) == 1 else []
-    except ValueError as e:
-        lines = []
-        out.append(f"{where}: the measuring step's run cannot be tokenized ({e})")
-    clean_argv = shlex.split(CI_CLEAN)
-    assigns = [i for i, line in enumerate(lines) if line[0].startswith(f"{CI_SUITE_VAR}=")]
-    suite_line = lines[assigns[0]] if assigns else []
-    suite_cmd = _assigned_command(suite_line[0]) if suite_line else None
-    shaped = (
-        len(lines) == 3
-        and lines[0][: len(clean_argv)] == clean_argv
-        and assigns == [1]
-        and len(suite_line) == 1
-        and lines[2] == CI_SUITE_RUN
-    )
-    if (
-        len(suite) != 1
-        or not shaped
-        or not suite_cmd
-        or "pytest" not in suite_cmd
-        or not _has_run(suite_cmd, CI_COV_ARGS)
-    ):
+    if len(suite) != 1 or CI_COV_ARGS not in flat(steps[suite[0]]) or CI_CLEAN not in flat(steps[suite[0]]):
         out.append(
-            f"{where}: needs exactly one measuring step, running exactly `{CI_CLEAN} ...`, one "
-            f"`{CI_SUITE_VAR}='... pytest ... {CI_COV_ARGS}'` assignment and `{shlex.join(CI_SUITE_RUN)}`, "
-            "and nothing else"
+            f"{where}: needs exactly one measuring step, running `{CI_CLEAN}` and the fast suite with `{CI_COV_ARGS}`"
         )
-    else:
-        argv = suite_cmd
-        # Defence in depth beside the shape: every token of every command in the step, words inside a quoted
-        # argument included (`"$SUITE -n 0"`), the SUITE value read as the command it is.
-        words = list(argv) + [w for line in lines if line is not suite_line for t in line for w in t.split()]
-        if not _has_run(argv, CI_PARALLEL_ARGS):
-            out.append(
-                f"{where}: the measuring fast suite must run with `{CI_PARALLEL_ARGS}` (M22: the local pre-check does)"
-            )
-        if _option_count(words, "--numprocesses", "-n") > 1 or _option_count(words, "--dist") > 1:
-            out.append(
-                f"{where}: the measuring step sets `-n`/`--numprocesses` or `--dist` more than once — "
-                f"exactly `{CI_PARALLEL_ARGS}`, once"
-            )
-        if _option_count(words, "--maxprocesses"):
-            out.append(f"{where}: the measuring step sets `--maxprocesses` (it caps the worker count)")
-        if any("no:xdist" in t for t in words):
-            out.append(f"{where}: the measuring fast suite disables pytest-xdist (`-p no:xdist`)")
     gate = [i for i, s in enumerate(steps) if "lint_coverage.py" in run(s)]
     if len(gate) != 1 or run(steps[gate[0]]).strip() != CI_LINT_RUN[5:]:
         out.append(f"{where}: needs exactly one step whose run is `{CI_LINT_RUN[5:]}` (no `|| true`)")

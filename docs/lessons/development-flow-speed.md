@@ -58,7 +58,12 @@ this one and the four-lens design review.
 
 ## 3. Parallel test runs
 
-**Trial recorded 2026-10-16 (M22); the suite now runs under xdist.** Code under test: `ci/xdist-trial` = origin/main `a6d9e3e9`, pytest-xdist 3.8.0. Two full fast-suite runs, two schedulings: `-n 8` (`load`) 1401 s, 1 failed / 15,976 passed; `-n 4 --dist loadfile` 1413 s, 0 failed / 15,977 passed; collection identical to serial (16,034 node ids, 0 missing, 0 extra). **Measured vs estimated:** the wall times are measured; the serial comparison (86–117 min at that load) is the sum of per-test junit times, an estimate, and the brief's 50–60 min quiet-box serial figure is an estimate too. **Loaded-box caveat:** the 15-min load average peaked ~45 on 8 cores (other sessions' suites), so `-n 8` was no faster than `-n 4`; a quieter 4,544-test sample (642 s -> 138 s at `-n 6`) is the better speed number, and CI's own step time is the one to quote. **No collision, order dependence or serial-only failure surfaced.** The one failure was a timing assertion: `test_lint_secrets.py::test_many_matches_scan_in_linear_time` (absolute `< 8 s`, measured 8.61 s under contention, 5.9–6.3 s serial under load), fixed by asserting a ratio (40k vs 10k matches, the small one the min of 3 runs; linear ~4x, quadratic ~16x; bound `< 8x + 1 s`) with `< 60 s` kept as the backstop — isolation, not a serial marker, which would still fail on a loaded box. CI and `scripts/suite_at_commit.sh` run `-n auto --dist loadfile` (`lint_coverage.CI_PARALLEL_ARGS`); the network guard's summary now sums the workers' counts. Details: docs/agents/ci-testing.md §1.
+`pytest-xdist` is installed (the `[test]` extra and CI's pip line; corrected 2026-10-16, this said "not
+installed") but no run uses it. If the suite is xdist-safe, `-n auto` cuts the run several times over: a
+2026-10-16 pre-trial sample of 4,544 tests went from 642 s serial to 138 s at `-n 6` with 0 failures, which is
+a measurement, not the trial. Tests that share `~/.maxim`, ports or other global state may collide under xdist; a trial run
+names them, and each is either isolated (a `tmp_path` home, a free port) or marked to run serially.
+Until that trial is recorded here, the serial run stays the reference. Backlog row M22.
 
 ## 4. Decisions up front
 
