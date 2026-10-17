@@ -22,7 +22,7 @@
 | Coverage ratchet | `scripts/lint_coverage.py` (floors, diff coverage, the pinned `[tool.coverage]` table; `--local`, `--merge-floors`), `scripts/coverage_floors.json`, `scripts/coverage_exclusions.json`; coverage + pytest-cov versions are pinned exactly in test.yml |
 | Diff-scoped lints | judge a PR against its merge-base with `origin/main`, a push to `main` against `scripts/_lint_git.py::push_base` (last push whose job passed): `lint_coverage`, `lint_no_silent_swallows`, `lint_function_length`, `lint_mypy_ratchet`, `lint_atomic_io_ratchet`, `lint_fix_touches_tests` (needs `PR_TITLE`), `lint_unreleased_on_src_change`, `lint_unreleased_declared`, `lint_config_schema_append_only`, `lint_multi_agent_marker`, `lint_body_rest_neutral`, `lint_secrets`, `lint_ledger_format`, `lint_evidence_gate`, `lint_bf2_obligation`, `lint_release_gates` |
 | Tree-wide lints | `lint_claude_md_invariants`, `lint_backlog_ids`, `lint_version_sync`, `lint_claims_sync`, `lint_orphan_modules`, `lint_harness_provenance`, `lint_prereg_precedes_data`, `lint_loop_mode_reads` |
-| Test harness | `tests/conftest.py` (autouse env scrubs, `--require-extras`, the `requires_model_cache` skip), `tests/network_guard.py` (in-process network block; `allow_network` marker), `pyproject.toml` `[tool.pytest.ini_options]` (`testpaths`, `norecursedirs` excludes `.worktrees`, markers) |
+| Test harness | `tests/conftest.py` (autouse env scrubs, `--require-extras`, the `requires_model_cache` skip), `tests/network_guard.py` (in-process network block; `allow_network` marker), `tests/script_module_guard.py` (no test leaves a `scripts/` module replaced in `sys.modules`; §3), `pyproject.toml` `[tool.pytest.ini_options]` (`testpaths`, `norecursedirs` excludes `.worktrees`, markers) |
 
 ## 3. Invariants & lessons
 
@@ -39,6 +39,8 @@
 **[engineering] Each required status check maps to exactly one job with no job-level `if:`** (a skipped required check counts as passing). Regression guard: [scripts/check_repo_settings.py](../../scripts/check_repo_settings.py) `--static` + [tests/unit/test_check_repo_settings.py](../../tests/unit/test_check_repo_settings.py).
 
 **[engineering] A push to `main` is judged by the diff-scoped lints against the last push whose job passed**, not `before` (a cancelled pending run would otherwise skip a range). Regression guard: [scripts/_lint_git.py](../../scripts/_lint_git.py)::push_base + [tests/unit/test_lint_git_push.py](../../tests/unit/test_lint_git_push.py).
+
+**[engineering] No test may leave a `scripts/` module replaced or removed under the name `import` resolves it to.** Load a private copy under a private name, or register it with `monkeypatch.setitem`. A script's lazy `from _provenance import …` otherwise sees a different object from the one a later test patched, so outcomes depend on which files ran earlier on that worker (hidden when the suite runs serially, exposed by xdist in #1339). The guarded names are `scripts.<module>` plus every module name under a `sys.path` entry inside `scripts/`, read from the live `sys.path`; a leak fails the test, the module or the collection, and the original entry is then restored. Blind spots: `importlib.reload` (same object, contents replaced); a first import and a replacement inside one checked window; session- and package-scoped fixtures; scripts loaded from another tree; namespace-package directories (their submodules are guarded). Full history: [docs/lessons/script-module-identity-leak.md](../lessons/script-module-identity-leak.md). Regression guard: [tests/script_module_guard.py](../../tests/script_module_guard.py) + [tests/conftest.py](../../tests/conftest.py)::_scripts_modules_not_replaced (and `_scripts_modules_not_replaced_by_module`, the `pytest_make_collect_report` hookwrapper) + [tests/unit/test_script_module_guard.py](../../tests/unit/test_script_module_guard.py).
 
 ## 4. Live gotchas / known gaps
 
@@ -81,5 +83,6 @@ It creates a uniquely named `.worktrees/suite-<sha>.XXXXXX` under the MAIN check
 - [docs/lessons/green-pr-with-no-tests-run.md](../lessons/green-pr-with-no-tests-run.md) (core rule in CLAUDE.md)
 - [docs/lessons/env-var-autouse-scrubs.md](../lessons/env-var-autouse-scrubs.md) (core rule in CLAUDE.md)
 - [docs/lessons/development-flow-speed.md](../lessons/development-flow-speed.md) — snapshot suites, fold batches, the M22 xdist trial
+- [docs/lessons/script-module-identity-leak.md](../lessons/script-module-identity-leak.md) — a leaked `sys.modules` replacement made a patch miss under xdist (#1339)
 
 Cross-refs: docs/agents/runtime-tools.md (optional-deps surface, decomposition targets); docs/agents/simulation-experiments.md (secret-scan rules for campaign data); docs/CODE_REVIEW.md (the pre-merge review round).

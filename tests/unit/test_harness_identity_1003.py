@@ -32,15 +32,6 @@ sys.path.insert(0, str(REPO / "scripts"))
 import _provenance  # noqa: E402
 
 
-@pytest.fixture(autouse=True)
-def _fresh_run_id():
-    """The conftest scrub clears the ``_provenance`` in ``sys.modules``; other tests re-load the script under
-    that name, so the object imported above may be a different one. Clear its run-id cache too."""
-    _provenance._RUN_ID.clear()
-    yield
-    _provenance._RUN_ID.clear()
-
-
 def _head() -> str:
     return subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True).stdout.strip()
 
