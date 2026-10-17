@@ -226,6 +226,8 @@ Frozen contracts (reference, not plans):
 - [sharing_threat_model.md](sharing_threat_model.md): FROZEN 2026-09-04 (1.2 gate 4).
 
 Approach notes for 1.3.3:
+- [advisor_mode.md](advisor_mode.md): advisor mode, Maxim as a read-only observer whose only effect is a report (#1315; O1–O9 verified against v1.3.2; 1.3.3; owner decisions D1–D7 open).
+- [readiness_and_extras_standards.md](readiness_and_extras_standards.md): four standards from the pulse seam (readiness proves the capability, extras tested against the real library, typed console payloads, a checked vendoring step; #1332–#1336; 1.3.3).
 - [upgrade_safety.md](upgrade_safety.md): `maxim doctor`'s advisory check and an upgrade manifest (#1295, approach note merged as #1297).
 
 ### Living discipline docs

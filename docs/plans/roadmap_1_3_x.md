@@ -832,6 +832,50 @@ Owner decisions taken with this path (2026-10-16):
     write the missing auth-model doc.
 - **Plans:** E1's redesigned prereg goes to its four-lens design review; it is paper only, because the fence still
   holds.
+- **The pulse seam** (maxim-pulse's test of the 1.3.2 wheel, verified 2026-10-17;
+  [readiness_and_extras_standards.md](readiness_and_extras_standards.md)). These block pulse #42, v0.4.2:
+  - **[#1332](https://github.com/dennys246/Maxim/issues/1332): spoken-code pairing is silent** on every installable
+    piper-tts.
+  - **[#1333](https://github.com/dennys246/Maxim/issues/1333): the wheel vendored console v0.4.0.** Vendor v0.4.1, and
+    make the vendoring step refuse an older tag for the contract (B4).
+  - **The standards, first slice each:**
+    - [#1334](https://github.com/dennys246/Maxim/issues/1334): readiness proves the capability, starting with
+      `pairing_ready`;
+    - [#1335](https://github.com/dennys246/Maxim/issues/1335): extras tested against the real library at the floor and
+      the latest, starting with tts;
+    - [#1336](https://github.com/dennys246/Maxim/issues/1336): typed console `data` payloads, starting with the stall
+      and health kinds as contract 0.7.0.
+  - **Before the cut:** pulse's `scripts/smoke-reachy-release.sh` on Linux against the candidate wheel prints
+    `SMOKE PASSED`.
+- **Advisor mode** ([#1315](https://github.com/dennys246/Maxim/issues/1315); [advisor_mode.md](advisor_mode.md),
+  verified against v1.3.2 on 2026-10-17). Moved here from §1.4.0's design work at the external request; owner
+  decisions D1–D7 are asked first. Items:
+  - 2: `Tool.effect` and the registry ceiling;
+  - 3: one `ToolPolicy` gate on every entry path;
+  - 6: fail loud on readiness, [#1338](https://github.com/dennys246/Maxim/issues/1338);
+  - 1: the advisor executor, with a minimal proposal log (5).
+  
+  Items 4, 7 and 8 go to 1.3.4 if 1.3.3 must stay small.
+- **Found while verifying:** [#1337](https://github.com/dennys246/Maxim/issues/1337) (`--clear-memory` resolves
+  against `./data` and misses `sessions/`).
+
+**1.3.3 in parallel sessions** (owner request 2026-10-17). Each session works in its own worktree. The "Owns" column is
+that session's file fence. A shared file in a later column is edited in small, separate hunks and merged with main
+locally.
+
+| Session | Line | Owns (fence) | Shares | Starts with |
+|---|---|---|---|---|
+| **P (pipeline)** | #938 trusted publishing and the `v*` ruleset; #1333 vendoring and B4; #1318 CI caching; #1295 upgrade safety | `.github/workflows/release*.yml`, `scripts/vendor_console_ui.py`, `scripts/audit_release_build.py`, `src/maxim/_data/` | `test.yml` (caching hunk); `docs/publication_guide.md` (process session's; hand it the steps) | #1333 (it has to be in the next wheel), then #938 |
+| **S (pulse seam)** | #1332 piper fix; B1 #1334; B2 #1335 (tts first); B3 #1336 (stall and health kinds); #1292 F4 | `models/audio/`, `console/` (schemas, announcer, `openapi.json`, `contract_surface.json`), `pyproject.toml` extras | `test.yml` (the floor/latest lane hunk) | #1332's red gate against the real library |
+| **V (advisor)** | advisor_mode.md items 2, 3, 6, 1+5 (then 4, 7, 8); #1338 | `tools/base.py`, the tool registry, `runtime/bootstrap.py::build_executor`, `api.py`, `modes/`, `agents/autonomy.py`, `tools/comms.py`, `comms/` | **`cli.py` and `orchestrator.py` call sites: Session A's fence**, as call-site edits only, coordinated (rule T applies inside the god functions) | the owner decisions D1–D7, then the approach notes for 2, 3, 1 and 5 together |
+| **H (hardening)** | security #1311 #1312 #1314 #957 #997; the `node_security` remainder; fail-loud Stage 3; #1337; #1310 (the owner's strict `passed` decision); CI and evidence truth (#1313 #1203 #1121 #1218 …); the 1.4.0 gate items #1305 #1263 #1264 #1265 #1267; M25; the small fixes | `runtime/role.py`, `runtime/leader_mode.py`, `simulation/benchmark.py`, `cli_utils.py`, the scripts each issue names | `cli.py` (#1310's exit code, #1337) with Session A | #1337 and #1310 (small, owner-decided), then security |
+| **E (E1, paper only)** | the BF2 floor decision for E1; the argmax and hunger-state replays (offline, committed); E1's prereg draft through the four-lens design review | `docs/experiments/`, `scripts/exp*` replay scripts | none in `src/` (the fence holds until 1.3.5) | the floor decision, as options for the owner |
+| **A (decomposition)** | 1.3.4 can start alongside: the five orchestrator characterization arms are tests only | `orchestrator.py`, `agent_loop.py`, `cli.py` (existing fence) | grants V and H call-site edits | the characterization arms |
+
+Running P, S, V and H at once is the ceiling. Every session appends to `CHANGELOG.md` `[Unreleased]` and to the
+outstanding register, so expect small merge conflicts there; resolve them locally in a signed merge commit. The
+1.3.3 cut waits for P (the new pipeline publishes it) and for S's #1332 and #1333 (pulse is blocked on them). V's
+items 4, 7 and 8 and H's tail can slip to 1.3.4 without holding the cut.
 - **Exit:** #938 closed and 1.3.3 published through the new pipeline; the gate's open-item count down by the items
   above.
 
@@ -869,7 +913,7 @@ Owner decisions taken with this path (2026-10-16):
 - **The name** follows the release rule: the highest EARNED rung.
 
 ### After 1.4.0, or when a 1.4 rung names them
-- **Design work:** [#1185](https://github.com/dennys246/Maxim/issues/1185), [#1315](https://github.com/dennys246/Maxim/issues/1315), plus #922, #834 and #832 item 2.
+- **Design work:** [#1185](https://github.com/dennys246/Maxim/issues/1185), #922, #834 and #832 item 2 ([#1315](https://github.com/dennys246/Maxim/issues/1315) moved to 1.3.3 as advisor mode, 2026-10-17).
 - **Mechanisms that enter through Phase 5 or the grounding line:** [#1026](https://github.com/dennys246/Maxim/issues/1026), [#1064](https://github.com/dennys246/Maxim/issues/1064), plus #784, #848, #880, #899,
   #1072–#1075, #1144, #1161, #1180, #1181, #816 (the reversible-compression half) and #819 (the eviction half).
   [#1064](https://github.com/dennys246/Maxim/issues/1064) (the recall ranker) is also a re-run trigger for T1-16.
