@@ -824,6 +824,12 @@ Owner decisions taken with this path (2026-10-16):
   #1292 (F4, the device-app facade, after pulse v0.4.1), and console_tunnel_hardening's PR 3 (admission control),
   whose revive trigger fired.
 - **Backlog:** M25 (the STALE/BROKEN-row release check that reads `kind: "release"` exceptions).
+- **Deferred plans whose triggers fired** (owner decisions 2026-10-17):
+  - fail-loud Stage 3 ([deferred/measurement_path_fail_loud.md](deferred/measurement_path_fail_loud.md)), scheduled for
+    1.3.2 and not shipped there;
+  - the [deferred/node_security_simplification.md](deferred/node_security_simplification.md) remainder: drop the
+    `leader_mode` "client" role and the `role.py` `role_divergence` shim (both marked "drops in 1.2" in the code), and
+    write the missing auth-model doc.
 - **Plans:** E1's redesigned prereg goes to its four-lens design review; it is paper only, because the fence still
   holds.
 - **Exit:** #938 closed and 1.3.3 published through the new pipeline; the gate's open-item count down by the items
@@ -839,7 +845,10 @@ Owner decisions taken with this path (2026-10-16):
 - **Exit:** `start_simulation_mode` and its descendants pass gate rule 4, and all five arms are satisfied.
 
 ### 1.3.5, "The loop, phase 2"
-- **`run_agentic_loop` and `execute_and_learn`** ([#1150](https://github.com/dennys246/Maxim/issues/1150)) to 200 lines or fewer.
+- **`run_agentic_loop` and `execute_and_learn`** ([#1150](https://github.com/dennys246/Maxim/issues/1150)) to 1,000 lines or fewer
+  (item `1323.functions-1000`; it was 200 until #1323).
+- **[deferred/loop_stack_builder.md](deferred/loop_stack_builder.md)** (owner decision 2026-10-17): its trigger fired
+  2026-09-04 (#610's ninth hand-assembled loop stack), and the loop rebuild is where one builder replaces the nine.
 - **Riding with them:**
   - #863's loop wraps, #850, #845 item 1, and the rest of #1263;
   - the dispatch and credit issues [#1256](https://github.com/dennys246/Maxim/issues/1256), [#1145](https://github.com/dennys246/Maxim/issues/1145), [#1146](https://github.com/dennys246/Maxim/issues/1146), [#1147](https://github.com/dennys246/Maxim/issues/1147), [#1149](https://github.com/dennys246/Maxim/issues/1149), [#1054](https://github.com/dennys246/Maxim/issues/1054), [#1057](https://github.com/dennys246/Maxim/issues/1057), [#1202](https://github.com/dennys246/Maxim/issues/1202), [#1176](https://github.com/dennys246/Maxim/issues/1176), [#1177](https://github.com/dennys246/Maxim/issues/1177), [#1178](https://github.com/dennys246/Maxim/issues/1178), [#1211](https://github.com/dennys246/Maxim/issues/1211)

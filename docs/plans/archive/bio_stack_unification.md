@@ -1,6 +1,6 @@
 # Bio-Stack Unification — `build_bio_stack` umbrella
 
-**Status:** Builder + 4 site migrations committed. Pre-merge review next.
+**Status:** ARCHIVED (status corrected 2026-10-17; it read "Builder + 4 site migrations committed. Pre-merge review next."). The design shipped 2026-04-17; see §Shipped design.
 **Parent index:** [biosystem_unification.md](biosystem_unification.md)
 **Wave:** 3 of 4 (single PR, not parallel-safe with anything in the catalog).
 **Depends on:** ALL of [pain_bus_unification.md](pain_bus_unification.md), [reaction_bus_unification.md](reaction_bus_unification.md), [memory_hub_unification.md](memory_hub_unification.md), [default_network_unification.md](default_network_unification.md). Each must ship first; this plan composes them.

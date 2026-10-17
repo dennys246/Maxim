@@ -1,5 +1,7 @@
 # Node Security — Immediate Fixes + Deferred Config Unification
 
+> **Status 2026-10-17: TRIGGER FIRED by 0.5.0 (2026-04-19).** Phase 2's trigger, "Plan 4 operator visibility is fully shipped", fired when Plan 4's last stages (C3.4–C4.6) shipped in 0.5 (status line of [llm_path_operator_visibility.md](../archive/llm_path_operator_visibility.md)). Phase 2's main goal has since shipped elsewhere: PR #318 (config_unification, merged 2026-06-04) made `leader_mode.detect_role` a wrapper around `role.py`. What remains: `runtime/leader_mode.py` still accepts the legacy `"client"` role and `role.py::_emit_role_divergence_compat_event` still emits `role_divergence`, both marked "Drops in 1.2" in the code; and `docs/architecture/` has no formal auth-model doc. **Home: 1.3.3** (owner decision 2026-10-17), in `roadmap_1_3_x.md` §Path to 1.4.0.
+
 **Status:** Phase 1 ✅ SHIPPED (2026-04-13, folded into post-Plan-3 hotfixes on main). Phase 2 ⏳ DEFERRED until after Plan 4 Stage C.
 **Scope:** ~25 LOC immediate (shipped) + ~300 LOC deferred config unification
 **Target version:** Phase 1 shipped in 0.4. Phase 2 can target 0.4 or 0.5 depending on Stage C cadence.

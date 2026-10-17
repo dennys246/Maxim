@@ -1,5 +1,7 @@
 # Deferred — extract a shared `build_loop_stack()`
 
+> **Status 2026-10-17: TRIGGER FIRED 2026-09-04.** The next hand-assembled loop stack landed: `simulation/minecraft_harness.py` calls `run_agentic_loop(` with its own `MaximAgent`, `FileSystemEnv`, `RuntimeState`, `build_memory()` and `build_decision_engine()` (PR #610, 1.1.4). The list below counts `runtime/agent_factory.py`, which only names `run_agentic_loop` in its docstring; with the harness the count is 9 real call sites in 8 modules. **Home: 1.3.5** (owner decision 2026-10-17), in `roadmap_1_3_x.md` §Path to 1.4.0, beside the `run_agentic_loop` rebuild.
+
 **Status:** Deferred, drafted 2026-07-29. Surfaced by the Architecture lens during the talk-mode pre-merge review (PR #438) and confirmed by a call-site count during the session wrap.
 
 **Revive trigger:** the **next** time someone hand-assembles a loop stack — i.e. a 9th `run_agentic_loop(` call site, or a change that must be applied to more than two existing sites at once. Also revive if a bug is traced to one site having a component another site wires.
