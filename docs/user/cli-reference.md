@@ -532,3 +532,48 @@ maxim --show-last     # Show all saved runs
 ```bash
 maxim --clear-memory all
 ```
+
+### Quick reference (moved from CLAUDE.md in the 2026-10-16 diet)
+
+```bash
+# Quick start — interactive menu (no args needed)
+maxim                                        # Rich menu: campaigns, chat, doctor, help
+
+# Agent runtime
+maxim --llm mistral-7b                       # local LLM
+maxim --llm claude-sonnet                    # Claude (needs ANTHROPIC_API_KEY)
+
+# Model management
+maxim --list-models                          # show models + download status
+maxim --delete-model llama-2-13b-chat        # free disk space
+
+# Simulation (interactive mode ON by default for CLI with TTY)
+maxim --sim "test memory recall"             # generative campaign (interactive)
+maxim --sim interactive                      # interactive chat (full generative sim stack)
+maxim --sim scenarios/campaigns/heist_v1.yaml  # DM campaign
+maxim --sim "test safety" --research         # with research report
+maxim --sim benchmark --models mistral-7b,qwen2.5-14b      # benchmark
+maxim --sim scenarios/substrate/P0_paraphrase_collapse.yaml --seed 42  # fixture-driven
+# In-sim commands: /cancel /pause /resume /status /report /display clean|bio|debug
+# /new <goal> — arrow keys scroll the log; DM campaigns: type choice number/name, or free-text to roleplay
+
+# Non-interactive (for Claude Code, CI, scripting, or debugging)
+maxim --sim "test memory recall" --interactive false  # raw output, no Rich panel
+
+# Embodiment in sim — AUT gets SEM affordance tools + pain cascade
+maxim --sim "test sword combat" --embodiment weapons/rusty_sword
+maxim --sim cradle --embodiment bodies/infant_humanoid   # 4-act developmental sim
+
+# Asset Foundry / auto-curation
+maxim --foundry "cyberpunk weapons" --foundry-genre cyberpunk
+maxim --sim "test combat" --embodiment weapons/rusty_sword --auto-curate
+
+# Diagnostics + networking
+maxim doctor                                 # environment check
+maxim tunnel setup                           # Cloudflare tunnel
+maxim peer update && maxim peer restart      # remote update (auto-detects pip/git mode)
+maxim peer install semantic                  # install optional extra on leader
+
+# Tests
+python -m pytest tests/ -x -q -m "not slow" --ignore=tests/integration/test_memory_hub.py
+```
