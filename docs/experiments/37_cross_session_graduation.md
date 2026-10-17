@@ -1,5 +1,11 @@
 # Experiment 37: Cross-Session Behavioral Delta — Cradle Graduation
 
+> **Ledger: STALE since 2026-10-02, row T1-2** (the "prompt construction change" trigger fired with #1042). 1.3.2
+> shipped with the row STALE under the committed exception `release-1.3.2-T1-2`
+> (`docs/experiments/evidence_exceptions.json`), which covers that release only. The owed re-fire is L8's
+> dose-response design, baseline-floors Stage B4, scheduled before 1.4.0 (owner decision 2026-10-16). The
+> cross-model Goldilocks map below is citable only with L8's caveat: unverifiable, not refuted. [Ledger](../plans/behavioral_graduation_candidates.md).
+
 > **Status (2026-09-26): FIRED — PARTIAL (mixed)** — the "PRE-REGISTERED — implementation not
 > started" header below is stale and kept as recorded. Four local-model fires ran (Qwen14B
 > 2026-06-06, Qwen32B 2026-06-08, Mistral24B 2026-06-11, DeepSeek-R1-Distill-Qwen-32B 2026-06-13),

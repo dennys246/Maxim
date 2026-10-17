@@ -1,5 +1,11 @@
 # Exp 63: carried memory takes part in recall across sessions (pre-registered 2026-10-03)
 
+> **Outcome 2026-10-03 (run), ledger 2026-10-04: EARNED, narrow, row T1-16.** Carried memories take part in recall
+> across sessions, on the current goal-keyword ranker (one run, mistral-7b): the store reloaded exactly (84
+> memories), every resumed turn's surfaced set matched the shipped ranker, and carried memories surfaced on the first
+> resumed turn ([verdict](data/63_carried_recall/verdict.json), [rows](data/63_carried_recall/rows.jsonl)). Storage
+> into recall, not a behavioural claim. It supersedes Exp 10 (T1-1). [Ledger](../plans/behavioral_graduation_candidates.md).
+
 > The design review (confounding + bio-faithful lenses, `docs/experiments/DESIGN_REVIEW.md`, a derivative of Exp 10)
 > and its delta round are in [rationale/exp63-carried-recall/](rationale/exp63-carried-recall/); their findings are
 > folded below with the owner's decisions of 2026-10-03. This prereg lands on `main` before any harness code or data.

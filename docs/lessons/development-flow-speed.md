@@ -4,7 +4,8 @@
 time: M1a (sim `report.json` provenance, PR #999: "two-lens round 1, a security design review, then rounds
 2–6", per its body) and the #998 fix branch (four rounds as observed in the session). The bar did its
 job: every round found something real. The time went into finding the same class of problem one layer at
-a time, and into re-running a ~12-minute suite that each fold invalidated (two full runs were lost to
+a time, and into re-running a ~12-minute suite (as of 2026-09-29; by 2026-10-16 it was 15,427 tests and ~38 min
+serial under coverage in CI, [ci-efficiency-2026-10-16.md](ci-efficiency-2026-10-16.md)) that each fold invalidated (two full runs were lost to
 edits made mid-run -- a session observation). These practices keep every check and change the order
 and the plumbing around them.
 
@@ -41,21 +42,26 @@ this one and the four-lens design review.
 ## 2. A fold never invalidates a running suite
 
 **Do:**
-- Run the full suite on a **snapshot**: `scripts/suite_at_commit.sh` (below) checks a commit out into a
+- Run the full suite on a **snapshot**: `scripts/suite_at_commit.sh` ([how-to](../agents/ci-testing.md)) checks a commit out into a
   throwaway worktree and runs the suite there. Snapshot uncommitted tracked work with
   `scripts/suite_at_commit.sh "$(git stash create)"` (an unsigned commit object, no ref moved), or commit
   it. Keep folding in the working tree meanwhile. The result names the commit it tested -- that is all it
   proves: it is not evidence of which diff was REVIEWED.
 - **One full suite per fold batch, not per round.** Narrow tests plus deletion probes vet a fold. The last
   full suite runs on the exact commit being pushed.
+  *Note 2026-10-16:* the owner adopted an alternative: CI's green, non-cancelled `unit-tests` run on the PR's
+  head SHA counts as that final full-suite run. It takes effect only when mechanization backlog M64
+  (`scripts/pr_merge_readiness.py` asserts that run) lands; until then the rule above stands as written.
 - Narrow test runs alongside a snapshot suite share `~/.maxim`, ports and other global state, the same
   collision risk §3's xdist trial (M22) will measure; keep them small until that trial is recorded.
 - Never edit `src/` in a tree whose suite is running. (This cost two full runs in one session.)
 
 ## 3. Parallel test runs
 
-`pytest-xdist` is not installed. If the suite is xdist-safe, `-n auto` cuts the ~12-minute run several
-times over. Tests that share `~/.maxim`, ports or other global state may collide under xdist; a trial run
+`pytest-xdist` is installed (the `[test]` extra and CI's pip line; corrected 2026-10-16, this said "not
+installed") but no run uses it. If the suite is xdist-safe, `-n auto` cuts the run several times over: a
+2026-10-16 pre-trial sample of 4,544 tests went from 642 s serial to 138 s at `-n 6` with 0 failures, which is
+a measurement, not the trial. Tests that share `~/.maxim`, ports or other global state may collide under xdist; a trial run
 names them, and each is either isolated (a `tmp_path` home, a free port) or marked to run serially.
 Until that trial is recorded here, the serial run stays the reference. Backlog row M22.
 
@@ -109,24 +115,5 @@ Each of these cost a round or a red main once; most now have a check, and the re
 
 ## `scripts/suite_at_commit.sh`
 
-```bash
-scripts/suite_at_commit.sh                     # the suite + the coverage ratchet at HEAD, in a throwaway worktree
-scripts/suite_at_commit.sh <commit>            # ... at any commit
-scripts/suite_at_commit.sh --no-cov <commit>   # the suite only: quicker, NOT the pre-push check
-```
-
-It creates a uniquely named `.worktrees/suite-<sha>.XXXXXX` under the MAIN checkout (so concurrent runs on
-one commit never share or delete each other's tree), prunes stale worktree records first, runs the fast
-suite and `test_memory_hub.py` there with an absolute `PYTHONPATH` (so the installed package cannot shadow
-it), prints the commit next to the result, and removes the worktree. No `-x`, deliberately: the full
-failure list is worth more than the first. It tests a commit by design: untracked files are exactly what
-it keeps out of the run.
-
-**Since M47 (2026-10-11) it is also the coverage pre-check.** By default the fast suite runs with CI's exact
-measuring command and is followed by `scripts/lint_coverage.py --local`, so `PASSED` now also means the coverage
-ratchet passed. `--local` gates diff coverage (>= 80% of changed `src/maxim` lines) and the floors of the TOUCHED
-packages (changed `src` files, deletions and moves included, plus the packages the changed tests import); the overall
-floor, untouched packages and a PR's own floor-pin edits are printed as notes, because floors are measured in CI's
-environment. A touched floor breached within noise needs CI's number. The script checks the installed coverage
-version before the suite runs. #1201, #1213, #1232 and #1240 each failed CI on the ratchet because no local run
-measured coverage.
+The how-to (invocations, the throwaway worktree, and the M47 coverage pre-check) moved on 2026-10-16 to
+[docs/agents/ci-testing.md](../agents/ci-testing.md) §4.

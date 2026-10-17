@@ -1,5 +1,10 @@
 # Exp 62 (DRAFT v2.1, 2026-09-18 — owner decisions D1–D4 TAKEN; four-lens design review FOLDED) — cross-context transfer of the drowning-fear BY THE BODY: what the shipped survival body already carries across pools, the context wall it does not cross, and why a pressure sensor is not the lever
 
+> **Ledger 2026-10-15: PARTIAL (rung A: floor matched, analytical), row T1-15.** As for Exp 61, applied after
+> [B1](b1_exp60_floor_prereg.md) without a rig run (#1294, #1296). Its different-reader pass is still unrecorded (#916). The rung-A
+> contrast stands; behaviour beyond a non-bio learner does not. **The "DRAFT v2.1" status line below is stale: v3
+> is the frozen version** (§Status 2026-09-20, "this v3 IS the freeze"). [Ledger](../plans/behavioral_graduation_candidates.md).
+
 > **STATUS: DRAFT v2.1 (owner decisions D1–D4 TAKEN 2026-09-18: pool 2 at y 95; n 12/12/3; rung A RUNS; the pressure drive deferred with its 1.4 path recorded) — v1 (the pressure-interoception claim) went to the full four-lens design review
 > on 2026-09-17; all four lenses returned DO-NOT-BUILD as drafted, and all four ran the SAME offline
 > replay independently on the committed pool-1 vectors and got the same grid (reports preserved under

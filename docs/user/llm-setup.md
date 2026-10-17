@@ -451,9 +451,14 @@ Probe results are cached at `~/.maxim/util/last_probe_status.json` for 60 second
 
 ### Leader mode (Phase 6b) — be the cluster's inference host
 
-Leader mode changes the bind address of the auto-spawned server from `127.0.0.1`
-(loopback only) to `0.0.0.0` (LAN + tunnel reachable). The Maxim instance keeps
-running its own CLI + agent loop — it just also serves peers.
+Leader mode adds the **LeaderProxy on `:8099`** (LAN + tunnel reachable, every route requires the mesh key) in
+front of the auto-spawned llama-cpp-server, which **always listens on `127.0.0.1:8100`**. The proxy is the leader's
+one network entry point. The Maxim instance keeps running its own CLI + agent loop — it just also serves peers.
+
+**A leader needs a usable key** at `~/.config/maxim/api_key`: present, long enough, readable only by you
+(`chmod 600`). Without one it refuses to start (exit 2) and names the fix (`maxim tunnel key rotate`). Since 1.3.2
+([GHSA-7qh4-mp34-88v9](https://github.com/dennys246/Maxim/security/advisories/GHSA-7qh4-mp34-88v9)) the default role
+is `solo`; a leader is never chosen by default.
 
 **You become a leader automatically if:**
 
@@ -466,14 +471,14 @@ Other valid roles:
 
 | `MAXIM_ROLE` | Bind | Use |
 |---|---|---|
-| `leader` | `0.0.0.0` | Host for peers (home PC, desktop with GPU) |
+| `leader` | LeaderProxy `0.0.0.0:8099` (key required); server `127.0.0.1:8100` | Host for peers (home PC, desktop with GPU) |
 | `peer` | `127.0.0.1` | Follower — pairs with `MAXIM_LANE_LARGE_REMOTE_URL` |
 | `solo` | `127.0.0.1` | Single-machine default (no peers) |
 
 **Setting up a home leader:**
 
 1. Install cloudflared + configure tunnel (see next section) — or skip and just use LAN IP
-2. Run `maxim` — auto-spawn detects cloudflared, promotes to leader, binds `0.0.0.0`
+2. Make sure the key exists and is private (`maxim tunnel key rotate`, `chmod 600 ~/.config/maxim/api_key`), then run `maxim` — auto-spawn detects cloudflared, promotes to leader, and starts the LeaderProxy on `:8099`
 3. On a peer machine: `MAXIM_LANE_LARGE_REMOTE_URL=https://maxim-llm.yourdomain.com/v1 maxim`
 
 The leader's Maxim still runs locally too — both your home CLI and the laptop CLI hit the same GPU.
@@ -549,7 +554,8 @@ export MAXIM_LANE_LARGE_REMOTE_URL=http://192.168.1.10:8099/v1
 export MAXIM_LANE_LARGE_REMOTE_MODEL=qwen2.5-32b-instruct
 export MAXIM_LANE_LARGE_TIMEOUT_S=300
 
-# Medium tier → faster 7B model on the same server (different port)
+# Medium tier → faster 7B model on the same server, run separately on its own port (a server maxim spawns listens
+# on loopback only, so this must be one you started yourself with its own key, or reached through the LeaderProxy)
 export MAXIM_LANE_MEDIUM_REMOTE_URL=http://192.168.1.10:8101/v1
 export MAXIM_LANE_MEDIUM_REMOTE_MODEL=mistral-7b-instruct-v0.2
 export MAXIM_LANE_MEDIUM_TIMEOUT_S=60
@@ -783,9 +789,8 @@ so the spawned server picks up the new key.
 **Leader's own client:** auto-reads the key file — no shell config needed on
 the leader machine.
 
-**Solo mode (no tunnel):** localhost bind + no `MAXIM_ROLE=leader` = no auth
-required. The API key is only enforced when the spawner runs in leader mode
-(binds `0.0.0.0`).
+**Solo mode (no tunnel):** localhost bind, no auth required. A **leader** cannot start without a usable key, and
+every LeaderProxy route requires it, including `/v1/debug/*` from loopback.
 
 The `maxim tunnel status` command shows what's configured at any time:
 

@@ -156,7 +156,33 @@ maxim config set lanes.large.remote_api_key_ref ~/.config/maxim/api_key
 
 ## What requires manual action
 
-Nothing today. The 1.0 upgrade is designed to be a no-op for users with existing state.
+### 1.3.1 → 1.3.2: a leader fails closed
+
+1.3.2 fixes security advisory
+[GHSA-7qh4-mp34-88v9](https://github.com/dennys246/Maxim/security/advisories/GHSA-7qh4-mp34-88v9). Upgrade each
+leader **on its own machine, with a cold restart**. Do **not** use `maxim peer update && maxim peer restart` for this
+upgrade: the restart re-executes with the old process's environment, and a leader whose key is missing or too
+open now exits with code 2, leaving no remote way back.
+
+On each leader:
+1. Upgrade (`pip install --upgrade pymaxim`, or pull your checkout), then run `maxim doctor` before starting it.
+2. If it was a leader only by default (no `MAXIM_ROLE`, `config.json::role` or cloudflared config):
+   `maxim config set role leader`. The default role is now `solo`.
+3. If it has no mesh key: `maxim tunnel key rotate`, then `maxim peer key set <key>` on each peer.
+4. If the key file is readable by group or others: `chmod 600 ~/.config/maxim/api_key`.
+5. To keep `maxim peer update|install|restart|llm`: `maxim config set proxy.allow_remote_update true`. The old
+   `MAXIM_ALLOW_REMOTE_UPDATE` is ignored. This writes `config.json` format 1.3, which 1.3.1 cannot rewrite
+   (`maxim config downgrade` is the way back).
+6. Stop the old process and start the leader again.
+
+On each peer: a direct `http://<leader>:8100` URL moves to `:8099`, the LeaderProxy. The leader's llama-cpp-server
+now listens on `127.0.0.1` only.
+
+From 1.3.2 on, `maxim peer update && maxim peer restart` works again between leaders that have opted in.
+
+### Earlier upgrades
+
+The 1.0 upgrade is designed to be a no-op for users with existing state.
 
 If a future minor release (1.1+) introduces a structural change a previous build cannot read cleanly, that release will:
 

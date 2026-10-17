@@ -63,7 +63,7 @@ Use this section to answer "what does this instance actually think it's configur
 **"Nothing responding at port 8100":**
 - Expected if you haven't started `maxim` yet — auto-spawn only fires during `maxim` startup
 - If `maxim` is running but port is dead: check for port conflicts (`lsof -i :8100`)
-- Manual start: `python -m llama_cpp.server --model <path.gguf> --port 8100`
+- Manual start: `python -m llama_cpp.server --model <path.gguf> --host 127.0.0.1 --port 8100` (on a leader, pass the key in the environment, never on the command line; see [peer_diagnosis_runbook.md](peer_diagnosis_runbook.md))
 
 ### Role & Access
 
@@ -74,7 +74,7 @@ Use this section to answer "what does this instance actually think it's configur
 
 **Roles explained:**
 - **solo** (default): binds to `127.0.0.1`, only local access
-- **leader**: binds to `0.0.0.0`, accepts peer connections + starts tunnel
+- **leader**: the LeaderProxy on `:8099` binds the LAN and requires the key; the llama-cpp-server stays on `127.0.0.1:8100`; starts the tunnel. Needs a usable key or it refuses to start (exit 2). Never the default since 1.3.2
 - **peer**: uses a remote leader for inference
 
 ### Tunnel (Cloudflare)
@@ -113,7 +113,7 @@ cloudflared --config ~/.cloudflared/config.yml tunnel run
 
 **"No key set":**
 - Fine for localhost-only use (solo mode)
-- Required before exposing via LAN or tunnel:
+- A **leader** without a usable key refuses to start (exit 2). Create one first:
 ```bash
 maxim tunnel key rotate     # generate a key
 maxim tunnel key export     # print export commands for peers

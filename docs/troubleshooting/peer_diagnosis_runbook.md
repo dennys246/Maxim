@@ -22,7 +22,7 @@ You need all of these green before peer diagnosis makes sense:
 |---|---|
 | GPU / CUDA | ✓ (any GPU visible) |
 | Auto-spawn server responding | ✓ (port 8100 alive) |
-| Role: leader | ✓ (bind=0.0.0.0) |
+| Role: leader | ✓ (bind=0.0.0.0: the LeaderProxy on :8099; the llama server stays on 127.0.0.1:8100) |
 | cloudflared installed | ✓ |
 | Tunnel config present | ✓ |
 | API key set | ✓ |
@@ -133,7 +133,7 @@ curl -I https://maxim.yourdomain.com/v1/models
 |---|---|---|
 | `401 Unauthorized` | Edge forwarded to origin, auth rejected | Good — edge works. Jump to Rung 4 (auth) |
 | `405 Method Not Allowed` + `allow: GET` | Edge forwarded to origin, uvicorn responded | Edge + origin alive. Jump to Rung 4 (auth with GET) |
-| `502 Bad Gateway` | Edge forwarded, but origin is down | Leader's port 8100 isn't listening. Start `maxim` on leader |
+| `502 Bad Gateway` | Edge forwarded, but origin is down | The LeaderProxy on :8099 isn't listening (the tunnel's origin). Start `maxim` on the leader |
 | `403 Forbidden` | Cloudflare blocked before reaching tunnel | See §Common failures: "403 from Cloudflare" below |
 | `Connection refused` / DNS error | Can't reach Cloudflare | Back to Rung 1 (DNS) or check network/firewall on peer |
 
@@ -156,7 +156,7 @@ curl -v -H "Authorization: Bearer <key>" https://maxim.yourdomain.com/v1/models
 ```
 DBG GET https://maxim.yourdomain.com/v1/models HTTP/1.1 connIndex=2
     headers={"Authorization":["Bearer ..."],"Cf-Connecting-Ip":["<peer-ip>"],...}
-    originService=http://localhost:8100
+    originService=http://localhost:8099
 DBG 200 OK connIndex=2 content-length=138
 ```
 
@@ -164,7 +164,7 @@ DBG 200 OK connIndex=2 content-length=138
 - The 403 is from Cloudflare's edge layer (WAF / Access policy / Bot Fight Mode)
 - Check Cloudflare dashboard → Security → WAF / Bot Fight Mode / Access Applications
 
-**If you see the request + `ERR connection refused` →** port 8100 isn't listening:
+**If you see the request + `ERR connection refused` →** port 8099 (the LeaderProxy, the tunnel's origin) isn't listening:
 - Start `maxim` on the leader
 - Or start the server manually, the way maxim does (loopback only, key in the env, never argv): `API_KEY="$(cat ~/.config/maxim/api_key)" python -m llama_cpp.server --model ~/.maxim/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf --n_gpu_layers -1 --host 127.0.0.1 --port 8100 --n_ctx 8192`. Peers reach it through the LeaderProxy (:8099), never :8100 directly.
 

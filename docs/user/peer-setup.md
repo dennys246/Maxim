@@ -117,7 +117,7 @@ ps aux | grep cloudflared | grep -v grep
 curl -sI -H "Authorization: Bearer $(cat ~/.config/maxim/api_key)" http://127.0.0.1:8099/v1/debug/status
 
 # 4. Does the inference server respond directly?
-curl -sI http://127.0.0.1:8100/v1/models
+curl -sI -H "Authorization: Bearer $(cat ~/.config/maxim/api_key)" http://127.0.0.1:8100/v1/models
 
 # 4. What does doctor say?
 maxim doctor
@@ -338,13 +338,21 @@ Then re-run `nvidia-smi` on the leader during a sim and confirm GPU utilization 
 
 Leaders automatically enable remote updates — peers can trigger `git pull + pip install` without SSH:
 
+
+> **Upgrading a leader from 1.3.1 or earlier to 1.3.2: do it ON the leader, not with this command.** 1.3.2 fixes
+> [GHSA-7qh4-mp34-88v9](https://github.com/dennys246/Maxim/security/advisories/GHSA-7qh4-mp34-88v9): a remote
+> `peer restart` re-executes with the old environment, and a leader whose key is missing or too open now exits 2
+> with no remote way back. Follow [upgrading.md](upgrading.md#131--132-a-leader-fails-closed) on the leader,
+> then cold-restart it. Between 1.3.2+ leaders that have opted in (`maxim config set proxy.allow_remote_update
+> true`), remote update works as below.
+
 ```bash
 # From any peer:
 maxim peer update              # pull + install (auto-detects pip or git mode)
 maxim peer update --dry-run    # preview only, no change
 maxim peer update --dev        # force git mode (origin/main)
 maxim peer update --dev feat/foo  # force git mode (specific branch)
-maxim peer update --version 0.3.1  # pin a specific PyPI version
+maxim peer update --version 1.3.2  # pin a specific PyPI version
 ```
 
 The leader must restart `maxim` after an update to load new code. Remote update is **off by default** (since 2026-10-14): opt in on the leader with `maxim config set proxy.allow_remote_update true` (or `MAXIM_PROXY_ALLOW_REMOTE_UPDATE=1`) and restart it. The same opt-in gates `peer install`, `peer restart` and `peer llm <model>`, and dry runs. The routes also require the leader to authenticate with a key.
