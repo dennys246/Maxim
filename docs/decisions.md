@@ -91,7 +91,7 @@ config = NACConfig(
     min_confidence_threshold=0.3,        # Min confidence for predictions
     decay_interval_hours=24.0,           # Decay unused links
     context_similarity_threshold=0.5,    # Min context match
-    temporal_window_seconds=300.0,       # Max event-outcome delay
+    temporal_window_seconds=300.0,       # Max event-outcome delay (wall seconds today; experience time after S3b)
     base_learning_rate=0.2,              # Rescorla-Wagner α
     enable_hippocampus_queries=True,     # Query memory for similar cases
 )
@@ -314,8 +314,9 @@ credited = nac.distribute_reward("agent-1", reward=1.0)
 Reward biases and eligibility traces decay over time to prevent runaway recognition widening.
 
 ```python
+# Decay timing: docs/plans/experience_clock_decay.md (S0 corrected "per tick" to per loop pass)
 nac.decay_reward_biases()  # Exponential decay with tau from config
-nac.decay_eligibility(factor=0.9)  # Per-tick decay
+nac.decay_eligibility(factor=0.9)  # Per loop pass today; experience time after S3a
 ```
 
 ### Configuration
@@ -323,7 +324,7 @@ nac.decay_eligibility(factor=0.9)  # Per-tick decay
 ```python
 config = NACConfig(
     reward_bias_alpha=0.15,      # How much each reward strengthens bias
-    reward_bias_decay_tau=50.0,  # Decay timescale (ticks)
+    reward_bias_decay_tau=50.0,  # Decay timescale (per decaying loop pass today; experience time after S3a)
     max_reward_bias=0.20,        # Cap on threshold reduction
 )
 ```
