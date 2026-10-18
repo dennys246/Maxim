@@ -130,8 +130,9 @@ class TestNAcRoundTrip:
     def test_reward_bias_round_trips(self):
         """P2 Stage 2 shipped reward_bias persistence; verify it survives."""
         nac = NAc(NACConfig())
-        nac._reward_bias[("agent1", "node_a")] = 0.5
-        nac._reward_bias[("agent2", "node_b")] = -0.25
+        # In range: load_state clamps to [0, max_reward_bias] and drops a non-positive bias (#1102).
+        nac._reward_bias[("agent1", "node_a")] = 0.15
+        nac._reward_bias[("agent2", "node_b")] = 0.05
         dumped = nac.dump()
         restored = NAc(NACConfig())
         restored.load_state(dumped)

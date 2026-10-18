@@ -33,7 +33,7 @@ def _populated_nac(path: str) -> NAc:
     nac.observe("tool_call", "tool_a", "result", "success", Valence.POSITIVE, 0.5, context={"agent_id": "a1"})
     with nac._lock:
         nac._reward_bias[("a1", "node_1")] = 0.2
-        nac._goal_reward_bias["find warmth"] = 0.4
+        nac._goal_reward_bias["find warmth"] = 0.15  # within +-max_reward_bias (#1102)
         nac._percept_valences[("a1", "dragon", "burn")] = -0.5
         nac._cluster_reward_bias[("a1", "cluster_1", "tool:warm")] = 0.8
     return nac
@@ -147,7 +147,7 @@ class TestOfflineDecayOptIn:
         # slow surfaces: half-life 7 days → factor 0.5^(1/7) ≈ 0.906
         slow = 0.5 ** (1.0 / 7.0)
         assert nac2._reward_bias[("a1", "node_1")] == pytest.approx(0.2 * slow, rel=0.02)
-        assert nac2._goal_reward_bias["find warmth"] == pytest.approx(0.4 * slow, rel=0.02)
+        assert nac2._goal_reward_bias["find warmth"] == pytest.approx(0.15 * slow, rel=0.02)
         assert nac2.get_percept_valence("dragon", "burn", agent_id="a1") == pytest.approx(-0.5 * slow, rel=0.02)
 
     def test_six_month_gap_prunes_biases_but_keeps_links(self, tmp_path):

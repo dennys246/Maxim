@@ -93,7 +93,7 @@ def test_load_drops_non_finite_stored_values(tmp_path, caplog):
         path,
         {
             "reward_bias": {"a1:n_nan": math.nan, "a1:n_inf": math.inf, "a1:n_ok": 0.2},
-            "goal_reward_bias": {"g_nan": math.nan, "g_ok": 0.3},
+            "goal_reward_bias": {"g_nan": math.nan, "g_ok": 0.15},  # in range: #1102 clamps to +-max_reward_bias
             "cluster_reward_bias": {f"a1{sep}c1{sep}tool:x": math.nan, f"a1{sep}c2{sep}tool:x": 0.4},
             "inherent_bias_keys": [f"a1{sep}c1{sep}tool:x"],
             "percept_valences": {f"a1{sep}dragon{sep}burn": -math.inf, f"a1{sep}fire{sep}burn": -0.1},
@@ -106,7 +106,7 @@ def test_load_drops_non_finite_stored_values(tmp_path, caplog):
         nac.load(str(path))  # no offline decay by default (owner decision 2026-10-17)
 
     assert nac._reward_bias == {("a1", "n_ok"): 0.2}
-    assert nac._goal_reward_bias == {"g_ok": 0.3}
+    assert nac._goal_reward_bias == {"g_ok": 0.15}
     assert nac._cluster_reward_bias == {("a1", "c2", "tool:x"): 0.4}
     assert nac.inherent_bias_keys == frozenset()  # its bias was dropped: no dangling marker
     assert nac._percept_valences == {("a1", "fire", "burn"): -0.1}
@@ -265,10 +265,10 @@ def test_agent_id_with_colon_is_refused(entry):
 @pytest.mark.single_agent_only
 def test_legacy_reward_bias_file_loads(tmp_path):
     path = tmp_path / "nac.json"
-    path.write_text(json.dumps({"_format_version": "1.0", "reward_bias": {"a1:tool:x": 0.3, "a1:n1": 0.1}}))
+    path.write_text(json.dumps({"_format_version": "1.0", "reward_bias": {"a1:tool:x": 0.15, "a1:n1": 0.1}}))
     nac = NAc()
     nac.load(str(path))
-    assert nac._reward_bias == {("a1", "tool:x"): 0.3, ("a1", "n1"): 0.1}
+    assert nac._reward_bias == {("a1", "tool:x"): 0.15, ("a1", "n1"): 0.1}
 
 
 # ── 6. version drift ────────────────────────────────────────────────────────

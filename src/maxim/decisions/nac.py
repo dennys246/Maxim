@@ -186,6 +186,20 @@ def _count_non_finite(value: float, surface: str, counts: dict[str, int]) -> boo
     return True
 
 
+def _clamp_loaded(value: float, bounds: tuple[float, float], surface: str, counts: dict[str, int]) -> float:
+    """A LOADED finite value clamped to its NAc writer's ``bounds`` (#1102); ``counts[surface]`` += 1 if it moved.
+
+    Not every producer of a stored map clamps: ``hivemind.merge.nac_merge_many`` folds ``reward_bias`` with no upper
+    cap and ``goal_reward_bias`` with no clamp (docs/bugs D85), and a file saved under a higher config cap exceeds a
+    default one. This is where such a value is caught on reload.
+    """
+    lo, hi = bounds
+    clamped = max(lo, min(value, hi))
+    if clamped != value:
+        counts[surface] = counts.get(surface, 0) + 1
+    return clamped
+
+
 def _require_reward_bias_agent_id(agent_id: str, *, op: str) -> None:
     """Refuse an ``agent_id`` containing ``:`` on the ``(agent_id, node_id)`` surfaces.
 
@@ -3841,7 +3855,13 @@ class NAc(StoreFileOwnership):
         # and counted: NaN is never pruned (``nan < 0.001`` is False) and the
         # clamps turn it into the cap. Disk data, so drop + one warning below,
         # where a live caller passing one raises (``_require_finite``).
+        # A finite value outside its live writer's range is CLAMPED to it and
+        # counted (#1102): a pre-clamp, hand-edited or corrupt file otherwise
+        # loads a negative ``reward_bias`` (an invariant the #910 annotators
+        # rely on) or an above-cap bias. ``_load_bounds`` is the one table.
         non_finite: dict[str, int] = {}
+        out_of_range: dict[str, int] = {}
+        bounds = self._load_bounds()
         self._reward_bias = {}
         for key_str, bias in state.get("reward_bias", {}).items():
             # First ':' — agent ids cannot hold one (_require_reward_bias_agent_id); node ids can.
@@ -3854,7 +3874,9 @@ class NAc(StoreFileOwnership):
                 continue
             if _count_non_finite(value, "reward_bias", non_finite):
                 continue
-            self._reward_bias[(parts[0], parts[1])] = value
+            value = _clamp_loaded(value, bounds["reward_bias"], "reward_bias", out_of_range)
+            if value > 0.0:  # zero is absent, as credit_node leaves it
+                self._reward_bias[(parts[0], parts[1])] = value
 
         # Goal-level reward biases (backward-compatible: missing → empty)
         self._goal_reward_bias = {}
@@ -3864,7 +3886,9 @@ class NAc(StoreFileOwnership):
             except (TypeError, ValueError):
                 continue
             if not _count_non_finite(value, "goal_reward_bias", non_finite):
-                self._goal_reward_bias[goal] = value
+                self._goal_reward_bias[goal] = _clamp_loaded(
+                    value, bounds["goal_reward_bias"], "goal_reward_bias", out_of_range
+                )
 
         # G4: cluster-keyed reward biases. Missing field → empty dict
         # (backward-compatible: every aut_nac.json written before G4
@@ -3880,7 +3904,9 @@ class NAc(StoreFileOwnership):
             except (TypeError, ValueError):
                 continue
             if not _count_non_finite(value, "cluster_reward_bias", non_finite):
-                self._cluster_reward_bias[(parts[0], parts[1], parts[2])] = value
+                self._cluster_reward_bias[(parts[0], parts[1], parts[2])] = _clamp_loaded(
+                    value, bounds["cluster_reward_bias"], "cluster_reward_bias", out_of_range
+                )
 
         # 1.2 inherent-class marker. Missing field → empty (pre-1.2 files).
         # Only markers whose bias actually loaded are kept — a marker naming
@@ -3924,7 +3950,9 @@ class NAc(StoreFileOwnership):
             except (TypeError, ValueError):
                 continue
             if not _count_non_finite(value, "percept_valences", non_finite):
-                self._percept_valences[(parts[0], parts[1], parts[2])] = value
+                self._percept_valences[(parts[0], parts[1], parts[2])] = _clamp_loaded(
+                    value, bounds["percept_valences"], "percept_valences", out_of_range
+                )
 
         # Wire 4 (Exp 58): situation-keyed fear. Missing field → empty
         # (backward-compat: pre-1.4 payloads). Loaded values are re-clamped
@@ -3941,7 +3969,9 @@ class NAc(StoreFileOwnership):
                 continue
             if _count_non_finite(v, "cluster_fear", non_finite):
                 continue  # before the clamp, which reads NaN / -inf as the deepest fear
-            self._cluster_fear[(parts[0], parts[1], parts[2])] = max(-self.config.max_cluster_fear, min(v, 0.0))
+            self._cluster_fear[(parts[0], parts[1], parts[2])] = _clamp_loaded(
+                v, bounds["cluster_fear"], "cluster_fear", out_of_range
+            )
 
         # Wire 1 (release_0_9_1.md Stage 4): per-(agent_id, event_signature)
         # Welford state. Missing field → empty dict (backward-compat: any
@@ -3971,6 +4001,28 @@ class NAc(StoreFileOwnership):
                 del self._event_outcome_welford[(parts[0], parts[1])]
         if non_finite:
             logger.warning("NAc load dropped non-finite stored values (NaN/inf): %s", non_finite)
+        if out_of_range:
+            logger.warning("NAc load clamped stored values out of range to their writers' bounds: %s", out_of_range)
+
+    def _load_bounds(self) -> dict[str, tuple[float, float]]:
+        """Each restored bias map's range: the clamp its NAc writer applies (#1102). Behaviour tier: invariant.
+
+        ``load_state`` reads this one table, so a restored value lands where repeated live NAc credit saturates
+        (pinned by ``test_nac_load_clamp_1102.py::test_load_bounds_equal_what_the_live_writers_saturate_at``).
+        The NAc writers clamp; not every producer of a stored map does. ``hivemind.merge.nac_merge_many`` folds
+        ``reward_bias`` with no upper cap and ``goal_reward_bias`` with no clamp (docs/bugs D85, open), and
+        ``nac_merge`` clamps to its own default caps, not this NAc's config. The load clamp catches both on reload.
+        Only ``reward_bias`` drops a value at 0 ("zero is absent", as ``credit_node`` does); a positive fear
+        clamps to a KEPT 0.0, as ``record_cluster_fear`` keeps one.
+        """
+        c = self.config
+        return {
+            "reward_bias": (0.0, c.max_reward_bias),  # credit_node; a 0 is dropped (zero is absent)
+            "goal_reward_bias": (-c.max_reward_bias, c.max_reward_bias),  # credit_goal
+            "cluster_reward_bias": (-c.max_cluster_reward_bias, c.max_cluster_reward_bias),  # update_cluster_reward
+            "percept_valences": (-c.max_percept_valence, c.max_percept_valence),  # record_percept_valence
+            "cluster_fear": (-c.max_cluster_fear, 0.0),  # record_cluster_fear
+        }
 
     def apply_wall_clock_decay(self, elapsed_s: float) -> dict[str, int]:
         """Age the bias surfaces by elapsed wall-clock seconds.
@@ -4124,7 +4176,7 @@ class NAc(StoreFileOwnership):
         # package root changes the mypy ratchet's import graph and surfaces a real, pre-existing error in
         # runtime/bootstrap.py::build_default_network: `Incompatible types in assignment (expression has type
         # "None", variable has type "DNConfig")` (``dn_config = None`` in its no-YAML branch). Tracked for
-        # Session V (bootstrap.py dn_config typing); switch to the static import once that annotation is fixed.
+        # Session V as #1377 (bootstrap.py dn_config typing); switch to the static import once #1377 is fixed.
         version = str(getattr(importlib.import_module("maxim"), "__version__", ""))
         if _version_series(version) >= (1, 5):
             raise TypeError(

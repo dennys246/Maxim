@@ -67,6 +67,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`NAc.load_state` clamps every restored bias map to its live writer's range** ([#1102](https://github.com/dennys246/Maxim/issues/1102)).
+  Every writer clamped, but the load path restored `reward_bias`, `goal_reward_bias`, `cluster_reward_bias` and
+  `percept_valences` with `float()` only, so a pre-clamp, hand-edited or corrupt `nac.json` (and `load(apply_decay=False)`
+  or a file with no `saved_at`) loaded a negative `reward_bias` or an above-cap value that lasted until a decay tick.
+  One table, `NAc._load_bounds`, now gives each map its writer's range (`[0, max_reward_bias]`, `±max_reward_bias`,
+  `±max_cluster_reward_bias`, `±max_percept_valence`, `[-max_cluster_fear, 0]`, fear's existing clamp folded in), a
+  `reward_bias` that clamps to 0 is dropped as `credit_node` drops it, and the clamped values are counted in one
+  WARNING beside the non-finite drop. Behaviour tier: invariant. Values that now load clamped, with the WARNING: a
+  state folded by `hivemind.merge.nac_merge_many` (it caps neither `reward_bias` above nor `goal_reward_bias` at all,
+  docs/bugs D85, still open), an ingested `reward_bias` above `max_reward_bias` (ingest admits up to 1.0) that reached
+  a file without passing `nac_merge`, and a file saved under a higher cap through `create.nac(**config_kw)` and
+  loaded under a lower one. `nac_merge` clamps to its own default caps, not the receiver's `NACConfig` (unchanged);
+  the load clamp is what applies the receiver's. A file written before #746 that holds `reward_bias` 0.0 keys now
+  loads without them, which is harmless: a missing key reads 0.0. "Zero is absent" holds only for `reward_bias`, as
+  in the writers: a loaded positive fear clamps to a kept 0.0 key. In-range state round-trips unchanged. Guard:
+  `tests/unit/test_nac_load_clamp_1102.py`.
 - **The SCN's coupled oscillator observes each tool outcome once, not twice** (NAc credit path, A2). With a
   temporal-credit distributor wired, `ToolPainBridge`'s persistent signature-keyed SCN entry and the distributor's
   per-event entry both called `SCN.register`, and each fed the oscillator. The bridge's entry now passes the new
