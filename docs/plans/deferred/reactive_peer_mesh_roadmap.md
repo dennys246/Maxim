@@ -2,15 +2,16 @@
 
 
 > **DEFERRED 2026-09-19** (plans audit at the 1.3.0 release; README §Rules: a deferred plan states its revive trigger). **Revive when:** the console/UI line is scheduled into a release. The design below is unchanged and is not being worked on until then.
+> **Status 2026-10-17: the old trigger fired with 1.3.2 and was not pursued (owner).** **Revive when:** a second peer-mesh consumer (beyond the console) is scheduled into a release.
 **Status:** Living roadmap, drafted 2026-04-15.
 **Scope:** Tracks the full arc from "operator manually drives the mesh" to "fully reactive peer mesh." Cross-cuts several active and deferred plans rather than replacing them — this is the index that ties them together.
 **Target versions:** 0.4 → 0.7 (mesh ship). 1.0 banner is cross-session learning, separate from mesh.
 **Maintained alongside:**
-- [archive/llm_path_operator_visibility.md](archive/llm_path_operator_visibility.md) — Plan 4 (ALL SHIPPED). The Plan 4 work feeds this roadmap; this doc is the index.
-- [llm_path_refinement.md](archive/llm_path_refinement.md) — Plan 1-3.6 ancestor.
-- [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md) — Stage C5.
-- [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) — feeds C5.
-- [node_security_simplification.md](deferred/node_security_simplification.md) — feeds C7.
+- [archive/llm_path_operator_visibility.md](../archive/llm_path_operator_visibility.md) — Plan 4 (ALL SHIPPED). The Plan 4 work feeds this roadmap; this doc is the index.
+- [llm_path_refinement.md](../archive/llm_path_refinement.md) — Plan 1-3.6 ancestor.
+- [deferred/llm_mesh_capability_aware.md](../deferred/llm_mesh_capability_aware.md) — Stage C5.
+- [deferred/llm_path_multi_peer_dispatch.md](../deferred/llm_path_multi_peer_dispatch.md) — feeds C5.
+- [node_security_simplification.md](../deferred/node_security_simplification.md) — feeds C7.
 
 ---
 
@@ -32,15 +33,15 @@ By that definition we are at roughly 40%. The skeleton is solid (mesh.yml schema
 
 | Layer | What's in main | Where | Plan |
 |---|---|---|---|
-| Routing fallback | Provider failover, typed `BackendError` dispatch, `dispatch_exhausted` aggregated WARN, recovery measured at 58.68s p99 | [router.py](../../src/maxim/models/language/router.py) | 3 + 3.5 + 4 A/B |
-| Topology (declarative) | `mesh.yml` schema, FROZEN parser, `MeshConfig` dataclass with `__post_init__` validation | [mesh_config.py](../../src/maxim/peer/mesh_config.py) | 4 C1 |
-| Topology (operator verbs) | `init-mesh`, `add-node`, `remove-node` — strict CI grep allow-list enforces single writer module | [mesh_setup.py](../../src/maxim/peer/mesh_setup.py) | 4 C3.1 + C3.2 |
-| Mesh-aware install | `--node <name> install <extras>` composing drain → install → resume, shared `install_on_target` core, atomic `drain_node_if_absent` primitive, exit-code-3 post-install-resume-failure | [install_core.py](../../src/maxim/peer/install_core.py), [mesh_cli.py](../../src/maxim/peer/mesh_cli.py) | 4 C3.3 |
-| State layer (drain) | `drain` / `resume` / `list-drained` + atomic `drain_node_if_absent`, `filelock` RMW, role-scoped, `atomic_write_secret` pattern | [drain_state.py](../../src/maxim/peer/drain_state.py) | 4 C2 + C3.3 |
-| Probe + classification | `_MaximPeerBackend.health_check` + `for_url`, single shared `classify_probe_outcome` | [maxim_peer_backend.py](../../src/maxim/models/language/maxim_peer_backend.py), [probe_classify.py](../../src/maxim/peer/probe_classify.py) | 3 R2.5/R2.6 + 4 C1 |
-| Observability (doctor) | `check_mesh_nodes` (with drain awareness), `check_vram_pressure`, agent_id binding, per-node `status` / `health` | [doctor/checks.py](../../src/maxim/doctor/checks.py) | 3.6 R5 + 4 A + 4 C1 |
-| Observability (logs) | Structured JSONL via `MAXIM_LOG_FILE`, per-call `peer_backend_call` trace, `role_detected` event | [utils/http.py](../../src/maxim/utils/http.py) | 1 R1 + 2 R2a + 3 R2.5 |
-| Bench harness | `maxim bench recovery-time` measures fail-slow → fail-fast deltas | [bench/](../../src/maxim/bench/) | 4 B |
+| Routing fallback | Provider failover, typed `BackendError` dispatch, `dispatch_exhausted` aggregated WARN, recovery measured at 58.68s p99 | [router.py](../../../src/maxim/models/language/router.py) | 3 + 3.5 + 4 A/B |
+| Topology (declarative) | `mesh.yml` schema, FROZEN parser, `MeshConfig` dataclass with `__post_init__` validation | [mesh_config.py](../../../src/maxim/peer/mesh_config.py) | 4 C1 |
+| Topology (operator verbs) | `init-mesh`, `add-node`, `remove-node` — strict CI grep allow-list enforces single writer module | [mesh_setup.py](../../../src/maxim/peer/mesh_setup.py) | 4 C3.1 + C3.2 |
+| Mesh-aware install | `--node <name> install <extras>` composing drain → install → resume, shared `install_on_target` core, atomic `drain_node_if_absent` primitive, exit-code-3 post-install-resume-failure | [install_core.py](../../../src/maxim/peer/install_core.py), [mesh_cli.py](../../../src/maxim/peer/mesh_cli.py) | 4 C3.3 |
+| State layer (drain) | `drain` / `resume` / `list-drained` + atomic `drain_node_if_absent`, `filelock` RMW, role-scoped, `atomic_write_secret` pattern | [drain_state.py](../../../src/maxim/peer/drain_state.py) | 4 C2 + C3.3 |
+| Probe + classification | `_MaximPeerBackend.health_check` + `for_url`, single shared `classify_probe_outcome` | [maxim_peer_backend.py](../../../src/maxim/models/language/maxim_peer_backend.py), [probe_classify.py](../../../src/maxim/peer/probe_classify.py) | 3 R2.5/R2.6 + 4 C1 |
+| Observability (doctor) | `check_mesh_nodes` (with drain awareness), `check_vram_pressure`, agent_id binding, per-node `status` / `health` | [doctor/checks.py](../../../src/maxim/doctor/checks.py) | 3.6 R5 + 4 A + 4 C1 |
+| Observability (logs) | Structured JSONL via `MAXIM_LOG_FILE`, per-call `peer_backend_call` trace, `role_detected` event | [utils/http.py](../../../src/maxim/utils/http.py) | 1 R1 + 2 R2a + 3 R2.5 |
+| Bench harness | `maxim bench recovery-time` measures fail-slow → fail-fast deltas | [bench/](../../../src/maxim/bench/) | 4 B |
 
 ---
 
@@ -63,7 +64,7 @@ Two more honest gaps worth flagging up front:
 
 These complete the manage-the-mesh-by-hand surface. Each is a small ship.
 
-- **C3.3 ✅ SHIPPED (PR #128, 2026-04-15):** `maxim peer --node <name> install <extras>` — mesh-aware install composing drain → install → resume around the shared `install_on_target` core in [install_core.py](../../src/maxim/peer/install_core.py). Cross-confirmed pre-merge review found + folded 17 items including the probe-cache URL mismatch (CC1) and drain TOCTOU (CC2). New `drain_node_if_absent` atomic primitive closes the TOCTOU window. Exit code 3 introduced for post-install-resume-failure distinguishability.
+- **C3.3 ✅ SHIPPED (PR #128, 2026-04-15):** `maxim peer --node <name> install <extras>` — mesh-aware install composing drain → install → resume around the shared `install_on_target` core in [install_core.py](../../../src/maxim/peer/install_core.py). Cross-confirmed pre-merge review found + folded 17 items including the probe-cache URL mismatch (CC1) and drain TOCTOU (CC2). New `drain_node_if_absent` atomic primitive closes the TOCTOU window. Exit code 3 introduced for post-install-resume-failure distinguishability.
 - **C3.4 ✅ SHIPPED (PR #142, 2026-04-17):** `GET /v1/debug/vram` admin endpoint. Returns live nvidia-smi ratio + projected model footprint from `project_vram_usage()` as JSON. 503 when nvidia-smi unavailable. Auth via bearer or localhost. Also lifted `_current_llama_server_n_ctx` to `leader_proxy.py` as canonical probe location, and fixed pre-existing `_is_debug_path`/`_route_debug` desync (deps + install-status bypassed auth gate). 2-lens pre-merge review, 11 new tests.
 - **C3.5 ✅ SHIPPED (2026-04-17):** `maxim peer --node <name> update [--dry-run] [--force] [--branch <b>]` and `--node restart` — mesh-aware versions of the existing positional-URL verbs, composing drain → op → resume. HTTP wire-level logic extracted from `peer/cli.py` into shared `admin_core.py` (mirrors `install_core.py` pattern). CI grep allow-lists enforce single source of truth for `/v1/admin/update`, `/v1/admin/restart`. 2-lens pre-merge review found 1 cross-confirmed BLOCKING (dry-run bypassed self-guard) + folded 6 total findings. 42 new tests (22 mesh verb + 20 wire-level).
 - **C3.6 ✅ SHIPPED (2026-04-17):** `maxim peer --node <name> llm <model>` — per-node model swap with drain → swap → resume composition. Key enabler for C5 capacity-aware routing (per-node model assignment). CI grep allow-list for `/v1/admin/llm-swap`. Shipped in the same PR as C3.5.
@@ -72,11 +73,11 @@ These complete the manage-the-mesh-by-hand surface. Each is a small ship.
 
 ### Stage C4: Wire the router to drain state ✅ SHIPPED (PR #148, 2026-04-17)
 
-`drain_constraint` callback injected into `LLMRouter`. `DrainConstraint` class in `peer/drain_routing.py` with mtime-cached drain file reads + URL→node mapping from `mesh.yml`. `dispatch_exhausted_all_drained` event when every candidate is drain-eliminated. Budget-blocked local fallback also respects drain. 2-lens review folded 5 findings. Plan doc: [router_drain_coupling.md](archive/router_drain_coupling.md). 27 tests.
+`drain_constraint` callback injected into `LLMRouter`. `DrainConstraint` class in `peer/drain_routing.py` with mtime-cached drain file reads + URL→node mapping from `mesh.yml`. `dispatch_exhausted_all_drained` event when every candidate is drain-eliminated. Budget-blocked local fallback also respects drain. 2-lens review folded 5 findings. Plan doc: [router_drain_coupling.md](../archive/router_drain_coupling.md). 27 tests.
 
 ### Stage C4.5: Auto-drain on persistent failure ✅ SHIPPED (PR #152, 2026-04-17)
 
-Type-aware thresholds: permanent failures (auth, model_missing) auto-drain after 1, transient failures after 5 (configurable `MAXIM_AUTO_DRAIN_THRESHOLD`). `AutoDrainWriter` writes tagged entries (`# auto:<timestamp> reason:<type>`) via `atomic_write_text` under filelock. Pending buffer flushed outside `_inference_lock`. `_load_tagged_entries()` parser ready for C4.6 auto-undrain. 2-lens review folded 2 findings. Plan doc: [auto_drain_persistent_failure.md](archive/auto_drain_persistent_failure.md). 19 new tests (46 total).
+Type-aware thresholds: permanent failures (auth, model_missing) auto-drain after 1, transient failures after 5 (configurable `MAXIM_AUTO_DRAIN_THRESHOLD`). `AutoDrainWriter` writes tagged entries (`# auto:<timestamp> reason:<type>`) via `atomic_write_text` under filelock. Pending buffer flushed outside `_inference_lock`. `_load_tagged_entries()` parser ready for C4.6 auto-undrain. 2-lens review folded 2 findings. Plan doc: [auto_drain_persistent_failure.md](../archive/auto_drain_persistent_failure.md). 19 new tests (46 total).
 
 ### Stage C4.6: Auto-undrain via periodic health probe ✅ SHIPPED (2026-04-17)
 
@@ -86,7 +87,7 @@ Background daemon thread (`AutoUndrainProber`) probes auto-drained nodes every 9
 
 ### Stage C5: Capacity-aware routing
 
-Existing skeleton: [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md). Beyond drain (binary in/out), capacity-awareness means **picking among healthy nodes by load** — tok/s baseline, queue depth, current VRAM headroom, model availability.
+Existing skeleton: [deferred/llm_mesh_capability_aware.md](../deferred/llm_mesh_capability_aware.md). Beyond drain (binary in/out), capacity-awareness means **picking among healthy nodes by load** — tok/s baseline, queue depth, current VRAM headroom, model availability.
 
 **Where it pays off:**
 - The `/v1/debug/vram` endpoint from C3.4 starts to pay back: the router becomes able to ask "which of my live nodes has the headroom?"
@@ -113,11 +114,11 @@ A web TUI or terminal dashboard on top of these is a nice-to-have, **NOT** load-
 
 ### Stage C7: Cluster security hardening
 
-Tracked in [node_security_simplification.md](deferred/node_security_simplification.md), `feedback_strict_grep_caller_allowlist.md`, and the C2 invariants:
+Tracked in [node_security_simplification.md](../deferred/node_security_simplification.md), `feedback_strict_grep_caller_allowlist.md`, and the C2 invariants:
 
 - **Cluster key rotation** (`maxim peer rotate-cluster-key`) — the canonical test of whether the strict CI grep allow-list rule needs to relax. The right answer is probably option (c) from `feedback_strict_grep_caller_allowlist.md`: split the secret into `~/.maxim/util/cluster_key.{role}` and have `mesh.yml::cluster_key` become a fallback. This is the spec-vs-status split applied to the secret.
 - **Cluster-key consistency doctor check** (`check_cluster_key_consistency`) — **surfaced by C3.3 fold review (Blast Radius B2)**. Today `mesh.yml::cluster_key` and `peer.yml::api_key` can diverge silently if the operator rotates one without the other, because `init-mesh` copies once but the two files evolve independently after that. `maxim peer --node X install` uses `mesh.yml::cluster_key`; `maxim peer install` uses `peer.yml::api_key`. The symptom is "one install verb 401s, the other succeeds, against the same target." The doctor check should compare both values when both files are present and warn on mismatch. **Deferred from C3.3** (docs-only warning added to `cli-reference.md` + `mesh_debug.md`) because the full cluster-key rotation story should land before the consistency check so the check has a remediation path to point at.
-- **Per-agent rate limiting** — read from `~/.maxim/util/rate_limits.{role}.json`. Already mentioned as a future C3 deferred item in C2 invariants. The `KeyedRateLimiter` primitive from Plan R0 already lives in [runtime/rate_limit.py](../../src/maxim/runtime/rate_limit.py).
+- **Per-agent rate limiting** — read from `~/.maxim/util/rate_limits.{role}.json`. Already mentioned as a future C3 deferred item in C2 invariants. The `KeyedRateLimiter` primitive from Plan R0 already lives in [runtime/rate_limit.py](../../../src/maxim/runtime/rate_limit.py).
 - **Request trace ring buffer** — `~/.maxim/util/request_trace.{role}.jsonl` with size cap + rotation. Feeds C6's `/v1/debug/request-trace`.
 - **Per-peer identity** — currently every peer has the same bearer token (the cluster key). Real identity (per-peer keypair, per-peer ACL) is a bigger ship.
 
@@ -155,7 +156,7 @@ Standardized small-document (`.md` / `.json`) exchange between mesh nodes. The m
 
 ### Stage C10: Mesh perception transport
 
-Peer-tunneled sensory percepts. Drives the Reachy Mini app form-factor: the app runs as a peer node, performs on-device STT + vision segmentation + drive sensor reads, and tunnels event-shaped `Percept` instances to a leader for cognition. Generalizes to any embodiment peer with sensors but limited compute (future Minecraft adapter, multi-Maxim training rigs). Plan detail in [mesh_perception_transport.md](deferred/mesh_perception_transport.md).
+Peer-tunneled sensory percepts. Drives the Reachy Mini app form-factor: the app runs as a peer node, performs on-device STT + vision segmentation + drive sensor reads, and tunnels event-shaped `Percept` instances to a leader for cognition. Generalizes to any embodiment peer with sensors but limited compute (future Minecraft adapter, multi-Maxim training rigs). Plan detail in [mesh_perception_transport.md](../deferred/mesh_perception_transport.md).
 
 **Architectural framing:** the mesh today has exactly one cross-node transport (`_MaximPeerBackend` for LLM inference, with its load-bearing "one HTTP call, no retry" invariant). Perception traffic has different failure semantics (a dropped sensor frame is a missed observation, not a router-failover event) and wants a sibling typed backend rather than an extension. C10 establishes the **typed-transport-per-purpose** pattern as an architectural invariant — Hivemind substrate-bundle exchange (1.1+) is the second consumer that proves the abstraction.
 
@@ -235,13 +236,13 @@ Update this roadmap when:
 
 ## 9. Related plans
 
-- [archive/llm_path_operator_visibility.md](archive/llm_path_operator_visibility.md) — Plan 4 (ALL SHIPPED), which feeds C3.x in this roadmap.
-- [llm_path_refinement.md](archive/llm_path_refinement.md) — the Plan 1-3.6 ancestor chain.
-- [llm_path_peer_failover.md](archive/llm_path_peer_failover.md) — Plan 3.6 (VRAM spillover detection).
-- [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md) — the C5 skeleton.
-- [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) — feeds C5.
-- [node_security_simplification.md](deferred/node_security_simplification.md) — feeds C7.
+- [archive/llm_path_operator_visibility.md](../archive/llm_path_operator_visibility.md) — Plan 4 (ALL SHIPPED), which feeds C3.x in this roadmap.
+- [llm_path_refinement.md](../archive/llm_path_refinement.md) — the Plan 1-3.6 ancestor chain.
+- [llm_path_peer_failover.md](../archive/llm_path_peer_failover.md) — Plan 3.6 (VRAM spillover detection).
+- [deferred/llm_mesh_capability_aware.md](../deferred/llm_mesh_capability_aware.md) — the C5 skeleton.
+- [deferred/llm_path_multi_peer_dispatch.md](../deferred/llm_path_multi_peer_dispatch.md) — feeds C5.
+- [node_security_simplification.md](../deferred/node_security_simplification.md) — feeds C7.
 - [mesh_doc_transport.md](../archive/mesh_doc_transport.md) — Stage C9 shell plan (mesh-to-mesh structured doc exchange).
-- [mesh_perception_transport.md](deferred/mesh_perception_transport.md) — Stage C10 shell plan (peer-tunneled sensory percepts; split 1.0 prep / 1.1 ship). Driving consumer: Reachy Mini app peer.
-- [maxim_hivemind.md](maxim_hivemind.md) — 1.1+ substrate-bundle exchange; second consumer of the typed-transport-per-purpose pattern C10 establishes in 1.0.
+- [mesh_perception_transport.md](../deferred/mesh_perception_transport.md) — Stage C10 shell plan (peer-tunneled sensory percepts; split 1.0 prep / 1.1 ship). Driving consumer: Reachy Mini app peer.
+- [maxim_hivemind.md](../maxim_hivemind.md) — 1.1+ substrate-bundle exchange; second consumer of the typed-transport-per-purpose pattern C10 establishes in 1.0.
 - [cross_platform_file_lock.md](../archive/cross_platform_file_lock.md) — shell plan to unify the two file-lock APIs (`utils/process_lock` and `filelock.FileLock`); blocks nothing, useful cleanup post-C4.

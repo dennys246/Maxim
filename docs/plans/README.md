@@ -5,7 +5,7 @@ Now (2026-10-16): **1.3.2 "Decomposition" shipped**; the path to 1.4.0 is four p
 - [roadmap_1_3_x.md](roadmap_1_3_x.md) — **the 1.3.x line** (drafted 2026-09-19 from the v1.3.0 re-score; **re-scoped 2026-09-26**; **1.3.1 SHIPPED 2026-09-27 as "Hardening"**; **1.3.2 SHIPPED 2026-10-16 as "Decomposition"**; carries the path to 1.4.0): 1.3.1 = what users need now — the security cluster, public-API correctness, release integrity (nightly lane, network block), the public format freeze and the two ingest defects it surfaced (#913/#914), plus everything on `main` since 1.3.0, each with its guard and no new behavioural claim; 1.3.2 = the enforcement ratchets carried from 1.3.1, then the `agent_loop` decomposition with behaviour-preservation gates and the ledger triggers discharged. Both before 1.4's experiments.
 - [outstanding.md](outstanding.md) — **the standing register of owed work**, cross-cutting and not release-scoped, each entry verified at its stated date. Created 2026-09-20 after an audit found the 1.1.x item-16 block entirely shipped while CLAUDE.md still declared one of them a KNOWN GAP.
 - [roadmap_1_4.md](roadmap_1_4.md) — **the 1.4 plan** (working title "Anticipation", re-pointed 2026-09-18, five-lens reviewed): generalization + sequence credit + a trajectory instrument on the survival rig — **Exp 62 EARNED 2026-09-20 (Phase 1 closed; PARTIAL, floor matched, since 2026-10-15)** → E1 conflict → [relief store] → E2 pockets → E3 strategic breathing; primitives on a variant body; release thresholds T1–T4 set, T5/T6 conditional, T7/T8 engineering only (engram integrity; grounding truth), T9 conditional (the first grounding claim); the release name is fixed at the transaction from the highest EARNED rung.
-- [archive/roadmap_1_3.md](archive/roadmap_1_3.md) — **the 1.3 plan** ("Oasis-2", the survival world; rescoped 2026-09-09): the phased survival-loop → shared-survival-wants roadmap with per-rung mechanism-dependency markers. · [deferred/second_body_staging.md](deferred/second_body_staging.md) — **DEFERRED 2026-09-18 on a physical trigger (a second body exists); NOT the 1.4 plan** — the perception-fabric sequencing (Stage A duck → Stage B engine seam → Stage C fabric), **now the 1.4 plan** (perception fabric moved to 1.4 in the same rescope).
+- [archive/roadmap_1_3.md](archive/roadmap_1_3.md) — **the 1.3 plan** ("Oasis-2", the survival world; rescoped 2026-09-09): the phased survival-loop → shared-survival-wants roadmap with per-rung mechanism-dependency markers. · [deferred/second_body_staging.md](deferred/second_body_staging.md) — **DEFERRED 2026-09-18 on a physical trigger (a second body exists); NOT the 1.4 plan** — the perception-fabric sequencing (Stage A duck → Stage B engine seam → Stage C fabric); the 1.4 plan is [roadmap_1_4.md](roadmap_1_4.md), and the fabric's own revive trigger was re-keyed 2026-10-07 to the grounding line's GL3.
 - [archive/quality_burndown.md](archive/quality_burndown.md) — **the quality burndown, ARCHIVED 2026-09-20**: merged into [roadmap_1_3_x.md](roadmap_1_3_x.md) §1.3.1, which now carries its re-verified remainder; kept as the record of Batches 0–2.
 The current grading baseline is the **v1.3.1 blind re-score**
 ([../limits/score_cards/2026-09-27-claude.md](../limits/score_cards/2026-09-27-claude.md), three
@@ -54,14 +54,15 @@ Release writeup: [The Honest Benchmark](../announcements/maxim_1_0_release.md) (
 ## Active
 
 Everything in the root is in-flight, owned by a roadmap item, or a living doc.
-Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
+Deep-audited 2026-10-16 after the 1.3.2 cut, with a 2026-10-17 follow-up pass (see the stamp above).
 
 ### Roadmap + release
 
 - [roadmap_1_3_x.md](roadmap_1_3_x.md) → [roadmap_1_4.md](roadmap_1_4.md) — **the live
-  scope authority** as of 2026-09-19 (re-scoped 2026-09-26): 1.3.1 what users need now (security,
-  public-API correctness, release integrity, the format freeze + #913/#914), 1.3.2 the ratchets and
-  the `agent_loop` decomposition, then 1.4's ladder.
+  scope authority** (path to 1.4.0 decided 2026-10-16, 1.3.3 split 2026-10-17; 1.3.1 and 1.3.2
+  shipped): **1.3.3** the release pipeline and pulse, **1.3.4** the atonia gate, **1.3.5** the
+  orchestrator decomposition, **1.3.6** loop phase 2 and the B2→B3→B4 floor chain, then **1.4.0**
+  ([§Path to 1.4.0](roadmap_1_3_x.md#path-to-140-owner-decision-2026-10-16)).
 - [archive/roadmap_1_3.md](archive/roadmap_1_3.md) — the 1.3 plan, now a RECORD of what shipped as 1.3.0
   (its Phases 4–6 moved to `roadmap_1_4.md`; Phase 1b is deferred on its trigger).
 - [archive/roadmap_1_1_to_1_3.md](archive/roadmap_1_1_to_1_3.md) — **HISTORICAL** (it was the sole scope
@@ -74,10 +75,11 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
   each release cut by two assessors grading blind. Current:
   [2026-09-27-claude.md](../limits/score_cards/2026-09-27-claude.md) at tag `v1.3.1`
   (three firewalled evidence agents, grades unadjusted, evidence committed beside it);
-  its Codex twin is owed, graded blind to it. Previous: `v1.3.0`'s pair. The owed Codex 1.1.0 and 1.2 cards are
+  and its Codex twin [2026-09-27-codex.md](../limits/score_cards/2026-09-27-codex.md), graded blind
+  to it. **The v1.3.2 re-score is owed** (cut 2026-10-16). Previous: `v1.3.0`'s pair. The owed Codex 1.1.0 and 1.2 cards are
   **superseded** — they would grade states nobody works on.
 
-### Substrate-primary spine (1.2 Oasis + Hivemind)
+### Substrate-primary spine (shipped 1.2; living architecture)
 
 - [memory_strength_and_forgetting.md](memory_strength_and_forgetting.md) — **a 1.4 PARALLEL LINE
   opened 2026-09-21**: a hippocampal forgetting model (storage strength from existing signals,
@@ -87,24 +89,17 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
   2S, the survival gate (#848)**: survival percepts score salience 0 and pattern completion cannot
   cue sensor concepts, so nothing there ever uses a memory yet. **Phase 2's look-back is unblocked** —
   R4's look-back review (2026-09-24) decided tagging looks back over the Hippocampus record.
-- [grounded_language_acquisition.md](grounded_language_acquisition.md) — **SUBSUMED FOR GROUNDING
-  2026-10-07 by [grounding.md](grounding.md)** (owner decision G5; its own scope note kept) (§The grounding line below; kept at this path because
-  `src/` and the CLI cite it). Before that it was **a PARALLEL LINE as of
-  2026-09-19** (`roadmap_1_4.md` §Parallel lines), not the active umbrella it used to call itself:
-  its thesis was validated by another route in 1.2/1.3, and its Phase 2 is structurally the deferred
-  cross-modal projection. **Entry condition: the paired-data audit** over survival-world runs — does
-  the tick-by-tick (sensor vector, text percept) pairing carry language or templated labels? Passes →
-  it and the projection plan revive together; fails → both archive. Evidence now: Exp 42 (safe-vs-harm), Exp 52
-  (the want is learned), Exp 53b (it reads out on a body). Phases 1–3 are the 1.2+ arc.
-- [social_referencing.md](social_referencing.md) — **PROPOSED 2026-09-24, plan only; a parallel line.** Consult a locally held, signature-verified Oasis mirror only when the agent is both ignorant and being hurt; hold the answer as advice in a foreign layer apart from its own experience; promote advice only when it demonstrably worked. Exp C (may-fail): does the gate limit a stale Oasis's harm beyond the same advice given at random? Depends on public_oasis Phase 0 (scheduled); src after 1.3.2; rig after E3. Split from the language line.
-- [fear_learning.md](fear_learning.md) — **PROPOSED 2026-10-04, plan only ([#1072](https://github.com/dennys246/Maxim/issues/1072)).** From #840's deep dive: FearCircuitBridge was never live and is Dormant. The missing fear functions are relief as a reinforcer (two-factor avoidance: learn WHICH act makes you safe, not a keyword) and extinction (fear only ever deepens today). Two Exp 60-classroom experiment sketches; four-lens review before any harness.
-- [executive_function.md](executive_function.md) — **PROPOSED 2026-10-04, plan only ([#1073](https://github.com/dennys246/Maxim/issues/1073)).** From #841's deep dive: nothing executive is validated, and the substrate path is a one-tick argmax with no maintained context. Stage 1 is a gated goal slot: a held drive as a stable context key for `recommend_action` and goal-relief credit. It rides existing NAc infrastructure and enters through roadmap 1.4's R4 credit-routing plan. Later stages: learned gating, conflict monitor, OFC expectancy, options.
-- [coding_world.md](coding_world.md) — **PROPOSED 2026-09-27, plan only; a parallel line.** Revives [deferred/coding_habits_oasis.md](deferred/coding_habits_oasis.md) by owner request. Does an aversion learned from pain bind to the act or to being watched? Exp W probes Exp 60's EARNED fear with a second player as observer (offline key-geometry replay first); Exp K asks it in a coding world (hand-authored patch variants in Docker, measured pain, harness-only oracle labels, a tamper arm), then Exp 55's transfer. The one missing mechanism is a pain producer for the existing `credit_operant_reward` write (plus the world's backend and body). Stack Overflow is not grounded text (its uses live in social_referencing and grounded_word_binding; no need to pay). Default: no `src/` before the 1.4.0 cut; claims candidate 1.5.
-- [baseline_floors.md](baseline_floors.md) — **Status 2026-10-16: B0 shipped and B1 ran (`FLOOR_MATCHED_Q`, 2026-10-14; T1-13/14/15 now PARTIAL). B2 waits on the orchestrator decomposition (1.3.5); B4, T1-2's re-fire, runs before 1.4.0.** **PROPOSED 2026-10-10, a parallel line (owner decisions BF1–BF2).** A bare LLM (`bare_llm`), a generic-memory LLM (`llm_notes`) and a non-LLM learner (`tabular_q`, `random`) beside every claim; until B1, no ledger row had been compared with an agent lacking the bio layers. BF2: a new claim earns only over its floor (M46). B0 (provenance fields) is merged; B1 (the Exp 60 non-LLM floor) RAN 2026-10-14 and returned `FLOOR_MATCHED_Q` (a tabular Q-learner matched FEAR at the first post placement), so T1-13 is `PARTIAL (narrow: floor matched)`; the bare loop (B2) waits for the `start_simulation_mode` decomposition, so no new LLM-path claim can be EARNED before it. Revises the owner's 2026-10-10 draft: the Exp 60 world cannot host a fair bare-LLM arm (priors hit the ceiling on the pre-probe), and Exp 37's narrator is a cross-session memory channel.
+  **Status 2026-10-17:** 2d-2 (retroactive tagging, #897) and 2S-d (the situation cue, recall only,
+  #898) are BUILT, merged 2026-09-25; 2S-e (B) is PARKED (#900, the `time_of_day` wrap #899, not a
+  generalization gap). It feeds T4a (2S-d's recall is the consumerless mechanism T4a walks) and engram
+  E6 (2S-e, under T7).
+- [social_referencing.md](social_referencing.md) — **PROPOSED 2026-09-24, plan only; a parallel line.** Consult a locally held, signature-verified Oasis mirror only when the agent is both ignorant and being hurt; hold the answer as advice in a foreign layer apart from its own experience; promote advice only when it demonstrably worked. Exp C (may-fail): does the gate limit a stale Oasis's harm beyond the same advice given at random? Depends on public_oasis Phase 0 (scheduled); src after the fence lifts (1.3.6); rig after E3. Split from the language line. Stays active as a parallel paper line (owner 2026-10-17).
+- [coding_world.md](coding_world.md) — **PROPOSED 2026-09-27, plan only; a parallel line.** Revives [deferred/coding_habits_oasis.md](deferred/coding_habits_oasis.md) by owner request. Does an aversion learned from pain bind to the act or to being watched? Exp W probes Exp 60's EARNED fear with a second player as observer (offline key-geometry replay first); Exp K asks it in a coding world (hand-authored patch variants in Docker, measured pain, harness-only oracle labels, a tamper arm), then Exp 55's transfer. The one missing mechanism is a pain producer for the existing `credit_operant_reward` write (plus the world's backend and body). Stack Overflow is not grounded text (its uses live in social_referencing and grounded_word_binding; no need to pay). Stays active as a parallel paper line (owner 2026-10-17): no src before the 1.4.0 cut; claims are 1.5 candidates.
+- [baseline_floors.md](baseline_floors.md) — **Status 2026-10-16: B0 shipped and B1 ran (`FLOOR_MATCHED_Q`, 2026-10-14; T1-13/14/15 now PARTIAL). B2's code prerequisites are 1.3.6 exit items; the chain is B2 ([#1352](https://github.com/dennys246/Maxim/issues/1352)) → B3 ([#1353](https://github.com/dennys246/Maxim/issues/1353), Reflexion first, owner 2026-10-17) → B4 ([#1354](https://github.com/dennys246/Maxim/issues/1354)); B4, T1-2's re-fire, runs before 1.4.0.** **PROPOSED 2026-10-10, a parallel line (owner decisions BF1–BF2).** A bare LLM (`bare_llm`), a generic-memory LLM (`llm_notes`) and a non-LLM learner (`tabular_q`, `random`) beside every claim; until B1, no ledger row had been compared with an agent lacking the bio layers. BF2: a new claim earns only over its floor (M46). B0 (provenance fields) is merged; B1 (the Exp 60 non-LLM floor) RAN 2026-10-14 and returned `FLOOR_MATCHED_Q` (a tabular Q-learner matched FEAR at the first post placement), so T1-13 is `PARTIAL (narrow: floor matched)`; the bare loop (B2) waits for the `start_simulation_mode` decomposition, so no new LLM-path claim can be EARNED before it. Revises the owner's 2026-10-10 draft: the Exp 60 world cannot host a fair bare-LLM arm (priors hit the ceiling on the pre-probe), and Exp 37's narrator is a cross-session memory channel.
 - [maxim_hivemind.md](maxim_hivemind.md) — **Status 2026-10-16: 1.2 shipped (#651–#654); this is now the living architecture source for the Queen tier and the gauntlet that public_oasis and social_referencing consume.** **1.2 = Oasis + Hivemind.** B5 shareability
   SHIPPED (#305–#311); the Oasis ingestion contract, the re-keyed merge (gate 6) and the
   bundle action namespace (gate 7) are the 1.2 work.
-- [public_oasis.md](public_oasis.md) — **Status 2026-10-16: Phase 0 items 1, 2, 5, 6 and 7 are done; items 3, 4 and item 5's server-side read tier remain. No longer "scoping only".** **PROPOSED 2026-09-19; Phase 0 SCHEDULED 2026-09-24** (social_referencing depends on it), scoping only: a public Oasis on own
+- [public_oasis.md](public_oasis.md) — **Status 2026-10-17: Phase 0 items 1, 2, 5, 6 and 7 are done; [oasis_entry_index_v2.md](oasis_entry_index_v2.md) records the owner's item 3/4 decisions (license `CDLA-Permissive-2.0`; the privacy-read exemplar, Exp 56 seed-42 1.20.4). Whether the human privacy read itself has been done is unverified; item 5's server-side read tier remains. No longer "scoping only".** **PROPOSED 2026-09-19; Phase 0 SCHEDULED 2026-09-24** (social_referencing depends on it), scoping only: a public Oasis on own
   hardware at `oasis.pymaxim.bio`. Verdict **publish, do not accept** — Phase 1 (read-only release
   tier over a tunnel) rides entirely on shipped infrastructure and adds no trust decision; Phase 2
   (submissions) stays deferred because V1's operator allowlist IS the trust boundary and the
@@ -143,7 +138,7 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
     to a drive (rescue, heal, respawn, teacher and mother feeds) are `apparatus`, recorded and never
     trained on or credited (G16, 2026-10-09, from the GL1 design review).
 - [tool_failure_credit.md](tool_failure_credit.md) — **Status 2026-10-16: Stage 1 (#1207) and Stage 2 (#1229) are merged, with #1231 and #1221; Stage 3 waits for `kind` on `Reaction` (autonomic step 2).** **ACTIVE 2026-10-10 ([#1200](https://github.com/dennys246/Maxim/issues/1200)).** Tool failure was never wired into learning; putting it on the PainBus as it stands makes learning worse (the context-similarity NAc subscriber steals the bridge's event). Staged design B (owner TF1–TF3): Stage 1 a stale-success defect (#1207); Stage 2 failure credit through `ToolPainBridge.record_tool_failure` with a real RPE; Stage 3 a felt-only FRUSTRATION PainBus signal once `Reaction` carries kind.
-- [autonomic_layer.md](autonomic_layer.md) — **PROPOSED 2026-10-07, plan only (GL2).** The signed
+- [autonomic_layer.md](autonomic_layer.md) — **PROPOSED 2026-10-07 (GL2); GL2a BUILT 2026-10-09 and merged (#1194: the record-only tool-path `InteroceptiveOutcome` in `embodiment/sem.py`, `embodiment/body.py`, `tools/base.py::ToolOutput`, `runtime/executor.py`; no reader acts on it). GL2b and GL2c are not built.** The signed
   body-consequence record, `InteroceptiveOutcome` (deviation, pain, relief, urgency), the predictor targets.
   - **The regulatory defects the audit found:** no heat corrective need; an infant touch-burn that
     peaks at 0.2 and is classed as a drive, not nociception; percept valence keyed on the sufferer, not
@@ -153,7 +148,7 @@ Deep-audited 2026-09-19 at the 1.3.0 release (see the stamp above).
     and T1-13/14/15 under any routing (owner decision G7): it ships off by default and lands only with a
     batched live re-run of Exp 60/61/62 (+ the T1-11 and T1-12 arguments or re-runs); its joint review with Phase 5's relief store is an owner
     decision at GL2c's start.
-- [thalamic_relay.md](thalamic_relay.md) — **PROPOSED 2026-10-07, plan only (GL3).** One registration
+- [thalamic_relay.md](thalamic_relay.md) — **PROPOSED 2026-10-07 (GL3); GL3.B0 BUILT 2026-10-09 and merged (#1201: tests only, the receptor census, the strict-xfail timing red gates and a frozen latency record). GL3.B1 onward is not built; `runtime/preemption.py`'s `PreemptionCircuit` is pre-GL3 code, Dormant since 2026-10-07 (TR1).** One registration
   contract for percept sources (`Receptor`) and the afferent pathways they emit onto (`AfferentTrack`).
   - One physical event fans out under a shared, deterministic `PhysicalEventId` (agent, seq; since
     G15, 2026-10-09, agent, session id, seq). Since G17 (2026-10-09) GL2a mints no id: the type, the
@@ -219,14 +214,15 @@ break the citation. Each is a record now, not a plan.
 - [baseline_floors_b0.md](baseline_floors_b0.md), [baseline_floors_b1_build.md](baseline_floors_b1_build.md), [baseline_floors_b1_evidence.md](baseline_floors_b1_evidence.md): B0 merged (#1233); B1 built and run (2026-10-14). The live plan is [baseline_floors.md](baseline_floors.md).
 - [oasis_entry_index_v2.md](oasis_entry_index_v2.md): PRs A–C shipped 2026-09-25; the format is frozen under public_format_freeze.
 - [lookback_primitive.md](lookback_primitive.md): DECIDED 2026-09-24 (no new store; #891/#892); still R4's map entry.
+- [grounded_language_acquisition.md](grounded_language_acquisition.md): superseded by [grounding.md](grounding.md) 2026-10-07 (owner decision G5); kept at its path because `src/`, the CLI help text and `analysis/roy_log.py` cite it. Its paired-data audit entry condition is answered there (the pair became (context, consequence)).
 - [minecraft_benchmark.md](minecraft_benchmark.md): Part I COMPLETE (Exp 56); Part II's R0–R3 shipped (R3 an instrument + frozen baseline in 1.3.0), and R4 moved to `roadmap_1_4.md` Phase 5. The ladder's own record; `src/maxim/simulation/minecraft.py` and the R1/R2 probe scripts cite it.
 
 Frozen contracts (reference, not plans):
 - [public_format_freeze.md](public_format_freeze.md): FROZEN 2026-09-26; guarded by `tests/unit/test_public_format_freeze.py`.
 - [sharing_threat_model.md](sharing_threat_model.md): FROZEN 2026-09-04 (1.2 gate 4).
 
-Approach notes for 1.3.3:
-- [advisor_mode.md](advisor_mode.md): advisor mode, Maxim as a read-only observer whose only tool is "propose"; 1.3.3 guards tool dispatch, and the sandbox alone guards disk and egress until item 7 and an egress seam ship (#1315; O1–O9 verified against v1.3.2; 1.3.3; owner decisions AD1–AD9 open).
+Approach notes for 1.3.3 and 1.3.4:
+- [advisor_mode.md](advisor_mode.md): **1.3.4, the atonia gate** — Maxim observes and reports while its motor output is inhibited; the gate guards tool dispatch, and the sandbox alone guards disk and egress until item 7 and an egress seam ship (#1315; O1–O9 verified against v1.3.2; owner decisions AD1–AD9 decided 2026-10-17).
 - [readiness_and_extras_standards.md](readiness_and_extras_standards.md): four standards R1–R4 from the pulse seam (readiness proves the capability, extras tested against the real library, typed console payloads, a checked vendoring step; #1332–#1336; 1.3.3).
 - [upgrade_safety.md](upgrade_safety.md): `maxim doctor`'s advisory check and an upgrade manifest (#1295, approach note merged as #1297).
 
@@ -239,22 +235,21 @@ Approach notes for 1.3.3:
 - [bio_faithful_roadmap.md](bio_faithful_roadmap.md) — per-system bio-fidelity status
   and trajectory; the algorithmic companion to the ledger (#493).
 - [simulation_apparatus_standards.md](simulation_apparatus_standards.md) — S1–S8, the
-  standards every pre-registration declares against (S4 shipped; S2 canaries = item 2).
+  standards every pre-registration declares against (S4 shipped; the S2 canaries are item 2 of the archived 1.1.x list, [archive/roadmap_1_1_to_1_3.md](archive/roadmap_1_1_to_1_3.md)).
 - [glossary.md](glossary.md) — decoder for the coded IDs. (Owes 1.1's one admitted
   mechanism — relief-sourced operant credit — and Exp 52/53/54 entries.)
-- [config_extensibility.md](config_extensibility.md) — **drafted 2026-09-22, not scheduled** (an unscheduled feature plan, kept at this path because `integration/memory_hub.py` cites it; revive when a third-party setting or strategy is requested, or on the #856 format-version decision):
-  which config restrictions are the typo check (keep) and which merely require a fork (relax).
-  Validation moves from a hard-coded frozenset to built-ins ∪ a registry, riding the existing
-  `maxim.robots` entry-point pattern; plus an `extensions.*` namespace for third-party settings.
-  Phase 1 sequences behind memory-strength 2c-3; Phase 2 depends on the #856 format-version
-  decision. Distinct from [deferred/bio_system_plugin_plan.md](deferred/bio_system_plugin_plan.md)
-  (settings and one ABC, not bio-systems).
 - [../limits/score_cards/](../limits/score_cards/) — repository scorecards.
 
 ## Deferred (revive on trigger)
 
 
 Design work preserved in [deferred/](deferred/). Each has an explicit "revive when" condition (full rationale in the banner at the top of each doc).
+
+**Deferred in place (kept at their root path because src/ cites it; 2026-10-17):** not on the path to 1.4.0 (owner); each file carries the banner at its top.
+
+- [executive_function.md](executive_function.md) — staged executive function from #841's deep dive ([#1073](https://github.com/dennys246/Maxim/issues/1073)); Stage 1 is a gated goal slot riding NAc. **Revive when:** R4 credit routing or E2's relief-store review names a goal-slot consumer (homed after 1.4.0, #1072–#1075).
+- [fear_learning.md](fear_learning.md) — relief as a reinforcer and extinction, from #840's deep dive ([#1072](https://github.com/dennys246/Maxim/issues/1072)); two Exp 60-classroom experiment sketches. **Revive when:** the Phase 5 relief-store review adopts Experiment A as its consumer (homed after 1.4.0).
+- [config_extensibility.md](config_extensibility.md) — drafted 2026-09-22: which config restrictions are the typo check (keep) and which merely require a fork (relax); built-ins ∪ a registry plus an `extensions.*` namespace. `integration/memory_hub.py` cites it. **Revive when:** a third-party setting or strategy is requested, or the [#856](https://github.com/dennys246/Maxim/issues/856) format-version decision is taken.
 
 - [deferred/behavior_tiers.md](deferred/behavior_tiers.md) — which automatic behaviours stay code (invariants, innate priors) and which should become learned. The declare-your-tier **rule** is active; the migrations are deferred per item: source trust (M1) revives with the language line's L4 prereg, curiosity (M3) with intrinsic motivation's trigger or L5, learned reflex gain (M4) when a rung names a fixed gain as the limit, adaptive pain (M6) on its own plan's trigger. All wait for memory-strength Phase 2.
 - [deferred/adaptive_nociception.md](deferred/adaptive_nociception.md) — pain habituation (harmless, repeated) and sensitisation (damaging, repeated), adapted **upstream in the pain producer**, never inside a consumer. Deferred 2026-09-21 out of the memory line's scope. **Revive when:** a world produces chronic pain that does no damage, or repeated pain measurably over-tags.
@@ -332,7 +327,7 @@ Design work preserved in [deferred/](deferred/). Each has an explicit "revive wh
   constraints ride versus what is new, two inputs to 1.1.3's gate-7 design pass, and the
   finding that `last_clamped_axes` reaches no learner. Its rev 1 recommendations were
   withdrawn in review — read §2.4 and §5.2 for the arguments, not the index.
-- [reactive_peer_mesh_roadmap.md](deferred/reactive_peer_mesh_roadmap.md) — **Revive when:** the console/UI line is scheduled into a release. Living mesh
+- [reactive_peer_mesh_roadmap.md](deferred/reactive_peer_mesh_roadmap.md) — **Status 2026-10-17: the old trigger (the console/UI line scheduled into a release) fired with 1.3.2 and was not pursued (owner). Revive when:** a second peer-mesh consumer (beyond the console) is scheduled into a release. Living mesh
   roadmap/index over the deferred mesh plans. §5 is stale: C10's 1.0 prep SHIPPED (#329)
   and its ship slice is 1.2 (it waits on Hivemind), not near-term.
 - [intrinsic_motivation_1_3.md](deferred/intrinsic_motivation_1_3.md) — curiosity and competence as
