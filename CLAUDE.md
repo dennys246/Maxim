@@ -36,7 +36,7 @@ Additional guardrails:
 This file is the always-loaded core; everything subsystem-specific lives one hop away:
 
 - **`docs/agents/<subsystem>.md`** — per-subsystem working briefs: mental model, key files, that subsystem's invariants (with their `Regression guard:` lines), gotchas, env vars. **Read the matching brief BEFORE editing in its area.**
-- **`docs/lessons/<slug>.md`** — per-incident archives (full narratives, dates, PR numbers, dead ends). Follow a stub's "Full history" link only when its trigger fires. The complete pre-split CLAUDE.md is frozen at [docs/lessons/claude-md-2026-08-13-pre-diet.md](docs/lessons/claude-md-2026-08-13-pre-diet.md).
+- **`docs/lessons/<slug>.md`** — per-incident archives (full narratives, dates, PR numbers, dead ends; index: [docs/lessons/README.md](docs/lessons/README.md)). Follow a stub's "Full history" link only when its trigger fires. The complete pre-split CLAUDE.md is frozen at [docs/lessons/claude-md-2026-08-13-pre-diet.md](docs/lessons/claude-md-2026-08-13-pre-diet.md).
 
 | Touching | Read first |
 |---|---|

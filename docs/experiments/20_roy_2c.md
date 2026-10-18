@@ -23,7 +23,7 @@ H1-vs-H2 disambiguator. Single-variable change vs Roy-2pc: `MAXIM_NAC_MIN_CONFID
 
 - [`scenarios/roy/roy_2c_iteration.yaml`](../../scenarios/roy/roy_2c_iteration.yaml) — single-env-var variant of `roy_2pc_iteration.yaml`.
 - `MAXIM_NAC_MIN_CONFIDENCE` env-var override at `agent_loop._resolve_min_confidence` ([release_0_9_1.md Stage 0a](../plans/archive/release_0_9_1.md)).
-- `conftest.py` autouse scrub fixture (`_isolate_maxim_nac_min_confidence`) per [feedback_opt_in_env_in_hot_paths.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_opt_in_env_in_hot_paths.md).
+- `conftest.py` autouse scrub fixture (`_isolate_maxim_nac_min_confidence`) per `feedback_opt_in_env_in_hot_paths.md` (author's local notes, not in repo).
 - 8 new unit tests in [`tests/unit/test_substrate_min_confidence_env.py`](../../tests/unit/test_substrate_min_confidence_env.py) covering precedence, explicit-zero honoring, invalid fallback, empty-string semantics.
 
 ## Result

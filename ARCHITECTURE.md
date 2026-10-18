@@ -1,6 +1,6 @@
 # Architecture (Maxim)
 
-> Last reviewed 2026-09-10 against the 1.2.1 tree. The layer-ownership rules below are what `maxim --audit-architecture` enforces (baseline `src/maxim/utils/architecture_baseline.json`, CI-gated). The Key Modules section was refreshed 2026-09-10 to add the subsystems it had predated (`comms/`, `doctor/`, `hivemind/`, `imagination/`, `motion/`, `reactions/`, `roy/`, `tunnel/`, `default_network/`, `console/`); `docs/reference.md` carries the full file-level inventory.
+> Last reviewed 2026-10-18 against the 1.3.2 tree (deleted-module references removed from the module lists). The layer-ownership rules below are what `maxim --audit-architecture` enforces (baseline `src/maxim/utils/architecture_baseline.json`, CI-gated). The Key Modules section was refreshed 2026-09-10 to add the subsystems it had predated (`comms/`, `doctor/`, `hivemind/`, `imagination/`, `motion/`, `reactions/`, `roy/`, `tunnel/`, `default_network/`, `console/`); `docs/reference.md` carries the full file-level inventory.
 
 Maxim is a bio-inspired cognitive architecture for AI agents. It combines a 5-agent pipeline (Perception, Memory, Exec, Goal, Statistician) with biological memory systems (Hippocampus, ATL, Angular Gyrus, SCN, NAc) and a reactive Default Network. Works headless, in simulation, or connected to a robot.
 
@@ -91,19 +91,12 @@ Paths refer to the `src/maxim/` package layout.
   - `cerebellum.py`: Forward models (Rescorla-Wagner per-action prediction), motor programs, ProgramRegistry.
   - `motor.py`: MotorProgram, MotorStep, sequence crystallization.
   - `engrams.py`: MotorEngram — contextual links between programs and episodic memories.
-  - `llm_backend.py`: LLMSensor, LLMModulator, NarrativeSensor, NarrativeModulator.
-  - `program_executor.py`: Step-by-step motor program execution with pain gates.
   - `component_registry.py`: ComponentRegistry — template catalog for reusable SEM entity specs. Multi-path discovery (campaign-local → `~/.maxim/components/` → `_data/components/`). 73 seed components across 7 categories (bodies, creatures, environments, items, npcs, vehicles, weapons). Genre-gated: fantasy, cyberpunk, scifi, horror, historical, modern, devops.
-- `src/maxim/mesh/`: owns cooperative peer-to-peer agent networking. Each Maxim instance is sovereign (owns its memories, causal models, behaviors) but can share cooperatively.
+- `src/maxim/mesh/`: owns in-process multi-agent messaging for simulation/research protocols (the networked peer-mesh scaffolding was deleted in R0; see `docs/reference.md` "Removed in R0").
+  - `bus.py`: LocalMessageBus — thread-safe in-process mailbox routing between agents.
   - `identity.py`: AgentProfile — lightweight identity for local multi-agent coordination.
-  - `agent_identity.py`: AgentIdentity — extends AgentProfile with hardware capabilities and knowledge statistics for network-level coordination.
   - `message.py`: MeshMessage (24 typed message types), protocol versioning.
-  - `peer_channel.py`: PeerChannel — HTTP transport with async send queue, retry with backoff.
-  - `peer_registry.py`: PeerRegistry — thread-safe registry, bootstrapped from peer config.
-  - `admission.py`: MeshAdmissionControl — per-peer rate limiting, burst detection, escalating gate durations.
-  - `knowledge.py`: ExperienceBroker + KnowledgeProvider/Receiver protocol. Built-in adapters: CausalLink (NAc), Reflection (Hippocampus), MotorProgram (Cerebellum).
-  - `task_delegation.py`: TaskDelegator + TaskReceiver — goal delegation with loop detection and queue depth checks.
-  - `clock.py`: PeerClockEstimator — NTP-lite clock offset estimation for cross-agent temporal coordination.
+  - `naming.py`: UMR — Uniform Memory Reference for cross-agent addressing.
 - `src/maxim/integration/`: owns central coordination.
   - `memory_hub.py`: MemoryHub coordinates all bridges, manages session lifecycle, and wires multi-layer memory (ATL concept extraction, grounding, promotion). Connects 11 bio-systems in production; now also fully wired in simulation mode.
 - `src/maxim/state/` (reserved): owns authoritative runtime truth; must **not** contain long-term storage logic or planning.
@@ -136,6 +129,9 @@ Each layer must be independently mockable:
 If a component cannot be tested in isolation, the architecture is violated.
 
 ## Key Modules
+
+A subsystem-level map only; [docs/reference.md](docs/reference.md) is the file-level module inventory (it does not yet cover every package, e.g. `console/`). Confirm a file exists under `src/maxim/` before citing it here.
+
 - `src/maxim/cli.py`: primary CLI entrypoint (`maxim` console script).
 - `scripts/main.py`: legacy checkout entrypoint (delegates to `maxim.cli`).
 - `src/configs/`: version-controlled config templates and notes.
@@ -149,7 +145,6 @@ If a component cannot be tested in isolation, the architecture is violated.
   - `workers.py`: module-level worker functions (video writer, audio writer, transcription)
 - `src/maxim/agents/`: agent interfaces + implementations (reasoning/intent, no side effects).
   - `modality.py`: `SensoryModality` enum, `SensoryTag` dataclass — typed percept classification.
-  - `sensory_gate.py`: `SensoryGate` — entity-modulated filtering of sensory input before pipeline processing.
   - Extracted modules (re-exported from `llm_worker.py` for backward compatibility): `llm_types.py`, `llm_context.py`, `prompt_budgeter.py`, `llm_fallback.py`, `prompt_builder.py`.
 - `src/maxim/planning/`: planning + policy + decision engine (agentic action selection).
   - `plan_dashboard.py`: Bus-driven `ACTIVE_PLAN.md` writer for workspace visibility.
@@ -182,7 +177,6 @@ If a component cannot be tested in isolation, the architecture is violated.
 - `src/maxim/interactive/`: universal prompt protocol and rich terminal display.
   - `prompts.py`: PromptRequest, PromptHandler ABC, PromptType enum. Every user interaction flows through this protocol (DM choices, architect interviews, freeform chat, confirmations).
   - `display.py`: Rich-based split-panel terminal UI with scrolling agent log, status bar, and input area. Graceful degradation without `rich`.
-  - `dm_display.py`: DM-specific display extensions (encounter info panels, character sheet).
 - `src/maxim/simulation/dm_runtime.py`: DM campaign runtime — multi-agent campaign execution. NPC agents have real memory (Hippocampus, NAc) via AgentFactory. NPCs witness outcomes, remember encounters, and adapt dialogue.
 - `src/maxim/_data/encounters/`: Bundled encounter templates — 8 seed YAML files across 4 categories (combat, exploration, puzzle, social). Accessible via the `browse_encounters` tool (`simulation/tools_dm.py::BrowseEncountersTool`) in DM campaign mode.
 - `src/maxim/simulation/entity_designer.py`: EntityDesigner — LLM-driven SEM spec generation from natural language descriptions. Uses ComponentRegistry templates as bases; generates only the delta.

@@ -213,7 +213,7 @@ holds.
 
 > **RESOLVED by the H1 healthy-hardware re-sweep
 > ([results](../../experiments/protocols/h1_healthy_hardware_doa_preregistration.md#results--appended-2026-08-08-session-1-parts-a--b-complete-envelope--part-c-pending-recalibration),
-> data [h1_doa_sweep.jsonl](data/h1_doa_sweep.jsonl)).** After motors 2+3 —
+> data [h1_doa_sweep.jsonl](../../experiments/data/h1_doa_sweep.jsonl)).** After motors 2+3 —
 > broken for the entire 1.0+ era — were replaced, a version-verified two-geometry
 > sweep on `executed_git_hash 38aaddea` measured **gain 0.578 (front, replicated
 > at 0.575) / 0.645 (63° displaced, ≈ the geometric 0.637), R² 0.984–0.996,

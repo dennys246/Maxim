@@ -108,7 +108,7 @@ at ~200-400ms for a short completion.
 
 **Fail:** time > 5s or http_code ≠ 200 → **STOP**. Investigate leader
 VRAM pressure via `maxim doctor` first. See
-[feedback_kv_cache_shared_gpu_spillover.md](../../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_kv_cache_shared_gpu_spillover.md).
+`feedback_kv_cache_shared_gpu_spillover.md` (author's local notes, not in repo).
 
 ## Runbook
 
@@ -241,7 +241,7 @@ pressure on the leader, the pre-restart baseline will show degraded
 latency (500ms-5s instead of 200-400ms), the restart will take longer
 to drain, and the recovery window will be inflated by residual
 spillover effects. Fix the leader first — see
-[feedback_kv_cache_shared_gpu_spillover.md](../../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_kv_cache_shared_gpu_spillover.md).
+`feedback_kv_cache_shared_gpu_spillover.md` (author's local notes, not in repo).
 
 **5. Cloudflare tunnel dormancy.** If the leader has been idle for a
 long time, the tunnel may be cold. Run the pre-flight curl 2-3 times

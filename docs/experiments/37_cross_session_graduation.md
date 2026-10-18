@@ -18,7 +18,7 @@
 **Date pre-registered:** 2026-05-30
 **Status:** PRE-REGISTERED — implementation not started. Falsification conditions and acceptance thresholds locked here BEFORE any trial runs.
 **Worktree:** `feat/1-0-graduation-cross-session` at `/Users/dennyschaedig/Scripts/Maxim-wt-cross-session`
-**Authorization:** [kickoff_1_0_graduation_cross_session.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/kickoff_1_0_graduation_cross_session.md); scenario + metric + ablation + backend choices selected by user via AskUserQuestion during kickoff session.
+**Authorization:** `kickoff_1_0_graduation_cross_session.md` (author's local notes, not in repo); scenario + metric + ablation + backend choices selected by user via AskUserQuestion during kickoff session.
 
 ## Purpose — dual-gate evidence
 
@@ -31,7 +31,7 @@ Path C from the kickoff: one artifact, two views. The graduation answers "do the
 
 ## Pre-registered acceptance criteria
 
-All thresholds and rules below are locked here BEFORE any sim runs. The pre-registration discipline (per [feedback_invariant_two_tier_tracking.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_invariant_two_tier_tracking.md)) means a passing result is evidence the gate works; a failing result is honest evidence the gate doesn't work — both are valid outcomes. Post-hoc threshold relaxation is forbidden.
+All thresholds and rules below are locked here BEFORE any sim runs. The pre-registration discipline (per `feedback_invariant_two_tier_tracking.md` (author's local notes, not in repo)) means a passing result is evidence the gate works; a failing result is honest evidence the gate doesn't work — both are valid outcomes. Post-hoc threshold relaxation is forbidden.
 
 ### Primary criterion (must pass — non-negotiable for graduation EARNED)
 
@@ -348,8 +348,8 @@ The combined cross-scale story is genuinely informative:
 - [docs/experiments/10_cross_session_enrichment.md](10_cross_session_enrichment.md) — the PARTIAL prior evidence this experiment converts to EARNED.
 - [docs/experiments/11_cradle_sensorimotor_poc.md](11_cradle_sensorimotor_poc.md) — Cradle infrastructure validated; substrate for this experiment.
 - [docs/experiments/36_roy_5b_confound_isolation.md](36_roy_5b_confound_isolation.md) — confound-isolation discipline; Arm C exists to honor this lesson.
-- [feedback_invariant_two_tier_tracking.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_invariant_two_tier_tracking.md) — graduation tag discipline.
-- [feedback_confound_isolation_discipline.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_confound_isolation_discipline.md) — confound-isolation pre-registration.
-- [project_research_claim_non_negotiables.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_research_claim_non_negotiables.md) — the load-bearing 1.0 claim.
-- [project_v1_0_sequenced_plan.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_v1_0_sequenced_plan.md) — Phase 2 graduation cadence.
-- [kickoff_1_0_graduation_cross_session.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/kickoff_1_0_graduation_cross_session.md) — authorization + user-decision audit trail.
+- `feedback_invariant_two_tier_tracking.md` (author's local notes, not in repo) — graduation tag discipline.
+- `feedback_confound_isolation_discipline.md` (author's local notes, not in repo) — confound-isolation pre-registration.
+- `project_research_claim_non_negotiables.md` (author's local notes, not in repo) — the load-bearing 1.0 claim.
+- `project_v1_0_sequenced_plan.md` (author's local notes, not in repo) — Phase 2 graduation cadence.
+- `kickoff_1_0_graduation_cross_session.md` (author's local notes, not in repo) — authorization + user-decision audit trail.

@@ -23,7 +23,7 @@ Roy-3 produced the A ≈ B ≈ C diagnostic; see [23_roy_3.md § What this prove
 - All four wire PRs merged to main: #253 (Wire-A), #254 (Stage 0b/0c telemetry), #255 (Wire 3), #256 (Wire 2), #257 (Wire 1). Verify via `git log --oneline main | head -20`.
 - Leader healthy at the URL in `~/.config/maxim/peer.yml` and reachable from the runner host.
 - Local checkout has the `bodies/infant_humanoid` component (built-in seed; ships in `src/maxim/_data/components/bodies/`).
-- `MAXIM_SUBSTRATE_PATH=1` set in the runner environment (load-bearing per [feedback_substrate_path_env_var_for_roy.md](../../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_substrate_path_env_var_for_roy.md)). Without it, the LinguisticEncoder → EC text-modality routing short-circuits silently and Wire-A's annotation reads against a stale agent-wide bias map.
+- `MAXIM_SUBSTRATE_PATH=1` set in the runner environment (load-bearing per `feedback_substrate_path_env_var_for_roy.md` (author's local notes, not in repo)). Without it, the LinguisticEncoder → EC text-modality routing short-circuits silently and Wire-A's annotation reads against a stale agent-wide bias map.
 
 ## A. Pre-flight (3 min)
 
