@@ -255,8 +255,11 @@ regime (S0); decided time-based (Q3). `decay_imagined_links(0.5)` stays at sessi
   `Dormant since <date>: owner decision 2026-10-17, no offline forgetting`. Under
   `offline_wall_decay=True` every map that decays today, `_cluster_fear` included, decays as before; the default
   (False) decays nothing offline (Q7; G1 holds both arms).
-- `load(apply_decay=...)` and `load_safe(apply_decay=...)` keep the keyword **through 1.4.x** (Q7;
-  it then gates only the opt-in) and are removed in 1.5.0. The callers include `hivemind/cli.py`'s
+- `load(apply_decay=...)` and `load_safe(apply_decay=...)` keep the keyword **through 1.4.x** (Q7)
+  with a `DeprecationWarning`, and are removed in 1.5.0. **Amended 2026-10-18 (owner decision at the S1
+  review):** an explicit `apply_decay=True` / `False` decides offline decay for that one load, whatever
+  the config, and omitting it means `NACConfig.offline_wall_decay` (default off). Behaviour tier: "no
+  offline forgetting" is the default policy, and the Dormant opt-in (config or keyword) can override it. The callers include `hivemind/cli.py`'s
   `load_safe`. Loaders to update:
   - `runtime/bio_stack.py` `nac.load_safe()` (the main loader, decay on today)
   - `agent_factory._create_nac` `nac.load()`
@@ -446,4 +449,4 @@ owner at the start of the slice that finds them.
 | Body drift excludes pause and latency, and stays netted in GL2a | G4 + the netting guard |
 | No wall clock or pass count in the NAc decay/age path or `Embodiment.advance` | AST test in `test_experience_clock_decay.py`: no `time.time` / `time.monotonic` / `time_ns` in the named functions |
 | Every remaining wall-clock timer in a learning path is on §(g)'s allowlist | **no check yet.** Mechanization backlog M72 in [outstanding.md](outstanding.md), added in the S0 PR: a lint over `decisions/`, `memory/`, `embodiment/body.py`, `agents/memory_agent.py::_apply_decay` and `proprioception/focus_learner.py::_apply_decay` that refuses a wall-clock read outside an allowlist |
-| Permanent fear is revisited on its trigger (Risk 2) | **no check yet.** A backlog row added in the S1 PR: a report-stamp check that fails a survival report lacking fear count/mass, plus the #1072 follow-up issue carrying the trigger |
+| Permanent fear is revisited on its trigger (Risk 2) | **no check yet.** Mechanization backlog M73 in [outstanding.md](outstanding.md), added in the S1 PR: a report-stamp check that fails a survival report lacking fear count/mass, plus the #1072 follow-up issue carrying the trigger |

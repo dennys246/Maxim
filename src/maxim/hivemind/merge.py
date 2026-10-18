@@ -554,10 +554,10 @@ def nac_merge(
         "cluster_reward_source": _merge_credit_sources(
             left.get("cluster_reward_source"), right.get("cluster_reward_source")
         ),
-        # `saved_at` was dropped too, and only the CLI patched it back — so
-        # every other caller silently lost the decay clock. Keep the LATER of
-        # the two: decay is elapsed-time-based, and the younger state is the
-        # one whose biases have decayed least.
+        # `saved_at` was dropped too, and only the CLI patched it back. It is
+        # the clock of the Dormant offline-decay opt-in (off by default since
+        # 2026-10-18) and a diagnostic: keep the LATER of the two, the younger
+        # state being the one whose biases decayed least under that opt-in.
         "saved_at": _later_saved_at(left.get("saved_at"), right.get("saved_at")),
         # Exp 58 fear wire (Wire 4): situation-keyed fear. Absent from the rebuilt dict
         # = the same receiver-side delete-state class as `cluster_reward_source`
@@ -1014,7 +1014,7 @@ def _merge_credit_sources(left: Any, right: Any) -> dict[str, str]:
 
 
 def _later_saved_at(left: Any, right: Any) -> Any:
-    """The younger of two ISO timestamps — the state whose biases decayed least."""
+    """The younger of two stamps — the state whose biases decayed least (under the offline-decay opt-in)."""
     candidates = [t for t in (left, right) if isinstance(t, str) and t]
     if not candidates:
         return left if left is not None else right

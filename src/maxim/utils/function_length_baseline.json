@@ -91,7 +91,7 @@
     {
       "file": "src/maxim/hivemind/ingest.py",
       "qualname": "_validate_nac_payload",
-      "lines": 270
+      "lines": 266
     },
     {
       "file": "src/maxim/hivemind/ingest.py",
@@ -151,7 +151,7 @@
     {
       "file": "src/maxim/runtime/bio_stack.py",
       "qualname": "build_bio_stack",
-      "lines": 510
+      "lines": 487
     },
     {
       "file": "src/maxim/runtime/bootstrap.py",
