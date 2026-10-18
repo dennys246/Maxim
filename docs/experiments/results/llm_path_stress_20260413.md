@@ -3,7 +3,7 @@
 Validates Plan 3 (Fast Failover, PR #94) + Plan 3.5 (Cancellation Hygiene, PR #96) against a real leader restart under live multi-turn agent load.
 
 **Trace:** [phase_d_20260413.jsonl](phase_d_20260413.jsonl) (3052 events, 244 KB)
-**Pre-requisite:** the KV cache spillover on the leader was resolved by lowering `MAXIM_LLM_N_CTX` from ~12380 before this run — see [feedback_kv_cache_shared_gpu_spillover.md](../../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_kv_cache_shared_gpu_spillover.md). Without that fix, individual calls were 60-125s and no recovery-time measurement was meaningful.
+**Pre-requisite:** the KV cache spillover on the leader was resolved by lowering `MAXIM_LLM_N_CTX` from ~12380 before this run — see `feedback_kv_cache_shared_gpu_spillover.md` (author's local notes, not in repo). Without that fix, individual calls were 60-125s and no recovery-time measurement was meaningful.
 
 ## Setup
 

@@ -78,7 +78,7 @@ Pass criteria (in priority order):
 
 If `cluster_reward_bias_l2 == 0` on a real run despite all three arms running cleanly, the diagnostic order is:
 
-1. Check `actions.jsonl` in the priming session dir — were any tools actually called? If `len < 5` over the entire priming run, substrate-primary may be hitting the `min_confidence=0.3` gate at [nac.py:1300](../../src/maxim/decisions/nac.py). Per-path threshold tuning may be needed (out of G4 scope; tracked as the next item in the Roy-0 iteration log).
+1. Check `actions.jsonl` in the priming session dir — were any tools actually called? If `len < 5` over the entire priming run, substrate-primary may be hitting the `min_confidence=0.3` gate at `nac.py:1300` at the time ([nac.py](../../../src/maxim/decisions/nac.py); the line has since moved). Per-path threshold tuning may be needed (out of G4 scope; tracked as the next item in the Roy-0 iteration log).
 2. Check `aut_nac.json::cluster_reward_bias` directly in the priming session dir — is it populated? If the dict is empty after 100+ actions, the wire isn't firing somewhere (regression — check the G4 unit tests still pass).
 3. Check `result.preflight.outcome` — if anything other than `"ok"` / `"auth_rejected"`, the preflight aborted and no real sim ran.
 

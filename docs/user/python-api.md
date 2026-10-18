@@ -424,9 +424,9 @@ from maxim import Report
 report = Report.from_json("findings.json")
 print(report.metrics)
 
-# Future formats (planned):
-# report.save("findings.pdf")   # Requires pymaxim[docs]
-# report.save("findings.docx")  # Requires pymaxim[docs]
+# Future formats (planned, not implemented; no extra provides them yet):
+# report.save("findings.pdf")
+# report.save("findings.docx")
 ```
 
 ---

@@ -284,4 +284,4 @@ Per the pre-reg's graduation matrix, the row 1 status flips based on the verdict
 - [10_cross_session_enrichment.md](../10_cross_session_enrichment.md) — partial prior evidence + `--resume-sim` mechanics.
 - [36_roy_5b_confound_isolation.md](../36_roy_5b_confound_isolation.md) — confound-isolation discipline (Arm C exists to honor this).
 - [scripts/run_v1_phases.sh](../../../scripts/run_v1_phases.sh) — closest-sibling paired-trial harness (the design template).
-- [feedback_invariant_two_tier_tracking.md](../../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_invariant_two_tier_tracking.md) — graduation-tag discipline.
+- `feedback_invariant_two_tier_tracking.md` (author's local notes, not in repo) — graduation-tag discipline.

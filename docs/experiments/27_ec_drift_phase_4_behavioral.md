@@ -21,7 +21,7 @@ Per the kickoff routing: **fix ships as substrate hygiene + V1 prerequisite; JEP
 
 ## Pre-registered routing logic
 
-From [kickoff_ec_drift_phase_4.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/kickoff_ec_drift_phase_4.md):
+From `kickoff_ec_drift_phase_4.md` (author's local notes, not in repo):
 
 | Outcome | Diagnosis | Action |
 |---|---|---|

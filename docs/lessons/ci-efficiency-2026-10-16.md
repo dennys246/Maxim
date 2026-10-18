@@ -23,6 +23,11 @@ of 4,544 tests took 642 s; the same sample at `-n 6` took 138 s, with 0 failures
 measurement**, not the M22 trial: one sample, one machine, not the whole suite, and nothing checked for
 `~/.maxim`, port or global-state collisions beyond "no failures".
 
+*Update 2026-10-18:* the M22 trial then ran (#1339) and was reverted (#1359). **Coverage depends on test order**:
+two serial runs on one commit and one machine, forward vs reversed file order, differed by up to 16 missing
+statements in one package (34 in total), so an exact-pin ratchet flakes under `--dist loadfile`, which reshuffles
+the order every run. Outcome and follow-ups: [docs/agents/ci-testing.md](../agents/ci-testing.md) §1.
+
 **Coverage overhead.** About 1.5x, measured on a subset only.
 
 **Slow tests.** 11 tests of 5 s or more account for 44% of the sample's serial time. Among them:

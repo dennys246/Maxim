@@ -170,8 +170,8 @@ The flags + CLI arguments scheduled for removal in 1.0:
 | `confound_quarantine` block in `report.json` | [report.py::_build_confound_quarantine_block](../../src/maxim/simulation/report.py#L108) | Delete the function + `SimulationReport.confound_quarantine` field |
 | `MAXIM_V1_PHASE` env var | [report.py:167](../../src/maxim/simulation/report.py#L167) | Removed with the block above |
 | Autouse scrub fixture | [tests/conftest.py:157](../../tests/conftest.py#L157) | Delete fixture |
-| Per-flag pin tests | [tests/unit/test_confound_flags.py](../../tests/unit/test_confound_flags.py) | Delete file |
-| Phase metric integration test | [tests/integration/test_v1_phased_metrics.py](../../tests/integration/test_v1_phased_metrics.py) | Delete file |
+| Per-flag pin tests | `tests/unit/test_confound_flags.py` (historical: deleted in `4e98693a`; at `f742527`) | Delete file |
+| Phase metric integration test | `tests/integration/test_v1_phased_metrics.py` (historical: deleted in `4e98693a`; at `f742527`) | Delete file |
 | `--no-embodiment` CLI flag | [cli_parser.py:103](../../src/maxim/cli_parser.py#L103) | Keep (orthogonal to confound quarantine — pre-existing escape hatch for "no body" sims) |
 | `MAXIM_DATA_HOME` env var | [paths.py:71](../../src/maxim/utils/paths.py#L71) | Keep (already public-stable; needed for test isolation) |
 

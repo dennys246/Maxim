@@ -18,7 +18,7 @@ P2 sweep is **structurally immune** to the ECConfig default change (uses its own
 
 ## Pre-registered gate
 
-Per [kickoff_ec_drift_phase_2.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/kickoff_ec_drift_phase_2.md):
+Per `kickoff_ec_drift_phase_2.md` (author's local notes, not in repo):
 
 - **P1 collapse rate ≥ 85%** (looser than the production P1 gate's ≥ 90%; explicitly a Phase 2 tolerance band)
 - **P2 target gain ≥ +40pp** + **distractor drift ≤ +5pp** + **9-of-10 seeds pass**

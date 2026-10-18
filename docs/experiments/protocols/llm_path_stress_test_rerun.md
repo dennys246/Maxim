@@ -34,7 +34,7 @@ maxim peer version
 
 ## Pre-flight health gate — CRITICAL
 
-**If the leader can't serve a healthy inference in <5s, Phase D results are meaningless.** The 2026-04-13 run was blocked by a KV cache spillover to shared GPU memory (Qwen-14B at `n_ctx=12380` pushed total VRAM past 16 GB, dropping rate to ~0.9 tok/s). See [feedback_kv_cache_shared_gpu_spillover.md](../../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_kv_cache_shared_gpu_spillover.md).
+**If the leader can't serve a healthy inference in <5s, Phase D results are meaningless.** The 2026-04-13 run was blocked by a KV cache spillover to shared GPU memory (Qwen-14B at `n_ctx=12380` pushed total VRAM past 16 GB, dropping rate to ~0.9 tok/s). See `feedback_kv_cache_shared_gpu_spillover.md` (author's local notes, not in repo).
 
 **Gate:**
 ```bash

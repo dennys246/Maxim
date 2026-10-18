@@ -30,7 +30,7 @@
 
 **Both row 1 (literal) and row 3 (structural) are triggered.** The disambiguator plan's row 3 hatch ("Pause — document, surface to user") is the dominant classification per the kickoff's "force into 4a or 4b only when unambiguous" rule. The verdict is **Ambiguous — surfaced** rather than PASS.
 
-## What shipped (Phase 1 prerequisite — see [project_roy_5b_phase_1_shipped.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_roy_5b_phase_1_shipped.md))
+## What shipped (Phase 1 prerequisite — see `project_roy_5b_phase_1_shipped.md` (author's local notes, not in repo))
 
 PR #295 (merged 2026-05-28 at commit 9d9dae6) shipped the Phase 1 infrastructure that Roy-5b needs:
 
@@ -46,7 +46,7 @@ Two pre-merge review BLOCKs folded into PR #295:
 
 ## Operational note — first run wasted on missing env var
 
-The first Roy-5b run (started 2026-05-28 20:33 local, 24 min wall) was kicked off with the env command the [21_roy_4_reproduction.md](protocols/21_roy_4_reproduction.md) protocol documents, which omits `MAXIM_SUBSTRATE_PATH=1`. The result was 152 drive-modality EC events but **zero linguistic-modality events** — the diagnostic prerequisite was missing because [MemoryHub._encoder](../../src/maxim/integration/memory_hub.py) requires the env var to wire up. Per the canonical lesson at [feedback_substrate_path_env_var_for_roy.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_substrate_path_env_var_for_roy.md), this gotcha has burned multiple prior Roy iterations and now this one.
+The first Roy-5b run (started 2026-05-28 20:33 local, 24 min wall) was kicked off with the env command the [21_roy_4_reproduction.md](protocols/21_roy_4_reproduction.md) protocol documents, which omits `MAXIM_SUBSTRATE_PATH=1`. The result was 152 drive-modality EC events but **zero linguistic-modality events** — the diagnostic prerequisite was missing because [MemoryHub._encoder](../../src/maxim/integration/memory_hub.py) requires the env var to wire up. Per the canonical lesson at `feedback_substrate_path_env_var_for_roy.md` (author's local notes, not in repo), this gotcha has burned multiple prior Roy iterations and now this one.
 
 The Phase 2 reproduction runbook ([protocols/35_roy_5b_reproduction.md](protocols/35_roy_5b_reproduction.md)) is updated to include `MAXIM_SUBSTRATE_PATH=1` in the command and a new troubleshooting entry. The Roy-4 reproduction protocol has the same gap (it omits the env var) and should be updated separately — orthogonal to this experiment's scope.
 

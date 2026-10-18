@@ -11,6 +11,7 @@ links the file today. Add a line here when you add a lesson.
 - [autosave-outside-rwlock-write-block.md](autosave-outside-rwlock-write-block.md) — Auto-save must not run under the hippocampus RWLock write block (read-lock-under-write self-deadlocks) — persistence-config.md
 - [b8-delta-attribution.md](b8-delta-attribution.md) — Drive-spec embodiment failures are delta-attributed: a tool is blamed only for breaches its OWN effect caused — embodiment.md
 - [backend-error-fix-hint-static.md](backend-error-fix-hint-static.md) — `BackendError.fix_hint` is never user-controllable — llm-routing.md
+- [baseline-floors-b1.md](baseline-floors-b1.md) — B1, the first floor: what it took to compare a bio mechanism with a no-bio learner, and what it found — docs/plans/baseline_floors.md
 - [build-bio-stack-canonical.md](build-bio-stack-canonical.md) — `runtime/bio_stack.py::build_bio_stack` is the canonical bio-pipeline construction site — runtime-tools.md
 - [build-default-network-canonical.md](build-default-network-canonical.md) — `runtime/bootstrap.py::build_default_network` is the canonical DefaultNetwork construction site — runtime-tools.md
 - [build-executor-canonical.md](build-executor-canonical.md) — `runtime/bootstrap.py::build_executor` is the canonical bridge wiring site — runtime-tools.md
