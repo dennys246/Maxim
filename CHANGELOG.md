@@ -50,6 +50,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   link of an event signature, that signature's empty `_links` slot and its `_event_outcome_welford` state go with it,
   so they no longer grow with every signature ever seen. This also resets that signature's variance history:
   `get_action_risk_profile` restarts for it if it is booked again. Guard: `tests/unit/test_nac_credit_path_a2.py`.
+- **NAc correctness: non-finite credit, the session observer's decay, eligibility locking, per-tick decay
+  isolation and `reward_bias` keys** (PR A1).
+  - Every NAc credit/update entry point (`credit_node`, `update_cluster_reward`, `credit_operant_reward`,
+    `credit_goal`, `record_percept_valence`, `record_cluster_fear`, `update_eligibility`, `distribute_reward`)
+    and `TemporalCreditDistributor.distribute` raise `ValueError` on a NaN/inf input. The clamps had stored a NaN
+    reward as FULL aversion (`max(-cap, min(nan, cap)) == -cap`). On load a non-finite stored value is dropped
+    with one warning: a stored NaN was never pruned and gave the widest threshold override.
+  - `maxim.session`'s observer loads NAc with `apply_decay=False`, like `maxim.load.nac` and `maxim.observe`:
+    observing a stale session no longer decays or prunes what it reports.
+  - `TemporalCreditDistributor` reads traces through the new `NAc.eligibility_snapshot()`, copied under NAc's
+    lock. It had iterated `nac._eligibility` under its own lock while `decay_eligibility` deleted keys, which
+    raised "dictionary changed size during iteration". `NAc.decay_all` now takes the lock.
+  - Agent-loop section 8.5 runs each per-tick NAc decay on its own and reports a failure in the Stage-1 form
+    under its own site. One raising had skipped every later decay, every tick, behind a DEBUG line.
+  - `credit_node` and `update_eligibility` refuse an agent id holding `:`. `reward_bias` persists as
+    `"<agent_id>:<node_id>"`, split on the first `:` by `load_state` and the hivemind readers, and node ids may
+    hold `:`. The bundle wire format is unchanged.
+  - `NAc.get_version()` returns the format `save()` stamps (it said `"1.0"`), and the dump/save docstrings no
+    longer name `"1.2"`. `NACConfig.decay_interval_hours` is marked dead (nothing reads it), and the
+    never-read `NAc._last_decay_time` is deleted.
+  - Guards: `tests/unit/test_nac_correctness_a1.py` +
+    `tests/unit/test_loop_section_extraction.py::test_bio_tick_one_raising_decay_skips_none_of_the_others`.
 
 - **The benchmark summary no longer prints "0/3 passed [PASS]"** ([#1310](https://github.com/dennys246/Maxim/issues/1310)).
   The verdict comes from the suite's metric thresholds (`ModelResult.passed`); the count is the scenarios'

@@ -809,6 +809,23 @@ def _loop_step_callback(ctrl: Any, *, step_num: int) -> None:
         logger.debug("on_step callback failed", exc_info=True)
 
 
+#: Section 8.5's per-tick NAc decays, in call order. Each runs on its own (one
+#: raising never skips the rest). ``decay_percept_valences`` — Wire 2
+#: (release_0_9_1.md Stage 3): without it ``_percept_valences`` ages into
+#: permanent fossils, and ``TextSalienceScorer`` would treat "burned-by-dragon
+#: six sessions ago" as salient as "last tick". ``decay_exploration_visits`` —
+#: substrate_exploration_policy.md Phase 2: a tool the agent stopped selecting
+#: regains novelty; a no-op when exploration is off.
+_NAC_PER_TICK_DECAYS: tuple[str, ...] = (
+    "decay_eligibility",
+    "decay_reward_biases",
+    "decay_goal_reward_biases",
+    "decay_cluster_reward_biases",
+    "decay_percept_valences",
+    "decay_exploration_visits",
+)
+
+
 def _loop_bio_tick_maintenance(nac: Any) -> None:
     """Section 8.5 — BIO-SYSTEM PER-TICK MAINTENANCE.
 
@@ -817,10 +834,9 @@ def _loop_bio_tick_maintenance(nac: Any) -> None:
     ever activated in the session at original strength — incorrect for causal
     credit assignment.
 
-    The six decay calls are one unit under a single handler, exactly as
-    inline: if an early one raises, the rest are skipped for that tick. That
-    is pre-existing behaviour and is NOT changed here (see the module banner —
-    mechanical moves only; a bug found during extraction is filed, not fixed).
+    Each decay in ``_NAC_PER_TICK_DECAYS`` is contained separately and
+    reported in the Stage-1 form under its own site, so one raising no longer
+    skips every decay after it, every tick, behind a DEBUG line.
 
     Takes the NAc directly rather than re-deriving it from
     ``ctrl.memory_hub``: the loop binds ``_loop_nac`` once, before the loop,
@@ -828,24 +844,11 @@ def _loop_bio_tick_maintenance(nac: Any) -> None:
     """
     if nac is None:
         return
-    try:
-        nac.decay_eligibility()
-        nac.decay_reward_biases()
-        nac.decay_goal_reward_biases()
-        nac.decay_cluster_reward_biases()
-        # Wire 2 (release_0_9_1.md Stage 3): Pavlovian percept aversion.
-        # Without per-tick decay, ``_percept_valences`` ages into permanent
-        # fossils — ``TextSalienceScorer`` would silently treat
-        # "burned-by-dragon six sessions ago" as equally salient to
-        # "burned-by-dragon last tick."
-        nac.decay_percept_valences()
-        # Substrate exploration policy (substrate_exploration_policy.md
-        # Phase 2): decay per-(agent, tool) visit counts so a tool the agent
-        # stopped selecting regains novelty over time. No-op when exploration
-        # is off (empty map → early return).
-        nac.decay_exploration_visits()
-    except Exception as e:
-        log_swallowed_exception(e, operation="nac_per_tick_decay")
+    for name in _NAC_PER_TICK_DECAYS:
+        try:
+            getattr(nac, name)()
+        except Exception:
+            log_swallowed_exception(site=f"agent_loop.py:_loop_bio_tick_maintenance:{name}")
 
 
 def _thaw(value: Any) -> Any:

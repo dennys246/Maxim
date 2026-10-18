@@ -89,7 +89,21 @@ def test_bio_tick_contains_a_raising_decay():
     """A decay blowing up must not escape into the loop body."""
     nac = _RecordingNAc(raise_on="decay_reward_biases")
     _loop_bio_tick_maintenance(nac)
-    assert nac.calls == ["decay_eligibility", "decay_reward_biases"]
+    assert nac.calls[:2] == ["decay_eligibility", "decay_reward_biases"]
+
+
+@pytest.mark.parametrize("raising", EXPECTED_DECAYS)
+def test_bio_tick_one_raising_decay_skips_none_of_the_others(raising, monkeypatch):
+    """Each decay is contained on its own: one raising used to skip every later decay, every
+    tick, behind a DEBUG line. It is now reported in the Stage-1 form under its own site."""
+    import maxim.runtime.agent_loop as agent_loop
+
+    reported: list[str | None] = []
+    monkeypatch.setattr(agent_loop, "log_swallowed_exception", lambda *a, site=None, **k: reported.append(site))
+    nac = _RecordingNAc(raise_on=raising)
+    _loop_bio_tick_maintenance(nac)
+    assert nac.calls == EXPECTED_DECAYS
+    assert reported == [f"agent_loop.py:_loop_bio_tick_maintenance:{raising}"]
 
 
 def test_bio_tick_decays_are_all_called_every_tick():
