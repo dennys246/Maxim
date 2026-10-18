@@ -62,7 +62,7 @@
     "cluster_reward_source": {},
     "event_outcome_welford": {},
     "goal_reward_bias": {
-     "check how the agent answers two short questions": 0.170152605
+     "check how the agent answers two short questions": "+ in (0, 0.2], decayed below its last write"
     },
     "inherent_bias_keys": [],
     "links": {
@@ -307,6 +307,63 @@
     "MAXIM_ALLOW_BASH": "1",
     "MAXIM_DATA_HOME": "<WORK>/data",
     "MAXIM_SIM_HARD_ABORT": "0"
+   },
+   "nac_credits": {
+    "aut": [
+     {
+      "activation": 0.3,
+      "agent_id": "sim_aut",
+      "method": "update_eligibility",
+      "node_id": "tool:respond",
+      "post": 0.3,
+      "temporal_sig": true
+     },
+     {
+      "goal_tag": "check how the agent answers two short questions",
+      "method": "credit_goal",
+      "post": 0.15,
+      "reward": 1.0
+     },
+     {
+      "activation": 0.3,
+      "agent_id": "sim_aut",
+      "method": "update_eligibility",
+      "node_id": "tool:respond",
+      "temporal_sig": true
+     },
+     {
+      "goal_tag": "check how the agent answers two short questions",
+      "method": "credit_goal",
+      "reward": 1.0
+     }
+    ],
+    "other": [
+     [
+      {
+       "activation": 0.3,
+       "agent_id": "sim_orchestrator",
+       "method": "update_eligibility",
+       "node_id": "tool:send_message",
+       "post": 0.3,
+       "temporal_sig": true
+      },
+      {
+       "activation": 0.3,
+       "agent_id": "sim_orchestrator",
+       "method": "update_eligibility",
+       "node_id": "tool:send_message",
+       "temporal_sig": true
+      },
+      {
+       "activation": 0.3,
+       "agent_id": "sim_orchestrator",
+       "method": "update_eligibility",
+       "node_id": "tool:finish_simulation",
+       "post": 0.3,
+       "temporal_sig": true
+      }
+     ]
+    ]
    },
    "narrator_calls": [
     {
@@ -1106,7 +1163,7 @@
     "cluster_reward_source": {},
     "event_outcome_welford": {},
     "goal_reward_bias": {
-     "check how the agent answers two short questions": 0.173625107
+     "check how the agent answers two short questions": "+ in (0, 0.2], decayed below its last write"
     },
     "inherent_bias_keys": [],
     "links": {
@@ -1330,6 +1387,49 @@
     "MAXIM_ALLOW_BASH": "1",
     "MAXIM_DATA_HOME": "<WORK>/data",
     "MAXIM_SIM_HARD_ABORT": "0"
+   },
+   "nac_credits": {
+    "aut": [
+     {
+      "activation": 0.3,
+      "agent_id": "sim_aut",
+      "method": "update_eligibility",
+      "node_id": "tool:respond",
+      "post": 0.3,
+      "temporal_sig": true
+     },
+     {
+      "goal_tag": "check how the agent answers two short questions",
+      "method": "credit_goal",
+      "post": 0.15,
+      "reward": 1.0
+     },
+     {
+      "activation": 0.3,
+      "agent_id": "sim_aut",
+      "method": "update_eligibility",
+      "node_id": "tool:respond",
+      "temporal_sig": true
+     },
+     {
+      "goal_tag": "check how the agent answers two short questions",
+      "method": "credit_goal",
+      "reward": 1.0
+     },
+     {
+      "activation": 0.3,
+      "agent_id": "sim_aut",
+      "method": "update_eligibility",
+      "node_id": "tool:respond",
+      "temporal_sig": true
+     },
+     {
+      "goal_tag": "check how the agent answers two short questions",
+      "method": "credit_goal",
+      "reward": 1.0
+     }
+    ],
+    "other": []
    },
    "narrator_calls": [],
    "other_llm_calls": {
@@ -2061,7 +2161,7 @@
     "cluster_reward_source": {},
     "event_outcome_welford": {},
     "goal_reward_bias": {
-     "check how the agent answers two short questions": 0.173625107
+     "check how the agent answers two short questions": "+ in (0, 0.2], decayed below its last write"
     },
     "inherent_bias_keys": [],
     "links": {
@@ -2328,6 +2428,67 @@
     "MAXIM_ALLOW_BASH": "1",
     "MAXIM_DATA_HOME": "<WORK>/data",
     "MAXIM_SIM_HARD_ABORT": "0"
+   },
+   "nac_credits": {
+    "aut": [
+     {
+      "activation": 0.3,
+      "agent_id": "sim_aut",
+      "method": "update_eligibility",
+      "node_id": "tool:respond",
+      "post": 0.3,
+      "temporal_sig": true
+     },
+     {
+      "goal_tag": "check how the agent answers two short questions",
+      "method": "credit_goal",
+      "post": 0.15,
+      "reward": 1.0
+     },
+     {
+      "activation": 0.3,
+      "agent_id": "sim_aut",
+      "method": "update_eligibility",
+      "node_id": "tool:respond",
+      "temporal_sig": true
+     },
+     {
+      "goal_tag": "check how the agent answers two short questions",
+      "method": "credit_goal",
+      "reward": 1.0
+     },
+     {
+      "activation": 0.3,
+      "agent_id": "sim_aut",
+      "method": "update_eligibility",
+      "node_id": "tool:respond",
+      "temporal_sig": true
+     },
+     {
+      "goal_tag": "check how the agent answers two short questions",
+      "method": "credit_goal",
+      "reward": 1.0
+     }
+    ],
+    "other": [
+     [
+      {
+       "activation": 0.3,
+       "agent_id": "sim_orchestrator",
+       "method": "update_eligibility",
+       "node_id": "tool:send_message",
+       "post": 0.3,
+       "temporal_sig": true
+      },
+      {
+       "activation": 0.3,
+       "agent_id": "sim_orchestrator",
+       "method": "update_eligibility",
+       "node_id": "tool:send_message",
+       "temporal_sig": true
+      }
+     ]
+    ]
    },
    "narrator_calls": [
     {
@@ -3073,5 +3234,5 @@
    "unsorted_prompts": []
   }
  },
- "generated_at_commit": "6238109d3e7a"
+ "generated_at_commit": "3009cb23bb48"
 }
