@@ -469,7 +469,7 @@ told apart from the refactor.
     `sim_log`, the hottest function on the path. That is design work, not a behaviour-preserving
     move, and each gets its own review.
   - If they do not fit in 1.3.2, they keep their home in [outstanding.md](outstanding.md) O12. They did not fit;
-    re-homed to 1.3.5 with the orchestrator slices (§1.3.5; proposed 2026-10-18, owner to confirm).
+    re-homed to 1.3.5 with the orchestrator slices (§1.3.5; owner decision 2026-10-18).
 
 *1.4, by design.* Each needs an experiment or a mechanism review, not a hardening fix. Each is linked
 from the plan that owns it:
@@ -841,8 +841,9 @@ Owner decisions taken with this path (2026-10-16):
 - **Security follow-ups:** [#1311](https://github.com/dennys246/Maxim/issues/1311), [#1312](https://github.com/dennys246/Maxim/issues/1312), [#1314](https://github.com/dennys246/Maxim/issues/1314), [#957](https://github.com/dennys246/Maxim/issues/957), [#997](https://github.com/dennys246/Maxim/issues/997), [#1295](https://github.com/dennys246/Maxim/issues/1295). The design work [#1315](https://github.com/dennys246/Maxim/issues/1315) ships as 1.3.4, the atonia gate (advisor mode, below; §1.3.4).
 - **CI and evidence truth:** [#1313](https://github.com/dennys246/Maxim/issues/1313), [#1203](https://github.com/dennys246/Maxim/issues/1203), [#1121](https://github.com/dennys246/Maxim/issues/1121), [#1218](https://github.com/dennys246/Maxim/issues/1218), [#1220](https://github.com/dennys246/Maxim/issues/1220), [#1246](https://github.com/dennys246/Maxim/issues/1246), [#1247](https://github.com/dennys246/Maxim/issues/1247), [#1038](https://github.com/dennys246/Maxim/issues/1038), [#1024](https://github.com/dennys246/Maxim/issues/1024), [#1031](https://github.com/dennys246/Maxim/issues/1031), [#1215](https://github.com/dennys246/Maxim/issues/1215), [#1023](https://github.com/dennys246/Maxim/issues/1023).
 - **1.4.0 gate items outside the large functions:** [#1305](https://github.com/dennys246/Maxim/issues/1305) (owned RNGs), [#1263](https://github.com/dennys246/Maxim/issues/1263) (the thread guard and its
-  parts outside `start_simulation_mode`; [#1016](https://github.com/dennys246/Maxim/issues/1016) folds into it), [#1264](https://github.com/dennys246/Maxim/issues/1264), [#1265](https://github.com/dennys246/Maxim/issues/1265), [#1267](https://github.com/dennys246/Maxim/issues/1267); plus `932.resume-sim`,
-  #1123's three items and #1288's console and exec_agent lists (homed in §1.3.2).
+  parts outside `start_simulation_mode`; [#1016](https://github.com/dennys246/Maxim/issues/1016) folds into it), [#1264](https://github.com/dennys246/Maxim/issues/1264), [#1265](https://github.com/dennys246/Maxim/issues/1265), [#1267](https://github.com/dennys246/Maxim/issues/1267); plus #1123's three items and #1288's console and
+  exec_agent lists (homed in §1.3.2). `932.resume-sim` is NOT here: it lives in the fenced `orchestrator.py`, so it
+  lands in 1.3.5 with the orchestrator slices (owner decision 2026-10-18; §1.3.5).
 - **Small correctness fixes:** [#982](https://github.com/dennys246/Maxim/issues/982), [#1153](https://github.com/dennys246/Maxim/issues/1153), [#1155](https://github.com/dennys246/Maxim/issues/1155), [#1163](https://github.com/dennys246/Maxim/issues/1163), [#1225](https://github.com/dennys246/Maxim/issues/1225); the benchmark label [#1310](https://github.com/dennys246/Maxim/issues/1310) (its open question,
   whether `passed` should require the expectations, is the owner's).
 - **Recorded 1.3.3 moves** (release-readiness block above): #954, #984, #985, #988, #989, #1285–#1287, #1291,
@@ -922,8 +923,8 @@ Owner decisions taken with this path (2026-10-16):
   - [#1366](https://github.com/dennys246/Maxim/issues/1366) (a learns-only agent silently loses its MemoryHub):
     Session V, which owns `runtime/agent_factory.py`;
   - [#1009](https://github.com/dennys246/Maxim/issues/1009) (`--resume-sim` resolves twice; from
-    [m1b_ledger_evidence_gate.md](m1b_ledger_evidence_gate.md)): in the same PR as `932.resume-sim` (listed in this
-    section's gate items), since its fix is one resolution through `resolve_run_dir`;
+    [m1b_ledger_evidence_gate.md](m1b_ledger_evidence_gate.md)): in the same PR as `932.resume-sim` (1.3.5, with the
+    orchestrator slices; owner decision 2026-10-18), since its fix is one resolution through `resolve_run_dir`;
   - [#1102](https://github.com/dennys246/Maxim/issues/1102) (`NAc.load_state` skips the reward-bias clamp): with
     the experience-clock decay plan's NAc load work (S1, by the #971 persistence precedent above), with its trigger
     walk over the rows that persist NAc.
@@ -972,9 +973,12 @@ them. Session V's atonia items do not hold the 1.3.3 cut; they are 1.3.4 (owner 
 - **Riding with the slices:** [#1259](https://github.com/dennys246/Maxim/issues/1259), [#1262](https://github.com/dennys246/Maxim/issues/1262), #863's orchestrator wraps, #835, #965, #1288's stall nudge, and
   the sim-lifecycle and narrator issues [#981](https://github.com/dennys246/Maxim/issues/981), [#1005](https://github.com/dennys246/Maxim/issues/1005), [#1006](https://github.com/dennys246/Maxim/issues/1006), [#1007](https://github.com/dennys246/Maxim/issues/1007), [#1028](https://github.com/dennys246/Maxim/issues/1028), [#1033](https://github.com/dennys246/Maxim/issues/1033), [#1034](https://github.com/dennys246/Maxim/issues/1034), [#1043](https://github.com/dennys246/Maxim/issues/1043), [#1046](https://github.com/dennys246/Maxim/issues/1046), [#1272](https://github.com/dennys246/Maxim/issues/1272), [#1276](https://github.com/dennys246/Maxim/issues/1276), [#1241](https://github.com/dennys246/Maxim/issues/1241).
   Also [#1301](https://github.com/dennys246/Maxim/issues/1301): re-assess the narrator-driven evidence recorded before #1260 and #1261.
+  Also `932.resume-sim` (the `--resume-sim` lookup, a 1.4.0 gate item) with [#1009](https://github.com/dennys246/Maxim/issues/1009) in the same PR
+  (owner decision 2026-10-18: moved from 1.3.3, since the code is in the fenced `orchestrator.py`).
   After the slices, not inside them: [#866](https://github.com/dennys246/Maxim/issues/866), then
   [#865](https://github.com/dennys246/Maxim/issues/865), the `sim_logger` move out of `simulation/` (from §1.3.2's
-  "After the decomposition"; each its own reviewed PR; proposed 2026-10-18, owner to confirm).
+  "After the decomposition"; each its own reviewed PR; owner decision 2026-10-18). #866's import rewrite in
+  `runtime/agent_loop.py` needs Session A to grant that one hunk (record it as a fence touch).
 - **Meets B2's entry condition** ([#1352](https://github.com/dennys246/Maxim/issues/1352), the bare LLM loop). B2's code
   prerequisites land in 1.3.6.
 - **Exit:** `start_simulation_mode` and its descendants pass gate rule 4, and all five arms are satisfied.
