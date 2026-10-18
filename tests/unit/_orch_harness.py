@@ -51,7 +51,10 @@ threads and its real 3 s settle, so the trace records only CAUSALLY ORDERED fact
     own persisted stores, the sandbox and the reports;
   - the deterministic ``report.json`` fields, provenance by VALUE (``_PROVENANCE_MASKED``);
   - the saved AUT NAc's causal links and the ``actions.jsonl`` records, times dropped
-    (``_NAC_DROPPED``, ``_ACTION_DROPPED``);
+    (``_NAC_DROPPED``, ``_ACTION_DROPPED``); its tick-decayed bias maps by key, sign and bound only
+    (``_NAC_DECAY_PINNED``);
+  - every NAc credit write that feeds a decayed map (``_NAC_CREDIT_ENTRY_POINTS``), with its arguments,
+    in each NAc's own call order (``nac_credits``): the CAUSES of the decayed values, pinned exactly;
   - the threads the run started that are still alive after it returns (``_threads_left``);
   - the ``SimulationResult`` with its timestamps dropped.
 
@@ -73,8 +76,8 @@ wherever a slice moves the CALLER:
 
 NONDETERMINISM, NEUTRALISED. Every exclusion is a named constant below with its reason
 (``_RESULT_DROPPED``, ``_REPORT_DROPPED``, ``_PROVENANCE_MASKED``, ``_DATA_HOME_EXCLUDED``,
-``_THREADS_EXCLUDED``, ``_NAC_DROPPED``, ``_ACTION_DROPPED``, ``_HIPPO_PINNED``, ``_LIFECYCLE_MASKS``,
-``_scrub``):
+``_THREADS_EXCLUDED``, ``_NAC_DROPPED``, ``_NAC_DECAY_PINNED``, ``_ACTION_DROPPED``, ``_HIPPO_PINNED``,
+``_LIFECYCLE_MASKS``, ``_scrub``):
 
   - session ids, stamps, tmpdir suffixes and the work path become placeholders;
   - times, latencies and durations are dropped;
@@ -82,6 +85,8 @@ NONDETERMINISM, NEUTRALISED. Every exclusion is a named constant below with its 
     rather than the run (measured: two narrator runs differed in nothing else);
   - the SCN's calendar-derived ``temporal`` block is pinned by its keys;
   - the hippocampus memory count, which counts idle-tick captures that race the next percept, is masked;
+  - the NAc's tick-decayed values are pinned by key, sign and bound, and their credits by value
+    (``_NAC_DECAY_PINNED``): how many decay ticks land before the save is wall-clock-paced;
   - EC node ids come from a counter, as in phase 1.
 
 The determinism tests cover the rest: the three arms run back to back in one process against the
@@ -119,6 +124,7 @@ the failure does not cascade into later tests.
 from __future__ import annotations
 
 import copy
+import inspect
 import io
 import json
 import logging
@@ -524,6 +530,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     """Drive the real ``start_simulation_mode`` for one arm; return the CANONICAL trace."""
     assert_this_checkout()
     import maxim.runtime.lane_backends as LB
+    from maxim.decisions.nac import NAc
     from maxim.models.language.json_parser import json_parse_stats_reset
     from maxim.models.language.cancellation import reset_shutdown
     from maxim.similarity import ec as ec_mod
@@ -542,6 +549,10 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     report_writes: list[str] = []
     writer_args: list[dict[str, Any]] = []
     builds: list[int] = []  # the call_serial of each build_primary_router call, in order
+    nac_credits: list[tuple[Any, dict[str, Any]]] = []  # (the NAc instance, the call), in call order
+    credited_keys: set[tuple[int, str, Any]] = set()  # (NAc id, map, key) already written once (``post``)
+    last_post: dict[tuple[int, str, Any], Any] = {}  # (NAc id, map, key) -> value after its LAST write (not traced)
+    aut_nac: list[Any] = []  # the NAc handed to save_aut_state (whose credits are the AUT's)
 
     def _build_router(*_a: Any, **_k: Any) -> tuple[_RouterView, None]:
         from maxim.models.language import call_accounting
@@ -623,6 +634,8 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
         orig = getattr(report_mod, name)
 
         def spy(*args: Any, **kwargs: Any) -> Any:
+            if name == "save_aut_state":
+                aut_nac.append(kwargs.get("nac"))
             report_writes.append(name)
             writer_args.append(
                 {
@@ -633,6 +646,22 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
                 }
             )
             return orig(*args, **kwargs)
+
+        return spy
+
+    def _credit_spy(method: str) -> Any:
+        orig = getattr(NAc, method)
+        sig = inspect.signature(orig)
+
+        def spy(self: Any, *args: Any, **kwargs: Any) -> Any:
+            call, store, key = _credit_call(method, sig, self, args, kwargs)
+            nac_credits.append((self, call))
+            out = orig(self, *args, **kwargs)
+            last_post[(id(self), store, key)] = getattr(self, store).get(key)
+            if (id(self), store, key) not in credited_keys:  # the key's FIRST write: no decay tick before it
+                credited_keys.add((id(self), store, key))
+                call["post"] = getattr(self, store).get(key)
+            return out
 
         return spy
 
@@ -648,6 +677,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
         (ec_mod, "uuid4", lambda: uuid.UUID(int=next(counter))),
         (LB, "build_primary_router", _build_router),
         *((report_mod, n, _report_spy(n)) for n in _REPORT_WRITERS),
+        *((NAc, m, _credit_spy(m)) for m in _NAC_CREDIT_ENTRY_POINTS),
     ]
     saved = [(obj, name, getattr(obj, name)) for obj, name, _ in patches]
 
@@ -708,7 +738,10 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
             "report_json_emitted": report_json.is_file(),
             "sim_reports_files": _files(work / "data" / "sim_reports"),
             "data_home_files": _data_home_files(work / "data"),
-            "aut_nac": _nac_view(session_dir / "aut_nac.json"),
+            "aut_nac": _nac_view(
+                session_dir / "aut_nac.json", _aut_nac_config(aut_nac), _last_writes(last_post, aut_nac)
+            ),
+            "nac_credits": _nac_credits_view(nac_credits, aut_nac),
             "action_log": _action_log_view(session_dir / "actions.jsonl"),
             "live_sim_threads_after": stragglers,
             "threads_left_alive": threads_left,
@@ -855,10 +888,12 @@ _NAC_DROPPED = {
 }
 
 
-def _nac_view(path: Path) -> Any:
+def _nac_view(path: Path, config: Any, last_writes: dict[str, dict[str, Any]]) -> Any:
     """The saved AUT NAc: every causal link's content, times dropped (``_NAC_DROPPED``). The order of the
     links under one signature and of the ``outcome_index`` ids is not pinned (it is the order threads booked
-    them in); both are sorted by link id, which is a content hash."""
+    them in); both are sorted by link id, which is a content hash. ``config`` is the saved NAc's own
+    ``NACConfig``: the clamps its tick-decayed maps are bounded by (``_NAC_DECAY_PINNED``); ``last_writes``
+    holds, per saved map and saved key, the value right after that NAc's last write to it in the run."""
     if not path.is_file():
         return None
     data = json.loads(path.read_text())
@@ -870,8 +905,155 @@ def _nac_view(path: Path) -> Any:
         for sig, links in (data.get("links") or {}).items()
     }
     view["outcome_index"] = {k: sorted(v) for k, v in (data.get("outcome_index") or {}).items()}
+    for field, cap_field in _NAC_DECAY_PINNED.items():
+        if isinstance(view.get(field), dict):
+            last = last_writes.get(field, {})
+            view[field] = {
+                k: _decayed_bound(v, getattr(config, cap_field), last.get(k)) for k, v in view[field].items()
+            }
     return view
 
+
+def _aut_nac_config(aut_nac: list[Any]) -> Any:
+    """The ``NACConfig`` of the NAc ``save_aut_state`` was handed (the defaults when it was handed none,
+    which the golden's ``report_writer_args`` shows on its own)."""
+    from maxim.decisions.nac import NACConfig
+
+    config = getattr(aut_nac[0], "config", None) if len(aut_nac) == 1 else None
+    return config if isinstance(config, NACConfig) else NACConfig()
+
+
+def _decayed_bound(value: Any, cap: float, last_write: Any = None) -> str:
+    """A tick-decayed NAc value by sign, bound and decay (``_NAC_DECAY_PINNED``).
+
+    ``"+ in (0, cap], decayed below its last write"`` holds when ``0 < value <= cap`` AND ``value`` is strictly
+    nearer zero than ``last_write``, the value right after the run's last credit to that key: proof that at
+    least one per-tick decay (agent_loop §8.5) reached the SAVED instance after that credit. The run's 3 s
+    settle against ~0.5 s ticks makes "at least one" deterministic in practice; zero ticks (a skipped decay, a
+    decay applied to another NAc instance than the one saved) prints ``not decayed`` and fails LOUDLY, never
+    silently. The ``(0, cap]`` half is kept as well: ``last_write`` is not traced, so a broken clamp in a later
+    write would otherwise pass. A key with no write this run (loaded state) says so, and anything out of bound
+    (or zero, which the store never keeps) is printed raw; every such form differs from the pinned one."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return f"OUT OF BOUND {cap}: {value!r}"
+    if 0 < value <= cap:
+        bound = f"+ in (0, {cap}]"
+    elif -cap <= value < 0:
+        bound = f"- in [-{cap}, 0)"
+    else:
+        return f"OUT OF BOUND {cap}: {value!r}"
+    if not isinstance(last_write, (int, float)) or isinstance(last_write, bool):
+        return f"{bound}, no write this run"
+    if 0 < abs(value) < abs(last_write) and (value > 0) == (last_write > 0):
+        return f"{bound}, decayed below its last write"
+    return f"{bound}, not decayed: {value!r} vs last write {last_write!r}"
+
+
+# A decayed store (``NAc`` attribute) -> its key in the saved file (``NAc.to_dict``).
+_SAVED_FIELD = {
+    "_goal_reward_bias": "goal_reward_bias",
+    "_reward_bias": "reward_bias",
+    "_cluster_reward_bias": "cluster_reward_bias",
+    "_percept_valences": "percept_valences",
+}
+
+
+def _saved_key(store: str, key: Any) -> str:
+    """A store key as ``NAc.to_dict`` writes it: the goal string, ``aid:nid``, or US-separated (0x1F) triples."""
+    if store == "_goal_reward_bias":
+        return str(key)
+    if store == "_reward_bias":
+        return f"{key[0]}:{key[1]}"
+    return "\x1f".join(str(k) for k in key)
+
+
+def _last_writes(last_post: dict[tuple[int, str, Any], Any], aut_nac: list[Any]) -> dict[str, dict[str, Any]]:
+    """The saved AUT NAc's value after its last write, per saved map and saved key (``_decayed_bound``)."""
+    target = id(aut_nac[0]) if len(aut_nac) == 1 else None
+    out: dict[str, dict[str, Any]] = {}
+    for (nac_id, store, key), value in last_post.items():
+        if nac_id == target and store in _SAVED_FIELD:
+            out.setdefault(_SAVED_FIELD[store], {})[_saved_key(store, key)] = value
+    return out
+
+
+def _credit_call(
+    method: str, sig: inspect.Signature, nac: Any, args: Any, kwargs: Any
+) -> tuple[dict[str, Any], str, Any]:
+    """One NAc credit write, by its bound arguments (``_NAC_CREDIT_ENTRY_POINTS``), with the map it writes and
+    the key it writes under. A ``temporal_sig`` is a wall-clock stamp, recorded only as present or not."""
+    bound = sig.bind(nac, *args, **kwargs)
+    bound.apply_defaults()
+    store, key_args = _NAC_CREDIT_ENTRY_POINTS[method]
+    key = tuple(bound.arguments[a] for a in key_args)
+    call: dict[str, Any] = {"method": method}
+    for name, value in list(bound.arguments.items())[1:]:  # [0] is self
+        if name == "temporal_sig":
+            call["temporal_sig"] = value is not None
+        elif value is None or isinstance(value, (bool, int, float, str)):
+            call[name] = value
+        else:
+            call[name] = {"type": type(value).__name__}
+    return call, store, key[0] if len(key) == 1 else key
+
+
+def _nac_credits_view(calls: list[tuple[Any, dict[str, Any]]], aut_nac: list[Any]) -> dict[str, Any]:
+    """The credit writes, per NAc instance, each in its own call order (one instance is driven by one
+    thread: the AUT's by ``sim.aut``, the narrator's by the calling thread, so the order WITHIN an instance
+    is causal and the interleaving BETWEEN them is not recorded). ``aut`` is the NAc handed to
+    ``save_aut_state``; ``other`` holds every other instance's sequence, sorted."""
+    target = aut_nac[0] if len(aut_nac) == 1 else None
+    per: dict[int, list[dict[str, Any]]] = {}
+    owners: dict[int, Any] = {}
+    for nac, call in calls:
+        per.setdefault(id(nac), []).append(call)
+        owners[id(nac)] = nac
+    aut = [c for i, cs in per.items() if owners[i] is target for c in cs]
+    other = sorted((cs for i, cs in per.items() if owners[i] is not target), key=lambda cs: json.dumps(cs))
+    return {"aut": aut, "other": other}
+
+
+# The saved NAc maps that decay PER TICK (``decay_goal_reward_biases`` / ``decay_reward_biases`` /
+# ``decay_cluster_reward_biases`` / ``decay_percept_valences``, agent_loop §8.5), pinned by key, sign and
+# bound, never by value (``_decayed_bound``), with each map's clamp. WHY: the value is credit x
+# (1 - 1/tau)^N, and N, the AUT loop ticks between the last credit and the save, is paced by the WALL
+# CLOCK: ``loop_gates.pre_tick_gate`` keeps the loop ticking every ~0.5 s for 120 s after any LLM submit
+# (``_submitted_recently``), so N counts the ~3.5 s between turn 2's credit and the stop. Measured
+# 2026-10-17: the narrator arm's goal bias was 0.2 x 0.98^8 = 0.170152605 locally and 0.2 x 0.98^7 =
+# 0.173625107 in CI under xdist load (run 39072778282, attempt 2), red with no behaviour change; a 0.5 s
+# later /cancel or a 0.7 s slower tick reproduces it locally. What the values are MADE OF is pinned
+# exactly instead: every credit write, with its arguments, in order (``nac_credits``,
+# ``_NAC_CREDIT_ENTRY_POINTS``). Every other NAc field stays pinned by value. The underlying src question
+# (decay paced by an accidental post-submit wall-clock tick) is its own issue; a fix that anchors decay to
+# causal ticks lets this go back to exact values.
+_NAC_DECAY_PINNED: dict[str, str] = {  # saved map -> the ``NACConfig`` field holding its clamp
+    "goal_reward_bias": "max_reward_bias",  # [-cap, cap] (credit_goal)
+    "reward_bias": "max_reward_bias",  # (0, cap] (credit_node)
+    "cluster_reward_bias": "max_cluster_reward_bias",  # [-cap, cap] (update_cluster_reward)
+    "percept_valences": "max_percept_valence",  # [-cap, cap] (record_percept_valence)
+}
+
+
+# The NAc methods that WRITE a per-tick-decayed map, spied on the class for the run (``nac_credits``):
+# ``distribute_reward`` and ``credit_operant_reward`` write only through ``credit_node`` and
+# ``update_cluster_reward``, so the leaves cover them. ``update_eligibility`` writes ``_eligibility``
+# (decayed by ``decay_eligibility``, session-scoped, not saved): recorded so a change in what earns
+# credit eligibility shows too. Each maps to the NAc store it writes and the arguments that make its key.
+#
+# ``post``: the store's value for that key right after the key's FIRST write in the run (None when the write
+# stored nothing, e.g. a gated or clamped-to-zero credit). No decay tick can have touched the key before
+# its first write, so the value is clamp(alpha x reward): deterministic, and it pins what the CREDIT does
+# (alpha, clamp, sign) beside what the caller asked for. Later writes record no ``post``: each adds to a
+# value already decayed by a wall-clock-paced number of ticks (``_NAC_DECAY_PINNED``), and the saved map's
+# bound already covers their result. A future mid-arm reload that builds a NEW NAc over loaded state would
+# make that instance's first write start from a decayed loaded value, and ``post`` would then fail loudly.
+_NAC_CREDIT_ENTRY_POINTS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "credit_goal": ("_goal_reward_bias", ("goal_tag",)),
+    "credit_node": ("_reward_bias", ("agent_id", "node_id")),
+    "update_cluster_reward": ("_cluster_reward_bias", ("agent_id", "cluster_id", "tool_signature")),
+    "record_percept_valence": ("_percept_valences", ("agent_id", "entity_class", "failure_mode")),
+    "update_eligibility": ("_eligibility", ("agent_id", "node_id")),
+}
 
 _ACTION_DROPPED = {"timestamp": "wall clock"}
 
