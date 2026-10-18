@@ -145,7 +145,7 @@ rather than "B0's `arm` stamp".
 ## Out of scope
 
 B0b; cross-arm parity and `arm_effective` (M46 / B4); request-context identity (#1227); the dual-LLM wiring
-(#1228); the vLLM draft's trusted `served_n_ctx`; hashing a remote GGUF; stamping `simulation_generator.py`'s
+(#1228); the [vLLM draft](deferred/vllm_self_hosted_servers.md)'s trusted `served_n_ctx`; hashing a remote GGUF; stamping `simulation_generator.py`'s
 model.
 
 ## Review record

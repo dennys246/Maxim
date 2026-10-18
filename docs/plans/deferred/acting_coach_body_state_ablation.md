@@ -1,6 +1,6 @@
 # Acting Coach body-state ablation (proposed Exp 44)
 
-> **⏸ DEFERRED 2026-08-27 — prerequisites shipped (PR #391) but the arms were never validly run (2026-07-15 ops-stack block; the drive-pain cadence changed under it since) and no roadmap item owns them. **Revive when** graduation row #11 (B3 Acting Coach) is scheduled for a decision, or a live consumer forces the `embodiment=` wiring decision at the two production `build_memory_hub` call sites.**
+> **ARCHIVED in place 2026-10-18; the file stays under `deferred/` because src cites this path.** Deferred 2026-08-27 with the arms never validly run. Its revive trigger keys on ledger row T3-11 (B3 Acting Coach), which was DROPPED 2026-08-30 ([behavioral_graduation_candidates.md](../behavioral_graduation_candidates.md)), so it can never fire. The prerequisites (PR #391) and their code stays wired per dormancy (CLAUDE.md §Working principles).
 
 **Status:** PRE-REGISTERED + PREREQUISITES SHIPPED (2026-07-14, branch
 `exp/44-body-state-wiring`). Ready to run pending Phase 0 smoke.

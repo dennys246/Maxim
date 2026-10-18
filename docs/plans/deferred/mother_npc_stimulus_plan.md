@@ -3,7 +3,7 @@
 **Status:** Deferred. Not on the critical path to 1.0.
 **⚠ Needs heavy refinement.** This plan captures the *framing* and *known rough edges*, not a finished design. The isolation audit list in particular is a starting point — not a contract. Before reviving, expect 1–2 days of design work to turn the rough edges into concrete code-level checks against whatever the runtime looks like at revive time.
 
-**Revive when:** [behavioral_convergence_practice.md](behavioral_convergence_practice.md) has logged at least two successful experiment entries on hand-authored fixtures AND a third experiment is blocked on "we need more stimulus variety than we can author by hand." **Do not revive before this trigger.** Mother NPC is the correct answer to a problem that isn't load-bearing yet, and building her before the trigger would dilute substrate mechanism work with stimulus-infrastructure work.
+**Revive when:** (proposed 2026-10-18, owner to confirm) an experiment prereg names Mother-NPC-generated stimulus as a condition, e.g. the same scenario run on a hand-authored fixture vs Mother-generated percepts (this plan's Phase 3) (replaces: two successful behavioral_convergence_practice entries plus a third blocked on stimulus variety). **Do not revive before this trigger.** Mother NPC is the correct answer to a problem that isn't load-bearing yet, and building her before the trigger would dilute substrate mechanism work with stimulus-infrastructure work.
 
 **Prerequisites (from [reaction_abstraction_plan.md](../archive/reaction_abstraction_plan.md)):**
 - **Phase 4 (runtime unification)** — Mother (AgentInstance-shaped) must produce Percept objects that Baby (MaximAgent-shaped) consumes. Phase 4's `make_text_percept` factory + AgentPool integration is a hard prereq.
@@ -188,7 +188,7 @@ Phase 3 will reveal leak vectors and failure modes I haven't thought of. Phase 5
 
 You found this plan because behavioral convergence experiments are bottlenecked on hand-authored fixture variety. Before you start building:
 
-1. **Confirm the revive trigger fired.** Has behavioral_convergence_practice.md actually accumulated the two successful experiments + one blocked experiment? If not, the need isn't real yet. Close this file.
+1. **Confirm the revive trigger fired.** Does an experiment prereg actually name Mother-NPC-generated stimulus as a condition (the `Revive when:` line above)? If not, the need isn't real yet. Close this file.
 2. **Re-audit the isolation leak vectors against the current runtime.** The list in this document is from a specific point in time. Things may have changed. Verify every vector against current code before trusting it.
 3. **Commit to Phase 1 first, no shortcuts.** The temptation will be to write `MotherNPC` first and "come back to the isolation tests." Resist. Phase 1 is the gate for the whole research claim.
 4. **Pick the LLM class deliberately.** Mother and Baby using the same model is the cleanest starting point. Document the choice.

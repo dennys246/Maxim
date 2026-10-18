@@ -193,7 +193,7 @@ and the once-a-year fact still survive by tag and by links, not by use.
   [#813](https://github.com/dennys246/Maxim/issues/813) salience/novelty dropped,
   [#814](https://github.com/dennys246/Maxim/issues/814) failures stored as successes,
   [#815](https://github.com/dennys246/Maxim/issues/815) failed tool results crash,
-  [#816](https://github.com/dennys246/Maxim/issues/816) compressed-concept crash (crash half — moved 2026-09-27 to the 1.3.2 issue burn-down, batch 2),
+  [#816](https://github.com/dennys246/Maxim/issues/816) compressed-concept crash (crash half fixed in #844; #816 stays open as the reversible-compression design half, 2026-10-18),
   [#817](https://github.com/dennys246/Maxim/issues/817) staged formation never completes (wire or Dormant).
 - ~~Add decay / eviction / cap to the ledger rows' `Re-run on:` triggers~~ — **dropped
   2026-09-21:** the ledger's own discipline fixes a row's triggers at graduation ("not
@@ -778,8 +778,8 @@ time of day).
 
 - [#818](https://github.com/dennys246/Maxim/issues/818) — NAc wall-clock decay ignores the
   inherent-class exemption. Touches Exp 56/57/61 inputs; out of round one's scope, fixed on its own
-  (scheduled 2026-09-27: 1.3.2 issue burn-down, batch 2, with #812).
-- [#812](https://github.com/dennys246/Maxim/issues/812) — ATL typed relations share one update slot.
+  (scheduled 2026-09-27: 1.3.2 issue burn-down, batch 2, with #812; CLOSED, fixed by #990).
+- [#812](https://github.com/dennys246/Maxim/issues/812) — ATL typed relations share one update slot (CLOSED, fixed by #978).
 
 ## Open questions
 

@@ -2,7 +2,7 @@
 
 > **DEFERRED in place 2026-10-17 (owner):** not on the path to 1.4.0. The file stays at this path because src/ cites it. **Revive when:** R4 credit routing or E2's relief-store review names a goal-slot consumer (homed after 1.4.0, #1072–#1075).
 
-**Status: PROPOSED (2026-10-04).** Tracking issue: [#1073](https://github.com/dennys246/Maxim/issues/1073).
+Proposed 2026-10-04 (superseded by the DEFERRED banner above). Tracking issue: [#1073](https://github.com/dennys246/Maxim/issues/1073).
 Prompted by #841: plan_manager's replan hint has never worked (owner: "an opportunity to explore an executive
 function and frontal lobe system"). Nothing here is built. Everything enters as `[engineering]`, and each stage
 gets its own plan and a four-lens design review.

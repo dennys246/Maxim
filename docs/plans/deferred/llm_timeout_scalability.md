@@ -1,6 +1,8 @@
 # LLM Timeout Scalability — bigger models on slower hardware through tunnels
 
 > **DEFERRED (2026-07-15 plans audit):** Stages 1–3.5 SHIPPED (PRs #320/#321 — per-tier `timeout_s`, context-overflow admission gate, TTFT keepalive). Stage 4 (adaptive throughput model, `lane_throughput.py` + `predict_completion_s`) never started. **Revive when:** a self-hosted big-model soak accumulates the `(TTFT, tok/sec)` observation data Stage 4 needs, or an operator needs self-calibrating timeouts beyond the shipped explicit knob. Stall-detector Stage 3 depends on this Stage 4.
+>
+> **Status of the condition (2026-10-18):** the hardware condition likely holds (big-mac-mini serves qwen32b; RTX 5080 leader + Mac peer). What remains is the named data artefact: a recorded self-hosted big-model soak carrying per-call `(TTFT, tok/sec)` observations, which no plan or issue names yet; or an operator asking for self-calibrating timeouts.
 
 
 **Status:** Shell plan, drafted 2026-06-03. Triggered by a real Mac Mini incident: qwen2.5-32b on growing context hit a 149s TTFT, broke the proxy pipe, and surfaced three independent timeout layers (client SDK, httpx read_s, cloudflared tunnel idle).

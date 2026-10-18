@@ -11,7 +11,7 @@
 - [llm_path_refinement.md](../archive/llm_path_refinement.md) — Plan 1-3.6 ancestor.
 - [deferred/llm_mesh_capability_aware.md](../deferred/llm_mesh_capability_aware.md) — Stage C5.
 - [deferred/llm_path_multi_peer_dispatch.md](../deferred/llm_path_multi_peer_dispatch.md) — feeds C5.
-- [node_security_simplification.md](../deferred/node_security_simplification.md) — feeds C7.
+- [node_security_simplification.md](../node_security_simplification.md) — feeds C7.
 
 ---
 
@@ -114,7 +114,7 @@ A web TUI or terminal dashboard on top of these is a nice-to-have, **NOT** load-
 
 ### Stage C7: Cluster security hardening
 
-Tracked in [node_security_simplification.md](../deferred/node_security_simplification.md), `feedback_strict_grep_caller_allowlist.md`, and the C2 invariants:
+Tracked in [node_security_simplification.md](../node_security_simplification.md), `feedback_strict_grep_caller_allowlist.md`, and the C2 invariants:
 
 - **Cluster key rotation** (`maxim peer rotate-cluster-key`) — the canonical test of whether the strict CI grep allow-list rule needs to relax. The right answer is probably option (c) from `feedback_strict_grep_caller_allowlist.md`: split the secret into `~/.maxim/util/cluster_key.{role}` and have `mesh.yml::cluster_key` become a fallback. This is the spec-vs-status split applied to the secret.
 - **Cluster-key consistency doctor check** (`check_cluster_key_consistency`) — **surfaced by C3.3 fold review (Blast Radius B2)**. Today `mesh.yml::cluster_key` and `peer.yml::api_key` can diverge silently if the operator rotates one without the other, because `init-mesh` copies once but the two files evolve independently after that. `maxim peer --node X install` uses `mesh.yml::cluster_key`; `maxim peer install` uses `peer.yml::api_key`. The symptom is "one install verb 401s, the other succeeds, against the same target." The doctor check should compare both values when both files are present and warn on mismatch. **Deferred from C3.3** (docs-only warning added to `cli-reference.md` + `mesh_debug.md`) because the full cluster-key rotation story should land before the consistency check so the check has a remediation path to point at.
@@ -241,7 +241,7 @@ Update this roadmap when:
 - [llm_path_peer_failover.md](../archive/llm_path_peer_failover.md) — Plan 3.6 (VRAM spillover detection).
 - [deferred/llm_mesh_capability_aware.md](../deferred/llm_mesh_capability_aware.md) — the C5 skeleton.
 - [deferred/llm_path_multi_peer_dispatch.md](../deferred/llm_path_multi_peer_dispatch.md) — feeds C5.
-- [node_security_simplification.md](../deferred/node_security_simplification.md) — feeds C7.
+- [node_security_simplification.md](../node_security_simplification.md) — feeds C7.
 - [mesh_doc_transport.md](../archive/mesh_doc_transport.md) — Stage C9 shell plan (mesh-to-mesh structured doc exchange).
 - [mesh_perception_transport.md](../deferred/mesh_perception_transport.md) — Stage C10 shell plan (peer-tunneled sensory percepts; split 1.0 prep / 1.1 ship). Driving consumer: Reachy Mini app peer.
 - [maxim_hivemind.md](../maxim_hivemind.md) — 1.1+ substrate-bundle exchange; second consumer of the typed-transport-per-purpose pattern C10 establishes in 1.0.

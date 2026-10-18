@@ -1,5 +1,6 @@
 # The autonomic layer — a signed body-consequence record and the missing regulatory signals (grounding GL2)
 
+> **Status 2026-10-18: GL1 review folded (#1191); GL2a BUILT (#1194, record-only); GL2b and GL2c not started.**
 > **PROPOSED 2026-10-07 — grounding-line sub-plan, stages GL2a / GL2b / GL2c** (umbrella:
 > [grounding.md](grounding.md); owner decisions G1–G8 of 2026-10-07 are recorded there and in
 > [DECISIONS.md](../../DECISIONS.md) and are not re-opened here). It fills no new roadmap slot of its own:
@@ -7,7 +8,7 @@
 > relief store, and its record is the **target** of [latent_forward_model.md](latent_forward_model.md).
 > Every mechanism enters as `[engineering]`; every behavioural change ships **off by default, with
 > today's selection pinned byte-identical**. **Nothing here is built until this plan's four-lens design
-> review (GL1) has no unfolded DO-NOT-BUILD.** `src/` work waits for the 1.3.2 decomposition fence
+> review (GL1) has no unfolded DO-NOT-BUILD.** `src/` work waits for the decomposition fence (the fence lifts when 1.3.6's decomposition slices land — the point at which T0 can pass)
 > **except GL2a**, which is record-only (owner decision G1). GL2a's exempt file set is exactly:
 > `embodiment/body.py`, `embodiment/sem.py`,
 > `runtime/executor.py` (`_run_started` and `_stamp_invocation`, widened by G14 on 2026-10-09),

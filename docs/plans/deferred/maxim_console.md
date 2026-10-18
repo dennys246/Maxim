@@ -1,6 +1,7 @@
 # Maxim Console — the general local web front door (+ the shared UI kit)
 
-> **⏸ DEFERRED 2026-08-27 — Phase 0 shipped (`maxim serve` #416, EVENT #434, HANDLE #428; `src/maxim/console/`), Phases 1–3 unstarted; the 1.1→1.3 roadmap has no console slot. **Revive when** the Reachy-app MVP (`maxim_ui.md` Phase 2) is greenlit or a user-facing local front door is scheduled into a release. Defer as a set with `maxim_ui.md` + the consumed `maxim_pulse_seed/`.**
+> **REVIVED 2026-10-18 (owner decision); the file stays under `deferred/` because src cites this path** (`src/maxim/console/__init__.py`). Deferred 2026-08-27 after Phase 0 (`maxim serve` #416, EVENT #434, HANDLE #428). The Console shipped in 1.3.2 (contract 0.6.0: run history, health, stall detection; CHANGELOG `[1.3.2]`). Revived as a set with [maxim_ui.md](../maxim_ui.md).
+> **Proposed homing (owner to confirm):** alongside Session S (the pulse seam) / post-1.3.3 console work (proposed 2026-10-18, owner to confirm).
 
 **Status:** Shell plan, drafted 2026-07-23. Sibling to the Reachy app plans; this one generalizes them. The Reachy app becomes the **first consumer** of the shared kit defined here.
 **Scope:** A general **localhost web console** (`maxim serve`) to configure, run, and observe Maxim — for *any* use (headless chat, sim, DM, config, diagnostics, memory), not just a robot. Plus the **shared UI kit** (components + design system + event client) that both the console and the Reachy app compose. Presentation layer only — **all logic stays in pymaxim behind `api.py`**.
@@ -119,7 +120,7 @@ The demo is a **near-free third output**: the Console shell built against the ki
 
 - **[reachy_app_maxim_seams.md](reachy_app_maxim_seams.md)** — *is Layer 1.* The seams are the shared backend contract, **not Reachy-specific**. (Reframed by this plan; the Reachy app is one consumer, the console another.)
 - **[reachy_mini_app.md](../archive/reachy_mini_app.md)** — the Reachy **shell** (Layer 3). Its GUI is built *as the first slice of the kit*, which resolves that plan's "served-UI vs Pollen-config-hook" open question → **served, shared kit**.
-- **[reachy_dm_app.md](reachy_dm_app.md)** — Adventure is a **RunSurface mode** (Layer 2) over the embodied `HANDLE`.
+- **[reachy_dm_app.md](../reachy_dm_app.md)** — Adventure is a **RunSurface mode** (Layer 2) over the embodied `HANDLE`.
 - **This plan** — Layer 2 (the kit) + the console shell (Layer 3) + `maxim serve`.
 
 ## Sequencing
@@ -146,5 +147,5 @@ The demo is a **near-free third output**: the Console shell built against the ki
 ## References
 
 - Layer 1: [reachy_app_maxim_seams.md](reachy_app_maxim_seams.md) · `api.py` facades ([api.py](../../../src/maxim/api.py))
-- Layer 3 shells: [reachy_mini_app.md](../archive/reachy_mini_app.md) · [reachy_dm_app.md](reachy_dm_app.md) · seed [AGENTS.md/CLAUDE.md](../maxim_pulse_seed)
+- Layer 3 shells: [reachy_mini_app.md](../archive/reachy_mini_app.md) · [reachy_dm_app.md](../reachy_dm_app.md) · seed [AGENTS.md/CLAUDE.md](../maxim_pulse_seed)
 - Precedent: leader-proxy admin endpoints ([leader_proxy.py](../../../src/maxim/runtime/leader_proxy.py)) · Rich terminal surface ([interactive/display.py](../../../src/maxim/interactive/display.py)) — the console is its web sibling

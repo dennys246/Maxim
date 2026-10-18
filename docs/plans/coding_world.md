@@ -8,7 +8,7 @@
 > Overflow could be the grounded-language line's text.
 > **Now:** paper and offline replays (§C0; roadmap 1.4 Groundwork item 5). **Default (owner decision
 > 1): no coding-world `src/` lands before the 1.4.0 cut**, so nothing here can gate 1.4.0 through T4.
-> **No loop code before 1.3.2's `agent_loop` slices. No rig time before E3's campaign has run or its
+> **No loop code before the fence lifts (the fence lifts when 1.3.6's decomposition slices land — the point at which T0 can pass).** **No rig time before E3's campaign has run or its
 > disposition is recorded. Never active in an E1–E3 arm.** Claims are candidate 1.5 headlines.
 > **Nothing here is built.** The Design sections describe intended behaviour in the present tense; none of
 > it exists.

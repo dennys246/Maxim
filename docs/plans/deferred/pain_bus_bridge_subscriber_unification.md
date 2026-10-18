@@ -1,6 +1,8 @@
 # PainBus bridge × subscriber unification — close the latent attribution-asymmetry trap
 
-**Status:** SHELL ONLY. Surfaced by the `pain_bus_unification.md` pre-merge architecture review (2026-04-14). NOT scheduled. Open this when (a) `record_tool_start`'s pending-event context is enriched OR (b) the latent risk is observed firing in production.
+**Status:** SHELL ONLY. Surfaced by the `pain_bus_unification.md` pre-merge architecture review (2026-04-14). NOT scheduled.
+
+**Revive when:** (proposed 2026-10-18, owner to confirm) GL3.B1 starts: the registry+provenance stage that puts provenance on the write path ([grounding.md](../grounding.md) G8; stage IDs in [thalamic_relay.md](../thalamic_relay.md)), the likeliest change to enrich the pending-event context this trap watches (replaces: context enriched, or the risk seen firing; §Trigger conditions below still applies).
 **Parent index:** [archive/biosystem_unification.md](../archive/biosystem_unification.md)
 **Wave:** Sibling to Wave 1 / Wave 2 — exact slot TBD when the plan opens.
 **Depends on:** `pain_bus_unification.md` (this is the follow-up to it). Probably also wants `executor_bootstrap_unification.md` (which already shipped) and arguably `memory_hub_unification.md`.

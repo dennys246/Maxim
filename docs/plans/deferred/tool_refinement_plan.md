@@ -1,6 +1,8 @@
 # Tool Refinement Plan
 
-> **⏸ DEFERRED 2026-08-27 — a "living" doc that stopped accumulating after the audit PR #394: zero mentions of the 2026-07/08 tool wave (`focus_on_sound` #455, orient affordances, the `world_set_axis` guard). **Revive at** the next tool-surface curation wave (an add/remove/rename pass on the agent's action surface).**
+> **⏸ DEFERRED 2026-08-27 — a "living" doc that stopped accumulating after the audit PR #394: zero mentions of the 2026-07/08 tool wave (`focus_on_sound` #455, orient affordances, the `world_set_axis` guard).**
+>
+> **Revive when:** (proposed 2026-10-18, owner to confirm) any PR adds, removes or renames an agent-facing tool (replaces: the next tool-surface curation wave).
 
 > **Status:** Living document. Ongoing as tools are added, refined, or deprecated.
 >

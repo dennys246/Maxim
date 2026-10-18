@@ -203,7 +203,7 @@ Estimate: a scrappy MVP is **~1–2 focused weeks** *if P0 passes* — most of i
 
 ## Open questions / decisions for you
 
-1. **Day-one behavior loop — RESOLVED: Adventure (voice DM).** See [reachy_dm_app.md](../deferred/reachy_dm_app.md). It's the flagship because the body is load-bearing (voice + expressive motion + face-the-speaker + persona + party memory) and it's the most legible showcase of cross-session learning. Talk + Rest support it. The MVP still ships *before* Adventure (Talk + memory view), but the product's headline is Adventure.
+1. **Day-one behavior loop — RESOLVED: Adventure (voice DM).** See [reachy_dm_app.md](../reachy_dm_app.md). It's the flagship because the body is load-bearing (voice + expressive motion + face-the-speaker + persona + party memory) and it's the most legible showcase of cross-session learning. Talk + Rest support it. The MVP still ships *before* Adventure (Talk + memory view), but the product's headline is Adventure.
 2. **Repo name + license + Space owner account.** (Publishing creates a Space under an account with write-scoped token.)
 3. **Config surface in Pollen's app model vs a served web UI** — which does the SDK afford? A single form fits Pollen's config hook; the wizard + status chip + memory view + smoke test wants a served page. Verify against `reachy-mini` SDK app hooks before building. *Leaning serve-your-own.*
 4. **Full vs lightweight session-end consolidation** for a long-running robot (CC8 `is_sim_mode` trade-off) — likely want full.
