@@ -489,7 +489,8 @@ class TestToolPainBridgeSCNOnSuccess:
 
 class TestToolPainBridgeTemporalEventEmission:
     """TemporalEvents should be emitted through the distributor at each
-    SCN registration site (additive — SCN registration still happens)."""
+    SCN registration site (additive — the persistent SCN registration still
+    happens, but without feeding the oscillator a second time, A2)."""
 
     def _make_bridge(self, *, with_distributor: bool = True):
         """Helper to build a bridge with mocked distributor."""
@@ -517,8 +518,9 @@ class TestToolPainBridgeTemporalEventEmission:
         bridge.record_tool_start("web_search", "inv-1")
         bridge.record_tool_complete("web_search", "inv-1", success=True)
 
-        # SCN still called (existing behavior preserved)
+        # SCN still called (existing behavior preserved); the distributor feeds the oscillator (A2)
         scn.register.assert_called_once()
+        assert scn.register.call_args.kwargs["observe_oscillator"] is False
 
         # Distributor also called
         distributor.record_event.assert_called_once()

@@ -159,7 +159,9 @@ _NAC_FORMAT_VERSION: str = "1.4"
 # selection read, and the skipped decay kept the bias at full value.
 # Scope: ``_reward_bias`` only. For ``_cluster_reward_bias`` the switch hides
 # just the Wire-A prompt read (``get_agent_tool_biases``); its writes and
-# ``recommend_action``'s cluster term are NOT gated. Loaded biases are kept
+# ``recommend_action``'s cluster term are NOT gated. ``_goal_reward_bias``
+# (``credit_goal``, read by ThoughtGate) is outside the scope too, by the same
+# reading (A2 decision, pinned in tests/unit/test_nac_credit_path_a2.py). Loaded biases are kept
 # (``dump``/hivemind export ship them unchanged) — the ablation hides, it does
 # not destroy donor state. Bookkeeping (``stats``, telemetry) still counts them,
 # and the uncalled ``memory/sleep_replay.py`` reads the dict directly. Tests whether bio-learning is load-bearing for the
@@ -1950,8 +1952,11 @@ class NAc(StoreFileOwnership):
 
         # Remove lowest until under limit
         to_remove = total_links - self.config.max_links
+        emptied: set[str] = set()
         for event_sig, link in all_links[:to_remove]:
             self._links[event_sig].remove(link)
+            if not self._links[event_sig]:
+                emptied.add(event_sig)
             # Clean up EC registration
             self._deregister_causal_from_ec(link.id)
             # Clean up outcome index
@@ -1959,6 +1964,16 @@ class NAc(StoreFileOwnership):
                 link_ids.discard(link.id)
                 if not link_ids:
                     del self._outcome_index[outcome_sig]
+        # A signature whose LAST link was just evicted is forgotten with it (A2): its empty
+        # ``_links`` slot and its Welford state. Welford entries are only ever created on a
+        # booked link, so this bounds them by the links (``max_links``) instead of by every
+        # signature ever seen (``tool:use:<action>`` carries a free-form action). Entries a
+        # hivemind ingest brought in with no local link are untouched: only an eviction prunes.
+        if emptied:
+            for event_sig in emptied:
+                del self._links[event_sig]
+            for key in [k for k in self._event_outcome_welford if k[1] in emptied]:
+                del self._event_outcome_welford[key]
 
     def decay_all(self, factor: float = 0.99) -> None:
         """Apply decay to all links."""
@@ -3059,6 +3074,9 @@ class NAc(StoreFileOwnership):
                     self._cluster_reward_bias[key] = new_bias
             for key in to_remove:
                 del self._cluster_reward_bias[key]
+                # A source never outlives its bias (A2): a stale one turns a later, different
+                # credit into "mixed" and narrates a bias that no longer exists.
+                self._cluster_reward_source.pop(key, None)
         return pruned
 
     def decay_exploration_visits(self) -> int:
@@ -3816,6 +3834,10 @@ class NAc(StoreFileOwnership):
                 continue
             if src in self.CREDIT_SOURCES:
                 self._cluster_reward_source[(parts[0], parts[1], parts[2])] = src
+        # A file written before A2 can hold sources whose bias had already decayed away.
+        orphaned = self._drop_orphan_cluster_reward_sources()
+        if orphaned:
+            logger.warning("NAc load: dropped %d orphaned cluster_reward_source entries (no matching bias)", orphaned)
 
         # Wire 2 (release_0_9_1.md Stage 3): per-agent percept valences.
         # Missing field → empty dict (backward-compat: any ``aut_nac.json``
@@ -3947,7 +3969,20 @@ class NAc(StoreFileOwnership):
             self._cluster_reward_bias, p = _decay(self._cluster_reward_bias, fast, self._inherent_bias_keys)
             if p:
                 results["cluster_reward_bias_pruned"] = p
+            self._drop_orphan_cluster_reward_sources()
         return results
+
+    def _drop_orphan_cluster_reward_sources(self) -> int:
+        """Drop every ``_cluster_reward_source`` entry whose ``_cluster_reward_bias`` entry is gone (A2).
+
+        A source is provenance OF a bias, so it must not outlive it: an orphan made a later credit from a
+        different branch report ``"mixed"``, glossed a "why" for a bias that no longer exists, and grew and
+        persisted without bound. Caller holds ``self._lock`` (or load-time quiescence). Returns the count.
+        """
+        orphans = [key for key in self._cluster_reward_source if key not in self._cluster_reward_bias]
+        for key in orphans:
+            del self._cluster_reward_source[key]
+        return len(orphans)
 
     def save(self, path: str | None = None, *, overwrite: bool = False) -> None:
         """Save NAc state to JSON file.
