@@ -52,18 +52,18 @@ this one and the four-lens design review.
   *Note 2026-10-16:* the owner adopted an alternative: CI's green, non-cancelled `unit-tests` run on the PR's
   head SHA counts as that final full-suite run. It takes effect only when mechanization backlog M64
   (`scripts/pr_merge_readiness.py` asserts that run) lands; until then the rule above stands as written.
-- Narrow test runs alongside a snapshot suite share `~/.maxim`, ports and other global state, the same
-  collision risk §3's xdist trial (M22) will measure; keep them small until that trial is recorded.
+- Narrow test runs alongside a snapshot suite share `~/.maxim`, ports and other global state; keep them
+  small. (The §3 xdist trial found no such collisions, but it was reverted for coverage order noise.)
 - Never edit `src/` in a tree whose suite is running. (This cost two full runs in one session.)
 
 ## 3. Parallel test runs
 
-`pytest-xdist` is installed (the `[test]` extra and CI's pip line; corrected 2026-10-16, this said "not
-installed") but no run uses it. If the suite is xdist-safe, `-n auto` cuts the run several times over: a
-2026-10-16 pre-trial sample of 4,544 tests went from 642 s serial to 138 s at `-n 6` with 0 failures, which is
-a measurement, not the trial. Tests that share `~/.maxim`, ports or other global state may collide under xdist; a trial run
-names them, and each is either isolated (a `tmp_path` home, a free port) or marked to run serially.
-Until that trial is recorded here, the serial run stays the reference. Backlog row M22.
+The xdist trial (M22) ran and was reverted: `pytest-xdist` is installed (the `[test]` extra and CI's pip line)
+but the suite runs serially again, and serial stays the reference. #1339 ran it under `-n auto --dist loadfile`
+(about 17 min against ~35 min serial); #1359 reverted it because coverage is test-order dependent, so the
+exact-pin coverage ratchet flakes under a reshuffled order. Re-landing waits on M60, after the 1.3.3 release.
+The measurements, the unmet pre-registered coverage condition and the three determinism fixes the trial
+surfaced live in one place: [docs/agents/ci-testing.md](../agents/ci-testing.md) §1.
 
 ## 4. Decisions up front
 

@@ -4,19 +4,21 @@ Comprehensive documentation for Maxim's systems and subsystems.
 
 **Package version:** 1.3.2 (`pyproject.toml`; PyPI: https://pypi.org/project/pymaxim/) | **Release notes:** [release_1_3_2.md](announcements/release_1_3_2.md) | **Last updated:** 2026-10-16
 
-> **2026-05-09 architectural pivot** — Maxim is moving toward a **parallel-mode architecture** where the bio-substrate (NAc + EC + ATL + Hippocampus + Default Network + reflexes) can drive action selection directly, with LLMs demoted to supporting roles (orchestrator, NPCs, optional AUT). The existing **LLM-AUT mode** remains the user-facing default; the new **substrate-primary AUT mode** ships in parallel as opt-in via `--aut-mode substrate-primary`. The **Maxim Hivemind** shareability layer (infrastructure shipped in 0.9.x; `maxim substrate export|import|inspect` CLI available) is the foundation for Oasis/Hivemind in 1.2 after the provenance, compatibility, and threat-model gates. See [Substrate-Primary Mode](substrate_primary.md) and [Hivemind + Oasis](hivemind.md) for the architecture docs.
+> **2026-05-09 architectural pivot** — Maxim is moving toward a **parallel-mode architecture** where the bio-substrate (NAc + EC + ATL + Hippocampus + Default Network + reflexes) can drive action selection directly, with LLMs demoted to supporting roles (orchestrator, NPCs, optional AUT). The existing **LLM-AUT mode** remains the user-facing default; the new **substrate-primary AUT mode** ships in parallel as opt-in via `--aut-mode substrate-primary`. The **Maxim Hivemind** shareability layer (infrastructure shipped in 0.9.x; `maxim substrate export|import|inspect` CLI available) was the foundation for Oasis, which shipped in 1.2.0 (2026-09-09) after the provenance, compatibility, and threat-model gates. See [Substrate-Primary Mode](substrate_primary.md) and [Hivemind + Oasis](hivemind.md) for the architecture docs.
 
 ## Quick Links
 
 - [README](../README.md) — Getting started guide
 - [ARCHITECTURE.md](../ARCHITECTURE.md) — High-level architecture
-- [AGENTS.md](../AGENTS.md) — Agent system documentation
+- [CLAUDE.md](../CLAUDE.md) — Contributor and agent instructions ([AGENTS.md](../AGENTS.md) is only a pointer to it)
 - [User Guides](user/index.md) — End-user documentation (install, CLI, API, modes)
 - [Troubleshooting](troubleshooting/index.md) — Runbooks and diagnostics
 - [Plans](plans/README.md) — Active roadmap and future plans
 - [Known defects](bugs/README.md) — Verified defects with evidence and dispositions
 - [Repository scorecards](limits/score_cards/) — Engineering grades and improvement criteria (dual-assessor: Codex + Claude, same axes, independent evidence)
 - [Measurement limits](limits/README.md) — Characterized apparatus limits experiment designs must respect
+- [Lessons](lessons/README.md) — Per-incident archives behind the CLAUDE.md and brief rules
+- [Release notes](announcements/README.md) — Every release announcement, newest first
 - **[Substrate-Primary Mode](substrate_primary.md)** — NEW: parallel architecture where the substrate carries action selection without LLM mediation
 - **[Maxim Hivemind + Oasis](hivemind.md)** — NEW: federated bio-substrate layer for cross-instance learning
 
@@ -42,7 +44,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 | Document | Description |
 |----------|-------------|
 | [Substrate-Primary Mode](substrate_primary.md) | NEW (2026-05-09) — parallel AUT mode where bio-substrate selects actions without LLM. Shipped as an experimental opt-in in 1.1.0; carries Exp 42 / 52 / 53b (see Experiments). |
-| [Maxim Hivemind + Oasis](hivemind.md) | (2026-05-09) — federated peer-to-peer substrate-sharing layer. Hivemind shareability infrastructure (merge, bundle, identity, `maxim substrate` CLI) shipped in 0.9.x; Oasis/Hivemind target 1.2 after the provenance, compatibility, and threat-model gates. |
+| [Maxim Hivemind + Oasis](hivemind.md) | (2026-05-09) — federated peer-to-peer substrate-sharing layer. Hivemind shareability infrastructure (merge, bundle, identity, `maxim substrate` CLI) shipped in 0.9.x; Oasis (peer substrate sharing + the P2P protocol) shipped in 1.2.0 (2026-09-09). |
 | [Roy Harness — Persona Convergence Crucible](plans/deferred/persona_convergence_crucible.md) | NEW (2026-05-11) — long-horizon three-arm iteration runner: prime substrate via curriculum, run same held-out test across substrate-primed / persona-injected / neutral arms, report pairwise substrate divergence (`reward_bias_l2`, **`cluster_reward_bias_l2`**, episode + concept deltas). G3 fail-fast preflight + G4 cluster_id reward wire shipped 2026-05-11. CLI: `maxim roy run <spec.yaml>`. |
 
 ### Perception & Attention
@@ -100,7 +102,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 
 | Document | Description |
 |----------|-------------|
-| [Experiments lab notebook](experiments/README.md) | Every experiment with status — the 1.1.0 headline rows: [Exp 52 Nurture](experiments/52_nurture.md) (the want is learned; EARNED) and [Exp 53/53b](experiments/53_cross_context_readout.md) (it reads out on the physical robot; EARNED), with [limits](limits/README.md) and the [graduation ledger](plans/behavioral_graduation_candidates.md) |
+| [Experiments lab notebook](experiments/README.md) | Every experiment with status — the 1.3 headline rows: [Exp 60](experiments/exp60_drowning_avoidance_prereg.md) (anticipatory drowning-avoidance) and [Exp 61](experiments/exp61_shared_fear_prereg.md) (the survival fear transfers between agents), EARNED in 1.3.0; since B1 (2026-10-14/15) T1-13/14/15 (Exp 60/61/62) are PARTIAL, floor matched under BF2 ([baseline_floors.md](plans/baseline_floors.md)) — with [limits](limits/README.md) and the [graduation ledger](plans/behavioral_graduation_candidates.md) |
 | [Hippocampal Recall Experiment](experiments/hippocampal_recall_experiment.md) | Design and infrastructure for memory interference testing |
 | [Run Notes](experiments/hippocampal_recall_run_notes.md) | Results from 2026-04-06: Verath recall experiment |
 
@@ -265,12 +267,13 @@ For the authoritative module-level reference, see [reference.md](reference.md). 
 
 ```
 src/maxim/
-├── agents/          → AGENTS.md (+ modality.py SensoryModality/SensoryTag, sensory_gate.py SensoryGate)
+├── agents/          → reference.md (+ modality.py SensoryModality/SensoryTag)
 ├── analysis/      * → reference.md (cross-session substrate diff: NacDiff, EcDiff, HippocampusDiff, AtlDiff; Roy log generation)
 ├── attention/       → archive/attention.md
 ├── bench/         * → reference.md (LLM-path benchmark harnesses; maxim bench subcommand)
 ├── bridges/         → archive/bridges.md
 ├── comms/           → (SMS/Voice communication; see user/peer-setup.md for tunnel)
+├── console/       * → ARCHITECTURE.md (`maxim serve` localhost Console backend + OpenAPI facade; `[console]` extra)
 ├── decisions/       → decisions.md (NAc causal learning, AdaptivePlanner, significance)
 ├── default_network/ → default_network.md
 ├── doctor/        * → reference.md (maxim doctor diagnostics; checks.py, platform_detect.py, cli.py)
@@ -304,7 +307,7 @@ src/maxim/
 ├── runtime/         → ARCHITECTURE.md (runtime section)
 ├── salience/        → archive/salience.md
 ├── similarity/      → semantic_similarity_analysis.md (Phase 4 implemented)
-├── simulation/      → simulation.md (orchestrator, bridge, personas, campaigns, benchmarks)
+├── simulation/      → simulation.md (orchestrator, bridge, campaigns, benchmarks)
 ├── spatial/         → archive/bridges.md (SpatialMemoryBridge)
 ├── time/            → time.md (+ BoundedBin, significance-based eviction)
 ├── tools/           → ARCHITECTURE.md (tools section)
