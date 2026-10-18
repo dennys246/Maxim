@@ -15,8 +15,9 @@
 > held by release threshold **T9 (conditional, never co-headlined with E3)**. This plan's design review
 > and its S0 outputs count toward **T8** (grounding truth and contracts, engineering only, gates 1.4.0).
 > **Body world first:** the cradle under substrate-primary selection and Minecraft. The word world enters
-> later as the innate-prior tier. **Timing:** GL4 S0a (audit) and the paper run now, in parallel with
-> 1.3.2 (the S0b prereg and script are paper too); S0b needs a fresh capture (a sim run). S1 is
+> later as the innate-prior tier. **Timing (status 2026-10-18):** GL4 S0a (audit) has not started; it and the
+> paper (the S0b prereg and script) are homed with T8(b), this plan's four-lens design review, in Session E (paper
+> only; roadmap_1_3_x.md); S0b needs a fresh capture (a sim run). S1 is
 > record-only `src/` inside G1's exempt file set, but since it waits for the post-fence resume stage
 > (G15, G17) it lands after the fence anyway, so that exemption is moot. Its files, exactly: `embodiment/tool_bridge.py` (the
 > `ActionContext` assembly and the observe call), `embodiment/cerebellum.py` (payload `"1.2"`, the new
@@ -62,7 +63,7 @@ new leaf `embodiment/action_context.py` (S1) and its assembly in `embodiment/too
 plan's post-fence resume stage, G17) ·
 [engram_formation.md](engram_formation.md) E7 (the Cerebellum read-side resurrection route) ·
 [lookback_primitive.md](lookback_primitive.md) (the Hippocampus is the replay buffer; no new store) ·
-[three_factor_credit_assignment.md](three_factor_credit_assignment.md) (R4's map) ·
+[deferred/three_factor_credit_assignment.md](deferred/three_factor_credit_assignment.md) (R4's map) ·
 [grounded_language_acquisition.md](grounded_language_acquisition.md) (SUBSUMED for grounding by
 grounding.md, owner decision G5; its Phase 2 word side becomes this plan's innate-prior tier).
 **Subsumes:** [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md) (SUBSUMED by
@@ -615,7 +616,7 @@ gate, its guards, its blast radius and the owner decisions to ask together at it
 
 | Stage | Kind | Depends on | Fence |
 |---|---|---|---|
-| S0a | paper + offline read of persisted JSON | none | runs now |
+| S0a | paper + offline read of persisted JSON | none | can run now (not started 2026-10-18; Session E, with T8(b)) |
 | S0b | prereg + script + one fresh scripted capture | GL1 census (prediction of the collision and convergence counts); M1 stamps; this plan's own four-lens review; a named capture runtime (below) | the prereg and script are paper and run now; the capture is a fresh sim run, its mechanism settled by the prereg (below); if the runtime needs `src/` record fields, the capture waits for GL2a/S1, and for pid-bearing records, the post-fence resume stage (G17) |
 | S1 | `src/`, record only | GL2a (`InteroceptiveOutcome` on the tool path, no event id) **and** the post-fence resume stage that builds `PhysicalEventId`, the sequencer and the cross-session resume (G15, G17) | after the fence: the resume stage lands after it, so S1 does too, and G1's record-only exemption is moot (header) |
 | S2 | `scripts/`, offline | S0b PASS | runs as soon as S0b's data exists |
@@ -1065,7 +1066,7 @@ applies **only to untried tools** (the full definition above), so experienced to
 tables. The Component 3 keyword path is named here as part of the selection surface the arm runs on. Where it is placed decides what fires:
 - **Inside `NAc.recommend_action` (`decisions/nac.py::NAc.recommend_action`).** This fires the
   "`recommend_action` change" trigger **by wording, even while default-OFF**, on **T1-7, T1-11, T1-12,
-  T1-13, T1-14, T1-15** (Exp 45/56/57/60/61/62), and it sits inside the 1.3.2 fence.
+  T1-13, T1-14, T1-15** (Exp 45/56/57/60/61/62), and it sits inside the decomposition fence (the fence lifts when 1.3.6's decomposition slices land — the point at which T0 can pass).
 - **The strict alternative (recommended):** a composing step **before** `recommend_action`, which re-orders
   or annotates the untried candidates it is handed and leaves the function untouched. No trigger fires by
   wording. A structural walk is still recorded on each of those rows, showing selection byte-identical with

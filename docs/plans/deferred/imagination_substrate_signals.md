@@ -1,6 +1,8 @@
 # Imagination substrate-signal hookup
 
-> **DEFERRED (2026-07-15 plans audit):** Hookup 1 MVP SHIPPED (PR #288 + Fix B PR #292 — substrate-aware manifest via `nac_top_biases`; note the universal `MAXIM_DISABLE_IMAGINATION` gate now sits above the signal-specific env var). Hookups 2 (per-tick subscriber) + 3 (arousal-gate relaxation) unbuilt — deliberately gated on a Roy verdict that instead pointed at encoder replacement. **Revive when:** a post-encoder Roy iteration shows Hookup 1 closes part of the gap and per-tick substrate-driven imagination is the next lever, or Open Question 5's self-reinforcing-preference risk becomes load-bearing on the fixture path.
+> **DEFERRED (2026-07-15 plans audit):** Hookup 1 MVP SHIPPED (PR #288 + Fix B PR #292 — substrate-aware manifest via `nac_top_biases`; note the universal `MAXIM_DISABLE_IMAGINATION` gate now sits above the signal-specific env var). Hookups 2 (per-tick subscriber) + 3 (arousal-gate relaxation) unbuilt — deliberately gated on a Roy verdict that instead pointed at encoder replacement.
+>
+> **Revive when:** (proposed 2026-10-18, owner to confirm) GL4 S1 ships: pair assembly in [latent_forward_model.md](../latent_forward_model.md) ([grounding.md](../grounding.md) GL4), the first stage that records action-conditioned consequence pairs (replaces: a post-encoder Roy iteration showing Hookup 1 closes part of the gap).
 
 
 **Status:** **Hookup 1 SHIPPED** (PR pending, 2026-05-27). Hookups 2+3 remain 1.1+. Surfaced by [30_wire_a_tau_validation.md](../../experiments/30_wire_a_tau_validation.md) Finding 3. Reframed 2026-05-27 — see "1.0 scope reframe" below.

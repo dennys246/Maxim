@@ -23,7 +23,8 @@
 > **DEFERRED (2026-07-15 plans audit):** Stub, zero implementation (Minecraft appears only in CC8 adapter-contract docstrings). Its 1.0 must-not-preclude prerequisites (CC8 plug-replaceable adapters, CC1 `_format_version`, CC9 dual-format schema) all shipped, so nothing is decaying. **Revive when:** 1.1 splash-launch work is greenlit AND someone commits to the M0 comparison-protocol research (or a second external-world adapter consumer appears).
 
 
-**Status:** ACTIVE. **Part I COMPLETE** — seam shipped 1.1.4; the 1.2 headline claim EARNED (Exp 56, PASS). **Part II (the survival ladder, R0–R4) scoped 2026-09-06** — see below.
+**Status:** SHIPPED RECORD (2026-10-18): R0–R3 shipped (R3 as an instrument + frozen baseline in 1.3.0); R4 (delayed credit) is
+roadmap_1_4.md's. *(Was:* ACTIVE. **Part I COMPLETE** — seam shipped 1.1.4; the 1.2 headline claim EARNED (Exp 56, PASS). **Part II (the survival ladder, R0–R4) scoped 2026-09-06** — see below.*)*
 **Target version:** 1.1.4 (seam, no claim) → 1.2 (Exp 56 result + Exp 57 + R0; R1 & R2 shipped as offline structural/premise nulls 2026-09-07) → 1.3+ (R3/R4, deferred by the R2 null — see Part II).
 **Concurrent with:** 1.0 stabilization (this work proceeds in parallel without gating 1.0).
 **Depends on:** B4 Cradle ([archive/cradle_sensorimotor_development.md](archive/cradle_sensorimotor_development.md)) shipped — provides embodied learning foundation. Also benefits from [scene_actor_affordances.md](deferred/scene_actor_affordances.md) (1.1 track) for hostile mob mechanics.
@@ -322,7 +323,7 @@ record [data/r2_drive_premise.json](../experiments/data/r2_drive_premise.json).
 where the teacher mints credit directly (`NAc.credit_operant_reward`, bypassing breaks
 1–2) on always-executable affordances.
 
-### R3 — Survival benchmark *(DEFERRED to 1.3 — R2 null; see below)*
+### R3 — Survival benchmark *(SHIPPED in 1.3.0 as an instrument + frozen baseline, nothing graduated — `docs/experiments/r3_survival_benchmark_prereg.md` §Outcome; deferred from 1.2 by the R2 null, below)*
 **DEFERRED 2026-09-07: R2's null removes R3 from 1.2.** With intrinsic survival pressure
 absent, R3's "isolated" arm is a flat-dead baseline, its "taught" arm reduces to Exp 56
 with a survival-flavoured contingency (not survival), and the benchmark's dynamic range

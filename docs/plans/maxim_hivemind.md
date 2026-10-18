@@ -1,8 +1,8 @@
 # Maxim Hivemind + Oasis (federated bio-substrate)
 
-**Status:** ACTIVE design. Shareability foundation shipped in 1.0; Oasis and the
-P2P protocol are gated 1.2 work. Removed from the 1.1 cut on 2026-08-19 so release
-correctness is completed before distributed state is introduced.
+**Status:** ACTIVE design. Shareability foundation shipped in 1.0; Oasis and the P2P protocol shipped in 1.2
+(Slices A–D, #651–#654; `hive contribute` is write-only). Public serving is [public_oasis.md](public_oasis.md)'s.
+(Status updated 2026-10-18; it was removed from the 1.1 cut on 2026-08-19.)
 **Consumers (2026-09-24):** [social_referencing.md](social_referencing.md) — a **foreign layer** for consulted advice (held apart from own state, never merged live) and a verified local **release mirror** with a Queen-signed entry index; and, deferred, [deferred/grounded_word_binding.md](deferred/grounded_word_binding.md) — the reserved ATL payload (`HEARD_WITH` relations only).
 **Supersedes:** [archive/mother_maxim_plan.md](archive/mother_maxim_plan.md) (2,224 lines, designed pre-substrate-primary pivot — wrong architecture for the post-pivot world).
 **Companion plans:** [grounded_language_acquisition.md](grounded_language_acquisition.md) (substrate-primary AUT mode — the cognition layer the Hivemind shares), [v1_refinement.md](archive/v1_refinement.md) §B5 (the 1.0 shareability infrastructure that enables this).
@@ -317,7 +317,7 @@ Substrate-primary Maxim (1.2+, bootstrapped from Hivemind)
 | **1.0** | B5: Phase -1 + Phase 0 harness (SHIPPED PR #228, 2026-05-09) + shareability infrastructure (SHIPPED PRs #305/#308/#309/#310, 2026-05-30/31): snapshot bundle format at `src/maxim/hivemind/bundle.py`, `nac_merge` + `ec_merge` at `src/maxim/hivemind/merge.py`, provenance + domain + contributors tags on CausalLink + EC nodes, identity heuristic at `src/maxim/hivemind/identity.py`, `maxim substrate export/import/inspect` CLI. ~1,360 LOC total. | Format + CLI exist. No Oasis software runs yet. | None. |
 | **1.1** | Existing substrate-primary behavior is re-attested; release correctness and provenance gates are closed. | No Oasis software. | No live P2P protocol. |
 | **1.2** | Phase 1 ships. Phase 2 starts. Substrate-primary Maxims may pull bootstrap after compatibility gates pass. | **Oasis software ships** (~800 LOC), then multi-Oasis federation and curation tools. | **Full Hivemind protocol** (~600 LOC): peer discovery, substrate-snapshot exchange protocol, conflict-resolution semantics, poison-resistance defenses, well-known reference servers (optional). |
-| **1.3+** | Phase 3 starts (from-scratch sequence model). | Oasis becomes a substrate-primary instance (no LLM needed). Mac-Mini-class hardware suffices. | Cross-version migration tooling. Curation registry. Domain ecosystem. |
+| **1.3+** | Phase 3 starts (from-scratch sequence model). *Superseded 2026-10-07: grounded_language_acquisition.md was subsumed by [grounding.md](grounding.md) (G5); there is no scheduled Phase 3.* | Oasis becomes a substrate-primary instance (no LLM needed). Mac-Mini-class hardware suffices. | Cross-version migration tooling. Curation registry. Domain ecosystem. |
 
 **Total scope across 1.0 + 1.2:** ~2,100 LOC of net-new work. The old Mother Maxim plan was 3,800 LOC; this synthesis is ~55% the scope and does more. The 1.1 interval is deliberately release hardening, not federation implementation.
 

@@ -9,11 +9,11 @@
 > **G17–G20** with the GL1 code review the same day; all are recorded here as decided. Every
 > mechanism enters as `[engineering]`; nothing here claims behaviour until GL5 records an outcome.
 > **Body world first; the word world follows as the innate-prior tier.** GL0, GL1, GL4 S0a (audit)
-> and the paper run now, in parallel with 1.3.2; GL4 S0b needs a fresh capture (a sim run). GL3.B0
+> and the paper run now (GL0 #1186, GL1 #1191, GL2a #1194 and GL3.B0 #1201 are merged; status 2026-10-18); GL4 S0b needs a fresh capture (a sim run). GL3.B0
 > (tests only) is runnable now, inside the fence. GL2a is `src/` inside the fence exemption (§G1's
 > exempt file set). GL4 S1 waits for GL2a and for the post-fence resume stage that builds the event id
-> (G15, G17), so it lands after the fence and its exemption is moot; GL4 S3 and S4 are `src/` and wait for the 1.3.2
-> decomposition fence like every other `src/` stage; GL4 S2 is offline (`scripts/`).
+> (G15, G17), so it lands after the fence and its exemption is moot; GL4 S3 and S4 are `src/` and wait for the
+> decomposition fence like every other `src/` stage (the fence lifts when 1.3.6's decomposition slices land — the point at which T0 can pass); GL4 S2 is offline (`scripts/`).
 >
 > **Stage IDs.** `GL0`–`GL6` are this line's stages. Sub-plans number their own internal stages
 > (autonomic `GL2a`–`GL2c`; the forward model `S0`–`S5`, where its **S5 is GL5**; the relay's
@@ -33,7 +33,8 @@ the evidence for everything in §The problem. This plan is the fix list; that pa
 Update both when a stage lands.
 **Sub-plans:** [autonomic_layer.md](autonomic_layer.md) (GL2) ·
 [thalamic_relay.md](thalamic_relay.md) (GL3) · [latent_forward_model.md](latent_forward_model.md)
-(GL4). All three are PROPOSED and do not exist on `main` until GL1 merges them. The GL1 four-lens
+(GL4). GL1 merged all three (#1191); they stay PROPOSED until their own stages build. GL3.B0's defect issues:
+#1176, #1177 and #1178 are open; #1179 is closed (L7 marked Dormant, TR1). The GL1 four-lens
 reports for this umbrella and `autonomic_layer.md` are in [reviews/grounding_gl1/](reviews/grounding_gl1/);
 `thalamic_relay.md` and `latent_forward_model.md` get theirs before GL3 and GL4 start.
 **Owns (proposed):** the consequence record and its producers in `embodiment/sem.py` /

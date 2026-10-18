@@ -7,7 +7,7 @@
 > announcer; `maxim serve` still signs in by token; see the 1.3.0 CHANGELOG's "Correction to 1.2.1").
 > The re-vendor target it names, `src/maxim/console/ui_dist`, is gitignored and vendored at release
 > time only — it does not exist in a checkout, and the contract is now 0.5.0.
-> **DEFERRED 2026-09-19** (plans audit at the 1.3.0 release; README §Rules: a deferred plan states its revive trigger). **Revive when:** the console/UI line is scheduled into a release. The design below is unchanged and is not being worked on until then.
+> **ACTIVE (homed) 2026-10-18; the file stays under `deferred/` because src cites this path** (`src/maxim/console/server.py`, `src/maxim/tunnel/keys.py`). Deferred 2026-09-19 until the console/UI line was scheduled; that trigger fired, and **PR 3 (admission control) is homed in 1.3.3** (`roadmap_1_3_x.md` §1.3.3, "Recorded 1.3.3 moves").
 **Status:** ACTIVE — PR 1 (trust guard) MERGED #609 (2026-09-03); PR 2 (bearer auth, A1–A8)
 MERGED #613 and RELEASED in 1.1.4 (contract 0.4.0; one A7 sharpening: disk tokens are re-read
 per request so rotation bites with NO restart); A9 device handoff MERGED #616 (released in

@@ -117,7 +117,7 @@ Sizes: all **S** except Tier-3 (**M**, judgement per row).
 ## Explicitly OUT of scope
 
 - **Hardware/research-gated** (owed, not tractable-software): Exp 54 B/C, Exp 50, Exp 44b at-power, D30/D31/D87, place-code default-ON. *One pullable slice:* the **L8 record-stamping** fix (stamp model/endpoint/n_ctx/quantization on every run record) is Exp 44b's prerequisite and is cheap on its own.
-- **Deferred plans whose trigger 1.2 just fired — NEW-MECHANISM, not debt**, and each its own decision: **HF hive Phase 1** ([deferred/hf_hive_repository.md](../deferred/hf_hive_repository.md), the launch companion) and the **reactive-peer-mesh C10 event-slice** ([reactive_peer_mesh_roadmap.md](../deferred/reactive_peer_mesh_roadmap.md) §5).
+- **Deferred plans whose trigger 1.2 just fired — NEW-MECHANISM, not debt**, and each its own decision: **HF hive Phase 1** ([deferred/hf_hive_repository.md](../hf_hive_repository.md), the launch companion) and the **reactive-peer-mesh C10 event-slice** ([reactive_peer_mesh_roadmap.md](../deferred/reactive_peer_mesh_roadmap.md) §5).
 - **DORMANT-for-a-reason:** D51 (LSHIndex — "needs a design decision, not a patch"), D45 (SpatialMemoryBridge — mark Dormant), D9 producers (mechanism dormant).
 
 ## Recommended pull

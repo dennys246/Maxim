@@ -1,12 +1,14 @@
 # Thalamic relay: the Receptor registry and AfferentTracks (grounding line, GL3)
 
+> **Status 2026-10-18: GL3.B0 BUILT (#1201: census, seven red gates, frozen latency record); GL3.B1 onward not
+> started; this plan's four-lens design review is T8(b), homed to Session E (paper only).**
 > **PROPOSED, 2026-10-07.** **Sub-plan of the 1.4 grounding line ([grounding.md](grounding.md)),
 > stage GL3.** Not a rung and not a behavioural claim. Every mechanism here enters `[engineering]`.
 > Every behaviour change ships **behind a flag that defaults OFF**, with today's goldens pinned
-> byte-identical while the flag is off. **`src/` work waits for the 1.3.2 decomposition fence**:
+> byte-identical while the flag is off. **`src/` work waits for the decomposition fence** (the fence lifts when 1.3.6's decomposition slices land — the point at which T0 can pass):
 > `runtime/agent_loop.py`, `runtime/loop_*.py`, `runtime/substrate_proposal.py`'s call path and
 > `simulation/orchestrator.py` belong to Session A until their slices land. Stage GL3.B0 below (tests and
-> census only) can run now. This plan's four-lens design review is part of release threshold **T8**
+> census only) is built (#1201). This plan's four-lens design review is part of release threshold **T8**
 > (grounding truth and contracts, engineering only, gates 1.4.0). Building GL3 is not required for 1.4.0.
 > **Stage IDs are always written with the `GL3.` prefix** (`GL3.B0` … `GL3.B8`): a bare "B8" in the
 > ledger is T1-6's "B8 delta-attribution change" trigger, which is unrelated to this plan.

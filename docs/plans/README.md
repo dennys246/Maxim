@@ -38,7 +38,7 @@ with a trigger written on each; the root is 16 active plans). Previous deep audi
 | **1.1** | **"Sensorimotor" release closure** — merged embodiment work plus D13/D14 liveness, stable Python API truth, hermetic fast tests, atomic NAc+EC invalidation, architecture-audit regression enforcement, S4, remaining heartbeat chapters, release mechanics, and agent-guidance convergence. **Zero new mechanisms.** | **Published 2026-08-26** (tag `v1.1.0`; Exp 52 + Exp 53b recorded, item 18 → 1.1.1) — history in [roadmap](archive/roadmap_1_1_to_1_3.md#11-cut-line--reconciled-2026-08-19-reopened-2026-08-25) |
 | **1.2** | **Oasis** — peer substrate sharing + P2P protocol. | **PUBLISHED 2026-09-09** (tag `v1.2.0`, [PyPI](https://pypi.org/project/pymaxim/1.2.0/)) — [Exp 56](../experiments/56_four_arm_sharing.md) EARNED (headline) + [Exp 57](../experiments/57_dose_response_ladder.md) PARTIAL (dose-response scaling); P2P slices A→D merged (#651–#654, [scope](archive/hivemind_p2p_scope.md)); R1/R2 offline nulls; gates 1/3/7/8 closed. |
 | **1.3** | **"Oasis-2" — the survival world** (rescoped 2026-09-09) — learning reward FROM the game: the survival loop (R2's 3 breaks), the survival world with marked classrooms, **the survival reflex tier** (innate startle/flee below deliberation), and the headline **shared survival wants**. Plan: [archive/roadmap_1_3.md](archive/roadmap_1_3.md); designs: [survival_world_1_3.md](archive/survival_world_1_3.md), [intrinsic_motivation_1_3.md](deferred/intrinsic_motivation_1_3.md). | **PUBLISHED 2026-09-19** (tag `v1.3.0`, [PyPI](https://pypi.org/project/pymaxim/1.3.0/)) — Exp 60 + Exp 61 EARNED, R3 shipped as an instrument + frozen baseline (nothing graduated), Exp 56 re-baselined on 1.20.4. |
-| **1.4** | **Working title "Anticipation"** — re-pointed 2026-09-18 ([roadmap_1_4.md](roadmap_1_4.md)): generalization + sequence credit + a trajectory instrument on the survival rig; the name is fixed at the release transaction from the highest EARNED rung. **+ the grounding line (GL0–GL6, 2026-10-07, [grounding.md](grounding.md))**: concepts made similar by what they do to the body, inside Phase 5's slots; T8 (engineering) gates 1.4.0, while T9 (the first grounding claim) is conditional and never co-headlined with E3. **"Shared perception" DEFERRED 2026-09-18 on a physical trigger** (a second body exists; plan intact in [deferred/second_body_staging.md](deferred/second_body_staging.md); its perception half — the fabric, placement and modality resolution — re-keyed 2026-10-07 to the grounding line's GL3) — it was: richer video/audio (cochlear front-end, vision encoder, binding, three-factor calibration — [cross_modal_perception_fabric.md](deferred/cross_modal_perception_fabric.md), [three_factor_credit_assignment.md](three_factor_credit_assignment.md)) **plus sharing at the perception layer**, the **DN-canonical orienting reflex** (perception-coupled; distinct from 1.3's survival reflex), the microduck, breeding (Exp 55 re-pointed 2026-09-27 to [coding_world.md](coding_world.md)). Pivotal may-fail (Stage 0c); shared-perception inherits R1's transfer bound. | Planned |
+| **1.4** | **Working title "Anticipation"** — re-pointed 2026-09-18 ([roadmap_1_4.md](roadmap_1_4.md)): generalization + sequence credit + a trajectory instrument on the survival rig; the name is fixed at the release transaction from the highest EARNED rung. **+ the grounding line (GL0–GL6, 2026-10-07, [grounding.md](grounding.md))**: concepts made similar by what they do to the body, inside Phase 5's slots; T8 (engineering) gates 1.4.0, while T9 (the first grounding claim) is conditional and never co-headlined with E3. **"Shared perception" DEFERRED 2026-09-18 on a physical trigger** (a second body exists; plan intact in [deferred/second_body_staging.md](deferred/second_body_staging.md); its perception half — the fabric, placement and modality resolution — re-keyed 2026-10-07 to the grounding line's GL3) — it was: richer video/audio (cochlear front-end, vision encoder, binding, three-factor calibration — [cross_modal_perception_fabric.md](deferred/cross_modal_perception_fabric.md), [deferred/three_factor_credit_assignment.md](deferred/three_factor_credit_assignment.md)) **plus sharing at the perception layer**, the **DN-canonical orienting reflex** (perception-coupled; distinct from 1.3's survival reflex), the microduck, breeding (Exp 55 re-pointed 2026-09-27 to [coding_world.md](coding_world.md)). Pivotal may-fail (Stage 0c); shared-perception inherits R1's transfer bound. | Planned |
 
 **Discipline (carried forward from the 1.1 freeze):** existing behavior is not assumed live
 because a type or bridge exists — release claims require an executed contract test or a
@@ -93,7 +93,7 @@ Deep-audited 2026-10-16 after the 1.3.2 cut, with a 2026-10-17 follow-up pass (s
   #898) are BUILT, merged 2026-09-25; 2S-e (B) is PARKED (#900, the `time_of_day` wrap #899, not a
   generalization gap). It feeds T4a (2S-d's recall is the consumerless mechanism T4a walks) and engram
   E6 (2S-e, under T7).
-- [social_referencing.md](social_referencing.md) — **PROPOSED 2026-09-24, plan only; a parallel line.** Consult a locally held, signature-verified Oasis mirror only when the agent is both ignorant and being hurt; hold the answer as advice in a foreign layer apart from its own experience; promote advice only when it demonstrably worked. Exp C (may-fail): does the gate limit a stale Oasis's harm beyond the same advice given at random? Depends on public_oasis Phase 0 (scheduled); src after the fence lifts (1.3.6); rig after E3. Split from the language line. Stays active as a parallel paper line (owner 2026-10-17).
+- [social_referencing.md](social_referencing.md) — **PROPOSED 2026-09-24, plan only; a parallel line.** Consult a locally held, signature-verified Oasis mirror only when the agent is both ignorant and being hurt; hold the answer as advice in a foreign layer apart from its own experience; promote advice only when it demonstrably worked. Exp C (may-fail): does the gate limit a stale Oasis's harm beyond the same advice given at random? Depends on public_oasis Phase 0 (scheduled); src after the fence lifts (the fence lifts when 1.3.6's decomposition slices land — the point at which T0 can pass); rig after E3. Split from the language line. Stays active as a parallel paper line (owner 2026-10-17).
 - [coding_world.md](coding_world.md) — **PROPOSED 2026-09-27, plan only; a parallel line.** Revives [deferred/coding_habits_oasis.md](deferred/coding_habits_oasis.md) by owner request. Does an aversion learned from pain bind to the act or to being watched? Exp W probes Exp 60's EARNED fear with a second player as observer (offline key-geometry replay first); Exp K asks it in a coding world (hand-authored patch variants in Docker, measured pain, harness-only oracle labels, a tamper arm), then Exp 55's transfer. The one missing mechanism is a pain producer for the existing `credit_operant_reward` write (plus the world's backend and body). Stack Overflow is not grounded text (its uses live in social_referencing and grounded_word_binding; no need to pay). Stays active as a parallel paper line (owner 2026-10-17): no src before the 1.4.0 cut; claims are 1.5 candidates.
 - [baseline_floors.md](baseline_floors.md) — **Status 2026-10-16: B0 shipped and B1 ran (`FLOOR_MATCHED_Q`, 2026-10-14; T1-13/14/15 now PARTIAL). B2's code prerequisites are 1.3.6 exit items; the chain is B2 ([#1352](https://github.com/dennys246/Maxim/issues/1352)) → B3 ([#1353](https://github.com/dennys246/Maxim/issues/1353), Reflexion first, owner 2026-10-17) → B4 ([#1354](https://github.com/dennys246/Maxim/issues/1354)); B4, T1-2's re-fire, runs before 1.4.0.** **PROPOSED 2026-10-10, a parallel line (owner decisions BF1–BF2).** A bare LLM (`bare_llm`), a generic-memory LLM (`llm_notes`) and a non-LLM learner (`tabular_q`, `random`) beside every claim; until B1, no ledger row had been compared with an agent lacking the bio layers. BF2: a new claim earns only over its floor (M46). B0 (provenance fields) is merged; B1 (the Exp 60 non-LLM floor) RAN 2026-10-14 and returned `FLOOR_MATCHED_Q` (a tabular Q-learner matched FEAR at the first post placement), so T1-13 is `PARTIAL (narrow: floor matched)`; the bare loop (B2) waits for the `start_simulation_mode` decomposition, so no new LLM-path claim can be EARNED before it. Revises the owner's 2026-10-10 draft: the Exp 60 world cannot host a fair bare-LLM arm (priors hit the ceiling on the pre-probe), and Exp 37's narrator is a cross-session memory channel.
 - [experience_clock_decay.md](experience_clock_decay.md) — **PROPOSED 2026-10-17, plan only ([#1361](https://github.com/dennys246/Maxim/issues/1361)).** NAc decay and body drift move off loop passes and the wall clock onto the agent's experience clock (`ExperienceClockDriver`, which the hippocampus already rides): owner decisions 2026-10-17 — anchor in-session decay to the driver, and no forgetting while switched off. Slices S0–S6 with strict red gates; supersedes [deferred/scn_decay_anchoring.md](deferred/scn_decay_anchoring.md).
@@ -106,7 +106,7 @@ Deep-audited 2026-10-16 after the 1.3.2 cut, with a 2026-10-17 follow-up pass (s
   (submissions) stays deferred because V1's operator allowlist IS the trust boundary and the
   promotion gauntlet that would replace it has zero of its four prerequisites. Re-opens decision
   point 4 for publication only; the discovery-only website stance is preserved. Self-hosted sibling
-  of [deferred/hf_hive_repository.md](deferred/hf_hive_repository.md).
+  of [hf_hive_repository.md](hf_hive_repository.md).
 
 - [engram_formation.md](engram_formation.md) — **Status 2026-10-16: E1–E4, the T7 gate, are DONE (E3 2026-10-05, E4 2026-10-06); E5–E7 ride with other owners. T7 still owes the release-PR caller grep.** **ACTIVE 2026-09-25, a 1.4 parallel line
   ("Engram integrity", release threshold T7).** Fix list from a four-path audit of how engrams form:
@@ -177,33 +177,35 @@ Deep-audited 2026-10-16 after the 1.3.2 cut, with a 2026-10-17 follow-up pass (s
 
 ### The R4 credit map
 
-- [three_factor_credit_assignment.md](three_factor_credit_assignment.md) — named by
-  `roadmap_1_4.md` Phase 5 as the map for credit ROUTING (it names the shipped eligibility
-  trace and the Cerebellum). Design note, zero code. Its learnable-calibration half goes
-  with the shared-perception deferral.
-- [lookback_primitive.md](lookback_primitive.md) — **DECIDED 2026-09-24:** R4's look-back design
-  review. No new store: R4's credit stays on `NAc._eligibility`, retroactive tagging looks back over
-  the Hippocampus record by enqueue-time experience µs, binding decides at revival;
-  `PerceptTraceBuffer` Dormant. Found #888 (anchors never expire) and #889 (the reward-bias ablation
-  switch does not ablate the live path).
-- [memory_2d2_retroactive_tagging.md](memory_2d2_retroactive_tagging.md) — **DECIDED + BUILT
-  2026-09-25:** memory-strength 2d-2. A strong moment protects the traces encoded in the seconds
-  before it IN THE SAME SITUATION (not the approach into it) (`retro_tag`, read only under `memory.strategy=strength`); reach ~5 s until Phase 5
-  calibrates. Limits deferred on triggers:
-  [deferred/retro_tagging_extensions.md](deferred/retro_tagging_extensions.md).
-- [oasis_entry_index_v2.md](oasis_entry_index_v2.md) — **DECIDED 2026-09-25:** public_oasis Phase 0
-  item 7 — the Queen-signed entry index (one entry = one situation cluster), signing scheme v2 as a
-  detached signature over raw bytes, release ordering + anti-equivocation, the license field
-  (`CDLA-Permissive-2.0`). Must land before the item-2 format freeze.
-- [memory_2s_d_situation_cue.md](memory_2s_d_situation_cue.md) — **DECIDED + BUILT 2026-09-25:**
-  memory-strength 2S-d. A situation change recalls the memories formed in that situation (through
-  the cluster concepts' refs, scored on each memory's own situation); recall only, no activation,
-  until 2S-e consumes it. Lost links deferred:
-  [deferred/situation_cue_fallback.md](deferred/situation_cue_fallback.md).
+The decided plans this map listed are SHIPPED and listed once, under §Shipped plans kept at their path below (2026-10-18):
+[lookback_primitive.md](lookback_primitive.md) (no new store; credit stays on `NAc._eligibility`),
+[memory_2d2_retroactive_tagging.md](memory_2d2_retroactive_tagging.md),
+[memory_2s_d_situation_cue.md](memory_2s_d_situation_cue.md) and
+[oasis_entry_index_v2.md](oasis_entry_index_v2.md). The credit-routing map,
+[deferred/three_factor_credit_assignment.md](deferred/three_factor_credit_assignment.md), is deferred until
+the R4 credit build starts (2026-10-18; see §Deferred).
 
 *The shared-perception designs live in [deferred/](deferred/). The reflex runtime and the microduck
 are deferred on a second physical body arriving; the fabric was re-keyed 2026-10-07 (owner decision
 G4) to revive when GL3's registry+provenance stage ships AND a 1.4 rung needs cross-modal binding.*
+
+### Revived and homed out of `deferred/` (2026-10-18)
+
+Moved to the root where nothing cites the old path. The rest stay under `deferred/` because `src/`, `scripts/` or
+`.github/` cite their path; each banner says so.
+
+**Homed (owner decisions 2026-10-17):**
+- [hf_hive_repository.md](hf_hive_repository.md) — Hugging Face Hive Repository. Phase 1 (read-only distribution of Queen-signed release bundles + the replay Space): its trigger **fired 2026-09-09** (1.2.0, #670; its prerequisite, the format freeze, #918), and it was **REVIVED 2026-10-17** — the owner is setting up the dataset repo, a launch companion outside any release. Phase 2 (public submissions + gauntlet + main stream) stays deferred until the Slice-D promotion prerequisites land AND "validated bundle" has a defensible meaning AND decision point 4 is deliberately re-opened. Moved to the root 2026-10-18.
+- [loop_stack_builder.md](loop_stack_builder.md) — one shared `build_loop_stack()` for the hand-assembled `run_agentic_loop` stacks. Its trigger (the next hand-assembled stack) **fired 2026-09-04** (`simulation/minecraft_harness.py`, #610); **homed in 1.3.6**. Moved to the root 2026-10-18.
+- [node_security_simplification.md](node_security_simplification.md) — Phase 1 shipped; Phase 2's role-detector unification shipped in #318; its trigger fired with 0.5.0. The remainder (the legacy `"client"` role and `role_divergence` shims marked "Drops in 1.2", and an auth-model doc) is **homed in 1.3.3, Session H**. Moved to the root 2026-10-18.
+- [deferred/console_tunnel_hardening.md](deferred/console_tunnel_hardening.md) — **ACTIVE (homed) 2026-10-18; stays under `deferred/` because src cites it.** The console-facade security ladder: PR 1 trust guard (#609) and PR 2 bearer auth (#613, 1.1.4) merged; **PR 3 admission control homed in 1.3.3**; PR 4 pre-GA authz tiers. Its trigger (the console/UI line scheduled into a release) fired: the Console line shipped in 1.3.2 (contract 0.6.0, #1268/#1279/#1293).
+- [deferred/measurement_path_fail_loud.md](deferred/measurement_path_fail_loud.md) — **ACTIVE (homed) 2026-10-18; stays under `deferred/` because src and scripts cite it.** Stages 1 + 2 + 4 SHIPPED (1: #487; 2: 2026-08-30, zero firings; 4: the CI lock). Stage 3 (narrowing) was scheduled into 1.3.2 and did not land there; **homed in 1.3.3, Session H**.
+- [deferred/stall_detector_timeout_awareness.md](deferred/stall_detector_timeout_awareness.md) — **ACTIVE (homed) 2026-10-18; stays under `deferred/` because src cites it.** Stage 1 SHIPPED (PR #324); Stage 2, the heartbeat migration, SHIPPED 2026-10-14 (PR #1268). The homed remainder is the stall follow-ups #1272 and #1043, **in 1.3.5**. Stage 3 is deferred in place: blocked on [deferred/llm_timeout_scalability.md](deferred/llm_timeout_scalability.md) Stage 4.
+
+**Revived 2026-10-18 (owner decision); each homing is proposed, owner to confirm:**
+- [deferred/maxim_console.md](deferred/maxim_console.md) + [maxim_ui.md](maxim_ui.md) + [deferred/reachy_app_maxim_seams.md](deferred/reachy_app_maxim_seams.md) + [reachy_dm_app.md](reachy_dm_app.md) — the UI line. Phase 0 / MVP seams shipped earlier (`maxim serve` #416, seams #419–#428, `src/maxim/console/`), and the Console shipped in 1.3.2 (contract 0.6.0: run history, health, stall detection). `maxim_ui.md` and `reachy_dm_app.md` moved to the root; the other two stay under `deferred/` because src and scripts cite them. FIT on the Pi is still open. Proposed homing: alongside Session S (the pulse seam) / post-1.3.3 console work.
+- [config_extensibility.md](config_extensibility.md) — which config restrictions are the typo check (keep) and which merely require a fork (relax); built-ins ∪ a registry plus an `extensions.*` namespace. Its trigger, the [#856](https://github.com/dennys246/Maxim/issues/856) format-version decision, fired when #856 closed 2026-09-29. Proposed homing: after 1.3.3's single config-format bump (`CONFIG_FORMAT_VERSION` 1.3 → 1.4).
+- [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) — multi-peer load distribution; stays under `deferred/` because src cites it. Its 2+-GPU-node trigger is met: the multi-GPU rig exists. Proposed homing: a post-1.4 LLM line.
 
 ### Shipped plans kept at their path, and frozen contracts (listed 2026-10-16)
 
@@ -214,7 +216,7 @@ break the citation. Each is a record now, not a plan.
 - [m1b_ledger_evidence_gate.md](m1b_ledger_evidence_gate.md): every PR built (3, 4, 5a–5a-3, 5b-1, 5b-2); the gate is `lint_evidence_gate.py` and `lint_ledger_format.py` (M1).
 - [baseline_floors_b0.md](baseline_floors_b0.md), [baseline_floors_b1_build.md](baseline_floors_b1_build.md), [baseline_floors_b1_evidence.md](baseline_floors_b1_evidence.md): B0 merged (#1233); B1 built and run (2026-10-14). The live plan is [baseline_floors.md](baseline_floors.md).
 - [oasis_entry_index_v2.md](oasis_entry_index_v2.md): PRs A–C shipped 2026-09-25; the format is frozen under public_format_freeze.
-- [lookback_primitive.md](lookback_primitive.md): DECIDED 2026-09-24 (no new store; #891/#892); still R4's map entry.
+- [lookback_primitive.md](lookback_primitive.md): DECIDED 2026-09-24 (no new store; #891/#892); R4's look-back design record.
 - [grounded_language_acquisition.md](grounded_language_acquisition.md): superseded by [grounding.md](grounding.md) 2026-10-07 (owner decision G5); kept at its path because `src/`, the CLI help text and `analysis/roy_log.py` cite it. Its paired-data audit entry condition is answered there (the pair became (context, consequence)).
 - [minecraft_benchmark.md](minecraft_benchmark.md): Part I COMPLETE (Exp 56); Part II's R0–R3 shipped (R3 an instrument + frozen baseline in 1.3.0), and R4 moved to `roadmap_1_4.md` Phase 5. The ladder's own record; `src/maxim/simulation/minecraft.py` and the R1/R2 probe scripts cite it.
 
@@ -250,7 +252,6 @@ Design work preserved in [deferred/](deferred/). Each has an explicit "revive wh
 
 - [executive_function.md](executive_function.md) — staged executive function from #841's deep dive ([#1073](https://github.com/dennys246/Maxim/issues/1073)); Stage 1 is a gated goal slot riding NAc. **Revive when:** R4 credit routing or E2's relief-store review names a goal-slot consumer (homed after 1.4.0, #1072–#1075).
 - [fear_learning.md](fear_learning.md) — relief as a reinforcer and extinction, from #840's deep dive ([#1072](https://github.com/dennys246/Maxim/issues/1072)); two Exp 60-classroom experiment sketches. **Revive when:** the Phase 5 relief-store review adopts Experiment A as its consumer (homed after 1.4.0).
-- [config_extensibility.md](config_extensibility.md) — drafted 2026-09-22: which config restrictions are the typo check (keep) and which merely require a fork (relax); built-ins ∪ a registry plus an `extensions.*` namespace. `integration/memory_hub.py` cites it. **Revive when:** a third-party setting or strategy is requested, or the [#856](https://github.com/dennys246/Maxim/issues/856) format-version decision is taken.
 
 - [deferred/behavior_tiers.md](deferred/behavior_tiers.md) — which automatic behaviours stay code (invariants, innate priors) and which should become learned. The declare-your-tier **rule** is active; the migrations are deferred per item: source trust (M1) revives with the language line's L4 prereg, curiosity (M3) with intrinsic motivation's trigger or L5, learned reflex gain (M4) when a rung names a fixed gain as the limit, adaptive pain (M6) on its own plan's trigger. All wait for memory-strength Phase 2.
 - [deferred/adaptive_nociception.md](deferred/adaptive_nociception.md) — pain habituation (harmless, repeated) and sensitisation (damaging, repeated), adapted **upstream in the pain producer**, never inside a consumer. Deferred 2026-09-21 out of the memory line's scope. **Revive when:** a world produces chronic pain that does no damage, or repeated pain measurably over-tags.
@@ -259,6 +260,11 @@ Design work preserved in [deferred/](deferred/). Each has an explicit "revive wh
 - [deferred/retro_tagging_extensions.md](deferred/retro_tagging_extensions.md) — the four limits memory-strength 2d-2 ships with (no tagging in the LLM sims, ~5 s reach, eviction before sleep, `--sim`'s lightweight end), each with what would lift it and its revive trigger.
 - [deferred/situation_cue_fallback.md](deferred/situation_cue_fallback.md) — the 2S-d situation cue's lossy links (compressed / evicted / re-created concepts) and the llm-primary + hardware paths it does not cover, each with its revive trigger.
 - [deferred/generalization_by_pattern_completion.md](deferred/generalization_by_pattern_completion.md) — memory 2S-e (B), parked 2026-09-25: its measured gap (the Exp 62 "night miss") was the `time_of_day` wrap (#899), a keying defect; revive on a measured generalization gap keying does not own.
+
+**Deferred 2026-10-18:**
+
+- [deferred/three_factor_credit_assignment.md](deferred/three_factor_credit_assignment.md) — the credit-routing map `roadmap_1_4.md` Phase 5 names (the shipped eligibility trace and the Cerebellum), plus one proposed learnable (calibration). Design note, zero code; moved from the root. **Revive when:** the R4 credit build starts. Owner decisions A (the thesis wording) and B (learnable or hand-specified tuning curves) remain open.
+- [deferred/vllm_self_hosted_servers.md](deferred/vllm_self_hosted_servers.md) — vLLM (or any self-hosted OpenAI-compatible server) as a first-class lane: no new mechanism, fixes on the existing self-hosted peer path. Drafted 2026-09-27. **Revive when:** any OpenAI-compatible self-hosted server is put behind a lane, or a vLLM host is stood up. Its server-agnostic findings are filed: [#1369](https://github.com/dennys246/Maxim/issues/1369) (D5), [#1370](https://github.com/dennys246/Maxim/issues/1370) (D6), [#1371](https://github.com/dennys246/Maxim/issues/1371) (the stale env key).
 
 **Deferred 2026-09-18 (owner):**
 
@@ -301,14 +307,6 @@ Design work preserved in [deferred/](deferred/). Each has an explicit "revive wh
   hardware by Exp 53/53b) and the place-code path. **§7 place-code default-ON = item 5.** **Revive
   trigger re-keyed 2026-10-07 (owner decision G4):** GL3's registry+provenance stage ships
   ([thalamic_relay.md](thalamic_relay.md)).
-- [console_tunnel_hardening.md](deferred/console_tunnel_hardening.md) — **Status 2026-10-16: TRIGGER FIRED: the Console line shipped in 1.3.2 (contract 0.6.0, #1268/#1279/#1293). PR 3 (admission control) is homed in 1.3.3 with the console items.** Its trigger was: the console/UI line is scheduled into a release. Opened 2026-09-03: the
-  console-facade security ladder (PR 1 trust guard SHIPPED on its branch; PR 2 bearer auth
-  fail-closed; PR 3 admission control; PR 4 pre-GA authz tiers), motivated by the phone-app
-  peer goal; folds the 2026-09-03 console security audit; supersedes the auth half of
-  deferred/maxim_console.md's open q #1 (hosted-console non-goal unchanged).
-- [measurement_path_fail_loud.md](deferred/measurement_path_fail_loud.md) — Stages 1 + 2 + 4
-  SHIPPED (1: #487; 2: 2026-08-30, zero firings; 4: the CI lock). Stage 3 (narrowing) was scheduled into 1.3.2
-  by `roadmap_1_3_x.md` and did not land there; **homed in 1.3.3** (owner decision 2026-10-17).
 - [coding_habits_oasis.md](deferred/coding_habits_oasis.md) — **REVIVED 2026-09-27 into [coding_world.md](coding_world.md); kept as the record of the 2026-09-05 design.** ADOPTED 2026-09-05: collective
   coding-safety habits. The coding gauntlet (#3) is a Queen-tier promotion INSTRUMENT
   inside the 1.2 poison-resistance work — no 1.2 claim; the habit-transfer claim
@@ -338,12 +336,8 @@ Design work preserved in [deferred/](deferred/). Each has an explicit "revive wh
   header narrows that: a want that structurally needs a small same-side move of one graded sensor to separate,
   and then only as the adaptive (salience-layer) design.
 
-Deferred 2026-09-07 (filed from the 1.2-window design pass):
-- [deferred/hf_hive_repository.md](deferred/hf_hive_repository.md) — Hugging Face Hive Repository: Phase 1 read-only distribution of Queen-signed release bundles + the replay Space (revive at the 1.2 release transaction — launch companion, zero new trust surface); Phase 2 public submissions + gauntlet + main stream (revive only when the Slice-D promotion prerequisites land AND "validated bundle" has a defensible meaning AND decision point 4 is deliberately re-opened). **Phase 1's trigger fired 2026-09-09** (1.2.0, #670; its prerequisite, the format freeze, #918); **REVIVED 2026-10-17**: the owner is setting up the dataset repo.
 
 Deferred in the 2026-08-27 post-1.1.0 triage (banner + revive trigger at the top of each doc):
-- [deferred/acting_coach_body_state_ablation.md](deferred/acting_coach_body_state_ablation.md) + [deferred/exp44_overnight_runcard.md](deferred/exp44_overnight_runcard.md) — prerequisites shipped (#391), the body-state arms never validly ran, nothing owns them. Revive when graduation row #11 (B3 Acting Coach) is scheduled for a decision.
-- [deferred/maxim_console.md](deferred/maxim_console.md) + [deferred/maxim_ui.md](deferred/maxim_ui.md) + [deferred/reachy_app_maxim_seams.md](deferred/reachy_app_maxim_seams.md) + [deferred/reachy_dm_app.md](deferred/reachy_dm_app.md) — the UI line: Phase 0 / MVP seams SHIPPED (`maxim serve` #416, seams #419–#428, `src/maxim/console/`), everything after unscheduled by the 1.1→1.3 roadmap. Revive as a set when a user-facing local front door is scheduled into a release (FIT Phase-0 on the Pi first).
 - [deferred/orient_magnitude_learning.md](deferred/orient_magnitude_learning.md) — S0/S1 shipped; S4 completed via Exp 45e. Only S3 open. Revive on a pre-registered held-out-bin generalization claim.
 - [deferred/productive_orienting_affordance.md](deferred/productive_orienting_affordance.md) — Phases 1–2 SHIPPED (#403); the 2-axis decision waits for a second-axis body.
 - [deferred/substrate_learns_from_experience.md](deferred/substrate_learns_from_experience.md) — Phase 1 SHIPPED (#437). Phases 2–3 revive when imagination may write to the substrate.
@@ -360,13 +354,11 @@ Deferred 2026-09-24 — **on a frozen condition:**
 Deferred 2026-07-22 to 2026-08-11 — **indexed 2026-10-17** (missing from this index until then):
 - [deferred/credit_on_progress_not_execution.md](deferred/credit_on_progress_not_execution.md) — DOWNGRADED 2026-07-22: credit a tool for drive or goal progress, not for executing. A probe disproved it as the embodied root cause, so it is an optional cleanliness change. States no revive trigger (audit flag).
 - [deferred/long_lived_server_config_guards.md](deferred/long_lived_server_config_guards.md) — 2026-07-26: once-per-process config guards (`_lane_env_applied`, the role export) go stale inside a long-lived `maxim serve`. Revive when the console wizard needs run → re-setup → run to re-route lanes in one `maxim serve` process, or Phase 3 talk/rest modes ship.
-- [deferred/loop_stack_builder.md](deferred/loop_stack_builder.md) — 2026-07-29: one shared `build_loop_stack()` for the hand-assembled `run_agentic_loop` stacks. Its trigger (the next hand-assembled stack) **fired 2026-09-04** (`simulation/minecraft_harness.py`, #610); **homed in 1.3.6** (owner decision 2026-10-17).
 - [deferred/scn_event_producer_gap.md](deferred/scn_event_producer_gap.md) — 2026-07-29 (updated 2026-08-29, #572): five of the SCN's six declared temporal-event categories have no producer. Revive when the oscillator earns behavioural weight and a second category is needed, or a drive-conditioned anticipatory behaviour is on the critical path.
 - [deferred/retrosplenial_spatial_frames.md](deferred/retrosplenial_spatial_frames.md) — 2026-08-11: egocentric ↔ allocentric frame translation, plus the re-validation registry every EC-clustering change must walk (§5). Revive when any §4 trigger fires: T1 place memory across motion, T2 multi-vantage identity, T3 return-to-place (`roadmap_1_4.md`'s E2 question), T4 a second frame-confusion incident.
 
 Deferred in the 2026-07-15 audit — **partially shipped, remainder paused:**
 - [deferred/llm_timeout_scalability.md](deferred/llm_timeout_scalability.md) — Stages 1–3.5 SHIPPED (per-tier timeout, admission gate, TTFT keepalive; PRs #320/#321). Stage 4 adaptive throughput model unbuilt. Revive when a big-model soak yields the `(TTFT, tok/sec)` data it needs.
-- [deferred/stall_detector_timeout_awareness.md](deferred/stall_detector_timeout_awareness.md) — Stage 1 SHIPPED (PR #324); Stage 2, the heartbeat migration, SHIPPED 2026-10-14 (PR #1268). Its trigger (the next 1.0.x maintenance pass, or a heartbeat false-positive) **fired** with 1.0.2 (2026-07-28). Stage 3 stays blocked on llm_timeout_scalability Stage 4; the stall follow-ups #1272 and #1043 are homed in 1.3.5.
 - [deferred/mesh_perception_transport.md](deferred/mesh_perception_transport.md) — 1.0 prep SHIPPED (PR #329); single-cut-point framing superseded by `perception_pipeline_placement.md`. Revive when a perception stage is placed across the wire (1.2+ frame transport).
 - [deferred/bio_emergent_persona_foundations.md](deferred/bio_emergent_persona_foundations.md) — Stages 0–3 + Wire-A SHIPPED via 0.9.1. Only Wires 4/5 remain; evidence points at encoder alignment, not these wires, as the persona blocker. Revive if a Roy iteration shows Wire 4 or 5 is load-bearing.
 - [deferred/scene_actor_affordances.md](deferred/scene_actor_affordances.md) — Stages 1+2 SHIPPED (PR #213). Stages 3–5 (prompt rule, designer hint, validation experiment) revive when an adversarial sim needs narrated entity actions to hit real AUT body mechanics, or when re-evaluating agent_backed_entities.
@@ -393,8 +385,6 @@ Earlier deferrals:
 - [deferred/pecking_order_graph_plan.md](deferred/pecking_order_graph_plan.md) — Unified hierarchy DAG. Revive when multi-node topology matters.
 - [deferred/dungeon_master_extensions.md](deferred/dungeon_master_extensions.md) — DM post-MVP features (a maybe-list). Revive when real DM campaign usage points at one specific extension.
 - [deferred/pain_bus_bridge_subscriber_unification.md](deferred/pain_bus_bridge_subscriber_unification.md) — Bridge/subscriber attribution-asymmetry fix. Monitor; open when pending-event context enriched.
-- [deferred/node_security_simplification.md](deferred/node_security_simplification.md) — Phase 1 shipped; Phase 2's role-detector unification shipped in #318. Its trigger (Plan 4 operator visibility fully shipped) **fired** with 0.5.0. The remainder (the legacy `"client"` role and `role_divergence` shims marked "Drops in 1.2", and an auth-model doc) is **homed in 1.3.3** (owner decision 2026-10-17).
-- [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) — Multi-peer load distribution. Revive when 2+ GPU nodes.
 - [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md) — Capability-aware routing. Revive when heterogeneous mesh.
 - [deferred/llm_path_async_router.md](deferred/llm_path_async_router.md) — Async router. Revive if head-of-line blocking observed.
 - [deferred/llm_path_fair_scheduling.md](deferred/llm_path_fair_scheduling.md) — Fair-share scheduling. Revive if rate limiting insufficient.
@@ -409,6 +399,7 @@ Redirects for plans that left `deferred/` (moved out of the Deferred index 2026-
 - ~~deferred/colibri_worldgen_smoke.md~~ → **ARCHIVED** 2026-10-17, at [archive/colibri_worldgen_smoke.md](archive/colibri_worldgen_smoke.md) (listed below).
 
 - [archive/colibri_worldgen_smoke.md](archive/colibri_worldgen_smoke.md) — **ARCHIVED 2026-10-17** (owner): the colibrì GLM-5.2 world-generation smoke. Its weights were deleted, and the July run measured 0.05–1 tok/s, too slow to beat the cloud arm under its pre-registered rule. Reviving it needs a new speed argument.
+- [archive/exp44_overnight_runcard.md](archive/exp44_overnight_runcard.md) + [deferred/acting_coach_body_state_ablation.md](deferred/acting_coach_body_state_ablation.md) — **ARCHIVED 2026-10-18** (the runcard moved to `archive/`; the plan is archived in place under `deferred/` because src cites it). Prerequisites shipped (#391); the body-state arms never validly ran. Their revive trigger keys on ledger row T3-11 (B3 Acting Coach), DROPPED 2026-08-30, so it can never fire; the code stays per dormancy.
 - [archive/world_channel_weighting.md](archive/world_channel_weighting.md) — **CLOSED by measurement 2026-09-20, archived 2026-10-16**: all four lenses returned DO-NOT-BUILD; #784 stays homed in 1.4 Phase 5.
 
 Archived in the 2026-08-27 post-1.1.0 triage (each verified against code + git history; disposition banner at the top of each doc):

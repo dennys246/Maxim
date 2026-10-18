@@ -1,6 +1,8 @@
 # HF Hive Repository — public discovery + submission channel for signed substrate bundles
 
-> **Status 2026-10-17: Phase 1 TRIGGER FIRED 2026-09-09; Phase 2 has not fired.** Phase 1's trigger is the 1.2 release transaction: 1.2.0 was released 2026-09-09 (PR #670). Its sole prerequisite, the public format freeze, merged 2026-09-26 (PR #918) and shipped in 1.3.1. Phase 2 needs all of (a)–(c) below, and (c) is not recorded: [public_oasis.md](../public_oasis.md) re-opens decision point 4 for publication only. **Phase 1 is REVIVED (owner decision 2026-10-17):** the owner is setting up the Hugging Face dataset repo now. It is a launch companion outside any release's scope, as §Revive triggers says. Q5 (license) and Q3 (the publication-privacy read of the exemplar's key material) are answered before the first upload; Q1 is answered by trying consumer path (a), a static mirror, before any code.
+> **Moved to the active root 2026-10-18; homed outside any release** (Phase 1 is a launch companion, owner decision 2026-10-17; `roadmap_1_3_x.md` has no slot for it).
+>
+> **Status 2026-10-17: Phase 1 TRIGGER FIRED 2026-09-09; Phase 2 has not fired.** Phase 1's trigger is the 1.2 release transaction: 1.2.0 was released 2026-09-09 (PR #670). Its sole prerequisite, the public format freeze, merged 2026-09-26 (PR #918) and shipped in 1.3.1. Phase 2 needs all of (a)–(c) below, and (c) is not recorded: [public_oasis.md](public_oasis.md) re-opens decision point 4 for publication only. **Phase 1 is REVIVED (owner decision 2026-10-17):** the owner is setting up the Hugging Face dataset repo now. It is a launch companion outside any release's scope, as §Revive triggers says. Q5 (license) and Q3 (the publication-privacy read of the exemplar's key material) are answered before the first upload; Q1 is answered by trying consumer path (a), a static mirror, before any code.
 
 **Status:** Deferred shell plan — tracking only, no active work. Filed 2026-09-07 from a
 1.2-window design conversation. The owner's original framing: "a Hugging Face bucket,
@@ -17,7 +19,7 @@ launch-window work:
   trust decisions**, and is the right 1.2/1.3 launch companion.
 - **Phase 2 — public submissions + gauntlet + promotion to a "main stream"**: this IS the
   Queen-tier promotion pipeline that Slice D explicitly deferred with its blockers named
-  ([hivemind_p2p_scope.md](../archive/hivemind_p2p_scope.md) §Slice D), plus a public front door
+  ([hivemind_p2p_scope.md](archive/hivemind_p2p_scope.md) §Slice D), plus a public front door
   on top. It cannot ship honestly before those prerequisites land, and it re-opens
   decision point 4 (no project-hosted Oasis) deliberately. 1.3+ work.
 
@@ -51,7 +53,7 @@ The shipped 1.2 trust design already treats the distribution channel as untruste
 - Trust anchors are **ed25519 Queen signatures** (Slice A) verified by the consumer, plus
   the operator's `hive.json` Queen keys — never the host that served the bytes.
 - The receiver re-runs the full V1–V10 admission pipeline on every ingest
-  ([oasis_ingestion_contract.md](../archive/oasis_ingestion_contract.md)) regardless of origin.
+  ([oasis_ingestion_contract.md](archive/oasis_ingestion_contract.md)) regardless of origin.
 
 So hosting signed release bundles on HF (or any static host) adds **zero new trust
 surface** for consumers. HF is just a mirror; a tampered bundle fails
@@ -117,7 +119,7 @@ scope doc names as the promotion blocker is a blocker here, plus:
   "we'll score it cheaply" is not an answer.
 - **Threat model extension:** public submissions add repo-side threats (spam, slow-poison
   campaigns across many identities, gauntlet-overfit bundles) that the receiver-side
-  V1–V10 belt does not address — [sharing_threat_model.md](../sharing_threat_model.md)
+  V1–V10 belt does not address — [sharing_threat_model.md](sharing_threat_model.md)
   §4 needs a Phase-2 addendum before any submission channel opens.
 
 **Explicit Phase-2 non-goals (carried from the 1.2 decisions unless re-decided):** no
@@ -137,14 +139,14 @@ the main stream, ever.
 
 ## 6. Related
 
-- [hivemind_p2p_scope.md](../archive/hivemind_p2p_scope.md) — Slice D block: the deferred
+- [hivemind_p2p_scope.md](archive/hivemind_p2p_scope.md) — Slice D block: the deferred
   promotion pipeline + its four prerequisites; decision point 4.
-- [oasis_ingestion_contract.md](../archive/oasis_ingestion_contract.md) — the receiver-side
+- [oasis_ingestion_contract.md](archive/oasis_ingestion_contract.md) — the receiver-side
   V1–V10 pipeline every pulled bundle passes; §6/§7 schedule Gauntlet #3.
-- [sharing_threat_model.md](../sharing_threat_model.md) — the frozen receiver contract;
+- [sharing_threat_model.md](sharing_threat_model.md) — the frozen receiver contract;
   Phase 2 owes it a repo-side addendum.
-- [coding_habits_oasis.md](coding_habits_oasis.md) §4 — Gauntlet #3 design; the
+- [coding_habits_oasis.md](deferred/coding_habits_oasis.md) §4 — Gauntlet #3 design; the
   inherent bias class Queen promotion would exercise.
-- [minecraft_benchmark.md](../minecraft_benchmark.md) Part II — R1's cache-not-concept
+- [minecraft_benchmark.md](minecraft_benchmark.md) Part II — R1's cache-not-concept
   bound; the survival benchmark as a candidate future gauntlet bench.
-- [maxim_hivemind.md](../maxim_hivemind.md) — the vision authority this serves.
+- [maxim_hivemind.md](maxim_hivemind.md) — the vision authority this serves.

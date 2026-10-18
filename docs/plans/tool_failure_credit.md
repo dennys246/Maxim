@@ -4,7 +4,7 @@
 > read-only dive (producer, consumers, credit ownership, ledger blast radius, history) with probes against
 > `origin/main` 45f1c039. Companion plans: [deferred/pain_bus_bridge_subscriber_unification.md](deferred/pain_bus_bridge_subscriber_unification.md)
 > (the trap Stage 3 must not walk into) and [deferred/nociception_layer.md](deferred/nociception_layer.md),
-> revived into [autonomic_layer.md](autonomic_layer.md) (its step 2, kind on `Reaction`, gates Stage 3).
+> revived into [autonomic_layer.md](autonomic_layer.md) (its step 2, pain kind on `Reaction`, gates Stage 3).
 
 ## Why this plan exists
 
@@ -256,7 +256,10 @@ emitted event adds is an eligibility trace. **This design supersedes the bullets
 
 ### Stage 3: a felt-only FRUSTRATION signal on the PainBus (later)
 
-Only after `Reaction` carries its kind (nociception step 2), so the distributor and episode valence can
+**Deferred in place (2026-10-18).** **Revive when:** `PainKind` is carried on `Reaction` (nociception step 2,
+which [autonomic_layer.md](autonomic_layer.md) lands with or before GL2b(ii)).
+
+Only after `Reaction` carries its pain kind (nociception step 2), so the distributor and episode valence can
 skip FRUSTRATION, after the context-similarity NAc subscriber declares a kind rule, and after `_on_pain`'s
 TOOL_* branch is deleted (Stage 2 moved its body into `record_tool_failure`). The detector's
 defects (item 5) are fixed then. Until Stage 3, `PainDetector.record_tool_error` stays without a live

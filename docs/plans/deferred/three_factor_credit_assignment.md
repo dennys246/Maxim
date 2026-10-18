@@ -1,19 +1,21 @@
 # Three-Factor Credit Assignment (architectural stance + calibration learning)
 
+> **DEFERRED 2026-10-18 — Revive when:** the R4 credit build starts. Owner decisions A (does the thesis statement change to "no backpropagation and no pretrained-weight updates") and B (are population tuning curves learnable or hand-specified) remain open; see §Open decisions.
+
 **Status:** DESIGN NOTE (2026-08-06). Zero code. Owner-initiated, arising from the
-[cross_modal_perception_fabric.md](deferred/cross_modal_perception_fabric.md) design pass.
+[cross_modal_perception_fabric.md](cross_modal_perception_fabric.md) design pass.
 Mostly **names what already exists**; proposes exactly one small new learnable.
-**Look-back (2026-09-24):** R4's look-back design review ([lookback_primitive.md](lookback_primitive.md))
+**Look-back (2026-09-24):** R4's look-back design review ([lookback_primitive.md](../lookback_primitive.md))
 decided no new store — the trace this note names (`NAc.update_eligibility` → `TemporalCreditDistributor`)
-stays R4's; two live defects on it are #888 and #889.
+stays R4's; the two defects found on it, #888 and #889, are CLOSED (checked 2026-10-18).
 **Target version:** 1.3 (the stance applies immediately and retroactively; the
 calibration learner is 1.3 work).
 **Owns (proposed):** the learning-rule stance, the per-learnable teacher-signal
 rule, and the consolidation-window update discipline.
-**Companion plans:** [cross_modal_perception_fabric.md](deferred/cross_modal_perception_fabric.md)
+**Companion plans:** [cross_modal_perception_fabric.md](cross_modal_perception_fabric.md)
 (Layer-2 calibration is this note's motivating learnable) ·
-[sem_motor_binding.md](deferred/sem_motor_binding.md) ·
-[deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md)
+[sem_motor_binding.md](sem_motor_binding.md) ·
+[deferred/jepa_cross_modal_alignment.md](jepa_cross_modal_alignment.md)
 (the thesis-boundary question this note sharpens).
 
 ---

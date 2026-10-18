@@ -2,7 +2,9 @@
 
 **Status:** design agreed 2026-09-29 (owner), after the adversarial design pass CLAUDE.md requires for a
 gate ("Faster without lowering the bar" (1)). The first draft was red-teamed before any code and was
-DO-NOT-BUILD; this is the revised shape. Build follows the PR sequence at the end.
+DO-NOT-BUILD; this is the revised shape. **BUILT (status 2026-10-18):** the PR sequence at the end shipped
+2026-09-30 to 2026-10-01 (PR 3 `lint_ledger_format.py`, PR 4, PRs 5a–5a-3, PR 5b-1 `lint_evidence_gate.py`, PR 5b-2);
+the per-PR record is outstanding.md's M1 row. This file is the design record.
 **Closes:** the second half of mechanization backlog M1 (`docs/plans/outstanding.md`).
 **Builds on:** M1a (#999: sim `report.json` `provenance` + `ts`), #998 (#1001: `utils/code_tree.py`).
 

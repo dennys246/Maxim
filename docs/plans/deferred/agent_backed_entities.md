@@ -12,7 +12,7 @@
 
 The motivating symptom — "sims feel one-way, narrator struggles with dragon embodiment" — has a simpler root cause that the much smaller [scene_actor_affordances.md](scene_actor_affordances.md) plan addresses directly. Imagination already generates dragon entities with `breathe_fire` affordances; the gap is that scene-entity affordances are declarative-only by design (per the entity ownership ship). Letting the orchestrator invoke them with the AUT as target — plus a `target_effect` field on `AffordanceSchema` — should produce embodied-feeling adversaries at ~110 LOC, leveraging all existing imagination work.
 
-**Revive when:** scene_actor_affordances ships and the lived-experience gap remains. The remaining gap would be entity *agency* — entities deciding when to act, learning from outcomes, accumulating cross-session identity. That's what this plan addresses, and at that point the cost is justified.
+**Revive when:** (proposed 2026-10-18, owner to confirm) [scene_actor_affordances.md](scene_actor_affordances.md) Stage 5 (validation + lived-experience check) ships and its recorded decision is that scripted-but-embodied entities do not close the gap (replaces: scene_actor_affordances ships and the gap remains). The remaining gap would be entity *agency* — entities deciding when to act, learning from outcomes, accumulating cross-session identity. That's what this plan addresses, and at that point the cost is justified.
 
 **Other revival triggers:**
 - Minecraft live demo benchmarking against Voyager / GITM / SPRING shows that scripted-but-embodied entities are insufficient for competitive comparison (e.g., zombies need to pathfind, villagers need to remember player trades).

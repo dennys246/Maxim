@@ -1,5 +1,8 @@
 # Deferred: LLM Path — Multi-peer Reactive Dispatch
 
+> **REVIVED 2026-10-18 (owner decision); the file stays under `deferred/` because src cites this path** (`src/maxim/mesh/*.py`, `runtime/function_router.py`). Revive trigger 2 has fired: the multi-GPU rig exists. The checklist below is as of 2026-04-13 and is re-walked before any build.
+> **Proposed homing (owner to confirm):** a post-1.4 LLM line (proposed 2026-10-18, owner to confirm).
+
 **Status:** Deferred shell plan — partially triggered as of 2026-04-13 (user has RTX 3070 as a second GPU node)
 **Revive when:** ANY of the following:
 1. **Phase D stress test shows leader saturation** that `llama.cpp --parallel` batching does not resolve, OR

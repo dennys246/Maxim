@@ -1,7 +1,7 @@
 # Public format 1 — the freeze record
 
 **Status:** FROZEN 2026-09-26 (public_oasis Phase 0 item 2, part 2). Part 1, the pre-freeze hardening,
-shipped as #915; the two ingest defects it surfaced are #914 (merged, #917) and #913 (scheduled, 1.3.1
+shipped as #915; the two ingest defects it surfaced are #914 (merged, #917) and #913 (fixed by #919, closed 2026-09-26
 — a merge-layer fix that changes no byte of the format).
 
 Once a stranger downloads a release, its bytes are a public promise: every later Maxim must still
