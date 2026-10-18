@@ -89,6 +89,7 @@ KEY = ("a1", "c1", "tool:x")
 
 
 class TestClusterRewardSourceFollowsBias:
+    @pytest.mark.single_agent_only
     def test_tick_decay_prune_drops_source(self) -> None:
         """The reviewer's probe: drive_relief credit -> decay to zero -> a fresh
         tool_success credit must report 'tool_success', not 'mixed'."""
@@ -109,6 +110,7 @@ class TestClusterRewardSourceFollowsBias:
         nac.decay_cluster_reward_biases()
         assert nac._cluster_reward_source[KEY] == "drive_relief"
 
+    @pytest.mark.single_agent_only
     def test_wall_clock_decay_prune_drops_source(self) -> None:
         nac = NAc(NACConfig())
         nac.update_cluster_reward(*KEY, reward=0.05, source="drive_relief")
@@ -160,6 +162,7 @@ def _booked(nac: NAc, sig: str, valence: Valence) -> None:
 
 
 class TestWelfordBoundedByLinks:
+    @pytest.mark.single_agent_only
     def test_evicting_last_link_drops_welford_and_empty_slot(self) -> None:
         nac = NAc(NACConfig(max_links=1))
         _booked(nac, "tool:old", Valence.POSITIVE)
@@ -172,6 +175,7 @@ class TestWelfordBoundedByLinks:
         assert ("a1", "tool:old") not in nac._event_outcome_welford
         assert ("a1", "tool:new") in nac._event_outcome_welford
 
+    @pytest.mark.single_agent_only
     def test_welford_with_surviving_links_kept(self) -> None:
         nac = NAc(NACConfig(max_links=10))
         _booked(nac, "tool:a", Valence.POSITIVE)
