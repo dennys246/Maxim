@@ -32,7 +32,13 @@ WHAT IS RECORDED. Only causally ordered facts:
     which, the router's build, the paths), and the ``sim_reports`` file set;
   - the whole ``MAXIM_DATA_HOME`` file set: the reports, the sandbox and the orchestrator's own
     persisted stores, which only its ``shutdown()`` writes;
-  - the saved AUT NAc's causal links and every ``actions.jsonl`` record, times dropped;
+  - the saved AUT NAc's causal links and every ``actions.jsonl`` record, times dropped; its tick-decayed
+    bias maps by key, sign and bound only, because how many decay ticks land before the save is
+    wall-clock-paced (``_NAC_DECAY_PINNED``), and every NAc credit write behind them, with its arguments,
+    in each NAc's call order (``nac_credits``; each key's first write carries ``post``). The saved maps are
+    also checked to sit strictly below each key's last write, so per-tick decay must reach the saved NAc.
+    Measured 2026-10-17: the AUT NAc's writes (``credit_goal``, ``update_eligibility``) all run on ``sim.aut``,
+    the narrator NAc's ``update_eligibility`` on the calling thread (``MainThread``);
   - any ``sim.*`` thread still alive after the run, and every thread the run started that outlives it.
 
 CANONICAL FORM. ``json.dumps(sort_keys=True)``. Floats are rounded to 9 decimals, and paths and stamps
@@ -113,10 +119,12 @@ from tests.unit._orch_harness import (  # noqa: E402
     _MASKED,
     _PROVENANCE_MASKED,
     ARMS,
+    GOAL,
     REPO_ROOT,
     RUN_SIDE,
     FakeRouter,
     WrongCheckout,
+    _decayed_bound,
     assert_this_checkout,
     canonical_json,
     run_arm,
@@ -299,6 +307,13 @@ def test_the_golden_is_non_vacuous() -> None:
         assert "orchestrator/nac.json" in t["data_home_files"], name  # written only by the narrator's shutdown()
         assert "plan-logger" in t["threads_left_alive"]["added"], name  # #1263's plan writers (its DN part is fixed)
         assert t["aut_nac"]["links"], name
+        # The decayed goal bias is pinned by its bound, and its causes by value (_NAC_DECAY_PINNED).
+        assert t["aut_nac"]["goal_reward_bias"] == {GOAL: "+ in (0, 0.2], decayed below its last write"}, name
+        goal_credits = [c for c in t["nac_credits"]["aut"] if c["method"] == "credit_goal"]
+        # The first credit's ``post`` is alpha x reward (0.15 x 1.0), before any decay tick; later ones carry none.
+        first, *later = goal_credits
+        assert first == {"method": "credit_goal", "goal_tag": GOAL, "reward": 1.0, "post": 0.15}, name
+        assert later and all(c == {"method": "credit_goal", "goal_tag": GOAL, "reward": 1.0} for c in later), name
         assert [r.get("_record_kind") for r in t["action_log"][:1]] == ["header"], name
         assert len(t["action_log"]) - 1 == t["result"]["total_actions"], name
         (aut_state,) = [w for w in t["report_writer_args"] if w["writer"] == "save_aut_state"]
@@ -315,6 +330,20 @@ def test_the_golden_is_non_vacuous() -> None:
     # The AUT's build ran under its profile override, and the override was undone after it.
     assert (prov["language_profile"], prov["aut_profile"]) == (None, ARMS["narrator"]["aut_model"])
     assert all("MAXIM_LLM_PROFILE" not in t["maxim_env_after"] for t in arms.values())
+
+
+def test_a_decayed_nac_value_outside_its_bound_or_undecayed_is_printed_raw() -> None:
+    """``_NAC_DECAY_PINNED`` loosens a decayed value to its sign, bound and "decayed below its last write", not
+    further: a value past the clamp, a zero (which the store never keeps), a non-number, or a value no decay
+    tick reached after its last write does not match any pinned form."""
+    assert _decayed_bound(0.17, 0.2, 0.2) == "+ in (0, 0.2], decayed below its last write"
+    assert _decayed_bound(-0.01, 0.2, -0.15) == "- in [-0.2, 0), decayed below its last write"
+    for bad in (0.21, -0.2001, 0.0, None, True):
+        assert _decayed_bound(bad, 0.2, 0.2).startswith("OUT OF BOUND"), bad
+    # Zero decay ticks after the last write (or a decay applied to another instance) is loud, never silent.
+    assert "not decayed" in _decayed_bound(0.2, 0.2, 0.2)
+    assert "not decayed" in _decayed_bound(0.17, 0.2, -0.2)  # sign flip
+    assert _decayed_bound(0.17, 0.2, None) == "+ in (0, 0.2], no write this run"
 
 
 def test_the_fake_router_fails_closed() -> None:
