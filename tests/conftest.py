@@ -71,26 +71,12 @@ from tests import script_module_guard as _script_module_guard  # noqa: E402
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):  # noqa: ANN001, ANN201
-    """How many calls the network guard blocked this session (each would have left the machine), summed over the
-    xdist workers when there are any (tests/network_guard.py says how)."""
-    line = _network_guard.summary_line()
-    if line is not None:
-        terminalreporter.write_line(line)
-
-
-def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    """On an xdist worker, hand this worker's network-guard counts to the controller (``workeroutput`` exists only
-    there; a serial run and the controller have none)."""
-    workeroutput = getattr(session.config, "workeroutput", None)
-    if workeroutput is not None:
-        workeroutput[_network_guard.WORKEROUTPUT_KEY] = _network_guard.counts()
-
-
-@pytest.hookimpl(optionalhook=True)
-def pytest_testnodedown(node, error):  # noqa: ANN001, ANN201
-    """xdist controller: fold a finished worker's network-guard counts into the summary (optional: no xdist, no
-    hook)."""
-    _network_guard.merge_worker(getattr(node, "workeroutput", {}).get(_network_guard.WORKEROUTPUT_KEY))
+    """How many calls the network guard blocked this session (each would have left the machine)."""
+    if _network_guard.attempts:
+        kinds = sorted({kind for kind, _ in _network_guard.attempts})
+        terminalreporter.write_line(
+            f"network guard: blocked {len(_network_guard.attempts)} outbound call(s) ({', '.join(kinds)})"
+        )
 
 
 # Registered before runtime routers register their CostTracker flushes. Python

@@ -12,9 +12,6 @@
 # failed CI on it). The untouched packages' floors are only noted: they are measured in CI's environment.
 # `--no-cov` skips the measurement for a quicker run that is not the pre-push check.
 #
-# Both fast-suite runs use CI's pytest-xdist worker mode (lint_coverage.CI_PARALLEL_ARGS, M22), and a preflight
-# refuses (exit 2, before anything runs) a missing or different pytest-xdist than lint_coverage.XDIST_VERSION.
-#
 # No -x, deliberately: a full failure list is worth more than the first one.
 set -euo pipefail
 
@@ -55,35 +52,6 @@ main() {
     export PYTHONPATH="$tree/src"
 
     echo "suite at $short ($(git log -1 --format=%s "$commit"))"
-    # M22: both fast-suite runs use CI's worker mode, read from THIS commit's lint_coverage.CI_PARALLEL_ARGS, under
-    # its exact pytest-xdist pin (say so now, not after the suite). A commit from before the switch has no
-    # XDIST_VERSION: its CI ran serially, so the snapshot does too (exit 3 below), and says so.
-    xd=0
-    par="$(python - <<'PY'
-import os
-import sys
-sys.path.insert(0, "scripts")
-if not os.path.isfile("scripts/lint_coverage.py"):
-    sys.exit(3)
-import lint_coverage as lc
-want = getattr(lc, "XDIST_VERSION", None)
-if want is None:
-    sys.exit(3)
-try:
-    import xdist
-except ImportError:
-    sys.exit(f"pytest-xdist is not installed; this commit runs its suite under it: pip install \"pytest-xdist=={want}\"")
-if xdist.__version__ != want:
-    sys.exit(f"pytest-xdist {xdist.__version__} installed; this commit needs {want}: pip install \"pytest-xdist=={want}\"")
-print(lc.CI_PARALLEL_ARGS)
-PY
-)" || xd=$?
-    if [ "$xd" -eq 3 ]; then
-        par=""
-        echo "suite at $short: no lint_coverage.XDIST_VERSION at this commit — running SERIALLY: not CI's worker mode — not a valid pre-push check"
-    elif [ "$xd" -ne 0 ]; then
-        exit 2
-    fi
     status=0
     if [ "$cov" -eq 1 ]; then
         # The ratchet refuses a coverage.json from any other coverage version: say so now, not after the suite.
@@ -98,11 +66,11 @@ PY
         # CI's measuring step (lint_coverage.py: CI_CLEAN + CI_COV_ARGS), so the numbers are the gate's own.
         rm -f .coverage coverage.json coverage.xml
         python -m pytest tests/ -q -m "not slow" --ignore=tests/integration/test_memory_hub.py -p no:cacheprovider \
-            $par --junitxml=fast-suite.xml \
+            --junitxml=fast-suite.xml \
             --cov=src/maxim --cov-branch --cov-report=json:coverage.json --cov-report= || status=$?
     else
         python -m pytest tests/ -q -m "not slow" --ignore=tests/integration/test_memory_hub.py -p no:cacheprovider \
-            $par --junitxml=fast-suite.xml || status=$?
+            --junitxml=fast-suite.xml || status=$?
     fi
     # The release gate's runtime twin, as CI's unit-tests job runs it: it reads the report the suite just wrote.
     # A commit from before the gate existed has no lint to run: say so rather than fail every snapshot of it.
