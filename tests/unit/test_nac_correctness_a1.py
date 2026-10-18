@@ -85,6 +85,7 @@ def _write_nac(path, state: dict) -> None:
     path.write_text(json.dumps(state))  # json.dumps writes NaN/Infinity literals
 
 
+@pytest.mark.single_agent_only
 def test_load_drops_non_finite_stored_values(tmp_path, caplog):
     sep = "\x1f"
     path = tmp_path / "nac.json"
@@ -121,6 +122,7 @@ def test_load_drops_non_finite_stored_values(tmp_path, caplog):
 # ── 2. read-only session observer ───────────────────────────────────────────
 
 
+@pytest.mark.single_agent_only
 def test_session_observer_does_not_decay_a_stale_nac(tmp_path):
     from maxim.session import _build_session_observer
 
@@ -239,6 +241,7 @@ def test_decay_all_holds_the_lock():
 # ── 5. reward_bias key round-trip ───────────────────────────────────────────
 
 
+@pytest.mark.single_agent_only
 def test_node_id_with_colons_round_trips(tmp_path):
     nac = NAc()
     nac.credit_node("agent-1", "tool:use:dodge", 1.0)
@@ -251,6 +254,7 @@ def test_node_id_with_colons_round_trips(tmp_path):
 
 
 @pytest.mark.parametrize("entry", ["credit_node", "update_eligibility"])
+@pytest.mark.single_agent_only
 def test_agent_id_with_colon_is_refused(entry):
     nac = NAc()
     with pytest.raises(ValueError, match="must not contain ':'"):
@@ -258,6 +262,7 @@ def test_agent_id_with_colon_is_refused(entry):
     assert nac._reward_bias == {} and nac._eligibility == {}
 
 
+@pytest.mark.single_agent_only
 def test_legacy_reward_bias_file_loads(tmp_path):
     path = tmp_path / "nac.json"
     path.write_text(json.dumps({"_format_version": "1.0", "reward_bias": {"a1:tool:x": 0.3, "a1:n1": 0.1}}))
