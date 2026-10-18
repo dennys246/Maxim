@@ -334,6 +334,42 @@ guard tests pass; T3-10 and T3-15 are DROPPED. "Substrate-pipeline change" is an
 above. Evidence: the verdict-reproduction tests `test_exp60_run.py`, `test_exp61_run.py` and `test_exp62_run.py`
 are green on this tree.
 
+**Addendum 2026-10-18, [#1102](https://github.com/dennys246/Maxim/issues/1102) (S1's follow-up, owner decision):**
+`NAc.load_state` clamps each restored bias map to its live writer's range (`NAc._load_bounds`) and drops a
+`reward_bias` at or below 0. The writers, the selection path, the persistence format and `hivemind/` are unedited.
+**(j) A clamp can only change a value that was out of range. On every ledger evidence path the producers clamp; one
+producer that does not exists, and no ledger path calls it.** The NAc writers clamp (`credit_node` since 734f3ca4,
+2026-04-12, before any row's recorded run). Pairwise `nac_merge` clamps to its default caps, after
+`_validate_nac_payload` has refused anything outside [−1, 1] ([0, 1] for `reward_bias`, [−1, 0] for fear); ingest
+admits a `reward_bias` up to 1.0, but `substrate_merge` always folds it through `nac_merge`, which caps it at 0.20.
+**The exception is `hivemind.merge.nac_merge_many` (docs/bugs D85, open):** its equal-weight N-way overwrite caps
+`reward_bias` only below and `goal_reward_bias` not at all. Being a mean, it stays inside the range of its inputs,
+so it exceeds a cap only when an input already does, but its inputs are not checked, so the structure gives no bound.
+**No ledger evidence path calls it** (grep 2026-10-18 over `scripts/`; its only callers are tests). The Exp 56 and
+Exp 61 receivers and R3 ingest through `ingest_bundle` → `substrate_merge` → `nac_merge`. Exp 57's
+`common57.fold_snapshots` and the R1 probe that reuses it fold left-associatively through that same ingest path,
+and `common57.py` says it is deliberately not `nac_merge_many`. Exp 45's `orient_merge_arm.py` and
+`gate6_merged_gauntlet.py` and the creche federation scripts (`5_operant_creche_federation.py`,
+`7_graded_creche_federation.py`) all call pairwise `nac_merge`. Every harness that sets a cap sets the default
+(`max_cluster_fear` 1.0 in the Exp 58/60/61/62 harnesses and `water_trial.py`; `max_cluster_reward_bias` 1.0 and
+`max_reward_bias` 0.20 in `r2_learned_bias.py`), so the caps `nac_merge` uses equal the receiver's. The zero drop
+removes only a key that every reader already reads as 0.0 (`reward_bias()` reads an absent key as 0.0,
+`get_threshold_overrides` skips a bias below 0.001, and the first decay tick prunes it). Corroborating only: no
+committed JSON or JSONL under `docs/experiments/`, `scripts/` or `tests/fixtures/`, nor the Exp 45 bundle
+`45_queen_mind_orient_v0_1.zip`, holds an out-of-range or non-positive value in any of the five maps (scanned
+2026-10-18, 498 files). Were a `nac_merge_many` output ever found on a ledger path, (j) would not cover it, and that
+row could rest only on this scan (fires; not discharged structurally; no status change).
+
+- **T1-7 (Exp 45): fires by its letter** ("NAc `cluster_reward_bias` … change"), read as the S1 walk read it.
+  **Discharged** by (j). The bundle's eight cluster biases lie in [−0.066, 0.167].
+- **T1-2 (Exp 37, already STALE): fires** ("NAc-bias mechanism refactor", conservatively). It stays STALE; the owed
+  re-fire is unchanged.
+- **Do not fire:** T1-10 (the persistence format is unchanged), T1-11 and T1-12 (`hivemind/` and the operant credit
+  are unedited; their fold is `substrate_merge` → `nac_merge`, never `nac_merge_many`), T1-13, T1-14 and T1-15 (`record_cluster_fear`, `credit_node`, the ingest bounds and
+  `FOREIGN_FEAR_DISCOUNT` are unedited; fear's load clamp was already `[-max_cluster_fear, 0]` and now goes through
+  the shared helper with the same bounds; Exp 61's receiver folds through `substrate_merge` → `nac_merge`), T1-6 and T1-9 (no decay pacing changes).
+- **The global trigger table:** "NAc reward pipeline change" is answered as above; T1-4's guard tests pass on this tree.
+
 ### Trigger walk — 2026-10-09, #963 (one operational-mode reader in the agent loop)
 
 #963 routes every mode read in the agent loop through `loop_state.operational_mode(executor, state)`, which delegates

@@ -65,7 +65,7 @@ def _nac(path):
 
 
 def _nac_fill(n):
-    n._reward_bias[("act", "node-a")] = 0.5
+    n._reward_bias[("act", "node-a")] = 0.15  # within [0, max_reward_bias] (#1102)
 
 
 def _ec(path):
