@@ -259,8 +259,8 @@ regime (S0); decided time-based (Q3). `decay_imagined_links(0.5)` stays at sessi
   with a `DeprecationWarning`, and are removed in 1.5.0. **Amended 2026-10-18 (owner decision at the S1
   review):** an explicit `apply_decay=True` / `False` decides offline decay for that one load, whatever
   the config, and omitting it means `NACConfig.offline_wall_decay` (default off). Behaviour tier: "no
-  offline forgetting" is the default policy, and the Dormant opt-in (config or keyword) can override it. The callers include `hivemind/cli.py`'s
-  `load_safe`. Loaders to update:
+  offline forgetting" is the default policy, and the Dormant opt-in (config or keyword) can override it.
+  The callers include `hivemind/cli.py`'s `load_safe`. Loaders to update:
   - `runtime/bio_stack.py` `nac.load_safe()` (the main loader, decay on today)
   - `agent_factory._create_nac` `nac.load()`
   - `session.py` (an observer; A1 fixes it)

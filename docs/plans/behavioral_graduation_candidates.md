@@ -278,7 +278,7 @@ One walk for three changes to `decisions/nac.py` and its neighbours, from the 20
 - **(f) Removing load-time decay can only keep a carried value larger, never smaller.** Where a ledger run reloads
   (the Exp 56 and Exp 61 receivers, through `build_bio_stack`'s `load_safe`), the receiver is rebuilt right after
   its ingest in the same run. The gap is seconds-scale, so the old factor was within a hair of 1: ≥ 0.97 per hour
-  on `cluster_reward_bias` and ≥ 0.996 per hour on fear, one factor in (0, 1] per class. Second, the θ margin:
+  on `cluster_reward_bias` and ≈ 0.9959 per hour on fear, one factor in (0, 1] per class. Even over a long gap,
   imported fear (0.75 of the cap after `FOREIGN_FEAR_DISCOUNT`) stays above θ = 0.5 under the old decay for any gap
   under ~98 h, so whether it acts is unchanged.
 - **(g) The oscillator has no consumer in any metric.** Its only path into NAc is
