@@ -174,7 +174,7 @@ This is the same 3-field UTS-separator pattern [`scripts/analyze_roy_4_coactivat
 | **H1b** | 2b — kill `LinguisticEncoder._get_encoder` singleton, A/B 2-3 alternative sentence-transformer models | ~200 LOC |
 | **H1a** (Roy-5a's actual outcome) | 2c → Stage 3 cradle-arc redesign + Hebbian retest (re-runs `scripts/analyze_roy_4_coactivation.py`) | ~250 LOC (Stage 3); +780 LOC iff Stage 3 PASSES and Stage 4a resurrects cross_modal_substrate_binding.md |
 
-Each Stage 2 branch ships its own PR with two-lens pre-merge review per [feedback_review_before_ship.md](../../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_review_before_ship.md). The verdict is the **input** to Stage 2 routing, not the green-light to start implementation immediately — see [22_roy_5a.md § Recommended next step](../22_roy_5a.md) for the user-action items that gate Stage 3 specifically (which is the branch Roy-5a's run triggered).
+Each Stage 2 branch ships its own PR with two-lens pre-merge review per `feedback_review_before_ship.md` (author's local notes, not in repo). The verdict is the **input** to Stage 2 routing, not the green-light to start implementation immediately — see [22_roy_5a.md § Recommended next step](../22_roy_5a.md) for the user-action items that gate Stage 3 specifically (which is the branch Roy-5a's run triggered).
 
 ## Troubleshooting
 

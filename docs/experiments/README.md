@@ -236,6 +236,17 @@ ever drifts.
 | [grounding_census.md](grounding_census.md) | 2026-10-09 | offline measurement (`diagnosis`); not a result, no ledger row | GL1 name-vs-consequence collision census over every shipped affordance ([grounding.md](../plans/grounding.md)): every primary-walk harm-class collision is a same-name `touch` / `warm_self` variant pair; record in `data/census_name_consequence/`. |
 | [b1_exp60_floor_prereg.md](b1_exp60_floor_prereg.md) | 2026-10-14 | **`FLOOR_MATCHED_Q`** — complete (baseline floor B1; prereg frozen v5 #1274, data #1283); demotes T1-13, and T1-14/T1-15 followed analytically | The first no-bio floor for a ledger row (owner rule BF2): non-LLM floors on Exp 60's drowning task, 8 seeds × FEAR, RANDOM, Q_EXPLORE (tabular Q, α = 0.5, γ = 1, Q₀ = −2, ε = 0.2, armed only in water), Q_EXPLORE_PRIOR, Q_EXPLORE_RAW; 40/40 clean. First post placement surfaced FEAR 8/8, Q_EXPLORE 8/8, RANDOM 2/8: FEAR > RANDOM p = 0.0035; FEAR > Q_EXPLORE not shown (p = 1.0; no equivalence claimed). Q_EXPLORE needed a median 31 executed actions (FEAR zero training actions); with the prior it surfaced on its first-ever submersion 8/8. Verdict [b1_exp60_floor_48ce40118c20_verdict.json](data/b1_exp60_floor_48ce40118c20_verdict.json); lessons [baseline-floors-b1.md](../lessons/baseline-floors-b1.md). |
 
+### Pre-registrations, audits and process docs outside the tables
+
+Records that carry no row above (none takes or gates a ledger claim); status in the linked file wins.
+
+- [DESIGN_REVIEW.md](DESIGN_REVIEW.md) — the four-lens experiment-design review charter (run before building a harness).
+- [exp58_survival_wants_prereg.md](exp58_survival_wants_prereg.md) — Exp 58, frozen 2026-09-14, no live data; the "dark = danger" cue was blocked at the instrument and swapped to water ([Exp 60](exp60_drowning_avoidance_prereg.md)).
+- [exp59_layered_cave_prereg.md](exp59_layered_cave_prereg.md) — Exp 59, an idea capture (2026-09-14), not a pre-registration; no harness.
+- [r2_learned_bias_prereg.md](r2_learned_bias_prereg.md) — R2 learned-bias v1, superseded without data.
+- [r2_learned_bias_v2_prereg.md](r2_learned_bias_v2_prereg.md) — R2 learned-bias v2 draft, superseded at the design-review gate (no harness, no run); the cluster credit was shown offline to be a messenger, not a cause (its §Outcome).
+- [paired_data_audit_2026-09-20.md](paired_data_audit_2026-09-20.md) and [paired_data_audit_reaudit_2026-09-21.md](paired_data_audit_reaudit_2026-09-21.md) — the grounded-language line's paired-data audit and its re-audit on a redesigned source; measurements with no pre-registered gate.
+
 ### V1 phased attribution
 
 | Entry | Date | Status | Decision |
