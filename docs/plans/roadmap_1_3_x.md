@@ -359,6 +359,8 @@ after decomposition work has started is discharged by its own rows' re-runs in i
 closing walk. The remaining slices are not in 1.3.2 (owner decision 2026-10-15), so the fence stays up until they
 land; its end is mechanical, the 1.4.0 gate ([roadmap_1_4.md](roadmap_1_4.md) T0).
 
+**Fence touches, the NAc audit, #1361 (recorded 2026-10-17, owner decision):** [#1363](https://github.com/dennys246/Maxim/pull/1363) (merged) edited `decisions/nac.py` outside the selection path, by the #971 precedent (persistence and bookkeeping): orphan `_cluster_reward_source` pruning in the decay and load paths, the `_event_outcome_welford` bound in `_enforce_limits` (it feeds the Wire-1 risk annotation, so it is recorded here), and `SCN.register(observe_oscillator=)`. Its correctness sibling [#1365](https://github.com/dennys246/Maxim/pull/1365) (merged) carried one `runtime/agent_loop.py` hunk, recorded here as a fence touch after merge: section 8.5 runs each per-tick NAc decay in its own `try` with a Stage-1 report, so one raising decay no longer skips the rest. No behaviour change on the success path; Session A (which owns `agent_loop.py`) rebases over it. The rest of #1365 (credit-entry guards, the session observer, the locked eligibility snapshot, the `:` refusal) is outside the fence. The experience-clock decay plan ([experience_clock_decay.md](experience_clock_decay.md)) runs S0 (measurements, strict red gates, doc fixes; tests and docs only) and, by the same precedent, S1 (offline decay opt-in on NAc load) now; S2 coordinates with Session V's `simulation/` files; S3–S6 are fenced and home in 1.3.6.
+
 **Fence exception, the atonia gate, #1315 (owner-approved 2026-10-17, AD8):** item 3 of
 [advisor_mode.md](advisor_mode.md) may touch `orchestrator.py` (the AUT and narrator executor builds) and
 `agent_loop.py` (`run_agent_loop`; and the PLANNING proposal path, for item 1's advisor composition). The scope is
@@ -894,6 +896,8 @@ Owner decisions taken with this path (2026-10-16):
 - **Exit:** #938 closed and 1.3.3 published through the new pipeline; the gate's open-item count down by the items
   above.
 
+- **From the 2026-10-17 CI and NAc audits** (owner decisions): [#1362](https://github.com/dennys246/Maxim/issues/1362) (refuse `:` in agent ids at `create`/`load`) goes to Session V, which owns `create.py`. The pytest-xdist re-land (#1339, reverted by #1359) is **not** in 1.3.3: it waits until after the 1.3.3 release, on M60 (a coverage ratchet that tolerates the measured test-order noise, up to 16 statements per package from file order alone) and the determinism fixes it surfaced (#1349, #1356, #1360, all merged).
+
 **1.3.3 in parallel sessions** (owner request 2026-10-17). Each session works in its own worktree, and the "Owns"
 column is its file fence. A file under "Shares" is edited in small, separate hunks, merged with main locally in a
 signed commit.
@@ -945,6 +949,7 @@ them. Session V's atonia items do not hold the 1.3.3 cut; they are 1.3.4 (owner 
   (item `1323.functions-1000`; it was 200 until #1323).
 - **[deferred/loop_stack_builder.md](deferred/loop_stack_builder.md)** (owner decision 2026-10-17): its trigger fired
   2026-09-04 (#610's ninth hand-assembled loop stack), and the loop rebuild is where one builder replaces the nine.
+- **The experience-clock NAc decay, S3–S6** ([experience_clock_decay.md](experience_clock_decay.md), #1361; owner decisions 2026-10-17): decay and body drift on the `ExperienceClockDriver`. Fenced, so it lands with this loop work.
 - **Riding with them:**
   - #863's loop wraps, #850, #845 item 1, and the rest of #1263;
   - the dispatch and credit issues [#1256](https://github.com/dennys246/Maxim/issues/1256), [#1145](https://github.com/dennys246/Maxim/issues/1145), [#1146](https://github.com/dennys246/Maxim/issues/1146), [#1147](https://github.com/dennys246/Maxim/issues/1147), [#1149](https://github.com/dennys246/Maxim/issues/1149), [#1054](https://github.com/dennys246/Maxim/issues/1054), [#1057](https://github.com/dennys246/Maxim/issues/1057), [#1202](https://github.com/dennys246/Maxim/issues/1202), [#1176](https://github.com/dennys246/Maxim/issues/1176), [#1177](https://github.com/dennys246/Maxim/issues/1177), [#1178](https://github.com/dennys246/Maxim/issues/1178), [#1211](https://github.com/dennys246/Maxim/issues/1211)
