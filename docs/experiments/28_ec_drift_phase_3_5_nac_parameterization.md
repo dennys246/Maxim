@@ -29,7 +29,7 @@ The bio-correct semantics is: **reward bias widens recognition by a constant cos
 
 ## Pre-registered gate
 
-Per [kickoff_ec_drift_phase_3_5.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/kickoff_ec_drift_phase_3_5.md):
+Per `kickoff_ec_drift_phase_3_5.md` (author's local notes, not in repo):
 
 - **Mean target gain ≥ +40 pp** on the 10-seed P2 sweep
 - **9-of-10 seeds pass individually**

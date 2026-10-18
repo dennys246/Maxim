@@ -5,7 +5,8 @@
 > [2026-09-27-codex.md](score_cards/2026-09-27-codex.md). **The v1.3.2 re-score is owed** (1.3.2 was cut 2026-10-16;
 > the cards set a re-score at every cut). Before it,
 > the v1.3.0 pair: [2026-09-19-claude.md](score_cards/2026-09-19-claude.md) and
-> [2026-09-19-codex.md](score_cards/2026-09-19-codex.md), graded blind to each other. The Claude
+> [2026-09-19-codex.md](score_cards/2026-09-19-codex.md), graded blind to each other. The earlier cards: the 2026-08-19 pair, [2026-08-19-claude.md](score_cards/2026-08-19-claude.md) and
+> [2026-08-19-codex.md](score_cards/2026-08-19-codex.md), and the Claude re-score [2026-08-27-claude.md](score_cards/2026-08-27-claude.md). The Claude
 > card's §Divergence compares them and shows most of the spread tracking what each assessor could
 > execute, not a disagreement about facts. **Method, from 2026-09-19 on:** three firewalled evidence agents grade groups of
 > axes in a THROWAWAY WORKTREE AT THE TAG with the earlier cards, the burndown and every

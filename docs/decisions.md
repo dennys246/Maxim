@@ -89,7 +89,6 @@ from maxim.decisions import NAc, NACConfig
 config = NACConfig(
     max_links=10000,                     # Maximum causal links
     min_confidence_threshold=0.3,        # Min confidence for predictions
-    decay_interval_hours=24.0,           # Decay unused links
     context_similarity_threshold=0.5,    # Min context match
     temporal_window_seconds=300.0,       # Max event-outcome delay (wall seconds today; experience time after S3b)
     base_learning_rate=0.2,              # Rescorla-Wagner α
@@ -179,12 +178,13 @@ Where:
 
 ### Decay
 
-Unused links decay over time:
+Link decay is session-paced, not time-based: `MemoryHub.on_session_end` (and `on_session_end_lightweight`) calls
+`nac.decay_all(factor=0.95)` once per session end, which multiplies every link's `confidence` by 0.95, used or not.
+Nothing else decays links on a schedule. `NACConfig.decay_interval_hours` still exists but is dead config (nothing
+reads it; kept only so existing `NACConfig(...)` calls stay valid), so do not set it expecting an effect.
 
-```python
-# Links not observed within decay_interval_hours lose strength
-# This prevents stale predictions from old experiences
-```
+The experience-clock plan moves this decay to experience time in its S5 slice:
+[docs/plans/experience_clock_decay.md](plans/experience_clock_decay.md).
 
 ---
 

@@ -48,7 +48,7 @@ historical 5/12 entry that produced the 6-key baseline.
 
 **Runner env:** `PYTHONPATH=src MAXIM_SUBSTRATE_PATH=1` at every step.
 The substrate-path env var is load-bearing per
-[feedback_substrate_path_env_var_for_roy.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_substrate_path_env_var_for_roy.md).
+`feedback_substrate_path_env_var_for_roy.md` (author's local notes, not in repo).
 **This is itself a probable contributor to the apparent regression** —
 see the verdict section.
 
@@ -173,7 +173,7 @@ This was a Critical bio-fidelity finding folded BEFORE Wire-A's PR
 opened, per `feedback_review_before_ship.md`. Treating the partial-bias
 observation as a regression to fix would *undo* a load-bearing
 bio-fidelity correction. The thesis-erosion pattern in
-[feedback_interim_contamination.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_interim_contamination.md)
+`feedback_interim_contamination.md` (author's local notes, not in repo)
 warns specifically against this kind of unwind.
 
 ## Implications for the post-Roy-3 agenda
