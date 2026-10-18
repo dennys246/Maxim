@@ -381,6 +381,7 @@ def _gate(slice_: str, why: str) -> pytest.MarkDecorator:
     "offline_wall_decay=True every map that decays today, _cluster_fear included, decays as before; the default "
     "(False) decays nothing offline",
 )
+@pytest.mark.single_agent_only
 def test_g1_a_week_switched_off_forgets_nothing_unless_opted_in(tmp_path, monkeypatch):
     import maxim.decisions.nac as nac_module
 
@@ -529,6 +530,7 @@ def test_g3_realtime_decay_is_poll_rate_independent(monkeypatch, tmp_path):
     "temporal anchors and pending events age on the 300 s WALL window while the trace decays per pass, so a "
     "slow model turns trace credit into anchor credit or none, and drops the causal link",
 )
+@pytest.mark.single_agent_only
 def test_g2b_trace_and_anchor_credit_split_is_poll_rate_independent(monkeypatch, tmp_path):
     """Ten turns of the same credit sequence: an event + trace + anchor at turn 0, the outcome and the reward
     after turn 9. Fast arm: 1 pass per turn at 0.5 s wall (5 s of wall); slow arm: 40 passes per turn at
