@@ -685,12 +685,12 @@ def _run_merge_nac(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
 
-    # Preserve the decay clock (pre-merge review fold): ``nac_merge``
-    # rebuilds from a fixed field list and drops ``saved_at``; without it
-    # the next boot's ``load_safe(apply_decay=True)`` finds no stamp and
-    # skips wall-clock decay for ALL runtime biases once. The TARGET's
-    # stamp is the right clock for the pre-existing state (the trained
-    # policy is frozen — extra decay on it is not owed either way).
+    # Preserve ``saved_at`` (pre-merge review fold). It is read only by the
+    # Dormant offline-decay opt-in (``NACConfig.offline_wall_decay``, off by
+    # default since 2026-10-18) and kept as a diagnostic: without it an
+    # opted-in boot finds no stamp and skips wall-clock decay for ALL runtime
+    # biases once. The TARGET's stamp is the right clock for the pre-existing
+    # state (the trained policy is frozen — extra decay on it is not owed).
     saved_at = target_state.get("saved_at") or source_state.get("saved_at")
     if saved_at:
         merged["saved_at"] = saved_at

@@ -84,7 +84,7 @@ def hippocampus(path: str) -> "Hippocampus":
 
     # The retention model is runtime POLICY, not persisted state: a loaded store scores by the
     # CURRENT ``memory.strategy``, not whatever was set when the file was written (contrast
-    # ``load.nac``, which deliberately skips decay-on-load so a resumed run is not double-decayed).
+    # ``load.nac``, which reports disk truth: no offline decay on its default NACConfig).
     from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
     from maxim.runtime.config_loader import resolve_hippocampus_memory_kwargs
 
@@ -121,11 +121,11 @@ def nac(path: str) -> "NAc":
     from maxim.decisions.nac import NAc
 
     n = NAc()
-    # apply_decay=False: a read-only load must report disk truth — the
-    # same file inspected on two different days must give the same
-    # numbers, and a load→save round-trip must not compound decay.
+    # A read-only load must report disk truth — the same file inspected on two different days gives the
+    # same numbers. A default NACConfig applies no offline decay (owner decision 2026-10-17); the Dormant
+    # opt-in (NACConfig.offline_wall_decay) is never set here.
     try:
-        n.load(resolved, apply_decay=False)
+        n.load(resolved)
     except Exception as e:
         if not _unreadable(e):
             raise

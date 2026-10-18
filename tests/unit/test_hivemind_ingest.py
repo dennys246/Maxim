@@ -496,6 +496,7 @@ class TestRowMNumericPoisoning:
         assert merged_link["last_observed"] <= _time.time() + 1.0
 
     def test_donor_saved_at_dropped_so_decay_clock_survives(self, tmp_path: Path, journal: IngestionJournal) -> None:
+        # The clock is the Dormant offline-decay opt-in's (default off since 2026-10-18); the drop holds either way.
         receiver = _nac_state(saved_at="2026-09-01T00:00:00+00:00")
         bundle = _write_bundle(
             tmp_path / "b.zip",

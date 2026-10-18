@@ -103,7 +103,7 @@ def test_load_drops_non_finite_stored_values(tmp_path, caplog):
     )
     nac = NAc()
     with caplog.at_level(logging.WARNING, logger="maxim.decisions.nac"):
-        nac.load(str(path), apply_decay=False)
+        nac.load(str(path))  # no offline decay by default (owner decision 2026-10-17)
 
     assert nac._reward_bias == {("a1", "n_ok"): 0.2}
     assert nac._goal_reward_bias == {"g_ok": 0.3}
@@ -248,7 +248,7 @@ def test_node_id_with_colons_round_trips(tmp_path):
     path = tmp_path / "nac.json"
     nac.save(str(path))
     nac2 = NAc()
-    nac2.load(str(path), apply_decay=False)
+    nac2.load(str(path))  # no offline decay by default (owner decision 2026-10-17)
     assert nac2._reward_bias == nac._reward_bias
     assert ("agent-1", "tool:use:dodge") in nac2._reward_bias
 

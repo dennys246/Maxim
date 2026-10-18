@@ -4,6 +4,9 @@
 decay-EXEMPT ("innate fears do not extinguish the way learned ones do"). ``apply_wall_clock_decay`` --
 what ``NAc.load()`` runs over the time since ``saved_at`` -- decayed every cluster bias, so an inherent one
 halved for every day the agent was off (``cluster_bias_wall_decay_half_life_s`` = 1 day).
+
+Since 2026-10-18 that offline decay runs only under the Dormant ``NACConfig(offline_wall_decay=True)`` opt-in
+(owner decision 2026-10-17, experience_clock_decay.md Q7); the exemption must still hold there.
 """
 
 from __future__ import annotations
@@ -50,13 +53,14 @@ def test_wall_clock_decay_never_prunes_an_inherent_bias() -> None:
 
 @pytest.mark.single_agent_only
 def test_an_agent_off_for_three_days_reloads_its_inherent_bias_intact(tmp_path: Path) -> None:
-    """The path the defect lived on: save, then NAc.load() with decay-on-load across a real gap."""
+    """The path the defect lived on: save, then NAc.load() with decay-on-load across a real gap (now the
+    opt-in path: owner decision 2026-10-17, Q7)."""
     path = tmp_path / "nac.json"
     _nac_with_biases(str(path)).save()
     data = json.loads(path.read_text())
     data["saved_at"] = time.time() - 3 * DAY
     path.write_text(json.dumps(data))
-    reloaded = NAc(NACConfig(persistence_path=str(path)))
+    reloaded = NAc(NACConfig(persistence_path=str(path), offline_wall_decay=True))
     reloaded.load()
     assert reloaded._cluster_reward_bias[INHERENT] == pytest.approx(-0.8)
     assert reloaded._cluster_reward_bias[LEARNED] == pytest.approx(-0.8 * 0.5**3, rel=1e-3)

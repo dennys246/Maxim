@@ -151,6 +151,36 @@ def _build_cerebellum(p: Path, *, load_persisted: bool) -> "Cerebellum | None":
     return cerebellum
 
 
+def _restore_nac(nac: "NAc", p: Path) -> None:
+    """Restore the agent home's ``nac.json`` into ``nac`` (``build_bio_stack``'s load half of the NAc/EC pair).
+
+    Mirrors the cerebellum pattern: load-when-file-exists, recover on corruption (``load_safe`` warns and starts
+    empty). No offline decay: the default ``NACConfig`` loads the maps exactly as saved (owner decision
+    2026-10-17, experience_clock_decay.md decision 2); offline wall-clock decay is the Dormant
+    ``NACConfig.offline_wall_decay`` opt-in, which this builder never sets.
+    """
+    # Review fold (cross-confirmed): the pair is loaded by two independent
+    # `if exists()` blocks, so a half-present pair — a manual rm, an
+    # interrupted write, a partial backup restore — restored NAc biases
+    # keyed to EC node ids a fresh EC will never re-allocate, silently.
+    # D2 guards the CLI clear path; this is the LOAD path where the damage
+    # actually manifests.
+    from maxim.runtime.agent_factory import check_nac_ec_pairing
+
+    check_nac_ec_pairing(p)  # advisory WARNING only
+    if (p / "nac.json").exists():
+        # load_safe recovers internally and REPORTS via its return value;
+        # this caller used to discard it, so nothing downstream could tell a
+        # clean restore from a recovered-from-corrupt one. An unreadable file is
+        # kept as a copy and replaced by the fresh store (#971).
+        try:
+            ok, err = nac.load_safe()
+            if not ok:
+                logger.warning("NAc restore fell back to an empty causal model: %s", err)
+        except OSError as e:  # unreachable, not unreadable: left untouched, saves over it refused
+            logger.error("NAc state at %s could not be read (%s); it is left untouched", p / "nac.json", e)
+
+
 def build_bio_stack(
     *,
     persistence_dir: Path | str | None = None,
@@ -331,8 +361,7 @@ def build_bio_stack(
         # together by design: a save alone made each session TRUNCATE the
         # previous one (agent_factory overwrites its auto-loaded NAc with
         # this instance), which is why the earlier save-only patch was
-        # reverted. Decay-on-load semantics live in NAc.load() /
-        # apply_wall_clock_decay (see NACConfig field comments).
+        # reverted. No offline decay on load (NACConfig.offline_wall_decay).
         persistence_path=str(p / "nac.json") if p is not None else None,
     )
     # Loud failure for the silent-no-op footgun: an untried tool's only score is
@@ -350,30 +379,8 @@ def build_bio_stack(
             _nac_config.min_confidence_threshold,
         )
     nac = NAc(_nac_config)
-    # Mirror the cerebellum pattern: load-when-file-exists, recover on
-    # corruption (load_safe warns + starts empty). load() applies the
-    # wall-clock decay-on-load from the payload's saved_at stamp.
     if load_persisted and p is not None:
-        # Review fold (cross-confirmed): the pair is loaded by two independent
-        # `if exists()` blocks, so a half-present pair — a manual rm, an
-        # interrupted write, a partial backup restore — restored NAc biases
-        # keyed to EC node ids a fresh EC will never re-allocate, silently.
-        # D2 guards the CLI clear path; this is the LOAD path where the damage
-        # actually manifests.
-        from maxim.runtime.agent_factory import check_nac_ec_pairing
-
-        check_nac_ec_pairing(p)  # advisory WARNING only
-        if (p / "nac.json").exists():
-            # load_safe recovers internally and REPORTS via its return value;
-            # this caller used to discard it, so nothing downstream could tell a
-            # clean restore from a recovered-from-corrupt one. An unreadable file is
-            # kept as a copy and replaced by the fresh store (#971).
-            try:
-                ok, err = nac.load_safe()
-                if not ok:
-                    logger.warning("NAc restore fell back to an empty causal model: %s", err)
-            except OSError as e:  # unreachable, not unreadable: left untouched, saves over it refused
-                logger.error("NAc state at %s could not be read (%s); it is left untouched", p / "nac.json", e)
+        _restore_nac(nac, p)
     elif p is not None:
         nac.allow_overwrite()  # write-but-don't-read, declared (#971)
     # SCN persists beside NAc/EC, exactly as AgentFactory._create_memory_hub does

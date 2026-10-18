@@ -34,6 +34,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     release.
   - Guards: `tests/unit/test_release_gate_function_ceiling.py` (a strict red gate until the bound is met) and
     `tests/unit/test_lint_release_gates.py::test_a_retired_functions_split_out_leaves_the_gate_with_it`.
+- **A persisted NAc no longer forgets while the agent is switched off** (behaviour change; owner decision 2026-10-17,
+  [experience_clock_decay.md](docs/plans/experience_clock_decay.md) S1, #1361).
+  - `NAc.load()` and `NAc.load_safe()` restore every map exactly as saved, however much wall-clock time passed.
+    Before, they aged the biases by the time since `saved_at`: `cluster_reward_bias` halved per day offline;
+    `reward_bias`, `goal_reward_bias`, `percept_valences` and `cluster_fear` halved per week. Agent homes,
+    `build_bio_stack`, `maxim.load.agent` and every other loader now resume with yesterday's learning intact.
+    `scripts/orient_backbone/orient_demo.py` and `live_3_learn.py` now load a trained policy at full strength after
+    a multi-day gap, so their resumes are not comparable to earlier ones, which loaded it decayed.
+  - The old behaviour is a Dormant opt-in, unchanged: `NACConfig(offline_wall_decay=True)`. `saved_at` is still
+    written, as a diagnostic and as that opt-in's clock. Files saved earlier load as they are, and there is no
+    `_format_version` bump.
+  - **Accepted consequence: `cluster_fear` is now permanent until extinction exists.** It has no in-session decay by
+    design, and now no offline decay either, so a learned fear never fades, and fear imported through a bundle (Exp 61)
+    never fades either. Tracked as mechanization backlog M73 (a fear count/mass stamp in survival reports), with a
+    follow-up tied to [#1072](https://github.com/dennys246/Maxim/issues/1072). It triggers on the first survival agent
+    persisted across sessions, or the first imported fear bundle.
+  - Guards: `tests/unit/test_experience_clock_decay.py::test_g1_a_week_switched_off_forgets_nothing_unless_opted_in`
+    (S0's strict red gate, flipped in place) and `tests/unit/test_nac_persistence_decay.py`.
+
+### Deprecated
+
+- **`NAc.load(apply_decay=...)` and `NAc.load_safe(apply_decay=...)`** emit a `DeprecationWarning` through 1.4.x and
+  are removed in 1.5.0. From a 1.5 version on, passing the keyword raises `TypeError`, so the 1.5 release has to delete
+  it. Until then the keyword decides that one load, as before (owner decision 2026-10-18): `apply_decay=True` applies
+  the offline decay and `apply_decay=False` applies none, whatever the config. Without it, `NACConfig(offline_wall_decay=)`
+  decides, and it defaults to off. The library's own observers (`maxim.load.nac`,
+  `maxim.observe`, the session observer, the Exp 53b readout) no longer pass the keyword. The orchestrator's
+  `--resume-sim` restore still passes `apply_decay=False` until the experience-clock plan's S3a. **S3a must therefore
+  land before any 1.5 cut**: at 1.5 that call raises, and the resume silently starts with an empty NAc. The strict
+  red gate `tests/unit/test_nac_persistence_decay.py::test_the_resume_restore_still_loads_the_nac_at_1_5` holds this.
 
 ### Fixed
 
