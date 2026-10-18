@@ -122,6 +122,7 @@ cards' deciding gaps are named where they apply.
 | M69 | Every optional extra has a real-library test at the floor and the latest (R2; #1335) | A lint that every `[project.optional-dependencies]` key has a real-library test marked for the nightly `{floor, latest}` matrix | Engineering process |
 | M70 | A note to pulse names every field change to an untyped console `data` record (R3 interim; #1336) | Retired by R3 itself: once `data` is typed per kind, the contract fingerprint catches the change | Engineering process |
 | M71 | The release names its vendored console tag in the release notes (R4; #1333) | `scripts/audit_release_build.py` checks the release notes against `maxim-ui.json`'s `describe` | Engineering process |
+| M72 | Every remaining wall-clock timer in a learning path is on the allowlist of what stays wall-clock on purpose ([experience_clock_decay.md](experience_clock_decay.md) §(g) and §Enforcement; added in its S0) | A lint over `decisions/`, `memory/`, `embodiment/body.py`, `agents/memory_agent.py::_apply_decay` and `proprioception/focus_learner.py::_apply_decay` that refuses a `time.time`/`time.monotonic`/`time_ns` read outside a reasoned allowlist (heartbeat, timeouts, scheduling, refractories, SCN phases, the driver's stall cap), converting or allowlisting the two `_apply_decay`s | Runtime correctness |
 
 ## Where a thing goes — issue, plan, or here
 

@@ -124,6 +124,20 @@ Hippocampus clock only if one exists. S0 enumerates, by a test over the builders
 rigs), which runtimes reach the loop with a NAc but no Hippocampus. That list goes into this section
 before S3a.
 
+**S0 result (2026-10-17): none in production.** Every `run_agentic_loop` caller's hub comes from
+`build_bio_stack`, which always builds a Hippocampus: `cli.py`, `console/handle.py`, `api.py` and the orchestrator AUT
+through `create_full_agent(with_bio_stack=True)` (which replaces the skeleton's memory with the bio-stack's, so even
+`remembers=False` keeps a Hippocampus); `run_minecraft_aut`, the embodied runtime and the three Q9 rigs through
+`build_minecraft_aut`/`build_bio_stack`; the orchestrator's second loop call and `simulation/tools.py` pass no hub.
+`interactive.py::_run_scenario_turn` passes its caller's hub through and `run_interactive_sim` has no caller. The only
+NAc-without-Hippocampus is the bare `create_agent` path (`maxim.create.agent`, `create_npc_agent`, `maxim.load.agent`
+with `remembers=False, learns=True`), and it gets **no MemoryHub at all**: building one without a Hippocampus raises
+inside `_create_memory_hub` (`AttributeError` on `connect_scn`), logged as "Corrupt memory_hub state". That is a
+pre-existing defect (a learns-only agent silently loses its hub, mislabelled as corruption); S0 records it and does
+not fix it. Pinned by `test_experience_clock_decay.py::test_s0_which_builders_give_a_nac_without_a_hippocampus`
+(builders) and a code-reading audit of the callers. D1 stays: the loop gates run on a hub without a Hippocampus, so
+they hold S3a to it regardless.
+
 ### (a′) A fixture "turn" is a step (Q8)
 
 `ScenarioSource` `step_based` timing counts **loop iterations**: `at` is a step index, and
@@ -238,8 +252,9 @@ regime (S0); decided time-based (Q3). `decay_imagined_links(0.5)` stays at sessi
 
 - `NAc.load()` stops calling `apply_wall_clock_decay`. Dormancy over deletion: the method and its
   half-life fields stay, opt-in behind `NACConfig.offline_wall_decay: bool = False`, docstring
-  `Dormant since <date>: owner decision 2026-10-17, no offline forgetting`. `_cluster_fear`'s offline
-  decay goes with it.
+  `Dormant since <date>: owner decision 2026-10-17, no offline forgetting`. Under
+  `offline_wall_decay=True` every map that decays today, `_cluster_fear` included, decays as before; the default
+  (False) decays nothing offline (Q7; G1 holds both arms).
 - `load(apply_decay=...)` and `load_safe(apply_decay=...)` keep the keyword **through 1.4.x** (Q7;
   it then gates only the opt-in) and are removed in 1.5.0. The callers include `hivemind/cli.py`'s
   `load_safe`. Loaders to update:
@@ -302,6 +317,20 @@ and the fixture regime converts exactly.
      `maxim config set nac.cluster_reward_bias_decay_tau_s`, and the conftest scrub moves with it.
    - doc tables: `docs/user/configuration.md`, the bio-memory env table, `docs/decisions.md`, the Exp 30 doc.
 
+**S0 measurements (2026-10-17), measured vs inferred.**
+- *Measured, offline, on the real loop with fake worlds* (`test_s0_todays_decay_quantum_is_the_non_eventful_full_pass`):
+  one decay step per full, non-eventful pass; none on an idle pass; none on an eventful pass, which still advances a
+  fixture step (12 steps with 2 eventful passes → 10 decays). An awake real-time loop decays once per poll, so decay
+  per wall second equals the poll rate. This is the structure, not a rate.
+- *Measured, by declaration* (`test_s0_tau_conversion_inputs`): the turn quantum S3a converts with is
+  `m = round(1e6 / 2 Hz) = 0.5 s` per fixture step; the converted taus are `reward_bias`/`goal_reward_bias`/exploration
+  24.75 s, `percept_valences` 99.75 s, `cluster_reward_bias` 149.75 s, eligibility 4.75 s (`τ_eff` 9.49 passes).
+- *NOT measured (owed):* passes per wall second and per turn on live backends in regimes (i)–(iii), and `S_ref` for
+  §(e). They need stamped sims, which S0 could not run (`~/.maxim` was shared with the parallel 1.3.3 sessions). Until
+  then the figures in §Motivation stay inferred: ~2 Hz orchestrator AUT, 10–30 Hz embodied, ~27 passes per turn in
+  Exp 52 Phase B, golden N = 8 locally / 7 under xdist. Regime (iii)'s acceptance range must be written into the PR
+  that measures it, before it measures.
+
 **Behaviour tier:** decay timescales are an **innate prior**: a coded default, with a learnable gain
 later via decay_consolidation_calibration. "No offline forgetting" and "decay rides the experience
 clock" are **invariants** of the clock policy.
@@ -312,7 +341,7 @@ clock" are **invariants** of the clock policy.
 - **S1:** `test_nac_persistence_decay.py`, `test_inherent_wall_decay_818.py` (opt-in path),
   `test_cluster_fear.py`, `test_store_guard_971.py`, `test_pre_freeze_fixes.py`,
   `tests/integration/test_cross_session_persistence.py`, `test_exp61_run.py`, the three hivemind tests.
-- **S3a/S3b:** `test_nac.py`, `test_loop_section_extraction.py` (rewritten), `test_loop_gates_characterization.py`,
+- **S3a/S3b:** `test_nac.py`, `test_loop_section_extraction.py` (rewritten), `test_experience_clock_decay.py::test_s0_todays_decay_quantum_is_the_non_eventful_full_pass` (an S0 characterization of the pass quantum; rewritten when §8.5 goes), `test_loop_gates_characterization.py`,
   `test_experience_clock.py`, `test_temporal_credit.py`, `test_wire_2_percept_aversion.py`,
   `test_wire_1_risk_annotation.py`, `test_p2_reward_modulation`, `test_inherent_bias_class`,
   `test_substrate_exploration`, `test_wire_a_cluster_bias_annotation`, `test_scn_oscillator_feedback.py`,
@@ -416,5 +445,5 @@ owner at the start of the slice that finds them.
 | No NAc forgetting while switched off | G1 (default arm vs opt-in arm) |
 | Body drift excludes pause and latency, and stays netted in GL2a | G4 + the netting guard |
 | No wall clock or pass count in the NAc decay/age path or `Embodiment.advance` | AST test in `test_experience_clock_decay.py`: no `time.time` / `time.monotonic` / `time_ns` in the named functions |
-| Every remaining wall-clock timer in a learning path is on §(g)'s allowlist | **no check yet.** A mechanization-backlog row in [outstanding.md](outstanding.md), added in the S0 PR: a lint over `decisions/`, `memory/`, `embodiment/body.py`, `agents/memory_agent.py::_apply_decay` and `proprioception/focus_learner.py::_apply_decay` that refuses a wall-clock read outside an allowlist |
+| Every remaining wall-clock timer in a learning path is on §(g)'s allowlist | **no check yet.** Mechanization backlog M72 in [outstanding.md](outstanding.md), added in the S0 PR: a lint over `decisions/`, `memory/`, `embodiment/body.py`, `agents/memory_agent.py::_apply_decay` and `proprioception/focus_learner.py::_apply_decay` that refuses a wall-clock read outside an allowlist |
 | Permanent fear is revisited on its trigger (Risk 2) | **no check yet.** A backlog row added in the S1 PR: a report-stamp check that fails a survival report lacking fear count/mass, plus the #1072 follow-up issue carrying the trigger |

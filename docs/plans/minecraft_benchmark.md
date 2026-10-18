@@ -212,7 +212,7 @@ It is far more complete than the ladder's ambition implies:
 | World sensing | **16 channels shipped** (`bodies/minecraft_player.yaml`), incl. `health`, `food`, `light`, `hostiles` (−32…32, "rest = 0 hostiles"), `air` ("drowning descends loud"), `weather`, `depth`, `distance_from_spawn` |
 | Survival drive pressure | **ALREADY WIRED.** `health` carries a `HomeostaticDriveSpec` (`set_point: 20`); `food` carries an `EntropicDriveSpec` (`deprivation_threshold: 6.0`). Both `drift_rate: 0.0` — *world-owned*: "the game drains it, not the model" |
 | Building | **`place_block(x,y,z)` is already an affordance**, alongside `mine_block`, `attack_nearest`, `eat`, `move_to`, `turn` |
-| Multi-step credit for delayed payoff | **The gap.** Credit is tick-anchored (eligibility traces + temporal-phase fallback); one of six SCN input channels has a producer |
+| Multi-step credit for delayed payoff | **The gap.** Credit rides eligibility traces that decay per loop PASS (×0.9 per non-idle, non-eventful pass, not per world second) plus a temporal-phase fallback whose anchors age on a 300 s wall window — two clocks in one computation until [experience_clock_decay.md](experience_clock_decay.md) S3a/S3b; one of six SCN input channels has a producer |
 
 **Consequence:** the survival substrate is not something to build — it is something to
 *verify and measure*. The one genuinely missing capability is the credit to learn a
@@ -346,8 +346,8 @@ measure**, and the failure would not surface until 1.3. Calibration is therefore
 polish; it is the rung.
 
 ### R4 — Structure formation *(1.3+, the frontier)*
-**Question, stated so it can fail:** *does the tick-anchored credit machinery reach a
-multi-step construction with a delayed payoff?* The action primitive (`place_block`) and the
+**Question, stated so it can fail:** *does the pass-anchored credit machinery (eligibility per loop pass, anchors on a wall window; see
+experience_clock_decay.md) reach a multi-step construction with a delayed payoff?* The action primitive (`place_block`) and the
 motivation (`hostiles` + `light` + damage) already exist; only credit is missing.
 **Scoping discipline:** this is scoped as *measure whether it is reachable, and if not name
 precisely what is missing* — NOT as "build emergent architecture." The former is an
