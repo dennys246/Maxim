@@ -789,7 +789,10 @@ time of day).
    `NAc.load()` decay-on-load). The SCN bins by time of day, the wrong clock for this; that plan's
    revive path is amended to scale NAc per-tick decay by `dt` on the experience clock instead. NAc
    stays out of round one. Documented asymmetry: a robot switched off for a month loses NAc biases
-   but not memories.
+   but not memories. **Amended 2026-10-17 (owner decisions, [experience_clock_decay.md](experience_clock_decay.md)):**
+   the named wall-time site goes too. NAc decay-on-load becomes opt-in and Dormant (no offline
+   forgetting), and NAc in-session decay rides this experience clock. So the asymmetry above is
+   removed for NAc. The remaining wall-clock forgetting is this plan's default (non-strength) path.
 2. **Where honest activation is counted for the LLM path** — does text the LLM *read* in a prompt
    count as retrieval? (Proposed: yes for the injected concepts; not for their neighbours.)
 3. ~~Tag normalization~~ — **resolved 2026-09-21**: Phase 2 decision 4 (fixed baselines, per-drive
