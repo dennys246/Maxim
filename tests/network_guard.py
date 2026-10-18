@@ -19,13 +19,6 @@ Scope: IN-PROCESS only (CI's namespace covers the process tree). A subprocess a 
 guarded here, nor are the rarely
 used resolver calls ``gethostbyname_ex`` / ``gethostbyaddr`` / ``getnameinfo`` (none is used in
 ``src/maxim``). ``attempts`` records every blocked call; the terminal summary prints the count.
-
-Under pytest-xdist (M22) every worker is its own process with its own ``attempts``, and the controller, which prints
-the summary, runs no tests. So each worker hands its per-kind :func:`counts` to the controller in
-``pytest_sessionfinish`` (``config.workeroutput``), the controller folds them in with :func:`merge_worker` in
-``pytest_testnodedown`` (a worker that went down without reporting is counted and named in the line, never read
-as zero), and :func:`summary_line` totals this process's own attempts plus every worker's: the same
-line, with the same total, in a serial run and in an xdist run (``tests/conftest.py`` holds the hooks).
 """
 
 from __future__ import annotations
@@ -42,11 +35,6 @@ _real_gethostbyname = socket.gethostbyname
 
 enabled = True
 attempts: list[tuple[str, str]] = []
-# Per-kind counts handed over by xdist workers (controller side only; empty in a serial run).
-worker_counts: dict[str, int] = {}
-# Workers that went down without handing counts over (crashed, killed): their blocked calls are unknown.
-workers_silent = 0
-WORKEROUTPUT_KEY = "network_guard_counts"
 
 
 class NetworkBlocked(OSError):
@@ -116,38 +104,3 @@ def install() -> None:
     socket.socket.connect_ex = _connect_ex  # type: ignore[method-assign]
     socket.getaddrinfo = _getaddrinfo
     socket.gethostbyname = _gethostbyname
-
-
-def counts() -> dict[str, int]:
-    """This process's blocked calls, per kind (``connect`` / ``dns``)."""
-    out: dict[str, int] = {}
-    for kind, _ in attempts:
-        out[kind] = out.get(kind, 0) + 1
-    return out
-
-
-def merge_worker(worker: dict[str, int] | None) -> None:
-    """Fold one xdist worker's :func:`counts` into :data:`worker_counts`; None = the worker never reported."""
-    global workers_silent
-    if worker is None:
-        workers_silent += 1
-        return
-    for kind, n in worker.items():
-        worker_counts[kind] = worker_counts.get(kind, 0) + int(n)
-
-
-def summary_line() -> str | None:
-    """The terminal-summary line over this process and every merged worker, or None when nothing was blocked and
-    every worker reported. A silent worker is named in the line: its count is unknown, not zero."""
-    total = dict(worker_counts)
-    for kind, n in counts().items():
-        total[kind] = total.get(kind, 0) + n
-    n = sum(total.values())
-    if not n and not workers_silent:
-        return None
-    line = f"network guard: blocked {n} outbound call(s)"
-    if n:
-        line += f" ({', '.join(sorted(k for k, v in total.items() if v))})"
-    if workers_silent:
-        line += f" ({workers_silent} worker(s) did not report)"
-    return line

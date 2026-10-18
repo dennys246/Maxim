@@ -436,12 +436,9 @@ jobs:
           # coverage + pytest-cov are pinned EXACTLY: the coverage ratchet's floors are measured by
           # this version, and the coverage ratchet refuses a coverage.json written by any other
           # (the version constant there must move with this pin).
-          # pytest-xdist is pinned EXACTLY too (M22): the fast suite below runs under it, so its scheduler shapes the
-          # measured run; the ratchet's XDIST_VERSION constant, pyproject's [test] extra and scripts/suite_at_commit.sh's
-          # preflight all name this version, and the coverage ratchet checks this pin is here.
           # pyyaml here (not only in the guarded optional line below): the coverage ratchet reads
           # this workflow structurally to verify its own step.
-          pip install pytest "pytest-cov==7.0.0" "coverage==7.13.3" "pytest-xdist==3.8.0" pytest-timeout "pyyaml>=6.0,<7.0"
+          pip install pytest "pytest-cov==7.0.0" "coverage==7.13.3" pytest-xdist pytest-timeout "pyyaml>=6.0,<7.0"
           # The package WITH its core dependencies (httpx, rich, json-repair, filelock<4, ...). It was
           # `--no-deps` from 2026-04 while reachy-mini (robot SDK) was a core dependency; it is an extra now,
           # and `--no-deps` left the core deps to arrive transitively: huggingface-hub 2.x (2026-10-09)
@@ -501,14 +498,9 @@ jobs:
         # --junitxml=fast-suite.xml feeds the release gate's runtime twin below (scripts/lint_release_gates.py
         # rule 6: every evidence test of a satisfied gate item is collected and PASSED in THIS run, which a conftest
         # skip would otherwise hide from the static rules). The gate checks this flag is here.
-        #
-        # -n auto --dist loadfile (M22; lint_coverage.py CI_PARALLEL_ARGS, which the gate requires here exactly once and
-        # scripts/suite_at_commit.sh runs too): pytest-xdist, one worker per core, a file's tests on one worker;
-        # pytest-cov combines the workers' data. Under xdist `-x` exits 2, not 1, and tests already running on other
-        # workers finish first, so the failure list can hold a few more than one; the JUnit report is partial either way.
         run: |
           rm -f .coverage coverage.json coverage.xml fast-suite.xml
-          SUITE='"$PY" -m pytest tests/ -x -q -m "not slow" --tb=short -n auto --dist loadfile \
+          SUITE='"$PY" -m pytest tests/ -x -q -m "not slow" --tb=short \
             --ignore=tests/integration/test_memory_hub.py \
             --require-extras=console,sign \
             --junitxml=fast-suite.xml \
