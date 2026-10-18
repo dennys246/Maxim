@@ -118,7 +118,7 @@ over a file it never read and `create.hippocampus` / `create.atl` raise at const
 | Symbol | Stable | Notes |
 |---|---|---|
 | `load.hippocampus(path) -> Hippocampus` | ✅ | `~` expands. Raises `FileNotFoundError` (missing) or `MemoryCorruptionError` (unreadable). |
-| `load.nac(path) -> NAc` | ✅ | As `load.hippocampus`. |
+| `load.nac(path) -> NAc` | ✅ | As `load.hippocampus`. Loads the maps exactly as saved: no offline decay (owner decision 2026-10-17). `NAc.load(apply_decay=)` / `NAc.load_safe(apply_decay=)` are ⚠️ DEPRECATED (a `DeprecationWarning` through 1.4.x, during which `True`/`False` decides offline decay for that one load; removed in 1.5.0, when passing it raises `TypeError`); offline wall-clock decay is the Dormant opt-in `NACConfig(offline_wall_decay=True)`. |
 | `load.atl(path) -> ATL` | ✅ | As `load.hippocampus`. |
 | `load.session(session_id) -> Session` | ✅ | An ID, a unique ID prefix or a path, resolved like the CLI (`resolve_run_dir`). Raises `FileNotFoundError` for none, `RunDirAmbiguous` for several (#932). |
 | `load.sessions(*, limit=20) -> list[Session]` | ✅ | |

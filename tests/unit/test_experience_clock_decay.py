@@ -4,7 +4,7 @@ Each gate below is ``xfail(strict=True, raises=AssertionError)`` and fails TODAY
 states; the slice named in its ``reason`` flips it IN PLACE (never removed or re-pointed, CLAUDE.md "a red
 gate that does not flip is data"). ``raises=AssertionError`` keeps a gate honest in both directions: a
 harness fault (a ``RuntimeError``, an ``AttributeError`` from an API the slice has not built yet) shows as
-a FAILURE, not as the expected red.
+a FAILURE, not as the expected red. Flipped so far: G1 (S1, 2026-10-18).
 
 The loop gates drive the REAL ``run_agentic_loop`` (``_drive``): the decay a slice moves lives in the
 loop's composition (§8.5 today, ``_loop_live_tick`` after S3a), so a hand-composed sequence would test the
@@ -375,12 +375,8 @@ def _gate(slice_: str, why: str) -> pytest.MarkDecorator:
 # ── G1 (S1): no NAc forgetting while switched off ────────────────────────────
 
 
-@_gate(
-    "S1",
-    "NAc.load() applies apply_wall_clock_decay(now - saved_at) by default (owner decision 2); plan §(f): under "
-    "offline_wall_decay=True every map that decays today, _cluster_fear included, decays as before; the default "
-    "(False) decays nothing offline",
-)
+# FLIPPED at S1 (2026-10-18): the S0 xfail is removed in place. Plan §(f): under offline_wall_decay=True every
+# map that decays today, _cluster_fear included, decays as before; the default (False) decays nothing offline.
 @pytest.mark.single_agent_only
 def test_g1_a_week_switched_off_forgets_nothing_unless_opted_in(tmp_path, monkeypatch):
     import maxim.decisions.nac as nac_module
@@ -406,7 +402,7 @@ def test_g1_a_week_switched_off_forgets_nothing_unless_opted_in(tmp_path, monkey
     assert _persisted(loaded) == before, "a week switched off changed the NAc's learned maps"
 
     # The opt-in arm (Dormant, NACConfig.offline_wall_decay): the old behaviour, kept reachable.
-    opted = NAc(NACConfig(persistence_path=path, offline_wall_decay=True))  # type: ignore[call-arg]
+    opted = NAc(NACConfig(persistence_path=path, offline_wall_decay=True))
     opted.load()
     assert opted._reward_bias[(AGENT, NODE)] < before["reward_bias"][(AGENT, NODE)]
     assert opted._cluster_fear != before["cluster_fear"]

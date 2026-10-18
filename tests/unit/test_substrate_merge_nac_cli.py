@@ -216,8 +216,10 @@ class TestFoldRobustness:
 
     def test_saved_at_decay_clock_survives_the_merge(self, tmp_path):
         """nac_merge drops saved_at; the verb must restore it or the next
-        boot's load_safe(apply_decay=True) silently skips one whole
-        wall-clock decay cycle for ALL runtime biases."""
+        boot under the Dormant offline-decay opt-in (NACConfig.offline_wall_decay;
+        off by default since 2026-10-18, owner decision 2026-10-17) silently
+        skips one whole wall-clock decay cycle for ALL runtime biases. The
+        stamp is also kept as a diagnostic."""
         src = tmp_path / "policy.json"
         tgt = tmp_path / "nac.json"
         _save_policy(src)

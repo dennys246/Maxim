@@ -853,6 +853,7 @@ class TestD43RestoredState:
         assert merged["cluster_reward_source"][k] == "mixed"
 
     def test_saved_at_survives_and_keeps_the_younger(self):
+        # saved_at is the Dormant offline-decay opt-in's clock and a diagnostic (default off since 2026-10-18).
         merged = nac_merge(
             {"saved_at": "2026-01-01T00:00:00Z"},
             {"saved_at": "2026-06-01T00:00:00Z"},

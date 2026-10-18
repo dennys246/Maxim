@@ -773,7 +773,10 @@ def test_the_factory_under_warn_empties_a_store_a_defect_left_half_loaded(tmp_pa
 
 def test_a_defect_after_the_nac_claimed_its_file_still_leaves_the_file_alone(tmp_path: Path, monkeypatch) -> None:
     """NAc.load claims its file BEFORE decay-on-load: a defect there leaves it owned. Emptied in memory,
-    the NAc must still stop owning the file, or its next save replaces good memories with nothing."""
+    the NAc must still stop owning the file, or its next save replaces good memories with nothing.
+
+    Decay-on-load is the Dormant opt-in since 2026-10-18 (owner decision 2026-10-17, Q7), and AgentFactory
+    builds a default NACConfig, so the switch is forced on here to reach the post-claim defect."""
     from maxim.decisions.nac import NAc
     from maxim.runtime.agent_factory import AgentConfig, AgentFactory
 
@@ -788,6 +791,7 @@ def test_a_defect_after_the_nac_claimed_its_file_still_leaves_the_file_alone(tmp
         raise NameError("a bug in decay-on-load")
 
     monkeypatch.setattr(NAc, "apply_wall_clock_decay", defect)
+    monkeypatch.setattr(NAc, "_offline_decay_enabled", lambda self, apply_decay, *, caller: True)
     agent = AgentFactory(base_data_dir=tmp_path / "agents").create_agent(
         AgentConfig(agent_id="a1", on_corrupt="warn"), auto_load=True
     )

@@ -352,9 +352,9 @@ class LoadedAgent:
         self.ec.load(spec["ec_path"])
         cfg = replace(NACConfig(), substrate_explore_bonus_weight=float(explore_weight), persistence_path=None)
         self.nac = NAc(config=cfg, ec=self.ec)
-        # apply_decay=False: wall-clock since the nursery saved is the operator's
-        # schedule, not agent-experienced time (the --resume-sim rule).
-        self.nac.load(spec["nac_path"], apply_decay=False)
+        # Loads verbatim: a default NACConfig applies no offline decay (owner decision
+        # 2026-10-17), so wall-clock time since the nursery saved never ages the biases.
+        self.nac.load(spec["nac_path"])
         self.encoder = SensorEncoder(ec=self.ec, atl=None, nac=self.nac)
         self.audio_nodes = {
             nid for nid, n in self.ec._substrate_nodes.items() if getattr(n, "modality", None) == "audio"

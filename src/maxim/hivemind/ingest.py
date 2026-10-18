@@ -485,6 +485,18 @@ def _credit_source_vocabulary() -> frozenset[str]:
     return frozenset(NAc.CREDIT_SOURCES)
 
 
+def _drop_donor_saved_at(state: dict[str, Any], notes: list[str]) -> None:
+    """Drop the donor's ``saved_at``: the receiver keeps its own.
+
+    ``saved_at`` is read only by the Dormant offline-decay opt-in (``NACConfig.offline_wall_decay``; default off
+    since 2026-10-18, owner decision 2026-10-17) and stays written as a diagnostic. The drop still matters under
+    the opt-in: ``nac_merge`` keeps the LATER stamp, so a far-future donor stamp would freeze the receiver's
+    offline decay (sharing threat model row M), and the donor's save time is not a fact about the receiver.
+    """
+    if state.pop("saved_at", None) is not None:
+        notes.append("donor saved_at dropped (receiver keeps its own decay clock)")
+
+
 def _validate_nac_payload(
     nac_state: dict[str, Any],
     *,
@@ -502,11 +514,7 @@ def _validate_nac_payload(
     """
     state = copy.deepcopy(nac_state)
     state.pop("_format_version", None)
-    # The donor's decay clock is not the receiver's: nac_merge keeps the
-    # LATER saved_at, so a far-future stamp would freeze receiver decay
-    # (row M). Dropping it keeps the receiver's own clock.
-    if state.pop("saved_at", None) is not None:
-        notes.append("donor saved_at dropped (receiver keeps its own decay clock)")
+    _drop_donor_saved_at(state, notes)
 
     links = state.get("links", {}) or {}
     if not isinstance(links, dict):

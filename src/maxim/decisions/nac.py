@@ -135,7 +135,9 @@ def fold_legacy_cluster_id(
 #   event_signature) Welford variance state.
 # - 1.2 → 1.3 (nac_cross_session_persistence.md): added ``saved_at``
 #   wall-clock stamp; ``load()`` uses it for decay-on-load. Missing
-#   ``saved_at`` (pre-1.3 payload) → no decay applied.
+#   ``saved_at`` (pre-1.3 payload) → no decay applied. Since 2026-10-18 it
+#   is read only under the Dormant ``NACConfig.offline_wall_decay`` opt-in
+#   (still written: a diagnostic, and the opt-in's clock).
 # - 1.3 → 1.4 (Wire 4, Exp 58 / 1.3 Phase 1): added ``cluster_fear`` —
 #   situation-keyed fear (pain→cluster negative valence), keyed
 #   (agent_id, cluster_id, failure_mode). Missing → empty.
@@ -147,6 +149,21 @@ def fold_legacy_cluster_id(
 # coexistence convention is documented in CLAUDE.md
 # ("Persistence-format contract").
 _NAC_FORMAT_VERSION: str = "1.4"
+
+
+def _version_series(raw: str) -> tuple[int, int]:
+    """``(major, minor)`` of a package version string; ``(0, 0)`` if unparseable (the compatible branch).
+
+    An unparseable version (``"v1.5.0"``, ``""``) falls to ``(0, 0)`` and so keeps the warn-only branch.
+
+    Gates the ``apply_decay=`` removal at 1.5.0 (``NAc._offline_decay_enabled``), as ``api.register_persona``
+    gated its own removal on the package version.
+    """
+    parts = raw.split(".")
+    if len(parts) < 2 or not parts[0].isdigit():
+        return (0, 0)
+    minor = "".join(itertools.takewhile(str.isdigit, parts[1]))
+    return (int(parts[0]), int(minor or 0))
 
 
 def _require_finite(value: float, *, op: str, name: str) -> None:
@@ -380,43 +397,27 @@ class NACConfig:
     use_ec_similarity: bool = False  # Phase 3 flag, default OFF
     persistence_path: str | None = None  # Path for save/load (set by build_bio_stack / AgentFactory)
 
-    # Cross-session decay-on-load (nac_cross_session_persistence.md).
+    # Offline wall-clock decay ("decay-on-load"), DORMANT since 2026-10-18.
     #
-    # NAc decay is otherwise TICK-anchored (decay_reward_biases /
-    # decay_cluster_reward_biases run per-tick from agent_loop §8.5), so a
-    # bias learned six months ago would load back indistinguishable from
-    # one learned a minute ago. ``load()`` reads the ``saved_at`` stamp
-    # from the persisted payload and applies elapsed-WALL-CLOCK exponential
-    # decay before the first tick. Framing note: this is time-based
-    # FORGETTING, an [engineering]-tier first calibration — not a
-    # validated bio claim (biological extinction requires unreinforced
-    # re-exposure, a different mechanism; review fold, Arch #6). The
-    # half-lives are tunable fields; wiring them through config.json
-    # (resolve_setting) is tracked follow-up in the archived plan doc.
+    # Owner decision 2026-10-17 (experience_clock_decay.md, decision 2 + Q7):
+    # NO forgetting while the agent is switched off — decay runs on
+    # experience time, not wall clock. ``load()`` therefore applies NO
+    # offline decay unless ``offline_wall_decay=True``, which restores the
+    # 1.3-era behaviour unchanged: ``apply_wall_clock_decay(now - saved_at)``
+    # over every map it ever decayed (``_cluster_fear`` included), with the
+    # inherent-class exemption. Dormant (CLAUDE.md "Dormancy over deletion"):
+    # kept wired and tested, nothing new builds on it; resurrection needs an
+    # experiment that earns offline forgetting a behavioural weight.
     #
-    # Two schedules (mirrors the B2-fold precedent of splitting decay
-    # timescales by use case):
-    # - ``cluster_bias_wall_decay_half_life_s`` (default 1 day) —
-    #   ``cluster_reward_bias``. Its 300-tick tau marks it a working
-    #   signal; persisting it unchanged would silently promote a
-    #   session-scoped signal to a cross-session one. A 1-day half-life
-    #   keeps same-day continuation (Exp 44-style resume) near-fresh
-    #   while a week-old preference fades to ~1% of its magnitude.
-    # - ``bias_wall_decay_half_life_s`` (default 7 days) —
-    #   ``reward_bias`` + ``goal_reward_bias`` + ``percept_valences``,
-    #   the designated cross-session transfer surfaces (CLAUDE.md:
-    #   "Cross-session transfer uses reward_bias (persisted)").
-    #   Yesterday's learning returns at ~90%; six-month-old biases
-    #   prune out (below the 0.001 floor). KNOWN weakest cell of this
-    #   matrix (review fold, Arch #6): ``percept_valences`` carries the
-    #   harm-avoidance signal, and conditioned aversion is biologically
-    #   the MOST persistent of these associations — a slower (or no)
-    #   wall schedule for negative valences is a calibration candidate
-    #   once an experiment earns it.
-    # Causal links + Welford variance are NOT decayed on load — they are
-    # accumulated statistics, and links already take the flat
-    # ``decay_all(0.95)`` confidence haircut at every session end.
-    # A payload without ``saved_at`` (pre-1.3 format) loads undecayed.
+    # The half-lives below apply ONLY under the opt-in. They were an
+    # [engineering]-tier first calibration (nac_cross_session_persistence.md),
+    # not a validated bio claim:
+    # - ``cluster_bias_wall_decay_half_life_s`` (1 day) — ``cluster_reward_bias``
+    # - ``bias_wall_decay_half_life_s`` (7 days) — ``reward_bias``,
+    #   ``goal_reward_bias``, ``percept_valences``, ``cluster_fear``
+    # Causal links + Welford variance are never decayed on load. A payload
+    # without ``saved_at`` (pre-1.3 format) loads undecayed either way.
+    offline_wall_decay: bool = False
     bias_wall_decay_half_life_s: float = 604800.0  # 7 days
     cluster_bias_wall_decay_half_life_s: float = 86400.0  # 1 day
 
@@ -3974,10 +3975,13 @@ class NAc(StoreFileOwnership):
     def apply_wall_clock_decay(self, elapsed_s: float) -> dict[str, int]:
         """Age the bias surfaces by elapsed wall-clock seconds.
 
-        Called by ``load()`` with ``now - saved_at`` so that restored
-        biases reflect the time the agent was off, not just its tick
-        count (nac_cross_session_persistence.md decay-on-load decision;
-        schedule rationale on the NACConfig field comments).
+        Dormant since 2026-10-18: owner decision 2026-10-17 (experience_clock_decay.md
+        decision 2, Q7), no forgetting while the agent is switched off. ``load()`` calls
+        this with ``now - saved_at`` ONLY when ``NACConfig.offline_wall_decay`` is True
+        (default False); the behaviour under that opt-in is the 1.3-era one, unchanged.
+        Resurrection (a default-on path, or new features on this one) needs an
+        experiment that earns offline forgetting a behavioural weight. Schedule
+        rationale on the NACConfig field comments.
 
         Two half-life schedules:
         - ``cluster_bias_wall_decay_half_life_s`` → ``_cluster_reward_bias``
@@ -4101,57 +4105,88 @@ class NAc(StoreFileOwnership):
         self._claim_store_file(path)
         logger.info("Saved NAc to %s (%d links)", path, len(self))
 
-    def load(self, path: str | None = None, *, apply_decay: bool = True) -> None:
+    def _offline_decay_enabled(self, apply_decay: bool | None, *, caller: str) -> bool:
+        """Resolve the offline wall-clock decay switch for one ``load``/``load_safe`` call.
+
+        ``NACConfig.offline_wall_decay`` is the switch (default False, owner decision
+        2026-10-17). The deprecated ``apply_decay=`` keyword is accepted through 1.4.x and,
+        when passed, decides this one load whatever the config says (owner decision
+        2026-10-18): ``True`` applies the offline decay, ``False`` applies none. It is
+        removed in 1.5.0 (Q7): from that series on, passing it raises ``TypeError``, so the
+        release that bumps to 1.5 must delete it.
+        """
+        if apply_decay is None:
+            return self.config.offline_wall_decay
+        import importlib
+        import warnings
+
+        # Read at call time (tests patch it). Not a static ``from maxim import``: that edge from decisions/ to the
+        # package root changes the mypy ratchet's import graph and surfaces a real, pre-existing error in
+        # runtime/bootstrap.py::build_default_network: `Incompatible types in assignment (expression has type
+        # "None", variable has type "DNConfig")` (``dn_config = None`` in its no-YAML branch). Tracked for
+        # Session V (bootstrap.py dn_config typing); switch to the static import once that annotation is fixed.
+        version = str(getattr(importlib.import_module("maxim"), "__version__", ""))
+        if _version_series(version) >= (1, 5):
+            raise TypeError(
+                f"NAc.{caller}(apply_decay=...) was removed in 1.5.0; offline decay is "
+                "NACConfig(offline_wall_decay=True) (default off: no forgetting while switched off)"
+            )
+        warnings.warn(
+            f"NAc.{caller}(apply_decay=...) is deprecated and removed in 1.5.0. NAc no longer "
+            "forgets while switched off by default; offline wall-clock decay is the Dormant opt-in "
+            "NACConfig(offline_wall_decay=True). Until then apply_decay=True/False decides this one "
+            "load (decay / no decay).",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        return bool(apply_decay)
+
+    def load(self, path: str | None = None, *, apply_decay: bool | None = None) -> None:
         """Load NAc state from JSON file.
 
         If ``path`` is omitted, falls back to ``self.config.persistence_path``.
         Raises ``ValueError`` if neither is set.
 
+        No offline forgetting by default (owner decision 2026-10-17): the maps load
+        exactly as saved, whatever wall-clock time passed. Only under the Dormant
+        ``NACConfig.offline_wall_decay=True`` opt-in are the bias surfaces aged by the
+        wall-clock time since the file's ``saved_at`` stamp (``apply_wall_clock_decay``).
+
         Args:
-            apply_decay: When True (the agent-restart default), age the
-                bias surfaces by elapsed wall-clock time since the file's
-                ``saved_at`` stamp (see ``apply_wall_clock_decay``). Pass
-                False at call sites where wall-clock elapsed time is NOT
-                agent-experienced time or where disk truth is wanted:
-                the sim ``--resume-sim`` restore (sims are tick-anchored;
-                the operator's schedule between runs is an experimental
-                confound, and the Exp 44 tau-hold harness pattern depends
-                on resumed cluster biases loading verbatim) and read-only
-                observers (``maxim.load.nac``, ``maxim.observe``) which
-                must report what is on disk, not a time-varying view —
-                and whose load→save round-trips must not compound decay.
+            apply_decay: DEPRECATED, removed in 1.5.0 (see ``_offline_decay_enabled``).
+                ``True``/``False`` decides offline decay for this one load; omit it to use
+                ``NACConfig.offline_wall_decay``.
         """
+        decay = self._offline_decay_enabled(apply_decay, caller="load")
         path = path or self.config.persistence_path
         if path is None:
             raise ValueError("NAc.load() requires a path or NACConfig.persistence_path to be set")
-        path = self._default_store_path(path)  # `~` means home (#950)
+        self._load_file(self._default_store_path(path), decay=decay)  # `~` means home (#950)
+
+    def _load_file(self, path: str, *, decay: bool) -> None:
+        """The body of ``load`` once the path and the offline-decay switch are resolved."""
         with open(path, encoding="utf-8") as f:
             state = json.load(f)
 
         from maxim.utils.format_version import check_format_version
 
         check_format_version(state, "nac", log=logger)
+        # load_state also drops orphaned cluster_reward_source entries (A2), decay or not.
         self.load_state(state)
         self._claim_store_file(path)
 
-        # Decay-on-load (1.3, nac_cross_session_persistence.md): age the
-        # bias surfaces by elapsed wall-clock time since save. Lives HERE
-        # (the file entry point) and NOT in load_state, so dump-shape
-        # round-trips that never crossed a wall-clock gap — hivemind
-        # nac_merge, snapshot restores — stay byte-faithful.
-        # ``isinstance(saved_at, bool)`` guard: JSON ``true`` passes the
-        # (int, float) check and would read as epoch-second 1 → ~56 years
-        # elapsed → every bias silently pruned from a corrupt-but-
-        # parseable file (review fold, Exec #6).
+        # Opt-in offline decay. Lives HERE (the file entry point) and NOT in load_state,
+        # so dump-shape round-trips that never crossed a wall-clock gap — hivemind
+        # nac_merge, snapshot restores — stay byte-faithful. ``isinstance(saved_at, bool)``
+        # guard: JSON ``true`` passes the (int, float) check and would read as epoch-second
+        # 1 → ~56 years elapsed → every bias pruned from a corrupt-but-parseable file.
         saved_at = state.get("saved_at")
-        if apply_decay and isinstance(saved_at, (int, float)) and not isinstance(saved_at, bool) and saved_at > 0:
+        if decay and isinstance(saved_at, (int, float)) and not isinstance(saved_at, bool) and saved_at > 0:
             elapsed_s = time.time() - float(saved_at)
             decayed = self.apply_wall_clock_decay(elapsed_s)
             if decayed:
-                # WARNING, not INFO: pruned learning is irreversible once
-                # the next save overwrites the file — an operator (or a
-                # harness that should have passed apply_decay=False) must
-                # be able to see it happened (review fold, Arch #1).
+                # WARNING, not INFO: pruned learning is irreversible once the next save
+                # overwrites the file, so an operator must be able to see it happened.
                 logger.warning(
                     "NAc decay-on-load pruned entries: %.1fh elapsed since save — %s",
                     elapsed_s / 3600.0,
@@ -4159,14 +4194,16 @@ class NAc(StoreFileOwnership):
                 )
         logger.info("Loaded NAc from %s (%d links, %d biases)", path, len(self), len(self._reward_bias))
 
-    def load_safe(self, path: str | None = None, *, apply_decay: bool = True) -> tuple[bool, str | None]:
+    def load_safe(self, path: str | None = None, *, apply_decay: bool | None = None) -> tuple[bool, str | None]:
         """Load with recovery on failure. Returns (success, error_message).
 
         A missing file is a fresh start. An UNREADABLE one (``is_unreadable_store_error``) is copied to
         ``<name>.corrupt-<UTC timestamp>``, the store is emptied through its snapshot contract, and the
         next save replaces the original (#971, the #939 rule). An ``OSError`` propagates: it never
-        licenses replacing the file.
+        licenses replacing the file. Offline decay as in ``load`` (default none); ``apply_decay=`` is
+        deprecated the same way and warns here even when the file is missing.
         """
+        decay = self._offline_decay_enabled(apply_decay, caller="load_safe")
         path = path or self.config.persistence_path
         if path is None:
             raise ValueError("NAc.load_safe() requires a path or NACConfig.persistence_path to be set")
@@ -4175,7 +4212,7 @@ class NAc(StoreFileOwnership):
             logger.info("No existing NAc file at %s, starting fresh", path)
             return True, None
         try:
-            self.load(path, apply_decay=apply_decay)
+            self._load_file(path, decay=decay)
             return True, None
         except Exception as e:
             if not is_unreadable_store_error(e):
