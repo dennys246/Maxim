@@ -388,7 +388,9 @@ def _build_session_observer(session_dir: Path) -> Any:
             from maxim.decisions.nac import NAc
 
             nac = NAc()
-            nac.load(str(nac_path))
+            # Read-only observer: report what is on disk, never a decayed view (bio-memory brief,
+            # the NAc/EC persist-pair invariant; maxim.load.nac and maxim.observe do the same).
+            nac.load(str(nac_path), apply_decay=False)
         except Exception as exc:
             logger.warning("Could not load NAc from %s: %s", nac_path, exc)
             nac = None

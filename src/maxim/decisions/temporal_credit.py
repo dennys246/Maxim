@@ -18,6 +18,7 @@ tests/scripts, but production reward flows go through the distributor.
 from __future__ import annotations
 
 import logging
+import math
 import threading
 from typing import Any
 
@@ -51,7 +52,8 @@ class TemporalCreditDistributor:
         Args:
             nac: NAc instance (required).  The distributor delegates to
                 ``nac.credit_node()``, ``nac.credit_goal()``, reads
-                ``nac.get_temporal_anchors()``.
+                ``nac.eligibility_snapshot()`` and ``nac.get_temporal_anchors()``
+                (both copied under NAc's own lock; never ``nac._eligibility``).
             scn: SCN instance (required, keyword-only).  The distributor's
                 primary value IS temporal credit — making SCN optional would
                 degrade it to a passthrough with no warning.
@@ -158,10 +160,7 @@ class TemporalCreditDistributor:
                 ant_weight = getattr(getattr(osc, "config", None), "anticipatory_weight", 0.2)
 
                 # Check which event signatures already have active traces
-                active_sigs: set[str] = set()
-                for (aid, nid), strength in self._nac._eligibility.items():
-                    if aid == agent_id and strength > 0.01:
-                        active_sigs.add(nid)
+                active_sigs = set(self._nac.eligibility_snapshot(agent_id, min_strength=0.01))
 
                 now_sig = TemporalSignature.now()
                 for event_sig, imminence in anticipatory.items():
@@ -221,14 +220,18 @@ class TemporalCreditDistributor:
         ThoughtGate modulation.
 
         Returns list of ``(node_id, credit_applied)`` for logging.
+
+        Raises ``ValueError`` on a NaN/inf ``reward`` (a caller bug), even when
+        nothing is eligible and no goal is given.
         """
+        if not math.isfinite(reward):
+            raise ValueError(f"distribute requires a finite reward, got {reward!r}")
         with self._lock:
             # 1. Fast-decay path — active eligibility traces
             #    (includes anticipatory pre-activated traces)
-            eligible: dict[str, float] = {}
-            for (aid, nid), strength in self._nac._eligibility.items():
-                if aid == agent_id and strength > 0.01:
-                    eligible[nid] = strength
+            # A copy taken under NAc's lock: decay_eligibility mutates the dict
+            # under that lock from the loop thread, not under ours.
+            eligible: dict[str, float] = self._nac.eligibility_snapshot(agent_id, min_strength=0.01)
 
             # 2. Phase-similarity fallback from temporal anchors
             temporal_eligible: dict[str, float] = {}

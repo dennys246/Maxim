@@ -149,6 +149,40 @@ def fold_legacy_cluster_id(
 _NAC_FORMAT_VERSION: str = "1.4"
 
 
+def _require_finite(value: float, *, op: str, name: str) -> None:
+    """Raise ``ValueError`` when a credit/update input is NaN or infinite.
+
+    A non-finite input is a caller bug, and the clamps cannot absorb it:
+    ``max(-cap, min(nan, cap))`` is ``-cap``, so a NaN reward stored FULL
+    aversion, and a NaN that reached a dict was never pruned (``nan < 0.001``
+    is False). Loud at the entry point, like the empty-``agent_id`` guards.
+    """
+    if not math.isfinite(value):
+        raise ValueError(f"{op} requires a finite {name}, got {value!r}")
+
+
+def _count_non_finite(value: float, surface: str, counts: dict[str, int]) -> bool:
+    """True (and ``counts[surface]`` incremented) when a LOADED value is NaN/inf."""
+    if math.isfinite(value):
+        return False
+    counts[surface] = counts.get(surface, 0) + 1
+    return True
+
+
+def _require_reward_bias_agent_id(agent_id: str, *, op: str) -> None:
+    """Refuse an ``agent_id`` containing ``:`` on the ``(agent_id, node_id)`` surfaces.
+
+    ``reward_bias`` persists as ``"<agent_id>:<node_id>"`` and every reader
+    (``load_state``, hivemind ``entry_index`` / ``merge``) splits on the FIRST
+    ``:``. Node ids may contain ``:`` (event signatures such as ``tool:use``), so
+    the split is unambiguous only while agent ids do not; hivemind's
+    ``is_agent_id`` already refuses them. Held here so such a key is never
+    written, rather than re-encoding a key the bundle wire format freezes.
+    """
+    if agent_id and ":" in agent_id:
+        raise ValueError(f"{op}: agent_id must not contain ':' (reward_bias keys split on it), got {agent_id!r}")
+
+
 # Exp 37 cross-session graduation ablation arm 3 env var.
 # When ``MAXIM_NAC_REWARD_BIAS_DISABLED`` is set to a truthy value, the
 # reward bias is ablated end to end: the live write (``credit_node``, which
@@ -335,7 +369,9 @@ class NACConfig:
 
     max_links: int = 10000  # Maximum causal links to track
     min_confidence_threshold: float = 0.3  # Min confidence to use for predictions
-    decay_interval_hours: float = 24.0  # How often to decay unused links
+    # Dead config: nothing reads it (link decay runs from memory_hub's decay_all
+    # calls). Kept so existing NACConfig(...) calls stay valid; build nothing on it.
+    decay_interval_hours: float = 24.0
     context_similarity_threshold: float = 0.5  # Min context match for retrieval
     temporal_window_seconds: float = 300.0  # Max time between event and outcome
     max_pending_events: int = 100  # Hard cap on awaiting-outcome event buffer
@@ -967,7 +1003,6 @@ class NAc(StoreFileOwnership):
 
         # Stats
         self._total_observations = 0
-        self._last_decay_time = time.time()
 
     def _generate_link_id(self, event_sig: str, outcome_sig: str, context_hash: str) -> str:
         """Generate unique ID for a causal link."""
@@ -1976,10 +2011,11 @@ class NAc(StoreFileOwnership):
                 del self._event_outcome_welford[key]
 
     def decay_all(self, factor: float = 0.99) -> None:
-        """Apply decay to all links."""
-        for links in self._links.values():
-            for link in links:
-                link.decay(factor)
+        """Apply decay to all links, under ``self._lock`` like every other link mutator."""
+        with self._lock:
+            for links in self._links.values():
+                for link in links:
+                    link.decay(factor)
 
     def tag_imagined_links(self, entity_refs: frozenset[str]) -> int:
         """Retroactively tag causal links involving imagined entities.
@@ -2525,6 +2561,17 @@ class NAc(StoreFileOwnership):
             return 0.0
         return self._reward_bias.get((agent_id, node_id), 0.0)
 
+    def eligibility_snapshot(self, agent_id: str, *, min_strength: float = 0.01) -> dict[str, float]:
+        """``{node_id: strength}`` for ``agent_id``'s traces above ``min_strength``, copied under the lock.
+
+        The read surface for composers (``TemporalCreditDistributor``):
+        ``decay_eligibility`` mutates ``_eligibility`` under ``self._lock`` from
+        the loop thread, so iterating the dict under any OTHER lock can raise
+        "dictionary changed size during iteration".
+        """
+        with self._lock:
+            return {nid: s for (aid, nid), s in self._eligibility.items() if aid == agent_id and s > min_strength}
+
     def get_temporal_anchors(self, agent_id: str) -> dict[str, tuple[float, Any]]:
         """Return temporal anchors for an agent, keyed by node_id.
 
@@ -2570,6 +2617,8 @@ class NAc(StoreFileOwnership):
         only ``distribute_reward`` — which has no production caller — ablated
         nothing.
         """
+        _require_finite(reward, op="credit_node", name="reward")
+        _require_reward_bias_agent_id(agent_id, op="credit_node")
         if self._reward_bias_disabled:
             return
         with self._lock:
@@ -2697,6 +2746,7 @@ class NAc(StoreFileOwnership):
         """
         if not agent_id:
             raise ValueError("update_cluster_reward requires non-empty agent_id")
+        _require_finite(reward, op="update_cluster_reward", name="reward")
         if not cluster_id:
             return
         with self._lock:
@@ -2810,6 +2860,7 @@ class NAc(StoreFileOwnership):
         """
         if not agent_id:
             raise ValueError("credit_operant_reward requires non-empty agent_id")
+        _require_finite(reward, op="credit_operant_reward", name="reward")
         with self._lock:
             pending = self._pending_operant_action.get(agent_id)
         if pending is None:
@@ -2986,6 +3037,7 @@ class NAc(StoreFileOwnership):
                 phantom None key in _goal_reward_bias).
             reward: Positive = deliberation helped, negative = wasted time.
         """
+        _require_finite(reward, op="credit_goal", name="reward")
         if goal_tag is None:
             return
         with self._lock:
@@ -3171,6 +3223,7 @@ class NAc(StoreFileOwnership):
             raise ValueError("record_percept_valence requires non-empty entity_class")
         if not failure_mode:
             raise ValueError("record_percept_valence requires non-empty failure_mode")
+        _require_finite(valence, op="record_percept_valence", name="valence")
         with self._lock:
             key = (agent_id, entity_class, failure_mode)
             current = self._percept_valences.get(key, 0.0)
@@ -3241,6 +3294,7 @@ class NAc(StoreFileOwnership):
         """
         if not agent_id:
             raise ValueError("record_cluster_fear requires non-empty agent_id")
+        _require_finite(intensity, op="record_cluster_fear", name="intensity")
         if not cluster_id or not failure_mode:
             return
         if failure_mode not in self.config.cluster_fear_failure_modes:
@@ -3421,6 +3475,8 @@ class NAc(StoreFileOwnership):
                 or a TemporalCreditDistributor event weight).
             temporal_sig: Optional TemporalSignature for SCN-coupled credit.
         """
+        _require_finite(activation, op="update_eligibility", name="activation")
+        _require_reward_bias_agent_id(agent_id, op="update_eligibility")
         with self._lock:
             self._eligibility[(agent_id, node_id)] = activation
             if temporal_sig is not None:
@@ -3450,6 +3506,7 @@ class NAc(StoreFileOwnership):
         # Exp 37 ablation arm 3: no-op when MAXIM_NAC_REWARD_BIAS_DISABLED=1.
         # Tests whether bio-learning is load-bearing for the cross-session
         # behavioral delta vs LLM in-context recall.
+        _require_finite(reward, op="distribute_reward", name="reward")
         if self._reward_bias_disabled:
             return []
         credited: list[tuple[str, float]] = []
@@ -3684,11 +3741,10 @@ class NAc(StoreFileOwnership):
         Wire 2 (release_0_9_1.md Stage 3): adds ``percept_valences``.
         Wire 1 (release_0_9_1.md Stage 4): adds
         ``event_outcome_welford``. The envelope-level
-        ``_format_version`` stamped by ``save()`` is
-        ``_NAC_FORMAT_VERSION = "1.2"``; backward-compat readers
-        (``load_state``) handle missing ``percept_valences`` /
-        ``event_outcome_welford`` keys by returning empty dicts so
-        pre-Wire-1 (1.0 / 1.1) payloads still load.
+        ``_format_version`` stamped by ``save()`` is ``_NAC_FORMAT_VERSION``
+        (its history is the comment at its definition); backward-compat
+        readers (``load_state``) read every later-added key as empty so
+        older payloads still load.
         """
         with self._lock:
             return {
@@ -3780,23 +3836,34 @@ class NAc(StoreFileOwnership):
         # §8.5 decay block both multiply these values, and a TypeError
         # there disables ALL per-tick NAc maintenance for the session
         # (review fold, Exec #1).
+        # A non-finite value (``json.load`` accepts NaN/Infinity) is DROPPED
+        # and counted: NaN is never pruned (``nan < 0.001`` is False) and the
+        # clamps turn it into the cap. Disk data, so drop + one warning below,
+        # where a live caller passing one raises (``_require_finite``).
+        non_finite: dict[str, int] = {}
         self._reward_bias = {}
         for key_str, bias in state.get("reward_bias", {}).items():
+            # First ':' — agent ids cannot hold one (_require_reward_bias_agent_id); node ids can.
             parts = key_str.split(":", 1)
             if len(parts) != 2:
                 continue
             try:
-                self._reward_bias[(parts[0], parts[1])] = float(bias)
+                value = float(bias)
             except (TypeError, ValueError):
                 continue
+            if _count_non_finite(value, "reward_bias", non_finite):
+                continue
+            self._reward_bias[(parts[0], parts[1])] = value
 
         # Goal-level reward biases (backward-compatible: missing → empty)
         self._goal_reward_bias = {}
         for goal, bias in state.get("goal_reward_bias", {}).items():
             try:
-                self._goal_reward_bias[goal] = float(bias)
+                value = float(bias)
             except (TypeError, ValueError):
                 continue
+            if not _count_non_finite(value, "goal_reward_bias", non_finite):
+                self._goal_reward_bias[goal] = value
 
         # G4: cluster-keyed reward biases. Missing field → empty dict
         # (backward-compatible: every aut_nac.json written before G4
@@ -3808,9 +3875,11 @@ class NAc(StoreFileOwnership):
             if len(parts) != 3:
                 continue
             try:
-                self._cluster_reward_bias[(parts[0], parts[1], parts[2])] = float(bias)
+                value = float(bias)
             except (TypeError, ValueError):
                 continue
+            if not _count_non_finite(value, "cluster_reward_bias", non_finite):
+                self._cluster_reward_bias[(parts[0], parts[1], parts[2])] = value
 
         # 1.2 inherent-class marker. Missing field → empty (pre-1.2 files).
         # Only markers whose bias actually loaded are kept — a marker naming
@@ -3850,9 +3919,11 @@ class NAc(StoreFileOwnership):
             if len(parts) != 3:
                 continue
             try:
-                self._percept_valences[(parts[0], parts[1], parts[2])] = float(valence)
+                value = float(valence)
             except (TypeError, ValueError):
                 continue
+            if not _count_non_finite(value, "percept_valences", non_finite):
+                self._percept_valences[(parts[0], parts[1], parts[2])] = value
 
         # Wire 4 (Exp 58): situation-keyed fear. Missing field → empty
         # (backward-compat: pre-1.4 payloads). Loaded values are re-clamped
@@ -3867,6 +3938,8 @@ class NAc(StoreFileOwnership):
                 v = float(valence)
             except (TypeError, ValueError):
                 continue
+            if _count_non_finite(v, "cluster_fear", non_finite):
+                continue  # before the clamp, which reads NaN / -inf as the deepest fear
             self._cluster_fear[(parts[0], parts[1], parts[2])] = max(-self.config.max_cluster_fear, min(v, 0.0))
 
         # Wire 1 (release_0_9_1.md Stage 4): per-(agent_id, event_signature)
@@ -3892,6 +3965,11 @@ class NAc(StoreFileOwnership):
             except (TypeError, ValueError):
                 # Corrupt entry — skip; tests assert this doesn't crash load.
                 continue
+            welford = self._event_outcome_welford[(parts[0], parts[1])]
+            if any(_count_non_finite(v, "event_outcome_welford", non_finite) for v in welford.values()):
+                del self._event_outcome_welford[(parts[0], parts[1])]
+        if non_finite:
+            logger.warning("NAc load dropped non-finite stored values (NaN/inf): %s", non_finite)
 
     def apply_wall_clock_decay(self, elapsed_s: float) -> dict[str, int]:
         """Age the bias surfaces by elapsed wall-clock seconds.
@@ -3991,13 +4069,14 @@ class NAc(StoreFileOwnership):
         Raises ``ValueError`` if neither is set. ``overwrite`` replaces an existing file this instance
         never read; without it such a save raises ``StoreOverwriteRefused`` (#971).
 
-        Stamps ``_format_version`` at ``_NAC_FORMAT_VERSION``
-        (``"1.2"`` as of Wire 1, release_0_9_1.md Stage 4).
+        Stamps ``_format_version`` at ``_NAC_FORMAT_VERSION`` (the
+        version history is the comment at its definition).
         Backward-compat reader accepts older payloads:
             - 1.0: ``percept_valences`` + ``event_outcome_welford`` absent
             - 1.1 (Wire 2): ``event_outcome_welford`` absent
+            - ≤1.2: ``saved_at`` absent (no decay-on-load)
             - ≤1.3: ``cluster_fear`` absent (Wire 4, Exp 58)
-        Both missing keys deserialise to empty dicts; the version drift
+        Missing keys deserialise to empty dicts; the version drift
         is surfaced once per process via ``check_format_version``.
         """
         path = path or self.config.persistence_path
@@ -4110,8 +4189,8 @@ class NAc(StoreFileOwnership):
             return False, error_msg
 
     def get_version(self) -> str:
-        """Return data format version."""
-        return "1.0"
+        """Return the data format version ``save()`` stamps."""
+        return _NAC_FORMAT_VERSION
 
 
 __all__ = ["NAc", "NACConfig"]
