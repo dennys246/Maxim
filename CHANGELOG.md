@@ -37,6 +37,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The SCN's coupled oscillator observes each tool outcome once, not twice** (NAc credit path, A2). With a
+  temporal-credit distributor wired, `ToolPainBridge`'s persistent signature-keyed SCN entry and the distributor's
+  per-event entry both called `SCN.register`, and each fed the oscillator. The bridge's entry now passes the new
+  `register(..., observe_oscillator=False)` when a distributor is wired. The bins are unchanged: both entries stay,
+  and the signature entry still persists across sessions. Guard: `tests/unit/test_nac_credit_path_a2.py`.
+- **A cluster bias's credit source no longer outlives the bias** (A2). The per-tick decay prune, the wall-clock decay
+  prune and `load_state` now drop `_cluster_reward_source` entries with no matching `_cluster_reward_bias`; a stale
+  source turned a later credit from a different branch into `"mixed"` and narrated a bias that no longer existed.
+  A loaded file with orphaned sources logs one warning with the count. Guard: `tests/unit/test_nac_credit_path_a2.py`.
+- **NAc's per-event outcome statistics are bounded by its links** (A2). When `_enforce_limits` evicts the last causal
+  link of an event signature, that signature's empty `_links` slot and its `_event_outcome_welford` state go with it,
+  so they no longer grow with every signature ever seen. This also resets that signature's variance history:
+  `get_action_risk_profile` restarts for it if it is booked again. Guard: `tests/unit/test_nac_credit_path_a2.py`.
+
 - **The benchmark summary no longer prints "0/3 passed [PASS]"** ([#1310](https://github.com/dennys246/Maxim/issues/1310)).
   The verdict comes from the suite's metric thresholds (`ModelResult.passed`); the count is the scenarios'
   expectations. Each now has its own label: `expectations 0/3 met · thresholds PASS`. A suite with no `scoring`

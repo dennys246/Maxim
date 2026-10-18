@@ -37,8 +37,9 @@ class ToolPainBridge:
     4. Future calls: should_gate_tool() queries NAc before execution
 
     When an SCN instance is provided, tool events are also registered as
-    temporal signatures so the system can learn time-of-day / day-of-week
-    patterns in tool reliability.
+    persistent temporal signatures so the system can learn time-of-day /
+    day-of-week patterns in tool reliability; the coupled oscillator observes
+    each outcome once (see ``_register_temporal_outcome``).
 
     Reflexion integration:
     When a surprising failure occurs (RPE > 0.3), a verbal self-critique is
@@ -183,6 +184,40 @@ class ToolPainBridge:
             if entry is not None:
                 entry[0] = max(values) if entry[0] is None else max(entry[0], *values)
 
+    def _register_temporal_outcome(
+        self,
+        event_type: str,
+        event_signature: str,
+        *,
+        significance: float,
+        activation: float,
+        context: dict[str, Any],
+    ) -> None:
+        """Register ONE outcome temporally: its persistent SCN signature entry plus the distributor event.
+
+        Two registrations, two jobs. The direct ``scn.register(event_signature, ...)`` is a PERSISTENT,
+        signature-keyed bin entry (``BoundedBin.add`` keeps an id already present; nothing removes it
+        across sessions) that the bin readers use for time-of-day patterns in tool reliability
+        (``query_hour``, ``query_similar_time``, ``query_intersection``, bin-population thresholds). The
+        distributor's ``record_event`` lays the eligibility trace and registers a per-event id that
+        ``cleanup_session`` unregisters. Both used to feed the coupled oscillator, so every outcome was
+        observed twice (A2): with a distributor wired, the direct entry no longer observes the
+        oscillator; without one, it is the only registration and still does.
+        """
+        if self._scn is not None:
+            try:
+                from maxim.time.temporal_signature import TemporalSignature
+
+                self._scn.register(
+                    event_signature,
+                    TemporalSignature.now(),
+                    significance=significance,
+                    observe_oscillator=self._distributor is None,
+                )
+            except Exception:
+                log_swallowed_exception()  # SCN registration is best-effort
+        self._emit_temporal_event(event_type, event_signature, activation, context)
+
     def _emit_temporal_event(
         self,
         event_type: str,
@@ -192,9 +227,9 @@ class ToolPainBridge:
     ) -> None:
         """Emit a TemporalEvent through the distributor (best-effort).
 
-        Additive to the existing SCN registration — the distributor
-        routes events through NAc eligibility traces and SCN phase
-        anchoring for temporal credit attribution.
+        The distributor routes the event through NAc eligibility traces,
+        SCN bin registration and phase anchoring for temporal credit
+        attribution; callers go through ``_register_temporal_outcome``.
         """
         if self._distributor is None:
             return
@@ -363,23 +398,11 @@ class ToolPainBridge:
                 if goal_text:
                     self._tool_index.record_outcome(goal_text, tool_name, success=_index_success)
 
-            # Register positive temporal signal with SCN
-            if self._scn is not None:
-                try:
-                    from maxim.time.temporal_signature import TemporalSignature
-
-                    self._scn.register(
-                        event_signature,
-                        TemporalSignature.now(),
-                        significance=0.3,  # Mild positive signal
-                    )
-                except Exception:
-                    log_swallowed_exception()  # SCN registration is best-effort
-
-            # Emit temporal event for credit attribution
-            self._emit_temporal_event(
+            # One temporal registration for the outcome (mild positive signal)
+            self._register_temporal_outcome(
                 "tool",
                 event_signature,
+                significance=0.3,
                 activation=0.3,
                 context={
                     "outcome": "success" if valence is Valence.POSITIVE else "ineffective",
@@ -525,23 +548,11 @@ class ToolPainBridge:
             if reflection:
                 self._store_reflection(reflection, action_dict, surprise=rpe)
 
-        # Register temporal context with SCN (mirror record_tool_complete path).
-        if self._scn is not None:
-            try:
-                from maxim.time.temporal_signature import TemporalSignature
-
-                self._scn.register(
-                    event_signature,
-                    TemporalSignature.now(),
-                    significance=outcome_context["intensity"] or 0.5,
-                )
-            except Exception:
-                log_swallowed_exception()  # SCN registration is best-effort.
-
-        # Emit temporal event for credit attribution
-        self._emit_temporal_event(
+        # One temporal registration for the outcome (mirror record_tool_complete path).
+        self._register_temporal_outcome(
             "pain",
             event_signature,
+            significance=outcome_context["intensity"] or 0.5,
             activation=outcome_context.get("intensity") or 0.5,
             context={
                 "outcome": "embodiment_failure",
@@ -594,23 +605,11 @@ class ToolPainBridge:
                 if reflection:
                     self._store_reflection(reflection, action_dict, surprise=rpe)
 
-            # Register temporal context with SCN
-            if self._scn is not None:
-                try:
-                    from maxim.time.temporal_signature import TemporalSignature
-
-                    self._scn.register(
-                        event_signature,
-                        TemporalSignature.now(),
-                        significance=signal.intensity,
-                    )
-                except Exception:
-                    log_swallowed_exception()  # SCN registration is best-effort
-
-            # Emit temporal event for credit attribution
-            self._emit_temporal_event(
+            # One temporal registration for the outcome
+            self._register_temporal_outcome(
                 "pain",
                 event_signature,
+                significance=signal.intensity,
                 activation=signal.intensity,
                 context={"outcome": "tool_pain", "tool_name": tool_name, "pain_type": signal.pain_type.value},
             )
@@ -712,23 +711,11 @@ class ToolPainBridge:
         # stamped on any action's capture (the pain-memory subscriber captures the pain itself).
         self._create_causal_edges(links)
 
-        # Register temporal context with SCN
-        if self._scn is not None:
-            try:
-                from maxim.time.temporal_signature import TemporalSignature
-
-                self._scn.register(
-                    event_signature,
-                    TemporalSignature.now(),
-                    significance=signal.intensity,
-                )
-            except Exception:
-                log_swallowed_exception()
-
-        # Emit temporal event for credit attribution
-        self._emit_temporal_event(
+        # One temporal registration for the outcome
+        self._register_temporal_outcome(
             "pain",
             event_signature,
+            significance=signal.intensity,
             activation=signal.intensity,
             context={"outcome": "embodiment_pain", "entity": entity_path, "failure_mode": failure_mode},
         )

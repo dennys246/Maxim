@@ -233,6 +233,8 @@ class SCN(StoreFileOwnership):
         signature: TemporalSignature,
         significance: float = 0.5,
         temporal_context: "TemporalContext | None" = None,
+        *,
+        observe_oscillator: bool = True,
     ) -> None:
         """Register a memory's temporal signature in all indices.
 
@@ -240,6 +242,10 @@ class SCN(StoreFileOwnership):
             memory_id: Unique memory identifier
             signature: Temporal signature to register
             significance: Significance score for bounded-bin eviction (0-1)
+            observe_oscillator: Feed the coupled oscillator with this signature. ``False`` when
+                the same occurrence is registered under a second id that already fed it, so one
+                event is observed once (A2: ``ToolPainBridge``'s persistent signature entry next
+                to the distributor's per-event entry).
         """
         hour_bin, day_bin, week_bin, month_bin = signature.to_bins()
         self._circadian_bins[hour_bin].add(memory_id, significance)
@@ -249,7 +255,7 @@ class SCN(StoreFileOwnership):
         self._signatures[memory_id] = signature
 
         # Feed coupled oscillator (if enabled)
-        if self._oscillator is not None:
+        if observe_oscillator and self._oscillator is not None:
             self._oscillator.observe(signature)
 
     @_locked
