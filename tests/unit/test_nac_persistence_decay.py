@@ -282,6 +282,7 @@ class TestApplyDecayDeprecated:
         _rewrite_saved_at(path, time.time() - 180 * DAY_S)
         return path
 
+    @pytest.mark.single_agent_only
     def test_apply_decay_false_warns_and_switches_the_opt_in_off(self, tmp_path):
         """The --resume-sim / read-only-observer opt-out still loads disk truth, now with a warning."""
         path = self._old_file(tmp_path)
@@ -291,6 +292,7 @@ class TestApplyDecayDeprecated:
         assert nac2.cluster_reward_bias("a1", "cluster_1", "tool:warm") == pytest.approx(0.8)
         assert nac2._reward_bias[("a1", "node_1")] == pytest.approx(0.2)
 
+    @pytest.mark.single_agent_only
     def test_apply_decay_true_decays_that_one_load_on_a_default_config(self, tmp_path):
         """Owner decision 2026-10-18: during the 1.4.x window apply_decay=True enables offline decay for that one
         load, whatever the config; the next keyword-free load of the same file is verbatim again."""
@@ -311,6 +313,7 @@ class TestApplyDecayDeprecated:
             nac2.load(apply_decay=False)
         assert nac2.cluster_reward_bias("a1", "cluster_1", "tool:warm") == pytest.approx(0.8)
 
+    @pytest.mark.single_agent_only
     def test_apply_decay_true_under_the_opt_in_still_decays(self, tmp_path):
         path = self._old_file(tmp_path)
         nac2 = _opted_in(path)
@@ -318,6 +321,7 @@ class TestApplyDecayDeprecated:
             nac2.load(apply_decay=True)
         assert nac2._cluster_reward_bias == {}
 
+    @pytest.mark.single_agent_only
     def test_load_safe_warns_and_passes_the_switch_through(self, tmp_path):
         path = self._old_file(tmp_path)
         nac2 = _opted_in(path)
