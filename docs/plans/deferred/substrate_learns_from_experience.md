@@ -1,6 +1,8 @@
 # Substrate learns from lived experience (close the write-path in llm-primary + imagination)
 
-> **⏸ DEFERRED 2026-08-27 — Phase 1 ✅ SHIPPED (PR #437, cluster-reward write path closed in llm-primary; Exp 52's relief credit builds on it). Phases 2 (imagined provenance) + 3 (rehearsal) unbuilt; no roadmap owner. **Revive when** imagination is allowed to write to the substrate (the imagined-provenance flag is the hard prerequisite).**
+> **⏸ DEFERRED 2026-08-27 — Phase 1 ✅ SHIPPED (PR #437, cluster-reward write path closed in llm-primary; Exp 52's relief credit builds on it). Phases 2 (imagined provenance) + 3 (rehearsal) unbuilt; no roadmap owner.**
+>
+> **Revive when:** (proposed 2026-10-18, owner to confirm) a roadmap rung or a filed issue names imagined-provenance substrate writes (imagination writing to the substrate under an `imagined` flag) (replaces: imagination is allowed to write to the substrate).
 
 **Status:** DESIGN (2026-07-28). Motivated by the Exp 44 counterfactual: a pre-loaded
 substrate faded from "rewarding" to "neutral" within ~27 llm-primary decisions

@@ -3,7 +3,9 @@
 > **Build plan v2, 2026-10-11**, for [../experiments/b1_exp60_floor_prereg.md](../experiments/b1_exp60_floor_prereg.md)
 > (v3: its §Frozen implementation rules come from this review). v1 had a four-lens parallel review (Executor,
 > Architecture, Wire integrity, Experiment integrity); every lens returned DO-NOT-BUILD items, all folded here
-> (§Review record). Nothing is built yet.
+> (§Review record). **BUILT and RAN (2026-10-18 status):** PR-A #1236, PR-B #1238, PR-C #1245, CLI fix #1258;
+> the run (#1283) returned `FLOOR_MATCHED_Q`, so T1-13 is PARTIAL (narrow: floor matched). This plan is the
+> build record.
 
 ## What exists (the build fits into it)
 

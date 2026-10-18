@@ -1,6 +1,8 @@
 # Decay + consolidation calibration framework
 
-> **DEFERRED (2026-07-15 plans audit):** DRAFT, never implemented (~1,400 LOC, 6 phases). One prereq shipped (tau split PR #267); the other (scn_decay_anchoring) is itself deferred, so this is hard-blocked. **Revive when:** multi-machine benchmarking confirms decay timescales are the remaining bottleneck, or a new NAc tau consumer inherits a wrong default again — and scn_decay_anchoring ships first.
+> **DEFERRED (2026-07-15 plans audit):** DRAFT, never implemented (~1,400 LOC, 6 phases). One prereq shipped (tau split PR #267); the other is now [experience_clock_decay.md](../experience_clock_decay.md), the experience-clock NAc decay that supersedes scn_decay_anchoring (re-pointed 2026-10-18; S0 merged in #1368, S1 in flight, S3–S6 slated for 1.3.6).
+>
+> **Revive when:** (proposed 2026-10-18, owner to confirm) experience_clock_decay.md's S3–S6 ship, AND multi-machine benchmarking confirms decay timescales are the remaining bottleneck or a new NAc tau consumer inherits a wrong default again (replaces: the same conditions behind scn_decay_anchoring).
 
 
 **Target version:** 1.1+ (post-tau-split, post-SCN-tying).

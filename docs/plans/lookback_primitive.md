@@ -154,4 +154,4 @@ chose v2 and approved filing #888 and #889.
 
 [roadmap_1_4.md](roadmap_1_4.md) §Phase 5 (R4) · [memory_strength_and_forgetting.md](memory_strength_and_forgetting.md)
 (decision 6) · [deferred/grounded_word_binding.md](deferred/grounded_word_binding.md) (L2) ·
-[three_factor_credit_assignment.md](three_factor_credit_assignment.md) (the R4 map).
+[deferred/three_factor_credit_assignment.md](deferred/three_factor_credit_assignment.md) (the R4 map).

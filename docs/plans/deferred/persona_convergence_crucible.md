@@ -1,6 +1,8 @@
 # Persona Convergence Crucible
 
-> **DEFERRED (2026-07-15 plans audit):** 8 Roy iterations ran 2026-05-10→05-26 with real substrate data; runs then stopped. Headline finding stands and is load-bearing negative evidence: substrate carryover writes correctly but is behaviorally inert — root-caused to the LinguisticEncoder/SensorEncoder 768-vs-384-dim split (Roy-4/5a). Roy-1 Adversarial remains designed-unrun. Do NOT archive — the iteration log is cited by bio_emergent + behavioral_graduation_candidates. **Revive when:** encoder replacement / cross-modal alignment ships (grounded_language_acquisition Phase 1 or jepa_cross_modal_alignment) so priming and test percepts share an EC region — then Roy-1 Adversarial becomes runnable.
+> **DEFERRED (2026-07-15 plans audit):** 8 Roy iterations ran 2026-05-10→05-26 with real substrate data; runs then stopped. Headline finding stands and is load-bearing negative evidence: substrate carryover writes correctly but is behaviorally inert — root-caused to the LinguisticEncoder/SensorEncoder 768-vs-384-dim split (Roy-4/5a). Roy-1 Adversarial remains designed-unrun. Do NOT archive — the iteration log is cited by bio_emergent + behavioral_graduation_candidates.
+>
+> **Revive when:** (proposed 2026-10-18, owner to confirm) GL4 S1 ships: pair assembly in [latent_forward_model.md](../latent_forward_model.md) ([grounding.md](../grounding.md) GL4); then re-check whether Roy-1 Adversarial is runnable (replaces: encoder replacement / cross-modal alignment via grounded_language_acquisition Phase 1 or jepa_cross_modal_alignment).
 
 
 **Status:** living doc, ongoing practice

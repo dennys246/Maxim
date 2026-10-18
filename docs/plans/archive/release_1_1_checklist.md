@@ -41,7 +41,7 @@ release mechanics.
 ### 1. 🔵 Exp 44 — LLM-primary embodied choice (bounded experiment; NOT fire-and-forget)
 - Apparatus shipped: G1 deterministic scene harm (`MAXIM_DETERMINISTIC_SCENE_EMBODIMENT`),
   imagination gate (`MAXIM_DISABLE_IMAGINATION`), the `--aut-mode llm-primary` harness.
-- **Blockers before a valid run** (see [exp44_overnight_runcard.md](../deferred/exp44_overnight_runcard.md)):
+- **Blockers before a valid run** (see [exp44_overnight_runcard.md](exp44_overnight_runcard.md)):
   ops stack (model + n_ctx via `maxim config`), a **confirming validation seed** (does the AUT
   act? does harm fire? is arm A below ceiling?), and the **Track-1 drive-pain cadence** change
   that stales prior numbers.

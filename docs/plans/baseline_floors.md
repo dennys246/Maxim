@@ -1,6 +1,7 @@
 # Baseline floors: a bare LLM, a generic-memory LLM, and a non-LLM learner beside every claim
 
-> **PROPOSED 2026-10-10 — a parallel line** ([roadmap_1_4.md](roadmap_1_4.md) §Parallel lines). Owner
+> **ACTIVE — B0 merged (#1233), B1 built (#1236/#1238/#1245) and ran `FLOOR_MATCHED_Q` (#1283); B2–B4 open
+> (2026-10-18).** Proposed 2026-10-10 as a parallel line ([roadmap_1_4.md](roadmap_1_4.md) §Parallel lines). Owner
 > decisions BF1–BF2 (DECISIONS.md 2026-10-10). This revises the owner's draft "Maxim: Bare-LLM Baseline
 > Plan" (2026-10-10, kept outside the repo as a `.docx`) after a four-angle read-only dive against
 > `origin/main` 8ff5ae70: the Exp 60 world, the Exp 37 harness, which bio layers the builder can separate,
@@ -185,11 +186,9 @@ Each stage is one PR or more and goes through the reviews its kind requires.
   bio-faithful lenses. No LLM, so no contention with qwen32b on the rig box. It carries a real threat,
   which is its value: with about two relevant states (shore, submerged), a one-step learner may match FEAR
   once it has tried `escape_water`. Decisions for the design review:
-  - **The seam.** Exp 60 acts through `run_agentic_loop(aut_mode="substrate-primary")`, and
-    `substrate_proposal.propose_via_substrate` has no hook. Either a `src/` proposer hook (a `src/` change,
-    three-lens code review, inside BF1's fence) or a scripts-only driver that encodes sensors with the same
-    `SensorEncoder` + EC and acts through `simulation/minecraft.py::MinecraftClient` directly. The design
-    review picks one; until it does, B1 is not "scripts only".
+  - **The seam (decided; built).** The `src/` proposer hook won: `substrate_proposal.SubstratePolicy` (#1236, B1
+    PR-A), driven by `scripts/survival_world/b1_floor_run.py` (#1238, PR-B); [baseline_floors_b1_build.md](baseline_floors_b1_build.md).
+    The alternative was a scripts-only driver encoding sensors with the same `SensorEncoder` + EC.
   - Exp 60's training is propose-only, so a Q-learner gets no action-outcome samples. Either it learns
     from the pain on the proposed action's value, or training executes (which breaks the yoked schedule).
   - Exploration is the real independent variable. `substrate_explore_bonus_weight` is pinned at 0.0 in
@@ -241,8 +240,7 @@ Each stage is one PR or more and goes through the reviews its kind requires.
   suite (LongMemEval or LoCoMo) running `bare_llm`, `llm_notes` and `full` through the same record, after
   B4.
 
-B0 needs nothing else. B1 needs no LLM and no decomposition, but needs its seam decision. B2 → B3 → B4 are
-serial.
+B0 and B1 are done (2026-10-14). B2 → B3 → B4 are serial.
 
 ## Side findings (each gets its own issue)
 
@@ -263,21 +261,21 @@ serial.
 
 - **Baselines win on the LLM path.** Plausible given T1-2's history. Under BF2 that is a recorded boundary
   result, and it sharpens the story around the substrate-path results.
-- **`tabular_q` matches Exp 60.** Equally plausible. The defensible claim then narrows to what a tabular
+- **`tabular_q` matches Exp 60.** This happened (B1, `FLOOR_MATCHED_Q`, 2026-10-14). The defensible claim then narrows to what a tabular
   learner on the same keys does not do: transfer between agents (Exp 61). Cross-pool transfer (Exp 62) is
   credited to the EC's keying, which both arms share, unless a second floor keyed on discretized raw sensors
-  is run. Better learned from B1 than from a reviewer.
+  is run. Better learned from B1 than from a reviewer, and it was: T1-13/14/15 are PARTIAL (floor matched).
 - **Scope creep.** The bare loop must not grow features. The layer rule, the `sys.modules` check and the
   prompt snapshot are the brake; no shared registry until a second consumer.
 - **BF2 slows earning.** Intended. The LLM path cannot earn until B2 (B3 for cross-session claims); the substrate rungs carry two more
   arms each.
-- **Rig time.** B1 needs the Minecraft server; B0, B2 and B3 do not.
+- **Rig time.** B1 used the Minecraft server (done); B2 and B3 do not need it.
 
 ## Open decisions (asked at each stage's start)
 
-- B1: the seam (`src/` proposer hook vs scripts-only driver); how `tabular_q` learns under propose-only
-  training; its exploration schedule.
-- B3: episodic retrieval or Reflexion first.
+Decided and removed (2026-10-18): B1's seam, learning rule and exploration schedule (the `src/` hook; the frozen
+prereg rules), and B3's order (Reflexion first, owner decision 2026-10-17).
+
 - B4: bare prompt written by a different reader, or a published ReAct format verbatim; trials per arm (set
   in the prereg).
 - B5: LongMemEval or LoCoMo.

@@ -1,9 +1,10 @@
 # Config extensibility — what stays closed, and what opens
 
-> **DEFERRED in place 2026-10-17 (owner):** not on the path to 1.4.0. The file stays at this path because src/ cites it. **Revive when:** a third-party setting or strategy is requested, or the [#856](https://github.com/dennys246/Maxim/issues/856) format-version decision is taken.
+> **REVIVED 2026-10-18 (owner decision).** Deferred in place 2026-10-17; its revive trigger, the [#856](https://github.com/dennys246/Maxim/issues/856) format-version decision, had already fired (#856 closed 2026-09-29). The file stays at this path because src/ cites it.
+> **Proposed homing (owner to confirm):** after 1.3.3's single config-format bump (`CONFIG_FORMAT_VERSION` 1.3 → 1.4, once, in 1.3.3; `roadmap_1_3_x.md`), so Phase 2's new top-level key rides a later bump (proposed 2026-10-18, owner to confirm).
 
 **Status:** Drafted 2026-09-22. Not scheduled; Phase 1 is ready to sequence behind the
-memory-strength line, Phase 2 wants the `#856` format-version decision first.
+memory-strength line. Phase 2 wanted the `#856` format-version decision first; #856 closed 2026-09-29.
 **Motivating question:** do the config restrictions we keep adding make Maxim unextendable by
 anyone who is not the author?
 **Adjacent:** [#856](https://github.com/dennys246/Maxim/issues/856) (config-format downgrade
@@ -123,7 +124,8 @@ Phase 2 adds a top-level key, which is precisely the #856 hazard: an older build
 file refuses the unknown key and every `maxim` command fails until the file is hand-edited. The
 `extensions` key must not ship before that decision, or it ships the bug it is meant to relieve.
 
-Not re-litigated here — #856 owns it. This plan only records the dependency.
+Not re-litigated here — #856 owns it. This plan only records the dependency. (2026-10-18: #856 closed
+2026-09-29, so the dependency is met; the key still lands with a `CONFIG_FORMAT_VERSION` bump.)
 
 ## Security notes
 

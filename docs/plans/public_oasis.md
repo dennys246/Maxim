@@ -1,6 +1,11 @@
 # Public Oasis on own hardware (`oasis.pymaxim.bio`)
 
-**Status:** PROPOSED 2026-09-19 (**Phase 0 SCHEDULED 2026-09-24** — [social_referencing.md](social_referencing.md) depends on it) — scoping pass only, no code written, nothing deployed. Produced
+**Status 2026-10-18:** Phase 0 items 1, 2, 5 (the client half), 6 and 7 are done, and item 4's license is
+decided (`CDLA-Permissive-2.0`, recorded under item 7). **Remaining:** item 3 (the publication-privacy read) and
+item 5's server-side anonymous/scoped read tier. **Phase 1 has no release home** in roadmap_1_3_x.md or
+roadmap_1_4.md; it waits for an owner slot.
+
+**Status (original):** PROPOSED 2026-09-19 (**Phase 0 SCHEDULED 2026-09-24** — [social_referencing.md](social_referencing.md) depends on it) — scoping pass only, no code written, nothing deployed. Produced
 from a read of the frozen [sharing_threat_model.md](sharing_threat_model.md), the shipped
 `src/maxim/hivemind/` receiver, and the Slice D deferral in
 [hivemind_p2p_scope.md](archive/hivemind_p2p_scope.md). **Recommendation: publish, do not accept.**
@@ -8,7 +13,7 @@ from a read of the frozen [sharing_threat_model.md](sharing_threat_model.md), th
 Phase 1 is buildable now and adds no new trust decision; Phase 2 stays deferred behind conditions
 this document names. Merging this plan is not the decision — see §The decision record this needs.
 
-**Sibling plan, deliberately not duplicated:** [deferred/hf_hive_repository.md](deferred/hf_hive_repository.md)
+**Sibling plan, deliberately not duplicated:** [hf_hive_repository.md](hf_hive_repository.md)
 already decomposes *public distribution vs public submission* and its trust argument (§2) applies
 verbatim here. That plan's host is Hugging Face; this one's host is the owner's own hardware at a
 domain he controls. This document owns only what differs — the self-hosted deployment, the
@@ -274,7 +279,7 @@ the owner merges it. It is a separate commit so the plan can land without it.
 
 - [sharing_threat_model.md](sharing_threat_model.md) — FROZEN 2026-09-04; the receiver contract
   Phase 2 owes a repo-side addendum.
-- [deferred/hf_hive_repository.md](deferred/hf_hive_repository.md) — the sibling plan; §2 carries
+- [hf_hive_repository.md](hf_hive_repository.md) — the sibling plan; §2 carries
   the trust argument this document cites rather than restates.
 - [archive/hivemind_p2p_scope.md](archive/hivemind_p2p_scope.md) — Slice D deferral, its four
   prerequisites, and decision point 4.

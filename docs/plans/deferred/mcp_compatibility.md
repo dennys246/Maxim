@@ -1,6 +1,8 @@
 # MCP Compatibility — server, client, and schema interop
 
-> **DEFERRED (2026-07-15 plans audit):** Not started — zero MCP code in tree; only the CC9 dual-format Tool schema prerequisite shipped (PR #204). **Revive when:** the MCP spec reaches a stable 1.0 AND a concrete user need appears (Claude Desktop ↔ Maxim tools, or consuming an external MCP server).
+> **DEFERRED (2026-07-15 plans audit):** Not started — zero MCP code in tree; only the CC9 dual-format Tool schema prerequisite shipped (PR #204).
+>
+> **Revive when:** (proposed 2026-10-18, owner to confirm) an open issue filed by someone other than the owner requests MCP, or a sibling repo (maxim-pulse, maxim-web) needs it (replaces: MCP spec 1.0 AND a concrete user need).
 
 
 **Status:** Design exploration, post-1.0 (1.1 track). Stub.

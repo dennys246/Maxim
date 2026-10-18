@@ -1,10 +1,11 @@
 # Reachy App — Maxim-side seams
 
-> **⏸ DEFERRED 2026-08-27 — MVP seams ✅ SHIPPED (#416/#419/#424/#425/#426/#427/#428; `pi` extra) in `src/maxim/console/`. **Revive** VOICE + CONTENT with `reachy_dm_app.md` (the post-1.1 Adventure track).**
+> **REVIVED 2026-10-18 (owner decision); the file stays under `deferred/` because `scripts/fit_substrate_footprint.py` cites this path.** Deferred 2026-08-27 with the MVP seams shipped (#416/#419/#424/#425/#426/#427/#428; `pi` extra) in `src/maxim/console/`. The Console shipped in 1.3.2 (contract 0.6.0: run history, health, stall detection; CHANGELOG `[1.3.2]`). VOICE + CONTENT revive with [reachy_dm_app.md](../reachy_dm_app.md).
+> **Proposed homing (owner to confirm):** alongside Session S (the pulse seam) / post-1.3.3 console work (proposed 2026-10-18, owner to confirm).
 
-**Status:** Shell plan, drafted 2026-07-23. The Maxim-repo counterpart to the app-repo docs [reachy_mini_app.md](../archive/reachy_mini_app.md) (MVP) + [reachy_dm_app.md](reachy_dm_app.md) (Adventure flagship). Those *reference* these seams; this plan *specifies and builds* them.
+**Status:** Shell plan, drafted 2026-07-23. The Maxim-repo counterpart to the app-repo docs [reachy_mini_app.md](../archive/reachy_mini_app.md) (MVP) + [reachy_dm_app.md](../reachy_dm_app.md) (Adventure flagship). Those *reference* these seams; this plan *specifies and builds* them.
 **Scope:** The pymaxim-side work the Reachy app rides on. Per the "keep the app thin — fix hard things in pymaxim" cardinal rule, the real engineering lives here. Mostly **facades exposing existing internals** + **one real refactor** (the persistent-agent injection, inside HANDLE) + **packaging**. No new cognitive machinery.
-**Target:** MVP-enabling seams (HANDLE, RECALL, PROBE, SETUP, PKG) for the 1.1-era app MVP; DM-track seams (VOICE, CONTENT) post-1.1 alongside [reachy_dm_app.md](reachy_dm_app.md).
+**Target:** MVP-enabling seams (HANDLE, RECALL, PROBE, SETUP, PKG) for the 1.1-era app MVP; DM-track seams (VOICE, CONTENT) post-1.1 alongside [reachy_dm_app.md](../reachy_dm_app.md).
 **Gates:** **FIT (substrate fits the Pi)** is the hard prerequisite for the whole app — do it first. Nothing here is a pymaxim *release* gate; it's additive integration surface.
 
 **Seam IDs are mnemonic** (not sequential): each names what it delivers. Prerequisite: `FIT`. MVP: `HANDLE`, `RECALL`, `PROBE`, `SETUP`, `PKG`. Console Phase 3: `EVENT`. DM-track: `VOICE`, `CONTENT`.
@@ -127,7 +128,7 @@ Three rules make it work: **(1) provenance-filter** — show real memories; in-f
 
 ---
 
-## DM-track seams (post-1.1, with [reachy_dm_app.md](reachy_dm_app.md))
+## DM-track seams (post-1.1, with [reachy_dm_app.md](../reachy_dm_app.md))
 
 ### VOICE — voice-loop plumbing + (conditionally) STT placement
 
@@ -180,5 +181,5 @@ Remaining sub-decisions (deferred to build, not blocking):
 
 ## References
 
-- App-repo plans: [reachy_mini_app.md](../archive/reachy_mini_app.md) · [reachy_dm_app.md](reachy_dm_app.md) · seed [AGENTS.md/CLAUDE.md](../maxim_pulse_seed)
+- App-repo plans: [reachy_mini_app.md](../archive/reachy_mini_app.md) · [reachy_dm_app.md](../reachy_dm_app.md) · seed [AGENTS.md/CLAUDE.md](../maxim_pulse_seed)
 - [perception_pipeline_placement.md](perception_pipeline_placement.md) (VOICE STT placement) · [deferred/dungeon_master_extensions.md](dungeon_master_extensions.md) (CONTENT depth gate)

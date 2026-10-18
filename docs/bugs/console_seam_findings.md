@@ -74,7 +74,7 @@ Documented at the HANDLE seam so `talk()`'s docstring cannot imply otherwise.
 **Observed:** talk shipped missing the enrichment pipeline, thought gate and
 `wire_memory_hub` that the sim AUT wires — invisible until someone diffed the
 two call sites. Fixed *by hand at one site*.
-**Plan + revive trigger:** [deferred/loop_stack_builder.md](../plans/deferred/loop_stack_builder.md).
+**Plan + revive trigger:** [loop_stack_builder.md](../plans/loop_stack_builder.md).
 
 ### Issue 4: a wordless turn is explained, not prevented
 

@@ -1,6 +1,9 @@
 # Engram formation — the gaps, and how each gets fixed
 
-**Status:** ACTIVE, opened 2026-09-25. A 1.4 line (see [roadmap_1_4.md](roadmap_1_4.md) §Parallel
+**Status 2026-10-18:** E1–E4 are DONE (#908–#911 closed 2026-10-05). What remains is T7's caller grep in the
+1.4.0 release PR (§Done when); archive this plan after that grep. E5–E7 ride on their owning rungs.
+
+**Status (original):** ACTIVE, opened 2026-09-25. A 1.4 line (see [roadmap_1_4.md](roadmap_1_4.md) §Parallel
 lines, "Engram integrity", and release threshold T7). Items E1–E4 are engineering and gate 1.4.0;
 E5–E7 ride on rungs that already own them and gate nothing on their own.
 
@@ -101,7 +104,7 @@ plan's E7 to be revisited in the same PR.
 **Root cause.** The annotators were written against the pre-clamp `reward_bias`; negative experience
 now lives in `percept_valences` / `cluster_fear` / edge valence, none of which the annotators read.
 
-**Status: DONE 2026-10-04 (option 2, owner decision; extended to a third site found in review).**
+**Status: DONE 2026-10-05 (option 2, owner decision; extended to a third site found in review).**
 The unreachable branch is deleted in `tools/discovery.py::SensePresenceTool._annotate_aff`,
 `integration/bio_enrichment.py::_annotate_affordance_valence` and the substrate fallback of
 `tools/discovery.py::SenseToolsTool._nac_annotation`; the docstrings say "effective or unlabeled", and
@@ -198,10 +201,10 @@ line's GL4 ([grounding.md](grounding.md)); E7's owner pointer moves there.)*
 ## Sequencing
 
 ```
-PR 1  docs only (this plan, the tracker, roadmap, brief pointers)        ← now
+PR 1  docs only (this plan, the tracker, roadmap, brief pointers)        ← DONE (#912)
 PR 2  E1 + E2 (small src + docs + caller-scan guard)                      ← DONE 2026-10-04
-PR 3  E3 (dead branch + swallow narrowed)                                 ← with PR 2 or after
-PR 4  E4 measurement script + result; code only if the tree says so      ← offline, any time
+PR 3  E3 (dead branch + swallow narrowed)                                 ← DONE 2026-10-05
+PR 4  E4 measurement script + result; code only if the tree says so      ← DONE 2026-10-06 (NO COLLAPSE)
 E5    Phase 5 keying plan → four-lens → re-runs                           ← after Phase 0 instrument
 E6    memory line 2S-e plan → four-lens                                    ← its own schedule
 E7    Phase 5 graded-predictor audit                                       ← when a rung names it

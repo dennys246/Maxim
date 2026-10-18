@@ -9,10 +9,11 @@
 - **T1-2 (Exp 37) is resolved by B4 before 1.4.0.** If B4 has not run, 1.4.0 waits.
 - **Exp 60/61/62 (T1-13/14/15) are PARTIAL, floor matched** (B1, 2026-10-14/15). This plan's EARNED wording
   predates that; each place is annotated below.
-- **The fence ends at T0**, and T0 is far from closed: 31 of 32 items open, no characterization arms, three
+- **The fence lifts when 1.3.6's decomposition slices land — the point at which T0 can pass** (owner decision
+  2026-10-18), and T0 is far from closed: 33 items, 32 open (as of 2026-10-18), no characterization arms, three
   functions over the limit.
 
-**Status:** DRAFT v2 (2026-09-18) — v1 went to a five-lens parallel design review the same day
+**Status (historical; superseded by the 2026-10-16 banner above):** DRAFT v2 (2026-09-18) — v1 went to a five-lens parallel design review the same day
 (confounding, bio-faithful, wiring, environment, scope + engineering; reports preserved verbatim in
 [rationale/roadmap-1-4/](rationale/roadmap-1-4/)). Every lens returned DO-NOT-BUILD on at least one
 rung *as sketched* and none attacked the thesis or the ladder's order. v2 folds all of them
@@ -510,7 +511,8 @@ decision (1).
 **Rules the line carries into this roadmap:**
 - Body world first. The word world comes later, as the innate-prior tier, after the orchestrator
   decomposition.
-- `src/` waits for the 1.3.2 decomposition fence (§Groundwork), except GL2a and GL4 S1, inside an
+- `src/` waits for the decomposition fence (§Groundwork; it lifts when 1.3.6's decomposition slices land — the
+  point at which T0 can pass), except GL2a and GL4 S1, inside an
   exact exempt file set (Groundwork item 6).
 - Every automatic behaviour declares its tier. The word embedding is an innate prior; the consequence
   predictor is learned. New invariants enter as `[engineering]`.
@@ -622,7 +624,7 @@ frozen status verbatim; **EARNED** per rung = every frozen gate of that rung's p
   loop_perception wraps of #863's own close condition, and three orchestrator SEM_TRACE wraps that widen #863
   beyond its own scan (which excluded `simulation/`) by owner decision 2026-10-15, classified by its 2026-09-24
   DROP/KEEP rule. Two more items were added later the same day (owner decision 2026-10-15), bringing the total to
-  32. They carry #1281's remainder after PR #1299 fixed its root cause and #1281 closed. `1305.owned-rng` (seeded
+  32 (#1323 added `1323.functions-1000` on 2026-10-16, so 33; 32 open as of 2026-10-18). They carry #1281's remainder after PR #1299 fixed its root cause and #1281 closed. `1305.owned-rng` (seeded
   reproducibility, #1305): no module under `default_network/`, `attention/` or `spatial/`, nor
   `decisions/significance.py`, draws from a process-global generator (the stdlib `random` module's functions, or
   numpy's legacy `np.random.*` functions). Each draws from an owned generator whose seed derives from the one
@@ -675,7 +677,9 @@ frozen status verbatim; **EARNED** per rung = every frozen gate of that rung's p
   - **(b) The plans reviewed:** grounding.md (the umbrella's own review included) and its three
     sub-plans have each been through the
     four-lens design review with no unfolded DO-NOT-BUILD, and through the three-lens review every
-    sub-plan gets.
+    sub-plan gets. (The umbrella and `autonomic_layer.md` had theirs 2026-10-09; the remaining two,
+    [thalamic_relay.md](thalamic_relay.md) and [latent_forward_model.md](latent_forward_model.md), go to Session E,
+    paper only, before 1.4.0; owner decision 2026-10-18.)
   - **(c) Dormancy and re-points done**, for the markers the line owns:
     - `Hippocampus.retrieve_cross_modal` is marked Dormant;
     - `episode.py::apply_hebbian_on_close`, bugs-ledger D6 and ledger T3-7 are re-pointed from "the 1.3
@@ -741,11 +745,15 @@ standing, typed grant, and who may issue it.
 (social referencing: "no src before 1.3.2"; grounded word binding: "L1 adds a modality to the loop
 1.3.2 is decomposing"), and a may-fail result measured on a loop mid-refactor cannot tell a null from
 the refactor (the divergence rule). What runs now is everything that needs **no loop code**, so each
-line reaches "ready to build" the day 1.3.2 ships.
+line reaches "ready to build" the day the fence lifts. *(2026-10-18: 1.3.2 shipped 2026-10-16 without the remaining
+slices, so this groundwork continues in parallel with 1.3.3–1.3.6; the fence lifts when 1.3.6's decomposition slices
+land — the point at which T0 can pass.)*
 
 **The boundary:** paper (preregs, design reviews), offline measurements and non-loop plumbing only.
 Nothing under `runtime/agent_loop.py`, `decisions/nac.py`'s selection path or `simulation/orchestrator.py`
-until the 1.3.2 decomposition slices touching it have landed. The end of that fence is mechanical: T0 in §Release thresholds, `scripts/release_gates.json`.
+until the decomposition slices touching it have landed. The fence lifts when 1.3.6's decomposition slices land — the
+point at which T0 can pass (owner decision 2026-10-18; T0 in §Release thresholds, `scripts/release_gates.json`). The
+slices did not all land in 1.3.2; they continue in 1.3.5 and 1.3.6.
 
 **Dev-box groundwork (Track B), in order of value:**
 1. **Exp 62's different-reader pass** — cheap, and it turns a ledger row (EARNED then; PARTIAL, floor matched, since 2026-10-15) into a result 1.4 may
@@ -761,7 +769,8 @@ until the 1.3.2 decomposition slices touching it have landed. The end of that fe
    its own; see the [deferred/grounded_word_binding.md](deferred/grounded_word_binding.md) banner.)*
 3. **Social referencing's prerequisites** ([social_referencing.md](social_referencing.md)): the remaining
    [public_oasis.md](public_oasis.md) Phase 0 items it depends on, and the four-lens design review of its
-   Exp C prereg (paper; its src waits for 1.3.2 and its rig time for E3).
+   Exp C prereg (paper; its src waits for the fence to lift, when 1.3.6's decomposition slices land, and its rig
+   time for E3).
 4. **E1's prereg drafted and design-reviewed** (four lenses) so it can freeze as soon as Phase 0's E1 part
    exists — paper now, freeze later.
 5. **The coding world's paper and offline half** ([coding_world.md](coding_world.md) C0, behind its own
@@ -874,11 +883,13 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   engram family forms found the situation engram (EC sensor cluster + NAc fear/want) is the only one
   that reaches behaviour without the LLM; episodic/semantic traces reach it only as prompt text, and
   motor engrams have no production caller. **Four engineering items gate 1.4.0 (T7)**: the Cerebellum
-  is never saved ([#908](https://github.com/dennys246/Maxim/issues/908)), the motor-engram docs
+  was never saved ([#908](https://github.com/dennys246/Maxim/issues/908), fixed by PR #1106, closed 2026-10-05; it
+  now saves to `<home>/cerebellum.json` at session end), the motor-engram docs
   overclaim and its read side is undeclared-dormant ([#909](https://github.com/dennys246/Maxim/issues/909)),
   the unreachable `[DANGEROUS]` annotation is removed ([#910](https://github.com/dennys246/Maxim/issues/910), 2026-10-04),
   and reward widening is text-only with an unmeasured drift hazard
-  ([#911](https://github.com/dennys246/Maxim/issues/911) — an offline measurement, not a fix). None
+  ([#911](https://github.com/dennys246/Maxim/issues/911) — an offline measurement, not a fix). *(All four closed by
+  2026-10-05.)* None
   touches a survival rung's path; all run off the rig. **Scheduled into 1.3.2 (2026-09-27).** Its three larger items ride on owners that
   already exist: the daily wrap (#899) on Phase 5 keying, the episodic readout (#848) on the memory
   line's 2S-e, motor engrams on Phase 5's graded-predictor audit.
@@ -886,7 +897,7 @@ declared arm or not at all (1.3's D1 posture, applied to research lines).
   from the language line, needs no language): consult a locally held, verified Oasis mirror only when
   the agent is both ignorant and being hurt, holding the answer as advice apart from its own
   experience. **Depends on** [public_oasis.md](public_oasis.md) Phase 0 (scheduled for it); **src after
-  1.3.2**; **rig after E3's campaign**; opt-in and never on in an E1–E3 arm. Its Exp C is a may-fail
+  the fence lifts** (when 1.3.6's decomposition slices land; it read "after 1.3.2" until 2026-10-18); **rig after E3's campaign**; opt-in and never on in an E1–E3 arm. Its Exp C is a may-fail
   bet of its own, which is why it waits for E3 rather than sharing the release's headline.
 - **Coding world** ([coding_world.md](coding_world.md), PROPOSED 2026-09-27; revives
   [deferred/coding_habits_oasis.md](deferred/coding_habits_oasis.md) by owner request, and Exp 55 with it):

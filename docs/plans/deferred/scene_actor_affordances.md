@@ -1,6 +1,8 @@
 # Scene Actor Affordances — let scene entity affordances drive AUT body sensors
 
-> **DEFERRED (2026-07-15 plans audit):** Stages 1+2 SHIPPED and stable (PR #213 — `target_effect` on AffordanceSchema + `OrchestratorActorTool`; hardened in PR #316). Stages 3–5 (orchestrator prompt rule, designer template hint, validation experiment) unbuilt; explicitly 1.1+ enrichment off the current track. **Revive when:** an adversarial/combat sim (or Minecraft-mob benchmark) needs narrated entity actions to produce real AUT body mechanics, or when re-evaluating [agent_backed_entities.md](agent_backed_entities.md) — Stage 5 is that decision's gate.
+> **DEFERRED (2026-07-15 plans audit):** Stages 1+2 SHIPPED and stable (PR #213 — `target_effect` on AffordanceSchema + `OrchestratorActorTool`; hardened in PR #316). Stages 3–5 (orchestrator prompt rule, designer template hint, validation experiment) unbuilt; explicitly 1.1+ enrichment off the current track.
+>
+> **Revive when:** (proposed 2026-10-18, owner to confirm) a roadmap rung or a filed issue names an adversarial/combat sim or Minecraft-mob benchmark that needs narrated entity actions to produce real AUT body mechanics. This trigger does not wait on [agent_backed_entities.md](agent_backed_entities.md); this plan's Stage 5 is that plan's single trigger (replaces: "or when re-evaluating agent_backed_entities", a mutual wait).
 
 
 **Status:** PARTIAL — Stages 1+2 shipped 2026-04-30 (PR #213). Stages 3-5 are 1.1+ work (orchestrator prompt update, designer template hint, validation experiment).
