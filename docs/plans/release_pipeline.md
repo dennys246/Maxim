@@ -150,7 +150,7 @@ environment and the ruleset in `check_repo_settings.py` is deferred (below); `ch
   1. `release.yml` merges at or before the bump.
   2. The owner does the setup (environment, ruleset, publisher).
   3. Bump, nightly, signed tag, approve.
-  - The dispatch rehearsal does not cover the tag, signature, environment or OIDC steps; the first real upload is
+  - The dispatch rehearsal does not cover the tag, signature or OIDC steps; the first real upload is
     their first run.
   - The hand path in `publication_guide.md` stays the documented fallback until 1.3.3 has gone through this workflow.
 
