@@ -92,19 +92,78 @@ It adds one new workflow file and no new script. Without it, publishing is a seq
 
 `test_ci_workflow_shape.py` pins #938's `pull_request` guard on the nightly step. `test_check_nightlies.py` covers `--at`. `test_check_repo_settings.py` covers the new pins.
 
-## Owner setup (one-time; listed in the PR)
+## Owner setup (one-time; listed in the PR), in this order (SF1)
 
-1. **PyPI** → pymaxim → Publishing → add a GitHub trusted publisher:
-   - owner `dennys246`;
-   - repository `Maxim`;
-   - workflow `release.yml`;
-   - environment `pypi`.
-2. **GitHub** → Settings → Environments → `pypi`:
-   - required reviewer: you;
-   - deployment branches and tags: selected, tag pattern `v*`;
-   - prevent self-review stays off (you are the only reviewer).
-3. **GitHub** → Rulesets → new tag ruleset `release-tags`:
-   - target `refs/tags/v*`;
-   - restrict creations, updates and deletions;
-   - bypass: Repository admin.
-4. Then `python3 scripts/check_repo_settings.py --snapshot`, reviewed in a PR, re-pins the expected settings.
+1. **GitHub** → Settings → Environments → **New environment** `pypi`:
+   - Required reviewers: you.
+   - Deployment branches and tags: **Selected branches and tags** → add a rule of type **Tag**, pattern `v*`.
+2. **GitHub** → Settings → Rules → Rulesets → **New tag ruleset** `release-tags`:
+   - Enforcement: Active.
+   - Target: include by pattern `v*`.
+   - Rules: Restrict creations, Restrict updates, Restrict deletions.
+   - Bypass list: Repository admin.
+3. **PyPI** → pymaxim → Settings → Publishing → **Add a new publisher** (GitHub). This comes LAST: the publisher
+   matches only the environment's name, so the protected environment has to exist before this step.
+   - Owner `dennys246`.
+   - Repository `Maxim`.
+   - Workflow `release.yml`.
+   - Environment `pypi`.
+
+## Design pass (2026-10-18): BUILD WITH FOLDS, all folded (these override the text above)
+
+**SHOULD-FIX:**
+- **SF1, a missing environment is re-created unprotected (fail-open).** `build` runs `check_release_tag.py environment`
+  before `publish` can be scheduled. It requires required reviewers and deployment policies of exactly `[v* tag]`,
+  and an unreadable answer is exit 2. The owner setup order is now environment → ruleset → trusted publisher, last
+  (§Owner setup). Pinning the environment and ruleset in the nightly drift check (`check_repo_settings.py`) is new code
+  in that script, which reads only `main` and `settings-check` today, so it is deferred to a follow-up issue. The
+  in-workflow check is the gate.
+- **SF2, a stale run waiting for approval could publish a superseded commit (fail-open).**
+  - `concurrency: release-${{ github.ref }}`, with no cancel-in-progress.
+  - After approval, `check_release_tag.py still` re-resolves the tag and requires the same tag object and commit.
+  - Recovery: reject the old run before re-tagging.
+- **SF3, nothing compared the tag with the version.** `check_release_tag.py tag` checks tag = `v` + pyproject =
+  `__init__`, with tests. "No new script" was wrong: this is the one new script.
+- **SF4, `--at`.** `check_nightlies.py --at <sha>` reads `gh run list --commit <sha>`. A run counts only if it is
+  scheduled or dispatched, not cancelled, on `main`, with that head sha. A dispatch has to test the commit that gets
+  tagged, so the order is: tag the commit a green nightly tested, at or after the bump. A later tag commit makes
+  `lint_release_gates` read the version as released, and its gates CLOSE (print only). The bump PR already enforced
+  them, so this is harmless.
+- **SF5, staleness across the approval wait.** `publish` re-runs `check_nightlies --at` and `--verify-pin` after
+  approval, as R4's fold 3 also requires.
+- **SF6, circular checksums.** The digests are `build` job outputs, which later jobs cannot change. `smoke`, `publish`
+  and `github-release` each run `sha256sum -c` against them.
+- **SF7, partial upload.** The upload uses `skip-existing: true`, then a mandatory check that PyPI serves exactly the
+  two built files with the output digests. Recovery is re-running the failed `publish` job of the SAME run, never
+  re-tagging (artifact retention is 30 days).
+- **SF8, checkable steps before the irreversible one.** `check_release_tag.py notes` runs in `build`: the notes file
+  must exist with no relative links. The `vendored console:` line travels as a job output into the Release notes.
+- **SF9, the tag object.** The ref must be `object.type == "tag"` (a lightweight tag is refused). The check reads
+  `git/tags/<tag object sha>` and requires `verified` with reason `valid`, the pinned tagger email, and a commit
+  equal to `github.sha`. The checkout must also satisfy `rev-parse $GITHUB_REF^{commit} == $GITHUB_SHA`.
+- **SF10, pulse coupling.** The strict option was built (the default recommendation): `--verify-pin` runs in `build`
+  and again after approval, so a pulse release in the window blocks publishing until the pin moves. **Owner to
+  confirm.**
+- **SF11, sequencing for 1.3.3.**
+  1. `release.yml` merges at or before the bump.
+  2. The owner does the setup (environment, ruleset, publisher).
+  3. Bump, nightly, signed tag, approve.
+  - The dispatch rehearsal does not cover the tag, signature, environment or OIDC steps; the first real upload is
+    their first run.
+  - The hand path in `publication_guide.md` stays the documented fallback until 1.3.3 has gone through this workflow.
+
+**NIT:**
+- N1: the tag, not the upload, is now the "released" marker. Between the bump merge and the tag, PRs are still red
+  on the nightly check, and that window now includes nightly and approval latency.
+- N2: the `build` checkout uses `fetch-depth: 0`.
+- N3: actions are sha-pinned. The publish action builds a container, so its pin is not hermetic (accepted residual).
+- N4: `attestations: true` is pinned.
+- N5: job names are prefixed `Publish:`, so they collide with no required check.
+- N6: every artifact is sha-checked before use.
+- N7: the sdist is audited, not installed (accepted).
+- N8: `python -m maxim --help` exits through argparse.
+- N9: `--verify-tag` and tag-typed deployment policies are confirmed real.
+
+**From R4's architecture review:** inside a tag-push run the tag exists, so `releasing()` reads False. `release.yml`
+therefore never passes `--only-when-releasing`, `--contract-drift-ok-unless-releasing` or `--force`;
+`tests/unit/test_release_workflow_shape.py` pins that.
