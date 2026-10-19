@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import tomllib
@@ -119,11 +120,27 @@ def is_tagged(version: str) -> bool:
     """Whether ``v<version>`` exists on the remote (the published-release marker)."""
     proc = subprocess.run(
         ("git", "ls-remote", "--tags", "origin", f"refs/tags/v{version}"),
-        cwd=REPO, capture_output=True, text=True, check=False,
+        cwd=REPO, capture_output=True, text=True, check=False, timeout=60,
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},  # a credential prompt must fail, not hang the release
     )  # fmt: skip
     if proc.returncode != 0:
         raise CheckError(f"git ls-remote: {proc.stderr.strip() or proc.returncode}")
     return bool(proc.stdout.strip())
+
+
+def releasing() -> tuple[bool, str]:
+    """Is this tree cutting a release (pyproject's version has no ``v<version>`` tag yet)? Unreadable = yes.
+
+    The one definition: ``--only-when-releasing`` here and the console gate (R4, ``_console_pin``) both use it, and
+    both fail closed -- a tree whose release status cannot be read is treated as releasing.
+    """
+    try:
+        version = pyproject_version()
+        if is_tagged(version):
+            return False, f"not a release: v{version} is already tagged"
+        return True, f"releasing {version} (no v{version} tag yet)"
+    except (CheckError, OSError, KeyError, TypeError, ValueError, subprocess.SubprocessError) as exc:
+        return True, f"cannot tell whether this tree is releasing ({exc}); treating it as releasing"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -133,11 +150,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.only_when_releasing:
-            version = pyproject_version()
-            if is_tagged(version):
-                print(f"not a release: v{version} is already tagged -- nightlies not required here")
+            is_release, why = releasing()
+            if not is_release:
+                print(f"{why} -- nightlies not required here")
                 return 0
-            print(f"releasing {version} (no v{version} tag yet): the nightlies must be green")
+            print(f"{why}: the nightlies must be green")
         run, jobs = latest_nightly()
         head = main_head()
     except CheckError as exc:
