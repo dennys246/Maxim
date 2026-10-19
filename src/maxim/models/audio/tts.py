@@ -6,7 +6,7 @@ systems with limited resources (e.g., M2 Mac with 24GB unified memory).
 Voice provisioning (~63 MB per voice, pinned and sha256-verified in ``models/download.py::TTS_MODELS``):
     python -m maxim.models.download --tts            # the default voice, by hand
     maxim.models.download.ensure_tts_voice(...)      # programmatic, with consent + its own lock
-    VoiceProvisioner(...)                            # a device: background retry until the voice LOADS
+    VoiceProvisioner(...)                            # a device: background retry until the voice SPEAKS
 
 Intended device-bootstrap usage (the caller lives in the device's bootstrap, e.g. maxim-pulse's Reachy app; no
 pymaxim module wires it yet): arm spoken-code pairing only once the ``VoiceProvisioner`` is ready::
@@ -19,7 +19,6 @@ pymaxim module wires it yet): arm spoken-code pairing only once the ``VoiceProvi
 from __future__ import annotations
 
 import hashlib
-import io
 import logging
 import threading
 import wave
@@ -87,7 +86,7 @@ class PiperTTS:
 
     Features:
     - Lazy model loading (loads on first use)
-    - Raw audio synthesis (avoids WAV encode/decode overhead)
+    - Raw int16 synthesis from piper's per-sentence audio chunks (piper-tts >= 1.3)
     - LRU phrase caching for common phrases
     """
 
@@ -111,7 +110,6 @@ class PiperTTS:
         """
         self._piper: Any = None
         self._voice: Any = None
-        self._has_raw_synthesis: bool | None = None  # Detected on first use
         self.sample_rate: int = 22050  # Piper default, will be updated on load
 
         # Phrase caching
@@ -168,8 +166,7 @@ class PiperTTS:
     def synthesize(self, text: str) -> np.ndarray:
         """Convert text to audio samples.
 
-        Uses raw synthesis if available (faster), falls back to WAV-based
-        synthesis otherwise. Caches common phrases to avoid re-synthesis.
+        Caches common phrases to avoid re-synthesis.
 
         Args:
             text: The text to synthesize.
@@ -201,50 +198,38 @@ class PiperTTS:
         return audio
 
     def _synthesize_raw(self, text: str) -> np.ndarray:
-        """Synthesize audio using raw method if available, else WAV fallback.
+        """Synthesize ``text`` to int16 samples through the piper >= 1.3 API (#1332).
+
+        ``PiperVoice.synthesize(text)`` is a generator of one ``AudioChunk`` per sentence; each chunk carries its
+        samples as ``audio_int16_array`` (mono, ``self.sample_rate``). The pre-1.3 ``synthesize_stream_raw`` and
+        ``synthesize(text, wav_file)`` calls this replaced fail on every version the ``tts`` extra installs.
+
+        A chunk whose float samples are not finite (a corrupt voice, a bad onnxruntime) raises instead of being cast:
+        piper's int16 conversion turns NaN into 0, so the failure would otherwise come out as silence (review fold).
 
         Args:
             text: The text to synthesize.
 
         Returns:
             Audio samples as int16 numpy array.
+
+        Raises:
+            ValueError: the voice produced non-finite samples.
         """
-        # Detect if raw synthesis is available (only check once)
-        if self._has_raw_synthesis is None:
-            self._has_raw_synthesis = hasattr(self._voice, "synthesize_stream_raw")
-            if self._has_raw_synthesis:
-                logger.debug("Using raw synthesis (faster)")
-            else:
-                logger.debug("Using WAV-based synthesis (fallback)")
-
-        # Use raw synthesis if available (avoids WAV encode/decode overhead)
-        if self._has_raw_synthesis:
-            try:
-                audio_chunks = []
-                for audio_bytes in self._voice.synthesize_stream_raw(text):
-                    chunk = np.frombuffer(audio_bytes, dtype=np.int16)
-                    audio_chunks.append(chunk)
-                if audio_chunks:
-                    return np.concatenate(audio_chunks)
-                return np.array([], dtype=np.int16)
-            except Exception as e:
-                logger.warning("Raw synthesis failed, falling back to WAV: %s", e)
-                self._has_raw_synthesis = False
-
-        # Fallback: WAV-based synthesis
-        wav_buffer = io.BytesIO()
-        with wave.open(wav_buffer, "wb") as wav_file:
-            self._voice.synthesize(text, wav_file)
-
-        wav_buffer.seek(0)
-        with wave.open(wav_buffer, "rb") as wav_file:
-            audio_data = wav_file.readframes(wav_file.getnframes())
-            audio = np.frombuffer(audio_data, dtype=np.int16)
-
-        return audio
+        chunks = []
+        for chunk in self._voice.synthesize(text):
+            if not np.isfinite(chunk.audio_float_array).all():
+                raise ValueError("the voice produced non-finite audio")
+            chunks.append(chunk.audio_int16_array)
+        if not chunks:
+            return np.array([], dtype=np.int16)
+        return np.concatenate(chunks).astype(np.int16, copy=False)
 
     def synthesize_to_file(self, text: str, output_path: Path | str) -> Path:
-        """Synthesize text and save to WAV file.
+        """Synthesize text and save to WAV file (mono, 16-bit, ``self.sample_rate``).
+
+        The format is written here, not left to the first audio chunk: text with no sentence yields no chunk, and a
+        WAV writer whose format was never set raises on close (#1332).
 
         Args:
             text: The text to synthesize.
@@ -256,18 +241,23 @@ class PiperTTS:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self._load_model()
+        self._load_model()  # first, so sample_rate is the voice's own even for text that synthesizes nothing
+        audio = self.synthesize(text)
 
         with wave.open(str(output_path), "wb") as wav_file:
-            self._voice.synthesize(text, wav_file)
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(self.sample_rate)
+            wav_file.writeframes(audio.tobytes())
 
         logger.debug("Saved TTS audio to %s", output_path)
         return output_path
 
     @property
     def is_available(self) -> bool:
-        """Check if TTS is AVAILABLE: piper installed and the voice's files present. Not that they are verified or
-        that the voice loads: :meth:`VoiceProvisioner.is_ready` answers that, for a device that must speak."""
+        """Check if TTS is AVAILABLE: piper installed and the voice's files present. Not that they are verified, that
+        the voice loads or that it speaks: :meth:`VoiceProvisioner.is_ready` answers that, for a device that must speak
+        (R1 audit, #1334: this flag checks a precondition and says so)."""
         return _piper_installed() and self.model_path.exists() and self.config_path.exists()
 
 
@@ -325,13 +315,20 @@ def _piper_installed() -> bool:
     return optional_dependency_available("piper")
 
 
+# The phrase VoiceProvisioner synthesizes to prove the voice can speak (R1). Short, so the check costs ~0.1 s on a Pi.
+_READINESS_PHRASE = "Ready."
+# Its peak must exceed this (int16 full scale is 32767; piper normalizes speech to near it), so silence never arms.
+_READINESS_MIN_PEAK = 100
+
+
 class VoiceProvisioner:
     """Provision a Piper voice in the background and report when it can SPEAK (#1268 follow-up F1).
 
     For a device: start it, build the announcer on :attr:`engine`, and pass :meth:`is_ready` to
     ``build_app(pairing_ready=...)``. A daemon thread calls ``ensure_tts_voice(auto=True)`` (deploying the robot app is
-    the consent), checks that ``piper`` is installed and LOADS the voice; on any failure (no network at boot, the extra
-    missing, a corrupt file) it retries with backoff from ``retry_s`` up to ``max_retry_s`` until :meth:`stop`. Until
+    the consent), checks that ``piper`` is installed, LOADS the voice and SYNTHESIZES a short phrase, which must come
+    back as non-empty, finite audio that is not silence (standard R1, #1334: a voice that loads but cannot speak, #1332's shape, never
+    arms). On any failure (no network at boot, the extra missing, a corrupt file, a broken synthesis) it retries with backoff from ``retry_s`` up to ``max_retry_s`` until :meth:`stop`. Until
     then the sign-in page offers only the paste path, and the by-ear path appears without a restart (owner decision
     2026-10-14). A failure is logged by type, never with the voice's bytes or a pairing code.
     """
@@ -356,8 +353,11 @@ class VoiceProvisioner:
         self._ready = threading.Event()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._failures = 0  # failed attempts so far: the first is logged at WARNING, the retries at DEBUG
 
     def is_ready(self) -> bool:
+        """The provisioner thread's cached verdict. Never synthesizes: ``console/server.py::_pairing_of`` calls it on
+        every unauthenticated ``/api/hello``."""
         return self._ready.is_set()
 
     def start(self) -> None:
@@ -376,31 +376,54 @@ class VoiceProvisioner:
         if not download.ensure_tts_voice(self.model_name, auto=True, models_dir=self._models_dir):
             return False
         if not _piper_installed():
-            logger.warning(
+            self._report(
                 "TTS voice %s is on disk but `piper` is not installed (pip install 'pymaxim[tts]')", self.model_name
             )
             return False
         try:
             self.engine.load()
         except Exception as e:  # a corrupt or unloadable voice: retry, and say what kind of failure it was
-            logger.warning("TTS voice %s did not load (%s)", self.model_name, type(e).__name__)
+            self._report("TTS voice %s did not load (%s)", self.model_name, type(e).__name__)
+            return False
+        return self._speaks()
+
+    def _report(self, msg: str, *args: Any) -> None:
+        """A failed attempt: WARNING the first time, DEBUG on each retry (a voice that never speaks retries forever)."""
+        (logger.warning if self._failures == 0 else logger.debug)(msg, *args)
+
+    def _speaks(self) -> bool:
+        """R1: exercise the capability once, end to end. The phrase is fixed, so no pairing code is ever spoken here."""
+        try:
+            audio = np.asarray(self.engine.synthesize(_READINESS_PHRASE))
+        except Exception as e:  # loads but cannot speak (#1332): retry, and say what kind of failure it was
+            self._report("TTS voice %s loaded but did not synthesize (%s)", self.model_name, type(e).__name__)
+            return False
+        samples = audio.astype(np.float64, copy=False)
+        finite = bool(np.isfinite(samples).all())
+        peak = float(np.abs(samples).max()) if audio.size and finite else 0.0
+        if audio.size == 0 or not finite or peak <= _READINESS_MIN_PEAK:
+            self._report(
+                "TTS voice %s loaded but synthesized no usable audio (%d samples, finite=%s, peak=%.0f)",
+                self.model_name,
+                audio.size,
+                finite,
+                peak,
+            )
             return False
         return True
 
     def _run(self) -> None:
-        delay, failures = self._retry_s, 0
+        delay = self._retry_s
         while not self._stop.is_set():
             try:
                 ok = self._attempt()
             except Exception as e:  # ANY failure (a lock, a stat, storage) is a retry, never a dead thread
                 ok = False
-                (logger.warning if failures == 0 else logger.debug)(
-                    "TTS voice %s provisioning attempt raised %s; retrying", self.model_name, type(e).__name__
-                )
+                self._report("TTS voice %s provisioning attempt raised %s; retrying", self.model_name, type(e).__name__)
             if ok and not self._stop.is_set():
                 self._ready.set()
                 logger.info("TTS voice %s is ready", self.model_name)
                 return
-            failures += 1
+            self._failures += 1
             self._stop.wait(delay)
             delay = min(delay * 2, self._max_retry_s)

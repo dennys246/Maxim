@@ -80,6 +80,7 @@ It creates a uniquely named `.worktrees/suite-<sha>.XXXXXX` under the MAIN check
 | Var | Purpose | Owner |
 |---|---|---|
 | `MAXIM_RUN_MODEL_TESTS` | Opt in to `requires_model_cache` tests (skipped by default; set by the nightly model-cache and slow lanes) | `tests/conftest.py` |
+| `MAXIM_TEST_TTS_VOICE_DIR` | A directory holding the pinned `en_US-lessac-medium` voice for the real-piper tests (`tests/unit/test_tts_real_piper.py`); set by the R2 extras matrix's tts cells, which provision it (`scripts/extras_matrix.py assets`). Unset: those tests skip, which `--require-extras=tts` turns into a failure | `tests/unit/test_tts_real_piper.py` |
 | `MAXIM_EXPECT_NETNS` | Set by `scripts/ci_netns.sh`; arms the network-namespace positive control | `tests/unit/test_network_boundary.py` |
 
 ## 6. Lesson archive
