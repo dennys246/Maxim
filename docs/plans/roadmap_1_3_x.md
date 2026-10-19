@@ -864,10 +864,14 @@ Owner decisions taken with this path (2026-10-16):
   [readiness_and_extras_standards.md](readiness_and_extras_standards.md), standards R1–R4). These block pulse #42,
   v0.4.2:
   - **[#1332](https://github.com/dennys246/Maxim/issues/1332): spoken-code pairing is silent** on every installable
-    piper-tts.
+    piper-tts. *Shipped in [#1381](https://github.com/dennys246/Maxim/pull/1381) (merged 2026-10-19), with R1's first
+    instance and R2's tts cells.*
   - **[#1347](https://github.com/dennys246/Maxim/issues/1347): the `console` extra cannot serve `/ws`.** Plain
     `uvicorn` has no WebSocket library, so a clean `pymaxim[console]` install gives the Console no live stream. The
-    fix declares `websockets` in the extra (owner decision 2026-10-18: not `uvicorn[standard]`), guarded by an R2 test: the extra alone upgrades `/ws` against a real server.
+    fix declares `websockets` in the extra (owner decision 2026-10-18: not `uvicorn[standard]`, whose uvloop and
+    httptools uvicorn would auto-select), guarded by an R2 test: the extra alone upgrades `/ws` against a real server.
+    *In [#1388](https://github.com/dennys246/Maxim/pull/1388), with R2's console cells and the `/ws` shutdown fix
+    (`maxim serve` hung up to 15 s after a Console tab closed).*
   - **[#1333](https://github.com/dennys246/Maxim/issues/1333): the wheel vendored console v0.4.0.** Vendor v0.4.1, and
     make the release check the vendored tag (R4, a gate: design pass first).
   - **The standards, first slice each:**
@@ -875,13 +879,29 @@ Owner decisions taken with this path (2026-10-16):
       `pairing_ready`;
     - [#1335](https://github.com/dennys246/Maxim/issues/1335) (R2): extras tested against the real library, tts
       first;
-    - [#1336](https://github.com/dennys246/Maxim/issues/1336) (R3): typed console payloads.
+    - [#1336](https://github.com/dennys246/Maxim/issues/1336) (R3): typed console payloads. **Slipped to 1.3.4**
+      (owner decision 2026-10-18): 1.3.3 vendors pulse v0.4.1 at contract 0.6.0.
   - **Cut rule:** R3's contract 0.7.0 lands only together with a pulse tag built for 0.7.0. Otherwise it slips past
     the cut, and the release vendors v0.4.1 at contract 0.6.0. Since R4 the bump itself merges, and `main` is then unreleasable until the console pin moves to a
     0.7.0 pulse tag; at the cut, revert the bump or wait ([r4_console_vendor_gate.md](r4_console_vendor_gate.md)).
-  - **Before the cut,** two checks run against the candidate wheel:
-    - pulse's `scripts/smoke-reachy-release.sh` on Linux prints `SMOKE PASSED`;
-    - pulse's browser suite `scripts/e2e.sh` prints `E2E PASSED (59/59)`.
+  - **The 1.3.3 release checklist for the pulse seam** (Session S's code is done once #1388 merges; these are what
+    is left, in order):
+    - [ ] **#1388 merges** once `scripts/pr_merge_readiness.py 1388` exits 0.
+    - [ ] **The first nightly after it is green in all four `extras-matrix` cells** (console and tts, each at floor and
+      latest). They are `(nightly)` jobs, so `scripts/check_nightlies.py` refuses the cut while one is red. A PR runs
+      only the cells its diff touches; the nightly runs every one, so its green is the release evidence. A red cell is
+      an upstream break (cap the requirement or fix the code) or a lane bug; never an override.
+    - [ ] **Pulse's two checks against the REAL 1.3.3 candidate wheel**, which also carries #1383's vendored bundle.
+      Both passed 2026-10-19 against a wheel built from #1388's branch (E2E 59/59 in Chrome; SMOKE 7/7 in an aarch64
+      container, with PR #42's Reachy app); re-run them on the cut:
+      - pulse's `scripts/smoke-reachy-release.sh` on Linux prints `SMOKE PASSED`;
+      - pulse's browser suite `scripts/e2e.sh` prints `E2E PASSED (59/59)`.
+      Run them from a fresh clone of pulse with `REACHY_APP` set to PR #42's app until #42 merges (pulse `main` does
+      not wire the voice provisioner yet).
+    - [ ] **The note to pulse at the release** (with the M70 rule): the vendored tag (v0.4.1, contract 0.6.0); no
+      untyped `data` field changed from Session S; `pairing_ready` now means the voice has SPOKEN audible audio once,
+      not that it loaded (R1); pulse's `apps/reachy/maxim_reachy_app/app.py` comment "until the voice loads" should
+      say "speaks"; the `console` extra now installs `websockets`; and #42 can pin `>=1.3.3` and ship as v0.4.2.
 - **Advisor mode** ([#1315](https://github.com/dennys246/Maxim/issues/1315); [advisor_mode.md](advisor_mode.md),
   verified against v1.3.2 and reviewed 2026-10-17). It moved here from §After 1.4.0 at an external request; it is
   planned here and ships as 1.3.4 (below).
@@ -966,6 +986,23 @@ them. Session V's atonia items do not hold the 1.3.3 cut; they are 1.3.4 (owner 
   items 5 (full), 7, 8, 11, 13 and 14 follow in a later patch.
 - **It ships when it is done, on its own clock.** It is a security-critical gate with five design passes, so it does
   not hold 1.3.3. The orchestrator and loop phase 2 do not wait for it, and if they are ready first they ship first.
+- **The pulse seam, second slice (Session S).** These follow 1.3.3's first slice. They ride 1.3.4 if they are ready,
+  hold nothing, and are filed as issues when Session S starts them:
+  - **R3 ([#1336](https://github.com/dennys246/Maxim/issues/1336)), the stall and health kinds first** (slipped from
+    1.3.3, owner decision 2026-10-18). Contract 0.7.0 lands only together with a pulse tag built for 0.7.0 (the cut rule
+    above; since R4 the bump makes `main` unreleasable until the console pin moves). Ask pulse for that tag at the
+    start, not at the cut.
+  - **[#1292](https://github.com/dennys246/Maxim/issues/1292) F4**, the `console.device.build_device_app` facade
+    (design review first). It was "if time remains" in 1.3.3.
+  - **R2's next extras: reachy, then audio** (readiness_and_extras_standards.md §R2 "Order"). Each adds its cells to
+    `scripts/extras_matrix.py::EXTRAS` and leaves `_NOT_YET_IN_MATRIX` in `tests/unit/test_extras_matrix.py`, whose
+    ceiling may only fall (M69, partly mechanized).
+  - **R1's remaining audit** (readiness_and_extras_standards.md §R1: `TTSEngine.is_available`,
+    `LocalSpeaker.is_available`, `SeamStatus.live`, `HealthResponse.monitoring`/`stall_detection`,
+    `ModelInfoWire.ready`; `_health_check` is Session H's): each flag exercises its capability or is renamed. Then
+    M68's lint.
+  - **A startup signal when `maxim serve` has no WebSocket library** (found in #1347's review). An install that gets
+    uvicorn some other way still answers `/ws` with 404 silently; `run_serve` should say so once, R1-shaped.
 - **Session V's other issues ride with it** unless they land before the 1.3.3 cut: #1338, #1342, #1362 and #1366
   (#1366 proposed 2026-10-18, owner to confirm).
 - **Exit:** the registration and dispatch sweeps, the builder-refusal tests and item 10's census test pass.
