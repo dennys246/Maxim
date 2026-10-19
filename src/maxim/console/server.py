@@ -1981,7 +1981,8 @@ def build_app(
     "none"`` and ``/api/pair/*`` refuse with 409, exactly as without an
     announcer. A device whose voice is still provisioning (no network at boot)
     thus offers only the paste path, and the by-ear path appears once the voice
-    loads, without a restart (``models/audio/tts.py::VoiceProvisioner``,
+    has spoken (it loaded AND synthesized audible audio once: standard R1,
+    #1334), without a restart (``models/audio/tts.py::VoiceProvisioner``,
     #1268 follow-up F1). It reveals only that coarse pairing state, which
     ``/api/hello`` already reports.
     """

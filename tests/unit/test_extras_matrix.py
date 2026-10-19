@@ -145,7 +145,7 @@ def test_only_a_pull_request_consults_scope_and_every_later_step_is_gated_in_the
         cond = re.sub(r"\s+", " ", str(step.get("if", "")))
         assert GATE in cond, (step.get("name"), cond)
     roster = next(s for s in later if "check_lane_roster.py" in str(s.get("run", "")))
-    assert roster["if"].startswith("always() && (") and GATE in roster["if"]
+    assert roster["if"].startswith("always() && steps.tests.outcome != 'skipped' && (") and GATE in roster["if"]
     assert (
         roster["run"].strip()
         == "python3 scripts/check_lane_roster.py --lane extras-${{ matrix.extra }} extras-results.xml"
@@ -168,3 +168,27 @@ def test_the_cell_installs_only_the_extra_verifies_it_and_runs_offline():
     assert names.index("Provision the extra's assets (before the network namespace)") < names.index(
         "Run the extra's real-library tests"
     )
+
+
+# M69 (docs/plans/outstanding.md), mechanized: every extra is in the matrix, or named here. The order of R2's rollout
+# (readiness_and_extras_standards.md §R2 "Order"): tts and console in 1.3.3; reachy and audio next; the rest after.
+# This list may only SHRINK: an extra leaves it in the PR that adds its cells, and a new extra is born in the matrix.
+_NOT_YET_IN_MATRIX = frozenset(
+    {
+        "audio", "comms", "console", "database", "llm-anthropic", "llm-llama", "llm-openai", "llm-server", "llm-torch", "pi",
+        "reachy", "search", "semantic", "sign", "temporal", "training", "vision", "yolo",
+    }
+)  # fmt: skip
+# Not libraries a user installs for a capability: an aggregate of the others, and the dev/test toolchain.
+_NOT_A_CAPABILITY = frozenset({"all", "test"})
+_NOT_YET_CEILING = 18  # the count with tts in; lower it with the list; lower it with the list, never raise it
+
+
+def test_every_extra_is_in_the_matrix_or_named_as_not_yet():
+    extras = set(tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["optional-dependencies"])
+    assert extras == set(M.EXTRAS) | _NOT_YET_IN_MATRIX | _NOT_A_CAPABILITY, (
+        f"unaccounted: {sorted(extras - set(M.EXTRAS) - _NOT_YET_IN_MATRIX - _NOT_A_CAPABILITY)}; "
+        f"stale: {sorted((set(M.EXTRAS) | _NOT_YET_IN_MATRIX | _NOT_A_CAPABILITY) - extras)}"
+    )
+    assert not set(M.EXTRAS) & _NOT_YET_IN_MATRIX
+    assert len(_NOT_YET_IN_MATRIX) <= _NOT_YET_CEILING

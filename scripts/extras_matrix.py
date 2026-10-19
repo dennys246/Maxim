@@ -11,7 +11,9 @@ installs ONLY ``pymaxim[<extra>]`` plus pytest, and calls this helper:
     paths, or when the diff cannot be read. Written as ``key=value`` lines for ``$GITHUB_OUTPUT``.
 ``pins --extra X --resolution {floor,latest} -o FILE``
     ``==`` constraints for every requirement of the extra. ``floor``: each requirement's ``>=`` bound (a requirement
-    without one is refused, exit 2). ``latest``: what an unconstrained ``pip install --dry-run --ignore-installed``
+    without one is refused, exit 2). The floor is the extra's DIRECT requirements only (``lowest-direct``): their own
+    dependencies resolve to what pip picks today, so an old-onnxruntime incompatibility under piper-tts 1.3.0 is out
+    of scope. ``latest``: what an unconstrained ``pip install --dry-run --ignore-installed``
     of the extra resolves today. ``[extras]`` are stripped (pip refuses them in a constraints file).
 ``verify --extra X --pins FILE``
     After the install: every pinned requirement whose marker holds here is installed at exactly its pin
@@ -41,17 +43,25 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 # Any change here can break every cell, so a PR touching one runs them all.
+# The lane itself: what every cell installs, imports or runs (the conftest and the guards and plugins it loads, the
+# helper and what it imports, the network namespace).
 SHARED_PATHS = (
     "pyproject.toml",
     "tests/conftest.py",
+    "tests/network_guard.py",
+    "tests/docker_guard.py",
+    "tests/script_module_guard.py",
+    "tests/multi_agent_fixtures.py",
     ".github/workflows/test.yml",
     "scripts/extras_matrix.py",
+    "scripts/_lint_git.py",
     "scripts/check_lane_roster.py",
     "scripts/ci_netns.sh",
 )
 
-# extra -> the paths (prefixes) whose change makes a PR run that extra's cells: the extra's code, its consumers, its
-# tests and its roster. A consumer missing here is caught by the nightly within a day, and by the release gate.
+# extra -> the paths (prefixes) whose change makes a PR run that extra's cells: the extra's code, what its marked tests
+# exercise, its consumers, its tests and its roster. A path missing here is caught by the nightly within a day, and by
+# the release gate; it is not a hole in the guard, only a later red.
 EXTRAS: dict[str, tuple[str, ...]] = {
     "tts": (
         "src/maxim/models/audio/",
@@ -59,6 +69,15 @@ EXTRAS: dict[str, tuple[str, ...]] = {
         "src/maxim/console/announcer.py",
         "src/maxim/utils/response_output.py",
         "src/maxim/utils/audio.py",
+        "src/maxim/utils/optional_deps.py",  # _piper_installed: the provisioner's piper probe
+        "src/maxim/console/server.py",  # _pairing_of, is_ready's consumer
+        "src/maxim/embodied_runtime/agentic_runtime.py",  # builds the agentic runtime's TTSEngine
+        # ensure_tts_voice's path (the assets step and the provisioner): fetch, data paths, storage preflight, lock
+        "src/maxim/utils/http.py",
+        "src/maxim/utils/paths.py",
+        "src/maxim/utils/storage.py",
+        "src/maxim/utils/process_lock.py",
+        # cli.py (`maxim --tts`) also builds a TTSEngine, but nearly every PR touches it; the nightly covers it.
         "tests/unit/test_tts_real_piper.py",
         "tests/unit/test_piper_tts_synthesis.py",
         "tests/unit/test_tts_voice_provisioning.py",
@@ -164,7 +183,7 @@ def closure(roots: list[str], requires_of) -> set[str]:  # noqa: ANN001 (require
     todo = [Requirement(r) for r in roots]
     while todo:
         req = todo.pop()
-        key = (_norm(req.name), frozenset(req.extras))
+        key = (_norm(req.name), frozenset(_norm(e) for e in req.extras))
         if key in seen:
             continue
         seen.add(key)

@@ -91,10 +91,10 @@ Precondition only. Each gets a decision:
 **Cost.** The `{floor, latest} × extra` matrix runs nightly and before a release. A pull request runs only the
 extras its diff touches.
 
-**The console exemption.** Its "latest" lane would move FastAPI past `.github/constraints/console.txt` (0.127.0),
-which pins the OpenAPI generator. So that lane skips the snapshot and fingerprint tests:
-- `test_openapi_snapshot_is_fresh`;
-- `TestContractSurfaceCannotDriftSilently`.
+**No console exemption is needed** (design pass, fold 5, below). A console cell at either resolution moves FastAPI off
+`.github/constraints/console.txt` (0.127.0, the OpenAPI generator's pin), so the snapshot and fingerprint tests
+(`test_openapi_snapshot_is_fresh`, `TestContractSurfaceCannotDriftSilently`) would fail there. They never run there:
+only the real-library tests carry the `extras_console` marker, and those tests stay in `unit-tests` under the pin.
 
 **The second instance: #1347.** The `console` extra installs plain `uvicorn`, which has no WebSocket library, so `/ws`
 returns 404 from a clean install. The `/ws` tests use Starlette's `TestClient`, which never goes through uvicorn, so
@@ -194,21 +194,25 @@ A Mac cannot run the smoke: piper-tts 1.8.0's macOS arm64 wheel cannot find its 
 
 ## R2's lane: approach note (a gate; adversarial design pass before code, 2026-10-18)
 
+*As built (the table and paragraphs below are revised to the design pass's folds, which follow them).*
+
 **What it is.** One `extras-matrix` job in `test.yml`, a `{extra} × {floor, latest}` matrix (1.3.3: `tts`; `console`
-with #1347). Owner decision 2026-10-18: the full matrix runs nightly and on `workflow_dispatch`; a pull request runs
-only the cells whose extra its diff touches. The job names carry `(nightly)`, so `scripts/check_nightlies.py` (the
+with #1347). Owner decision 2026-10-18: the full matrix runs nightly, on `workflow_dispatch` and on a push to main; a
+pull request runs only the cells whose extra its diff touches. The job names carry `(nightly)`, so `scripts/check_nightlies.py` (the
 release gate) refuses a release while any cell is red: that is the "before a release" half. It is not a required
 check: a cell may skip on a PR, and a skipped required check reads as passing.
 
-**Each cell:** a fresh runner with ONLY `pip install -e ".[<extra>]"` plus pytest (at `floor`, a generated constraints
-file pins every requirement of the extra to its declared lower bound); a verify step asserts the installed versions
-(`floor`: each equals its bound); the extra's assets are provisioned before the network namespace (tts: the pinned
+**Each cell:** a fresh runner with ONLY `pip install -e ".[<extra>]"` plus pytest, under a generated `==` constraints
+file (`floor`: each direct requirement's declared lower bound; `latest`: what an unconstrained dry-run resolve picks
+today); a verify step asserts each pin is what got installed and that nothing outside the extra's closure is; the extra's assets are provisioned before the network namespace (tts: the pinned
 voice, through `ensure_tts_voice`, from an `actions/cache` keyed on `download.py`, where the sha256 pins live); then
-the marked tests run inside `scripts/ci_netns.sh` with `--require-extras=<extra>` and the lane's exact roster is checked
+the files applying the marker run inside `scripts/ci_netns.sh` with `--require-extras=<extra>` and the lane's exact roster is checked
 (`scripts/lane_rosters/extras-<extra>.json`, `scripts/check_lane_roster.py`).
 
-**One helper, `scripts/extras_matrix.py`,** owns the table (extra → the paths that make a PR run it, the test marker)
-and three subcommands: `scope` (should this cell run), `constraints` (the floor pins), `verify` (installed = expected).
+**One helper, `scripts/extras_matrix.py`,** owns the table (extra → the paths that make a PR run it) and five
+subcommands: `scope` (a PR only: should this cell run), `pins` (the `==` constraints), `verify` (installed = pinned,
+and only the extra), `tests` (the files applying `extras_<extra>`) and `assets` (tts: the pinned voice). Whether a step
+runs is decided in the YAML, never by the helper (fold 3).
 
 **Inputs, and how each could lie:**
 
@@ -216,12 +220,12 @@ and three subcommands: `scope` (should this cell run), `constraints` (the floor 
 |---|---|---|
 | `GITHUB_EVENT_NAME` | an event this code did not foresee | anything but `pull_request` and `push` runs the cell |
 | the PR's base (merge-base with `origin/main`) | unavailable (shallow clone, a fetch failure) | the cell RUNS; never "no diff, so skip" |
-| `push` to main | no PR to scope by | skips by design: the PR ran the touched cells, the nightly runs all |
+| `push` to main | no PR to scope by | runs every cell, like a nightly: `scope` is consulted only on `pull_request` (fold 3) |
 | changed paths | a rename hides the old path; a deletion is not a "change" | `--name-status -M`, both sides of a rename, deletions count |
-| the path table | a consumer of the extra outside the table changes | the table names the consumers (`console/announcer.py`, `utils/response_output.py`, ...) plus `pyproject.toml`, `tests/conftest.py`, the workflow, the helper and the roster; the residual is caught by the nightly within a day and by the release gate |
-| `pyproject.toml`'s extra | a requirement with no `>=` floor; extras or markers in it (`uvicorn[standard]>=0.29`) | `constraints` refuses a requirement without a floor (exit 2); strips `[extras]` (pip refuses constraints with extras), keeps the marker |
-| the installer | a later install moves a pin; a cached wheel; `.github/constraints/console.txt` leaking into `latest` | `verify` reads `importlib.metadata` after the install: at `floor` each requirement must equal its bound; at `latest` each must equal the newest version the index offers within the requirement's specifier (`pip index versions`, before the namespace; an unreadable answer fails the cell) |
-| the matrix in `test.yml` | an extra added to the table but not the matrix, or the reverse | a fast-suite test pins matrix extras == the table's extras |
+| the path table | a file the cell exercises, or a consumer of the extra, changes outside the table | the table names the extra's code, what its marked tests import (tts: `optional_deps.py`, `console/server.py`, the download path's utils), its consumers, and the lane itself (`pyproject.toml`, the conftest with its guards and plugins, the workflow, the helper with `_lint_git.py`, the roster script, `ci_netns.sh`); the residual (`cli.py`, touched by nearly every PR) is caught by the next push to main, the nightly and the release gate |
+| `pyproject.toml`'s extra | a requirement with no `>=` floor; extras or markers in it (`uvicorn[standard]>=0.29`) | `pins` refuses a requirement without a floor (exit 2); strips `[extras]` (pip refuses constraints with extras), keeps the marker |
+| the installer | a later install moves a pin; a cached wheel; `.github/constraints/console.txt` leaking in; something else installed that satisfies the test (#1347's `websockets`) | the install runs under the `pins` file, and `verify` reads `importlib.metadata` after it: each pin must equal what is installed (`packaging.Version`), and the installed set must be exactly the metadata closure of `pymaxim[<extra>]` + pytest (fold 4, fold 6) |
+| the matrix in `test.yml` | an extra added to the table but not the matrix, or the reverse; a new extra with no cells | fast-suite tests pin matrix == table == lanes == markers, and that every extra is in the matrix or on a not-yet list that may only shrink (M69, partly mechanized) |
 | the tests themselves | they skip (extra missing, asset missing), or a marked test drops out | `--require-extras=<extra>` turns a skip for the extra or its asset into a failure; the exact roster check, in its own `always()` step |
 | the asset cache | stale or corrupted voice | `ensure_tts_voice` re-hashes against the sha256 pins and re-fetches; a failed fetch fails the provision step, before the tests |
 

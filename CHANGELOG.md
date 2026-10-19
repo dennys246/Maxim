@@ -81,14 +81,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     They run in CI's new **R2 extras matrix** ([#1335](https://github.com/dennys246/Maxim/issues/1335), its first
     slice): the `extras-matrix` job installs only `pymaxim[tts]` + pytest at the extra's floor and at its latest,
     checks the pins and that nothing outside the extra is installed, provisions the voice, and holds the cell to its
-    exact roster (`scripts/extras_matrix.py`, `scripts/lane_rosters/extras-tts.json`). Every cell runs nightly, on a push
-    to main and before a release (the release gate reads `(nightly)` jobs); a pull request runs the cells its diff
-    touches.
+    exact roster (`scripts/extras_matrix.py`, `scripts/lane_rosters/extras-tts.json`). Every cell runs nightly and on a
+    push to main, and a pull request runs the cells its diff touches. The cells are `(nightly)` jobs, so the release
+    gate (`scripts/check_nightlies.py`) refuses a release while the latest nightly's cells are red. The floor is the
+    extra's direct requirements; their own dependencies resolve as pip picks today.
 - **`VoiceProvisioner.is_ready()` (the console's `pairing_ready`) now means the voice SPEAKS, not that it loads**
   (standard R1, [#1334](https://github.com/dennys246/Maxim/issues/1334), its first instance).
   - After loading the voice, the provisioner thread synthesizes a short fixed phrase once and arms only on non-empty,
-    finite audio; a voice that loads but cannot speak (#1332's shape) keeps the sign-in page on the paste path and is
-    retried with backoff. `is_ready()` returns that cached verdict and never synthesizes, since
+    finite audio that is not silence (its peak above 100 of int16's 32767); a voice that loads but cannot speak
+    (#1332's shape) keeps the sign-in page on the paste path and is retried with backoff, warning once and then at
+    DEBUG. `PiperTTS.synthesize` now raises `ValueError` on non-finite samples instead of letting piper's int16 cast
+    turn them into silence. `is_ready()` returns that cached verdict and never synthesizes, since
     `console/server.py::_pairing_of` calls it on every unauthenticated `/api/hello`.
   - Guards: `tests/unit/test_tts_voice_provisioning.py::test_a_voice_that_loads_but_cannot_speak_never_arms`,
     `::test_the_provisioner_synthesizes_once_and_is_ready_never_synthesizes` (strict red gates, flipped in place) and

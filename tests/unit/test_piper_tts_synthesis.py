@@ -26,7 +26,13 @@ class _FakeVoice:
     def synthesize(self, text, syn_config=None):
         self.calls.append(text)
         for audio in self._sentences:
-            yield SimpleNamespace(audio_int16_array=audio, sample_rate=16000, sample_width=2, sample_channels=1)
+            yield SimpleNamespace(
+                audio_float_array=audio.astype(np.float32) / 32767,
+                audio_int16_array=audio,
+                sample_rate=16000,
+                sample_width=2,
+                sample_channels=1,
+            )
 
 
 @pytest.fixture()
@@ -63,3 +69,16 @@ def test_synthesize_to_file_of_no_sentence_is_a_valid_empty_wav(piper_tts, tmp_p
     out = piper_tts([]).synthesize_to_file("   ", tmp_path / "empty.wav")
     with wave.open(str(out), "rb") as wav:
         assert (wav.getnchannels(), wav.getsampwidth(), wav.getframerate(), wav.getnframes()) == (1, 2, 16000, 0)
+
+
+def test_a_voice_producing_non_finite_samples_raises_instead_of_going_silent(piper_tts):
+    """piper casts float samples to int16, and NaN casts to 0: without this check a broken voice speaks silence,
+    and R1's readiness synthesis would arm over it (review fold)."""
+    tts = piper_tts([np.array([1, 2], dtype=np.int16)])
+
+    def nan_chunks(text, syn_config=None):
+        yield SimpleNamespace(audio_float_array=np.array([0.1, np.nan], dtype=np.float32), audio_int16_array=None)
+
+    tts._voice.synthesize = nan_chunks
+    with pytest.raises(ValueError, match="non-finite"):
+        tts.synthesize("Hi.")

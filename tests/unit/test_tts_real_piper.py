@@ -71,7 +71,7 @@ def test_the_piper_api_is_the_one_pipertts_calls(piper):
     assert params[:3] == ["self", "text", "syn_config"], params
     assert list(inspect.signature(PiperVoice.synthesize_wav).parameters)[:3] == ["self", "text", "wav_file"]
     assert isinstance(inspect.getattr_static(AudioChunk, "audio_int16_array"), property)
-    assert "sample_rate" in AudioChunk.__dataclass_fields__
+    assert {"sample_rate", "audio_float_array"} <= set(AudioChunk.__dataclass_fields__)  # the non-finite check reads it
 
 
 def test_synthesize_speaks_a_phrase(engine):

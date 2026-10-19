@@ -254,16 +254,17 @@ jobs:
         if: matrix.extra == 'tts' && (github.event_name != 'pull_request' || steps.scope.outputs.run == 'true')
         uses: actions/cache@v4
         with:
-          path: /home/runner/.cache/maxim-tts-voice
+          path: ${{ env.MAXIM_TEST_TTS_VOICE_DIR }}
           # The voice's sha256 pins live in download.py; the provision step re-hashes, so a stale hit is re-fetched.
           key: tts-voice-${{ hashFiles('src/maxim/models/download.py') }}
           restore-keys: tts-voice-
 
       - name: Provision the extra's assets (before the network namespace)
         if: github.event_name != 'pull_request' || steps.scope.outputs.run == 'true'
-        run: python3 scripts/extras_matrix.py assets --extra ${{ matrix.extra }} --dest /home/runner/.cache/maxim-tts-voice
+        run: python3 scripts/extras_matrix.py assets --extra ${{ matrix.extra }} --dest "$MAXIM_TEST_TTS_VOICE_DIR"
 
       - name: Run the extra's real-library tests
+        id: tests
         if: github.event_name != 'pull_request' || steps.scope.outputs.run == 'true'
         # Only the files that apply the marker (`extras_matrix.py tests`): the cell holds only the extra, so the rest
         # of tests/ does not collect. Its exit code is checked on its own line, not swallowed in a substitution.
@@ -275,7 +276,9 @@ jobs:
 
       - name: Assert the cell ran its exact roster
         # Its own step with always(): inside the run step a pytest failure would skip it and hide "not its roster".
-        if: always() && (github.event_name != 'pull_request' || steps.scope.outputs.run == 'true')
+        # Not after a failed install (the tests step never ran): the job is red already, and a missing XML would say
+        # it twice.
+        if: always() && steps.tests.outcome != 'skipped' && (github.event_name != 'pull_request' || steps.scope.outputs.run == 'true')
         run: python3 scripts/check_lane_roster.py --lane extras-${{ matrix.extra }} extras-results.xml
 
   # ── The slow lane ─────────────────────────────────────────────────────────

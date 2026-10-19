@@ -125,6 +125,11 @@ def test_the_extras_import_names_come_from_pyproject():
     for module, dists in packages_distributions().items():
         for dist in dists:
             modules_of.setdefault(dist.lower().replace("-", "_"), set()).add(module)
+    # A distribution mapped to a different import name here must map to the same extra on the canonical surface
+    # (utils/optional_deps.py). Only the mapped names: a shared package (fastapi: comms and console) has one entry there.
+    from maxim.utils.optional_deps import EXTRA_FOR_IMPORT
+
+    assert {imp: EXTRA_FOR_IMPORT.get(imp) for imp in _DIST_IMPORT_NAMES.values()} == {"piper": "tts"}
     import_to_dist = {imp: dist for dist, imp in _DIST_IMPORT_NAMES.items()}
     for name in extra_import_names("console") + extra_import_names("sign") + extra_import_names("tts"):
         dist = import_to_dist.get(name, name)

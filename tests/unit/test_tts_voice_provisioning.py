@@ -218,6 +218,8 @@ def _wait_ready(prov, polls: int = 300) -> bool:
         pytest.param(lambda text: _raise_wave_error(), id="raises"),
         pytest.param(lambda text: np.array([], dtype=np.int16), id="empty"),
         pytest.param(lambda text: np.array([0.1, float("nan")], dtype=np.float32), id="non-finite"),
+        # The real engine's shape of a NaN voice (piper casts NaN to 0) and of a voice that outputs nothing audible.
+        pytest.param(lambda text: np.zeros(4000, dtype=np.int16), id="silent"),
     ],
 )
 def test_a_voice_that_loads_but_cannot_speak_never_arms(monkeypatch, tmp_path, broken):

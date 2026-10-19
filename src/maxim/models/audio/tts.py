@@ -204,13 +204,23 @@ class PiperTTS:
         samples as ``audio_int16_array`` (mono, ``self.sample_rate``). The pre-1.3 ``synthesize_stream_raw`` and
         ``synthesize(text, wav_file)`` calls this replaced fail on every version the ``tts`` extra installs.
 
+        A chunk whose float samples are not finite (a corrupt voice, a bad onnxruntime) raises instead of being cast:
+        piper's int16 conversion turns NaN into 0, so the failure would otherwise come out as silence (review fold).
+
         Args:
             text: The text to synthesize.
 
         Returns:
             Audio samples as int16 numpy array.
+
+        Raises:
+            ValueError: the voice produced non-finite samples.
         """
-        chunks = [chunk.audio_int16_array for chunk in self._voice.synthesize(text)]
+        chunks = []
+        for chunk in self._voice.synthesize(text):
+            if not np.isfinite(chunk.audio_float_array).all():
+                raise ValueError("the voice produced non-finite audio")
+            chunks.append(chunk.audio_int16_array)
         if not chunks:
             return np.array([], dtype=np.int16)
         return np.concatenate(chunks).astype(np.int16, copy=False)
@@ -307,6 +317,8 @@ def _piper_installed() -> bool:
 
 # The phrase VoiceProvisioner synthesizes to prove the voice can speak (R1). Short, so the check costs ~0.1 s on a Pi.
 _READINESS_PHRASE = "Ready."
+# Its peak must exceed this (int16 full scale is 32767; piper normalizes speech to near it), so silence never arms.
+_READINESS_MIN_PEAK = 100
 
 
 class VoiceProvisioner:
@@ -315,7 +327,7 @@ class VoiceProvisioner:
     For a device: start it, build the announcer on :attr:`engine`, and pass :meth:`is_ready` to
     ``build_app(pairing_ready=...)``. A daemon thread calls ``ensure_tts_voice(auto=True)`` (deploying the robot app is
     the consent), checks that ``piper`` is installed, LOADS the voice and SYNTHESIZES a short phrase, which must come
-    back as non-empty, finite audio (standard R1, #1334: a voice that loads but cannot speak, #1332's shape, never
+    back as non-empty, finite audio that is not silence (standard R1, #1334: a voice that loads but cannot speak, #1332's shape, never
     arms). On any failure (no network at boot, the extra missing, a corrupt file, a broken synthesis) it retries with backoff from ``retry_s`` up to ``max_retry_s`` until :meth:`stop`. Until
     then the sign-in page offers only the paste path, and the by-ear path appears without a restart (owner decision
     2026-10-14). A failure is logged by type, never with the voice's bytes or a pairing code.
@@ -341,6 +353,7 @@ class VoiceProvisioner:
         self._ready = threading.Event()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._failures = 0  # failed attempts so far: the first is logged at WARNING, the retries at DEBUG
 
     def is_ready(self) -> bool:
         """The provisioner thread's cached verdict. Never synthesizes: ``console/server.py::_pairing_of`` calls it on
@@ -363,49 +376,54 @@ class VoiceProvisioner:
         if not download.ensure_tts_voice(self.model_name, auto=True, models_dir=self._models_dir):
             return False
         if not _piper_installed():
-            logger.warning(
+            self._report(
                 "TTS voice %s is on disk but `piper` is not installed (pip install 'pymaxim[tts]')", self.model_name
             )
             return False
         try:
             self.engine.load()
         except Exception as e:  # a corrupt or unloadable voice: retry, and say what kind of failure it was
-            logger.warning("TTS voice %s did not load (%s)", self.model_name, type(e).__name__)
+            self._report("TTS voice %s did not load (%s)", self.model_name, type(e).__name__)
             return False
         return self._speaks()
+
+    def _report(self, msg: str, *args: Any) -> None:
+        """A failed attempt: WARNING the first time, DEBUG on each retry (a voice that never speaks retries forever)."""
+        (logger.warning if self._failures == 0 else logger.debug)(msg, *args)
 
     def _speaks(self) -> bool:
         """R1: exercise the capability once, end to end. The phrase is fixed, so no pairing code is ever spoken here."""
         try:
             audio = np.asarray(self.engine.synthesize(_READINESS_PHRASE))
         except Exception as e:  # loads but cannot speak (#1332): retry, and say what kind of failure it was
-            logger.warning("TTS voice %s loaded but did not synthesize (%s)", self.model_name, type(e).__name__)
+            self._report("TTS voice %s loaded but did not synthesize (%s)", self.model_name, type(e).__name__)
             return False
-        finite = bool(np.isfinite(audio.astype(np.float64, copy=False)).all())
-        if audio.size == 0 or not finite:
-            logger.warning(
-                "TTS voice %s loaded but synthesized no usable audio (%d samples, finite=%s)",
+        samples = audio.astype(np.float64, copy=False)
+        finite = bool(np.isfinite(samples).all())
+        peak = float(np.abs(samples).max()) if audio.size and finite else 0.0
+        if audio.size == 0 or not finite or peak <= _READINESS_MIN_PEAK:
+            self._report(
+                "TTS voice %s loaded but synthesized no usable audio (%d samples, finite=%s, peak=%.0f)",
                 self.model_name,
                 audio.size,
                 finite,
+                peak,
             )
             return False
         return True
 
     def _run(self) -> None:
-        delay, failures = self._retry_s, 0
+        delay = self._retry_s
         while not self._stop.is_set():
             try:
                 ok = self._attempt()
             except Exception as e:  # ANY failure (a lock, a stat, storage) is a retry, never a dead thread
                 ok = False
-                (logger.warning if failures == 0 else logger.debug)(
-                    "TTS voice %s provisioning attempt raised %s; retrying", self.model_name, type(e).__name__
-                )
+                self._report("TTS voice %s provisioning attempt raised %s; retrying", self.model_name, type(e).__name__)
             if ok and not self._stop.is_set():
                 self._ready.set()
                 logger.info("TTS voice %s is ready", self.model_name)
                 return
-            failures += 1
+            self._failures += 1
             self._stop.wait(delay)
             delay = min(delay * 2, self._max_retry_s)
