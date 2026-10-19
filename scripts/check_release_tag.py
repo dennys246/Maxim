@@ -15,6 +15,9 @@ script did (design pass on docs/plans/release_pipeline.md, folds SF1, SF2, SF3, 
                  re-creates a missing environment UNPROTECTED the first time a job names it, and PyPI's trusted
                  publisher checks only the environment's name, so this runs in ``build``, before ``publish`` can be
                  scheduled (SF1).
+``ruleset``      an active tag ruleset covers ``refs/tags/v*`` and restricts creating, updating and deleting those tags,
+                 so only the owner (bypass) can push a release tag. #1372's own "Done when" item, checked where it is
+                 relied on (architecture review S1).
 ``notes``        ``docs/announcements/release_<version>.md`` exists and has no repo-relative links, checked BEFORE the
                  irreversible upload rather than after it (SF8).
 
@@ -136,6 +139,24 @@ def environment_problems(*, repo: str, name: str = "pypi", api: Api = gh_api) ->
     return problems
 
 
+RULESET_RULES = {"creation", "update", "deletion"}
+
+
+def ruleset_problems(*, repo: str, api: Api = gh_api) -> list[str]:
+    for summary in api(f"repos/{repo}/rulesets") or []:
+        if summary.get("target") != "tag" or summary.get("enforcement") != "active":
+            continue
+        ruleset = api(f"repos/{repo}/rulesets/{summary['id']}")
+        include = ((ruleset.get("conditions") or {}).get("ref_name") or {}).get("include") or []
+        rules = {r.get("type") for r in ruleset.get("rules") or []}
+        if "refs/tags/v*" in include and RULESET_RULES <= rules:
+            return []
+    return [
+        "no active tag ruleset covers refs/tags/v* restricting creation, update and deletion: "
+        "anyone with push access could tag a release (docs/plans/release_pipeline.md, owner setup step 2)"
+    ]
+
+
 def notes_problems(version: str, root: Path = REPO) -> list[str]:
     notes = root / "docs" / "announcements" / f"release_{version.replace('.', '_')}.md"
     if not notes.is_file():
@@ -159,6 +180,8 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--repo", required=True)
     e = sub.add_parser("environment")
     e.add_argument("--repo", required=True)
+    r = sub.add_parser("ruleset")
+    r.add_argument("--repo", required=True)
     n = sub.add_parser("notes")
     n.add_argument("--version", required=True)
     args = ap.parse_args(argv)
@@ -170,6 +193,8 @@ def main(argv: list[str] | None = None) -> int:
             problems = still_problems(args.tag, args.tag_object, args.sha, repo=args.repo)
         elif args.cmd == "environment":
             problems = environment_problems(repo=args.repo)
+        elif args.cmd == "ruleset":
+            problems = ruleset_problems(repo=args.repo)
         else:
             problems = notes_problems(args.version)
     except (Unverified, KeyError, TypeError, AttributeError, OSError) as exc:

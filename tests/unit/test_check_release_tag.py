@@ -144,10 +144,94 @@ def test_release_notes_must_exist_and_use_absolute_links(tmp_path):
     assert C.notes_problems("1.3.3", tmp_path) == []
 
 
-def test_an_api_failure_is_unverified_not_a_pass(monkeypatch):
-    def down(_path):
-        raise C.Unverified("gh: HTTP 404")
-
-    monkeypatch.setattr(C, "gh_api", down)
-    monkeypatch.setattr(C, "environment_problems", lambda **kw: C.environment_problems(api=down, **kw))
+def test_an_api_failure_is_unverified_not_a_pass(monkeypatch, capsys):
+    """Through the real gh_api: a non-zero `gh` exit is Unverified, and main maps it to 2."""
+    failed = subprocess.CompletedProcess(("gh",), 1, "", "HTTP 404")
+    monkeypatch.setattr(C.subprocess, "run", lambda *a, **k: failed)
     assert C.main(["environment", "--repo", REPO]) == 2
+    assert "Unverified" in capsys.readouterr().err
+
+
+def test_a_tag_naming_another_version_than_a_consistent_tree_is_refused(tmp_path):
+    """SF3, the tag clause alone: pyproject and __init__ agree with each other, not with the tag."""
+    assert any("must all name one version" in p for p in _tag(tmp_path, pyproject="1.3.2", init="1.3.2")[0])
+
+
+def test_a_tag_pointing_at_a_non_commit_is_refused(tmp_path):
+    api = _api()
+
+    def tree_target(path):
+        out = api(path)
+        if "/git/tags/" in path:
+            out["object"] = {"type": "tree", "sha": SHA}
+        return out
+
+    assert any("points at tree" in p for p in _tag(tmp_path, api=tree_target)[0])
+
+
+def test_a_re_tag_to_a_lightweight_tag_during_the_wait_is_refused():
+    assert C.still_problems("v1.3.3", TAG_OBJ, SHA, repo=REPO, api=_api(ref_type="commit"))
+
+
+@pytest.mark.parametrize(
+    "argv,fake,rc",
+    [
+        (["still", "--tag", "v1.3.3", "--tag-object", TAG_OBJ, "--sha", SHA, "--repo", REPO], "still_problems", 1),
+        (["environment", "--repo", REPO], "environment_problems", 1),
+        (["notes", "--version", "1.3.3"], "notes_problems", 1),
+    ],
+)
+def test_main_exits_1_on_any_problem(monkeypatch, argv, fake, rc):
+    """SF-d: a subcommand that found problems must not pass its workflow step."""
+    monkeypatch.setattr(C, fake, lambda *a, **k: ["a problem"])
+    assert C.main(argv) == rc
+
+
+def test_main_prints_the_tag_object_for_the_workflow_output(monkeypatch, capsys):
+    monkeypatch.setattr(C, "tag_problems", lambda *a, **k: ([], TAG_OBJ))
+    argv = ["tag", "--tag", "v1.3.3", "--sha", SHA, "--repo", REPO, "--tagger-email", EMAIL]
+    assert C.main(argv) == 0
+    assert f"tag_object={TAG_OBJ}" in capsys.readouterr().out.splitlines()
+    monkeypatch.setattr(C, "tag_problems", lambda *a, **k: (["bad"], TAG_OBJ))
+    assert C.main(argv) == 1
+
+
+def _rules_api(rulesets):
+    def api(path):
+        if path.endswith("/rulesets"):
+            return [{"id": i, "target": r["target"], "enforcement": r["enforcement"]} for i, r in enumerate(rulesets)]
+        return rulesets[int(path.rsplit("/", 1)[1])]
+
+    return api
+
+
+def _ruleset(target="tag", enforcement="active", include=("refs/tags/v*",), rules=("creation", "update", "deletion")):
+    return {
+        "target": target,
+        "enforcement": enforcement,
+        "conditions": {"ref_name": {"include": list(include)}},
+        "rules": [{"type": t} for t in rules],
+    }
+
+
+def test_a_v_tag_ruleset_passes_beside_others():
+    rulesets = [
+        _ruleset(target="branch", include=("~DEFAULT_BRANCH",)),
+        _ruleset(include=("refs/tags/o19/**",)),
+        _ruleset(),
+    ]
+    assert C.ruleset_problems(repo=REPO, api=_rules_api(rulesets)) == []
+
+
+@pytest.mark.parametrize(
+    "ruleset",
+    [
+        _ruleset(enforcement="evaluate"),
+        _ruleset(include=("refs/tags/o19/**",)),
+        _ruleset(rules=("creation", "deletion")),
+        _ruleset(target="branch"),
+    ],
+)
+def test_no_effective_v_tag_ruleset_is_refused(ruleset):
+    """Review S1: the ruleset is #1372's own Done-when item and had no check."""
+    assert C.ruleset_problems(repo=REPO, api=_rules_api([ruleset]))

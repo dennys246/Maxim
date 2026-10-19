@@ -53,6 +53,12 @@ class CheckError(Exception):
 
 NIGHTLY_EVENTS = ("schedule", "workflow_dispatch")
 DISPATCH_HINT = "run `gh workflow run test.yml --ref main` and re-check when it completes"
+# `--at` (the publish job): a dispatch tests main's TIP, so once main has moved past the tag no re-run can pass.
+AT_HINT = (
+    "the nightly that tested this tag is missing, red or stale. Approve within --max-age-hours of a green nightly "
+    "on the tagged commit; if main has moved on, reject this run, and cut the release again from a commit a green "
+    "nightly tested (docs/plans/release_pipeline.md, SF4)"
+)
 
 
 def nightly_verdict(
@@ -200,6 +206,8 @@ def main(argv: list[str] | None = None) -> int:
     problems = nightly_verdict(
         run, jobs, now=datetime.now(timezone.utc), max_age=timedelta(hours=args.max_age_hours), main_sha=head
     )
+    if problems and args.at:
+        problems.append(AT_HINT)
     if problems:
         print("REFUSED: a nightly lane is not green -- do not release:", file=sys.stderr)
         for problem in problems:

@@ -32,6 +32,12 @@ def test_it_runs_on_v_tags_and_a_dispatch_rehearsal_only():
     assert WF["concurrency"] == {"group": "release-${{ github.ref }}", "cancel-in-progress": False}
 
 
+def test_every_step_runs_with_pipefail():
+    """Executor review B1: GitHub's default `bash -e {0}` has no pipefail, so `audit | tee` passed a failed audit."""
+    assert WF["defaults"] == {"run": {"shell": "bash"}}
+    assert not any("shell" in s for job in JOBS.values() for s in job["steps"])
+
+
 def test_permissions_are_per_job_and_only_publish_can_mint_an_oidc_token():
     assert WF["permissions"] == {}
     holders = [name for name, job in JOBS.items() if (job.get("permissions") or {}).get("id-token")]
@@ -56,10 +62,22 @@ def test_every_action_is_pinned_by_commit_sha():
     assert uses and all(re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", u) for u in uses), uses
 
 
+def test_build_installs_what_its_scripts_import():
+    """Wire review B1: lint_release_gates.py fails without pyyaml, so a build job without it can never publish."""
+    install = _runs("build")[_index("build", "pip install")]
+    assert "pyyaml" in install and "build" in install and "twine" in install
+    assert _index("build", "pip install") < _index("build", "lint_release_gates.py")
+
+
+def test_the_tagger_identity_is_pinned():
+    assert WF["env"]["RELEASE_TAGGER_EMAIL"] == "dennys@rmdig.ai"
+
+
 def test_build_verifies_then_vendors_then_builds_then_audits():
     order = [
         _index("build", "check_release_tag.py tag"),
         _index("build", "check_release_tag.py environment"),
+        _index("build", "check_release_tag.py ruleset"),
         _index("build", "check_nightlies.py --at"),
         _index("build", "vendor_console_ui.py --verify-pin"),
         _index("build", "vendor_console_ui.py --from-pin"),

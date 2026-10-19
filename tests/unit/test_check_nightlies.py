@@ -197,9 +197,27 @@ def test_at_reads_the_nightly_that_tested_that_commit(monkeypatch) -> None:
     assert "--commit" in seen["list"] and SHA in seen["list"] and seen["view"] == "4"
 
 
-def test_at_with_no_nightly_at_that_commit_refuses(monkeypatch) -> None:
-    """main's later green nightly says nothing about the tagged code."""
+def test_at_with_no_nightly_at_that_commit_refuses(monkeypatch, capsys) -> None:
+    """main's later green nightly says nothing about the tagged code; the hint names the real recovery."""
     gh, _ = _runs_gh([])
+    monkeypatch.setattr(N, "_gh", gh)
+    assert N.main(["--at", SHA]) == 1
+    assert "reject this run" in capsys.readouterr().err
+
+
+def test_at_ignores_a_listed_run_of_another_commit(monkeypatch) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    runs = [
+        {
+            "databaseId": 4,
+            "createdAt": now,
+            "conclusion": "success",
+            "event": "schedule",
+            "headBranch": "main",
+            "headSha": "b" * 40,
+        }
+    ]
+    gh, _ = _runs_gh(runs)
     monkeypatch.setattr(N, "_gh", gh)
     assert N.main(["--at", SHA]) == 1
 

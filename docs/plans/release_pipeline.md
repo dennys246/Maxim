@@ -18,7 +18,7 @@ The workflow composes scripts that already exist:
 - `audit_release_tags.py`;
 - `check_repo_settings.py`.
 
-It adds one new workflow file and no new script. Without it, publishing is a sequence of hand steps on a laptop, and the 1.3.2 cut showed a hand step gets skipped. Without trusted publishing, a long-lived PyPI token sits on that laptop.
+It adds one new workflow file and one new script, `check_release_tag.py` (design pass SF3). Without it, publishing is a sequence of hand steps on a laptop, and the 1.3.2 cut showed a hand step gets skipped. Without trusted publishing, a long-lived PyPI token sits on that laptop.
 
 ## The workflow (`.github/workflows/release.yml`)
 
@@ -90,7 +90,9 @@ It adds one new workflow file and no new script. Without it, publishing is a seq
 - the smoke assertions;
 - that no step uses a `PYPI_TOKEN` or `password:`.
 
-`test_ci_workflow_shape.py` pins #938's `pull_request` guard on the nightly step. `test_check_nightlies.py` covers `--at`. `test_check_repo_settings.py` covers the new pins.
+`test_check_nightlies.py` pins #938's `pull_request` guard on the nightly step and covers `--at`. Pinning the
+environment and the ruleset in `check_repo_settings.py` is deferred (below); `check_release_tag.py environment` and
+`ruleset` check both inside the workflow, at the moment they are relied on.
 
 ## Owner setup (one-time; listed in the PR), in this order (SF1)
 
@@ -167,3 +169,57 @@ It adds one new workflow file and no new script. Without it, publishing is a seq
 **From R4's architecture review:** inside a tag-push run the tag exists, so `releasing()` reads False. `release.yml`
 therefore never passes `--only-when-releasing`, `--contract-drift-ok-unless-releasing` or `--force`;
 `tests/unit/test_release_workflow_shape.py` pins that.
+
+## Code review (2026-10-18, three lenses): two BLOCKERs, folded
+
+- **B1, executor: no pipefail.** GitHub's default `bash -e {0}` has no pipefail, so `audit_release_build.py | tee`
+  passed a failed audit and the upload would have followed. Fix: `defaults: run: shell: bash`
+  (`-eo pipefail`), pinned by `test_every_step_runs_with_pipefail`.
+- **B1, wire: missing pyyaml.** `build` installed no pyyaml, and `lint_release_gates.py` fails without it, so every
+  run (rehearsal included) would have stopped at the gates. Fix: pyyaml is installed, pinned by
+  `test_build_installs_what_its_scripts_import`.
+- **S1: the ruleset had no check.** `check_release_tag.py ruleset` now requires an active tag ruleset on
+  `refs/tags/v*` that restricts creation, update and deletion. It runs in `build`, so the release refuses until the
+  ruleset exists.
+- **S4 / SF-e: an approval more than 48 h after the nightly.** A dispatch tests main's tip, so once main has moved
+  past the tag, no re-run can satisfy `--at`. The `--at` failure now prints the real recovery: approve within the
+  window, or reject the run and cut the release again from a commit a green nightly tested. The same limit applies
+  to an SF7 "re-run publish" more than 48 h later. **Approve promptly.**
+- **The rehearsal now runs the environment, ruleset and nightly checks too**, so a `workflow_dispatch` on main
+  exercises the owner setup before the first real tag.
+- **Tests.** The self-referential API test was fixed, and the main exit codes and the `tag_object=` output are
+  pinned. The tag-version clause, the target type, a re-tag to a lightweight tag and the `--at` sha filter each have
+  their own test.
+- **Deferred (follow-up issue):** pinning the `pypi` environment and the `v*` ruleset in `check_repo_settings.py`'s
+  nightly drift check. The in-workflow checks fail closed when they are relied on.
+
+## Hand-off to the process session (`docs/publication_guide.md`, not edited here)
+
+1. **§2b is stale.** After #938, push and schedule runs no longer run the nightly check, so "every later PR and
+   push to main" no longer goes red. Release PRs still do.
+2. **The publish path becomes `.github/workflows/release.yml`.** The new order:
+   1. The bump PR merges, with `docs/announcements/release_<X>.md` written with absolute links.
+   2. A green nightly runs on the commit to be tagged.
+   3. The owner pushes a signed annotated `vX.Y.Z` tag on that commit.
+   4. The workflow builds, audits and smoke-tests.
+   5. The owner approves `pypi` **within 48 h of the nightly**.
+   6. The workflow uploads over OIDC, verifies what PyPI serves, and creates the GitHub Release.
+
+   The hand path (`twine upload` and a hand-made Release) stays as a documented fallback until 1.3.3 has gone
+   through the workflow.
+3. **The console steps (R4).**
+   - Step 1b becomes `python scripts/vendor_console_ui.py --verify-pin && python scripts/vendor_console_ui.py --from-pin`,
+     replacing the local-path vendor.
+   - Local `apps/console/dist` vendoring is dev-only, and must be byte-identical to the pinned asset apart from
+     `.vite/`.
+   - Remove the `--allow-missing-ui-dist` paragraph (the flag is gone).
+   - Step 4's "Asserts" list gains the R4 checks: the console digest and stamp against the pin, and the artifact's
+     own contract.
+   - The "Vendoring the Console UI" section's "Sources … no `v*` tag needed" and "`--force` overrides" lines are no
+     longer true for a release.
+4. **The owner setup, once, in order:**
+   1. the `pypi` environment;
+   2. the `release-tags` ruleset;
+   3. the PyPI trusted publisher.
+
+   (§Owner setup above.)
