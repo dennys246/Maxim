@@ -1,227 +1,459 @@
 #!/usr/bin/env python3
-"""Vendor a built Console UI bundle into the package for release.
+"""Vendor the pinned Console UI bundle into the package for release (R4, #1333).
 
 The Console UI is built in **maxim-pulse**; the wheel ships a copy so that a
 plain ``pip install pymaxim[console] && maxim serve`` serves a working Console
-with no flag and no config. This script is the copy step — run it BEFORE
-``python -m build`` when cutting a release.
+with no flag and no config. This script is the copy step, and since R4 it only
+copies the bundle the committed pin names (``scripts/console_ui_pin.json``):
 
-Sources (any of):
+  * the release path, and CI's: download the pinned tag's release asset, check
+    its sha256 and its file digest against the pin, then vendor it::
 
-  * a local pulse checkout::
+        python scripts/vendor_console_ui.py --from-pin
+
+  * prove the pin is the NEWEST pulse tag for this backend's contract (the
+    release PR, and release.yml's publish workflow from #1372; network, fails closed)::
+
+        python scripts/vendor_console_ui.py --verify-pin [--only-when-releasing]
+
+  * move the pin (the release PR, after pulse tags a new bundle)::
+
+        python scripts/vendor_console_ui.py --update-pin v0.4.2
+
+  * a local directory still vendors, but only if it is byte-identical to the
+    pinned asset (a dev build is not; ``--force`` is the dev escape hatch, and
+    the release audit has none)::
 
         python scripts/vendor_console_ui.py ~/Scripts/Maxim-pulse/apps/console/dist
 
-  * a CI artifact downloaded from a maxim-pulse run (every push to main
-    uploads ``ui-dist``), unzipped anywhere::
+  * ``--check`` validates what is vendored now; ``--clean`` removes it.
 
-        python scripts/vendor_console_ui.py ~/Downloads/ui-dist
-
-  * ``--clean`` to remove a previously vendored bundle (back to a source-
-    checkout state).
+WHY. pymaxim 1.3.2 vendored pulse v0.4.0 two days after v0.4.1 (the stall-line
+fix for that very release) was tagged: this script took any directory and
+refused only a contract mismatch or a dirty build. Staleness used to be "a
+judgment call this script cannot make"; the pin now makes "current" a
+committed, reviewed fact, and ``--verify-pin`` proves it against pulse's tags.
+Design and adversarial pass: docs/plans/r4_console_vendor_gate.md.
 
 The destination (``src/maxim/console/ui_dist/``) is .gitignore'd: vendoring is
-a RELEASE step, not a commit. Verify with ``--check`` in CI or by hand.
+a RELEASE step, not a commit.
+
+Exits: 0 ok; 1 refused (a mismatch, a stale pin); 2 could not check (network,
+an unreadable pin). Never a pass on an unreadable input.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
+import http.client
+import io
 import json
-import re
 import shutil
+import subprocess
 import sys
-from datetime import datetime, timezone
+import tarfile
+import tempfile
+import time
+import urllib.error
+import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _console_pin as cp  # noqa: E402
+
+REPO_ROOT = cp.REPO_ROOT
 DEST = REPO_ROOT / "src" / "maxim" / "console" / "ui_dist"
-MANIFEST_NAME = "maxim-ui.json"
+MANIFEST_NAME = cp.MANIFEST_NAME
+
+ASSET_URL = "https://github.com/{repo}/releases/download/{tag}/{asset}"
+RELEASE_API = "https://api.github.com/repos/{repo}/releases/tags/{tag}"
+OPENAPI_RAW = "https://raw.githubusercontent.com/{repo}/{commit}/packages/kit/openapi.json"
+PULSE_GIT = "https://github.com/{repo}.git"
+
+Fetch = Callable[[str], bytes]
+LsRemote = Callable[[str], str]
 
 
-def _contract_version() -> str:
-    """The backend's facade contract version (imported without side effects)."""
-    sys.path.insert(0, str(REPO_ROOT / "src"))
-    from maxim.console.ui_bundle import CONSOLE_CONTRACT_VERSION
-
-    return CONSOLE_CONTRACT_VERSION
+class Unverified(Exception):
+    """An input could not be read: exit 2."""
 
 
-def bundle_provenance(manifest: dict) -> tuple[list[str], list[str]]:
-    """Read the provenance fields maxim-pulse >= 0.1.0 stamps into the manifest.
-
-    Returns (problems, notes). Problems refuse the vendor; notes are printed so
-    the operator can judge what a machine should not judge for them.
-
-    WHY THE SPLIT. maxim-pulse 0.1.0 (2026-08-30) started emitting `commit_date`,
-    `describe` and `dirty` alongside the pre-existing `commit`, closing the
-    producer half of bugs ledger D47. Two of those support a MECHANICAL verdict
-    and one does not:
-
-    * ``dirty: true`` — the bundle was built from a tree with uncommitted
-      changes, so the `commit` it names does not describe what is inside it.
-      That is unambiguously wrong for a release artifact and is REFUSED.
-    * ``commit_date`` — staleness is a judgment call. A three-week-old bundle is
-      fine if the facade contract has not moved and wrong if it has, and this
-      script cannot tell which. So the age is PRINTED, and only refused when the
-      operator asks via ``--max-age-days``.
-    * ``describe`` — ``v0.1.0`` means the build sat exactly on a tag;
-      ``v0.1.0-3-gabc1234`` means three commits past it. Worth surfacing, never
-      a refusal: vendoring an untagged build is a legitimate thing to do
-      deliberately.
-
-    Absent fields are NOT an error. Every bundle built before maxim-pulse 0.1.0
-    lacks them, and refusing those would break vendoring from an older checkout
-    for no safety gain — the contract-version check already covers the failure
-    mode that actually matters.
-    """
-    problems: list[str] = []
-    notes: list[str] = []
-
-    if manifest.get("dirty") is True:
-        problems.append(
-            "bundle was built from a DIRTY tree (`dirty: true`) — the `commit` it names does not "
-            "describe its contents, so the artifact cannot be traced back to source. Rebuild from a "
-            "clean checkout, or pass --force if you know why you want this."
-        )
-
-    describe = manifest.get("describe")
-    if describe:
-        notes.append(
-            f"built at {describe}" + ("" if re.fullmatch(r"v?[\d.]+", str(describe)) else " (not exactly on a tag)")
-        )
-
-    raw_date = manifest.get("commit_date")
-    if not raw_date:
-        notes.append("no commit_date — bundle predates maxim-pulse 0.1.0, so freshness cannot be checked")
-        return problems, notes
-
-    age_days = bundle_age_days(str(raw_date))
-    if age_days is None:
-        notes.append(f"commit_date {raw_date!r} is not parseable — freshness not checked")
-    else:
-        notes.append(f"built {age_days:.1f} days ago ({raw_date})")
-    return problems, notes
+# ── network seams (injected in tests; the defaults are the only code that touches the network) ─────────────────────
 
 
-def bundle_age_days(raw_date: str, *, now: datetime | None = None) -> float | None:
-    """Age in days from an ISO-8601 UTC timestamp, or None if unparseable."""
+def http_fetch(url: str, *, attempts: int = 3) -> bytes:
+    """GET with a bounded retry (fold 7). Uses GH_TOKEN for api.github.com when set."""
+    import os
+
+    headers = {"User-Agent": "pymaxim-vendor-console-ui"}
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if token and url.startswith("https://api.github.com/"):
+        headers["Authorization"] = f"Bearer {token}"
+    last: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60) as r:
+                return r.read()
+        except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as exc:
+            last = exc
+            if attempt + 1 < attempts:
+                time.sleep(2 * (attempt + 1))
+    raise Unverified(f"GET {url} failed after {attempts} attempts: {last}")
+
+
+def git_ls_remote(url: str) -> str:
+    proc = subprocess.run(("git", "ls-remote", "--tags", url), capture_output=True, text=True, check=False, timeout=60)
+    if proc.returncode != 0:
+        raise Unverified(f"git ls-remote --tags {url}: {proc.stderr.strip() or proc.returncode}")
+    return proc.stdout
+
+
+def _shown(path: Path) -> str:
     try:
-        stamp = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
-    except (ValueError, AttributeError):
-        return None
-    if stamp.tzinfo is None:
-        stamp = stamp.replace(tzinfo=timezone.utc)
-    reference = now or datetime.now(timezone.utc)
-    return (reference - stamp).total_seconds() / 86400.0
+        return str(path.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
 
 
-def validate(source: Path, *, max_age_days: float | None = None) -> tuple[bool, list[str]]:
-    """Is ``source`` a plausible Console bundle? Returns (ok, problems)."""
-    problems: list[str] = []
+# ── the bundle ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+def validate(source: Path, *, pin: cp.Pin, releasing: bool = True) -> tuple[bool, list[str]]:
+    """Is ``source`` the pinned Console bundle? Returns (ok, problems); notes are printed.
+
+    ``pin`` is required (fold 6): no caller may silently validate against no pin. ``releasing=False`` downgrades a
+    contract drift to a loud note (fold 1); everything else refuses either way.
+    """
     if not source.is_dir():
         return False, [f"{source} is not a directory"]
+    problems: list[str] = list(cp.pin_identity_problems(pin))
     if not (source / "index.html").is_file():
         problems.append("no index.html — is this really a built bundle?")
     if not (source / "assets").is_dir():
         problems.append("no assets/ directory")
-
     manifest_path = source / MANIFEST_NAME
     if not manifest_path.is_file():
-        problems.append(f"no {MANIFEST_NAME} — cannot verify the facade contract (build with a current maxim-pulse)")
-        return (not problems), problems
-
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as e:
-        problems.append(f"{MANIFEST_NAME} is unreadable: {e}")
+        problems.append(f"no {MANIFEST_NAME} — cannot tell which pulse build this is")
         return False, problems
-
-    target = manifest.get("target")
-    if target != "console":
-        problems.append(f"bundle target is {target!r}, expected 'console' (did you point at the reachy build?)")
-    bundle_contract = str(manifest.get("contract_version") or "")
-    backend_contract = _contract_version()
-    if bundle_contract and bundle_contract != backend_contract:
-        problems.append(
-            f"facade contract mismatch: bundle {bundle_contract!r} vs backend {backend_contract!r} — "
-            f"regenerate the client (pnpm gen:facade) against this pymaxim's openapi.json"
-        )
-    prov_problems, prov_notes = bundle_provenance(manifest)
-    problems.extend(prov_problems)
-    for note in prov_notes:
+    try:
+        stamp = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        return False, [*problems, f"{MANIFEST_NAME} is unreadable: {e}"]
+    if not isinstance(stamp, dict):
+        return False, [*problems, f"{MANIFEST_NAME} is not a JSON object"]
+    try:
+        contract = cp.backend_contract()
+    except cp.PinError as e:
+        return False, [*problems, str(e)]
+    stamp_problems, notes = cp.stamp_problems(stamp, pin, contract, releasing=releasing)
+    problems.extend(stamp_problems)
+    try:
+        digest = cp.tree_digest(cp.dir_entries(source))
+    except cp.DigestError as e:
+        problems.append(str(e))
+    else:
+        if digest != pin.tree_sha256:
+            problems.append(
+                f"the bundle's files differ from the pinned {pin.tag} asset (tree digest {digest[:12]} != "
+                f"{pin.tree_sha256[:12]}): vendor the pinned release asset with `--from-pin`"
+            )
+    for key in ("app_version", "describe", "commit_date"):
+        if stamp.get(key):
+            notes.append(f"{key} {stamp[key]}")
+    for note in notes:
         print(f"  bundle: {note}")
-    if max_age_days is not None:
-        age = bundle_age_days(str(manifest.get("commit_date") or ""))
-        if age is not None and age > max_age_days:
-            problems.append(f"bundle is {age:.1f} days old, over the --max-age-days {max_age_days} you asked for")
-
     return (not problems), problems
 
 
-def vendor(source: Path, *, force: bool = False, max_age_days: float | None = None) -> int:
-    ok, problems = validate(source, max_age_days=max_age_days)
+def vendor(source: Path, *, pin: cp.Pin, force: bool = False, releasing: bool = True) -> int:
+    ok, problems = validate(source, pin=pin, releasing=releasing)
     if not ok and not force:
         print(f"REFUSING to vendor {source}:", file=sys.stderr)
         for p in problems:
             print(f"  - {p}", file=sys.stderr)
-        print("\nPass --force to vendor anyway (you probably don't want to).", file=sys.stderr)
+        print("\nPass --force to vendor anyway (a dev build only: the release audit refuses it).", file=sys.stderr)
         return 1
     for p in problems:  # forced: still say what's wrong
         print(f"WARNING: {p}", file=sys.stderr)
 
+    if source.resolve() == DEST.resolve():
+        print(f"REFUSED: {source} IS the vendored bundle; vendor from a pulse bundle or use --check", file=sys.stderr)
+        return 1
     if DEST.exists():
         shutil.rmtree(DEST)
-    shutil.copytree(source, DEST)
+    shutil.copytree(
+        source, DEST, ignore=lambda d, names: [n for n in names if Path(d) == source and n in cp.BUILD_ONLY_DIRS]
+    )
+    if not force and cp.tree_digest(cp.dir_entries(DEST)) != pin.tree_sha256:
+        print(f"REFUSED: {_shown(DEST)} does not re-digest to the pin after the copy", file=sys.stderr)
+        shutil.rmtree(DEST)
+        return 1
     files = sum(1 for _ in DEST.rglob("*") if _.is_file())
-    size_mb = sum(f.stat().st_size for f in DEST.rglob("*") if f.is_file()) / 1e6
-    print(f"vendored {files} files ({size_mb:.1f} MB) → {DEST.relative_to(REPO_ROOT)}")
-    print("This is a RELEASE step; ui_dist/ is .gitignore'd. Build the wheel now (python -m build).")
+    print(f"vendored {pin.tag} ({files} files) → {_shown(DEST)}")
+    print("This is a RELEASE step; ui_dist/ is .gitignore'd. Build the wheel now (python -I -m build).")
     return 0
 
 
-def check(*, max_age_days: float | None = None) -> int:
-    """Is a usable bundle vendored right now?"""
-    if not (DEST / "index.html").is_file():
-        print(f"no vendored bundle at {DEST.relative_to(REPO_ROOT)} (source checkout state)")
+# ── the pinned release asset ───────────────────────────────────────────────────────────────────────────────────────
+
+
+def fetch_asset(pin: cp.Pin, *, fetch: Fetch = http_fetch, cache_dir: Path | None = None) -> bytes:
+    """The pinned asset's bytes, sha256-checked before anything uses them (no --force reaches this)."""
+    cached = cache_dir / f"{pin.asset_sha256}.tar.gz" if cache_dir else None
+    if cached is not None and cached.is_file():
+        data = cached.read_bytes()
+        if hashlib.sha256(data).hexdigest() == pin.asset_sha256:
+            return data
+        print(f"cached asset {cached} has the wrong sha256; downloading again", file=sys.stderr)
+    data = fetch(ASSET_URL.format(repo=cp.PULSE_REPO, tag=pin.tag, asset=cp.PULSE_ASSET))
+    got = hashlib.sha256(data).hexdigest()
+    if got != pin.asset_sha256:
+        raise ValueError(f"{cp.PULSE_ASSET} for {pin.tag} has sha256 {got}, the pin says {pin.asset_sha256}")
+    if cached is not None:
+        try:
+            cached.parent.mkdir(parents=True, exist_ok=True)
+            cached.write_bytes(data)
+        except OSError as exc:  # the cache is an optimisation; the verified bytes are already in hand
+            print(f"WARNING: could not keep the asset in {cache_dir}: {exc}", file=sys.stderr)
+    return data
+
+
+def asset_tree_digest(data: bytes) -> str:
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tf:
+        return cp.tree_digest(cp.tar_entries(tf))
+
+
+def extract_asset(data: bytes, into: Path) -> None:
+    if not hasattr(tarfile, "data_filter"):  # fold 12
+        raise RuntimeError("this Python's tarfile has no `data` filter (needs 3.10.12+/3.11.4+); refusing to extract")
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tf:
+        cp.tar_entries(tf)  # refuses links, devices, dotfiles, traversal before a byte is written
+        tf.extractall(into, filter="data")
+
+
+def from_pin(pin: cp.Pin, *, fetch: Fetch = http_fetch, cache_dir: Path | None = None, releasing: bool = True) -> int:
+    try:
+        data = fetch_asset(pin, fetch=fetch, cache_dir=cache_dir)
+    except Unverified as e:
+        print(f"UNVERIFIED: {e}", file=sys.stderr)
+        return 2
+    except ValueError as e:
+        print(f"REFUSED: {e}", file=sys.stderr)
         return 1
-    ok, problems = validate(DEST, max_age_days=max_age_days)
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            extract_asset(data, Path(tmp))
+        except (cp.DigestError, RuntimeError, tarfile.TarError) as e:
+            print(f"REFUSED: {e}", file=sys.stderr)
+            return 1
+        return vendor(Path(tmp), pin=pin, releasing=releasing)
+
+
+# ── is the pin the newest tag for the contract? (network) ──────────────────────────────────────────────────────────
+
+
+def parse_ls_remote(text: str) -> dict[str, str]:
+    """{tag: commit}, peeling annotated tags (`^{}` lines win) and keeping lightweight ones (fold 9)."""
+    direct: dict[str, str] = {}
+    peeled: dict[str, str] = {}
+    for line in text.splitlines():
+        sha, _, ref = line.partition("\t")
+        if not ref.startswith("refs/tags/"):
+            continue
+        name = ref[len("refs/tags/") :]
+        if name.endswith("^{}"):
+            peeled[name[:-3]] = sha
+        else:
+            direct[name] = sha
+    return {name: peeled.get(name, sha) for name, sha in direct.items()}
+
+
+def tag_contract(commit: str, *, fetch: Fetch) -> str:
+    try:
+        version = json.loads(fetch(OPENAPI_RAW.format(repo=cp.PULSE_REPO, commit=commit)))["info"]["version"]
+    except (ValueError, KeyError, TypeError) as e:
+        raise Unverified(f"packages/kit/openapi.json at {commit[:12]} has no readable info.version ({e})") from e
+    return str(version)
+
+
+def release_asset_digest(tag: str, *, fetch: Fetch) -> str:
+    try:
+        release = json.loads(fetch(RELEASE_API.format(repo=cp.PULSE_REPO, tag=tag)))
+        asset = next(a for a in release["assets"] if a.get("name") == cp.PULSE_ASSET)
+    except (ValueError, KeyError, TypeError, AttributeError, StopIteration) as e:
+        raise Unverified(f"release {tag} has no readable {cp.PULSE_ASSET} asset ({e!r})") from e
+    digest = str(asset.get("digest") or "")
+    if not digest.startswith("sha256:"):
+        raise Unverified(f"release {tag}'s {cp.PULSE_ASSET} carries no sha256 digest ({digest!r})")
+    return digest[len("sha256:") :]
+
+
+def resolve_tag(tag: str, contract: str, *, ls_remote: LsRemote, fetch: Fetch) -> tuple[cp.Pin, list[str]]:
+    """Derive a full pin for ``tag`` from live data, plus the newer same-contract tags (empty when it is newest)."""
+    tags = parse_ls_remote(ls_remote(PULSE_GIT.format(repo=cp.PULSE_REPO)))
+    if tag not in tags:
+        raise LookupError(f"{cp.PULSE_REPO} has no tag {tag}")
+    key = cp.tag_key(tag)
+    if key is None:
+        raise LookupError(f"{tag} is not a stable vX.Y.Z tag")
+    newer_same = []
+    for other, commit in sorted(tags.items(), key=lambda kv: cp.tag_key(kv[0]) or (-1, -1, -1)):
+        other_key = cp.tag_key(other)
+        if other_key is None or other_key <= key:
+            continue  # pre-releases and older tags never decide "newest" (fold 4, fold 9)
+        if tag_contract(commit, fetch=fetch) == contract:  # unreadable -> Unverified, never skipped
+            newer_same.append(other)
+    commit = tags[tag]
+    tag_contract_version = tag_contract(commit, fetch=fetch)
+    if tag_contract_version != contract:
+        raise LookupError(f"{tag} was built for contract {tag_contract_version}, the backend is {contract}")
+    asset_sha = release_asset_digest(tag, fetch=fetch)
+    data = fetch(ASSET_URL.format(repo=cp.PULSE_REPO, tag=tag, asset=cp.PULSE_ASSET))
+    if hashlib.sha256(data).hexdigest() != asset_sha:
+        raise LookupError(f"the downloaded {cp.PULSE_ASSET} for {tag} does not match its release digest")
+    try:
+        tree_sha256 = asset_tree_digest(data)
+    except tarfile.TarError as e:
+        raise Unverified(f"{cp.PULSE_ASSET} for {tag} is not a readable gzip tar ({e})") from e
+    pin = cp.Pin(
+        repo=cp.PULSE_REPO,
+        tag=tag,
+        commit=commit,
+        contract_version=contract,
+        asset=cp.PULSE_ASSET,
+        asset_sha256=asset_sha,
+        tree_sha256=tree_sha256,
+    )
+    return pin, newer_same
+
+
+def verify_pin(pin: cp.Pin, *, ls_remote: LsRemote = git_ls_remote, fetch: Fetch = http_fetch) -> int:
+    problems = cp.pin_identity_problems(pin)
+    try:
+        contract = cp.backend_contract()
+        live, newer = resolve_tag(pin.tag, contract, ls_remote=ls_remote, fetch=fetch)
+    except (Unverified, cp.PinError) as e:
+        print(f"UNVERIFIED: {e}", file=sys.stderr)
+        return 2
+    except (LookupError, cp.DigestError) as e:
+        problems.append(str(e))
+        live, newer = None, []
+    if newer:
+        problems.append(
+            f"the pin is {pin.tag}, but {newer[-1]} is the newest pulse tag for contract {contract}: "
+            f"`python scripts/vendor_console_ui.py --update-pin {newer[-1]}`"
+        )
+    if live is not None:
+        for field in ("commit", "contract_version", "asset_sha256", "tree_sha256"):
+            if getattr(live, field) != getattr(pin, field):
+                problems.append(
+                    f"pin {field} {getattr(pin, field)!r} != live {getattr(live, field)!r}"
+                    + (" (was the tag moved?)" if field == "commit" else "")
+                )
+    if problems:
+        print("REFUSED: the console pin is not the newest pulse bundle for this contract:", file=sys.stderr)
+        for p in problems:
+            print(f"  - {p}", file=sys.stderr)
+        return 1
+    print(f"console pin current: {pin.tag} ({pin.commit[:7]}, contract {pin.contract_version})")
+    return 0
+
+
+def update_pin(
+    tag: str, *, path: Path = cp.PIN_PATH, ls_remote: LsRemote = git_ls_remote, fetch: Fetch = http_fetch
+) -> int:
+    try:
+        pin, newer = resolve_tag(tag, cp.backend_contract(), ls_remote=ls_remote, fetch=fetch)
+    except (Unverified, cp.PinError) as e:
+        print(f"UNVERIFIED: {e}", file=sys.stderr)
+        return 2
+    except (LookupError, cp.DigestError) as e:
+        print(f"REFUSED: {e}", file=sys.stderr)
+        return 1
+    if newer:
+        print(f"WARNING: {newer[-1]} is newer for the same contract; --verify-pin will refuse {tag}", file=sys.stderr)
+    path.write_text(json.dumps(cp.pin_payload(pin), indent=2) + "\n", encoding="utf-8")
+    print(f"pinned {tag} ({pin.commit[:7]}, contract {pin.contract_version}) in {_shown(path)}")
+    return 0
+
+
+def check(*, pin: cp.Pin, releasing: bool = True) -> int:
+    """Is the pinned bundle vendored right now?"""
+    if not DEST.is_dir() or not any(DEST.rglob("*")):
+        print(f"no vendored bundle at {_shown(DEST)} (source checkout state)")
+        return 1
+    ok, problems = validate(DEST, pin=pin, releasing=releasing)
     for p in problems:
-        print(f"WARNING: {p}", file=sys.stderr)
-    print(f"vendored bundle present at {DEST.relative_to(REPO_ROOT)}{' (with warnings)' if problems else ''}")
+        print(f"PROBLEM: {p}", file=sys.stderr)
+    print(f"vendored bundle at {_shown(DEST)}: {'the pinned ' + pin.tag if ok else 'NOT the pin'}")
     return 0 if ok else 1
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("source", nargs="?", help="A built Console bundle directory (must match the pin byte for byte)")
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--from-pin", action="store_true", help="Download, check and vendor the pinned release asset")
+    mode.add_argument("--verify-pin", action="store_true", help="Prove the pin is the newest tag for the contract")
+    mode.add_argument("--update-pin", metavar="TAG", help="Rewrite the pin from pulse's live TAG")
+    mode.add_argument("--check", action="store_true", help="Validate the vendored bundle against the pin")
+    mode.add_argument("--clean", action="store_true", help="Remove the vendored bundle and exit")
+    ap.add_argument("--force", action="store_true", help="Vendor a directory that does not match the pin (dev only)")
+    ap.add_argument("--asset-cache", type=Path, default=None, help="--from-pin: reuse/keep the asset here by sha256")
     ap.add_argument(
-        "source", nargs="?", help="Path to a built Console bundle (apps/console/dist or an unzipped artifact)"
+        "--only-when-releasing", action="store_true", help="--verify-pin: a no-op unless this tree cuts a release"
     )
-    ap.add_argument("--clean", action="store_true", help="Remove the vendored bundle and exit")
-    ap.add_argument("--check", action="store_true", help="Report whether a usable bundle is vendored, and exit")
-    ap.add_argument("--force", action="store_true", help="Vendor even if validation fails")
     ap.add_argument(
-        "--max-age-days",
-        type=float,
-        default=None,
-        help="Refuse a bundle whose commit_date is older than this. Off by default: staleness is a "
-        "judgment call this script cannot make for you (a three-week-old bundle is fine if the facade "
-        "contract has not moved), so the age is always PRINTED and only refused when you ask.",
+        "--contract-drift-ok-unless-releasing",
+        action="store_true",
+        help="CI only: on a tree that is not cutting a release, a contract drift is a loud note, not a refusal "
+        "(a PR that bumps the contract can merge before pulse tags a bundle for it). Releasing trees refuse.",
     )
     args = ap.parse_args(argv)
+    if args.only_when_releasing and not args.verify_pin:
+        ap.error("--only-when-releasing applies to --verify-pin only")
+    if args.from_pin and (args.force or args.source):
+        ap.error("--from-pin vendors the pinned asset only: no source path, and no --force")
+    if args.asset_cache and not args.from_pin:
+        ap.error("--asset-cache applies to --from-pin only")
 
     if args.clean:
         if DEST.exists():
             shutil.rmtree(DEST)
-            print(f"removed {DEST.relative_to(REPO_ROOT)}")
+            print(f"removed {_shown(DEST)}")
         else:
             print("nothing to clean")
         return 0
+    if args.update_pin:
+        return update_pin(args.update_pin)
+    try:
+        pin = cp.load_pin()
+    except cp.PinError as e:
+        print(f"UNVERIFIED: {e}", file=sys.stderr)
+        return 2
+    try:
+        cp.backend_contract()  # unreadable is exit 2 here, not a "refused" from inside validate
+    except cp.PinError as e:
+        print(f"UNVERIFIED: {e}", file=sys.stderr)
+        return 2
+
+    releasing = True
+    if args.contract_drift_ok_unless_releasing or args.only_when_releasing:
+        releasing, why = cp.releasing()
+        print(why)
+    if args.verify_pin:
+        if args.only_when_releasing and not releasing:
+            return 0
+        return verify_pin(pin)
+    if args.from_pin:
+        return from_pin(pin, cache_dir=args.asset_cache, releasing=releasing)
     if args.check:
-        return check(max_age_days=args.max_age_days)
+        return check(pin=pin, releasing=releasing)
     if not args.source:
-        ap.error("a source path is required (or use --clean / --check)")
-    return vendor(Path(args.source).expanduser().resolve(), force=args.force, max_age_days=args.max_age_days)
+        ap.error("a source path is required (or use --from-pin / --verify-pin / --update-pin / --check / --clean)")
+    return vendor(Path(args.source).expanduser().resolve(), pin=pin, force=args.force, releasing=releasing)
 
 
 if __name__ == "__main__":

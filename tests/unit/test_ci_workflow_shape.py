@@ -273,3 +273,18 @@ def test_no_step_name_was_truncated_by_a_yaml_comment():
         if str(s.get("name", "")).count("(") != str(s.get("name", "")).count(")")
     ]
     assert not cut, cut
+
+
+def test_release_build_vendors_the_pinned_console_and_audits_it_without_a_waiver():
+    """R4 (#1333): CI builds with the real pinned pulse bundle on the release path; the hand-written stub manifest and
+    the audit's `--allow-missing-ui-dist` waiver are gone, and the freshness check runs on release PRs."""
+    steps = _steps("release-build")
+    runs = [_commands(s) for s in steps]
+    vendor = [i for i, r in enumerate(runs) if "vendor_console_ui.py --from-pin" in r]
+    build = [i for i, r in enumerate(runs) if "python -m build" in r]
+    audit = [i for i, r in enumerate(runs) if "audit_release_build.py" in r]
+    assert vendor and build and audit and vendor[0] < build[0] < audit[0], runs
+    assert not any("ci-stub" in r or "maxim-ui.json" in r for r in runs), "a stub manifest is back"
+    assert not any("--allow-missing-ui-dist" in r for r in runs)
+    verify = [s for s in steps if "--verify-pin --only-when-releasing" in _commands(s)]
+    assert len(verify) == 1 and verify[0].get("if") == "github.event_name == 'pull_request'", verify

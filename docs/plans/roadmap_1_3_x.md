@@ -877,7 +877,8 @@ Owner decisions taken with this path (2026-10-16):
       first;
     - [#1336](https://github.com/dennys246/Maxim/issues/1336) (R3): typed console payloads.
   - **Cut rule:** R3's contract 0.7.0 lands only together with a pulse tag built for 0.7.0. Otherwise it slips past
-    the cut, and the release vendors v0.4.1 at contract 0.6.0.
+    the cut, and the release vendors v0.4.1 at contract 0.6.0. Since R4 the bump itself merges, and `main` is then unreleasable until the console pin moves to a
+    0.7.0 pulse tag; at the cut, revert the bump or wait ([r4_console_vendor_gate.md](r4_console_vendor_gate.md)).
   - **Before the cut,** two checks run against the candidate wheel:
     - pulse's `scripts/smoke-reachy-release.sh` on Linux prints `SMOKE PASSED`;
     - pulse's browser suite `scripts/e2e.sh` prints `E2E PASSED (59/59)`.
