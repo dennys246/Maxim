@@ -31,7 +31,10 @@ candidate being generalization through EC similarity to states a reasonable tabu
 over-fine floor key so that it loses is a strawman in our favour and is for the confounding lens to refuse.
 
 *Lessons from B1:* [docs/lessons/baseline-floors-b1.md](../lessons/baseline-floors-b1.md) (the toy model before rig
-time, floors unfair in either direction, the twin, the demotion-needs-an-exception sequence). *Next, after 1.3.2:*
+time, floors unfair in either direction, the twin, the demotion-needs-an-exception sequence). *2026-10-18:* E1's prereg (DRAFT v2) runs the twin as an arm, with TD(0) and extinction, and gates two DVs over `Q_EXPLORE`
+and `RANDOM` ([e1_conflict_prereg.md](../experiments/e1_conflict_prereg.md)); B4's prereg is DRAFT v2
+([b4_exp37_floors_prereg.md](../experiments/b4_exp37_floors_prereg.md)), both through the four-lens review (#1382;
+[lessons](../lessons/e1-b4-design-review.md)). *Then, after 1.3.2:*
 E1's prereg draft and four-lens review carry the twin and a floor-can-lose check from the start; B2 (bare LLM)
 still waits on the `start_simulation_mode` decomposition, and B0b on #1227/#1228.
 
@@ -217,7 +220,11 @@ Each stage is one PR or more and goes through the reviews its kind requires.
 - **B3. `llm_notes`.** Notes stored in the agent's home with `atomic_write_json` + `_format_version`, one
   end-of-session reflection call through the router. **Reflexion first** (owner decision 2026-10-17,
   [#1353](https://github.com/dennys246/Maxim/issues/1353)). Episodic retrieval can follow as a second arm.
-- **B4. Exp 37 / T1-2 re-run with floors** ([#1354](https://github.com/dennys246/Maxim/issues/1354)). Four-lens design
+- **B4. Exp 37 / T1-2 re-run with floors** ([#1354](https://github.com/dennys246/Maxim/issues/1354)). *2026-10-18: the
+  prereg is DRAFT v2 after its four-lens review ([b4_exp37_floors_prereg.md](../experiments/b4_exp37_floors_prereg.md),
+  owner decisions OB1–OB7); it supersedes the bullets below where they differ (arm C's prior was a fire-pit session;
+  every gate is signed by direction; G1 is the cross-world interaction; G3 is carry vs carry; n = 34; model by
+  pilot; no dose arm), and lists the `src/` prerequisites.* Four-lens design
   review (new claim). The review is paper and runs now, in Session E's lane; only the run waits for B2 and B3. **Homed to 1.4 as L8's
   dose-response design (owner, 2026-10-14):** 1.3.2 released without it under the committed `release` exception
   `release-1.3.2-T1-2`, and T1-2 stays STALE until this run lands. Hold the model fixed and read where A sits

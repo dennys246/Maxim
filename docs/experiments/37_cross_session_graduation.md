@@ -4,7 +4,12 @@
 > shipped with the row STALE under the committed exception `release-1.3.2-T1-2`
 > (`docs/experiments/evidence_exceptions.json`), which covers that release only. The owed re-fire is L8's
 > dose-response design, baseline-floors Stage B4, scheduled before 1.4.0 (owner decision 2026-10-16). The
-> cross-model Goldilocks map below is citable only with L8's caveat: unverifiable, not refuted. [Ledger](../plans/behavioral_graduation_candidates.md).
+> cross-model Goldilocks map below is citable only with L8's caveat: unverifiable, not refuted.
+> **Found 2026-10-18 (B4 design review):** arm C's "peaceful prior" was a fire-pit session. `PEACEFUL_GOAL` selects
+> the same `cradle` arc as `fire_pit`, and the narrator advances phases by turn count, so a 12-turn prior never
+> reaches the door and button. Every historical B − C therefore compares two fire-exposed resumes; read it as such.
+> Details: [../wiring/cradle-sim-arms-and-resume.md](../wiring/cradle-sim-arms-and-resume.md); the re-fire's fix:
+> [b4_exp37_floors_prereg.md](b4_exp37_floors_prereg.md). [Ledger](../plans/behavioral_graduation_candidates.md).
 
 > **Status (2026-09-26): FIRED — PARTIAL (mixed)** — the "PRE-REGISTERED — implementation not
 > started" header below is stale and kept as recorded. Four local-model fires ran (Qwen14B

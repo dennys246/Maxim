@@ -24,6 +24,13 @@ that generalizes belongs here.
   reproduce the LIVE condition offline), and the preflights every harness now carries. (Exp 60 trial
   harness, 2026-09-15/16.)
 
+- [cradle-sim-arms-and-resume.md](cradle-sim-arms-and-resume.md) — the cradle sim (Exp 37/38):
+  the goal picks the arc and the TURN COUNT picks the phase (`PEACEFUL_GOAL` runs the fire-pit `cradle` arc, so
+  Exp 37's arm C was never a wrong-content control); what a resume carries (hippocampus, NAc, EC, ATL;
+  `apply_decay=False`; `resume_loaded` is not a carry proof); the narrator's resume prompt is silently unconsumed on
+  the generative path; what every `maxim --sim` AUT gets outside the factory (FearGate, imagination steered by NAc
+  biases, `examine` recall); the seed, zero-engagement and sign traps. (B4 design review, 2026-10-18.)
+
 - [substrate-learning-channels.md](substrate-learning-channels.md) — the TWO learning channels a
   successful action writes (state-blind tool-success **causal link** vs state-conditioned
   **cluster reward bias**), why they confound behavioural credit-isolation, and how to design a

@@ -76,6 +76,33 @@ other things, *specifically* when hungry." Give it that job:
   `current_clusters=None` scores prior + causal link only. That difference IS the clean way to read
   the cluster channel's marginal effect (used by the R2 marginal probe).
 
+## Under a drive conflict, the two channels outweigh the fear (E1 design review, 2026-10-18)
+
+When a learned fear (Wire 4, read as a `threat` need) competes with an innate need, the same two channels decide,
+and they outweigh the fear itself:
+
+- **The scale.** A need contributes `need × 0.7` through `_DRIVE_TOOL_AFFINITIES`, so a fear at the cap (1.0) and a full
+  hunger need both score **0.70**: an exact tie, which the name sort breaks (`minecraft_player_flee` beats both `eat`
+  and `escape_water`). One success books a causal link worth **+0.5**, which is most of the fear's whole range.
+- **Measured** on the real `recommend_action` (`docs/experiments/rationale/e1-conflict/e1_argmax_replay.py`): a fresh
+  agent with a cap fear never eats; after ONE successful `eat` it eats whenever food ≤ 10, the cap fear
+  notwithstanding. One successful `escape_water` makes it escape even with no fear at all (food ≥ 9).
+- **The interoception cluster-reward channel splits by hunger** (about food 0–9 vs 10–18 on `minecraft_player`;
+  the boundary is order-dependent). A replay that calls `record_outcome` without `clusters`, or a toy that passes
+  only the world cluster to `recommend_action`, silently drops it. The E1 v1 toy did, and predicted "the agent avoids
+  and never eats"; with the channel booked it eats one or two breads pain-free, and the result then flips with the
+  number of loop iterations outside each episode (decay). The prediction was withdrawn
+  (`docs/experiments/e1_conflict_prereg.md`, DRAFT v2).
+- **The order of first successes is a hidden variable.** Whichever corrective act books its first success first wins
+  the causal race. A training schedule with a sated band lets `escape_water` book first, and an all-hungry schedule
+  lets `eat` book first, so the schedule decided E1's AVOID outcome in the toy.
+
+**How to apply:** predict a conflict only from the COMPOSED loop (`run_minecraft_aut` on a scripted world, every live
+booking on: causal links, the cluster reward on every active cluster, temporal credit, decay, the live pain schedule
+and loop timing), never from a hand-driven `recommend_action`. Read which channel decided from provenance
+counterfactuals (`explore_decisive` today; E1 adds `drive_decisive`, `causal_decisive`, `learned_decisive`). Run
+scripted anchors (always-escape, eat-once-then-escape) beside the agent, since an action-order policy can tie it.
+
 ## See also
 
 DECISIONS.md 2026-09-12 (injected-signal lane); `docs/experiments/r2_learned_bias_prereg.md`;

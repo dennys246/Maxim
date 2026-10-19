@@ -265,6 +265,12 @@ the release transaction, else 1.3.1. T2 makes it a 1.4.0 gate as a sequencing ch
 
 ## Phase 2 — E1, the conflict rung: a want against a fear, at the food
 
+> **2026-10-18: E1 v3's prereg is DRAFT v2 on main** ([e1_conflict_prereg.md](../experiments/e1_conflict_prereg.md), #1382):
+> a learning curve at the food, AVOID and RESOLVED gated over `Q_EXPLORE` and `RANDOM`, the TD twin run (owner
+> decisions OE1–OE4). The four-lens review withdrew the toy's prediction; the freeze waits on a composed-loop offline
+> replay, items 1a (with `causal_decisive`/`learned_decisive`) and 1b, and a typed arming gate. The argmax and
+> hunger-state replays are committed in `docs/experiments/rationale/e1-conflict/` (T3's "replays committed").
+>
 > **Owner decision 2026-10-16: E1 is redesigned before its harness.** v2's argmax, below, is "a pure function of
 > protocol constants … neither about learning". A same-prior floor learner (the mechanism twin) therefore matches
 > it, and under BF2 (M46; [baseline_floors.md](baseline_floors.md) §Why) E1 as drafted cannot EARN. E1's four-lens

@@ -30,6 +30,7 @@ links the file today. Add a line here when you add a lesson.
 - [development-flow-speed.md](development-flow-speed.md) — Development flow: faster without lowering the bar — CLAUDE.md, ci-testing.md
 - [direct-key-over-context-similarity.md](direct-key-over-context-similarity.md) — Tool-invoked embodiment pain attributes directly, not via context similarity, when a direct lookup key exists — bio-memory.md, embodiment.md
 - [drive-pain-channel-split.md](drive-pain-channel-split.md) — Drive-pain emission is channel-split: the direct `FailureEvent` channel is state-based, the PainBus channel severity-latched — embodiment.md
+- [e1-b4-design-review.md](e1-b4-design-review.md) — E1 and B4 on paper: what two four-lens design reviews found before any harness existed — docs/experiments/DESIGN_REVIEW.md
 - [ec-centroid-drift.md](ec-centroid-drift.md) — Running-mean centroid drift in cosine-similarity pattern completion — bio-memory.md
 - [embodiment-tick-cycle.md](embodiment-tick-cycle.md) — The embodiment tick cycle lives in `Body.evaluate_failures()`, not percepts.py — embodiment.md
 - [env-var-autouse-scrubs.md](env-var-autouse-scrubs.md) — Opt-in env vars in hot startup paths need autouse scrubs — CLAUDE.md, ci-testing.md, runtime-tools.md
