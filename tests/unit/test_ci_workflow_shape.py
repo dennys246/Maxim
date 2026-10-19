@@ -280,7 +280,11 @@ def test_no_step_name_was_truncated_by_a_yaml_comment():
 
 _INSTALLS_THE_PACKAGE = re.compile(r"\bpip install\b[^\n]*?(?:-e\s+)?\.(?:\s|$|\[|\")")
 # Jobs that install the package where a runner-side pip cache cannot reach, each with its reason.
-_UNCACHEABLE = {"aarch64-install": "installs inside an arm64 Docker container (/venv/bin/pip), not on the runner"}
+_UNCACHEABLE = {
+    "aarch64-install": "installs inside an arm64 Docker container (/venv/bin/pip), not on the runner",
+    "extras-matrix": "R2's lane (#1335, Session S): one extra at floor/latest pins, a clean resolution by design, "
+    "and it builds nothing from an sdist",
+}
 
 
 def _installs_the_package(job: str) -> bool:
