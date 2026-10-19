@@ -102,6 +102,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      # #1318: the wheels pip BUILDS (llama-cpp-python's 2m50s sdist build), not its downloads (GBs, over the 10 GB repo cap), one entry
+      # per job and Python: setup-python's own `cache: pip` key has no job in it, so a short job saved the shared key
+      # first and the long job never got the wheel. Exact key only, no restore-keys: an edit to pyproject or a
+      # constraints file (the llama pin) starts a fresh entry, so nothing stale or unbounded is ever restored.
+      - name: Cache pip (this job, this Python, these pins)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip/wheels  # built wheels only (the llama build); downloads would be GBs of CUDA torch
+          key: pip-${{ runner.os }}-${{ github.job }}-py${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', '.github/constraints/*.txt') }}
       - name: Install the core package
         run: python -m pip install .
 
@@ -310,8 +319,13 @@ jobs:
       # The model-cache lane's setup (shared action, #1117), then the optional backends over it; no `||` anywhere.
       - uses: ./.github/actions/model-cache-setup
       - name: Install the optional backends
+        env:
+          # #1318: a portable llama-cpp-python build, because the pip cache reuses the wheel on other runners
+          # (.github/constraints/ci-backends.txt says why).
+          CMAKE_ARGS: "-DGGML_NATIVE=OFF"
         run: |
-          pip install faster-whisper ctranslate2 onnxruntime av numpy opencv-python scipy llama-cpp-python ddgs pyyaml
+          pip install faster-whisper ctranslate2 onnxruntime av numpy opencv-python scipy llama-cpp-python ddgs pyyaml \
+            -c .github/constraints/ci-backends.txt
       # The real-Docker tests moved here from the fast suite (#1103, owner decision 2026-10-08: the fast suite is
       # hermetic, tests/docker_guard.py). Pull their image OUTSIDE the network namespace so a registry hiccup fails
       # this step by name instead of surfacing as an unlisted skip in the roster check; the daemon is reached over
@@ -519,12 +533,25 @@ jobs:
         with:
           python-version: "3.12"
 
+      # #1318: the wheels pip BUILDS (llama-cpp-python's 2m50s sdist build), not its downloads (GBs, over the 10 GB repo cap), one entry
+      # per job and Python: setup-python's own `cache: pip` key has no job in it, so a short job saved the shared key
+      # first and the long job never got the wheel. Exact key only, no restore-keys: an edit to pyproject or a
+      # constraints file (the llama pin) starts a fresh entry, so nothing stale or unbounded is ever restored.
+      - name: Cache pip (this job, this Python, these pins)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip/wheels  # built wheels only (the llama build); downloads would be GBs of CUDA torch
+          key: pip-${{ runner.os }}-${{ github.job }}-py3.12-${{ hashFiles('pyproject.toml', '.github/constraints/*.txt') }}
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libgstreamer1.0-dev gstreamer1.0-plugins-base
 
       - name: Install package and test dependencies
+        env:
+          # #1318: a portable llama-cpp-python build, because the pip cache reuses the wheel on other runners
+          # (.github/constraints/ci-backends.txt says why).
+          CMAKE_ARGS: "-DGGML_NATIVE=OFF"
         run: |
           # pytest-timeout is load-bearing, not convenience: the D12 guard
           # (tests/unit/test_inference_lock_timeout.py) fails by HANGING
@@ -546,7 +573,8 @@ jobs:
           pip install -e .
           # No `|| echo`: a failed install fails here (roadmap 1.3.2 item 7, #940). Every package installed on
           # the 2026-10-05 main run; a skip for a missing backend would otherwise pass as green.
-          pip install faster-whisper ctranslate2 onnxruntime av numpy opencv-python scipy llama-cpp-python ddgs pyyaml
+          pip install faster-whisper ctranslate2 onnxruntime av numpy opencv-python scipy llama-cpp-python ddgs pyyaml \
+            -c .github/constraints/ci-backends.txt
 
       - name: Install the console + sign extras (the extras lane)
         # roadmap 1.3.x "Test/CI truthfulness" / public_oasis Phase 0 item 1: without these the
