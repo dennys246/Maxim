@@ -209,7 +209,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        extra: [tts]
+        extra: [console, tts]
         resolution: [floor, latest]
     env:
       MAXIM_TEST_TTS_VOICE_DIR: /home/runner/.cache/maxim-tts-voice

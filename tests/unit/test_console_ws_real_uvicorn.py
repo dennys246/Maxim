@@ -84,7 +84,6 @@ def _upgrade(port: int, token: str) -> str:
     return response.split(b"\r\n", 1)[0].decode(errors="replace")
 
 
-@pytest.mark.xfail(strict=True, reason="#1347: the console extra installs plain uvicorn, which cannot serve /ws")
 def test_maxim_serve_upgrades_ws_on_a_real_uvicorn(serve):
     port, token = serve
     assert _upgrade(port, token).startswith("HTTP/1.1 101"), "the console extra cannot serve /ws"

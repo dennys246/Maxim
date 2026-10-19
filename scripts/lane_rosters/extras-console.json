@@ -1,0 +1,7 @@
+{
+  "expected": [
+    "tests/unit/test_console_ws_real_uvicorn.py::test_an_unauthenticated_upgrade_is_refused_on_a_real_uvicorn",
+    "tests/unit/test_console_ws_real_uvicorn.py::test_maxim_serve_upgrades_ws_on_a_real_uvicorn"
+  ],
+  "allowed_skips": {}
+}
