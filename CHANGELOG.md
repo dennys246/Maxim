@@ -78,6 +78,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     *files* (pinned, sha256-checked) and that the voice *loaded*; nothing verified that it could speak, and it could not.
   - Guard: `tests/unit/test_tts_real_piper.py` drives the real piper library and the pinned voice (strict red gates,
     flipped in place; red on Linux at piper-tts 1.3.0 and 1.8.0 before the fix), plus a signature pin of the piper API.
+    They run in CI's new **R2 extras matrix** ([#1335](https://github.com/dennys246/Maxim/issues/1335), its first
+    slice): the `extras-matrix` job installs only `pymaxim[tts]` + pytest at the extra's floor and at its latest,
+    checks the pins and that nothing outside the extra is installed, provisions the voice, and holds the cell to its
+    exact roster (`scripts/extras_matrix.py`, `scripts/lane_rosters/extras-tts.json`). Every cell runs nightly, on a push
+    to main and before a release (the release gate reads `(nightly)` jobs); a pull request runs the cells its diff
+    touches.
 - **`VoiceProvisioner.is_ready()` (the console's `pairing_ready`) now means the voice SPEAKS, not that it loads**
   (standard R1, [#1334](https://github.com/dennys246/Maxim/issues/1334), its first instance).
   - After loading the voice, the provisioner thread synthesizes a short fixed phrase once and arms only on non-empty,

@@ -191,6 +191,93 @@ jobs:
         if: always()
         run: python3 scripts/check_lane_roster.py --lane model-cache model-cache-results.xml
 
+  # ── The R2 extras matrix (#1335; docs/plans/readiness_and_extras_standards.md §"R2's lane") ───────────────
+  # Each optional extra against the REAL library, at its floor and its latest: 1.3.2 shipped a PiperTTS written for
+  # the pre-1.3 piper API while the extra's floor was 1.3.0 (#1332), and no test imported piper. Each cell installs
+  # ONLY pymaxim[<extra>] + pytest, verifies the pins AND that nothing outside the extra is installed, provisions the
+  # extra's assets, then runs the extra's marked tests offline and checks the exact roster.
+  #
+  # When (owner decision 2026-10-18): every cell on the nightly, on workflow_dispatch and on a push to main; a pull
+  # request runs only the cells whose extra its diff touches. The decision lives HERE, not in the helper (design
+  # pass, finding 3): a cell whose steps all skip still concludes `success`, so a helper bug on a nightly would empty
+  # the release gate. `scope` is consulted only on a pull_request. The `(nightly)` in the name puts every cell under
+  # scripts/check_nightlies.py, the release gate: a red cell holds a release. Not a required check (a cell may skip).
+  extras-matrix:
+    name: Extras matrix, ${{ matrix.extra }} at ${{ matrix.resolution }} (nightly)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        extra: [tts]
+        resolution: [floor, latest]
+    env:
+      MAXIM_TEST_TTS_VOICE_DIR: /home/runner/.cache/maxim-tts-voice
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # scope diffs against the merge-base with origin/main (scripts/_lint_git.py), which a depth-1 clone lacks.
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Scope (pull requests only)
+        id: scope
+        if: github.event_name == 'pull_request'
+        run: |
+          # Into a file first: a pipe would hide the helper's exit code (2 = it cannot answer: the cell goes red).
+          python3 scripts/extras_matrix.py scope --extra ${{ matrix.extra }} > extras-scope.txt
+          cat extras-scope.txt
+          cat extras-scope.txt >> "$GITHUB_OUTPUT"
+          grep -q '^run=true' extras-scope.txt || sed -n 's/^why=/Skipped: /p' extras-scope.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Pin the extra's requirements
+        if: github.event_name != 'pull_request' || steps.scope.outputs.run == 'true'
+        run: |
+          # packaging parses the requirements; pytest depends on it, so it is inside the closure verify allows.
+          python -m pip install --upgrade pip packaging
+          python3 scripts/extras_matrix.py pins --extra ${{ matrix.extra }} --resolution ${{ matrix.resolution }} -o extras-pins.txt
+
+      - name: Install only the extra (and pytest)
+        if: github.event_name != 'pull_request' || steps.scope.outputs.run == 'true'
+        # A fresh interpreter: nothing but the extra's closure may be installed (verify checks it). NOT `|| echo`.
+        run: python -m pip install -e ".[${{ matrix.extra }}]" pytest -c extras-pins.txt
+
+      - name: Verify the pins and that only the extra is installed
+        if: github.event_name != 'pull_request' || steps.scope.outputs.run == 'true'
+        run: python3 scripts/extras_matrix.py verify --extra ${{ matrix.extra }} --pins extras-pins.txt
+
+      - name: Restore the extra's assets
+        if: matrix.extra == 'tts' && (github.event_name != 'pull_request' || steps.scope.outputs.run == 'true')
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/maxim-tts-voice
+          # The voice's sha256 pins live in download.py; the provision step re-hashes, so a stale hit is re-fetched.
+          key: tts-voice-${{ hashFiles('src/maxim/models/download.py') }}
+          restore-keys: tts-voice-
+
+      - name: Provision the extra's assets (before the network namespace)
+        if: github.event_name != 'pull_request' || steps.scope.outputs.run == 'true'
+        run: python3 scripts/extras_matrix.py assets --extra ${{ matrix.extra }} --dest /home/runner/.cache/maxim-tts-voice
+
+      - name: Run the extra's real-library tests
+        if: github.event_name != 'pull_request' || steps.scope.outputs.run == 'true'
+        # Only the files that apply the marker (`extras_matrix.py tests`): the cell holds only the extra, so the rest
+        # of tests/ does not collect. Its exit code is checked on its own line, not swallowed in a substitution.
+        run: |
+          FILES=$(python3 scripts/extras_matrix.py tests --extra ${{ matrix.extra }})
+          bash scripts/ci_netns.sh '"$PY" -m pytest '"$FILES"' -q -m "extras_${{ matrix.extra }}" --tb=short \
+            --require-extras=${{ matrix.extra }} \
+            --junitxml=extras-results.xml'
+
+      - name: Assert the cell ran its exact roster
+        # Its own step with always(): inside the run step a pytest failure would skip it and hide "not its roster".
+        if: always() && (github.event_name != 'pull_request' || steps.scope.outputs.run == 'true')
+        run: python3 scripts/check_lane_roster.py --lane extras-${{ matrix.extra }} extras-results.xml
+
   # ── The slow lane ─────────────────────────────────────────────────────────
   # `@pytest.mark.slow` has been a registered marker applied across ~10 files
   # for months, and until 2026-08-30 the ONLY occurrence of the word in this

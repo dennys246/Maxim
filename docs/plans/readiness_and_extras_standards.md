@@ -191,3 +191,66 @@ PYMAXIM_SPEC=/path/to/pymaxim-1.3.3-py3-none-any.whl scripts/e2e.sh   # must pri
 After the release, pulse runs `scripts/check_pymaxim_vendor.py 1.3.3`.
 
 A Mac cannot run the smoke: piper-tts 1.8.0's macOS arm64 wheel cannot find its espeak-ng-data.
+
+## R2's lane: approach note (a gate; adversarial design pass before code, 2026-10-18)
+
+**What it is.** One `extras-matrix` job in `test.yml`, a `{extra} × {floor, latest}` matrix (1.3.3: `tts`; `console`
+with #1347). Owner decision 2026-10-18: the full matrix runs nightly and on `workflow_dispatch`; a pull request runs
+only the cells whose extra its diff touches. The job names carry `(nightly)`, so `scripts/check_nightlies.py` (the
+release gate) refuses a release while any cell is red: that is the "before a release" half. It is not a required
+check: a cell may skip on a PR, and a skipped required check reads as passing.
+
+**Each cell:** a fresh runner with ONLY `pip install -e ".[<extra>]"` plus pytest (at `floor`, a generated constraints
+file pins every requirement of the extra to its declared lower bound); a verify step asserts the installed versions
+(`floor`: each equals its bound); the extra's assets are provisioned before the network namespace (tts: the pinned
+voice, through `ensure_tts_voice`, from an `actions/cache` keyed on `download.py`, where the sha256 pins live); then
+the marked tests run inside `scripts/ci_netns.sh` with `--require-extras=<extra>` and the lane's exact roster is checked
+(`scripts/lane_rosters/extras-<extra>.json`, `scripts/check_lane_roster.py`).
+
+**One helper, `scripts/extras_matrix.py`,** owns the table (extra → the paths that make a PR run it, the test marker)
+and three subcommands: `scope` (should this cell run), `constraints` (the floor pins), `verify` (installed = expected).
+
+**Inputs, and how each could lie:**
+
+| Input | Lie | Response |
+|---|---|---|
+| `GITHUB_EVENT_NAME` | an event this code did not foresee | anything but `pull_request` and `push` runs the cell |
+| the PR's base (merge-base with `origin/main`) | unavailable (shallow clone, a fetch failure) | the cell RUNS; never "no diff, so skip" |
+| `push` to main | no PR to scope by | skips by design: the PR ran the touched cells, the nightly runs all |
+| changed paths | a rename hides the old path; a deletion is not a "change" | `--name-status -M`, both sides of a rename, deletions count |
+| the path table | a consumer of the extra outside the table changes | the table names the consumers (`console/announcer.py`, `utils/response_output.py`, ...) plus `pyproject.toml`, `tests/conftest.py`, the workflow, the helper and the roster; the residual is caught by the nightly within a day and by the release gate |
+| `pyproject.toml`'s extra | a requirement with no `>=` floor; extras or markers in it (`uvicorn[standard]>=0.29`) | `constraints` refuses a requirement without a floor (exit 2); strips `[extras]` (pip refuses constraints with extras), keeps the marker |
+| the installer | a later install moves a pin; a cached wheel; `.github/constraints/console.txt` leaking into `latest` | `verify` reads `importlib.metadata` after the install: at `floor` each requirement must equal its bound; at `latest` each must equal the newest version the index offers within the requirement's specifier (`pip index versions`, before the namespace; an unreadable answer fails the cell) |
+| the matrix in `test.yml` | an extra added to the table but not the matrix, or the reverse | a fast-suite test pins matrix extras == the table's extras |
+| the tests themselves | they skip (extra missing, asset missing), or a marked test drops out | `--require-extras=<extra>` turns a skip for the extra or its asset into a failure; the exact roster check, in its own `always()` step |
+| the asset cache | stale or corrupted voice | `ensure_tts_voice` re-hashes against the sha256 pins and re-fetches; a failed fetch fails the provision step, before the tests |
+
+**Design pass (2026-10-18): no DO-NOT-BUILD; five SHOULD-FIX, folded here.** Finding 3 was not fail-closed, so the
+built lane gets a further round.
+1. `--require-extras=tts` needed `piper-tts` → `piper` in `extra_import_names` and a `tts` entry in the skip reasons
+   (both reasons: the extra and the voice). The tts roster's `allowed_skips` is pinned at 0.
+2. A lane is one marker: `extras_<extra>` (registered in `pyproject.toml`), lane `extras-<extra>` in
+   `check_lane_roster.LANES`, one roster per extra serving both cells (see 5).
+3. **The run/skip decision lives in the YAML, not the helper.** A job-level `if:` cannot read `matrix.*`, so cells gate
+   their steps, and a cell whose steps all skip still concludes `success`. If the helper decided on a nightly, a helper
+   bug would make every cell green with nothing run, and the release gate would read that as passing. So every step
+   after `scope` carries `if: github.event_name != 'pull_request' || steps.scope.outputs.run == 'true'` (the roster step
+   adds `always() &&`). `scope` runs only on a pull request; a push to main and every nightly run every cell. A scoped-out
+   cell writes why to the step summary.
+4. **Floor and latest are one mechanism: a pinned set, then equality.** `pins` writes `==` constraints (floor: each
+   requirement's `>=` bound; latest: what an unconstrained `pip install --dry-run --ignore-installed --report` of the
+   extra resolves today), the install uses them, and `verify` checks equality (`packaging.Version`; requirements whose
+   marker is false on the runner are skipped). A holdback then fails at install, as a resolver error, which is signal;
+   `pip index versions` is not used.
+5. **No console exemption is needed.** The `extras_*` marker goes only on the real-library R2 tests; the snapshot and
+   fingerprint tests stay in `unit-tests` under `console.txt`, so no cell selects them, at the floor or the latest.
+6. (NIT, taken) **"Only the extra" is checked:** `verify` also requires the installed distributions to be exactly the
+   metadata closure of `pymaxim[<extra>]` plus `pytest` (plus `pip`/`setuptools`/`wheel`), so a cell that drags in
+   `websockets` some other way cannot go green over #1347.
+7. (NIT, owner question) Scoping PRs adds most of the lane's surface for a non-required result; running every cell on
+   every PR would delete `scope` entirely. Kept as decided (owner 2026-10-18), and offered back to the owner.
+8–9. (NITs, taken) `changed_files(..., suffix="")` so `pyproject.toml`, the workflow and the roster count; `fail-fast:
+   false`; Python pinned per cell; the cell installs no pytest-timeout or pytest-cov (`-p no:cov` stays banned).
+10. **A release can now wait on Hugging Face and PyPI** (a voice-fetch failure on a cache miss, a breaking upstream
+   release). That is intended. The response is to cap the requirement in `pyproject.toml` or fix the code; never a
+   one-off override (CLAUDE.md "Weak evidence never gates").

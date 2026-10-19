@@ -21,14 +21,20 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-piper = pytest.importorskip("piper", reason="requires the `tts` extra (pip install 'pymaxim[tts]')")
+pytestmark = pytest.mark.extras_tts  # the R2 extras matrix's tts cells (scripts/lane_rosters/extras-tts.json)
 
 VOICE = "en_US-lessac-medium"
 PHRASE = "Your pairing code is 4, 8, 2, 9, 1, 3."
 
 
 @pytest.fixture(scope="module")
-def voice_dir() -> Path:
+def piper():
+    # Imported here, not at module level: the lane-roster twin collects this file in the fast suite, which has no piper.
+    return pytest.importorskip("piper", reason="requires the `tts` extra (pip install 'pymaxim[tts]')")
+
+
+@pytest.fixture(scope="module")
+def voice_dir(piper) -> Path:
     from maxim.models import download
 
     raw = os.environ.get("MAXIM_TEST_TTS_VOICE_DIR", "").strip()
@@ -54,12 +60,12 @@ def _assert_speech(audio: np.ndarray, sample_rate: int) -> None:
     assert int(np.abs(audio.astype(np.int32)).max()) > 1000, "the audio is silence"
 
 
-def test_the_piper_api_is_the_one_pipertts_calls():
+def test_the_piper_api_is_the_one_pipertts_calls(piper):
     """A signature pin that needs no voice: an upstream API change fails here, on any box, not on a robot.
 
     ``PiperTTS`` iterates ``PiperVoice.synthesize(text)`` for ``AudioChunk``s and reads each chunk's
     ``audio_int16_array``; ``synthesize_wav`` is the WAV-writer entry the pre-fix code thought ``synthesize`` was."""
-    from piper import AudioChunk, PiperVoice
+    AudioChunk, PiperVoice = piper.AudioChunk, piper.PiperVoice
 
     params = list(inspect.signature(PiperVoice.synthesize).parameters)
     assert params[:3] == ["self", "text", "syn_config"], params
