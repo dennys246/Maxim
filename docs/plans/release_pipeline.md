@@ -91,7 +91,7 @@ It adds one new workflow file and one new script, `check_release_tag.py` (design
 - that no step uses a `PYPI_TOKEN` or `password:`.
 
 `test_check_nightlies.py` pins #938's `pull_request` guard on the nightly step and covers `--at`. Pinning the
-environment and the ruleset in `check_repo_settings.py` is deferred (below); `check_release_tag.py environment` and
+environment and the ruleset in `check_repo_settings.py` is deferred to #1384; `check_release_tag.py environment` and
 `ruleset` check both inside the workflow, at the moment they are relied on.
 
 ## Owner setup (one-time; listed in the PR), in this order (SF1)
@@ -118,7 +118,7 @@ environment and the ruleset in `check_repo_settings.py` is deferred (below); `ch
   before `publish` can be scheduled. It requires required reviewers and deployment policies of exactly `[v* tag]`,
   and an unreadable answer is exit 2. The owner setup order is now environment → ruleset → trusted publisher, last
   (§Owner setup). Pinning the environment and ruleset in the nightly drift check (`check_repo_settings.py`) is new code
-  in that script, which reads only `main` and `settings-check` today, so it is deferred to a follow-up issue. The
+  in that script, which reads only `main` and `settings-check` today, so it is deferred to [#1384](https://github.com/dennys246/Maxim/issues/1384). The
   in-workflow check is the gate.
 - **SF2, a stale run waiting for approval could publish a superseded commit (fail-open).**
   - `concurrency: release-${{ github.ref }}`, with no cancel-in-progress.
@@ -190,7 +190,7 @@ therefore never passes `--only-when-releasing`, `--contract-drift-ok-unless-rele
 - **Tests.** The self-referential API test was fixed, and the main exit codes and the `tag_object=` output are
   pinned. The tag-version clause, the target type, a re-tag to a lightweight tag and the `--at` sha filter each have
   their own test.
-- **Deferred (follow-up issue):** pinning the `pypi` environment and the `v*` ruleset in `check_repo_settings.py`'s
+- **Deferred ([#1384](https://github.com/dennys246/Maxim/issues/1384)):** pinning the `pypi` environment and the `v*` ruleset in `check_repo_settings.py`'s
   nightly drift check. The in-workflow checks fail closed when they are relied on.
 
 ## Hand-off to the process session (`docs/publication_guide.md`, not edited here)
