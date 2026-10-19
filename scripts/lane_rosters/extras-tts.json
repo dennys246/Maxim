@@ -1,0 +1,11 @@
+{
+  "expected": [
+    "tests/unit/test_tts_real_piper.py::test_synthesize_speaks_a_phrase",
+    "tests/unit/test_tts_real_piper.py::test_synthesize_to_file_of_nothing_is_a_valid_empty_wav",
+    "tests/unit/test_tts_real_piper.py::test_synthesize_to_file_writes_a_playable_wav",
+    "tests/unit/test_tts_real_piper.py::test_the_pairing_announcer_puts_real_speech_on_the_sink",
+    "tests/unit/test_tts_real_piper.py::test_the_piper_api_is_the_one_pipertts_calls",
+    "tests/unit/test_tts_real_piper.py::test_the_voice_provisioner_arms_on_a_voice_that_really_speaks"
+  ],
+  "allowed_skips": {}
+}

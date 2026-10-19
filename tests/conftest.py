@@ -104,7 +104,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--require-extras",
         default="",
         help=(
-            "Comma-separated optional extras (console, sign) this lane installs: a test that SKIPS "
+            "Comma-separated optional extras (console, sign, tts) this lane installs: a test that SKIPS "
             "for one of them fails instead, so the lane cannot go quietly vacuous."
         ),
     )
@@ -124,7 +124,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 _EXTRA_SKIP_REASONS: dict[str, tuple[str, ...]] = {
     "console": ("`console` extra", "console extra"),
     "sign": ("[sign] extra",),
+    # The tts lane provisions the voice too, so a skip for a missing voice is the lane going vacuous (R2, #1335).
+    "tts": ("`tts` extra", "tts voice not provisioned"),
 }
+
+# A requirement whose distribution name is not its import name (``extra_import_names``).
+_DIST_IMPORT_NAMES: dict[str, str] = {"piper_tts": "piper"}
 
 
 @functools.cache
@@ -142,16 +147,17 @@ def extra_import_names(extra: str) -> tuple[str, ...]:
     A reason-less ``pytest.importorskip("cryptography")`` skips with pytest's own message
     ("could not import 'cryptography': ..."), which names no extra, so it used to evade
     ``--require-extras`` (#940 item 4). Reading the names from the extras themselves keeps the
-    contract from drifting when an extra gains a package. Every console/sign requirement's
-    distribution name is its import name; ``test_require_extras_lane`` pins that (a dotted or
-    renamed distribution, e.g. ``PyYAML``, would need a mapping here)."""
+    contract from drifting when an extra gains a package. A distribution whose import name differs
+    (``piper-tts`` imports as ``piper``) is mapped in ``_DIST_IMPORT_NAMES``; ``test_require_extras_lane``
+    pins the known answers and checks installed distributions against their real top-level modules."""
     import re
 
     names = []
     for requirement in _optional_dependencies().get(extra, ()):
         match = re.match(r"[A-Za-z0-9._-]+", requirement)
         if match:
-            names.append(re.sub(r"[-.]", "_", match.group(0).lower()))
+            dist = re.sub(r"[-.]", "_", match.group(0).lower())
+            names.append(_DIST_IMPORT_NAMES.get(dist, dist))
     return tuple(names)
 
 
