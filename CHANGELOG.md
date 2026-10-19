@@ -78,6 +78,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     *files* (pinned, sha256-checked) and that the voice *loaded*; nothing verified that it could speak, and it could not.
   - Guard: `tests/unit/test_tts_real_piper.py` drives the real piper library and the pinned voice (strict red gates,
     flipped in place; red on Linux at piper-tts 1.3.0 and 1.8.0 before the fix), plus a signature pin of the piper API.
+- **`VoiceProvisioner.is_ready()` (the console's `pairing_ready`) now means the voice SPEAKS, not that it loads**
+  (standard R1, [#1334](https://github.com/dennys246/Maxim/issues/1334), its first instance).
+  - After loading the voice, the provisioner thread synthesizes a short fixed phrase once and arms only on non-empty,
+    finite audio; a voice that loads but cannot speak (#1332's shape) keeps the sign-in page on the paste path and is
+    retried with backoff. `is_ready()` returns that cached verdict and never synthesizes, since
+    `console/server.py::_pairing_of` calls it on every unauthenticated `/api/hello`.
+  - Guards: `tests/unit/test_tts_voice_provisioning.py::test_a_voice_that_loads_but_cannot_speak_never_arms`,
+    `::test_the_provisioner_synthesizes_once_and_is_ready_never_synthesizes` (strict red gates, flipped in place) and
+    `tests/unit/test_tts_real_piper.py::test_the_voice_provisioner_arms_on_a_voice_that_really_speaks`.
 - **`NAc.load_state` clamps every restored bias map to its live writer's range** ([#1102](https://github.com/dennys246/Maxim/issues/1102)).
   Every writer clamped, but the load path restored `reward_bias`, `goal_reward_bias`, `cluster_reward_bias` and
   `percept_valences` with `float()` only, so a pre-clamp, hand-edited or corrupt `nac.json` (and `load(apply_decay=False)`

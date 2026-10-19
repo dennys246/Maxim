@@ -6,7 +6,7 @@ systems with limited resources (e.g., M2 Mac with 24GB unified memory).
 Voice provisioning (~63 MB per voice, pinned and sha256-verified in ``models/download.py::TTS_MODELS``):
     python -m maxim.models.download --tts            # the default voice, by hand
     maxim.models.download.ensure_tts_voice(...)      # programmatic, with consent + its own lock
-    VoiceProvisioner(...)                            # a device: background retry until the voice LOADS
+    VoiceProvisioner(...)                            # a device: background retry until the voice SPEAKS
 
 Intended device-bootstrap usage (the caller lives in the device's bootstrap, e.g. maxim-pulse's Reachy app; no
 pymaxim module wires it yet): arm spoken-code pairing only once the ``VoiceProvisioner`` is ready::
@@ -245,8 +245,9 @@ class PiperTTS:
 
     @property
     def is_available(self) -> bool:
-        """Check if TTS is AVAILABLE: piper installed and the voice's files present. Not that they are verified or
-        that the voice loads: :meth:`VoiceProvisioner.is_ready` answers that, for a device that must speak."""
+        """Check if TTS is AVAILABLE: piper installed and the voice's files present. Not that they are verified, that
+        the voice loads or that it speaks: :meth:`VoiceProvisioner.is_ready` answers that, for a device that must speak
+        (R1 audit, #1334: this flag checks a precondition and says so)."""
         return _piper_installed() and self.model_path.exists() and self.config_path.exists()
 
 
@@ -304,13 +305,18 @@ def _piper_installed() -> bool:
     return optional_dependency_available("piper")
 
 
+# The phrase VoiceProvisioner synthesizes to prove the voice can speak (R1). Short, so the check costs ~0.1 s on a Pi.
+_READINESS_PHRASE = "Ready."
+
+
 class VoiceProvisioner:
     """Provision a Piper voice in the background and report when it can SPEAK (#1268 follow-up F1).
 
     For a device: start it, build the announcer on :attr:`engine`, and pass :meth:`is_ready` to
     ``build_app(pairing_ready=...)``. A daemon thread calls ``ensure_tts_voice(auto=True)`` (deploying the robot app is
-    the consent), checks that ``piper`` is installed and LOADS the voice; on any failure (no network at boot, the extra
-    missing, a corrupt file) it retries with backoff from ``retry_s`` up to ``max_retry_s`` until :meth:`stop`. Until
+    the consent), checks that ``piper`` is installed, LOADS the voice and SYNTHESIZES a short phrase, which must come
+    back as non-empty, finite audio (standard R1, #1334: a voice that loads but cannot speak, #1332's shape, never
+    arms). On any failure (no network at boot, the extra missing, a corrupt file, a broken synthesis) it retries with backoff from ``retry_s`` up to ``max_retry_s`` until :meth:`stop`. Until
     then the sign-in page offers only the paste path, and the by-ear path appears without a restart (owner decision
     2026-10-14). A failure is logged by type, never with the voice's bytes or a pairing code.
     """
@@ -337,6 +343,8 @@ class VoiceProvisioner:
         self._thread: threading.Thread | None = None
 
     def is_ready(self) -> bool:
+        """The provisioner thread's cached verdict. Never synthesizes: ``console/server.py::_pairing_of`` calls it on
+        every unauthenticated ``/api/hello``."""
         return self._ready.is_set()
 
     def start(self) -> None:
@@ -363,6 +371,24 @@ class VoiceProvisioner:
             self.engine.load()
         except Exception as e:  # a corrupt or unloadable voice: retry, and say what kind of failure it was
             logger.warning("TTS voice %s did not load (%s)", self.model_name, type(e).__name__)
+            return False
+        return self._speaks()
+
+    def _speaks(self) -> bool:
+        """R1: exercise the capability once, end to end. The phrase is fixed, so no pairing code is ever spoken here."""
+        try:
+            audio = np.asarray(self.engine.synthesize(_READINESS_PHRASE))
+        except Exception as e:  # loads but cannot speak (#1332): retry, and say what kind of failure it was
+            logger.warning("TTS voice %s loaded but did not synthesize (%s)", self.model_name, type(e).__name__)
+            return False
+        finite = bool(np.isfinite(audio.astype(np.float64, copy=False)).all())
+        if audio.size == 0 or not finite:
+            logger.warning(
+                "TTS voice %s loaded but synthesized no usable audio (%d samples, finite=%s)",
+                self.model_name,
+                audio.size,
+                finite,
+            )
             return False
         return True
 

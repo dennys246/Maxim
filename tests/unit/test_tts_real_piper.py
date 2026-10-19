@@ -101,3 +101,23 @@ def test_the_pairing_announcer_puts_real_speech_on_the_sink(engine):
     samples, rate = played[0]
     assert rate == engine.sample_rate == 22050
     _assert_speech(samples, rate)
+
+
+def test_the_voice_provisioner_arms_on_a_voice_that_really_speaks(voice_dir):
+    """R1 (#1334) end to end: the provisioner's readiness synthesis runs the real library, so ``pairing_ready`` turns
+    true here only because the voice spoke (the fake-engine twins in test_tts_voice_provisioning.py pin the refusals).
+    The voice is already verified, so ``ensure_tts_voice(auto=True)`` hashes it and fetches nothing."""
+    import time
+
+    from maxim.models.audio.tts import VoiceProvisioner
+
+    prov = VoiceProvisioner(VOICE, models_dir=voice_dir, retry_s=0.05, max_retry_s=0.1)
+    prov.start()
+    try:
+        deadline = time.monotonic() + 60
+        while not prov.is_ready() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert prov.is_ready()
+        _assert_speech(prov.engine.synthesize(PHRASE), prov.engine.sample_rate)
+    finally:
+        prov.stop()

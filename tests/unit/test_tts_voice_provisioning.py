@@ -24,6 +24,10 @@ _PIN = "c10ece1aade47bb51c153c893d14e5bf8e5b7117"
 _ONNX, _JSON = b"fake-onnx-weights", b'{"audio": {"sample_rate": 22050}}'
 
 
+def _speaks(self, text):  # a fake engine whose voice speaks: R1's readiness synthesis passes
+    return np.full(4000, 1200, dtype=np.int16)
+
+
 def _sha(b: bytes) -> str:
     return hashlib.sha256(b).hexdigest()
 
@@ -124,6 +128,7 @@ def test_the_provisioner_arms_only_once_the_voice_loads_and_retries_until_then(m
     monkeypatch.setattr(dl, "ensure_tts_voice", ensure)
     monkeypatch.setattr(tts, "_piper_installed", lambda: True)
     monkeypatch.setattr(tts.TTSEngine, "load", lambda self: loaded.append(1))
+    monkeypatch.setattr(tts.TTSEngine, "synthesize", _speaks)
     prov = tts.VoiceProvisioner(models_dir=tmp_path, retry_s=0.01, max_retry_s=0.02)
     assert prov.is_ready() is False
     prov.start()
@@ -182,6 +187,7 @@ def test_a_raise_inside_an_attempt_is_a_retry_not_a_dead_thread(monkeypatch, tmp
     monkeypatch.setattr(dl, "ensure_tts_voice", ensure)
     monkeypatch.setattr(tts, "_piper_installed", lambda: True)
     monkeypatch.setattr(tts.TTSEngine, "load", lambda self: None)
+    monkeypatch.setattr(tts.TTSEngine, "synthesize", _speaks)
     prov = tts.VoiceProvisioner(models_dir=tmp_path, retry_s=0.01, max_retry_s=0.02)
     prov.start()
     try:
@@ -206,7 +212,6 @@ def _wait_ready(prov, polls: int = 300) -> bool:
     return prov.is_ready()
 
 
-@pytest.mark.xfail(strict=True, reason="R1 (#1334): is_ready() reports a voice that LOADS, not one that speaks")
 @pytest.mark.parametrize(
     "broken",
     [
@@ -233,7 +238,6 @@ def test_a_voice_that_loads_but_cannot_speak_never_arms(monkeypatch, tmp_path, b
         prov.stop()
 
 
-@pytest.mark.xfail(strict=True, reason="R1 (#1334): the provisioner never synthesizes, so nothing is cached")
 def test_the_provisioner_synthesizes_once_and_is_ready_never_synthesizes(monkeypatch, tmp_path):
     """``console/server.py::_pairing_of`` calls ``is_ready`` on every unauthenticated ``/api/hello``: it must return
     the provisioner thread's cached result, never run the engine per call."""
