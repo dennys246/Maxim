@@ -638,7 +638,7 @@ def test_an_unreadable_release_body_is_unverified(vcu, cp, body):
     files = cb.bundle(cp)
     pulse = FakePulse(cp, files)
     real = pulse.fetch
-    pulse.fetch = lambda url: body if "api.github.com" in url else real(url)
+    pulse.fetch = lambda url: body if url.startswith("https://api.github.com/repos/") else real(url)
     assert _verify(vcu, cp, pulse, cb.pin_for(cp, files)) == 2
 
 
