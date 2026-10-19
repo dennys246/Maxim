@@ -19,7 +19,6 @@ pymaxim module wires it yet): arm spoken-code pairing only once the ``VoiceProvi
 from __future__ import annotations
 
 import hashlib
-import io
 import logging
 import threading
 import wave
@@ -87,7 +86,7 @@ class PiperTTS:
 
     Features:
     - Lazy model loading (loads on first use)
-    - Raw audio synthesis (avoids WAV encode/decode overhead)
+    - Raw int16 synthesis from piper's per-sentence audio chunks (piper-tts >= 1.3)
     - LRU phrase caching for common phrases
     """
 
@@ -111,7 +110,6 @@ class PiperTTS:
         """
         self._piper: Any = None
         self._voice: Any = None
-        self._has_raw_synthesis: bool | None = None  # Detected on first use
         self.sample_rate: int = 22050  # Piper default, will be updated on load
 
         # Phrase caching
@@ -168,8 +166,7 @@ class PiperTTS:
     def synthesize(self, text: str) -> np.ndarray:
         """Convert text to audio samples.
 
-        Uses raw synthesis if available (faster), falls back to WAV-based
-        synthesis otherwise. Caches common phrases to avoid re-synthesis.
+        Caches common phrases to avoid re-synthesis.
 
         Args:
             text: The text to synthesize.
@@ -201,7 +198,11 @@ class PiperTTS:
         return audio
 
     def _synthesize_raw(self, text: str) -> np.ndarray:
-        """Synthesize audio using raw method if available, else WAV fallback.
+        """Synthesize ``text`` to int16 samples through the piper >= 1.3 API (#1332).
+
+        ``PiperVoice.synthesize(text)`` is a generator of one ``AudioChunk`` per sentence; each chunk carries its
+        samples as ``audio_int16_array`` (mono, ``self.sample_rate``). The pre-1.3 ``synthesize_stream_raw`` and
+        ``synthesize(text, wav_file)`` calls this replaced fail on every version the ``tts`` extra installs.
 
         Args:
             text: The text to synthesize.
@@ -209,42 +210,16 @@ class PiperTTS:
         Returns:
             Audio samples as int16 numpy array.
         """
-        # Detect if raw synthesis is available (only check once)
-        if self._has_raw_synthesis is None:
-            self._has_raw_synthesis = hasattr(self._voice, "synthesize_stream_raw")
-            if self._has_raw_synthesis:
-                logger.debug("Using raw synthesis (faster)")
-            else:
-                logger.debug("Using WAV-based synthesis (fallback)")
-
-        # Use raw synthesis if available (avoids WAV encode/decode overhead)
-        if self._has_raw_synthesis:
-            try:
-                audio_chunks = []
-                for audio_bytes in self._voice.synthesize_stream_raw(text):
-                    chunk = np.frombuffer(audio_bytes, dtype=np.int16)
-                    audio_chunks.append(chunk)
-                if audio_chunks:
-                    return np.concatenate(audio_chunks)
-                return np.array([], dtype=np.int16)
-            except Exception as e:
-                logger.warning("Raw synthesis failed, falling back to WAV: %s", e)
-                self._has_raw_synthesis = False
-
-        # Fallback: WAV-based synthesis
-        wav_buffer = io.BytesIO()
-        with wave.open(wav_buffer, "wb") as wav_file:
-            self._voice.synthesize(text, wav_file)
-
-        wav_buffer.seek(0)
-        with wave.open(wav_buffer, "rb") as wav_file:
-            audio_data = wav_file.readframes(wav_file.getnframes())
-            audio = np.frombuffer(audio_data, dtype=np.int16)
-
-        return audio
+        chunks = [chunk.audio_int16_array for chunk in self._voice.synthesize(text)]
+        if not chunks:
+            return np.array([], dtype=np.int16)
+        return np.concatenate(chunks).astype(np.int16, copy=False)
 
     def synthesize_to_file(self, text: str, output_path: Path | str) -> Path:
-        """Synthesize text and save to WAV file.
+        """Synthesize text and save to WAV file (mono, 16-bit, ``self.sample_rate``).
+
+        The format is written here, not left to the first audio chunk: text with no sentence yields no chunk, and a
+        WAV writer whose format was never set raises on close (#1332).
 
         Args:
             text: The text to synthesize.
@@ -256,10 +231,14 @@ class PiperTTS:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self._load_model()
+        self._load_model()  # first, so sample_rate is the voice's own even for text that synthesizes nothing
+        audio = self.synthesize(text)
 
         with wave.open(str(output_path), "wb") as wav_file:
-            self._voice.synthesize(text, wav_file)
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(self.sample_rate)
+            wav_file.writeframes(audio.tobytes())
 
         logger.debug("Saved TTS audio to %s", output_path)
         return output_path

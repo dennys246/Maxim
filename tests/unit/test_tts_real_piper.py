@@ -68,14 +68,12 @@ def test_the_piper_api_is_the_one_pipertts_calls():
     assert "sample_rate" in AudioChunk.__dataclass_fields__
 
 
-@pytest.mark.xfail(strict=True, raises=wave.Error, reason="#1332: PiperTTS calls the pre-1.3 piper API")
 def test_synthesize_speaks_a_phrase(engine):
     audio = engine.synthesize(PHRASE)
     assert engine.sample_rate == 22050  # read from the voice's config on load
     _assert_speech(audio, engine.sample_rate)
 
 
-@pytest.mark.xfail(strict=True, raises=wave.Error, reason="#1332: PiperTTS calls the pre-1.3 piper API")
 def test_synthesize_to_file_writes_a_playable_wav(engine, tmp_path):
     out = engine.synthesize_to_file(PHRASE, tmp_path / "code.wav")
     with wave.open(str(out), "rb") as wav:
@@ -84,15 +82,14 @@ def test_synthesize_to_file_writes_a_playable_wav(engine, tmp_path):
     _assert_speech(audio, engine.sample_rate)
 
 
-@pytest.mark.xfail(strict=True, raises=wave.Error, reason="#1332: PiperTTS calls the pre-1.3 piper API")
 def test_synthesize_to_file_of_nothing_is_a_valid_empty_wav(engine, tmp_path):
     """No sentence means no chunk, so nothing sets the format: the WAV writer must not be left to raise on close."""
     out = engine.synthesize_to_file("   ", tmp_path / "empty.wav")
     with wave.open(str(out), "rb") as wav:
         assert (wav.getnchannels(), wav.getsampwidth(), wav.getnframes()) == (1, 2, 0)
+        assert wav.getframerate() == engine.sample_rate == 22050  # the voice's rate, loaded before synthesis
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1332: the announcer swallows the synthesis error")
 def test_the_pairing_announcer_puts_real_speech_on_the_sink(engine):
     """The shipped composition (``console/announcer.py``): the announcer logs a failure by type and returns, so a
     broken engine shows up only as a sink that was never called."""

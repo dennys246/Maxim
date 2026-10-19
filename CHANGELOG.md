@@ -67,6 +67,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Piper text-to-speech speaks again; spoken-code pairing was silent in 1.3.2** ([#1332](https://github.com/dennys246/Maxim/issues/1332), reported by maxim-pulse).
+  - `PiperTTS` called the pre-1.3 piper API (`synthesize_stream_raw`, then `synthesize(text, wav_file)`), while the
+    `tts` extra installs `piper-tts>=1.3.0`. Every synthesis raised `wave.Error: # channels not specified` on every
+    installable version, so the pairing announcer, `maxim --tts`, the agentic runtime's voice and
+    `ResponseOutput`'s speech all played nothing. `synthesize()` now joins piper's per-sentence `audio_int16_array`
+    chunks (int16, mono, the voice's `sample_rate`, as before), and `synthesize_to_file()` writes the WAV format
+    itself, so text with no sentence gives a valid empty file.
+  - **Correction to the 1.3.2 notes:** "verified Piper voice provisioning" overclaimed. 1.3.2 verified the voice's
+    *files* (pinned, sha256-checked) and that the voice *loaded*; nothing verified that it could speak, and it could not.
+  - Guard: `tests/unit/test_tts_real_piper.py` drives the real piper library and the pinned voice (strict red gates,
+    flipped in place; red on Linux at piper-tts 1.3.0 and 1.8.0 before the fix), plus a signature pin of the piper API.
 - **`NAc.load_state` clamps every restored bias map to its live writer's range** ([#1102](https://github.com/dennys246/Maxim/issues/1102)).
   Every writer clamped, but the load path restored `reward_bias`, `goal_reward_bias`, `cluster_reward_bias` and
   `percept_valences` with `float()` only, so a pre-clamp, hand-edited or corrupt `nac.json` (and `load(apply_decay=False)`
