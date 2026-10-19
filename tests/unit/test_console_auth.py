@@ -294,3 +294,168 @@ class TestLogHygiene:
             assert c.get("/api/identity", headers={"Authorization": "Bearer mxc_wrong"}).status_code == 401
         assert _TOKEN not in caplog.text
         assert "mxc_" not in caplog.text
+
+
+def test_ws_handler_returns_promptly_when_the_client_disconnects(authed_app):
+    """The /ws handler must end when its client goes away, not at the next heartbeat (``_HEARTBEAT_INTERVAL_S``,
+    15 s). uvicorn >= 0.40 waits for it on SIGTERM, so ``maxim serve`` hung up to 15 s after a browser tab closed
+    (found by #1347's real-uvicorn test). Starlette's TestClient cancels the app instead of waiting, so this drives
+    the ASGI app directly: connect, accept, then the client disconnects."""
+    import asyncio
+
+    async def drive() -> list[str]:
+        inbox: asyncio.Queue = asyncio.Queue()
+        await inbox.put({"type": "websocket.connect"})
+        sent: list[str] = []
+
+        async def receive():
+            return await inbox.get()
+
+        async def send(message):
+            sent.append(message["type"])
+            if message["type"] == "websocket.accept":
+                await inbox.put({"type": "websocket.disconnect", "code": 1001})
+
+        scope = {
+            "type": "websocket",
+            "asgi": {"version": "3.0"},
+            "path": "/ws",
+            "raw_path": b"/ws",
+            "root_path": "",
+            "scheme": "ws",
+            "query_string": b"",
+            "headers": [(b"host", b"127.0.0.1:8000"), (b"authorization", f"Bearer {_TOKEN}".encode())],
+            "client": ("127.0.0.1", 50000),
+            "server": ("127.0.0.1", 8000),
+            "subprotocols": [],
+            "state": {},
+        }
+        await asyncio.wait_for(authed_app(scope, receive, send), timeout=2.0)
+        return sent
+
+    assert "websocket.accept" in asyncio.run(drive())
+
+
+def test_a_cancelled_ws_handler_leaves_no_queue_get_running(authed_app):
+    """Cancelling the /ws handler while it waits for an event must cancel that wait too: ``asyncio.wait`` does not,
+    and a leaked ``Queue.get`` would take a later event and outlive the connection (delta-round review)."""
+    import asyncio
+
+    async def drive() -> list[str]:
+        inbox: asyncio.Queue = asyncio.Queue()
+        await inbox.put({"type": "websocket.connect"})
+
+        async def receive():
+            return await inbox.get()  # the client never disconnects: the handler idles in its event wait
+
+        async def send(message):
+            pass
+
+        scope = {
+            "type": "websocket",
+            "asgi": {"version": "3.0"},
+            "path": "/ws",
+            "raw_path": b"/ws",
+            "root_path": "",
+            "scheme": "ws",
+            "query_string": b"",
+            "headers": [(b"host", b"127.0.0.1:8000"), (b"authorization", f"Bearer {_TOKEN}".encode())],
+            "client": ("127.0.0.1", 50000),
+            "server": ("127.0.0.1", 8000),
+            "subprotocols": [],
+            "state": {},
+        }
+
+        def gets() -> list[asyncio.Task]:
+            return [t for t in asyncio.all_tasks() if "Queue.get" in repr(t.get_coro())]
+
+        handler = asyncio.ensure_future(authed_app(scope, receive, send))
+        for _ in range(500):  # until the handler is parked in its event wait (not a fixed sleep: no vacuous pass)
+            if gets():  # only the sender's wait is a Task of its own (the receiver awaits inside recv_task)
+                break
+            await asyncio.sleep(0.01)
+        assert gets(), "the handler never reached its event wait"
+        handler.cancel()
+        await asyncio.gather(handler, return_exceptions=True)
+        await asyncio.sleep(0)  # let the cancelled get finish cancelling
+        return [repr(t.get_coro()) for t in gets()]
+
+    leftover = asyncio.run(drive())
+    assert not leftover, leftover
+
+
+class TestPumpWsEvents:
+    """``console/server.py::_pump_ws_events`` (the /ws sender loop, moved out of ``build_app``) on each of its paths,
+    with the real ``_WsConn`` and a socket that records what it is sent."""
+
+    class _Socket:
+        def __init__(self, fail_on: str | None = None) -> None:
+            self.sent: list[dict] = []
+            self.fail_on = fail_on
+
+        async def send_json(self, evt: dict) -> None:
+            if evt.get("kind") == "poison":
+                raise TypeError("Object of type set is not JSON serializable")
+            if evt.get("kind") == self.fail_on:
+                raise WebSocketDisconnect(code=1001)
+            self.sent.append(evt)
+
+    @staticmethod
+    def _run(socket, setup, *, until, heartbeat_s: float = 15.0):
+        """Pump on a real connection until ``until(socket)`` holds, then end the client; returns what was sent."""
+        import asyncio
+
+        async def drive():
+            conn = srv._WsConn()
+            client_gone = asyncio.get_running_loop().create_future()
+            setup(conn)
+            pump = asyncio.ensure_future(srv._pump_ws_events(socket, conn, client_gone))
+            for _ in range(300):
+                if pump.done() or until(socket):
+                    break
+                await asyncio.sleep(0.01)
+            if not client_gone.done():
+                client_gone.set_result(None)
+            await asyncio.wait_for(pump, timeout=2.0)
+            return conn
+
+        old = srv._HEARTBEAT_INTERVAL_S
+        srv._HEARTBEAT_INTERVAL_S = heartbeat_s
+        try:
+            return asyncio.run(drive())
+        finally:
+            srv._HEARTBEAT_INTERVAL_S = old
+
+    def test_an_idle_stream_sends_heartbeats_on_the_one_seq_counter(self):
+        sock = self._Socket()
+        self._run(sock, lambda conn: None, until=lambda s: len(s.sent) >= 2, heartbeat_s=0.02)
+        assert [e["kind"] for e in sock.sent[:2]] == ["heartbeat", "heartbeat"]
+        assert [e["seq"] for e in sock.sent[:2]] == [0, 1]
+
+    def test_a_poison_event_is_dropped_with_one_warning_and_the_stream_lives(self, caplog):
+        sock = self._Socket()
+
+        def setup(conn):
+            for kind in ("poison", "poison", "ok"):
+                conn.enqueue({"kind": kind})
+
+        with caplog.at_level(logging.WARNING, logger="maxim.console.server"):
+            conn = self._run(sock, setup, until=lambda s: bool(s.sent))
+        assert [e["kind"] for e in sock.sent] == ["ok"] and conn.warned_unserializable
+        assert sum("non-JSON-serializable" in r.getMessage() for r in caplog.records) == 1
+
+    def test_drops_are_reported_after_the_next_send(self):
+        sock = self._Socket()
+
+        def setup(conn):
+            conn.enqueue({"kind": "ok"})
+            conn.dropped = 3  # a slow consumer lost three before this one
+
+        conn = self._run(sock, setup, until=lambda s: len(s.sent) >= 2)
+        assert [e["kind"] for e in sock.sent] == ["ok", "dropped"]
+        assert sock.sent[1]["data"] == {"count": 3, "total": 3} and conn.dropped_reported == 3
+
+    def test_a_send_to_a_gone_client_ends_the_pump(self):
+        sock = self._Socket(fail_on="ok")
+        self._run(sock, lambda conn: conn.enqueue({"kind": "ok"}), until=lambda s: False)
+        assert sock.sent == []  # returned on WebSocketDisconnect, without raising

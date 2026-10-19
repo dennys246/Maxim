@@ -93,6 +93,13 @@ search = [
 console = [
     "fastapi>=0.110,<1.0",
     "uvicorn>=0.29,<1.0",
+    # uvicorn ships no WebSocket implementation, so without this a clean `pymaxim[console]` answered every /ws upgrade
+    # with 404 and the Console had no live stream (#1347). websockets directly, not `uvicorn[standard]` (owner decision
+    # 2026-10-18): [standard] also brings uvloop and httptools, which uvicorn then auto-selects, and uvicorn 0.29's
+    # uvloop setup sets the event-loop policy process-wide (comms/api.py and pulse run uvicorn in a thread). 10.4 is
+    # what uvicorn[standard] 0.29 requires. Guarded by the R2 extras matrix's console cells
+    # (tests/unit/test_console_ws_real_uvicorn.py, in a venv holding only this extra).
+    "websockets>=10.4,<18",
 ]
 # Hivemind bundle signing + verification (1.2 P2P Slice A) — ed25519 release
 # signatures. Asymmetric: a Queen signs with a private key, any consumer verifies
@@ -275,6 +282,7 @@ markers = [
     "robot: marks tests requiring Reachy hardware",
     "multi_agent_modes: auto-parametrize over single_agent / two_agents_shared_instance / two_agents_isolated_instances (P4 multi-agent rule; see tests/multi_agent_fixtures.py)",
     "single_agent_only: explicit opt-out of multi_agent_modes parametrization for tests that are genuinely single-agent",
+    "extras_console: a real-library test of the `console` extra, run by the R2 extras matrix's console cells (scripts/extras_matrix.py)",
     "extras_tts: a real-library test of the `tts` extra, run by the R2 extras matrix's tts cells (scripts/extras_matrix.py)",
     "allow_network: the test may reach the network (tests/network_guard.py blocks it otherwise) -- a reviewed exception",
 ]

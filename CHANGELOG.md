@@ -67,6 +67,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`maxim serve` no longer hangs up to 15 s on shutdown after a Console tab closes.** The `/ws` sender checked
+  for a gone client only between waits, so a closed connection's handler lived until the next 15 s heartbeat, and
+  uvicorn 0.40+ waits for it on SIGTERM. The sender loop (now `console/server.py::_pump_ws_events`) races each wait
+  against the receiver and ends at once. Found by #1347's real-uvicorn test, whose teardown took 15 s. Guard:
+  `tests/unit/test_console_auth.py::test_ws_handler_returns_promptly_when_the_client_disconnects` (strict red gate,
+  flipped in place; it drives the ASGI app directly, since Starlette's TestClient cancels instead of waiting).
+- **`pymaxim[console]` serves the Console's live stream: `/ws` upgrades from a clean install** ([#1347](https://github.com/dennys246/Maxim/issues/1347), reported by maxim-pulse).
+  - The extra installed plain `uvicorn`, which ships no WebSocket implementation, and no core dependency brings one, so
+    `maxim serve` answered every `/ws` upgrade with 404 ("No supported WebSocket library detected"): no activity or
+    thinking panels, no live health, no turn status. The extra now declares `websockets>=10.4,<18` (owner decision:
+    not `uvicorn[standard]`, whose uvloop and httptools uvicorn would auto-select, and whose uvloop setup in uvicorn
+    0.29 sets the process-wide event-loop policy). The `/ws` tests
+    used Starlette's `TestClient`, which never goes through uvicorn, so none could see it.
+  - Guard: `tests/unit/test_console_ws_real_uvicorn.py` runs `python -m maxim serve` on a real uvicorn and upgrades
+    `/ws` with a raw handshake (strict red gate, flipped in place; red in a venv holding only `pymaxim[console]`). It
+    runs in the R2 extras matrix's new console cells, where `pymaxim[console]` + pytest are all that is installed, at
+    the floor (fastapi 0.110, uvicorn 0.29, websockets 10.4) and the latest. Those cells select only the real-library tests, so the
+    OpenAPI snapshot and contract-fingerprint tests stay in the fast suite under `.github/constraints/console.txt`.
 - **Piper text-to-speech speaks again; spoken-code pairing was silent in 1.3.2** ([#1332](https://github.com/dennys246/Maxim/issues/1332), reported by maxim-pulse).
   - `PiperTTS` called the pre-1.3 piper API (`synthesize_stream_raw`, then `synthesize(text, wav_file)`), while the
     `tts` extra installs `piper-tts>=1.3.0`. Every synthesis raised `wave.Error: # channels not specified` on every

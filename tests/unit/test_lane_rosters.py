@@ -15,7 +15,12 @@ from scripts import check_lane_roster as C
 
 # An excused skip is a reviewed act: raise the pin in the same PR and say why the test cannot run in the lane
 # (the model-cache pin carries the 1.3.1 `ALLOWED_SKIPS <= 4` ratchet from tests/unit/test_model_cache_names.py).
-ALLOWED_SKIP_PINS = {"slow": 1, "model-cache": 4, "extras-tts": 0}  # an extras cell installs its extra and assets
+ALLOWED_SKIP_PINS = {
+    "slow": 1,
+    "model-cache": 4,
+    "extras-console": 0,
+    "extras-tts": 0,
+}  # an extras cell installs its extra and assets
 
 
 @pytest.mark.parametrize("lane", sorted(C.LANES))
@@ -59,7 +64,13 @@ def test_collection_is_scoped_to_files_that_apply_the_marker():
     assert "tests/unit/test_clip_encoder.py" in C.marked_files("requires_model_cache")
     for marker in C.LANES.values():
         files = C.marked_files(marker)
-        assert not any("test_console_" in f for f in files)
+        if marker == "extras_console":
+            # The console extra's own real-library test: it imports the extra inside a fixture, so it collects on a box
+            # without it (and a module-level skip there would be a collect() problem in
+            # test_the_roster_is_exactly_what_collection_selects). Exactly that one file.
+            assert [f for f in files if "test_console_" in f] == ["tests/unit/test_console_ws_real_uvicorn.py"]
+        else:
+            assert not any("test_console_" in f for f in files)
         assert all(f.rsplit("/", 1)[-1].startswith("test_") for f in files)  # the configured python_files pattern
 
 

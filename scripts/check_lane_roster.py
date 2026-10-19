@@ -49,7 +49,12 @@ REPO = Path(__file__).resolve().parent.parent
 ROSTERS = REPO / "scripts" / "lane_rosters"
 # lane -> the pytest marker that selects it. `extras-<extra>`: the R2 extras matrix (scripts/extras_matrix.py); one roster
 # serves both of an extra's cells (floor and latest), since only the real-library tests carry the marker.
-LANES = {"slow": "slow", "model-cache": "requires_model_cache", "extras-tts": "extras_tts"}
+LANES = {
+    "slow": "slow",
+    "model-cache": "requires_model_cache",
+    "extras-console": "extras_console",
+    "extras-tts": "extras_tts",
+}
 _ROSTER_KEYS = {"expected", "allowed_skips"}
 
 
