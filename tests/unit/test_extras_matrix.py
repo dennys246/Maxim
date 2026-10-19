@@ -175,14 +175,14 @@ def test_the_cell_installs_only_the_extra_verifies_it_and_runs_offline():
 # This list may only SHRINK: an extra leaves it in the PR that adds its cells, and a new extra is born in the matrix.
 _NOT_YET_IN_MATRIX = frozenset(
     {
-        "audio", "comms", "console", "database", "llm-anthropic", "llm-llama", "llm-openai", "llm-server", "llm-torch", "pi",
+        "audio", "comms", "database", "llm-anthropic", "llm-llama", "llm-openai", "llm-server", "llm-torch", "pi",
         "reachy", "search", "semantic", "sign", "temporal", "training", "vision", "yolo",
     }
 )  # fmt: skip
 # Not libraries a user installs for a capability: an aggregate of the others, and the dev/test toolchain. CLOSED: a
 # new extra may not be parked here to dodge the matrix and the ceiling (the test pins it exactly).
 _NOT_A_CAPABILITY = frozenset({"all", "test"})
-_NOT_YET_CEILING = 18  # the count with tts in; lower it with the list, never raise it
+_NOT_YET_CEILING = 17  # the count with tts and console in (1.3.3); lower it with the list, never raise it
 
 
 def test_every_extra_is_in_the_matrix_or_named_as_not_yet():

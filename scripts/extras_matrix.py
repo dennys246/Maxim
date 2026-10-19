@@ -66,6 +66,8 @@ EXTRAS: dict[str, tuple[str, ...]] = {
     "console": (
         "src/maxim/console/",
         "src/maxim/cli.py",  # `maxim serve` dispatches to console.server.run_serve
+        "src/maxim/tunnel/keys.py",  # the console token `maxim serve` ensures and the test reads
+        "src/maxim/runtime/heartbeat.py",  # `maxim serve` starts the health monitor
         "tests/unit/test_console_ws_real_uvicorn.py",
         ".github/constraints/console.txt",
         "scripts/lane_rosters/extras-console.json",
