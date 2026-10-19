@@ -73,11 +73,18 @@ def test_an_unreadable_api_is_unverified_not_green(monkeypatch) -> None:
     assert N.main([]) == 2
 
 
-def test_the_release_build_job_runs_it() -> None:
-    workflow = (N.REPO / ".github" / "workflows" / "test.yml").read_text()
-    job = workflow[workflow.index("  release-build:") : workflow.index("  unit-tests:")]
-    assert "scripts/check_nightlies.py --only-when-releasing" in job
-    assert "actions: read" in job
+def test_the_release_build_job_runs_it_on_pull_requests_only() -> None:
+    """#938: on push and schedule the check ran inside the nightly it waits for, so main read red between a
+    release merge and its tag. It guards the release PR, and the publish workflow re-runs it `--at` the tag."""
+    import yaml
+
+    workflow = yaml.safe_load((N.REPO / ".github" / "workflows" / "test.yml").read_text())
+    job = workflow["jobs"]["release-build"]
+    steps = [s for s in job["steps"] if "scripts/check_nightlies.py --only-when-releasing" in str(s.get("run", ""))]
+    assert len(steps) == 1
+    assert steps[0].get("if") == "github.event_name == 'pull_request'"
+    assert "if" not in job, "release-build is a required check: no job-level if"
+    assert job["permissions"]["actions"] == "read"
 
 
 def test_a_cancelled_run_is_skipped_for_the_newest_run_that_ran(monkeypatch) -> None:
@@ -155,3 +162,88 @@ def test_releasing_an_unreadable_answer_counts_as_a_release(monkeypatch, exc) ->
     monkeypatch.setattr(N, "pyproject_version", boom)
     is_release, why = N.releasing()
     assert is_release is True and "treating it as releasing" in why
+
+
+# ── --at <sha>: the nightly that tested the tagged commit (#1372) ───────────────────────────────────────────────
+
+SHA = "a" * 40
+
+
+def _runs_gh(runs, jobs=None):
+    seen = {}
+
+    def gh(*args):
+        if args[:2] == ("run", "list"):
+            seen["list"] = args
+            return runs
+        seen["view"] = args[2]
+        return {"jobs": jobs if jobs is not None else _jobs(**{"Slow tests (nightly)": "success"})}
+
+    return gh, seen
+
+
+def test_at_reads_the_nightly_that_tested_that_commit(monkeypatch) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    runs = [
+        {"databaseId": 7, "createdAt": now, "conclusion": "success", "event": "push", "headBranch": "main", "headSha": SHA},
+        {"databaseId": 6, "createdAt": now, "conclusion": "cancelled", "event": "schedule", "headBranch": "main", "headSha": SHA},
+        {"databaseId": 5, "createdAt": now, "conclusion": "success", "event": "workflow_dispatch", "headBranch": "v1.3.3", "headSha": SHA},
+        {"databaseId": 4, "createdAt": now, "conclusion": "success", "event": "workflow_dispatch", "headBranch": "main", "headSha": SHA},
+    ]  # fmt: skip
+    gh, seen = _runs_gh(runs)
+    monkeypatch.setattr(N, "_gh", gh)
+    monkeypatch.setattr(N, "main_head", lambda: pytest.fail("--at must not judge main's tip"))
+    assert N.main(["--at", SHA]) == 0
+    assert "--commit" in seen["list"] and SHA in seen["list"] and seen["view"] == "4"
+
+
+def test_at_with_no_nightly_at_that_commit_refuses(monkeypatch, capsys) -> None:
+    """main's later green nightly says nothing about the tagged code; the hint names the real recovery."""
+    gh, _ = _runs_gh([])
+    monkeypatch.setattr(N, "_gh", gh)
+    assert N.main(["--at", SHA]) == 1
+    assert "reject this run" in capsys.readouterr().err
+
+
+def test_at_ignores_a_listed_run_of_another_commit(monkeypatch) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    runs = [
+        {
+            "databaseId": 4,
+            "createdAt": now,
+            "conclusion": "success",
+            "event": "schedule",
+            "headBranch": "main",
+            "headSha": "b" * 40,
+        }
+    ]
+    gh, _ = _runs_gh(runs)
+    monkeypatch.setattr(N, "_gh", gh)
+    assert N.main(["--at", SHA]) == 1
+
+
+def test_at_with_a_red_nightly_refuses(monkeypatch) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    runs = [
+        {
+            "databaseId": 4,
+            "createdAt": now,
+            "conclusion": "failure",
+            "event": "schedule",
+            "headBranch": "main",
+            "headSha": SHA,
+        }
+    ]
+    gh, _ = _runs_gh(runs, _jobs(**{"Model-cache tests (nightly)": "failure"}))
+    monkeypatch.setattr(N, "_gh", gh)
+    assert N.main(["--at", SHA]) == 1
+
+
+def test_at_needs_a_full_sha(monkeypatch) -> None:
+    monkeypatch.setattr(N, "_gh", lambda *a: pytest.fail("must not query"))
+    assert N.main(["--at", "abc1234"]) == 2
+
+
+def test_at_and_only_when_releasing_are_exclusive() -> None:
+    with pytest.raises(SystemExit):
+        N.main(["--at", SHA, "--only-when-releasing"])

@@ -493,6 +493,10 @@ jobs:
           # synthetic wheels carrying each defect — so this guard has been shown to fail, not merely to pass.
           python3 scripts/audit_release_build.py --contract-drift-ok-unless-releasing
       - name: A release waits for green nightlies
+        # #938: pull_request only. On push and schedule this ran INSIDE the nightly it waits for, so main read red
+        # between a release merge and its tag. The release PR is where it guards a release; the publish workflow
+        # (release.yml) runs it again, `--at` the tagged commit, before uploading.
+        if: github.event_name == 'pull_request'
         # roadmap 1.3.x "the release procedure reads the nightlies": the model-cache and slow lanes
         # never run on a PR, so a release PR could not see them red. A no-op unless this tree cuts a
         # release (pyproject's version has no v<version> tag yet); then every (nightly) job of the
