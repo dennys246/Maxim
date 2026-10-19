@@ -592,6 +592,22 @@ class _PairingState:
         self.last_claim_at = -_PAIR_MIN_CLAIM_INTERVAL_S
 
 
+def _install_auth_token(app: Any, auth_token: Any) -> None:
+    """``build_app``'s credential state (extracted from it, with its comment, for rule T)."""
+    # Fail-closed by construction: build_app READS the token (run_serve is the
+    # one place that creates it); an embedder that never provisioned one gets
+    # an app whose authed surfaces all refuse, not an open console. Tests and
+    # embedders may inject via the keyword-only parameter. Disk-sourced
+    # tokens are re-read PER REQUEST (acceptance A7: `--rotate-token` from a
+    # second terminal logs every device out on its NEXT request, no restart —
+    # one file read per authed request is nothing at console rates); injected
+    # tokens are static for the app's lifetime.
+    if auth_token is _READ_TOKEN_FROM_DISK:
+        app.state.auth_token, app.state.auth_token_source = None, "disk"
+    else:
+        app.state.auth_token, app.state.auth_token_source = auth_token, "static"
+
+
 def _install_pairing(
     app: Any, announcer: Any, ready: Callable[[], bool] | None, *, sandbox: Any, auth_token: Any
 ) -> None:
@@ -1981,7 +1997,8 @@ def build_app(
     "none"`` and ``/api/pair/*`` refuse with 409, exactly as without an
     announcer. A device whose voice is still provisioning (no network at boot)
     thus offers only the paste path, and the by-ear path appears once the voice
-    loads, without a restart (``models/audio/tts.py::VoiceProvisioner``,
+    has spoken (it loaded AND synthesized audible audio once: standard R1,
+    #1334), without a restart (``models/audio/tts.py::VoiceProvisioner``,
     #1268 follow-up F1). It reveals only that coarse pairing state, which
     ``/api/hello`` already reports.
     """
@@ -2050,18 +2067,7 @@ def build_app(
     _install_history_state(app, sandbox=sandbox, health_monitor=health_monitor)
     app.state.trust = _trust_with_extra_origins(extra_trusted_origins, sandbox)
     _install_pairing(app, pairing_announcer, pairing_ready, sandbox=sandbox, auth_token=auth_token)
-    # Fail-closed by construction: build_app READS the token (run_serve is the
-    # one place that creates it); an embedder that never provisioned one gets
-    # an app whose authed surfaces all refuse, not an open console. Tests and
-    # embedders may inject via the keyword-only parameter. Disk-sourced
-    # tokens are re-read PER REQUEST (acceptance A7: `--rotate-token` from a
-    # second terminal logs every device out on its NEXT request, no restart —
-    # one file read per authed request is nothing at console rates); injected
-    # tokens are static for the app's lifetime.
-    if auth_token is _READ_TOKEN_FROM_DISK:
-        app.state.auth_token, app.state.auth_token_source = None, "disk"
-    else:
-        app.state.auth_token, app.state.auth_token_source = auth_token, "static"
+    _install_auth_token(app, auth_token)
     app.add_middleware(_GuardMiddleware)
     app.include_router(api)
 

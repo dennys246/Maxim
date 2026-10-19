@@ -116,15 +116,25 @@ def test_the_extras_import_names_come_from_pyproject():
     requirement name would need a mapping, and installed ones are checked against their real top-level modules."""
     from importlib.metadata import packages_distributions
 
+    from tests.conftest import _DIST_IMPORT_NAMES
+
     assert extra_import_names("console") == ("fastapi", "uvicorn")
     assert extra_import_names("sign") == ("cryptography", "rfc8785")
+    assert extra_import_names("tts") == ("piper",)  # piper-tts, mapped
     modules_of: dict[str, set[str]] = {}
     for module, dists in packages_distributions().items():
         for dist in dists:
             modules_of.setdefault(dist.lower().replace("-", "_"), set()).add(module)
-    for name in extra_import_names("console") + extra_import_names("sign"):
-        if name in modules_of:  # installed: the requirement's own distribution provides the derived module
-            assert name in modules_of[name], (name, modules_of[name])
+    # A distribution mapped to a different import name here must map to the same extra on the canonical surface
+    # (utils/optional_deps.py). Only the mapped names: a shared package (fastapi: comms and console) has one entry there.
+    from maxim.utils.optional_deps import EXTRA_FOR_IMPORT
+
+    assert {imp: EXTRA_FOR_IMPORT.get(imp) for imp in _DIST_IMPORT_NAMES.values()} == {"piper": "tts"}
+    import_to_dist = {imp: dist for dist, imp in _DIST_IMPORT_NAMES.items()}
+    for name in extra_import_names("console") + extra_import_names("sign") + extra_import_names("tts"):
+        dist = import_to_dist.get(name, name)
+        if dist in modules_of:  # installed: the requirement's own distribution provides the derived module
+            assert name in modules_of[dist], (name, modules_of[dist])
 
 
 def test_a_reasonless_importorskip_of_a_required_extra_fails_the_lane(tmp_path):
