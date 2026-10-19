@@ -273,3 +273,52 @@ def test_no_step_name_was_truncated_by_a_yaml_comment():
         if str(s.get("name", "")).count("(") != str(s.get("name", "")).count(")")
     ]
     assert not cut, cut
+
+
+# ── #1318: the pip cache, and the pin that keeps it honest ─────────────────────────────────────────────────────────
+
+_INSTALLS_THE_PACKAGE = re.compile(r"\bpip install\b[^\n]*?(?:-e\s+)?\.(?:\s|$|\[|\")")
+_CACHE_KEY_FILES = {"pyproject.toml", ".github/constraints/*.txt"}
+# Jobs that install the package where setup-python's cache cannot reach, each with its reason.
+_UNCACHEABLE = {"aarch64-install": "installs inside an arm64 Docker container (/venv/bin/pip), not on the runner"}
+
+
+def _installs_the_package(job: str) -> bool:
+    steps = _steps(job)
+    return any(_INSTALLS_THE_PACKAGE.search(_commands(s)) for s in steps) or any(
+        s.get("uses") == "./.github/actions/model-cache-setup" for s in steps
+    )
+
+
+def test_every_job_that_installs_the_package_caches_pip_keyed_on_what_decides_the_install():
+    """#1318: no job cached pip, and every run rebuilt llama-cpp-python from its sdist (2m50s of a 3m19s install).
+    The key is the files that decide the install, so an edit to either moves it."""
+    jobs = [job for job in WF["jobs"] if _installs_the_package(job) and job not in _UNCACHEABLE]
+    assert {"unit-tests", "model-cache-tests", "slow-tests", "python-compatibility"} <= set(jobs), jobs
+    offenders = []
+    for job in jobs:
+        setups = [s for s in _steps(job) if str(s.get("uses", "")).startswith("actions/setup-python")]
+        for s in setups:
+            spec = s.get("with", {})
+            keyed_on = set(str(spec.get("cache-dependency-path", "")).split())
+            if spec.get("cache") != "pip" or not _CACHE_KEY_FILES <= keyed_on:
+                offenders.append((job, spec))
+        if not setups:
+            offenders.append((job, "no setup-python step"))
+    assert not offenders, offenders
+
+
+def test_llama_cpp_python_installs_exactly_pinned_and_portable():
+    """#1318: the cache may only ever hold the pinned version (an upgrade is a reviewed edit of the constraints file,
+    which is in the cache key), and the wheel it holds must run on any runner CPU (GGML_NATIVE=OFF)."""
+    pins = (ROOT / ".github/constraints/ci-backends.txt").read_text(encoding="utf-8")
+    assert re.search(r"^llama-cpp-python==\d+\.\d+\.\d+$", pins, re.MULTILINE), pins
+    installs = [(where, s) for where, s in _all_steps() if "llama-cpp-python" in _commands(s)]
+    assert installs, "no step installs llama-cpp-python: the pin guards nothing"
+    offenders = [
+        (where, s.get("name"))
+        for where, s in installs
+        if "-c .github/constraints/ci-backends.txt" not in _commands(s)
+        or "-DGGML_NATIVE=OFF" not in str(s.get("env", {}).get("CMAKE_ARGS", ""))
+    ]
+    assert not offenders, offenders

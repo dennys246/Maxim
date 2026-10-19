@@ -1,0 +1,11 @@
+# The optional backends the unit-tests job and the slow lane install over the package (#1318). Only the one whose
+# install cost matters is pinned: llama-cpp-python has no Linux wheel on PyPI and built from its sdist on EVERY run
+# (2m50s of the 3m19s install step, run 38928694277). setup-python's pip cache (keyed on pyproject.toml and every
+# file in this directory) now keeps the wheel pip builds, and the EXACT pin is what makes that safe: an upgrade is a
+# reviewed edit here, which changes the cache key, so a stale cache can never stand in for a newer release.
+#
+# The build runs with CMAKE_ARGS="-DGGML_NATIVE=OFF" (set in test.yml) so the cached wheel carries no CPU-specific
+# instructions: GitHub's runner fleet mixes CPU models, and a wheel built natively on one could SIGILL on another.
+#
+# To move: bump the pin in a PR; its first run rebuilds the wheel and saves a new cache entry.
+llama-cpp-python==0.3.36

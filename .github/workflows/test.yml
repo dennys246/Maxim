@@ -101,6 +101,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
+          # #1318: keyed on what decides the install; an exact pin in .github/constraints/ moves the key.
+          cache-dependency-path: |
+            pyproject.toml
+            .github/constraints/*.txt
 
       - name: Install the core package
         run: python -m pip install .
@@ -157,6 +162,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          # #1318: keyed on what decides the install; an exact pin in .github/constraints/ moves the key.
+          cache-dependency-path: |
+            pyproject.toml
+            .github/constraints/*.txt
 
       # Install, warm-list, cache and warm: shared with the slow lane (#1117).
       - uses: ./.github/actions/model-cache-setup
@@ -210,6 +220,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          # #1318: keyed on what decides the install; an exact pin in .github/constraints/ moves the key.
+          cache-dependency-path: |
+            pyproject.toml
+            .github/constraints/*.txt
       - name: Install system deps
         run: |
           sudo apt-get update
@@ -220,8 +235,13 @@ jobs:
       # The model-cache lane's setup (shared action, #1117), then the optional backends over it; no `||` anywhere.
       - uses: ./.github/actions/model-cache-setup
       - name: Install the optional backends
+        env:
+          # #1318: a portable llama-cpp-python build, because the pip cache reuses the wheel on other runners
+          # (.github/constraints/ci-backends.txt says why).
+          CMAKE_ARGS: "-DGGML_NATIVE=OFF"
         run: |
-          pip install faster-whisper ctranslate2 onnxruntime av numpy opencv-python scipy llama-cpp-python ddgs pyyaml
+          pip install faster-whisper ctranslate2 onnxruntime av numpy opencv-python scipy llama-cpp-python ddgs pyyaml \
+            -c .github/constraints/ci-backends.txt
       # The real-Docker tests moved here from the fast suite (#1103, owner decision 2026-10-08: the fast suite is
       # hermetic, tests/docker_guard.py). Pull their image OUTSIDE the network namespace so a registry hiccup fails
       # this step by name instead of surfacing as an unlisted skip in the roster check; the daemon is reached over
@@ -418,6 +438,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          # #1318: keyed on what decides the install; an exact pin in .github/constraints/ moves the key.
+          cache-dependency-path: |
+            pyproject.toml
+            .github/constraints/*.txt
 
       - name: Install system dependencies
         run: |
@@ -425,6 +450,10 @@ jobs:
           sudo apt-get install -y libgstreamer1.0-dev gstreamer1.0-plugins-base
 
       - name: Install package and test dependencies
+        env:
+          # #1318: a portable llama-cpp-python build, because the pip cache reuses the wheel on other runners
+          # (.github/constraints/ci-backends.txt says why).
+          CMAKE_ARGS: "-DGGML_NATIVE=OFF"
         run: |
           # pytest-timeout is load-bearing, not convenience: the D12 guard
           # (tests/unit/test_inference_lock_timeout.py) fails by HANGING
@@ -446,7 +475,8 @@ jobs:
           pip install -e .
           # No `|| echo`: a failed install fails here (roadmap 1.3.2 item 7, #940). Every package installed on
           # the 2026-10-05 main run; a skip for a missing backend would otherwise pass as green.
-          pip install faster-whisper ctranslate2 onnxruntime av numpy opencv-python scipy llama-cpp-python ddgs pyyaml
+          pip install faster-whisper ctranslate2 onnxruntime av numpy opencv-python scipy llama-cpp-python ddgs pyyaml \
+            -c .github/constraints/ci-backends.txt
 
       - name: Install the console + sign extras (the extras lane)
         # roadmap 1.3.x "Test/CI truthfulness" / public_oasis Phase 0 item 1: without these the
@@ -574,6 +604,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          # #1318: keyed on what decides the install; an exact pin in .github/constraints/ moves the key.
+          cache-dependency-path: |
+            pyproject.toml
+            .github/constraints/*.txt
 
       - name: Ruff lint + format check
         # CLAUDE.md required checks, promoted to CI (1.0 guard promotion).
