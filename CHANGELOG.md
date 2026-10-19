@@ -67,6 +67,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Piper text-to-speech speaks again; spoken-code pairing was silent in 1.3.2** ([#1332](https://github.com/dennys246/Maxim/issues/1332), reported by maxim-pulse).
+  - `PiperTTS` called the pre-1.3 piper API (`synthesize_stream_raw`, then `synthesize(text, wav_file)`), while the
+    `tts` extra installs `piper-tts>=1.3.0`. Every synthesis raised `wave.Error: # channels not specified` on every
+    installable version, so the pairing announcer, `maxim --tts`, the agentic runtime's voice and
+    `ResponseOutput`'s speech all played nothing. `synthesize()` now joins piper's per-sentence `audio_int16_array`
+    chunks (int16, mono, the voice's `sample_rate`, as before), and `synthesize_to_file()` writes the WAV format
+    itself, so text with no sentence gives a valid empty file.
+  - **Correction to the 1.3.2 notes:** "verified Piper voice provisioning" overclaimed. 1.3.2 verified the voice's
+    *files* (pinned, sha256-checked) and that the voice *loaded*; nothing verified that it could speak, and it could not.
+  - Guard: `tests/unit/test_tts_real_piper.py` drives the real piper library and the pinned voice (strict red gates,
+    flipped in place; red on Linux at piper-tts 1.3.0 and 1.8.0 before the fix), plus a signature pin of the piper API.
+    They run in CI's new **R2 extras matrix** ([#1335](https://github.com/dennys246/Maxim/issues/1335), its first
+    slice): the `extras-matrix` job installs only `pymaxim[tts]` + pytest at the extra's floor and at its latest,
+    checks the pins and that nothing outside the extra is installed, provisions the voice, and holds the cell to its
+    exact roster (`scripts/extras_matrix.py`, `scripts/lane_rosters/extras-tts.json`). Every cell runs nightly and on a
+    push to main, and a pull request runs the cells its diff touches. The cells are `(nightly)` jobs, so the release
+    gate (`scripts/check_nightlies.py`) refuses a release while the latest nightly's cells are red. The floor is the
+    extra's direct requirements; their own dependencies resolve as pip picks today.
+- **`VoiceProvisioner.is_ready()` (the console's `pairing_ready`) now means the voice SPEAKS, not that it loads**
+  (standard R1, [#1334](https://github.com/dennys246/Maxim/issues/1334), its first instance).
+  - After loading the voice, the provisioner thread synthesizes a short fixed phrase once and arms only on non-empty,
+    finite audio that is not silence (its peak above 100 of int16's 32767); a voice that loads but cannot speak
+    (#1332's shape) keeps the sign-in page on the paste path and is retried with backoff, warning once and then at
+    DEBUG. `PiperTTS.synthesize` now raises `ValueError` on non-finite samples instead of letting piper's int16 cast
+    turn them into silence. `is_ready()` returns that cached verdict and never synthesizes, since
+    `console/server.py::_pairing_of` calls it on every unauthenticated `/api/hello`.
+  - Guards: `tests/unit/test_tts_voice_provisioning.py::test_a_voice_that_loads_but_cannot_speak_never_arms`,
+    `::test_the_provisioner_synthesizes_once_and_is_ready_never_synthesizes` (strict red gates, flipped in place) and
+    `tests/unit/test_tts_real_piper.py::test_the_voice_provisioner_arms_on_a_voice_that_really_speaks`.
 - **`NAc.load_state` clamps every restored bias map to its live writer's range** ([#1102](https://github.com/dennys246/Maxim/issues/1102)).
   Every writer clamped, but the load path restored `reward_bias`, `goal_reward_bias`, `cluster_reward_bias` and
   `percept_valences` with `float()` only, so a pre-clamp, hand-edited or corrupt `nac.json` (and `load(apply_decay=False)`

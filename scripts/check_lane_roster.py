@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """Assert a scheduled test lane ran EXACTLY its roster (roadmap 1.3.2 item 7, #940; one checker for both lanes, #1117).
 
-Lanes (``LANES``, lane → pytest marker): ``slow`` (``-m slow``) and ``model-cache`` (``-m requires_model_cache``).
+Lanes (``LANES``, lane → pytest marker): ``slow`` (``-m slow``), ``model-cache`` (``-m requires_model_cache``) and,
+since 1.3.3, one ``extras-<extra>`` lane per extra of the R2 extras matrix (``-m extras_<extra>``; #1335).
 The model-cache lane used to have its own checker, ``check_model_cache_lane.py``: a skip allow-list with no exact
 set, so a marked test that dropped out of the lane (a renamed marker, broken collection) passed. Now both lanes
 are held to the rules below.
@@ -46,7 +47,9 @@ from _pytest.junitxml import mangle_test_address
 
 REPO = Path(__file__).resolve().parent.parent
 ROSTERS = REPO / "scripts" / "lane_rosters"
-LANES = {"slow": "slow", "model-cache": "requires_model_cache"}  # lane -> the pytest marker that selects it
+# lane -> the pytest marker that selects it. `extras-<extra>`: the R2 extras matrix (scripts/extras_matrix.py); one roster
+# serves both of an extra's cells (floor and latest), since only the real-library tests carry the marker.
+LANES = {"slow": "slow", "model-cache": "requires_model_cache", "extras-tts": "extras_tts"}
 _ROSTER_KEYS = {"expected", "allowed_skips"}
 
 

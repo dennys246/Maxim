@@ -12,14 +12,20 @@ from __future__ import annotations
 import hashlib
 import re
 import time
+import wave
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from maxim.models import download as dl
 
 _PIN = "c10ece1aade47bb51c153c893d14e5bf8e5b7117"
 _ONNX, _JSON = b"fake-onnx-weights", b'{"audio": {"sample_rate": 22050}}'
+
+
+def _speaks(self, text):  # a fake engine whose voice speaks: R1's readiness synthesis passes
+    return np.full(4000, 1200, dtype=np.int16)
 
 
 def _sha(b: bytes) -> str:
@@ -122,6 +128,7 @@ def test_the_provisioner_arms_only_once_the_voice_loads_and_retries_until_then(m
     monkeypatch.setattr(dl, "ensure_tts_voice", ensure)
     monkeypatch.setattr(tts, "_piper_installed", lambda: True)
     monkeypatch.setattr(tts.TTSEngine, "load", lambda self: loaded.append(1))
+    monkeypatch.setattr(tts.TTSEngine, "synthesize", _speaks)
     prov = tts.VoiceProvisioner(models_dir=tmp_path, retry_s=0.01, max_retry_s=0.02)
     assert prov.is_ready() is False
     prov.start()
@@ -180,6 +187,7 @@ def test_a_raise_inside_an_attempt_is_a_retry_not_a_dead_thread(monkeypatch, tmp
     monkeypatch.setattr(dl, "ensure_tts_voice", ensure)
     monkeypatch.setattr(tts, "_piper_installed", lambda: True)
     monkeypatch.setattr(tts.TTSEngine, "load", lambda self: None)
+    monkeypatch.setattr(tts.TTSEngine, "synthesize", _speaks)
     prov = tts.VoiceProvisioner(models_dir=tmp_path, retry_s=0.01, max_retry_s=0.02)
     prov.start()
     try:
@@ -188,5 +196,71 @@ def test_a_raise_inside_an_attempt_is_a_retry_not_a_dead_thread(monkeypatch, tmp
                 break
             time.sleep(0.01)
         assert prov.is_ready() and len(calls) == 3
+    finally:
+        prov.stop()
+
+
+def _raise_wave_error():
+    raise wave.Error("# channels not specified")  # #1332's exact failure
+
+
+def _wait_ready(prov, polls: int = 300) -> bool:
+    for _ in range(polls):
+        if prov.is_ready():
+            return True
+        time.sleep(0.01)
+    return prov.is_ready()
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        pytest.param(lambda text: _raise_wave_error(), id="raises"),
+        pytest.param(lambda text: np.array([], dtype=np.int16), id="empty"),
+        pytest.param(lambda text: np.array([0.1, float("nan")], dtype=np.float32), id="non-finite"),
+        # The real engine's shape of a NaN voice (piper casts NaN to 0) and of a voice that outputs nothing audible.
+        pytest.param(lambda text: np.zeros(4000, dtype=np.int16), id="silent"),
+    ],
+)
+def test_a_voice_that_loads_but_cannot_speak_never_arms(monkeypatch, tmp_path, broken):
+    """R1's first instance: ``pairing_ready`` must prove the capability. A voice that loads but synthesizes nothing
+    (#1332's exact shape) keeps the page on the paste path instead of offering "listen" over silence."""
+    from maxim.models.audio import tts
+
+    monkeypatch.setattr(dl, "ensure_tts_voice", lambda *a, **k: True)
+    monkeypatch.setattr(tts, "_piper_installed", lambda: True)
+    monkeypatch.setattr(tts.TTSEngine, "load", lambda self: None)
+    monkeypatch.setattr(tts.TTSEngine, "synthesize", lambda self, text: broken(text))
+    prov = tts.VoiceProvisioner(models_dir=tmp_path, retry_s=0.01, max_retry_s=0.02)
+    prov.start()
+    try:
+        time.sleep(0.15)  # several retry cycles
+        assert prov.is_ready() is False
+    finally:
+        prov.stop()
+
+
+def test_the_provisioner_synthesizes_once_and_is_ready_never_synthesizes(monkeypatch, tmp_path):
+    """``console/server.py::_pairing_of`` calls ``is_ready`` on every unauthenticated ``/api/hello``: it must return
+    the provisioner thread's cached result, never run the engine per call."""
+    from maxim.models.audio import tts
+
+    synths: list[str] = []
+
+    def synthesize(self, text):
+        synths.append(text)
+        return np.full(4000, 1200, dtype=np.int16)
+
+    monkeypatch.setattr(dl, "ensure_tts_voice", lambda *a, **k: True)
+    monkeypatch.setattr(tts, "_piper_installed", lambda: True)
+    monkeypatch.setattr(tts.TTSEngine, "load", lambda self: None)
+    monkeypatch.setattr(tts.TTSEngine, "synthesize", synthesize)
+    prov = tts.VoiceProvisioner(models_dir=tmp_path, retry_s=0.01, max_retry_s=0.02)
+    prov.start()
+    try:
+        assert _wait_ready(prov)
+        for _ in range(50):
+            assert prov.is_ready()
+        assert len(synths) == 1
     finally:
         prov.stop()

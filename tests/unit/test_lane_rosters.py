@@ -15,7 +15,7 @@ from scripts import check_lane_roster as C
 
 # An excused skip is a reviewed act: raise the pin in the same PR and say why the test cannot run in the lane
 # (the model-cache pin carries the 1.3.1 `ALLOWED_SKIPS <= 4` ratchet from tests/unit/test_model_cache_names.py).
-ALLOWED_SKIP_PINS = {"slow": 1, "model-cache": 4}
+ALLOWED_SKIP_PINS = {"slow": 1, "model-cache": 4, "extras-tts": 0}  # an extras cell installs its extra and assets
 
 
 @pytest.mark.parametrize("lane", sorted(C.LANES))
