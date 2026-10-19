@@ -294,3 +294,44 @@ class TestLogHygiene:
             assert c.get("/api/identity", headers={"Authorization": "Bearer mxc_wrong"}).status_code == 401
         assert _TOKEN not in caplog.text
         assert "mxc_" not in caplog.text
+
+
+@pytest.mark.xfail(strict=True, reason="the /ws sender sees a disconnect only at its next 15 s heartbeat")
+def test_ws_handler_returns_promptly_when_the_client_disconnects(authed_app):
+    """The /ws handler must end when its client goes away, not at the next heartbeat (``_HEARTBEAT_INTERVAL_S``,
+    15 s). uvicorn >= 0.40 waits for it on SIGTERM, so ``maxim serve`` hung up to 15 s after a browser tab closed
+    (found by #1347's real-uvicorn test). Starlette's TestClient cancels the app instead of waiting, so this drives
+    the ASGI app directly: connect, accept, then the client disconnects."""
+    import asyncio
+
+    async def drive() -> list[str]:
+        inbox: asyncio.Queue = asyncio.Queue()
+        await inbox.put({"type": "websocket.connect"})
+        sent: list[str] = []
+
+        async def receive():
+            return await inbox.get()
+
+        async def send(message):
+            sent.append(message["type"])
+            if message["type"] == "websocket.accept":
+                await inbox.put({"type": "websocket.disconnect", "code": 1001})
+
+        scope = {
+            "type": "websocket",
+            "asgi": {"version": "3.0"},
+            "path": "/ws",
+            "raw_path": b"/ws",
+            "root_path": "",
+            "scheme": "ws",
+            "query_string": b"",
+            "headers": [(b"host", b"127.0.0.1:8000"), (b"authorization", f"Bearer {_TOKEN}".encode())],
+            "client": ("127.0.0.1", 50000),
+            "server": ("127.0.0.1", 8000),
+            "subprotocols": [],
+            "state": {},
+        }
+        await asyncio.wait_for(authed_app(scope, receive, send), timeout=2.0)
+        return sent
+
+    assert "websocket.accept" in asyncio.run(drive())
