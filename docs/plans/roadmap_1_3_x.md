@@ -867,7 +867,7 @@ Owner decisions taken with this path (2026-10-16):
     piper-tts.
   - **[#1347](https://github.com/dennys246/Maxim/issues/1347): the `console` extra cannot serve `/ws`.** Plain
     `uvicorn` has no WebSocket library, so a clean `pymaxim[console]` install gives the Console no live stream. The
-    fix is `uvicorn[standard]`, guarded by an R2 test: the extra alone upgrades `/ws` against a real server.
+    fix declares `websockets` in the extra (owner decision 2026-10-18: not `uvicorn[standard]`), guarded by an R2 test: the extra alone upgrades `/ws` against a real server.
   - **[#1333](https://github.com/dennys246/Maxim/issues/1333): the wheel vendored console v0.4.0.** Vendor v0.4.1, and
     make the release check the vendored tag (R4, a gate: design pass first).
   - **The standards, first slice each:**

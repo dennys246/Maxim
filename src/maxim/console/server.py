@@ -605,9 +605,15 @@ async def _pump_ws_events(websocket: WebSocket, conn: Any, recv_task: "asyncio.T
             if recv_task.done():
                 return  # client went away (receive raised/closed) — stop sending
             get = asyncio.ensure_future(conn.queue.get())
-            await asyncio.wait({get, recv_task}, timeout=_HEARTBEAT_INTERVAL_S, return_when=asyncio.FIRST_COMPLETED)
-            if not get.done():
-                get.cancel()  # nothing queued: the receiver ended, or the stream went idle
+            try:
+                await asyncio.wait({get, recv_task}, timeout=_HEARTBEAT_INTERVAL_S, return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                # asyncio.wait never cancels what it waits on: without this, a handler cancelled while parked here
+                # (a server shutdown, TestClient teardown) leaves the get running, to take a later event (review fold).
+                idle = not get.done()
+                if idle:
+                    get.cancel()
+            if idle:  # nothing queued: the receiver ended, or the stream went idle
                 if recv_task.done():
                     return
                 # Idle: enqueue the heartbeat so it flows the one path

@@ -334,3 +334,43 @@ def test_ws_handler_returns_promptly_when_the_client_disconnects(authed_app):
         return sent
 
     assert "websocket.accept" in asyncio.run(drive())
+
+
+def test_a_cancelled_ws_handler_leaves_no_queue_get_running(authed_app):
+    """Cancelling the /ws handler while it waits for an event must cancel that wait too: ``asyncio.wait`` does not,
+    and a leaked ``Queue.get`` would take a later event and outlive the connection (delta-round review)."""
+    import asyncio
+
+    async def drive() -> list[str]:
+        inbox: asyncio.Queue = asyncio.Queue()
+        await inbox.put({"type": "websocket.connect"})
+
+        async def receive():
+            return await inbox.get()  # the client never disconnects: the handler idles in its event wait
+
+        async def send(message):
+            pass
+
+        scope = {
+            "type": "websocket",
+            "asgi": {"version": "3.0"},
+            "path": "/ws",
+            "raw_path": b"/ws",
+            "root_path": "",
+            "scheme": "ws",
+            "query_string": b"",
+            "headers": [(b"host", b"127.0.0.1:8000"), (b"authorization", f"Bearer {_TOKEN}".encode())],
+            "client": ("127.0.0.1", 50000),
+            "server": ("127.0.0.1", 8000),
+            "subprotocols": [],
+            "state": {},
+        }
+        handler = asyncio.ensure_future(authed_app(scope, receive, send))
+        await asyncio.sleep(0.3)  # accepted, identity sent, now parked in the event wait
+        handler.cancel()
+        await asyncio.gather(handler, return_exceptions=True)
+        await asyncio.sleep(0)  # let the cancelled get finish cancelling
+        return [repr(t.get_coro()) for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+
+    leftover = asyncio.run(drive())
+    assert not [t for t in leftover if "Queue.get" in t], leftover
