@@ -12,7 +12,7 @@ copies the bundle the committed pin names (``scripts/console_ui_pin.json``):
         python scripts/vendor_console_ui.py --from-pin
 
   * prove the pin is the NEWEST pulse tag for this backend's contract (the
-    release PR and the publish workflow; network, fails closed)::
+    release PR, and release.yml's publish workflow from #1372; network, fails closed)::
 
         python scripts/vendor_console_ui.py --verify-pin [--only-when-releasing]
 
@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import io
 import json
 import shutil
@@ -95,7 +96,7 @@ def http_fetch(url: str, *, attempts: int = 3) -> bytes:
         try:
             with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60) as r:
                 return r.read()
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as exc:
             last = exc
             if attempt + 1 < attempts:
                 time.sleep(2 * (attempt + 1))
@@ -177,9 +178,14 @@ def vendor(source: Path, *, pin: cp.Pin, force: bool = False, releasing: bool = 
     for p in problems:  # forced: still say what's wrong
         print(f"WARNING: {p}", file=sys.stderr)
 
+    if source.resolve() == DEST.resolve():
+        print(f"REFUSED: {source} IS the vendored bundle; vendor from a pulse bundle or use --check", file=sys.stderr)
+        return 1
     if DEST.exists():
         shutil.rmtree(DEST)
-    shutil.copytree(source, DEST)
+    shutil.copytree(
+        source, DEST, ignore=lambda d, names: [n for n in names if Path(d) == source and n in cp.BUILD_ONLY_DIRS]
+    )
     if not force and cp.tree_digest(cp.dir_entries(DEST)) != pin.tree_sha256:
         print(f"REFUSED: {_shown(DEST)} does not re-digest to the pin after the copy", file=sys.stderr)
         shutil.rmtree(DEST)
@@ -206,8 +212,11 @@ def fetch_asset(pin: cp.Pin, *, fetch: Fetch = http_fetch, cache_dir: Path | Non
     if got != pin.asset_sha256:
         raise ValueError(f"{cp.PULSE_ASSET} for {pin.tag} has sha256 {got}, the pin says {pin.asset_sha256}")
     if cached is not None:
-        cached.parent.mkdir(parents=True, exist_ok=True)
-        cached.write_bytes(data)
+        try:
+            cached.parent.mkdir(parents=True, exist_ok=True)
+            cached.write_bytes(data)
+        except OSError as exc:  # the cache is an optimisation; the verified bytes are already in hand
+            print(f"WARNING: could not keep the asset in {cache_dir}: {exc}", file=sys.stderr)
     return data
 
 
@@ -264,7 +273,7 @@ def parse_ls_remote(text: str) -> dict[str, str]:
 def tag_contract(commit: str, *, fetch: Fetch) -> str:
     try:
         version = json.loads(fetch(OPENAPI_RAW.format(repo=cp.PULSE_REPO, commit=commit)))["info"]["version"]
-    except (json.JSONDecodeError, KeyError, TypeError) as e:
+    except (ValueError, KeyError, TypeError) as e:
         raise Unverified(f"packages/kit/openapi.json at {commit[:12]} has no readable info.version ({e})") from e
     return str(version)
 
@@ -273,7 +282,7 @@ def release_asset_digest(tag: str, *, fetch: Fetch) -> str:
     try:
         release = json.loads(fetch(RELEASE_API.format(repo=cp.PULSE_REPO, tag=tag)))
         asset = next(a for a in release["assets"] if a.get("name") == cp.PULSE_ASSET)
-    except (json.JSONDecodeError, KeyError, TypeError, StopIteration) as e:
+    except (ValueError, KeyError, TypeError, AttributeError, StopIteration) as e:
         raise Unverified(f"release {tag} has no readable {cp.PULSE_ASSET} asset ({e!r})") from e
     digest = str(asset.get("digest") or "")
     if not digest.startswith("sha256:"):
@@ -304,6 +313,10 @@ def resolve_tag(tag: str, contract: str, *, ls_remote: LsRemote, fetch: Fetch) -
     data = fetch(ASSET_URL.format(repo=cp.PULSE_REPO, tag=tag, asset=cp.PULSE_ASSET))
     if hashlib.sha256(data).hexdigest() != asset_sha:
         raise LookupError(f"the downloaded {cp.PULSE_ASSET} for {tag} does not match its release digest")
+    try:
+        tree_sha256 = asset_tree_digest(data)
+    except tarfile.TarError as e:
+        raise Unverified(f"{cp.PULSE_ASSET} for {tag} is not a readable gzip tar ({e})") from e
     pin = cp.Pin(
         repo=cp.PULSE_REPO,
         tag=tag,
@@ -311,7 +324,7 @@ def resolve_tag(tag: str, contract: str, *, ls_remote: LsRemote, fetch: Fetch) -
         contract_version=contract,
         asset=cp.PULSE_ASSET,
         asset_sha256=asset_sha,
-        tree_sha256=asset_tree_digest(data),
+        tree_sha256=tree_sha256,
     )
     return pin, newer_same
 
@@ -399,6 +412,12 @@ def main(argv: list[str] | None = None) -> int:
         "(a PR that bumps the contract can merge before pulse tags a bundle for it). Releasing trees refuse.",
     )
     args = ap.parse_args(argv)
+    if args.only_when_releasing and not args.verify_pin:
+        ap.error("--only-when-releasing applies to --verify-pin only")
+    if args.from_pin and (args.force or args.source):
+        ap.error("--from-pin vendors the pinned asset only: no source path, and no --force")
+    if args.asset_cache and not args.from_pin:
+        ap.error("--asset-cache applies to --from-pin only")
 
     if args.clean:
         if DEST.exists():
@@ -411,6 +430,11 @@ def main(argv: list[str] | None = None) -> int:
         return update_pin(args.update_pin)
     try:
         pin = cp.load_pin()
+    except cp.PinError as e:
+        print(f"UNVERIFIED: {e}", file=sys.stderr)
+        return 2
+    try:
+        cp.backend_contract()  # unreadable is exit 2 here, not a "refused" from inside validate
     except cp.PinError as e:
         print(f"UNVERIFIED: {e}", file=sys.stderr)
         return 2

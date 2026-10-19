@@ -128,3 +128,30 @@ def test_green_at_main_passes(monkeypatch) -> None:
         lambda: ({"databaseId": 4, "createdAt": now, "headSha": "abc"}, _jobs(**{"Slow tests (nightly)": "success"})),
     )
     assert N.main([]) == 0
+
+
+# ── releasing(): the one "is this tree cutting a release?" (also the console gate's, R4) ─────────────────────────
+
+
+def test_releasing_a_tagged_version_is_not_a_release(monkeypatch) -> None:
+    monkeypatch.setattr(N, "pyproject_version", lambda: "1.3.2")
+    monkeypatch.setattr(N, "is_tagged", lambda v: True)
+    assert N.releasing()[0] is False
+
+
+def test_releasing_an_untagged_version_is_a_release(monkeypatch) -> None:
+    monkeypatch.setattr(N, "pyproject_version", lambda: "1.3.3")
+    monkeypatch.setattr(N, "is_tagged", lambda v: False)
+    assert N.releasing()[0] is True
+
+
+@pytest.mark.parametrize(
+    "exc", [N.CheckError("ls-remote"), OSError("no git"), ValueError("bad toml"), KeyError("project")]
+)
+def test_releasing_an_unreadable_answer_counts_as_a_release(monkeypatch, exc) -> None:
+    def boom():
+        raise exc
+
+    monkeypatch.setattr(N, "pyproject_version", boom)
+    is_release, why = N.releasing()
+    assert is_release is True and "treating it as releasing" in why

@@ -6,7 +6,7 @@ pulse tag, the commit it peels to, its contract, the release asset's sha256 and 
 ``vendor_console_ui.py`` refuses a bundle that does not match it and proves it is the newest tag for the contract
 (``--verify-pin``); ``audit_release_build.py`` re-checks the built wheel and sdist against it.
 
-Everything here is OFFLINE and pure, so both scripts and their tests share one definition. The design and its
+Everything here is offline and pure except `releasing()`, so both scripts and their tests share one definition. The design and its
 adversarial pass: docs/plans/r4_console_vendor_gate.md.
 
 Two definitions live here and nowhere else:
@@ -25,12 +25,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # once, at import: `check_nightlies` for `releasing()`
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PIN_PATH = REPO_ROOT / "scripts" / "console_ui_pin.json"
 UI_BUNDLE_SOURCE = REPO_ROOT / "src" / "maxim" / "console" / "ui_bundle.py"
@@ -76,6 +78,9 @@ def tag_key(tag: str) -> tuple[int, int, int] | None:
 
 
 def load_pin(path: Path = PIN_PATH) -> Pin:
+    """The committed pin, or PinError. Hand-checks `_format_version` on purpose: `maxim.utils.format_version` is lenient
+    by contract (it must not raise on a missing stamp), a gate input must fail closed, and `release-build` does not
+    install `maxim`."""
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -83,6 +88,9 @@ def load_pin(path: Path = PIN_PATH) -> Pin:
     if not isinstance(raw, dict) or raw.get("_format_version") != PIN_FORMAT_VERSION:
         raise PinError(f"{path}: `_format_version` must be {PIN_FORMAT_VERSION!r}")
     fields = ("repo", "tag", "commit", "contract_version", "asset", "asset_sha256", "tree_sha256")
+    unknown = sorted(set(raw) - set(fields) - {"_format_version"})
+    if unknown:
+        raise PinError(f"{path}: unknown field(s) {unknown}; a new field is a reviewed edit of this loader too")
     missing = [f for f in fields if not isinstance(raw.get(f), str) or not raw.get(f)]
     if missing:
         raise PinError(f"{path}: missing or non-string field(s) {missing}")
@@ -181,10 +189,17 @@ def tar_entries(tf) -> list[tuple[str, bytes]]:  # tf: tarfile.TarFile
     return out
 
 
+# A local Vite build writes `.vite/manifest.json` (pulse's `build.manifest: true`); pulse's `pack-dist.mjs` excludes
+# that one top-level directory from the release asset, so a directory bundle skips it the same way and nothing else.
+BUILD_ONLY_DIRS = (".vite",)
+
+
 def dir_entries(root: Path) -> list[tuple[str, bytes]]:
     out = []
     for path in sorted(root.rglob("*")):
         rel = path.relative_to(root).as_posix()
+        if rel.split("/", 1)[0] in BUILD_ONLY_DIRS:
+            continue
         if path.is_symlink():
             raise DigestError(f"refused symlink {rel!r}: only regular files may ship")
         if path.is_dir():
@@ -252,21 +267,14 @@ def stamp_problems(stamp: dict, pin: Pin, contract: str, *, releasing: bool) -> 
             problems.append(f"{d}: move the pin to a {contract}-contract pulse tag (`--update-pin <tag>`)")
         else:
             notes.append(f"CONTRACT DRIFT: {d}. A release is blocked until the pin moves to a {contract}-contract tag")
+            if os.environ.get("GITHUB_ACTIONS") == "true":  # surfaces in the PR's checks summary, not only the log
+                print(f"::warning title=Console contract drift (R4)::{d}; main cannot be released until the pin moves")
     return problems, notes
 
 
 def releasing() -> tuple[bool, str]:
-    """Is this tree cutting a release (pyproject's version has no v<version> tag yet)? Unreadable = yes (fail closed).
+    """Is this tree cutting a release? `check_nightlies.releasing`, the one definition (it fails closed). This is the
+    only function here that touches the network (`git ls-remote`)."""
+    from check_nightlies import releasing as _releasing
 
-    The same source and answer `check_nightlies.py --only-when-releasing` uses.
-    """
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from check_nightlies import CheckError, is_tagged, pyproject_version
-
-    try:
-        version = pyproject_version()
-        if is_tagged(version):
-            return False, f"not a release: v{version} is already tagged"
-        return True, f"releasing {version} (no v{version} tag yet)"
-    except (CheckError, OSError, KeyError) as exc:
-        return True, f"cannot tell whether this tree is releasing ({exc}); treating it as releasing"
+    return _releasing()

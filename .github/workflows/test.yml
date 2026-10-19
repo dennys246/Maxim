@@ -369,9 +369,10 @@ jobs:
         # tagged a bundle for the new contract (it prints CONTRACT DRIFT); a tree cutting a release refuses it.
         run: python3 scripts/vendor_console_ui.py --from-pin --asset-cache .console-asset-cache --contract-drift-ok-unless-releasing
       - name: The console pin is the newest pulse tag for the contract (release PRs)
-        # Network; exit 1 stale, 2 unreadable. A no-op unless this tree cuts a release. PR-only for the reason #938
-        # moved the nightly check: on push and schedule a release merge would read red until its tag lands. The
-        # publish workflow runs it unconditionally.
+        # Network; exit 1 stale, 2 unreadable. A no-op unless this tree cuts a release. PR-only for the same reason
+        # #938 moves the nightly check off push and schedule: a release merge would read red until its tag lands.
+        # The tag-triggered publish workflow (release.yml, #1372) runs it unconditionally, before and after the
+        # approval; until that lands, the publication guide's hand path must run it before uploading.
         if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}

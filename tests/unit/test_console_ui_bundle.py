@@ -169,7 +169,7 @@ class TestVendorScript:
     def test_rejects_a_contract_mismatch(self, tmp_path):
         ok, problems = self._validate(tmp_path, contract_version="9.9.9")
         assert not ok
-        assert any("contract" in p for p in problems)
+        assert any("built for contract '9.9.9'" in p for p in problems)
 
     def test_rejects_a_non_bundle_directory(self, tmp_path):
         from tests.unit import _console_bundles as cb

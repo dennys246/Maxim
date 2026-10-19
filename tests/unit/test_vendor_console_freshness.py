@@ -243,6 +243,8 @@ def test_the_committed_pin_loads(cp):
         lambda d: d.update(commit="da20a72"),
         lambda d: d.pop("tree_sha256"),
         lambda d: d.update(asset_sha256="XYZ"),
+        lambda d: d.update(tree_sha256="ab" * 31),
+        lambda d: d.update(signed_by="someone"),  # an unknown field is refused, not silently carried
     ],
 )
 def test_a_malformed_pin_is_unreadable_not_a_pass(cp, tmp_path, mutate):
@@ -478,39 +480,171 @@ def test_update_pin_refuses_a_tag_built_for_another_contract(vcu, cp, tmp_path):
 # ── "is this tree releasing?" fails closed ───────────────────────────────────
 
 
-def _fake_nightlies(monkeypatch, *, tagged=None, error=None):
+def _fake_nightlies(monkeypatch, *, releasing):
     mod = types.ModuleType("check_nightlies")
-
-    class CheckError(Exception):
-        pass
-
-    def is_tagged(_v):
-        if error:
-            raise CheckError(error)
-        return tagged
-
-    mod.CheckError = CheckError
-    mod.is_tagged = is_tagged
-    mod.pyproject_version = lambda: "1.3.3"
+    mod.releasing = lambda: (releasing, "faked")
     monkeypatch.setitem(sys.modules, "check_nightlies", mod)
 
 
-def test_a_tagged_version_is_not_releasing(cp, monkeypatch):
-    _fake_nightlies(monkeypatch, tagged=True)
-    assert cp.releasing()[0] is False
-
-
-def test_an_untagged_version_is_releasing(cp, monkeypatch):
-    _fake_nightlies(monkeypatch, tagged=False)
-    assert cp.releasing()[0] is True
-
-
-def test_an_unreadable_answer_counts_as_releasing(cp, monkeypatch):
-    _fake_nightlies(monkeypatch, error="ls-remote failed")
-    releasing, why = cp.releasing()
-    assert releasing is True and "treating it as releasing" in why
+def test_releasing_is_check_nightlies_one_definition(cp, monkeypatch):
+    """The fail-closed rules themselves are tested in test_check_nightlies.py::test_releasing_*."""
+    _fake_nightlies(monkeypatch, releasing=False)
+    assert cp.releasing() == (False, "faked")
 
 
 def test_verify_only_when_releasing_is_a_no_op_between_releases(vcu, cp, monkeypatch):
-    _fake_nightlies(monkeypatch, tagged=True)
+    _fake_nightlies(monkeypatch, releasing=False)
     assert vcu.main(["--verify-pin", "--only-when-releasing"]) == 0  # no network: the autouse guard would raise
+
+
+# ── review folds (2026-10-18) ────────────────────────────────────────────────
+
+
+def test_a_local_vite_build_vendors_without_its_build_only_manifest(vcu, cp, tmp_path, dest):
+    """Wire review SF-2: every local pulse build has `.vite/manifest.json`; pulse's pack-dist drops it from the
+    release asset, so the directory path skips that one top-level directory and the result matches the pin."""
+    files = cb.bundle(cp)
+    src = cb.write_dir(tmp_path / "dist", {**files, ".vite/manifest.json": b"{}"})
+    assert vcu.vendor(src, pin=cb.pin_for(cp, files)) == 0
+    assert not (dest / ".vite").exists()
+
+
+def test_a_nested_dot_directory_is_still_refused(cp, tmp_path):
+    root = cb.write_dir(tmp_path / "d", {**cb.bundle(cp), "assets/.vite/x.json": b"{}"})
+    with pytest.raises(cp.DigestError, match="dotfile"):
+        cp.dir_entries(root)
+
+
+def test_contract_drift_is_a_github_warning_in_ci(cp, monkeypatch, capsys):
+    """Architecture review: a print inside a green log is a signal nobody reads."""
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    files = cb.bundle(cp)
+    cp.stamp_problems(json.loads(files[cp.MANIFEST_NAME]), cb.pin_for(cp, files), "0.7.0", releasing=False)
+    assert "::warning title=Console contract drift (R4)::" in capsys.readouterr().out
+
+
+# ── executor-review folds: drive main(), and make every guard fail when deleted ─────────────────────────────────
+
+
+def _spy(monkeypatch, vcu, name, result=0):
+    calls: list[dict] = []
+
+    def spy(*args, **kwargs):
+        calls.append(kwargs)
+        return result
+
+    monkeypatch.setattr(vcu, name, spy)
+    return calls
+
+
+@pytest.mark.parametrize("is_release", [True, False])
+def test_main_threads_releasing_into_from_pin_and_check(vcu, monkeypatch, is_release):
+    """Fold 1's wiring: a hardcoded False would waive drift on a release; a hardcoded True would bring back the
+    deadlock for contract-bump PRs."""
+    _fake_nightlies(monkeypatch, releasing=is_release)
+    from_pin = _spy(monkeypatch, vcu, "from_pin")
+    check = _spy(monkeypatch, vcu, "check")
+    assert vcu.main(["--from-pin", "--contract-drift-ok-unless-releasing"]) == 0
+    assert vcu.main(["--check", "--contract-drift-ok-unless-releasing"]) == 0
+    assert from_pin[0]["releasing"] is is_release and check[0]["releasing"] is is_release
+
+
+def test_main_is_strict_without_the_ci_flag(vcu, monkeypatch):
+    monkeypatch.setitem(sys.modules, "check_nightlies", None)  # must not even ask
+    from_pin = _spy(monkeypatch, vcu, "from_pin")
+    assert vcu.main(["--from-pin"]) == 0 and from_pin[0]["releasing"] is True
+
+
+def test_verify_only_when_releasing_runs_the_check_on_a_release(vcu, monkeypatch):
+    """The release-PR freshness check, the 1.3.2 guard, must not become a permanent no-op."""
+    _fake_nightlies(monkeypatch, releasing=True)
+    verify = _spy(monkeypatch, vcu, "verify_pin", result=1)
+    assert vcu.main(["--verify-pin", "--only-when-releasing"]) == 1 and len(verify) == 1
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--from-pin", "--only-when-releasing"],
+        ["--from-pin", "--force"],
+        ["--from-pin", "x"],
+        ["--check", "--asset-cache", "c"],
+    ],
+)
+def test_main_refuses_flags_that_would_be_silently_ignored(vcu, argv):
+    with pytest.raises(SystemExit):
+        vcu.main(argv)
+
+
+def test_main_an_unreadable_backend_contract_is_unverified(vcu, cp, monkeypatch):
+    def boom(*_a):
+        raise cp.PinError("no ui_bundle.py")
+
+    monkeypatch.setattr(cp, "backend_contract", boom)
+    assert vcu.main(["--check"]) == 2
+
+
+def test_vendor_refuses_a_copy_that_does_not_re_digest(vcu, cp, tmp_path, dest, monkeypatch):
+    files = cb.bundle(cp)
+    real = vcu.shutil.copytree
+
+    def lossy(src, dst, *args, **kw):
+        out = real(src, dst, *args, **kw)
+        if Path(dst) == dest:  # copytree recurses through the module name; drop a file at the top level only
+            (Path(dst) / "assets" / "index-abc.css").unlink()
+        return out
+
+    monkeypatch.setattr(vcu.shutil, "copytree", lossy)
+    assert vcu.vendor(cb.write_dir(tmp_path / "dist", files), pin=cb.pin_for(cp, files)) == 1
+    assert not dest.exists()
+
+
+def test_vendor_refuses_to_vendor_the_destination_into_itself(vcu, cp, tmp_path, dest):
+    files = cb.bundle(cp)
+    cb.write_dir(dest, files)
+    assert vcu.vendor(dest, pin=cb.pin_for(cp, files)) == 1
+    assert dest.is_dir()
+
+
+def test_the_asset_is_scanned_before_a_byte_is_extracted(vcu, cp, tmp_path, monkeypatch):
+    link = tarfile.TarInfo("./assets/link.js")
+    link.type = tarfile.SYMTYPE
+    link.linkname = "/etc/passwd"
+    extracted = []
+    monkeypatch.setattr(tarfile.TarFile, "extractall", lambda *a, **k: extracted.append(a))
+    with pytest.raises(cp.DigestError):
+        vcu.extract_asset(cb.tar_bytes(cb.bundle(cp), extra=[link]), tmp_path)
+    assert extracted == []
+
+
+def test_an_old_python_without_the_data_filter_refuses_to_extract(vcu, cp, tmp_path, monkeypatch):
+    monkeypatch.delattr(tarfile, "data_filter")
+    with pytest.raises(RuntimeError, match="data"):
+        vcu.extract_asset(cb.tar_bytes(cb.bundle(cp)), tmp_path)
+
+
+def test_a_cached_asset_with_the_wrong_bytes_is_downloaded_again(vcu, cp, tmp_path, dest):
+    files = cb.bundle(cp)
+    pin = cb.pin_for(cp, files)
+    (tmp_path / "c").mkdir()
+    (tmp_path / "c" / f"{pin.asset_sha256}.tar.gz").write_bytes(b"tampered")
+    calls: list[str] = []
+    assert vcu.from_pin(pin, fetch=_asset_fetch(cb.tar_bytes(files), calls), cache_dir=tmp_path / "c") == 0
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("body", [b"\xc3\x28", b'{"assets": ["x"]}', b"[]"])
+def test_an_unreadable_release_body_is_unverified(vcu, cp, body):
+    files = cb.bundle(cp)
+    pulse = FakePulse(cp, files)
+    real = pulse.fetch
+    pulse.fetch = lambda url: body if "api.github.com" in url else real(url)
+    assert _verify(vcu, cp, pulse, cb.pin_for(cp, files)) == 2
+
+
+def test_an_asset_that_is_not_a_tar_is_unverified(vcu, cp):
+    files = cb.bundle(cp)
+    pulse = FakePulse(cp, files)
+    pulse.asset = b"not a tarball"
+    pulse.digest = hashlib.sha256(pulse.asset).hexdigest()
+    assert _verify(vcu, cp, pulse, cb.pin_for(cp, files, asset_sha256=pulse.digest)) == 2

@@ -123,10 +123,18 @@ def test_a_dotfile_in_the_shipped_bundle_fails(tmp_path: Path) -> None:
     assert any("dotfile" in p for p in _audit(_wheel(tmp_path, console=files)))
 
 
-def test_main_refuses_an_unreadable_pin(tmp_path: Path) -> None:
+def test_main_refuses_an_unreadable_pin(tmp_path: Path, monkeypatch) -> None:
     wheel = _wheel(tmp_path)
     (tmp_path / "pin.json").write_text("{}")
-    assert A.main(["--wheel", str(wheel), "--pin", str(tmp_path / "pin.json")]) == 2
+    real = cp.load_pin
+    monkeypatch.setattr(cp, "load_pin", lambda: real(tmp_path / "pin.json"))
+    assert A.main(["--wheel", str(wheel)]) == 2
+
+
+def test_main_has_no_pin_override() -> None:
+    """A `--pin` path would let an operator audit against a pin they chose (architecture review)."""
+    with pytest.raises(SystemExit):
+        A.main(["--pin", "/tmp/any.json"])
 
 
 # ── D48 — the version ────────────────────────────────────────────────────────
@@ -232,3 +240,30 @@ def test_sdist_with_a_stale_console_fails(tmp_path: Path) -> None:
 
 def test_newest_sdist_returns_none_when_absent(tmp_path: Path) -> None:
     assert A.newest_sdist(tmp_path) is None
+
+
+@pytest.mark.parametrize("is_release", [True, False])
+def test_main_threads_releasing_into_the_audit(tmp_path: Path, monkeypatch, is_release) -> None:
+    """Fold 1's wiring through main(): the CI flag asks `releasing()`; without it the audit is strict."""
+    import sys
+    import types
+
+    mod = types.ModuleType("check_nightlies")
+    mod.releasing = lambda: (is_release, "faked")
+    monkeypatch.setitem(sys.modules, "check_nightlies", mod)
+    monkeypatch.setattr(cp, "load_pin", lambda: PIN)
+    wheel, sdist = _wheel(tmp_path, contract="9.9.9"), _sdist(tmp_path)
+    argv = ["--wheel", str(wheel), "--sdist", str(sdist), "--expect-version", VERSION]
+    assert A.main([*argv, "--contract-drift-ok-unless-releasing"]) == (1 if is_release else 0)
+    assert A.main(argv) == 1
+
+
+def test_a_stamp_that_is_not_utf8_is_a_problem_not_a_traceback(tmp_path: Path) -> None:
+    files = {**cb.bundle(cp), cp.MANIFEST_NAME: b"\xc3\x28"}
+    assert any("unreadable" in p for p in _audit(_wheel(tmp_path, console=files)))
+
+
+def test_a_pin_naming_another_repo_fails_the_audit(tmp_path: Path) -> None:
+    """Fold 2: the repo is a constant, only compared, here as in the vendor step."""
+    foreign = cb.pin_for(cp, cb.bundle(cp), repo="someone/fork")
+    assert any("comes only from" in p for p in _audit(_wheel(tmp_path), pin=foreign))

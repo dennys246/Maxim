@@ -135,6 +135,10 @@ A field change then shows up as a real OpenAPI diff, and it trips pulse's `gen:f
 **Ordering with #1333 (a cut rule).** `vendor_console_ui.py` refuses a bundle whose contract version differs from
 `CONSOLE_CONTRACT_VERSION`. So contract 0.7.0 lands in a release only together with a pulse tag built for 0.7.0.
 Otherwise R3 slips past that cut, and the release vendors v0.4.1 at contract 0.6.0. Session P vendors last.
+**Since R4 (2026-10-18):** a contract bump MERGES green (CI prints a `CONTRACT DRIFT` warning), but from then on
+`main` cannot be released until the console pin moves to a pulse tag built for the new contract. At the cut, either
+pulse has tagged one, or the bump is reverted. The release is blocked, not silently slipped
+([r4_console_vendor_gate.md](r4_console_vendor_gate.md), fold 1).
 
 **Order.**
 1. The stall and health kinds.

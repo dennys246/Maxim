@@ -127,7 +127,7 @@ def audit_console(
         )
     try:
         stamp = json.loads(files.get(prefix + cp.MANIFEST_NAME) or b"")
-    except json.JSONDecodeError as exc:
+    except ValueError as exc:  # JSONDecodeError and UnicodeDecodeError: keep collecting, never a traceback
         return [*problems, f"R4: {artifact} console {cp.MANIFEST_NAME} is unreadable: {exc}"], None
     contract = cp.contract_from_source((files.get(ui_bundle_name) or b"").decode("utf-8", "replace"))
     if not isinstance(stamp, dict) or contract is None:
@@ -141,9 +141,12 @@ def audit_console(
 
 
 def _sdist_members(tf: tarfile.TarFile) -> list[tuple[str, bytes | None]]:
+    """The console subtree and ui_bundle.py only (None marks a non-regular member, which the digest refuses)."""
     out: list[tuple[str, bytes | None]] = []
     for m in tf.getmembers():
-        if m.isdir():
+        if m.isdir() or not (
+            "/src/maxim/console/ui_dist/" in m.name or m.name.endswith("/src/maxim/console/ui_bundle.py")
+        ):
             continue
         f = tf.extractfile(m) if m.isfile() else None
         out.append((m.name, f.read() if f is not None else None))
@@ -245,7 +248,11 @@ def audit_wheel(
                 f"Run `python scripts/vendor_console_ui.py --from-pin` and rebuild."
             )
         else:
-            members = [(n, None if n.endswith("/") else zf.read(n)) for n in names if not n.endswith("/")]
+            members = [
+                (n, zf.read(n))
+                for n in names
+                if (n.startswith(WHEEL_UI_PREFIX) or n == WHEEL_UI_BUNDLE) and not n.endswith("/")
+            ]
             console_problems, console_line = audit_console(
                 members, WHEEL_UI_PREFIX, WHEEL_UI_BUNDLE, artifact="wheel", pin=pin, releasing=releasing
             )
@@ -271,7 +278,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dist-dir", type=Path, default=REPO_ROOT / "dist")
     parser.add_argument("--sdist", type=Path, default=None, help="sdist to audit (default: newest in --dist-dir)")
     parser.add_argument("--expect-version", default=None, help="default: pyproject.toml's version")
-    parser.add_argument("--pin", type=Path, default=cp.PIN_PATH, help="the console pin (default: the committed one)")
     parser.add_argument(
         "--contract-drift-ok-unless-releasing",
         action="store_true",
@@ -282,7 +288,7 @@ def main(argv: list[str] | None = None) -> int:
     wheel = args.wheel or newest_wheel(args.dist_dir)
     expect = args.expect_version or pyproject_version()
     try:
-        pin = cp.load_pin(args.pin)
+        pin = cp.load_pin()  # the committed pin only: a path flag would be a waiver (architecture review)
     except cp.PinError as exc:
         print(f"UNVERIFIED: {exc}", file=sys.stderr)
         return 2

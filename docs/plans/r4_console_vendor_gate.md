@@ -167,3 +167,40 @@ On success it prints `vendored console: <tag> (<commit7>, contract <c>)`; the re
 - `repo` and `asset` as derivation inputs (2);
 - filesystem case-insensitivity and dotfiles (5);
 - pulse's checker's own definition (4).
+
+## Code review (2026-10-18, three lenses): no BLOCKER; folds
+
+- **A path flag on the audit was a waiver.** `--pin` is removed, so the audit reads the committed pin only.
+- **The manual publish path.** Until #1372's `release.yml` lands, the hand procedure in `publication_guide.md` is the
+  release path, and on it "newest" was proven only on the release PR's CI. Accepted limit until #1372: the guide's
+  handoff (below) runs `--verify-pin` and `--from-pin` immediately before the build and the upload.
+- **Local Vite builds.** Every local pulse build carries `.vite/manifest.json`, and pulse's `pack-dist.mjs` excludes
+  it from the release asset. A directory bundle therefore skips that one top-level directory, and only it
+  (`BUILD_ONLY_DIRS`). The tar path still refuses any dotfile, so the digest keeps one definition.
+- **One definition of "releasing".** It now lives in `check_nightlies.releasing()`. That version has a `git ls-remote`
+  timeout, never prompts for credentials, and treats any unreadable input as releasing. `_console_pin.releasing()`
+  delegates to it.
+- **Fold 1 consequence (the cut rule).** A contract bump merges, and `main` is then unreleasable until the pin moves.
+  The drift is a `::warning::` in CI, not only a log line. The cut-rule text in §R4 and the roadmap says so.
+- **Corrections to the folds above.**
+  - Fold 5's guard is a synthetic tar/wheel/sdist/directory equivalence test plus CI's live `--from-pin` on every PR,
+    not a committed binary fixture (about 150 KB, rejected). The real asset's equivalence across tar, built wheel
+    and built sdist was verified by hand on 2026-10-18, in this session and independently by the executor lens.
+  - Fold 9: a newer same-contract tag whose release has no asset yet is exit 1 ("move the pin"), not exit 2.
+    `resolve_tag` reads only the pinned tag's release.
+  - Fold 7: the CI cache key is `hashFiles(scripts/console_ui_pin.json)`, and the asset's sha256 is re-checked after
+    every restore.
+- **Executor-lens hardening.**
+  - `main()` threads `releasing` through both scripts, and tests drive it.
+  - Flags that would be silently ignored are refused.
+  - Unreadable inputs are exit 2 throughout: the backend contract, a release body that is not UTF-8, an asset that
+    is not a tar, `http.client` errors.
+  - The audit treats a stamp that is not UTF-8 as a problem.
+  - Vendoring `DEST` into itself is refused.
+  - Every guard the lens found surviving deletion now has a test that fails without it.
+- **Owed outside this PR.**
+  - **Pulse** (the 1.3.3 note):
+    - adopt the stable-semver definition of "newest" in `check_pymaxim_vendor.py`;
+    - stop `gh release upload --clobber` from replacing a tagged asset, whose bytes are not reproducible.
+  - **`publication_guide.md`** (the process session's): its two console sections and step 4's "Asserts" list are
+    stale. The replacement text is in the PR body.
