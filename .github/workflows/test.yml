@@ -101,12 +101,16 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
-          # #1318: keyed on what decides the install; an exact pin in .github/constraints/ moves the key.
-          cache-dependency-path: |
-            pyproject.toml
-            .github/constraints/*.txt
 
+      # #1318: pip's cache (downloads AND the wheels pip builds, e.g. llama-cpp-python's 2m50s sdist build), one entry
+      # per job and Python: setup-python's own `cache: pip` key has no job in it, so a short job saved the shared key
+      # first and the long job never got the wheel. Exact key only, no restore-keys: an edit to pyproject or a
+      # constraints file (the llama pin) starts a fresh entry, so nothing stale or unbounded is ever restored.
+      - name: Cache pip (this job, this Python, these pins)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ github.job }}-py${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', '.github/constraints/*.txt') }}
       - name: Install the core package
         run: python -m pip install .
 
@@ -162,11 +166,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-          # #1318: keyed on what decides the install; an exact pin in .github/constraints/ moves the key.
-          cache-dependency-path: |
-            pyproject.toml
-            .github/constraints/*.txt
 
       # Install, warm-list, cache and warm: shared with the slow lane (#1117).
       - uses: ./.github/actions/model-cache-setup
@@ -220,11 +219,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-          # #1318: keyed on what decides the install; an exact pin in .github/constraints/ moves the key.
-          cache-dependency-path: |
-            pyproject.toml
-            .github/constraints/*.txt
       - name: Install system deps
         run: |
           sudo apt-get update
@@ -438,12 +432,16 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-          # #1318: keyed on what decides the install; an exact pin in .github/constraints/ moves the key.
-          cache-dependency-path: |
-            pyproject.toml
-            .github/constraints/*.txt
 
+      # #1318: pip's cache (downloads AND the wheels pip builds, e.g. llama-cpp-python's 2m50s sdist build), one entry
+      # per job and Python: setup-python's own `cache: pip` key has no job in it, so a short job saved the shared key
+      # first and the long job never got the wheel. Exact key only, no restore-keys: an edit to pyproject or a
+      # constraints file (the llama pin) starts a fresh entry, so nothing stale or unbounded is ever restored.
+      - name: Cache pip (this job, this Python, these pins)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ github.job }}-py3.12-${{ hashFiles('pyproject.toml', '.github/constraints/*.txt') }}
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -604,11 +602,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-          # #1318: keyed on what decides the install; an exact pin in .github/constraints/ moves the key.
-          cache-dependency-path: |
-            pyproject.toml
-            .github/constraints/*.txt
 
       - name: Ruff lint + format check
         # CLAUDE.md required checks, promoted to CI (1.0 guard promotion).
