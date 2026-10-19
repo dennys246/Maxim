@@ -49,7 +49,9 @@ mechanization backlog (M68–M71), per CLAUDE.md "Enforced, or on the backlog".
 If it cannot, it is renamed to say what it does check (`loaded`, `configured`).
 
 **The first instance.** `VoiceProvisioner` synthesizes a short phrase, in its provisioner thread, and requires
-non-empty, finite audio. `is_ready()` then returns that **cached** result. It never synthesizes per call, because
+non-empty, finite audio that is not silence (owner decision 2026-10-18, from the review: piper casts NaN samples to
+int16 zeros, so "finite" alone could not fail; the peak must exceed `tts.py::_READINESS_MIN_PEAK`). `is_ready()` then
+returns that **cached** result. It never synthesizes per call, because
 `console/server.py::_pairing_of` calls it on every unauthenticated `/api/hello`. A broken synthesis keeps
 `pairing_ready` false, so the page offers only the paste path.
 
