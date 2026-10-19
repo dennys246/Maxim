@@ -6,12 +6,12 @@ description: Install the package with the model-test extras, then restore and wa
 runs:
   using: composite
   steps:
-    # #1318: pip's cache (downloads and the wheels pip builds), one entry per calling job: setup-python's own
+    # #1318: the wheels pip builds (not its multi-GB downloads), one entry per calling job: setup-python's own
     # `cache: pip` key has no job in it, so jobs overwrote each other's entries. Exact key only, no restore-keys.
     - name: Cache pip (this job, these pins)
       uses: actions/cache@v4
       with:
-        path: ~/.cache/pip
+        path: ~/.cache/pip/wheels  # built wheels only (the llama build); downloads would be GBs of CUDA torch
         key: pip-${{ runner.os }}-${{ github.job }}-py3.12-${{ hashFiles('pyproject.toml', '.github/constraints/*.txt') }}
 
     # `semantic` brings sentence-transformers + torch; torchvision and Pillow are NOT in any extra but several marked

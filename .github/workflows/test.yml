@@ -102,14 +102,14 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      # #1318: pip's cache (downloads AND the wheels pip builds, e.g. llama-cpp-python's 2m50s sdist build), one entry
+      # #1318: the wheels pip BUILDS (llama-cpp-python's 2m50s sdist build), not its downloads (GBs, over the 10 GB repo cap), one entry
       # per job and Python: setup-python's own `cache: pip` key has no job in it, so a short job saved the shared key
       # first and the long job never got the wheel. Exact key only, no restore-keys: an edit to pyproject or a
       # constraints file (the llama pin) starts a fresh entry, so nothing stale or unbounded is ever restored.
       - name: Cache pip (this job, this Python, these pins)
         uses: actions/cache@v4
         with:
-          path: ~/.cache/pip
+          path: ~/.cache/pip/wheels  # built wheels only (the llama build); downloads would be GBs of CUDA torch
           key: pip-${{ runner.os }}-${{ github.job }}-py${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', '.github/constraints/*.txt') }}
       - name: Install the core package
         run: python -m pip install .
@@ -433,14 +433,14 @@ jobs:
         with:
           python-version: "3.12"
 
-      # #1318: pip's cache (downloads AND the wheels pip builds, e.g. llama-cpp-python's 2m50s sdist build), one entry
+      # #1318: the wheels pip BUILDS (llama-cpp-python's 2m50s sdist build), not its downloads (GBs, over the 10 GB repo cap), one entry
       # per job and Python: setup-python's own `cache: pip` key has no job in it, so a short job saved the shared key
       # first and the long job never got the wheel. Exact key only, no restore-keys: an edit to pyproject or a
       # constraints file (the llama pin) starts a fresh entry, so nothing stale or unbounded is ever restored.
       - name: Cache pip (this job, this Python, these pins)
         uses: actions/cache@v4
         with:
-          path: ~/.cache/pip
+          path: ~/.cache/pip/wheels  # built wheels only (the llama build); downloads would be GBs of CUDA torch
           key: pip-${{ runner.os }}-${{ github.job }}-py3.12-${{ hashFiles('pyproject.toml', '.github/constraints/*.txt') }}
       - name: Install system dependencies
         run: |

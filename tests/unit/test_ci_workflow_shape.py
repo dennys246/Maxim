@@ -301,8 +301,10 @@ def _first_install(steps: list[dict]) -> int:
 def test_every_job_that_installs_the_package_has_its_own_exact_pip_cache():
     """#1318: no job cached pip, and every run rebuilt llama-cpp-python from its sdist (2m50s of a 3m19s install).
     Review fold: setup-python's `cache: pip` key has no job in it, so a 4-minute job saved the shared key first and
-    the 38-minute job never got its wheel; and restore-keys would bring back stale or unbounded entries. So: one
-    actions/cache entry per job and Python, keyed on the files that decide the install, exact match only."""
+    the 38-minute job never got its wheel; restore-keys would bring back stale or unbounded entries; and caching
+    pip's downloads would save GBs of CUDA torch per lane into a repo already over its 10 GB cache cap (delta round).
+    So: one actions/cache entry per job and Python, of the wheels pip BUILT, keyed on the files that decide the
+    install, exact match only."""
     jobs = [job for job in WF["jobs"] if _installs_the_package(job) and job not in _UNCACHEABLE]
     assert {"unit-tests", "model-cache-tests", "slow-tests", "python-compatibility"} <= set(jobs), jobs
     offenders = []
@@ -316,7 +318,7 @@ def test_every_job_that_installs_the_package_has_its_own_exact_pip_cache():
         if not (
             caches
             and caches[0] < _first_install(steps)
-            and spec.get("path") == "~/.cache/pip"
+            and str(spec.get("path", "")).split("#")[0].strip() == "~/.cache/pip/wheels"
             and "${{ github.job }}" in key
             and "hashFiles('pyproject.toml', '.github/constraints/*.txt')" in key
             and re.search(r"-py(3\.12|\$\{\{ matrix\.python-version \}\})-", key)
