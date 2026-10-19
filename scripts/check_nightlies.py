@@ -17,7 +17,16 @@ PUBLISHED (tagged) version by policy (CLAUDE.md §Versioning), so ordinary PRs s
 which bumps the version, does not. The release-build CI job runs it that way; the publication guide
 runs it plainly before publishing.
 
-Usage: python3 scripts/check_nightlies.py [--only-when-releasing] [--max-age-hours 48]
+``--at <sha>`` (the publish workflow, #1372) reads the nightly run that tested THAT commit -- the tag being
+published -- instead of the newest one: by the time a tag is pushed and approved, main may have moved on, and
+"main's latest nightly" then says nothing about the released code. The run must be a non-cancelled scheduled or
+dispatched run on ``main`` whose head is the commit, and the same green/age rules apply.
+
+#938: the release-build job runs ``--only-when-releasing`` on ``pull_request`` only. On push and schedule a release
+merge read red until its tag landed (the check ran inside the very nightly it waits for); the release PR and the
+publish workflow are where it guards a release.
+
+Usage: python3 scripts/check_nightlies.py [--only-when-releasing | --at <sha>] [--max-age-hours 48]
 Exits: 0 green (or not releasing); 1 a nightly is red / stale / missing; 2 could not check.
 """
 
@@ -44,6 +53,13 @@ class CheckError(Exception):
 
 NIGHTLY_EVENTS = ("schedule", "workflow_dispatch")
 DISPATCH_HINT = "run `gh workflow run test.yml --ref main` and re-check when it completes"
+# `--at` (the publish job): a dispatch tests main's TIP, so once main has moved past the tag no re-run can pass.
+AT_HINT = (
+    "no green, recent nightly tested this commit. Before tagging (or on a rehearsal): dispatch one on main while "
+    "main is still at this commit. After the approval wait (publish): if main has moved on, no re-run can test this "
+    "commit -- reject this run and cut the release again from a commit a green nightly tested "
+    "(docs/plans/release_pipeline.md, SF4)"
+)
 
 
 def nightly_verdict(
@@ -102,6 +118,26 @@ def latest_nightly() -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     return ran[0], list((view or {}).get("jobs") or [])
 
 
+def nightly_at(sha: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """The newest non-cancelled scheduled/dispatched run on ``main`` that tested ``sha`` (#1372)."""
+    runs = _gh(
+        "run", "list", "--workflow", WORKFLOW, "--commit", sha, "--status", "completed",
+        "--limit", "30", "--json", "databaseId,createdAt,conclusion,event,headSha,headBranch",
+    )  # fmt: skip
+    ran = [
+        run
+        for run in (runs or [])
+        if run.get("event") in NIGHTLY_EVENTS
+        and run.get("conclusion") != "cancelled"
+        and run.get("headBranch") == "main"
+        and run.get("headSha") == sha
+    ]
+    if not ran:
+        return None, []
+    view = _gh("run", "view", str(ran[0]["databaseId"]), "--json", "jobs")
+    return ran[0], list((view or {}).get("jobs") or [])
+
+
 def main_head() -> str:
     """The commit ``main`` is at on the remote."""
     proc = subprocess.run(
@@ -145,7 +181,9 @@ def releasing() -> tuple[bool, str]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--only-when-releasing", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--only-when-releasing", action="store_true")
+    mode.add_argument("--at", metavar="SHA", help="judge the nightly that tested this commit (the publish workflow)")
     parser.add_argument("--max-age-hours", type=float, default=48.0)
     args = parser.parse_args(argv)
     try:
@@ -155,20 +193,30 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"{why} -- nightlies not required here")
                 return 0
             print(f"{why}: the nightlies must be green")
-        run, jobs = latest_nightly()
-        head = main_head()
+        if args.at:
+            if len(args.at) != 40:
+                raise CheckError(f"--at needs a full 40-character commit sha, got {args.at!r}")
+            run, jobs = nightly_at(args.at)
+            head = args.at
+        else:
+            run, jobs = latest_nightly()
+            head = main_head()
     except CheckError as exc:
         print(f"UNVERIFIED: {exc}", file=sys.stderr)
         return 2
     problems = nightly_verdict(
         run, jobs, now=datetime.now(timezone.utc), max_age=timedelta(hours=args.max_age_hours), main_sha=head
     )
+    if problems and args.at:
+        problems.append(AT_HINT)
     if problems:
         print("REFUSED: a nightly lane is not green -- do not release:", file=sys.stderr)
         for problem in problems:
             print(f"  {problem}", file=sys.stderr)
         return 1
-    print(f"nightlies green at main {head[:12]} (run {run['databaseId']}, {run['createdAt']})")  # type: ignore[index]
+    print(
+        f"nightlies green at {'commit' if args.at else 'main'} {head[:12]} (run {run['databaseId']}, {run['createdAt']})"
+    )  # type: ignore[index]
     return 0
 
 

@@ -1,0 +1,280 @@
+# Publish pymaxim to PyPI from a signed `v*` tag, through trusted publishing (#1372).
+#
+# No token is stored anywhere: PyPI trusts this workflow's OIDC identity (repo dennys246/Maxim, workflow release.yml,
+# environment `pypi`). The `pypi` environment requires the owner's approval, so a tag push builds and smoke-tests the
+# exact wheel, then WAITS; nothing reaches PyPI until the owner approves the `publish` job. No Test PyPI (owner standard
+# 2026-10-16): the exact built wheel is installed in a clean venv instead.
+#
+# Design, its adversarial pass and every fold (SF1-SF11, N1-N9): docs/plans/release_pipeline.md. Shape pinned by
+# tests/unit/test_release_workflow_shape.py. Order of a release: the bump PR merges -> a nightly runs green on the
+# commit to be tagged -> the owner pushes a signed `vX.Y.Z` tag on it -> this workflow -> the owner approves.
+#
+# workflow_dispatch is a REHEARSAL: it runs `build` (minus the tag and signature checks, which need a real tag) and
+# `smoke`, and never `publish` or `github-release`. The OIDC upload is first exercised by the real upload.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions: {}
+
+# `bash` (not GitHub's default `bash -e {0}`) is `bash --noprofile --norc -eo pipefail`: without pipefail a failing
+# `audit_release_build.py | tee` exits with tee's 0 and the upload proceeds (executor review, B1).
+defaults:
+  run:
+    shell: bash
+
+# One run per tag; a second push of the same tag queues behind the first instead of racing it (SF2).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAGGER_EMAIL: dennys@rmdig.ai
+
+jobs:
+  build:
+    name: "Publish: build and verify"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read  # check_nightlies.py reads the nightly runs; the environment read below
+    outputs:
+      tag_object: ${{ steps.tag.outputs.tag_object }}
+      wheel: ${{ steps.digests.outputs.wheel }}
+      wheel_sha256: ${{ steps.digests.outputs.wheel_sha256 }}
+      sdist: ${{ steps.digests.outputs.sdist }}
+      sdist_sha256: ${{ steps.digests.outputs.sdist_sha256 }}
+      console: ${{ steps.audit.outputs.console }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0  # lint_release_gates needs history; the ancestor-of-main check needs origin/main
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install build tooling
+        # pyyaml: lint_release_gates.py verifies its own CI wiring with it, and fails without it (wire review B1).
+        run: python -m pip install --upgrade pip build twine "pyyaml>=6.0,<7.0"
+      - name: The tag is the release (version, annotated, signed, this commit, on main)
+        id: tag
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git rev-parse "${GITHUB_REF}^{commit}")" = "${GITHUB_SHA}"
+          python3 scripts/check_release_tag.py tag --tag "${GITHUB_REF_NAME}" --sha "${GITHUB_SHA}" \
+            --repo "${GITHUB_REPOSITORY}" --tagger-email "${RELEASE_TAGGER_EMAIL}" | tee tag.out
+          grep '^tag_object=' tag.out >> "$GITHUB_OUTPUT"
+      - name: The pypi environment requires the owner's approval, and only the owner can tag (SF1, S1)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/check_release_tag.py environment --repo "${GITHUB_REPOSITORY}"
+          python3 scripts/check_release_tag.py ruleset --repo "${GITHUB_REPOSITORY}"
+      - name: Version sync and the release gates
+        run: |
+          python3 scripts/lint_version_sync.py
+          python3 scripts/lint_release_gates.py
+      - name: Release notes are written, with absolute links (SF8)
+        run: python3 scripts/check_release_tag.py notes --version "$(python3 -c 'import tomllib;print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')"
+      - name: A green nightly tested this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/check_nightlies.py --at "${GITHUB_SHA}"
+      - name: The console pin is the newest pulse tag for the contract (R4)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/vendor_console_ui.py --verify-pin
+      - name: Vendor the pinned Console bundle (R4)
+        run: python3 scripts/vendor_console_ui.py --from-pin
+      - name: Build wheel + sdist from a clean tree
+        run: |
+          rm -rf build/ dist/ *.egg-info
+          python -I -m build --outdir dist
+      - name: twine check
+        run: twine check dist/*
+      - name: Audit the built artifacts (D47, D48, R4)
+        id: audit
+        run: |
+          python3 scripts/audit_release_build.py --dist-dir dist | tee audit.out
+          echo "console=$(grep '^vendored console:' audit.out)" >> "$GITHUB_OUTPUT"
+      - name: Record the artifact digests as job outputs (SF6)
+        # Outputs are immutable to later jobs, unlike a SHA256SUMS file travelling inside the artifact it vouches for.
+        id: digests
+        run: |
+          set -euo pipefail
+          test "$(ls dist/*.whl | wc -l)" -eq 1 && test "$(ls dist/*.tar.gz | wc -l)" -eq 1
+          wheel=$(ls dist/*.whl); sdist=$(ls dist/*.tar.gz)
+          {
+            echo "wheel=$(basename "$wheel")"
+            echo "wheel_sha256=$(sha256sum "$wheel" | cut -d' ' -f1)"
+            echo "sdist=$(basename "$sdist")"
+            echo "sdist_sha256=$(sha256sum "$sdist" | cut -d' ' -f1)"
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          retention-days: 30  # a failed publish is recovered by re-running ITS job in this run (SF7)
+          if-no-files-found: error
+
+  smoke:
+    name: "Publish: smoke-test the exact wheel"
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions: {}
+    steps:
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: dist
+          path: ${{ runner.temp }}/dist
+      - name: The artifacts are the bytes build produced
+        working-directory: ${{ runner.temp }}/dist
+        run: |
+          echo "${{ needs.build.outputs.wheel_sha256 }}  ${{ needs.build.outputs.wheel }}" | sha256sum -c -
+          echo "${{ needs.build.outputs.sdist_sha256 }}  ${{ needs.build.outputs.sdist }}" | sha256sum -c -
+      - name: Install the wheel in a clean venv, outside any checkout, and exercise it
+        working-directory: ${{ runner.temp }}
+        env:
+          EXPECT: ${{ github.event_name == 'push' && github.ref_name || '' }}
+        run: |
+          set -euo pipefail
+          python -m venv smoke-venv
+          smoke-venv/bin/python -m pip install --upgrade pip
+          smoke-venv/bin/python -m pip install "dist/${{ needs.build.outputs.wheel }}"
+          smoke-venv/bin/python -I - <<'PY'
+          import os
+          from pathlib import Path
+
+          import maxim
+
+          here = Path(maxim.__file__).resolve()
+          assert "smoke-venv" in here.parts, f"imported {here}, not the installed wheel"
+          expect = os.environ["EXPECT"].removeprefix("v")
+          assert not expect or maxim.__version__ == expect, (maxim.__version__, expect)
+          assert maxim.__all__, "empty public surface"
+          maxim.diagnose()
+          index = here.parent / "console" / "ui_dist" / "index.html"
+          assert index.is_file(), f"no packaged console at {index}"
+          print(f"smoke OK: pymaxim {maxim.__version__} from {here.parent}")
+          PY
+          smoke-venv/bin/python -I -m maxim --help > /dev/null
+
+  publish:
+    name: "Publish: upload to PyPI (owner approval)"
+    needs: [build, smoke]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: pypi
+      url: https://pypi.org/project/pymaxim/
+    permissions:
+      id-token: write  # trusted publishing (OIDC); the ONLY job that may mint the token
+      contents: read
+      actions: read  # check_nightlies.py, re-run after the approval wait
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+      # The approval may come hours or days after `build`. Re-check everything time can change (SF2, SF5, R4 fold 3).
+      - name: The tag has not moved during the approval wait
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/check_release_tag.py still --tag "${GITHUB_REF_NAME}" \
+            --tag-object "${{ needs.build.outputs.tag_object }}" --sha "${GITHUB_SHA}" --repo "${GITHUB_REPOSITORY}"
+      - name: The nightly is still green and recent
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/check_nightlies.py --at "${GITHUB_SHA}"
+      - name: The console pin is still the newest pulse tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/vendor_console_ui.py --verify-pin
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: dist
+          path: dist
+      - name: The artifacts are the bytes build produced and smoke tested
+        working-directory: dist
+        run: |
+          test "$(ls | wc -l)" -eq 2
+          echo "${{ needs.build.outputs.wheel_sha256 }}  ${{ needs.build.outputs.wheel }}" | sha256sum -c -
+          echo "${{ needs.build.outputs.sdist_sha256 }}  ${{ needs.build.outputs.sdist }}" | sha256sum -c -
+      - name: Upload to PyPI (trusted publishing)
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2
+        with:
+          packages-dir: dist/
+          attestations: true  # PEP 740 provenance (N4)
+          skip-existing: true  # a re-run after a partial upload completes it; the next step proves the bytes (SF7)
+      - name: PyPI serves exactly these two files
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import json, os, time, urllib.request
+
+          version = os.environ["VERSION"].removeprefix("v")
+          want = {
+              "${{ needs.build.outputs.wheel }}": "${{ needs.build.outputs.wheel_sha256 }}",
+              "${{ needs.build.outputs.sdist }}": "${{ needs.build.outputs.sdist_sha256 }}",
+          }
+          for attempt in range(10):
+              try:
+                  with urllib.request.urlopen(f"https://pypi.org/pypi/pymaxim/{version}/json", timeout=30) as r:
+                      got = {u["filename"]: u["digests"]["sha256"] for u in json.load(r)["urls"]}
+                  if got == want:
+                      print(f"PyPI serves pymaxim {version}: {sorted(got)}")
+                      break
+                  print(f"attempt {attempt}: PyPI has {got}")
+              except OSError as exc:
+                  print(f"attempt {attempt}: {exc}")
+              time.sleep(15)
+          else:
+              raise SystemExit(f"PyPI does not serve exactly {want}: re-run THIS job of THIS run (never re-tag)")
+          PY
+
+  github-release:
+    name: "Publish: GitHub Release"
+    needs: [build, publish]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: dist
+          path: dist
+      - name: Create the Release with the published files and the vendored console named
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONSOLE: ${{ needs.build.outputs.console }}
+        run: |
+          set -euo pipefail
+          cd dist
+          echo "${{ needs.build.outputs.wheel_sha256 }}  ${{ needs.build.outputs.wheel }}" | sha256sum -c -
+          echo "${{ needs.build.outputs.sdist_sha256 }}  ${{ needs.build.outputs.sdist }}" | sha256sum -c -
+          cd ..
+          version="${GITHUB_REF_NAME#v}"
+          notes="docs/announcements/release_${version//./_}.md"
+          { cat "$notes"; printf '\n---\n\n%s\n' "$CONSOLE"; } > "$RUNNER_TEMP/notes.md"
+          gh release create "${GITHUB_REF_NAME}" --verify-tag --title "pymaxim ${version}" \
+            --notes-file "$RUNNER_TEMP/notes.md" "dist/${{ needs.build.outputs.wheel }}" "dist/${{ needs.build.outputs.sdist }}"
