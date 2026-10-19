@@ -5,7 +5,7 @@
 > (reports verbatim in [rationale/e1-conflict/](rationale/e1-conflict/)). Every lens returned DO-NOT-BUILD (8 in all),
 > and v2 folds them (§What the review changed). **v1's predicted outcome is WITHDRAWN:** the review showed it rested
 > on a toy that omitted a live credit channel. v2 makes an offline composed-loop replay a freeze prerequisite.
-> Phase 0's `src/` (items 1a, 2, 4, and the arming gate below) is fenced until 1.3.6. Parent plan:
+> Owner decisions OE1–OE4 taken 2026-10-18. Phase 0's `src/` (items 1a, 2, 4, and the arming gate below) is fenced until 1.3.6. Parent plan:
 > [roadmap_1_4.md](../plans/roadmap_1_4.md) §Phase 2, §Release thresholds T1/T3. Floors:
 > [baseline_floors.md](../plans/baseline_floors.md) (BF2, §Why). Lessons: [baseline-floors-b1.md](../lessons/baseline-floors-b1.md).
 
@@ -70,11 +70,13 @@ a prediction.
 - **2026-10-16:** redesign E1 so a reasonable no-bio floor can lose (roadmap §Phase 2 banner).
 - **OE1 (2026-10-18):** a learning curve at the food, two separately gated DVs, floors `Q_EXPLORE` (binding
   `tabular_q`) and `RANDOM` (binding), the twin RUN, others reported, no weighted payoff. v2 keeps OE1 and changes
-  the second DV from WANT to RESOLVED (OE4, open).
+  the second DV from WANT to RESOLVED (OE4).
 - **OE2 (2026-10-18):** the variant body drops `saturation` from the world modality. `extends:` can express this only as
   `saturation: {modality: null}` (env SF-4, wiring SF-8): the bridge still serves it, and a read tool returning it
   remains. The rescue's satiation check moves to an RCON read-back, and E1 gets its own encoding record.
-- **Open, asked with this plan:** OE3 (the binding training schedule), OE4 (RESOLVED as the gated second DV).
+- **OE3 (2026-10-18), the binding training schedule: hungry only** (food 4 and 8 alternating), the strict option;
+  the mixed sated-first schedule runs as MAXIM_CONTRAST, reported.
+- **OE4 (2026-10-18): RESOLVED is the second gated DV** (WANT reported).
 
 ## The claim and the hypotheses
 
@@ -102,7 +104,7 @@ probes, refusals and arming. Floors run through B1's `SubstratePolicy` hook (#12
 | Arm | Policy | Role |
 |---|---|---|
 | MAXIM | `recommend_action`, Wire 4 attached, armed like the floors | The claim |
-| MAXIM_CONTRAST | MAXIM on the contrast training schedule (OE3) | Reported: the schedule's effect |
+| MAXIM_CONTRAST | MAXIM on the mixed sated-first schedule (OE3) | Reported: the schedule's effect |
 | TWIN | MAXIM with the Wire-4 subscriber swapped for TD(0) with extinction (above) | Mechanism twin, RUN |
 | ABLATED | MAXIM, fear subscriber detached | Wire 4's contribution |
 | ALWAYS_ESCAPE | Scripted: `escape_water` at the first armed select | Anchor: what the causal race alone can buy |
@@ -136,7 +138,7 @@ frozen; the review found it never changes MAXIM's outcome over weights 0–5.
 - **Episode:** teleport submerged at Exp 60's depth, arm, run. Terminals: surfaced (`is_in_water` 0); the saturating
   oxygen pain published on the bus (intensity ≥ 1.0); a cap. RCON rescue, bridge `stop`, loop stop. Any `drive:health`
   pain refuses the arm-seed. Both oxygen publishes (0.5, 1.0) and every `drive:*` publish are recorded.
-- **Training:** K = 12 executed episodes on the schedule (OE3). **Probes:** food 8, 4, 14, order a balanced Latin
+- **Training:** K = 12 executed episodes, alternating food 4 and food 8 (OE3); MAXIM_CONTRAST alternates food 13 and food 4, sated first. **Probes:** food 8, 4, 14, order a balanced Latin
   square (12 seeds make the square balance); every arm keeps learning through the probes.
 - **Seeds:** 12 per stochastic arm; scripted and deterministic arms 12 each (rig noise). Arm order: a Williams design.
   Fresh throwaway persistence per arm-seed. Two `--resume` sessions (the campaign is ≈ 8–9 h of rig at amplifier 255).
@@ -194,11 +196,7 @@ Depth (one cluster by design); a graded trade-off (no shipped mechanism grades t
 to untrained states (v2 tests food levels, not held-out keys); anything on the LLM path; any comparison with Exp
 60/61/62's rows.
 
-## Open decisions (asked with this plan)
+## Open decisions
 
-- **OE3, the binding training schedule:** (a) **hungry only** (food 4 and 8 alternating), with the mixed
-  sated-first schedule reported as MAXIM_CONTRAST (recommended, strict: the game-native conflict, and v1's toy said it
-  is the schedule on which MAXIM can lose AVOID); (b) mixed sated-first binding, hungry-only reported; (c) both
-  binding (every arm on both schedules; doubles the campaign).
-- **OE4, the second gated DV:** RESOLVED (recommended: it is the conflict's resolution, and eating while drowning does
-  not count) or v1's WANT.
+None open (OE1–OE4 taken 2026-10-18). The freeze waits on §Freeze prerequisites, and the frozen version gets its own
+design-review round on the delta (the composed replay's prediction).
