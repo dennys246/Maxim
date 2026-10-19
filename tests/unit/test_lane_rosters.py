@@ -64,10 +64,12 @@ def test_collection_is_scoped_to_files_that_apply_the_marker():
     assert "tests/unit/test_clip_encoder.py" in C.marked_files("requires_model_cache")
     for marker in C.LANES.values():
         files = C.marked_files(marker)
-        if not marker.startswith("extras_"):
-            # An R2 extras lane's files ARE the extra's tests (test_console_ws_real_uvicorn.py is extras_console's), and
-            # import it lazily, in a fixture: a module-level skip there is refused by collect() in
-            # test_the_roster_is_exactly_what_collection_selects, which runs on boxes without the extra.
+        if marker == "extras_console":
+            # The console extra's own real-library test: it imports the extra inside a fixture, so it collects on a box
+            # without it (and a module-level skip there would be a collect() problem in
+            # test_the_roster_is_exactly_what_collection_selects). Exactly that one file.
+            assert [f for f in files if "test_console_" in f] == ["tests/unit/test_console_ws_real_uvicorn.py"]
+        else:
             assert not any("test_console_" in f for f in files)
         assert all(f.rsplit("/", 1)[-1].startswith("test_") for f in files)  # the configured python_files pattern
 

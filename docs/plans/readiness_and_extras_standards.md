@@ -98,8 +98,8 @@ extras its diff touches.
 (`test_openapi_snapshot_is_fresh`, `TestContractSurfaceCannotDriftSilently`) would fail there. They never run there:
 only the real-library tests carry the `extras_console` marker, and those tests stay in `unit-tests` under the pin.
 
-**The second instance: #1347.** The `console` extra installs plain `uvicorn`, which has no WebSocket library, so `/ws`
-returns 404 from a clean install. The `/ws` tests use Starlette's `TestClient`, which never goes through uvicorn, so
+**The second instance: #1347.** The `console` extra installed plain `uvicorn`, which has no WebSocket library, so `/ws`
+returned 404 from a clean install (fixed in 1.3.3 by declaring `websockets` in the extra, owner decision 2026-10-18). The `/ws` tests use Starlette's `TestClient`, which never goes through uvicorn, so
 they could not see it. The R2 test for `console` runs a real uvicorn server from a venv holding only that extra, and
 upgrades `/ws`.
 
@@ -270,3 +270,8 @@ built lane gets a further round.
 10. **A release can now wait on Hugging Face and PyPI** (a voice-fetch failure on a cache miss, a breaking upstream
    release). That is intended. The response is to cap the requirement in `pyproject.toml` or fix the code; never a
    one-off override (CLAUDE.md "Weak evidence never gates").
+
+**Floor scope (review, 2026-10-18).** A floor cell pins the extra's DIRECT requirements to their bounds; their own
+dependencies resolve as pip picks today. So when an upstream drops an API a floor still uses (for example websockets
+removing `websockets.legacy`, which uvicorn 0.29 imports), the floor cell turns red and holds the release. That is the
+cell working: the response is to raise the floor in `pyproject.toml`, not to pin the transitive package.

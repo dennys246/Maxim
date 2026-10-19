@@ -118,7 +118,7 @@ def test_the_extras_import_names_come_from_pyproject():
 
     from tests.conftest import _DIST_IMPORT_NAMES
 
-    assert extra_import_names("console") == ("fastapi", "uvicorn")
+    assert extra_import_names("console") == ("fastapi", "uvicorn", "websockets")
     assert extra_import_names("sign") == ("cryptography", "rfc8785")
     assert extra_import_names("tts") == ("piper",)  # piper-tts, mapped
     modules_of: dict[str, set[str]] = {}

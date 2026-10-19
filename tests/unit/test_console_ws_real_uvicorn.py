@@ -19,7 +19,6 @@ import socket
 import subprocess
 import sys
 import time
-from pathlib import Path
 
 import pytest
 
@@ -28,12 +27,18 @@ pytestmark = (
 )  # the R2 extras matrix's console cells (scripts/lane_rosters/extras-console.json)
 
 
-@pytest.fixture()
-def serve(tmp_path: Path):
-    """A real ``maxim serve`` on a free port, its HOME a temp dir. Yields (port, token)."""
+@pytest.fixture(scope="module")
+def serve(tmp_path_factory: pytest.TempPathFactory):
+    """A real ``maxim serve`` on a free port, its HOME, data and config dirs a temp dir. Yields (port, token, proc)."""
+    tmp_path = tmp_path_factory.mktemp("serve")
     pytest.importorskip("uvicorn", reason="requires the `console` extra (pip install 'pymaxim[console]')")
     pytest.importorskip("fastapi", reason="requires the `console` extra (pip install 'pymaxim[console]')")
-    env = {**os.environ, "HOME": str(tmp_path), "MAXIM_DATA_HOME": str(tmp_path / ".maxim")}
+    env = {
+        **os.environ,
+        "HOME": str(tmp_path),
+        "MAXIM_DATA_HOME": str(tmp_path / ".maxim"),
+        "XDG_CONFIG_HOME": str(tmp_path / ".config"),  # the console token lives here: not the suite's shared root
+    }
     env.pop("MAXIM_CONSOLE_UI_DIST", None)
     cmd = [sys.executable, "-m", "maxim", "serve"]
     shown = subprocess.run([*cmd, "--show-token"], env=env, capture_output=True, text=True, timeout=60, check=True)
@@ -56,7 +61,7 @@ def serve(tmp_path: Path):
                 time.sleep(0.1)
         else:
             pytest.fail("maxim serve did not listen within 60 s")
-        yield port, token
+        yield port, token, proc
     finally:
         proc.terminate()
         try:
@@ -85,13 +90,15 @@ def _upgrade(port: int, token: str) -> str:
 
 
 def test_maxim_serve_upgrades_ws_on_a_real_uvicorn(serve):
-    port, token = serve
+    port, token, proc = serve
     assert _upgrade(port, token).startswith("HTTP/1.1 101"), "the console extra cannot serve /ws"
+    assert proc.poll() is None, "the 101 came from something other than our server (it is not running)"
 
 
 def test_an_unauthenticated_upgrade_is_refused_on_a_real_uvicorn(serve):
-    """The control: the server is up and its auth guard runs on the real path, so a 101 above is the extra working,
-    not a missing guard (an upgrade without the token is closed before accept: 403 from uvicorn)."""
-    port, _token = serve
+    """The control: the auth guard runs on the real WebSocket path, so the 101 above is the extra working, not a
+    missing guard. A bad token is closed before accept, which a real WebSocket implementation answers with 403; it is
+    a second red against #1347, where no implementation means the upgrade never reaches the guard (404)."""
+    port, _token, _proc = serve
     status = _upgrade(port, "not-the-token")
-    assert not status.startswith("HTTP/1.1 101"), status
+    assert status.startswith("HTTP/1.1 403"), status
