@@ -18,7 +18,7 @@ Grid: food 0..20 (hunger need = (16 − food)/10 on the shipped spec) × fear {0
 self-learned cap)} × three rosters × four causal-history states × drive gate off/on. Inputs are all committed: the body
 YAML, the B1 campaign's stamped 26-tool set, and Phase 0 item 4's proposed verb names.
 
-Run from the repo root:  PYTHONPATH="$PWD/src" python docs/experiments/data/e1_argmax_replay.py
+Run from the repo root:  PYTHONPATH="$PWD/src" python docs/experiments/rationale/e1-conflict/e1_argmax_replay.py
 It rewrites `e1_argmax_replay.json` beside itself (the committed result) and prints the summary.
 """
 
@@ -44,7 +44,7 @@ from maxim.tools.registry import ToolRegistry  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "e1_argmax_replay.json"
-B1_ROWS = HERE / "b1_exp60_floor_48ce40118c20.jsonl"
+B1_ROWS = HERE.parents[1] / "data" / "b1_exp60_floor_48ce40118c20.jsonl"
 AGENT, WORLD = "e1_aut", "w_water"
 P = "minecraft_player_"
 # Phase 0 item 4's param-free verbs (roadmap_1_4.md §Phase 0 (4)); proposed names, not yet shipped.

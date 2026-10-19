@@ -10,7 +10,7 @@ t = 6 s (oxygen 12) and is terminal (rescue, as in Exp 60's training). It holds 
 adds 5 food if it holds bread and food < 20, else fails fast. `escape_water` blocks 2.6 s and ends the episode
 surfaced. Every other tool returns in 0.5 s (`flee` fails underwater; reads succeed and do nothing). The world key is
 ONE cluster at every hunger level: the variant body drops `saturation` from the world modality (owner decision OE2;
-`docs/experiments/data/e1_hunger_state_cosine_replay.py`, geometry `sat_out_of_world`).
+`docs/experiments/rationale/e1-conflict/e1_hunger_state_cosine_replay.py`, geometry `sat_out_of_world`).
 
 Arms:
 - MAXIM: the REAL NAc. `recommend_action` (explore 0.0), `record_cluster_fear` on the pain (Wire 4's write),

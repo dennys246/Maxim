@@ -19,7 +19,7 @@ and floors that can win either one.
 
 ## What the replays and the review found
 
-**The argmax replay** ([data/e1_argmax_replay.py](data/e1_argmax_replay.py), committed with its json): on the real
+**The argmax replay** ([rationale/e1-conflict/e1_argmax_replay.py](rationale/e1-conflict/e1_argmax_replay.py), committed with its json): on the real
 `recommend_action`, the v2 crossing holds only for a fresh agent. A fear of 0.75 loses iff food ≤ 8; a cap fear (1.0)
 never loses, until one successful `eat` (+0.5 causal) beats it at food ≤ 10. Under fear, `flee` wins every exact tie
 by name sort (fear at the cap scores 0.70, the same as a full hunger need). The review adds what the replay left
@@ -27,7 +27,7 @@ out: it passes no `clusters` to `record_outcome`, so the **interoception cluster
 `update_cluster_reward`; the interoception cluster splits hunger at about food 9/10) is absent. The replay is a
 fresh-agent and causal-history map, not a prediction of the loop.
 
-**The hunger-state cosine replay** ([data/e1_hunger_state_cosine_replay.py](data/e1_hunger_state_cosine_replay.py)):
+**The hunger-state cosine replay** ([rationale/e1-conflict/e1_hunger_state_cosine_replay.py](rationale/e1-conflict/e1_hunger_state_cosine_replay.py)):
 on the shipped body every game-native hungry probe misses a fed-trained fear (0.850 → 0.784, food 14 → 2) and hungry
 shore/water merge (0.851–0.872); with `saturation` off the world modality the key holds to food 2 (≥ 0.915) and
 shore/water separate (0.788–0.822). This stands and is OE2's evidence. `food` stays in the world modality, and a

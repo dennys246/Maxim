@@ -17,7 +17,7 @@ agent (food < 16, the hunger need's onset) carries saturation 0; the `sat 10` ro
 Approximation, stated: the EC joins a node at cos ≥ 0.85 to that node's pattern; pairwise cosine against the TRAINING
 vector stands in for the node pattern (a running centroid would sit between training states and only blur the edges).
 
-Run from the repo root:  PYTHONPATH="$PWD/src" python docs/experiments/data/e1_hunger_state_cosine_replay.py
+Run from the repo root:  PYTHONPATH="$PWD/src" python docs/experiments/rationale/e1-conflict/e1_hunger_state_cosine_replay.py
 It rewrites `e1_hunger_state_cosine_replay.json` beside itself (the committed result) and prints the tables.
 """
 
@@ -34,7 +34,7 @@ from maxim.similarity.encoder import _stable_basis  # noqa: E402
 
 DIM, P, TH = 384, 3.0, 0.85
 HERE = Path(__file__).resolve().parent
-REC = HERE / "exp60_geometry_2026-09-15b.json"
+REC = HERE.parents[1] / "data" / "exp60_geometry_2026-09-15b.json"
 OUT = HERE / "e1_hunger_state_cosine_replay.json"
 rec = json.loads(REC.read_text())
 SHORE = {s["sensor"]: s["v_safe"] for s in rec["per_sensor"]}
