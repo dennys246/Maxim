@@ -382,3 +382,80 @@ def test_a_cancelled_ws_handler_leaves_no_queue_get_running(authed_app):
 
     leftover = asyncio.run(drive())
     assert not leftover, leftover
+
+
+class TestPumpWsEvents:
+    """``console/server.py::_pump_ws_events`` (the /ws sender loop, moved out of ``build_app``) on each of its paths,
+    with the real ``_WsConn`` and a socket that records what it is sent."""
+
+    class _Socket:
+        def __init__(self, fail_on: str | None = None) -> None:
+            self.sent: list[dict] = []
+            self.fail_on = fail_on
+
+        async def send_json(self, evt: dict) -> None:
+            if evt.get("kind") == "poison":
+                raise TypeError("Object of type set is not JSON serializable")
+            if evt.get("kind") == self.fail_on:
+                raise WebSocketDisconnect(code=1001)
+            self.sent.append(evt)
+
+    @staticmethod
+    def _run(socket, setup, *, until, heartbeat_s: float = 15.0):
+        """Pump on a real connection until ``until(socket)`` holds, then end the client; returns what was sent."""
+        import asyncio
+
+        async def drive():
+            conn = srv._WsConn()
+            client_gone = asyncio.get_running_loop().create_future()
+            setup(conn)
+            pump = asyncio.ensure_future(srv._pump_ws_events(socket, conn, client_gone))
+            for _ in range(300):
+                if pump.done() or until(socket):
+                    break
+                await asyncio.sleep(0.01)
+            if not client_gone.done():
+                client_gone.set_result(None)
+            await asyncio.wait_for(pump, timeout=2.0)
+            return conn
+
+        old = srv._HEARTBEAT_INTERVAL_S
+        srv._HEARTBEAT_INTERVAL_S = heartbeat_s
+        try:
+            return asyncio.run(drive())
+        finally:
+            srv._HEARTBEAT_INTERVAL_S = old
+
+    def test_an_idle_stream_sends_heartbeats_on_the_one_seq_counter(self):
+        sock = self._Socket()
+        self._run(sock, lambda conn: None, until=lambda s: len(s.sent) >= 2, heartbeat_s=0.02)
+        assert [e["kind"] for e in sock.sent[:2]] == ["heartbeat", "heartbeat"]
+        assert [e["seq"] for e in sock.sent[:2]] == [0, 1]
+
+    def test_a_poison_event_is_dropped_with_one_warning_and_the_stream_lives(self, caplog):
+        sock = self._Socket()
+
+        def setup(conn):
+            for kind in ("poison", "poison", "ok"):
+                conn.enqueue({"kind": kind})
+
+        with caplog.at_level(logging.WARNING, logger="maxim.console.server"):
+            conn = self._run(sock, setup, until=lambda s: bool(s.sent))
+        assert [e["kind"] for e in sock.sent] == ["ok"] and conn.warned_unserializable
+        assert sum("non-JSON-serializable" in r.getMessage() for r in caplog.records) == 1
+
+    def test_drops_are_reported_after_the_next_send(self):
+        sock = self._Socket()
+
+        def setup(conn):
+            conn.enqueue({"kind": "ok"})
+            conn.dropped = 3  # a slow consumer lost three before this one
+
+        conn = self._run(sock, setup, until=lambda s: len(s.sent) >= 2)
+        assert [e["kind"] for e in sock.sent] == ["ok", "dropped"]
+        assert sock.sent[1]["data"] == {"count": 3, "total": 3} and conn.dropped_reported == 3
+
+    def test_a_send_to_a_gone_client_ends_the_pump(self):
+        sock = self._Socket(fail_on="ok")
+        self._run(sock, lambda conn: conn.enqueue({"kind": "ok"}), until=lambda s: False)
+        assert sock.sent == []  # returned on WebSocketDisconnect, without raising
