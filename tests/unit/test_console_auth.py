@@ -365,12 +365,20 @@ def test_a_cancelled_ws_handler_leaves_no_queue_get_running(authed_app):
             "subprotocols": [],
             "state": {},
         }
+
+        def gets() -> list[asyncio.Task]:
+            return [t for t in asyncio.all_tasks() if "Queue.get" in repr(t.get_coro())]
+
         handler = asyncio.ensure_future(authed_app(scope, receive, send))
-        await asyncio.sleep(0.3)  # accepted, identity sent, now parked in the event wait
+        for _ in range(500):  # until the handler is parked in its event wait (not a fixed sleep: no vacuous pass)
+            if gets():  # only the sender's wait is a Task of its own (the receiver awaits inside recv_task)
+                break
+            await asyncio.sleep(0.01)
+        assert gets(), "the handler never reached its event wait"
         handler.cancel()
         await asyncio.gather(handler, return_exceptions=True)
         await asyncio.sleep(0)  # let the cancelled get finish cancelling
-        return [repr(t.get_coro()) for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        return [repr(t.get_coro()) for t in gets()]
 
     leftover = asyncio.run(drive())
-    assert not [t for t in leftover if "Queue.get" in t], leftover
+    assert not leftover, leftover
