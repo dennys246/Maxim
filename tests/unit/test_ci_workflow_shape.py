@@ -99,7 +99,8 @@ def test_the_shared_setup_action_installs_caches_and_warms():
     assert all(s.get("shell") == "bash" for s in steps if "run" in s), [s.get("name") for s in steps]
     runs = " ".join(_run(s) for s in steps)
     assert '".[semantic,test,console,sign]"' in runs and "spacy download en_core_web_sm" in runs
-    cache = next(s for s in steps if str(s.get("uses", "")).startswith("actions/cache@"))
+    cache = next(s for s in steps if s.get("name") == "Restore model cache")  # the pip cache precedes it (#1318)
+    assert str(cache.get("uses", "")).startswith("actions/cache@")
     assert "warm-list.txt" in cache["with"]["key"] and cache["with"]["path"] == "/home/runner/.cache/huggingface"
     warm = next(s for s in steps if s.get("name") == "Warm the cache")
     assert "if" not in warm  # unconditional: a partial or stale cache hit leaves models missing
@@ -273,6 +274,119 @@ def test_no_step_name_was_truncated_by_a_yaml_comment():
         if str(s.get("name", "")).count("(") != str(s.get("name", "")).count(")")
     ]
     assert not cut, cut
+
+
+# ── #1318: the pip cache, and the pin that keeps it honest ─────────────────────────────────────────────────────────
+
+_INSTALLS_THE_PACKAGE = re.compile(r"\bpip install\b[^\n]*?(?:-e\s+)?\.(?:\s|$|\[|\")")
+# Jobs that install the package where a runner-side pip cache cannot reach, each with its reason.
+_UNCACHEABLE = {
+    "aarch64-install": "installs inside an arm64 Docker container (/venv/bin/pip), not on the runner",
+    "extras-matrix": "R2's lane (#1335, Session S): one extra at floor/latest pins, a clean resolution by design, "
+    "and it builds nothing from an sdist",
+}
+
+
+def _installs_the_package(job: str) -> bool:
+    steps = _steps(job)
+    return any(_INSTALLS_THE_PACKAGE.search(_commands(s)) for s in steps) or any(
+        s.get("uses") == "./.github/actions/model-cache-setup" for s in steps
+    )
+
+
+def _first_install(steps: list[dict]) -> int:
+    return next(
+        i
+        for i, s in enumerate(steps)
+        if re.search(r"\bpip install\b", _commands(s)) or s.get("uses") == "./.github/actions/model-cache-setup"
+    )
+
+
+def test_every_job_that_installs_the_package_has_its_own_exact_pip_cache():
+    """#1318: no job cached pip, and every run rebuilt llama-cpp-python from its sdist (2m50s of a 3m19s install).
+    Review fold: setup-python's `cache: pip` key has no job in it, so a 4-minute job saved the shared key first and
+    the 38-minute job never got its wheel; restore-keys would bring back stale or unbounded entries; and caching
+    pip's downloads would save GBs of CUDA torch per lane into a repo already over its 10 GB cache cap (delta round).
+    So: one actions/cache entry per job and Python, of the wheels pip BUILT, keyed on the files that decide the
+    install, exact match only."""
+    jobs = [job for job in WF["jobs"] if _installs_the_package(job) and job not in _UNCACHEABLE]
+    assert {"unit-tests", "model-cache-tests", "slow-tests", "python-compatibility"} <= set(jobs), jobs
+    offenders = []
+    for job in jobs:
+        steps = _steps(job)
+        if any(s.get("uses") == "./.github/actions/model-cache-setup" for s in steps):
+            steps = ACTION["runs"]["steps"]  # the lanes cache inside their shared setup (no inlined cache)
+        caches = [i for i, s in enumerate(steps) if str(s.get("uses", "")).startswith("actions/cache@")]
+        spec = steps[caches[0]].get("with", {}) if caches else {}
+        key = str(spec.get("key", ""))
+        if not (
+            caches
+            and caches[0] < _first_install(steps)
+            and str(spec.get("path", "")).split("#")[0].strip() == "~/.cache/pip/wheels"
+            and "${{ github.job }}" in key
+            and "hashFiles('pyproject.toml', '.github/constraints/*.txt')" in key
+            and re.search(r"-py(3\.12|\$\{\{ matrix\.python-version \}\})-", key)
+            and "restore-keys" not in spec
+            and "if" not in steps[caches[0]]
+        ):
+            offenders.append((job, spec))
+    assert not offenders, offenders
+    shared = [
+        (job, s.get("with"))
+        for job, spec in WF["jobs"].items()
+        for s in spec.get("steps", [])
+        if str(s.get("uses", "")).startswith("actions/setup-python") and (s.get("with") or {}).get("cache")
+    ]
+    assert not shared, f"setup-python's job-less cache key is back: {shared}"
+
+
+def test_the_lint_job_stays_reproducible_by_prepr():
+    """scripts/prepr.py replays the lint job locally and refuses a step it cannot reproduce (a cache is one)."""
+    assert not any(str(s.get("uses", "")).startswith("actions/cache") for s in _steps("lint"))
+
+
+def _llama_extras() -> set[str]:
+    import tomllib
+
+    extras = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["optional-dependencies"]
+
+    def pulls(name: str, seen: tuple[str, ...] = ()) -> bool:
+        for dep in extras[name]:
+            if "llama-cpp-python" in dep:
+                return True
+            if dep.startswith("pymaxim[") and any(
+                pulls(x.strip(), (*seen, name)) for x in dep[8 : dep.index("]")].split(",") if x.strip() not in seen
+            ):
+                return True
+        return False
+
+    return {name for name in extras if pulls(name)}
+
+
+def test_llama_cpp_python_installs_exactly_pinned_and_portable():
+    """#1318: the cache may only ever hold the pinned version (an upgrade is a reviewed edit of the constraints file,
+    which is in the cache key), and the wheel it holds must run on any runner CPU (GGML_NATIVE=OFF). Review fold:
+    an install through an extra that pulls llama (derived from pyproject) counts too."""
+    pins = (ROOT / ".github/constraints/ci-backends.txt").read_text(encoding="utf-8")
+    assert re.search(r"^llama-cpp-python==\d+\.\d+\.\d+$", pins, re.MULTILINE), pins
+    extras = _llama_extras()
+    assert {"llm-llama", "llm-server"} <= extras, extras
+
+    def installs_llama(cmd: str) -> bool:
+        if not re.search(r"\bpip install\b", cmd):
+            return False
+        named = {x.strip() for group in re.findall(r"\.\[([^\]]*)\]", cmd) for x in group.split(",")}
+        return "llama-cpp-python" in cmd or bool(named & extras)
+
+    installs = [(where, s) for where, s in _all_steps() if installs_llama(_commands(s))]
+    assert installs, "no step installs llama-cpp-python: the pin guards nothing"
+    offenders = [
+        (where, s.get("name"))
+        for where, s in installs
+        if "-c .github/constraints/ci-backends.txt" not in _commands(s)
+        or "-DGGML_NATIVE=OFF" not in str(s.get("env", {}).get("CMAKE_ARGS", ""))
+    ]
+    assert not offenders, offenders
 
 
 def test_release_build_vendors_the_pinned_console_and_audits_it_without_a_waiver():
