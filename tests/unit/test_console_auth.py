@@ -296,7 +296,6 @@ class TestLogHygiene:
         assert "mxc_" not in caplog.text
 
 
-@pytest.mark.xfail(strict=True, reason="the /ws sender sees a disconnect only at its next 15 s heartbeat")
 def test_ws_handler_returns_promptly_when_the_client_disconnects(authed_app):
     """The /ws handler must end when its client goes away, not at the next heartbeat (``_HEARTBEAT_INTERVAL_S``,
     15 s). uvicorn >= 0.40 waits for it on SIGTERM, so ``maxim serve`` hung up to 15 s after a browser tab closed

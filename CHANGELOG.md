@@ -67,6 +67,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`maxim serve` no longer hangs up to 15 s on shutdown after a Console tab closes.** The `/ws` sender checked
+  for a gone client only between waits, so a closed connection's handler lived until the next 15 s heartbeat, and
+  uvicorn 0.40+ waits for it on SIGTERM. The sender loop (now `console/server.py::_pump_ws_events`) races each wait
+  against the receiver and ends at once. Found by #1347's real-uvicorn test, whose teardown took 15 s. Guard:
+  `tests/unit/test_console_auth.py::test_ws_handler_returns_promptly_when_the_client_disconnects` (strict red gate,
+  flipped in place; it drives the ASGI app directly, since Starlette's TestClient cancels instead of waiting).
 - **`pymaxim[console]` serves the Console's live stream: `/ws` upgrades from a clean install** ([#1347](https://github.com/dennys246/Maxim/issues/1347), reported by maxim-pulse).
   - The extra installed plain `uvicorn`, which ships no WebSocket implementation, and no core dependency brings one, so
     `maxim serve` answered every `/ws` upgrade with 404 ("No supported WebSocket library detected"): no activity or

@@ -592,6 +592,60 @@ class _PairingState:
         self.last_claim_at = -_PAIR_MIN_CLAIM_INTERVAL_S
 
 
+async def _pump_ws_events(websocket: WebSocket, conn: Any, recv_task: "asyncio.Task[None]") -> None:
+    """``/ws``'s sender loop (moved out of ``build_app``'s ``ws_events``): forward the connection's queued events,
+    heartbeat when idle, report drops, and END the moment the client goes away.
+
+    Each wait races the next event against ``recv_task`` (the receiver, which finishes when the client disconnects).
+    The loop used to check the receiver only between waits, so a closed tab's handler lived until the next 15 s
+    heartbeat, and uvicorn >= 0.40 waits for it on SIGTERM: ``maxim serve`` hung up to 15 s on shutdown.
+    """
+    try:
+        while True:
+            if recv_task.done():
+                return  # client went away (receive raised/closed) — stop sending
+            get = asyncio.ensure_future(conn.queue.get())
+            await asyncio.wait({get, recv_task}, timeout=_HEARTBEAT_INTERVAL_S, return_when=asyncio.FIRST_COMPLETED)
+            if not get.done():
+                get.cancel()  # nothing queued: the receiver ended, or the stream went idle
+                if recv_task.done():
+                    return
+                # Idle: enqueue the heartbeat so it flows the one path
+                # (same seq counter — monotonicity holds on the wire).
+                conn.enqueue(
+                    ConsoleEvent(kind="heartbeat", tier="clean", seq=0, ts=time.time(), message="").model_dump()
+                )
+                continue
+            evt = get.result()
+            try:
+                await websocket.send_json(evt)
+            except TypeError:
+                # Non-JSON-serializable producer data (review finding):
+                # without this, ONE poison record fans out to every
+                # matching connection and kills them all. Drop the event,
+                # warn once per connection, keep the stream alive.
+                if not conn.warned_unserializable:
+                    conn.warned_unserializable = True
+                    logger.warning("dropped non-JSON-serializable event kind=%r on /ws", evt.get("kind"), exc_info=True)
+                continue
+            if conn.dropped > conn.dropped_reported:
+                count = conn.dropped - conn.dropped_reported
+                conn.dropped_reported = conn.dropped
+                conn.enqueue(
+                    ConsoleEvent(
+                        kind="dropped",
+                        tier="clean",
+                        seq=0,
+                        ts=time.time(),
+                        message=f"{count} event(s) dropped (slow consumer)",
+                        data={"count": count, "total": conn.dropped},
+                    ).model_dump()
+                )
+    except (WebSocketDisconnect, RuntimeError):
+        # RuntimeError: starlette's send-after-close — same meaning here.
+        return
+
+
 def _install_auth_token(app: Any, auth_token: Any) -> None:
     """``build_app``'s credential state (extracted from it, with its comment, for rule T)."""
     # Fail-closed by construction: build_app READS the token (run_serve is the
@@ -2159,47 +2213,7 @@ def build_app(
 
         recv_task = asyncio.create_task(_recv_frames())
         try:
-            while True:
-                if recv_task.done():
-                    return  # client went away (receive raised/closed) — stop sending
-                try:
-                    evt = await asyncio.wait_for(conn.queue.get(), timeout=_HEARTBEAT_INTERVAL_S)
-                except (asyncio.TimeoutError, TimeoutError):
-                    # Idle: enqueue the heartbeat so it flows the one path
-                    # (same seq counter — monotonicity holds on the wire).
-                    conn.enqueue(
-                        ConsoleEvent(kind="heartbeat", tier="clean", seq=0, ts=time.time(), message="").model_dump()
-                    )
-                    continue
-                try:
-                    await websocket.send_json(evt)
-                except TypeError:
-                    # Non-JSON-serializable producer data (review finding):
-                    # without this, ONE poison record fans out to every
-                    # matching connection and kills them all. Drop the event,
-                    # warn once per connection, keep the stream alive.
-                    if not conn.warned_unserializable:
-                        conn.warned_unserializable = True
-                        logger.warning(
-                            "dropped non-JSON-serializable event kind=%r on /ws", evt.get("kind"), exc_info=True
-                        )
-                    continue
-                if conn.dropped > conn.dropped_reported:
-                    count = conn.dropped - conn.dropped_reported
-                    conn.dropped_reported = conn.dropped
-                    conn.enqueue(
-                        ConsoleEvent(
-                            kind="dropped",
-                            tier="clean",
-                            seq=0,
-                            ts=time.time(),
-                            message=f"{count} event(s) dropped (slow consumer)",
-                            data={"count": count, "total": conn.dropped},
-                        ).model_dump()
-                    )
-        except (WebSocketDisconnect, RuntimeError):
-            # RuntimeError: starlette's send-after-close — same meaning here.
-            return
+            await _pump_ws_events(websocket, conn, recv_task)
         finally:
             _event_hub.remove_conn(conn)
             recv_task.cancel()
