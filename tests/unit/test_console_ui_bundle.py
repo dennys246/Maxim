@@ -135,6 +135,9 @@ class TestContractCheck:
 
 
 class TestVendorScript:
+    """The vendor step's shape checks still bite under R4's pin (#1333; the pin itself is tested in
+    test_vendor_console_freshness.py). Each case validates against the pin of the bundle it builds."""
+
     def _script(self):
         import importlib.util
         from pathlib import Path
@@ -146,25 +149,35 @@ class TestVendorScript:
         spec.loader.exec_module(mod)
         return mod
 
+    def _validate(self, tmp_path, **stamp):
+        from tests.unit import _console_bundles as cb
+
+        mod = self._script()
+        files = cb.bundle(mod.cp, **stamp)
+        return mod.validate(cb.write_dir(tmp_path / "dist", files), pin=cb.pin_for(mod.cp, files))
+
     def test_validates_a_good_bundle(self, tmp_path):
-        ok, problems = self._script().validate(_bundle(tmp_path / "dist"))
+        ok, problems = self._validate(tmp_path)
         assert ok and problems == []
 
     def test_rejects_the_wrong_target(self, tmp_path):
         # Pointing at apps/reachy/ui/dist by mistake is the easy slip.
-        ok, problems = self._script().validate(_bundle(tmp_path / "dist", target="reachy"))
+        ok, problems = self._validate(tmp_path, target="reachy")
         assert not ok
         assert any("target" in p for p in problems)
 
     def test_rejects_a_contract_mismatch(self, tmp_path):
-        ok, problems = self._script().validate(_bundle(tmp_path / "dist", contract="9.9.9"))
+        ok, problems = self._validate(tmp_path, contract_version="9.9.9")
         assert not ok
-        assert any("contract mismatch" in p for p in problems)
+        assert any("contract" in p for p in problems)
 
     def test_rejects_a_non_bundle_directory(self, tmp_path):
+        from tests.unit import _console_bundles as cb
+
+        mod = self._script()
         empty = tmp_path / "nope"
         empty.mkdir()
-        ok, problems = self._script().validate(empty)
+        ok, problems = mod.validate(empty, pin=cb.pin_for(mod.cp, cb.bundle(mod.cp)))
         assert not ok
         assert any("index.html" in p for p in problems)
 

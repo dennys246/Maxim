@@ -150,6 +150,12 @@ Otherwise R3 slips past that cut, and the release vendors v0.4.1 at contract 0.6
 **The standard.** A release vendors the newest pulse tag for its contract, then asserts it. The vendored tag is named
 in the release notes and in the note to pulse.
 
+**Built (2026-10-18, #1333):** a committed pin plus a live check (owner decision 2026-10-18); the approach note and
+its folded design pass are [r4_console_vendor_gate.md](r4_console_vendor_gate.md). **"The newest pulse tag for a
+contract"** means the highest stable `vX.Y.Z` tag, ordered as integers, whose `packages/kit/openapi.json`
+`info.version` at the tag's commit is that contract. Tag dates are never used. Pulse's `check_pymaxim_vendor.py`
+orders by creator date and includes pre-release tags; the 1.3.3 note to pulse proposes this definition for it too.
+
 **This is a gate, so it gets a design pass before code.** "The newest pulse tag carrying the same contract version"
 is a new input: a query against another repository's tags, made by a script that is offline today. The approach note
 names the source and how it fails closed. Two candidates:

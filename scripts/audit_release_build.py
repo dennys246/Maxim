@@ -35,29 +35,43 @@ Given the newest wheel AND sdist under `dist/`:
 2. `console/ui_dist/index.html` is present in BOTH artifacts  (D47)
 3. the package data the guide's manual checks cover is present in the wheel:
    `maxim/py.typed`, `maxim/__main__.py`, and a non-trivial `maxim/_data/` tree
+4. the vendored Console in BOTH artifacts is the pinned pulse bundle (R4, #1333): its
+   files digest to `scripts/console_ui_pin.json`'s `tree_sha256`, its `maxim-ui.json`
+   names the pinned commit, is clean, and was built for the contract the ARTIFACT's own
+   `console/ui_bundle.py` declares (read as text, not the repo's). pymaxim 1.3.2 shipped
+   pulse v0.4.0 two days after v0.4.1 was tagged, and nothing read the stamp.
 
 The sdist is audited because `twine upload dist/pymaxim-*` ships it too and
 `pip install --no-binary :all: pymaxim` installs from it — auditing only the
 wheel leaves half the release unchecked.
 
-`--allow-missing-ui-dist` exists for exactly one caller — a CI build on a checkout
-that legitimately has no vendored bundle — and it is NOT the release path. When it
-is passed the report says so out loud, because a check that can be silently waived
-is not a check.
+There is no waiver for any of it. `--allow-missing-ui-dist` existed for CI, which
+used to stub the bundle; CI now vendors the real pinned asset (`vendor_console_ui.py
+--from-pin`), so the flag lost its only caller and was removed (R4 design pass, fold 8).
+`--contract-drift-ok-unless-releasing` is not a waiver of the pin: on a tree that is
+not cutting a release it reports a contract drift instead of failing, so a PR that bumps
+the contract can merge before pulse tags a bundle for it; on a releasing tree it fails.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 import tarfile
 import zipfile
+from collections.abc import Iterable
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _console_pin as cp  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 UI_DIST_INDEX = "maxim/console/ui_dist/index.html"
+WHEEL_UI_PREFIX = "maxim/console/ui_dist/"
+WHEEL_UI_BUNDLE = "maxim/console/ui_bundle.py"
 REQUIRED_FILES = ("maxim/py.typed", "maxim/__main__.py", "maxim/_data/CONSTITUTION.md")  # D32: gates the agent preamble
 MIN_DATA_FILES = 25  # the guide's manual check; a stripped _data/ is a broken wheel
 
@@ -85,7 +99,58 @@ def newest_sdist(dist_dir: Path) -> Path | None:
     return sdists[-1] if sdists else None
 
 
-def audit_sdist(sdist: Path, expect_version: str, *, require_ui_dist: bool = True) -> list[str]:
+def audit_console(
+    members: Iterable[tuple[str, bytes | None]],
+    prefix: str,
+    ui_bundle_name: str,
+    *,
+    artifact: str,
+    pin: cp.Pin,
+    releasing: bool = True,
+) -> tuple[list[str], str | None]:
+    """R4: is the vendored Console in this artifact the pinned pulse bundle? Returns (problems, summary line).
+
+    `members` are (name, bytes-or-None-for-a-non-file) for the whole artifact; the console files are those under
+    `prefix`, and the backend contract is read from the artifact's own `ui_bundle_name`.
+    """
+    files = dict(members)
+    problems = list(cp.pin_identity_problems(pin))
+    try:
+        digest = cp.tree_digest(cp.prefixed_entries(files.items(), prefix))
+    except cp.DigestError as exc:
+        return [*problems, f"R4: {artifact} console bundle: {exc}"], None
+    if digest != pin.tree_sha256:
+        problems.append(
+            f"R4: {artifact} ships a console bundle whose files differ from the pinned {pin.tag} "
+            f"(tree digest {digest[:12]} != {pin.tree_sha256[:12]}). Vendor with "
+            f"`python scripts/vendor_console_ui.py --from-pin` and rebuild."
+        )
+    try:
+        stamp = json.loads(files.get(prefix + cp.MANIFEST_NAME) or b"")
+    except json.JSONDecodeError as exc:
+        return [*problems, f"R4: {artifact} console {cp.MANIFEST_NAME} is unreadable: {exc}"], None
+    contract = cp.contract_from_source((files.get(ui_bundle_name) or b"").decode("utf-8", "replace"))
+    if not isinstance(stamp, dict) or contract is None:
+        return [*problems, f"R4: {artifact} has no readable console stamp or {ui_bundle_name} contract"], None
+    stamp_problems, notes = cp.stamp_problems(stamp, pin, contract, releasing=releasing)
+    problems += [f"R4: {artifact}: {p}" for p in stamp_problems]
+    for note in notes:
+        print(f"  {artifact} console: {note}")
+    summary = f"vendored console: pulse {pin.tag} ({pin.commit[:7]}, contract {stamp.get('contract_version')})"
+    return problems, summary
+
+
+def _sdist_members(tf: tarfile.TarFile) -> list[tuple[str, bytes | None]]:
+    out: list[tuple[str, bytes | None]] = []
+    for m in tf.getmembers():
+        if m.isdir():
+            continue
+        f = tf.extractfile(m) if m.isfile() else None
+        out.append((m.name, f.read() if f is not None else None))
+    return out
+
+
+def audit_sdist(sdist: Path, expect_version: str, *, pin: cp.Pin, releasing: bool = True) -> list[str]:
     """The sdist ships too, and D47/D48 apply to it verbatim.
 
     `twine upload dist/pymaxim-*` uploads BOTH artifacts, and
@@ -107,6 +172,7 @@ def audit_sdist(sdist: Path, expect_version: str, *, require_ui_dist: bool = Tru
 
     try:
         with tarfile.open(sdist, "r:gz") as tf:
+            members = _sdist_members(tf)
             names = tf.getnames()
     except (tarfile.TarError, OSError) as exc:
         # Keep the file's collect-all-problems-then-report contract: an
@@ -118,21 +184,30 @@ def audit_sdist(sdist: Path, expect_version: str, *, require_ui_dist: bool = Tru
 
     if "src/maxim/console/ui_dist/index.html" not in suffixes:
         ui_files = [s for s in suffixes if s.startswith("src/maxim/console/ui_dist/")]
-        message = (
+        problems.append(
             f"D47: src/maxim/console/ui_dist/index.html is MISSING from the sdist "
             f"({len(ui_files)} file(s) under it). The sdist ships and installs too."
         )
-        if require_ui_dist:
-            problems.append(message)
-        else:
-            print(f"WAIVED (--allow-missing-ui-dist): {message}")
+        return problems
 
-    return problems
+    root = names[0].split("/", 1)[0] + "/" if names else ""
+    console_problems, _ = audit_console(
+        members,
+        f"{root}src/maxim/console/ui_dist/",
+        f"{root}src/maxim/console/ui_bundle.py",
+        artifact="sdist",
+        pin=pin,
+        releasing=releasing,
+    )
+    return problems + console_problems
 
 
-def audit_wheel(wheel: Path, expect_version: str, *, require_ui_dist: bool = True) -> list[str]:
-    """Return a list of problems; empty means the wheel is publishable."""
+def audit_wheel(
+    wheel: Path, expect_version: str, *, pin: cp.Pin, releasing: bool = True
+) -> tuple[list[str], str | None]:
+    """Return (problems, the vendored-console summary line); no problems means the wheel is publishable."""
     problems: list[str] = []
+    console_line: str | None = None
 
     name_match = _WHEEL_NAME.match(wheel.name)
     filename_version = name_match.group("version") if name_match else None
@@ -162,18 +237,19 @@ def audit_wheel(wheel: Path, expect_version: str, *, require_ui_dist: bool = Tru
                 )
 
         if UI_DIST_INDEX not in names:
-            ui_files = [n for n in names if n.startswith("maxim/console/ui_dist/")]
-            message = (
+            ui_files = [n for n in names if n.startswith(WHEEL_UI_PREFIX)]
+            problems.append(
                 f"D47: {UI_DIST_INDEX} is MISSING from the wheel "
                 f"({len(ui_files)} file(s) under console/ui_dist/). The Console UI bundle is "
                 f"gitignored and vendored at release time — a worktree build has none. "
-                f"Run `python scripts/vendor_console_ui.py <maxim-pulse>/apps/console/dist` "
-                f"and rebuild."
+                f"Run `python scripts/vendor_console_ui.py --from-pin` and rebuild."
             )
-            if require_ui_dist:
-                problems.append(message)
-            else:
-                print(f"WAIVED (--allow-missing-ui-dist): {message}")
+        else:
+            members = [(n, None if n.endswith("/") else zf.read(n)) for n in names if not n.endswith("/")]
+            console_problems, console_line = audit_console(
+                members, WHEEL_UI_PREFIX, WHEEL_UI_BUNDLE, artifact="wheel", pin=pin, releasing=releasing
+            )
+            problems += console_problems
 
         for required in REQUIRED_FILES:
             if required not in names:
@@ -186,7 +262,7 @@ def audit_wheel(wheel: Path, expect_version: str, *, require_ui_dist: bool = Tru
                 f"package data looks stripped"
             )
 
-    return problems
+    return problems, console_line
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -195,18 +271,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dist-dir", type=Path, default=REPO_ROOT / "dist")
     parser.add_argument("--sdist", type=Path, default=None, help="sdist to audit (default: newest in --dist-dir)")
     parser.add_argument("--expect-version", default=None, help="default: pyproject.toml's version")
+    parser.add_argument("--pin", type=Path, default=cp.PIN_PATH, help="the console pin (default: the committed one)")
     parser.add_argument(
-        "--allow-missing-ui-dist",
+        "--contract-drift-ok-unless-releasing",
         action="store_true",
-        help="CI-only: a checkout with no vendored Console bundle. NOT the release path.",
+        help="CI only: report (not fail) a console contract drift on a tree that is not cutting a release",
     )
     args = parser.parse_args(argv)
 
     wheel = args.wheel or newest_wheel(args.dist_dir)
     expect = args.expect_version or pyproject_version()
+    try:
+        pin = cp.load_pin(args.pin)
+    except cp.PinError as exc:
+        print(f"UNVERIFIED: {exc}", file=sys.stderr)
+        return 2
+    releasing = True
+    if args.contract_drift_ok_unless_releasing:
+        releasing, why = cp.releasing()
+        print(why)
 
     print(f"auditing {wheel.name} against pyproject version {expect}")
-    problems = audit_wheel(wheel, expect, require_ui_dist=not args.allow_missing_ui_dist)
+    problems, console_line = audit_wheel(wheel, expect, pin=pin, releasing=releasing)
 
     # The sdist is uploaded alongside the wheel and installs via
     # `pip install --no-binary :all:`, so leaving it unaudited leaves half the
@@ -214,7 +300,7 @@ def main(argv: list[str] | None = None) -> int:
     sdist = args.sdist or (None if args.wheel else newest_sdist(args.dist_dir))
     if sdist is not None:
         print(f"auditing {sdist.name}")
-        problems += audit_sdist(sdist, expect, require_ui_dist=not args.allow_missing_ui_dist)
+        problems += audit_sdist(sdist, expect, pin=pin, releasing=releasing)
     elif args.wheel:
         # Say so. "A check that can be silently waived is not a check" applies
         # to this script's own output too: --wheel names one file, so the sdist
@@ -230,8 +316,9 @@ def main(argv: list[str] | None = None) -> int:
         print("\nDo NOT upload this artifact.", file=sys.stderr)
         return 1
 
-    suffix = " (ui_dist check waived)" if args.allow_missing_ui_dist else ""
-    print(f"release-build audit: clean{suffix}")
+    if console_line:
+        print(console_line)  # the release notes name this tag (backlog M71 until the audit reads the notes)
+    print("release-build audit: clean")
     return 0
 
 

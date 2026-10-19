@@ -1,0 +1,10 @@
+{
+  "_format_version": "1.0",
+  "repo": "dennys246/Maxim-pulse",
+  "tag": "v0.4.1",
+  "commit": "da20a721f569c109e2d649531d5d8c73671ae90a",
+  "contract_version": "0.6.0",
+  "asset": "console-dist.tar.gz",
+  "asset_sha256": "95720ce5ce8bb2053abbb3531b8a57b89a85dde1893e3835b63ff483d6329f1d",
+  "tree_sha256": "542b895c8d41002515de635d2194d55852b1ba5cc40aa77b51db0136f7895838"
+}
