@@ -37,6 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `read_key` returns None for every failure without raising, as documented.
   - Behaviour change: `maxim oasis serve --insecure` with an unusable (not missing) key now refuses (exit 2) instead
     of serving without auth.
+  - New `keys.key_file_state()` reports a key file as missing, unusable (with the reason) or ok.
+  - `maxim doctor`'s key checks (API key, key age, key permissions, key auth smoke) report "key file unusable:
+    <reason>" instead of "no key set", a directory's mode, or "rotate". `read_key` strips a leading BOM like the
+    leader's reader (so `ensure_key` / `ensure_console_token` return the key without it too), so a peer never sends a
+    different bearer than the leader accepts.
   - Guards: `tests/unit/test_leader_key_stat_1311.py` (two strict red gates flipped in place, the 3.14 `is_file`
     behaviour simulated; each mechanism deletion-proven).
 - **An agent can no longer turn the operator's internet back on, or turn it off for later sessions**

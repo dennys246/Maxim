@@ -68,12 +68,33 @@ def key_exists(name: str = MESH_KEY_NAME) -> bool:
 
 
 def read_key(name: str = MESH_KEY_NAME) -> str | None:
-    """Return the stored key, or None if it is missing or unusable in any way (never raises)."""
+    """Return the stored key, or None if it is missing or unusable in any way (never raises). A leading BOM is
+    stripped, as the leader's strict reader does, so a peer never sends a different bearer than the leader accepts."""
     try:
         raw, _mode = _read_key_file(key_file_path(name))
     except LeaderKeyError:
         return None
-    return raw.strip() or None
+    return raw.lstrip("\ufeff").strip() or None
+
+
+def key_file_state(name: str = MESH_KEY_NAME) -> tuple[str, str | None]:
+    """``("missing", None)``, ``("unusable", reason)`` or ``("ok", None)`` for the named key file (never raises).
+
+    For callers that must tell an absent key (generate one; "no key set") from one that is there but cannot be used
+    (refuse; report the reason): an unusable key must not be advised away as a mismatch (#1311); #1402 will refuse to overwrite one.
+    """
+    try:
+        raw, _mode = _read_key_file(key_file_path(name))
+    except LeaderKeyMissing:
+        return "missing", None
+    except LeaderKeyError as e:
+        return "unusable", e.reason
+    if not raw.lstrip("\ufeff").strip():
+        return "unusable", _EMPTY_KEY_REASON
+    return "ok", None
+
+
+_EMPTY_KEY_REASON = "key file is empty"
 
 
 def write_key(key: str, name: str = MESH_KEY_NAME) -> Path:
@@ -174,7 +195,7 @@ def _read_key_file(path: Path) -> tuple[str, int]:
     startup, or for a world-readable file after the mode check) between the check and the read. Raises
     :class:`LeaderKeyMissing` or :class:`LeaderKeyError`, never a raw ``OSError`` (#1311, #1312).
     """
-    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0)
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)
     try:
         fd = os.open(path, flags)
     except FileNotFoundError as e:
@@ -193,8 +214,13 @@ def _read_key_file(path: Path) -> tuple[str, int]:
             raise LeaderKeyError(path=path, reason=f"cannot stat key file ({type(e).__name__})") from e
         if not stat.S_ISREG(st.st_mode):
             raise LeaderKeyError(path=path, reason="key path is not a regular file")
+        data = b""
         try:
-            data = os.read(fd, _MAX_KEY_FILE_BYTES + 1)
+            while len(data) <= _MAX_KEY_FILE_BYTES:  # a network filesystem may return a short read
+                chunk = os.read(fd, _MAX_KEY_FILE_BYTES + 1 - len(data))
+                if not chunk:
+                    break
+                data += chunk
         except OSError as e:
             raise LeaderKeyError(path=path, reason=f"cannot read key file ({type(e).__name__})") from e
         if len(data) > _MAX_KEY_FILE_BYTES:

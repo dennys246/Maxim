@@ -1972,6 +1972,30 @@ def check_tunnel_config_sync() -> CheckResult:
 # ─── API key ───────────────────────────────────────────────────────────────
 
 
+def _unusable_key_result(name: str) -> CheckResult | None:
+    """A failing row when the mesh key file exists but cannot be used, else None (#1311): such a key is neither "no
+    key" (the server would not be open) nor a mismatch (rotating would discard a key that may be fine once readable)."""
+    from maxim.tunnel.keys import key_file_path, key_file_state
+
+    state, reason = key_file_state()
+    if state != "unusable":
+        return None
+    if reason == "key file is empty":  # holds no key to lose: generate one
+        return CheckResult(
+            name=name,
+            status="fail",
+            message=f"key file unusable: {reason} ({key_file_path()})",
+            fix="Generate a key: maxim tunnel key rotate",
+        )
+    return CheckResult(
+        name=name,
+        status="fail",
+        message=f"key file unusable: {reason} ({key_file_path()})",
+        fix=f"Fix the file (`chmod 600 {key_file_path()}`, or replace a directory/FIFO with the key file); do not "
+        "rotate until it is readable.",
+    )
+
+
 def check_api_key() -> CheckResult:
     from maxim.runtime.role import resolved_role
     from maxim.tunnel.keys import LeaderKeyError, key_exists, key_file_path, require_leader_key
@@ -1989,6 +2013,8 @@ def check_api_key() -> CheckResult:
                 fix=e.fix_hint,
                 retry_id="key-auth",
             )
+    elif (unusable := _unusable_key_result("API key")) is not None:
+        return unusable
     elif not key_exists():
         return CheckResult(
             name="API key",
@@ -2085,6 +2111,8 @@ def check_key_age() -> CheckResult:
 
     from maxim.tunnel.keys import key_exists, key_file_path
 
+    if (unusable := _unusable_key_result("Key age")) is not None:
+        return unusable
     if not key_exists():
         return CheckResult(
             name="Key age",
@@ -2129,6 +2157,8 @@ def check_key_permissions() -> CheckResult:
 
     from maxim.tunnel.keys import key_exists, key_file_path
 
+    if (unusable := _unusable_key_result("Key permissions")) is not None:
+        return unusable
     if not key_exists():
         return CheckResult(
             name="Key permissions",
@@ -2165,6 +2195,8 @@ def check_key_auth_smoke(port: int = 8100) -> CheckResult:
     from maxim.tunnel.keys import key_exists, read_key
     from maxim.utils import http as _http
 
+    if (unusable := _unusable_key_result("Key auth smoke")) is not None:
+        return unusable
     if not key_exists():
         return CheckResult(
             name="Key auth smoke",

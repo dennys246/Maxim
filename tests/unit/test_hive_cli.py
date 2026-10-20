@@ -514,7 +514,7 @@ class TestOasisCli:
         assert "error:" in capsys.readouterr().err
 
     def test_serve_refuses_insecure_public_bind(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("maxim.tunnel.keys.key_exists", lambda *a, **k: False)
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))  # no key file (#1311: serve reads it once)
         started: list = []
         monkeypatch.setattr("maxim.runtime.leader_proxy.start_leader_proxy", lambda **k: started.append(k) or None)
         rc = run_oasis_subcommand(["serve", "--root", str(tmp_path / "s"), "--bind-host", "0.0.0.0"])
@@ -524,7 +524,7 @@ class TestOasisCli:
     def test_serve_refuses_loopback_without_a_key_too(self, tmp_path, monkeypatch):
         """2026-10-14: loopback is no exception. A cloudflared tunnel's ingress is http://localhost:<port>,
         so an unauthenticated loopback bind can be the internet."""
-        monkeypatch.setattr("maxim.tunnel.keys.key_exists", lambda *a, **k: False)
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))  # no key file (#1311: serve reads it once)
         started: list = []
         monkeypatch.setattr("maxim.runtime.leader_proxy.start_leader_proxy", lambda **k: started.append(k) or None)
         rc = run_oasis_subcommand(["serve", "--root", str(tmp_path / "s"), "--bind-host", "127.0.0.1"])
@@ -534,7 +534,7 @@ class TestOasisCli:
     def test_serve_insecure_without_a_key_starts_with_explicit_insecure_auth(self, tmp_path, monkeypatch):
         from maxim.runtime.leader_proxy import ProxyAuth
 
-        monkeypatch.setattr("maxim.tunnel.keys.key_exists", lambda *a, **k: False)
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))  # no key file (#1311: serve reads it once)
         started: list = []
         monkeypatch.setattr("maxim.runtime.leader_proxy.start_leader_proxy", lambda **k: started.append(k) or None)
         rc = run_oasis_subcommand(["serve", "--root", str(tmp_path / "s"), "--bind-host", "127.0.0.1", "--insecure"])

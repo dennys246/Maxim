@@ -649,7 +649,7 @@ def test_key_file_failures_are_typed_or_none_never_a_crash(monkeypatch, tmp_path
     monkeypatch.setattr(type(path), "stat", _stat_fails)
     # #1312: the reader opens and fstats one descriptor (never Path.is_file, which swallows the error on 3.14), so the
     # unstat-able path is denied at the os layer too, as an unreadable parent directory does.
-    from tests.unit.test_leader_key_stat_1311 import deny_os_access
+    from tests.unit._key_file_helpers import deny_os_access
 
     deny_os_access(monkeypatch, path)
     with pytest.raises(LeaderKeyError, match="cannot stat key file"):
