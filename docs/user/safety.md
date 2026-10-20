@@ -162,7 +162,10 @@ The agent's `internet_access_toggle` can only turn internet **off, for its own s
 sets `MAXIM_INTERNET_LOWERED` in the process environment, which a re-exec and the processes Maxim
 spawns inherit, and which ends with the session; nothing is written to disk. It cannot turn internet
 on, not even back after its own lower: only the operator can, by starting a new session. You can
-also start a session lowered by setting `MAXIM_INTERNET_LOWERED=1`.
+also start a session lowered by setting `MAXIM_INTERNET_LOWERED=1`. A restart that re-executes the
+same process keeps the lower: a mode-switch re-exec, and `maxim peer restart` of a leader whose agent
+lowered it. So does a long-lived robot runtime until its process restarts. A `maxim` the agent starts
+through its own `bash` tool does not inherit it (that tool passes no `MAXIM_*` variable).
 - `~/.maxim/util/internet_policy.json` — domain `allow_domains` / `block_domains` lists and fetch
   limits (`max_fetch_bytes`, `request_timeout_s`, …). Page fetches honour them; search results do
   not filter by them yet. A file that exists but cannot be read, or has an ill-typed domain list,

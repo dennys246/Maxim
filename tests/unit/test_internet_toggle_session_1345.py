@@ -200,3 +200,18 @@ def test_a_legacy_agent_written_off_is_named_at_startup(fresh_home, caplog) -> N
     caplog.clear()
     live_internet_policy_getter(True)
     assert "written by an agent" in caplog.text
+
+
+def test_the_refusal_names_the_remedy_for_why_access_is_off(operator_home) -> None:
+    """Review fold: one period, and the remedy that matches the source (the operator's file, then a session lower)."""
+    operator_off = _toggle(enabled=True).error
+    assert ".." not in operator_off and "util/internet_access.json" in operator_off
+
+    _toggle(enabled=False)
+    session_off = _toggle(enabled=True).error
+    assert ".." not in session_off and "MAXIM_INTERNET_LOWERED" in session_off
+
+
+def test_a_string_enabled_says_it_is_a_string() -> None:
+    error = _toggle(enabled="false").error
+    assert "JSON boolean" in error and "str" in error

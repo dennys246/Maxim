@@ -32,8 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Now it can only lower internet for its OWN session: it sets `MAXIM_INTERNET_LOWERED` in the process environment
     (inherited by a re-exec and by processes Maxim spawns; never written to disk), which the one policy loader reads
     on every request. `enabled: true` is refused unless internet is already on. The operator's file is written only
-    by `maxim.utils.set_internet_access`, whose default `source` is now `"operator"`; a legacy agent-written "off" is
-    named in the startup WARNING.
+    by `maxim.utils.set_internet_access`, whose default `source` is now `"operator"` (it was `"tool"`); a legacy
+    agent-written "off" is named in the startup WARNING. `InternetAccessTool` lost its `set_internet_access_fn=`
+    constructor argument (no caller remained).
+  - Still open (fails closed): the prompt keeps offering the internet tools after a lower, and `state.data`'s
+    `internet_access` is a launch-time snapshot ([#1399](https://github.com/dennys246/Maxim/issues/1399)).
   - Design: [docs/plans/internet_toggle_session_gate.md](docs/plans/internet_toggle_session_gate.md) (two adversarial
     passes). Guard: `tests/unit/test_internet_toggle_session_1345.py` (three strict red gates flipped in place, each
     mechanism deletion-proven) + the `_isolate_maxim_internet_lowered_env` conftest scrub.

@@ -620,10 +620,15 @@ class InternetAccessTool(Tool):
         """Lower this session's internet access, or refuse to raise it."""
         from maxim.utils.internet_access import load_internet_policy, lower_internet_for_session
 
-        if "enabled" not in kwargs or not isinstance(kwargs["enabled"], bool):
-            # No silent default, and no truthy string: "false" must not read as on (#822, #1345).
+        if "enabled" not in kwargs:
+            # No silent default (#822).
+            return ToolResult(success=False, error="internet_access_toggle requires an explicit 'enabled': false")
+        if not isinstance(kwargs["enabled"], bool):
+            # No truthy string: "false" must not read as on (#1345).
             return ToolResult(
-                success=False, error="internet_access_toggle requires an explicit 'enabled': true or false"
+                success=False,
+                error=f"'enabled' must be a JSON boolean (false), not {type(kwargs['enabled']).__name__} "
+                f"{kwargs['enabled']!r}",
             )
         enabled = kwargs["enabled"]
         reason = str(kwargs.get("reason", "")).strip()
@@ -642,11 +647,12 @@ class InternetAccessTool(Tool):
                 output="Internet access is already on; nothing changed.",
                 metadata={"enabled": True, "reason": reason, "scope": "session"},
             )
+        if current.source == "session-lowered":
+            remedy = "only the operator can restore it, by starting a new session without MAXIM_INTERNET_LOWERED"
+        else:
+            remedy = "only the operator can turn it on (the operator's util/internet_access.json toggle)"
         return ToolResult(
             success=False,
-            error=(
-                f"{current.disabled_reason()}. This tool cannot turn internet access on: only the operator can "
-                "(--internet-access at launch, or the operator's internet settings)."
-            ),
+            error=f"{current.disabled_reason().rstrip('.')}. This tool cannot turn internet access on: {remedy}.",
             metadata={"enabled": False, "reason": reason, "refused": "raise"},
         )

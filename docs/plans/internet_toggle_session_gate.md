@@ -21,6 +21,7 @@ The first draft held a `lowered` flag on the getter object. The design pass (S1)
   - Whole-`src/` AST scan: `set_internet_access` / `save_internet_access` are called only inside `utils/internet_access.py` (design pass S3).
   - Behaviour: a lower leaves the file byte-identical, is refused by both internet tools on the next request, survives a fresh registry and a fresh getter, reaches a child process; the tool cannot raise after a lower, nor flip an operator "off" on.
   - The conftest autouse scrub for `MAXIM_INTERNET_LOWERED` (the hot-path env-var rule).
+- **A deliberate exception to the per-agent stash rule** (docs/agents/runtime-tools.md: per-agent runtime state is a `dict[agent_id, value]`): this lower is per PROCESS by design, like the launch cap and the getter. Do not "fix" it into a per-agent dict, which would reset on a re-exec.
 - **Residual, stated:** one process with several agents shares one lower (fail closed); today no multi-agent path registers internet tools (the sim, console, API and pool registries pass `internet_launch_enabled=False`). A fetch already past its check when the lower lands completes. `internet_access_toggle` stays in `HOST_ACTING_TOOLS` (passive mode cannot lower; the strict choice, design pass N2).
 - **Follow-up, not here:** the prompt roster still offers `internet_search` / `http_fetch` after a lower, and a `policy_blocked` refusal is booked as an ordinary tool failure for pain credit (design pass S4, the D82 class); filed separately.
 
