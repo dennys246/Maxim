@@ -15,7 +15,7 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any
 
-from maxim.tools.base import Tool, ToolResult
+from maxim.tools.base import Tool, ToolResult, git_dir_write_refusal
 
 if TYPE_CHECKING:
     from maxim.agents.autonomy import AutonomyController
@@ -215,6 +215,9 @@ class WriteSandboxFileTool(Tool):
         # Ensure within sandbox (use realpath to handle symlinks)
         if not path.startswith(self._sandbox_dir + os.sep) and path != self._sandbox_dir:
             return ToolResult(success=False, error="Path must be within sandbox directory")
+        git_refusal = git_dir_write_refusal(path)  # #957
+        if git_refusal:
+            return ToolResult(success=False, error=git_refusal)
 
         try:
             # Create parent directories
@@ -604,6 +607,9 @@ class WriteToSharedOutputsTool(Tool):
             return ToolResult(success=False, error="Invalid filename")
 
         path = os.path.join(self._outputs_dir, filename)
+        git_refusal = git_dir_write_refusal(path)  # #957: a file named .git plants a gitfile
+        if git_refusal:
+            return ToolResult(success=False, error=git_refusal)
 
         try:
             os.makedirs(self._outputs_dir, exist_ok=True)

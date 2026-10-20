@@ -25,6 +25,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The file tools refuse to write git configuration** (security; [#957](https://github.com/dennys246/Maxim/issues/957),
+  owner decision 2026-09-28: contain and say what remains).
+  - A model that can write a repository's git configuration can make host git run code: clean/process filters
+    (`.gitattributes` plus `filter.<name>.clean=<cmd>` in `.git/config`) run on `git diff` and `git add`, and no git
+    switch disables them (#949).
+  - `write_file`, `edit_file`, the sandbox's `write_sandbox_file` and `write_to_shared_outputs` now refuse any path
+    under a `.git` component (case-folded, since macOS and Windows filesystems are case-insensitive), under an entry
+    that is a `.git` by stat identity (other spellings of it), inside the git dir a `.git` FILE points at, inside any
+    directory that already looks like a git dir (`HEAD` + `objects/`: a sibling `--separate-git-dir`, `worktrees/<n>`,
+    a bare repository), and the user- and installation-level git config host git reads (`~/.gitconfig`,
+    `$XDG_CONFIG_HOME/git/`, Homebrew's `etc/gitconfig`; compared case-folded). `.gitignore`, `.github/` and
+    `.gitattributes` stay writable.
+  - Host git calls also pass `-c safe.bareRepository=explicit`: a git dir the model assembles file by file (no single
+    write looks like one) is refused by git itself, not used as a bare repository (git 2.38 or later; older git ignores the key, so there the
+    from-scratch case stays open).
+  - It narrows the risk; it does not close it: `bash` and any code the model runs can still write there, and so can
+    a file pulled in by an `include.path`, `includeIf` or `core.attributesFile`. Both git tools stay opt-in.
+  - Guard: `tests/unit/test_git_dir_writes_957.py` (three strict red gates flipped in place; each check
+    deletion-proven).
 - **An unusable leader key is a typed refusal on every Python, never a traceback or a silent "no key"**
   ([#1311](https://github.com/dennys246/Maxim/issues/1311), [#1312](https://github.com/dennys246/Maxim/issues/1312)).
   - The key readers checked existence through `Path.is_file()`, which RAISES the stat error of an unreadable parent on
