@@ -360,6 +360,30 @@ def _count_tokens(text: str, llm_router: Any | None) -> int:
     return max(1, len(text) // 4)
 
 
+def _provider_failures(llm_router: Any | None) -> dict[str, dict[str, Any]]:
+    """Provider failure attribution from router._provider_states.  Only
+    surface providers that actually saw failures during the session —
+    healthy providers are noise."""
+    provider_failures: dict[str, dict[str, Any]] = {}
+    if llm_router is not None:
+        try:
+            states = getattr(llm_router, "_provider_states", {}) or {}
+            now = time.time()
+            for key, state in states.items():
+                errs = int(getattr(state, "consecutive_errors", 0) or 0)
+                last_err = str(getattr(state, "last_error", "") or "")
+                backoff_until = float(getattr(state, "backoff_until", 0.0) or 0.0)
+                if errs > 0 or last_err:
+                    provider_failures[key] = {
+                        "consecutive_errors": errs,
+                        "last_error": redact_urls(last_err)[:200],  # scrubbed before the cut can split a URL (#997)
+                        "backoff_remaining_s": round(max(0.0, backoff_until - now), 1),
+                    }
+        except Exception as e:
+            logger.debug("provider failure snapshot failed: %s", e)
+    return provider_failures
+
+
 def build_report(
     *,
     goal: str,
@@ -518,26 +542,7 @@ def build_report(
     except Exception as e:
         logger.debug("sim_log event count failed: %s", e)
 
-    # Provider failure attribution from router._provider_states.  Only
-    # surface providers that actually saw failures during the session —
-    # healthy providers are noise.
-    provider_failures: dict[str, dict[str, Any]] = {}
-    if llm_router is not None:
-        try:
-            states = getattr(llm_router, "_provider_states", {}) or {}
-            now = time.time()
-            for key, state in states.items():
-                errs = int(getattr(state, "consecutive_errors", 0) or 0)
-                last_err = str(getattr(state, "last_error", "") or "")
-                backoff_until = float(getattr(state, "backoff_until", 0.0) or 0.0)
-                if errs > 0 or last_err:
-                    provider_failures[key] = {
-                        "consecutive_errors": errs,
-                        "last_error": redact_urls(last_err)[:200],  # scrubbed before the cut can split a URL (#997)
-                        "backoff_remaining_s": round(max(0.0, backoff_until - now), 1),
-                    }
-        except Exception as e:
-            logger.debug("provider failure snapshot failed: %s", e)
+    provider_failures = _provider_failures(llm_router)
 
     ctx = llm_finish_context or {}
     # S6 apparatus block: the bridge carries the substrate action budget it
