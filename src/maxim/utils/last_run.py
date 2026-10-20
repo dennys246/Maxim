@@ -54,9 +54,11 @@ def _last_runs_path() -> Path:
 
 def should_save(argv: list[str]) -> bool:
     """Check if this invocation is worth saving."""
-    if any(arg in argv for arg in _SKIP_INDICATORS):
+    # ``--flag=value`` is the flag too: ``--clear-memory=all --yes`` must never become a replayable run (#1337)
+    flags = {arg.split("=", 1)[0] for arg in argv}
+    if flags & _SKIP_INDICATORS:
         return False
-    return any(arg in argv for arg in _SAVEABLE_INDICATORS)
+    return bool(flags & _SAVEABLE_INDICATORS)
 
 
 def save_last_run(argv: list[str]) -> None:

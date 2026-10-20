@@ -12,6 +12,8 @@ import os
 import sys
 from typing import Any
 
+from maxim.utils.paths import AGENT_HOME_PATTERNS
+
 
 def normalize_epoch_value(value: object) -> int:
     """Convert any input to a non-negative int epoch count."""
@@ -577,41 +579,62 @@ def reexec_with_mode(args: argparse.Namespace, *, mode: str) -> None:
     os.execv(sys.executable, argv)
 
 
-# Memory targets for --clear-memory, as glob patterns relative to data_home / ~/.maxim/.
+# Memory targets for --clear-memory, as glob patterns relative to the data home (``utils/paths.py::data_home``).
 #
 # Two persistence layouts coexist by design:
 #   - Global default-network / bridge learners write ONE shared file under util/.
-#   - Per-agent bio-systems (Hippocampus, NAc, SCN, ATL, AngularGyrus) are persisted
-#     per agent under agents/<agent_id>/ by AgentFactory / build_bio_stack. Clearing a
-#     bio-system globs across every agent dir so the bio-system is wiped everywhere;
-#     legacy flat paths are included so pre-0.9 installs are cleaned up too.
+#   - An agent's stores persist together in its AGENT HOME. What counts as an agent's state is defined once,
+#     ``runtime/agent_factory.py::AGENT_STATE_FILES`` plus its ``memory_hub/`` (the definition ``create.agent``
+#     refuses on and the #932 migration moves); ``_AGENT_FILES`` below splits exactly that by memory type, and a
+#     test pins the two together. The agent homes are every directory a writer points a bio stack at:
+#     ``agents/<id>/`` (AgentFactory, ``maxim.create.agent``), ``memory/`` (``build_bio_stack(persistence_dir=
+#     user_memory())``: the Reachy runtime and ``maxim hive merge``), ``orchestrator/`` (the sim orchestrator) and
+#     ``sessions/`` (``maxim.run()``'s agent before #932), declared once as ``utils/paths.py::AGENT_HOME_PATTERNS``.
+#     Clearing a type clears it in EVERY agent home (#1337).
 # A pattern containing "*" is glob-expanded; every match is removed (each is printed).
-MEMORY_PATHS: dict[str, tuple[str, ...]] = {
+AGENT_HOMES: tuple[str, ...] = AGENT_HOME_PATTERNS
+
+_AGENT_FILES: dict[str, tuple[str, ...]] = {
+    "hippo": ("hippocampus.json", "hippocampus.json.backup", "memories.json"),
+    "nac": ("nac.json", "nac.meta.json"),  # nac.meta.json: `hive merge`'s record beside the merged NAc
+    "ec": ("ec.json",),
+    "scn": ("scn.json",),
+    "atl": ("atl.json",),
+    "angular_gyrus": ("angular_gyrus.json",),
+    "cerebellum": ("cerebellum.json",),
+    "memory_hub": ("memory_hub",),
+}
+
+_GLOBAL_PATHS: dict[str, tuple[str, ...]] = {
     # Global learners (one shared file under util/)
     "focus": ("util/focus_learner.json",),
-    "bounds": ("util/workspace_bounds.json",),
+    "bounds": ("util/learned_bounds.json", "util/workspace_bounds.json"),  # spatial/bounds_learner.py; legacy
     "escalation": ("util/escalation_learning.json",),
     "fear": ("util/fear_learning.json",),
     "threshold": ("util/adaptive_thresholds.json",),
     "pain": ("util/pain_detector.json",),
     "statistician": ("util/statistician_state.json",),
+    "significance": ("util/significance_weights.json",),  # agents/exec_agent.py
+    "short_term": ("short_term_memory",),  # agents/exec_agent.py's staging files that feed the hippocampus
     "cross_layer": ("util/cross_layer_graph.json",),
     "semantic": ("util/semantic_embeddings.npz",),
-    # Per-agent bio-systems (agents/<id>/<file>.json) + legacy fallbacks
-    "hippo": (
-        "agents/*/hippocampus.json",
-        "memory/hippocampus.json",
-        "memory/memories.json",
-        "util/hippocampus.json",
-    ),
-    "nac": ("agents/*/nac.json", "util/nac_state.json"),
-    "ec": ("agents/*/ec.json",),
-    "scn": ("agents/*/scn.json", "util/scn_state.json"),
-    "atl": ("agents/*/atl.json", "util/atl_state.json"),
-    "angular_gyrus": ("agents/*/angular_gyrus.json",),
+    "tool_index": ("memory/tool_index.json",),  # the learned tool index (tools/learned_index.py)
+    # Legacy flat bio-system files (pre-0.9)
+    "hippo": ("util/hippocampus.json",),
+    "nac": ("util/nac_state.json",),
+    "scn": ("util/scn_state.json",),
+    "atl": ("util/atl_state.json",),
     # Planning artifacts (directory)
     "planning": ("planning",),
 }
+
+MEMORY_PATHS: dict[str, tuple[str, ...]] = {}
+for _type in (*_AGENT_FILES, *_GLOBAL_PATHS):
+    if _type not in MEMORY_PATHS:
+        MEMORY_PATHS[_type] = tuple(
+            f"{home}/{name}" for home in AGENT_HOMES for name in _AGENT_FILES.get(_type, ())
+        ) + _GLOBAL_PATHS.get(_type, ())
+del _type
 
 # D2: memory types that MUST be invalidated together. NAc's ``reward_bias`` /
 # ``cluster_reward_bias`` are keyed by EC node ids, so clearing one half leaves
@@ -642,19 +665,77 @@ def expand_paired_types(requested: list[str]) -> list[str]:
     return out
 
 
-def clear_memory(memory_types: str, home_dir: str | None = None) -> dict[str, bool]:
-    """Clear persistent memory files/directories.
+def _types_to_clear(memory_types: str) -> tuple[list[str], list[str]]:
+    """The memory types ``memory_types`` names (pairs expanded, D2), and the names that are not memory types."""
+    if memory_types.strip().lower() == "all":
+        return list(MEMORY_PATHS), []
+    requested = [t.strip().lower() for t in memory_types.split(",") if t.strip()]
+    types = expand_paired_types(requested)
+    for added in [t for t in types if t not in requested]:
+        partner = next(sorted(pair - {added})[0] for pair in MEMORY_PAIRS if added in pair)
+        print(f"  Also clearing: {added} (must be invalidated with {partner} — see MEMORY_PAIRS)", file=sys.stderr)
+    unknown = [t for t in types if t not in MEMORY_PATHS]
+    return [t for t in types if t in MEMORY_PATHS], unknown
 
-    Each memory type expands to one or more glob patterns under ``~/.maxim/``
-    (see :data:`MEMORY_PATHS`). Per-agent bio-systems are matched across every
-    ``agents/<id>/`` directory; every matched file or directory is removed.
+
+def plan_clear_memory(types: list[str], bases: list[Any]) -> dict[str, list[Any]]:
+    """Every existing path each memory type matches under each base, in order, each path once."""
+    from pathlib import Path
+
+    plan: dict[str, list[Path]] = {}
+    seen: set[Path] = set()
+    for mem_type in types:
+        matched: list[Path] = []
+        for base in bases:
+            for pattern in MEMORY_PATHS[mem_type]:
+                candidates = sorted(Path(base).glob(pattern)) if "*" in pattern else [Path(base) / pattern]
+                for p in candidates:
+                    if os.path.lexists(p) and p not in seen:
+                        seen.add(p)
+                        matched.append(p)
+        plan[mem_type] = matched
+    return plan
+
+
+def _delete_planned(plan: dict[str, list[Any]]) -> dict[str, bool]:
+    """Remove every planned path; True per type when at least one of its paths was removed."""
+    import shutil
+
+    results: dict[str, bool] = {}
+    for mem_type, paths in plan.items():
+        if not paths:
+            results[mem_type] = False
+            print(f"  Not found: {mem_type}")
+            continue
+        cleared_any = False
+        for path in paths:
+            try:
+                if path.is_dir() and not path.is_symlink():  # a symlinked store is unlinked, never followed
+                    shutil.rmtree(path)
+                else:
+                    path.unlink()
+            except OSError as e:
+                print(f"  Failed to clear {mem_type} ({path}): {e}", file=sys.stderr)
+                continue
+            cleared_any = True
+            print(f"  Cleared: {mem_type} ({path})")
+        results[mem_type] = cleared_any
+    return results
+
+
+def clear_memory(memory_types: str, home_dir: str | None = None) -> dict[str, bool]:
+    """Clear persistent memory files/directories, without asking (the CLI asks: :func:`run_clear_memory`).
+
+    Each memory type expands to one or more glob patterns under the data home
+    (see :data:`MEMORY_PATHS`). An agent's stores are matched in every agent home
+    (:data:`AGENT_HOMES`); every matched file or directory is removed.
 
     Args:
         memory_types: Comma-separated memory types or 'all'. Types listed in
             :data:`MEMORY_PAIRS` cannot be cleared alone — requesting one pulls
             in its partner (D2), because clearing half a pair leaves dangling
             cross-references.
-        home_dir: Base data directory (deprecated, uses ~/.maxim/ by default).
+        home_dir: Base data directory (default: the data home, ``~/.maxim`` or ``MAXIM_DATA_HOME``).
 
     Returns:
         Dict mapping memory type to success (True if at least one target was
@@ -662,59 +743,92 @@ def clear_memory(memory_types: str, home_dir: str | None = None) -> dict[str, bo
         NOT request: a paired type pulls in its partner (see
         :data:`MEMORY_PAIRS`), and the partner appears in this dict too.
     """
-    import shutil
     from pathlib import Path
     from maxim.utils.paths import data_home
 
-    results: dict[str, bool] = {}
-
-    if memory_types == "all":
-        types_to_clear = list(MEMORY_PATHS.keys())
-    else:
-        requested = [t.strip().lower() for t in memory_types.split(",")]
-        types_to_clear = expand_paired_types(requested)
-        for added in [t for t in types_to_clear if t not in requested]:
-            partner = next(sorted(pair - {added})[0] for pair in MEMORY_PAIRS if added in pair)
-            print(f"  Also clearing: {added} (must be invalidated with {partner} — see MEMORY_PAIRS)")
-
+    types, unknown = _types_to_clear(memory_types)
+    for mem_type in unknown:
+        print(f"Unknown memory type: {mem_type}", file=sys.stderr)
+        print(f"Available types: {', '.join(MEMORY_PATHS.keys())}", file=sys.stderr)
     base = Path(home_dir) if home_dir is not None else data_home()
-
-    for mem_type in types_to_clear:
-        if mem_type not in MEMORY_PATHS:
-            print(f"Unknown memory type: {mem_type}", file=sys.stderr)
-            print(f"Available types: {', '.join(MEMORY_PATHS.keys())}", file=sys.stderr)
-            results[mem_type] = False
-            continue
-
-        # Expand each pattern relative to base; "*" globs across agent dirs.
-        matched: list[Path] = []
-        for pattern in MEMORY_PATHS[mem_type]:
-            if "*" in pattern:
-                matched.extend(sorted(base.glob(pattern)))
-            else:
-                candidate = base / pattern
-                if candidate.exists():
-                    matched.append(candidate)
-
-        if not matched:
-            results[mem_type] = False
-            print(f"  Not found: {mem_type}")
-            continue
-
-        cleared_any = False
-        for path in matched:
-            try:
-                if path.is_dir():
-                    shutil.rmtree(path)
-                else:
-                    path.unlink()
-                cleared_any = True
-                print(f"  Cleared: {mem_type} ({path})")
-            except Exception as e:
-                print(f"  Failed to clear {mem_type}: {e}", file=sys.stderr)
-        results[mem_type] = cleared_any
-
+    results = _delete_planned(plan_clear_memory(types, [base]))
+    results.update(dict.fromkeys(unknown, False))
     return results
+
+
+def explicit_flag(raw_argv: Any, flag: str) -> bool:
+    """Whether ``flag`` was passed explicitly, as ``flag X`` or ``flag=X`` (an abbreviation is not explicit)."""
+    return any(arg == flag or arg.startswith(f"{flag}=") for arg in (raw_argv or []))
+
+
+def run_clear_memory(
+    memory_types: str,
+    *,
+    home_dir: str,
+    home_dir_explicit: bool,
+    assume_yes: bool,
+    stdin_is_tty: bool | None = None,
+    input_fn: Any = input,
+) -> int:
+    """``maxim --clear-memory``: list what will be deleted, confirm, delete; the exit code (#1337).
+
+    It clears the data home, and ``home_dir``'s stores too when the operator named ``--home-dir`` (the robot
+    path's ``MaximAgent`` persists under it, default ``./data``). Unnamed, a ``./data`` holding memory is only
+    warned about, with its paths. It asks y/N at a terminal; off one it refuses unless ``assume_yes``.
+    Returns 0 when done or nothing matched, 1 when declined or a deletion failed, 2 for an unknown type or a
+    refusal without ``--yes`` (nothing is deleted then).
+    """
+    from pathlib import Path
+    from maxim.utils.paths import data_home
+
+    types, unknown = _types_to_clear(memory_types)
+    if unknown or not types:
+        print(f"Unknown memory type(s): {', '.join(unknown) or repr(memory_types)}", file=sys.stderr)
+        print(f"Available types: {', '.join(MEMORY_PATHS.keys())}", file=sys.stderr)
+        return 2
+    # Both absolute, so every printed path says where it is
+    home = data_home().expanduser().resolve()
+    bases = [home]
+    other = Path(home_dir).expanduser().resolve()
+    if home_dir_explicit and other != home:
+        bases.append(other)
+    plan = plan_clear_memory(types, bases)
+    if not home_dir_explicit and other != home:
+        unnamed = [p for paths in plan_clear_memory(types, [other]).values() for p in paths]
+        if unnamed:
+            print(
+                f"Warning: {other} also holds memory (the robot path's --home-dir); not clearing it:",
+                file=sys.stderr,
+            )
+            for p in unnamed:
+                print(f"    {p}", file=sys.stderr)
+            print(f"  To clear it too, pass --home-dir {home_dir}", file=sys.stderr)
+    planned = [p for paths in plan.values() for p in paths]
+    # The listing and the question go to stderr: with stdout redirected, a prompt there would wait unseen.
+    print(f"Clearing memory ({memory_types}) under {', '.join(str(b) for b in bases)}", file=sys.stderr)
+    if not planned:
+        print("Nothing to clear.", file=sys.stderr)
+        return 0
+    for p in planned:
+        print(f"    {p}", file=sys.stderr)
+    if not assume_yes:
+        if not (sys.stdin.isatty() if stdin_is_tty is None else stdin_is_tty):
+            print(
+                f"Refusing to delete {len(planned)} path(s) without confirmation: re-run with --yes.", file=sys.stderr
+            )
+            return 2
+        print(f"Delete these {len(planned)} path(s)? [y/N] ", end="", file=sys.stderr, flush=True)
+        try:
+            answer = input_fn("")
+        except EOFError:
+            answer = ""
+        if answer.strip().lower() not in ("y", "yes"):
+            print("Cancelled; nothing deleted.", file=sys.stderr)
+            return 1
+    results = _delete_planned(plan)
+    failed = sum(1 for p in planned if os.path.lexists(p))
+    print(f"Cleared {sum(results.values())}/{len(results)} memory type(s).")
+    return 1 if failed else 0
 
 
 def clear_python_cache(base_dir: str | None = None) -> int:

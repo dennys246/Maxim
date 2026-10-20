@@ -397,7 +397,7 @@ Mathematical and statistical cognition. Combines memories across modalities and 
 
 Lives in `src/maxim/math/`. See the Math Cognition guide for details.
 
-The Angular Gyrus does not currently have a dedicated `--clear-memory` key.
+Clear it with `maxim --clear-memory angular_gyrus` (every agent home in the data home).
 
 ---
 

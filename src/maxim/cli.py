@@ -21,7 +21,8 @@ from maxim.cli_utils import (
     configure_cpu_fallback_model as _configure_cpu_fallback_model,
     reexec_with_mode as _reexec_with_mode,
     clear_python_cache as _clear_python_cache,
-    clear_memory as _clear_memory,
+    explicit_flag as _explicit_flag,
+    clear_memory as _clear_memory,  # noqa: F401  (re-exported)
 )
 
 # Re-export MEMORY_PATHS for any external consumers
@@ -160,14 +161,23 @@ def _handle_delete_model(name: str) -> int:
     return 0
 
 
-def _handle_clear_memory(scope: str, home_dir: str) -> int:
-    """Clear the requested memory scope and return 0."""
-    print(f"Clearing memory ({scope})...")
-    results = _clear_memory(scope, home_dir)
-    cleared = sum(1 for v in results.values() if v)
-    total = len(results)
-    print(f"Cleared {cleared}/{total} memory file(s).")
-    return 0
+def _handle_clear_memory(scope: str, args: Any, raw_argv: Sequence[str] | None) -> int:
+    """``--clear-memory``: the data home (and ``--home-dir`` when named), confirmed first (#1337)."""
+    from maxim.cli_utils import run_clear_memory
+
+    return run_clear_memory(
+        scope,
+        home_dir=args.home_dir,
+        home_dir_explicit=_explicit_flag(raw_argv, "--home-dir"),
+        assume_yes=bool(getattr(args, "yes", False)),
+    )
+
+
+def _handle_clear_cache(args: Any) -> None:
+    """``--clear-cache``: remove ``__pycache__`` directories (then the run continues)."""
+    if bool(getattr(args, "clear_cache", False)):
+        removed = _clear_python_cache()
+        print(f"Cleared {removed} __pycache__ director{'y' if removed == 1 else 'ies'}.", file=sys.stderr)
 
 
 def _llm_backend_available() -> bool:
@@ -573,7 +583,7 @@ _NO_AGENT_ACTIONS = ("list_models", "delete_model", "clear_memory", "generate_si
 
 def _explicit_mode_flag(raw_argv: Sequence[str] | None) -> bool:
     """Whether the operator passed ``--mode`` explicitly, in either ``--mode X`` or ``--mode=X`` form."""
-    return any(arg == "--mode" or arg.startswith("--mode=") for arg in (raw_argv or []))
+    return _explicit_flag(raw_argv, "--mode")
 
 
 def _validate_operational_grant(args: Any, raw_argv: Sequence[str] | None) -> int | None:
@@ -1120,13 +1130,11 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
     if delete_model_name:
         return _handle_delete_model(delete_model_name)
 
-    if bool(getattr(args, "clear_cache", False)):
-        removed = _clear_python_cache()
-        print(f"Cleared {removed} __pycache__ director{'y' if removed == 1 else 'ies'}.", file=sys.stderr)
+    _handle_clear_cache(args)
 
     clear_memory = getattr(args, "clear_memory", None)
     if clear_memory is not None:
-        return _handle_clear_memory(clear_memory, args.home_dir)
+        return _handle_clear_memory(clear_memory, args, raw_argv)
 
     # ── Asset Foundry dispatch ──────────────────────────────────────────
     _foundry_theme = getattr(args, "foundry", None)

@@ -102,7 +102,7 @@ def user_config() -> Path:
 
 def user_memory() -> Path:
     """Memory persistence — ``~/.maxim/memory/``."""
-    p = data_home() / "memory"
+    p = data_home() / _MEMORY
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -113,6 +113,18 @@ def user_memory() -> Path:
 _SIM_REPORTS = "sim_reports"
 _AGENTS = "agents"
 RUN_DIR_KINDS: dict[str, str] = {"sim": _SIM_REPORTS, "agent": _AGENTS}
+
+# Every directory under the data home a writer persists an agent's stores in (#1337): one per agent under
+# agents/ (AgentFactory, ``maxim.create.agent``); ``memory/`` (``user_memory()``, passed to ``build_bio_stack``
+# by the Reachy runtime and ``maxim hive merge``); the sim orchestrator's ``orchestrator/``; and ``sessions/``,
+# where ``maxim.run()``'s agent lived before #932. ``--clear-memory`` clears an agent's stores in each of them;
+# ``tests/unit/test_clear_memory_1337.py`` fails when a writer that names its home statically (``user_memory()``,
+# ``agent_data()``, ``data_home() / "<name>"``) builds one outside this list; a home held in a variable is not seen.
+# In ``sessions/`` only the flat store files are an agent's; its ``<session_id>/`` recordings are not cleared.
+_MEMORY = "memory"
+_ORCHESTRATOR = "orchestrator"
+_SESSIONS = "sessions"
+AGENT_HOME_PATTERNS: tuple[str, ...] = (f"{_AGENTS}/*", _MEMORY, _ORCHESTRATOR, _SESSIONS)
 
 
 def sim_reports() -> Path:
@@ -162,7 +174,7 @@ def provenance_dir() -> Path:
 
 def sessions_dir() -> Path:
     """Live session recordings — ``~/.maxim/sessions/``."""
-    p = data_home() / "sessions"
+    p = data_home() / _SESSIONS
     p.mkdir(parents=True, exist_ok=True)
     return p
 
