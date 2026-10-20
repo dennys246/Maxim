@@ -25,6 +25,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **An unusable leader key is a typed refusal on every Python, never a traceback or a silent "no key"**
+  ([#1311](https://github.com/dennys246/Maxim/issues/1311), [#1312](https://github.com/dennys246/Maxim/issues/1312)).
+  - The key readers checked existence through `Path.is_file()`, which RAISES the stat error of an unreadable parent on
+    Python 3.10–3.13 (so `maxim oasis serve` crashed with a raw `PermissionError` before the typed `LeaderKeyError`
+    could name the path and the fix) and SWALLOWS it on 3.14 (so "cannot stat key file" read as "no key file").
+  - `tunnel/keys.py` now opens, fstats and reads the key through one file descriptor: only a missing file is
+    "no key", raised as the new `LeaderKeyMissing` (a `LeaderKeyError`); a key that cannot be stat'd or opened, a
+    parent that is not a directory, a non-regular file (a directory, a FIFO), an oversized or undecodable file is an
+    unusable key. A symlink to a good key is still read. `key_exists` is True for anything but a missing file, and
+    `read_key` returns None for every failure without raising, as documented.
+  - Behaviour change: `maxim oasis serve --insecure` with an unusable (not missing) key now refuses (exit 2) instead
+    of serving without auth.
+  - Guards: `tests/unit/test_leader_key_stat_1311.py` (two strict red gates flipped in place, the 3.14 `is_file`
+    behaviour simulated; each mechanism deletion-proven).
 - **An agent can no longer turn the operator's internet back on, or turn it off for later sessions**
   (behaviour change, security; [#1345](https://github.com/dennys246/Maxim/issues/1345), owner decision 2026-10-19).
   - `internet_access_toggle` used to write `util/internet_access.json`, the operator's persisted switch, so at
