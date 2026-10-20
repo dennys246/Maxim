@@ -401,10 +401,10 @@ def hippocampus_ids(store: dict) -> list[str]:
 
 def _endpoint_origin(url) -> str:
     """``scheme://host[:port]`` of an endpoint, or ``""``: the form a sim report records since #997. A stdlib copy
-    of ``maxim.simulation.report::report_url`` (this script imports no ``maxim``); a parity test pins the two. C4
+    of ``maxim.utils.http::url_origin`` (this script imports no ``maxim``); a parity test pins the two. C4
     reduces BOTH sides with it, so a record from before #997 (which kept ``/v1``) compares as it did."""
-    parts = urlsplit(str(url or "").strip())
     try:
+        parts = urlsplit(str(url or "").strip())
         port = parts.port
     except ValueError:
         return ""
@@ -498,7 +498,9 @@ def complete_problems(
         p.append(f"C4 {name}: a served-model read did not match {MODEL_GGUF} ({reads!r})")
     endpoint = _endpoint_origin(report.get("language_endpoint"))
     if not endpoint or _endpoint_origin(served.get("url")) != endpoint:
-        p.append(f"C4 {name}: served model read at {served.get('url')!r}, but the sim used {endpoint!r}")
+        p.append(
+            f"C4 {name}: served model read at {_endpoint_origin(served.get('url'))!r}, but the sim used {endpoint!r}"
+        )
     # C4' (Exp 63 only): the retention model the harness read at preflight in the attempt's fresh data home.
     if experiment_of(exp) == "63" and row.get("memory_strategy") != EXP63_MEMORY_STRATEGY:
         p.append(f"C4' {name}: memory_strategy {row.get('memory_strategy')!r}, not {EXP63_MEMORY_STRATEGY!r}")

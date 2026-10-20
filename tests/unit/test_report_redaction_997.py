@@ -34,6 +34,7 @@ SECRET_URL = "https://alice:s3cr3t@Leader.Example.com:8443/tok-abc123/v1?key=hun
         ("http://tok%3Asecret%40host.example/v1", ""),  # percent-encoded userinfo left in the host
         ("HTTP://Host.Example", "http://host.example"),
         ("//host.example:1/x", ""),
+        ("http://[::1", ""),  # an unbalanced bracket: urlsplit itself raises
         ("unix:///tmp/llama.sock", ""),
         ("host.example:8100/v1", ""),  # no scheme
         ("", ""),
@@ -41,7 +42,7 @@ SECRET_URL = "https://alice:s3cr3t@Leader.Example.com:8443/tok-abc123/v1?key=hun
     ],
 )
 def test_report_url_keeps_only_scheme_host_and_port(raw, expected) -> None:
-    from maxim.simulation.report import report_url
+    from maxim.utils.http import url_origin as report_url
 
     assert report_url(raw) == expected
 
@@ -222,7 +223,7 @@ def test_every_writer_reduces_the_record_however_the_report_was_built(tmp_path, 
 
 
 def test_redact_urls_reduces_each_url_in_free_text() -> None:
-    from maxim.simulation.report import redact_urls
+    from maxim.utils.http import redact_urls
 
     text = f"entry ('p', 'm', 'peer', '{SECRET_URL}', '') vanished; see unix:///s.sock and http://h:1/x?t=y"
     out = redact_urls(text)
@@ -248,7 +249,7 @@ def test_o19_verdict_reduces_both_sides_of_the_c4_endpoint_check() -> None:
     """The standalone verdict script keeps its own copy of the rule; it must agree with ``report_url``."""
     import importlib.util
 
-    from maxim.simulation.report import report_url
+    from maxim.utils.http import url_origin as report_url
 
     spec = importlib.util.spec_from_file_location("o19_verdict_997", REPO / "scripts/o19_verdict.py")
     mod = importlib.util.module_from_spec(spec)
@@ -264,3 +265,36 @@ def test_o19_verdict_reduces_both_sides_of_the_c4_endpoint_check() -> None:
         "http://h:abc/",
     ):
         assert mod._endpoint_origin(raw) == report_url(raw), raw
+
+
+# ── review-round folds ───────────────────────────────────────────────────────────────────────────────
+
+
+def test_redact_urls_never_raises_and_keeps_no_password_tail() -> None:
+    from maxim.utils.http import redact_urls
+
+    assert redact_urls("bad url http://[oops and http://a]b/") == "bad url <url> and <url>"
+    assert redact_urls("http://u:p'w@host.example/v1 failed") == "http://host.example failed"
+    assert redact_urls("(see http://h:1/x), next.") == "(see http://h:1), next."
+
+
+def test_provider_failures_scrub_before_the_cut(monkeypatch) -> None:
+    """A URL straddling the 200-character cut: the scrub runs first, so neither its credentials nor a half URL
+    that would break the second pass reach the record."""
+    from maxim.simulation.report import SimulationReport, _provider_failures, _record_dict
+
+    err = "x" * 150 + " " + SECRET_URL + " tail"  # the raw URL crosses 200; the reduced one fits
+    state = SimpleNamespace(consecutive_errors=2, last_error=err, backoff_until=0.0)
+    healthy = SimpleNamespace(consecutive_errors=0, last_error="", backoff_until=0.0)
+    failures = _provider_failures(SimpleNamespace(_provider_states={"p": state, "ok": healthy}))
+    assert set(failures) == {"p"}
+    assert "s3cr3t" not in failures["p"]["last_error"] and "alice" not in failures["p"]["last_error"]
+    assert failures["p"]["last_error"].endswith("https://leader.example.com:8443 tail")
+    unbalanced = SimpleNamespace(
+        consecutive_errors=1, last_error="x" * 170 + " http://[::1]:8100/v1/chat/completions", backoff_until=0.0
+    )
+    assert _provider_failures(SimpleNamespace(_provider_states={"p": unbalanced}))["p"]["last_error"].endswith(
+        "http://[::1]:8100"
+    )
+    record = _record_dict(SimulationReport(provider_failures={"p": {"last_error": "x" * 190 + " http://[::1"}}))
+    assert record["provider_failures"]["p"]["last_error"].endswith("<url>")

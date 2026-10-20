@@ -37,8 +37,8 @@ from pathlib import Path
 from typing import Any
 
 from maxim.models.language import call_accounting
-from maxim.simulation.report import redact_urls, report_url
 from maxim.utils import scenario_inputs
+from maxim.utils.http import redact_urls, url_origin
 from maxim.utils.file_digest import BackgroundDigest, file_stat
 
 logger = logging.getLogger(__name__)
@@ -226,7 +226,7 @@ def serving_provenance(
             entry = call_accounting.entry_dict(key, n)
             _join_identity(entry, owned, llama_cache)
             if entry["backend_kind"] != "llama":  # a llama endpoint is its model file path, not a URL
-                entry["endpoint"] = report_url(entry["endpoint"])  # after the join, which matches the full URL (#997)
+                entry["endpoint"] = url_origin(entry["endpoint"])  # after the join, which matches the full URL (#997)
             entries.append(entry)
             if entry["backend_kind"] == "peer" and entry["served_id"]:
                 served_ids.setdefault(entry["provider_key"], set()).add(entry["served_id"])
@@ -237,7 +237,7 @@ def serving_provenance(
         for probe in router.serving_probes():
             cached, fresh = probe["cached_served_id"], probe["fresh_served_id"]
             changed = changed or bool(cached and fresh and cached != fresh)
-            heads[report_url(_root(probe["endpoint"]))] = probe["leader_disk_head"]
+            heads[url_origin(_root(probe["endpoint"]))] = probe["leader_disk_head"]
     inputs = scenario_inputs.since(start["scenario_mark"])
     content_sha = start["scenario_content_sha256"]
     scenario_sha = hashlib.sha256(
