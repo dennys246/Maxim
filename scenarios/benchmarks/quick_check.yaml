@@ -73,3 +73,6 @@ benchmark:
   tier: [2]
   weight: 1.0
   seed_keywords: ["seven-three-nine", "Kael"]
+  # Thresholds for this scenario run alone (#1310): without one, a benchmark can never pass.
+  scoring:
+    recall_seven-three-nine: { pass: 1.0 }

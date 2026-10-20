@@ -42,8 +42,18 @@ class ExperimentResult:
     analysis: dict[str, Any] = field(default_factory=dict)
     summary: str = ""
 
-    # Raw campaign turn results (if available)
+    # The delivery record of each campaign turn, as campaign_runner.run_precampaign_turns writes it:
+    # {"turn": <1-based>, "phase", "actions", "response", "timed_out", ...} or {"turn", "phase", "error"}
     campaign_turns: list[dict[str, Any]] = field(default_factory=list)
+
+    # What the run DID, carried from the SimulationResult so a scenario's expectations are judged against it
+    # (#1310: the benchmark validated against an empty sink and no hippocampus, so no model could pass).
+    actions: list[dict[str, Any]] = field(default_factory=list)  # serialized ActionRecords
+    tool_stats: dict[str, Any] = field(default_factory=dict)  # Executor.tool_usage_stats()
+    subsystem_snapshot: dict[str, Any] = field(default_factory=dict)  # Observer.benchmark_snapshot()
+    hippocampus: Any = None  # the AUT's hippocampus, for memory expectations
+    # scenario_tag of every campaign turn delivered without error; None when the run did not report delivery
+    delivered_tags: set[str] | None = None
 
     def memory_survived(self, keyword: str) -> bool:
         """Check if a specific memory survived the campaign."""
@@ -102,6 +112,28 @@ def load_campaign_turns(campaign_path: str) -> list[dict[str, Any]]:
             }
         )
     return turns
+
+
+def delivered_scenario_tags(turns: list[dict[str, Any]], campaign_analysis: dict[str, Any] | None) -> set[str] | None:
+    """The ``scenario_tag`` of every campaign turn delivered without error, from the delivery records
+    ``campaign_runner.run_precampaign_turns`` writes (``{"turn": <1-based index>, ...}``, ``"error"`` on a failure).
+    A turn that timed out waiting for the AUT's answer (``timed_out``) was still delivered: its percept was sent.
+
+    ``None`` when the run reported no delivery at all, so a caller cannot read "nothing delivered" from it.
+    """
+    records = (campaign_analysis or {}).get("turns")
+    if not isinstance(records, list):
+        return None
+    tags: set[str] = set()
+    for record in records:
+        if not isinstance(record, dict) or "error" in record:
+            continue
+        index = record.get("turn")
+        if isinstance(index, int) and 1 <= index <= len(turns):
+            tag = (turns[index - 1].get("metadata") or {}).get("scenario_tag")
+            if tag:
+                tags.add(str(tag))
+    return tags
 
 
 def run_campaign(
@@ -167,12 +199,18 @@ def run_campaign(
         sim_turns=sim_result.turns,
         sim_duration_s=sim_result.duration_s,
         finish_reason=sim_result.finish_reason,
+        campaign_turns=list((sim_result.campaign_analysis or {}).get("turns", [])),
+        actions=list(sim_result.actions),
+        tool_stats=dict(sim_result.tool_stats),
+        subsystem_snapshot=dict(sim_result.subsystem_snapshot),
+        delivered_tags=delivered_scenario_tags(turns, sim_result.campaign_analysis),
     )
 
     # Try to get introspection data from the sim result
     # The orchestrator stores aut_introspector as an attribute if available
     introspector = getattr(sim_result, "introspector", None)
     if introspector is not None:
+        result.hippocampus = introspector.hippocampus
         try:
             result.analysis = introspector.full_analysis(seed_keywords=seed_keywords)
             result.summary = introspector.summarize(result.analysis)
