@@ -943,7 +943,7 @@ def url_origin(url: str | None) -> str:
 # everything up to whitespace, a quote or an angle bracket.
 _URL_IN_TEXT = re.compile(r"(?<![A-Za-z0-9+.-])[A-Za-z0-9+.-]+://(?:[^\s/@]*@)?[^\s'\"<>]+")
 _URL_TRAILING_PUNCT = ".,;:!?)"
-_URL_LEADING_NON_SCHEME = re.compile(r"^[0-9+.-]*")
+_URL_NON_SCHEME_START = "0123456789+.-"  # characters a scheme may hold but not start with
 
 
 def redact_urls(text: str) -> str:
@@ -954,7 +954,7 @@ def redact_urls(text: str) -> str:
     def _reduce(match: re.Match[str]) -> str:
         raw = match.group(0)
         core = raw.rstrip(_URL_TRAILING_PUNCT)
-        lead = _URL_LEADING_NON_SCHEME.match(core).group(0)  # a scheme starts with a letter: ``1https://`` keeps ``1``
+        lead = core[: len(core) - len(core.lstrip(_URL_NON_SCHEME_START))]  # ``1https://`` keeps ``1``
         return lead + (url_origin(core[len(lead) :]) or "<url>") + raw[len(core) :]
 
     return _URL_IN_TEXT.sub(_reduce, str(text))
