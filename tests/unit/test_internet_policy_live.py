@@ -86,10 +86,10 @@ def test_an_ill_typed_domain_list_fails_closed_instead_of_splitting_characters(t
 def test_toggle_tool_requires_an_explicit_enabled() -> None:
     from maxim.tools.internet_search import InternetAccessTool
 
-    calls: list[bool] = []
-    tool = InternetAccessTool(set_internet_access_fn=lambda enabled, source: calls.append(enabled))
+    tool = InternetAccessTool()
     assert tool.execute().success is False
-    assert calls == []
+    assert tool.execute(enabled="false").success is False  # a truthy string is not a bool (#1345)
+    assert not ia.session_internet_lowered()
 
 
 def test_the_toggle_takes_effect_on_the_next_request(tmp_path: Path) -> None:

@@ -446,6 +446,23 @@ def _scrub_ci_event_env(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_internet_lowered_env():
+    """Scrub ``MAXIM_INTERNET_LOWERED`` across every test (#1345).
+
+    The agent's ``internet_access_toggle`` sets it in-process to lower internet for the rest of the session, and
+    nothing unsets it, by design. Without this scrub, one test that lowers would turn internet off for every later
+    test that reads the live policy. Restored on the way out so an operator-set value survives the session.
+    """
+    saved = os.environ.pop("MAXIM_INTERNET_LOWERED", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_INTERNET_LOWERED", None)
+        if saved is not None:
+            os.environ["MAXIM_INTERNET_LOWERED"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_auto_download_env():
     """Scrub ``MAXIM_AUTO_DOWNLOAD_MODELS`` across every test.
 

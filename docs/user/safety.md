@@ -153,9 +153,16 @@ maxim --no-internet
 
 Within that launch-time switch, two persisted files shape access, and every request reads them:
 
-- `~/.maxim/util/internet_access.json` — the on/off toggle. The agent's `internet_access_toggle`
-  tool writes it, and it applies to every later session. If it is off, Maxim logs a WARNING at
-  startup naming the file; delete the file to reset.
+- `~/.maxim/util/internet_access.json` — the operator's on/off toggle, written only by the operator
+  (`maxim.utils.set_internet_access`, or by hand). It applies to every later session. If it is off,
+  Maxim logs a WARNING at startup naming the file; delete the file to reset. Before 1.3.3 the agent's
+  `internet_access_toggle` also wrote it (the startup WARNING says so for such a file).
+
+The agent's `internet_access_toggle` can only turn internet **off, for its own session** (#1345). It
+sets `MAXIM_INTERNET_LOWERED` in the process environment, which a re-exec and the processes Maxim
+spawns inherit, and which ends with the session; nothing is written to disk. It cannot turn internet
+on, not even back after its own lower: only the operator can, by starting a new session. You can
+also start a session lowered by setting `MAXIM_INTERNET_LOWERED=1`.
 - `~/.maxim/util/internet_policy.json` — domain `allow_domains` / `block_domains` lists and fetch
   limits (`max_fetch_bytes`, `request_timeout_s`, …). Page fetches honour them; search results do
   not filter by them yet. A file that exists but cannot be read, or has an ill-typed domain list,

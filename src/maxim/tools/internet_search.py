@@ -597,48 +597,56 @@ class InternetSearchTool(Tool):
 
 
 class InternetAccessTool(Tool):
-    """Tool for enabling/disabling internet access.
+    """The agent's internet switch: it can only LOWER internet access, for its own session (#1345).
 
-    This is a privileged tool that should require confirmation.
+    Owner decision 2026-10-19 (strict): the operator's persisted on/off (``util/internet_access.json``) is never
+    written here, and the agent cannot raise access, not even back after its own lower. ``enabled: false`` lowers the
+    session through ``utils/internet_access.py::lower_internet_for_session``, which every internet tool's next request
+    reads through the one loader. ``enabled: true`` is refused unless internet is already on and was never lowered,
+    which is a truthful no-op. Before #1345 this tool wrote the operator's file.
     """
 
     name = "internet_access_toggle"
-    description = "Enable or disable internet access"
+    description = (
+        "Turn internet access OFF for the rest of this session (enabled: false). It cannot turn internet on: "
+        "only the operator can."
+    )
     input_schema = {
-        "enabled": bool,  # Required: enable or disable
+        "enabled": bool,  # Required: false lowers this session; true only reports the current state
         "reason": (str, ""),  # Optional: reason for change
     }
 
-    def __init__(
-        self,
-        set_internet_access_fn: Any | None = None,
-    ):
-        super().__init__()
-        self._set_internet_access = set_internet_access_fn
-
     def execute(self, **kwargs: Any) -> ToolResult:
-        """Execute the toggle."""
-        if "enabled" not in kwargs:
-            # No silent default: a missing argument must not turn internet off for every later
-            # session (the persisted toggle now reaches the live tools, #822).
-            return ToolResult(success=False, error="internet_access_toggle requires an explicit 'enabled' true/false")
-        enabled = bool(kwargs["enabled"])
+        """Lower this session's internet access, or refuse to raise it."""
+        from maxim.utils.internet_access import load_internet_policy, lower_internet_for_session
+
+        if "enabled" not in kwargs or not isinstance(kwargs["enabled"], bool):
+            # No silent default, and no truthy string: "false" must not read as on (#822, #1345).
+            return ToolResult(
+                success=False, error="internet_access_toggle requires an explicit 'enabled': true or false"
+            )
+        enabled = kwargs["enabled"]
         reason = str(kwargs.get("reason", "")).strip()
 
-        if not self._set_internet_access:
-            # Use default implementation
-            from maxim.utils.internet_access import set_internet_access
-
-            set_internet_access(enabled, source="tool")
-        else:
-            self._set_internet_access(enabled, source="tool")
-
+        if not enabled:
+            lower_internet_for_session()
+            return ToolResult(
+                success=True,
+                output="Internet access is off for the rest of this session (the operator's setting is unchanged).",
+                metadata={"enabled": False, "reason": reason, "scope": "session"},
+            )
+        current = load_internet_policy()
+        if current.enabled:
+            return ToolResult(
+                success=True,
+                output="Internet access is already on; nothing changed.",
+                metadata={"enabled": True, "reason": reason, "scope": "session"},
+            )
         return ToolResult(
-            success=True,
-            output=f"Internet access {'enabled' if enabled else 'disabled'}",
-            metadata={
-                "enabled": enabled,
-                "reason": reason,
-                "source": "tool",
-            },
+            success=False,
+            error=(
+                f"{current.disabled_reason()}. This tool cannot turn internet access on: only the operator can "
+                "(--internet-access at launch, or the operator's internet settings)."
+            ),
+            metadata={"enabled": False, "reason": reason, "refused": "raise"},
         )

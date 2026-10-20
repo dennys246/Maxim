@@ -60,12 +60,10 @@ def _writers() -> set[str]:
     return found
 
 
-@pytest.mark.xfail(strict=True, reason="#1345: the agent's toggle writes the operator's persisted switch")
 def test_only_the_internet_access_module_writes_the_operator_switch() -> None:
     assert _writers() <= {"utils/internet_access.py"}, sorted(_writers())
 
 
-@pytest.mark.xfail(strict=True, reason="#1345: the agent can turn the operator's off back on")
 def test_the_agent_cannot_turn_the_operators_off_back_on(operator_home) -> None:
     from maxim.utils.internet_access import load_internet_policy
 
@@ -76,7 +74,6 @@ def test_the_agent_cannot_turn_the_operators_off_back_on(operator_home) -> None:
     assert load_internet_policy().enabled is False
 
 
-@pytest.mark.xfail(strict=True, reason="#1345: a lower is persisted for every later session")
 def test_a_lower_lasts_this_session_and_never_touches_the_file(tmp_path, monkeypatch) -> None:
     from maxim.utils import paths
     from maxim.utils.internet_access import _reset_policy_cache, live_internet_policy_getter
@@ -91,3 +88,115 @@ def test_a_lower_lasts_this_session_and_never_touches_the_file(tmp_path, monkeyp
     assert not toggle.exists()  # nothing persisted
     fresh = live_internet_policy_getter(True)()  # a rebuilt registry's getter sees the same session
     assert (fresh.enabled, fresh.source) == (False, "session-lowered")
+
+
+@pytest.fixture
+def fresh_home(tmp_path, monkeypatch):
+    """A data home with no operator toggle (internet on by default) and no session lower."""
+    from maxim.utils import paths
+    from maxim.utils.internet_access import _reset_policy_cache
+
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("MAXIM_INTERNET_LOWERED", raising=False)
+    paths._reset_caches()
+    _reset_policy_cache()
+    yield tmp_path / "home" / "util" / "internet_access.json"
+    paths._reset_caches()
+    _reset_policy_cache()
+
+
+def test_the_agent_cannot_raise_back_after_its_own_lower(fresh_home) -> None:
+    from maxim.utils.internet_access import load_internet_policy
+
+    assert _toggle(enabled=False).success is True
+    raised = _toggle(enabled=True)
+    assert raised.success is False and "only the operator" in raised.error
+    assert load_internet_policy().enabled is False
+
+
+def test_turning_on_an_already_on_session_is_a_truthful_no_op(fresh_home) -> None:
+    result = _toggle(enabled=True)
+    assert result.success is True and "already on" in result.output
+    assert not fresh_home.exists()
+
+
+def test_a_lower_never_rewrites_an_existing_operator_on(fresh_home) -> None:
+    from maxim.utils.internet_access import set_internet_access
+
+    set_internet_access(True, path=fresh_home)
+    before = fresh_home.read_bytes()
+    _toggle(enabled=False)
+    assert fresh_home.read_bytes() == before
+
+
+def test_the_internet_tools_refuse_the_next_request_after_a_lower(fresh_home) -> None:
+    from maxim.tools.http_fetch import HttpFetchTool
+    from maxim.tools.internet_search import InternetSearchTool
+    from maxim.utils.internet_access import live_internet_policy_getter
+
+    getter = live_internet_policy_getter(True)
+    fetch = HttpFetchTool(get_internet_policy=getter, content_safety_checker=lambda *a, **k: None)
+    search = InternetSearchTool(get_internet_policy=getter)
+    _toggle(enabled=False)
+    for result in (fetch.execute(url="https://example.com"), search.execute(query="anything")):
+        assert result.success is False and "this session" in (result.error or "")
+
+
+def test_a_child_process_inherits_the_lower(fresh_home) -> None:
+    import os
+    import subprocess
+    import sys
+
+    _toggle(enabled=False)
+    out = subprocess.run(
+        [sys.executable, "-c", "from maxim.utils.internet_access import session_internet_lowered as s; print(s())"],
+        env={**os.environ, "PYTHONPATH": str(SRC.parent)},
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert out.stdout.strip() == "True", out.stderr
+
+
+def test_an_explicit_falsy_value_is_not_lowered(fresh_home, monkeypatch) -> None:
+    from maxim.utils.internet_access import load_internet_policy, session_internet_lowered
+
+    monkeypatch.setenv("MAXIM_INTERNET_LOWERED", "0")
+    assert session_internet_lowered() is False and load_internet_policy().enabled is True
+
+
+def test_the_lower_is_written_once(fresh_home, monkeypatch) -> None:
+    import os
+
+    from maxim.utils import internet_access
+
+    writes: list[str] = []
+    real = os.environ.__class__.__setitem__
+
+    def _spy(self, key, value):
+        if key == internet_access.SESSION_LOWERED_ENV:
+            writes.append(value)
+        real(self, key, value)
+
+    monkeypatch.setattr(os.environ.__class__, "__setitem__", _spy)
+    internet_access.lower_internet_for_session()
+    internet_access.lower_internet_for_session()
+    assert writes == ["1"]
+
+
+def test_the_startup_warning_names_the_session_lower_not_the_file(fresh_home, caplog) -> None:
+    from maxim.utils.internet_access import live_internet_policy_getter, lower_internet_for_session
+
+    lower_internet_for_session()
+    caplog.clear()
+    live_internet_policy_getter(True)
+    assert "MAXIM_INTERNET_LOWERED" in caplog.text and "delete the toggle file" not in caplog.text
+
+
+def test_a_legacy_agent_written_off_is_named_at_startup(fresh_home, caplog) -> None:
+    from maxim.utils.internet_access import live_internet_policy_getter, set_internet_access
+
+    set_internet_access(False, source="tool", path=fresh_home)  # what the tool wrote before #1345
+    caplog.clear()
+    live_internet_policy_getter(True)
+    assert "written by an agent" in caplog.text

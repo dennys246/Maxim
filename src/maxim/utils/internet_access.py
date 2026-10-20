@@ -9,6 +9,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import logging
+import os
 import re
 import socket
 import threading
@@ -171,12 +172,45 @@ def save_internet_access(state: InternetAccessState, path: Path | str | None = N
         return False
 
 
-def set_internet_access(enabled: bool, source: str = "tool", path: Path | str | None = None) -> InternetAccessState:
-    """Set internet access state."""
+def set_internet_access(enabled: bool, source: str = "operator", path: Path | str | None = None) -> InternetAccessState:
+    """Set the OPERATOR's persisted internet on/off (``util/internet_access.json``).
+
+    Operator-only: the agent never writes this file (#1345). Its ``internet_access_toggle`` lowers its own session
+    through :func:`lower_internet_for_session`; ``tests/unit/test_internet_toggle_session_1345.py`` fails on any
+    other caller in ``src/``.
+    """
     state = InternetAccessState(enabled=enabled, source=source)
     save_internet_access(state, path)
     logger.info(f"Internet access {'enabled' if enabled else 'disabled'} (source={source})")
     return state
+
+
+# The agent's lower for its own session (#1345, owner decision 2026-10-19: lower only, in memory, no raise back).
+# It lives in the process environment, so a registry rebuilt on a wake or a mode change and a re-exec on a mode switch
+# keep it, child processes Maxim spawns inherit it, and it ends with the process tree: that tree is the session. It is
+# never written to disk and nothing in src/ unsets it. The agent's own bash/code tools run with `host_tool_env`,
+# which passes no MAXIM_* variable (#949), so a `maxim` it starts there does not inherit the lower: that is the stated
+# code-execution residual (such an agent can reach the network anyway).
+SESSION_LOWERED_ENV = "MAXIM_INTERNET_LOWERED"
+
+
+def session_internet_lowered() -> bool:
+    """Whether this session's internet was lowered (``MAXIM_INTERNET_LOWERED``, the canonical truthy parser; a value
+    that is set but not truthy, e.g. ``0``, is an explicit "not lowered")."""
+    from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env
+
+    return annotation_disabled_via_env(os.environ.get(SESSION_LOWERED_ENV))
+
+
+def lower_internet_for_session() -> None:
+    """Turn internet off for the rest of this session; it never raises access and never writes the operator's file.
+
+    Writes the variable only when it is not already set: one write per process (a C-level ``setenv`` racing a native
+    thread's ``getenv`` is the risk being avoided).
+    """
+    if not session_internet_lowered():
+        os.environ[SESSION_LOWERED_ENV] = "1"
+        logger.warning("Internet access lowered for this session by the agent; the operator's setting is unchanged")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -431,6 +465,11 @@ class EffectiveInternetPolicy:
         """Why access is off, in words the model and the operator can act on."""
         if self.source == "policy-unreadable":
             return "Internet access is disabled: the internet policy file is unreadable or invalid (see the log)"
+        if self.source == "session-lowered":
+            return (
+                "Internet access is disabled for this session: it was turned off from inside the session (the "
+                "operator's setting is unchanged). Only the operator can turn it back on, by starting a new session."
+            )
         if self.source == "unreadable":
             return (
                 "Internet access is disabled: the internet access toggle file (util/internet_access.json) is "
@@ -550,6 +589,8 @@ def load_internet_policy(
     operator = _operator_policy(path)
     if operator is None:
         return EffectiveInternetPolicy(policy=InternetAccessPolicy(), enabled=False, source="policy-unreadable")
+    if session_internet_lowered():
+        return EffectiveInternetPolicy(policy=operator, enabled=False, source="session-lowered")
     return EffectiveInternetPolicy(policy=operator, enabled=access_state.enabled, source=access_state.source)
 
 
@@ -597,15 +638,28 @@ def live_internet_policy_getter(
     if not launch_enabled:
         return None
     initial = load_internet_policy(policy_path, access_path=access_path)
-    if not initial.enabled or initial.policy.allow_domains or initial.policy.block_domains:
-        # WARNING, not INFO: a persisted "off" (the agent's toggle tool is its only writer) or a
-        # domain list silently changes what every later session can reach (#822 review).
+    if initial.source == "session-lowered":
+        # The session's own lower, inherited across a re-exec (#1345): deleting the toggle file would not help.
+        logger.warning(
+            "Internet access is off for this session: %s is set (the agent lowered it, or it was started lowered). "
+            "It lasts for this process tree only; start a new session without it to restore the operator's setting.",
+            SESSION_LOWERED_ENV,
+        )
+    elif not initial.enabled or initial.policy.allow_domains or initial.policy.block_domains:
+        # WARNING, not INFO: a persisted "off" or a domain list silently changes what every later session can reach
+        # (#822 review). The operator writes the toggle; before #1345 the agent's tool did too (source "tool").
+        written_by = (
+            " It was written by an agent's internet_access_toggle before 1.3.3."
+            if load_internet_access(access_path).source == "tool"
+            else ""
+        )
         logger.warning(
             "Internet policy in effect: %s (toggle: %s; policy: %s). To turn internet back on, delete the "
-            "toggle file; the policy file holds your domain lists and limits.",
+            "toggle file; the policy file holds your domain lists and limits.%s",
             initial.summary(),
             Path(access_path) if access_path else _default_internet_access_path(),
             Path(policy_path) if policy_path else _default_policy_path(),
+            written_by,
         )
     else:
         logger.info("Internet policy in effect: %s", initial.summary())
