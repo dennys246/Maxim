@@ -92,7 +92,7 @@ Create a git commit with a message.
 Search the web. Requires the `--internet-access` flag.
 
 ### InternetAccessTool
-Enable or disable internet access at runtime. Toggles the internet access policy used by `InternetSearchTool` and `HttpFetchTool`.
+Turn internet access OFF for the rest of the agent's own session (#1345). It cannot turn internet on, not even back after its own lower, and it never writes the operator's persisted toggle (`util/internet_access.json`). `InternetSearchTool` and `HttpFetchTool` refuse from the next request. See [safety.md](safety.md) §Internet Access.
 
 ### HttpFetchTool
 Fetch raw HTTP content from URLs.

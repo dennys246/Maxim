@@ -25,6 +25,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **An agent can no longer turn the operator's internet back on, or turn it off for later sessions**
+  (behaviour change, security; [#1345](https://github.com/dennys246/Maxim/issues/1345), owner decision 2026-10-19).
+  - `internet_access_toggle` used to write `util/internet_access.json`, the operator's persisted switch, so at
+    `--autonomy autonomous` an agent could undo an operator's "off", or persist "off" for every later session.
+  - Now it can only lower internet for its OWN session: it sets `MAXIM_INTERNET_LOWERED` in the process environment
+    (inherited by a re-exec and by processes Maxim spawns; never written to disk), which the one policy loader reads
+    on every request. `enabled: true` is refused unless internet is already on. The operator's file is written only
+    by `maxim.utils.set_internet_access`, whose default `source` is now `"operator"` (it was `"tool"`); a legacy
+    agent-written "off" is named in the startup WARNING. `InternetAccessTool` lost its `set_internet_access_fn=`
+    constructor argument (no caller remained).
+  - Still open (fails closed): the prompt keeps offering the internet tools after a lower, and `state.data`'s
+    `internet_access` is a launch-time snapshot ([#1399](https://github.com/dennys246/Maxim/issues/1399)).
+  - Design: [docs/plans/internet_toggle_session_gate.md](docs/plans/internet_toggle_session_gate.md) (two adversarial
+    passes). Guard: `tests/unit/test_internet_toggle_session_1345.py` (three strict red gates flipped in place, each
+    mechanism deletion-proven) + the `_isolate_maxim_internet_lowered_env` conftest scrub.
 - **A missing local model downloads only with consent, on every path** (behaviour change;
   [#1343](https://github.com/dennys246/Maxim/issues/1343)).
   - Two internal paths called `download_llm` directly and skipped the consent gate
