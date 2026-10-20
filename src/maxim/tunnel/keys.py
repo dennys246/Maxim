@@ -17,6 +17,7 @@ import logging
 import os
 import platform
 import secrets
+import stat
 from pathlib import Path
 
 from maxim.exceptions import LeaderRefusal
@@ -54,19 +55,46 @@ def generate_key(prefix: str = "") -> str:
 
 
 def key_exists(name: str = MESH_KEY_NAME) -> bool:
-    return key_file_path(name).is_file()
+    """Whether anything is at the key path. Only a missing file is False: a path that cannot be stat'd, or is not a
+    regular file, is True, so a caller reports it instead of treating the key as absent (#1311). Never raises; never
+    reads through ``Path.is_file``, which raises on Python <=3.13 and swallows on 3.14 (#1312)."""
+    try:
+        os.stat(key_file_path(name))
+    except FileNotFoundError:
+        return False
+    except (OSError, ValueError):
+        return True
+    return True
 
 
 def read_key(name: str = MESH_KEY_NAME) -> str | None:
-    """Return the stored key, or None if not set."""
-    path = key_file_path(name)
-    if not path.is_file():
-        return None
+    """Return the stored key, or None if it is missing or unusable in any way (never raises). A leading BOM is
+    stripped, as the leader's strict reader does, so a peer never sends a different bearer than the leader accepts."""
     try:
-        content = path.read_text().strip()
-        return content or None
-    except OSError:
+        raw, _mode = _read_key_file(key_file_path(name))
+    except LeaderKeyError:
         return None
+    return raw.lstrip("\ufeff").strip() or None
+
+
+def key_file_state(name: str = MESH_KEY_NAME) -> tuple[str, str | None]:
+    """``("missing", None)``, ``("unusable", reason)`` or ``("ok", None)`` for the named key file (never raises).
+
+    For callers that must tell an absent key (generate one; "no key set") from one that is there but cannot be used
+    (refuse; report the reason): an unusable key must not be advised away as a mismatch (#1311); #1402 will refuse to overwrite one.
+    """
+    try:
+        raw, _mode = _read_key_file(key_file_path(name))
+    except LeaderKeyMissing:
+        return "missing", None
+    except LeaderKeyError as e:
+        return "unusable", e.reason
+    if not raw.lstrip("\ufeff").strip():
+        return "unusable", _EMPTY_KEY_REASON
+    return "ok", None
+
+
+_EMPTY_KEY_REASON = "key file is empty"
 
 
 def write_key(key: str, name: str = MESH_KEY_NAME) -> Path:
@@ -147,6 +175,64 @@ class LeaderKeyError(LeaderRefusal):
         super().__init__(f"leader key unusable ({reason}): {path}")
 
 
+class LeaderKeyMissing(LeaderKeyError):
+    """No key file at the path: the one :class:`LeaderKeyError` a caller may treat as "no key" (``oasis serve`` then
+    needs ``--insecure``). Only ``FileNotFoundError`` is missing; a path that cannot be stat'd or opened, a parent that
+    is not a directory, or something other than a regular file is an unusable key, never an absent one (#1311)."""
+
+    def __init__(self, *, path: Path) -> None:
+        super().__init__(path=path, reason="no key file")
+
+
+# A generated key is 43 characters; a key file larger than this is not a key.
+_MAX_KEY_FILE_BYTES = 64 * 1024
+
+
+def _read_key_file(path: Path) -> tuple[str, int]:
+    """The text and permission bits of the regular file at ``path``, read through ONE file descriptor.
+
+    Opened, fstat'd and read through the same descriptor, so the file cannot be swapped (for a FIFO, which would hang
+    startup, or for a world-readable file after the mode check) between the check and the read. Raises
+    :class:`LeaderKeyMissing` or :class:`LeaderKeyError`, never a raw ``OSError`` (#1311, #1312).
+    """
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)
+    try:
+        fd = os.open(path, flags)
+    except FileNotFoundError as e:
+        raise LeaderKeyMissing(path=path) from e
+    except (OSError, ValueError) as e:
+        # Which layer refused: a parent that cannot be searched means the path cannot even be stat'd.
+        try:
+            os.stat(path)
+        except (OSError, ValueError):
+            raise LeaderKeyError(path=path, reason=f"cannot stat key file ({type(e).__name__})") from e
+        raise LeaderKeyError(path=path, reason=f"cannot read key file ({type(e).__name__})") from e
+    try:
+        try:
+            st = os.fstat(fd)
+        except OSError as e:
+            raise LeaderKeyError(path=path, reason=f"cannot stat key file ({type(e).__name__})") from e
+        if not stat.S_ISREG(st.st_mode):
+            raise LeaderKeyError(path=path, reason="key path is not a regular file")
+        data = b""
+        try:
+            while len(data) <= _MAX_KEY_FILE_BYTES:  # a network filesystem may return a short read
+                chunk = os.read(fd, _MAX_KEY_FILE_BYTES + 1 - len(data))
+                if not chunk:
+                    break
+                data += chunk
+        except OSError as e:
+            raise LeaderKeyError(path=path, reason=f"cannot read key file ({type(e).__name__})") from e
+        if len(data) > _MAX_KEY_FILE_BYTES:
+            raise LeaderKeyError(path=path, reason="key file is too large to be a key")
+        try:
+            return data.decode("utf-8"), stat.S_IMODE(st.st_mode)
+        except UnicodeDecodeError as e:
+            raise LeaderKeyError(path=path, reason=f"cannot read key file ({type(e).__name__})") from e
+    finally:
+        os.close(fd)
+
+
 def require_leader_key() -> str:
     """Return the mesh key for a leader, or raise :class:`LeaderKeyError`.
 
@@ -157,27 +243,13 @@ def require_leader_key() -> str:
     here, loudly, instead of serving without auth.
     """
     path = key_file_path(MESH_KEY_NAME)
-    try:
-        present = path.is_file()
-    except OSError as e:  # an unreadable parent directory: say so, typed, with the path
-        raise LeaderKeyError(path=path, reason=f"cannot stat key file ({type(e).__name__})") from e
-    if not present:
-        raise LeaderKeyError(path=path, reason="no key file")
-    if platform.system() != "Windows":
-        try:
-            mode = path.stat().st_mode & 0o777
-        except OSError as e:
-            raise LeaderKeyError(path=path, reason=f"cannot stat key file ({type(e).__name__})") from e
-        if mode & 0o077:
-            raise LeaderKeyError(
-                path=path,
-                reason=f"key file mode is {mode:o}, readable by other users",
-                fix_hint=f"Run `chmod 600 {path}` on the leader.",
-            )
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as e:
-        raise LeaderKeyError(path=path, reason=f"cannot read key file ({type(e).__name__})") from e
+    raw, mode = _read_key_file(path)  # LeaderKeyMissing for no file; LeaderKeyError for any unusable one
+    if platform.system() != "Windows" and mode & 0o077:
+        raise LeaderKeyError(
+            path=path,
+            reason=f"key file mode is {mode & 0o777:o}, readable by other users",
+            fix_hint=f"Run `chmod 600 {path}` on the leader.",
+        )
     key = raw.lstrip("\ufeff").strip()
     if not key:
         raise LeaderKeyError(path=path, reason="key file is empty")

@@ -631,6 +631,7 @@ def test_an_unreadable_leader_key_is_refused_not_treated_as_absent(monkeypatch) 
         raise PermissionError("denied")
 
     monkeypatch.setattr(type(path), "read_text", _boom)
+    monkeypatch.setattr(keys.os, "read", _boom)  # #1311: the reader reads its one descriptor
     with pytest.raises(LeaderKeyError, match="cannot read key file"):
         require_leader_key()
 
@@ -646,15 +647,20 @@ def test_key_file_failures_are_typed_or_none_never_a_crash(monkeypatch, tmp_path
         return real_stat(self, *a, **k)
 
     monkeypatch.setattr(type(path), "stat", _stat_fails)
-    if sys.platform != "win32":
-        with pytest.raises(LeaderKeyError, match="cannot stat key file"):
-            require_leader_key()
+    # #1312: the reader opens and fstats one descriptor (never Path.is_file, which swallows the error on 3.14), so the
+    # unstat-able path is denied at the os layer too, as an unreadable parent directory does.
+    from tests.unit._key_file_helpers import deny_os_access
+
+    deny_os_access(monkeypatch, path)
+    with pytest.raises(LeaderKeyError, match="cannot stat key file"):
+        require_leader_key()
     monkeypatch.undo()
 
     def _read_fails(*a, **k):
         raise OSError("io")
 
     monkeypatch.setattr(type(path), "read_text", _read_fails)
+    monkeypatch.setattr(keys.os, "read", _read_fails)  # #1311: the reader reads its one descriptor
     assert keys.read_key() is None
     monkeypatch.undo()
 
