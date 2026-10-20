@@ -100,7 +100,7 @@ def validate_path_traversal(
 
 from maxim.utils.gpu_compat import env_flag as _env_flag
 
-from .base import Tool, ToolErrorKind, ToolResult, host_tool_env, tool_workdir
+from .base import Tool, ToolErrorKind, ToolResult, git_dir_write_refusal, host_tool_env, tool_workdir
 
 
 def _rebase_relative(path: str, allowed_dirs: list[str] | None) -> str:
@@ -250,6 +250,10 @@ class WriteFileTool(Tool):
         for forbidden in self.FORBIDDEN_PATHS:
             if real_path.startswith(forbidden + os.sep) or real_path == forbidden:
                 return False, f"Writing to {forbidden} is not allowed"
+
+        git_refusal = git_dir_write_refusal(real_path)  # #957: git configuration is code execution
+        if git_refusal:
+            return False, git_refusal
 
         # Check against forbidden extensions
         suffix = path.suffix.lower()
@@ -497,6 +501,10 @@ class EditFileTool(Tool):
         for forbidden in self.FORBIDDEN_PATHS:
             if real_path.startswith(forbidden + os.sep) or real_path == forbidden:
                 return False, f"Writing to {forbidden} is not allowed"
+
+        git_refusal = git_dir_write_refusal(real_path)  # #957: git configuration is code execution
+        if git_refusal:
+            return False, git_refusal
 
         suffix = path.suffix.lower()
         if suffix in self.FORBIDDEN_EXTENSIONS:
