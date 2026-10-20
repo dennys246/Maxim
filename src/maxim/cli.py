@@ -161,6 +161,27 @@ def _handle_delete_model(name: str) -> int:
     return 0
 
 
+def _ensure_agentic_model(llm_router: Any) -> None:
+    """The agentic path's router has a missing model file: ask the consent gate, on the main thread (#1343).
+
+    ``ExecAgent._ensure_router`` builds the router directly, so ``build_primary_router``'s preflight never ran. This is
+    the one place on that path that may prompt; the backend's own lazy load never does.
+    """
+    model_path = str(getattr(llm_router.cfg, "model_path", "")).strip()
+    if not model_path or os.path.exists(model_path):
+        return
+    profile = str(getattr(llm_router.cfg, "profile", "") or getattr(llm_router.cfg, "model_base", "")).strip()
+    if not profile:
+        print("  Model not found. Run: maxim --list-models to see available models.")
+        return
+    from maxim.models.download import ensure_available
+
+    log = logging.getLogger(__name__)
+    log.info("Model not found at %s — asking to download %s", model_path, profile)
+    if not ensure_available(profile, logger=log):
+        print("  Model not available. Run: maxim --list-models to see available models.")
+
+
 def _handle_clear_memory(scope: str, args: Any, raw_argv: Sequence[str] | None) -> int:
     """``--clear-memory``: the data home (and ``--home-dir`` when named), confirmed first (#1337)."""
     from maxim.cli_utils import run_clear_memory
@@ -2160,28 +2181,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                     agentic_agent.exec_agent._ensure_llm()
                     llm_router = agentic_agent.exec_agent._ensure_router()
                 if llm_router is not None:
-                    # Check model file exists before warming up
-                    model_path = str(getattr(llm_router.cfg, "model_path", "")).strip()
-                    if model_path and not os.path.exists(model_path):
-                        logger.info("Model not found at %s — attempting download...", model_path)
-                        try:
-                            from maxim.models.download import download_llm, LLM_MODELS
-
-                            profile = str(
-                                getattr(llm_router.cfg, "profile", "") or getattr(llm_router.cfg, "model_base", "")
-                            ).strip()
-                            if profile and profile in LLM_MODELS:
-                                print(f"  Downloading LLM model: {profile}...")
-                                if download_llm(profile):
-                                    print(f"  Download complete: {profile}")
-                                else:
-                                    print("  Download failed. Run: maxim --list-models to see available models.")
-                            else:
-                                print("  Model not found. Run: maxim --list-models to see available models.")
-                        except Exception as e:
-                            print(f"  Auto-download failed: {e}")
-                            print("  Run: maxim --list-models to see available models.")
-
+                    _ensure_agentic_model(llm_router)
                     if hasattr(llm_router, "warmup"):
                         llm_router.warmup()
                     # In simulation mode, wait for LLM to be fully loaded before starting

@@ -495,9 +495,21 @@ def _prompt_yes_no_with_timeout(question: str, timeout_s: float = 30.0) -> bool 
 
 
 def _auto_download_enabled() -> bool:
-    """Whether auto-download is enabled via env (set by --auto-download)."""
+    """The standing consent to download: ``MAXIM_AUTO_DOWNLOAD_MODELS`` (``--auto-download`` sets it), else
+    config.json's ``llm.auto_download``.
+
+    The gate reads config itself (#1343): it used to read only the env var, which config reached only through
+    ``build_primary_router``'s lane setup, so a router built any other way (the CLI agentic path, the fallbacks)
+    ignored an operator's config grant. An unreadable config.json grants nothing: ``resolve_setting`` falls back to
+    the field's default, False.
+    """
     raw = os.environ.get("MAXIM_AUTO_DOWNLOAD_MODELS", "").strip().lower()
-    return raw in ("1", "true", "t", "yes", "y", "on")
+    if raw:
+        return raw in ("1", "true", "t", "yes", "y", "on")
+    from maxim.runtime.config_loader import resolve_setting
+
+    value, _source = resolve_setting("llm.auto_download")
+    return bool(value)
 
 
 def _soft_budget_gb() -> float | None:
@@ -609,6 +621,20 @@ def ensure_available(
                     f"    python -m maxim.models.download --llm {profile_name}\n"
                 )
                 return False
+        elif interactive is False:
+            # A caller that never asks (a backend's lazy load, on a worker thread): say so, and keep it off stdout
+            # when the caller has a logger, since a print there lands in the middle of a live display (#1343).
+            msg = (
+                f"Profile '{profile_name}' is not downloaded, and this path does not ask. Grant it with "
+                f"--auto-download or `maxim config set llm.auto_download true` (MAXIM_AUTO_DOWNLOAD_MODELS, when "
+                f"set, overrides it), or download it: "
+                f"python -m maxim.models.download --llm {profile_name}"
+            )
+            if logger is not None:
+                logger.warning(msg)
+            else:
+                print(f"\n  {msg}\n")
+            return False
         else:
             print(
                 f"\n  Profile '{profile_name}' is not downloaded and stdin is not a tty.\n"
