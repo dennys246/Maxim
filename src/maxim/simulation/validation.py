@@ -197,7 +197,8 @@ def _check_pipeline_continued(
     if not tag:
         return ExpectationResult(expectation=exp, passed=False, detail="No after_tag specified")
 
-    if emitted_tags and tag not in emitted_tags:
+    # ``None`` = the run did not report its tags; an empty set = it emitted none, so the tag was never emitted.
+    if emitted_tags is not None and tag not in emitted_tags:
         return ExpectationResult(
             expectation=exp,
             passed=False,

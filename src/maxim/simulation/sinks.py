@@ -128,6 +128,23 @@ class RecordingSink:
         self._lock = threading.Lock()
         self._max = max_actions or self.MAX_ACTIONS
 
+    @classmethod
+    def from_serialized(cls, actions: list[dict[str, Any]]) -> RecordingSink:
+        """A sink holding the action history a finished run serialized (``SimulationResult.actions``), so
+        post-run validation sees what the run did (#1310). Keys that are not ``ActionRecord`` fields are
+        dropped; a record without ``timestamp`` or ``tool_name`` is a ``KeyError``, never silently skipped."""
+        names = {f.name for f in dataclasses.fields(ActionRecord)}
+        sink = cls(max_actions=max(len(actions), 1))
+        for a in actions:
+            sink.record(
+                ActionRecord(
+                    timestamp=float(a["timestamp"]),
+                    tool_name=str(a["tool_name"]),
+                    **{k: v for k, v in a.items() if k in names and k not in ("timestamp", "tool_name")},
+                )
+            )
+        return sink
+
     def record(self, action: ActionRecord) -> None:
         with self._lock:
             self._actions.append(action)

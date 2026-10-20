@@ -79,10 +79,13 @@ class ModelResult:
     expectations_passed: int = 0
     expectations_total: int = 0
     per_scenario: dict[str, dict[str, float]] = field(default_factory=dict)
-    #: How many suite thresholds ``passed`` was actually checked against: those whose metric was measured. 0 = none
-    #: applied (the suite defines none, or none of its metrics were present), so ``passed`` is an automatic pass;
-    #: None = unknown (a report saved before this field existed). #1310.
+    #: How many suite thresholds were actually checked: those whose metric was measured. 0 = none applied (none
+    #: defined, or none of their metrics measured), so ``passed`` is False (#1310, strict); None = unknown (a report
+    #: saved before this field existed, or a model whose every run errored).
     thresholds_checked: int | None = None
+    #: Whether the applied thresholds held, on their own. ``passed`` is the verdict: thresholds held, at least one
+    #: applied, every expectation met, no run errored (owner decision 2026-10-17). None = a report saved before it.
+    thresholds_passed: bool | None = None
 
 
 @dataclass
@@ -185,17 +188,26 @@ class BenchmarkReport:
             lines.append("")
 
         # Expectations summary
-        # Two independent results (#1310): the scenarios' expectations, and the suite's metric thresholds that
-        # decide ``ModelResult.passed``. One "[PASS]" beside the count read as "the expectations passed".
+        # Two independent results (#1310) and the verdict they decide together: the scenarios' expectations, the
+        # suite's metric thresholds, and ``ModelResult.passed`` (both met, at least one threshold applied).
         lines.append("  EXPECTATIONS AND THRESHOLDS")
         for m in self.models:
             if m in self.results:
                 mr = self.results[m]
-                # No threshold applied (none defined, or none of their metrics measured) is an auto-pass: say so
-                # rather than print a verdict nothing was checked for.
-                status = "none applied" if mr.thresholds_checked == 0 else ("PASS" if mr.passed else "FAIL")
+                errored = bool(mr.runs) and all(r.error is not None for r in mr.runs)
+                legacy = mr.thresholds_passed is None and not errored
+                if errored:
+                    status = "n/a (every run errored)"
+                elif mr.thresholds_checked == 0:
+                    status = "none applied"
+                elif legacy:  # a report saved before ``thresholds_passed``: there ``passed`` WAS the threshold result
+                    status = "PASS" if mr.passed else "FAIL"
+                else:
+                    status = "PASS" if mr.thresholds_passed else "FAIL"
+                verdict = "n/a (pre-#1310 report)" if legacy else ("PASS" if mr.passed else "FAIL")
                 lines.append(
-                    f"    {m}: expectations {mr.expectations_passed}/{mr.expectations_total} met · thresholds {status}"
+                    f"    {m}: {verdict} — expectations "
+                    f"{mr.expectations_passed}/{mr.expectations_total} met · thresholds {status}"
                 )
         lines.append("")
 
@@ -347,7 +359,8 @@ class BenchmarkRunner:
         if defn.benchmark:
             seed_kw = defn.benchmark.get("seed_keywords", [])
             weight = defn.benchmark.get("weight", 1.0)
-        self._scoring = {}
+        # A scenario run alone carries its own thresholds (#1310, owner decision 2026-10-19), or it can never pass.
+        self._scoring = dict((defn.benchmark or {}).get("scoring") or {})
         self._register_scenario(path, weight, (defn.benchmark or {}).get("metrics"))
         if self._scenario_weight[Path(path).stem] <= 0:
             raise ValueError(f"Scenario {path} gives itself no weight (benchmark.weight is 0)")
@@ -423,17 +436,15 @@ class BenchmarkRunner:
                         exp_passed = 0
                         exp_total = 0
                         if defn.expectations:
-                            # Build a minimal RecordingSink from serialized actions
-                            sink = RecordingSink()
-                            # We can't reconstruct full ActionRecords from dicts,
-                            # but expectations that need the sink use find_blocked/
-                            # find_actions which need real ActionRecord objects.
-                            # For bio-system expectations, we pass snapshot + tool_stats.
                             exp_results = validate_expectations(
                                 defn.expectations,
-                                sink,
-                                subsystem_snapshot=exp_result.analysis,
-                                tool_stats={},  # TODO: carry tool_stats through ExperimentResult
+                                RecordingSink.from_serialized(exp_result.actions),
+                                exp_result.hippocampus,
+                                exp_result.delivered_tags,
+                                # Observer.benchmark_snapshot(): full_analysis() plus the raw *_stats. Empty when
+                                # the orchestrator could not take it (it logs that), and the bio checks then fail.
+                                subsystem_snapshot=exp_result.subsystem_snapshot,
+                                tool_stats=exp_result.tool_stats,
                             )
                             exp_passed = sum(1 for r in exp_results if r.passed)
                             exp_total = len(exp_results)
@@ -595,7 +606,7 @@ class BenchmarkRunner:
         """Aggregate metrics across multiple runs of the same model."""
         successful = [r for r in runs if r.error is None]
         if not successful:
-            return ModelResult(model=model, runs=runs)
+            return ModelResult(model=model, runs=runs, passed=False)
 
         # Collect all metric keys
         all_keys: set[str] = set()
@@ -629,8 +640,17 @@ class BenchmarkRunner:
         # Composite: each scenario scored on its selected metrics, combined by its weight (D49).
         score = self._compute_weighted_composite(per_scenario)
 
-        # Check pass/fail against suite scoring thresholds
-        passed = self._check_thresholds(aggregated)
+        # The verdict (#1310, owner decision 2026-10-17, strict): the thresholds held and at least one was applied,
+        # every expectation of every scenario was met, and no run errored (an errored run's expectations are not
+        # met, they are unknown). A suite with no threshold applied does not pass.
+        thresholds_checked = self._applied_thresholds(aggregated)
+        thresholds_passed = self._check_thresholds(aggregated)
+        passed = (
+            thresholds_checked > 0
+            and thresholds_passed
+            and total_passed == total_expected
+            and len(successful) == len(runs)
+        )
 
         return ModelResult(
             model=model,
@@ -642,7 +662,8 @@ class BenchmarkRunner:
             expectations_passed=total_passed,
             expectations_total=total_expected,
             per_scenario=per_scenario,
-            thresholds_checked=self._applied_thresholds(aggregated),
+            thresholds_checked=thresholds_checked,
+            thresholds_passed=thresholds_passed,
         )
 
     def _compute_composite_score(self, metrics: dict[str, float]) -> float:
@@ -795,6 +816,7 @@ class BenchmarkRunner:
                 expectations_total=mr_data.get("expectations_total", 0),
                 per_scenario=mr_data.get("per_scenario", {}),
                 thresholds_checked=mr_data.get("thresholds_checked"),
+                thresholds_passed=mr_data.get("thresholds_passed"),
             )
 
         return BenchmarkReport(
@@ -880,6 +902,7 @@ class BenchmarkRunner:
                     "expectations_passed": mr.expectations_passed,
                     "expectations_total": mr.expectations_total,
                     "thresholds_checked": mr.thresholds_checked,
+                    "thresholds_passed": mr.thresholds_passed,
                     "per_scenario": mr.per_scenario,
                 }
                 for model, mr in report.results.items()

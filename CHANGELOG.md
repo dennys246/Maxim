@@ -45,6 +45,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the request. Design: [docs/plans/download_consent_gate.md](docs/plans/download_consent_gate.md).
   - Guard: `tests/unit/test_download_consent_1343.py` (an AST allow-list of `download_llm`'s callers in `src/`,
     red on the pre-fix tree; each site's behaviour, every mechanism deletion-proven).
+- **A benchmark passes only when its expectations are met and a threshold was applied** (behaviour change;
+  [#1310](https://github.com/dennys246/Maxim/issues/1310), owner decision 2026-10-17, the strict option).
+  - **Expectations now see the run.** `BenchmarkRunner.run` validated every scenario's expectations against an empty
+    action sink, with no hippocampus and no emitted tags, because `simulation/experiment.py::run_campaign` dropped
+    what the `SimulationResult` carried. So `memory_formed`, `action_count_range` and `pipeline_continued` could
+    never pass, for any model: the 1.3.2 release checklist's "mistral-7b 0/3 on `quick_check`" (2026-10-16) was this,
+    not the model (its own report recorded `recall_seven-three-nine = 1.0`). `ExperimentResult` now carries the
+    run's `actions`, `tool_stats`, `subsystem_snapshot`, `hippocampus` and `delivered_tags` (the `scenario_tag` of
+    each campaign turn delivered without error); `RecordingSink.from_serialized` rebuilds the action records;
+    `Observer.hippocampus` is a new read-only property (the live store); the bio checks receive the run's
+    `subsystem_snapshot`. An empty tag set now means "never emitted": `pipeline_continued` no longer skips its tag
+    check for it. Still open: `pipeline_continued` passes on any action, not one after its tag
+    ([#1391](https://github.com/dennys246/Maxim/issues/1391)), and the `--sim <scenario>` path still validates its
+    bio checks against an empty snapshot ([#1392](https://github.com/dennys246/Maxim/issues/1392)).
+  - **The verdict is strict.** `ModelResult.passed` requires at least one `scoring` threshold applied, every applied
+    threshold held, every expectation met and no errored run. A suite with no threshold applied no longer passes,
+    and `maxim --sim benchmark` exits 1 for it. A scenario run alone may now carry its own thresholds under
+    `benchmark.scoring` (owner decision 2026-10-19); `quick_check.yaml` requires `recall_seven-three-nine`, so the
+    release checklist's quick benchmark can pass.
+  - **The shipped `cognitive_suite` cannot pass yet, for any model**, and now says so instead of passing on empty
+    inputs: campaign delivery drops the pain percepts and nothing feeds the AUT's pain detector
+    ([#1393](https://github.com/dennys246/Maxim/issues/1393)), and scenarios name `RespondTool` where the tool is
+    `respond` ([#1394](https://github.com/dennys246/Maxim/issues/1394)). Owner decision 2026-10-19: ship strict now. The
+    threshold result alone is the new `ModelResult.thresholds_passed` (saved in `benchmark_report.json`; a report
+    saved before it reads its `passed` as the threshold result, which it was). The summary leads with the verdict:
+    `m: FAIL — expectations 2/3 met · thresholds PASS`.
+  - Guards: `tests/unit/test_benchmark_expectations_1310.py` (the shipped `quick_check` suite through the real
+    runner over a run that did the work: 0/3 before, 3/3 after, one of the three vacuous until #1391; three strict red gates for the verdict, flipped in
+    place; each mechanism deletion-proven).
 - **`maxim --clear-memory` clears the data home, all of it, and asks first** (behaviour change;
   [#1337](https://github.com/dennys246/Maxim/issues/1337), owner decisions 2026-10-19).
   - **Where:** the data home (`~/.maxim` or `$MAXIM_DATA_HOME`). Before, it searched `--home-dir`, whose default is
@@ -214,8 +243,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   block (like `quick_check`), or whose threshold metrics were never measured, auto-passes, so it now prints
   `thresholds none applied`; the count of thresholds actually applied is recorded as
   `ModelResult.thresholds_checked` and saved in `benchmark_report.json` (older reports load it as unknown). Nothing
-  parses the line, and which result `passed` reflects is unchanged; whether it should also require the expectations
-  stays open on #1310. `summary.md` is now written as UTF-8. Guards: `tests/unit/test_benchmark_runner.py`
+  parses the line. *Superseded within [Unreleased] by the strict verdict above (owner decision 2026-10-17): `passed`
+  now also requires the expectations, no threshold applied is a FAIL, and `quick_check` carries its own threshold.* `summary.md` is now written as UTF-8. Guards: `tests/unit/test_benchmark_runner.py`
   (`test_summary_labels_expectations_and_thresholds_separately`,
   `test_summary_says_when_no_thresholds_were_checked`, `test_aggregation_records_how_many_thresholds_were_checked`,
   `test_thresholds_checked_survives_save_and_load`).

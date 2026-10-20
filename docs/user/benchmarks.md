@@ -205,7 +205,28 @@ Every `benchmark_report.json` carries `score_scheme` (`weighted-per-scenario-v1`
 without it was scored the old way, its composite is not comparable, and loading it as a baseline
 logs a warning (per-metric deltas still compare). Use the composite to rank models in one run.
 `scoring` thresholds and the per-metric `rankings` read a different basis: each metric's mean
-across every run of every scenario, unweighted. Use the thresholds for pass/fail.
+across every run of every scenario, unweighted.
+
+### Pass or fail
+
+A model **passes** only when all of these hold (owner decision 2026-10-17, [#1310](https://github.com/dennys246/Maxim/issues/1310)):
+
+- at least one `scoring` threshold was applied (a threshold applies when its metric was measured);
+- every applied threshold held;
+- every expectation of every scenario was met, judged against what the run did (its actions, the
+  campaign turns it delivered, its hippocampus and its subsystem stats);
+- no run errored.
+
+A suite with no `scoring` block applies no threshold, so it never passes. A scenario run on its
+own reads its thresholds from its own `benchmark.scoring` (`quick_check.yaml` requires
+`recall_seven-three-nine: { pass: 1.0 }`); without one it never passes either. A suite reads only its own
+`suite.scoring` and ignores its children's `benchmark.scoring`.
+
+Known gaps (2026-10-19): `cognitive_suite` cannot pass for any model until campaign delivery carries
+pain percepts ([#1393](https://github.com/dennys246/Maxim/issues/1393)) and its scenarios name tools by
+their registered names ([#1394](https://github.com/dennys246/Maxim/issues/1394)); `pipeline_continued`
+does not yet check that the action came after its tag ([#1391](https://github.com/dennys246/Maxim/issues/1391)). `maxim --sim benchmark` exits 0 only when every model passes. The
+summary prints the verdict first, then both halves: `m: FAIL — expectations 2/3 met · thresholds PASS`.
 
 ## Baseline Comparison
 
@@ -239,7 +260,7 @@ Each benchmark run creates a timestamped directory:
   summary.md               # Human-readable summary table
 ```
 
-The JSON report contains per-model, per-scenario metric scores, the composite score, pass/fail status against thresholds, and baseline deltas (if `--baseline` was provided).
+The JSON report contains per-model, per-scenario metric scores, the composite score, the verdict (`passed`), the threshold result on its own (`thresholds_passed`, `thresholds_checked`), and baseline deltas (if `--baseline` was provided).
 
 ## Bio-System Expectations
 

@@ -55,6 +55,12 @@ class Observer:
         self._energy_registry = energy_registry
         self._pain_detector = pain_detector
 
+    @property
+    def hippocampus(self) -> Any:
+        """The observed hippocampus itself, ``None`` when none was given. The property cannot be reassigned, but this is
+        the LIVE store, not a snapshot: read it, never mutate it."""
+        return self._hippocampus
+
     # ── Individual query methods ─────────────────────────────────────
 
     def memory_recall(self, keyword: str = "", limit: int = 10, goal: str = "", tool: str = "") -> dict:
