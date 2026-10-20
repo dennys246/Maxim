@@ -218,7 +218,9 @@ def test_every_writer_reduces_the_record_however_the_report_was_built(tmp_path, 
     for text in (saved, emitted):
         record = json.loads(text)
         assert record["language_endpoint"] == record["aut_endpoint"] == "https://leader.example.com:8443"
-        assert "https://leader.example.com:8443" in record["provider_failures"]["p"]["last_error"]
+        assert record["provider_failures"]["p"]["last_error"] == (
+            "Client error '401 Unauthorized' for url 'https://leader.example.com:8443'"
+        )
         for secret in ("s3cr3t", "alice", "tok-abc123", "hunter2"):
             assert secret not in text
 
@@ -243,7 +245,10 @@ def test_the_sampling_problems_keep_no_endpoint_credentials(monkeypatch) -> None
     monkeypatch.setattr(CA, "delta", lambda _a, _b: ({}, [problem]))
     prov = SP.serving_provenance(token, llm_worker=None, aut_worker=None, resume=None, adopted=False, goal="g")
     assert prov["sampling_complete"] is False
-    assert "s3cr3t" not in json.dumps(prov) and "https://leader.example.com:8443" in prov["sampling_problems"][0]
+    assert prov["sampling_problems"] == [
+        "router 1: entry ('p', 'm', 'peer', 'https://leader.example.com:8443') vanished"
+    ]
+    assert "s3cr3t" not in json.dumps(prov)
 
 
 def test_o19_verdict_reduces_both_sides_of_the_c4_endpoint_check() -> None:
