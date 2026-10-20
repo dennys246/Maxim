@@ -232,12 +232,22 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="TYPE",
         help=(
-            "Clear persistent memory and exit. "
-            "Bio-systems (cleared across all agents/<id>/): hippo, nac, ec, scn, atl, angular_gyrus "
+            "Clear persistent memory in the data home (~/.maxim or $MAXIM_DATA_HOME; also --home-dir when "
+            "passed) and exit. Lists what it will delete and asks first (see --yes). "
+            "Agent stores (cleared in every agent home: agents/<id>/, memory/, orchestrator/, sessions/): "
+            "hippo, nac, ec, scn, atl, angular_gyrus, cerebellum, memory_hub "
             "(nac and ec are a pair — clearing either clears both). "
-            "Global learners: focus, bounds, escalation, fear, threshold, pain, statistician, "
-            "cross_layer, semantic. Also: planning. Use 'all' (default) for everything. "
-            "Can specify multiple comma-separated types."
+            "Global learners: focus, bounds, escalation, fear, threshold, pain, statistician, significance, "
+            "short_term, cross_layer, semantic, tool_index. Also: planning. Use 'all' (default) for everything; "
+            "sim_reports/ (run archives) is never cleared. Can specify multiple comma-separated types."
+        ),
+    )
+    memory.add_argument(
+        "--yes",
+        action="store_true",
+        help=(
+            "Confirm --clear-memory without asking. Without it, --clear-memory lists what it will delete and "
+            "asks at a terminal, and refuses when stdin is not a terminal."
         ),
     )
 
