@@ -292,10 +292,15 @@ Components that persist state to `~/.maxim/`:
 | SCN | `--clear-memory scn` |
 | Hippocampus | `--clear-memory hippo` |
 | ATL | `--clear-memory atl` |
-| AngularGyrus | `--clear-memory angular` |
+| AngularGyrus | `--clear-memory angular_gyrus` |
 | Cerebellum | `--clear-memory cerebellum` |
 | PainDetector | `--clear-memory pain` |
 | SemanticEmbeddings | `--clear-memory semantic` |
+| MemoryHub | `--clear-memory memory_hub` |
+| StatisticianAgent | `--clear-memory statistician` |
+| ExecAgent significance weights | `--clear-memory significance` |
+| ExecAgent short-term staging | `--clear-memory short_term` |
+| Learned tool index | `--clear-memory tool_index` |
 
 Clear all: `maxim --clear-memory all`
 

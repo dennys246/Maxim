@@ -224,7 +224,7 @@ def test_off_a_terminal_it_refuses_without_yes_and_never_prompts(homes, capsys) 
 def test_the_listing_names_every_path_before_asking(homes, capsys) -> None:
     data_home, _ = homes
     _run(stdin_is_tty=True, input_fn=lambda _p: "n")
-    out = capsys.readouterr().out
+    out = capsys.readouterr().err  # stderr: a redirected stdout must not hide the question (review fold)
     assert (
         str(data_home / "agents" / "scout" / "nac.json") in out
         and str(data_home / "agents" / "scout" / "ec.json") in out
@@ -280,3 +280,140 @@ def test_explicit_flag_reads_both_spellings_and_not_an_abbreviation() -> None:
 
     assert explicit_flag(["--home-dir", "x"], "--home-dir") and explicit_flag(["--home-dir=x"], "--home-dir")
     assert not explicit_flag(["--home", "x"], "--home-dir") and not explicit_flag(None, "--home-dir")
+
+
+def test_the_question_goes_to_stderr_not_stdout(homes, capsys) -> None:
+    _run(stdin_is_tty=True, input_fn=lambda _p: "n")
+    captured = capsys.readouterr()
+    assert "[y/N]" in captured.err and "[y/N]" not in captured.out
+
+
+@pytest.mark.parametrize("scope", ["ALL", " all "])
+def test_all_is_case_and_space_insensitive(homes, scope) -> None:
+    data_home, _ = homes
+    assert _run(scope, assume_yes=True) == 0
+    assert not (data_home / "agents" / "scout" / "nac.json").exists()
+
+
+def test_an_empty_name_in_a_list_is_ignored(homes) -> None:
+    data_home, _ = homes
+    assert _run("nac,", assume_yes=True) == 0
+    assert not (data_home / "agents" / "scout" / "ec.json").exists()  # its pair
+
+
+def test_a_symlinked_store_is_unlinked_not_followed(homes, tmp_path) -> None:
+    data_home, _ = homes
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.json").write_text("{}")
+    (data_home / "agents" / "scout" / "memory_hub").symlink_to(outside, target_is_directory=True)
+
+    assert _run(assume_yes=True) == 0
+    assert not os.path.lexists(data_home / "agents" / "scout" / "memory_hub")
+    assert (outside / "keep.json").exists()
+
+
+def test_a_named_home_dir_inside_the_data_home_lists_each_path_once(homes, capsys) -> None:
+    data_home, _ = homes
+    _run(assume_yes=True, explicit=True, home_dir=str(data_home / "agents" / "scout" / ".." / ".."))
+    err = capsys.readouterr().err
+    assert err.count(str(data_home / "agents" / "scout" / "nac.json")) == 1
+
+
+def test_a_clear_memory_run_is_never_saved_for_replay() -> None:
+    from maxim.utils.last_run import should_save
+
+    for argv in (["--mode", "live", "--clear-memory", "--yes"], ["--mode", "live", "--clear-memory=all", "--yes"]):
+        assert should_save(argv) is False
+    assert should_save(["--mode=live"]) is True
+
+
+# ── The shipped CLI's --home-dir wiring (Executor fold: a unit call never reaches cli.py) ─────
+
+
+def _dot_data_memory(cwd: Path) -> Path:
+    nac = cwd / "data" / "memory" / "nac.json"
+    nac.parent.mkdir(parents=True)
+    nac.write_text("{}")
+    (nac.parent / "ec.json").write_text("{}")
+    return nac
+
+
+def test_the_cli_leaves_an_unnamed_dot_data_and_says_so(tmp_path: Path) -> None:
+    data_home, cwd = tmp_path / "home", tmp_path / "work"
+    data_home.mkdir()
+    cwd.mkdir()
+    nac = _dot_data_memory(cwd)
+
+    proc = _clear(data_home, cwd, "--yes")
+
+    assert proc.returncode == 0, proc.stderr
+    assert nac.exists()
+    assert "--home-dir data" in proc.stderr and str(nac.resolve()) in proc.stderr
+
+
+def test_the_cli_clears_a_named_home_dir(tmp_path: Path) -> None:
+    data_home, cwd = tmp_path / "home", tmp_path / "work"
+    data_home.mkdir()
+    cwd.mkdir()
+    nac = _dot_data_memory(cwd)
+
+    proc = _clear(data_home, cwd, "--home-dir", "data", "--yes")
+
+    assert proc.returncode == 0, proc.stderr
+    assert not nac.exists()
+
+
+# ── No writer builds an agent home outside AGENT_HOME_PATTERNS (Architecture fold) ─────────────
+
+
+def _literal_agent_homes() -> dict[str, set[str]]:
+    """Every agent home a writer in src/ names statically: a ``persistence_dir=`` / ``base_data_dir=`` argument
+    built from ``user_memory()``, ``agent_data(...)`` or ``data_home() / "<literal>"``."""
+    import ast
+
+    def home_of(node: ast.AST) -> str | None:
+        for n in ast.walk(node):
+            if isinstance(n, ast.Call):
+                name = n.func.id if isinstance(n.func, ast.Name) else getattr(n.func, "attr", "")
+                if name == "user_memory":
+                    return "memory"
+                if name == "agent_data":
+                    return "agents/*"
+            if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Div) and isinstance(n.left, ast.Call):
+                name = n.left.func.id if isinstance(n.left.func, ast.Name) else getattr(n.left.func, "attr", "")
+                if name in ("data_home", "_data_home") and isinstance(n.right, ast.Constant):
+                    return str(n.right.value)
+        return None
+
+    found: dict[str, set[str]] = {}
+    for path in sorted((REPO_SRC / "maxim").rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call):
+                for kw in node.keywords:
+                    if kw.arg in ("persistence_dir", "base_data_dir") and (home := home_of(kw.value)):
+                        found.setdefault(home, set()).add(str(path.relative_to(REPO_SRC)))
+    return found
+
+
+def test_every_agent_home_a_writer_names_is_one_clear_memory_clears() -> None:
+    from maxim.utils.paths import AGENT_HOME_PATTERNS
+
+    found = _literal_agent_homes()
+    assert {"memory", "orchestrator"} <= set(found), found  # the scan still sees the known writers
+    assert set(found) <= set(AGENT_HOME_PATTERNS), {h: f for h, f in found.items() if h not in AGENT_HOME_PATTERNS}
+
+
+def test_the_legacy_api_agent_dir_is_an_agent_home() -> None:
+    from maxim import api
+    from maxim.utils.paths import AGENT_HOME_PATTERNS, RUN_DIR_KINDS
+
+    assert api._LEGACY_API_AGENT_DIR in AGENT_HOME_PATTERNS
+    assert f"{RUN_DIR_KINDS['agent']}/*" in AGENT_HOME_PATTERNS
+
+
+@pytest.mark.parametrize("scope", ["", ",", " "])
+def test_an_empty_type_list_refuses(homes, scope, capsys) -> None:
+    data_home, _ = homes
+    assert _run(scope, assume_yes=True) == 2
+    assert (data_home / "agents" / "scout" / "nac.json").exists()

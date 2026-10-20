@@ -12,6 +12,8 @@ import os
 import sys
 from typing import Any
 
+from maxim.utils.paths import AGENT_HOME_PATTERNS
+
 
 def normalize_epoch_value(value: object) -> int:
     """Convert any input to a non-negative int epoch count."""
@@ -587,9 +589,10 @@ def reexec_with_mode(args: argparse.Namespace, *, mode: str) -> None:
 #     test pins the two together. The agent homes are every directory a writer points a bio stack at:
 #     ``agents/<id>/`` (AgentFactory, ``maxim.create.agent``), ``memory/`` (``build_bio_stack(persistence_dir=
 #     user_memory())``: the Reachy runtime and ``maxim hive merge``), ``orchestrator/`` (the sim orchestrator) and
-#     ``sessions/`` (``maxim.run()``'s agent before #932). Clearing a type clears it in EVERY agent home (#1337).
+#     ``sessions/`` (``maxim.run()``'s agent before #932), declared once as ``utils/paths.py::AGENT_HOME_PATTERNS``.
+#     Clearing a type clears it in EVERY agent home (#1337).
 # A pattern containing "*" is glob-expanded; every match is removed (each is printed).
-AGENT_HOMES: tuple[str, ...] = ("agents/*", "memory", "orchestrator", "sessions")
+AGENT_HOMES: tuple[str, ...] = AGENT_HOME_PATTERNS
 
 _AGENT_FILES: dict[str, tuple[str, ...]] = {
     "hippo": ("hippocampus.json", "hippocampus.json.backup", "memories.json"),
@@ -664,13 +667,13 @@ def expand_paired_types(requested: list[str]) -> list[str]:
 
 def _types_to_clear(memory_types: str) -> tuple[list[str], list[str]]:
     """The memory types ``memory_types`` names (pairs expanded, D2), and the names that are not memory types."""
-    if memory_types == "all":
+    if memory_types.strip().lower() == "all":
         return list(MEMORY_PATHS), []
-    requested = [t.strip().lower() for t in memory_types.split(",")]
+    requested = [t.strip().lower() for t in memory_types.split(",") if t.strip()]
     types = expand_paired_types(requested)
     for added in [t for t in types if t not in requested]:
         partner = next(sorted(pair - {added})[0] for pair in MEMORY_PAIRS if added in pair)
-        print(f"  Also clearing: {added} (must be invalidated with {partner} — see MEMORY_PAIRS)")
+        print(f"  Also clearing: {added} (must be invalidated with {partner} — see MEMORY_PAIRS)", file=sys.stderr)
     unknown = [t for t in types if t not in MEMORY_PATHS]
     return [t for t in types if t in MEMORY_PATHS], unknown
 
@@ -687,7 +690,7 @@ def plan_clear_memory(types: list[str], bases: list[Any]) -> dict[str, list[Any]
             for pattern in MEMORY_PATHS[mem_type]:
                 candidates = sorted(Path(base).glob(pattern)) if "*" in pattern else [Path(base) / pattern]
                 for p in candidates:
-                    if p.exists() and p not in seen:
+                    if os.path.lexists(p) and p not in seen:
                         seen.add(p)
                         matched.append(p)
         plan[mem_type] = matched
@@ -707,7 +710,7 @@ def _delete_planned(plan: dict[str, list[Any]]) -> dict[str, bool]:
         cleared_any = False
         for path in paths:
             try:
-                if path.is_dir():
+                if path.is_dir() and not path.is_symlink():  # a symlinked store is unlinked, never followed
                     shutil.rmtree(path)
                 else:
                     path.unlink()
@@ -779,48 +782,51 @@ def run_clear_memory(
     from maxim.utils.paths import data_home
 
     types, unknown = _types_to_clear(memory_types)
-    if unknown:
-        print(f"Unknown memory type(s): {', '.join(unknown)}", file=sys.stderr)
+    if unknown or not types:
+        print(f"Unknown memory type(s): {', '.join(unknown) or repr(memory_types)}", file=sys.stderr)
         print(f"Available types: {', '.join(MEMORY_PATHS.keys())}", file=sys.stderr)
         return 2
-    home = data_home()
+    # Both absolute, so every printed path says where it is
+    home = data_home().expanduser().resolve()
     bases = [home]
-    other = Path(home_dir).expanduser().resolve()  # absolute, so every printed path says where it is
-    if home_dir_explicit and other != home.resolve():
+    other = Path(home_dir).expanduser().resolve()
+    if home_dir_explicit and other != home:
         bases.append(other)
     plan = plan_clear_memory(types, bases)
-    if not home_dir_explicit and other != home.resolve():
+    if not home_dir_explicit and other != home:
         unnamed = [p for paths in plan_clear_memory(types, [other]).values() for p in paths]
         if unnamed:
             print(
-                f"Warning: {other.resolve()} also holds memory (the robot path's --home-dir); not clearing it:",
+                f"Warning: {other} also holds memory (the robot path's --home-dir); not clearing it:",
                 file=sys.stderr,
             )
             for p in unnamed:
                 print(f"    {p}", file=sys.stderr)
             print(f"  To clear it too, pass --home-dir {home_dir}", file=sys.stderr)
     planned = [p for paths in plan.values() for p in paths]
-    print(f"Clearing memory ({memory_types}) under {', '.join(str(b) for b in bases)}")
+    # The listing and the question go to stderr: with stdout redirected, a prompt there would wait unseen.
+    print(f"Clearing memory ({memory_types}) under {', '.join(str(b) for b in bases)}", file=sys.stderr)
     if not planned:
-        print("Nothing to clear.")
+        print("Nothing to clear.", file=sys.stderr)
         return 0
     for p in planned:
-        print(f"    {p}")
+        print(f"    {p}", file=sys.stderr)
     if not assume_yes:
         if not (sys.stdin.isatty() if stdin_is_tty is None else stdin_is_tty):
             print(
                 f"Refusing to delete {len(planned)} path(s) without confirmation: re-run with --yes.", file=sys.stderr
             )
             return 2
+        print(f"Delete these {len(planned)} path(s)? [y/N] ", end="", file=sys.stderr, flush=True)
         try:
-            answer = input_fn(f"Delete these {len(planned)} path(s)? [y/N] ")
+            answer = input_fn("")
         except EOFError:
             answer = ""
         if answer.strip().lower() not in ("y", "yes"):
-            print("Cancelled; nothing deleted.")
+            print("Cancelled; nothing deleted.", file=sys.stderr)
             return 1
     results = _delete_planned(plan)
-    failed = sum(1 for p in planned if p.exists())
+    failed = sum(1 for p in planned if os.path.lexists(p))
     print(f"Cleared {sum(results.values())}/{len(results)} memory type(s).")
     return 1 if failed else 0
 

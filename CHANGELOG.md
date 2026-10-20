@@ -35,9 +35,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `maxim hive merge`), `orchestrator/` and the pre-#932 `sessions/`. Each type's files come from the same
     definition `maxim.create.agent` refuses on (`AGENT_STATE_FILES`), and a test pins the two together. New types:
     `cerebellum`, `memory_hub`, `significance`, `short_term`, `tool_index`; `bounds` now clears
-    `util/learned_bounds.json`, the file its learner writes. `sim_reports/` is a run archive and is never cleared.
-  - **Asking:** it lists every path it will delete, then asks y/N at a terminal. When stdin is not a terminal it
-    refuses with exit 2 unless `--yes` is passed. Exit codes: 0 done or nothing found, 1 declined or a deletion
+    `util/learned_bounds.json`, the file its learner writes. The agent homes are declared once,
+    `utils/paths.py::AGENT_HOME_PATTERNS`, and a test fails when a writer that names its home
+    statically builds one outside it. `sim_reports/`
+    is a run archive and is never cleared. The issue also named comms: `comms/` persists nothing (its conversation
+    history is in memory only), so there is nothing to clear.
+  - **Asking:** it lists every path it will delete, then asks y/N at a terminal, both on stderr (so a redirected
+    stdout cannot hide the question). When stdin is not a terminal it refuses with exit 2 unless `--yes` is passed.
+    A `--clear-memory` run is never saved for `maxim --last`, in the `--clear-memory=all` spelling too. A symlinked
+    store is unlinked, never followed. Exit codes: 0 done or nothing found, 1 declined or a deletion
     failed (it used to exit 0), 2 an unknown type or a refusal; nothing is deleted on 2.
   - Guards: `tests/unit/test_clear_memory_1337.py` (three strict red gates flipped in place, one of them the shipped
     CLI in a subprocess over stores written by the real writers; each mechanism deletion-proven).
