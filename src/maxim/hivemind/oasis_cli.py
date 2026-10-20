@@ -83,18 +83,19 @@ def _run_serve(args: argparse.Namespace) -> int:
     import threading
 
     from maxim.runtime.leader_proxy import DEFAULT_PROXY_PORT, ProxyAuth, ProxyAuthError, start_leader_proxy
-    from maxim.tunnel.keys import LeaderKeyError, key_exists, require_leader_key
+    from maxim.tunnel.keys import LeaderKeyError, LeaderKeyMissing, require_leader_key
 
     store = _open_store(args)
-    # A key file that exists is read by the leader's strict reader (one validator):
-    # a short, malformed or group-readable key is refused, never downgraded to "no key".
+    # The leader's strict reader decides (one validator): only a missing key file is "no key"; a short, malformed,
+    # group-readable, unstat-able or non-regular key is refused, never downgraded to "no key" (#1311).
     api_key: str | None = None
-    if key_exists():
-        try:
-            api_key = require_leader_key()
-        except LeaderKeyError as exc:
-            print(f"error: {exc}. {exc.fix_hint}", file=sys.stderr)
-            return 2
+    try:
+        api_key = require_leader_key()
+    except LeaderKeyMissing:
+        api_key = None
+    except LeaderKeyError as exc:
+        print(f"error: {exc}. {exc.fix_hint}", file=sys.stderr)
+        return 2
     # Fail closed: an unauthenticated `/v1/substrate/contribute` (a WRITE) is an
     # open door. Loopback is not a safe exception: a cloudflared tunnel's ingress
     # is http://localhost:<port>, so a loopback bind can be the internet
