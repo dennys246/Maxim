@@ -11,16 +11,59 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from urllib.parse import urlsplit
+
 from maxim.exceptions import StoreOverwriteRefused
 from maxim.utils import code_tree
 
 logger = logging.getLogger(__name__)
+
+
+def report_url(url: str | None) -> str:
+    """An endpoint as a sim record keeps it: ``scheme://host[:port]`` (#997). ``report.json`` is committed with
+    experiment evidence, so userinfo, path, query and fragment (where a tunnel's credentials or token live) never
+    reach it. The port stays: ``scripts/o19_verdict.py`` C4 tells two local servers apart by it, and it is no
+    secret. Anything that is not an http(s) URL with a host, or whose port is invalid, records as ``""``.
+    ``scripts/o19_verdict.py::_endpoint_origin`` is a stdlib copy of this rule (a parity test pins the two)."""
+    parts = urlsplit(str(url or "").strip())
+    try:
+        port = parts.port
+    except ValueError:
+        return ""
+    host = parts.hostname
+    # A ``%`` in the host is a percent-encoded ``user:pass@`` that urlsplit left in it (``tok%3Asecret%40host``).
+    if parts.scheme.lower() not in ("http", "https") or not host or "%" in host:
+        return ""
+    host = f"[{host}]" if ":" in host else host
+    return f"{parts.scheme.lower()}://{host}" + (f":{port}" if port is not None else "")
+
+
+_URL_IN_TEXT = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s'\"<>]+")
+
+
+def redact_urls(text: str) -> str:
+    """``text`` with every URL in it reduced by :func:`report_url` (``"<url>"`` where nothing is left): for free
+    text a record keeps, such as an exception string, which httpx formats with the request URL (#997)."""
+    return _URL_IN_TEXT.sub(lambda m: report_url(m.group(0)) or "<url>", str(text))
+
+
+def _record_dict(report: SimulationReport) -> dict[str, Any]:
+    """The report as its JSON record is written, by every writer (``save_report``, ``emit_report_json``): its
+    endpoints reduced and the URLs in its provider errors reduced (#997), however the report was built."""
+    record = asdict(report)
+    record["language_endpoint"] = report_url(record["language_endpoint"])
+    record["aut_endpoint"] = report_url(record["aut_endpoint"])
+    for failure in record["provider_failures"].values():
+        if isinstance(failure, dict) and "last_error" in failure:
+            failure["last_error"] = redact_urls(failure["last_error"])
+    return record
 
 
 @dataclass
@@ -41,7 +84,7 @@ class SimulationReport:
     language_backend_class: str = (
         ""  # backend class name (e.g. "_OpenAIBackend", "_MaximPeerBackend"); cloud-vs-self-hosted second-tier signal
     )
-    language_endpoint: str = ""  # base URL (e.g. "https://api.anthropic.com/v1", "https://leader.dennys.com/v1"); definitive routing-path third-tier signal
+    language_endpoint: str = ""  # the endpoint's scheme://host[:port] (e.g. "https://api.anthropic.com", "http://127.0.0.1:8100"; never its path or credentials, #997); definitive routing-path third-tier signal
     aut_model: str = ""  # Separate AUT model when dual-LLM mode is active
     aut_provider: str = ""  # provider for aut_model when dual-LLM mode is active
     aut_backend_class: str = ""
@@ -490,7 +533,7 @@ def build_report(
                 if errs > 0 or last_err:
                     provider_failures[key] = {
                         "consecutive_errors": errs,
-                        "last_error": last_err[:200],
+                        "last_error": redact_urls(last_err)[:200],  # scrubbed before the cut can split a URL (#997)
                         "backoff_remaining_s": round(max(0.0, backoff_until - now), 1),
                     }
         except Exception as e:
@@ -570,7 +613,7 @@ def save_report(report: SimulationReport, base_dir: str | None = None) -> Path:
     from maxim.utils.atomic_io import atomic_write_json
     from maxim.utils.format_version import with_format_version
 
-    atomic_write_json(str(report_path), with_format_version(asdict(report)))
+    atomic_write_json(str(report_path), with_format_version(_record_dict(report)))
 
     logger.info("Simulation report saved: %s", report_path)
     return report_path
@@ -809,9 +852,9 @@ def _format_model_routing(
     - With provider only:             ``"model (via provider)"``
     - Bare model:                     ``"model"``
 
-    Endpoint hostname is extracted from the URL for readability — the full
-    ``language_endpoint`` field in report.json preserves the URL verbatim
-    for analyzer/downstream consumption.
+    Endpoint hostname is extracted from the URL for readability — the
+    ``language_endpoint`` field in report.json keeps scheme, host and port
+    (``report_url``, #997) for analyzer/downstream consumption.
     """
     if not model:
         return ""
@@ -1031,7 +1074,7 @@ def emit_report_json(report: SimulationReport, path: str = "-") -> None:
     """
     from maxim.utils.format_version import with_format_version
 
-    payload_dict = with_format_version(asdict(report))
+    payload_dict = with_format_version(_record_dict(report))
     payload = json.dumps(payload_dict, default=str, indent=2)
     if path in ("-", ""):
         print(payload)
