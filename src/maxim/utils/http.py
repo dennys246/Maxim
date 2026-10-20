@@ -938,7 +938,8 @@ def url_origin(url: str | None) -> str:
 
 # A URL in free text: the scheme, then optional userinfo up to its ``@`` (which may hold a quote, so a password's
 # tail is not left behind), then everything up to whitespace, a quote or an angle bracket.
-_URL_IN_TEXT = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://(?:[^\s/@]*@)?[^\s'\"<>]+")
+# The lookbehind starts a scheme only at the start of its run, which keeps the scan linear on a long letter run.
+_URL_IN_TEXT = re.compile(r"(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*://(?:[^\s/@]*@)?[^\s'\"<>]+")
 _URL_TRAILING_PUNCT = ".,;:!?)"
 
 
@@ -1672,6 +1673,9 @@ def raw_proxy_forward_streaming(
 
 
 __all__ = [
+    # Redaction (#997)
+    "url_origin",
+    "redact_urls",
     # Constants
     "MAX_HEADER_VALUE_LEN",
     "DEFAULT_POOL_PER_ENDPOINT",

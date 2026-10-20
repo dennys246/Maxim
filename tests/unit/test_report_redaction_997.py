@@ -41,10 +41,10 @@ SECRET_URL = "https://alice:s3cr3t@Leader.Example.com:8443/tok-abc123/v1?key=hun
         (None, ""),
     ],
 )
-def test_report_url_keeps_only_scheme_host_and_port(raw, expected) -> None:
-    from maxim.utils.http import url_origin as report_url
+def test_url_origin_keeps_only_scheme_host_and_port(raw, expected) -> None:
+    from maxim.utils.http import url_origin
 
-    assert report_url(raw) == expected
+    assert url_origin(raw) == expected
 
 
 def test_build_report_reduces_both_endpoints(tmp_path) -> None:
@@ -246,10 +246,10 @@ def test_the_sampling_problems_keep_no_endpoint_credentials(monkeypatch) -> None
 
 
 def test_o19_verdict_reduces_both_sides_of_the_c4_endpoint_check() -> None:
-    """The standalone verdict script keeps its own copy of the rule; it must agree with ``report_url``."""
+    """The standalone verdict script keeps its own copy of the rule; it must agree with ``url_origin``."""
     import importlib.util
 
-    from maxim.utils.http import url_origin as report_url
+    from maxim.utils.http import url_origin
 
     spec = importlib.util.spec_from_file_location("o19_verdict_997", REPO / "scripts/o19_verdict.py")
     mod = importlib.util.module_from_spec(spec)
@@ -263,8 +263,9 @@ def test_o19_verdict_reduces_both_sides_of_the_c4_endpoint_check() -> None:
         "x",
         "http://a%40b/",
         "http://h:abc/",
+        "http://[::1",
     ):
-        assert mod._endpoint_origin(raw) == report_url(raw), raw
+        assert mod._endpoint_origin(raw) == url_origin(raw), raw
 
 
 # ── review-round folds ───────────────────────────────────────────────────────────────────────────────
@@ -298,3 +299,16 @@ def test_provider_failures_scrub_before_the_cut(monkeypatch) -> None:
     )
     record = _record_dict(SimulationReport(provider_failures={"p": {"last_error": "x" * 190 + " http://[::1"}}))
     assert record["provider_failures"]["p"]["last_error"].endswith("<url>")
+
+
+def test_redact_urls_is_linear_on_long_hostile_text() -> None:
+    """The scrub runs on untruncated error text (it precedes the 200-character cut), which can embed a whole
+    response body: a long letter run before ``://`` must not make the scheme scan quadratic."""
+    import time
+
+    from maxim.utils.http import redact_urls
+
+    for text in ("a" * 100_000 + "://", "a1" * 50_000):
+        start = time.perf_counter()
+        redact_urls(text)
+        assert time.perf_counter() - start < 1.0, text[:8]
