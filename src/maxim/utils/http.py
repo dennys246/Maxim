@@ -922,7 +922,7 @@ def url_origin(url: str | None) -> str:
     fragment (where a tunnel's credentials or token live) are dropped; the port stays, because two local servers
     differ only by it and it is no secret. Anything that is not an http(s) URL with a host, that does not parse
     (an unbalanced IPv6 bracket), or whose port is invalid or whose host holds a ``%`` (a percent-encoded
-    ``user:pass@`` urlsplit leaves in the host) gives ``""``. Never raises. ``scripts/o19_verdict.py::
+    ``user:pass@`` urlsplit leaves in the host) or a backslash (urlsplit does not end the host at one) gives ``""``. Never raises. ``scripts/o19_verdict.py::
     _endpoint_origin`` is a stdlib copy (that script imports no ``maxim``); a parity test pins the two."""
     try:
         parts = urlsplit(str(url or "").strip())
@@ -930,7 +930,7 @@ def url_origin(url: str | None) -> str:
     except ValueError:
         return ""
     host = parts.hostname
-    if parts.scheme.lower() not in ("http", "https") or not host or "%" in host:
+    if parts.scheme.lower() not in ("http", "https") or not host or "%" in host or "\\" in host:
         return ""
     host = f"[{host}]" if ":" in host else host
     return f"{parts.scheme.lower()}://{host}" + (f":{port}" if port is not None else "")

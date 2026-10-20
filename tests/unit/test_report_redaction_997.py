@@ -35,6 +35,7 @@ SECRET_URL = "https://alice:s3cr3t@Leader.Example.com:8443/tok-abc123/v1?key=hun
         ("HTTP://Host.Example", "http://host.example"),
         ("//host.example:1/x", ""),
         ("http://[::1", ""),  # an unbalanced bracket: urlsplit itself raises
+        ("https://h\\tok123/v1", ""),  # urlsplit keeps a backslash (and what follows) in the host
         ("unix:///tmp/llama.sock", ""),
         ("host.example:8100/v1", ""),  # no scheme
         ("", ""),
@@ -264,6 +265,7 @@ def test_o19_verdict_reduces_both_sides_of_the_c4_endpoint_check() -> None:
         "http://a%40b/",
         "http://h:abc/",
         "http://[::1",
+        "https://h\\tok123/v1",
     ):
         assert mod._endpoint_origin(raw) == url_origin(raw), raw
 

@@ -409,7 +409,7 @@ def _endpoint_origin(url) -> str:
     except ValueError:
         return ""
     host = parts.hostname
-    if parts.scheme.lower() not in ("http", "https") or not host or "%" in host:
+    if parts.scheme.lower() not in ("http", "https") or not host or "%" in host or "\\" in host:
         return ""
     host = f"[{host}]" if ":" in host else host
     return f"{parts.scheme.lower()}://{host}" + (f":{port}" if port is not None else "")
