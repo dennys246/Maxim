@@ -648,9 +648,12 @@ class InternetAccessTool(Tool):
                 metadata={"enabled": True, "reason": reason, "scope": "session"},
             )
         if current.source == "session-lowered":
-            remedy = "only the operator can restore it, by starting a new session without MAXIM_INTERNET_LOWERED"
+            # disabled_reason() already says how the operator restores it; name what to leave out of the new session.
+            remedy = "only the operator can start a new session without MAXIM_INTERNET_LOWERED"
+        elif current.source == "policy-unreadable":
+            remedy = "only the operator can fix it (util/internet_policy.json)"
         else:
-            remedy = "only the operator can turn it on (the operator's util/internet_access.json toggle)"
+            remedy = "only the operator can turn it on (util/internet_access.json)"
         return ToolResult(
             success=False,
             error=f"{current.disabled_reason().rstrip('.')}. This tool cannot turn internet access on: {remedy}.",

@@ -215,3 +215,19 @@ def test_the_refusal_names_the_remedy_for_why_access_is_off(operator_home) -> No
 def test_a_string_enabled_says_it_is_a_string() -> None:
     error = _toggle(enabled="false").error
     assert "JSON boolean" in error and "str" in error
+
+
+def test_an_unreadable_policy_file_names_the_policy_file(fresh_home, caplog) -> None:
+    """Delta-round fold: not the toggle file, which is fine; and the legacy-writer note still fires."""
+    from maxim.utils.internet_access import _reset_policy_cache, live_internet_policy_getter, set_internet_access
+
+    policy = fresh_home.parent / "internet_policy.json"
+    policy.parent.mkdir(parents=True, exist_ok=True)
+    policy.write_text("{not json")
+    set_internet_access(False, source="tool", path=fresh_home)
+    _reset_policy_cache()
+    caplog.clear()
+    live_internet_policy_getter(True)
+    assert "written by an agent" in caplog.text
+    error = _toggle(enabled=True).error
+    assert "util/internet_policy.json" in error and ".." not in error

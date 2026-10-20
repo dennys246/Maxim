@@ -648,8 +648,11 @@ def live_internet_policy_getter(
     elif not initial.enabled or initial.policy.allow_domains or initial.policy.block_domains:
         # WARNING, not INFO: a persisted "off" or a domain list silently changes what every later session can reach
         # (#822 review). The operator writes the toggle; before #1345 the agent's tool did too (source "tool").
+        # Read the toggle itself: when the policy file is unreadable, initial.source says so instead.
         written_by = (
-            " It was written by an agent's internet_access_toggle before 1.3.3." if initial.source == "tool" else ""
+            " It was written by an agent's internet_access_toggle before 1.3.3."
+            if load_internet_access(access_path).source == "tool"
+            else ""
         )
         logger.warning(
             "Internet policy in effect: %s (toggle: %s; policy: %s). To turn internet back on, delete the "
