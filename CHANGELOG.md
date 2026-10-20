@@ -25,6 +25,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A missing local model downloads only with consent, on every path** (behaviour change;
+  [#1343](https://github.com/dennys246/Maxim/issues/1343)).
+  - Two internal paths called `download_llm` directly and skipped the consent gate
+    (`models/download.py::ensure_available`): the CLI agentic path, and the llama.cpp backend's lazy load, which
+    every router reaches when its model file is missing (`maxim.run`, the console, sims). Both now go through the gate.
+  - The backend's lazy load never prompts (it runs on the warmup thread and inside every completion, where a prompt
+    could read the user's reply to the agent as consent): it downloads only with a standing grant (`--auto-download`,
+    `llm.auto_download` or `MAXIM_AUTO_DOWNLOAD_MODELS`), and remembers a refusal. The CLI agentic path asks at a
+    terminal, through the new `cli.py::_ensure_agentic_model`. A caller that never asks is told so on its logger, not
+    with a false "stdin is not a tty" on stdout.
+  - **`llm.auto_download` in config.json is now a grant on every path.** The gate read only
+    `MAXIM_AUTO_DOWNLOAD_MODELS`, which config reached only through `build_primary_router`'s lane setup, so a router
+    built another way (the CLI agentic path, the foundry and curate paths, the fallbacks) ignored it. The gate now
+    reads the env var, then `resolve_setting("llm.auto_download")`; an unreadable config.json grants nothing.
+  - So a first `maxim.run()` in a notebook (stdin not a terminal) no longer downloads a GGUF silently: grant it
+    with `maxim config set llm.auto_download true`, or call `maxim.download_model(name)`.
+  - `download_llm` stays public: calling it, `maxim.download_model` or `python -m maxim.models.download --llm` is
+    the request. Design: [docs/plans/download_consent_gate.md](docs/plans/download_consent_gate.md).
+  - Guard: `tests/unit/test_download_consent_1343.py` (an AST allow-list of `download_llm`'s callers in `src/`,
+    red on the pre-fix tree; each site's behaviour, every mechanism deletion-proven).
 - **A benchmark passes only when its expectations are met and a threshold was applied** (behaviour change;
   [#1310](https://github.com/dennys246/Maxim/issues/1310), owner decision 2026-10-17, the strict option).
   - **Expectations now see the run.** `BenchmarkRunner.run` validated every scenario's expectations against an empty
