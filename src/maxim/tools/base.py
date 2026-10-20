@@ -551,6 +551,102 @@ def contained_path(path: object, allowed_dirs: list[str] | None, base: str | Non
     return resolved if _within(resolved, [os.path.realpath(d) for d in allowed_dirs]) else None
 
 
+def _same_entry(a: str, b: str) -> bool:
+    """Whether two existing paths are one filesystem entry (stat identity: catches ``.GIT``, Unicode-ignorable and
+    8.3 spellings that a name comparison misses)."""
+    try:
+        return os.path.samefile(a, b)
+    except (OSError, ValueError):
+        return False
+
+
+def _global_git_config_paths() -> list[str]:
+    """The user- and installation-level files host git reads: ``host_tool_env`` passes ``HOME`` and
+    ``XDG_CONFIG_HOME`` through, and Homebrew's git reads its prefix's ``etc/gitconfig`` (not under FORBIDDEN_PATHS)."""
+    home = os.path.expanduser("~")
+    xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config")
+    return [
+        os.path.join(home, ".gitconfig"),
+        os.path.join(xdg, "git", "config"),
+        os.path.join(xdg, "git", "attributes"),
+        os.path.join(home, ".config", "git", "config"),
+        os.path.join(home, ".config", "git", "attributes"),
+        "/usr/local/etc/gitconfig",
+        "/opt/homebrew/etc/gitconfig",
+    ]
+
+
+def _looks_like_git_dir(path: str) -> bool:
+    """git's own test for a git directory, approximately: a ``HEAD`` file beside an ``objects`` directory. Covers a
+    separate git dir (``--separate-git-dir``), ``worktrees/<n>``, ``modules/<n>`` and a bare repository."""
+    return os.path.isfile(os.path.join(path, "HEAD")) and os.path.isdir(os.path.join(path, "objects"))
+
+
+def _gitfile_target(gitfile: str) -> str | None:
+    """The git dir a ``.git`` FILE points at (``gitdir: <path>``, relative to the file's directory), or None."""
+    try:
+        with open(gitfile, encoding="utf-8") as f:
+            first = f.readline().strip()
+    except (OSError, UnicodeDecodeError):
+        return None
+    if not first.lower().startswith("gitdir:"):
+        return None
+    target = first.split(":", 1)[1].strip()
+    if not target:
+        return None
+    return os.path.realpath(os.path.join(os.path.dirname(gitfile), os.path.expanduser(target)))
+
+
+def git_dir_write_refusal(path: str) -> str | None:
+    """Why a file tool must not write ``path``, or None (#957).
+
+    A model that can write a repository's git configuration can make host git run code: clean/process filters run on
+    ``git diff`` and ``git add``, and no git switch disables them (#949). So the file tools refuse to write:
+
+    - under any ``.git`` path component (case-folded), and under any entry that IS a ``.git`` (stat identity, so
+      ``.GIT``, Unicode-ignorable or 8.3 spellings of it are refused too), including the ``.git`` file itself;
+    - under the git dir a ``.git`` FILE points at (``git init --separate-git-dir``: a git dir not named ``.git``);
+    - inside any directory that already looks like a git dir (``HEAD`` + ``objects/``): a sibling separate git dir,
+      ``worktrees/<n>``, a bare repository;
+    - the user-level git config and attributes host git reads (``~/.gitconfig``, ``$XDG_CONFIG_HOME/git/``,
+      Homebrew's ``etc/gitconfig``), compared case-folded.
+
+    A git dir assembled from scratch, file by file, is not caught here (no single write looks like one); host git
+    refuses to use it through ``safe.bareRepository=explicit`` in ``GIT_HARDENING_ARGS`` (git 2.38+; older git
+    ignores it). This narrows the risk; it
+    does not close it: ``bash`` (and any code the model can run) can still write there, as can a file pulled in by an
+    ``include.path`` the model cannot see from here.
+    """
+    real = os.path.realpath(os.path.expanduser(path))
+    parts = real.split(os.sep)
+    if any(p.casefold() == ".git" for p in parts if p):
+        return f"Writing under a .git directory is not allowed (git configuration can run code): {real}"
+    for config in _global_git_config_paths():
+        # Case-folded: on a case-insensitive filesystem ``~/.GitConfig`` IS ``~/.gitconfig`` even before it exists.
+        if real.casefold() == os.path.realpath(config).casefold() or (
+            os.path.lexists(real) and _same_entry(real, config)
+        ):
+            return f"Writing the user's git configuration is not allowed (git configuration can run code): {real}"
+    # Walk the existing ancestors (and the path itself): is any of them a .git entry, or inside a gitfile's target?
+    current = real
+    while True:
+        parent = os.path.dirname(current)
+        if os.path.lexists(current):
+            dotgit = os.path.join(parent, ".git")
+            if os.path.lexists(dotgit) and _same_entry(current, dotgit):
+                return f"Writing under a .git directory is not allowed (git configuration can run code): {real}"
+            if current != real and os.path.isdir(current) and _looks_like_git_dir(current):
+                return f"Writing inside a git directory is not allowed (git configuration can run code): {real}"
+        beside = os.path.join(current, ".git")
+        if os.path.isfile(beside):
+            target = _gitfile_target(beside)
+            if target and (real == target or real.startswith(target + os.sep)):
+                return f"Writing inside a repository's git directory is not allowed: {real} (in {target})"
+        if parent == current:
+            return None
+        current = parent
+
+
 def git_env(root: str | None) -> dict[str, str]:
     """``host_tool_env()`` plus ``GIT_CEILING_DIRECTORIES`` at the root's parent, so git never searches
     ABOVE its working root for a repository (#949): a root that is not itself inside a repo fails
@@ -566,8 +662,20 @@ def git_env(root: str | None) -> dict[str, str]:
 # `git commit` adds --no-gpg-sign (a repo-local gpg.program). NOT closable by any git switch: clean/
 # smudge/process FILTERS (.gitattributes + filter.*.clean in .git/config) run on diff and add. A model
 # that can write a repository's .git/config can therefore still make git run code -- which is why both
-# git tools are opt-in (MAXIM_ALLOW_GIT_DIFF / MAXIM_ALLOW_GIT_COMMIT). Refusing .git/ writes is #957.
-GIT_HARDENING_ARGS = ("-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false")
+# git tools are opt-in (MAXIM_ALLOW_GIT_DIFF / MAXIM_ALLOW_GIT_COMMIT). Since #957 the file tools refuse to write the
+# git configuration (git_dir_write_refusal); `bash` and any code the model runs still can.
+# safe.bareRepository=explicit (#957): git will not implicitly use a directory as a BARE repository, which a model can
+# build from scratch with write_file alone (HEAD, objects/, refs/, a config with a filter), in any order, so no path
+# check at write time can see it coming. A normal worktree's .git is unaffected. Needs git 2.38+: older git ignores
+# the key, and there a from-scratch git dir is still usable (a stated residual).
+GIT_HARDENING_ARGS = (
+    "-c",
+    "core.hooksPath=/dev/null",
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "safe.bareRepository=explicit",
+)
 
 
 def git_root_refusal(workdir: str | None, allowed_dirs: list[str] | None) -> str | None:
