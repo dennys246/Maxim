@@ -54,6 +54,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Guards: `tests/unit/test_benchmark_expectations_1310.py` (the shipped `quick_check` suite through the real
     runner over a run that did the work: 0/3 before, 3/3 after, one of the three vacuous until #1391; three strict red gates for the verdict, flipped in
     place; each mechanism deletion-proven).
+- **`maxim --clear-memory` clears the data home, all of it, and asks first** (behaviour change;
+  [#1337](https://github.com/dennys246/Maxim/issues/1337), owner decisions 2026-10-19).
+  - **Where:** the data home (`~/.maxim` or `$MAXIM_DATA_HOME`). Before, it searched `--home-dir`, whose default is
+    `./data` relative to the working directory, so a plain `maxim --clear-memory` never touched `~/.maxim`. It now also
+    clears `--home-dir` when that is passed explicitly; otherwise a `./data` holding memory (the robot path's
+    `MaximAgent` writes there) is named in a warning and left alone.
+  - **What:** an agent's stores are cleared in every agent home: `agents/<id>/`, `memory/` (the Reachy runtime and
+    `maxim hive merge`), `orchestrator/` and the pre-#932 `sessions/`. Each type's files come from the same
+    definition `maxim.create.agent` refuses on (`AGENT_STATE_FILES`), and a test pins the two together. New types:
+    `cerebellum`, `memory_hub`, `significance`, `short_term`, `tool_index`; `bounds` now clears
+    `util/learned_bounds.json`, the file its learner writes. The agent homes are declared once,
+    `utils/paths.py::AGENT_HOME_PATTERNS`, and a test fails when a writer that names its home
+    statically builds one outside it. `sim_reports/`
+    is a run archive and is never cleared. The issue also named comms: `comms/` persists nothing (its conversation
+    history is in memory only), so there is nothing to clear.
+  - **Asking:** it lists every path it will delete, then asks y/N at a terminal, both on stderr (so a redirected
+    stdout cannot hide the question). When stdin is not a terminal it refuses with exit 2 unless `--yes` is passed.
+    A `--clear-memory` run is never saved for `maxim --last`, in the `--clear-memory=all` spelling too. A symlinked
+    store is unlinked, never followed. Exit codes: 0 done or nothing found, 1 declined or a deletion
+    failed (it used to exit 0), 2 an unknown type or a refusal; nothing is deleted on 2.
+  - Guards: `tests/unit/test_clear_memory_1337.py` (three strict red gates flipped in place, one of them the shipped
+    CLI in a subprocess over stores written by the real writers; each mechanism deletion-proven).
 - **The 1.4.0 release gate bounds the decomposed functions at 1,000 lines, not 200** ([#1323](https://github.com/dennys246/Maxim/issues/1323), owner decision 2026-10-16).
   - `start_simulation_mode`, `run_agentic_loop` and `execute_and_learn` must reach 1,000 lines or fewer, and so must
     everything split or moved out of them and every def in their three files. Item `1323.functions-1000` holds them.

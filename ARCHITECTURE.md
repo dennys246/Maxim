@@ -575,8 +575,9 @@ class LearnableComponent:
 Use the `--clear-memory` CLI flag to reset learning:
 
 ```bash
-# Clear all persistent memory
+# Clear all persistent memory in the data home (lists the paths, then asks y/N)
 maxim --clear-memory
+maxim --clear-memory --yes     # in a script, where stdin is not a terminal
 
 # Clear specific types (comma-separated)
 maxim --clear-memory focus
@@ -595,7 +596,9 @@ maxim --clear-memory escalation,threshold
 - `hippo` - Hippocampus memories
 - `pain` - Pain detector history
 - `semantic` - Semantic embeddings (Phase 4)
-- `all` - Clear everything
+- `ec`, `atl`, `angular_gyrus`, `cerebellum`, `memory_hub`, `statistician`, `significance`, `short_term`,
+  `cross_layer`, `tool_index`, `planning` - the rest (full list: `maxim --help`, [docs/user/cli-reference.md](docs/user/cli-reference.md))
+- `all` - Clear everything (an agent's stores in every agent home; `sim_reports/` is never cleared)
 
 ### File Format
 
