@@ -345,26 +345,26 @@ All user data persists under `~/.maxim/` (configurable via `MAXIM_DATA_HOME`). B
 
 | Component | File (under `~/.maxim/`) | `--clear-memory` key |
 |-----------|--------------------------|----------------------|
+| An agent's stores (Hippocampus, NAc, EC, SCN, ATL, AngularGyrus, Cerebellum, MemoryHub) | `hippocampus.json`, `nac.json` (+ `nac.meta.json`), `ec.json`, `scn.json`, `atl.json`, `angular_gyrus.json`, `cerebellum.json`, `memory_hub/` in each agent home: `agents/<id>/`, `memory/`, `orchestrator/`, `sessions/` (pre-#932) | `hippo`, `nac`, `ec`, `scn`, `atl`, `angular_gyrus`, `cerebellum`, `memory_hub` |
 | FocusLearner | `util/focus_learner.json` | `focus` |
-| WorkspaceBoundsLearner | `util/workspace_bounds.json` | `bounds` |
+| WorkspaceBoundsLearner | `util/learned_bounds.json` | `bounds` |
 | EscalationLearningBridge | `util/escalation_learning.json` | `escalation` |
 | FearCircuitBridge | `util/fear_learning.json` | `fear` |
 | AdaptiveThresholdController | `util/adaptive_thresholds.json` | `threshold` |
-| NAc | `util/nac_state.json` | `nac` |
-| SCN | `util/scn_state.json` | `scn` |
-| Hippocampus | `util/hippocampus.json` | `hippo` |
-| ATL | `util/atl_state.json` | `atl` |
 | PainDetector | `util/pain_detector.json` | `pain` |
 | EC semantic embeddings | `util/semantic_embeddings.npz` | `semantic` |
 | StatisticianAgent | `util/statistician_state.json` | `statistician` |
+| ExecAgent significance weights | `util/significance_weights.json` | `significance` |
+| ExecAgent short-term staging | `short_term_memory/` (directory) | `short_term` |
+| Learned tool index | `memory/tool_index.json` | `tool_index` |
 | CrossLayerGraph | `util/cross_layer_graph.json` | `cross_layer` |
 | PlanManager | `planning/` (directory) | `planning` |
 | Active LLM Model | `util/active_llm_model.{role}.txt` | (manual / hot-swap) |
 | Node ID | `util/node_id.txt` | (persistent mesh identity) |
 | Simulation Reports | `sim_reports/{session_id}/` | (per-session, not auto-cleared) |
-| Live Session Recordings | `sessions/{session_id}/` | (per-session, not auto-cleared) |
+| Live Session Recordings | `sessions/{session_id}/` | (per-session, not cleared; only the flat agent-store files directly in `sessions/` are) |
 
-Clear all clearable entries: `maxim --clear-memory all`
+Clear all clearable entries: `maxim --clear-memory all` (it lists the paths and asks first; pass `--yes` in a script). The robot path's `MaximAgent` still writes under `--home-dir` (default `./data`): add `--home-dir data` to clear that too ([#1390](https://github.com/dennys246/Maxim/issues/1390)).
 
 ---
 

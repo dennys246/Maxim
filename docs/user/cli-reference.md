@@ -56,7 +56,8 @@ Running `maxim` with no arguments launches a Rich interactive menu with campaign
 | `--memory-path` | str | `{home_dir}/memory/memories.json` | Custom memory storage path |
 | `--reset` | flag | | Clear memory on startup |
 | `--enable-embeddings` | flag | | Enable semantic embeddings for similarity |
-| `--clear-memory` | str | `all` | Clear persistent memory and exit. Types: `all` (default), `focus`, `bounds`, `escalation`, `fear`, `threshold`, `nac`, `ec`, `scn`, `hippo`, `pain`, `semantic`, `atl`, `angular_gyrus`, `statistician`, `cross_layer`, `planning`. Comma-separated. `nac` and `ec` are a pair — clearing either clears both, because NAc's reward biases are keyed by EC node ids. |
+| `--clear-memory` | str | `all` | Clear persistent memory in the data home (`~/.maxim` or `$MAXIM_DATA_HOME`) and exit; also `--home-dir`'s stores when `--home-dir` is passed. Agent stores are cleared in every agent home (`agents/<id>/`, `memory/`, `orchestrator/`, `sessions/`). Types: `all` (default), `hippo`, `nac`, `ec`, `scn`, `atl`, `angular_gyrus`, `cerebellum`, `memory_hub`, `focus`, `bounds`, `escalation`, `fear`, `threshold`, `pain`, `statistician`, `significance`, `short_term`, `cross_layer`, `semantic`, `tool_index`, `planning`. Comma-separated. `nac` and `ec` are a pair — clearing either clears both, because NAc's reward biases are keyed by EC node ids. It lists every path first and asks y/N (on stderr); when stdin is not a terminal it refuses unless `--yes`. Exit 0 done or nothing found, 1 declined or a deletion failed, 2 an unknown type or a refusal (nothing deleted). `sim_reports/` is never cleared. |
+| `--yes` | flag | off | Confirm `--clear-memory` without asking (required when stdin is not a terminal). |
 
 ## Hardware and Perception
 
@@ -530,7 +531,8 @@ maxim --show-last     # Show all saved runs
 ### Reset all learned state
 
 ```bash
-maxim --clear-memory all
+maxim --clear-memory all          # lists what it will delete, then asks y/N
+maxim --clear-memory all --yes    # in a script (stdin not a terminal)
 ```
 
 ### Quick reference (moved from CLAUDE.md in the 2026-10-16 diet)

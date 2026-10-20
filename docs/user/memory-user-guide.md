@@ -103,12 +103,19 @@ maxim --clear-memory atl             # ATL substrate nodes
 maxim --clear-memory semantic        # Embedding vectors
 maxim --clear-memory focus           # Motor gain learning
 maxim --clear-memory bounds          # Workspace bounds
+maxim --clear-memory cerebellum      # Forward-model learning
 maxim --clear-memory pain            # Pain learning
 maxim --clear-memory fear,escalation # Safety thresholds
 
 # Clear everything
 maxim --clear-memory all
 ```
+
+`--clear-memory` clears the data home (`~/.maxim`, or `$MAXIM_DATA_HOME`), in every agent home there
+(`agents/<id>/`, `memory/`, `orchestrator/`, `sessions/`). Add `--home-dir <dir>` to clear that directory's stores
+too (the robot path keeps memory under `--home-dir`, default `./data`). It lists every path first and asks y/N; in
+a script, where stdin is not a terminal, it refuses unless you pass `--yes`. Simulation reports in `sim_reports/`
+are never cleared.
 
 ### Starting Fresh
 

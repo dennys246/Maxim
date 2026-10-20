@@ -207,39 +207,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # ── Memory ─────────────────────────────────────────────────────────
-    memory = parser.add_argument_group("memory", "Persistent memory management")
-    memory.add_argument(
-        "--memory-path",
-        type=str,
-        default=None,
-        help="Path for memory persistence (agentic mode). Default: {home_dir}/memory/memories.json",
-    )
-    memory.add_argument(
-        "--reset",
-        action="store_true",
-        help="Reset memory on startup (agentic mode).",
-    )
-    memory.add_argument(
-        "--enable-embeddings",
-        action="store_true",
-        help="Enable embedding-based memory similarity (requires sentence-transformers).",
-    )
-    memory.add_argument(
-        "--clear-memory",
-        type=str,
-        nargs="?",
-        const="all",
-        default=None,
-        metavar="TYPE",
-        help=(
-            "Clear persistent memory and exit. "
-            "Bio-systems (cleared across all agents/<id>/): hippo, nac, ec, scn, atl, angular_gyrus "
-            "(nac and ec are a pair — clearing either clears both). "
-            "Global learners: focus, bounds, escalation, fear, threshold, pain, statistician, "
-            "cross_layer, semantic. Also: planning. Use 'all' (default) for everything. "
-            "Can specify multiple comma-separated types."
-        ),
-    )
+    _add_memory_args(parser)
 
     # ── Robot/Hardware ─────────────────────────────────────────────────
     hw = parser.add_argument_group("hardware", "Robot and hardware options")
@@ -661,3 +629,50 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Clear the saved last invocation and exit.",
     )
     return parser
+
+
+def _add_memory_args(parser: argparse.ArgumentParser) -> None:
+    """The ``memory`` argument group: persistence paths, embeddings, ``--clear-memory`` and its ``--yes``."""
+    memory = parser.add_argument_group("memory", "Persistent memory management")
+    memory.add_argument(
+        "--memory-path",
+        type=str,
+        default=None,
+        help="Path for memory persistence (agentic mode). Default: {home_dir}/memory/memories.json",
+    )
+    memory.add_argument(
+        "--reset",
+        action="store_true",
+        help="Reset memory on startup (agentic mode).",
+    )
+    memory.add_argument(
+        "--enable-embeddings",
+        action="store_true",
+        help="Enable embedding-based memory similarity (requires sentence-transformers).",
+    )
+    memory.add_argument(
+        "--clear-memory",
+        type=str,
+        nargs="?",
+        const="all",
+        default=None,
+        metavar="TYPE",
+        help=(
+            "Clear persistent memory in the data home (~/.maxim or $MAXIM_DATA_HOME; also --home-dir when "
+            "passed) and exit. Lists what it will delete and asks first (see --yes). "
+            "Agent stores (cleared in every agent home: agents/<id>/, memory/, orchestrator/, sessions/): "
+            "hippo, nac, ec, scn, atl, angular_gyrus, cerebellum, memory_hub "
+            "(nac and ec are a pair — clearing either clears both). "
+            "Global learners: focus, bounds, escalation, fear, threshold, pain, statistician, significance, "
+            "short_term, cross_layer, semantic, tool_index. Also: planning. Use 'all' (default) for everything; "
+            "sim_reports/ (run archives) is never cleared. Can specify multiple comma-separated types."
+        ),
+    )
+    memory.add_argument(
+        "--yes",
+        action="store_true",
+        help=(
+            "Confirm --clear-memory without asking. Without it, --clear-memory lists what it will delete and "
+            "asks at a terminal, and refuses when stdin is not a terminal."
+        ),
+    )

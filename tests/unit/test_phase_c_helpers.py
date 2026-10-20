@@ -194,14 +194,16 @@ class TestCliHandlers:
         assert delete_llm("smollm-1.7b-instruct") is True
         assert not gguf.exists()
 
-    def test_handle_clear_memory_unknown_scope_returns_zero(self, tmp_path, capsys):
+    def test_handle_clear_memory_unknown_scope_refuses_with_2(self, tmp_path, capsys):
+        import argparse
+
         from maxim.cli import _handle_clear_memory
 
-        # Unknown scope still returns 0; clears 0 files
-        rc = _handle_clear_memory("nonexistent_scope", str(tmp_path))
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "Clearing memory" in out
+        # An unknown type refuses before anything is planned or deleted (#1337: it used to return 0)
+        args = argparse.Namespace(home_dir=str(tmp_path), yes=True)
+        rc = _handle_clear_memory("nonexistent_scope", args, ["--clear-memory", "nonexistent_scope", "--yes"])
+        assert rc == 2
+        assert "nonexistent_scope" in capsys.readouterr().err
 
 
 # ─── ExecAgent extracted helpers ──────────────────────────────────────────
