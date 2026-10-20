@@ -16,7 +16,7 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1627
+      "lines": 1606
     },
     {
       "file": "src/maxim/cli_parser.py",
@@ -371,6 +371,7 @@
     "_main_impl tightened 1678 -> 1662 on 2026-10-14 (leader fails closed) when the early leader boot's key read, warning and proxy start moved into runtime/leader_proxy.py::start_leader_proxy_for_role, which fails closed instead of warning.",
     "_maybe_auto_spawn_server tightened 311 -> 309 the same day: its leader key read became the fail-closed require_leader_key (no try/except), its 0.0.0.0 leader bind became loopback, and the remote-update setdefault was deleted; the reuse exposure check is one call to local_server_spawner.verify_llm_server_exposure.",
     "_main_impl tightened 1662 -> 1627, _maybe_auto_spawn_server 309 -> 303 and start_research_mode 276 -> 262 on 2026-10-14 (leader fail-closed review folds): the early leader boot moved to cli.py::_early_leader_boot, the spawn/swap key decision to lane_backends.py::_server_key_for_role, and the research LLM init to research_orchestrator.py::_build_research_llm, paying for the LeaderRefusal re-raises added in the same change (agentic_runtime's re-raise rides utils/logging.py::warn_unless_refusal, so _start_agentic_runtime stays at its pin).",
-    "NAc.__init__ tightened 304 -> 303 on 2026-10-17 (NAc correctness A1) when the dead, never-read _last_decay_time stamp was deleted."
+    "NAc.__init__ tightened 304 -> 303 on 2026-10-17 (NAc correctness A1) when the dead, never-read _last_decay_time stamp was deleted.",
+    "_main_impl tightened 1627 -> 1606 on 2026-10-19 (#1343): the agentic path's model download branch moved to cli.py::_ensure_agentic_model, which asks the consent gate instead of calling download_llm."
   ]
 }

@@ -19,6 +19,35 @@ class _LlamaCppBackend:
         self._llm = None
         self._lock = threading.Lock()
         self.requires_prompt_formatting = True
+        # A missing model this backend may not download (#1343): asked once, then every later call fails fast.
+        self._download_refused = False
+
+    def _fetch_missing_model(self, model_path: str) -> bool:
+        """Put the profile's GGUF on disk through the consent gate, or refuse (#1343).
+
+        Never prompts: this runs on the warmup thread and inside every ``complete()``, where a y/N read from stdin
+        could take a line the user typed to the agent. Only a standing grant downloads (``--auto-download``,
+        ``llm.auto_download``, ``MAXIM_AUTO_DOWNLOAD_MODELS``); the startup sites ask. A refusal is remembered, so
+        later calls fail fast instead of asking the gate again, for this backend's life (a file that appears later, from
+        another process, still loads: the path check runs first). An exception is reported and not remembered.
+        """
+        if self._download_refused:
+            return False
+        profile = str(self.cfg.profile or self.cfg.model_base or "").strip()
+        if not profile:
+            warn("LLM model_path not found: %s", model_path)
+            return False
+        from maxim.models.download import ensure_available
+
+        try:
+            available = ensure_available(profile, interactive=False, logger=logger)
+        except Exception as e:
+            warn("Model download for %s failed: %s", profile, e)
+            return False
+        if not available:
+            self._download_refused = True
+            warn("LLM model for %s is not on disk (%s) and was not downloaded", profile, model_path)
+        return available
 
     def _ensure(self) -> bool:
         if self._llm is not None:
@@ -36,29 +65,8 @@ class _LlamaCppBackend:
             Llama = llama_mod.Llama
 
             model_path = str(self.cfg.model_path or "").strip()
-            if not model_path or not os.path.exists(model_path):
-                # Auto-download if model is in the registry
-                profile = str(self.cfg.profile or self.cfg.model_base or "").strip()
-                if profile:
-                    try:
-                        from maxim.models.download import download_llm, LLM_MODELS
-
-                        if profile in LLM_MODELS:
-                            logger.info("Model not found at %s — downloading %s...", model_path, profile)
-                            if download_llm(profile):
-                                logger.info("Download complete: %s", profile)
-                            else:
-                                warn("Auto-download failed for %s", profile)
-                                return False
-                        else:
-                            warn("LLM model_path not found and no download available: %s", model_path)
-                            return False
-                    except Exception as e:
-                        warn("Auto-download failed: %s", e)
-                        return False
-                else:
-                    warn("LLM model_path not found: %s", model_path)
-                    return False
+            if (not model_path or not os.path.exists(model_path)) and not self._fetch_missing_model(model_path):
+                return False
             if not os.path.exists(model_path):
                 # Re-resolve: downloader may save with different casing than profile expects
                 from maxim.models.language.config import build_model_path
