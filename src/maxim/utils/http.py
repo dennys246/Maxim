@@ -936,11 +936,13 @@ def url_origin(url: str | None) -> str:
     return f"{parts.scheme.lower()}://{host}" + (f":{port}" if port is not None else "")
 
 
-# A URL in free text: the scheme, then optional userinfo up to its ``@`` (which may hold a quote, so a password's
-# tail is not left behind), then everything up to whitespace, a quote or an angle bracket.
-# The lookbehind starts a scheme only at the start of its run, which keeps the scan linear on a long letter run.
-_URL_IN_TEXT = re.compile(r"(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*://(?:[^\s/@]*@)?[^\s'\"<>]+")
+# A URL in free text: a whole run of scheme characters (the lookbehind keeps the scan linear: a match starts only at
+# the start of a run, and taking the whole run means a URL glued to a digit or ``.+-`` is still matched), then
+# optional userinfo up to its ``@`` (which may hold a quote, so a password's tail is not left behind), then
+# everything up to whitespace, a quote or an angle bracket.
+_URL_IN_TEXT = re.compile(r"(?<![A-Za-z0-9+.-])[A-Za-z0-9+.-]+://(?:[^\s/@]*@)?[^\s'\"<>]+")
 _URL_TRAILING_PUNCT = ".,;:!?)"
+_URL_LEADING_NON_SCHEME = re.compile(r"^[0-9+.-]*")
 
 
 def redact_urls(text: str) -> str:
@@ -951,7 +953,8 @@ def redact_urls(text: str) -> str:
     def _reduce(match: re.Match[str]) -> str:
         raw = match.group(0)
         core = raw.rstrip(_URL_TRAILING_PUNCT)
-        return (url_origin(core) or "<url>") + raw[len(core) :]
+        lead = _URL_LEADING_NON_SCHEME.match(core).group(0)  # a scheme starts with a letter: ``1https://`` keeps ``1``
+        return lead + (url_origin(core[len(lead) :]) or "<url>") + raw[len(core) :]
 
     return _URL_IN_TEXT.sub(_reduce, str(text))
 

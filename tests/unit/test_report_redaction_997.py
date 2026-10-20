@@ -279,6 +279,26 @@ def test_redact_urls_never_raises_and_keeps_no_password_tail() -> None:
     assert redact_urls("(see http://h:1/x), next.") == "(see http://h:1), next."
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("1https://u:p@h/x", "1https://h"),
+        (".http://u:p@h/x", ".http://h"),
+        ("-http://u:p@h", "-http://h"),
+        ("+http://u:p@h", "+http://h"),
+        ("x=1https://u:p@h", "x=1https://h"),
+        ("port 8100http://u:p@h", "port 8100http://h"),
+        ("42.http://tok@h/", "42.http://h"),
+        ("urlhttp://u:p@h/x", "<url>"),
+        ("123://u:p@h", "123<url>"),  # no scheme letter: nothing is left, and nothing leaks
+    ],
+)
+def test_a_url_glued_to_a_prefix_is_still_scrubbed(text: str, expected: str) -> None:
+    from maxim.utils.http import redact_urls
+
+    assert redact_urls(text) == expected
+
+
 def test_provider_failures_scrub_before_the_cut(monkeypatch) -> None:
     """A URL straddling the 200-character cut: the scrub runs first, so neither its credentials nor a half URL
     that would break the second pass reach the record."""
@@ -308,7 +328,7 @@ def test_redact_urls_is_linear_on_long_hostile_text() -> None:
 
     from maxim.utils.http import redact_urls
 
-    for text in ("a" * 100_000 + "://", "a1" * 50_000):
+    for text in ("a" * 100_000 + "://", "a1" * 50_000, "1" * 100_000 + "://", "a://" * 30_000):
         start = time.perf_counter()
         redact_urls(text)
         assert time.perf_counter() - start < 1.0, text[:8]
