@@ -1196,7 +1196,7 @@ def test_the_served_reader_waits_out_a_completion_and_records_why_a_read_failed(
         return _Resp()
 
     monkeypatch.setattr(_http, "fetch_url", fetch)
-    monkeypatch.setattr("maxim.tunnel.keys.read_key", lambda: "k")
+    monkeypatch.setattr("maxim.tunnel.keys.candidate_server_keys", lambda: {"mesh": "k"})
     read = h.served_reader()
     ok, failed = read(v.SIM_PORT, v.MODEL_GGUF), read(v.SIM_PORT, v.MODEL_GGUF)
     assert ok["served"] == v.MODEL_GGUF and ok["match"] is True and "error" not in ok
@@ -1205,6 +1205,31 @@ def test_the_served_reader_waits_out_a_completion_and_records_why_a_read_failed(
     assert url == f"http://127.0.0.1:{v.SIM_PORT}/v1/models" and headers == {"Authorization": "Bearer k"}
     # campaigns 1-2's completions took up to 24 s and the narrator and the AUT share the server
     assert timeout.read_s >= 48 and timeout.total_s >= 48
+
+
+def test_the_served_reader_tries_each_key_on_the_host(monkeypatch) -> None:
+    """#1314: a solo sim's server holds the local server key, a leader's the mesh key; the harness may resolve a
+    different role from the sim, so it tries each key this host holds before recording a failed read."""
+    from maxim.utils import http as _http
+
+    sent: list = []
+
+    class _Resp:
+        content = json.dumps({"data": [{"id": v.MODEL_GGUF}]}).encode()
+
+    def fetch(url, **kw):
+        sent.append(kw["headers"])
+        if kw["headers"] == {"Authorization": "Bearer mesh-k"}:
+            raise _http.HTTPAuthError("_external", status=401, fix_hint="")
+        return _Resp()
+
+    monkeypatch.setattr(_http, "fetch_url", fetch)
+    monkeypatch.setattr("maxim.tunnel.keys.candidate_server_keys", lambda: {"mesh": "mesh-k", "local": "local-k"})
+    row = h.served_reader()(v.SIM_PORT, v.MODEL_GGUF)
+    assert row["served"] == v.MODEL_GGUF and "error" not in row
+    assert sent == [{"Authorization": "Bearer mesh-k"}, {"Authorization": "Bearer local-k"}]
+    monkeypatch.setattr("maxim.tunnel.keys.candidate_server_keys", lambda: {"mesh": "mesh-k"})
+    assert h.served_reader()(v.SIM_PORT, v.MODEL_GGUF)["error"].startswith("HTTPAuthError")
 
 
 @pytest.mark.parametrize("exp", sorted(v.PROTOCOL))

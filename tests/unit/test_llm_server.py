@@ -204,23 +204,26 @@ class TestCheckExistingLlmServer:
             )
         assert decision == "reuse"
 
-    def test_reuse_when_existing_server_returns_401(self):
-        """Auth-gated but alive → treat as up and reuse (CLAUDE.md 'auth in
-        health probes' lesson). The served model can't be read behind auth,
-        so ``_read_served_model_id`` must NOT be consulted."""
+    def test_refuse_when_existing_server_rejects_our_key(self):
+        """#1314 (owner decision 2026-10-20): a 401 to the key this process spawns with is not a server we can route
+        to (every call would 401) and not one to kill (the harness-on-leader cascade). Fail loud, naming the causes;
+        the served model is never read behind auth."""
+        import pytest
+
         from maxim.runtime.llm_server import check_existing_llm_server
+        from maxim.runtime.local_server_spawner import LLMServerKeyRejected
 
         with (
             patch.object(_MaximPeerBackend, "health_check", return_value=self._probe("auth_rejected")),
             patch("maxim.runtime.llm_server._read_served_model_id") as mock_read,
+            pytest.raises(LLMServerKeyRejected, match="MAXIM_ROLE"),
         ):
-            decision = check_existing_llm_server(
+            check_existing_llm_server(
                 url=self._URL,
                 api_key="k",
                 expected_model_path=self._MODEL_PATH,
                 expected_profile=self._PROFILE,
             )
-        assert decision == "reuse"
         mock_read.assert_not_called()
 
     def test_fail_loud_when_existing_server_returns_wrong_model(self):

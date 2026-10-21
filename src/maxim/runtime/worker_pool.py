@@ -246,7 +246,7 @@ class LaneConfig:
     kv_quant_mode: str = "f16"
     # Remote backend via OpenAI-compatible API (model server, Cloudflare tunnel, peer).
     remote_url: str | None = None
-    remote_api_key: str | None = None
+    remote_api_key: str | None = field(default=None, repr=False)  # a credential: never in a repr or a log line
     remote_model: str | None = None
     # llm_timeout_scalability.md Stage 2: per-tier read timeout for the
     # inference HTTP call (seconds). ``None`` → backend default
@@ -264,6 +264,10 @@ class LaneConfig:
     # Additive + backward-compatible; the legacy fields remain the source of
     # truth until a producer writes ``placement`` explicitly (Phase 3).
     placement: tuple[ProviderPlacement, ...] = ()
+    # #1314: ``remote_api_key`` is the key of a server THIS process spawned or reused (stamped by
+    # ``lane_backends._server_key_fields``), so the client carries it on its provider entry instead of
+    # deferring to an earlier value of its key env var (or writing it to the process env).
+    remote_api_key_is_server_key: bool = False
 
 
 # ─────────────────────────────────────────────────────────────────────────────

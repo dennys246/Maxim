@@ -7,6 +7,8 @@ the same key through its environment (``API_KEY``), never argv.
 
 Layout:
 - Key file:  ~/.config/maxim/api_key  (POSIX; Windows uses %APPDATA%\\maxim\\api_key)
+- A non-leader's spawned llama-cpp-server is keyed too, with its own per-host
+  ``llm_server_key`` beside it (#1314; see ``ensure_local_server_key``).
 - Format:    single-line URL-safe random string, 43 chars (256-bit entropy)
 - Perms:     0600 on POSIX; Windows relies on user-profile ACLs
 """
@@ -244,20 +246,118 @@ def require_leader_key() -> str:
     """
     path = key_file_path(MESH_KEY_NAME)
     raw, mode = _read_key_file(path)  # LeaderKeyMissing for no file; LeaderKeyError for any unusable one
+    return _validated_key(path, raw, mode, LeaderKeyError, chmod_fix=f"Run `chmod 600 {path}` on the leader.")
+
+
+def _validated_key(path: Path, raw: str, mode: int, error: type[LeaderKeyError], *, chmod_fix: str) -> str:
+    """The key in ``raw`` (a key file read with :func:`_read_key_file`), or ``error`` naming why it is unusable: on
+    POSIX a file group- or world-readable, then an empty, non-ASCII, whitespace-bearing or short key."""
     if platform.system() != "Windows" and mode & 0o077:
-        raise LeaderKeyError(
-            path=path,
-            reason=f"key file mode is {mode & 0o777:o}, readable by other users",
-            fix_hint=f"Run `chmod 600 {path}` on the leader.",
-        )
+        raise error(path=path, reason=f"key file mode is {mode & 0o777:o}, readable by other users", fix_hint=chmod_fix)
     key = raw.lstrip("\ufeff").strip()
     if not key:
-        raise LeaderKeyError(path=path, reason="key file is empty")
+        raise error(path=path, reason="key file is empty")
     if not key.isascii() or any(c.isspace() for c in key):
-        raise LeaderKeyError(path=path, reason="key contains non-ASCII or whitespace characters")
+        raise error(path=path, reason="key contains non-ASCII or whitespace characters")
     if len(key) < MIN_LEADER_KEY_CHARS:
-        raise LeaderKeyError(path=path, reason=f"key is shorter than {MIN_LEADER_KEY_CHARS} characters")
+        raise error(path=path, reason=f"key is shorter than {MIN_LEADER_KEY_CHARS} characters")
     return key
+
+
+# ─── the local server key (a non-leader's spawned llama-cpp-server, #1314) ────────────────────────────
+
+LOCAL_SERVER_KEY_NAME = "llm_server_key"
+# How long a first start waits for another process creating the key (two sims, a console and a sim).
+_LOCAL_KEY_LOCK_TIMEOUT_S = 30.0
+
+
+def _local_key_fix(path: Path) -> str:
+    if platform.system() == "Windows":
+        return (
+            f"Fix the file ({path}), or remove it so the next start generates a new one; if %APPDATA%\\maxim "
+            "cannot be written, fix its permissions."
+        )
+    return (
+        f"Fix the file (`chmod 600 {path}`), or remove it so the next start generates a new one; if the config "
+        "directory cannot be written, set XDG_CONFIG_HOME to a writable directory."
+    )
+
+
+class LocalServerKeyError(LeaderKeyError):
+    """A non-leader's spawned llama-cpp-server has no usable key, so the server is not started.
+
+    Every spawned server requires a key (#1314): a solo's binds loopback, but without one any local process or user
+    on a shared host could use it, and a stale tunnel ingress pointing at its port would expose it. A file that
+    exists but is unusable, or a key that cannot be created, refuses here, naming the path; it is never overwritten
+    and the server never starts unkeyed.
+    """
+
+    def __init__(self, *, path: Path, reason: str, fix_hint: str | None = None) -> None:
+        super().__init__(path=path, reason=reason, fix_hint=fix_hint or _local_key_fix(path))
+        self.message = f"local LLM server key unusable ({reason}): {path}"
+        self.args = (self.message,)
+
+
+def _read_local_server_key(path: Path) -> str | None:
+    """The local server key at ``path``; None when the file is missing; :class:`LocalServerKeyError` when unusable."""
+    try:
+        raw, mode = _read_key_file(path)
+    except LeaderKeyMissing:
+        return None
+    except LeaderKeyError as e:
+        raise LocalServerKeyError(path=path, reason=e.reason) from e
+    return _validated_key(path, raw, mode, LocalServerKeyError, chmod_fix=_local_key_fix(path))
+
+
+def read_local_server_key() -> str | None:
+    """For READERS (doctor, harnesses): the local server key, None if none exists yet. Never creates it: a key
+    created here would match no running server."""
+    return _read_local_server_key(key_file_path(LOCAL_SERVER_KEY_NAME))
+
+
+def ensure_local_server_key() -> str:
+    """For the SPAWN side only: the local server key, created when (and only when) the file is missing.
+
+    Read first without a lock, so a valid key in a read-only directory still works. A missing file is created under
+    an exclusive lock, re-read inside it (another process may have just written it), and the value returned is the
+    one read back from disk, so concurrent first starts all get the key the file holds. A file that exists but is
+    unusable is refused, never overwritten (#1402's lesson).
+    """
+    from maxim.utils.process_lock import LockContended, file_lock
+
+    path = key_file_path(LOCAL_SERVER_KEY_NAME)
+    key = _read_local_server_key(path)
+    if key is not None:
+        return key
+    try:
+        with file_lock(path.with_name(path.name + ".lock"), timeout_s=_LOCAL_KEY_LOCK_TIMEOUT_S):
+            if _read_local_server_key(path) is None:
+                _write_key_secret(generate_key(), LOCAL_SERVER_KEY_NAME)
+    except LockContended as e:
+        raise LocalServerKeyError(path=path, reason="another process holds the key-creation lock") from e
+    except OSError as e:
+        raise LocalServerKeyError(path=path, reason=f"cannot create key file ({type(e).__name__})") from e
+    key = _read_local_server_key(path)
+    if key is None:
+        raise LocalServerKeyError(path=path, reason="key file vanished after it was written")
+    return key
+
+
+def candidate_server_keys() -> dict[str, str]:
+    """Every key a local llama-cpp-server on this host may hold, by name (``"mesh"``, ``"local"``), for READERS that
+    must not guess which role spawned it (doctor, harnesses). Read-only; an absent or unusable file is left out."""
+    found: dict[str, str] = {}
+    try:
+        found["mesh"] = require_leader_key()
+    except LeaderKeyError:
+        pass
+    try:
+        local = read_local_server_key()
+    except LocalServerKeyError:
+        local = None
+    if local is not None:
+        found["local"] = local
+    return found
 
 
 # ─── console token (bearer credential for `maxim serve`) ───────────────────
