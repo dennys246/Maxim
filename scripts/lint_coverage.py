@@ -654,9 +654,12 @@ def floor_head_rules(
                 f"missing {m.missing})"
             )
         elif m.percent > f.percent + BAND + 1e-9:
+            # The pin this hint prints must pass floor_diff_rules' "a pinned missing never rises" (#1409): a package
+            # that rose past the band while adding statements keeps its current missing pin, never the measured one.
+            pin_missing = m.missing if f.missing is None else min(m.missing, f.missing)
             out.append(
                 f"{name}: {_fmt_pct(m.percent)} is more than {BAND} pt above its floor {f.percent}% — raise it to "
-                f'{{"percent": {round_down(m.percent)}, "missing": {m.missing}}}'
+                f'{{"percent": {round_down(m.percent)}, "missing": {pin_missing}}}'
             )
 
     if only is None:
