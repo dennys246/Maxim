@@ -1355,7 +1355,8 @@ def check_context_window(port: int = 8100) -> CheckResult:
     try:
         from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
 
-        backend = _MaximPeerBackend.for_url(url)
+        _key = _accepted_server_key(port)[1]  # keyed since #1314; None when no key on this host works
+        backend = _MaximPeerBackend.for_url(url, api_key=_key)
         healthy = backend.health_check(enable_stage2=False)
         if not healthy:
             return CheckResult(
@@ -1375,7 +1376,8 @@ def check_context_window(port: int = 8100) -> CheckResult:
     try:
         import socket
 
-        req_bytes = (f"GET /v1/models HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n\r\n").encode()
+        _auth_line = f"Authorization: Bearer {_key}\r\n" if _key else ""
+        req_bytes = (f"GET /v1/models HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n{_auth_line}\r\n").encode()
         with socket.create_connection(("127.0.0.1", port), timeout=2.0) as s:
             s.sendall(req_bytes)
             raw = b""
@@ -1411,10 +1413,10 @@ def check_context_window(port: int = 8100) -> CheckResult:
                         args_str = [a.decode("utf-8", errors="ignore") for a in args]
                         if any("llama" in a or "llama-server" in a for a in args_str):
                             for i, arg in enumerate(args_str):
-                                if arg in ("--ctx-size", "-c", "--n-ctx") and i + 1 < len(args_str):
+                                if arg in ("--ctx-size", "-c", "--n-ctx", "--n_ctx") and i + 1 < len(args_str):
                                     n_ctx = int(args_str[i + 1])
                                     break
-                                if arg.startswith("--ctx-size="):
+                                if arg.startswith(("--ctx-size=", "--n_ctx=")):
                                     n_ctx = int(arg.split("=", 1)[1])
                                     break
                     except Exception:
@@ -1432,10 +1434,10 @@ def check_context_window(port: int = 8100) -> CheckResult:
                         continue
                     parts = line.split()
                     for i, p in enumerate(parts):
-                        if p in ("--ctx-size", "-c", "--n-ctx") and i + 1 < len(parts):
+                        if p in ("--ctx-size", "-c", "--n-ctx", "--n_ctx") and i + 1 < len(parts):
                             n_ctx = int(parts[i + 1])
                             break
-                        if p.startswith("--ctx-size="):
+                        if p.startswith(("--ctx-size=", "--n_ctx=")):
                             n_ctx = int(p.split("=", 1)[1])
                             break
                     if n_ctx is not None:
@@ -2070,8 +2072,8 @@ def check_remote_admin() -> CheckResult:
 def check_llm_server_exposure(port: int | None = None) -> CheckResult:
     """The startup exposure check, run from doctor (``local_server_spawner.verify_llm_server_exposure``).
 
-    A running llama-cpp-server must refuse an unauthenticated request when this
-    leader has a key, and must not answer on the LAN address. Doctor is the
+    A running llama-cpp-server must refuse an unauthenticated request (every spawned
+    server holds a key since #1314) and must not answer on the LAN address. Doctor is the
     stricter reader: it fails an authenticated server still bound to every
     interface (an upgrade leftover), which startup only warns about and reuses.
     """
@@ -2085,16 +2087,14 @@ def check_llm_server_exposure(port: int | None = None) -> CheckResult:
     import socket
 
     from maxim.runtime.local_server_spawner import LLMServerExposureError, verify_llm_server_exposure
-    from maxim.runtime.role import resolved_role
-    from maxim.tunnel.keys import read_key
 
     try:
         socket.create_connection(("127.0.0.1", port), timeout=1.0).close()
     except OSError:
         return CheckResult(name="LLM server exposure", status="info", message=f"nothing on :{port} — skipped")
-    key = read_key() if resolved_role()[0] == "leader" else None
     try:
-        verify_llm_server_exposure(port, api_key=key, allow_authenticated_lan=False)
+        # Every spawned server holds a key since #1314, whatever this process's role: always demand the 401.
+        verify_llm_server_exposure(port, allow_authenticated_lan=False)
     except LLMServerExposureError as e:
         return CheckResult(
             name="LLM server exposure",
@@ -2190,50 +2190,145 @@ def check_key_permissions() -> CheckResult:
     )
 
 
+def check_loopback_lane_auth() -> CheckResult:
+    """A lane configured by hand to a llama-cpp-server on THIS host (``MAXIM_LANE_<TIER>_REMOTE_URL`` or
+    ``lanes.<tier>.remote_url`` on loopback) must send that server's key (#1314).
+
+    Every spawned server holds a key; a lane pointed at it by hand gets none attached automatically (owner decision
+    2026-10-20), so the operator sets ``MAXIM_LANE_<TIER>_REMOTE_API_KEY``. A 401 here prints that fix with the key
+    FILE to read it from, never the key itself (doctor output is pasted into issues).
+    """
+    import os
+    from urllib.parse import urlsplit
+
+    from maxim.tunnel.keys import LOCAL_SERVER_KEY_NAME, MESH_KEY_NAME, key_file_path
+    from maxim.utils import http as _http
+    from maxim.utils.net import is_loopback_url
+
+    name = "Loopback lane auth"
+    lanes: list[tuple[str, str, str | None]] = []
+    cfg_lanes = None
+    try:
+        from maxim.runtime.config_loader import load_config, resolve_api_key_ref
+
+        cfg_lanes = getattr(load_config(), "lanes", None)
+    except Exception as e:  # noqa: BLE001 -- config is optional here; the env still decides
+        logger.debug("loopback lane auth: config unreadable (%s)", type(e).__name__)
+    for tier in ("large", "medium", "small"):
+        tier_cfg = getattr(cfg_lanes, tier, None)
+        url = os.environ.get(f"MAXIM_LANE_{tier.upper()}_REMOTE_URL", "").strip()
+        url = url or str(getattr(tier_cfg, "remote_url", "") or "").strip()
+        if not url or not is_loopback_url(url):
+            continue
+        key = os.environ.get(f"MAXIM_LANE_{tier.upper()}_REMOTE_API_KEY", "").strip() or None
+        if key is None and tier_cfg is not None and getattr(tier_cfg, "remote_api_key_ref", None):
+            key = resolve_api_key_ref(tier_cfg.remote_api_key_ref)
+        lanes.append((tier, url, key))
+    if not lanes:
+        return CheckResult(name=name, status="info", message="no lane points at a server on this host — skipped")
+    rejected = []
+    for tier, url, key in lanes:
+        try:
+            _http.fetch_url(
+                url.rstrip("/") + "/models",
+                method="GET",
+                headers={"Authorization": f"Bearer {key}"} if key else None,
+                timeout=_http.TimeoutPolicy(connect_s=1.0, read_s=3.0, total_s=4.0),
+            )
+        except _http.HTTPAuthError:
+            rejected.append((tier, url))
+        except _http.HTTPError:
+            continue  # unreachable or another status: the reachability checks report it
+    if not rejected:
+        return CheckResult(name=name, status="ok", message=f"{len(lanes)} loopback lane(s) authenticate")
+    tier, url = rejected[0]
+    port = urlsplit(url).port or 8100
+    accepted = _accepted_server_key(port)[0]
+    key_name = {"mesh": MESH_KEY_NAME, "local": LOCAL_SERVER_KEY_NAME}.get(accepted or "", LOCAL_SERVER_KEY_NAME)
+    path = key_file_path(key_name)
+    return CheckResult(
+        name=name,
+        status="fail",
+        message=f"lane '{tier}' -> {url} is refused (401): every spawned llama-cpp-server holds a key (#1314)",
+        fix=(
+            f'export MAXIM_LANE_{tier.upper()}_REMOTE_API_KEY="$(cat {path})"'
+            + (
+                ""
+                if accepted
+                else "  (the server accepts no key on this host: if another maxim started it, use its key)"
+            )
+        ),
+    )
+
+
+def _accepted_server_key(port: int) -> tuple[str | None, str | None, str]:
+    """Which key on this host the local llama-cpp-server accepts: ``(name, key, state)``.
+
+    Every spawned server holds a key since #1314: a leader's the mesh key (``api_key``), any other role's the local
+    server key (``llm_server_key``). Doctor may run under a different role from the process that started the server,
+    so it tries each key that exists rather than guessing (read-only: it never creates one). ``state`` is
+    ``"accepted"``, ``"none-configured"``, ``"rejected"`` (every key 401s), ``"http-<status>"`` or ``"unreachable"``.
+    The key is returned for the probe's own use only; never print it.
+    """
+    from maxim.tunnel.keys import candidate_server_keys
+    from maxim.utils import http as _http
+
+    keys = candidate_server_keys()
+    if not keys:
+        return None, None, "none-configured"
+    fast = _http.TimeoutPolicy(connect_s=1.0, read_s=3.0, total_s=4.0)
+    for name, key in keys.items():
+        try:
+            _http.fetch_url(
+                f"http://127.0.0.1:{port}/v1/models",
+                method="GET",
+                headers={"Authorization": f"Bearer {key}"},
+                timeout=fast,
+            )
+        except _http.HTTPAuthError:
+            continue
+        except (_http.HTTPConnectionError, _http.HTTPTimeout):
+            return None, None, "unreachable"
+        except _http.HTTPError as e:
+            return None, None, f"http-{e.status}"
+        return name, key, "accepted"
+    return None, None, "rejected"
+
+
+def _server_auth_headers(port: int) -> dict[str, str]:
+    """The Authorization header for doctor's own probes of the local server, or none if no key on this host works."""
+    _name, key, _state = _accepted_server_key(port)
+    return {"Authorization": f"Bearer {key}"} if key else {}
+
+
 def check_key_auth_smoke(port: int = 8100) -> CheckResult:
-    """Verify the local server enforces the configured API key."""
-    from maxim.tunnel.keys import key_exists, read_key
+    """Verify the local server accepts one of this host's keys and enforces it (#1314: every spawned server holds
+    one; a leader's is the mesh key, any other role's the local server key)."""
     from maxim.utils import http as _http
 
     if (unusable := _unusable_key_result("Key auth smoke")) is not None:
         return unusable
-    if not key_exists():
-        return CheckResult(
-            name="Key auth smoke",
-            status="info",
-            message="no key configured — skipped",
-        )
-    key = read_key() or ""
-    url = f"http://127.0.0.1:{port}/v1/models"
-    fast = _http.TimeoutPolicy(connect_s=1.0, read_s=3.0, total_s=4.0)
-    # Test with correct key
-    try:
-        _http.fetch_url(
-            url,
-            method="GET",
-            headers={"Authorization": f"Bearer {key}"},
-            timeout=fast,
-        )
-    except _http.HTTPAuthError:
+    name, _key, state = _accepted_server_key(port)
+    if state == "none-configured":
+        return CheckResult(name="Key auth smoke", status="info", message="no key configured — skipped")
+    if state == "unreachable":
+        return CheckResult(name="Key auth smoke", status="info", message="server not reachable — skipped")
+    if state.startswith("http-"):
+        return CheckResult(name="Key auth smoke", status="warn", message=f"server returned HTTP {state[5:]}")
+    if state == "rejected":
         return CheckResult(
             name="Key auth smoke",
             status="fail",
-            message="server rejected our key (401)",
-            fix="Key mismatch — regenerate: maxim tunnel key rotate",
+            message="server rejected every key on this host (401)",
+            fix=(
+                "The server holds a key this host's files do not: a role mismatch (a leader's server holds the mesh "
+                "key, any other role's llm_server_key; check MAXIM_ROLE), or a key rotated since the server "
+                "started. Restart the server."
+            ),
             retry_id="key-auth",
         )
-    except _http.HTTPError as e:
-        return CheckResult(
-            name="Key auth smoke",
-            status="warn",
-            message=f"server returned HTTP {e.status}",
-        )
-    except Exception:
-        return CheckResult(
-            name="Key auth smoke",
-            status="info",
-            message="server not reachable — skipped",
-        )
+    url = f"http://127.0.0.1:{port}/v1/models"
+    fast = _http.TimeoutPolicy(connect_s=1.0, read_s=3.0, total_s=4.0)
     # Test with bogus key — should get 401 if auth is enforced
     try:
         _http.fetch_url(
@@ -2256,7 +2351,7 @@ def check_key_auth_smoke(port: int = 8100) -> CheckResult:
         return CheckResult(
             name="Key auth smoke",
             status="ok",
-            message="auth enforced — valid key accepted, bogus key rejected",
+            message=f"auth enforced — the {name} key accepted, bogus key rejected",
         )
     except _http.HTTPError as e:
         return CheckResult(
@@ -2398,7 +2493,7 @@ def check_inference_coherence(port: int = 8100) -> CheckResult:
         resp = _http.fetch_url(
             url,
             method="POST",
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", **_server_auth_headers(port)},  # keyed since #1314
             json=payload,
             timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=30.0, total_s=32.0),
         )
@@ -3624,6 +3719,7 @@ def run_all_checks(
                     check_peer_url_reachable(peer_url),
                     check_peer_key_set(),
                     check_peer_auth(peer_url, peer_key),
+                    check_loopback_lane_auth(),
                     check_remote_reachability(peer_url, peer_key),
                     check_peer_vs_local_conflict(),
                     check_peer_model(peer_url, peer_key),
@@ -3645,6 +3741,7 @@ def run_all_checks(
                     check_vram_pressure(),
                     check_inference_coherence(),
                     check_llm_server_exposure(),
+                    check_loopback_lane_auth(),
                 ],
             ),
             (
@@ -3718,6 +3815,7 @@ __all__ = [
     "check_key_age",
     "check_key_permissions",
     "check_key_auth_smoke",
+    "check_loopback_lane_auth",
     "check_disk_space",
     "check_ram_headroom",
     "check_inference_coherence",

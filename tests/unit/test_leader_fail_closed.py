@@ -328,7 +328,8 @@ def test_spawn_and_swap_decide_the_key_through_one_role_source(monkeypatch) -> N
     _write_key(GOOD_KEY)
     assert lane_backends._server_key_for_role() == GOOD_KEY
     monkeypatch.setattr("maxim.runtime.role.resolved_role", lambda: ("solo", "default"))
-    assert lane_backends._server_key_for_role() is None
+    local = lane_backends._server_key_for_role()  # #1314: every role's server is keyed; a solo's has its own key
+    assert local and local != GOOD_KEY
     src = (REPO / "src/maxim/runtime/lane_backends.py").read_text()
     assert src.count("api_key = _server_key_for_role()") == 2  # the first spawn and the swap
     assert "require_leader_key()" not in src.replace("    return require_leader_key()", "")
@@ -340,7 +341,7 @@ def test_exposure_check_refuses_a_keyed_server_that_answers_without_the_key(monk
     monkeypatch.setattr(http, "fetch_url", lambda *a, **k: SimpleNamespace(status=200))
     monkeypatch.setattr("maxim.utils.net.primary_ipv4_address", lambda: None)
     with pytest.raises(lss.LLMServerExposureError, match="without auth"):
-        lss.verify_llm_server_exposure(8100, api_key=GOOD_KEY, allow_authenticated_lan=False)
+        lss.verify_llm_server_exposure(8100, allow_authenticated_lan=False)
 
 
 def _refused(*a, **k):
@@ -357,12 +358,12 @@ def test_exposure_check_refuses_a_server_reachable_on_the_lan(monkeypatch) -> No
     monkeypatch.setattr("maxim.utils.net.primary_ipv4_address", lambda: "127.0.0.1")  # stands in for the LAN address
     try:
         monkeypatch.setattr(http, "fetch_url", lambda *a, **k: SimpleNamespace(status=200))
-        with pytest.raises(lss.LLMServerExposureError, match="WITHOUT auth on the LAN"):
-            lss.verify_llm_server_exposure(port, api_key=None, allow_authenticated_lan=True)
+        with pytest.raises(lss.LLMServerExposureError, match="answered an unauthenticated request"):
+            lss.verify_llm_server_exposure(port, allow_authenticated_lan=True)
         monkeypatch.setattr(http, "fetch_url", _refused)
         with pytest.raises(lss.LLMServerExposureError, match="loopback only"):
-            lss.verify_llm_server_exposure(port, api_key=GOOD_KEY, allow_authenticated_lan=False)
-        lss.verify_llm_server_exposure(port, api_key=GOOD_KEY, allow_authenticated_lan=True)  # reuse: warned
+            lss.verify_llm_server_exposure(port, allow_authenticated_lan=False)
+        lss.verify_llm_server_exposure(port, allow_authenticated_lan=True)  # reuse: warned
     finally:
         listener.close()
 
@@ -519,16 +520,16 @@ def test_doctor_runs_the_same_exposure_check_as_startup(monkeypatch) -> None:
     port = listener.getsockname()[1]
     calls: list[tuple] = []
 
-    def _exposed(p, *, api_key, allow_authenticated_lan):
-        calls.append((p, api_key, allow_authenticated_lan))
-        raise lss.LLMServerExposureError("answers WITHOUT auth on the LAN")
+    def _exposed(p, *, allow_authenticated_lan):
+        calls.append((p, allow_authenticated_lan))
+        raise lss.LLMServerExposureError("answered an unauthenticated request")
 
     monkeypatch.setattr(lss, "verify_llm_server_exposure", _exposed)
     try:
         result = checks.check_llm_server_exposure(port)
     finally:
         listener.close()
-    assert result.status == "fail" and calls == [(port, None, False)]
+    assert result.status == "fail" and calls == [(port, False)]
 
 
 def test_only_oasis_serve_builds_an_insecure_proxy_and_nothing_writes_the_opt_in() -> None:

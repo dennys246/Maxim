@@ -18,7 +18,6 @@ from pathlib import Path
 
 import pytest
 
-RED = pytest.mark.xfail(strict=True, reason="#1314 red gate: a non-leader's server is spawned without a key")
 POSIX = pytest.mark.skipif(platform.system() == "Windows", reason="POSIX file modes")
 
 
@@ -33,7 +32,6 @@ def solo(tmp_path: Path, monkeypatch) -> Path:
     return tmp_path / "xdg" / "maxim"
 
 
-@RED
 @POSIX
 def test_a_solo_spawn_gets_a_key_file_created_0600(solo: Path) -> None:
     from maxim.runtime.lane_backends import _server_key_for_role
@@ -46,7 +44,6 @@ def test_a_solo_spawn_gets_a_key_file_created_0600(solo: Path) -> None:
     assert _server_key_for_role() == key  # stable: read back, not regenerated
 
 
-@RED
 def test_a_reader_never_creates_the_key(solo: Path) -> None:
     """Doctor and the o19 harness read the key; creating it would leave a key no running server holds."""
     from maxim.tunnel import keys
@@ -55,7 +52,6 @@ def test_a_reader_never_creates_the_key(solo: Path) -> None:
     assert not (solo / "llm_server_key").exists()
 
 
-@RED
 def test_concurrent_first_starts_agree_on_one_key(solo: Path, tmp_path: Path) -> None:
     """Two processes starting together must not each generate a key (the server would hold one, the file another)."""
     code = (
@@ -66,7 +62,7 @@ def test_concurrent_first_starts_agree_on_one_key(solo: Path, tmp_path: Path) ->
     env = {**os.environ}
     procs = [
         subprocess.Popen([sys.executable, "-c", code, src], env=env, stdout=subprocess.PIPE, text=True)
-        for _ in range(4)
+        for _ in range(8)
     ]
     keys_seen = {p.communicate(timeout=60)[0].strip() for p in procs}
     assert all(p.returncode == 0 for p in procs)
@@ -74,7 +70,6 @@ def test_concurrent_first_starts_agree_on_one_key(solo: Path, tmp_path: Path) ->
     assert (solo / "llm_server_key").read_text().strip() == keys_seen.pop()
 
 
-@RED
 @POSIX
 def test_an_unusable_key_file_is_refused_not_overwritten(solo: Path) -> None:
     from maxim.tunnel import keys
@@ -90,7 +85,6 @@ def test_an_unusable_key_file_is_refused_not_overwritten(solo: Path) -> None:
     assert path.read_bytes() == before
 
 
-@RED
 @POSIX
 def test_an_unwritable_config_dir_is_a_typed_refusal(solo: Path) -> None:
     from maxim.tunnel import keys
@@ -107,7 +101,6 @@ def test_an_unwritable_config_dir_is_a_typed_refusal(solo: Path) -> None:
         solo.chmod(0o700)
 
 
-@RED
 def test_a_401_to_our_own_key_is_not_ready() -> None:
     """A 401 to the key we spawned with means another server holds the port, or the key never reached the child."""
     from unittest.mock import patch
@@ -121,3 +114,177 @@ def test_a_401_to_our_own_key_is_not_ready() -> None:
         side_effect=_http.HTTPAuthError("_external", status=401, fix_hint="Auth rejected (401)"),
     ):
         assert s._health_check() is not True
+
+
+def test_start_fails_at_once_on_a_401_and_stops_the_child(tmp_path: Path, monkeypatch) -> None:
+    """Fail loud, not after the readiness timeout: the first 401 raises out of ``start``, which stops its child."""
+    import time
+    from unittest.mock import MagicMock, patch
+
+    from maxim.runtime import local_server_spawner as lss
+    from maxim.utils import http as _http
+
+    model = tmp_path / "fake.gguf"
+    model.write_bytes(b"GGUF")
+    s = lss.LocalServerSpawner(model_path=str(model), api_key="our-key-0123456789")
+    stopped: list[bool] = []
+    monkeypatch.setattr(s, "stop", lambda: stopped.append(True))
+    proc = MagicMock(pid=99999)
+    proc.poll.return_value = None  # the child stays up
+    with (
+        patch("subprocess.Popen", return_value=proc),
+        patch(
+            "maxim.utils.http.fetch_url",
+            side_effect=_http.HTTPAuthError("_external", status=401, fix_hint="Auth rejected (401)"),
+        ),
+    ):
+        began = time.monotonic()
+        with pytest.raises(lss.LLMServerKeyRejected, match="MAXIM_ROLE"):
+            s.start(timeout_s=60.0)
+    assert time.monotonic() - began < 5.0
+    assert stopped
+
+
+# ── the client side: a lane pointed at our own server sends that server's key ──────────────────────────
+
+
+def test_an_operator_lane_key_cannot_override_our_servers_key(caplog) -> None:
+    """A lane key set with no URL described no server; sending it to the server we started would 401 every call."""
+    import logging
+
+    from maxim.runtime.lane_backends import _server_key_fields
+    from maxim.runtime.worker_pool import LaneConfig
+
+    cfg = LaneConfig(name="large", max_workers=1, remote_api_key="operator-key")
+    with caplog.at_level(logging.WARNING):
+        fields = _server_key_fields(cfg, "server-key-0123456789", None)
+    assert fields == {"remote_api_key": "server-key-0123456789", "remote_api_key_is_server_key": True}
+    assert any("ignoring the configured lane API key" in r.getMessage() for r in caplog.records)
+    assert "operator-key" not in caplog.text and "server-key" not in caplog.text  # never the values
+
+
+@pytest.mark.parametrize("server_owned", [True, False])
+def test_the_client_key_env_is_set_for_our_server_and_defaulted_otherwise(monkeypatch, server_owned: bool) -> None:
+    """For our own server the key is the truth, so an earlier value of the env var (a stale "not-needed", a
+    peer-setup export) cannot win; for any other lane the operator's export still does (setdefault, unchanged)."""
+    from unittest.mock import patch
+
+    from maxim.models.language.config import LLMConfig
+    from maxim.runtime.lane_backends import LaneBackendManager
+    from maxim.runtime.worker_pool import LaneConfig
+
+    monkeypatch.setenv("MAXIM_LANE_LARGE_API_KEY", "stale-or-exported")
+    cfg = LaneConfig(
+        name="large",
+        max_workers=1,
+        remote_url="http://127.0.0.1:8100/v1",
+        remote_api_key="server-key-0123456789",
+        remote_model="m",
+        remote_api_key_is_server_key=server_owned,
+    )
+    mgr = LaneBackendManager({"large": cfg}, max_cloud_lanes=1, max_backends=5)
+    with (
+        patch("maxim.models.language.config.load_llm_config", return_value=LLMConfig()),
+        patch("maxim.models.language.router.LLMRouter"),
+    ):
+        mgr.get_backend("large")
+    expected = "server-key-0123456789" if server_owned else "stale-or-exported"
+    assert os.environ["MAXIM_LANE_LARGE_API_KEY"] == expected
+
+
+def test_a_lane_config_repr_never_carries_the_key() -> None:
+    from maxim.runtime.worker_pool import LaneConfig
+
+    assert "secret-key-0123456789" not in repr(
+        LaneConfig(name="large", max_workers=1, remote_api_key="secret-key-0123456789")
+    )
+
+
+# ── doctor: reads every key on the host, creates none, prints none ─────────────────────────────────────
+
+
+def _fake_server(monkeypatch, accepts: str | None, seen: list | None = None):
+    """``maxim.utils.http.fetch_url`` standing in for a server that accepts only the key ``accepts``."""
+    from types import SimpleNamespace
+
+    from maxim.utils import http as _http
+
+    def fetch(url, *, headers=None, **_kw):
+        if seen is not None:
+            seen.append((url, dict(headers or {})))
+        if (headers or {}).get("Authorization") == f"Bearer {accepts}":
+            return SimpleNamespace(status=200, content=b'{"data": [{"id": "m"}]}')
+        raise _http.HTTPAuthError("_external", status=401, fix_hint="")
+
+    monkeypatch.setattr(_http, "fetch_url", fetch)
+
+
+def test_doctor_finds_which_host_key_the_server_accepts_without_creating_one(solo: Path, monkeypatch) -> None:
+    from maxim.doctor import checks
+    from maxim.tunnel import keys
+
+    assert checks._accepted_server_key(8100) == (None, None, "none-configured")
+    assert not (solo / "llm_server_key").exists()  # a reader never creates the key
+    local = keys.ensure_local_server_key()
+    _fake_server(monkeypatch, accepts=local)
+    assert checks._accepted_server_key(8100) == ("local", local, "accepted")
+    smoke = checks.check_key_auth_smoke(8100)
+    assert smoke.status == "ok" and "local key accepted" in smoke.message and local not in smoke.message
+    _fake_server(monkeypatch, accepts="someone-elses-key")
+    rejected = checks.check_key_auth_smoke(8100)
+    assert rejected.status == "fail" and "MAXIM_ROLE" in rejected.fix
+
+
+def test_doctor_coherence_probe_sends_the_servers_key(solo: Path, monkeypatch) -> None:
+    from maxim.doctor import checks
+    from maxim.tunnel import keys
+
+    local = keys.ensure_local_server_key()
+    seen: list = []
+    _fake_server(monkeypatch, accepts=local, seen=seen)
+    checks.check_inference_coherence(8100)
+    posts = [h for url, h in seen if url.endswith("/chat/completions")]
+    assert posts and posts[0]["Authorization"] == f"Bearer {local}"
+
+
+def test_a_loopback_lane_answering_401_prints_the_fix_with_the_key_file_never_the_key(solo: Path, monkeypatch) -> None:
+    from maxim.doctor import checks
+    from maxim.tunnel import keys
+
+    monkeypatch.setattr("maxim.runtime.config_loader.load_config", lambda *a, **k: None)
+    assert checks.check_loopback_lane_auth().status == "info"  # no lane points at this host
+    local = keys.ensure_local_server_key()
+    monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "http://127.0.0.1:8100/v1")
+    monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_API_KEY", raising=False)
+    _fake_server(monkeypatch, accepts=local)
+    result = checks.check_loopback_lane_auth()
+    assert result.status == "fail"
+    assert result.fix.startswith('export MAXIM_LANE_LARGE_REMOTE_API_KEY="$(cat ')
+    assert str(solo / "llm_server_key") in result.fix
+    assert local not in result.fix and local not in result.message
+    monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_API_KEY", local)
+    assert checks.check_loopback_lane_auth().status == "ok"
+
+
+def test_key_creation_takes_the_lock_and_rereads_inside_it(solo: Path, monkeypatch) -> None:
+    """Deterministic half of the race test: creation runs under ``file_lock`` with a real wait (not the non-blocking
+    default), and a key another process wrote between the first read and the lock is read back, never overwritten."""
+    import contextlib
+
+    from maxim.tunnel import keys
+    from maxim.utils import process_lock
+
+    taken: list[tuple[str, float]] = []
+
+    @contextlib.contextmanager
+    def spy_lock(path, *, timeout_s: float = 0.0):
+        taken.append((str(path), timeout_s))
+        # Another process wins the race while we wait for the lock.
+        keys._write_key_secret("the-other-process-key-0123456789", keys.LOCAL_SERVER_KEY_NAME)
+        yield
+
+    monkeypatch.setattr(process_lock, "file_lock", spy_lock)
+    assert keys.ensure_local_server_key() == "the-other-process-key-0123456789"
+    assert (solo / "llm_server_key").read_text().strip() == "the-other-process-key-0123456789"
+    assert taken == [(str(solo / "llm_server_key.lock"), keys._LOCAL_KEY_LOCK_TIMEOUT_S)]
+    assert keys._LOCAL_KEY_LOCK_TIMEOUT_S > 0

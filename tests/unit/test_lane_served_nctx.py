@@ -174,6 +174,9 @@ class TestAutoSpawnStamp:
         monkeypatch.delenv("MAXIM_LLM_PROFILE", raising=False)
         monkeypatch.setattr(lb, "_read_persisted_model", lambda: None)
         monkeypatch.setattr(lb._server_mod, "_active_spawner", spawner)
+        # Every spawned or reused server holds a key since #1314; keep the key and the outside check offline.
+        monkeypatch.setattr(lb, "_server_key_for_role", lambda: "test-server-key-0123456789")
+        monkeypatch.setattr("maxim.runtime.local_server_spawner.verify_llm_server_exposure", lambda *a, **k: None)
         cfg = LaneConfig(name="large", max_workers=1, model_profile="mistral-7b")
         with _m.patch("maxim.models.language.config.load_llm_config") as mock_cfg:
             mock_cfg.return_value = types.SimpleNamespace(model_path=str(gguf))

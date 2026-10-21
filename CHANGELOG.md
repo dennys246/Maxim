@@ -25,6 +25,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Every spawned llama-cpp-server requires a key, solo included** (security; [#1314](https://github.com/dennys246/Maxim/issues/1314),
+  owner decisions 2026-10-20). Since 1.3.2 only a leader's server was keyed (with the mesh key). A solo's bound loopback with
+  no key, so any local process or user on a shared host could use its inference, and a stale tunnel ingress to its port
+  would expose it.
+  - A non-leader's server now gets a per-host key, `~/.config/maxim/llm_server_key` (0600), created on first start under a
+    lock; a file that exists but is unusable, or a config directory that cannot be written, refuses with the fix.
+  - A 401 to the key a server was spawned with is no longer "ready" or "reusable": the start fails at once, naming a role
+    mismatch, a rotated mesh key or a foreign server. A server answering without a key (an older maxim's) is refused;
+    stop it and the next start spawns a keyed one. Nothing is killed automatically.
+  - A lane configured by hand to a server on this host gets no key attached: set `MAXIM_LANE_<TIER>_REMOTE_API_KEY`.
+    `maxim doctor` (new "Loopback lane auth" check) prints the command, naming the key file, never the key. Doctor's key
+    smoke, coherence and context-window probes now send the key the server accepts, and the `ps` fallback reads `--n_ctx`.
+  - Cross-version: an OLDER maxim on the same host reuses the keyed server and gets 401s on every call. Upgrade both.
+
 - **A sim report no longer records an endpoint's credentials, path or query** (security;
   [#997](https://github.com/dennys246/Maxim/issues/997), owner decision 2026-10-20).
   - `report.json`'s `language_endpoint` / `aut_endpoint` keep `scheme://host[:port]` only: `http://127.0.0.1:8100`,

@@ -331,12 +331,13 @@ def check_existing_llm_server(
 
     - **HTTP 200, right model** → return ``"reuse"`` (caller points the lane
       at ``url`` and skips spawn).
-    - **HTTP 401 (auth-gated but alive)** → return ``"reuse"``. Per the
-      CLAUDE.md "auth in health probes" lesson, a 401 proves the HTTP
-      listener is up; on the singleton port that is the leader's own
-      auth-gated server. We cannot read ``/v1/models`` to verify the model,
-      but reusing is strictly safer than the kill+respawn that triggers the
-      cascade.
+    - **HTTP 401 to our key** → raise
+      :class:`~maxim.runtime.local_server_spawner.LLMServerKeyRejected`
+      (#1314, owner decision 2026-10-20). Every spawned server holds a key,
+      and this process sends the one its role spawns with, so a 401 means the
+      server is not one we can route to (a role mismatch, a rotated mesh key,
+      or a foreign server). Reusing it would 401 every call; killing it would
+      bring back the harness-on-leader cascade. Fail loud, naming the causes.
     - **Connection-refused / timeout / unreachable** → return ``"spawn"``
       (no existing server; proceed with spawn as today).
     - **HTTP 200, DIFFERENT served model** → raise :class:`RuntimeError`
@@ -355,13 +356,11 @@ def check_existing_llm_server(
     )
 
     if result.outcome == "auth_rejected":
-        if logger is not None:
-            logger.info(
-                "Singleton check: existing auth-gated llama-cpp-server at %s — "
-                "treating as alive and reusing (cannot verify served model behind auth)",
-                url,
-            )
-        return REUSE_EXISTING
+        from urllib.parse import urlsplit
+
+        from maxim.runtime.local_server_spawner import LLMServerKeyRejected
+
+        raise LLMServerKeyRejected(urlsplit(url).port or 8100)
 
     if not result.is_reachable:
         # connection_refused / timeout / dns_fail / http_5xx / other →

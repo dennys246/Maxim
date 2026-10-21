@@ -203,14 +203,31 @@ class LLMServerExposureError(LeaderRefusal):
     """A llama-cpp-server on our port is reachable more widely, or less authenticated, than intended."""
 
 
-def verify_llm_server_exposure(port: int, *, api_key: str | None, allow_authenticated_lan: bool) -> None:
+class LLMServerKeyRejected(LLMServerExposureError):
+    """The server on our port answers 401 to the key we hold (#1314): it is not ours, or our key never reached it.
+
+    Not "ready": routing to it would 401 every call. The likely causes are named in the message: this process
+    resolved a different role from the one that started the server (a leader's server holds the mesh key, any other
+    role's the local server key), the mesh key was rotated after the server started, or another server holds the port.
+    """
+
+    def __init__(self, port: int) -> None:
+        super().__init__(
+            f"the llama-cpp-server on 127.0.0.1:{port} rejects this process's key (401). Likely: a role mismatch "
+            "(a leader's server holds the mesh key, a solo's the local server key: check MAXIM_ROLE), a mesh key "
+            f"rotated since that server started (restart it), or another server on port {port} (stop it)."
+        )
+
+
+def verify_llm_server_exposure(port: int, *, allow_authenticated_lan: bool) -> None:
     """Check the server on ``127.0.0.1:<port>`` from the outside, or raise :class:`LLMServerExposureError`.
 
     Two observations, not configuration: (1) an unauthenticated ``/v1/models`` must be
-    refused with 401 when a key is configured (a key the server ignored would otherwise
-    fail open silently); (2) the port must not accept connections on this host's LAN
-    address unless the server demands auth AND ``allow_authenticated_lan`` (the reuse of
-    a server an older maxim bound to every interface with a key: warned, not refused).
+    refused with 401, always: every spawned server holds a key since #1314 (a key the server
+    ignored, or a server an older maxim started without one, would otherwise fail open
+    silently); (2) the port must not accept connections on this host's LAN address unless
+    ``allow_authenticated_lan`` (the reuse of a server an older maxim bound to every interface
+    with a key: warned, not refused).
 
     The LAN half is defense in depth: it probes the default-route address only
     (not every interface or a VPN bridge). The real controls are the loopback
@@ -230,10 +247,11 @@ def verify_llm_server_exposure(port: int, *, api_key: str | None, allow_authenti
         unauth = "refused"
     except _http.HTTPError as e:
         unauth = f"unknown ({type(e).__name__})"
-    if api_key and unauth != "refused":
+    if unauth != "refused":
         raise LLMServerExposureError(
-            f"llama-cpp-server on port {port} was given a key but an unauthenticated request got {unauth}; "
-            "refusing to serve inference without auth"
+            f"the llama-cpp-server on port {port} answered an unauthenticated request ({unauth}): it holds no key "
+            "(one an older maxim started?) or ignored the key it was given. Refusing to serve inference without "
+            f"auth: stop the server on port {port}; the next start spawns a keyed one."
         )
     lan = primary_ipv4_address()
     if lan is None:
@@ -245,11 +263,6 @@ def verify_llm_server_exposure(port: int, *, api_key: str | None, allow_authenti
         reachable = False
     if not reachable:
         return
-    if unauth != "refused":
-        raise LLMServerExposureError(
-            f"llama-cpp-server on port {port} answers WITHOUT auth on the LAN address {lan}. "
-            "Stop it (it was probably started by an older maxim bound to 0.0.0.0) and restart maxim."
-        )
     if not allow_authenticated_lan:
         raise LLMServerExposureError(
             f"llama-cpp-server on port {port} should listen on loopback only but accepts connections on {lan} "
@@ -292,6 +305,7 @@ class LocalServerSpawner:
         self._n_gpu_layers = int(n_gpu_layers)
         self._chat_format = chat_format
         self._api_key = api_key
+        self._key_rejected = False  # set by _health_check on a 401 to our key (#1314)
         self._kv_quant_mode = kv_quant_mode
         self._process: subprocess.Popen | None = None
         self._atexit_registered = False
@@ -385,12 +399,14 @@ class LocalServerSpawner:
                 atexit.register(self.stop)
                 self._atexit_registered = True
 
-        if self._wait_ready(timeout_s):
-            try:
-                verify_llm_server_exposure(self._port, api_key=self._api_key, allow_authenticated_lan=False)
-            except LLMServerExposureError:
-                self.stop()
-                raise
+        try:
+            ready = self._wait_ready(timeout_s)
+            if ready:
+                verify_llm_server_exposure(self._port, allow_authenticated_lan=False)
+        except LLMServerExposureError:  # LLMServerKeyRejected included: a 401 to our own key is not "ready"
+            self.stop()
+            raise
+        if ready:
             return self.base_url
         # Timed out — kill and report
         self.stop()
@@ -495,19 +511,22 @@ class LocalServerSpawner:
     def _wait_ready(self, timeout_s: float) -> bool:
         """Poll the /v1/models endpoint until we get a 200 or run out of time."""
         deadline = time.time() + timeout_s
+        self._key_rejected = False
         while time.time() < deadline:
             if not self.is_running:
                 return False  # subprocess died
             if self._health_check():
                 return True
+            if self._key_rejected:
+                raise LLMServerKeyRejected(self._port)
             time.sleep(READINESS_POLL_INTERVAL_S)
         return False
 
     def _health_check(self) -> bool:
-        """Probe /v1/models. When --api_key is set, llama-cpp-server requires
-        Bearer auth on this endpoint too, so we send our token. A 401 also
-        counts as 'server up' since it proves the HTTP listener is live
-        (just rejected the key, which would be a separate bug)."""
+        """Probe /v1/models with our key (llama-cpp-server requires it on this endpoint too). Ready only on a 200.
+        A 401 is NOT ready (#1314, owner decision 2026-10-20): a listener that rejects the key we spawned it with
+        is not the server we started, or never got the key. It is recorded in ``_key_rejected`` so ``_wait_ready``
+        stops at once with :class:`LLMServerKeyRejected` rather than polling until the timeout."""
         from maxim.utils import http as _http
 
         headers: dict[str, str] = {}
@@ -522,15 +541,15 @@ class LocalServerSpawner:
             )
             return resp.status == 200
         except _http.HTTPAuthError:
-            # 401 = server up + listening, just rejected key. Counts as "ready":
-            # the spawner only needs to know the HTTP listener is alive.
-            return True
+            self._key_rejected = True
+            return False
         except Exception:
             return False
 
 
 __all__ = [
     "LLMServerExposureError",
+    "LLMServerKeyRejected",
     "LocalServerSpawner",
     "verify_llm_server_exposure",
     "DEFAULT_PORT",
