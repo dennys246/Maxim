@@ -2030,7 +2030,7 @@ def check_api_key() -> CheckResult:
                 status="fail",
                 message=f"leader cannot start: {e.reason} ({e.path})",
                 fix=e.fix_hint,
-                retry_id="key-auth",
+                retry_id="api-key",  # its own re-check: the key smoke may pass on a box whose leader cannot start
             )
     elif (unusable := _unusable_key_result("API key")) is not None:
         return unusable

@@ -211,6 +211,7 @@ def _retry_loop(
 ) -> int:
     """Walk through failing checks that have retry_id, wait for user fix, re-run."""
     from maxim.doctor.checks import (
+        check_api_key,
         check_cloudflared,
         check_key_age,
         check_key_auth_smoke,
@@ -249,6 +250,7 @@ def _retry_loop(
         "vram_pressure": check_vram_pressure,
         "key-age": check_key_age,
         "key-permissions": check_key_permissions,
+        "api-key": check_api_key,
         "key-auth": check_key_auth_smoke,
         # Robot checks (docs/plans/archive/doctor_robot_reachable.md) — one shared
         # retry id re-runs the whole per-robot list (≤2 robots today) and

@@ -365,3 +365,16 @@ def test_a_key_path_that_is_a_directory_or_a_held_lock_is_a_typed_refusal(solo: 
     monkeypatch.setattr(process_lock, "file_lock", held)
     with pytest.raises(keys.LocalServerKeyError, match="key-creation lock"):
         keys.ensure_local_server_key()
+
+
+def test_doctor_retry_rechecks_a_keyless_leader_with_its_own_check(solo: Path, monkeypatch) -> None:
+    """``doctor --retry`` re-runs a failing row's own check: the key smoke may pass on a leader that cannot start
+    (no mesh key), so the "leader cannot start" row must not ride on it."""
+    import inspect
+
+    from maxim.doctor import checks, cli
+
+    monkeypatch.setattr("maxim.runtime.role.resolved_role", lambda: ("leader", "env_var"))
+    row = checks.check_api_key()
+    assert row.status == "fail" and row.retry_id == "api-key"
+    assert '"api-key": check_api_key' in inspect.getsource(cli._retry_loop)
