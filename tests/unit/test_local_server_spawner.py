@@ -284,10 +284,9 @@ class TestHealthCheck:
             s._health_check()
             assert "Authorization" not in captured["headers"]
 
-    def test_401_counts_as_up(self):
-        """401 means the HTTP listener is alive, just rejected the key.
-        We treat this as 'server ready' — the spawner's job is just to
-        confirm the listener is up, not to validate the auth itself."""
+    def test_401_is_not_up_and_marks_the_key_rejected(self):
+        """#1314 (owner decision 2026-10-20): a 401 to the key we spawned with is NOT ready. The listener is not
+        our server, or never got the key; ``_wait_ready`` turns the mark into ``LLMServerKeyRejected``."""
         from maxim.utils import http as _http
 
         s = LocalServerSpawner(model_path="/tmp/fake.gguf", api_key="wrong-key")
@@ -295,7 +294,8 @@ class TestHealthCheck:
             "maxim.utils.http.fetch_url",
             side_effect=_http.HTTPAuthError("_external", status=401, fix_hint="Auth rejected (401)"),
         ):
-            assert s._health_check() is True
+            assert s._health_check() is False
+        assert s._key_rejected is True
 
     def test_500_does_not_count_as_up(self):
         """A real server error should be treated as not-ready."""

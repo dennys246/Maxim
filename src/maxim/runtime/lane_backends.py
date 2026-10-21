@@ -1254,10 +1254,11 @@ class LaneBackendManager:
 
         provider_key = f"lane-{cfg.name}"
         api_key_env = f"MAXIM_LANE_{cfg.name.upper()}_API_KEY"
-        if remote_api_key:
-            os.environ.setdefault(api_key_env, remote_api_key)
-        else:
-            os.environ.setdefault(api_key_env, "not-needed")
+        # Our own spawned/reused server (#1314): its key rides on the provider entry, so no earlier value of the env
+        # var can win and the key never reaches the process env (child processes inherit it).
+        server_key = remote_api_key if cfg.remote_api_key_is_server_key and remote_url == cfg.remote_url else None
+        if not server_key:
+            os.environ.setdefault(api_key_env, remote_api_key or "not-needed")
 
         providers = dict(base.providers or {})
         # Plan 3 R2.5: dispatch to _MaximPeerBackend for self-hosted
@@ -1276,6 +1277,8 @@ class LaneBackendManager:
             # when no pricing entry exists for the model name.
             "pricing_required": False,
         }
+        if server_key:
+            provider_entry["api_key"] = server_key
         # llm_timeout_scalability.md Stage 2: thread per-tier timeout_s
         # into the provider config. Both backends (_MaximPeerBackend
         # _get_timeout_policy, _OpenAIBackend _get_timeout) already read
@@ -2380,6 +2383,71 @@ def _derive_decision_sources(
     return sources
 
 
+def _server_key_fields(infer_cfg: Any, api_key: str, logger: Any | None) -> dict[str, Any]:
+    """The lane fields that point a lane's client at a server THIS process spawned or reused: its key, assigned
+    outright (#1314). An operator's lane key for this tier (set with no URL, so it described no server) cannot
+    authenticate to our server, which holds ``api_key``; it is ignored with one WARNING rather than sent to 401 every
+    call. ``remote_api_key_is_server_key`` tells ``_build_remote_backend`` to carry the key on the lane's provider
+    entry rather than the process env, so a stale value earlier in the process (or a peer-setup export) cannot win
+    either, and child processes never inherit the key."""
+    if infer_cfg.remote_api_key and infer_cfg.remote_api_key != api_key:
+        (logger if logger is not None else logging.getLogger(__name__)).warning(
+            "Lane '%s': ignoring the configured lane API key for the local llama-cpp-server this process "
+            "started or reused; that server holds the role's key (#1314).",
+            infer_cfg.name,
+        )
+    return {"remote_api_key": api_key, "remote_api_key_is_server_key": True}
+
+
+def _route_to_reused_server(
+    lane_configs: dict[str, Any],
+    _infer_tier: str,
+    infer_cfg: Any,
+    existing_url: str,
+    port: int,
+    api_key: str,
+    effective_profile: str,
+    sources_out: dict[str, str] | None,
+    logger: Any | None,
+) -> dict[str, Any]:
+    """``_maybe_auto_spawn_server``'s reuse branch: point the tier at the server already serving the right model on
+    ``existing_url``, after checking it from outside, and stamp what is known about it."""
+    from maxim.runtime.local_server_spawner import verify_llm_server_exposure
+
+    # Checked from outside before we route to it (see verify_llm_server_exposure).
+    verify_llm_server_exposure(port, allow_authenticated_lan=True)
+    if _server_mod._active_spawner is not None and _server_mod._active_spawner.is_running:
+        # We spawned this server in this process — refresh tracking.
+        _server_mod._active_model = effective_profile
+        _server_mod._llm_start_time = time.time()
+    if sources_out is not None:
+        sources_out[_infer_tier] = _REUSED_SERVER_SOURCE
+    # n_ctx leg 3: when the reused server is one WE spawned in this
+    # process, we know exactly what context it serves — stamp it so the
+    # budgeter's belief matches. An externally-started server's n_ctx is
+    # unknowable here; leave served_n_ctx unset rather than guess.
+    _reused_served_n_ctx: int | None = None
+    if (
+        _server_mod._active_spawner is not None
+        and _server_mod._active_spawner.is_running
+        # Port identity: the reuse probe hit existing_url (current
+        # MAXIM_AUTO_SPAWN_PORT). Our spawner's n_ctx describes OUR
+        # server — if the env changed mid-process, a different
+        # matching-model server may be answering on the new port.
+        and _server_mod._active_spawner.base_url == existing_url
+    ):
+        _reused_served_n_ctx = int(_server_mod._active_spawner.n_ctx or 0) or None
+    out = dict(lane_configs)
+    out[_infer_tier] = dataclasses.replace(
+        infer_cfg,
+        remote_url=existing_url,
+        remote_model=effective_profile,
+        **_server_key_fields(infer_cfg, api_key, logger),
+        served_n_ctx=_reused_served_n_ctx or infer_cfg.served_n_ctx,
+    )
+    return out
+
+
 def _maybe_auto_spawn_server(
     capabilities: Any,
     lane_configs: dict[str, Any],
@@ -2531,40 +2599,9 @@ def _maybe_auto_spawn_server(
         logger=logger,
     )
     if decision == "reuse":
-        from maxim.runtime.local_server_spawner import verify_llm_server_exposure
-
-        # Checked from outside before we route to it (see verify_llm_server_exposure).
-        verify_llm_server_exposure(port, api_key=api_key, allow_authenticated_lan=True)
-        if _server_mod._active_spawner is not None and _server_mod._active_spawner.is_running:
-            # We spawned this server in this process — refresh tracking.
-            _server_mod._active_model = effective_profile
-            _server_mod._llm_start_time = time.time()
-        if sources_out is not None:
-            sources_out[_infer_tier] = _REUSED_SERVER_SOURCE
-        # n_ctx leg 3: when the reused server is one WE spawned in this
-        # process, we know exactly what context it serves — stamp it so the
-        # budgeter's belief matches. An externally-started server's n_ctx is
-        # unknowable here; leave served_n_ctx unset rather than guess.
-        _reused_served_n_ctx: int | None = None
-        if (
-            _server_mod._active_spawner is not None
-            and _server_mod._active_spawner.is_running
-            # Port identity: the reuse probe hit existing_url (current
-            # MAXIM_AUTO_SPAWN_PORT). Our spawner's n_ctx describes OUR
-            # server — if the env changed mid-process, a different
-            # matching-model server may be answering on the new port.
-            and _server_mod._active_spawner.base_url == existing_url
-        ):
-            _reused_served_n_ctx = int(_server_mod._active_spawner.n_ctx or 0) or None
-        out = dict(lane_configs)
-        out[_infer_tier] = dataclasses.replace(
-            infer_cfg,
-            remote_url=existing_url,
-            remote_model=effective_profile,
-            remote_api_key=infer_cfg.remote_api_key or api_key,
-            served_n_ctx=_reused_served_n_ctx or infer_cfg.served_n_ctx,
+        return _route_to_reused_server(
+            lane_configs, _infer_tier, infer_cfg, existing_url, port, api_key, effective_profile, sources_out, logger
         )
-        return out
 
     # decision == "spawn": port not responding — may have a stale process
     # holding VRAM.  Only kill+sleep if something was actually found.
@@ -2588,7 +2625,7 @@ def _maybe_auto_spawn_server(
     except Exception:
         return lane_configs
 
-    # api_key (loaded above) keys the server; solo has none. Loopback for EVERY
+    # api_key (loaded above) keys the server, every role's (#1314). Loopback for EVERY
     # role: the LeaderProxy (:8099) is a leader's only ingress (2026-10-14).
 
     # n_ctx precedence (peer_leader_flexibility_plan P4c):
@@ -2658,12 +2695,11 @@ def _maybe_auto_spawn_server(
     # Rewrite the primary inference tier to point at the spawned server.
     # Auto-wire the API key for the leader's own client so local inference doesn't 401.
     out = dict(lane_configs)
-    infer_api_key = infer_cfg.remote_api_key or api_key
     out[_infer_tier] = dataclasses.replace(
         infer_cfg,
         remote_url=url,
         remote_model=effective_profile,
-        remote_api_key=infer_api_key,
+        **_server_key_fields(infer_cfg, api_key, logger),
         # n_ctx leg 3 (2026-08-09): the server was JUST launched with
         # resolved_n_ctx — stamp the served value so _build_remote_backend
         # threads it into the lane provider entry + lane llm_config and the
@@ -2878,11 +2914,26 @@ def _stop_active_server(logger_obj: Any | None) -> None:
         _server_mod._active_model = None
 
 
+def _swap_key() -> str:
+    """The key a hot-swapped server is spawned with: the RUNNING server's (#1314 review). The proxy's key, the lane
+    client's key and every peer's were fixed when that server started, so a swap must not pick up a key rotated
+    since (the new server would 401 them all until a restart). With no server this process started there is
+    nothing to swap: refuse rather than spawn beside a server started elsewhere."""
+    spawner = _server_mod._active_spawner
+    key = getattr(spawner, "_api_key", None) if spawner is not None else None
+    if not key:
+        raise RuntimeError(
+            "no llama-cpp-server started by this process to swap (the one serving was started elsewhere); "
+            "restart maxim with the new model instead"
+        )
+    return str(key)
+
+
 def _start_swap_server(
     *,
     cfg: Any,
     model_path: str,
-    api_key: str | None,
+    api_key: str,
     port: int,
     logger_obj: Any | None,
 ) -> tuple[Any, float, int]:
@@ -2973,8 +3024,7 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
         except ValueError:
             port = 8100
 
-        # The same key rule as the first spawn (one helper, one role source).
-        api_key = _server_key_for_role()
+        api_key = _swap_key()
 
         previous_model = _server_mod._active_model or "none"
 
@@ -3079,20 +3129,21 @@ def _maybe_auto_spawn_tunnel_daemon(logger: Any | None) -> None:
             )
 
 
-def _server_key_for_role() -> str | None:
+def _server_key_for_role() -> str:
     """The key this process's llama-cpp-server is spawned with: a leader's mesh key, read
-    fail-closed (``require_leader_key`` raises ``LeaderKeyError``), or None for any other role.
+    fail-closed (``require_leader_key`` raises ``LeaderKeyError``), or for any other role the
+    per-host local server key, created when missing (``ensure_local_server_key`` raises
+    ``LocalServerKeyError``). Never None: every spawned server requires a key (#1314).
 
-    The ONE place spawn, reuse and hot-swap decide it, through ``role.resolved_role`` (the
-    exported ``MAXIM_ROLE`` in a CLI process, the same detection in a Python-API process), so a
-    swap can never come up keyless under a leader whose first server was keyed (2026-10-14).
+    The ONE place spawn and reuse decide it, through ``role.resolved_role`` (the exported
+    ``MAXIM_ROLE`` in a CLI process, the same detection in a Python-API process). A hot-swap
+    reuses the running server's key (``_swap_key``), so it never comes up under a different key.
     """
     from maxim.runtime.role import resolved_role
+    from maxim.tunnel.keys import ensure_local_server_key, require_leader_key
 
     if resolved_role()[0] != "leader":
-        return None
-    from maxim.tunnel.keys import require_leader_key
-
+        return ensure_local_server_key()
     return require_leader_key()
 
 

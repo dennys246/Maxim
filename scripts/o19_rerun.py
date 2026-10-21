@@ -361,18 +361,28 @@ def served_reader():
     ``GET /v1/models`` the way the peer backend's discovery does (the first ``data[].id``), with a budget that
     outlasts the completions it queues behind, and records why a read failed."""
     from maxim.runtime.llm_server import _served_model_matches  # noqa: PLC0415
-    from maxim.tunnel.keys import read_key  # noqa: PLC0415
+    from maxim.tunnel.keys import candidate_server_keys  # noqa: PLC0415
     from maxim.utils import http as _http  # noqa: PLC0415
 
+    def _models(port: int):
+        # Every spawned server holds a key (#1314): a leader's the mesh key, any other role's the local server key.
+        # The harness may resolve a different role from the sim it spawned, so it tries each key this host holds.
+        keys = list(candidate_server_keys().values()) or [None]
+        for i, key in enumerate(keys):
+            try:
+                return _http.fetch_url(
+                    f"http://127.0.0.1:{port}/v1/models",
+                    headers={"Authorization": f"Bearer {key}"} if key else None,
+                    timeout=_http.TimeoutPolicy(**SERVED_READ_TIMEOUT),
+                )
+            except _http.HTTPAuthError:
+                if i == len(keys) - 1:
+                    raise
+
     def read(port: int, gguf_path: str) -> dict:
-        key = read_key()
         served, error = None, None
         try:
-            resp = _http.fetch_url(
-                f"http://127.0.0.1:{port}/v1/models",
-                headers={"Authorization": f"Bearer {key}"} if key else None,
-                timeout=_http.TimeoutPolicy(**SERVED_READ_TIMEOUT),
-            )
+            resp = _models(port)
             data = json.loads(resp.content or b"{}").get("data")
             first = data[0] if isinstance(data, list) and data else None
             served = (first.get("id") or None) if isinstance(first, dict) and isinstance(first.get("id"), str) else None

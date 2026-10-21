@@ -759,6 +759,10 @@ class _MaximPeerBackend:
         if self._api_key_override is not None:
             return self._api_key_override
         cfg = self._provider_cfg()
+        # A literal key on the provider entry (as the Anthropic/OpenAI backends accept): how a lane pointed at a
+        # server this process spawned carries that server's key without writing it to the process env (#1314).
+        if cfg.get("api_key"):
+            return str(cfg["api_key"]).strip()
         env_key = str(cfg.get("api_key_env") or "MAXIM_PEER_API_KEY")
         return str(os.getenv(env_key, "")).strip()
 
