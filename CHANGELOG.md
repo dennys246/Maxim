@@ -25,6 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A sim report no longer records an endpoint's credentials, path or query** (security;
+  [#997](https://github.com/dennys246/Maxim/issues/997), owner decision 2026-10-20).
+  - `report.json`'s `language_endpoint` / `aut_endpoint` keep `scheme://host[:port]` only: `http://127.0.0.1:8100`,
+    not `http://127.0.0.1:8100/v1`. The same rule applies to the B0 provenance (`llm_calls` entry endpoints,
+    `leader_disk_heads` keys, `sampling_problems`) and to URLs inside `provider_failures[*].last_error`.
+  - The port is kept so `scripts/o19_verdict.py` C4 can still tell two local servers apart; it reduces both sides,
+    so earlier records compare as before.
+  - No record producer may read the process's raw argv (an AST guard over `simulation/` and every
+    provenance-stamping script). `$HOME` paths and `actions.jsonl` are #1404.
 - **The file tools refuse to write git configuration** (security; [#957](https://github.com/dennys246/Maxim/issues/957),
   owner decision 2026-09-28: contain and say what remains).
   - A model that can write a repository's git configuration can make host git run code: clean/process filters

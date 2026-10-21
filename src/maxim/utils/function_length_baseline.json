@@ -231,7 +231,7 @@
     {
       "file": "src/maxim/simulation/report.py",
       "qualname": "build_report",
-      "lines": 228
+      "lines": 209
     },
     {
       "file": "src/maxim/simulation/research_orchestrator.py",

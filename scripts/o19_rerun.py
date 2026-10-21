@@ -593,7 +593,7 @@ def mock_phase(exp: str, index: int, *, home: Path, run_id: str, resume: str | N
             "resumed_from_session": resume,
             "stores": {s: "loaded" for s in v.RESUME_STORES},
         }
-    endpoint = f"http://127.0.0.1:{v.SIM_PORT}/v1"
+    endpoint = f"http://127.0.0.1:{v.SIM_PORT}"  # the form a sim report records (#997)
     report = {
         "finish_reason": "max_turns",
         "turns": cap,

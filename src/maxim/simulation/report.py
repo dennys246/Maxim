@@ -19,8 +19,23 @@ from typing import Any
 
 from maxim.exceptions import StoreOverwriteRefused
 from maxim.utils import code_tree
+from maxim.utils.http import redact_urls, url_origin
 
 logger = logging.getLogger(__name__)
+
+
+def _record_dict(report: SimulationReport) -> dict[str, Any]:
+    """The report as its JSON record is written, by every writer (``save_report``, ``emit_report_json``): its
+    endpoints reduced and the URLs in its provider errors reduced (#997), however the report was built. The B0
+    ``provenance`` block is reduced where it is produced (``serving_provenance.py``), not here."""
+    record = asdict(report)
+    record["language_endpoint"] = url_origin(record["language_endpoint"])
+    record["aut_endpoint"] = url_origin(record["aut_endpoint"])
+    # ``_provider_failures`` already scrubbed before its cut; this pass covers a report built directly.
+    for failure in record["provider_failures"].values():
+        if isinstance(failure, dict) and "last_error" in failure:
+            failure["last_error"] = redact_urls(failure["last_error"])
+    return record
 
 
 @dataclass
@@ -41,7 +56,7 @@ class SimulationReport:
     language_backend_class: str = (
         ""  # backend class name (e.g. "_OpenAIBackend", "_MaximPeerBackend"); cloud-vs-self-hosted second-tier signal
     )
-    language_endpoint: str = ""  # base URL (e.g. "https://api.anthropic.com/v1", "https://leader.dennys.com/v1"); definitive routing-path third-tier signal
+    language_endpoint: str = ""  # the endpoint's scheme://host[:port] (e.g. "https://api.anthropic.com", "http://127.0.0.1:8100"; never its path or credentials, #997); definitive routing-path third-tier signal
     aut_model: str = ""  # Separate AUT model when dual-LLM mode is active
     aut_provider: str = ""  # provider for aut_model when dual-LLM mode is active
     aut_backend_class: str = ""
@@ -317,6 +332,30 @@ def _count_tokens(text: str, llm_router: Any | None) -> int:
     return max(1, len(text) // 4)
 
 
+def _provider_failures(llm_router: Any | None) -> dict[str, dict[str, Any]]:
+    """Provider failure attribution from router._provider_states.  Only
+    surface providers that actually saw failures during the session —
+    healthy providers are noise."""
+    provider_failures: dict[str, dict[str, Any]] = {}
+    if llm_router is not None:
+        try:
+            states = getattr(llm_router, "_provider_states", {}) or {}
+            now = time.time()
+            for key, state in states.items():
+                errs = int(getattr(state, "consecutive_errors", 0) or 0)
+                last_err = str(getattr(state, "last_error", "") or "")
+                backoff_until = float(getattr(state, "backoff_until", 0.0) or 0.0)
+                if errs > 0 or last_err:
+                    provider_failures[key] = {
+                        "consecutive_errors": errs,
+                        "last_error": redact_urls(last_err)[:200],  # scrubbed before the cut can split a URL (#997)
+                        "backoff_remaining_s": round(max(0.0, backoff_until - now), 1),
+                    }
+        except Exception as e:
+            logger.debug("provider failure snapshot failed: %s", e)
+    return provider_failures
+
+
 def build_report(
     *,
     goal: str,
@@ -475,26 +514,7 @@ def build_report(
     except Exception as e:
         logger.debug("sim_log event count failed: %s", e)
 
-    # Provider failure attribution from router._provider_states.  Only
-    # surface providers that actually saw failures during the session —
-    # healthy providers are noise.
-    provider_failures: dict[str, dict[str, Any]] = {}
-    if llm_router is not None:
-        try:
-            states = getattr(llm_router, "_provider_states", {}) or {}
-            now = time.time()
-            for key, state in states.items():
-                errs = int(getattr(state, "consecutive_errors", 0) or 0)
-                last_err = str(getattr(state, "last_error", "") or "")
-                backoff_until = float(getattr(state, "backoff_until", 0.0) or 0.0)
-                if errs > 0 or last_err:
-                    provider_failures[key] = {
-                        "consecutive_errors": errs,
-                        "last_error": last_err[:200],
-                        "backoff_remaining_s": round(max(0.0, backoff_until - now), 1),
-                    }
-        except Exception as e:
-            logger.debug("provider failure snapshot failed: %s", e)
+    provider_failures = _provider_failures(llm_router)
 
     ctx = llm_finish_context or {}
     # S6 apparatus block: the bridge carries the substrate action budget it
@@ -570,7 +590,7 @@ def save_report(report: SimulationReport, base_dir: str | None = None) -> Path:
     from maxim.utils.atomic_io import atomic_write_json
     from maxim.utils.format_version import with_format_version
 
-    atomic_write_json(str(report_path), with_format_version(asdict(report)))
+    atomic_write_json(str(report_path), with_format_version(_record_dict(report)))
 
     logger.info("Simulation report saved: %s", report_path)
     return report_path
@@ -809,9 +829,9 @@ def _format_model_routing(
     - With provider only:             ``"model (via provider)"``
     - Bare model:                     ``"model"``
 
-    Endpoint hostname is extracted from the URL for readability — the full
-    ``language_endpoint`` field in report.json preserves the URL verbatim
-    for analyzer/downstream consumption.
+    Endpoint hostname is extracted from the URL for readability — the
+    ``language_endpoint`` field in report.json keeps scheme, host and port
+    (``utils/http.py::url_origin``, #997) for analyzer/downstream consumption.
     """
     if not model:
         return ""
@@ -1031,7 +1051,7 @@ def emit_report_json(report: SimulationReport, path: str = "-") -> None:
     """
     from maxim.utils.format_version import with_format_version
 
-    payload_dict = with_format_version(asdict(report))
+    payload_dict = with_format_version(_record_dict(report))
     payload = json.dumps(payload_dict, default=str, indent=2)
     if path in ("-", ""):
         print(payload)
