@@ -63,7 +63,7 @@ Use this section to answer "what does this instance actually think it's configur
 **"Nothing responding at port 8100":**
 - Expected if you haven't started `maxim` yet — auto-spawn only fires during `maxim` startup
 - If `maxim` is running but port is dead: check for port conflicts (`lsof -i :8100`)
-- Manual start: `python -m llama_cpp.server --model <path.gguf> --host 127.0.0.1 --port 8100` (on a leader, pass the key in the environment, never on the command line; see [peer_diagnosis_runbook.md](peer_diagnosis_runbook.md))
+- Manual start: `python -m llama_cpp.server --model <path.gguf> --host 127.0.0.1 --port 8100` with the key in the environment, never on the command line: `API_KEY="$(cat ~/.config/maxim/llm_server_key)"` (a leader's server: `~/.config/maxim/api_key`). Maxim refuses a server that answers without a key. See [peer_diagnosis_runbook.md](peer_diagnosis_runbook.md)
 
 ### Role & Access
 

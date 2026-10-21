@@ -37,6 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - A lane configured by hand to a server on this host gets no key attached: set `MAXIM_LANE_<TIER>_REMOTE_API_KEY`.
     `maxim doctor` (new "Loopback lane auth" check) prints the command, naming the key file, never the key. Doctor's key
     smoke, coherence and context-window probes now send the key the server accepts, and the `ps` fallback reads `--n_ctx`.
+  - A harness that forces another role on a leader's box (`scripts/exp44/campaign.py` sets `MAXIM_ROLE=solo`; `--language-model`
+    ranks solo) now stops with that refusal instead of reusing the leader's server and 401ing every call.
+  - To replace the local key, remove `llm_server_key`; the next start generates a new one. A hot-swap keeps the running
+    server's key.
   - Cross-version: an OLDER maxim on the same host reuses the keyed server and gets 401s on every call. Upgrade both.
 
 - **A sim report no longer records an endpoint's credentials, path or query** (security;

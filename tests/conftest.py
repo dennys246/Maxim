@@ -1233,7 +1233,9 @@ def _isolate_config_json_env():
     def _clean_disk_state() -> None:
         try:
             cp = config_path()
-            for p in (cp, cp.parent / "api_key"):
+            # api_key = the mesh key; llm_server_key (+ its creation lock) = a non-leader's spawned-server key
+            # (#1314), which any solo test that spawns writes here and a later doctor test would then read.
+            for p in (cp, cp.parent / "api_key", cp.parent / "llm_server_key", cp.parent / "llm_server_key.lock"):
                 try:
                     if p.is_file():
                         p.unlink()

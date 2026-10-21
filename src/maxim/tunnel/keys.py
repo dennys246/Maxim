@@ -272,6 +272,11 @@ _LOCAL_KEY_LOCK_TIMEOUT_S = 30.0
 
 
 def _local_key_fix(path: Path) -> str:
+    if platform.system() == "Windows":
+        return (
+            f"Fix the file ({path}), or remove it so the next start generates a new one; if %APPDATA%\\maxim "
+            "cannot be written, fix its permissions."
+        )
     return (
         f"Fix the file (`chmod 600 {path}`), or remove it so the next start generates a new one; if the config "
         "directory cannot be written, set XDG_CONFIG_HOME to a writable directory."

@@ -164,12 +164,14 @@ def test_an_operator_lane_key_cannot_override_our_servers_key(caplog) -> None:
 
 
 @pytest.mark.parametrize("server_owned", [True, False])
-def test_the_client_key_env_is_set_for_our_server_and_defaulted_otherwise(monkeypatch, server_owned: bool) -> None:
-    """For our own server the key is the truth, so an earlier value of the env var (a stale "not-needed", a
-    peer-setup export) cannot win; for any other lane the operator's export still does (setdefault, unchanged)."""
+def test_our_servers_key_rides_on_the_provider_entry_never_the_env(monkeypatch, server_owned: bool) -> None:
+    """For our own server the key is the truth: it goes on the lane's provider entry, so an earlier value of the env
+    var (a stale "not-needed", a peer-setup export) cannot win, and the key never enters the process env that child
+    processes inherit. Any other lane keeps today's behaviour: the operator's export wins (setdefault)."""
     from unittest.mock import patch
 
     from maxim.models.language.config import LLMConfig
+    from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
     from maxim.runtime.lane_backends import LaneBackendManager
     from maxim.runtime.worker_pool import LaneConfig
 
@@ -185,11 +187,17 @@ def test_the_client_key_env_is_set_for_our_server_and_defaulted_otherwise(monkey
     mgr = LaneBackendManager({"large": cfg}, max_cloud_lanes=1, max_backends=5)
     with (
         patch("maxim.models.language.config.load_llm_config", return_value=LLMConfig()),
-        patch("maxim.models.language.router.LLMRouter"),
+        patch("maxim.models.language.router.LLMRouter") as router,
     ):
         mgr.get_backend("large")
+    entry = router.call_args[0][0].providers["lane-large"]
+    assert os.environ["MAXIM_LANE_LARGE_API_KEY"] == "stale-or-exported"  # never overwritten
+    backend = _MaximPeerBackend.__new__(_MaximPeerBackend)
+    backend._api_key_override = None
+    monkeypatch.setattr(backend, "_provider_cfg", lambda: entry, raising=False)
     expected = "server-key-0123456789" if server_owned else "stale-or-exported"
-    assert os.environ["MAXIM_LANE_LARGE_API_KEY"] == expected
+    assert backend._get_api_key() == expected
+    assert ("api_key" in entry) is server_owned
 
 
 def test_a_lane_config_repr_never_carries_the_key() -> None:
@@ -288,3 +296,68 @@ def test_key_creation_takes_the_lock_and_rereads_inside_it(solo: Path, monkeypat
     assert (solo / "llm_server_key").read_text().strip() == "the-other-process-key-0123456789"
     assert taken == [(str(solo / "llm_server_key.lock"), keys._LOCAL_KEY_LOCK_TIMEOUT_S)]
     assert keys._LOCAL_KEY_LOCK_TIMEOUT_S > 0
+
+
+# ── review-round folds ─────────────────────────────────────────────────────────────────────────────────
+
+
+def test_a_swap_reuses_the_running_servers_key_and_refuses_without_one(monkeypatch) -> None:
+    """The proxy's, the lane client's and every peer's key were fixed when the server started: a swap after a key
+    rotation must not come up under the new key. With no server this process started there is nothing to swap."""
+    from types import SimpleNamespace
+
+    from maxim.runtime import lane_backends
+
+    monkeypatch.setattr(
+        lane_backends._server_mod, "_active_spawner", SimpleNamespace(_api_key="running-key-0123456789")
+    )
+    monkeypatch.setattr(lane_backends, "_server_key_for_role", lambda: pytest.fail("a swap must not re-read the key"))
+    assert lane_backends._swap_key() == "running-key-0123456789"
+    monkeypatch.setattr(lane_backends._server_mod, "_active_spawner", None)
+    with pytest.raises(RuntimeError, match="no llama-cpp-server started by this process"):
+        lane_backends._swap_key()
+
+
+@POSIX
+def test_doctor_names_an_unusable_local_key_instead_of_no_key(solo: Path) -> None:
+    from maxim.doctor import checks
+
+    solo.mkdir(parents=True)
+    path = solo / "llm_server_key"
+    path.write_text("x" * 43)
+    path.chmod(0o644)
+    for result in (checks.check_api_key(), checks.check_key_auth_smoke(8100)):
+        assert result.status == "fail" and "local server key unusable" in result.message, result
+        assert str(path) in result.message and "chmod 600" in result.fix
+
+
+def test_a_leader_whose_server_accepts_only_the_local_key_fails_the_smoke(solo: Path, monkeypatch) -> None:
+    from maxim.doctor import checks
+    from maxim.tunnel import keys
+
+    local = keys.ensure_local_server_key()
+    _fake_server(monkeypatch, accepts=local)
+    monkeypatch.setattr("maxim.runtime.role.resolved_role", lambda: ("leader", "env_var"))
+    result = checks.check_key_auth_smoke(8100)
+    assert result.status == "fail" and "every peer request" in result.message
+
+
+def test_a_key_path_that_is_a_directory_or_a_held_lock_is_a_typed_refusal(solo: Path, monkeypatch) -> None:
+    import contextlib
+
+    from maxim.tunnel import keys
+    from maxim.utils import process_lock
+
+    (solo / "llm_server_key").mkdir(parents=True)
+    with pytest.raises(keys.LocalServerKeyError, match="not a regular file"):
+        keys.ensure_local_server_key()
+    (solo / "llm_server_key").rmdir()
+
+    @contextlib.contextmanager
+    def held(path, *, timeout_s: float = 0.0):
+        raise process_lock.LockContended(f"lock held after {timeout_s:.1f}s: {path}")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(process_lock, "file_lock", held)
+    with pytest.raises(keys.LocalServerKeyError, match="key-creation lock"):
+        keys.ensure_local_server_key()

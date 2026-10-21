@@ -265,8 +265,8 @@ class LaneConfig:
     # truth until a producer writes ``placement`` explicitly (Phase 3).
     placement: tuple[ProviderPlacement, ...] = ()
     # #1314: ``remote_api_key`` is the key of a server THIS process spawned or reused (stamped by
-    # ``lane_backends._server_key_fields``), so the client sets it outright instead of deferring to an
-    # earlier value of its key env var.
+    # ``lane_backends._server_key_fields``), so the client carries it on its provider entry instead of
+    # deferring to an earlier value of its key env var (or writing it to the process env).
     remote_api_key_is_server_key: bool = False
 
 

@@ -1254,13 +1254,11 @@ class LaneBackendManager:
 
         provider_key = f"lane-{cfg.name}"
         api_key_env = f"MAXIM_LANE_{cfg.name.upper()}_API_KEY"
-        if remote_api_key and cfg.remote_api_key_is_server_key and remote_url == cfg.remote_url:
-            # Our own spawned/reused server: its key is the truth (#1314), never an earlier value.
-            os.environ[api_key_env] = remote_api_key
-        elif remote_api_key:
-            os.environ.setdefault(api_key_env, remote_api_key)
-        else:
-            os.environ.setdefault(api_key_env, "not-needed")
+        # Our own spawned/reused server (#1314): its key rides on the provider entry, so no earlier value of the env
+        # var can win and the key never reaches the process env (child processes inherit it).
+        server_key = remote_api_key if cfg.remote_api_key_is_server_key and remote_url == cfg.remote_url else None
+        if not server_key:
+            os.environ.setdefault(api_key_env, remote_api_key or "not-needed")
 
         providers = dict(base.providers or {})
         # Plan 3 R2.5: dispatch to _MaximPeerBackend for self-hosted
@@ -1279,6 +1277,8 @@ class LaneBackendManager:
             # when no pricing entry exists for the model name.
             "pricing_required": False,
         }
+        if server_key:
+            provider_entry["api_key"] = server_key
         # llm_timeout_scalability.md Stage 2: thread per-tier timeout_s
         # into the provider config. Both backends (_MaximPeerBackend
         # _get_timeout_policy, _OpenAIBackend _get_timeout) already read
@@ -2913,11 +2913,26 @@ def _stop_active_server(logger_obj: Any | None) -> None:
         _server_mod._active_model = None
 
 
+def _swap_key() -> str:
+    """The key a hot-swapped server is spawned with: the RUNNING server's (#1314 review). The proxy's key, the lane
+    client's key and every peer's were fixed when that server started, so a swap must not pick up a key rotated
+    since (the new server would 401 them all until a restart). With no server this process started there is
+    nothing to swap: refuse rather than spawn beside a server started elsewhere."""
+    spawner = _server_mod._active_spawner
+    key = getattr(spawner, "_api_key", None) if spawner is not None else None
+    if not key:
+        raise RuntimeError(
+            "no llama-cpp-server started by this process to swap (the one serving was started elsewhere); "
+            "restart maxim with the new model instead"
+        )
+    return str(key)
+
+
 def _start_swap_server(
     *,
     cfg: Any,
     model_path: str,
-    api_key: str | None,
+    api_key: str,
     port: int,
     logger_obj: Any | None,
 ) -> tuple[Any, float, int]:
@@ -3008,8 +3023,7 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
         except ValueError:
             port = 8100
 
-        # The same key rule as the first spawn (one helper, one role source).
-        api_key = _server_key_for_role()
+        api_key = _swap_key()
 
         previous_model = _server_mod._active_model or "none"
 
@@ -3120,9 +3134,9 @@ def _server_key_for_role() -> str:
     per-host local server key, created when missing (``ensure_local_server_key`` raises
     ``LocalServerKeyError``). Never None: every spawned server requires a key (#1314).
 
-    The ONE place spawn, reuse and hot-swap decide it, through ``role.resolved_role`` (the
-    exported ``MAXIM_ROLE`` in a CLI process, the same detection in a Python-API process), so a
-    swap can never come up under a different key from its first server (2026-10-14).
+    The ONE place spawn and reuse decide it, through ``role.resolved_role`` (the exported
+    ``MAXIM_ROLE`` in a CLI process, the same detection in a Python-API process). A hot-swap
+    reuses the running server's key (``_swap_key``), so it never comes up under a different key.
     """
     from maxim.runtime.role import resolved_role
     from maxim.tunnel.keys import ensure_local_server_key, require_leader_key

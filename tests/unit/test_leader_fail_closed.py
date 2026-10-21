@@ -318,9 +318,11 @@ def test_the_swap_server_binds_loopback_only(monkeypatch) -> None:
     assert built[0]["api_key"] == GOOD_KEY
 
 
-def test_spawn_and_swap_decide_the_key_through_one_role_source(monkeypatch) -> None:
+def test_spawn_and_swap_decide_the_key_through_one_role_source(monkeypatch, tmp_path) -> None:
     """A Python-API leader (nothing exported MAXIM_ROLE) must key a hot-swapped server like the first one."""
     from maxim.runtime import lane_backends
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))  # the solo half creates a key file
 
     monkeypatch.setattr("maxim.runtime.role.resolved_role", lambda: ("leader", "config_json"))
     with pytest.raises(LeaderKeyError):
@@ -331,7 +333,8 @@ def test_spawn_and_swap_decide_the_key_through_one_role_source(monkeypatch) -> N
     local = lane_backends._server_key_for_role()  # #1314: every role's server is keyed; a solo's has its own key
     assert local and local != GOOD_KEY
     src = (REPO / "src/maxim/runtime/lane_backends.py").read_text()
-    assert src.count("api_key = _server_key_for_role()") == 2  # the first spawn and the swap
+    assert src.count("api_key = _server_key_for_role()") == 1  # the first spawn; a swap reuses its key (_swap_key)
+    assert src.count("api_key = _swap_key()") == 1
     assert "require_leader_key()" not in src.replace("    return require_leader_key()", "")
 
 

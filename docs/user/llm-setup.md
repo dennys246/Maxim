@@ -789,7 +789,7 @@ so the spawned server picks up the new key.
 **Leader's own client:** auto-reads the key file — no shell config needed on
 the leader machine.
 
-**Solo mode (no tunnel):** localhost bind, no auth required. A **leader** cannot start without a usable key, and
+**Solo mode (no tunnel):** localhost bind; the spawned server still requires a key, its own `~/.config/maxim/llm_server_key`, created on first start (remove the file to replace it; the next start generates a new one). A **leader** cannot start without a usable key, and
 every LeaderProxy route requires it, including `/v1/debug/*` from loopback.
 
 The `maxim tunnel status` command shows what's configured at any time:

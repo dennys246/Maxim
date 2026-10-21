@@ -1974,6 +1974,23 @@ def check_tunnel_config_sync() -> CheckResult:
 # ─── API key ───────────────────────────────────────────────────────────────
 
 
+def _unusable_local_key_result(name: str) -> CheckResult | None:
+    """A failing row when the local server key file (a non-leader's spawned llama-cpp-server, #1314) exists but
+    cannot be used, else None. Startup refuses such a file, so doctor must name it, not report "no key"."""
+    from maxim.tunnel.keys import LocalServerKeyError, read_local_server_key
+
+    try:
+        read_local_server_key()
+    except LocalServerKeyError as e:
+        return CheckResult(
+            name=name,
+            status="fail",
+            message=f"local server key unusable: {e.reason} ({e.path})",
+            fix=e.fix_hint,
+        )
+    return None
+
+
 def _unusable_key_result(name: str) -> CheckResult | None:
     """A failing row when the mesh key file exists but cannot be used, else None (#1311): such a key is neither "no
     key" (the server would not be open) nor a mismatch (rotating would discard a key that may be fine once readable)."""
@@ -2017,13 +2034,16 @@ def check_api_key() -> CheckResult:
             )
     elif (unusable := _unusable_key_result("API key")) is not None:
         return unusable
+    elif (unusable_local := _unusable_local_key_result("API key")) is not None:
+        return unusable_local
     elif not key_exists():
+        # A non-leader's own server is keyed with its local server key (#1314); the mesh key is for serving peers.
         return CheckResult(
             name="API key",
-            status="warn",
-            message="no key set — server accepts all requests (localhost is fine)",
+            status="info",
+            message="no mesh key — needed only to serve peers as a leader (the local server holds llm_server_key)",
             fix=(
-                "Generate one before exposing to LAN/tunnel:\n"
+                "Before running as a leader:\n"
                 "  maxim tunnel key rotate\n"
                 "  maxim tunnel key export   # shell snippets for peers"
             ),
@@ -2308,6 +2328,8 @@ def check_key_auth_smoke(port: int = 8100) -> CheckResult:
 
     if (unusable := _unusable_key_result("Key auth smoke")) is not None:
         return unusable
+    if (unusable_local := _unusable_local_key_result("Key auth smoke")) is not None:
+        return unusable_local
     name, _key, state = _accepted_server_key(port)
     if state == "none-configured":
         return CheckResult(name="Key auth smoke", status="info", message="no key configured — skipped")
@@ -2325,6 +2347,17 @@ def check_key_auth_smoke(port: int = 8100) -> CheckResult:
                 "key, any other role's llm_server_key; check MAXIM_ROLE), or a key rotated since the server "
                 "started. Restart the server."
             ),
+            retry_id="key-auth",
+        )
+    from maxim.runtime.role import resolved_role
+
+    if name != "mesh" and resolved_role()[0] == "leader":
+        # Discovery tries every host key; the verdict is judged against the role: a leader's peers send the mesh key.
+        return CheckResult(
+            name="Key auth smoke",
+            status="fail",
+            message=f"this leader's server accepts only the {name} key, so every peer request (mesh key) gets 401",
+            fix="The server was started under another role: restart maxim as the leader so it spawns with the mesh key.",
             retry_id="key-auth",
         )
     url = f"http://127.0.0.1:{port}/v1/models"
