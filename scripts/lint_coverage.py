@@ -29,7 +29,8 @@ uncovered statement count pinned with it.
   with it — so any number of PRs together can drop at most k statements under an unchanged
   floor, and a PR that changes a floor is held to the measurement by the CHANGED/NEW rules. No
   HEAD rule compares measured ``missing`` with a pinned ``missing`` (those comparisons are pin
-  rules), so none needed the tolerance;
+  rules), so none needed the tolerance (the "raise it to" HINT prints ``min(measured, pinned)``
+  so that following it passes the pin rule, #1409; it gates nothing);
   ``band`` must be 1.0 and ``min_package_statements`` (N) 200; a package with >= N
   statements needs a floor; a ``null`` floor fails closed printing
   ``floor missing: measured X`` (the bootstrap: the file is committed with nulls, CI prints
@@ -898,21 +899,28 @@ def _sum_rule(
             )
 
 
-def pin_rises(base_fl: Floors, fl: Floors) -> list[str]:
+def pin_rises(base_fl: Floors, fl: Floors, measured: Callable[[str], ScopeCov | None] = lambda _key: None) -> list[str]:
     """The measurement-free half of ``floor_diff_rules``' "a pinned missing never rises": every floor present at both
     base and head under the same key (overall, a package, a file) whose head ``missing`` exceeds its base ``missing``.
     It compares the two floor files only, so ``--local`` gates it exactly as CI does (#1270: #1268 raised
     maxim/console 173 -> 207 and its local run printed that as a note). Renames and splits stay CI's: their pins carry
-    across keys and are verified against measurements."""
+    across keys and are verified against measurements. ``measured`` (a key's measurement, when the run has one) only
+    sharpens the printed pin to ``min(measured, base)``, the cap ``changed_entry`` enforces; it never changes what
+    fails."""
     pairs = [("overall", base_fl.overall, fl.overall)]
     pairs += [(k, base_fl.packages.get(k), h) for k, h in fl.packages.items()]
     pairs += [(k, base_fl.files.get(k), h) for k, h in fl.files.items()]
-    return [
-        f"{name}: floor pins missing {h.missing} above the base's pinned {b.missing} — a pinned missing never rises;"
-        f" cover {h.missing - b.missing} statement(s) and keep the pin at {b.missing}"
-        for name, b, h in pairs
-        if b is not None and b.missing is not None and h.missing is not None and h.missing > b.missing
-    ]
+    out = []
+    for name, b, h in pairs:
+        if b is None or b.missing is None or h.missing is None or h.missing <= b.missing:
+            continue
+        m = measured(name)
+        cap = b.missing if m is None else min(m.missing, b.missing)
+        out.append(
+            f"{name}: floor pins missing {h.missing} above the base's pinned {b.missing} — a pinned missing never rises;"
+            f" cover {h.missing - b.missing} statement(s) and pin {cap}"
+        )
+    return out
 
 
 def floor_diff_rules(
@@ -1972,7 +1980,8 @@ def main(argv: list[str] | None = None) -> int:
                             )
                             if local:  # a PR's floor edits are CI measurements: CI verifies them, not this box,
                                 # except the half that reads no measurement: a pinned missing that rose (#1270)
-                                rises = pin_rises(base_fl, fl)
+                                scopes = {"overall": overall, **pkgs, **files}
+                                rises = pin_rises(base_fl, fl, scopes.get)
                                 failures += rises
                                 gated = {r.split(":", 1)[0] for r in rises}  # gated above: not also a "not gated" note
                                 for note in pin:

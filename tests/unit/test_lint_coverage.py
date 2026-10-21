@@ -1090,7 +1090,8 @@ def test_raising_a_floor_cannot_raise_its_missing_pin(repo, capsys):
 def test_following_the_raise_hint_passes_the_next_run(repo, capsys):
     """The ratchet's two halves must agree (#1409, 2026-10-20): a PR whose package rose more than the band above its
     floor while adding statements (measured missing 3 > base pin 2) was told to pin the MEASURED missing, and the
-    next run refused that pin ("a pinned missing never rises"). Following every hint verbatim must pass."""
+    next run refused that pin ("a pinned missing never rises"). With the floor unchanged in the PR (the CI-fix case),
+    following the raise hints verbatim must pass. Rename-carried targets are M60's (the redesign of this bookkeeping)."""
     import re
 
     _write(repo, A, _lines(50, "a"))
@@ -1105,6 +1106,18 @@ def test_following_the_raise_hint_passes_the_next_run(repo, capsys):
     _cov(repo, missing={A: {9, 10, 15}, B: {6, 7, 8, 9, 10}})
     rc, _, err = _run(capsys)
     assert rc == 0, err
+
+
+def test_the_local_pin_rise_hint_prints_the_cap_the_ci_rule_enforces(repo, capsys):
+    """``pin_rises`` gates under ``--local``; with a measurement it prints min(measured, base), the CI rule's cap,
+    not the base pin a lower measurement would refuse."""
+    from types import SimpleNamespace
+
+    base = L.parse_floors(_floors(alpha=(80.0, 5)))
+    head = L.parse_floors(_floors(alpha=(85.0, 9)))
+    assert L.pin_rises(base, head)[0].endswith("pin 5")  # no measurement: the base pin
+    measured = {"maxim/alpha": SimpleNamespace(missing=3)}
+    assert L.pin_rises(base, head, measured.get)[0].endswith("pin 3")
 
 
 def _split_base(repo: Path) -> None:
