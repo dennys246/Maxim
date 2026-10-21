@@ -1087,6 +1087,27 @@ def test_raising_a_floor_cannot_raise_its_missing_pin(repo, capsys):
     assert rc == 1 and "overall: floor pins missing 8 above min(measured 8, base 7)" in err
 
 
+@pytest.mark.xfail(strict=True, reason="raise hint prints the measured missing, which the never-rises rule refuses")
+def test_following_the_raise_hint_passes_the_next_run(repo, capsys):
+    """The ratchet's two halves must agree (#1409, 2026-10-20): a PR whose package rose more than the band above its
+    floor while adding statements (measured missing 3 > base pin 2) was told to pin the MEASURED missing, and the
+    next run refused that pin ("a pinned missing never rises"). Following every hint verbatim must pass."""
+    import re
+
+    _write(repo, A, _lines(50, "a"))
+    _commit(repo)
+    _cov(repo, missing={A: {9, 10, 15}, B: {6, 7, 8, 9, 10}})
+    rc, _, err = _run(capsys)
+    hints = dict(re.findall(r"^\s*(?:- )?(\S+): .* raise it to (\{.*\})$", err, re.M))
+    assert rc == 1 and {"overall", "maxim/alpha"} <= set(hints), err
+    pin = {k: tuple(json.loads(v).values()) for k, v in hints.items()}
+    _write(repo, L.FLOORS_REL, _floors(overall=pin["overall"], alpha=pin["maxim/alpha"]))
+    _commit(repo)
+    _cov(repo, missing={A: {9, 10, 15}, B: {6, 7, 8, 9, 10}})
+    rc, _, err = _run(capsys)
+    assert rc == 0, err
+
+
 def _split_base(repo: Path) -> None:
     """Base on main: a third package `sp` (two files, 9/10 covered each) with its own floor."""
     _write(repo, "src/maxim/sp/c.py", _lines(10, "c"))
