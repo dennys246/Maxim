@@ -2387,8 +2387,9 @@ def _server_key_fields(infer_cfg: Any, api_key: str, logger: Any | None) -> dict
     """The lane fields that point a lane's client at a server THIS process spawned or reused: its key, assigned
     outright (#1314). An operator's lane key for this tier (set with no URL, so it described no server) cannot
     authenticate to our server, which holds ``api_key``; it is ignored with one WARNING rather than sent to 401 every
-    call. ``remote_api_key_is_server_key`` tells ``_build_remote_backend`` to set the client's key env var, not
-    ``setdefault`` it, so a stale value earlier in the process (or a peer-setup export) cannot win either."""
+    call. ``remote_api_key_is_server_key`` tells ``_build_remote_backend`` to carry the key on the lane's provider
+    entry rather than the process env, so a stale value earlier in the process (or a peer-setup export) cannot win
+    either, and child processes never inherit the key."""
     if infer_cfg.remote_api_key and infer_cfg.remote_api_key != api_key:
         (logger if logger is not None else logging.getLogger(__name__)).warning(
             "Lane '%s': ignoring the configured lane API key for the local llama-cpp-server this process "
@@ -2624,7 +2625,7 @@ def _maybe_auto_spawn_server(
     except Exception:
         return lane_configs
 
-    # api_key (loaded above) keys the server; solo has none. Loopback for EVERY
+    # api_key (loaded above) keys the server, every role's (#1314). Loopback for EVERY
     # role: the LeaderProxy (:8099) is a leader's only ingress (2026-10-14).
 
     # n_ctx precedence (peer_leader_flexibility_plan P4c):

@@ -339,6 +339,10 @@ def test_a_leader_whose_server_accepts_only_the_local_key_fails_the_smoke(solo: 
     _fake_server(monkeypatch, accepts=local)
     monkeypatch.setattr("maxim.runtime.role.resolved_role", lambda: ("leader", "env_var"))
     result = checks.check_key_auth_smoke(8100)
+    assert result.status != "fail"  # no mesh key on disk: check_api_key fails this leader with the right fix
+    keys.write_key("mesh-key-0123456789abcdef")
+    os.chmod(keys.key_file_path(), 0o600)
+    result = checks.check_key_auth_smoke(8100)
     assert result.status == "fail" and "every peer request" in result.message
 
 

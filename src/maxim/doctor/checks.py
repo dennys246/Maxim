@@ -2351,7 +2351,10 @@ def check_key_auth_smoke(port: int = 8100) -> CheckResult:
         )
     from maxim.runtime.role import resolved_role
 
-    if name != "mesh" and resolved_role()[0] == "leader":
+    from maxim.tunnel.keys import candidate_server_keys
+
+    # Only with a mesh key on disk: without one, check_api_key already fails this leader with the right fix.
+    if name != "mesh" and resolved_role()[0] == "leader" and "mesh" in candidate_server_keys():
         # Discovery tries every host key; the verdict is judged against the role: a leader's peers send the mesh key.
         return CheckResult(
             name="Key auth smoke",
