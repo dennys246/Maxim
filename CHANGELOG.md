@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The wheel vendors maxim-pulse Console v0.4.2** (was v0.4.1; contract 0.6.0 unchanged; owner decision 2026-10-22).
+  Pulse #52 hides the Console's Models button, which listed the built-in catalog and changed nothing when clicked
+  (no model field reaches `/api/run`). A truthful model picker returns in 1.3.4 ([#1418](https://github.com/dennys246/Maxim/issues/1418)).
+  `scripts/console_ui_pin.json` pins tag v0.4.2 at commit `bcd0d1e`, asset sha256 `dbdd86ba…`.
 - **Every spawned llama-cpp-server requires a key, solo included** (security; [#1314](https://github.com/dennys246/Maxim/issues/1314),
   owner decisions 2026-10-20). Since 1.3.2 only a leader's server was keyed (with the mesh key). A solo's bound loopback with
   no key, so any local process or user on a shared host could use its inference, and a stale tunnel ingress to its port
