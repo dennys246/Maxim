@@ -12,6 +12,7 @@ import logging
 import os
 import re
 import time
+import weakref
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any
@@ -62,8 +63,9 @@ class PerceptionAgent(Agent):
         self._interests = interests or set()
         self._recent_percepts: deque[Percept] = deque(maxlen=novelty_window)
         self._capture_manager = capture_manager
-        # The (state, ``RuntimeState.cli_input_seq``) whose ``cli_input`` this agent already published (#1414).
-        self._consumed_cli_input: tuple[int, int] | None = None
+        # The state (weakly: an id is reused once the state is freed) and its ``RuntimeState.cli_input_seq`` whose
+        # ``cli_input`` this agent already published (#1414).
+        self._consumed_cli_input: tuple[weakref.ref[Any], int] | None = None
 
         # Thread pool for non-blocking percept publishing
         # This prevents the segmentation thread from being blocked by bus handlers
@@ -276,7 +278,7 @@ class PerceptionAgent(Agent):
 
         return percept
 
-    def _unconsumed(self, obs: dict[str, Any], seq: tuple[int, int] | None) -> dict[str, Any]:
+    def _unconsumed(self, obs: dict[str, Any], state: Any) -> dict[str, Any]:
         """``obs`` without a ``cli_input`` this agent already published (#1414).
 
         The state's ``data`` keeps the last ``cli_input`` after the tick that brought it, and this agent reads
@@ -286,11 +288,13 @@ class PerceptionAgent(Agent):
         state does not drop that state's first message); the same words sent again bump the count and are new. A
         state without the count (not a ``RuntimeState``) keeps the old read.
         """
+        seq = getattr(state, "cli_input_seq", None)
         if seq is None or not obs.get("cli_input"):
             return obs
-        if seq == self._consumed_cli_input:
+        consumed = self._consumed_cli_input
+        if consumed is not None and consumed[0]() is state and consumed[1] == seq:
             return {k: v for k, v in obs.items() if k != "cli_input"}
-        self._consumed_cli_input = seq
+        self._consumed_cli_input = (weakref.ref(state), seq)
         return obs
 
     def propose_intent(self, state: Any, memory: Any, **kwargs: Any) -> dict[str, Any] | None:
@@ -308,8 +312,7 @@ class PerceptionAgent(Agent):
         obs = getattr(state, "data", None) if hasattr(state, "data") else None
         if not isinstance(obs, dict):
             obs = {}
-        seq = getattr(state, "cli_input_seq", None)
-        obs = self._unconsumed(obs, None if seq is None else (id(state), seq))
+        obs = self._unconsumed(obs, state)
 
         # Check file changes
         file_changed, file_path = self._check_transcript_file(obs)

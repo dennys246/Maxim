@@ -226,8 +226,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runtime-only `RuntimeState.cli_input_seq` (the same words sent again are a new message). Separately, nothing in the
   agent loop's fallback path told `AgenticGoalAgent` what became of its tool call, so the call was proposed again
   every tick, refused or not. The loop now publishes a `ToolResult` after the call runs or raises
-  (`agent_loop.py::_report_fallback_result`), and ends the goal through the new `refuse_tool_call` when autonomy
-  refuses it, without a retry and without a `ToolResult`. This is the first code that publishes a `ToolResult`, so
+  (`agent_loop.py::_report_fallback_result`), and closes it through the new `refuse_tool_call` when autonomy
+  refuses it, without a retry and without a `ToolResult` (a refused sub-goal whose policy is SKIP is skipped and
+  the goal goes on; any other refusal ends the goal, which `GoalCompleted`'s subscribers book as a failed goal,
+  among them `ExecAgent`'s negative NAc signal for the contemplation that proposed it). This is the first code that publishes a `ToolResult`, so
   its subscribers fire for the first time, for fallback-path calls only: `MemoryAgent` (a failed call becomes a
   0.8-salience `goal_outcome` memory), `StatisticianAgent` (`tool:<name>:success`), and the Python API's
   `on("tool_call")` callbacks (the main dispatch path publishes none yet, #1147). Goal completion, sub-goal

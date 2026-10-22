@@ -12,6 +12,7 @@ from typing import Any
 from maxim.agents.base import Agent
 from maxim.agents.bus import (
     AgentBus,
+    FailureStrategy,
     GoalAccepted,
     GoalCompleted,
     GoalPriority,
@@ -331,15 +332,26 @@ class AgenticGoalAgent(Agent):
         self._bus.publish(tr)
 
     def refuse_tool_call(self, tool_call_id: str, reason: str) -> bool:
-        """The loop refused this agent's pending tool call (autonomy, #1414): end its goal, without a retry.
+        """The loop refused this agent's pending tool call (autonomy, #1414): close it, without a retry.
 
-        A refusal is not a tool result: the tool never ran, and a refused call will be refused again, so it does
-        not go through ``ToolResult`` (whose subscribers book tool successes and failures) and a sub-goal's retry
-        policy does not apply. Returns False when ``tool_call_id`` is not the pending call (already closed).
+        A refusal is not a tool result: the tool never ran, so it does not go through ``ToolResult`` (whose
+        subscribers book tool successes and failures). A refused call would be refused again, so retrying (RETRY) or
+        re-proposing at a higher priority (ESCALATE) cannot help: a sub-goal whose policy is SKIP is skipped and the
+        goal moves on to its next sub-goal, and any other refused call ends the goal. Returns False when
+        ``tool_call_id`` is not the pending call (already closed).
         """
         if self._pending_tool_call is None or self._pending_tool_call.id != tool_call_id:
             return False
-        self._complete_goal(success=False, error=reason)
+        self._pending_tool_call = None
+        goal = self._current_goal
+        current = next((sg for sg in goal.sub_goals if sg.status == SubGoalStatus.IN_PROGRESS), None) if goal else None
+        if current is not None and current.on_failure == FailureStrategy.SKIP:
+            current.status, current.error = SubGoalStatus.SKIPPED, reason
+            self._schedule_next_action()
+            return True
+        if current is not None:
+            current.status, current.error = SubGoalStatus.FAILED, reason
+        self._complete_goal(success=False, error=f"Refused: {reason}")
         return True
 
     def cancel_current_goal(self, reason: str = "Cancelled by user") -> bool:

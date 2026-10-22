@@ -160,12 +160,16 @@ def test_a_raise_after_the_report_does_not_report_again() -> None:
 def test_a_fresh_state_s_first_message_is_not_dropped() -> None:
     from maxim.runtime.state import RuntimeState
 
+    import gc
+
     agent, seen = _perception()
-    for _ in range(2):  # one agent, two states, each with its first message (seq 1 both times)
+    for _ in range(3):  # one agent, three states in a row, each with its first message (seq 1 every time)
         state = RuntimeState()
         state.update({"cli_input": "hello"})
         agent.propose_intent(state, memory=None)
-    assert len([p for p in seen if getattr(p, "has_maxim_keyword", False)]) == 2
+        del state  # freed before the next is built, so CPython hands the next one the same id
+        gc.collect()
+    assert len([p for p in seen if getattr(p, "has_maxim_keyword", False)]) == 3
 
 
 def test_the_real_loop_proposes_a_refused_goal_call_once(monkeypatch, tmp_path) -> None:
@@ -176,6 +180,7 @@ def test_the_real_loop_proposes_a_refused_goal_call_once(monkeypatch, tmp_path) 
     from tests.unit import test_loop_gates_characterization as gates
 
     goal_agent = _goal_agent_with_pending_call()
+    seen = _results_on(goal_agent)
     proposed: list[Any] = []
     face = _maxim_like(goal_agent)
 
@@ -216,4 +221,46 @@ def test_the_real_loop_proposes_a_refused_goal_call_once(monkeypatch, tmp_path) 
     assert run.error is None
     assert len(gates._ran(run.ev)) == 6  # control: every pass reached §1, so §3 ran on each
     assert len(proposed) == 1
+    assert seen == []  # closed by the REFUSAL (an executed call would publish a ToolResult): §3's refused branch ran
     assert goal_agent.propose_intent(state=None, memory=None) is None
+
+
+def _goal_with_sub_goals(on_failure: Any) -> Any:
+    from maxim.agents.agentic_goal_agent import AgenticGoalAgent
+    from maxim.agents.bus import AgentBus, GoalPriority, ProposedGoal, SubGoal
+
+    goal_agent = AgenticGoalAgent(AgentBus())
+    goal_agent._bus.publish(
+        ProposedGoal(
+            id="g2",
+            description="look it up, then answer",
+            priority=GoalPriority.HIGH,
+            sub_goals=[
+                SubGoal(id="s1", description="fetch", tool_name="bash", on_failure=on_failure),
+                SubGoal(id="s2", description="answer", tool_name="respond", depends_on=[]),
+            ],
+        )
+    )
+    return goal_agent
+
+
+def test_a_refused_skip_sub_goal_moves_on_to_the_next() -> None:
+    """A refusal follows the sub-goal's policy with retries exhausted: SKIP skips it, the goal goes on (review)."""
+    from maxim.agents.bus import FailureStrategy
+
+    goal_agent = _goal_with_sub_goals(FailureStrategy.SKIP)
+    first = goal_agent.propose_intent(state=None, memory=None)
+    assert first["goal"]["tool_name"] == "bash"
+    assert goal_agent.refuse_tool_call(first["tool_call_id"], "forbidden") is True
+    after = goal_agent.propose_intent(state=None, memory=None)
+    assert after is not None and after["goal"]["tool_name"] == "respond"
+
+
+def test_a_refused_retry_sub_goal_ends_the_goal_without_a_retry() -> None:
+    from maxim.agents.bus import FailureStrategy
+
+    goal_agent = _goal_with_sub_goals(FailureStrategy.RETRY)
+    first = goal_agent.propose_intent(state=None, memory=None)
+    assert goal_agent.refuse_tool_call(first["tool_call_id"], "forbidden") is True
+    assert goal_agent.propose_intent(state=None, memory=None) is None
+    assert goal_agent.refuse_tool_call(first["tool_call_id"], "forbidden") is False  # already closed
