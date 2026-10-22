@@ -134,8 +134,9 @@ def _prepare_executor(executor: Any, action_sink: Any, state: Any, autonomy_cont
         executor = InstrumentedExecutor(executor, action_sink)
     if executor is not None:
         executor.set_mode_source(lambda: run_mode(state))
-        if autonomy_controller is not None and hasattr(executor, "set_forbid_source"):
-            executor.set_forbid_source(autonomy_controller.forbids_tool)
+        # Unconditional, like the mode source: an executor that cannot take the forbid list fails here, loudly,
+        # rather than keep advertising tools the loop forbids (#1412).
+        executor.set_forbid_source(autonomy_controller.forbids_tool if autonomy_controller is not None else None)
     return executor
 
 
