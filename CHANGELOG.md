@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The wheel vendors maxim-pulse Console v0.4.2** (was v0.4.1; contract 0.6.0 unchanged; owner decision 2026-10-22).
+  Pulse #52 hides the Console's Models button, which listed the built-in catalog and changed nothing when clicked
+  (no model field reaches `/api/run`). A truthful model picker returns in 1.3.4 ([#1418](https://github.com/dennys246/Maxim/issues/1418)).
+  `scripts/console_ui_pin.json` pins tag v0.4.2 at commit `bcd0d1e`, asset sha256 `dbdd86ba…`.
 - **The model is never shown a tool the autonomy controller forbids** ([#1412](https://github.com/dennys246/Maxim/issues/1412),
   found by maxim-pulse on the 1.3.3 candidate). Console Talk forbids every non-conversational tool through
   `SafetyConstraints.forbidden_tools`, but the prompt's roster was filtered only by the executor's mode and
