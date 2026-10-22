@@ -182,6 +182,7 @@ class MaximHandle:
         self._campaign_lock = threading.Lock()
         # Talk-mode live loop (built lazily on the first talk()).
         self._talk_lock = threading.Lock()
+        self._talk_generation: int | None = None  # the config generation the live talk loop was built under (#1411)
         self._talk_bridge: Any = None
         self._talk_thread: threading.Thread | None = None
         self._talk_stop: threading.Event | None = None
@@ -315,9 +316,17 @@ class MaximHandle:
 
     def _ensure_talk_loop(self) -> Any:
         """Build + start the talk loop once; return its bridge."""
+        from maxim.runtime.config_loader import config_generation
+
         with self._talk_lock:
-            if self._talk_bridge is not None and self._talk_thread is not None and self._talk_thread.is_alive():
+            live = self._talk_bridge is not None and self._talk_thread is not None and self._talk_thread.is_alive()
+            if live and self._talk_generation == config_generation():
                 return self._talk_bridge
+        if live:
+            # config.json was written since this loop was built (#1411: /api/setup/mesh to another leader): its router
+            # points at the old config. Stop it like a campaign would; the code below rebuilds against the new one.
+            self._stop_talk_loop(required=True)
+        with self._talk_lock:
             stale_worker = self._talk_worker
             self._talk_bridge = self._talk_thread = self._talk_stop = self._talk_worker = None
         # A previous loop died (its thread raised and was logged). Its
@@ -340,6 +349,7 @@ class MaximHandle:
             workspace = self._workspace
             workspace.mkdir(parents=True, exist_ok=True)
 
+            generation = config_generation()  # read BEFORE the build: a write during it rebuilds next time
             router, _lane_manager = build_primary_router()
             if router is None:
                 from maxim.exceptions import ConfigurationError
@@ -351,7 +361,9 @@ class MaximHandle:
             worker = LLMWorker(llm=router, n_ctx=router.n_ctx, token_counter=router.get_token_counter())
             worker.start()
             try:
-                return self._launch_talk_loop(worker, workspace)
+                bridge = self._launch_talk_loop(worker, workspace)
+                self._talk_generation = generation
+                return bridge
             except Exception:
                 # A raise between start() and the state assignment would strand
                 # a running worker pool with no reference (review finding).

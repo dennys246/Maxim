@@ -32,6 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The projection now records every env var it writes; a config write (`invalidate_config_cache`, which every
   `config_writer` write calls) moves a generation counter, and the next projection restores exactly its own writes
   (where they still hold the value it wrote) and projects the new config. An operator's env value is never touched.
+  - The persisted local-model restore, the pre-upgrade pin and the CLOUD-cap bump are recorded the same way, so a box
+    that once ran `--llm` no longer keeps its local profile after a mesh setup (which cleared the new leader URL).
+  - A live Console talk loop is rebuilt after a config write, so switching leaders re-routes Talk without a restart.
+  - The projection runs under a lock. A config write from another process (`maxim config set` while `maxim serve`
+    runs) still needs a restart.
 - **Every spawned llama-cpp-server requires a key, solo included** (security; [#1314](https://github.com/dennys246/Maxim/issues/1314),
   owner decisions 2026-10-20). Since 1.3.2 only a leader's server was keyed (with the mesh key). A solo's bound loopback with
   no key, so any local process or user on a shared host could use its inference, and a stale tunnel ingress to its port

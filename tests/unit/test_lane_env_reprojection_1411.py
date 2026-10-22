@@ -123,3 +123,91 @@ def test_the_router_build_after_setup_points_at_the_leader_in_the_same_process()
     _setup(LEADER_A, "mesh-key-aaaaaaaaaaaaaaaa")
     _router, manager = build()
     assert large_url(manager) == LEADER_A
+
+
+# ── review-round folds ─────────────────────────────────────────────────────────────────────────────────
+
+
+def _build_with_persisted(persisted: str | None):
+    from maxim.models.language.config import LLMConfig
+    from maxim.runtime import lane_backends
+
+    with (
+        patch("maxim.runtime.capabilities.detect_compute_resources", return_value=(False, None, 0.0, 8.0)),
+        patch("maxim.models.language.config.load_llm_config", return_value=LLMConfig()),
+        patch("maxim.models.language.router.LLMRouter"),
+        patch.object(lane_backends, "_read_persisted_model", return_value=persisted),
+    ):
+        _router, manager = lane_backends.build_primary_router()
+    cfg = manager._configs.get("large")
+    return cfg.remote_url if cfg is not None else None
+
+
+def test_a_box_with_a_persisted_local_model_routes_to_the_leader_after_setup(monkeypatch) -> None:
+    """Executor lens BLOCKER: the first build restores the persisted local profile into MAXIM_LLM_PROFILE; after the
+    setup, that profile must not survive to make _apply_local_llm_override clear the new leader URL."""
+    monkeypatch.delenv("MAXIM_LLM_PROFILE", raising=False)
+    _build_with_persisted("llama-2-13b-chat")
+    _setup(LEADER_A, "mesh-key-aaaaaaaaaaaaaaaa")
+    assert _build_with_persisted("llama-2-13b-chat") == LEADER_A
+    assert "MAXIM_LLM_PROFILE" not in os.environ
+
+
+def test_the_projection_runs_under_its_lock() -> None:
+    """No other thread can observe an undo-then-reproject half done."""
+    import threading
+
+    from maxim.runtime import lane_backends
+
+    seen: list[bool] = []
+    real = lane_backends._project_lane_tier
+
+    def probe(tier, cfg, logger_obj):
+        acquired: list[bool] = []
+        t = threading.Thread(target=lambda: acquired.append(lane_backends._lane_env_lock.acquire(blocking=False)))
+        t.start()
+        t.join()
+        if acquired and acquired[0]:
+            lane_backends._lane_env_lock.release()
+        seen.append(bool(acquired and acquired[0]))
+        return real(tier, cfg, logger_obj)
+
+    with patch.object(lane_backends, "_project_lane_tier", side_effect=probe):
+        _apply()
+    assert seen and not any(seen)
+
+
+def test_an_overwritten_value_is_restored_by_the_undo(monkeypatch) -> None:
+    """The cloud-lane cap raised to admit config.json's CLOUD placements comes back down when the config changes."""
+    from maxim.runtime import lane_backends
+
+    monkeypatch.setenv("MAXIM_MAX_CLOUD_LANES", "0")
+    lane_backends._project_env("MAXIM_MAX_CLOUD_LANES", "2", overwrite=True)
+    assert os.environ["MAXIM_MAX_CLOUD_LANES"] == "2"
+    lane_backends._undo_lane_env_projection()
+    assert os.environ["MAXIM_MAX_CLOUD_LANES"] == "0"
+
+
+def test_a_live_talk_loop_is_rebuilt_after_a_config_write(monkeypatch, tmp_path) -> None:
+    """Architecture lens: a talk loop built under leader A keeps A's router; a later setup must rebuild it."""
+    import threading
+    from types import SimpleNamespace
+
+    from maxim.console import handle as H
+    from maxim.runtime.config_loader import config_generation, invalidate_config_cache
+
+    h = object.__new__(H.MaximHandle)
+    h._talk_lock = threading.Lock()
+    alive = SimpleNamespace(is_alive=lambda: True)
+    h._talk_bridge, h._talk_thread, h._talk_stop, h._talk_worker = object(), alive, None, None
+    h._talk_generation = config_generation()
+    h._workspace = tmp_path / "ws"
+    stopped: list[bool] = []
+    monkeypatch.setattr(h, "_stop_talk_loop", lambda **_k: stopped.append(True), raising=False)
+    monkeypatch.setattr("maxim.runtime.lane_backends.build_primary_router", lambda: (None, None))
+    assert h._ensure_talk_loop() is h._talk_bridge  # unchanged config: the live loop is reused
+    assert stopped == []
+    invalidate_config_cache()
+    with pytest.raises(Exception, match="No LLM backend"):
+        h._ensure_talk_loop()  # rebuilt against the new config (no backend in this stub)
+    assert stopped == [True]

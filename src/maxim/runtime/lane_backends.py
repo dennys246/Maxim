@@ -209,6 +209,9 @@ _lane_env_has_remote: bool = False
 # first restores exactly these (only where the value is still the one it wrote), then projects the new config.
 _lane_env_generation: int | None = None
 _lane_env_written: dict[str, tuple[str | None, str]] = {}
+# One projection at a time (#1411 review): a long-lived process (maxim serve) builds routers on several threads, and
+# an undo-then-reproject must never be observed half done. Re-entrant: the projection's helpers call _project_env.
+_lane_env_lock = threading.RLock()
 
 
 def _reset_lane_env_applied() -> None:
@@ -224,12 +227,14 @@ def _reset_lane_env_applied() -> None:
     _lane_env_written.clear()
 
 
-def _project_env(name: str, value: str, *, unset_only: bool = False) -> None:
-    """Write ``value`` to env var ``name`` for the lane projection, unless a value is already there (env wins), and
-    record it so a later config write can undo exactly this write (#1411). ``unset_only`` keeps ``setdefault``'s
-    meaning (an empty value counts as set); otherwise an empty value counts as unset, as the projection always did."""
+def _project_env(name: str, value: str, *, unset_only: bool = False, overwrite: bool = False) -> None:
+    """Write ``value`` to env var ``name`` as state derived from config.json, unless a value is already there (env
+    wins), and record it so a later config write can undo exactly this write (#1411). ``unset_only`` keeps
+    ``setdefault``'s meaning (an empty value counts as set); otherwise an empty value counts as unset, as the
+    projection always did. ``overwrite`` writes regardless (a cap raised to admit config.json's CLOUD placements); the
+    undo then restores the value it replaced."""
     current = os.environ.get(name)
-    if (current is not None) if unset_only else bool((current or "").strip()):
+    if not overwrite and ((current is not None) if unset_only else bool((current or "").strip())):
         return
     prior = _lane_env_written[name][0] if name in _lane_env_written else current
     os.environ[name] = value
@@ -300,6 +305,12 @@ def _project_lane_tier(tier: str, cfg: Any, logger_obj: Any | None) -> bool:
 
 
 def _apply_lane_config_to_env(logger_obj: Any | None) -> bool:
+    """:func:`_apply_lane_config_to_env_locked` under :data:`_lane_env_lock` (#1411)."""
+    with _lane_env_lock:
+        return _apply_lane_config_to_env_locked(logger_obj)
+
+
+def _apply_lane_config_to_env_locked(logger_obj: Any | None) -> bool:
     """Populate ``MAXIM_LANE_<TIER>_REMOTE_*`` env vars from the unified
     config_loader precedence chain.
 
@@ -315,13 +326,17 @@ def _apply_lane_config_to_env(logger_obj: Any | None) -> bool:
     Cloud-provider opt-in stays explicit via
     ``config.json::cloud.enabled = true``.
 
-    **Idempotent** (post-implementation Executor C1 fold): the first
-    call performs the env-population work and caches the result; later
-    calls return the cached ``has_remote`` value without re-running
-    ``resolve_setting`` or re-firing side effects. Without this guard,
-    the env vars populated by the first call would be re-attributed
-    as ``source="env"`` by ``resolve_setting`` on the second call,
-    silently corrupting C5's doctor "Resolved Config" section.
+    **Idempotent per config generation** (post-implementation Executor C1
+    fold; #1411): the first call performs the env-population work and
+    caches the result; later calls return the cached ``has_remote`` value
+    without re-running ``resolve_setting`` or re-firing side effects, until
+    a config.json write moves ``config_loader.config_generation()``. Then
+    the call first restores exactly the env vars the projection wrote (so
+    its own values are never re-attributed as ``source="env"`` by
+    ``resolve_setting``, which would corrupt C5's doctor "Resolved Config"
+    section) and projects the new config. Before #1411 it ran once per
+    process, so a ``maxim serve`` never saw a ``/api/setup/*`` write that
+    followed its first router build.
     """
     import os as _os
 
@@ -560,7 +575,7 @@ def _maybe_pin_pre_upgrade_profile(capabilities: Any | None, logger_obj: Any | N
         # default on the first post-upgrade run and the old default
         # on every subsequent run, which is confusing.
         _write_persisted_model(pre_profile)
-        os.environ["MAXIM_LLM_PROFILE"] = pre_profile
+        _project_env("MAXIM_LLM_PROFILE", pre_profile)  # recorded: undone with the projection on a config write (#1411)
         _write_pin_marker(marker)
 
         if logger_obj is not None:
@@ -1478,7 +1493,8 @@ def _apply_config_placements(lane_configs: dict[str, Any], logger: Any | None) -
         except ValueError:
             current = 0
         if current < cloud_primary_count:
-            os.environ["MAXIM_MAX_CLOUD_LANES"] = str(cloud_primary_count)
+            # Recorded (#1411): a later config write without the CLOUD placement restores the cap it raised.
+            _project_env("MAXIM_MAX_CLOUD_LANES", str(cloud_primary_count), overwrite=True)
             if logger is not None:
                 logger.info(
                     "Raised MAXIM_MAX_CLOUD_LANES to %d to admit config.json CLOUD placement(s)",
@@ -1971,6 +1987,31 @@ def _apply_local_llm_override(
     return out
 
 
+def _restore_persisted_profile(has_peer_config: bool, logger: Any | None) -> None:
+    """Restore persisted model preference (from --llm or maxim.run(model=...))
+    when no explicit MAXIM_LLM_PROFILE is set for this session.
+
+    Skip when peer config is active: the peer config means "my large-tier
+    LLM lives on the leader". Restoring a persisted local profile would
+    cause _apply_local_llm_override to clear the remote_url, silently
+    routing everything locally instead of to the leader's GPU. The user
+    can still override with an explicit --llm flag (which sets
+    MAXIM_LLM_PROFILE before we get here), and _apply_local_llm_override
+    will correctly clear the remote for that session.
+
+    The restored value is state derived from the config of the moment, recorded like the lane projection's own writes
+    (#1411): a box with a persisted model whose first build ran before a mesh setup would otherwise keep the local
+    profile after the setup, and _apply_local_llm_override would clear the new leader URL.
+    """
+    with _lane_env_lock:
+        if not os.environ.get("MAXIM_LLM_PROFILE", "").strip() and not has_peer_config:
+            _persisted = _read_persisted_model()
+            if _persisted:
+                _project_env("MAXIM_LLM_PROFILE", _persisted)
+                if logger is not None:
+                    logger.info("Restored persisted model preference: %s", _persisted)
+
+
 def build_primary_router(
     capabilities: Any | None = None,
     *,
@@ -2040,22 +2081,7 @@ def build_primary_router(
     # route everything locally.
     _has_peer_config = _apply_lane_config_to_env(logger)
 
-    # Restore persisted model preference (from --llm or maxim.run(model=...))
-    # when no explicit MAXIM_LLM_PROFILE is set for this session.
-    #
-    # Skip when peer config is active: the peer config means "my large-tier
-    # LLM lives on the leader". Restoring a persisted local profile would
-    # cause _apply_local_llm_override to clear the remote_url, silently
-    # routing everything locally instead of to the leader's GPU. The user
-    # can still override with an explicit --llm flag (which sets
-    # MAXIM_LLM_PROFILE before we get here), and _apply_local_llm_override
-    # will correctly clear the remote for that session.
-    if not os.environ.get("MAXIM_LLM_PROFILE", "").strip() and not _has_peer_config:
-        _persisted = _read_persisted_model()
-        if _persisted:
-            os.environ["MAXIM_LLM_PROFILE"] = _persisted
-            if logger is not None:
-                logger.info("Restored persisted model preference: %s", _persisted)
+    _restore_persisted_profile(_has_peer_config, logger)
 
     # ── Migration safety: pin existing leaders to pre-upgrade profile ──
     # Before the tier table expands (planned P4a), any leader that was
