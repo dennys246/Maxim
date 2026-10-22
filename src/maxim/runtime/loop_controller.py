@@ -145,6 +145,10 @@ class LoopController:
         self.pending_next_actions: list[dict[str, Any]] = []
         self.pending_plan_proposal: LLMProposal | None = None
         self.pending_action_followup: ActionFollowup | None = None
+        # #1413: the rejection follow-ups the current user turn has had (``tool_dispatch.book_hard_rejection``),
+        # and which turn that is (its triggering input); a new turn starts the count again.
+        self.rejection_turn: str | None = None
+        self.rejection_followups: int = 0
         # A proposal parked for the user's yes/no (#1133: typed, on the controller, off ``state.data``).
         self.pending_confirmation: PendingConfirmation | None = None
         self.pending_prefetch: Any | None = None

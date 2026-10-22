@@ -931,6 +931,104 @@ def book_machine_refusal(
     )
 
 
+#: How many rejection follow-ups one user turn gets before the turn ends with the refusal (#1413; owner decision
+#: 2026-10-22): the model may re-plan twice; a third refusal in the same turn ends it.
+MAX_REJECTION_FOLLOWUPS = 2
+
+
+def book_hard_rejection(
+    *,
+    ctrl: Any,
+    autonomy_controller: Any,
+    rec_outcome: Callable[..., Any],
+    agent_id: str,
+    nac: Any,
+    action_sink: Any,
+    proposal: Any,
+    action: dict[str, Any],
+    reason: str,
+    confidence: float,
+    mode: str,
+    active_goal: Any,
+) -> ActionFollowup | None:
+    """§4's hard rejection: book it, then feed it back to the model or end the turn (#1413; moved from
+    ``run_agentic_loop``).
+
+    The audit entry and the outcome booking are the inline branch moved verbatim (a hard rejection still books NAc,
+    #1185). Before #1413 that was all it did: no follow-up was scheduled, so the model got no next call, and in
+    Console Talk the turn idled to its 180 s timeout with "(no reply — the turn timed out before finishing)".
+
+    Now, up to :data:`MAX_REJECTION_FOLLOWUPS` times per user turn (the proposal's ``triggering_input``; a new turn
+    starts the count again), it returns a ``process`` follow-up that says what was refused and that it did not run,
+    so the model re-plans with an allowed tool or replies. Beyond that it returns ``None`` and records a BLOCKED
+    action on ``action_sink``, which settles a Talk bridge at once and names the tool in the chat
+    (``console.handle._describe_silent_turn``). The blocked record is written only at the cap, never alongside a
+    follow-up: the Talk bridge ends a turn 2 s after its last action, so a record before the re-plan's reply would
+    end the turn first. Every loop, not only Talk (owner decision 2026-10-22). The caller assigns the follow-up.
+    """
+    autonomy_controller.log_action(
+        action_type="rejected",
+        action=action,
+        reasoning=f"Rejected: {reason}",
+        mode=mode,
+        confidence=confidence,
+    )
+    # Record rejection so LLM knows not to re-propose
+    rejection_msg = f"Rejected by autonomy: {reason}"
+    tool_name = action.get("tool_name", "unknown")
+    rec_outcome(
+        agent_id=agent_id,
+        tool_name=tool_name,
+        success=False,
+        result_summary=None,
+        error=rejection_msg,
+        reasoning=proposal.reasoning or "",
+        recent_outcomes=ctrl.recent_outcomes,
+        max_recent=ctrl.max_recent_outcomes,
+        llm_worker=ctrl.llm_worker,
+        context_pool=ctrl.context_pool,
+        nac=nac,
+        active_goal=active_goal,
+        cluster_id=proposal.cluster_id,
+        clusters=proposal.clusters,
+        bridge_booked=None,  # the tool never ran: nothing was bridge-booked
+    )
+    logger.info("Hard rejection recorded for LLM: %s", rejection_msg)
+
+    turn = str(getattr(proposal, "triggering_input", "") or "")
+    if turn != ctrl.rejection_turn:
+        ctrl.rejection_turn, ctrl.rejection_followups = turn, 0
+    if ctrl.rejection_followups < MAX_REJECTION_FOLLOWUPS:
+        ctrl.rejection_followups += 1
+        return ActionFollowup(
+            tool=tool_name,
+            result=(
+                f"{rejection_msg}. '{tool_name}' did not run, and it is not available here: "
+                "choose one of your allowed tools, or reply to the user."
+            ),
+            original_query=turn,
+            followup_type="process",
+            mode=mode,
+            timestamp=time.time(),
+        )
+    if action_sink is not None:
+        from maxim.simulation.sinks import ActionRecord
+
+        action_sink.record(
+            ActionRecord(
+                timestamp=time.time(),
+                tool_name=tool_name,
+                tool_args=dict(action.get("params") or {}),
+                result_success=False,
+                result_output=None,
+                result_error=rejection_msg,
+                blocked=True,
+            )
+        )
+    logger.info("Rejection cap reached (%d) for this turn: ending it on %s", MAX_REJECTION_FOLLOWUPS, tool_name)
+    return None
+
+
 @dataclasses.dataclass(frozen=True)
 class ExecutionOutcome:
     """What one ``execute_and_learn`` call did, for its caller to display or route.

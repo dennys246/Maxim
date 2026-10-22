@@ -245,6 +245,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A rejected tool call is fed back to the model; a Talk turn no longer idles to its timeout** ([#1413](https://github.com/dennys246/Maxim/issues/1413), found by maxim-pulse on the 1.3.3 candidate).
+  The hard-rejection branch booked the refusal but scheduled no follow-up, so the model got no next call, and in
+  Console Talk the turn waited out its 180 s with "(no reply — the turn timed out before finishing)". It now returns a
+  `process` follow-up saying what was refused and that it did not run, so the model re-plans with an allowed tool or
+  replies (`runtime/tool_dispatch.py::book_hard_rejection`, moved out of `run_agentic_loop`). At most two per user
+  turn (owner decision 2026-10-22, every loop); a third refusal in the same turn records a blocked action, which
+  ends a Talk turn at once with "(no reply — bash is not allowed here, …)". A sim or campaign now makes one more LLM
+  call after a refusal. Guards: `tests/unit/test_talk_rejection_1413_1414.py` (strict red gates, flipped in place:
+  no follow-up on main; a refusal read "bash failed" in the chat) and its cap test.
 - **An input is seen on the tick that delivers it, never re-read afterwards** ([#1414](https://github.com/dennys246/Maxim/issues/1414), found by maxim-pulse on the 1.3.3 candidate).
   The user's `cli_input` stayed in `state.data` after its tick (`state.update` ignores an empty observation, and a
   drained percept queue yields one), so `propose_intent` re-published it every tick and Console Talk re-captured

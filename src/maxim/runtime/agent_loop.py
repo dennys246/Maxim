@@ -1072,7 +1072,11 @@ def run_agentic_loop(
     _loop_sensor_encoder, _loop_situation_cue = run.sensor_encoder, run.situation_cue
     _planning_liveness_on = run.planning_liveness_on
     _execute_and_learn, _book_refusal = run.execute_and_learn, run.book_refusal
-    _book_machine_refusal, _tool_overlay = run.book_machine_refusal, run.tool_overlay
+    _book_machine_refusal, _tool_overlay, _book_hard_rejection = (
+        run.book_machine_refusal,
+        run.tool_overlay,
+        run.book_hard_rejection,
+    )
 
     # Mutable-container aliases — safe because in-place mutation is shared.
     # State variables (pending_proposal, pending_action_followup, etc.) use
@@ -2283,35 +2287,16 @@ def run_agentic_loop(
                             sim.log("PIPELINE", f"Auto-approved (non-interactive): {tool_name}")
 
                         ctrl.pending_confirmation = _pending
-                else:
-                    # Hard rejection - tool not allowed
-                    autonomy_controller.log_action(
-                        action_type="rejected",
+                else:  # Hard rejection: booked, then fed back to the model or the turn ends (#1413, tool_dispatch)
+                    _rejected = _book_hard_rejection(
+                        proposal=ctrl.pending_proposal,
                         action=action,
-                        reasoning=f"Rejected: {reason}",
-                        mode=operational_mode(executor, state),
+                        reason=reason,
                         confidence=confidence,
-                    )
-                    # Record rejection so LLM knows not to re-propose
-                    rejection_msg = f"Rejected by autonomy: {reason}"
-                    _rec_outcome(
-                        agent_id=_loop_agent_id,
-                        tool_name=action.get("tool_name", "unknown"),
-                        success=False,
-                        result_summary=None,
-                        error=rejection_msg,
-                        reasoning=ctrl.pending_proposal.reasoning or "",
-                        recent_outcomes=recent_outcomes,
-                        max_recent=max_recent_outcomes,
-                        llm_worker=llm_worker,
-                        context_pool=context_pool,
-                        nac=_loop_nac,
+                        mode=operational_mode(executor, state),
                         active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
-                        cluster_id=ctrl.pending_proposal.cluster_id,
-                        clusters=ctrl.pending_proposal.clusters,
-                        bridge_booked=None,  # the tool never ran: nothing was bridge-booked
                     )
-                    logger.info("Hard rejection recorded for LLM: %s", rejection_msg)
+                    ctrl.pending_action_followup = _rejected or ctrl.pending_action_followup
                 ctrl.pending_proposal = None
 
         # ─────────────────────────────────────────────────────────────────

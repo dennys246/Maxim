@@ -146,7 +146,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "run_agentic_loop",
-      "lines": 2430
+      "lines": 2414
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -360,6 +360,7 @@
     "record_outcome tightened 413 -> 399 on 2026-10-12 (#1221 item 3) when its sim trace moved into _observe_tool_result, so a failure the bridge booked (the skipped observe) is no longer traced with a placeholder confidence and RPE.",
     "_parse_entity (src/maxim/embodiment/spec.py) tightened 207 -> 195 on 2026-10-14 (#1261) when the affordance schema construction (effects and the new validated speech_param) moved to the module-level spec._affordance_schema; under the 200 threshold, so its entry is removed.",
     "build_app tightened 338 -> 333 on 2026-10-14 (#1268 follow-up F1) when its spoken-code pairing validation and state moved to console/server.py::_install_pairing, paying for the new pairing_ready argument and its docstring.",
+    "run_agentic_loop tightened 2430 -> 2414 on 2026-10-22 (#1413, #1414) when §4's hard-rejection branch moved to runtime/tool_dispatch.py::book_hard_rejection (now feeding the rejection back as a capped follow-up) and §1's observe-and-merge to runtime/loop_perception.py::take_observation (now consuming an input once).",
     "build_app tightened 333 -> 323 on 2026-10-18 (#1334, R1) when its credential state and that state's comment moved to console/server.py::_install_auth_token, paying for its pairing_ready docstring now saying the voice must speak, not load.",
     "build_app tightened 323 -> 283 on 2026-10-18 (#1347 review) when ws_events' sender loop moved to console/server.py::_pump_ws_events, which now races each wait against the receiver so a closed client ends the handler at once (not at the next 15 s heartbeat).",
     "start_simulation_mode tightened 3004 -> 2889 on 2026-10-14 (#1260, owner decision: a registry-scoped overlay) when section 5's process-global TOOL_DESCRIPTIONS.update was deleted and its 14 narrator-only entries moved to the module constant simulation/tools.py::NARRATOR_TOOL_DESCRIPTIONS, which the narrator's SimToolRegistry.tool_descriptions() carries.",

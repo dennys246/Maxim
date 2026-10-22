@@ -21,7 +21,6 @@ import pytest
 # ── #1413: a hard rejection is fed back to the model ───────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="#1413: the hard-rejection branch never schedules a follow-up")
 def test_a_hard_rejection_leaves_a_follow_up_that_names_the_tool(monkeypatch: pytest.MonkeyPatch, tmp_path: Any):
     """The REAL loop, one proposal of a hard-forbidden tool: the model must get a next call, told what was refused
     and that it did not run, so it can re-plan or reply."""
@@ -114,7 +113,6 @@ def test_a_consumed_input_is_not_seen_again_on_later_ticks(monkeypatch: pytest.M
 # ── The chat names a refused tool ──────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="#1413: a blocked tool reads as 'failed' in the chat")
 def test_a_turn_ended_by_a_refused_tool_says_the_tool_is_not_allowed():
     from types import SimpleNamespace
 
@@ -123,3 +121,56 @@ def test_a_turn_ended_by_a_refused_tool_says_the_tool_is_not_allowed():
     blocked = SimpleNamespace(tool_name="bash", blocked=True, result_success=False, utterance=None)
     text = _describe_silent_turn({"timed_out": False, "actions": [blocked]})
     assert "bash" in text and "not allowed" in text, text
+
+
+# ── #1413: the cap — two re-plans per user turn, then the turn ends with the refusal ──────────────────────────
+
+
+def _reject(ctrl: Any, sink: Any, booked: list[dict[str, Any]], *, turn: str, tool: str = "bash") -> Any:
+    from types import SimpleNamespace
+
+    from maxim.runtime.tool_dispatch import book_hard_rejection
+
+    audit = SimpleNamespace(log_action=lambda **kw: booked.append({"audit": kw}))
+    proposal = SimpleNamespace(reasoning="get the news", cluster_id=None, clusters=None, triggering_input=turn)
+    return book_hard_rejection(
+        ctrl=ctrl,
+        autonomy_controller=audit,
+        rec_outcome=lambda **kw: booked.append(kw),
+        agent_id="talk",
+        nac=None,
+        action_sink=sink,
+        proposal=proposal,
+        action={"tool_name": tool, "params": {"command": "curl news"}},
+        reason=f"Tool '{tool}' is forbidden",
+        confidence=0.9,
+        mode="active",
+        active_goal=None,
+    )
+
+
+def test_a_turn_gets_two_rejection_follow_ups_then_ends_with_a_blocked_record():
+    from types import SimpleNamespace
+
+    from maxim.runtime.tool_dispatch import MAX_REJECTION_FOLLOWUPS
+    from maxim.simulation.sinks import RecordingSink
+
+    assert MAX_REJECTION_FOLLOWUPS == 2  # owner decision 2026-10-22
+    ctrl = SimpleNamespace(
+        recent_outcomes=[], max_recent_outcomes=10, llm_worker=None, context_pool=None,
+        rejection_turn=None, rejection_followups=0,
+    )  # fmt: skip
+    sink, booked = RecordingSink(), []
+    first = _reject(ctrl, sink, booked, turn="news?")
+    second = _reject(ctrl, sink, booked, turn="news?")
+    assert first is not None and second is not None and sink.actions == []  # no record while the model re-plans
+    assert first.followup_type == "process" and first.original_query == "news?"
+    third = _reject(ctrl, sink, booked, turn="news?")
+    assert third is None  # the cap: the turn ends
+    [record] = sink.actions
+    assert record.blocked and record.tool_name == "bash" and "forbidden" in (record.result_error or "")
+    assert record.utterance is None  # a refusal says nothing; the chat names the tool instead
+    # Every rejection is still booked for the model and audited, follow-up or not.
+    assert sum(1 for b in booked if "audit" in b) == 3 and sum(1 for b in booked if "error" in b) == 3
+    # A new user turn starts the count again.
+    assert _reject(ctrl, sink, booked, turn="weather?") is not None and len(sink.actions) == 1
