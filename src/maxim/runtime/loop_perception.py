@@ -4,9 +4,9 @@
 and §1.2 bio-enrichment, in the inline order: §1.1 ``imagine`` (novel entities from the percept text),
 §1.15 ``auto_sense`` (passive exteroception + interoception) and §1.16 ``orient_to_audio`` (the
 exteroceptive sound direction, the thalamic relay's first consumer). Each body is the inline section moved
-verbatim. The two §1 lines before it (``sim.next_observation`` and ``state.update``) stay at the call site:
-``observation`` is read by five later sections, and ``next_observation`` is what surfaces
-``sim.current_percept``, which §1.16's gate reads.
+verbatim. Before it, ``take_observation`` does §1's observe-and-merge (``sim.next_observation`` then
+``state.update``) and returns ``observation`` to the call site: it is read by five later sections, and
+``next_observation`` is what surfaces ``sim.current_percept``, which §1.16's gate reads.
 
 The loop unpacks the returned ``PerceptionOutcome`` into the locals it always had, so its consumers are
 unchanged: ``imagination_results`` -> §1.2's ``EnrichmentContext.resolved_entities``; ``auto_sense_text``
@@ -61,6 +61,23 @@ class PerceptionOutcome:
     imagination_results: list  # §1.1 -> §1.2's EnrichmentContext.resolved_entities
     auto_sense_text: str  # §1.15, plus §1.16's line -> §6's context.auto_sense_context
     audio_escalate: bool  # §1.16 (B1) -> §6's minimal context and has_meaningful_input
+
+
+def take_observation(*, sim: Any, environment: Any, default_network: Any, state: Any) -> Any:
+    """§1: this tick's observation, merged into ``state.data``; an input lives for exactly the tick that delivers it.
+
+    ``state.update`` merges an observation into ``state.data`` and does nothing for an empty one, and a drained
+    percept queue yields ``{}``. So the user's ``cli_input`` used to stay in ``state.data`` after its tick, and
+    ``propose_intent`` re-published it every tick: Console Talk re-captured one observation as new memory every
+    0.5 s (#1414, found by maxim-pulse). It is dropped before each merge, so the tick that carries an input sees
+    it and every later tick sees none. Its one cross-tick reader was that re-publication
+    (``PerceptionAgent.process_observation``, through ``propose_intent``). No content dedupe (owner decision
+    2026-10-22): a user who says the same thing twice is observed twice, on the two ticks that carry it.
+    """
+    observation = sim.next_observation(environment, default_network)
+    state.data.pop("cli_input", None)
+    state.update(observation)
+    return observation
 
 
 def perceive(

@@ -104,7 +104,6 @@ def _run_with_one_input(monkeypatch: pytest.MonkeyPatch, tmp_path: Any, *, ticks
     return seen
 
 
-@pytest.mark.xfail(strict=True, reason="#1414: a consumed cli_input stays in state.data and is re-read every tick")
 def test_a_consumed_input_is_not_seen_again_on_later_ticks(monkeypatch: pytest.MonkeyPatch, tmp_path: Any):
     seen = _run_with_one_input(monkeypatch, tmp_path)
     assert len(seen) >= 3, seen  # the probe ran on several ticks

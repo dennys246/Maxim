@@ -245,6 +245,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An input is seen on the tick that delivers it, never re-read afterwards** ([#1414](https://github.com/dennys246/Maxim/issues/1414), found by maxim-pulse on the 1.3.3 candidate).
+  The user's `cli_input` stayed in `state.data` after its tick (`state.update` ignores an empty observation, and a
+  drained percept queue yields one), so `propose_intent` re-published it every tick and Console Talk re-captured
+  one observation as new memory every 0.5 s. §1's observe-and-merge (now `runtime/loop_perception.py::take_observation`)
+  drops the previous tick's `cli_input` before merging, in every loop. No content dedupe (owner decision 2026-10-22):
+  a user who says the same thing twice is observed twice. Guard:
+  `tests/unit/test_talk_rejection_1413_1414.py::test_a_consumed_input_is_not_seen_again_on_later_ticks` (strict red
+  gate, flipped in place; red on main: the one input was re-read on 8 of 8 ticks).
 - **`maxim serve` no longer hangs up to 15 s on shutdown after a Console tab closes.** The `/ws` sender checked
   for a gone client only between waits, so a closed connection's handler lived until the next 15 s heartbeat, and
   uvicorn 0.40+ waits for it on SIGTERM. The sender loop (now `console/server.py::_pump_ws_events`) races each wait

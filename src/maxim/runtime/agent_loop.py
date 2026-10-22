@@ -28,7 +28,7 @@ from maxim.runtime.loop_setup import build_loop_run
 from maxim.runtime.loop_controller import _handle_planning_failure
 from maxim.runtime.loop_substrate import substrate_tick
 from maxim.runtime.loop_planning import drain_approved
-from maxim.runtime.loop_perception import perceive
+from maxim.runtime.loop_perception import perceive, take_observation
 
 # Module reference, not a name import: a test that patches the leaf also reaches the loop's call.
 from maxim.runtime import substrate_proposal as _sp
@@ -1177,8 +1177,7 @@ def run_agentic_loop(
         # ─────────────────────────────────────────────────────────────────
         # 1. PERCEPTION — via SimulationAdapter or environment
         # ─────────────────────────────────────────────────────────────────
-        observation = sim.next_observation(environment, default_network)
-        state.update(observation)
+        observation = take_observation(sim=sim, environment=environment, default_network=default_network, state=state)
 
         # ─────────────────────────────────────────────────────────────────
         # 1.1-1.16 IMAGINATION, AUTO-SENSE, AUDIO ORIENTATION (runtime/loop_perception.py)
