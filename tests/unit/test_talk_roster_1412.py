@@ -95,3 +95,18 @@ def test_no_executor_error_suggests_a_forbidden_tool() -> None:
         not executor.permits(t) or t in {"respond", "speak", "read_file", "glob", "sense_tools"}
         for t in executor._runnable_tools()
     )
+
+
+def test_an_executor_that_cannot_take_the_forbid_list_fails_at_setup() -> None:
+    """76af40ee: the forbid source is wired unconditionally, like the mode source, so an executor without
+    ``set_forbid_source`` fails loudly at setup instead of silently advertising tools the loop forbids."""
+    import pytest
+
+    from maxim.runtime.loop_setup import _prepare_executor
+    from maxim.runtime.state import RuntimeState
+
+    no_forbid = SimpleNamespace(set_mode_source=lambda _src: None)
+    with pytest.raises(AttributeError, match="set_forbid_source"):
+        _prepare_executor(no_forbid, None, RuntimeState(), autonomy_controller=_controller({"bash"}))
+    with pytest.raises(AttributeError, match="set_forbid_source"):  # even with no controller to wire
+        _prepare_executor(no_forbid, None, RuntimeState())
