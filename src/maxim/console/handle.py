@@ -87,6 +87,28 @@ def _describe_silent_turn(turn: dict[str, Any]) -> str:
 TALK_CONVERSATIONAL_TOOLS: frozenset[str] = frozenset({"respond", "speak", "read_file", "glob", "sense_tools"})
 
 
+def talk_autonomy(registry: Any) -> Any:
+    """The AutonomyController a Talk turn runs under: AUTONOMOUS, with every tool in ``registry`` that is not
+    conversational hard-forbidden (deny-by-default over the CURRENT registry). Since #1412 the loop wires its forbid
+    list into the executor, so the model is never shown, nor suggested, a tool Talk refuses."""
+    from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SafetyConstraints, SupervisionPolicy
+
+    conversational = set(TALK_CONVERSATIONAL_TOOLS)
+    mutating = {t for t in (registry.list_all() if registry else ()) if t not in conversational}
+    autonomy = AutonomyController(
+        initial_level=AutonomyLevel.AUTONOMOUS,
+        supervision_policy=SupervisionPolicy(allowed_tools=set(conversational)),
+        safety_constraints=SafetyConstraints(
+            # Deny-by-default over the CURRENT registry: anything that
+            # is not conversational is forbidden for talk turns. Derived
+            # rather than enumerated so a newly-registered tool is
+            # denied by construction, not by remembering to list it.
+            forbidden_tools=frozenset(mutating | set(SafetyConstraints().forbidden_tools))
+        ),
+    )
+    return autonomy
+
+
 class MaximHandle:
     """A live handle on one persistent Maxim agent.
 
@@ -363,12 +385,6 @@ class MaximHandle:
 
         Caller MUST hold ``self._talk_lock`` — this publishes the loop handles.
         """
-        from maxim.agents.autonomy import (
-            AutonomyController,
-            AutonomyLevel,
-            SafetyConstraints,
-            SupervisionPolicy,
-        )
         from maxim.agents.maxim_agent import MaximAgent
         from maxim.environment.filesystem_env import FileSystemEnv
         from maxim.runtime.agent_loop import run_agentic_loop
@@ -400,23 +416,7 @@ class MaximHandle:
         # allow-list is the separate `tools.allow` config, armed on the
         # Executor (AgentConfig.permissions). Keep the supervision policy
         # too: it becomes live if talk is ever run SUPERVISED, and the two agree.
-        conversational = set(TALK_CONVERSATIONAL_TOOLS)
-        mutating = {
-            t
-            for t in (self.instance.tool_registry.list_all() if self.instance.tool_registry else ())
-            if t not in conversational
-        }
-        autonomy = AutonomyController(
-            initial_level=AutonomyLevel.AUTONOMOUS,
-            supervision_policy=SupervisionPolicy(allowed_tools=set(conversational)),
-            safety_constraints=SafetyConstraints(
-                # Deny-by-default over the CURRENT registry: anything that
-                # is not conversational is forbidden for talk turns. Derived
-                # rather than enumerated so a newly-registered tool is
-                # denied by construction, not by remembering to list it.
-                forbidden_tools=frozenset(mutating | set(SafetyConstraints().forbidden_tools))
-            ),
-        )
+        autonomy = talk_autonomy(self.instance.tool_registry)
 
         # spinner_prefix="" keeps the bridge's progress chatter out of a
         # server process's stdout; settle detection still applies.
