@@ -14,7 +14,11 @@ sanctioned callers of ``write_config`` / ``mutate_config`` /
 individually rather than by a ``tests/`` wildcard so a new test-side
 writer stays visible in review; a section whose round trip is only
 simulated by hand-writing JSON would not catch the failure these
-tests exist for (a value the writer emits and the loader drops).
+tests exist for (a value the writer emits and the loader drops). The
+setup verbs (``apply_mesh_setup`` / ``apply_cloud_setup``) have their own
+gate, listed the same way: the console's setup endpoints plus each test
+that drives the real verb (#1411: a Console setup write must reach the
+next router build in the same process).
 
 Concurrency safety (I-5 fold from the pre-implementation two-lens
 review):

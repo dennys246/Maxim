@@ -165,18 +165,13 @@
     },
     {
       "file": "src/maxim/runtime/lane_backends.py",
-      "qualname": "_apply_lane_config_to_env",
-      "lines": 217
-    },
-    {
-      "file": "src/maxim/runtime/lane_backends.py",
       "qualname": "_maybe_auto_spawn_server",
       "lines": 271
     },
     {
       "file": "src/maxim/runtime/lane_backends.py",
       "qualname": "build_primary_router",
-      "lines": 262
+      "lines": 245
     },
     {
       "file": "src/maxim/runtime/leader_proxy.py",
