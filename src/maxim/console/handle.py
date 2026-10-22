@@ -523,6 +523,16 @@ class MaximHandle:
             thread.join(timeout=join_s)
             if thread.is_alive():
                 if required:
+                    # Keep the straggler visible (#1411 delta review): cleared handles would let the next talk()
+                    # build a second loop beside it and leak its worker. It stays "live" and is stopped again.
+                    with self._talk_lock:
+                        if self._talk_thread is None:
+                            self._talk_bridge, self._talk_thread, self._talk_stop, self._talk_worker = (
+                                bridge,
+                                thread,
+                                stop_event,
+                                worker,
+                            )
                     raise RuntimeError(
                         f"talk loop did not exit within {join_s:.0f}s — refusing to start a second "
                         "loop on the same bio-stack (try again once the turn settles)"

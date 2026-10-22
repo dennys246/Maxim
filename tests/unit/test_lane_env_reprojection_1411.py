@@ -211,3 +211,60 @@ def test_a_live_talk_loop_is_rebuilt_after_a_config_write(monkeypatch, tmp_path)
     with pytest.raises(Exception, match="No LLM backend"):
         h._ensure_talk_loop()  # rebuilt against the new config (no backend in this stub)
     assert stopped == [True]
+
+
+# ── delta-round folds ──────────────────────────────────────────────────────────────────────────────────
+
+
+def test_the_persisted_restore_runs_inside_the_projections_lock_on_its_result() -> None:
+    """Restored after the lock was released, a concurrent setup could let it act on a stale "no peer config"."""
+    import threading
+
+    from maxim.runtime import lane_backends
+
+    held: list[bool] = []
+
+    def probe(has_peer_config, logger):
+        got: list[bool] = []
+        t = threading.Thread(target=lambda: got.append(lane_backends._lane_env_lock.acquire(blocking=False)))
+        t.start()
+        t.join()
+        if got and got[0]:
+            lane_backends._lane_env_lock.release()
+        held.append(not (got and got[0]))
+        held.append(has_peer_config)
+
+    _setup(LEADER_A, "mesh-key-aaaaaaaaaaaaaaaa")
+    with patch.object(lane_backends, "_restore_persisted_profile", side_effect=probe):
+        assert lane_backends._apply_lane_config_to_env(None, restore_persisted=True) is True
+    assert held == [True, True]
+
+
+def test_a_writer_outside_the_projection_skips_a_stale_generation(monkeypatch) -> None:
+    from maxim.runtime import lane_backends
+    from maxim.runtime.config_loader import invalidate_config_cache
+
+    monkeypatch.delenv("MAXIM_MAX_CLOUD_LANES", raising=False)
+    _apply()  # projected at the current generation
+    assert lane_backends._project_env_if_current("MAXIM_MAX_CLOUD_LANES", "2", overwrite=True) is True
+    lane_backends._undo_lane_env_projection()
+    invalidate_config_cache()  # a write lands while a slow build is still running
+    assert lane_backends._project_env_if_current("MAXIM_MAX_CLOUD_LANES", "3", overwrite=True) is False
+    assert "MAXIM_MAX_CLOUD_LANES" not in os.environ
+
+
+def test_a_talk_loop_that_will_not_stop_stays_visible(monkeypatch) -> None:
+    """A straggler whose handles were cleared would let the next talk() build a second loop beside it."""
+    import threading
+    from types import SimpleNamespace
+
+    from maxim.console import handle as H
+
+    h = object.__new__(H.MaximHandle)
+    h._talk_lock = threading.Lock()
+    straggler = SimpleNamespace(is_alive=lambda: True, join=lambda timeout=None: None)
+    bridge = SimpleNamespace(finish=lambda: None)
+    h._talk_bridge, h._talk_thread, h._talk_stop, h._talk_worker = bridge, straggler, threading.Event(), None
+    with pytest.raises(RuntimeError, match="did not exit"):
+        h._stop_talk_loop(join_s=0.01, required=True)
+    assert h._talk_thread is straggler and h._talk_bridge is bridge
