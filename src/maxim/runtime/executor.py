@@ -158,6 +158,9 @@ class Executor:
         # prompt, so a tool outside it still ran when the model named it. Set by the agent loop, which
         # owns the run mode (``set_mode_source``). Read ONLY through ``effective_operational_mode``.
         self._mode_source: Callable[[], str | None] | None = None
+        # The loop's autonomy hard forbids (#1412): a tool the AutonomyController forbids is refused here too, so
+        # ``permits``, the prompt roster and every error that lists tools agree with what will be let through.
+        self._forbid_source: Callable[[str], bool] | None = None
         # The operator's launch grant (`--operational-mode`, #829): when set it IS the operational mode,
         # whatever the loop's run mode says. Read ONLY through ``effective_operational_mode`` (#963).
         self._operational_override: str | None = None
@@ -190,6 +193,12 @@ class Executor:
     def set_mode_source(self, source: Callable[[], str | None] | None) -> None:
         """Read the live run mode from ``source`` at every dispatch (#826). None clears it."""
         self._mode_source = source
+
+    def set_forbid_source(self, source: Callable[[str], bool] | None) -> None:
+        """Refuse every tool ``source`` forbids (the loop's ``AutonomyController.forbids_tool``, #1412), as part of
+        the permission gate: ``permits`` then answers False, so the roster never advertises it and no error suggests
+        it. Set per loop, like the mode source. None clears it."""
+        self._forbid_source = source
 
     def set_operational_override(self, mode: str | None) -> None:
         """The operator's launch grant (#829): ``mode`` becomes the operational mode, taking precedence
@@ -264,6 +273,8 @@ class Executor:
         name has no kind and is checked by name alone (it fails later at
         ``registry.get`` anyway).
         """
+        if self._forbid_source is not None and self._forbid_source(tool_name):
+            return f"Tool '{tool_name}' is forbidden here (autonomy safety constraint)."
         if not deny_only:
             # The mode is an allow-list judged on the CANONICAL name, like the allow half below.
             mode_denial = self._mode_denial(tool_name)
@@ -286,8 +297,8 @@ class Executor:
         return sorted(t for t in self.registry.advertised() if self.permits(t))
 
     def permits(self, tool_name: str) -> bool:
-        """True when the permission gate -- the live mode (#826) and ``AgentPermissions`` -- would
-        let *tool_name* run.
+        """True when the permission gate -- the loop's autonomy hard forbids (#1412), the live mode (#826)
+        and ``AgentPermissions`` -- would let *tool_name* run.
 
         The prompt roster asks this before ADVERTISING a tool: a tool the
         executor refuses at dispatch must not be offered to the model, or the

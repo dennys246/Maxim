@@ -294,8 +294,11 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
    **Item 7 DONE 2026-10-06.** Follow-ups merged: #1132 (#1091: the ledger ref and append-only rules shared in
    `scripts/_lint_allowance.py`; the two TYPE_CHECKING detectors deliberately kept apart), #1139 (#1117: one roster
    checker, `scripts/check_lane_roster.py --lane`, and one setup action, `.github/actions/model-cache-setup`, for
-   both nightly lanes; the model-cache lane now has an exact roster too). Watch: `ubuntu-latest` moves to Ubuntu 26
-   on 2026-10-19; the first nightly after it is the check that `scripts/ci_netns.sh` still works.
+   both nightly lanes; the model-cache lane now has an exact roster too). The Ubuntu 26 watch fired: on 2026-10-20
+   `ubuntu-latest` became Ubuntu 26.04, whose sudo-rs ignores `sudo -E`, so `scripts/ci_netns.sh` stopped carrying
+   the job's environment into the namespace (the tts extras cells and both nightlies red, `unit-tests` green without
+   it). Fixed by passing the environment by name with an in-namespace arrival check (O20 in
+   [outstanding.md](outstanding.md) §Closed).
 8. **One source of truth for claims** (mechanization backlog M2). Guard: the claims-registry lint.
    **Built 2026-10-04, PR pending** (owner decisions 2026-10-04: the ledger is the single source; the surfaces are linted,
    not generated; v1 covers the README results table and the experiments index): `scripts/lint_claims_sync.py`. Each

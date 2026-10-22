@@ -858,6 +858,22 @@ def _thaw(value: Any) -> Any:
     return value
 
 
+def _advertisable_tools(tools: Any, executor: Any | None, autonomy_controller: Any | None) -> list[str]:
+    """The tools the model may be shown: only what will be let through.
+
+    A hard allow/deny list (``tools.allow``/``tools.deny``) used to gate at dispatch only, so the model kept
+    seeing, and choosing, tools that could only ever answer with a denial (bugs ledger D82): ``executor.permits``.
+    An autonomy hard forbid is the same class (#1412, Console Talk offered ``bash`` and then refused it):
+    ``AutonomyController.forbids_tool``, the static ``SafetyConstraints.forbidden_tools``, never the moment's pause.
+    """
+    return [
+        t
+        for t in tools
+        if (executor is None or executor.permits(t))
+        and (autonomy_controller is None or not autonomy_controller.forbids_tool(t))
+    ]
+
+
 def _describe_tools_for_prompt(
     available_tools: Any,
     executor: Any,
@@ -2040,7 +2056,9 @@ def run_agentic_loop(
                 # because that's a single-slot user-input channel and
                 # using it for system feedback risks silent overwrite of
                 # real input (cross-confirmed by both review lenses).
-                _other_tools = sorted(t for t in _get_all_tools() - {_this_tool} if executor.permits(t))
+                _other_tools = sorted(
+                    _advertisable_tools(_get_all_tools() - {_this_tool}, executor, autonomy_controller)
+                )
                 _cap_msg = (
                     f"SYSTEM: '{_this_tool}' was called {_consecutive_same_tool_count} times "
                     f"with identical parameters — blocked to prevent a loop. "
@@ -2860,13 +2878,7 @@ def run_agentic_loop(
                                     # Non-sim runtime — observability
                                     # is optional, never load-bearing.
                                     pass
-                        # Advertise only what the executor will let through:
-                        # a hard allow/deny list (``tools.allow``/``tools.deny``)
-                        # used to gate at dispatch only, so the model kept
-                        # seeing — and choosing — tools that could only ever
-                        # answer with a denial (bugs ledger D82).
-                        if executor is not None:
-                            available_tools = [t for t in available_tools if executor.permits(t)]
+                        available_tools = _advertisable_tools(available_tools, executor, autonomy_controller)
                         last_surfaced_tools = list(available_tools)
 
                         tool_descriptions = _describe_tools_for_prompt(available_tools, executor, overlay=_tool_overlay)

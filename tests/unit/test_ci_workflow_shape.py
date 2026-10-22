@@ -91,6 +91,25 @@ def test_the_netns_script_drops_privilege_and_arms_the_control():
     assert '"PATH=$PATH"' in script  # captured outside sudo: secure_path would lose setup-python's interpreter
 
 
+def test_the_netns_script_carries_the_callers_environment_by_name_and_checks_it_arrived():
+    """O20 (2026-10-20): Ubuntu 26's sudo-rs ignores ``sudo -E``, so every job variable (MAXIM_TEST_TTS_VOICE_DIR,
+    HF_HOME, MAXIM_RUN_MODEL_TESTS, ...) silently stopped reaching the namespace: the tts cells and both nightlies
+    went red, and unit-tests stayed green without them. The environment now crosses sudo by NAME, and the innermost
+    shell fails (exit 3) unless every preserved name arrived."""
+    script = (ROOT / "scripts" / "ci_netns.sh").read_text()
+    code = "\n".join(ln for ln in script.splitlines() if not ln.lstrip().startswith("#"))
+    assert "sudo -E" not in code and '--preserve-env="$NETNS_ENV_NAMES"' in code
+    assert '"MAXIM_NETNS_ENV_NAMES=$NETNS_ENV_NAMES"' in code  # names only: values never go on sudo's argv
+    # The arrival check runs in the innermost shell, after setpriv, and refuses with exit 3.
+    after_setpriv = code[code.index("setpriv") :]
+    assert "${!n+x}" in after_setpriv and "exit 3" in after_setpriv
+    # Secret-shaped names (the runner's tokens, a later HF_TOKEN or *_API_KEY) stay out of the suite.
+    assert ".*TOKEN.*|.*_KEY|.*SECRET.*|.*PASSWORD.*" in code
+    # Names bash or sudo recreate themselves are not counted (they would make the check pass with nothing carried), and
+    # only grep's "no match" is tolerated, so a failing compgen/paste cannot become an empty list.
+    assert "PWD|SHLVL|_|OLDPWD|SUDO_.*" in code and "|| [ $? -eq 1 ]" in code and "|| true" not in code
+
+
 def test_the_shared_setup_action_installs_caches_and_warms():
     """No PR loads the action (both lanes are nightly-only), so its shape is pinned here (design pass): a run step
     without `shell:` is rejected only when a nightly loads it."""
@@ -402,3 +421,61 @@ def test_release_build_vendors_the_pinned_console_and_audits_it_without_a_waiver
     assert not any("--allow-missing-ui-dist" in r for r in runs)
     verify = [s for s in steps if "--verify-pin --only-when-releasing" in _commands(s)]
     assert len(verify) == 1 and verify[0].get("if") == "github.event_name == 'pull_request'", verify
+
+
+def _stub_netns(tmp_path, sudo_mode: str):
+    """A PATH where sudo/unshare/setpriv/ip are stubs, so the REAL ci_netns.sh runs on any box. ``sudo_mode``:
+    "preserve" passes exactly the names in --preserve-env (both real sudos do); "drop" passes nothing, which is what
+    sudo-rs did to ``-E`` (O20)."""
+    import os
+    import stat
+    import sys
+
+    stubs = tmp_path / "stubs"
+    stubs.mkdir()
+    scripts = {
+        "sudo": f"""#!/usr/bin/env bash
+kept=()
+if [ "{sudo_mode}" = preserve ] && [[ "$1" == --preserve-env=* ]]; then
+  IFS=, read -ra names <<< "${{1#--preserve-env=}}"
+  for n in "${{names[@]}}"; do [ -n "${{!n+x}}" ] && kept+=("$n=${{!n}}"); done
+fi
+[[ "$1" == --preserve-env=* || "$1" == -E ]] && shift
+exec env -i "${{kept[@]}}" "$@"
+""",
+        "unshare": '#!/usr/bin/env bash\nwhile [ "$1" != "--" ]; do shift; done; shift; exec "$@"\n',
+        "setpriv": '#!/usr/bin/env bash\nwhile [[ "$1" == --* ]]; do shift; done; exec "$@"\n',
+        "ip": "#!/bin/sh\nexit 0\n",
+    }
+    for name, body in scripts.items():
+        path = stubs / name
+        path.write_text(body)
+        path.chmod(path.stat().st_mode | stat.S_IXUSR)
+    (stubs / "python").symlink_to(sys.executable)
+    env = {
+        "PATH": f"{stubs}{os.pathsep}{os.environ['PATH']}",
+        "HOME": str(tmp_path),
+        # setup-python's interpreter on a CI runner is a shared build: the script passes LD_LIBRARY_PATH through to it.
+        "LD_LIBRARY_PATH": os.environ.get("LD_LIBRARY_PATH", ""),
+        "MAXIM_TEST_TTS_VOICE_DIR": "/cache/voice",
+        "GH_TOKEN": "not-for-the-suite",
+        "HF_TOKEN": "not-for-the-suite",
+    }
+    return env
+
+
+@pytest.mark.skipif(not __import__("shutil").which("bash"), reason="needs bash")
+@pytest.mark.parametrize("sudo_mode", ["preserve", "drop"])
+def test_the_netns_arrival_check_passes_a_carried_environment_and_refuses_a_dropped_one(tmp_path, sudo_mode):
+    """The behaviour behind the string pins above (architecture review A3): the real script, stubbed below sudo."""
+    env = _stub_netns(tmp_path, sudo_mode)
+    suite = 'echo "voice=${MAXIM_TEST_TTS_VOICE_DIR:-<unset>} gh=${GH_TOKEN:-<unset>} hf=${HF_TOKEN:-<unset>}"'
+    r = subprocess.run(
+        ["bash", str(ROOT / "scripts" / "ci_netns.sh"), suite], env=env, capture_output=True, text=True, timeout=60
+    )
+    if sudo_mode == "preserve":
+        assert r.returncode == 0, r.stderr
+        assert "voice=/cache/voice gh=<unset> hf=<unset>" in r.stdout  # carried; secret-shaped names kept out
+    else:
+        assert r.returncode == 3, (r.returncode, r.stdout, r.stderr)
+        assert "lost:" in r.stderr and "MAXIM_TEST_TTS_VOICE_DIR" in r.stderr and "voice=" not in r.stdout
