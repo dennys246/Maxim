@@ -18,11 +18,17 @@ class RuntimeState:
     done: bool = False
     last_error: str | None = None
     data: dict[str, Any] = field(default_factory=dict)
+    # How many observations have carried a ``cli_input`` (#1414). ``data`` merges every observation, so a user's
+    # ``cli_input`` stays in it after the tick that brought it; a consumer that reads ``data`` each tick compares
+    # this count to know whether the input is NEW (``PerceptionAgent.propose_intent``). Runtime-only: not persisted.
+    cli_input_seq: int = 0
 
     def update(self, observation: dict[str, Any] | None) -> None:
         if not observation:
             return
         if isinstance(observation, dict):
+            if observation.get("cli_input"):
+                self.cli_input_seq += 1
             self.data.update(observation)
 
     def snapshot(self) -> dict[str, Any]:

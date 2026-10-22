@@ -15,10 +15,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
-
-RED = pytest.mark.xfail(strict=True, reason="#1414 red gate: flips with the fix")
-
 
 def _perception() -> tuple[Any, list[Any]]:
     from maxim.agents.bus import AgentBus, Percept
@@ -30,7 +26,6 @@ def _perception() -> tuple[Any, list[Any]]:
     return PerceptionAgent(bus), seen
 
 
-@RED
 def test_one_user_message_is_published_once_not_every_tick() -> None:
     from maxim.runtime.state import RuntimeState
 
@@ -44,7 +39,6 @@ def test_one_user_message_is_published_once_not_every_tick() -> None:
     assert len(carrying) == 1
 
 
-@RED
 def test_the_same_words_sent_again_are_a_new_message() -> None:
     from maxim.runtime.state import RuntimeState
 
@@ -89,7 +83,6 @@ def _maxim_like(goal_agent: Any) -> Any:
     return SimpleNamespace(goal=goal_agent, publish_tool_result=publish_tool_result)
 
 
-@RED
 def test_a_refused_goal_tool_is_not_proposed_again() -> None:
     from maxim.runtime import agent_loop
 
@@ -101,7 +94,6 @@ def test_a_refused_goal_tool_is_not_proposed_again() -> None:
     assert goal_agent.propose_intent(state=None, memory=None) is None
 
 
-@RED
 def test_an_executed_goal_tool_is_closed_too() -> None:
     from types import SimpleNamespace
 
@@ -114,7 +106,6 @@ def test_an_executed_goal_tool_is_closed_too() -> None:
     assert goal_agent.propose_intent(state=None, memory=None) is None
 
 
-@RED
 def test_the_loop_reports_every_fallback_outcome() -> None:
     """The composition: §3's executed, raised and refused branches each close the goal agent's call."""
     import inspect

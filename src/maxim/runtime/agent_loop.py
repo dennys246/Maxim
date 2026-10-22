@@ -911,6 +911,46 @@ def _describe_tools_for_prompt(
     return tool_descriptions
 
 
+def _report_fallback_result(
+    agent: Any, intent: Mapping[str, Any], action: Mapping[str, Any], outcome: Any = None, *, error: Any = None
+) -> None:
+    """Close the goal agent's tool call that the agent-fallback path (§3) ran, failed or had refused (#1414).
+
+    ``AgenticGoalAgent.propose_intent`` returns its pending tool call until a ``ToolResult`` with that call's id
+    arrives on the bus; before #1414 nothing in the loop published one, so a call autonomy refused was proposed and
+    refused again every tick (pulse saw one refusal 87 times in 44 s), and an executed one would have run again.
+    An intent with no ``tool_call_id`` (not from the goal agent) or an agent without ``publish_tool_result`` has
+    nothing to close. ``outcome`` is the executor's ``ToolOutput``; ``error`` (a raise or a refusal) makes the
+    call a failure whatever ``outcome`` says.
+    """
+    tool_call_id = intent.get("tool_call_id")
+    publish = getattr(agent, "publish_tool_result", None)
+    if not tool_call_id or not callable(publish):
+        return
+    failure = error if error is not None else getattr(outcome, "error", None)
+    publish(
+        str(tool_call_id),
+        str(action.get("tool_name", "")),
+        error is None and bool(getattr(outcome, "success", True)),
+        getattr(outcome, "output", None),
+        None if failure is None else str(failure),
+        dict(action.get("params") or {}),
+    )
+
+
+def _fallback_rejected(
+    agent: Any, intent: Mapping[str, Any], action: Mapping[str, Any], reason: Any, confidence: float
+) -> None:
+    """§3's autonomy refusal of the agent-fallback action: logged, and reported back to the goal agent as a failed
+    call so it is not proposed again on the next tick (#1414)."""
+    log_agentic(
+        "agent_loop",
+        "action_rejected",
+        {"tool": action["tool_name"], "reason": reason, "confidence": confidence},
+    )
+    _report_fallback_result(agent, intent, action, error=f"Rejected by autonomy: {reason}")
+
+
 def _followup_synthetic_input(followup: Any) -> str:
     """The follow-up input the LLM receives, with the tool result FRAMED as data (#823).
 
@@ -1895,6 +1935,7 @@ def run_agentic_loop(
                                         outcome="success" if success else "failure",
                                         error=getattr(result, "error", None),
                                     )
+                                    _report_fallback_result(agent, intent, action, result)
 
                                     # Process result
                                     try:
@@ -1940,6 +1981,7 @@ def run_agentic_loop(
                                         level="ERROR",
                                     )
                                     logger.debug(f"Agent fallback action failed: {e}")
+                                    _report_fallback_result(agent, intent, action, error=e)
 
                                     # Track exception in recent_outcomes for LLM learning
                                     _rec_outcome(
@@ -1962,16 +2004,7 @@ def run_agentic_loop(
                                         bridge_booked=getattr(result, "nac_failure_booked", None),
                                     )
                             else:
-                                # Log rejected action
-                                log_agentic(
-                                    "agent_loop",
-                                    "action_rejected",
-                                    {
-                                        "tool": action["tool_name"],
-                                        "reason": reason,
-                                        "confidence": confidence,
-                                    },
-                                )
+                                _fallback_rejected(agent, intent, action, reason, confidence)
                     else:
                         # Log idle state at debug level
                         log_agentic("agent_loop", "idle", {"step": step_num}, level="DEBUG")

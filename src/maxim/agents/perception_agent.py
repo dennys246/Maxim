@@ -62,6 +62,8 @@ class PerceptionAgent(Agent):
         self._interests = interests or set()
         self._recent_percepts: deque[Percept] = deque(maxlen=novelty_window)
         self._capture_manager = capture_manager
+        # The ``RuntimeState.cli_input_seq`` whose ``cli_input`` this agent already published (#1414).
+        self._consumed_cli_input_seq: int | None = None
 
         # Thread pool for non-blocking percept publishing
         # This prevents the segmentation thread from being blocked by bus handlers
@@ -274,6 +276,22 @@ class PerceptionAgent(Agent):
 
         return percept
 
+    def _unconsumed(self, obs: dict[str, Any], seq: int | None) -> dict[str, Any]:
+        """``obs`` without a ``cli_input`` this agent already published (#1414).
+
+        The state's ``data`` keeps the last ``cli_input`` after the tick that brought it, and this agent reads
+        ``data`` on every pass, so one user message was re-published every 0.5 s as a salient Percept (salience 0.9)
+        and re-captured by the hippocampus as new memory each time. The input is published once per
+        ``RuntimeState.cli_input_seq``; the same words sent again bump the count and are new. A state without the
+        count (not a ``RuntimeState``) keeps the old read.
+        """
+        if seq is None or not obs.get("cli_input"):
+            return obs
+        if seq == self._consumed_cli_input_seq:
+            return {k: v for k, v in obs.items() if k != "cli_input"}
+        self._consumed_cli_input_seq = seq
+        return obs
+
     def propose_intent(self, state: Any, memory: Any, **kwargs: Any) -> dict[str, Any] | None:
         """Process observation and publish percept.
 
@@ -289,6 +307,7 @@ class PerceptionAgent(Agent):
         obs = getattr(state, "data", None) if hasattr(state, "data") else None
         if not isinstance(obs, dict):
             obs = {}
+        obs = self._unconsumed(obs, getattr(state, "cli_input_seq", None))
 
         # Check file changes
         file_changed, file_path = self._check_transcript_file(obs)
