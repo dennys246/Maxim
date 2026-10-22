@@ -12,7 +12,6 @@ from typing import Any
 from maxim.agents.base import Agent
 from maxim.agents.bus import (
     AgentBus,
-    FailureStrategy,
     GoalAccepted,
     GoalCompleted,
     GoalPriority,
@@ -225,17 +224,7 @@ class AgenticGoalAgent(Agent):
                     },
                 )
 
-            # Update memory with remaining sub-goals
-            if self._memory:
-                remaining = [
-                    sg.description
-                    for sg in goal.sub_goals
-                    if sg.status not in (SubGoalStatus.COMPLETED, SubGoalStatus.SKIPPED)
-                ]
-                self._memory.set_active_sub_goals(remaining)
-
-            # Schedule next action
-            self._schedule_next_action()
+            self._continue_goal(goal)
         else:
             # Simple goal (no sub-goals)
             self._complete_goal(
@@ -331,26 +320,33 @@ class AgenticGoalAgent(Agent):
         )
         self._bus.publish(tr)
 
+    def _continue_goal(self, goal: ProposedGoal) -> None:
+        """After a sub-goal's call closed and the goal goes on: memory's remaining sub-goals, then the next action."""
+        if self._memory:
+            remaining = [
+                sg.description
+                for sg in goal.sub_goals
+                if sg.status not in (SubGoalStatus.COMPLETED, SubGoalStatus.SKIPPED)
+            ]
+            self._memory.set_active_sub_goals(remaining)
+        self._schedule_next_action()
+
     def refuse_tool_call(self, tool_call_id: str, reason: str) -> bool:
         """The loop refused this agent's pending tool call (autonomy, #1414): close it, without a retry.
 
         A refusal is not a tool result: the tool never ran, so it does not go through ``ToolResult`` (whose
-        subscribers book tool successes and failures). A refused call would be refused again, so retrying (RETRY) or
-        re-proposing at a higher priority (ESCALATE) cannot help: a sub-goal whose policy is SKIP is skipped and the
-        goal moves on to its next sub-goal, and any other refused call ends the goal. Returns False when
-        ``tool_call_id`` is not the pending call (already closed).
+        subscribers book tool successes and failures). The sub-goal policy for a refusal is
+        ``ProposedGoal.handle_sub_goal_refusal`` (only SKIP goes on); a refused call with no sub-goal ends the goal.
+        Returns False when ``tool_call_id`` is not the pending call (already closed).
         """
         if self._pending_tool_call is None or self._pending_tool_call.id != tool_call_id:
             return False
         self._pending_tool_call = None
         goal = self._current_goal
         current = next((sg for sg in goal.sub_goals if sg.status == SubGoalStatus.IN_PROGRESS), None) if goal else None
-        if current is not None and current.on_failure == FailureStrategy.SKIP:
-            current.status, current.error = SubGoalStatus.SKIPPED, reason
-            self._schedule_next_action()
+        if goal is not None and current is not None and goal.handle_sub_goal_refusal(current, reason):
+            self._continue_goal(goal)
             return True
-        if current is not None:
-            current.status, current.error = SubGoalStatus.FAILED, reason
         self._complete_goal(success=False, error=f"Refused: {reason}")
         return True
 

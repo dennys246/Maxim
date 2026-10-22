@@ -248,12 +248,16 @@ def test_a_refused_skip_sub_goal_moves_on_to_the_next() -> None:
     """A refusal follows the sub-goal's policy with retries exhausted: SKIP skips it, the goal goes on (review)."""
     from maxim.agents.bus import FailureStrategy
 
+    from unittest.mock import MagicMock
+
     goal_agent = _goal_with_sub_goals(FailureStrategy.SKIP)
+    goal_agent._memory = MagicMock()
     first = goal_agent.propose_intent(state=None, memory=None)
     assert first["goal"]["tool_name"] == "bash"
     assert goal_agent.refuse_tool_call(first["tool_call_id"], "forbidden") is True
     after = goal_agent.propose_intent(state=None, memory=None)
     assert after is not None and after["goal"]["tool_name"] == "respond"
+    goal_agent._memory.set_active_sub_goals.assert_called_with(["answer"])  # the skipped one is no longer active
 
 
 def test_a_refused_retry_sub_goal_ends_the_goal_without_a_retry() -> None:

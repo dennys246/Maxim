@@ -999,6 +999,20 @@ class ProposedGoal:
 
         return False
 
+    def handle_sub_goal_refusal(self, sub_goal: SubGoal, reason: str) -> bool:
+        """Handle a sub-goal whose tool call was REFUSED (autonomy, #1414). Returns True if the goal should continue.
+
+        Beside :meth:`handle_sub_goal_failure`, the one other copy of the policy: a refused call would be refused
+        again, so RETRY and ESCALATE (retry at a higher priority) cannot help, and only SKIP lets the goal go on.
+        """
+        sub_goal.error = reason
+        sub_goal.attempts += 1
+        if sub_goal.on_failure == FailureStrategy.SKIP:
+            sub_goal.status = SubGoalStatus.SKIPPED
+            return True
+        sub_goal.status = SubGoalStatus.FAILED
+        return False
+
     def is_complete(self) -> bool:
         """Check if all sub-goals are complete (or skipped)."""
         if not self.sub_goals:
