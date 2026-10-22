@@ -245,11 +245,15 @@ def test_a_writer_outside_the_projection_skips_a_stale_generation(monkeypatch) -
     from maxim.runtime.config_loader import invalidate_config_cache
 
     monkeypatch.delenv("MAXIM_MAX_CLOUD_LANES", raising=False)
-    _apply()  # projected at the current generation
-    assert lane_backends._project_env_if_current("MAXIM_MAX_CLOUD_LANES", "2", overwrite=True) is True
+    _has, gen_a = lane_backends._project_lane_env_for_build(None)  # build A projects
+    assert lane_backends._project_env_if_current("MAXIM_MAX_CLOUD_LANES", "2", derived_at=gen_a, overwrite=True)
     lane_backends._undo_lane_env_projection()
-    invalidate_config_cache()  # a write lands while a slow build is still running
-    assert lane_backends._project_env_if_current("MAXIM_MAX_CLOUD_LANES", "3", overwrite=True) is False
+    invalidate_config_cache()  # a write lands while build A is still running
+    lane_backends._project_lane_env_for_build(None)  # build B re-projects at the new generation
+    # A's late writer must not pass on the GLOBAL generation B just made current.
+    assert (
+        lane_backends._project_env_if_current("MAXIM_MAX_CLOUD_LANES", "3", derived_at=gen_a, overwrite=True) is False
+    )
     assert "MAXIM_MAX_CLOUD_LANES" not in os.environ
 
 
@@ -268,3 +272,6 @@ def test_a_talk_loop_that_will_not_stop_stays_visible(monkeypatch) -> None:
     with pytest.raises(RuntimeError, match="did not exit"):
         h._stop_talk_loop(join_s=0.01, required=True)
     assert h._talk_thread is straggler and h._talk_bridge is bridge
+    # The next talk must not reuse the finished straggler's bridge (a 180 s hang): it refuses again, loudly.
+    with pytest.raises(RuntimeError, match="did not exit"):
+        h._ensure_talk_loop()

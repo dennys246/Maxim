@@ -319,12 +319,21 @@ class MaximHandle:
         from maxim.runtime.config_loader import config_generation
 
         with self._talk_lock:
-            live = self._talk_bridge is not None and self._talk_thread is not None and self._talk_thread.is_alive()
-            if live and self._talk_generation == config_generation():
+            alive = self._talk_thread is not None and self._talk_thread.is_alive()
+            reusable = (
+                alive
+                and self._talk_bridge is not None
+                # A straggler re-published by a timed-out stop is alive but already told to stop (#1411): its
+                # bridge is finished, so reusing it would hang the turn for the full timeout.
+                and not (self._talk_stop is not None and self._talk_stop.is_set())
+                and self._talk_generation == config_generation()
+            )
+            if reusable:
                 return self._talk_bridge
-        if live:
-            # config.json was written since this loop was built (#1411: /api/setup/mesh to another leader): its router
-            # points at the old config. Stop it like a campaign would; the code below rebuilds against the new one.
+        if alive:
+            # Stop it like a campaign would; the code below rebuilds. Either config.json was written since this loop
+            # was built (#1411: /api/setup/mesh to another leader, its router points at the old config), or it is a
+            # straggler that has not exited, and stopping it again refuses loudly rather than run two loops.
             self._stop_talk_loop(required=True)
         with self._talk_lock:
             stale_worker = self._talk_worker

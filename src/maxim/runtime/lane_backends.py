@@ -242,16 +242,17 @@ def _project_env(name: str, value: str, *, unset_only: bool = False, overwrite: 
         _lane_env_written[name] = (prior, value)
 
 
-def _project_env_if_current(name: str, value: str, **kwargs: Any) -> bool:
+def _project_env_if_current(name: str, value: str, *, derived_at: int | None, **kwargs: Any) -> bool:
     """:func:`_project_env` for a writer OUTSIDE the projection (the pre-upgrade pin, the CLOUD-cap bump), only while
-    the projection it derives from is still the current config's; a write that has since moved the generation means
-    the next build re-derives it, so a slow build never writes a stale value into the new config's state. True when
-    it wrote (delta review, #1411)."""
+    the config generation its value was derived at (``derived_at``, from :func:`_project_lane_env_for_build`) is still
+    the current one: after a config write the next build re-derives it, so a slow build never writes a stale value
+    into the new config's state. ``derived_at=None`` (called outside a router build) writes. True when it wrote
+    (delta review, #1411)."""
     from maxim.runtime.config_loader import config_generation
 
     with _lane_env_lock:
-        if _lane_env_generation is not None and _lane_env_generation != config_generation():
-            return False  # a projection ran under an older config; the next build re-derives this value
+        if derived_at is not None and derived_at != config_generation():
+            return False
         _project_env(name, value, **kwargs)
         return True
 
@@ -329,6 +330,15 @@ def _apply_lane_config_to_env(logger_obj: Any | None, *, restore_persisted: bool
         if restore_persisted:
             _restore_persisted_profile(has_remote, logger_obj)
         return has_remote
+
+
+def _project_lane_env_for_build(logger_obj: Any | None) -> tuple[bool, int | None]:
+    """The projection a router build runs (persisted-profile restore included), and the config generation it ran
+    at, read in the same lock hold. The build hands that generation to its later env writers
+    (``_project_env_if_current(derived_at=...)``), so a slow build never writes a value derived from an older config
+    into a newer config's state (#1411 delta review)."""
+    with _lane_env_lock:
+        return _apply_lane_config_to_env(logger_obj, restore_persisted=True), _lane_env_generation
 
 
 def _apply_lane_config_to_env_locked(logger_obj: Any | None) -> bool:
@@ -513,7 +523,9 @@ def _apply_lane_config_to_env_locked(logger_obj: Any | None) -> bool:
     return has_remote
 
 
-def _maybe_pin_pre_upgrade_profile(capabilities: Any | None, logger_obj: Any | None) -> None:
+def _maybe_pin_pre_upgrade_profile(
+    capabilities: Any | None, logger_obj: Any | None, *, derived_at: int | None = None
+) -> None:
     """Pin the leader to its pre-upgrade profile on first post-upgrade run.
 
     Fires exactly once per machine — writes a marker file after completing
@@ -596,7 +608,7 @@ def _maybe_pin_pre_upgrade_profile(capabilities: Any | None, logger_obj: Any | N
         # default on the first post-upgrade run and the old default
         # on every subsequent run, which is confusing.
         _write_persisted_model(pre_profile)
-        _project_env_if_current("MAXIM_LLM_PROFILE", pre_profile)  # recorded, undone on a config write (#1411)
+        _project_env_if_current("MAXIM_LLM_PROFILE", pre_profile, derived_at=derived_at)  # recorded (#1411)
         _write_pin_marker(marker)
 
         if logger_obj is not None:
@@ -1451,7 +1463,9 @@ def _config_placement_to_runtime(entry: Any, *, where: str) -> ProviderPlacement
     return p
 
 
-def _apply_config_placements(lane_configs: dict[str, Any], logger: Any | None) -> dict[str, Any]:
+def _apply_config_placements(
+    lane_configs: dict[str, Any], logger: Any | None, *, derived_at: int | None = None
+) -> dict[str, Any]:
     """Set ``LaneConfig.placement`` from ``config.json::lanes.<tier>.placement``.
 
     The declarative BASE for the placement axis (Phase 3c). Only tiers with a
@@ -1515,7 +1529,9 @@ def _apply_config_placements(lane_configs: dict[str, Any], logger: Any | None) -
             current = 0
         if current < cloud_primary_count:
             # Recorded (#1411): a later config write without the CLOUD placement restores the cap it raised.
-            _project_env_if_current("MAXIM_MAX_CLOUD_LANES", str(cloud_primary_count), overwrite=True)
+            _project_env_if_current(
+                "MAXIM_MAX_CLOUD_LANES", str(cloud_primary_count), derived_at=derived_at, overwrite=True
+            )
             if logger is not None:
                 logger.info(
                     "Raised MAXIM_MAX_CLOUD_LANES to %d to admit config.json CLOUD placement(s)",
@@ -2099,7 +2115,7 @@ def build_primary_router(
     # restoring a stale local profile would cause
     # _apply_local_llm_override to clear the remote_url and silently
     # route everything locally.
-    _has_peer_config = _apply_lane_config_to_env(logger, restore_persisted=True)
+    _has_peer_config, _derived_at = _project_lane_env_for_build(logger)
 
     # ── Migration safety: pin existing leaders to pre-upgrade profile ──
     # Before the tier table expands (planned P4a), any leader that was
@@ -2114,7 +2130,7 @@ def build_primary_router(
     #   3. Has NO explicit MAXIM_LLM_PROFILE in env (user didn't override)
     #   4. Has NOT already run the pin (marker file absent)
     # The marker file prevents repeat execution across future restarts.
-    _maybe_pin_pre_upgrade_profile(capabilities, logger)
+    _maybe_pin_pre_upgrade_profile(capabilities, logger, derived_at=_derived_at)
 
     # Note: the old "reconcile --language-model with peer remote config"
     # block used to live here. It rewrote `--llm <local>` into
@@ -2180,7 +2196,7 @@ def build_primary_router(
     # config.json placement as the BASE (config → LaneConfig.placement). CLI
     # flags (--cloud-lane / --cloud-fallback / --llm) edit placement on top of
     # this base below, preserving the CLI > config precedence chain.
-    lane_configs = _apply_config_placements(lane_configs, logger)
+    lane_configs = _apply_config_placements(lane_configs, logger, derived_at=_derived_at)
     lane_configs = _apply_cloud_cli_overrides(lane_configs, logger)
     # Local --llm <profile> override: runs AFTER cloud overrides so that
     # when both --llm and --cloud-lane are set, cloud wins for the
