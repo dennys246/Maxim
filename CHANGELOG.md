@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The wheel vendors maxim-pulse Console v0.4.2** (was v0.4.1; contract 0.6.0 unchanged; owner decision 2026-10-22).
+  Pulse #52 hides the Console's Models button, which listed the built-in catalog and changed nothing when clicked
+  (no model field reaches `/api/run`). A truthful model picker returns in 1.3.4 ([#1418](https://github.com/dennys246/Maxim/issues/1418)).
+  `scripts/console_ui_pin.json` pins tag v0.4.2 at commit `bcd0d1e`, asset sha256 `dbdd86ba…`.
 - **A config write in a running `maxim serve` is seen by the next router build** ([#1411](https://github.com/dennys246/Maxim/issues/1411),
   found by maxim-pulse on the 1.3.3 candidate). A Console talk that failed before setup ran the lane env projection
   (`config.json` → `MAXIM_LANE_*`) with nothing configured, and that projection ran once per process, so the
