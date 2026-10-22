@@ -161,6 +161,20 @@ it did *not* read. Maintained references (plans, briefs, lessons) do get relinke
 
 ## Closed — recorded so they are not re-audited
 
+- **O20 — the first nightly after `ubuntu-latest` moved to Ubuntu 26**, closed 2026-10-22 (the standing reminder was
+  draft [#1216](https://github.com/dennys246/Maxim/pull/1216), superseded). The check fired red. From 2026-10-20 the
+  runners are `ubuntu-26.04`, whose sudo is sudo-rs 0.2.13: it prints "preserving the entire environment is not
+  supported, '-E' is ignored", and `scripts/ci_netns.sh` relied on `sudo -E` for every variable it did not name. The
+  namespace itself still isolated, but no job variable reached it: the tts extras cells lost
+  `MAXIM_TEST_TTS_VOICE_DIR`, the model-cache and slow nightlies lost `MAXIM_RUN_MODEL_TESTS`/`HF_HOME`/the offline
+  flags (all red, first in scheduled run 39790236629), and `unit-tests` ran green without its job environment. Fix:
+  the caller's exported names cross sudo with `--preserve-env=<list>` (values never on argv; secret-shaped names
+  excluded), and the innermost shell exits 3 naming any preserved name that did not arrive, so a future sudo that
+  drops the environment fails every lane loudly. Not by pinning `runs-on` back. Regression guard:
+  `tests/unit/test_ci_workflow_shape.py::test_the_netns_arrival_check_passes_a_carried_environment_and_refuses_a_dropped_one`
+  (the real script over stub sudo/unshare/setpriv; red on the pre-fix script) and
+  `::test_the_netns_script_carries_the_callers_environment_by_name_and_checks_it_arrived`.
+
 - **M59 — the local pre-PR checks are the CI lint job's checks**, closed 2026-10-18 (shipped 2026-10-16 in
   [#1324](https://github.com/dennys246/Maxim/pull/1324)): `scripts/prepr.sh` (→ `scripts/prepr.py`) reads `jobs.lint`
   from test.yml at run time and runs every run step plus the unit-tests mypy step; it refuses (exit 2) when it cannot
