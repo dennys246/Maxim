@@ -20,7 +20,10 @@ class RuntimeState:
     data: dict[str, Any] = field(default_factory=dict)
     # How many observations have carried a ``cli_input`` (#1414). ``data`` merges every observation, so a user's
     # ``cli_input`` stays in it after the tick that brought it; a consumer that reads ``data`` each tick compares
-    # this count to know whether the input is NEW (``PerceptionAgent.propose_intent``). Runtime-only: not persisted.
+    # this count to know whether the input is NEW (``PerceptionAgent.propose_intent``). Runtime-only: not persisted,
+    # so a resumed state replays a persisted ``cli_input`` once. Two inputs between passes still overwrite each
+    # other in ``data`` (only the last is seen), as before. The structural fix (event keys cleared by ``update``) is
+    # #1422.
     cli_input_seq: int = 0
 
     def update(self, observation: dict[str, Any] | None) -> None:

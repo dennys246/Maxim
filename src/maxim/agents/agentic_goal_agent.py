@@ -330,6 +330,18 @@ class AgenticGoalAgent(Agent):
         )
         self._bus.publish(tr)
 
+    def refuse_tool_call(self, tool_call_id: str, reason: str) -> bool:
+        """The loop refused this agent's pending tool call (autonomy, #1414): end its goal, without a retry.
+
+        A refusal is not a tool result: the tool never ran, and a refused call will be refused again, so it does
+        not go through ``ToolResult`` (whose subscribers book tool successes and failures) and a sub-goal's retry
+        policy does not apply. Returns False when ``tool_call_id`` is not the pending call (already closed).
+        """
+        if self._pending_tool_call is None or self._pending_tool_call.id != tool_call_id:
+            return False
+        self._complete_goal(success=False, error=reason)
+        return True
+
     def cancel_current_goal(self, reason: str = "Cancelled by user") -> bool:
         """Cancel the current goal."""
         if self._current_goal is None:

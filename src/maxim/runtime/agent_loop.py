@@ -914,15 +914,22 @@ def _describe_tools_for_prompt(
 def _report_fallback_result(
     agent: Any, intent: Mapping[str, Any], action: Mapping[str, Any], outcome: Any = None, *, error: Any = None
 ) -> None:
-    """Close the goal agent's tool call that the agent-fallback path (§3) ran, failed or had refused (#1414).
+    """Close the goal agent's tool call that the agent-fallback path (§3) ran or that raised (#1414).
 
     ``AgenticGoalAgent.propose_intent`` returns its pending tool call until a ``ToolResult`` with that call's id
     arrives on the bus; before #1414 nothing in the loop published one, so a call autonomy refused was proposed and
-    refused again every tick (pulse saw one refusal 87 times in 44 s), and an executed one would have run again.
+    refused again every tick (pulse saw one refusal 87 times in 44 s), and an executed one would have run again. A
+    REFUSED call is closed by :func:`_fallback_rejected` instead. This is the first live ``ToolResult`` producer, so
+    the bus's result subscribers (``MemoryAgent``, ``StatisticianAgent``, ``api.py``'s ``tool_call`` callbacks)
+    now see §3's calls; §4's dispatch (``tool_dispatch.execute_and_learn``) does not publish one yet (#1147).
     An intent with no ``tool_call_id`` (not from the goal agent) or an agent without ``publish_tool_result`` has
-    nothing to close. ``outcome`` is the executor's ``ToolOutput``; ``error`` (a raise or a refusal) makes the
-    call a failure whatever ``outcome`` says.
+    nothing to close. ``outcome`` is the executor's ``ToolOutput``; ``error`` is a raise in §3's try. With no
+    ``outcome`` the execute itself raised, and the call is reported failed; with one, the call was already reported
+    and a later step raised, so nothing is published again (a second result under the same id would book a tool
+    that succeeded as failed, or burn the retry the goal agent already scheduled under that id).
     """
+    if error is not None and outcome is not None:
+        return
     tool_call_id = intent.get("tool_call_id")
     publish = getattr(agent, "publish_tool_result", None)
     if not tool_call_id or not callable(publish):
@@ -941,14 +948,19 @@ def _report_fallback_result(
 def _fallback_rejected(
     agent: Any, intent: Mapping[str, Any], action: Mapping[str, Any], reason: Any, confidence: float
 ) -> None:
-    """§3's autonomy refusal of the agent-fallback action: logged, and reported back to the goal agent as a failed
-    call so it is not proposed again on the next tick (#1414)."""
+    """§3's autonomy refusal of the agent-fallback action: logged, and the goal agent's call is closed as REFUSED
+    (``refuse_tool_call``, which ends its goal), so it is not proposed again on the next tick (#1414). Not a
+    ``ToolResult``: the tool never ran, and the bus's result subscribers (memory, statistician, the API's
+    ``tool_call`` callbacks) book only tools that did."""
     log_agentic(
         "agent_loop",
         "action_rejected",
         {"tool": action["tool_name"], "reason": reason, "confidence": confidence},
     )
-    _report_fallback_result(agent, intent, action, error=f"Rejected by autonomy: {reason}")
+    tool_call_id = intent.get("tool_call_id")
+    refuse = getattr(agent, "refuse_tool_call", None)
+    if tool_call_id and callable(refuse):
+        refuse(str(tool_call_id), f"Rejected by autonomy: {reason}")
 
 
 def _followup_synthetic_input(followup: Any) -> str:
@@ -1981,7 +1993,7 @@ def run_agentic_loop(
                                         level="ERROR",
                                     )
                                     logger.debug(f"Agent fallback action failed: {e}")
-                                    _report_fallback_result(agent, intent, action, error=e)
+                                    _report_fallback_result(agent, intent, action, result, error=e)
 
                                     # Track exception in recent_outcomes for LLM learning
                                     _rec_outcome(

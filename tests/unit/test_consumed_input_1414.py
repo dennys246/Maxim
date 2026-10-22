@@ -80,7 +80,9 @@ def _maxim_like(goal_agent: Any) -> Any:
             )
         )
 
-    return SimpleNamespace(goal=goal_agent, publish_tool_result=publish_tool_result)
+    return SimpleNamespace(
+        goal=goal_agent, publish_tool_result=publish_tool_result, refuse_tool_call=goal_agent.refuse_tool_call
+    )
 
 
 def test_a_refused_goal_tool_is_not_proposed_again() -> None:
@@ -115,3 +117,103 @@ def test_the_loop_reports_every_fallback_outcome() -> None:
     src = inspect.getsource(agent_loop.run_agentic_loop)
     assert src.count("_report_fallback_result(agent, intent, action") == 2  # executed, raised
     assert "_fallback_rejected(agent, intent, action, reason, confidence)" in src
+
+
+def _results_on(goal_agent: Any) -> list[Any]:
+    from maxim.agents.bus import ToolResult
+
+    seen: list[Any] = []
+    goal_agent._bus.subscribe(ToolResult, seen.append)
+    return seen
+
+
+def test_a_refusal_is_not_published_as_a_tool_result() -> None:
+    """The tool never ran: the bus's result subscribers (memory, statistician, the API's tool_call callbacks) must
+    not book a refusal as a failed call (review fold)."""
+    from maxim.runtime import agent_loop
+
+    goal_agent = _goal_agent_with_pending_call()
+    seen = _results_on(goal_agent)
+    intent = goal_agent.propose_intent(state=None, memory=None)
+    agent_loop._fallback_rejected(_maxim_like(goal_agent), intent, {"tool_name": "bash"}, "forbidden", 1.0)
+    assert seen == [] and goal_agent.propose_intent(state=None, memory=None) is None
+
+
+def test_a_raise_after_the_report_does_not_report_again() -> None:
+    """One result per call id: §3's except reports only when the execute itself raised (review fold)."""
+    from types import SimpleNamespace
+
+    from maxim.runtime import agent_loop
+
+    goal_agent = _goal_agent_with_pending_call("read_file")
+    seen = _results_on(goal_agent)
+    intent = goal_agent.propose_intent(state=None, memory=None)
+    agent = _maxim_like(goal_agent)
+    output = SimpleNamespace(success=True, output="contents", error=None)
+    agent_loop._report_fallback_result(agent, intent, {"tool_name": "read_file"}, output)
+    agent_loop._report_fallback_result(agent, intent, {"tool_name": "read_file"}, output, error=RuntimeError("x"))
+    assert [r.success for r in seen] == [True]
+    agent_loop._report_fallback_result(agent, {"tool_call_id": "tc-other"}, {"tool_name": "t"}, error=ValueError("e"))
+    assert [r.success for r in seen] == [True, False]  # the execute itself raised: reported failed
+
+
+def test_a_fresh_state_s_first_message_is_not_dropped() -> None:
+    from maxim.runtime.state import RuntimeState
+
+    agent, seen = _perception()
+    for _ in range(2):  # one agent, two states, each with its first message (seq 1 both times)
+        state = RuntimeState()
+        state.update({"cli_input": "hello"})
+        agent.propose_intent(state, memory=None)
+    assert len([p for p in seen if getattr(p, "has_maxim_keyword", False)]) == 2
+
+
+def test_the_real_loop_proposes_a_refused_goal_call_once(monkeypatch, tmp_path) -> None:
+    """Through the REAL run_agentic_loop (the shipped path, not a hand-composed sequence): a goal call autonomy
+    forbids is proposed and refused once over six full passes, not once per pass."""
+    from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SafetyConstraints
+
+    from tests.unit import test_loop_gates_characterization as gates
+
+    goal_agent = _goal_agent_with_pending_call()
+    proposed: list[Any] = []
+    face = _maxim_like(goal_agent)
+
+    class _GoalFace:
+        name = "goal-face"
+        publish_tool_result = staticmethod(face.publish_tool_result)
+        refuse_tool_call = staticmethod(face.refuse_tool_call)
+
+        def propose_intent(self, state: Any, memory: Any) -> Any:
+            intent = goal_agent.propose_intent(state, memory)
+            if intent:
+                proposed.append(intent)
+            return intent
+
+    monkeypatch.setattr(gates, "_Agent", _GoalFace)
+    ev: list[tuple] = []
+    adapter = gates._Adapter(ev)
+    holder: list[Any] = []
+
+    def wake(r: Any) -> None:  # a pending next action wakes the idle gate; cleared at §1 before anything acts on it
+        holder.append(r)
+        r.ctrl.pending_next_actions.append({"tool_name": "noop"})
+
+    adapter.on_observe = lambda: holder and holder[-1].ctrl.pending_next_actions.clear()
+    autonomy = AutonomyController(
+        initial_level=AutonomyLevel.AUTONOMOUS,
+        safety_constraints=SafetyConstraints(forbidden_tools=frozenset({"bash"})),
+    )
+    run = gates._run(
+        monkeypatch,
+        tmp_path,
+        steps=6,
+        ev=ev,
+        adapter=adapter,
+        hooks=dict.fromkeys(range(6), wake),
+        autonomy_controller=autonomy,
+    )
+    assert run.error is None
+    assert len(gates._ran(run.ev)) == 6  # control: every pass reached §1, so §3 ran on each
+    assert len(proposed) == 1
+    assert goal_agent.propose_intent(state=None, memory=None) is None

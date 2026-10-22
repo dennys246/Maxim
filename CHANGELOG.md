@@ -224,9 +224,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   about 87 times. `RuntimeState.update` keeps a message's `cli_input` in `data` after the tick that brought it, and
   `PerceptionAgent` re-published it on every pass; it now publishes each message once, counted by the new
   runtime-only `RuntimeState.cli_input_seq` (the same words sent again are a new message). Separately, nothing in the
-  agent loop's fallback path reported a tool call's result back to `AgenticGoalAgent`, so its pending call was
-  proposed again every tick, refused or not; the loop now closes it after it runs, raises or is refused
-  (`agent_loop.py::_report_fallback_result`). Simulations see fewer duplicate captures and fallback actions.
+  agent loop's fallback path told `AgenticGoalAgent` what became of its tool call, so the call was proposed again
+  every tick, refused or not. The loop now publishes a `ToolResult` after the call runs or raises
+  (`agent_loop.py::_report_fallback_result`), and ends the goal through the new `refuse_tool_call` when autonomy
+  refuses it, without a retry and without a `ToolResult`. This is the first code that publishes a `ToolResult`, so
+  its subscribers fire for the first time, for fallback-path calls only: `MemoryAgent` (a failed call becomes a
+  0.8-salience `goal_outcome` memory), `StatisticianAgent` (`tool:<name>:success`), and the Python API's
+  `on("tool_call")` callbacks (the main dispatch path publishes none yet, #1147). Goal completion, sub-goal
+  sequencing and plan-phase advancement now run on that path as well. Simulations and benchmarks are affected:
+  hippocampal capture and encode counts, working-memory percept entries, proposed-goal memories and statistician
+  series are not comparable across this change. After a user input, `ExecAgent`'s contemplation now runs instead
+  of being cut short by the repeated percept, so a proposal can cost more LLM calls (#1423). The structural fix,
+  per-tick event keys that `RuntimeState` clears itself, is #1422.
 - **`maxim serve` no longer hangs up to 15 s on shutdown after a Console tab closes.** The `/ws` sender checked
   for a gone client only between waits, so a closed connection's handler lived until the next 15 s heartbeat, and
   uvicorn 0.40+ waits for it on SIGTERM. The sender loop (now `console/server.py::_pump_ws_events`) races each wait
