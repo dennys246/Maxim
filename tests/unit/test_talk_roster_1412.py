@@ -46,3 +46,52 @@ def test_both_roster_sites_in_the_loop_use_the_one_filter() -> None:
     src = inspect.getsource(agent_loop.run_agentic_loop)
     assert src.count("_advertisable_tools(") == 2
     assert "executor.permits(t)" not in src
+
+
+# ── review-round folds: one gate (the executor), the real Talk controller ──────────────────────────────
+
+
+def _talk_executor():
+    from maxim.console.handle import talk_autonomy
+    from maxim.runtime.executor import Executor
+    from maxim.runtime.loop_setup import _prepare_executor
+    from maxim.runtime.state import RuntimeState
+    from maxim.tools.registry import ToolRegistry
+    from maxim.tools.filesystem import BashTool, ReadFileTool
+
+    registry = ToolRegistry()
+    registry.register(BashTool())
+    registry.register(ReadFileTool())
+    autonomy = talk_autonomy(registry)
+    state = RuntimeState()
+    state.data["mode"] = "active"  # Talk's own run mode (console/handle.py): the mode alone lets bash run
+    executor = _prepare_executor(Executor(registry), None, state, autonomy_controller=autonomy)
+    return executor, autonomy, registry
+
+
+def test_the_real_talk_controller_hides_bash_from_the_roster_and_the_executor() -> None:
+    """The composition pulse hit: console/handle.py's Talk controller, wired by the loop's own setup."""
+    from maxim.runtime import agent_loop
+
+    executor, autonomy, registry = _talk_executor()
+    assert "bash" in registry.list_all()  # the tool exists; Talk must still never be shown it
+    from maxim.runtime.executor import Executor
+    from maxim.runtime.loop_setup import _prepare_executor
+    from maxim.runtime.state import RuntimeState
+
+    control_state = RuntimeState()
+    control_state.data["mode"] = "active"
+    assert _prepare_executor(Executor(registry), None, control_state).permits("bash")  # control: no forbid wired
+    assert not executor.permits("bash")
+    shown = agent_loop._advertisable_tools(registry.list_all(), executor, autonomy)
+    assert "bash" not in shown and "read_file" in shown
+
+
+def test_no_executor_error_suggests_a_forbidden_tool() -> None:
+    """The second channel both review lenses found: an unknown tool's 'Did you mean' and 'Available tools' lists."""
+    executor, _autonomy, _registry = _talk_executor()
+    assert "bash" not in executor._runnable_tools()
+    assert all(
+        not executor.permits(t) or t in {"respond", "speak", "read_file", "glob", "sense_tools"}
+        for t in executor._runnable_tools()
+    )

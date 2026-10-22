@@ -120,18 +120,22 @@ class LoopRun:
 # ── helpers moved from agent_loop.py (slice 1 review, rule (a): only the setup calls them) ──
 
 
-def _prepare_executor(executor: Any, action_sink: Any, state: Any) -> Any:
+def _prepare_executor(executor: Any, action_sink: Any, state: Any, autonomy_controller: Any = None) -> Any:
     """The loop's executor: wrapped with instrumentation when an action sink is given, and reading the
     loop's LIVE run mode at every dispatch (#826), raw (``loop_state.run_mode``); the executor normalises it
     (``Executor.effective_operational_mode``, #963), and the prompt roster reads that same value each tick
     (``loop_state.operational_mode``), so a tool the mode refuses is refused when it runs, not merely left
-    unadvertised. Every wrapper delegates ``set_mode_source`` to the inner Executor."""
+    unadvertised. It also refuses what the loop's autonomy controller hard-forbids (#1412), so the roster and every
+    error that lists tools agree with dispatch. Every wrapper delegates ``set_mode_source`` and
+    ``set_forbid_source`` to the inner Executor."""
     if action_sink is not None:
         from maxim.simulation.instrumented_executor import InstrumentedExecutor  # noqa: PLC0415
 
         executor = InstrumentedExecutor(executor, action_sink)
     if executor is not None:
         executor.set_mode_source(lambda: run_mode(state))
+        if autonomy_controller is not None and hasattr(executor, "set_forbid_source"):
+            executor.set_forbid_source(autonomy_controller.forbids_tool)
     return executor
 
 
@@ -481,7 +485,10 @@ def build_loop_run(
     if evaluators is None:
         evaluators = []
 
-    executor = _prepare_executor(executor, action_sink, state)
+    # Initialize autonomy controller if not provided (before the executor: it wires the forbid list, #1412)
+    if autonomy_controller is None:
+        autonomy_controller = AutonomyController()
+    executor = _prepare_executor(executor, action_sink, state, autonomy_controller)
     # Before anything runs: a registry without tool_descriptions() fails the run here, not mid-action (#1260).
     _tool_overlay = tool_description_overlay(executor)
 
@@ -498,10 +505,6 @@ def build_loop_run(
     agent_name = safe_agent_name(agent)
     state_path = os.path.join("data", "agents", agent_name, "runtime", f"state_{run_id}.json")
     _persist_state_json(state, state_path, meta={"run_id": run_id, "agent_name": agent_name})
-
-    # Initialize autonomy controller if not provided
-    if autonomy_controller is None:
-        autonomy_controller = AutonomyController()
 
     # Initialize context pool for accumulated observations
     context_pool = ContextPool(config=_context_pool_config(context_pool_config))
