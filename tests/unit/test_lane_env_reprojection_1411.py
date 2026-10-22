@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 import pytest
 
-RED = pytest.mark.xfail(strict=True, reason="#1411 red gate: the lane env projection runs once per process")
+
 LEADER_A = "http://10.0.0.5:8099/v1"
 LEADER_B = "http://10.0.0.6:8099/v1"
 _LANE_ENV = (
@@ -46,7 +46,6 @@ def _setup(url: str, key: str) -> None:
     apply_mesh_setup(url, key)
 
 
-@RED
 def test_a_mesh_setup_after_a_first_projection_is_seen_by_the_next() -> None:
     """Pulse's sequence at the seam: nothing configured, project; set up; project again."""
     assert _apply() is False
@@ -56,7 +55,6 @@ def test_a_mesh_setup_after_a_first_projection_is_seen_by_the_next() -> None:
     assert os.environ["MAXIM_LANE_LARGE_REMOTE_API_KEY"] == "mesh-key-aaaaaaaaaaaaaaaa"
 
 
-@RED
 def test_switching_leaders_routes_to_the_new_one_not_the_first() -> None:
     _setup(LEADER_A, "mesh-key-aaaaaaaaaaaaaaaa")
     assert _apply() is True and os.environ["MAXIM_LANE_LARGE_REMOTE_URL"] == LEADER_A
@@ -69,27 +67,40 @@ def test_switching_leaders_routes_to_the_new_one_not_the_first() -> None:
 def test_an_operator_env_value_is_never_touched(monkeypatch) -> None:
     """The operator's export wins over config.json, and a re-projection neither overwrites nor removes it."""
     monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "http://operator.example:8099/v1")
+    monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_API_KEY", "operator-key-0123456789")  # config's key is a file ref
+    monkeypatch.setenv("MAXIM_MAX_CLOUD_LANES", "0")  # resolve_setting never reads it: only the env-wins check keeps it
     _setup(LEADER_A, "mesh-key-aaaaaaaaaaaaaaaa")
     _apply()
+    assert os.environ["MAXIM_LANE_LARGE_REMOTE_API_KEY"] == "operator-key-0123456789"
     _setup(LEADER_B, "mesh-key-bbbbbbbbbbbbbbbb")
     _apply()
     assert os.environ["MAXIM_LANE_LARGE_REMOTE_URL"] == "http://operator.example:8099/v1"
+    assert os.environ["MAXIM_LANE_LARGE_REMOTE_API_KEY"] == "operator-key-0123456789"
+    assert os.environ["MAXIM_MAX_CLOUD_LANES"] == "0"
 
 
-def test_a_reprojection_keeps_the_doctor_attribution_on_config() -> None:
-    """The once-per-process guard existed so a re-run would not read its own env vars back as source="env"."""
-    from maxim.runtime.config_loader import resolve_setting
-
-    _apply()
+def test_a_value_changed_after_the_projection_wrote_it_is_left_alone() -> None:
+    """The undo restores only what the projection wrote and still holds: a value someone set since (an in-process
+    override, a later export) survives the next config write and is no longer the projection's to manage."""
     _setup(LEADER_A, "mesh-key-aaaaaaaaaaaaaaaa")
     _apply()
+    os.environ["MAXIM_LANE_LARGE_REMOTE_URL"] = "http://override.example:8099/v1"
     _setup(LEADER_B, "mesh-key-bbbbbbbbbbbbbbbb")
     _apply()
-    value, source = resolve_setting("lanes.large.remote_url")
-    assert (value, source) == (LEADER_B, "config")
+    assert os.environ["MAXIM_LANE_LARGE_REMOTE_URL"] == "http://override.example:8099/v1"
+    assert os.environ["MAXIM_LANE_LARGE_REMOTE_API_KEY"] == "mesh-key-bbbbbbbbbbbbbbbb"  # the untouched var moved on
 
 
-@RED
+def test_an_unchanged_config_is_projected_once() -> None:
+    """No config write, no re-projection: the once-per-process contract holds between writes."""
+    from maxim.runtime import lane_backends
+
+    _setup(LEADER_A, "mesh-key-aaaaaaaaaaaaaaaa")
+    _apply()
+    with patch.object(lane_backends, "_project_lane_tier", side_effect=AssertionError("re-projected")):
+        assert _apply() is True
+
+
 def test_the_router_build_after_setup_points_at_the_leader_in_the_same_process() -> None:
     """The composed path the Console's talk takes: build_primary_router before setup, then after it."""
     from maxim.models.language.config import LLMConfig

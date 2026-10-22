@@ -204,6 +204,11 @@ def classify_self_hosted_lane(remote_url: str | None, source: str) -> bool:
 # get the original result without re-running the side-effect path.
 _lane_env_applied: bool = False
 _lane_env_has_remote: bool = False
+# #1411: which config.json generation the projection ran against, and every env var it wrote, with the value that
+# was there before (None = unset) and the value it wrote. A config write moves the generation; the next projection
+# first restores exactly these (only where the value is still the one it wrote), then projects the new config.
+_lane_env_generation: int | None = None
+_lane_env_written: dict[str, tuple[str | None, str]] = {}
 
 
 def _reset_lane_env_applied() -> None:
@@ -212,9 +217,86 @@ def _reset_lane_env_applied() -> None:
     Pairs with :func:`maxim.runtime.config_loader.reset_config_cache`
     in the ``_isolate_config_json_env`` autouse fixture.
     """
-    global _lane_env_applied, _lane_env_has_remote
+    global _lane_env_applied, _lane_env_has_remote, _lane_env_generation
     _lane_env_applied = False
     _lane_env_has_remote = False
+    _lane_env_generation = None
+    _lane_env_written.clear()
+
+
+def _project_env(name: str, value: str, *, unset_only: bool = False) -> None:
+    """Write ``value`` to env var ``name`` for the lane projection, unless a value is already there (env wins), and
+    record it so a later config write can undo exactly this write (#1411). ``unset_only`` keeps ``setdefault``'s
+    meaning (an empty value counts as set); otherwise an empty value counts as unset, as the projection always did."""
+    current = os.environ.get(name)
+    if (current is not None) if unset_only else bool((current or "").strip()):
+        return
+    prior = _lane_env_written[name][0] if name in _lane_env_written else current
+    os.environ[name] = value
+    _lane_env_written[name] = (prior, value)
+
+
+def _undo_lane_env_projection() -> None:
+    """Restore every env var the projection wrote whose value is still the one it wrote; one changed since (an
+    operator export, another component) is left alone and forgotten (#1411)."""
+    for name, (prior, written) in list(_lane_env_written.items()):
+        if os.environ.get(name) == written:
+            if prior is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = prior
+    _lane_env_written.clear()
+
+
+def _project_lane_tier(tier: str, cfg: Any, logger_obj: Any | None) -> bool:
+    """Project one tier's ``lanes.<tier>.*`` settings into ``MAXIM_LANE_<TIER>_*`` (env wins); True when the tier
+    resolved a remote URL. Part of :func:`_apply_lane_config_to_env`; every write is recorded (#1411)."""
+    from maxim.runtime.config_loader import resolve_api_key_ref, resolve_setting
+
+    has_remote = False
+    env_url = f"MAXIM_LANE_{tier.upper()}_REMOTE_URL"
+    env_model = f"MAXIM_LANE_{tier.upper()}_REMOTE_MODEL"
+    env_key = f"MAXIM_LANE_{tier.upper()}_REMOTE_API_KEY"
+    env_timeout = f"MAXIM_LANE_{tier.upper()}_TIMEOUT_S"
+
+    try:
+        url, url_source = resolve_setting(f"lanes.{tier}.remote_url", config=cfg)
+        model, _ = resolve_setting(f"lanes.{tier}.remote_model", config=cfg)
+        key_ref, _ = resolve_setting(f"lanes.{tier}.remote_api_key_ref", config=cfg)
+        timeout_s, timeout_source = resolve_setting(f"lanes.{tier}.timeout_s", config=cfg)
+    except Exception as e:
+        if logger_obj is not None:
+            logger_obj.warning("Failed to resolve lanes.%s.* from config: %s", tier, e)
+        return False
+
+    # llm_timeout_scalability.md Stage 2: per-tier timeout passthrough.
+    # Populate the env var so downstream backends + the leader proxy
+    # see a single source of truth. Only set when source is non-default
+    # (operator explicitly configured) so backend defaults remain in
+    # play for unconfigured tiers.
+    if timeout_s is not None and timeout_source != "default":
+        _project_env(env_timeout, str(float(timeout_s)))
+
+    if url:
+        # Set env var only if not already populated — preserves the
+        # "env wins" precedence for downstream code.
+        _project_env(env_url, url)
+        if model:
+            _project_env(env_model, model)
+        if key_ref:
+            # I-1 / I-2 fold: resolve the api_key_ref lazily here.
+            # File path / keyring lookup. If unresolvable, leave the
+            # env var unset — downstream lane construction will
+            # surface BackendAuthFailed if the lane is actually used.
+            resolved_key = resolve_api_key_ref(key_ref)
+            if resolved_key:
+                _project_env(env_key, resolved_key)
+        has_remote = True
+
+        # Self-hosted classification (IM5 audit note)
+        if classify_self_hosted_lane(url, url_source):
+            _project_env("MAXIM_MAX_CLOUD_LANES", "1", unset_only=True)
+    return has_remote
 
 
 def _apply_lane_config_to_env(logger_obj: Any | None) -> bool:
@@ -243,10 +325,15 @@ def _apply_lane_config_to_env(logger_obj: Any | None) -> bool:
     """
     import os as _os
 
-    global _lane_env_applied, _lane_env_has_remote
-    if _lane_env_applied:
+    from maxim.runtime.config_loader import config_generation
+
+    global _lane_env_applied, _lane_env_has_remote, _lane_env_generation
+    if _lane_env_applied and _lane_env_generation == config_generation():
         return _lane_env_has_remote
+    if _lane_env_applied:  # config.json was written since (#1411): undo our own writes, then project it afresh
+        _undo_lane_env_projection()
     _lane_env_applied = True
+    _lane_env_generation = config_generation()
 
     # Cloud-dispatch escape hatch (Exp 37 fix 2026-06-07): when the harness
     # spawns a sub-sim with a cloud LARGE-tier profile (claude-*, gpt-*,
@@ -275,7 +362,6 @@ def _apply_lane_config_to_env(logger_obj: Any | None) -> bool:
     try:
         from maxim.runtime.config_loader import (
             load_config,
-            resolve_api_key_ref,
             resolve_setting,
         )
     except Exception as e:
@@ -320,8 +406,7 @@ def _apply_lane_config_to_env(logger_obj: Any | None) -> bool:
             continue
         if value is None or value == "":
             continue
-        if not _os.environ.get(env_name, "").strip():
-            _os.environ[env_name] = str(value)
+        _project_env(env_name, str(value))
 
     # Booleans need str("1") / str("0") rendering since the legacy
     # readers use the truthy/falsy set.
@@ -338,55 +423,11 @@ def _apply_lane_config_to_env(logger_obj: Any | None) -> bool:
         # subsequent operator opt-out via shell unset).
         if source == "default":
             continue
-        if not _os.environ.get(env_name, "").strip():
-            _os.environ[env_name] = "1" if value else "0"
+        _project_env(env_name, "1" if value else "0")
 
     has_remote = False
     for tier in ("large", "medium", "small"):
-        env_url = f"MAXIM_LANE_{tier.upper()}_REMOTE_URL"
-        env_model = f"MAXIM_LANE_{tier.upper()}_REMOTE_MODEL"
-        env_key = f"MAXIM_LANE_{tier.upper()}_REMOTE_API_KEY"
-        env_timeout = f"MAXIM_LANE_{tier.upper()}_TIMEOUT_S"
-
-        try:
-            url, url_source = resolve_setting(f"lanes.{tier}.remote_url", config=cfg)
-            model, _ = resolve_setting(f"lanes.{tier}.remote_model", config=cfg)
-            key_ref, _ = resolve_setting(f"lanes.{tier}.remote_api_key_ref", config=cfg)
-            timeout_s, timeout_source = resolve_setting(f"lanes.{tier}.timeout_s", config=cfg)
-        except Exception as e:
-            if logger_obj is not None:
-                logger_obj.warning("Failed to resolve lanes.%s.* from config: %s", tier, e)
-            continue
-
-        # llm_timeout_scalability.md Stage 2: per-tier timeout passthrough.
-        # Populate the env var so downstream backends + the leader proxy
-        # see a single source of truth. Only set when source is non-default
-        # (operator explicitly configured) so backend defaults remain in
-        # play for unconfigured tiers.
-        if timeout_s is not None and timeout_source != "default":
-            if not _os.environ.get(env_timeout, "").strip():
-                _os.environ[env_timeout] = str(float(timeout_s))
-
-        if url:
-            # Set env var only if not already populated — preserves the
-            # "env wins" precedence for downstream code.
-            if not _os.environ.get(env_url, "").strip():
-                _os.environ[env_url] = url
-            if model and not _os.environ.get(env_model, "").strip():
-                _os.environ[env_model] = model
-            if key_ref:
-                # I-1 / I-2 fold: resolve the api_key_ref lazily here.
-                # File path / keyring lookup. If unresolvable, leave the
-                # env var unset — downstream lane construction will
-                # surface BackendAuthFailed if the lane is actually used.
-                resolved_key = resolve_api_key_ref(key_ref)
-                if resolved_key and not _os.environ.get(env_key, "").strip():
-                    _os.environ[env_key] = resolved_key
-            has_remote = True
-
-            # Self-hosted classification (IM5 audit note)
-            if classify_self_hosted_lane(url, url_source):
-                _os.environ.setdefault("MAXIM_MAX_CLOUD_LANES", "1")
+        has_remote = _project_lane_tier(tier, cfg, logger_obj) or has_remote
 
     # peer.yml fallback (deprecated compat-read): if no lane resolved
     # a URL via env or config.json, AND peer.yml is still present on
@@ -409,14 +450,14 @@ def _apply_lane_config_to_env(logger_obj: Any | None) -> bool:
 
             peer_cfg = read_peer_config()
             if peer_cfg is not None:
-                if peer_cfg.url and not _os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL", "").strip():
-                    _os.environ["MAXIM_LANE_LARGE_REMOTE_URL"] = peer_cfg.url
-                if peer_cfg.api_key and not _os.environ.get("MAXIM_LANE_LARGE_REMOTE_API_KEY", "").strip():
-                    _os.environ["MAXIM_LANE_LARGE_REMOTE_API_KEY"] = peer_cfg.api_key
-                if peer_cfg.model and not _os.environ.get("MAXIM_LANE_LARGE_REMOTE_MODEL", "").strip():
-                    _os.environ["MAXIM_LANE_LARGE_REMOTE_MODEL"] = peer_cfg.model
+                if peer_cfg.url:
+                    _project_env("MAXIM_LANE_LARGE_REMOTE_URL", peer_cfg.url)
+                if peer_cfg.api_key:
+                    _project_env("MAXIM_LANE_LARGE_REMOTE_API_KEY", peer_cfg.api_key)
+                if peer_cfg.model:
+                    _project_env("MAXIM_LANE_LARGE_REMOTE_MODEL", peer_cfg.model)
                 # peer.yml URL is self-hosted infrastructure by definition
-                _os.environ.setdefault("MAXIM_MAX_CLOUD_LANES", "1")
+                _project_env("MAXIM_MAX_CLOUD_LANES", "1", unset_only=True)
                 # Preserve the legacy register_leader_endpoint side
                 # effect so downstream http callers can resolve the
                 # "leader" named endpoint.
