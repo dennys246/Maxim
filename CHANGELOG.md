@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The model is never shown a tool the autonomy controller forbids** ([#1412](https://github.com/dennys246/Maxim/issues/1412),
+  found by maxim-pulse on the 1.3.3 candidate). Console Talk forbids every non-conversational tool through
+  `SafetyConstraints.forbidden_tools`, but the prompt's roster was filtered only by the executor's mode and
+  allow/deny list (bugs ledger D82), so Talk was offered `bash`, chose it to fetch news, and was refused. The roster
+  (and the loop-cap message's "available tools") now also drops autonomy hard forbids
+  (`AutonomyController.forbids_tool`, the static forbid list, never a momentary pause), for every caller.
 - **Every spawned llama-cpp-server requires a key, solo included** (security; [#1314](https://github.com/dennys246/Maxim/issues/1314),
   owner decisions 2026-10-20). Since 1.3.2 only a leader's server was keyed (with the mesh key). A solo's bound loopback with
   no key, so any local process or user on a shared host could use its inference, and a stale tunnel ingress to its port

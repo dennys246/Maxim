@@ -177,12 +177,15 @@ class TestRosterAdvertisesOnlyPermittedTools:
 
         from tests.unit._loop_source import loop_source
 
-        assert "available_tools = [t for t in available_tools if executor.permits(t)]" in loop_source()
+        assert "available_tools = _advertisable_tools(available_tools, executor, autonomy_controller)" in loop_source()
+        assert "executor.permits(t)" in inspect.getsource(agent_loop._advertisable_tools)  # #1412: the one filter
         # FUNCTION-SPECIFIC (kept on run_agentic_loop's body; a slice that moves either line updates it):
         src = inspect.getsource(agent_loop.run_agentic_loop)
         # The filter runs AFTER the roster is final (SEM union + Wire 3) and
         # BEFORE the descriptions are collected for the prompt.
-        assert src.index("executor.permits(t)") < src.index("last_surfaced_tools = list(available_tools)")
+        assert src.index("_advertisable_tools(available_tools") < src.index(
+            "last_surfaced_tools = list(available_tools)"
+        )
 
 
 class TestSimAgentsUntouched:

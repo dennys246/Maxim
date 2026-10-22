@@ -12,10 +12,6 @@ from __future__ import annotations
 import inspect
 from types import SimpleNamespace
 
-import pytest
-
-RED = pytest.mark.xfail(strict=True, reason="#1412 red gate: the roster ignores the autonomy forbid list")
-
 
 def _controller(forbidden: set[str]):
     from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SafetyConstraints
@@ -26,7 +22,6 @@ def _controller(forbidden: set[str]):
     )
 
 
-@RED
 def test_an_autonomy_forbidden_tool_is_not_advertised() -> None:
     from maxim.runtime import agent_loop
 
@@ -36,7 +31,6 @@ def test_an_autonomy_forbidden_tool_is_not_advertised() -> None:
     assert shown == ["respond", "read_file"]
 
 
-@RED
 def test_the_forbid_check_is_static_not_the_moment() -> None:
     """A pause blocks execution for now; it must not reshape the roster (the tool comes back when unpaused)."""
     ctrl = _controller({"bash"})
@@ -45,7 +39,6 @@ def test_the_forbid_check_is_static_not_the_moment() -> None:
     assert ctrl.forbids_tool("respond") is False
 
 
-@RED
 def test_both_roster_sites_in_the_loop_use_the_one_filter() -> None:
     """The prompt roster and the loop-cap message's "available tools" list: both advertise tools to the model."""
     from maxim.runtime import agent_loop
