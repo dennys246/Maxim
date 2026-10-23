@@ -245,6 +245,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A rejected tool call is fed back to the model; a Talk turn no longer idles to its timeout** ([#1413](https://github.com/dennys246/Maxim/issues/1413), found by maxim-pulse on the 1.3.3 candidate).
+  The hard-rejection branch booked the refusal but scheduled no follow-up, so the model got no next call, and in
+  Console Talk the turn waited out its 180 s with "(no reply — the turn timed out before finishing)". It now returns a
+  `refused` follow-up whose prompt says, outside the tool-output frame, that the tool was refused and did not run, so
+  the model re-plans with an allowed tool or replies (`runtime/tool_dispatch.py::book_hard_rejection`, moved out of
+  `run_agentic_loop`; the refusal is still booked to NAc). At most two in a row (owner decision 2026-10-22): the count
+  starts again at each new user input and after any action that ran; a third consecutive refusal records a blocked
+  action (`block_reason` "Rejected by autonomy: ...", through `InstrumentedExecutor.record_block`), which ends a Talk
+  turn at once with "(no reply — bash is not allowed here, …)". Every loop with a model: a sim or campaign now makes up
+  to two more LLM calls per refusal chain, and a third consecutive refusal appears as a blocked action in
+  `actions.jsonl` and the report; a scenario's `action_blocked` expectation now matches it too (set `reason_contains`
+  to require FearAgent). `aut_mode="substrate-primary"` has no model to re-plan and keeps the booking only. Guards:
+  `tests/unit/test_talk_rejection_1413_1414.py` (the real LLM-primary loop: the next submission carries the `refused`
+  follow-up; red on main) and its cap tests.
+- **One user input is observed once, not once per tick** ([#1414](https://github.com/dennys246/Maxim/issues/1414), found by maxim-pulse on the 1.3.3 candidate).
+  The user's `cli_input` stayed in `state.data` after its tick (`state.update` ignores an empty observation, and a
+  drained percept queue yields one), so `propose_intent` re-published it every tick and Console Talk re-captured one
+  observation as new memory every 0.5 s. `PerceptionAgent.propose_intent` now consumes it on the read that publishes
+  it: it outlives the delivering tick (the loop skips `propose_intent` while an LLM answer is pending) and is
+  published exactly once. No content dedupe (owner decision 2026-10-22): a user who says the same thing twice is
+  observed twice. Guard: `tests/unit/test_talk_rejection_1413_1414.py::test_one_input_is_published_once_while_an_llm_answer_is_pending`
+  (the real LLM-primary loop with the real PerceptionAgent; red on main, many Percepts; red on a per-tick drop, none).
 - **`maxim serve` no longer hangs up to 15 s on shutdown after a Console tab closes.** The `/ws` sender checked
   for a gone client only between waits, so a closed connection's handler lived until the next 15 s heartbeat, and
   uvicorn 0.40+ waits for it on SIGTERM. The sender loop (now `console/server.py::_pump_ws_events`) races each wait

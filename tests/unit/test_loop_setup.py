@@ -163,6 +163,7 @@ _UNPACK = {
     "_execute_and_learn": "execute_and_learn",
     "_book_refusal": "book_refusal",
     "_book_machine_refusal": "book_machine_refusal",
+    "_book_hard_rejection": "book_hard_rejection",
     "_tool_overlay": "tool_overlay",
 }
 

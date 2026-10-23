@@ -2158,6 +2158,8 @@ class PromptBuilder:
         if "<<TOOL_OUTPUT id=" in result:  # only where there IS a frame (not the legacy branches)
             result = f"{TOOL_OUTPUT_RULE}\n{result}"
 
+        if followup_type == "refused":
+            return self._build_refused_prompt(tool_name, original_query, result, tools=tools)
         if followup_type == "process" or not respond_ok:
             return self._build_process_prompt(tool_name, original_query, result, tools=tools)
         elif followup_type == "respond":
@@ -2222,6 +2224,34 @@ Based on these results, determine your next action:
 Respond with JSON:
 {{"action": {{"tool_name": "<next_tool>", "params": {{...}}}}, "confidence": 0.9, "reasoning": "your_reasoning"}}"""
 
+        own = build_own_tools_section(tools) if tools is not None else ""
+        return f"TOOL_PROMPT|{prompt}\n\n{own}" if own else f"TOOL_PROMPT|{prompt}"
+
+    def _build_refused_prompt(
+        self, tool_name: str, query: str, result: str, *, tools: set[str] | frozenset[str] | None = None
+    ) -> str:
+        """The follow-up after a hard rejection (#1413): the tool did NOT run, and the instruction to choose another
+        way is stated here, outside the tool-output frame (a framed instruction is data the model is told to ignore).
+        Like the process prompt, it names only the agent's tools and ends with its own tool list (#1042)."""
+        respond_ok = tools is None or "respond" in tools
+        reply = (
+            "use 'respond' to tell the user what you can do instead"
+            if respond_ok
+            else "say so with one of your tools (listed below)"
+        )
+        refused = f"'{tool_name}'" if tool_name else "your last tool"
+        prompt = f"""Your last action, {refused}, was REFUSED by the safety policy. It did not run, and it is not available here.
+
+Original request: "{query}"
+
+The refusal:
+{result}
+
+=== Instructions ===
+Do not propose {refused} again. Either choose one of your allowed tools that can answer the request, or {reply}.
+
+Respond with JSON:
+{{"action": {{"tool_name": "<tool>", "params": {{...}}}}, "confidence": 0.9, "reasoning": "your_reasoning"}}"""
         own = build_own_tools_section(tools) if tools is not None else ""
         return f"TOOL_PROMPT|{prompt}\n\n{own}" if own else f"TOOL_PROMPT|{prompt}"
 

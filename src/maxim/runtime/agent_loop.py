@@ -28,7 +28,7 @@ from maxim.runtime.loop_setup import build_loop_run
 from maxim.runtime.loop_controller import _handle_planning_failure
 from maxim.runtime.loop_substrate import substrate_tick
 from maxim.runtime.loop_planning import drain_approved
-from maxim.runtime.loop_perception import perceive
+from maxim.runtime.loop_perception import perceive, take_observation
 
 # Module reference, not a name import: a test that patches the leaf also reaches the loop's call.
 from maxim.runtime import substrate_proposal as _sp
@@ -1073,6 +1073,7 @@ def run_agentic_loop(
     _planning_liveness_on = run.planning_liveness_on
     _execute_and_learn, _book_refusal = run.execute_and_learn, run.book_refusal
     _book_machine_refusal, _tool_overlay = run.book_machine_refusal, run.tool_overlay
+    _book_hard_rejection = run.book_hard_rejection
 
     # Mutable-container aliases — safe because in-place mutation is shared.
     # State variables (pending_proposal, pending_action_followup, etc.) use
@@ -1177,8 +1178,7 @@ def run_agentic_loop(
         # ─────────────────────────────────────────────────────────────────
         # 1. PERCEPTION — via SimulationAdapter or environment
         # ─────────────────────────────────────────────────────────────────
-        observation = sim.next_observation(environment, default_network)
-        state.update(observation)
+        observation = take_observation(sim=sim, ctrl=ctrl)
 
         # ─────────────────────────────────────────────────────────────────
         # 1.1-1.16 IMAGINATION, AUTO-SENSE, AUDIO ORIENTATION (runtime/loop_perception.py)
@@ -1442,6 +1442,7 @@ def run_agentic_loop(
             # loop, we must cancel the pending followup so the new input
             # gets submitted to the LLM instead.
             if not cli_text.startswith("[ACTION_FOLLOWUP"):
+                ctrl.note_user_input(cli_text)  # a new user turn, whatever its channel (#1413)
                 if ctrl.pending_action_followup:
                     _preempted_tool = ctrl.pending_action_followup.tool
                     ctrl.pending_action_followup = None
@@ -2284,35 +2285,15 @@ def run_agentic_loop(
                             sim.log("PIPELINE", f"Auto-approved (non-interactive): {tool_name}")
 
                         ctrl.pending_confirmation = _pending
-                else:
-                    # Hard rejection - tool not allowed
-                    autonomy_controller.log_action(
-                        action_type="rejected",
+                else:  # Hard rejection: booked, then fed back to the model or the turn ends (#1413, tool_dispatch)
+                    _rejected = _book_hard_rejection(
+                        proposal=ctrl.pending_proposal,
                         action=action,
-                        reasoning=f"Rejected: {reason}",
-                        mode=operational_mode(executor, state),
+                        reason=reason,
                         confidence=confidence,
-                    )
-                    # Record rejection so LLM knows not to re-propose
-                    rejection_msg = f"Rejected by autonomy: {reason}"
-                    _rec_outcome(
-                        agent_id=_loop_agent_id,
-                        tool_name=action.get("tool_name", "unknown"),
-                        success=False,
-                        result_summary=None,
-                        error=rejection_msg,
-                        reasoning=ctrl.pending_proposal.reasoning or "",
-                        recent_outcomes=recent_outcomes,
-                        max_recent=max_recent_outcomes,
-                        llm_worker=llm_worker,
-                        context_pool=context_pool,
-                        nac=_loop_nac,
                         active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
-                        cluster_id=ctrl.pending_proposal.cluster_id,
-                        clusters=ctrl.pending_proposal.clusters,
-                        bridge_booked=None,  # the tool never ran: nothing was bridge-booked
                     )
-                    logger.info("Hard rejection recorded for LLM: %s", rejection_msg)
+                    ctrl.pending_action_followup = _rejected or ctrl.pending_action_followup
                 ctrl.pending_proposal = None
 
         # ─────────────────────────────────────────────────────────────────

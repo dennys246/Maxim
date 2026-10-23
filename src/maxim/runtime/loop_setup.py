@@ -50,7 +50,14 @@ from typing import TYPE_CHECKING, Any
 from maxim.runtime import tool_dispatch as _td
 from maxim.runtime.bio_integration import start_bio_session
 from maxim.runtime.loop_state import _persist_state_json, run_mode, tool_description_overlay
-from maxim.runtime.tool_dispatch import book_machine_refusal, book_refusal, execute_and_learn, safe_agent_name
+from maxim.runtime.loop_types import ActionFollowup
+from maxim.runtime.tool_dispatch import (
+    book_hard_rejection,
+    book_machine_refusal,
+    book_refusal,
+    execute_and_learn,
+    safe_agent_name,
+)
 from maxim.utils.logging import log_swallowed_exception
 
 # The setup logs as the agent loop always has: the SAME logger object as ``agent_loop.logger`` (logging
@@ -112,6 +119,9 @@ class LoopRun:
     # ``tool_dispatch.book_machine_refusal`` likewise (#1085): no NAc and no situation, by signature; callers pass
     # ``tool_name``, ``error``, ``reasoning``.
     book_machine_refusal: Callable[..., None]
+    # ``tool_dispatch.book_hard_rejection`` likewise (#1413): callers pass ``proposal``, ``action``, ``reason``,
+    # ``confidence`` and ``active_goal``, and assign the follow-up it returns (the mode is read inside, #963).
+    book_hard_rejection: Callable[..., ActionFollowup | None]
     # The agent's own tool descriptions over the builtins (#1260), from its registry, read once here: the prompt's
     # tool section reads it, and ``execute_and_learn`` has it bound (``overlay=``) for the follow-up type.
     tool_overlay: Mapping[str, Mapping[str, Any]]
@@ -440,6 +450,22 @@ def _bind_book_machine_refusal(
     )
 
 
+def _bind_book_hard_rejection(
+    ctrl: LoopController, *, agent_id: str, rec_outcome: Callable[..., Any], nac: Any, aut_mode: str
+) -> Callable[..., ActionFollowup | None]:
+    """The run's ``tool_dispatch.book_hard_rejection`` with every per-run argument bound (#1413): the controller (and
+    its autonomy controller, the run's), the recorder, the hub ``agent_id``, the run's NAc and its mode (the blocked record goes through ``ctrl.executor``)."""
+    return functools.partial(
+        book_hard_rejection,
+        ctrl=ctrl,
+        autonomy_controller=ctrl.autonomy_controller,
+        rec_outcome=rec_outcome,
+        agent_id=agent_id,
+        nac=nac,
+        aut_mode=aut_mode,
+    )
+
+
 def build_loop_run(
     *,
     agent: Any,
@@ -605,6 +631,9 @@ def build_loop_run(
     )
     _book_refusal = _bind_book_refusal(ctrl, agent_id=_loop_agent_id, rec_outcome=_rec_outcome, nac=_loop_nac)
     _book_machine_refusal = _bind_book_machine_refusal(ctrl, agent_id=_loop_agent_id, rec_outcome=_rec_outcome)
+    _book_hard_rejection = _bind_book_hard_rejection(
+        ctrl, agent_id=_loop_agent_id, rec_outcome=_rec_outcome, nac=_loop_nac, aut_mode=aut_mode
+    )
 
     return LoopRun(
         executor=executor,
@@ -633,5 +662,6 @@ def build_loop_run(
         execute_and_learn=_execute_and_learn,
         book_refusal=_book_refusal,
         book_machine_refusal=_book_machine_refusal,
+        book_hard_rejection=_book_hard_rejection,
         tool_overlay=_tool_overlay,
     )

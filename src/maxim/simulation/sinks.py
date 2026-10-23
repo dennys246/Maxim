@@ -182,7 +182,8 @@ class RecordingSink:
             return list(self._actions)
 
     def find_blocked(self, tool_pattern: str | None = None, reason_contains: str | None = None) -> list[ActionRecord]:
-        """Find actions that were blocked by FearAgent."""
+        """Find blocked actions: by FearAgent, or by autonomy at a turn's rejection cap (#1413, ``block_reason``
+        "Rejected by autonomy: ..."). ``reason_contains`` tells them apart."""
         import re
 
         results = []

@@ -67,7 +67,24 @@ def _describe_silent_turn(turn: dict[str, Any]) -> str:
     """
     if turn.get("timed_out"):
         return "(no reply — the turn timed out before finishing)"
-    failed = _failed_actions(turn)
+    refused_records = [
+        a
+        for a in turn.get("actions") or []
+        if getattr(a, "blocked", False) and str(getattr(a, "block_reason", "") or "").startswith("Rejected by autonomy")
+    ]
+    refused = [str(getattr(a, "tool_name", "?")) for a in refused_records]
+    if refused and len(refused) == len(turn.get("actions") or []):  # every action refused by autonomy (#1413): say so
+        joined = ", ".join(dict.fromkeys(refused))
+        return f"(no reply — {joined} is not allowed here, and the model did not choose another way to answer)"
+    # Per action record, not per name: a tool that really failed and was later refused stays in "failed".
+    failed = _failed_actions(
+        {"actions": [a for a in turn.get("actions") or [] if not any(a is r for r in refused_records)]}
+    )
+    if refused and failed:  # a mixed turn: never call a refused tool "failed"
+        return (
+            f"(no reply — {', '.join(dict.fromkeys(failed))} failed and {', '.join(dict.fromkeys(refused))} "
+            "is not allowed here, so the turn produced no answer)"
+        )
     names = _action_names(turn)
     if failed:
         joined = ", ".join(dict.fromkeys(failed))

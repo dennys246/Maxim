@@ -145,6 +145,11 @@ class LoopController:
         self.pending_next_actions: list[dict[str, Any]] = []
         self.pending_plan_proposal: LLMProposal | None = None
         self.pending_action_followup: ActionFollowup | None = None
+        # #1413: the rejection follow-ups the current user turn has had (``tool_dispatch.book_hard_rejection``) and
+        # that turn's input. A turn starts when a fresh user input arrives (``note_user_input``), never by comparing
+        # proposal text: a repeated utterance is a new turn, and deliberated proposals carry no input.
+        self.rejection_turn: str | None = None
+        self.rejection_followups: int = 0
         # A proposal parked for the user's yes/no (#1133: typed, on the controller, off ``state.data``).
         self.pending_confirmation: PendingConfirmation | None = None
         self.pending_prefetch: Any | None = None
@@ -179,6 +184,11 @@ class LoopController:
         # ── Default Network ──────────────────────────────────────────────
         self.dn_ctrl = DefaultNetworkController(default_network)
         self.dn_enabled = self.dn_ctrl.enabled
+
+    def note_user_input(self, text: str) -> None:
+        """A fresh user input arrived, by any channel (the observation, the interactive CLI, voice, the API seed):
+        a new turn, so its rejection count starts again (#1413). Called where the loop settles the tick's input."""
+        self.rejection_turn, self.rejection_followups = text, 0
 
     # ── Pending proposal (planning-liveness recovery point) ──────────────
 

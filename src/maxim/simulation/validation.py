@@ -3,7 +3,8 @@
 Checks post-run state against scenario-defined expectations:
 
 Behavioral:
-- action_blocked: FearAgent blocked a tool call
+- action_blocked: a tool call was blocked (by FearAgent, or by autonomy at a turn's rejection cap, #1413;
+  set reason_contains to require one)
 - action_taken: A specific tool was called with matching output
 - memory_formed: Hippocampus contains a memory with given content
 - pipeline_continued: Pipeline didn't halt after a specific percept
@@ -131,7 +132,8 @@ def validate_expectations(
 
 
 def _check_action_blocked(exp: Expectation, sink: RecordingSink) -> ExpectationResult:
-    """Check that FearAgent blocked an action matching the criteria."""
+    """Check that an action matching the criteria was blocked: by FearAgent, or by autonomy at a turn's rejection cap
+    (#1413). ``reason_contains`` requires one of them."""
     blocked = sink.find_blocked(
         tool_pattern=exp.tool_pattern,
         reason_contains=exp.reason_contains,
