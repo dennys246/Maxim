@@ -100,6 +100,26 @@ class TestAgentConfig:
             maxim.create.agent("team:alpha", persistence_dir=str(tmp_path / "home"))
         assert not (tmp_path / "home").exists()
 
+    def test_build_bio_stack_refuses_a_colon_id_without_an_agent_config(self, tmp_path):
+        """The Minecraft harness, the robot runtime and the scripts name an agent through
+        ``build_bio_stack(agent_id=)`` with no ``AgentConfig``; the same rule holds there."""
+        from maxim.exceptions import InvalidAgentIdError
+        from maxim.runtime.bio_stack import build_bio_stack
+
+        with pytest.raises(InvalidAgentIdError, match="build_bio_stack"):
+            build_bio_stack(agent_id="team:alpha", persistence_dir=tmp_path / "home")
+        assert not (tmp_path / "home").exists()
+
+    def test_one_agent_id_rule_for_nac_and_hivemind(self):
+        """NAc owns the key format, so the rule is defined once there and hivemind re-exports it."""
+        from maxim.decisions import nac
+        from maxim.hivemind import entry_index, merge
+
+        assert entry_index.is_agent_id is nac.is_agent_id
+        assert merge.NAC_KEY_SEP is nac.NAC_KEY_SEP
+        with pytest.raises(ValueError, match="agent_id"):
+            nac.NAc().credit_node("x\x1fy", "node", 0.5)
+
 
 # ---------------------------------------------------------------------------
 # AgentFactory

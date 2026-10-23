@@ -33,10 +33,11 @@ from pathlib import Path
 from typing import Any, Literal
 
 from maxim.runtime.config_loader import resolve_hippocampus_memory_kwargs, resolve_memory_strategy
+from maxim.decisions.nac import require_agent_id
 
 from maxim.agents.permissions import AgentPermissions
 
-from maxim.exceptions import InvalidAgentIdError, StoreOverwriteRefused
+from maxim.exceptions import StoreOverwriteRefused
 
 log = logging.getLogger(__name__)
 
@@ -109,16 +110,9 @@ class AgentConfig:
     on_corrupt: Literal["warn", "raise"] = "warn"
 
     def __post_init__(self) -> None:
-        # The one definition of a usable agent id lives with the keys it must fit (hivemind's
-        # ``is_agent_id``); NAc applies the same rule on every write and raises. Refusing here
-        # keeps a name NAc cannot key from building an agent whose credit is silently lost.
-        from maxim.hivemind.entry_index import is_agent_id
-
-        if not is_agent_id(self.agent_id):
-            raise InvalidAgentIdError(
-                f"AgentConfig.agent_id must be a non-empty string without ':' or '\\x1f' "
-                f"(memory keys split on them), got {self.agent_id!r}"
-            )
+        # Refused where the agent is named, before any home is built: NAc refuses a key separator
+        # on every credit write, and the reaction path reports that only at DEBUG.
+        require_agent_id(self.agent_id, where="AgentConfig.agent_id")
         if self.on_corrupt not in ("warn", "raise"):
             raise ValueError(f"AgentConfig.on_corrupt must be 'warn' or 'raise', got {self.on_corrupt!r}")
 

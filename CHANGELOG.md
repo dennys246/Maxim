@@ -248,13 +248,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **An agent named with `:` is refused when it is named, not on every credit write** (found by the 1.3.3
   pre-release review). Since the NAc correctness work (below), `credit_node` and `update_eligibility` refuse an
   agent id holding `:`, but nothing upstream checked the name. So `maxim.create.agent("team:alpha")` built an agent
-  whose every eligibility update raised, and whose reaction-path credit was lost behind a DEBUG line. `AgentConfig`
-  now refuses an id that is empty or holds `:` or `\x1f` with the new `maxim.exceptions.InvalidAgentIdError` (an
-  `InvalidConfigError` and a `ValueError`), before any home is built. It uses hivemind's `is_agent_id`, the single
-  definition. **Breaking:** `create.agent`, `load.agent` and `AgentFactory` raise for such a name, including
-  `load.agent` on an agent saved under one by 1.3.2 or earlier, whose `reward_bias` keys were already misread on
-  reload. Guards: `tests/unit/test_agent_factory.py::TestAgentConfig::test_agent_id_with_a_key_separator_is_refused`
-  + `::test_create_agent_refuses_a_colon_name_before_building_a_home`.
+  whose every eligibility update raised, and whose reaction-path credit was lost behind a DEBUG line. An id that is
+  empty or holds `:` or `\x1f` is now refused with the new `maxim.exceptions.InvalidAgentIdError` (an
+  `InvalidConfigError` and a `ValueError`) where an agent is named, before any home is built: in `AgentConfig`
+  (`create.agent`, `load.agent`, `AgentFactory`, the console, the CLI, the orchestrator) and in
+  `build_bio_stack(agent_id=)` (the Minecraft harness, the robot runtime, the scripts).
+  - One definition: NAc owns the key format, so `decisions/nac.py` now defines `is_agent_id` and `NAC_KEY_SEP`,
+    and hivemind re-exports both. NAc's write check now refuses `\x1f` as well as `:`; it still accepts the empty
+    id, which the read paths and the encoder use for "no agent".
+  - **Breaking:** those entry points raise for such a name, including `load.agent` on an agent saved under one by
+    1.3.2 or earlier, whose `reward_bias` keys were already misread on reload. Rename its home directory to an id
+    without `:` to load it.
+  - Guards: `tests/unit/test_agent_factory.py::TestAgentConfig` (`test_agent_id_with_a_key_separator_is_refused`,
+    `test_create_agent_refuses_a_colon_name_before_building_a_home`,
+    `test_build_bio_stack_refuses_a_colon_id_without_an_agent_config`, `test_one_agent_id_rule_for_nac_and_hivemind`).
 - **A rejected tool call is fed back to the model; a Talk turn no longer idles to its timeout** ([#1413](https://github.com/dennys246/Maxim/issues/1413), found by maxim-pulse on the 1.3.3 candidate).
   The hard-rejection branch booked the refusal but scheduled no follow-up, so the model got no next call, and in
   Console Talk the turn waited out its 180 s with "(no reply — the turn timed out before finishing)". It now returns a
