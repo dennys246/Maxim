@@ -33,7 +33,8 @@ It adds one new workflow file and one new script, `check_release_tag.py` (design
    - `vendor_console_ui.py --verify-pin`, then `--from-pin`.
    - `rm -rf build dist *.egg-info`, then `python -I -m build`.
    - `twine check`, then `audit_release_build.py`.
-   - It writes `SHA256SUMS` and uploads `dist/` as an artifact.
+   - It records the wheel's and the sdist's sha256 as job outputs (immutable to later jobs, unlike a `SHA256SUMS`
+     file inside the artifact it vouches for) and uploads `dist/` as an artifact.
 2. **`smoke`** (`contents: read`). On a clean runner, outside the checkout, it creates a fresh venv, runs `pip install <the exact wheel>` and switches to `cd /tmp`, then with `python -I` asserts:
    - `__version__ == tag`;
    - `__all__` is non-empty;
@@ -42,9 +43,9 @@ It adds one new workflow file and one new script, `check_release_tag.py` (design
    - `python -m maxim --help` exits 0;
    - `maxim.__file__` is inside the venv.
 
-   It also re-verifies `SHA256SUMS`.
-3. **`publish`** (`environment: pypi`, `id-token: write` only). It **pauses for the owner's approval**, then re-verifies `SHA256SUMS` and uploads with `pypa/gh-action-pypi-publish` over OIDC. No token is stored anywhere. The job runs only on a tag push, never on dispatch.
-4. **`github-release`** (`contents: write`). It runs `gh release create v<X> --verify-tag`, with notes from `docs/announcements/release_<X>.md` plus the audit's `vendored console:` line, and attaches the wheel, the sdist and `SHA256SUMS`. That is what `audit_release_tags.py --check-releases` asserts.
+   It also re-verifies both files against the build job's digest outputs.
+3. **`publish`** (`environment: pypi`, `id-token: write` only). It **pauses for the owner's approval**, then re-verifies both files against the build job's digests and uploads with `pypa/gh-action-pypi-publish` over OIDC. No token is stored anywhere. The job runs only on a tag push, never on dispatch.
+4. **`github-release`** (`contents: write`). It runs `gh release create v<X> --verify-tag`, with notes from `docs/announcements/release_<X>.md` plus the audit's `vendored console:` line, and attaches the wheel and the sdist only (a third asset would fail the audit: "not a file PyPI serves"). That is what `audit_release_tags.py --check-releases` asserts.
 
 **#938.** `release-build`'s nightly step gains `if: github.event_name == 'pull_request'`. Main's push and nightly runs therefore stop going red between a release merge and its tag. The job itself keeps no job-level `if:`, because it is a required check.
 
@@ -63,7 +64,7 @@ It adds one new workflow file and one new script, `check_release_tag.py` (design
 | Who pushed the tag | Anyone with write access | `v*` ruleset (create, update and delete restricted; owner bypass) + a verified signature + the environment reviewer |
 | The tag's commit | A branch commit not on main (unreviewed code) | Ancestor-of-`origin/main` check |
 | A re-pointed tag | Force-moved after the build started | The ruleset blocks updates. The checkout uses `github.sha`, and every job reuses that sha |
-| The artifact between jobs | Replaced in the artifact store | Built in one job; `SHA256SUMS` re-verified in `smoke` and `publish`. The artifact store is scoped to the run |
+| The artifact between jobs | Replaced in the artifact store | Built in one job; both digests, carried as job outputs, re-verified in `smoke` and `publish`. The artifact store is scoped to the run |
 | The nightlies | A green run on another commit | `--at <tag commit>` |
 | The nightlies | Unreadable | Exit 2 refuses |
 | The console bundle | Stale, or not the pinned tag | R4 (`--verify-pin`, `--from-pin`, the audit's tree digest) |
@@ -86,7 +87,7 @@ It adds one new workflow file and one new script, `check_release_tag.py` (design
 - `environment: pypi` on `publish`;
 - the publish `if:`;
 - sha-pinned actions;
-- the step order (verify-pin → from-pin → build → audit → `SHA256SUMS`);
+- the step order (verify-pin → from-pin → build → audit → digests);
 - the smoke assertions;
 - that no step uses a `PYPI_TOKEN` or `password:`.
 
@@ -144,8 +145,8 @@ environment and the ruleset in `check_repo_settings.py` is deferred to #1384; `c
   `git/tags/<tag object sha>` and requires `verified` with reason `valid`, the pinned tagger email, and a commit
   equal to `github.sha`. The checkout must also satisfy `rev-parse $GITHUB_REF^{commit} == $GITHUB_SHA`.
 - **SF10, pulse coupling.** The strict option was built (the default recommendation): `--verify-pin` runs in `build`
-  and again after approval, so a pulse release in the window blocks publishing until the pin moves. **Owner to
-  confirm.**
+  and again after approval, so a pulse release in the window blocks publishing until the pin moves. **Owner decision 2026-10-19:
+  strict.**
 - **SF11, sequencing for 1.3.3.**
   1. `release.yml` merges at or before the bump.
   2. The owner does the setup (environment, ruleset, publisher).

@@ -200,18 +200,51 @@ def _clamp_loaded(value: float, bounds: tuple[float, float], surface: str, count
     return clamped
 
 
-def _require_reward_bias_agent_id(agent_id: str, *, op: str) -> None:
-    """Refuse an ``agent_id`` containing ``:`` on the ``(agent_id, node_id)`` surfaces.
+#: Separator inside NAc's composite dict keys: the ``(agent_id, cluster_id, tool_signature)`` triple and the
+#: ``(agent_id, entity_class, failure_mode)`` pair persist as ``\x1f``-joined strings. NAc owns the key format,
+#: so the separator and the agent-id rule live here; hivemind imports both (it already loads this module).
+NAC_KEY_SEP = "\x1f"
 
-    ``reward_bias`` persists as ``"<agent_id>:<node_id>"`` and every reader
-    (``load_state``, hivemind ``entry_index`` / ``merge``) splits on the FIRST
-    ``:``. Node ids may contain ``:`` (event signatures such as ``tool:use``), so
-    the split is unambiguous only while agent ids do not; hivemind's
-    ``is_agent_id`` already refuses them. Held here so such a key is never
-    written, rather than re-encoding a key the bundle wire format freezes.
+
+def is_agent_id(value: Any) -> bool:
+    """A usable agent id: a non-empty string holding neither key separator.
+
+    ``reward_bias`` persists as ``"<agent_id>:<node_id>"`` and every reader (``load_state``, hivemind
+    ``entry_index`` / ``merge``) splits on the FIRST ``:``; the composite keys split on ``NAC_KEY_SEP``. Node
+    ids may contain ``:`` (event signatures such as ``tool:use``), so the split is unambiguous only while
+    agent ids hold neither. The one definition: NAc's writes, hivemind's readers, ``AgentConfig`` and
+    ``build_bio_stack`` all use it.
     """
-    if agent_id and ":" in agent_id:
-        raise ValueError(f"{op}: agent_id must not contain ':' (reward_bias keys split on it), got {agent_id!r}")
+    return isinstance(value, str) and bool(value) and ":" not in value and NAC_KEY_SEP not in value
+
+
+def require_agent_id(agent_id: Any, *, where: str) -> None:
+    """Refuse a NAMED agent's id that is not ``is_agent_id``, with ``InvalidAgentIdError``.
+
+    Called where an agent is named (``AgentConfig``) and where its bio stack is built (``build_bio_stack``,
+    which the sim, Minecraft and robot paths reach without an ``AgentConfig``), so a name NAc cannot key
+    fails before any home is built, not on the first credit write.
+    """
+    if not is_agent_id(agent_id):
+        from maxim.exceptions import InvalidAgentIdError
+
+        raise InvalidAgentIdError(
+            f"{where} must be a non-empty string without ':' or '\\x1f' (NAc keys split on them), "
+            f"got {agent_id!r}. An agent home saved under such a name must be renamed before it can load.",
+            context={"agent_id": agent_id, "where": where},
+        )
+
+
+def _require_reward_bias_agent_id(agent_id: str, *, op: str) -> None:
+    """Refuse an ``agent_id`` holding a key separator on the ``(agent_id, node_id)`` surfaces.
+
+    Held here so such a key is never written, rather than re-encoding a key the bundle wire format freezes.
+    An empty id is let through: it splits cleanly, and the read paths and tests use ``""`` as the
+    anonymous agent. A NAMED agent is refused an empty id where it is named (``AgentConfig``,
+    ``build_bio_stack``).
+    """
+    if agent_id and not is_agent_id(agent_id):
+        raise ValueError(f"{op}: agent_id must not contain ':' or '\\x1f' (NAc keys split on them), got {agent_id!r}")
 
 
 # Exp 37 cross-session graduation ablation arm 3 env var.

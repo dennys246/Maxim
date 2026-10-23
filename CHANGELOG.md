@@ -23,40 +23,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
+## [1.3.3] - 2026-10-24 — "Release pipeline"
 
-- **The wheel vendors maxim-pulse Console v0.4.2** (was v0.4.1; contract 0.6.0 unchanged; owner decision 2026-10-22).
-  Pulse #52 hides the Console's Models button, which listed the built-in catalog and changed nothing when clicked
-  (no model field reaches `/api/run`). A truthful model picker returns in 1.3.4 ([#1418](https://github.com/dennys246/Maxim/issues/1418)).
-  `scripts/console_ui_pin.json` pins tag v0.4.2 at commit `bcd0d1e`, asset sha256 `dbdd86ba…`.
-- **The model is never shown a tool the autonomy controller forbids** ([#1412](https://github.com/dennys246/Maxim/issues/1412),
-  found by maxim-pulse on the 1.3.3 candidate). Console Talk forbids every non-conversational tool through
-  `SafetyConstraints.forbidden_tools`, but the prompt's roster was filtered only by the executor's mode and
-  allow/deny list (bugs ledger D82), so Talk was offered `bash`, chose it to fetch news, and was refused. The roster
-  (and the loop-cap message's "available tools") now also drops autonomy hard forbids
-  (`AutonomyController.forbids_tool`, the static forbid list, never a momentary pause), for every caller.
-  - One gate: the loop wires the forbid list into the executor (`Executor.set_forbid_source`), so `permits`, the
-    roster and the executor's "Did you mean" / "Available tools" hints for an unknown tool all agree.
-  - Prompt change for every caller: the DEFAULT forbid list's `execute_file` (always refused, even at AUTONOMOUS)
-    is no longer advertised, in sims, coding-world and campaign runs and in `singularity` mode. Account for it when
-    comparing prompts across versions.
-- **A config write in a running `maxim serve` is seen by the next router build** ([#1411](https://github.com/dennys246/Maxim/issues/1411),
-  found by maxim-pulse on the 1.3.3 candidate). A Console talk that failed before setup ran the lane env projection
-  (`config.json` → `MAXIM_LANE_*`) with nothing configured, and that projection ran once per process, so the
-  `/api/setup/mesh` that followed was never seen: talk kept failing "No LLM backend available" until a restart.
-  The projection now records every env var it writes; a config write (`invalidate_config_cache`, which every
-  `config_writer` write calls) moves a generation counter, and the next projection restores exactly its own writes
-  (where they still hold the value it wrote) and projects the new config. An operator's env value is never touched.
-  - The persisted local-model restore, the pre-upgrade pin and the CLOUD-cap bump are recorded the same way, so a box
-    that once ran `--llm` no longer keeps its local profile after a mesh setup (which cleared the new leader URL).
-  - A live Console talk loop is rebuilt after a config write, so switching leaders re-routes Talk without a restart.
-  - The projection runs under a lock. A config write from another process (`maxim config set` while `maxim serve`
-    runs) still needs a restart.
-- **Every spawned llama-cpp-server requires a key, solo included** (security; [#1314](https://github.com/dennys246/Maxim/issues/1314),
+The release-pipeline and pulse-seam release: the fixes maxim-pulse found, the Console's live stream from a clean
+install, and the first release CI publishes, with **no new behavioural claim**. Breaking in places, but a patch
+release by owner decision (2026-10-23): each break below is marked and names its migration.
+- **Read the Security section first.** Every spawned llama-cpp-server now requires a key, solo included (#1314;
+  upgrade every maxim on a host together). The agent can no longer change the operator's internet switch (#1345),
+  the file tools refuse git configuration (#957), and sim reports drop endpoint paths and credentials (#997).
+- **Behaviour changes, each with what to do:** NAc no longer forgets while switched off (opt back in with
+  `NACConfig(offline_wall_decay=True)`; `apply_decay=` is deprecated, removed in 1.5.0); a missing model downloads
+  only with consent (`maxim config set llm.auto_download true`); `--clear-memory` clears the data home and asks
+  first (`--yes` off a terminal); a benchmark passes only strictly (`cognitive_suite` cannot pass yet); a refused
+  tool call is fed back to the model, so a sim can make up to two more LLM calls per refusal chain; an agent id
+  holding `:` is refused when the agent is named.
+- **The Console:** `pymaxim[console]` now installs `websockets`, so `/ws` works from a clean install (#1347).
+  Piper speaks again (1.3.2's "verified Piper voice provisioning" overclaimed; corrected below), and pairing arms
+  only on a voice that speaks. Talk is offered only the tools it may use, and picks up a setup change made in the same `maxim serve`. The wheel
+  vendors maxim-pulse v0.4.2 (1.3.2 shipped v0.4.0), contract 0.6.0; typed payloads (R3) slipped to 1.3.4.
+- **Release integrity:** the vendored Console must be the pinned, newest pulse tag (R4); the extras run against
+  their real libraries nightly (R2); and 1.3.3 is published from a signed tag through PyPI trusted publishing.
+- **Evidence:** no ledger row moved. T1-2 (Exp 37) ships STALE under the committed exception `release-1.3.3-T1-2`.
+- **Open issues:** 118 at `v1.3.2`, 162 at this cut. Announcement: `docs/announcements/release_1_3_3.md`.
+
+### Security
+
+- **Every spawned llama-cpp-server requires a key, solo included** (breaking, security; [#1314](https://github.com/dennys246/Maxim/issues/1314),
   owner decisions 2026-10-20). Since 1.3.2 only a leader's server was keyed (with the mesh key). A solo's bound loopback with
   no key, so any local process or user on a shared host could use its inference, and a stale tunnel ingress to its port
   would expose it.
-  - A non-leader's server now gets a per-host key, `~/.config/maxim/llm_server_key` (0600), created on first start under a
+  - A non-leader's server now gets a per-host key, `~/.config/maxim/llm_server_key` (0600; POSIX,
+    `%APPDATA%\maxim\llm_server_key` on Windows), created on first start under a
     lock; a file that exists but is unusable, or a config directory that cannot be written, refuses with the fix.
   - A 401 to the key a server was spawned with is no longer "ready" or "reusable": the start fails at once, naming a role
     mismatch, a rotated mesh key or a foreign server. A server answering without a key (an older maxim's) is refused;
@@ -69,17 +66,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - To replace the local key, remove `llm_server_key`; the next start generates a new one. A hot-swap keeps the running
     server's key.
   - Cross-version: an OLDER maxim on the same host reuses the keyed server and gets 401s on every call. Upgrade both.
-
-- **A sim report no longer records an endpoint's credentials, path or query** (security;
+  - **Migration:** upgrade every maxim on a host together; stop any llama-cpp-server an older maxim started (the next
+    start spawns a keyed one); set `MAXIM_LANE_<TIER>_REMOTE_API_KEY` for a lane you configured by hand to a server on
+    this host (`maxim doctor` prints the command). A container with a read-only home needs a writable
+    `~/.config/maxim` for the key file.
+- **A sim report no longer records an endpoint's credentials, path or query** (security, persisted-format change;
   [#997](https://github.com/dennys246/Maxim/issues/997), owner decision 2026-10-20).
   - `report.json`'s `language_endpoint` / `aut_endpoint` keep `scheme://host[:port]` only: `http://127.0.0.1:8100`,
-    not `http://127.0.0.1:8100/v1`. The same rule applies to the B0 provenance (`llm_calls` entry endpoints,
+    not `http://127.0.0.1:8100/v1`; a script that parsed the path out of those fields must stop. The same rule applies to the B0 provenance (`llm_calls` entry endpoints,
     `leader_disk_heads` keys, `sampling_problems`) and to URLs inside `provider_failures[*].last_error`.
   - The port is kept so `scripts/o19_verdict.py` C4 can still tell two local servers apart; it reduces both sides,
     so earlier records compare as before.
   - No record producer may read the process's raw argv (an AST guard over `simulation/` and every
     provenance-stamping script). `$HOME` paths and `actions.jsonl` are #1404.
-- **The file tools refuse to write git configuration** (security; [#957](https://github.com/dennys246/Maxim/issues/957),
+- **The file tools refuse to write git configuration** (behaviour change, security; [#957](https://github.com/dennys246/Maxim/issues/957),
   owner decision 2026-09-28: contain and say what remains).
   - A model that can write a repository's git configuration can make host git run code: clean/process filters
     (`.gitattributes` plus `filter.<name>.clean=<cmd>` in `.git/config`) run on `git diff` and `git add`, and no git
@@ -90,7 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     directory that already looks like a git dir (`HEAD` + `objects/`: a sibling `--separate-git-dir`, `worktrees/<n>`,
     a bare repository), and the user- and installation-level git config host git reads (`~/.gitconfig`,
     `$XDG_CONFIG_HOME/git/`, Homebrew's `etc/gitconfig`; compared case-folded). `.gitignore`, `.github/` and
-    `.gitattributes` stay writable.
+    `.gitattributes` stay writable. A workflow that had the agent edit `.git/config` or `~/.gitconfig` breaks.
   - Host git calls also pass `-c safe.bareRepository=explicit`: a git dir the model assembles file by file (no single
     write looks like one) is refused by git itself, not used as a bare repository (git 2.38 or later; older git ignores the key, so there the
     from-scratch case stays open).
@@ -126,12 +126,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     on every request. `enabled: true` is refused unless internet is already on. The operator's file is written only
     by `maxim.utils.set_internet_access`, whose default `source` is now `"operator"` (it was `"tool"`); a legacy
     agent-written "off" is named in the startup WARNING. `InternetAccessTool` lost its `set_internet_access_fn=`
-    constructor argument (no caller remained).
+    constructor argument (breaking: API; no caller in pymaxim remained).
   - Still open (fails closed): the prompt keeps offering the internet tools after a lower, and `state.data`'s
     `internet_access` is a launch-time snapshot ([#1399](https://github.com/dennys246/Maxim/issues/1399)).
   - Design: [docs/plans/internet_toggle_session_gate.md](docs/plans/internet_toggle_session_gate.md) (two adversarial
     passes). Guard: `tests/unit/test_internet_toggle_session_1345.py` (three strict red gates flipped in place, each
     mechanism deletion-proven) + the `_isolate_maxim_internet_lowered_env` conftest scrub.
+
+### Changed
+
+- **The wheel vendors maxim-pulse Console v0.4.2** (contract 0.6.0, unchanged; owner decision 2026-10-22). 1.3.2 shipped v0.4.0; v0.4.1 was vendored on main
+  and never released, so an upgrade from 1.3.2 also gets v0.4.1's fixes.
+  Pulse #52 hides the Console's Models button, which listed the built-in catalog and changed nothing when clicked
+  (no model field reaches `/api/run`). A truthful model picker returns in 1.3.4 ([#1418](https://github.com/dennys246/Maxim/issues/1418)).
+  `scripts/console_ui_pin.json` pins tag v0.4.2 at commit `bcd0d1e`, asset sha256 `dbdd86ba…`.
+  Typed console payloads (R3, contract 0.7.0, [#1336](https://github.com/dennys246/Maxim/issues/1336)) slipped to 1.3.4;
+  the console contract stays 0.6.0.
+- **The model is never shown a tool the autonomy controller forbids** (behaviour change, prompt; [#1412](https://github.com/dennys246/Maxim/issues/1412),
+  found by maxim-pulse on the 1.3.3 candidate). Console Talk forbids every non-conversational tool through
+  `SafetyConstraints.forbidden_tools`, but the prompt's roster was filtered only by the executor's mode and
+  allow/deny list (bugs ledger D82), so Talk was offered `bash`, chose it to fetch news, and was refused. The roster
+  (and the loop-cap message's "available tools") now also drops autonomy hard forbids
+  (`AutonomyController.forbids_tool`, the static forbid list, never a momentary pause), for every caller.
+  - One gate: the loop wires the forbid list into the executor (`Executor.set_forbid_source`), so `permits`, the
+    roster and the executor's "Did you mean" / "Available tools" hints for an unknown tool all agree.
+  - Prompt change for every caller: the DEFAULT forbid list's `execute_file` (always refused, even at AUTONOMOUS)
+    is no longer advertised, in sims, coding-world and campaign runs and in `singularity` mode. Account for it when
+    comparing prompts across versions.
+- **A config write in a running `maxim serve` is seen by the next router build** ([#1411](https://github.com/dennys246/Maxim/issues/1411),
+  found by maxim-pulse on the 1.3.3 candidate). A Console talk that failed before setup ran the lane env projection
+  (`config.json` → `MAXIM_LANE_*`) with nothing configured, and that projection ran once per process, so the
+  `/api/setup/mesh` that followed was never seen: talk kept failing "No LLM backend available" until a restart.
+  The projection now records every env var it writes; a config write (`invalidate_config_cache`, which every
+  `config_writer` write calls) moves a generation counter, and the next projection restores exactly its own writes
+  (where they still hold the value it wrote) and projects the new config. An operator's env value is never touched.
+  - The persisted local-model restore, the pre-upgrade pin and the CLOUD-cap bump are recorded the same way, so a box
+    that once ran `--llm` no longer keeps its local profile after a mesh setup (which cleared the new leader URL).
+  - A live Console talk loop is rebuilt after a config write, so switching leaders re-routes Talk without a restart.
+  - The projection runs under a lock. A config write from another process (`maxim config set` while `maxim serve`
+    runs) still needs a restart.
 - **A missing local model downloads only with consent, on every path** (behaviour change;
   [#1343](https://github.com/dennys246/Maxim/issues/1343)).
   - Two internal paths called `download_llm` directly and skipped the consent gate
@@ -177,8 +210,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `respond` ([#1394](https://github.com/dennys246/Maxim/issues/1394)). Owner decision 2026-10-19: ship strict now. The
     threshold result alone is the new `ModelResult.thresholds_passed` (saved in `benchmark_report.json`; a report
     saved before it reads its `passed` as the threshold result, which it was). The summary leads with the verdict:
-    `m: FAIL — expectations 2/3 met · thresholds PASS`.
-  - Guards: `tests/unit/test_benchmark_expectations_1310.py` (the shipped `quick_check` suite through the real
+    `m: FAIL — expectations 2/3 met · thresholds PASS`. The count of thresholds applied is
+    `ModelResult.thresholds_checked`, saved in `benchmark_report.json` (older reports load it as unknown), and
+    `summary.md` is written as UTF-8. The earlier "0/3 passed [PASS]" label fix
+    ([#1321](https://github.com/dennys246/Maxim/issues/1321)) is folded into this entry.
+  - Guards: `tests/unit/test_benchmark_runner.py` and `tests/unit/test_benchmark_expectations_1310.py` (the shipped `quick_check` suite through the real
     runner over a run that did the work: 0/3 before, 3/3 after, one of the three vacuous until #1391; three strict red gates for the verdict, flipped in
     place; each mechanism deletion-proven).
 - **`maxim --clear-memory` clears the data home, all of it, and asks first** (behaviour change;
@@ -203,15 +239,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     failed (it used to exit 0), 2 an unknown type or a refusal; nothing is deleted on 2.
   - Guards: `tests/unit/test_clear_memory_1337.py` (three strict red gates flipped in place, one of them the shipped
     CLI in a subprocess over stores written by the real writers; each mechanism deletion-proven).
-- **The 1.4.0 release gate bounds the decomposed functions at 1,000 lines, not 200** ([#1323](https://github.com/dennys246/Maxim/issues/1323), owner decision 2026-10-16).
-  - `start_simulation_mode`, `run_agentic_loop` and `execute_and_learn` must reach 1,000 lines or fewer, and so must
-    everything split or moved out of them and every def in their three files. Item `1323.functions-1000` holds them.
-  - The three 200-line entries in `scripts/release_gates.json` are retired, on the record. In
-    `scripts/lint_release_gates.py`, a retired function now leaves the gate with everything split out of it.
-  - Their function-length pins stay, so none may grow. Whether 1.5 targets 200, or about 500, is reassessed at the 1.4
-    release.
-  - Guards: `tests/unit/test_release_gate_function_ceiling.py` (a strict red gate until the bound is met) and
-    `tests/unit/test_lint_release_gates.py::test_a_retired_functions_split_out_leaves_the_gate_with_it`.
 - **A persisted NAc no longer forgets while the agent is switched off** (behaviour change; owner decision 2026-10-17,
   [experience_clock_decay.md](docs/plans/experience_clock_decay.md) S1, #1361).
   - `NAc.load()` and `NAc.load_safe()` restore every map exactly as saved, however much wall-clock time passed.
@@ -231,6 +258,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Guards: `tests/unit/test_experience_clock_decay.py::test_g1_a_week_switched_off_forgets_nothing_unless_opted_in`
     (S0's strict red gate, flipped in place) and `tests/unit/test_nac_persistence_decay.py`.
 
+### Changed — release integrity
+
+- **The wheel and sdist vendor only the pinned maxim-pulse Console** ([#1383](https://github.com/dennys246/Maxim/pull/1383), standard R4).
+  `scripts/console_ui_pin.json` pins the tag, commit, asset sha256 and tree digest; the release proves that pin is the
+  newest stable pulse tag for the backend contract, and `scripts/audit_release_build.py` refuses any other bundle.
+  1.3.2 had vendored v0.4.0 two days after v0.4.1 was tagged.
+- **1.3.3 is the first release CI publishes** ([#1372](https://github.com/dennys246/Maxim/issues/1372), [#1386](https://github.com/dennys246/Maxim/pull/1386)).
+  A signed annotated `v*` tag starts `.github/workflows/release.yml`. It checks a green nightly at that exact commit,
+  smoke-tests the exact wheel in a clean venv, waits for the owner's approval, then publishes through PyPI trusted
+  publishing (OIDC; no stored token) with PEP 740 attestations requested, and creates the GitHub Release from
+  `docs/announcements/release_1_3_3.md`. The release gate no longer reads `main` red between a release merge and its
+  tag (addressed in #1386; [#938](https://github.com/dennys246/Maxim/issues/938) closes when `main` stays green across this release).
+- **The 1.4.0 release gate bounds the decomposed functions at 1,000 lines, not 200** ([#1323](https://github.com/dennys246/Maxim/issues/1323), owner decision 2026-10-16).
+  - `start_simulation_mode`, `run_agentic_loop` and `execute_and_learn` must reach 1,000 lines or fewer, and so must
+    everything split or moved out of them and every def in their three files. Item `1323.functions-1000` holds them.
+  - The three 200-line entries in `scripts/release_gates.json` are retired, on the record. In
+    `scripts/lint_release_gates.py`, a retired function now leaves the gate with everything split out of it.
+  - Their function-length pins stay, so none may grow. Whether 1.5 targets 200, or about 500, is reassessed at the 1.4
+    release.
+  - Guards: `tests/unit/test_release_gate_function_ceiling.py` (a strict red gate until the bound is met) and
+    `tests/unit/test_lint_release_gates.py::test_a_retired_functions_split_out_leaves_the_gate_with_it`.
+
 ### Deprecated
 
 - **`NAc.load(apply_decay=...)` and `NAc.load_safe(apply_decay=...)`** emit a `DeprecationWarning` through 1.4.x and
@@ -239,13 +288,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the offline decay and `apply_decay=False` applies none, whatever the config. Without it, `NACConfig(offline_wall_decay=)`
   decides, and it defaults to off. The library's own observers (`maxim.load.nac`,
   `maxim.observe`, the session observer, the Exp 53b readout) no longer pass the keyword. The orchestrator's
-  `--resume-sim` restore still passes `apply_decay=False` until the experience-clock plan's S3a. **S3a must therefore
+  `--resume-sim` restore still passes `apply_decay=False` until the experience-clock plan's S3a, so every resume
+  emits this warning from pymaxim itself (shown under `-W default` or pytest); ignore it. **S3a must therefore
   land before any 1.5 cut**: at 1.5 that call raises, and the resume silently starts with an empty NAc. The strict
   red gate `tests/unit/test_nac_persistence_decay.py::test_the_resume_restore_still_loads_the_nac_at_1_5` holds this.
 
 ### Fixed
 
-- **A rejected tool call is fed back to the model; a Talk turn no longer idles to its timeout** ([#1413](https://github.com/dennys246/Maxim/issues/1413), found by maxim-pulse on the 1.3.3 candidate).
+- **An agent named with `:` is refused when it is named, not on every credit write** (breaking; found by the 1.3.3
+  pre-release review). Since the NAc correctness work (below), `credit_node` and `update_eligibility` refuse an
+  agent id holding `:`, but nothing upstream checked the name. So `maxim.create.agent("team:alpha")` built an agent
+  whose every eligibility update raised, and whose reaction-path credit was lost behind a DEBUG line. An id that is
+  empty or holds `:` or `\x1f` is now refused with the new `maxim.exceptions.InvalidAgentIdError` (an
+  `InvalidConfigError` and a `ValueError`) where an agent is named, before any home is built: in `AgentConfig`
+  (`create.agent`, `load.agent`, `AgentFactory`, the console, the CLI, the orchestrator) and in
+  `build_bio_stack(agent_id=)` (the Minecraft harness, the robot runtime, the scripts).
+  - One definition: NAc owns the key format, so `decisions/nac.py` now defines `is_agent_id` and `NAC_KEY_SEP`,
+    and hivemind re-exports both. NAc's write check now refuses `\x1f` as well as `:`; it still accepts the empty
+    id, which the read paths and the encoder use for "no agent".
+  - **Breaking:** those entry points raise for such a name, including `load.agent` on an agent saved under one by
+    1.3.2 or earlier, whose `reward_bias` keys were already misread on reload. Rename its home directory to an id
+    without `:` to load it.
+  - Guards: `tests/unit/test_agent_factory.py::TestAgentConfig` (`test_agent_id_with_a_key_separator_is_refused`,
+    `test_create_agent_refuses_a_colon_name_before_building_a_home`,
+    `test_build_bio_stack_refuses_a_colon_id_without_an_agent_config`, `test_one_agent_id_rule_for_nac_and_hivemind`).
+- **A rejected tool call is fed back to the model; a Talk turn no longer idles to its timeout** (behaviour change; [#1413](https://github.com/dennys246/Maxim/issues/1413), found by maxim-pulse on the 1.3.3 candidate).
   The hard-rejection branch booked the refusal but scheduled no follow-up, so the model got no next call, and in
   Console Talk the turn waited out its 180 s with "(no reply — the turn timed out before finishing)". It now returns a
   `refused` follow-up whose prompt says, outside the tool-output frame, that the tool was refused and did not run, so
@@ -258,14 +325,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `actions.jsonl` and the report; a scenario's `action_blocked` expectation now matches it too (set `reason_contains`
   to require FearAgent). `aut_mode="substrate-primary"` has no model to re-plan and keeps the booking only. Guards:
   `tests/unit/test_talk_rejection_1413_1414.py` (the real LLM-primary loop: the next submission carries the `refused`
-  follow-up; red on main) and its cap tests.
-- **One user input is observed once, not once per tick** ([#1414](https://github.com/dennys246/Maxim/issues/1414), found by maxim-pulse on the 1.3.3 candidate).
+  follow-up; red on main) and its cap tests. **For experiment comparisons:** action counts, LLM cost and blocked counts
+  in LLM-primary runs are not comparable to 1.3.2 and earlier.
+- **One user input is observed once, not once per tick** (behaviour change; [#1414](https://github.com/dennys246/Maxim/issues/1414), found by maxim-pulse on the 1.3.3 candidate).
   The user's `cli_input` stayed in `state.data` after its tick (`state.update` ignores an empty observation, and a
   drained percept queue yields one), so `propose_intent` re-published it every tick and Console Talk re-captured one
   observation as new memory every 0.5 s. `PerceptionAgent.propose_intent` now consumes it on the read that publishes
   it: it outlives the delivering tick (the loop skips `propose_intent` while an LLM answer is pending) and is
   published exactly once. No content dedupe (owner decision 2026-10-22): a user who says the same thing twice is
-  observed twice. Guard: `tests/unit/test_talk_rejection_1413_1414.py::test_one_input_is_published_once_while_an_llm_answer_is_pending`
+  observed twice. Console sessions now record far fewer memories per input, so their Hippocampus counts are not
+  comparable to 1.3.2. Guard: `tests/unit/test_talk_rejection_1413_1414.py::test_one_input_is_published_once_while_an_llm_answer_is_pending`
   (the real LLM-primary loop with the real PerceptionAgent; red on main, many Percepts; red on a per-tick drop, none).
 - **`maxim serve` no longer hangs up to 15 s on shutdown after a Console tab closes.** The `/ws` sender checked
   for a gone client only between waits, so a closed connection's handler lived until the next 15 s heartbeat, and
@@ -273,7 +342,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   against the receiver and ends at once. Found by #1347's real-uvicorn test, whose teardown took 15 s. Guard:
   `tests/unit/test_console_auth.py::test_ws_handler_returns_promptly_when_the_client_disconnects` (strict red gate,
   flipped in place; it drives the ASGI app directly, since Starlette's TestClient cancels instead of waiting).
-- **`pymaxim[console]` serves the Console's live stream: `/ws` upgrades from a clean install** ([#1347](https://github.com/dennys246/Maxim/issues/1347), reported by maxim-pulse).
+- **`pymaxim[console]` serves the Console's live stream: `/ws` upgrades from a clean install** (dependency change; [#1347](https://github.com/dennys246/Maxim/issues/1347), reported by maxim-pulse).
   - The extra installed plain `uvicorn`, which ships no WebSocket implementation, and no core dependency brings one, so
     `maxim serve` answered every `/ws` upgrade with 404 ("No supported WebSocket library detected"): no activity or
     thinking panels, no live health, no turn status. The extra now declares `websockets>=10.4,<18` (owner decision:
@@ -310,7 +379,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (#1332's shape) keeps the sign-in page on the paste path and is retried with backoff, warning once and then at
     DEBUG. `PiperTTS.synthesize` now raises `ValueError` on non-finite samples instead of letting piper's int16 cast
     turn them into silence. `is_ready()` returns that cached verdict and never synthesizes, since
-    `console/server.py::_pairing_of` calls it on every unauthenticated `/api/hello`.
+    `console/server.py::_pairing_of` calls it on every unauthenticated `/api/hello`. Users may see: a robot whose voice
+    loads but cannot speak now stays on the paste sign-in instead of offering a spoken code.
   - Guards: `tests/unit/test_tts_voice_provisioning.py::test_a_voice_that_loads_but_cannot_speak_never_arms`,
     `::test_the_provisioner_synthesizes_once_and_is_ready_never_synthesizes` (strict red gates, flipped in place) and
     `tests/unit/test_tts_real_piper.py::test_the_voice_provisioner_arms_on_a_voice_that_really_speaks`.
@@ -330,28 +400,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   loads without them, which is harmless: a missing key reads 0.0. "Zero is absent" holds only for `reward_bias`, as
   in the writers: a loaded positive fear clamps to a kept 0.0 key. In-range state round-trips unchanged. Guard:
   `tests/unit/test_nac_load_clamp_1102.py`.
-- **The SCN's coupled oscillator observes each tool outcome once, not twice** (NAc credit path, A2). With a
+- **The SCN's coupled oscillator observes each tool outcome once, not twice** (NAc credit path, [#1363](https://github.com/dennys246/Maxim/pull/1363)). With a
   temporal-credit distributor wired, `ToolPainBridge`'s persistent signature-keyed SCN entry and the distributor's
   per-event entry both called `SCN.register`, and each fed the oscillator. The bridge's entry now passes the new
   `register(..., observe_oscillator=False)` when a distributor is wired. The bins are unchanged: both entries stay,
   and the signature entry still persists across sessions. Guard: `tests/unit/test_nac_credit_path_a2.py`.
-- **A cluster bias's credit source no longer outlives the bias** (A2). The per-tick decay prune, the wall-clock decay
+- **A cluster bias's credit source no longer outlives the bias** ([#1363](https://github.com/dennys246/Maxim/pull/1363)). The per-tick decay prune, the wall-clock decay
   prune and `load_state` now drop `_cluster_reward_source` entries with no matching `_cluster_reward_bias`; a stale
   source turned a later credit from a different branch into `"mixed"` and narrated a bias that no longer existed.
   A loaded file with orphaned sources logs one warning with the count. Guard: `tests/unit/test_nac_credit_path_a2.py`.
-- **NAc's per-event outcome statistics are bounded by its links** (A2). When `_enforce_limits` evicts the last causal
+- **NAc's per-event outcome statistics are bounded by its links** ([#1363](https://github.com/dennys246/Maxim/pull/1363)). When `_enforce_limits` evicts the last causal
   link of an event signature, that signature's empty `_links` slot and its `_event_outcome_welford` state go with it,
   so they no longer grow with every signature ever seen. This also resets that signature's variance history:
   `get_action_risk_profile` restarts for it if it is booked again. Guard: `tests/unit/test_nac_credit_path_a2.py`.
-- **NAc correctness: non-finite credit, the session observer's decay, eligibility locking, per-tick decay
-  isolation and `reward_bias` keys** (PR A1).
+- **NAc correctness: non-finite credit, eligibility locking, per-tick decay
+  isolation and `reward_bias` keys** (behaviour change: new `ValueError`s for direct callers;
+  [#1365](https://github.com/dennys246/Maxim/pull/1365)).
   - Every NAc credit/update entry point (`credit_node`, `update_cluster_reward`, `credit_operant_reward`,
     `credit_goal`, `record_percept_valence`, `record_cluster_fear`, `update_eligibility`, `distribute_reward`)
     and `TemporalCreditDistributor.distribute` raise `ValueError` on a NaN/inf input. The clamps had stored a NaN
     reward as FULL aversion (`max(-cap, min(nan, cap)) == -cap`). On load a non-finite stored value is dropped
     with one warning: a stored NaN was never pruned and gave the widest threshold override.
-  - `maxim.session`'s observer loads NAc with `apply_decay=False`, like `maxim.load.nac` and `maxim.observe`:
-    observing a stale session no longer decays or prunes what it reports.
   - `TemporalCreditDistributor` reads traces through the new `NAc.eligibility_snapshot()`, copied under NAc's
     lock. It had iterated `nac._eligibility` under its own lock while `decay_eligibility` deleted keys, which
     raised "dictionary changed size during iteration". `NAc.decay_all` now takes the lock.
@@ -365,18 +434,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     never-read `NAc._last_decay_time` is deleted.
   - Guards: `tests/unit/test_nac_correctness_a1.py` +
     `tests/unit/test_loop_section_extraction.py::test_bio_tick_one_raising_decay_skips_none_of_the_others`.
-
-- **The benchmark summary no longer prints "0/3 passed [PASS]"** ([#1310](https://github.com/dennys246/Maxim/issues/1310)).
-  The verdict comes from the suite's metric thresholds (`ModelResult.passed`); the count is the scenarios'
-  expectations. Each now has its own label: `expectations 0/3 met · thresholds PASS`. A suite with no `scoring`
-  block (like `quick_check`), or whose threshold metrics were never measured, auto-passes, so it now prints
-  `thresholds none applied`; the count of thresholds actually applied is recorded as
-  `ModelResult.thresholds_checked` and saved in `benchmark_report.json` (older reports load it as unknown). Nothing
-  parses the line. *Superseded within [Unreleased] by the strict verdict above (owner decision 2026-10-17): `passed`
-  now also requires the expectations, no threshold applied is a FAIL, and `quick_check` carries its own threshold.* `summary.md` is now written as UTF-8. Guards: `tests/unit/test_benchmark_runner.py`
-  (`test_summary_labels_expectations_and_thresholds_separately`,
-  `test_summary_says_when_no_thresholds_were_checked`, `test_aggregation_records_how_many_thresholds_were_checked`,
-  `test_thresholds_checked_survives_save_and_load`).
 
 ## [1.3.2] - 2026-10-16 — "Decomposition"
 

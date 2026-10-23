@@ -327,6 +327,19 @@ class InvalidConfigError(ConfigurationError):
     pass
 
 
+class InvalidAgentIdError(InvalidConfigError, ValueError):
+    """An agent id that the memory keys cannot hold.
+
+    ``reward_bias`` persists as ``"<agent_id>:<node_id>"`` and the composite keys join on ``\\x1f``; every
+    reader splits on the first separator, so an id containing either (or an empty id) would be misread
+    as another agent. NAc refuses a key separator on its credit writes, so the id is refused where an agent
+    is named (``AgentConfig``, ``build_bio_stack``), before any home is built
+    (``decisions/nac.py::require_agent_id``). A ``ValueError`` too, for callers that caught the plain one.
+    """
+
+    pass
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Hardware Errors
 # ─────────────────────────────────────────────────────────────────────────────
@@ -432,6 +445,7 @@ __all__ = [
     "ComponentNotFoundError",
     "MissingConfigError",
     "InvalidConfigError",
+    "InvalidAgentIdError",
     # Hardware
     "HardwareError",
     "MotorError",

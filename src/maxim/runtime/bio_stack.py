@@ -181,6 +181,22 @@ def _restore_nac(nac: "NAc", p: Path) -> None:
             logger.error("NAc state at %s could not be read (%s); it is left untouched", p / "nac.json", e)
 
 
+def _migrate_legacy_hippocampus_file(p: Path | None) -> None:
+    """One-time migration: the CLI historically used "memories.json" for
+    hippocampus persistence. Standardize on "hippocampus.json" (which
+    the Reachy path already used). If the old file exists and the new
+    one doesn't, rename it so existing users don't lose data."""
+    if p is not None:
+        _old_hippo = p / "memories.json"
+        _new_hippo = p / "hippocampus.json"
+        if _old_hippo.exists() and not _new_hippo.exists():
+            try:
+                _old_hippo.rename(_new_hippo)
+                logger.info("Migrated hippocampus persistence: %s -> %s", _old_hippo, _new_hippo)
+            except OSError as e:
+                logger.warning("Failed to migrate hippocampus persistence: %s", e)
+
+
 def build_bio_stack(
     *,
     persistence_dir: Path | str | None = None,
@@ -272,28 +288,16 @@ def build_bio_stack(
             )
     """
     # -- Step 1: Core bio-systems ------------------------------------------
-    from maxim.decisions.nac import NAc, NACConfig
+    from maxim.decisions.nac import NAc, NACConfig, require_agent_id
     from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
     from maxim.similarity.ec import ECConfig, EntorhinalCortex
     from maxim.time.scn import SCN
 
+    require_agent_id(agent_id, where="build_bio_stack(agent_id=)")  # the paths that name no AgentConfig
     # `~` means home (#950): every path below derives from `p`, and the stores expand it themselves,
     # so an unexpanded `p` split an agent's files between $HOME and a literal ./~ .
     p = Path(persistence_dir).expanduser() if persistence_dir is not None else None
-
-    # One-time migration: the CLI historically used "memories.json" for
-    # hippocampus persistence. Standardize on "hippocampus.json" (which
-    # the Reachy path already used). If the old file exists and the new
-    # one doesn't, rename it so existing users don't lose data.
-    if p is not None:
-        _old_hippo = p / "memories.json"
-        _new_hippo = p / "hippocampus.json"
-        if _old_hippo.exists() and not _new_hippo.exists():
-            try:
-                _old_hippo.rename(_new_hippo)
-                logger.info("Migrated hippocampus persistence: %s -> %s", _old_hippo, _new_hippo)
-            except OSError as e:
-                logger.warning("Failed to migrate hippocampus persistence: %s", e)
+    _migrate_legacy_hippocampus_file(p)
 
     hippocampus = Hippocampus(
         config=HippocampusConfig(
