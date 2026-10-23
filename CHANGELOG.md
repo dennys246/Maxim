@@ -25,6 +25,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The wheel vendors maxim-pulse Console v0.4.2** (was v0.4.1; contract 0.6.0 unchanged; owner decision 2026-10-22).
+  Pulse #52 hides the Console's Models button, which listed the built-in catalog and changed nothing when clicked
+  (no model field reaches `/api/run`). A truthful model picker returns in 1.3.4 ([#1418](https://github.com/dennys246/Maxim/issues/1418)).
+  `scripts/console_ui_pin.json` pins tag v0.4.2 at commit `bcd0d1e`, asset sha256 `dbdd86ba…`.
+- **The model is never shown a tool the autonomy controller forbids** ([#1412](https://github.com/dennys246/Maxim/issues/1412),
+  found by maxim-pulse on the 1.3.3 candidate). Console Talk forbids every non-conversational tool through
+  `SafetyConstraints.forbidden_tools`, but the prompt's roster was filtered only by the executor's mode and
+  allow/deny list (bugs ledger D82), so Talk was offered `bash`, chose it to fetch news, and was refused. The roster
+  (and the loop-cap message's "available tools") now also drops autonomy hard forbids
+  (`AutonomyController.forbids_tool`, the static forbid list, never a momentary pause), for every caller.
+  - One gate: the loop wires the forbid list into the executor (`Executor.set_forbid_source`), so `permits`, the
+    roster and the executor's "Did you mean" / "Available tools" hints for an unknown tool all agree.
+  - Prompt change for every caller: the DEFAULT forbid list's `execute_file` (always refused, even at AUTONOMOUS)
+    is no longer advertised, in sims, coding-world and campaign runs and in `singularity` mode. Account for it when
+    comparing prompts across versions.
+- **A config write in a running `maxim serve` is seen by the next router build** ([#1411](https://github.com/dennys246/Maxim/issues/1411),
+  found by maxim-pulse on the 1.3.3 candidate). A Console talk that failed before setup ran the lane env projection
+  (`config.json` → `MAXIM_LANE_*`) with nothing configured, and that projection ran once per process, so the
+  `/api/setup/mesh` that followed was never seen: talk kept failing "No LLM backend available" until a restart.
+  The projection now records every env var it writes; a config write (`invalidate_config_cache`, which every
+  `config_writer` write calls) moves a generation counter, and the next projection restores exactly its own writes
+  (where they still hold the value it wrote) and projects the new config. An operator's env value is never touched.
+  - The persisted local-model restore, the pre-upgrade pin and the CLOUD-cap bump are recorded the same way, so a box
+    that once ran `--llm` no longer keeps its local profile after a mesh setup (which cleared the new leader URL).
+  - A live Console talk loop is rebuilt after a config write, so switching leaders re-routes Talk without a restart.
+  - The projection runs under a lock. A config write from another process (`maxim config set` while `maxim serve`
+    runs) still needs a restart.
 - **Every spawned llama-cpp-server requires a key, solo included** (security; [#1314](https://github.com/dennys246/Maxim/issues/1314),
   owner decisions 2026-10-20). Since 1.3.2 only a leader's server was keyed (with the mesh key). A solo's bound loopback with
   no key, so any local process or user on a shared host could use its inference, and a stale tunnel ingress to its port

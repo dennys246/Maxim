@@ -630,6 +630,12 @@ class AutonomyController:
         }
     )
 
+    def forbids_tool(self, tool_name: str) -> bool:
+        """True when ``SafetyConstraints.forbidden_tools`` hard-forbids ``tool_name``: the static half of
+        :meth:`approval_blocker`, which never depends on the moment (a pause, an action rate). The prompt roster
+        asks it before advertising a tool, so the model is never offered one that can only be refused (#1412)."""
+        return tool_name in self.safety_constraints.forbidden_tools
+
     def approval_blocker(self, action: dict[str, Any], *, level: AutonomyLevel | None = None) -> str | None:
         """Why ``action`` may not run whatever its approval, or ``None`` (#1085).
 

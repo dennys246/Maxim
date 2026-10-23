@@ -1786,6 +1786,9 @@ def _parse_config_dict(data: dict[str, Any]) -> MaximConfig:
 
 
 _loaded_config: MaximConfig | None = None
+# Bumped by every invalidate_config_cache(): a consumer that derived state from config.json (the lane env
+# projection, lane_backends._apply_lane_config_to_env) re-derives it when the generation it used has moved (#1411).
+_config_generation: int = 0
 _loaded_config_lock = threading.Lock()
 _loaded_config_path: Path | None = None
 
@@ -2070,12 +2073,20 @@ def invalidate_config_cache() -> None:
     wizard's setup was silently inert until process restart (the next lane
     build read the stale cached config). Clears ONLY the singleton; the
     IM5 migration flag and env-warn dedup are startup-scoped and stay.
-    The next :func:`get_config` re-loads from disk.
+    The next :func:`get_config` re-loads from disk, and :func:`config_generation` moves, so state derived from
+    the old config (the lane env projection) is re-derived on its next use (#1411).
     """
-    global _loaded_config, _loaded_config_path
+    global _loaded_config, _loaded_config_path, _config_generation
     with _loaded_config_lock:
         _loaded_config = None
         _loaded_config_path = None
+        _config_generation += 1
+
+
+def config_generation() -> int:
+    """How many times config.json was invalidated in this process: a consumer that derived state from it records
+    the value it used and re-derives when it moves (#1411)."""
+    return _config_generation
 
 
 def reset_config_cache() -> None:
@@ -2108,6 +2119,7 @@ __all__ = [
     "get_config",
     "load_config",
     "invalidate_config_cache",
+    "config_generation",
     "reset_config_cache",
     "resolve_api_key_ref",
     "resolve_setting",

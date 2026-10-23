@@ -294,8 +294,11 @@ live re-run, 2–4 are data-safety and silent-failure fixes, 5–8 are the check
    **Item 7 DONE 2026-10-06.** Follow-ups merged: #1132 (#1091: the ledger ref and append-only rules shared in
    `scripts/_lint_allowance.py`; the two TYPE_CHECKING detectors deliberately kept apart), #1139 (#1117: one roster
    checker, `scripts/check_lane_roster.py --lane`, and one setup action, `.github/actions/model-cache-setup`, for
-   both nightly lanes; the model-cache lane now has an exact roster too). Watch: `ubuntu-latest` moves to Ubuntu 26
-   on 2026-10-19; the first nightly after it is the check that `scripts/ci_netns.sh` still works.
+   both nightly lanes; the model-cache lane now has an exact roster too). The Ubuntu 26 watch fired: on 2026-10-20
+   `ubuntu-latest` became Ubuntu 26.04, whose sudo-rs ignores `sudo -E`, so `scripts/ci_netns.sh` stopped carrying
+   the job's environment into the namespace (the tts extras cells and both nightlies red, `unit-tests` green without
+   it). Fixed by passing the environment by name with an in-namespace arrival check (O20 in
+   [outstanding.md](outstanding.md) §Closed).
 8. **One source of truth for claims** (mechanization backlog M2). Guard: the claims-registry lint.
    **Built 2026-10-04, PR pending** (owner decisions 2026-10-04: the ledger is the single source; the surfaces are linted,
    not generated; v1 covers the README results table and the experiments index): `scripts/lint_claims_sync.py`. Each
@@ -880,9 +883,11 @@ Owner decisions taken with this path (2026-10-16):
     - [#1335](https://github.com/dennys246/Maxim/issues/1335) (R2): extras tested against the real library, tts
       first;
     - [#1336](https://github.com/dennys246/Maxim/issues/1336) (R3): typed console payloads. **Slipped to 1.3.4**
-      (owner decision 2026-10-18): 1.3.3 vendors pulse v0.4.1 at contract 0.6.0.
+      (owner decision 2026-10-18): 1.3.3 vendors pulse v0.4.1 at contract 0.6.0. *Amended 2026-10-22 (owner
+      decision): 1.3.3 vendors pulse **v0.4.2** (signed tag, commit bcd0d1e; pulse #52 hides the Console's inert
+      Models button), same contract 0.6.0; pulse tags nothing further until 1.3.3 is on PyPI.*
   - **Cut rule:** R3's contract 0.7.0 lands only together with a pulse tag built for 0.7.0. Otherwise it slips past
-    the cut, and the release vendors v0.4.1 at contract 0.6.0. Since R4 the bump itself merges, and `main` is then unreleasable until the console pin moves to a
+    the cut, and the release vendors v0.4.2 (amended 2026-10-22, was v0.4.1) at contract 0.6.0. Since R4 the bump itself merges, and `main` is then unreleasable until the console pin moves to a
     0.7.0 pulse tag; at the cut, revert the bump or wait ([r4_console_vendor_gate.md](r4_console_vendor_gate.md)).
   - **The 1.3.3 release checklist for the pulse seam** (Session S's code is done once #1388 merges; these are what
     is left, in order):
@@ -898,7 +903,7 @@ Owner decisions taken with this path (2026-10-16):
       - pulse's browser suite `scripts/e2e.sh` prints `E2E PASSED (59/59)`.
       Run them from a fresh clone of pulse with `REACHY_APP` set to PR #42's app until #42 merges (pulse `main` does
       not wire the voice provisioner yet).
-    - [ ] **The note to pulse at the release** (with the M70 rule): the vendored tag (v0.4.1, contract 0.6.0); no
+    - [ ] **The note to pulse at the release** (with the M70 rule): the vendored tag (v0.4.2, contract 0.6.0; amended 2026-10-22); no
       untyped `data` field changed from Session S; `pairing_ready` now means the voice has SPOKEN audible audio once,
       not that it loaded (R1); pulse's `apps/reachy/maxim_reachy_app/app.py` comment "until the voice loads" should
       say "speaks"; the `console` extra now installs `websockets`; and #42 can pin `>=1.3.3` and ship as v0.4.2.
