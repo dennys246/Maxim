@@ -5,7 +5,7 @@ and §1.2 bio-enrichment, in the inline order: §1.1 ``imagine`` (novel entities
 §1.15 ``auto_sense`` (passive exteroception + interoception) and §1.16 ``orient_to_audio`` (the
 exteroceptive sound direction, the thalamic relay's first consumer). Each body is the inline section moved
 verbatim. Before it, ``take_observation`` does §1's observe-and-merge (``sim.next_observation`` then
-``state.update``) and returns ``observation`` to the call site: it is read by five later sections, and
+``state.update``, and a new turn on a user input) and returns ``observation`` to the call site: it is read by five later sections, and
 ``next_observation`` is what surfaces ``sim.current_percept``, which §1.16's gate reads.
 
 The loop unpacks the returned ``PerceptionOutcome`` into the locals it always had, so its consumers are
@@ -63,20 +63,20 @@ class PerceptionOutcome:
     audio_escalate: bool  # §1.16 (B1) -> §6's minimal context and has_meaningful_input
 
 
-def take_observation(*, sim: Any, environment: Any, default_network: Any, state: Any) -> Any:
-    """§1: this tick's observation, merged into ``state.data``; an input lives for exactly the tick that delivers it.
+def take_observation(*, sim: Any, ctrl: Any) -> Any:
+    """§1: this tick's observation, merged into ``state.data``; a tick carrying a user input starts a new turn.
 
-    ``state.update`` merges an observation into ``state.data`` and does nothing for an empty one, and a drained
-    percept queue yields ``{}``. So the user's ``cli_input`` used to stay in ``state.data`` after its tick, and
-    ``propose_intent`` re-published it every tick: Console Talk re-captured one observation as new memory every
-    0.5 s (#1414, found by maxim-pulse). It is dropped before each merge, so the tick that carries an input sees
-    it and every later tick sees none. Its one cross-tick reader was that re-publication
-    (``PerceptionAgent.process_observation``, through ``propose_intent``). No content dedupe (owner decision
-    2026-10-22): a user who says the same thing twice is observed twice, on the two ticks that carry it.
+    The turn is told to ``ctrl`` (``LoopController.note_user_input``), so a turn's rejection follow-ups are
+    counted per input, not per matching text (#1413). The input itself is consumed where it is read, by
+    ``PerceptionAgent.propose_intent`` (#1414): it must outlive this tick, because the loop skips ``propose_intent``
+    while an LLM answer is pending. The environment, the Default Network and the state are the loop's own, read off
+    ``ctrl`` (the setup built it from them, and the loop never rebinds them).
     """
-    observation = sim.next_observation(environment, default_network)
-    state.data.pop("cli_input", None)
-    state.update(observation)
+    observation = sim.next_observation(ctrl.environment, ctrl.default_network)
+    ctrl.state.update(observation)
+    fresh = observation.get("cli_input") if isinstance(observation, dict) else None
+    if fresh:
+        ctrl.note_user_input(str(fresh))
     return observation
 
 

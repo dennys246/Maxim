@@ -296,6 +296,11 @@ class PerceptionAgent(Agent):
         percept = self.process_observation(obs)
         if file_changed:
             percept.file_changed = file_path
+        # #1414: the user's input is consumed by the read that publishes it. It stays in ``state.data`` until then
+        # (the loop skips this call while an LLM answer is pending, so dropping it per tick lost it), and leaves
+        # it after, so a later tick never re-publishes it as a new Percept (Talk re-captured one every 0.5 s).
+        if obs.get("cli_input") and isinstance(getattr(state, "data", None), dict):
+            state.data.pop("cli_input", None)
 
         # Publish for downstream agents (only when no CaptureManager)
         self._bus.publish(percept)

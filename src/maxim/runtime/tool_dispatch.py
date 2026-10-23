@@ -943,7 +943,7 @@ def book_hard_rejection(
     rec_outcome: Callable[..., Any],
     agent_id: str,
     nac: Any,
-    action_sink: Any,
+    aut_mode: str,
     proposal: Any,
     action: dict[str, Any],
     reason: str,
@@ -958,13 +958,19 @@ def book_hard_rejection(
     #1185). Before #1413 that was all it did: no follow-up was scheduled, so the model got no next call, and in
     Console Talk the turn idled to its 180 s timeout with "(no reply — the turn timed out before finishing)".
 
-    Now, up to :data:`MAX_REJECTION_FOLLOWUPS` times per user turn (the proposal's ``triggering_input``; a new turn
-    starts the count again), it returns a ``process`` follow-up that says what was refused and that it did not run,
-    so the model re-plans with an allowed tool or replies. Beyond that it returns ``None`` and records a BLOCKED
-    action on ``action_sink``, which settles a Talk bridge at once and names the tool in the chat
-    (``console.handle._describe_silent_turn``). The blocked record is written only at the cap, never alongside a
-    follow-up: the Talk bridge ends a turn 2 s after its last action, so a record before the re-plan's reply would
-    end the turn first. Every loop, not only Talk (owner decision 2026-10-22). The caller assigns the follow-up.
+    Now it returns a ``refused`` follow-up, so the model is told, outside the tool-output frame, that the tool was
+    refused and did not run, and re-plans with an allowed tool or replies. At most :data:`MAX_REJECTION_FOLLOWUPS`
+    CONSECUTIVE ones: the count starts again with each fresh user input (``LoopController.note_user_input``) and
+    whenever the previous outcome was not a refusal (an action ran in between), so a long autonomous run with no
+    user turns is not capped once for its whole life. Beyond that it returns ``None`` and records a BLOCKED action
+    through the run's executor (``InstrumentedExecutor.record_block``: ``block_reason`` the refusal, and the
+    agent/session telemetry), which settles a Talk bridge at once and names the tool in the chat
+    (``console.handle._describe_silent_turn``); without an action sink there is no record.
+    The blocked record is written only at the cap, never alongside a follow-up: the Talk bridge ends a turn 2 s
+    after its last action, so a record before the re-plan's reply would end the turn first. Every loop with a model
+    to re-plan (owner decision 2026-10-22); ``aut_mode="substrate-primary"`` has none (its LLM submission is off,
+    so a follow-up would never be consumed and would keep the idle gate awake), and keeps the booking only, as
+    before, with no record that would shift that arm's action counts. The caller assigns the follow-up.
     """
     autonomy_controller.log_action(
         action_type="rejected",
@@ -973,6 +979,10 @@ def book_hard_rejection(
         mode=mode,
         confidence=confidence,
     )
+    # A refusal chain is broken by anything else: the previous outcome, before this one is booked.
+    previous = ctrl.recent_outcomes[-1] if ctrl.recent_outcomes else None
+    if not str((previous or {}).get("error") or "").startswith("Rejected by autonomy"):
+        ctrl.rejection_followups = 0
     # Record rejection so LLM knows not to re-propose
     rejection_msg = f"Rejected by autonomy: {reason}"
     tool_name = action.get("tool_name", "unknown")
@@ -995,36 +1005,21 @@ def book_hard_rejection(
     )
     logger.info("Hard rejection recorded for LLM: %s", rejection_msg)
 
-    turn = str(getattr(proposal, "triggering_input", "") or "")
-    if turn != ctrl.rejection_turn:
-        ctrl.rejection_turn, ctrl.rejection_followups = turn, 0
+    if aut_mode == "substrate-primary":
+        return None
     if ctrl.rejection_followups < MAX_REJECTION_FOLLOWUPS:
         ctrl.rejection_followups += 1
         return ActionFollowup(
             tool=tool_name,
-            result=(
-                f"{rejection_msg}. '{tool_name}' did not run, and it is not available here: "
-                "choose one of your allowed tools, or reply to the user."
-            ),
-            original_query=turn,
-            followup_type="process",
+            result=rejection_msg,
+            original_query=str(getattr(proposal, "triggering_input", "") or ctrl.rejection_turn or ""),
+            followup_type="refused",
             mode=mode,
             timestamp=time.time(),
         )
-    if action_sink is not None:
-        from maxim.simulation.sinks import ActionRecord
-
-        action_sink.record(
-            ActionRecord(
-                timestamp=time.time(),
-                tool_name=tool_name,
-                tool_args=dict(action.get("params") or {}),
-                result_success=False,
-                result_output=None,
-                result_error=rejection_msg,
-                blocked=True,
-            )
-        )
+    record_block = getattr(ctrl.executor, "record_block", None)  # the run's InstrumentedExecutor, given a sink
+    if callable(record_block):
+        record_block(tool_name, rejection_msg, dict(action.get("params") or {}))
     logger.info("Rejection cap reached (%d) for this turn: ending it on %s", MAX_REJECTION_FOLLOWUPS, tool_name)
     return None
 

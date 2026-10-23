@@ -451,10 +451,10 @@ def _bind_book_machine_refusal(
 
 
 def _bind_book_hard_rejection(
-    ctrl: LoopController, *, agent_id: str, rec_outcome: Callable[..., Any], nac: Any, action_sink: Any
+    ctrl: LoopController, *, agent_id: str, rec_outcome: Callable[..., Any], nac: Any, aut_mode: str
 ) -> Callable[..., ActionFollowup | None]:
     """The run's ``tool_dispatch.book_hard_rejection`` with every per-run argument bound (#1413): the controller (and
-    its autonomy controller, the run's), the recorder, the hub ``agent_id``, the run's NAc and its action sink."""
+    its autonomy controller, the run's), the recorder, the hub ``agent_id``, the run's NAc and its mode (the blocked record goes through ``ctrl.executor``)."""
     return functools.partial(
         book_hard_rejection,
         ctrl=ctrl,
@@ -462,7 +462,7 @@ def _bind_book_hard_rejection(
         rec_outcome=rec_outcome,
         agent_id=agent_id,
         nac=nac,
-        action_sink=action_sink,
+        aut_mode=aut_mode,
     )
 
 
@@ -632,7 +632,7 @@ def build_loop_run(
     _book_refusal = _bind_book_refusal(ctrl, agent_id=_loop_agent_id, rec_outcome=_rec_outcome, nac=_loop_nac)
     _book_machine_refusal = _bind_book_machine_refusal(ctrl, agent_id=_loop_agent_id, rec_outcome=_rec_outcome)
     _book_hard_rejection = _bind_book_hard_rejection(
-        ctrl, agent_id=_loop_agent_id, rec_outcome=_rec_outcome, nac=_loop_nac, action_sink=action_sink
+        ctrl, agent_id=_loop_agent_id, rec_outcome=_rec_outcome, nac=_loop_nac, aut_mode=aut_mode
     )
 
     return LoopRun(

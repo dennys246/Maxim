@@ -1181,7 +1181,7 @@ def run_agentic_loop(
         # ─────────────────────────────────────────────────────────────────
         # 1. PERCEPTION — via SimulationAdapter or environment
         # ─────────────────────────────────────────────────────────────────
-        observation = take_observation(sim=sim, environment=environment, default_network=default_network, state=state)
+        observation = take_observation(sim=sim, ctrl=ctrl)
 
         # ─────────────────────────────────────────────────────────────────
         # 1.1-1.16 IMAGINATION, AUTO-SENSE, AUDIO ORIENTATION (runtime/loop_perception.py)
