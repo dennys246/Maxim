@@ -236,7 +236,6 @@ def _reject(
         action={"tool_name": tool, "params": {"command": "curl news"}},
         reason=f"Tool '{tool}' is forbidden",
         confidence=0.9,
-        mode="active",
         active_goal=None,
     )
 
@@ -248,14 +247,14 @@ def _ctrl(sink: Any = None) -> Any:
 
     from maxim.simulation.sinks import ActionRecord
 
-    executor = SimpleNamespace()
+    executor = SimpleNamespace(effective_operational_mode=lambda: "active")  # what the #963 accessor reads
     if sink is not None:
         executor.record_block = lambda tool, reason, params=None: sink.record(
             ActionRecord(timestamp=0.0, tool_name=tool, tool_args=params or {}, blocked=True, block_reason=reason)
         )
     return SimpleNamespace(
         recent_outcomes=[], max_recent_outcomes=10, llm_worker=None, context_pool=None,
-        rejection_turn=None, rejection_followups=0, executor=executor,
+        rejection_turn=None, rejection_followups=0, executor=executor, state=SimpleNamespace(data={}),
     )  # fmt: skip
 
 
@@ -368,3 +367,20 @@ def test_an_input_by_the_cli_channel_starts_a_turn_too(monkeypatch: pytest.Monke
     _run_llm_loop(monkeypatch, tmp_path, channel="pending_cli", ctrls=ctrls)
     [ctrl] = ctrls
     assert ctrl.rejection_turn == "what is the news today" and ctrl.rejection_followups == 0
+
+
+def test_a_mixed_turn_names_the_failure_and_the_refusal_separately():
+    """A tool that really failed and another that was refused: neither is mislabelled (review N2)."""
+    from types import SimpleNamespace
+
+    from maxim.console.handle import _describe_silent_turn
+
+    failed = SimpleNamespace(tool_name="read_file", blocked=False, block_reason=None, result_success=False)
+    refused = SimpleNamespace(
+        tool_name="bash",
+        blocked=True,
+        block_reason="Rejected by autonomy: Tool 'bash' is forbidden",
+        result_success=False,
+    )
+    text = _describe_silent_turn({"timed_out": False, "actions": [failed, refused]})
+    assert "read_file failed" in text and "bash is not allowed here" in text, text

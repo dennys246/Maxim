@@ -948,7 +948,6 @@ def book_hard_rejection(
     action: dict[str, Any],
     reason: str,
     confidence: float,
-    mode: str,
     active_goal: Any,
 ) -> ActionFollowup | None:
     """§4's hard rejection: book it, then feed it back to the model or end the turn (#1413; moved from
@@ -977,7 +976,7 @@ def book_hard_rejection(
         action_type="rejected",
         action=action,
         reasoning=f"Rejected: {reason}",
-        mode=mode,
+        mode=operational_mode(ctrl.executor, ctrl.state),  # the one reader (#963), on the run's own handles
         confidence=confidence,
     )
     # A refusal chain is broken by anything else: the previous outcome, before this one is booked.
@@ -1015,7 +1014,7 @@ def book_hard_rejection(
             result=rejection_msg,
             original_query=str(getattr(proposal, "triggering_input", "") or ctrl.rejection_turn or ""),
             followup_type="refused",
-            mode=mode,
+            mode=operational_mode(ctrl.executor, ctrl.state),
             timestamp=time.time(),
         )
     record_block = getattr(ctrl.executor, "record_block", None)  # the run's InstrumentedExecutor, given a sink

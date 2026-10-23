@@ -120,7 +120,7 @@ class LoopRun:
     # ``tool_name``, ``error``, ``reasoning``.
     book_machine_refusal: Callable[..., None]
     # ``tool_dispatch.book_hard_rejection`` likewise (#1413): callers pass ``proposal``, ``action``, ``reason``,
-    # ``confidence``, ``mode`` and ``active_goal``, and assign the follow-up it returns.
+    # ``confidence`` and ``active_goal``, and assign the follow-up it returns (the mode is read inside, #963).
     book_hard_rejection: Callable[..., ActionFollowup | None]
     # The agent's own tool descriptions over the builtins (#1260), from its registry, read once here: the prompt's
     # tool section reads it, and ``execute_and_learn`` has it bound (``overlay=``) for the follow-up type.

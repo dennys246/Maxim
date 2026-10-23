@@ -2291,7 +2291,6 @@ def run_agentic_loop(
                         action=action,
                         reason=reason,
                         confidence=confidence,
-                        mode=operational_mode(executor, state),
                         active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                     )
                     ctrl.pending_action_followup = _rejected or ctrl.pending_action_followup
