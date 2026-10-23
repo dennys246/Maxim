@@ -912,7 +912,7 @@ def _describe_tools_for_prompt(
 
 
 def _report_fallback_result(
-    agent: Any, intent: Mapping[str, Any], action: Mapping[str, Any], outcome: Any = None, *, error: Any = None
+    agent: Any, intent: Mapping[str, Any], action: Mapping[str, Any], tool_output: Any = None, *, error: Any = None
 ) -> None:
     """Close the goal agent's tool call that the agent-fallback path (§3) ran or that raised (#1414).
 
@@ -923,23 +923,23 @@ def _report_fallback_result(
     the bus's result subscribers (``MemoryAgent``, ``StatisticianAgent``, ``api.py``'s ``tool_call`` callbacks)
     now see §3's calls; §4's dispatch (``tool_dispatch.execute_and_learn``) does not publish one yet (#1147).
     An intent with no ``tool_call_id`` (not from the goal agent) or an agent without ``publish_tool_result`` has
-    nothing to close. ``outcome`` is the executor's ``ToolOutput``; ``error`` is a raise in §3's try. With no
-    ``outcome`` the execute itself raised, and the call is reported failed; with one, the call was already reported
+    nothing to close. ``tool_output`` is the executor's ``ToolOutput``; ``error`` is a raise in §3's try. With no
+    ``tool_output`` the execute itself raised, and the call is reported failed; with one, the call was already reported
     and a later step raised, so nothing is published again (a second result under the same id would book a tool
     that succeeded as failed, or burn the retry the goal agent already scheduled under that id).
     """
-    if error is not None and outcome is not None:
+    if error is not None and tool_output is not None:
         return
     tool_call_id = intent.get("tool_call_id")
     publish = getattr(agent, "publish_tool_result", None)
     if not tool_call_id or not callable(publish):
         return
-    failure = error if error is not None else getattr(outcome, "error", None)
+    failure = error if error is not None else getattr(tool_output, "error", None)
     publish(
         str(tool_call_id),
         str(action.get("tool_name", "")),
-        error is None and bool(getattr(outcome, "success", True)),
-        getattr(outcome, "output", None),
+        error is None and bool(getattr(tool_output, "success", True)),
+        getattr(tool_output, "output", None),
         None if failure is None else str(failure),
         dict(action.get("params") or {}),
     )
