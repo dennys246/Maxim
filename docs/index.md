@@ -2,7 +2,7 @@
 
 Comprehensive documentation for Maxim's systems and subsystems.
 
-**Package version:** 1.3.2 (`pyproject.toml`; PyPI: https://pypi.org/project/pymaxim/) | **Release notes:** [release_1_3_2.md](announcements/release_1_3_2.md) | **Last updated:** 2026-10-16
+**Package version:** 1.3.3 (`pyproject.toml`; PyPI: https://pypi.org/project/pymaxim/) | **Release notes:** [release_1_3_3.md](announcements/release_1_3_3.md) | **Last updated:** 2026-10-24
 
 > **2026-05-09 architectural pivot** — Maxim is moving toward a **parallel-mode architecture** where the bio-substrate (NAc + EC + ATL + Hippocampus + Default Network + reflexes) can drive action selection directly, with LLMs demoted to supporting roles (orchestrator, NPCs, optional AUT). The existing **LLM-AUT mode** remains the user-facing default; the new **substrate-primary AUT mode** ships in parallel as opt-in via `--aut-mode substrate-primary`. The **Maxim Hivemind** shareability layer (infrastructure shipped in 0.9.x; `maxim substrate export|import|inspect` CLI available) was the foundation for Oasis, which shipped in 1.2.0 (2026-09-09) after the provenance, compatibility, and threat-model gates. See [Substrate-Primary Mode](substrate_primary.md) and [Hivemind + Oasis](hivemind.md) for the architecture docs.
 

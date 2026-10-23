@@ -171,6 +171,6 @@ Published to PyPI as `pymaxim` (import name `maxim`); maintenance rules: [docs/a
 
 ## Active initiatives
 
-Current version: **1.3.2** (`pyproject.toml` + `src/maxim/__init__.py`; PyPI: https://pypi.org/project/pymaxim/ — `main` is ahead of PyPI by policy, §Versioning). This line is checked by `scripts/lint_version_sync.py` — bump it in the release transaction. Active theme **1.4** (working title "Anticipation"; [roadmap_1_4.md](docs/plans/roadmap_1_4.md)). What each release shipped and claims, the roadmap index and the deferred plans: [docs/plans/README.md](docs/plans/README.md); this section's text before the 2026-10-16 diet: [docs/lessons/active-initiatives-history-2026.md](docs/lessons/active-initiatives-history-2026.md).
+Current version: **1.3.3** (`pyproject.toml` + `src/maxim/__init__.py`; PyPI: https://pypi.org/project/pymaxim/ — `main` is ahead of PyPI by policy, §Versioning). This line is checked by `scripts/lint_version_sync.py` — bump it in the release transaction. Active theme **1.4** (working title "Anticipation"; [roadmap_1_4.md](docs/plans/roadmap_1_4.md)). What each release shipped and claims, the roadmap index and the deferred plans: [docs/plans/README.md](docs/plans/README.md); this section's text before the 2026-10-16 diet: [docs/lessons/active-initiatives-history-2026.md](docs/lessons/active-initiatives-history-2026.md).
 
 Since B1 (2026-10-14/15) T1-13/14/15 (Exp 60/61/62) are PARTIAL, floor matched under BF2 ([baseline_floors.md](docs/plans/baseline_floors.md)).

@@ -837,6 +837,27 @@ Owner decisions taken with this path (2026-10-16):
     1.4.0-only rule.
 
 ### 1.3.3, "The release pipeline and the pulse seam" (no `nac.py` selection or loop-body moves; split 2026-10-17)
+
+> **Released as v1.3.3 "Release pipeline" (2026-10-24 UTC;
+> [release_1_3_3.md](../announcements/release_1_3_3.md)).** The release ships: the release pipeline (signed `v*` tag,
+> nightly-at-the-commit gate, exact-wheel smoke, owner approval, PyPI trusted publishing; #1372, #938, #1318); the
+> pulse seam (#1332 + R1, #1347 + R2's tts and console cells, R4 with pulse v0.4.2 at contract 0.6.0, #1411–#1414);
+> the security follow-ups #1311, #1312, #1314, #957, #997, #1345; Session H's #1337, #1310, #1343; the NAc audit
+> (#1102, #1361 S1, A1, A2); and the agent-id fix from the pre-release review. Breaking in places, a patch release
+> by owner decision (2026-10-23). T1-2 ships STALE under `release-1.3.3-T1-2`. What did not finish **slipped to
+> 1.3.4** (owner decision 2026-10-23), each still open with its home:
+> - R3 typed payloads [#1336](https://github.com/dennys246/Maxim/issues/1336) and F4
+>   [#1292](https://github.com/dennys246/Maxim/issues/1292): §1.3.4, Session S's second slice;
+> - doctor advisories [#1295](https://github.com/dennys246/Maxim/issues/1295) (owner decision 2026-10-18; recorded
+>   here, not only in memory);
+> - CI and evidence truth: #1313, #1203, #1121, #1218, #1220, #1246, #1247, #1038, #1024, #1031, #1215, #1023;
+> - the 1.4.0 gate items outside the large functions: #1305, #1263 (with #1016), #1264, #1265, #1267, and #1123's
+>   and #1288's lists. They still hold 1.4.0;
+> - small correctness fixes #982, #1153, #1155, #1163, #1225, and #1369, #1370, #1371;
+> - the recorded Session C moves #954, #984, #985, #988, #989, #1285, #1286, #1287, #1291, and
+>   console_tunnel_hardening's PR 3 (admission control);
+> - the node_security remainder, fail-loud Stage 3 and M25 (the STALE/BROKEN-row release check; until it is
+>   built, the release session checks the ledger by hand and writes the `kind: "release"` clause).
 - **The release pipeline:** [#1372](https://github.com/dennys246/Maxim/issues/1372) (a tag-triggered,
   trusted-publishing workflow and a `v*` tag ruleset), [#938](https://github.com/dennys246/Maxim/issues/938) (the
   release gate refuses inside the nightly it waits for, so `main` reads red between a release merge and its tag), CI caching [#1318](https://github.com/dennys246/Maxim/issues/1318). Owner standard 2026-10-16: no Test PyPI;
@@ -891,18 +912,19 @@ Owner decisions taken with this path (2026-10-16):
     0.7.0 pulse tag; at the cut, revert the bump or wait ([r4_console_vendor_gate.md](r4_console_vendor_gate.md)).
   - **The 1.3.3 release checklist for the pulse seam** (Session S's code is done once #1388 merges; these are what
     is left, in order):
-    - [ ] **#1388 merges** once `scripts/pr_merge_readiness.py 1388` exits 0.
-    - [ ] **The first nightly after it is green in all four `extras-matrix` cells** (console and tts, each at floor and
+    - [x] **#1388 merges** once `scripts/pr_merge_readiness.py 1388` exits 0.
+    - [x] **The first nightly after it is green in all four `extras-matrix` cells** (console and tts, each at floor and
       latest). They are `(nightly)` jobs, so `scripts/check_nightlies.py` refuses the cut while one is red. A PR runs
       only the cells its diff touches; the nightly runs every one, so its green is the release evidence. A red cell is
       an upstream break (cap the requirement or fix the code) or a lane bug; never an override.
-    - [ ] **Pulse's two checks against the REAL 1.3.3 candidate wheel**, which also carries #1383's vendored bundle.
+    - [x] **Pulse's two checks against the REAL 1.3.3 candidate wheel**, which also carries #1383's vendored bundle.
       Both passed 2026-10-19 against a wheel built from #1388's branch (E2E 59/59 in Chrome; SMOKE 7/7 in an aarch64
       container, with PR #42's Reachy app); re-run them on the cut:
       - pulse's `scripts/smoke-reachy-release.sh` on Linux prints `SMOKE PASSED`;
       - pulse's browser suite `scripts/e2e.sh` prints `E2E PASSED (59/59)`.
       Run them from a fresh clone of pulse with `REACHY_APP` set to PR #42's app until #42 merges (pulse `main` does
-      not wire the voice provisioner yet).
+      not wire the voice provisioner yet). *Done 2026-10-23: candidate 2 (rehearsal run 39902958693 on `a5e1030b`)
+      passed pulse's release acceptance 5/5 and its live check of #1411, #1412 and #1414; pulse: "1.3.3 is good to cut".*
     - [ ] **The note to pulse at the release** (with the M70 rule): the vendored tag (v0.4.2, contract 0.6.0; amended 2026-10-22); no
       untyped `data` field changed from Session S; `pairing_ready` now means the voice has SPOKEN audible audio once,
       not that it loaded (R1); pulse's `apps/reachy/maxim_reachy_app/app.py` comment "until the voice loads" should

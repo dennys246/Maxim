@@ -8,6 +8,7 @@ the release transaction ([publication_guide.md](../publication_guide.md)).
 
 ## Release notes
 
+- [release_1_3_3.md](release_1_3_3.md) — 1.3.3 "Release pipeline"
 - [release_1_3_2.md](release_1_3_2.md) — 1.3.2 "Decomposition"
 - [release_1_3_1.md](release_1_3_1.md) — 1.3.1 "Hardening"
 - [release_1_3_0.md](release_1_3_0.md) — 1.3.0 "Oasis-2"
