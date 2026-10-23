@@ -1008,6 +1008,15 @@ them. Session V's atonia items do not hold the 1.3.3 cut; they are 1.3.4 (owner 
     M68's lint.
   - **A startup signal when `maxim serve` has no WebSocket library** (found in #1347's review). An install that gets
     uvicorn some other way still answers `/ws` with 404 silently; `run_serve` should say so once, R1-shaped.
+  - **Probe the SAVED leader or cloud configuration server-side** ([#1428](https://github.com/dennys246/Maxim/issues/1428),
+    requested by maxim-pulse on candidate 2). A stale saved setup (a rotated key, a moved or downed leader) is silent
+    until a chat fails, and `/api/diagnose` reports the remote lane "ok" on presence alone. Proposed: a third
+    `ProbeRequest` shape, `{"saved": "<tier>"}`, that resolves the lane's saved URL and key ref on the server (the key
+    never leaves it) and returns the existing `ProbeResult` through the same classifier `maxim doctor` uses, cached
+    with a timestamp so Console startup and every tab focus stay cheap. Declared as a `SeamStatus` seam so older
+    servers show nothing; a contract change, so it rides on R3's 0.7.0 bump. Cloud placements need a real cheap
+    authenticated call (today's `provider` probe only checks the key's shape). It is R1 applied to the leader
+    connection.
 - **Session V's other issues ride with it** unless they land before the 1.3.3 cut: #1338, #1342, #1362 and #1366
   (#1366 proposed 2026-10-18, owner to confirm).
 - **Exit:** the registration and dispatch sweeps, the builder-refusal tests and item 10's census test pass.
