@@ -39,7 +39,7 @@ release by owner decision (2026-10-23): each break below is marked and names its
   holding `:` is refused when the agent is named.
 - **The Console:** `pymaxim[console]` now installs `websockets`, so `/ws` works from a clean install (#1347).
   Piper speaks again (1.3.2's "verified Piper voice provisioning" overclaimed; corrected below), and pairing arms
-  only on a voice that speaks. Talk is offered only the tools it may use, and survives a config write. The wheel
+  only on a voice that speaks. Talk is offered only the tools it may use, and picks up a setup change made in the same `maxim serve`. The wheel
   vendors maxim-pulse v0.4.2 (1.3.2 shipped v0.4.0), contract 0.6.0; typed payloads (R3) slipped to 1.3.4.
 - **Release integrity:** the vendored Console must be the pinned, newest pulse tag (R4); the extras run against
   their real libraries nightly (R2); and 1.3.3 is published from a signed tag through PyPI trusted publishing.
@@ -126,7 +126,7 @@ release by owner decision (2026-10-23): each break below is marked and names its
     on every request. `enabled: true` is refused unless internet is already on. The operator's file is written only
     by `maxim.utils.set_internet_access`, whose default `source` is now `"operator"` (it was `"tool"`); a legacy
     agent-written "off" is named in the startup WARNING. `InternetAccessTool` lost its `set_internet_access_fn=`
-    constructor argument (no caller remained).
+    constructor argument (breaking: API; no caller in pymaxim remained).
   - Still open (fails closed): the prompt keeps offering the internet tools after a lower, and `state.data`'s
     `internet_access` is a launch-time snapshot ([#1399](https://github.com/dennys246/Maxim/issues/1399)).
   - Design: [docs/plans/internet_toggle_session_gate.md](docs/plans/internet_toggle_session_gate.md) (two adversarial
@@ -269,7 +269,7 @@ release by owner decision (2026-10-23): each break below is marked and names its
   smoke-tests the exact wheel in a clean venv, waits for the owner's approval, then publishes through PyPI trusted
   publishing (OIDC; no stored token) with PEP 740 attestations requested, and creates the GitHub Release from
   `docs/announcements/release_1_3_3.md`. The release gate no longer reads `main` red between a release merge and its
-  tag ([#938](https://github.com/dennys246/Maxim/issues/938)).
+  tag (addressed in #1386; [#938](https://github.com/dennys246/Maxim/issues/938) closes when `main` stays green across this release).
 - **The 1.4.0 release gate bounds the decomposed functions at 1,000 lines, not 200** ([#1323](https://github.com/dennys246/Maxim/issues/1323), owner decision 2026-10-16).
   - `start_simulation_mode`, `run_agentic_loop` and `execute_and_learn` must reach 1,000 lines or fewer, and so must
     everything split or moved out of them and every def in their three files. Item `1323.functions-1000` holds them.
@@ -383,21 +383,22 @@ release by owner decision (2026-10-23): each break below is marked and names its
   loads without them, which is harmless: a missing key reads 0.0. "Zero is absent" holds only for `reward_bias`, as
   in the writers: a loaded positive fear clamps to a kept 0.0 key. In-range state round-trips unchanged. Guard:
   `tests/unit/test_nac_load_clamp_1102.py`.
-- **The SCN's coupled oscillator observes each tool outcome once, not twice** (NAc credit path, A2). With a
+- **The SCN's coupled oscillator observes each tool outcome once, not twice** (NAc credit path, [#1363](https://github.com/dennys246/Maxim/pull/1363)). With a
   temporal-credit distributor wired, `ToolPainBridge`'s persistent signature-keyed SCN entry and the distributor's
   per-event entry both called `SCN.register`, and each fed the oscillator. The bridge's entry now passes the new
   `register(..., observe_oscillator=False)` when a distributor is wired. The bins are unchanged: both entries stay,
   and the signature entry still persists across sessions. Guard: `tests/unit/test_nac_credit_path_a2.py`.
-- **A cluster bias's credit source no longer outlives the bias** (A2). The per-tick decay prune, the wall-clock decay
+- **A cluster bias's credit source no longer outlives the bias** ([#1363](https://github.com/dennys246/Maxim/pull/1363)). The per-tick decay prune, the wall-clock decay
   prune and `load_state` now drop `_cluster_reward_source` entries with no matching `_cluster_reward_bias`; a stale
   source turned a later credit from a different branch into `"mixed"` and narrated a bias that no longer existed.
   A loaded file with orphaned sources logs one warning with the count. Guard: `tests/unit/test_nac_credit_path_a2.py`.
-- **NAc's per-event outcome statistics are bounded by its links** (A2). When `_enforce_limits` evicts the last causal
+- **NAc's per-event outcome statistics are bounded by its links** ([#1363](https://github.com/dennys246/Maxim/pull/1363)). When `_enforce_limits` evicts the last causal
   link of an event signature, that signature's empty `_links` slot and its `_event_outcome_welford` state go with it,
   so they no longer grow with every signature ever seen. This also resets that signature's variance history:
   `get_action_risk_profile` restarts for it if it is booked again. Guard: `tests/unit/test_nac_credit_path_a2.py`.
 - **NAc correctness: non-finite credit, eligibility locking, per-tick decay
-  isolation and `reward_bias` keys** (PR A1).
+  isolation and `reward_bias` keys** (behaviour change: new `ValueError`s for direct callers;
+  [#1365](https://github.com/dennys246/Maxim/pull/1365)).
   - Every NAc credit/update entry point (`credit_node`, `update_cluster_reward`, `credit_operant_reward`,
     `credit_goal`, `record_percept_valence`, `record_cluster_fear`, `update_eligibility`, `distribute_reward`)
     and `TemporalCreditDistributor.distribute` raise `ValueError` on a NaN/inf input. The clamps had stored a NaN
