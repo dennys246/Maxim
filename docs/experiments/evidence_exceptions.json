@@ -37,5 +37,16 @@
     "owner": "Denny Schaedig (owner decision 2026-10-15)",
     "reason": "Owner decision 2026-10-15, after B1 (FLOOR_MATCHED_Q, T1-13 PARTIAL): BF2 applied ANALYTICALLY, without a rig run. The row rests on the same Wire-4 fear, and its floor matches by construction: a floor the harness arms in water, with the same defensive prior, surfaced on its first-ever submersion with zero experience (B1 Q_EXPLORE_PRIOR, pre-probe placement 0, 8/8, docs/experiments/data/b1_exp60_floor_48ce40118c20.jsonl); and the fair floor for learning WHEN from passive pain is a state-value learner, which with the same prior is Wire-4 by construction (B1 prereg, Analytical, not run; an action-value learner cannot learn there, bio-faithful D1). And the cross-pool transfer lives in the key the floors share: the pool-2 reading resolves to the trained world node (Exp 62's NODE gate, 12/12), and B1's raw key (in water, oxygen bin) holds no altitude or spawn distance. A demotion in the conservative direction with no new record to cite, so it needs this clause; the mechanism-twin arm is to be RUN inside E1's floor design (baseline_floors.md), not on this row.",
     "date": "2026-10-15"
+  },
+  {
+    "id": "release-1.3.3-T1-2",
+    "kind": "release",
+    "row": "T1-2",
+    "status": "STALE",
+    "release": "1.3.3",
+    "owner": "Denny Schaedig (owner decision 2026-10-18)",
+    "reason": "Released STALE again, under the 2026-10-18 amendment: each patch release before 1.4.0 (1.3.3 to 1.3.6) carries its own committed release exception for T1-2. T1-2 still carries no EARNED claim (its cross-session override claim was pulled in June), so its STALE status bounds no 1.3.3 claim; the cross-model Goldilocks map stays cited only with L8's caveat. The owed re-fire is B4 (L8's dose-response design), which runs after the orchestrator slices unblock B2; 1.4.0 waits for it and takes no release exception. This clause covers 1.3.3 only.",
+    "ref": "docs/plans/roadmap_1_3_x.md, §Path to 1.4.0 (amended 2026-10-18)",
+    "date": "2026-10-23"
   }
 ]
