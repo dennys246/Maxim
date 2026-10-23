@@ -24,6 +24,7 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
+from maxim.decisions.nac import is_agent_id as _nac_is_agent_id
 from maxim.hivemind.merge import NAC_KEY_SEP, NODE_ID_CHARSET
 from maxim.utils.optional_deps import require_optional_dependency
 
@@ -114,11 +115,9 @@ def agent_ids(nac: Mapping[str, Any]) -> set[str]:
     return ids
 
 
-def is_agent_id(value: Any) -> bool:
-    """A usable agent id: a non-empty string holding neither key separator. ``reward_bias`` keys split
-    on ``:`` and the composite keys on ``\x1f``, so an id containing either would be misread as a
-    different agent (and its own rows dropped as foreign)."""
-    return isinstance(value, str) and bool(value) and ":" not in value and NAC_KEY_SEP not in value
+# A usable agent id (``decisions/nac.py::is_agent_id``): an id holding a key separator would be misread
+# as a different agent here, and its own rows dropped as foreign. NAc owns the rule; it is re-exported.
+is_agent_id = _nac_is_agent_id
 
 
 def _retoken(key: Any, sep: str) -> str:

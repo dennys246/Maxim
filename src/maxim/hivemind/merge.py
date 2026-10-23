@@ -54,6 +54,7 @@ this module's.
 from __future__ import annotations
 
 from maxim.decisions.causal_link import bound_predicted_value, causal_link_id, hash_link_context
+from maxim.decisions.nac import NAC_KEY_SEP
 import copy
 import json
 import re
@@ -645,12 +646,9 @@ def _admit_inherent_markers(receiver: dict[str, Any], donor: dict[str, Any]) -> 
 # duplicated rather than imported to keep this layer free of
 # internal-module imports (see ``_cosine``), so a test pins the equality
 # instead of the type system.
-#: Separator inside NAc's composite dict keys — the ``(agent_id, cluster_id,
-#: tool_signature)`` triple and the ``(agent_id, entity_class, failure_mode)``
-#: pair are stored as ``\x1f``-joined strings. Defined HERE, in the lowest
-#: module of the hivemind package, because ``bundle.py`` already imports from
-#: ``merge.py`` — the reverse would cycle.
-NAC_KEY_SEP = "\x1f"
+#: ``NAC_KEY_SEP`` (imported at the top) is the separator inside NAc's composite dict keys. NAc owns the key
+#: format and defines it (``decisions/nac.py::NAC_KEY_SEP``); it is re-exported from HERE, the lowest module
+#: of the hivemind package, because ``bundle.py`` and ``entry_index.py`` import it from ``merge.py``.
 #: The identifier charset a cluster id must satisfy at the bundle boundary (ingest REFUSES
 #: V9 otherwise; the export scrub filters fear keys by the same rule so a compliant bundle is
 #: never refused by construction). Owned here because both `bundle.py` and `ingest.py` import

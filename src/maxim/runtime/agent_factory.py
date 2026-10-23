@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from maxim.runtime.config_loader import resolve_hippocampus_memory_kwargs, resolve_memory_strategy
+from maxim.decisions.nac import require_agent_id
 
 from maxim.agents.permissions import AgentPermissions
 
@@ -109,6 +110,9 @@ class AgentConfig:
     on_corrupt: Literal["warn", "raise"] = "warn"
 
     def __post_init__(self) -> None:
+        # Refused where the agent is named, before any home is built: NAc refuses a key separator
+        # on every credit write, and the reaction path reports that only at DEBUG.
+        require_agent_id(self.agent_id, where="AgentConfig.agent_id")
         if self.on_corrupt not in ("warn", "raise"):
             raise ValueError(f"AgentConfig.on_corrupt must be 'warn' or 'raise', got {self.on_corrupt!r}")
 
