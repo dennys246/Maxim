@@ -1072,11 +1072,8 @@ def run_agentic_loop(
     _loop_sensor_encoder, _loop_situation_cue = run.sensor_encoder, run.situation_cue
     _planning_liveness_on = run.planning_liveness_on
     _execute_and_learn, _book_refusal = run.execute_and_learn, run.book_refusal
-    _book_machine_refusal, _tool_overlay, _book_hard_rejection = (
-        run.book_machine_refusal,
-        run.tool_overlay,
-        run.book_hard_rejection,
-    )
+    _book_machine_refusal, _tool_overlay = run.book_machine_refusal, run.tool_overlay
+    _book_hard_rejection = run.book_hard_rejection
 
     # Mutable-container aliases — safe because in-place mutation is shared.
     # State variables (pending_proposal, pending_action_followup, etc.) use
@@ -1445,6 +1442,7 @@ def run_agentic_loop(
             # loop, we must cancel the pending followup so the new input
             # gets submitted to the LLM instead.
             if not cli_text.startswith("[ACTION_FOLLOWUP"):
+                ctrl.note_user_input(cli_text)  # a new user turn, whatever its channel (#1413)
                 if ctrl.pending_action_followup:
                     _preempted_tool = ctrl.pending_action_followup.tool
                     ctrl.pending_action_followup = None

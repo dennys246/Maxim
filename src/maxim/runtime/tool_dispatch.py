@@ -960,7 +960,8 @@ def book_hard_rejection(
 
     Now it returns a ``refused`` follow-up, so the model is told, outside the tool-output frame, that the tool was
     refused and did not run, and re-plans with an allowed tool or replies. At most :data:`MAX_REJECTION_FOLLOWUPS`
-    CONSECUTIVE ones: the count starts again with each fresh user input (``LoopController.note_user_input``) and
+    CONSECUTIVE ones: the count starts again with each fresh user input (``LoopController.note_user_input``,
+    called where the loop settles a tick's input, whatever its channel) and
     whenever the previous outcome was not a refusal (an action ran in between), so a long autonomous run with no
     user turns is not capped once for its whole life. Beyond that it returns ``None`` and records a BLOCKED action
     through the run's executor (``InstrumentedExecutor.record_block``: ``block_reason`` the refusal, and the

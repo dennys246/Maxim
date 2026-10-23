@@ -49,6 +49,8 @@ def _run_llm_loop(
     answered_at_tick: int = 3,
     ticks: int = 10,
     forbidden: frozenset[str] = frozenset(),
+    channel: str = "observation",
+    ctrls: list[Any] | None = None,
 ) -> tuple[list[Any], list[dict[str, Any]]]:
     """One user input on tick 0, then drained observations. The stub worker answers on ``answered_at_tick`` (the
     loop's ``pending_user_input`` cleared, as a real proposal clears it; until then §3 is gated off), proposing
@@ -73,6 +75,8 @@ def _run_llm_loop(
     def _init(self: Any, *a: Any, **k: Any) -> None:
         real_init(self, *a, **k)
         self.llm_submit_interval = 0.0  # 200 Hz ticks last ms: the 0.5 s wall-clock cadence would never resubmit
+        if ctrls is not None:
+            ctrls.append(self)
 
     monkeypatch.setattr(LoopController, "__init__", _init)
     (tmp_path / "ws").mkdir(exist_ok=True)
@@ -86,6 +90,9 @@ def _run_llm_loop(
         def observe(self) -> dict[str, Any]:
             clock["tick"] += 1
             if clock["tick"] == 0:
+                if channel == "pending_cli":  # the interactive CLI / robot / API seed channel, not the observation
+                    state.data["pending_cli_input"] = "what is the news today"
+                    return {}
                 return {"cli_input": "what is the news today"}
             if clock["tick"] == answered_at_tick:  # the LLM answered: the loop's pending input is cleared
                 for key in ("pending_user_input", "pending_user_input_time", "pending_user_input_source"):
@@ -351,3 +358,13 @@ def test_without_an_action_sink_the_cap_records_nothing():
     for _ in range(3):
         _reject(ctrl, sink, booked, turn="news?")
     assert sink.actions == [] and ctrl.rejection_followups == 2
+
+
+def test_an_input_by_the_cli_channel_starts_a_turn_too(monkeypatch: pytest.MonkeyPatch, tmp_path: Any):
+    """The robot's CLI and voice threads and the API seed deliver through ``state.data["pending_cli_input"]`` /
+    ``["pending_voice_input"]``, not the observation: the loop's input fold starts the turn for every channel
+    (delta review S1), so a new turn after a capped one gets its re-plans again."""
+    ctrls: list[Any] = []
+    _run_llm_loop(monkeypatch, tmp_path, channel="pending_cli", ctrls=ctrls)
+    [ctrl] = ctrls
+    assert ctrl.rejection_turn == "what is the news today" and ctrl.rejection_followups == 0

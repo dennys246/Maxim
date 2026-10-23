@@ -186,8 +186,8 @@ class LoopController:
         self.dn_enabled = self.dn_ctrl.enabled
 
     def note_user_input(self, text: str) -> None:
-        """A fresh user input arrived (``loop_perception.take_observation``): a new turn, so its rejection count
-        starts again (#1413)."""
+        """A fresh user input arrived, by any channel (the observation, the interactive CLI, voice, the API seed):
+        a new turn, so its rejection count starts again (#1413). Called where the loop settles the tick's input."""
         self.rejection_turn, self.rejection_followups = text, 0
 
     # ── Pending proposal (planning-liveness recovery point) ──────────────
