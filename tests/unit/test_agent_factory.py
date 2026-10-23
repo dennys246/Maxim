@@ -82,6 +82,24 @@ class TestAgentConfig:
         with pytest.raises(TypeError):
             AgentConfig(agent_id="x", tool_whitelist={"speak"})  # type: ignore[call-arg]
 
+    @pytest.mark.parametrize("bad", ["team:alpha", "a\x1fb", ""])
+    def test_agent_id_with_a_key_separator_is_refused(self, bad):
+        """``reward_bias`` keys split on ``:`` and the composite keys on ``\\x1f``, so NAc refuses such an
+        id on every write (``nac._require_reward_bias_agent_id``). Accepting it here built an agent whose
+        every credit write raised, and the reaction path logged that only at DEBUG."""
+        from maxim.exceptions import InvalidAgentIdError
+
+        with pytest.raises(InvalidAgentIdError, match="agent_id"):
+            AgentConfig(agent_id=bad)
+
+    def test_create_agent_refuses_a_colon_name_before_building_a_home(self, tmp_path):
+        import maxim
+        from maxim.exceptions import InvalidAgentIdError
+
+        with pytest.raises(InvalidAgentIdError, match="agent_id"):
+            maxim.create.agent("team:alpha", persistence_dir=str(tmp_path / "home"))
+        assert not (tmp_path / "home").exists()
+
 
 # ---------------------------------------------------------------------------
 # AgentFactory

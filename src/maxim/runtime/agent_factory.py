@@ -36,7 +36,7 @@ from maxim.runtime.config_loader import resolve_hippocampus_memory_kwargs, resol
 
 from maxim.agents.permissions import AgentPermissions
 
-from maxim.exceptions import StoreOverwriteRefused
+from maxim.exceptions import InvalidAgentIdError, StoreOverwriteRefused
 
 log = logging.getLogger(__name__)
 
@@ -109,6 +109,16 @@ class AgentConfig:
     on_corrupt: Literal["warn", "raise"] = "warn"
 
     def __post_init__(self) -> None:
+        # The one definition of a usable agent id lives with the keys it must fit (hivemind's
+        # ``is_agent_id``); NAc applies the same rule on every write and raises. Refusing here
+        # keeps a name NAc cannot key from building an agent whose credit is silently lost.
+        from maxim.hivemind.entry_index import is_agent_id
+
+        if not is_agent_id(self.agent_id):
+            raise InvalidAgentIdError(
+                f"AgentConfig.agent_id must be a non-empty string without ':' or '\\x1f' "
+                f"(memory keys split on them), got {self.agent_id!r}"
+            )
         if self.on_corrupt not in ("warn", "raise"):
             raise ValueError(f"AgentConfig.on_corrupt must be 'warn' or 'raise', got {self.on_corrupt!r}")
 
