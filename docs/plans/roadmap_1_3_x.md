@@ -1072,6 +1072,13 @@ them. Session V's atonia items do not hold the 1.3.3 cut; they are 1.3.4 (owner 
     kills at ~20 s; `_drain_and_stop_handle`'s defaults allow up to ~110 s; Session H, with #1344).
     [#1439](https://github.com/dennys246/Maxim/issues/1439) (Talk reaches the body-less `console_agent`) is not
     bounded: its fix is the plan's one-agent-per-device contract.
+    [#1444](https://github.com/dennys246/Maxim/issues/1444), cross-session recall drops what the user said
+    (`integration/bio_enrichment.py::_summarize_episode` renders a tool-less episode as "past experience"). Every
+    Talk user hits it, not only the robot. The fix renders the user's words bounded and **framed as untrusted
+    content**, because recalled text replayed into later prompts is a stored-injection channel. It gets a strict
+    red gate across two sessions on the shipped path. The owner is the bio-memory area (read
+    docs/agents/bio-memory.md first). The plan's step 1 must carry `console_agent`'s home across, or these facts
+    are lost in the fold.
   - **Talk states and chooses its real toolset** ([#1430](https://github.com/dennys246/Maxim/issues/1430), then
     [#1431](https://github.com/dennys246/Maxim/issues/1431), requested by maxim-pulse). #1430: the Talk prompt names
     the tools it actually has (from `TALK_CONVERSATIONAL_TOOLS`), so it stops claiming capabilities it lacks. #1431:
