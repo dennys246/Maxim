@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The wheel vendors maxim-pulse Console v0.4.3** (was v0.4.2; contract 0.6.0, unchanged). It is now the newest pulse
+  tag for this contract, so R4's release gate requires it. The changes are pulse's: clearer leader setup (key and
+  address guidance, with warnings), commands shown in a distinct style, and readable light-theme status colours.
+  Pulse verified it on a real Reachy (CM4) on 1.3.3. `scripts/console_ui_pin.json` pins tag v0.4.3 at commit
+  `c174126`, asset sha256 `cdad1982…b731`.
+
 ## [1.3.3] - 2026-10-24 — "Release pipeline"
 
 The release-pipeline and pulse-seam release: the fixes maxim-pulse found, the Console's live stream from a clean
