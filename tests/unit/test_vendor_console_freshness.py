@@ -10,7 +10,7 @@ date or describe, and a bundle that IS the pinned one passes however old it is. 
 newest pulse tag for the backend's contract.
 
 Every network seam is faked; an autouse fixture makes the real ones raise (fold 6), so a test that forgets its fake
-fails instead of reaching the network. Design: docs/plans/r4_console_vendor_gate.md.
+fails instead of reaching the network. Design: docs/plans/archive/r4_console_vendor_gate.md.
 """
 
 from __future__ import annotations

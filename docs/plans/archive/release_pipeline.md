@@ -1,5 +1,7 @@
 # The release pipeline: tag-triggered trusted publishing (approach note, #1372 + #938)
 
+> **ARCHIVED (2026-10-24 plans archive):** 1.3.3 published through `release.yml` (2026-10-24); its hand-off is applied to docs/publication_guide.md. The rules live in docs/agents/ci-testing.md; code still cites its finding ids (SF4, SF11) here.
+
 Status: APPROACH NOTE, 2026-10-18, Session P. Its design pass is below. Owner decisions (2026-10-18):
 - a GitHub `pypi` environment with the owner as **required reviewer**;
 - a `v*` tag ruleset;

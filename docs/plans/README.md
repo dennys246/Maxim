@@ -1,7 +1,7 @@
 # Maxim Plans
 
 Current version: **1.3.3** (`pyproject.toml` + `src/maxim/__init__.py`; PyPI: https://pypi.org/project/pymaxim/ — `main` is ahead of PyPI by policy, CLAUDE.md §Versioning; checked by `scripts/lint_version_sync.py`). 1.3.3 = **"Release pipeline"**: the fixes maxim-pulse found, the Console's live stream from a clean install and the first CI-published release, no new behavioural claim (breaking security changes: every spawned llama-cpp-server keyed, the agent cannot change the operator's internet switch; T1-2 STALE under `release-1.3.3-T1-2`). 1.3.2 = **"Decomposition"**: the agent loop taken apart under characterization tests plus the ratchets and gates that hold it, no new behavioural claim (a breaking security change to leader defaults, the evidence gate, T1-13/14/15 PARTIAL under B1, T1-2 STALE under `release-1.3.2-T1-2`). 1.3.1 = **"Hardening"**: fixes and their guards, no behavioural claim (security, the public format freeze + Oasis release format v2, public-API correctness, release integrity; the ledger's trigger walk with Exp 10 re-run MAINTAINED (narrow)). 1.3.0 = **"Oasis-2"**: the survival world — **Exp 60 EARNED** (anticipatory drowning-avoidance) + **Exp 61 EARNED** (the survival fear transfers between agents) + the **R3 survival benchmark** (instrument + frozen baseline) + Exp 56 re-baselined on 1.20.4. 1.2.1 = **"Spoken-code loop"** (the pairing pieces; composition unwired — corrected in 1.3.0). 1.2.0 = **"Oasis"**: **Exp 56 EARNED** + **Exp 57 PARTIAL** + the **Hivemind P2P exchange**. 1.1.4 = **"The world seam"**, 1.1.3 = **"Reachability"**, 1.1.2 = **"Decomposition"**, 1.1.1 = **"Enforcement"**.
-Now (2026-10-16): **1.3.2 "Decomposition" shipped**; the path to 1.4.0 is four patches (owner decisions 2026-10-16, and 2026-10-17 to split 1.3.3): **1.3.3** the release pipeline + pulse's blockers, **1.3.4** the atonia gate (on its own clock), **1.3.5** the orchestrator decomposition, **1.3.6** loop phase 2 + the E1 instrument, then **1.4.0** (hard-gated by `scripts/lint_release_gates.py`, #1300). Detail: [roadmap_1_3_x.md §Path to 1.4.0](roadmap_1_3_x.md#path-to-140-owner-decision-2026-10-16).
+Now (2026-10-16): **1.3.2 "Decomposition" shipped**; the path to 1.4.0 is four patches (owner decisions 2026-10-16, and 2026-10-17 to split 1.3.3): **1.3.3** the release pipeline + pulse's blockers (shipped 2026-10-24), **1.3.4** the robot and recall fixes (owner decision 2026-10-24), the **atonia gate** on its own clock (the next free number when done), the **orchestrator** decomposition ("1.3.5"), **loop phase 2** + the E1 instrument ("1.3.6"), then **1.4.0** (hard-gated by `scripts/lint_release_gates.py`, #1300). Detail: [roadmap_1_3_x.md §Path to 1.4.0](roadmap_1_3_x.md#path-to-140-owner-decision-2026-10-16).
 - [roadmap_1_3_x.md](roadmap_1_3_x.md) — **the 1.3.x line** (drafted 2026-09-19 from the v1.3.0 re-score; **re-scoped 2026-09-26**; **1.3.1 SHIPPED 2026-09-27 as "Hardening"**; **1.3.2 SHIPPED 2026-10-16 as "Decomposition"**; carries the path to 1.4.0): 1.3.1 = what users need now — the security cluster, public-API correctness, release integrity (nightly lane, network block), the public format freeze and the two ingest defects it surfaced (#913/#914), plus everything on `main` since 1.3.0, each with its guard and no new behavioural claim; 1.3.2 = the enforcement ratchets carried from 1.3.1, then the `agent_loop` decomposition with behaviour-preservation gates and the ledger triggers discharged. Both before 1.4's experiments.
 - [outstanding.md](outstanding.md) — **the standing register of owed work**, cross-cutting and not release-scoped, each entry verified at its stated date. Created 2026-09-20 after an audit found the 1.1.x item-16 block entirely shipped while CLAUDE.md still declared one of them a KNOWN GAP.
 - [roadmap_1_4.md](roadmap_1_4.md) — **the 1.4 plan** (working title "Anticipation", re-pointed 2026-09-18, five-lens reviewed): generalization + sequence credit + a trajectory instrument on the survival rig — **Exp 62 EARNED 2026-09-20 (Phase 1 closed; PARTIAL, floor matched, since 2026-10-15)** → E1 conflict → [relief store] → E2 pockets → E3 strategic breathing; primitives on a variant body; release thresholds T1–T4 set, T5/T6 conditional, T7/T8 engineering only (engram integrity; grounding truth), T9 conditional (the first grounding claim); the release name is fixed at the transaction from the highest EARNED rung.
@@ -60,8 +60,9 @@ Deep-audited 2026-10-16 after the 1.3.2 cut, with a 2026-10-17 follow-up pass (s
 
 - [roadmap_1_3_x.md](roadmap_1_3_x.md) → [roadmap_1_4.md](roadmap_1_4.md) — **the live
   scope authority** (path to 1.4.0 decided 2026-10-16, 1.3.3 split 2026-10-17; 1.3.1 and 1.3.2
-  shipped): **1.3.3** the release pipeline and pulse, **1.3.4** the atonia gate, **1.3.5** the
-  orchestrator decomposition, **1.3.6** loop phase 2 and the B2→B3→B4 floor chain, then **1.4.0**
+  shipped): **1.3.3** the release pipeline and pulse (shipped), **1.3.4** the robot and recall fixes, the
+  **atonia gate** (own clock, next free number), the orchestrator decomposition ("1.3.5"), loop phase 2 and the
+  B2→B3→B4 floor chain ("1.3.6"), then **1.4.0**
   ([§Path to 1.4.0](roadmap_1_3_x.md#path-to-140-owner-decision-2026-10-16)).
 - [archive/roadmap_1_3.md](archive/roadmap_1_3.md) — the 1.3 plan, now a RECORD of what shipped as 1.3.0
   (its Phases 4–6 moved to `roadmap_1_4.md`; Phase 1b is deferred on its trigger).
@@ -214,7 +215,7 @@ break the citation. Each is a record now, not a plan.
 - [memory_2d2_retroactive_tagging.md](memory_2d2_retroactive_tagging.md): DECIDED + BUILT 2026-09-25 (#897).
 - [memory_2s_d_situation_cue.md](memory_2s_d_situation_cue.md): DECIDED + BUILT (#898); 2S-e is parked in `deferred/`.
 - [m1b_ledger_evidence_gate.md](m1b_ledger_evidence_gate.md): every PR built (3, 4, 5a–5a-3, 5b-1, 5b-2); the gate is `lint_evidence_gate.py` and `lint_ledger_format.py` (M1).
-- [baseline_floors_b0.md](baseline_floors_b0.md), [baseline_floors_b1_build.md](baseline_floors_b1_build.md), [baseline_floors_b1_evidence.md](baseline_floors_b1_evidence.md): B0 merged (#1233); B1 built and run (2026-10-14). The live plan is [baseline_floors.md](baseline_floors.md).
+- [baseline_floors_b0.md](baseline_floors_b0.md), [baseline_floors_b1_build.md](baseline_floors_b1_build.md), [archive/baseline_floors_b1_evidence.md](archive/baseline_floors_b1_evidence.md): B0 merged (#1233); B1 built and run (2026-10-14). The live plan is [baseline_floors.md](baseline_floors.md).
 - [oasis_entry_index_v2.md](oasis_entry_index_v2.md): PRs A–C shipped 2026-09-25; the format is frozen under public_format_freeze.
 - [lookback_primitive.md](lookback_primitive.md): DECIDED 2026-09-24 (no new store; #891/#892); R4's look-back design record.
 - [grounded_language_acquisition.md](grounded_language_acquisition.md): superseded by [grounding.md](grounding.md) 2026-10-07 (owner decision G5); kept at its path because `src/`, the CLI help text and `analysis/roy_log.py` cite it. Its paired-data audit entry condition is answered there (the pair became (context, consequence)).
@@ -392,6 +393,16 @@ Earlier deferrals:
 ## Archive
 
 Completed or superseded plans live in [archive/](archive/).
+
+Archived 2026-10-24 (the plans archive after 1.3.3; each file carries an ARCHIVED banner):
+- [archive/download_consent_gate.md](archive/download_consent_gate.md): #1343 shipped (PR #1400). The rule lives in docs/agents/llm-routing.md.
+- [archive/internet_toggle_session_gate.md](archive/internet_toggle_session_gate.md): #1345 shipped (PR #1401). The rule lives in docs/agents/runtime-tools.md.
+- [archive/release_pipeline.md](archive/release_pipeline.md): 1.3.3 published through `release.yml`; its hand-off was applied to docs/publication_guide.md.
+- [archive/r4_console_vendor_gate.md](archive/r4_console_vendor_gate.md): built by PR #1383. The rule lives in docs/agents/ci-testing.md, and the cut rule in readiness_and_extras_standards.md §R4.
+- [archive/baseline_floors_b1_evidence.md](archive/baseline_floors_b1_evidence.md): built in #1245. The BF2 obligation lives in docs/agents/simulation-experiments.md.
+
+Marked SHIPPED in place (2026-10-24), because code or its docs cite them by path: memory_2d2_retroactive_tagging.md,
+memory_2s_d_situation_cue.md, oasis_entry_index_v2.md, lookback_primitive.md, baseline_floors_b1_build.md.
 
 Redirects for plans that left `deferred/` (moved out of the Deferred index 2026-10-17):
 - ~~deferred/mother_maxim_plan.md~~ → **SUPERSEDED** (2026-05-09) by [maxim_hivemind.md](maxim_hivemind.md). Old plan moved to [archive/mother_maxim_plan.md](archive/mother_maxim_plan.md). Reframed for the substrate-primary world: peer-to-peer Maxim Oases (sustaining gathering places) instead of central Mother server; Maxim Hivemind (collective cognition layer) instead of Pecking Order Graph; distilled bio-substrate snapshots instead of raw episodes. ~2,100 LOC instead of 3,800. Phasing: shareability infrastructure SHIPPED in 1.0 (B5, PRs #305–#311); Oasis + full Hivemind protocol gated for 1.2.

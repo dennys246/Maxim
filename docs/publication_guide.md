@@ -233,7 +233,7 @@ site, a dead documentation URL, or metadata from a different artifact.
 
 pymaxim is published by [`.github/workflows/release.yml`](../.github/workflows/release.yml) from a signed tag,
 through PyPI trusted publishing (OIDC, no stored token). 1.3.3 was the first release published this way
-(2026-10-24). The design and its threat table: [release_pipeline.md](plans/release_pipeline.md).
+(2026-10-24). The design and its threat table: [release_pipeline.md](plans/archive/release_pipeline.md).
 
 ### Owner setup (once, in this order)
 
@@ -385,7 +385,7 @@ python scripts/vendor_console_ui.py --clean                   # back to checkout
 changes in a way a stale bundle would notice: an endpoint removed or renamed, a required field added, an envelope
 reshaped. It is also the FastAPI app `version`. **The cut rule (R4):** a bump leaves `main` unreleasable until the
 pin moves to a pulse tag built for the new contract. Pulse tags first, pymaxim vendors, then pymaxim releases
-([r4_console_vendor_gate.md](plans/r4_console_vendor_gate.md)).
+([r4_console_vendor_gate.md](plans/archive/r4_console_vendor_gate.md)).
 
 ---
 

@@ -42,7 +42,7 @@ leaving a known-open default in place until 1.4; 1.1.1 is the precedent for a be
 
 ### Rationale
 
-The adversarial design pass on the approach note (docs/plans/baseline_floors_b1_evidence.md, five rounds) found that a
+The adversarial design pass on the approach note (docs/plans/archive/baseline_floors_b1_evidence.md, five rounds) found that a
 FEAR-only Exp 60 re-run could re-earn EARNED over a floor-matched B1 verdict (the gate gates moves, not missing moves),
 and that a crash mid-attempt let `--resume` restart the key after its outcome was seen. Both were taken as the strict
 option. The cost of D2 is that an accidental crash on a gated arm makes the campaign INCOMPLETE; a harness bug fix

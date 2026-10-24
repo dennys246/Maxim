@@ -33,7 +33,7 @@ fix for that very release) was tagged: this script took any directory and
 refused only a contract mismatch or a dirty build. Staleness used to be "a
 judgment call this script cannot make"; the pin now makes "current" a
 committed, reviewed fact, and ``--verify-pin`` proves it against pulse's tags.
-Design and adversarial pass: docs/plans/r4_console_vendor_gate.md.
+Design and adversarial pass: docs/plans/archive/r4_console_vendor_gate.md.
 
 The destination (``src/maxim/console/ui_dist/``) is .gitignore'd: vendoring is
 a RELEASE step, not a commit.
