@@ -196,6 +196,10 @@ therefore never passes `--only-when-releasing`, `--contract-drift-ok-unless-rele
 
 ## Hand-off to the process session (`docs/publication_guide.md`, not edited here)
 
+**Applied 2026-10-24**, after 1.3.3 shipped through the workflow: `docs/publication_guide.md` now describes the
+`release.yml` path, and the hand path is retired to an emergency-only step that needs an owner decision. The list
+below is kept as the record.
+
 1. **§2b is stale.** After #938, push and schedule runs no longer run the nightly check, so "every later PR and
    push to main" no longer goes red. Release PRs still do.
 2. **The publish path becomes `.github/workflows/release.yml`.** The new order:
