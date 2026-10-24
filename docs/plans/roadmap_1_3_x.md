@@ -557,7 +557,8 @@ found 1.3.2 not ready. The owner decided:
     2026-10-14, 1.3.3, Session C.
   - [#1292](https://github.com/dennys246/Maxim/issues/1292), F4: a `console.device.build_device_app` facade that
     owns the device-app composition pulse assembles today (owner decision 2026-10-14: build in 1.3.3, after 1.3.2
-    and pulse v0.4.1 ship, design review first), Session C. F2 and F3, the other #1268 follow-ups, shipped in
+    and pulse v0.4.1 ship, design review first), Session C. *Moved 2026-10-24: F4 is the embodied-device plan's
+    `run_device` ([embodied_device.md](embodied_device.md)).* F2 and F3, the other #1268 follow-ups, shipped in
     1.3.2 ([#1290](https://github.com/dennys246/Maxim/pull/1290), [#1293](https://github.com/dennys246/Maxim/pull/1293)).
   - [#863](https://github.com/dennys246/Maxim/issues/863) step 2, the sites outside the loop (`orchestrator.py` and
     `cli.py::_main_impl`): moved with those slices. It stays open on #863, home recorded.
@@ -847,7 +848,8 @@ Owner decisions taken with this path (2026-10-16):
 > by owner decision (2026-10-23). T1-2 ships STALE under `release-1.3.3-T1-2`. What did not finish **slipped to
 > 1.3.4** (owner decision 2026-10-23), each still open with its home:
 > - R3 typed payloads [#1336](https://github.com/dennys246/Maxim/issues/1336) and F4
->   [#1292](https://github.com/dennys246/Maxim/issues/1292): §1.3.4, Session S's second slice;
+>   [#1292](https://github.com/dennys246/Maxim/issues/1292): §1.3.4, Session S's second slice (F4 moved 2026-10-24 to
+>   [embodied_device.md](embodied_device.md) as its `run_device`);
 > - doctor advisories [#1295](https://github.com/dennys246/Maxim/issues/1295) (owner decision 2026-10-18; recorded
 >   here, not only in memory);
 > - CI and evidence truth: #1313, #1203, #1121, #1218, #1220, #1246, #1247, #1038, #1024, #1031, #1215, #1023;
@@ -987,7 +989,7 @@ signed commit.
 | Session | Line | Owns | Shares | Starts with |
 |---|---|---|---|---|
 | **P (pipeline)** | #1372 trusted publishing and the `v*` ruleset (re-pointed 2026-10-18); #938 the nightly-red window between a release merge and its tag; #1333 vendoring with R4; #1318 CI caching; #1295 upgrade safety | `scripts/vendor_console_ui.py`, `scripts/audit_release_build.py`, `tests/unit/test_vendor_console_freshness.py`, `tests/unit/test_audit_release_build.py`; vendoring into `src/maxim/console/ui_dist/` (a release step, not committed) | `test.yml`: the `release-build` job hunk (its stub manifest) and the caching hunk. `console/ui_bundle.py` and `tests/unit/test_console_ui_bundle.py`: S owns them, P reads `ui_bundle.py` and edits the vendor-script test hunk. `pyproject.toml`: the release bump. `docs/publication_guide.md`: the process session's; hand over the steps | #1333, which has to be in the next wheel; then R4's design pass; then #1372 and #938 |
-| **S (pulse seam)** | #1332 the piper fix; #1347 the console extra's `/ws`; R1 #1334; R2 #1335 (tts first); R3 #1336 (stall and health kinds); #1292 F4 | `models/audio/`, `console/` except `handle.py` (schemas, announcer, server, health, `ui_bundle.py`, `openapi.json`, `contract_surface.json`), the stall-dict hunk of `runtime/heartbeat.py`, `utils/audio.py`, `utils/response_output.py`, `.github/constraints/console.txt`, `tests/unit/test_console_ui_bundle.py`, the extras in `pyproject.toml` | `console/handle.py` with V; `test.yml` (the matrix lane) | #1332's red gate against the real library |
+| **S (pulse seam)** | #1332 the piper fix; #1347 the console extra's `/ws`; R1 #1334; R2 #1335 (tts first); R3 #1336 (stall and health kinds); #1292 F4 (moved 2026-10-24 to embodied_device.md) | `models/audio/`, `console/` except `handle.py` (schemas, announcer, server, health, `ui_bundle.py`, `openapi.json`, `contract_surface.json`), the stall-dict hunk of `runtime/heartbeat.py`, `utils/audio.py`, `utils/response_output.py`, `.github/constraints/console.txt`, `tests/unit/test_console_ui_bundle.py`, the extras in `pyproject.toml` | `console/handle.py` with V; `test.yml` (the matrix lane) | #1332's red gate against the real library |
 | **V (atonia gate → 1.3.4)** | advisor_mode.md items 2, 3, 6, then 1 with 5, and 10 (then 4, 12, 7, 11, and Profile A's 13, 8, 14); #1338, #1342; #1362; #1366 (proposed 2026-10-18); #1377 | `tools/` except the `InternetAccessTool` hunk; `runtime/executor.py`, `runtime/bootstrap.py`, `runtime/agent_factory.py`, `runtime/prefetch.py`, `runtime/tool_dispatch.py`, `runtime/concurrent_executor.py`, `runtime/agent_pool.py`; `api.py`, `create.py`, `modes/`, `agents/autonomy.py`; `embodied_runtime/agentic_runtime.py`, `embodiment/tool_bridge.py`, `simulation/{foundry,minecraft_harness,tools,tools_dm,research_tools,campaign_runner,dm_runtime}.py`. `utils/internet_access.py` (H shares the #1345 hunk). For item 10: `utils/http.py` (the offline refusal), `models/download.py`, `models/language/{llama_backend,transformers_backend}.py`, `models/vision/`, `similarity/{encoder,semantic}.py`, `inference/transcribe_audio.py`, `simulation/container_runner.py`, `runtime/decision_log.py`; `doctor/` (item 11) | `console/handle.py` with S. `models/audio/tts.py` (the `ensure_tts_voice` hunk) with S. `tools/internet_search.py` and `tools/comms.py` with H. `runtime/config_loader.py`: the one shared 1.4 config-format bump. **`orchestrator.py` and `agent_loop.py` under the AD8 fence exception.** `cli.py` is Session A's file. Rule T applies to the pinned functions in advisor_mode.md §Order and the fence | the approach notes and design passes for items 2, 3, 1, 5 and 10, together |
 | **H (hardening)** | security #1311 #1312 #1314 #957 #997; LLM routing #1369 #1370 #1371 (if ready; proposed 2026-10-18); the `node_security` remainder; fail-loud Stage 3; #1337; #1310 (the owner's strict `passed`); the comms recipient allowlist (O4, non-advisor); #1343; #1345; advisor_mode.md item 9's process-level yield, converging with #1267 on one SIGTERM installer (#1344); CI and evidence truth (#1313 #1203 #1121 #1218 …); the 1.4.0 gate items #1305 #1263 #1264 #1265 #1267; M25; the small fixes | `runtime/role.py`, `runtime/leader_mode.py`, `runtime/local_server_spawner.py` (including R1's decision on `_health_check`), `simulation/benchmark.py`, `cli_utils.py`, `comms/` and the scripts each issue names | `tools/comms.py` (the allowlist hunk) and `tools/internet_search.py` plus `utils/internet_access.py` (#1345) with V; `cli.py` (#1310's exit code, #1337, #1343's consent hunk, item 9's installer) with Session A; `test.yml` (the CI-truth hunks) | #1337 and #1310 (small, decided), then security |
 | **E (E1, B4 and T8 (b), paper only)** | *E1 and B4 DONE 2026-10-18/19 (#1382: floor decision, replays, both preregs DRAFT v2 through review); T8 (b) open.* The BF2 floor decision for E1; the argmax and hunger-state replays (offline, committed); E1's prereg draft through the four-lens design review; **B4's prereg through its four-lens design review** ([#1354](https://github.com/dennys246/Maxim/issues/1354); a new claim, L8's dose-response design); **T8 (b): the four-lens design reviews of [thalamic_relay.md](thalamic_relay.md) and [latent_forward_model.md](latent_forward_model.md)**, paper only, before 1.4.0 (owner decision 2026-10-18) | `docs/experiments/`, the replay scripts under `scripts/` | nothing in `src/` (the fence lifts when 1.3.6's decomposition slices land — the point at which T0 can pass) | the floor decision, presented as options to the owner |
@@ -1019,8 +1021,9 @@ them. Session V's atonia items do not hold the 1.3.3 cut; they are 1.3.4 (owner 
     1.3.3, owner decision 2026-10-18). Contract 0.7.0 lands only together with a pulse tag built for 0.7.0 (the cut rule
     above; since R4 the bump makes `main` unreleasable until the console pin moves). Ask pulse for that tag at the
     start, not at the cut.
-  - **[#1292](https://github.com/dennys246/Maxim/issues/1292) F4**, the `console.device.build_device_app` facade
-    (design review first). It was "if time remains" in 1.3.3.
+  - **[#1292](https://github.com/dennys246/Maxim/issues/1292) F4** **moved to the embodied-device plan**
+    (2026-10-24): F4 is that plan's `run_device`, in `console/device.py`, and its design review is that plan's step 6
+    review (§The embodied device, below).
   - **R2's next extras: reachy, then audio** (readiness_and_extras_standards.md §R2 "Order"). Each adds its cells to
     `scripts/extras_matrix.py::EXTRAS` and leaves `_NOT_YET_IN_MATRIX` in `tests/unit/test_extras_matrix.py`, whose
     ceiling may only fall (M69, partly mechanized).
@@ -1039,9 +1042,61 @@ them. Session V's atonia items do not hold the 1.3.3 cut; they are 1.3.4 (owner 
     servers show nothing; a contract change, so it rides on R3's 0.7.0 bump. Cloud placements need a real cheap
     authenticated call (today's `provider` probe only checks the key's shape). It is R1 applied to the leader
     connection.
+  - **The Reachy speaker sink** ([#1435](https://github.com/dennys246/Maxim/issues/1435), found by maxim-pulse on a
+    real Reachy Mini with 1.3.3). `utils/audio.py::push_audio_to_device` returns True on the SDK's silent drop before
+    `start_playing()` (and nothing in maxim starts the player, so the runtime's own voice drops too), and never
+    resamples Piper's 22,050 Hz to the device's 16,000 Hz (speech ~27% slow and pitched down). The runtime voice's
+    own resample also hard-clips (it stays on the int16 scale; measured), and `ReachyAudioStream.push_sample` tells
+    the same lie, so the fix covers both sinks. Owner decisions 2026-10-24:
+    - whoever holds the SDK handle starts the player once, never the sink (`MediaLoopMixin` at media start, plus a
+      documented call for bare-SDK embedders);
+    - the SDK's opt-in head wobbler is explicitly disabled at that start, so speech never moves the head
+      (docs/agents/embodiment.md §1);
+    - the sink refuses loudly when the player is not started, normalizes the scale and resamples to
+      `get_output_audio_samplerate()`, and `response_output`'s pre-resample goes in the same PR.
+
+    Design pass first (detecting "started" has no public SDK query). Rides with R2's reachy cell, whose device smoke
+    asserts audio reached a STARTED player at the device rate. R1's in-memory "has spoken" stays the readiness signal
+    until the embodied-device plan's step 3 makes it PLAYS.
+  - **The device defects from pulse's review** (Maxim-pulse #58, 2026-10-24). Each one is bounded, none waits for
+    the embodied-device plan, and each ships in 1.3.4 only if ready, never holding the atonia gate's cut. Owners
+    (owner decision 2026-10-24): Session S takes #1435, #1436 (a named fence exception for
+    `embodied_runtime/media_loop.py`, which no session owns) and #1437 (a named fence exception for its one-line
+    `cli.py` wiring). #1435 also needs named exceptions: `media_loop.py` (its interim player start) and
+    `hardware/reachy/streams.py` (the second lying sink; no session owns it); its `tools/response.py` honesty hunk
+    is shared with Session V. Session H takes #1438 with #1344, one mechanism whose deadline the caller sets:
+    [#1436](https://github.com/dennys246/Maxim/issues/1436), robot voice input off since 2026-04-03 (a lazy import
+    of a deleted module behind one warning; fail loud, plus an audit or lint for lazy imports of missing modules);
+    [#1437](https://github.com/dennys246/Maxim/issues/1437), `maxim --tts` never speaks (`speaker_fn=None`);
+    [#1438](https://github.com/dennys246/Maxim/issues/1438), a Reachy stop can kill the session-end save (the daemon
+    kills at ~20 s; `_drain_and_stop_handle`'s defaults allow up to ~110 s; Session H, with #1344).
+    [#1439](https://github.com/dennys246/Maxim/issues/1439) (Talk reaches the body-less `console_agent`) is not
+    bounded: its fix is the plan's one-agent-per-device contract.
+  - **Talk states and chooses its real toolset** ([#1430](https://github.com/dennys246/Maxim/issues/1430), then
+    [#1431](https://github.com/dennys246/Maxim/issues/1431), requested by maxim-pulse). #1430: the Talk prompt names
+    the tools it actually has (from `TALK_CONVERSATIONAL_TOOLS`), so it stops claiming capabilities it lacks. #1431:
+    an MCP-shaped `GET /api/tools?mode=talk` and `POST /api/setup/talk-tools` let the operator add read-only tools
+    (web search, page fetch first), default off. The server decides read-only from a declared eligible set, never
+    from the tool's own annotations, and enabling a tool never raises the operator's internet switch. A declared
+    seam and a contract change, so it rides R3's 0.7.0 bump with #1428. Owner decisions owed at its start: the first
+    set, the MCP spec revision, per install or per conversation, and whether `ddgs` joins the `console` extra.
 - **Session V's other issues ride with it** unless they land before the 1.3.3 cut: #1338, #1342, #1362 and #1366
   (#1366 proposed 2026-10-18, owner to confirm).
 - **Exit:** the registration and dispatch sweeps, the builder-refusal tests and item 10's census test pass.
+
+### The embodied device (own clock, in parallel; not 1.3.4 scope)
+- **[embodied_device.md](embodied_device.md)** (DRAFT v2, review round 1 folded; owner decisions 2026-10-24):
+  - **The approach:** one owner per device contract, with maxim-pulse's #58 as input. Every piece answers the
+    front-gate question against what exists. The audio port is the existing `hardware/streams.py::AudioStream`, and
+    there are no new top-level packages. F4 (#1292) becomes its `run_device` in `console/device.py`.
+  - **Home:** its own session and its own clock, like the atonia gate. It ships as a patch when ready and holds
+    nothing, and it touches no decomposition-fenced file, so 1.3.5, 1.3.6 and 1.4.0 keep their order.
+  - **Atonia:** the gate ships as designed. Its closed builder refuses any embodiment, so it and this plan do not
+    gate each other. The plan's embodied census is its own acceptance criterion, and the test for a later "atonia
+    within embodiment" extension if one is ever taken.
+  - **The SDK's head wobbler** is explicitly disabled.
+  - **Pulse's four questions are decided:** STT on the leader first; listening after "Maxim"; a private `-dev` Space
+    first; the 1.4 memory merge rides `migrate_agent_state` (whole or nothing, refuse on conflict).
 
 ### 1.3.5, "The orchestrator"
 - **First the five characterization arms** (`persistent_agent`, `imagination`, `new_goal`, `stall`, `generative`).
