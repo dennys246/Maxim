@@ -1,6 +1,6 @@
-# pymaxim.bio — website handoff (1.0.9 live audit 2026-08-19 · 1.1 audit 2026-08-25 · 1.1.4 refresh 2026-09-05 · 1.3.0 refresh 2026-09-19 · 1.3.1 refresh 2026-09-27 · 1.3.2 corrections 2026-10-15 · 1.3.2 refresh 2026-10-16 · 1.3.3 refresh prepared 2026-10-23)
+# pymaxim.bio — website handoff (1.0.9 live audit 2026-08-19 · 1.1 audit 2026-08-25 · 1.1.4 refresh 2026-09-05 · 1.3.0 refresh 2026-09-19 · 1.3.1 refresh 2026-09-27 · 1.3.2 corrections 2026-10-15 · 1.3.2 refresh 2026-10-16 · 1.3.3 refresh 2026-10-24)
 
-## 1.3.3 refresh — prepared 2026-10-23 ("Release pipeline"; **not yet on PyPI**: `upload_time` TODO, signed tag `v1.3.3` TODO)
+## 1.3.3 refresh — 2026-10-24 ("Release pipeline"; PyPI `upload_time` 2026-10-24T00:00Z, signed tag `v1.3.3` @ `c9619217`)
 
 **Framing rule.** 1.3.3 makes **no new behavioural claim**. It ships three things: the fixes maxim-pulse found
 in the Console, the Console's live stream from a clean `pymaxim[console]` install, and the first release CI
@@ -9,7 +9,7 @@ solo included (#1314)**, so the reader must upgrade every maxim on a host togeth
 maxim started. The site claims no more than `release_1_3_3.md` does. Never write "JEPA". Never imply a benchmark
 result nobody ran: the bare-LLM floor B2 has not run. Release links: [GitHub Release](https://github.com/dennys246/Maxim/releases/tag/v1.3.3)
 · [PyPI 1.3.3](https://pypi.org/project/pymaxim/1.3.3/). Site fix: **maxim-web `docs/1-3-3`
-([#39](https://github.com/dennys246/Maxim-web/pull/39), draft, held until PyPI)**. This section is its engine
+([#39](https://github.com/dennys246/Maxim-web/pull/39), merged 2026-10-24 after PyPI)**. This section is its engine
 companion.
 
 **Engine truth, read from the files, not from memory.** `docs/announcements/release_1_3_3.md`, CHANGELOG
@@ -21,20 +21,36 @@ so `0` beats a config `true`), `cli_parser.py` (`--clear-memory` help and `--yes
 ("Loopback lane auth"), `decisions/nac.py` (`decay_interval_hours` dead; `offline_wall_decay` default off) and
 `integration/memory_hub.py` (links decay through `decay_all(0.95)` at session end, not per tick).
 
-**Verified so far against the release branch, not yet the wheel.**
+**Verified against the artifact, not a proxy.**
+
+- **Clean venv** (`python3 -m venv` on 3.14, `pip install 'pymaxim[console]==1.3.3'`). `maxim.__version__` =
+  1.3.3. `CONSOLE_CONTRACT_VERSION` = 0.6.0. The vendored `maxim-ui.json` says maxim-pulse v0.4.2 @ `bcd0d1e`,
+  contract 0.6.0. `websockets` 17.3 came with the extra, and a live `maxim serve` in a scratch home upgraded
+  `/ws` with the bearer token and sent its `identity` frame.
+- **Measured in a scratch home:** `maxim --clear-memory nac` with stdin not a terminal listed the agent's
+  `nac.json`, refused, and exited 2; with `--yes` it cleared it and exited 0. `NACConfig().offline_wall_decay`
+  is False; `InvalidAgentIdError`, `maxim.download_model`, doctor's `check_loopback_lane_auth` and
+  `maxim.utils.set_internet_access(..., source="operator")` exist.
+- **Flags:** every `--flag` the site PR adds exists in the 1.3.3 `--help` (`--insecure` on `oasis serve`).
+- **Components:** regenerated from the wheel (`--label "pymaxim 1.3.3 (PyPI wheel)"`). Only the label changed;
+  the 97 refs equal `ComponentRegistry().list_refs()`; links pinned to `v1.3.3`.
+- **Live after deploy:** the version line reads 1.3.3 "Release pipeline", 2026-10-24 UTC; 156/156 sitemap routes
+  return 200; the new anchors resolve.
+
+**Before the wheel (release branch):**
 
 - `pnpm build` clean, **157** pages. **13,112** internal hrefs and fragments resolve, 0 broken. The checker
   catches a planted missing page and a planted missing fragment.
 - No "JEPA" anywhere in the site's `src/`. No PEP 740 claim: the CHANGELOG says attestations were *requested*,
   not verified. No "every extra is tested": only `tts` and `console` have extras-matrix rosters.
 - The component YAMLs are unchanged between `v1.3.2` and the release branch. The catalog stays labelled 1.3.2
-  until it is regenerated from the 1.3.3 wheel.
+  until it was regenerated from the 1.3.3 wheel (above).
 
 ### Findings (route → claim before → truth source → fix)
 
 | Route | Before | Truth source | Fix |
 |---|---|---|---|
-| `/getting-started/` | 1.3.2 "Decomposition" version line | announcement; CHANGELOG `[1.3.3]`; PyPI (pending) | 1.3.3 "Release pipeline", `TODO-1.3.3-DATE` UTC, links to the Release, CHANGELOG `v1.3.3` and PyPI, and a "read the upgrade notes first" pointer. A **caution box first** (every server keyed, upgrade every maxim on a host together). Then "no new behavioural claim", explained as no new research claim, with the software's behaviour changing on purpose. Then the three things it ships, the other security and behaviour changes, and the evidence at the cut. 1.3.2 kept as its own section |
+| `/getting-started/` | 1.3.2 "Decomposition" version line | announcement; CHANGELOG `[1.3.3]`; PyPI `upload_time` | 1.3.3 "Release pipeline", 2026-10-24 UTC (a `TODO-1.3.3-DATE` placeholder until PyPI), links to the Release, CHANGELOG `v1.3.3` and PyPI, and a "read the upgrade notes first" pointer. A **caution box first** (every server keyed, upgrade every maxim on a host together). Then "no new behavioural claim", explained as no new research claim, with the software's behaviour changing on purpose. Then the three things it ships, the other security and behaviour changes, and the evidence at the cut. 1.3.2 kept as its own section |
 | `/installation/` | "Upgrading to 1.3.2" first; "auto-downloads on first run"; the Console extra did not mention `/ws` | Security migration; #1343; #1347 | New **Upgrading to 1.3.3**. **Security first**: the key file (`~/.config/maxim/llm_server_key`, `%APPDATA%\maxim\llm_server_key`), `pip install --upgrade` in every environment, stopping an old server (`pkill -f llama_cpp.server`, the command `llm_server.py`'s own message gives), `MAXIM_LANE_<TIER>_REMOTE_API_KEY` only for a hand-set lane, a writable `~/.config/maxim` in containers. Then #1345 / #957 / #997 / #1311. Then the behaviour changes, each with what to do, **`--clear-memory` first** (#1337), NAc offline decay, #1343, #1310, #1413/#1414, `:` agent ids. Then the Console (#1347, #1332 with the overclaim correction, #1334, #1412, pulse v0.4.2) and **Release integrity**. The model step is now consent-based |
 | `/reference/cli/` | "1.3.2 vendors maxim-pulse v0.4.0"; "Since 1.3.2, the voice can be provisioned", read as working; `--clear-memory` "Clear persistent memory" | `[1.3.3]` Changed + Fixed; `cli_parser.py` | v0.4.2 (`bcd0d1e`), contract 0.6.0, 0.7.0 planned for 1.3.4, the pinned-bundle rule. `/ws` from a clean install. **The 1.3.2 "verified Piper voice provisioning" overclaim corrected in plain words.** `pairing_ready` = non-silent audio synthesized once. `--clear-memory` scope (data home, agent stores in every agent home, `./data` only with `--home-dir`, `sim_reports/` never), `--yes`, exit codes 0/1/2 |
 | `/systems/nucleus-accumbens/` | Decay section built on `decay_interval_hours` | `nac.py` (dead config); #1361; #1102; `InvalidAgentIdError` | Links decay at session end; per-tick bias decay; fear has none. Since 1.3.3 no offline decay, fear never fades (imported too), `offline_wall_decay=True` opt-in, `apply_decay=` deprecated (removed 1.5.0; ignore the `--resume-sim` warning), load clamp, `:` ids refused, NaN/inf `ValueError` |
@@ -78,16 +94,16 @@ beyond the NaN `ValueError`. The site reaches them through the CHANGELOG link.
 
 ### Acceptance checks — 1.3.3
 
-- [ ] Version line 1.3.3 "Release pipeline" with the UTC upload date as PyPI shows it (`TODO-1.3.3-DATE`
-  replaced); links to the Release, CHANGELOG, PyPI 1.3.3; `live-site-check` line format kept.
+- [x] Version line 1.3.3 "Release pipeline", 2026-10-24 (UTC upload time); links to the Release, CHANGELOG,
+  PyPI 1.3.3; `live-site-check` line format kept.
 - [x] The security change leads: every llama-cpp-server keyed, upgrade every maxim on a host together, stop old servers, lane key, container home.
 - [x] "No new behavioural claim" stated; no result changed status; T1-2 STALE under `release-1.3.3-T1-2` with the Goldilocks caveat; Exp 60/61/62 PARTIAL; B2 not implied.
 - [x] Every correction in the brief is on the site (Piper overclaim, v0.4.2, `/ws`, download consent, `--clear-memory`, internet toggle, NAc, benchmarks).
 - [x] Release integrity: signed tag, green nightly on the exact commit, exact-wheel smoke test, trusted publishing, pinned newest pulse bundle; extras testing limited to `tts` and `console`; no PEP 740 claim.
 - [x] Fresh-reader and claim-check passes folded (13 + 6).
 - [x] `pnpm build` clean (157 pages); 13,112 internal links + fragments resolve.
-- [ ] **After PyPI, on the wheel:** clean venv with `pymaxim[console]==1.3.3`; `--help` shows `--clear-memory` / `--yes` as written; `maxim doctor` has "Loopback lane auth"; `maxim.download_model` exported; `/ws` upgrades on a clean console install; regenerate components (`--label "pymaxim 1.3.3 (PyPI wheel)"`, links `v1.3.3`); sweep the site's flags against `--help`.
-- [ ] **After merge/deploy:** re-crawl the live sitemap; confirm the version line via `live-site-check`; spot-check `/getting-started/`, `/installation/#upgrading-to-133` and `/reference/cli/#console-server`.
+- [x] **On the wheel:** clean venv with `pymaxim[console]==1.3.3`; `--help` shows `--clear-memory` / `--yes` as written; `maxim doctor` has "Loopback lane auth"; `maxim.download_model` exported; `/ws` upgrades on a clean console install; regenerate components (`--label "pymaxim 1.3.3 (PyPI wheel)"`, links `v1.3.3`); sweep the site's flags against `--help`.
+- [x] **After merge/deploy:** live sitemap re-crawled (156/156 return 200); version line confirmed live; `/getting-started/`, `/installation/#upgrading-to-133`, `#release-integrity` and the operating-modes 1.3.3 section spot-checked.
 - [ ] **Human-only (carried):** a visual, mobile and keyboard pass in a real browser, especially the new caution box.
 
 ## 1.3.2 refresh — 2026-10-16 ("Decomposition"; PyPI `upload_time` 2026-10-16T20:47Z, signed tag `v1.3.2` @ `59d35ad3`)
