@@ -95,7 +95,9 @@ prepares for it without deciding it:
 
 **The head wobbler (owner decision 2026-10-24): disabled explicitly.**
 - In reachy_mini 1.8.3 the wobbler is opt-in: `enable_wobbling()`, on the SDK object or by a daemon command.
-  `start_playing()` starts it only if it already exists. The 1.12 default still needs checking.
+  `start_playing()` starts it only if it already exists. The 1.12 default still needs checking. Pulse found
+  (2026-10-24) that `reachy_mini.disable_wobbling()` turns off both the SDK-side and the daemon-side wobbler. Its
+  smoke starts a fake robot with wobbling ON and asserts that the call turns it off.
 - The device lifecycle owner calls `disable_wobbling()` when it starts, so speech never moves the head and all motion
   stays on `goto_target`.
 - A test pins it off.
@@ -107,7 +109,10 @@ prepares for it without deciding it:
 **Owner, 2026-10-24.** Pulse's four questions, decided as recommended:
 1. **Speech-to-text runs on the leader first,** with on-robot voice-activity detection and endpointing. On-robot STT
    comes later, as an offline fallback (advisor item 10 points there).
-2. **Listening only after "Maxim"**, a wake word. Pulse's draft defaulted to always on.
+2. **Listening starts with the wake word "Maxim"**; pulse's draft defaulted to always on. The owner has since asked
+   for **dynamic listening**, so the wake word is the Listener's first state, not its only one. A listening state
+   machine follows on the same Listener: follow-up turns without the wake word, and closing on silence or on a
+   topic end. Each new state is an inbound gate, so it gets its own design pass.
 3. **A private `-dev` Space first.** It goes public when R2's reachy cell and the one-command on-robot check pass on
    a release candidate.
 4. **The 1.4 memory-folder merge rides `runtime/agent_factory.py::migrate_agent_state` (#932):** whole or nothing,
@@ -138,6 +143,11 @@ prepares for it without deciding it:
     the same PR, so R6's clip cannot survive the fix.
 
 **Still open:** which board the robot runs on (pulse notes the SDK names a CM4). It sets the on-robot defaults.
+Pulse will read `/proc/device-tree/model` on the robot and send it.
+
+**Pulse's interim owner (2026-10-24):** pulse #57's bootstrap is #1435's interim lifecycle owner for a bare-SDK
+embedder: `start_playing()`, then `disable_wobbling()` once at start, and `stop_playing()` last, pinned by pulse's
+tests. When `embody()` owns this, pulse drops its copy, and a test on each side pins exactly one owner.
 
 ## 5. Order
 
@@ -159,10 +169,18 @@ prepares for it without deciding it:
    player (§4). Before step 5 it is proven against the SDK-faithful fake.
 4. **`ReachyMiniController.adopt` and `MaximHandle.embody`**, under embodiment.md §1. The single-connection guard and
    **the embodied census** land here.
-5. **Listening**, attached through `embody()`: CaptureManager as the one consumer, wake-word gated, STT on the leader,
-   half-duplex while `Voice` speaks. (It comes after `embody`, so it has a body to listen through.)
+5. **Listening**, attached through `embody()`: CaptureManager as the one consumer, the wake word as the first state
+   (decision 2), STT on the leader, and half-duplex while `Voice` speaks. (It comes after `embody`, so it has a body
+   to listen through.)
+   - **The leader's STT endpoint does not exist yet.** No `/v1/audio/transcriptions` route exists in `src/maxim`, but
+     decision 1 needs one, and so does pulse's planned STT-brokering peer (the owner's Mac). It is a new leader-proxy
+     route, so it gets **its own design pass**: bearer-gated like every proxy route; the 1.3.3 key rules; an audio size
+     and duration cap; no audio logged or persisted; client calls through `utils/http.py`; read
+     docs/agents/llm-routing.md first. It is an OpenAI-shaped route, so a brokering peer serves the same contract.
 6. **`run_device`** (F4, `console/device.py`), whose design review is this step's.
-7. **The status seam:** with 0.7.0 if 0.7.0 is unreleased, else its own bump.
+7. **The status seam:** with 0.7.0 if 0.7.0 is unreleased, else its own minor bump. The tag plan follows the R4 cut
+   rule every time: pulse tags a release built for the new contract, pymaxim vendors it, then pymaxim releases. The
+   concrete plan is proposed when R3 (#1336), the first 0.7.0 rider, is scheduled.
 8. **The `robot` extra**, after R2's reachy cells, **and the device log.**
 
 **Pulse, alongside:**
