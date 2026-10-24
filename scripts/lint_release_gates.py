@@ -928,7 +928,7 @@ def diff_base(root: Path) -> str:
     PR's own run (merge-base, ACTIVE) is the required gate, so that is covered. Only a direct multi-commit push that
     skips a PR is not (a residual, M56). A ``v*`` TAG push (release.yml, #1372) is also a ``push``: on the
     bump commit it reads ACTIVE as on the PR; on a later commit it reads CLOSED (print-only), which is harmless
-    because the bump PR enforced the gate (docs/plans/release_pipeline.md, SF4). Every other event, local runs,
+    because the bump PR enforced the gate (docs/plans/archive/release_pipeline.md, SF4). Every other event, local runs,
     pull requests, ``schedule`` and ``workflow_dispatch`` included, uses the merge-base with origin/main (then
     main): a dispatch can run on any branch head, and judging it against its own parent let a branch whose first
     commit bumped the version read as already released (review SF1). On main the merge-base is HEAD itself."""

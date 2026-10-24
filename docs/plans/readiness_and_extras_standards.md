@@ -140,7 +140,7 @@ Otherwise R3 slips past that cut, and the release vendors v0.4.1 at contract 0.6
 **Since R4 (2026-10-18):** a contract bump MERGES green (CI prints a `CONTRACT DRIFT` warning), but from then on
 `main` cannot be released until the console pin moves to a pulse tag built for the new contract. At the cut, either
 pulse has tagged one, or the bump is reverted. The release is blocked, not silently slipped
-([r4_console_vendor_gate.md](r4_console_vendor_gate.md), fold 1).
+([archive/r4_console_vendor_gate.md](archive/r4_console_vendor_gate.md), fold 1).
 
 **Order.**
 1. The stall and health kinds.
@@ -157,7 +157,7 @@ pulse has tagged one, or the bump is reverted. The release is blocked, not silen
 in the release notes and in the note to pulse.
 
 **Built (2026-10-18, #1333):** a committed pin plus a live check (owner decision 2026-10-18); the approach note and
-its folded design pass are [r4_console_vendor_gate.md](r4_console_vendor_gate.md). **"The newest pulse tag for a
+its folded design pass are [archive/r4_console_vendor_gate.md](archive/r4_console_vendor_gate.md). **"The newest pulse tag for a
 contract"** means the highest stable `vX.Y.Z` tag, ordered as integers, whose `packages/kit/openapi.json`
 `info.version` at the tag's commit is that contract. Tag dates are never used. Pulse's `check_pymaxim_vendor.py`
 orders by creator date and includes pre-release tags; the 1.3.3 note to pulse proposes this definition for it too.
