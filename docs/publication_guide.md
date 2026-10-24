@@ -75,14 +75,20 @@ python3 scripts/check_nightlies.py
 The model-cache and slow lanes run only on schedule (or on dispatch), never on a PR, so a release PR
 cannot show them red. This reads the latest nightly run on `main` and refuses (exit 1) unless every
 `(nightly)` job succeeded within the last 48 hours AND that run tested the commit `main` is at now;
-exit 2 means it could not read them — that is not a pass. The `release-build` CI job runs the same check with `--only-when-releasing`, so the
-release PR (pyproject's version has no `v<version>` tag yet) goes RED while a nightly is red — and,
-until the tag exists, so does every later PR and push to `main`: the window is short by design. It
-BLOCKS the merge only once `release-build` is a required check (an owner setting, roadmap 1.3.2);
-until then this step is the gate. When the latest nightly is red, stale, or tested an older commit,
-fix what is red on `main`, then run `gh workflow run test.yml --ref main` and re-check once it
-completes (a re-run of an old run re-tests the OLD commit and does not count). Do not publish over a
-red nightly — there is no override.
+exit 2 means it could not read them, and that is not a pass.
+
+Where the same check runs (#938, 1.3.3):
+- **The release PR's required `Release build` check** runs it with `--only-when-releasing` (pyproject's version has
+  no `v<version>` tag yet), so the bump PR cannot go green until a nightly passes on `main`'s current tip. Main's
+  push and schedule runs no longer run it, so `main` no longer reads red between the release merge and the tag. Any
+  OTHER PR opened in that window also runs it and may show red (it did, #1434); that is the gate, not a defect.
+- **`release.yml`'s `build` job** runs it with `--at <tag commit>`: the green nightly must have tested the exact
+  commit being tagged, not main's later tip. `publish` re-checks it, and the 48 h window, after approval.
+
+When the latest nightly is red, stale, or tested an older commit: fix what is red on `main`, run
+`gh workflow run test.yml --ref main`, and re-check once it completes. A re-run of an old run re-tests the OLD
+commit and does not count. A dispatched run on `main` queues behind any push run of the same commit (one
+concurrency group; `main` never cancels), so allow for both. There is no override.
 
 ### 3. Verify clean import
 
@@ -158,7 +164,7 @@ while its shape and history rules stay enforced.
 ### 5. Verify version consistency
 
 ```bash
-# Both must show the same version (1.1.0 for this release)
+# Both must show the version you are releasing
 grep 'version = ' pyproject.toml
 python -c "import maxim; print(maxim.__version__)"
 ```
@@ -212,256 +218,174 @@ After building, inspect the wheel metadata rather than assuming `pyproject.toml`
 was carried through:
 
 ```bash
-unzip -p "$MAXIM_RELEASE_DIR/pymaxim-1.1.0-py3-none-any.whl" \
-  'pymaxim-1.1.0.dist-info/METADATA' | grep '^Project-URL:'
+V="$(python -c 'import maxim; print(maxim.__version__)')"
+unzip -p "$MAXIM_RELEASE_DIR/pymaxim-$V-py3-none-any.whl" \
+  "pymaxim-$V.dist-info/METADATA" | grep '^Project-URL:'
 ```
 
-After the TestPyPI and real PyPI uploads, open the rendered project page and
+After the PyPI upload, open the rendered project page and
 click both links. Publication is incomplete if PyPI still exposes the legacy
 site, a dead documentation URL, or metadata from a different artifact.
 
 ---
 
-## Build Steps
+## The release: tag-triggered, CI-published (since 1.3.3)
+
+pymaxim is published by [`.github/workflows/release.yml`](../.github/workflows/release.yml) from a signed tag,
+through PyPI trusted publishing (OIDC, no stored token). 1.3.3 was the first release published this way
+(2026-10-24). The design and its threat table: [release_pipeline.md](plans/release_pipeline.md).
+
+### Owner setup (once, in this order)
+
+1. **The `pypi` environment:** a required reviewer (the owner), deployments only from `v*` tags.
+2. **The `release-tags` ruleset:** `v*` tags restricted on create, update and delete, with the owner as the bypass
+   actor.
+3. **The PyPI trusted publisher** for pymaxim: owner `dennys246`, repo `Maxim`, workflow `release.yml`, environment
+   `pypi`.
+
+`check_release_tag.py environment` and `ruleset` check the first two inside every release build. **No script can
+read the third** (it lives on PyPI), so confirm it on PyPI → pymaxim → Publishing before each tag; a wrong entry
+fails closed at upload, after the approval.
+
+### The order
+
+1. **Exceptions first, in their own PR.** Any `kind: "release"` clause the release needs (§4, for example
+   `release-1.3.3-T1-2`) merges BEFORE the bump: a release PR may not add its own exception (M25's rule).
+2. **The bump PR.** It holds:
+   - pyproject + `__init__.py`;
+   - the CHANGELOG cut to `## [X.Y.Z] - YYYY-MM-DD — "<Name>"`;
+   - the sync lines (below);
+   - the release-gate checkout tests, at a gated version (§4b);
+   - the roadmap's release block;
+   - `docs/announcements/release_<X_Y_Z>.md`, with **absolute links only** (`check_release_tag.py notes
+     --version X.Y.Z` must print `ok`; the notes are frozen into the tag and the Release body).
+
+   It gets the review rounds (the `__init__.py` change is a `src/` change) and a different-reader pass on the
+   CHANGELOG and notes. Its required `Release build` check needs a green nightly on `main`'s current tip (§2b),
+   so dispatch one after any merge that moves `main`.
+3. **Freeze `main`** from the bump merge until the tag. Any merge in between invalidates the nightly the tag
+   relies on.
+4. **A nightly on the merge commit:** `gh workflow run test.yml --ref main` (about 80 minutes, after the push run of
+   the same commit). Confirm with `python scripts/check_nightlies.py --at <merge sha>`.
+5. **The owner tags that commit, signed and annotated, and pushes only the tag:**
+
+   ```bash
+   git fetch origin
+   git tag -s -a vX.Y.Z <merge sha> -m "pymaxim X.Y.Z"
+   git push origin vX.Y.Z
+   ```
+
+   It must be signed by the pinned tagger email (`RELEASE_TAGGER_EMAIL` in `release.yml`), GitHub-verified, on
+   `origin/main`, with the tag name equal to `v` + pyproject's version.
+6. **`release.yml` builds, then smoke-tests the exact wheel**:
+   - `build`: the tag checks; environment and ruleset drift; the notes; the nightly `--at` the commit; the console
+     pin; `vendor_console_ui.py --verify-pin` then `--from-pin`; `python -I -m build`; `twine check`;
+     `audit_release_build.py`; the digests as job outputs.
+   - `smoke`: a clean venv outside the checkout; version, `__all__`, `diagnose()`, `ui_dist/index.html`,
+     `python -m maxim --help`, and that the import is from the venv.
+
+   Then it **waits for approval** at the `pypi` environment.
+7. **The owner approves `pypi` within 48 h of that nightly.** `publish` re-checks the tag, the nightly window and the
+   pin, uploads over OIDC with PEP 740 attestations requested, and confirms PyPI serves exactly the two files and
+   digests it built. `github-release` creates the Release from the notes file plus the audit's
+   `vendored console:` line, with only the wheel and sdist attached (a third asset would fail the audit).
+
+**Date rule.** The CHANGELOG date and the notes' "Released" line are the UTC date of PyPI's `upload_time`, which is
+set at approval. They are written before the tag, so merge, nightly, tag and approval should fall on one UTC day,
+or approve after midnight UTC if the files name the next day (1.3.3 did: upload 2026-10-24T00:00:10Z). If they
+drift, correct the CHANGELOG in a docs PR and `gh release edit` the body; never re-tag. The "Released" line carries
+no clock time.
+
+**A rehearsal** (`gh workflow run release.yml --ref main`) runs `build` and `smoke` and never publishes. It is how
+a candidate wheel is built for a downstream check (pulse's release acceptance ran on rehearsal candidates of 1.3.3).
+It needs a green nightly on that exact commit too.
+
+### After it publishes
 
 ```bash
-# 1. Keep using the candidate directory reserved above.
-test -n "$MAXIM_RELEASE_DIR"
+python scripts/audit_release_tags.py --check-releases   # also runs in CI on push and nightly
+d=$(mktemp -d); python3 -m venv "$d" && "$d/bin/pip" install --no-cache-dir "pymaxim==X.Y.Z" \
+  && (cd /tmp && "$d/bin/python" -I -c "import maxim; print(maxim.__version__)")
+```
 
-# 1b. VENDOR THE CONSOLE UI (release-only step — see below)
-python scripts/vendor_console_ui.py <path-to>/Maxim-pulse/apps/console/dist
-python scripts/vendor_console_ui.py --check     # confirms it took
+Then: send the downstream notes (pulse, M70: the vendored console tag, any Python-API or untyped-`data` changes);
+close the issues the release resolves, with evidence; and refresh the website (pymaxim.bio) from the notes.
 
-# 2. Build wheel + sdist
-# setuptools' scratch tree is NOT pruned between builds and is NOT what
-# --outdir controls: build_py copies the package into ./build/lib and ships
-# whatever it finds there. A file deleted from src/ but still sitting in
-# build/lib lands in the wheel. That is the documented mechanism behind
-# "15 dead modules (~8,500 LOC) shipping in the wheel" — and a repo-root
-# build/ tree from an earlier run is the normal state, not the exception.
-# Measured 2026-08-20: the DEFAULT command below (sdist -> wheel) is protected
-# by the sdist round-trip and did NOT pick up a planted build/lib/maxim/
-# module. But `--wheel` and `--no-isolation` build in place and BOTH shipped
-# it. Those are one habit away, so clean first rather than depending on which
-# build mode someone reaches for.
+### The hand path (retired; emergency only, by owner decision)
+
+Until 1.3.3 the release was a hand `twine upload` plus a hand-made tag and Release. SF11 kept that as the fallback
+until a release had gone through the workflow, and 1.3.3 did. It is now retired: there is no stored PyPI token,
+and a hand upload skips every check above. If the workflow itself is broken at a release, fix the workflow. A hand
+upload needs an explicit owner decision recorded in the release PR, a short-lived token, and the same checks run
+by hand: the tag, the nightly `--at` the commit, `--verify-pin` + `--from-pin`, the audit, a clean-venv smoke, and
+`--check-releases` after.
+
+### Two release-writing rules (from 1.3.0)
+
+- **Do not tag the same day as a gating experiment** unless its DATA and its INTERPRETATION landed in separate PRs
+  and the interpretation had a review from a different reader. Otherwise wait at least a day. Full reasoning:
+  [the lesson](lessons/experiment-prereg-precedes-data.md).
+- **State a direction in claim terms:** on latency, pain-seconds, damage or error counts, "up" and "down" invert
+  against "supports" and "undercuts". Write "0.10 s faster, in the claim's direction".
+
+### The tag chain
+
+Any version with a `## [X.Y.Z]` CHANGELOG section must have a matching `vX.Y.Z` tag, and every version PyPI serves
+must have a Release with its exact wheel and sdist (sha256 matching PyPI). `scripts/audit_release_tags.py
+--check-releases` (the `release-audit` CI job) asserts it; historical failures are grandfathered by explicit list
+inside the script and printed on every run. The reconstructed `v1.0.1`–`v1.0.8` tags deliberately have no Release.
+
+---
+
+## Building a candidate locally (dev only)
+
+The workflow is the release path. A local build is for debugging the build itself:
+
+```bash
+export MAXIM_RELEASE_DIR="$(mktemp -d)"
+python scripts/vendor_console_ui.py --verify-pin && python scripts/vendor_console_ui.py --from-pin
+# setuptools' build/lib is not pruned between builds and ships whatever is in it (measured 2026-08-20):
+# clean first, whatever build mode you use.
 rm -rf build/ *.egg-info
-
 python -I -m build --outdir "$MAXIM_RELEASE_DIR"
-
-# 3. Validate package metadata
 twine check "$MAXIM_RELEASE_DIR"/pymaxim-*
-# Expected: PASSED for both .whl and .tar.gz
-
-# 4. Audit the BUILT wheel — contents AND version (bugs ledger D47 + D48)
-#
-# This replaces the three hand-rolled `python -c` checks that used to live here.
-# They were correct and nobody ran them: on 2026-08-30 a worktree build shipped
-# ZERO Console UI files and a stale-branch build produced a 1.1.0 wheel, and
-# `twine check` PASSED both. Step 3 above validates that metadata RENDERS; it
-# never asks whether the artifact contains what it should or is the version you
-# meant. This step asks, and it is the same script the `release-build` CI job
-# runs on every PR.
-#
-# Do NOT pass --allow-missing-ui-dist here. That flag exists for CI, which has
-# no vendored bundle; on the release path a missing bundle is the defect.
 python3 scripts/audit_release_build.py --dist-dir "$MAXIM_RELEASE_DIR"
-# Expected: "release-build audit: clean"
-# Asserts: filename version == METADATA version == pyproject version (D48);
-#          console/ui_dist/index.html present (D47); py.typed, __main__.py and
-#          25+ files under _data/ present.
+# Expected: "release-build audit: clean". It asserts the filename, METADATA and pyproject versions agree (D48),
+# console/ui_dist/index.html is present (D47), py.typed, __main__.py and the _data/ files are present, and the
+# R4 checks: the console digest and stamp match scripts/console_ui_pin.json, and the bundle's own contract.
 ```
 
 ---
 
 ## Vendoring the Console UI
 
-The Console web UI is built in the **maxim-pulse** repo and *vendored* into
-this package at release time, so `pip install pymaxim[console] && maxim serve`
-serves a working Console with no flag and no config.
+The Console web UI is built in the **maxim-pulse** repo and *vendored* into this package at release time, so
+`pip install pymaxim[console] && maxim serve` serves a working Console with no flag and no config.
 
-- **Destination:** `src/maxim/console/ui_dist/` — shipped as package data,
-  `.gitignore`'d. Vendoring is a release step, **never a commit**; a source
-  checkout has no bundle and falls back to the "no UI installed" page.
-- **Sources:** a local pulse checkout (`apps/console/dist`) or an unzipped
-  `ui-dist` CI artifact from a maxim-pulse run on `main` — no `v*` tag needed.
-- **Validation:** the script refuses a bundle whose `maxim-ui.json` names a
-  different `target` (pointing at the *reachy* build is the easy slip) or a
-  `contract_version` that disagrees with `ui_bundle.CONSOLE_CONTRACT_VERSION`.
-  `--force` overrides; you probably don't want it.
-- **At runtime:** a mismatched bundle still boots but logs a loud WARNING
-  naming both versions — refusing to start over a version string would be
-  worse for a local tool, and mismatches are often benign.
+- **Destination:** `src/maxim/console/ui_dist/`, shipped as package data and `.gitignore`'d. Vendoring is a
+  release step, **never a commit**; a source checkout has no bundle and falls back to the "no UI installed" page.
+- **For a release, only the pin** (`scripts/console_ui_pin.json`: tag, commit, asset sha256, tree digest; R4).
+  `--verify-pin` proves the pin is the newest stable pulse tag for the backend contract, and `--from-pin` vendors
+  exactly that asset. The release build refuses any other bundle.
+- **Local vendoring is dev-only:** a pulse checkout's `apps/console/dist` must be byte-identical to the pinned asset
+  apart from `.vite/`. The script refuses a bundle whose `maxim-ui.json` names a different `target` or a
+  `contract_version` that disagrees with `ui_bundle.CONSOLE_CONTRACT_VERSION`. `--force` vendors it anyway, for a
+  dev build only: the release audit refuses the result.
+- **At runtime:** a mismatched bundle still boots but logs a loud WARNING naming both versions.
 
 Resolution order is `--ui-dist` > `config.json::console.ui_dist` > packaged.
 
 ```bash
-python scripts/vendor_console_ui.py <path>   # vendor
-python scripts/vendor_console_ui.py --check  # is one vendored?
-python scripts/vendor_console_ui.py --clean  # back to checkout state
+python scripts/vendor_console_ui.py --verify-pin && python scripts/vendor_console_ui.py --from-pin   # a release
+python scripts/vendor_console_ui.py --check                   # is one vendored?
+python scripts/vendor_console_ui.py --clean                   # back to checkout state
 ```
 
-**Bump `CONSOLE_CONTRACT_VERSION`** ([ui_bundle.py](../src/maxim/console/ui_bundle.py))
-when the wire contract changes in a way a stale bundle would notice — an
-endpoint removed or renamed, a required field added, an envelope reshaped.
-It is also the FastAPI app `version`, so the OpenAPI schema and the check
-cannot drift.
-
-## Publish to Test PyPI (safe, reversible)
-
-```bash
-# 1. Upload to Test PyPI
-twine upload --repository testpypi "$MAXIM_RELEASE_DIR"/pymaxim-*
-
-# 2. Test install in clean venv
-python -m venv /tmp/test-maxim-install
-source /tmp/test-maxim-install/bin/activate
-
-pip install --index-url https://test.pypi.org/simple/ \
-    --extra-index-url https://pypi.org/simple/ \
-    pymaxim
-
-# 3. Verify
-python -c "
-import maxim
-print(f'Version: {maxim.__version__}')
-print(f'Verbs: {sorted(maxim.__all__)}')
-r = maxim.diagnose()
-print(f'Diagnose: {type(r).__name__}')
-print('Test PyPI install OK')
-"
-
-# 4. Verify python -m maxim
-python -m maxim --help
-
-# 5. Clean up
-deactivate
-rm -rf /tmp/test-maxim-install
-```
-
----
-
-## Publish to Real PyPI
-
-Only after Test PyPI verification passes:
-
-```bash
-# The big moment
-twine upload "$MAXIM_RELEASE_DIR"/pymaxim-*
-
-# Verify real install
-pip install pymaxim
-python -c "import maxim; print(maxim.__version__)"
-```
-
-### Tag the released commit (do NOT defer this)
-
-PyPI is immutable but carries no git history; without a tag, nothing records
-*which commit* produced the artifact. Versions 1.0.1–1.0.6 skipped this step and
-had to be reconstructed months later from version-bump commits — the incident
-behind the 1.1 release-truth pass. Tag before you close the terminal.
-
-**But not the same day as a gating experiment.** 1.1.0 was tagged the afternoon its
-gating hardware result (Exp 53b) ran — from a dirty tree at a commit the squash-merge
-made unreachable, with the pre-registration landing on `main` in the same commit as
-the data ([lesson](lessons/experiment-prereg-precedes-data.md)). The release gate is
-"the result is on `main` with its data and its pre-registration precedes it".
-
-**Then: structure OR time — not both (revised 2026-08-30).** The ≥1-day wait was a proxy
-for the thing actually missing on release day: *a second reading of the interpretation by
-someone not carrying the release*. All three 1.1.0 provenance failures were human-judgment
-failures over honestly-stamped artifacts, so attaching artifacts more firmly to commits
-would not have caught any of them. A release may cite a gating result when:
-
-- **(a)** its **DATA** landed in its own merged PR;
-- **(b)** its **INTERPRETATION** (write-up + ledger row) landed in a **separate, later** PR;
-- **(c)** that interpretation PR got a review pass from **a different reader**.
-
-**How (c) is actually done, and what it is worth (added 2026-09-19, the 1.3.0 release).** Give one
-reader the DATA and the interpretation — never your conclusion — and ask it to recompute every
-number from the raw rows and flag any claim it cannot source. For 1.3.0 both interpretations (R3's
-§Outcome, the Exp 56 re-baseline) had been written by the release author and merged unread; the
-pass took minutes and found **two wrong claims** before publication: a direction error on a
-cost-like DV (the R3 recount moved the carried-fear median *down* — which on time-to-air is FASTER,
-i.e. toward the claim, not against it; the same error was already merged in the prereg's honesty
-note and now carries an erratum) and "the receiver acts on its FIRST submersion" where the
-lifecycle submerges it once, loop-OFF, at the representation gate first. Everything else it
-recomputed matched. Fold its findings and its report into the release PR.
-
-**Two writing checks the same pass produced, for any release notes:**
-- **State a direction in claim terms.** On latency, pain-seconds, damage or error counts, "up" and
-  "down" invert their meaning relative to "supports" and "undercuts" — write "0.10 s faster, in the
-  claim's direction", not "down, against the claim".
-- **Notes are read on the Releases page**, where a relative link 404s and
-  `audit_release_tags.py --check-releases` fails the repo for it: use absolute
-  `https://github.com/...` links (four slipped into the 1.3.0 draft).
-
-(a) and (b) are mechanically checkable — two distinct merge commits, data strictly earlier.
-(c) is the same different-reader discipline the review rounds rest on and is not mechanized.
-
-**Where that split cannot be met, the ≥1-day wait applies unchanged.** It is the fallback,
-never an additional hurdle on top of the split — stacking both would make the honest path
-cost more than the sloppy one. Full reasoning and the limits of the claim:
-[the lesson](lessons/experiment-prereg-precedes-data.md) §"The ≥1-day wait, reconsidered".
-
-```bash
-git tag -a "v$(python -c 'import maxim; print(maxim.__version__)')" \
-  -m "pymaxim $(python -c 'import maxim; print(maxim.__version__)')"
-git push origin --tags
-
-# Verify: the tag exists, points at the published commit, and matches PyPI
-git describe --exact-match --tags HEAD
-```
-
-Any version with a `## [X.Y.Z]` CHANGELOG section must have a matching
-`vX.Y.Z` tag. Check for drift with:
-
-```bash
-comm -23 \
-  <(grep -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | tr -d '## []' | sort -u) \
-  <(git tag -l 'v*' | sed 's/^v//' | sort -u)
-# Any output = a released version with no tag.
-```
-
-The historical backlog this check found was reconstructed and pushed on
-2026-08-20 (`scripts/audit_release_tags.py --write-tags`), so the tag chain is
-now unbroken through v1.0.8. The check should therefore report only the
-in-development version until it is published — any OTHER output means a
-release shipped without a tag.
-
-### Create the GitHub Release on the tag (same terminal, same artifacts)
-
-A tag says *which commit*; a Release says *what it was* and hands the reader the
-artifact. Until 2026-08-26 the repo's "Latest release" on GitHub was 1.0.0 while
-PyPI served 1.0.9 — the same truth-drift class as the tag backlog, one surface
-over. Attach the **exact** wheel + sdist you uploaded (same `$MAXIM_RELEASE_DIR`),
-and take the notes from a versioned file, never the web form:
-
-```bash
-V="$(python -c 'import maxim; print(maxim.__version__)')"
-gh release create "v$V" "$MAXIM_RELEASE_DIR"/pymaxim-"$V"-py3-none-any.whl "$MAXIM_RELEASE_DIR"/pymaxim-"$V".tar.gz \
-  --title "pymaxim $V" \
-  --notes-file "docs/announcements/release_${V//./_}.md" \
-  --verify-tag
-# Pre-releases add --prerelease. Verify the attached checksums match PyPI:
-sha256sum "$MAXIM_RELEASE_DIR"/pymaxim-"$V"-py3-none-any.whl "$MAXIM_RELEASE_DIR"/pymaxim-"$V".tar.gz
-# Name the two files explicitly: a bare pymaxim-1.1.0* glob also matches 1.1.0rc1
-# artifacts sitting in the same directory (it did, 2026-08-26 — moved by hand).
-gh release view "v$V" --json assets --jq '.assets[] | "\(.name) \(.size)"'
-```
-
-The notes file (`docs/announcements/release_<version>.md`) is written from the
-CHANGELOG section before the publish and is part of the release PR — facts only;
-the social announcement is a separate document. **Use ABSOLUTE `https://github.com/...`
-links in it**: the notes render on the Releases page, where every `../` link 404s
-(v1.1.0 shipped with seven; the source was rewritten 2026-08-29).
-`scripts/audit_release_tags.py --check-releases` — the `release-audit` CI job, on
-push to main and nightly — asserts for every version PyPI serves that a tag exists,
-a Release exists on it, the exact wheel + sdist are attached with sha256 matching
-PyPI, and neither the published notes nor the notes source carry relative links.
-Historical failures are grandfathered by explicit list with reasons inside the
-script and printed as still-failing on every run. Every tag on PyPI must have a
-Release object; the 2026-08-26 backfill added `v1.1.0rc1` (pre-release) and
-`v1.0.9`; the reconstructed `v1.0.1`–`v1.0.8` tags deliberately have none.
+**Bump `CONSOLE_CONTRACT_VERSION`** ([ui_bundle.py](../src/maxim/console/ui_bundle.py)) when the wire contract
+changes in a way a stale bundle would notice: an endpoint removed or renamed, a required field added, an envelope
+reshaped. It is also the FastAPI app `version`. **The cut rule (R4):** a bump leaves `main` unreleasable until the
+pin moves to a pulse tag built for the new contract. Pulse tags first, pymaxim vendors, then pymaxim releases
+([r4_console_vendor_gate.md](plans/r4_console_vendor_gate.md)).
 
 ---
 
@@ -502,7 +426,7 @@ pip install twine
 # Contact PyPI support or use the web interface to yank
 
 # For non-critical issues, publish a patch instead:
-# Bump to X.Y.(Z+1), fix the issue, rebuild, upload
+# Bump to X.Y.(Z+1) through the same pipeline: bump PR, nightly, signed tag, approval
 ```
 
 ---
@@ -514,10 +438,10 @@ pip install twine
 | `pyproject.toml` | `version = "X.Y.Z"` | All three must be the same version |
 | `src/maxim/__init__.py` | `__version__ = "X.Y.Z"` | |
 | `CHANGELOG.md` | `## [X.Y.Z]` header | |
-| git tag | `vX.Y.Z` on the published commit | created at publish time, never deferred |
+| git tag | `vX.Y.Z`, signed and annotated, on the bump's merge commit | pushed by the owner; it starts the release |
 | `CLAUDE.md` | "Current version:" line under *Active initiatives* | the pyproject version + a link to PyPI; NO PyPI-state prose |
 | `docs/plans/README.md` | "Current version:" line at the top | same |
-| `docs/index.md` | "**Version:**" line | same |
+| `docs/index.md` | "**Package version:**" line (and its "Release notes" link) | same |
 
 Those three lines used to describe PyPI in prose ("PyPI serves X", "pending") and
 drifted on every release — corrected in the 1.1 release-truth pass and stale again
