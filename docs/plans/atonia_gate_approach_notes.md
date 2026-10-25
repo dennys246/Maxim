@@ -1,8 +1,8 @@
 # The atonia gate: approach notes for items 2, 3, 1, 5 and 10
 
-**Status:** DRAFT v5, approach notes (CLAUDE.md "Faster without lowering the bar", item 1). Owner decisions V1–V7
-were made 2026-10-24. Session V, 2026-10-24, paper only: nothing in `src/` changes until the fourth delta round
-(scoped to v5's V8 deletion and the AST-check fold) returns STOP.
+**Status:** DRAFT v5.1 (design passes complete), approach notes (CLAUDE.md "Faster without lowering the bar", item 1). Owner decisions V1–V7
+were made 2026-10-24. Session V, 2026-10-24, paper only: nothing in `src/` changes until the owner has read the folded
+plan and the red-gate PR is opened.
 - **v1** was written from a read-only census at `d9dffe6e` (origin/main, 2026-10-24).
 - **v2** folds the three adversarial passes: [items 2+3](reviews/atonia_gate/items_2_3_adversarial.md) (sound with
   conditions), [items 1+5](reviews/atonia_gate/items_1_5_adversarial.md) (DO-NOT-BUILD as written) and
@@ -15,6 +15,9 @@ were made 2026-10-24. Session V, 2026-10-24, paper only: nothing in `src/` chang
 - **v5** folds the [v4 delta round](reviews/atonia_gate/v4_delta.md) (not STOP: three fail-open). A bird's-eye
   check found that most fail-open findings since v2 lived on one surface, the offline subprocess and endpoint
   allowance. Owner decision V8 (strict) deletes that surface instead of patching it again.
+- **v5.1** folds the [v5 delta round](reviews/atonia_gate/v5_delta.md), which returned **STOP: no further round
+  owed**. All 11 findings were fail-closed or consistency fixes in already-covered classes, and they are folded
+  here rather than sent to a follow-up, because each one shapes code that has not been written yet.
 
 §9 maps every finding to its fold.
 
@@ -61,7 +64,7 @@ The recommendation is listed first in each row, and it is what was decided.
 | **V6** | Tools run outside the executor in non-observer runs | **Route `auto_sense` through the executor's policy check in this release** (`runtime/loop_perception.py`, not fenced). **Census the rest** (`bio_enrichment`'s two reflex dispatchers, `OrchestratorActorTool`'s ephemeral tool), with a follow-up issue. | v1 censused all four. The 2+3 pass showed that `auto_sense` bypasses any ceiling a loop sets: `auto_fire` can be set per instance, and `SensePresenceTool` triggers LLM imagination. That makes #1431's Talk ceiling a lie. The other two are sim-only and in `orchestrator.py`'s wiring. |
 | **V7** | Offline on the CLI (`llm.offline`) and model-chosen commands | **Offline also drops every tool with NETWORK, COMMS or the undeclared `ALL` from every executor's policy.** The policy is narrowed at build, when the latch is up, to the **enumerated** ceiling `READ|SELF_SCOPE|WRITE_LOCAL|ACTUATE|GOVERN`, never a complement, so a future eighth flag is excluded (fail-closed). Process runners are `ALL` by §2.1, so they drop too, and the hook refuses any spawn regardless (V8). `ACTUATE` stays in the ceiling on paper only: the latch refuses the robot's connect anyway, so an offline robot's tools fail closed with `OfflineRefusal`. | `bash` and the code tools run commands the model chooses, which no census can see. Without this, "offline refuses every fetch" is false on the CLI path. It is a decision because offline then visibly removes tools. |
 
-| **V8** | Under offline, may Maxim run any subprocess or connect to any endpoint? (asked 2026-10-24 after the v4 delta round) | **Nothing at all.** No subprocess, no socket endpoint, no allow-list. The CLI's `llm.offline` needs an in-process model (the `llama_cpp` or `transformers` backend) and refuses at startup otherwise. The git tools drop. | The spawned-server allowance and the pinned git argv drew most of the fail-open findings in three consecutive rounds (v2 #3/#4, v3 #1/#2/#7, v4 #1–#4): endpoint revocation, listener ownership, and git's config-driven filters running code the latch cannot see. Neither the observer nor AvServ needs them. |
+| **V8** | Under offline, may Maxim run any subprocess or connect to any endpoint? (asked 2026-10-24 after the v4 delta round) | **Nothing at all.** No subprocess the hook can see, no socket endpoint, no allow-list. Multiprocessing spawn children still start, through the unaudited `fork_exec`, and are latched by self-engage; their callers (`embodied_runtime/media_loop.py`, `data/camera/display.py`) are on the robot path, which is refused anyway. Offline also means **solo**: binding the leader proxy's `http.server` triggers a reverse-DNS lookup, which is refused, so the leader cannot start. The CLI's `llm.offline` needs an in-process model (the `llama_cpp` or `transformers` backend) and refuses at startup otherwise. The git tools drop. | The spawned-server allowance and the pinned git argv drew most of the fail-open findings in three consecutive rounds (v2 #3/#4, v3 #1/#2/#7, v4 #1–#4): endpoint revocation, listener ownership, and git's config-driven filters running code the latch cannot see. Neither the observer nor AvServ needs them. |
 
 **Flagged, not asked now:** `maxim.research` already exists (`api.py::research`, Experimental), so Profile A's builder
 needs another name when items 13 and 14 start.
@@ -77,7 +80,25 @@ later, not what it is for.
 |---|---|
 | `READ` | Reads state; changes nothing outside process memory. |
 | `SELF_SCOPE` | Writes only Maxim's own persisted state under the data home (memory, NAc, its own logs). |
-| `WRITE_LOCAL` | Writes, moves or deletes files outside the data home. **Not "runs processes or code":** a tool that spawns a process, or runs code in-process (`exec`, `eval`, or `importlib` of a model-chosen name), can cause anything, so it declares `ALL`. The one exception is a fixed argv on the pinned exemption list `tools/effect_exemptions.json`, with a reason (the git tools: fixed argv plus `tools/base.py::GIT_HARDENING_ARGS`). The exemption holds **online only**: under offline the hook refuses every spawn (V8), so the git tools drop. Git's config-driven filters run code even with that hardening. **Checked:** an AST test over the `Tool` subclass closure fails any class whose methods reach a sink, unless it declares `ALL` or is on the exemption list. **Sinks:** `subprocess.*`, `os.exec*`, `os.system`, `os.popen`, `os.spawn*`, `os.posix_spawn*`, `os.fork*`, `pty.spawn`, `asyncio.create_subprocess_*`, `multiprocessing.*`, `exec`, `eval`, `compile`, `importlib.import_module`, `__import__`, `runpy.*` and `ctypes.*`. **Reach:** the call graph across `src/maxim` modules (resolved imports, `self.` methods, module functions), not only the same module. **Stated blind spots:** `getattr(os, "system")`-style dynamic lookup, callables passed in as arguments, and third-party code. Each is the future-code adversary, which the review rounds and the census lists, not this test, catch. |
+| `WRITE_LOCAL` | Writes, moves or deletes files outside the data home. **Not "runs processes or code":** a tool that spawns a process, or runs code in-process (`exec`, `eval`, or `importlib` of a model-chosen name), can cause anything, so it declares `ALL`. The one exception is a fixed argv on the pinned exemption list `tools/effect_exemptions.json`, with a reason (the git tools: fixed argv plus `tools/base.py::GIT_HARDENING_ARGS`). The exemption holds **online only**: under offline the hook refuses every spawn (V8), so the git tools drop. Git's config-driven filters run code even with that hardening. **Checked:** an AST test over the `Tool` subclass closure fails any class whose methods reach a sink, unless it declares `ALL` or is on the exemption list. **Sinks:** `subprocess.*`, `os.exec*`, `os.system`, `os.popen`, `os.spawn*`, `os.posix_spawn*`, `os.fork*`, `pty.spawn`, `asyncio.create_subprocess_*`, `multiprocessing.*`, `exec`, `eval`, `compile`, `importlib.import_module`, `__import__`, `runpy.*` and `ctypes.*`. **Reach:** the call graph across `src/maxim` modules (resolved imports, `self.` methods, module functions), not only the same module. **Sink rules:**
+- An import or compile sink counts only with a **non-literal** name argument. `__import__("logging")` is not a
+  sink, and `compile` matches the builtin `Name` only, never `re.compile`.
+- `require_optional_dependency` / `optional_dependency_available` (`utils/optional_deps.py`) and
+  `runtime/lane_backends.py::resolve_backend_class` are pinned literal-name helpers. A test checks that every call
+  site passes a string literal, an `EXTRA_FOR_IMPORT` key or a `BACKEND_CLASSES` value.
+
+Reach is function-level, not module-level: a helper module that also contains `subprocess` does not taint callers
+that never reach it.
+
+**Stated blind spots:**
+- `getattr(os, "system")`-style dynamic lookup;
+- callables passed in as arguments;
+- calls on receivers other than `self` and modules (`self._sandbox.execute()`, a controller or router instance);
+- inherited methods outside the subclass's module;
+- decorators, `functools.partial`, and thread or executor targets;
+- third-party code.
+
+Under offline the hook refuses every spawn regardless, so these matter only for online ceilings. Each is the future-code adversary, which the review rounds and the census lists, not this test, catch. |
 | `NETWORK` | Any egress off the machine, DNS included, GETs included. |
 | `COMMS` | Reaches a person or a channel (messages, calls, email). |
 | `ACTUATE` | Physical output: motion, sound, a display. |
@@ -326,7 +347,8 @@ Replacing `ProposalQueue` closes the drain path only. Under V1 none of these is 
     refused id is handled in one of two ways:
     - **Escape.** The offending character span is re-tokenized one character at a time, with the same flags, and
       re-checked. This may change whitespace, because SPM adds its space prefix per call (`</s>` → ` < / s >`).
-    - **Refuse.** If an id is still not NORMAL, the event goes into the report's `inputs` as `rejected:
+    - **Refuse.** If an id still has a refused bit (the same predicate as above, `attr &
+      (CONTROL|USER_DEFINED|UNKNOWN)`), the event goes into the report's `inputs` as `rejected:
       "special_token"`. That keeps it visible, so dropping an event cannot hide it;
   - the concatenated `List[int]` goes to `create_completion`, which accepts it, with `grammar=` built from the closed
     schema.
@@ -337,7 +359,8 @@ Replacing `ProposalQueue` closes the drain path only. Under V1 none of these is 
   inside an untrusted span, and that no BOS appears there either. The vocabs come from llama.cpp's `models/`
   directory at a pinned tag, as test fixtures, since the wheel does not ship them. No vendored vocab has a
   single-character special token, so a synthetic test, with the attribute lookup monkeypatched to mark one
-  USER_DEFINED, exercises the refuse branch. The router's
+  USER_DEFINED, exercises the refuse branch. The test also runs against the **installed** llama-cpp-python's
+  tokenizer: `pyproject` floors it at 0.3.8 with no ceiling, so attribute semantics must not drift unseen. The router's
   `TOOL_PROMPT|` path, which invents `respond` actions, is never used.
 - **The turn.** One `complete_tokens` with a closed schema, enforced by the grammar: `{happening, would_do,
   rationale, confidence, calls: [{name, arguments}] ≤ max_calls}`.
@@ -496,8 +519,8 @@ v1 rested on URL checks plus a census. **A list of sites cannot be the enforceme
        connected, and its connect was already refused;
      - `socket.getaddrinfo` / `socket.gethostbyname`, of any name;
      - `socket.gethostbyaddr` / `socket.getnameinfo`, unconditionally, because reverse DNS leaves the machine;
-     - **`AF_UNIX` connects**, with a pinned path allow-list that is **empty for the observer**. `docker.sock`,
-       syslog and forkserver are refused under offline, and the docs say so;
+     - **every `AF_UNIX` connect**, CLI included, with no list. `docker.sock`, syslog, forkserver and `Manager` are
+       refused under offline, and the docs say so. asyncio's `socketpair` makes no connect;
      - **`os.system`, always;**
      - **every `subprocess.Popen`, `os.exec*`, `os.posix_spawn` and `os.spawn*`, unconditionally (V8).** There is
        no allow-list. A Popen whose args name a subprocess still raises before anything runs, so `PATH`, `env=` and
@@ -509,7 +532,9 @@ v1 rested on URL checks plus a census. **A list of sites cannot be the enforceme
    - **There is no allowed endpoint (V8).** Every `AF_INET`/`AF_INET6` connect and send is refused, loopback
      included. So offline needs an in-process LLM:
      - the CLI refuses `llm.offline` at startup unless every lane resolves to an in-process backend;
-     - `lane_backends.py`'s auto-spawn and reuse paths are never reached, because they refuse first;
+     - `lane_backends.py::_maybe_auto_spawn_server` returns early on `is_offline()`, before its `:8100` probe, its
+       `lsof` fallback or a spawn. The startup predicate checks the **built** lanes, so a lane the build would have
+       auto-spawned is refused by name;
      - an `ssh -L` forward, a reused server and a re-bound port therefore have nothing to impersonate.
    - **The boundary, stated in the docs.** The latch sees the Python `socket`, `subprocess` and `os` modules
      **only**. It is blind to:
@@ -521,9 +546,15 @@ v1 rested on URL checks plus a census. **A list of sites cannot be the enforceme
      - (b) under offline, `console/server.py` and `comms/api.py` run uvicorn with `loop="asyncio"`;
      - (c) a spawn-mode child is latched by the self-engage above;
      - (d) anything native that remains is the sandbox's (AD5).
-   - **Sub-processes.** Under offline there are none (V8). A process that was spawned before `engage()`, or a
-     spawn-mode multiprocessing child, inherits `MAXIM_OFFLINE=1`, `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE` and
-     `YOLO_OFFLINE=true`, and `host_tool_env`'s allow-list gains them, for online runs that later engage.
+   - **Sub-processes.** Under offline the hook sees none start (V8).
+     - Spawn-mode multiprocessing children start through the unaudited `fork_exec`, inherit `MAXIM_OFFLINE=1`,
+       `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE` and `YOLO_OFFLINE=true`, and self-engage.
+     - **Children spawned before `engage()` run unlatched,** which is a stated residual. That is why `engage()` is the
+       **first statement of `cli.py::main`** under `llm.offline` (see §"Engaging the latch"), before
+       `ensure_blackwell_guards`' `nvidia-smi` spawn and every other startup subprocess.
+     - `host_tool_env`'s allow-list gains the offline vars, for online-started runs that engage later.
+   - **Inbound is not refused:** `bind`, `listen` and `accept` pass the hook, so `maxim serve` can listen on
+     `127.0.0.1`. Ingress is item 4's and the sandbox's (§0).
 2. **The call sites refuse first,** so the failure is typed and early rather than a socket error deep in a library:
    - `utils/http.py`:
      - **under the latch,** every client is built strict:
@@ -558,6 +589,19 @@ v1 rested on URL checks plus a census. **A list of sites cannot be the enforceme
    they were built before it.
 
 **Engaging the latch:**
+- **`OfflineRefusal` subclasses `RuntimeError`, never `OSError`.** A socket-shaped refusal that is an `OSError` would
+  be absorbed by the narrow catches that return plausible values: `runtime/orphan_reaper.py::_find_orphans_ps` →
+  `[]`, `utils/code_tree.py::git_out` → `None`, `tools/base.py::git_root_refusal` → a refusal string. The swallow
+  census covers every handler around a census site that catches a base of `OfflineRefusal` (`Exception`,
+  `RuntimeError`, `BaseException`), not only `except Exception`.
+- **Startup order.** Under `llm.offline`, `engage()` is the first statement of `cli.py::main`, and of every `api`
+  verb's build, before any subprocess. The GPU guards that need `nvidia-smi` (`ensure_blackwell_guards`) then refuse
+  loudly at WARNING with their reason. They no longer drop silently at DEBUG, and a GPU host is told it runs without
+  them.
+- **No offline run carries a code-provenance stamp.** `_code_stamp`, `get_version_info` and the console identity all
+  spawn git. So an offline run's `report.json` says `executed_git_hash: "unknown"` and records the refusal, and by
+  the weak-evidence rule (M1) it **cannot gate a claim**. A spawn-free stamp read from `.git` files (`HEAD`, the ref,
+  `packed-refs`, with `code_tree_sha256` marked unavailable) is a follow-up, and it must not run before engage.
 - `engage(reason)` is one-way.
 - `is_offline()` returns the latch. It engages on any call that sees `MAXIM_OFFLINE` truthy, not only the first read,
   so a later raise counts.
@@ -603,7 +647,7 @@ already its behaviour on any newer record. That is noted, not fixed here.
 - It engages offline and drives each census site.
 - It asserts two things:
   - each site raised or recorded `OfflineRefusal`;
-  - the audit hook's own log shows no connect, resolve or spawn beyond the allow-list.
+  - the audit hook's own log shows no connect, send, resolve or spawn at all, except the stated pre-engage residuals.
 - That replaces v1's "network_guard never reached", which was unobservable: `network_guard.attempts` does not record
   loopback or IP-literal calls.
 
@@ -612,11 +656,11 @@ already its behaviour on any newer record. That is noted, not fixed here.
 | Input | How it could lie | Answer |
 |---|---|---|
 | Proxy env | Carries a loopback URL off the box | Under the latch: `mounts=None` and `trust_env=False` on every client; the socket latch sees the real connect target |
-| A hostname | `localhost` → `/etc/hosts`; DNS rebinding | IP literals only; forward and reverse DNS refused at the hook |
+| A hostname | `localhost` → `/etc/hosts`; DNS rebinding | No name and no address are allowed; every forward and reverse lookup is refused at the hook |
 | UDP | mDNS (`zeroconf`), DNS to a literal resolver | `socket.sendto`/`sendmsg` to any INET destination refused (V8) |
 | An `ssh -L` forward Maxim made, or a reused server | Loopback that is remote | No endpoint is allowed under offline (V8); every loopback connect refuses |
 | A native connect path | uvloop, gRPC, libcurl: no audit event | Stated boundary; `latch-blind` census category; `loop="asyncio"` under offline; the rest is the sandbox's |
-| A spawn-mode child | Un-audited `fork_exec`; an inert hook | The hook self-engages at install from `MAXIM_OFFLINE` |
+| A spawn-mode child | Un-audited `fork_exec`; an inert hook | It self-engages in `maxim/__init__` from `MAXIM_OFFLINE` |
 | A swallowed refusal | A broad catch, then the library downloads anyway | The socket latch still refuses; the ledger records it; the last-call refusal; the swallow census |
 | A router built before `engage` | Live cloud backends | The predicate is checked at dispatch |
 | `MAXIM_OFFLINE` raised later | Ignored | Checked on every `is_offline()` |
@@ -681,7 +725,7 @@ Each item:
 - Profile A's name.
 - §"The guarantee": a new row for the report and log (model text).
 
-## 9. Fold ledger (v1 → v5)
+## 9. Fold ledger (v1 → v5.1)
 
 **Items 2+3** ([review](reviews/atonia_gate/items_2_3_adversarial.md)):
 
@@ -812,3 +856,18 @@ Each item:
 | 8 | `DYLD_*` by prefix |
 | 9 | Full sink list; cross-module reach; stated blind spots |
 | 10 | Fd adoption refused; pre-engage sockets a stated residual |
+
+**v5 delta round** ([review](reviews/atonia_gate/v5_delta.md), STOP):
+
+| Finding | Fold |
+|---|---|
+| 1 | Auto-spawn returns early under offline; the predicate checks built lanes |
+| 2 | `engage()` first in `main()`; the GPU guards refuse loudly; pre-engage children are a residual |
+| 3 | Offline means solo; inbound is not refused |
+| 4 | Leftover text fixed: AF_UNIX, the red-gate wording, the hostname row, self-engage, children, the V8 row |
+| 5 | Offline runs cannot be M1-stamped; spawn-free stamp is a follow-up |
+| 6 | `OfflineRefusal(RuntimeError)`; the swallow census widened |
+| 7 | Non-literal import sinks only; pinned literal-name helpers; function-level reach |
+| 8 | Receiver, MRO, decorator and target blind spots stated |
+| 9, 11 | Correct as folded; wording only |
+| 10 | One predicate for both stages; test against the installed tokenizer |
