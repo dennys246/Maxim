@@ -72,7 +72,10 @@ def make_pairing_announcer(
         try:
             samples = tts.synthesize(to_phrase(code))
             sr = sample_rate if sample_rate is not None else getattr(tts, "sample_rate", 16000)
-            speak(samples, sample_rate=sr)
+            if speak(samples, sample_rate=sr) is False:
+                # The sink refused (e.g. a Reachy player nobody started, #1435). It said why;
+                # this names the announcer, never the code (A7).
+                logger.warning("pairing announcer: the speaker did not play the code")
         except Exception as exc:  # daemon-thread callable: handle-and-log, never propagate
             # A7: never log the code or the synth text — only the failure TYPE, which
             # cannot contain the code.

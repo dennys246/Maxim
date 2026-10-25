@@ -160,6 +160,7 @@ class MediaLoopMixin:
         # Phase 2: Start agentic runtime automatically when not in sleep mode
         # The agentic system handles all decision-making; live() just does I/O
         # Note: Must happen AFTER _media_lock is created for CaptureManager to use it
+        audio_input_rate, audio_output_rate = self._start_media_audio()
         if mode != "sleep":
             try:
                 self._start_agentic_runtime()
@@ -172,15 +173,6 @@ class MediaLoopMixin:
 
         motor_queue: queue.Queue = queue.Queue(maxsize=4)
         self._motor_queue = motor_queue if parallel and motor else None
-
-        audio_input_rate = None
-        audio_output_rate = None
-        if self.audio and self.mini is not None:
-            try:
-                audio_input_rate = int(self.mini.media.get_input_audio_samplerate())
-                audio_output_rate = int(self.mini.media.get_output_audio_samplerate())
-            except Exception as e:
-                warn("Failed to read audio sample rates: %s", e, logger=self.log)
 
         transcribe_process = None
         transcribe_shutdown_file = None
@@ -522,20 +514,7 @@ class MediaLoopMixin:
                                 )
         finally:
             stop_event.set()
-            try:
-                mini = getattr(self, "mini", None)
-                if mini is not None:
-                    try:
-                        mini.stop_recording()
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-            try:
-                with media_lock:
-                    self._release_media()
-            except Exception:
-                pass
+            self._stop_media_io(media_lock)
             for t in threads:
                 t.join(timeout=2.0)
 
@@ -608,6 +587,48 @@ class MediaLoopMixin:
             self._media_lock = None
             self._live_stop_event = None
             self.shutdown()
+
+    def _start_media_audio(self) -> tuple[int | None, int | None]:
+        """Start the robot's speaker player, then read the mic/speaker rates (the live loop's media start).
+
+        The embodied runtime is the speaker's lifecycle owner (#1435): it starts the
+        player ONCE, wobbler disabled first, before the agentic runtime can speak, and
+        gated on the media backend's audio OUTPUT capability, not the mic flag
+        ``self.audio``. A speak call never starts it. Returns
+        ``(input_rate, output_rate)``, both None unless ``self.audio``.
+        """
+        mini = self.mini
+        if mini is not None and getattr(getattr(self, "_capabilities", None), "has_audio", True):
+            from maxim.utils.audio import start_device_player
+
+            start_device_player(mini, log=self.log)
+
+        audio_input_rate = None
+        audio_output_rate = None
+        if self.audio and mini is not None:
+            try:
+                audio_input_rate = int(mini.media.get_input_audio_samplerate())
+                audio_output_rate = int(mini.media.get_output_audio_samplerate())
+            except Exception as e:
+                warn("Failed to read audio sample rates: %s", e, logger=self.log)
+        return audio_input_rate, audio_output_rate
+
+    def _stop_media_io(self, media_lock) -> None:
+        """The live loop's media teardown: stop recording, then release media (``_release_media`` stops the speaker player before the close)."""
+        try:
+            mini = getattr(self, "mini", None)
+            if mini is not None:
+                try:
+                    mini.stop_recording()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            with media_lock:
+                self._release_media()
+        except Exception:
+            pass
 
     def sleep(
         self,
@@ -713,16 +734,17 @@ class MediaLoopMixin:
             self.move(movement[0], movement[1], movement[2], movement[3], movement[4], movement[5], movement[6])
             time.sleep(movement[6])
 
-    def speak(self, samples, sample_rate: int = 16000):
-        """Push audio samples to Reachy Mini speaker, with local fallback.
+    def speak(self, samples, *, sample_rate: int):
+        """Play audio samples on the Reachy Mini speaker, by ``utils.audio.push_audio_to_device``'s decision table.
 
-        Tries to play through Reachy's speaker first. If that fails (e.g.,
-        when using WebRTC remote connection), falls back to playing through
-        local computer speakers.
+        The robot's speaker when its player was started (``_start_media_audio``) and,
+        over WebRTC, its send chain has been built; local speakers for WebRTC without one
+        or no_media; otherwise False with a WARNING, never a silent drop (#1435).
 
         Args:
             samples: Audio samples as int16 numpy array.
-            sample_rate: Sample rate of the audio (default 16000).
+            sample_rate: Sample rate of the audio; required, keyword-only (a silent 16 kHz
+                default replayed #1435's slow speech for any caller that forgot it).
 
         Returns:
             True if audio was played successfully, False otherwise.

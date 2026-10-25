@@ -529,10 +529,11 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         Works with both real hardware and simulation.
 
         Args:
-            samples: Audio samples as numpy array.
+            samples: Audio samples (float32 in [-1, 1], or int16) at the robot audio
+                stream's ``output_sample_rate``; with no stream, at the device's own rate.
 
         Returns:
-            True if samples were pushed successfully.
+            True only if the samples reached a started player (#1435).
         """
         if self._robot is None:
             return False
@@ -541,16 +542,17 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         if audio_stream is not None:
             return audio_stream.push_sample(samples)
 
-        # Fallback to direct SDK access for backward compatibility
-        mini = self.mini
-        if mini is not None:
-            try:
-                mini.media.push_audio_sample(samples)
-                return True
-            except Exception:
-                return False
+        # Fallback to direct SDK access for backward compatibility: the same started-player
+        # push as the stream, so it refuses loudly instead of reporting a silent drop (#1435).
+        from maxim.utils.audio import push_to_started_player
 
-        return False
+        mini = self.mini
+        try:  # no stream: the samples are at the device's own rate (no rate parameter on this API)
+            rate = int(mini.media.get_output_audio_samplerate()) if mini is not None else 0
+        except Exception as e:
+            self.log.warning("Reachy speaker refused: could not read the output sample rate (%s)", e)
+            return False
+        return push_to_started_player(mini, samples, sample_rate=rate, log=self.log)
 
     # ─────────────────────────────────────────────────────────────────────────
     # State Properties (delegate to StateManager)
