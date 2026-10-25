@@ -1,7 +1,9 @@
 # R4: the vendored-console gate (approach note, #1333)
 
+> **ARCHIVED (2026-10-24 plans archive):** Built by PR #1383. The rule lives in docs/agents/ci-testing.md; the cut rule's authority is readiness_and_extras_standards.md §R4.
+
 Status: APPROACH NOTE, 2026-10-18, Session P. Design pass run 2026-10-18 (BUILD WITH FOLDS); every finding is folded in §Folds, which **overrides** the sections above it where they disagree. Standard:
-[readiness_and_extras_standards.md](readiness_and_extras_standards.md) §R4. Owner decision 2026-10-18: the source of
+[readiness_and_extras_standards.md](../readiness_and_extras_standards.md) §R4. Owner decision 2026-10-18: the source of
 truth is a **committed pin plus a live check**, failing closed.
 
 ## Why existing infrastructure

@@ -1,5 +1,7 @@
 # The look-back primitive — R4's design review of `PerceptTraceBuffer`
 
+> **SHIPPED (2026-10-24 plans archive; it stays at this path because `src/` or the code's docs cite it):** decided 2026-09-24 (#888 and #889 closed); the dormancy rule and its revive trigger live in memory/percept_trace_buffer.py's docstring, enforced by a test.yml grep.
+
 > **DECIDED 2026-09-24 (v2, owner): no new look-back store. Each consumer looks back over the record
 > it already has; `PerceptTraceBuffer` is marked Dormant.** R4 owns the question (owner decision
 > 2026-09-24); this review was scheduled ahead of R4's build as a stated exception to

@@ -951,7 +951,7 @@ _b1_base = _campaign_rule("seed", "row", frozenset({"row", "session", "attempt_s
 
 
 def b1_campaign(rec, rows, scoped, counted, spec, j: Judgement, ctx: Ctx) -> None:
-    """B1 (docs/plans/baseline_floors_b1_evidence.md §2): the campaign rule, plus the rerun discipline and the run
+    """B1 (docs/plans/archive/baseline_floors_b1_evidence.md §2): the campaign rule, plus the rerun discipline and the run
     structure, re-derived from the bound bytes. Items: (1) kinds tied to record kinds, one session header;
     (2) the header coherent with the rows; (3) well-formed row fields; (4) attempts 1..n per key, n <= MAX;
     (5) every non-final attempt refused for an instrument cause; (6) starts 1..m per key, each with exactly one row."""

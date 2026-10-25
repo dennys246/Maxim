@@ -1,4 +1,4 @@
-"""The BF2 obligation lint (scripts/lint_bf2_obligation.py; spec docs/plans/baseline_floors_b1_evidence.md §3):
+"""The BF2 obligation lint (scripts/lint_bf2_obligation.py; spec docs/plans/archive/baseline_floors_b1_evidence.md §3):
 a floor-matched B1 verdict obliges its row below PARTIAL or at PARTIAL (narrow) re-dated; verdicts are append-only by
 (data_sha256, value); the data time is read only from sha-bound bytes; only an established FLOORS_BEATEN clears.
 Driven on the evidence gate's temp-repo rig, the obliged row swapped to the rig's T1-1."""

@@ -1501,7 +1501,7 @@ def test_exp62_a_campaign_needs_its_replay_and_apparatus_rows(rig) -> None:
     _assert_refused(_complete(rig, bad), "no ['replay'] row")
 
 
-# B1 (docs/plans/baseline_floors_b1_evidence.md §2): the campaign rule plus the rerun discipline and run structure.
+# B1 (docs/plans/archive/baseline_floors_b1_evidence.md §2): the campaign rule plus the rerun discipline and run structure.
 
 B1_SETS = REAL_TABLE["b1_verdict"]["complete"]["sets"]
 
