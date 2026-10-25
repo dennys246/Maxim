@@ -23,6 +23,12 @@ from maxim.utils.atomic_io import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
+# ``hippocampus.json``'s ``_format_version`` (#1163): "1.1" stores an outcome's tool result as plain data
+# (``{"success", "output", "error"}``) where "1.0" stored the ``ToolOutput`` repr string. The loader reads both:
+# ``memory/types.py::Outcome.from_dict`` parses a 1.0 repr (owner decision D2). The P3.5 envelope (``dump`` under
+# ``snapshot.wrap_envelope``) stays at schema 1: its payload's ``result`` reads back through the same parse.
+HIPPOCAMPUS_FORMAT_VERSION = "1.1"
+
 
 _missing_clock_warned = False
 
@@ -319,7 +325,7 @@ class PersistenceMixin(StoreFileOwnership):
 
         from maxim.utils.format_version import with_format_version
 
-        payload = with_format_version(self.dump())
+        payload = with_format_version(self.dump(), version=HIPPOCAMPUS_FORMAT_VERSION)
         atomic_write_json(path, payload)
         self._claim_store_file(path)
         logger.info("Saved hippocampus to %s (%d memories)", path, len(payload["memories"]))

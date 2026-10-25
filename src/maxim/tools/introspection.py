@@ -25,6 +25,7 @@ class MemoryRecallTool(Tool):
     """Search episodic memories with optional spreading activation."""
 
     name = "memory_recall"
+    untrusted_output = True  # returns stored records' text (errors, reflections): framed external (Session R)
     description = (
         "Search your episodic memories. Filter by goal, tool, success/failure, "
         "detected objects, or time range. Use 'expand=true' to find associated "

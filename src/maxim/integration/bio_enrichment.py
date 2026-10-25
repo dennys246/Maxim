@@ -112,6 +112,10 @@ class EnrichmentContext:
     recent_thoughts: tuple[str, ...] = ()  # last 3 thoughts for convergence
     entity_names: tuple[str, ...] = ()  # known entity names
     resolved_entities: tuple[str, ...] = ()  # entity refs resolved by ImaginationTrigger
+    # The user's words this turn, when the text being enriched IS them (the loop's percept path); "" for a thought
+    # or a deliberation cycle. Recall skips a record holding exactly these words: the turn's own capture is stored
+    # asynchronously and would otherwise recall itself (Session R, F11/N6).
+    user_input: str = ""
 
     def to_gating_context(self) -> Any:
         """Convert to GatingContext for the scorer."""
@@ -176,6 +180,7 @@ class BioEnrichmentPipeline:
         # Logging only (Exp 63's trace attribution): ``agent_id`` above switches on per-agent reads (aversions,
         # reward bias), so the trace's label is kept apart from it and changes no behaviour.
         self._trace_agent_id = trace_agent_id
+        self._unrendered_episodes = 0  # recalled episodes that rendered as "past experience" (#1444)
 
     def enrich(
         self,
@@ -386,7 +391,14 @@ class BioEnrichmentPipeline:
             return
 
         if memories:
-            summaries = [m.summary[:60] for m in memories[:3]]
+            # The summaries' framed (recalled) text is never logged: the activity stream is read back by consumers
+            # this pipeline does not frame for, so a log line carries the frame-free part and the memory id (F18).
+            from maxim.utils.content_safety import drop_unbalanced_frames, outside_tool_output
+
+            summaries = [
+                f"{' '.join(drop_unbalanced_frames(outside_tool_output(m.summary))[0].split())[:60]} [{m.memory_id[:8]}]"
+                for m in memories[:3]
+            ]
             sim_enrichment("hippocampus", f"{len(memories)} episode(s): {'; '.join(summaries)}")
 
         if predictions:
@@ -629,47 +641,12 @@ class BioEnrichmentPipeline:
             log.debug("WIRE_2_AVERSION emit failed: %s", exc)
 
     def _extract_keywords(self, text: str) -> list[str]:
-        """Extract meaningful keywords from text for bio-system queries."""
-        # Simple keyword extraction: split, lowercase, filter short/stop words
-        stop_words = {
-            "the",
-            "a",
-            "an",
-            "is",
-            "are",
-            "was",
-            "were",
-            "to",
-            "of",
-            "in",
-            "on",
-            "at",
-            "for",
-            "and",
-            "or",
-            "but",
-            "not",
-            "it",
-            "i",
-            "my",
-            "you",
-            "this",
-            "that",
-            "with",
-            "from",
-            "by",
-            "do",
-            "does",
-            "how",
-            "what",
-            "can",
-            "could",
-            "would",
-            "should",
-            "will",
-        }
-        words = text.lower().replace("_", " ").replace("-", " ").split()
-        return [w for w in words if len(w) > 2 and w not in stop_words]
+        """The content keys of ``text``, in order and once each: ``memory/text.py``'s one standard (owner decision D3,
+        2026-10-24), the same function every store keys its text with, so a cue and a stored record agree on what a
+        word is ("Denny's" is ``denny``; "color?" is ``color``)."""
+        from maxim.memory.text import normalize_tokens
+
+        return list(dict.fromkeys(normalize_tokens(text)))
 
     def _query_hippocampus(
         self,
@@ -687,7 +664,7 @@ class BioEnrichmentPipeline:
     ) -> tuple[list[EpisodicSummary], list[str], int | None, list[list[int]]]:
         """Search hippocampus for episodes matching the text.
 
-        Three retrieval paths, tried in order:
+        Four retrieval paths, tried in order:
         1. **Graph path**: encode text → EC pattern complete → retrieve_on_cue
            (spreading activation on binding graph) → reverse index → memories.
            This is the INTENDED associative path, and it is inert in production: it walks
@@ -695,9 +672,13 @@ class BioEnrichmentPipeline:
            ``memory/episode.py::apply_hebbian_on_close`` is Dormant (one node per percept, bugs
            ledger D6; ledger T3-7). Nothing links a "fire" concept to pain here. See
            ``docs/plans/grounding.md``.
-        2. **Index path**: query by goal (when goal matches prior sessions).
-           This is the direct cross-session path.
-        3. **Substring path**: legacy full-text search (fallback).
+        2. **Cue path** (#1447): the input's own content words, ranked by ``recall(query=text)``. Before it, nothing
+           cued on what was just said: Talk's goal is the constant "converse with the user", so a question only
+           surfaced its answer when recency happened to.
+        3. **Goal path**: query by goal (when goal matches prior sessions).
+        4. **Substring path**: legacy full-text search (fallback).
+
+        A record holding exactly ``context.user_input`` is skipped on every path: it is this turn's own capture.
         """
         if self._hippocampus is None:
             return [], [], None, []
@@ -708,10 +689,16 @@ class BioEnrichmentPipeline:
         horizon: int | None = None
         holes: list[list[int]] = []
 
+        from maxim.memory.text import normalize_tokens
+
+        own_words = normalize_tokens(getattr(context, "user_input", "") or "") if context else []
+
         def _add_memory(mem: Any, relevance: float, path: str) -> None:
             if mem.id in seen_ids:
                 return
             seen_ids.add(mem.id)
+            if own_words and normalize_tokens(getattr(mem, "input_text", "") or "") == own_words:
+                return  # this turn's own capture, stored before the query ran
             summary = self._summarize_episode(mem)
             valence = getattr(mem, "valence", None)
             if valence is None:
@@ -782,7 +769,14 @@ class BioEnrichmentPipeline:
                 except Exception as e:
                     log.debug("Graph-based hippocampus query failed: %s", e)
 
-            # Path 2: Free-text query by goal (cross-session).
+            # Path 2: the cue -- what was just said (#1447), on the content-token ranker (#1064).
+            if len(summaries) < 3:
+                for mem in self._hippocampus.recall(query=text, limit=5):
+                    if len(summaries) >= 3:
+                        break
+                    _add_memory(mem, relevance=0.8, path="cue")
+
+            # Path 3: Free-text query by goal (cross-session).
             # Uses recall(query=goal) for keyword-relevance ranking, NOT
             # recall(goal=goal) which does exact index key match. The index
             # stores LLM-generated plan text as goal keys, not the user's
@@ -794,7 +788,7 @@ class BioEnrichmentPipeline:
                     for mem in goal_results[:3]:
                         _add_memory(mem, relevance=0.7, path="goal")
 
-            # Path 3: Substring fallback
+            # Path 4: Substring fallback
             if len(summaries) < 3:
                 results = self._hippocampus.search_by_content(text, limit=5)
                 for mem in results[:3]:
@@ -867,7 +861,8 @@ class BioEnrichmentPipeline:
         concepts: list[ConceptLink] = []
         try:
             for keyword in keywords[:3]:
-                results = self._atl.recall(limit=3, name=keyword)
+                # By content word (D3): the cue's tokens and the concept names share one standard (the token index).
+                results = self._atl.recall(limit=3, name_token=keyword)
                 for concept in results:
                     name = getattr(concept, "name", str(concept))
                     category = getattr(concept, "category", "")
@@ -1006,9 +1001,17 @@ class BioEnrichmentPipeline:
             return 0.0
         return max(-1.0, min(1.0, sum(signals) / len(signals)))
 
-    @staticmethod
-    def _summarize_episode(mem: Any) -> str:
-        """Create a one-line summary from an EpisodicMemory."""
+    def _summarize_episode(self, mem: Any) -> str:
+        """Create a one-line summary from a recalled record: its action, goal, and what it heard, framed (#1444).
+
+        What the episode heard (``input_text``: the user's words, a transcript, a narrated percept) used to be dropped,
+        so a tool-less episode -- a fact the user stated -- rendered as "past experience" and never reached the prompt.
+        It is stored text from outside the agent, replayed into every later session: a stored-injection channel. So it
+        is rendered only inside an untrusted-content frame (``frame_tool_output``, external), NFKC-normalized and
+        whitespace-collapsed BEFORE the bound so normalization cannot grow it past it, and labelled as earlier input,
+        claiming no speaker (a narrated sim percept arrives on the same field). The outcome's own text is framed the
+        same way. An episode with nothing to render still reads "past experience", now counted and logged once.
+        """
         parts: list[str] = []
         # Tool action
         tool = mem.tool_name or ""  # both record kinds answer it (#995)
@@ -1022,10 +1025,54 @@ class BioEnrichmentPipeline:
         goal = mem.goal or ""
         if goal:
             parts.append(f"(goal: {goal[:40]})")
+        heard = _bounded_text(getattr(mem, "input_text", "") or "", _RECALLED_TEXT_MAX_CHARS)
+        if heard:
+            parts.append(f"earlier input: {_frame_recalled('recalled_input', heard)}")
         # Outcome
         if hasattr(mem, "outcome") and hasattr(mem.outcome, "result"):
-            result = mem.outcome.result
-            if result and isinstance(result, str):
-                parts.append(f"→ {result[:50]}")
+            said = _bounded_text(_result_text(mem.outcome.result), _RECALLED_RESULT_MAX_CHARS)
+            if said:
+                parts.append(f"→ {_frame_recalled('recalled_outcome', said)}")
 
-        return " ".join(parts) if parts else "past experience"
+        if parts:
+            return " ".join(parts)
+        self._unrendered_episodes += 1
+        if self._unrendered_episodes == 1:
+            log.warning(
+                "Bio-enrichment recalled an episode with nothing to render (memory %s); it reads 'past experience'. "
+                "Further ones are counted in BioEnrichmentPipeline._unrendered_episodes, not logged",
+                getattr(mem, "id", "?"),
+            )
+        return "past experience"
+
+
+# Recalled text is bounded AFTER normalization (design review F7: NFKC can expand a character up to ~18x). Reviewed
+# constants: 240 holds a stated fact or a question, 80 an outcome's gist; three episodes stay well under the
+# enrichment section's budget.
+_RECALLED_TEXT_MAX_CHARS = 240
+_RECALLED_RESULT_MAX_CHARS = 80
+
+
+def _bounded_text(text: str, limit: int) -> str:
+    import unicodedata
+
+    text = " ".join(unicodedata.normalize("NFKC", text).split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def _result_text(result: Any) -> str:
+    """The text an outcome said: a stored tool result's ``output`` (a string, or the string values inside it) and
+    ``error``; a plain string result as is. A receipt (``{"delivered": True}``) says nothing."""
+    from maxim.memory.text import text_values
+
+    if isinstance(result, str):
+        return result
+    if isinstance(result, dict) and "output" in result:
+        return " ".join([*text_values(result.get("output")), *text_values(result.get("error"))])
+    return ""
+
+
+def _frame_recalled(label: str, text: str) -> str:
+    from maxim.utils.content_safety import frame_tool_output
+
+    return frame_tool_output(label, text, external=True)

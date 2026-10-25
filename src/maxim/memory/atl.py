@@ -252,14 +252,17 @@ class ATL(StoreFileOwnership, MemoryLayer):
     ) -> list[SemanticMemory | CompressedSemantic]:
         """Query concepts with optional filters.
 
-        Supported filters: name, category, min_confidence,
+        Supported filters: name, name_token, category, min_confidence,
         property_key, property_value, include_compressed,
-        substrate_modality.
+        substrate_modality. ``name_token`` is one content word, keyed by
+        ``memory/text.py::normalize_tokens`` (substrate concepts are not
+        indexed by it).
         """
         with self._stats_lock:
             self._stats["queries"] = self._stats.get("queries", 0) + 1
 
         name = filters.get("name")
+        name_token = filters.get("name_token")
         category = filters.get("category")
         min_confidence = filters.get("min_confidence")
         prop_key = filters.get("property_key")
@@ -271,6 +274,8 @@ class ATL(StoreFileOwnership, MemoryLayer):
             # Use index if we have a specific filter
             if name is not None:
                 candidate_ids = self._context_index.get(f"name:{name}", set())
+            elif name_token is not None:
+                candidate_ids = self._context_index.get(f"name_token:{name_token}", set())
             elif category is not None:
                 candidate_ids = self._context_index.get(f"category:{category}", set())
             elif substrate_modality is not None:
@@ -792,6 +797,14 @@ class ATL(StoreFileOwnership, MemoryLayer):
 
         if concept.name:
             keys.add(f"name:{concept.name}")
+            # The token index (Session R, D3): a concept is found by any of its name's content words, through the one
+            # standard every store keys text with, so "mugs" finds "mug" and "Denny" finds "denny". Not for substrate
+            # concepts: their names are raw percept text (``activate_substrate_node(text=...)``) or EC ids, so a
+            # word match would surface a stored utterance verbatim as a "concept". Rebuilt on load: not persisted.
+            if not (isinstance(concept, SemanticMemory) and concept.substrate_modality):
+                from maxim.memory.text import normalize_tokens
+
+                keys.update(f"name_token:{t}" for t in normalize_tokens(concept.name))
         if concept.category:
             keys.add(f"category:{concept.category}")
 

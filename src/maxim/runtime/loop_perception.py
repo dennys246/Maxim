@@ -105,6 +105,81 @@ def perceive(
     )
 
 
+def take_user_input(observation: Any, state: Any, agent: Any) -> tuple[Any, Any, Any, bool]:
+    """§1.6's input read: the tick's ``(transcript, hard_override, cli_input, is_agentic_voice_input)``, and the user's
+    input published to memory ONCE, here, as it arrives (Session R, owner decision 2026-10-24).
+
+    The input comes from the observation, else the interactive CLI thread's ``pending_cli_input``, else the voice
+    thread's ``pending_voice_input`` (only forwarded once the wake word opened an agentic session); both pending
+    slots are always popped, so an input is processed once. A real turn -- not a synthetic ``[ACTION_FOLLOWUP`` --
+    is handed to ``agent.publish_arrival``, so memory hears every utterance whatever the loop does next; it was
+    heard only when §3 ran, which in Talk it never did. An agent with no perception pipeline has no memory to tell.
+    """
+    transcript = hard_override = cli_input = None
+    if hasattr(observation, "get"):
+        transcript = observation.get("transcript") or observation.get("raw_transcript_text")
+        hard_override = observation.get("hard_override")
+        cli_input = observation.get("cli_input")
+    elif hasattr(observation, "transcript"):
+        transcript = getattr(observation, "transcript", None)
+        hard_override = getattr(observation, "hard_override", None)
+        cli_input = getattr(observation, "cli_input", None)
+
+    pending_cli = state.data.pop("pending_cli_input", None)
+    if not cli_input:
+        cli_input = pending_cli
+
+    voice_input = state.data.pop("pending_voice_input", None)
+    state.data.pop("pending_voice_transcript", None)
+    is_agentic_voice_input = False
+    if not cli_input and voice_input:  # CLI takes priority
+        cli_input = voice_input
+        is_agentic_voice_input = True  # came from an agentic voice session (wake word already said)
+        logger.info("Using voice transcript as user input: %s", voice_input[:50] if voice_input else "")
+
+    text = str(cli_input).strip() if cli_input else ""
+    publish = getattr(agent, "publish_arrival", None)
+    if text and not text.startswith("[ACTION_FOLLOWUP") and callable(publish):
+        publish(state, text, source="voice" if is_agentic_voice_input else "cli")
+    return transcript, hard_override, cli_input, is_agentic_voice_input
+
+
+def percept_text(observation: Any) -> str:
+    """The text a tick's observation carries: a transcript first, then the raw transcript, then CLI input; "" when none.
+    The one reading (§1.1 imagination and §1.2 enrichment each kept a copy)."""
+    if hasattr(observation, "get"):
+        return str(
+            observation.get("transcript")
+            or observation.get("raw_transcript_text")
+            or observation.get("cli_input")
+            or ""
+        )
+    if hasattr(observation, "transcript"):
+        return str(getattr(observation, "transcript", "") or getattr(observation, "cli_input", "") or "")
+    return ""
+
+
+# The percept sources that ADDRESS the agent: typed or spoken words (a sim's narrator and scenario text arrive as
+# "cli", which is right there: the narrator plays the user). An observation without a source is the interactive
+# CLI / API / robot channel, which also addresses it. World events (minecraft, proprioception, sound) do not.
+ADDRESSED_SOURCES: frozenset[str] = frozenset({"cli", "voice", "speech", "transcript"})
+
+
+def addressed_text(observation: Any) -> str:
+    """The words this tick ADDRESSES the agent with, or "" (Session R, owner decision D5 2026-10-24).
+
+    Innate prior (behaviour tier): being addressed is salient, so an addressed input is always enriched, and recall
+    runs on every user turn, the first one after a restart included, where the PFC gate's empty working memory used
+    to reject it. Read from the percept's SOURCE, never from which field carries the text. Deliberation keeps its
+    scored gate: this decides recall only.
+    """
+    text = percept_text(observation)
+    if not text:
+        return ""
+    source = observation.get("source") if hasattr(observation, "get") else getattr(observation, "source", None)
+    return text if source is None or source in ADDRESSED_SOURCES else ""
+
+
 def imagine(*, step_num: int, observation: Any, state: Any, imagination_trigger: Any | None) -> list:
     """§1.1 IMAGINATION: extract novel entities from the percept text. Returns the trigger's results
     (``ImaginationResult``s, ``[]`` when it is absent, finds no text or raises)."""
@@ -115,23 +190,12 @@ def imagine(*, step_num: int, observation: Any, state: Any, imagination_trigger:
     _imagination_results: list = []  # ImaginationResult list for enrichment context
     if imagination_trigger is not None:
         try:
-            percept_text = ""
-            if hasattr(observation, "get"):
-                percept_text = str(
-                    observation.get("transcript")
-                    or observation.get("raw_transcript_text")
-                    or observation.get("cli_input")
-                    or ""
-                )
-            elif hasattr(observation, "transcript"):
-                percept_text = str(
-                    getattr(observation, "transcript", "") or getattr(observation, "cli_input", "") or ""
-                )
-            if percept_text:
+            text = percept_text(observation)
+            if text:
                 scene_id = state.data.get("current_scene_id") if hasattr(state, "data") else None
                 scene_ctx = state.data.get("scene_context") if hasattr(state, "data") else None
                 _imagination_results = imagination_trigger.process_percept(
-                    percept_text, scene_context=scene_ctx, scene_id=scene_id
+                    text, scene_context=scene_ctx, scene_id=scene_id
                 )
             else:
                 try:

@@ -11,18 +11,23 @@ prompt never did. Four defects compose into that one symptom, and each alone fix
 
 This runs the SHIPPED composition (roadmap_1_3_x.md §1.3.4, "Session R's red gate"): a real ``MaximHandle`` in a tmp
 home, its real talk loop, the real ``LLMWorker`` and ``PromptBuilder``; only the model is fake, and it records every
-prompt it is sent. Session N says the fact through ``talk``; 30+ newer unrelated user utterances follow through
-``MemoryAgent``'s own percept door, so recency cannot rescue the fact; ``stop()`` runs the session-end save; a NEW
+prompt it is sent. Session N says the fact through ``talk``; 36 newer unrelated utterances follow through ``talk`` as
+well, under the same Talk goal, so neither recency nor the goal path can rescue the fact, only a cue on the question; ``stop()`` runs the session-end save; a NEW
 handle on the same home asks the question. The text the model receives must hold "green" inside an untrusted-content
 frame, and no ``ToolOutput(`` repr anywhere. Recalled user text is a stored-injection channel (one utterance replayed
 into every later session), so an utterance shaped like an instruction must reach the prompt only inside the frame.
+
+Landed as strict xfails (``a59a9e42``) and flipped in place by the fix, which needed two more parts the issues did not
+name: the PFC gate rejected every session's first input (empty working memory), and the user's words were never
+memorized in Talk (published only by loop §3, which Talk never reached). Each mechanism is proven by deletion: without
+publish-at-arrival, the cue path, the shared tokenizer, the frame, the addressed-input enrichment or the #1163 seam
+(with its legacy-repr parse), at least one test here fails.
 """
 
 from __future__ import annotations
 
 import re
 import threading
-import time
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +46,7 @@ _FILLERS = tuple(
 )
 
 _EXPERIENCE = "=== What your experience tells you about this situation ==="
+_REPR = re.compile(r"(?:ToolOutput|t-o)\(success=|\berror_kind=|\bdrive_pressure_before=")
 _FRAME = re.compile(r"<<TOOL_OUTPUT id=(\w+) [^>]*>>\n(.*?)\n<</TOOL_OUTPUT id=\1>>", re.DOTALL)
 
 
@@ -52,6 +58,7 @@ class _RecordingModel:
     def __init__(self) -> None:
         self.prompts: list[str] = []
         self._lock = threading.Lock()
+        self._replies = 0
 
     def get_token_counter(self) -> None:
         return None
@@ -59,8 +66,12 @@ class _RecordingModel:
     def generate_json(self, prompt: str, temperature: float = 0.3, max_tokens: int = 1024, **kwargs: Any) -> Any:
         with self._lock:
             self.prompts.append(f"{kwargs.get('system_override') or ''}\n{prompt}")
+            self._replies += 1
+            n = self._replies
         return {
-            "action": {"tool_name": "respond", "params": {"message": "Noted."}},
+            "ready_to_act": True,
+            # Varied: Talk suppresses a sixth identical reply, and that turn would then time out.
+            "action": {"tool_name": "respond", "params": {"message": f"Noted ({n})."}},
             "reasoning": "acknowledge the user",
             "confidence": 0.9,
         }
@@ -85,24 +96,10 @@ def _ask(handle: Any, model: _RecordingModel, text: str) -> list[str]:
     return prompts
 
 
-def _say_through_memory_agent(handle: Any, utterances: tuple[str, ...]) -> None:
-    """The newer memories, through ``MemoryAgent``'s own percept door on the handle's hub (the capture talk's loop
-    uses), not a hand-built record."""
-    from maxim.agents.bus import Percept
-    from maxim.agents.maxim_agent import MaximAgent
-
-    agent = MaximAgent()
-    agent.wire_memory_hub(handle.instance.memory_hub)
-    for text in utterances:
-        agent.memory._on_percept(
-            Percept(timestamp=time.time(), source="cli", cli_input=text, salience=0.7, novelty=0.5)
-        )
-        time.sleep(0.002)  # distinct capture timestamps, so recency order is the utterance order
-
-
 @pytest.fixture(scope="module")
 def two_sessions(tmp_path_factory: pytest.TempPathFactory) -> dict[str, list[str]]:
-    """Session N states the fact and the injection, 36 newer utterances follow, stop; session N+1 asks both."""
+    """Session N states the fact and the injection, 36 newer utterances follow (all through talk), stop; session N+1
+    asks both."""
     from maxim.simulation.sim_logger import disable_sim_logging
 
     home = tmp_path_factory.mktemp("recall_gate") / "home"
@@ -111,13 +108,22 @@ def two_sessions(tmp_path_factory: pytest.TempPathFactory) -> dict[str, list[str
         import maxim.runtime.lane_backends as lane_backends
 
         mp.setattr(lane_backends, "build_primary_router", lambda *a, **k: (model, None))
+        from maxim.simulation.bridge import SimulationBridge
+
+        real_init = SimulationBridge.__init__
+
+        def _quick_settle(self: Any, *a: Any, **k: Any) -> None:  # timing only: Talk settles 2 s after each reply
+            real_init(self, *a, **{**k, "settle_s": 0.2})
+
+        mp.setattr(SimulationBridge, "__init__", _quick_settle)
         mp.setenv("MAXIM_SKIP_REMOTE_PROBE", "1")
 
         session_n = _handle(home)
         try:
             _ask(session_n, model, _FACT)
             _ask(session_n, model, _INJECTION)
-            _say_through_memory_agent(session_n, _FILLERS)
+            for filler in _FILLERS:  # through talk too: the same Talk goal, so the goal path's recency favours them
+                _ask(session_n, model, filler)
         finally:
             session_n.stop()
 
@@ -137,20 +143,19 @@ def _framed_bodies(prompt: str) -> list[str]:
     return [m.group(2) for m in _FRAME.finditer(prompt)]
 
 
-@pytest.mark.xfail(strict=True, reason="#1444 + #1163 + #1064 + #1447: the fact never reaches the next session")
 def test_a_fact_stated_in_session_n_reaches_the_prompt_in_session_n_plus_1(two_sessions):
     prompts = two_sessions["fact"]
     assert any("green" in body.lower() for p in prompts for body in _framed_bodies(p)), prompts[-1]
 
 
-@pytest.mark.xfail(strict=True, reason="#1163: a reloaded ToolOutput repr is rendered as memory text")
 def test_no_tool_output_repr_reaches_the_prompt(two_sessions):
     prompts = two_sessions["fact"] + two_sessions["injection"]
     assert any(_EXPERIENCE in p for p in prompts)  # recalled memory was rendered, so the check bites
-    assert not [p for p in prompts if "ToolOutput(" in p]
+    # The repr's own syntax, not its class name: a recall frame defangs "ToolOutput" to "t-o", so a repr rendered
+    # inside one hides from a name check (proven by deleting the #1163 seam).
+    assert not [p for p in prompts if _REPR.search(p)]
 
 
-@pytest.mark.xfail(strict=True, reason="#1444: recalled user text must be framed untrusted, never raw")
 def test_an_instruction_shaped_utterance_reaches_the_prompt_only_inside_the_frame(two_sessions):
     from maxim.utils.content_safety import outside_tool_output
 
