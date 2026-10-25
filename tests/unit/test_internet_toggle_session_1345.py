@@ -5,7 +5,7 @@ the agent's ``internet_access_toggle``, so an agent could turn an operator's "of
 every later session. Owner decision 2026-10-19 (strict): the agent may LOWER internet for its own session, in
 memory, never persisted, and may not raise it back. The session's lower is the process environment
 (``MAXIM_INTERNET_LOWERED``): it survives a registry rebuild and a re-exec, and dies with the process tree.
-Design: docs/plans/internet_toggle_session_gate.md.
+Design: docs/plans/archive/internet_toggle_session_gate.md.
 """
 
 from __future__ import annotations

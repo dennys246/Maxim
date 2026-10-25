@@ -21,6 +21,22 @@ from maxim.embodiment.component_registry import ComponentRegistry
 from maxim.simulation.tools import SetEntitySensorTool
 
 
+@pytest.fixture(autouse=True)
+def _frozen_body_clock(monkeypatch):
+    """Freeze the clock ``Embodiment.evaluate_failures`` drifts vitals by.
+
+    Every tool call evaluates failures, which first applies homeostatic drift for the WALL time since the
+    last poll (``tick_vital_drift(now - _last_poll)``). These tests assert exact written values across two
+    calls, so on a loaded runner the real gap drifted ``-1.0`` to ``-0.9999988`` (CI, 2026-10-24). A frozen
+    clock makes the drift zero by construction; the drift itself is tested where it is the subject.
+    """
+    import types
+
+    import maxim.embodiment.body as body_module
+
+    monkeypatch.setattr(body_module, "time", types.SimpleNamespace(time=lambda: 1_000_000.0))
+
+
 class _Bus:
     def __init__(self) -> None:
         self.signals: list = []

@@ -3,7 +3,7 @@
 
 `.github/workflows/release.yml` publishes pymaxim to PyPI from a pushed `v*` tag, through trusted publishing (OIDC,
 no stored token), after the owner approves the `pypi` environment. These are the checks it runs that no existing
-script did (design pass on docs/plans/release_pipeline.md, folds SF1, SF2, SF3, SF8, SF9):
+script did (design pass on docs/plans/archive/release_pipeline.md, folds SF1, SF2, SF3, SF8, SF9):
 
 ``tag``          the tag names pyproject's and ``__init__``'s version; it is an ANNOTATED tag object (a lightweight
                  tag is refused), GitHub-verified (``verification.verified`` with reason ``valid``) and signed by the
@@ -153,7 +153,7 @@ def ruleset_problems(*, repo: str, api: Api = gh_api) -> list[str]:
             return []
     return [
         "no active tag ruleset covers refs/tags/v* restricting creation, update and deletion: "
-        "anyone with push access could tag a release (docs/plans/release_pipeline.md, owner setup step 2)"
+        "anyone with push access could tag a release (docs/plans/archive/release_pipeline.md, owner setup step 2)"
     ]
 
 

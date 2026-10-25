@@ -462,7 +462,7 @@ jobs:
       # was tagged; nothing checked which bundle went in. Every build now vendors exactly what
       # scripts/console_ui_pin.json names (sha256-checked asset, file digest), on the same path a release takes,
       # and the audit below re-checks the built wheel and sdist against the pin. The asset is cached by its
-      # sha256, which is re-verified after a restore. Design: docs/plans/r4_console_vendor_gate.md.
+      # sha256, which is re-verified after a restore. Design: docs/plans/archive/r4_console_vendor_gate.md.
       - name: Cache the pinned Console asset
         uses: actions/cache@v4
         with:
@@ -1542,7 +1542,7 @@ jobs:
           # The evidence gate gates MOVES; nothing there forces BF2's demotion, and an
           # ordinary Exp 60 re-run could re-earn EARNED over a floor-matched B1 verdict.
           # B1 verdicts are append-only by (data_sha256, value); only an ESTABLISHED
-          # FLOORS_BEATEN clears. Spec: docs/plans/baseline_floors_b1_evidence.md §3.
+          # FLOORS_BEATEN clears. Spec: docs/plans/archive/baseline_floors_b1_evidence.md §3.
           # Positive controls: tests/unit/test_lint_bf2_obligation.py. Backlog M46/M50.
           python3 scripts/lint_bf2_obligation.py
 
