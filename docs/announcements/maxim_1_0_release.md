@@ -1,5 +1,7 @@
 # Maxim 1.0 — announcement copy
 
+> **Re-assessment 2026-10-25 ([#1301](https://github.com/dennys246/Maxim/issues/1301)): bounded.** The Exp 37/38/40 fires below ran with the AUT told `respond` was NOT AVAILABLE, each call drawing a follow-up (#1260), and with a narrator that saw delivery receipts in place of the AUT's `respond` words (#1261). Exp 38 Sonnet's interaction value and its three ablation values are **withdrawn**: two of its five arm-A deceptive trials are `respond` loops with no hearth engagement, scored 0.0, a confound that favours dominance. "Dominance, across four models" now reads: dominance at GPT-4o, DeepSeek-V3 and R1; Sonnet's interaction withdrawn, its verdict resting on first-contact over 3 of 5 arm-A deceptive trials. The Goldilocks map and Exp 40 are bounded ([narrator_defects_reassessment.md](../experiments/narrator_defects_reassessment.md)).
+
 Two registers below: a punchy short post (for social / the top of a blog) and a longer technical version (for the full writeup). Companion HTML guide (archived): `docs/archive/html-guides/maxim-1-0-release.html`.
 
 ---

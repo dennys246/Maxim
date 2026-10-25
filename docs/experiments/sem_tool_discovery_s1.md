@@ -1,5 +1,7 @@
 # SEM Tool Discovery S1 — Hybrid Prompt Mode PoC
 
+> **Re-assessment 2026-10-25 ([#1301](https://github.com/dennys246/Maxim/issues/1301)): "the AUT uses affordances from turn 1" is withdrawn.** It ran under a prompt that told the AUT `respond` was NOT AVAILABLE (#1260), steering it away from `respond` and toward affordances: a direction that favours the finding. Re-run it on the fixed path before citing ([#1461](https://github.com/dennys246/Maxim/issues/1461)). The infrastructure findings (the hybrid prompt mode's tool count) stand ([narrator_defects_reassessment.md](narrator_defects_reassessment.md)).
+
 **Date:** 2026-04-20
 **Plan:** [docs/plans/archive/sem_tool_discovery.md](../plans/archive/sem_tool_discovery.md)
 **Stage:** S1 (Universal sense + discover_tools + hybrid prompt mode)

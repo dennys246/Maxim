@@ -1,5 +1,7 @@
 # Experiment 08: Component-Level Damage PoC
 
+> **Re-assessment 2026-10-25 ([#1301](https://github.com/dennys246/Maxim/issues/1301)): bounded.** The infrastructure findings stand. The H1/H3/H4 behavioural observations ran with the AUT told `respond` was NOT AVAILABLE, each call drawing a follow-up (#1260), and the narrator saw delivery receipts in place of the AUT's words (#1261) ([narrator_defects_reassessment.md](narrator_defects_reassessment.md)).
+
 **Date:** 2026-04-25
 **Branch:** `feat/sem-damage-autosense`
 **Version:** 0.8.0+ (component damage infrastructure)
