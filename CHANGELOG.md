@@ -25,11 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **The wheel vendors maxim-pulse Console v0.4.3** (was v0.4.2; contract 0.6.0, unchanged). It is now the newest pulse
-  tag for this contract, so R4's release gate requires it. The changes are pulse's: clearer leader setup (key and
-  address guidance, with warnings), commands shown in a distinct style, and readable light-theme status colours.
-  Pulse verified it on a real Reachy (CM4) on 1.3.3. `scripts/console_ui_pin.json` pins tag v0.4.3 at commit
-  `c174126`, asset sha256 `cdad1982…b731`.
+- **The wheel vendors maxim-pulse Console v0.4.4** (was v0.4.2 at 1.3.3, then v0.4.3; contract 0.6.0, unchanged). It is
+  now the newest pulse tag for this contract, so R4's release gate requires it. v0.4.3 brought clearer leader setup
+  (key and address guidance, with warnings), commands shown in a distinct style, and readable light-theme status
+  colours, verified by pulse on a real Reachy (CM4) on 1.3.3. v0.4.4 is pulse's release for
+  [#1435](https://github.com/dennys246/Maxim/issues/1435): its robot bootstrap calls
+  `maxim.utils.audio.start_device_player`/`stop_device_player` on pymaxim >= 1.3.4 (and on 1.3.3 disables the
+  wobbler before starting the SDK player); the Console bundle inside reports version 0.4.3. `scripts/console_ui_pin.json`
+  pins tag v0.4.4 at commit `9af8a57`, asset sha256 `7fc30628…8b82`, which matches the digest pulse published.
 - **Evidence re-assessment: narrator-driven runs recorded before the #1261 and #1260 fixes** (#1301,
   `docs/experiments/narrator_defects_reassessment.md`). These are claims in earlier release notes. No ledger row
   changes status, and released sections stay as published.
