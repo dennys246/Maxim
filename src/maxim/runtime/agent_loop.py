@@ -1308,9 +1308,7 @@ def run_agentic_loop(
                             score=_gate_score,
                             threshold=_gate_threshold,
                             enrichment_sections=_n_sections,
-                            reason=""
-                            if _pfc_gate_passed
-                            else "; ".join(r for r in (_gate_reason, "addressed input: recall only") if r),
+                            reason="" if _pfc_gate_passed else f"{_gate_reason or 'gate closed'}; recall only",
                         )
                         # Push cycle 1 enrichment to thinking panel
                         _c1_tags: list[str] = []
