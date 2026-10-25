@@ -138,7 +138,9 @@ Deep-audited 2026-10-16 after the 1.3.2 cut, with a 2026-10-17 follow-up pass (s
     and [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md) (owner decision
     G5). Narrated consequences are stamped `narrated` and used at a declared discount (G6); harness writes
     to a drive (rescue, heal, respawn, teacher and mother feeds) are `apparatus`, recorded and never
-    trained on or credited (G16, 2026-10-09, from the GL1 design review).
+    trained on or credited (G16, 2026-10-09, from the GL1 design review). Under TR20 (G24, 2026-10-24)
+    the "never credited" half acts only once GL3.B1's credit flag flips; until then every writer,
+    `apparatus` included, credits as today and is only recorded.
 - [tool_failure_credit.md](tool_failure_credit.md) — **Status 2026-10-16: Stage 1 (#1207) and Stage 2 (#1229) are merged, with #1231 and #1221; Stage 3 waits for `kind` on `Reaction` (autonomic step 2).** **ACTIVE 2026-10-10 ([#1200](https://github.com/dennys246/Maxim/issues/1200)).** Tool failure was never wired into learning; putting it on the PainBus as it stands makes learning worse (the context-similarity NAc subscriber steals the bridge's event). Staged design B (owner TF1–TF3): Stage 1 a stale-success defect (#1207); Stage 2 failure credit through `ToolPainBridge.record_tool_failure` with a real RPE; Stage 3 a felt-only FRUSTRATION PainBus signal once `Reaction` carries kind.
 - [autonomic_layer.md](autonomic_layer.md) — **PROPOSED 2026-10-07 (GL2); GL2a BUILT 2026-10-09 and merged (#1194: the record-only tool-path `InteroceptiveOutcome` in `embodiment/sem.py`, `embodiment/body.py`, `tools/base.py::ToolOutput`, `runtime/executor.py`; no reader acts on it). GL2b and GL2c are not built.** The signed
   body-consequence record, `InteroceptiveOutcome` (deviation, pain, relief, urgency), the predictor targets.
