@@ -1,7 +1,7 @@
 # The atonia gate: approach notes for items 2, 3, 1, 5 and 10
 
-**Status:** DRAFT v5.1 (design passes complete), approach notes (CLAUDE.md "Faster without lowering the bar", item 1). Owner decisions V1–V7
-were made 2026-10-24. Session V, 2026-10-24, paper only: nothing in `src/` changes until the owner has read the folded
+**Status:** DRAFT v6 (design passes and three-lens round folded), approach notes (CLAUDE.md "Faster without lowering the bar", item 1). Owner decisions V1–V8
+were made 2026-10-24 and V9–V10 on 2026-10-25. Session V, paper only: nothing in `src/` changes until the owner has read the folded
 plan and the red-gate PR is opened.
 - **v1** was written from a read-only census at `d9dffe6e` (origin/main, 2026-10-24).
 - **v2** folds the three adversarial passes: [items 2+3](reviews/atonia_gate/items_2_3_adversarial.md) (sound with
@@ -18,6 +18,9 @@ plan and the red-gate PR is opened.
 - **v5.1** folds the [v5 delta round](reviews/atonia_gate/v5_delta.md), which returned **STOP: no further round
   owed**. All 11 findings were fail-closed or consistency fixes in already-covered classes, and they are folded
   here rather than sent to a follow-up, because each one shapes code that has not been written yet.
+- **v6** folds the three-lens review round ([executor](reviews/atonia_gate/lens_executor.md), [architecture](reviews/atonia_gate/lens_architecture.md),
+  [wire](reviews/atonia_gate/lens_wire.md); 5 BLOCKER, 27 SHOULD-FIX, 20 NIT). It adds owner decisions V9–V10 and §1A, which
+  wins over §2–§6 where they disagree.
 
 §9 maps every finding to its fold.
 
@@ -50,7 +53,7 @@ the sandbox's.
 **Ingress is out of scope for item 10.** A leader bound to `0.0.0.0` and inbound comms are the inbound row's
 (item 4, and the sandbox).
 
-## 1. Owner decisions (decided 2026-10-24: V1–V7 all as recommended)
+## 1. Owner decisions (V1–V8 decided 2026-10-24, V9–V10 2026-10-25; all as recommended)
 
 The recommendation is listed first in each row, and it is what was decided.
 
@@ -65,9 +68,254 @@ The recommendation is listed first in each row, and it is what was decided.
 | **V7** | Offline on the CLI (`llm.offline`) and model-chosen commands | **Offline also drops every tool with NETWORK, COMMS or the undeclared `ALL` from every executor's policy.** The policy is narrowed at build, when the latch is up, to the **enumerated** ceiling `READ|SELF_SCOPE|WRITE_LOCAL|ACTUATE|GOVERN`, never a complement, so a future eighth flag is excluded (fail-closed). Process runners are `ALL` by §2.1, so they drop too, and the hook refuses any spawn regardless (V8). `ACTUATE` stays in the ceiling on paper only: the latch refuses the robot's connect anyway, so an offline robot's tools fail closed with `OfflineRefusal`. | `bash` and the code tools run commands the model chooses, which no census can see. Without this, "offline refuses every fetch" is false on the CLI path. It is a decision because offline then visibly removes tools. |
 
 | **V8** | Under offline, may Maxim run any subprocess or connect to any endpoint? (asked 2026-10-24 after the v4 delta round) | **Nothing at all.** No subprocess the hook can see, no socket endpoint, no allow-list. Multiprocessing spawn children still start, through the unaudited `fork_exec`, and are latched by self-engage; their callers (`embodied_runtime/media_loop.py`, `data/camera/display.py`) are on the robot path, which is refused anyway. Offline also means **solo**: binding the leader proxy's `http.server` triggers a reverse-DNS lookup, which is refused, so the leader cannot start. The CLI's `llm.offline` needs an in-process model (the `llama_cpp` or `transformers` backend) and refuses at startup otherwise. The git tools drop. | The spawned-server allowance and the pinned git argv drew most of the fail-open findings in three consecutive rounds (v2 #3/#4, v3 #1/#2/#7, v4 #1–#4): endpoint revocation, listener ownership, and git's config-driven filters running code the latch cannot see. Neither the observer nor AvServ needs them. |
+| **V9** | The observer's import closure cannot hold: `maxim.runtime.executor` loads about 830 modules, and `models/language/config.py` parses the user's `profiles.yml` at import (three-lens round, 2026-10-25) | **Lazy package inits:** PEP 562 in `runtime`, `agents`, `tools` and `utils`; the profile load moves to first use. It is a new step 0, its own PR (§1A.1). | It is the root cause, and it makes `import maxim` lighter everywhere. A leaf-module observer would duplicate `Executor`'s check (two dispatchers for one gate), and dropping the closure gate would let a hostile `XDG_CONFIG_HOME` be parsed before `open()` refuses. |
+| **V10** | What may a ceiling do to the stable verbs `maxim.tool` / `register_tool` (2026-10-25)? | **Nothing in this release.** `maxim.run` keeps ceiling `ALL`. Ceilings below `ALL` apply only to the observer, Talk and offline, where undeclared user tools drop loudly. `effect=` is added as an optional form (§1A.4). | Both verbs are ✅ stable. A narrowed `maxim.run` would silently stop running users' tools in a patch. |
 
 **Flagged, not asked now:** `maxim.research` already exists (`api.py::research`, Experimental), so Profile A's builder
 needs another name when items 13 and 14 start.
+
+## 1A. Cross-cutting rules (v6, from the three-lens review round)
+
+The three-lens round ([executor](reviews/atonia_gate/lens_executor.md), [architecture](reviews/atonia_gate/lens_architecture.md), [wire](reviews/atonia_gate/lens_wire.md)) found
+that several rules apply to every item. They are stated once here. **Where §2–§6 disagree with this section, this
+section wins.**
+
+### 1A.1 Step 0: lazy package inits (V9) and the offline latch
+
+**The finding (all three lenses):** importing `maxim.runtime.executor` or `maxim.agents.permissions` loads about 830
+modules today. Among them are `runtime.agent_loop`, `agents.llm_worker`, `default_network`, `memory` and `utils.paths`.
+Importing anything under `models/language/` runs `config.py::_apply_user_profiles_at_import`, which reads
+`XDG_CONFIG_HOME`/`HOME` and parses `~/.config/maxim/profiles.yml`. The observer's import-closure and env read-set
+gates could not pass, and a hostile `XDG_CONFIG_HOME` would be parsed before `open()` could refuse anything.
+
+**Step 0a (V9, owner decision 2026-10-25: lazy package inits).**
+- PEP 562 `__getattr__` in `maxim/runtime/__init__.py`, `maxim/agents/__init__.py`, `maxim/tools/__init__.py` and
+  `maxim/utils/__init__.py`. Every `from maxim.runtime import X` user keeps working; the names resolve on first
+  access. A test pins `__all__` against the lazy table, and a subprocess test pins `import maxim.runtime.executor`'s
+  closure.
+- `models/language/config.py`'s profile load moves from import time to first use (`load_llm_config`).
+- `Executor.execute`'s per-dispatch `simulation.sim_logger` import moves behind the code path that needs it.
+- It is its own PR with a three-lens review, before item 2. The other sessions get notice, because it changes import
+  timing for every package. Rule T applies to nothing here: `__init__` modules hold no pinned function.
+
+**Step 0b: the offline latch.** `maxim/_offline.py` is a **top-level leaf module**, not `utils/offline.py`, so that
+importing it never runs `utils/__init__`. It holds `engage`, `is_offline`, the audit hook, the refusal ledger and the
+canonical truthy parser `truthy(value)` ("1/true/yes/on", case-insensitive). It is stdlib-only, and
+`cluster_bias_annotation.annotation_disabled_via_env` delegates to it, so one parser serves the parent, the child and
+`maxim/__init__`'s self-engage check. A parametrised test pins that. Items 3 (V7) and 1 depend on 0b, so 0b lands
+before them. Item 10's call-site refusals stay parallel.
+
+**`MAXIM_OFFLINE` and `MAXIM_INTERNET_LOWERED`.** `engage()` also calls
+`utils/internet_access.py::lower_internet_for_session`, so offline implies internet-lowered. The internet tools'
+`disabled_reason` and the prompt roster then agree. V5 cannot ride on `MAXIM_INTERNET_LOWERED` alone, because that
+covers neither HF nor the LLM. `MAXIM_OFFLINE` goes in llm-routing.md's env table, next to it.
+
+**Tests.**
+- `tests/conftest.py` must `os.environ.pop("MAXIM_OFFLINE", None)` at the top of the module, **before** its
+  `import maxim`, so a developer shell cannot latch the pytest process. The autouse scrub alone would be too late.
+- The conftest latch reset touches `maxim._offline`'s private state.
+
+### 1A.2 One dispatch seam, and one booking rule
+
+**The seam.** Every gate check lives in `Executor._permission_denial`, the seam `permits()` and the prompt roster
+already read, in this order:
+1. forbid source;
+2. mode;
+3. policy permissions;
+4. ceiling;
+5. pin.
+
+- The ceiling is `policy.ceiling & OFFLINE_CEILING` whenever `is_offline()` is true. **V7 is applied here, once, at
+  dispatch, and in `permits()`.** It is not applied at each builder site. That covers future builders and a policy
+  built before a later raise, and the roster never offers a tool that only the hook would refuse.
+- `OFFLINE_CEILING` is the enumerated `READ|SELF_SCOPE|WRITE_LOCAL|ACTUATE|GOVERN`.
+- `executor.check(tool)` is the same seam without dispatch. It **returns a typed refusal and never raises**.
+- The runtime-tools.md invariant text "one seam, THREE gates" changes to five, a hand-off (§7).
+
+**The booking table.** Every gate refusal is booked the same way. Today the planned skip sat where refusals never
+arrive: executor denials return before pain is booked, and NAc is booked downstream in
+`tool_dispatch.py::record_outcome`, which never saw `error_kind`.
+
+| Sink | Today, for a gate refusal | After |
+|---|---|---|
+| Pain (`_run_started` mapping, `proprioception/pain.py`) | not booked (returns before) | not booked |
+| `ToolPainBridge` NAc | not booked | not booked |
+| `record_outcome` → `nac.observe`, goal credit, cluster reward, `llm_worker.record_outcome`, `PlanHistoryBridge` | **booked negative** | **not booked**: `record_outcome` gains `refused: ToolErrorKind \| None`, threaded from `execute_and_learn` (both sites) and `execute_parallel_actions` |
+| `_tools_hallucinated` (feeds `failed_tools` hint, `MAXIM_TOOL_FAILURE_HINTS`) | booked | booked, unchanged for every gate kind, mode included, so the hint keeps working |
+| `AutonomyController` audit log (`log_action`), which `max_consecutive_failures` counts | booked | booked: **this is the counter that stops a model that keeps naming a refused tool** (the red gate drives it). `_consecutive_failures` only lengthens the hint |
+| `actions.jsonl` / `ActionRecord` / pulse | `success=False`, no kind | an optional trailing `error_kind` field (SHAPE-FROZEN `ActionRecord` allows an optional field at the end; Session S's contract, so a hand-off) |
+
+- **`OfflineRefusal` raised inside a tool** is caught in `_run_started`'s `except` and mapped to a new
+  `ToolErrorKind.OFFLINE`. It is booked like a gate refusal, so an offline session does not learn aversion to
+  actuation or to lazy-download tools.
+- **The behaviour change, named.** Existing `tools.allow`/`tools.deny` denials become `POLICY_PERMISSIONS`, and stop
+  booking a negative NAc outcome through `record_outcome`. That goes in the CHANGELOG. The characterization golden
+  (`tests/fixtures/orchestrator_characterization_golden_v1.json`) is checked for tool-usage stats.
+
+### 1A.3 Where each new thing lives (layer rules)
+
+`utils/audit.py::LAYER_RULES` forbids `tools → agents`, `tools → runtime` and `agents → tools`, `TYPE_CHECKING`
+included.
+
+| Thing | Module | Why there |
+|---|---|---|
+| `Effect`, `exceeds`, `effect_of`, the record | `tools/base.py` | Next to `Tool`; read everywhere |
+| `ToolPolicy` | `runtime/tool_policy.py` | Holds `AgentPermissions` (`agents/`) and `Effect` (`tools/`); only `runtime` may see both |
+| `current_policy` | read through `tools/base.py::current_policy()`, which returns a Protocol-typed handle (`PolicyHandle`, with `narrowed()`); `runtime/tool_policy.py` sets it | Tools-layer composites (`tools/`, `embodiment/`) can read it without importing `runtime` |
+| The offline latch | `maxim/_offline.py` | 1A.1 |
+| `closed_local` | `models/language/closed_local.py`, made safe by step 0a | It stays inside the LLM package (the router-only invariant). The CI backend-import grep adds `closed_local` with an allow-list of exactly `src/maxim/advisor/` |
+| `AdvisorLog`, `read_log` | `advisor/log.py` | The writer helpers it uses live in `utils/atomic_io.py` (below) |
+| Strict writers | `utils/atomic_io.py::atomic_write_json_at(dir_fd, name, payload)` and `append_line_fsync(fd, line)` | Both fsync-strict (an `OSError` raises). The module docstring names its two fsync policies (lenient: the existing helpers; strict: these) and who uses each. persistence-config.md §4 gets the line |
+| The observer | `maxim/advisor/` | `LAYER_RULES` gains `advisor`, which must not import `agents`, `memory`, `default_network`, `comms`, `hivemind`, `peer`, `mesh`, `tunnel` or `runtime.agent_loop`. That is a static fence on the existing audit, beside the subprocess closure test |
+| The exemption list | `tests/fixtures/effect_exemptions.json` | Only a test reads it |
+
+`closed_local` and `_LlamaCppBackend` share one `Llama(**kwargs)` builder in `llama_backend.py` (n_ctx clamp,
+`n_gpu_layers`, threads, seed), so a future GGML flag lands once. `closed_local` gets `llama_cpp` through
+`require_optional_dependency("llama_cpp", extra="llm-llama")`.
+
+### 1A.4 The stable tool verbs stay unchanged (V10)
+
+**Owner decision, 2026-10-25.**
+- `maxim.run` keeps ceiling `ALL` in this release, so `@maxim.tool` and `register_tool` tools, and same-name
+  replacement, behave exactly as `docs/user/stable_api.md` documents.
+- #1342's workspace-only direction stays a **filesystem-policy** fix (`allowed_dirs`), not a ceiling. Its O1 flip
+  criterion is concrete: `maxim.run`'s executor carries `ToolPolicy.unrestricted(reason="maxim.run: stable verb,
+  V10")` and `allowed_dirs == [home]`. A translated `None` cannot produce that.
+- Ceilings below `ALL` apply only to the observer, Talk (#1431) and offline (V7). There, an undeclared user tool
+  drops **loudly**: a structured WARNING naming the tool and the ceiling. The docs say so.
+- `@maxim.tool(effect=Effect.READ)` and `register_tool(..., effect=)` are added as an optional form. That is
+  additive, so stable_api.md gains a note, not a break.
+- **Red gate:** a registered READ tool runs under `maxim.run`, and an undeclared one does too.
+
+### 1A.5 `permissions=` is removed, not kept beside `policy=`
+
+V3 is already a hard break, so `Executor(permissions=)`, `build_executor(permissions=)` and `AgentConfig.permissions`
+are **removed** in the same change. The factories take `AgentPermissions` as their one input, and
+`permissions_from_tools_settings` feeds `ToolPolicy.deny(...)`.
+
+**It lands as one commit with the O1 flip:** about 190 test sites (42 `Executor(`, 73 `build_executor(`, 74
+`AgentConfig(`) and about 17 in `src/`, including `create_npc_agent` and the sub-sim's own child executor.
+
+**Claim surfaces edited in that commit:**
+- `create.py`'s error text;
+- the docstring examples in `pain_bus.py`, `pain_interceptor.py` and `bio_stack.py`;
+- `docs/proprioception.md`'s example, already a `TypeError`;
+- runtime-tools.md's "five logical call sites" and its builder table;
+- D73's "byte-identical when unconfigured", a DECISIONS.md amendment.
+
+`simulation/dm_schema.py::CampaignDef.permissions` has no reader. It is censused as dormant.
+
+### 1A.6 Config version: the gate takes 1.5
+
+#1431 (`console.talk_tools`, Session S) ships in 1.3.4 and takes `CONFIG_FORMAT_VERSION` "1.4". The gate ships later,
+so **`llm.offline` takes "1.5"**, with its own fixture entries and downgrade transition. If #1431 slips past the gate,
+the gate takes 1.4 instead, and whichever lands second rebases. Two claims on one version are never both shipped.
+
+**Downgrade.** A 1.4 build reads a 1.5 file as a future minor and tolerates the key, so it runs online. That is the
+stated fail-open. `maxim config downgrade` warns when it drops `llm.offline: true`.
+
+### 1A.7 Provenance under offline: an explicit branch, not a crash
+
+`OfflineRefusal(RuntimeError)` is deliberately not absorbed by `utils/code_tree.py::git_out`'s `except (OSError,
+TimeoutExpired)`. So every `git_out` caller crashes under offline unless it branches first: `_code_stamp`,
+`head_hash`, `tree_dirty`, `code_tree_sha256`, `get_version_info` and the console identity.
+
+**Fold:** `utils/code_tree.py` gains one `if is_offline(): return OFFLINE_UNKNOWN` (`"unknown: offline"`) at its
+entry points. `scripts/_evidence_records.py::unknown` already refuses that prefix, so an offline run cannot gate a
+claim (M1).
+
+**Red gate:** an offline sim in a git checkout writes `report.json` with `executed_git_hash: "unknown: offline"` and
+spawns nothing.
+
+**Wiring note:** the rule for `docs/wiring/` is that a typed exception chosen so narrow catches miss it crashes every
+caller those catches protected, so list each caller.
+
+### 1A.8 The observer's report and log: the schema AvServ designs against
+
+advisor_mode.md's draft interfaces are **superseded by this shape**, and that file says so.
+
+**`open()`** takes `home_dir`, `model`, `report_dir`, `cursor`, `max_calls`, `turn_timeout_s` and `log_mode`.
+
+**The report:**
+
+```json
+{"_format_version": "1.0", "schema": "advisor_report/1", "session_id": "...", "report_id": "uuid4",
+ "status": "ok | degraded | error | abandoned", "reason": "set unless ok",
+ "banner": "ADVISORY — Maxim v<maxim.__version__>, model <gguf sha256[:16]>; no action taken; not an alert.",
+ "covered": {"cursor_in": "...", "cursor_out": "...", "events": 3},
+ "inputs": [{"event_id": "...", "kind": "...", "payload_sha256": "...", "rejected": null}],
+ "happening": "UNTRUSTED", "would_do": {"summary": "UNTRUSTED", "executed": false}, "rationale": "UNTRUSTED",
+ "confidence": {"value": 0.6, "calibrated": false, "source": "model_self_report"},
+ "proposals": [{"seq": 4, "summary": "UNTRUSTED", "target": "UNTRUSTED"}],
+ "refusals": [{"seq": 5, "name": "bash", "error_kind": "POLICY_PIN", "layer": "pin", "effect": ["ALL"], "reason": "..."}],
+ "log_last_seq": 5, "provenance": {"code": "unknown: offline", "model_sha256": "...", "maxim_version": "..."},
+ "created_at": "...", "extra": {}}
+```
+
+- **`banner`** uses `maxim.__version__`, never `get_version_info()`, which spawns git.
+- **`would_do.summary`** is the model's narrative. **`proposals[]`** are its structured `propose_action` calls,
+  linked by `seq` to the log. The docs give each its role, so they are not two homes for one judgement.
+- **`provenance`** cannot be the M1 git stamp offline. It carries the GGUF's sha256 and the version, and says
+  `code: "unknown: offline"`.
+- **`Effect` is serialised as a sorted list of flag names**, never the `Flag` integer, which depends on declaration
+  order. The same rule covers #1431's `/api/tools`.
+- **Status precedence:** `error` > `abandoned` > `degraded` > `ok`.
+- **Log records** carry `report_id` and `ts`, so every proposal and refusal joins to its report.
+- AvServ plan 50 is read-only to us, so **the owner relays the changed shape to AvServ**, a hand-off.
+
+### 1A.9 The invariants this adds (draft stubs for runtime-tools.md and llm-routing.md)
+
+The advisor_mode.md guard line is superseded (prefetch root and the census-as-enforcement no longer apply).
+
+1. **[engineering] A tool's effect is declared in its class's own `__dict__`, recorded at class creation, and checked
+   at one dispatch seam.** Regression guard: `tests/unit/test_tool_effect.py::test_every_tool_declares_own_effect`
+   and `::test_process_and_code_runners_declare_all`, plus `src/maxim/tools/base.py::Tool.__init_subclass__`.
+2. **[engineering] Every executor carries a `ToolPolicy`; `None` is a `TypeError`** (it joins the canonical-builder
+   table). Regression guard: `src/maxim/runtime/bootstrap.py::build_executor` (required keyword-only `policy=`) and
+   `tests/unit/test_tool_policy.py::test_executor_refuses_missing_policy`.
+3. **[engineering] Offline is a one-way, process-wide audit-hook latch: no socket, no DNS, no spawn.** Regression
+   guard: `tests/integration/test_offline_latch.py::test_no_effect_subprocess` and
+   `src/maxim/_offline.py::engage`.
+4. **[engineering] The atonia composition dispatches only its pinned `propose_action` instance, imports nothing
+   outside its closure, and reads only its pinned env set.** Regression guard:
+   `tests/integration/test_advisor_gate.py::test_per_layer_deletion_sweep`, `::test_import_closure`,
+   `::test_env_read_set` and `::test_no_effect`.
+
+### 1A.10 Tests that actually run, and actually prove it
+
+- **Coverage.** Coverage has no subprocess support, and `lint_coverage` forbids enabling it. So every audit-hook
+  branch, every status row, `engage()` and the closed backend's defang also get **in-process unit tests** (with the
+  conftest latch reset, and an injected fake backend). The subprocess runs are the end-to-end proof.
+- **A runnable model.** Item 1's gates need a tiny runnable GGUF fixture, named with its size, source and sha256 when
+  the red-gate PR is written, and fetched in CI by the existing model-cache step. A private backend-injection seam
+  (`maxim.advisor._session._backend_factory`, monkeypatched) drives the `error`, `abandoned` and schema-invalid
+  branches. Gates that need llama_cpp **fail** when it is missing, never skip.
+- **The per-layer sweep sets:**
+  - the ceiling layer sweeps tools with `exceeds(effect, READ)`;
+  - READ tools are proven refused by the pin layer and by the sealed contents;
+  - the sealed-contents layer sweeps **names**.
+- **The closed backend's surface** is exactly `open_closed_local_backend(...)`, plus `build_prompt(template,
+  segments) -> PromptIds`, which does the whole tokenize-and-defang inside `models/language/`, and
+  `complete_tokens(...)`. `maxim.advisor` never imports `llama_cpp`.
+- **The censuses ride on existing lints:**
+  - the swallow census is a mode of `scripts/lint_no_silent_swallows.py`;
+  - the executor and registry construction pins, the `unrestricted`/`deny` callers, the direct-`.execute` sites and
+    the fetch/socket/subprocess site census are each a `scripts/lint_*.py` in the CI lint job, with a unit test and a
+    baseline under `scripts/` that follows the `architecture_baseline.json` precedent (`baseline_format_version`).
+    `prepr.sh` then runs them automatically.
+- **The widened CI grep** (`urllib3`, `requests`, `httpx.Client(`, `socket.socket(` outside `utils/http.py`) starts
+  with a pinned allow-list, with reasons: `doctor/platform_detect.py`, `simulation/minecraft_harness.py`,
+  `utils/net.py`, `utils/reachy_diagnostics.py` and `utils/sandbox_executor.py`'s blocklist string.
+- **`auto_sense`'s two bypasses** (the auto-fire loop and the interoception `sense` call) both call `check()`. A
+  refusal is logged as a refusal, not swallowed by the surrounding `except Exception`, and the probe drives both.
+
+### 1A.11 The mode gate's name sets: a scheduled collapse, with O2 stated
+
+`modes/definitions.py`'s `HOST_ACTING_TOOLS`, `NETWORK_CAPABILITY_TOOLS`, `FILESYSTEM_CAPABILITY_TOOLS` and
+`DISPATCH_CAPABILITIES` classify tools by name, a second vocabulary beside `Effect`. Collapsing them changes what
+passive mode allows for non-observer runs (O2: `write_file`, `send_message` and `call_user` would be refused). That is
+a behaviour change outside the gate, so it is **filed as a follow-up** with the O2 consequence stated. Until then, a
+test pins that every tool in those sets declares a matching `Effect` flag, so the two vocabularies cannot disagree.
 
 ## 2. Item 2: `Tool.effect` and the registry ceiling
 
@@ -125,8 +373,9 @@ Examples:
 - **The lookup.** `effect_of(obj)` reads `type(obj)`'s record. A type with no record (a duck-typed tool, a mock, a
   class made outside `Tool`) is `ALL`.
 - **Mutation is visible.** The mismatch check compares the record with `type(obj).__dict__.get("effect")` only, never
-  an inherited `getattr`. It refuses admission loudly when the two differ, which catches `cls.effect = ...` after
-  creation. `create_stub_tool` and `@tool` put `effect` in the class body they build.
+  an inherited `getattr`. **An absent value with a recorded `ALL` is consistent, not a mismatch.** Only a present
+  value that differs from the record refuses admission, loudly. That catches `cls.effect = ...` after creation, and
+  undeclared test tools and stable `register_tool` tools still register under a ceiling of `ALL`. `create_stub_tool` and `@tool` put `effect` in the class body they build.
 - **The check** is one helper: `exceeds(e, ceiling) = bool(e & ~ceiling)`. `Flag` has no subset `<=`, and `IntFlag`
   compares integers (WRITE_LOCAL ≤ READ|NETWORK), so neither operator is used anywhere.
 - **The registry ceiling** is fixed at construction: a read-only property, `ALL` by default.
@@ -215,13 +464,14 @@ embodiment=None, …)` accepts `None`, and a bare `Executor` with no mode source
 
   This closes the find/get race.
 - **Refusals are typed.** `tools/base.py::ToolErrorKind` (an `Enum`) gains `NOT_REGISTERED`, `POLICY_CEILING`,
-  `POLICY_PERMISSIONS`, `POLICY_PIN` and `MODE`, and every refused dispatch carries one, plus the layer and the effect.
+  `POLICY_PERMISSIONS`, `POLICY_PIN`, `MODE` and `OFFLINE`, and every refused dispatch carries one, plus the layer and
+  the effect.
   The `effect` of an unregistered name is `"unknown"`; no lookup builds a registry to find it.
-- **A policy refusal is not a tool failure.** It books no pain, so `_run_started`'s `error_kind or EXTERNAL_FAILURE`
-  pain mapping and `proprioception/pain.py`'s mapping skip `POLICY_*`. It books no NAc outcome and no
-  `_tools_hallucinated`. It still counts toward `_consecutive_failures` and the rejection follow-up cap, so a model
-  that keeps naming a refused tool still stops. How existing mode refusals are booked is unchanged.
-- **`auto_sense` (V6)** calls `executor.check(tool)`, the same check without dispatch, before `.execute()`.
+- **A gate refusal is not a tool failure.** How each refusal is booked is §1A.2's table (superseding v3's text,
+  which named the wrong counters and the wrong site).
+- **`auto_sense` (V6)** calls `executor.check(tool)`, the same check without dispatch, before **both** of its direct
+  calls: the auto-fire loop and the interoception `sense` call (§1A.10). `check()` returns a typed refusal and never
+  raises.
   `check()` does not set `current_policy`, so an auto-fire composite refuses. That is fail-closed, and the docs say
   so.
 - **Composite tools take the dispatching policy, not a registration-time one.** `Executor` sets a contextvar,
@@ -233,12 +483,16 @@ embodiment=None, …)` accepts `None`, and a bare `Executor` with no mode source
   v1 handed the policy to the tool at registration. That was the narrator's executor's policy, not the policy of the
   executor dispatching the call.
 - **Call sites:**
-  - `api.run` (both branches): `only` or `pinned`, decided per branch, from #1342's direction (workspace-only).
+  - `api.run` (both branches): `unrestricted(reason="maxim.run: stable verb, V10")`, with #1342's workspace-only
+    `allowed_dirs` (§1A.4).
   - `create_full_agent`: from `AgentConfig`.
   - The foundry, the Minecraft harness and both embodied builds: `unrestricted(reason=...)`.
   - `console/handle.py`: `deny(...)`, or `only(...)` once #1431 lands.
   - `cli.py`, the orchestrator's AUT and narrator, `create.py` and `load.py`: through `AgentConfig`.
-- **Under offline (V7),** every policy is narrowed at build to drop NETWORK, COMMS and undeclared tools.
+  - `create_npc_agent`: `policy=None` (it builds no executor).
+  - The sub-sim's child: `current.narrowed(...)`. Its grandfathered `FearGatedExecutor` swallow is not relied on.
+- **Under offline (V7),** the dispatch seam ANDs the ceiling with `OFFLINE_CEILING`, once (§1A.2). It is not
+  narrowed at each build site.
 - **The census tests** (AST over `src/`; `scripts/` out of the census, so `scripts/orient_substrate`'s nine direct
   `tools[action].execute()` calls are named in the test as out of scope):
   - every `Executor(` / `build_executor(` / `AgentConfig(` passes `policy=`;
@@ -322,7 +576,8 @@ Replacing `ProposalQueue` closes the drain path only. Under V1 none of these is 
   - `LLMConfig` defaults the profile to mistral, which `ensure_available` would download or substitute.
 
   The closed entry point constructs llama-cpp-python's `Llama` **eagerly**, at `open()`, from the path alone. It takes
-  no profile, does no lazy load, has no cost tracker and no `atexit`, and reads no env. It exposes exactly one call:
+  no profile, does no lazy load, has no cost tracker and no `atexit`, and reads no env. It exposes exactly three calls
+  (§1A.10): `open_closed_local_backend`, `build_prompt(template, segments)` (the whole tokenize-and-defang), and
   `complete_tokens(prompt_ids, *, grammar, max_tokens, max_prompt_tokens, deadline)`. It does not import
   `agents.llm_worker` or anything under `runtime/`.
   - **The bound is two-part.** Prompt prefill (`eval`) cannot be interrupted, so `max_prompt_tokens` is checked
@@ -501,11 +756,12 @@ v1 rested on URL checks plus a census. **A list of sites cannot be the enforceme
 
 **The design: three layers.**
 1. **The enforcement: a production socket latch.**
-   - **The hook.** `utils/offline.py` installs one `sys.addaudithook` the first time `engage()` runs. Audit hooks
+   - **The hook.** `maxim/_offline.py` (§1A.1) installs one `sys.addaudithook` the first time `engage()` runs. Audit hooks
      cannot be removed, so it is never installed in a process that never engages: an ordinary pytest run carries no
      hook, and `import maxim` stays light.
      - **Self-engage in children.** `maxim/__init__` does one cheap, stdlib-only check of `os.environ.get(
-       "MAXIM_OFFLINE")`, and only when that is truthy does it import `utils/offline` and engage. So every Python
+       "MAXIM_OFFLINE")` through `maxim._offline.truthy`, the one canonical parser (§1A.1), and only when that is
+       truthy does it engage. So every Python
        child that imports `maxim` (spawn-mode multiprocessing, sub-sims) is latched from its first import, and
        nothing heavier is imported otherwise.
    - **While engaged, it refuses** (the red gate drives one call of each):
@@ -594,8 +850,9 @@ v1 rested on URL checks plus a census. **A list of sites cannot be the enforceme
   `[]`, `utils/code_tree.py::git_out` → `None`, `tools/base.py::git_root_refusal` → a refusal string. The swallow
   census covers every handler around a census site that catches a base of `OfflineRefusal` (`Exception`,
   `RuntimeError`, `BaseException`), not only `except Exception`.
-- **Startup order.** Under `llm.offline`, `engage()` is the first statement of `cli.py::main`, and of every `api`
-  verb's build, before any subprocess. The GPU guards that need `nvidia-smi` (`ensure_blackwell_guards`) then refuse
+- **Startup order.** Under `llm.offline`, `cli.py::main` reads `llm.offline` first (a config read: no spawn, no
+  socket), then calls `engage()`, then `ensure_blackwell_guards`. Every `api` verb's build does the same, before any
+  subprocess. The GPU guards that need `nvidia-smi` (`ensure_blackwell_guards`) then refuse
   loudly at WARNING with their reason. They no longer drop silently at DEBUG, and a GPU host is told it runs without
   them.
 - **No offline run carries a code-provenance stamp.** `_code_stamp`, `get_version_info` and the console identity all
@@ -617,11 +874,11 @@ verbosity ≥1, which is noted.
 
 **Config:**
 - `llm.offline` goes in the SHAPE-FROZEN `LLMConfigSection`.
-- The shared `CONFIG_FORMAT_VERSION` 1.3 → 1.4 bump, with `"1.4"` fixture entries and the #974 downgrade. 1.3.3
-  shipped without it; #1431's `console.talk_tools` rides the same bump.
+- `CONFIG_FORMAT_VERSION` **1.5** (§1A.6): #1431 takes 1.4 in 1.3.4. It gets its own fixture entries and the #974
+  downgrade.
 - No env alias, and the key stays off `_NON_SECURITY_FIELDS`.
 - It wins over every auto-download switch.
-- **Fail-open on downgrade, stated:** a 1.3 build tolerates the unknown key and runs online. `maxim config downgrade`
+- **Fail-open on downgrade, stated:** a 1.4 build tolerates the unknown key and runs online. `maxim config downgrade`
   must warn when it drops `llm.offline: true`, and the docs say an offline deployment pins its version (AvServ
   already pins exactly).
 - `XDG_CONFIG_HOME` hiding the file is the operator's own choice, and the observer does not read config at all.
@@ -672,25 +929,58 @@ already its behaviour on any newer record. That is noted, not fixed here.
 
 ## 7. How the five fit, and the order
 
-1. Item 2: `Effect`, `effect_of`, `exceeds`, `_admit`, and the classification.
-2. Item 3: `ToolPolicy`, the dispatch check on the resolved object, typed refusals, `current_policy`, and
-   `auto_sense`.
-3. Items 1 and 5: the closed backend, the sealed registry, the pinned policy, the turn and the log.
-4. Item 10 in parallel. The observer depends only on `engage()` and the hook.
+0. **Step 0a, lazy package inits (V9),** its own PR (§1A.1). **Step 0b, `maxim/_offline.py`:** `engage`,
+   `is_offline`, `truthy`, the hook, the ledger, and `code_tree`'s offline branch (§1A.7).
+1. Item 2: `Effect`, `effect_of`, `exceeds`, `_admit`, the classification, the declaration/sink lints, and the
+   optional `effect=` on the stable tool verbs (V10).
+2. Item 3: `ToolPolicy`, the five-gate seam with the V7 AND, the booking table (`record_outcome(refused=)`), typed
+   refusals, `current_policy`, `auto_sense`'s two calls. The `permissions=` removal, about 190 test sites and the O1
+   flip land as **one commit** (§1A.5).
+3. Items 1 and 5: the shared `Llama` builder, `closed_local`, the sealed registry, the pinned policy, the turn, the
+   strict `atomic_io` writers, the log and the report.
+4. Item 10's call-site refusals, in parallel with 1–3 once 0b has landed.
 
 Each item:
 - has its strict red gates before code;
 - proves each guard by deleting it;
-- gets a three-lens review.
+- gets a three-lens review;
+- lists its `[Unreleased]` lines;
+- runs `scripts/run_mypy_public.sh` (it lists `executor.py`, `api.py`, `create.py`, `load.py` and
+  `loop_perception.py`).
 
-**Files owned elsewhere:**
+The CHANGELOG text for the V3 break is drafted in the item 3 PR. Its red gates' macOS-only branch (`F_FULLFSYNC`) is
+tested with a monkeypatched `fcntl` on Linux CI.
+
+**Rule T, per step** (`src/maxim/utils/function_length_baseline.json`; extract the touched lines, or record an
+exemption):
+
+| Step | Pinned function | Plan |
+|---|---|---|
+| 2 | `runtime/bootstrap.py::build_executor` | Extract the policy plumbing |
+| 2 | `runtime/agent_factory.py::AgentFactory.create_full_agent` | Extract the executor build |
+| 2 | `api.py::run` | Extract the policy and `allowed_dirs` setup |
+| 2 | `cli.py::_main_impl` | Extract the `AgentConfig` build (Session A grants the hunk) |
+| 2 | `simulation/orchestrator.py::start_simulation_mode` | **Fenced: a reviewed `touch_exemptions` record** (AD8), for the two `AgentConfig` sites |
+| 2 | `embodied_runtime/agentic_runtime.py::AgenticRuntimeMixin._start_agentic_runtime` | Extract |
+| 2 | `runtime/tool_dispatch.py::execute_and_learn`, `::record_outcome` | Thread `refused=` through a helper |
+| 0b/4 | `runtime/lane_backends.py::_maybe_auto_spawn_server` | A one-line early return; extract an `_offline_refusal()` helper |
+| 4 | `runtime/lane_backends.py::build_primary_router`, `models/language/router.py::LLMRouter._try_provider` | The predicate goes in one helper, `_offline_lane_refusal(lane)` |
+| 1 | `runtime/bootstrap.py::build_tool_registry` | Only if the ceiling becomes its parameter; otherwise untouched |
+
+**Files owned elsewhere, and hand-offs:**
 - `tools/internet_search.py` (H): the urllib3 hunk.
 - `console/handle.py` (S): the `deny` policy.
 - `models/audio/tts.py` (S): the `ensure_tts_voice` refusal.
-- `runtime/config_loader.py`: the shared 1.4 bump, with S's #1431.
-- `orchestrator.py` (A, AD8): `ToolPolicy` call sites only.
-- `runtime/loop_perception.py`: the `auto_sense` check. It is not fenced, and the change is a one-call hunk.
-- CLAUDE.md (the process session): the one new router-package entry point, as a stub to hand off.
+- `console/schemas.py::ActionRecord` (S): the optional `error_kind` field.
+- `runtime/config_loader.py`: the gate takes 1.5; S's #1431 takes 1.4 (§1A.6).
+- `orchestrator.py`, `agent_loop.py` and `cli.py` (A, AD8): `ToolPolicy` call sites only.
+- `runtime/loop_perception.py`: `auto_sense`'s two checks. It is not fenced.
+- **CLAUDE.md** (the process session): a stub for the `closed_local` entry point and its CI-grep allow-list.
+- **runtime-tools.md:** "one seam, five gates", the builder table, the four invariants (§1A.9). **llm-routing.md:**
+  `MAXIM_OFFLINE`. **persistence-config.md:** the strict writers.
+- **DECISIONS.md:** D73's amendment.
+- **AvServ, through the owner:** the §1A.8 report shape.
+- **Every session:** notice of step 0a's import-timing change.
 
 ## 8. Where advisor_mode.md has gone stale (fold after the owner decisions)
 
@@ -725,7 +1015,10 @@ Each item:
 - Profile A's name.
 - §"The guarantee": a new row for the report and log (model text).
 
-## 9. Fold ledger (v1 → v5.1)
+## 9. Fold ledger (v1 → v6)
+
+Rows marked *(superseded by V8)* describe mechanisms V8 deleted (the spawned-server endpoint, psutil ownership,
+realpath-keyed executables, `pinned_executable`); they are history, not instructions.
 
 **Items 2+3** ([review](reviews/atonia_gate/items_2_3_adversarial.md)):
 
@@ -808,8 +1101,8 @@ Each item:
 |---|---|
 | 1 | `sendto`/`sendmsg` and reverse DNS refused at the hook |
 | 2 | Self-engage at install; stated boundary; `latch-blind`; `loop="asyncio"` |
-| 3 | Absolute executables keyed on `realpath`; the env rule |
-| 4 | Live-child endpoint; the reuse path refuses |
+| 3 | Absolute executables keyed on `realpath`; the env rule *(superseded by V8)* |
+| 4 | Live-child endpoint; the reuse path refuses *(superseded by V8)* |
 | 5 | Strict clients under the latch only; #921 stands online |
 | 6 | Token-id prompt, `special=False` for untrusted segments |
 | 7 | Prompt-token cap before prefill; the deadline flag sets the status |
@@ -829,13 +1122,13 @@ Each item:
 
 | Finding | Fold |
 |---|---|
-| 1 | Port must refuse before the spawn; listener ownership proven via psutil before the key is sent; spawner state, not `poll()` |
-| 2 | (realpath, argv-prefix) pairs; `os.system` always refused; no shell pinned |
+| 1 | Port must refuse before the spawn; listener ownership proven via psutil before the key is sent; spawner state, not `poll()` *(superseded by V8)* |
+| 2 | (realpath, argv-prefix) pairs; `os.system` always refused; no shell pinned *(superseded by V8)* |
 | 3 | `add_bos=False`; per-id attribute check; escape or visible refusal; the vocab test by attribute |
 | 4 | Key in `__new__`; unconditional `__setattr__`; no subclasses; `type(...) is` |
 | 5 | Four loader variables, grouped by exec and `dlopen` |
 | 6 | "Processes or code"; the AST check and `tools/effect_exemptions.json` |
-| 7 | Git tools use `pinned_executable` |
+| 7 | Git tools use `pinned_executable` *(superseded by V8)* |
 | 8 | A `None` destination means the socket is connected |
 | 9 | Default-deny at `socket.__new__` |
 | 10 | The hook is installed only on engage; a cheap env check in `maxim/__init__` |
@@ -871,3 +1164,39 @@ Each item:
 | 8 | Receiver, MRO, decorator and target blind spots stated |
 | 9, 11 | Correct as folded; wording only |
 | 10 | One predicate for both stages; test against the installed tokenizer |
+
+**Three-lens round** (v6):
+
+| Lens · finding | Fold |
+|---|---|
+| Executor B1, Architecture B1/B2 | V9 lazy inits, step 0a (§1A.1) |
+| Executor S1 | Absent-and-`ALL` is consistent (§2.2) |
+| Executor S2, Wire B2, Architecture N3 | V10 (§1A.4) |
+| Executor S3 | Per-layer sweep sets (§1A.10) |
+| Executor S4 | Three-call closed surface; defang inside `models/language/` |
+| Executor S5 | Runnable GGUF fixture, injection seam, fail-not-skip |
+| Executor S6 | In-process unit tests for coverage |
+| Executor S7, Wire S8 | Both `auto_sense` calls; `check()` never raises |
+| Executor S8, Architecture N5 | Rule T table (§7) |
+| Executor S9 | `_offline` is step 0b |
+| Executor N1, Architecture S3 | `permissions=` removed; one commit (§1A.5) |
+| Executor N2, Wire S1/S2, Architecture S2 | One seam, booking table (§1A.2) |
+| Executor N3 | Config spells `pytorch`; the predicate uses the config spelling |
+| Executor N4 | Status precedence; `fcntl` monkeypatch; mypy-public; `[Unreleased]` |
+| Executor N5, Architecture N6 | Ledger markers; advisor_mode.md markers |
+| Architecture S1 | Scheduled collapse, consistency test (§1A.11) |
+| Architecture S4 | Layer homes; `advisor` in `LAYER_RULES` (§1A.3) |
+| Architecture S5 | V7 at dispatch, once |
+| Architecture S6 | `maxim/_offline.py`, one truthy parser, offline implies internet-lowered |
+| Architecture S7 | §1A.9 invariant stubs |
+| Architecture S8 | Censuses as `scripts/lint_*`; the swallow census in `lint_no_silent_swallows` |
+| Architecture S9 | Strict `atomic_io` writers |
+| Architecture N1, N2 | Shared `Llama` builder; the CI-grep allow-list |
+| Architecture N4 | `Effect` as sorted names |
+| Wire B1 | `code_tree` offline branch (§1A.7) |
+| Wire S3 | `ToolErrorKind.OFFLINE` |
+| Wire S4 | Config 1.5 (§1A.6) |
+| Wire S5, S6 | Report schema; `report_id`/`ts` in records (§1A.8) |
+| Wire S7 | Grep allow-list (§1A.10) |
+| Wire S9 | Call sites and claim surfaces (§1A.5) |
+| Wire NITs 1–9 | `SimToolRegistry` noted; `kind` snapshot at admission; `ConcurrentExecutor` export-only; `_API_SUBMODULES`; conftest pop before import; `host_tool_env` is defence in depth; the optional `ActionRecord.error_kind`; `Effect` serialisation; startup order |

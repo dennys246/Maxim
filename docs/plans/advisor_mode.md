@@ -71,6 +71,9 @@ safety-of-life consumer relies on. When it lands in `docs/agents/runtime-tools.m
 > Regression guard: the registration sweep (b), the dispatch sweep, the builder-refusal tests (embodiment, robot,
 > `MAXIM_*`, user config, prefetch root), item 10's census test and the behavioural no-effect test (§Red gates first).
 
+*(Superseded: the notes' §1A.9 states four invariants with `file::symbol` guards. Prefetch is moot under V1, and the
+census explains rather than enforces.)*
+
 **A behaviour on top, later.** An observe-and-speak *disposition* is a separate line, for 1.4 or later: an agent that
 learns when speaking up serves better than acting, close to [social_referencing.md](social_referencing.md). It enters
 as `[engineering]` and needs an experiment to earn `[behavioral]`. It sits on top of the gate and never replaces it.
@@ -117,7 +120,7 @@ ships, **the sandbox is that channel's only guard**:
 | Tool dispatch | Any registered tool. Composite tools: the sub-sim tool spawns its own `bash`/`write_file` executor. Direct `executor.execute` callers. | items 1–3 | Maxim's gate |
 | Actuation | `embodied_runtime/movement.py`, reflexes and the Default Network, whenever an embodiment is attached | the closed builder refuses any embodiment or robot | Maxim's gate |
 | Environment | `MAXIM_ROLE=leader` (proxy, mesh, tunnel), other `MAXIM_*` toggles, `~/.config/maxim/config.json` | the closed builder builds from a closed config: it ignores `MAXIM_*` and the user config file | Maxim's gate |
-| Context (reads) | `runtime/prefetch.py` runs `find` and direct `open()` reads of `os.getcwd()` (captured at loop setup) on every input, outside the registry (#1342) | the closed builder: no prefetch, or prefetch rooted in an empty directory set before setup | Maxim's gate, once item 1 ships |
+| Context (reads) | `runtime/prefetch.py` runs `find` and direct `open()` reads of `os.getcwd()` (captured at loop setup) on every input, outside the registry (#1342) | the closed builder: no prefetch, or prefetch rooted in an empty directory set before setup *(superseded, V1: no loop, so no prefetch)* | Maxim's gate, once item 1 ships |
 | Egress | the LLM; cloud lanes and provider keys; model, encoder, vision, whisper and voice downloads; a second consent-free download in `llama_backend.py`; `transformers`; docker pulls; hivemind; the leader proxy and tunnel | item 10 (offline, a census-backed refusal) plus the closed builder (local LLM only) | Maxim's gate for fetches, once item 10 ships |
 | Disk | the loop's `data/agents/<agent>/runtime/state_*.json` under the CWD; Hippocampus, NAc and session saves; `lane_decisions.jsonl`; `MAXIM_LOG_FILE`; `utils/config.py::save_config`; `sim_reports` | item 7 (ephemeral) | sandbox only |
 | Inbound | `comms/api.py`, the tailed `<home>/cli/*.jsonl`, console `talk()` | item 4 (one framed entry point) | sandbox only |
@@ -152,6 +155,11 @@ consumers serve `actions.jsonl` rows as `ActionRecord` (Session S's contract). T
 - `Tool.effect`, because nothing classifies effects today;
 - a sealed registry, because a registry today silently replaces a same-name tool and accepts tools through several
   write paths.
+
+*(Superseded: the notes add more new mechanisms: `ToolPolicy`, the closed backend `closed_local`, `AdvisorLog` with
+strict `atomic_io` writers, the `maxim/_offline.py` latch, `current_policy`, the typed `ToolErrorKind` members, and
+step 0's lazy package inits. Each names its reason in the notes §1A.3. The mode tables also classify effects by name;
+their collapse is scheduled in §1A.11.)*
 
 ## What 1.3.2 already fixed (verified at the tag)
 
@@ -304,7 +312,7 @@ proposal log back into a dispatch.
   caller never advances past events nobody judged.
 - The atomically written report is authoritative; the stdout status line is advisory.
 
-**Atomicity.** The report file is atomic (`atomic_write_json`). The proposal log is append-only JSONL, so a SIGKILL
+**Atomicity.** The report file is atomic (`atomic_write_json`; *superseded: `atomic_write_json_at(dir_fd, ...)`, notes §1A.3*). The proposal log is append-only JSONL, so a SIGKILL
 can tear its last line; readers drop a torn final record, and item 5's guard tests that. With one report per ingest
 call, a killed write leaves *no* report. That falls under "a missing report is not quiet".
 
@@ -552,6 +560,10 @@ Every fix ships with a caller on the shipped path, and each item gets the three-
 | AD9 | What may the gate's release promise? | **Experimental, with the effect-channel table in its docs.** |
 
 ## Draft interfaces, for AvServ to design against (Experimental)
+
+> **Superseded for the observer (2026-10-25):** the report and `open()` shape AvServ designs against is the notes'
+> §1A.8. It adds `session_id`, `proposals[]`, `log_last_seq`, `inputs[].rejected`, `reason`, status precedence, typed
+> refusals and an offline provenance. The owner relays it to AvServ. The draft below is kept as history.
 
 **The observer (Profile B).**
 
