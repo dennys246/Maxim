@@ -12,6 +12,22 @@ cut, was settled the same day: **the atonia gate ships as its own patch, 1.3.4**
 > release". Nothing else in the plan changes: its scope, decisions and exit are as written
 > ([roadmap_1_3_x.md](roadmap_1_3_x.md) §The atonia gate).
 
+> **Approach notes and design passes done 2026-10-24 (Session V):**
+> [atonia_gate_approach_notes.md](atonia_gate_approach_notes.md) v5.1.
+> - **Reviews:** three adversarial passes plus four delta rounds; the last returned STOP.
+> - **Owner decisions V1–V8**, all as recommended:
+>   - **V1:** the observer runs one bounded turn per `ingest()`, not the agent loop.
+>   - **V2:** `Tool.effect` is a set of seven flags (`GOVERN` added), not an order.
+>   - **V3:** `ToolPolicy` is required hard on `Executor`, `build_executor` and `AgentConfig`.
+>   - **V4:** the observer's model is an in-process GGUF, through a closed backend rather than `LLMRouter`.
+>   - **V5:** a raise-only `MAXIM_OFFLINE`.
+>   - **V6:** `auto_sense` goes through the policy check.
+>   - **V7:** offline drops network, comms and undeclared tools.
+>   - **V8:** offline allows no subprocess and no endpoint at all, enforced by an audit-hook latch.
+>
+> **Where the two documents disagree, the notes win.** They replace items 1, 2, 3, 5 and 10's specs below. Their §8
+> lists every claim here that the census found stale.
+
 Each gate item gets an approach note and an adversarial design pass before code (CLAUDE.md "Faster without lowering
 the bar", item 1).
 
@@ -20,6 +36,8 @@ the bar", item 1).
 - **The observer** is the deployment that uses it: AvServ's Profile B.
 - **`maxim.advisor`** is its Experimental public API.
 - **Profile A**, the SAR research job, is a different composition (`maxim.research`). It is *not* inside the gate.
+  *(`maxim.research` is already an Experimental verb, `api.py::research`, so Profile A needs another name; decided
+  when items 13 and 14 start.)*
 
 ## Why an atonia gate (owner decision 2026-10-17)
 
@@ -187,7 +205,8 @@ Owner priority: 1–3 first, then 6, 4, 5, 7, 8. AvServ's additions are items 9�
 - an autonomy controller with no proposal queue that any approval can drain. `approve` is a `ProposalQueue` method,
   the queue is held as `AutonomyController.proposal_queue`, and it is drained in
   `runtime/loop_planning.py::drain_approved`. So the composition replaces all three. Replacing only the executor would
-  not be enough.
+  not be enough. *(Superseded, V1: replacing the queue closes only the drain path, and three more approval paths
+  exist; the observer runs no loop at all; notes §4.1.)*
 
 **The builder:**
 - refuses an embodiment or robot;
@@ -208,7 +227,7 @@ proposal log back into a dispatch.
 ### Item 2: `Tool.effect` and the ceiling
 
 - **Effect classes.** #1315's set: READ, SELF_SCOPE, WRITE_LOCAL, NETWORK, COMMS, ACTUATE, proposed in that order,
-  lowest first.
+  lowest first. *(Superseded, V2: a set of seven flags with `GOVERN`, not an order; notes §2.)*
   - NETWORK covers reads that leave the machine: a GET can exfiltrate data in its URL.
   - An undeclared tool is the top class.
 - **Reading the effect.** It is read from `type(tool)` at registration and at dispatch, so neither instance mutation
@@ -311,6 +330,8 @@ call, a killed write leaves *no* report. That falls under "a missing report is n
 
 **What it does:**
 - Refuses Maxim's own HTTP at the single point, `utils/http.py`, except for the configured local LLM endpoint.
+  *(Superseded, V8: `utils/http.py` has no single chokepoint, and offline allows no endpoint; the enforcement is an
+  audit-hook latch; notes §6.)*
 - Sets `HF_HUB_OFFLINE` and `TRANSFORMERS_OFFLINE` **before the first import** of `huggingface_hub` or
   `transformers`, and passes `local_files_only=True` at each call site.
 - Forces `trust_remote_code=False`.
@@ -318,7 +339,8 @@ call, a killed write leaves *no* report. That falls under "a missing report is n
 - Refuses `ensure_tts_voice(auto=True)` too.
 - **Missing weights fail loudly.** The silent fallbacks become `status: "degraded"` (item 6): the encoder's hash
   embedding and semantic's lexical matching.
-- `llm.offline` drives the existing `hf_local_files_only`.
+- `llm.offline` drives the existing `hf_local_files_only`. *(Stale: that is the undocumented env var `MAXIM_LLM_HF_LOCAL_FILES_ONLY`, not a config
+  field; notes §6.)*
 
 **Configuration.**
 - **The knob:** `maxim config set llm.offline true`. It has no `_FIELD_TO_ENV` alias, stays off
