@@ -1,6 +1,6 @@
 # Experiment 12 — V1 Phased Substrate-Attribution Re-run
 
-> **Re-assessment 2026-10-25 ([#1301](https://github.com/dennys246/Maxim/issues/1301)): bounded.** Every session ran with the AUT told `respond` was NOT AVAILABLE (#1260), and each `respond` drew a follow-up. Recall is scored as "emitted the token in any action", so each follow-up was one more chance to emit it. The recall narrator saw only receipts (#1261). The `memory_recall` evidence that the substrate carries the token stands. Phase C−A's respond count is **withdrawn**, and between-phase memory counts are confounded. Not re-derivable from git ([narrator_defects_reassessment.md](narrator_defects_reassessment.md)).
+> **Re-assessment 2026-10-25 ([#1301](https://github.com/dennys246/Maxim/issues/1301)): bounded.** Every session ran with the AUT told `respond` was NOT AVAILABLE (#1260), and each `respond` drew a follow-up. Recall is scored as "emitted the token in any action", so each follow-up was one more chance to emit it. The plain recall narrator saw each action's tool, success and output, but a delivery receipt in place of the AUT's `respond` words (#1261). The `memory_recall` evidence that the substrate carries the token stands. Phase C−A's respond count is **withdrawn**, and between-phase memory counts are confounded. Not re-derivable from git ([narrator_defects_reassessment.md](narrator_defects_reassessment.md)).
 
 **Date:** 2026-04-30
 **Phase:** V2 (substrate-attribution after confound quarantine)

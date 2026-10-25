@@ -1,5 +1,7 @@
 # 30 — Wire-A tau-split validation (Roy-3a-retry)
 
+> **Re-assessment 2026-10-25 ([#1301](https://github.com/dennys246/Maxim/issues/1301)): bounded.** The llm-primary test phase ran with the AUT told `respond` was NOT AVAILABLE, each call drawing a follow-up (#1260). The NULL rests on a non-`respond` primary (arm A `sense_food_source`); don't cite the `respond` counts reported beside it ([narrator_defects_reassessment.md](narrator_defects_reassessment.md)).
+
 **Status:** Run complete 2026-05-25. NULL outcome with three structural findings. **Retroactive correction added 2026-05-27** — see end of doc.
 **Branch:** `feat/wire-a-tau-split-phase-3-validation`
 **Plan:** [docs/plans/archive/cluster_reward_bias_decay_tau_split.md](../plans/archive/cluster_reward_bias_decay_tau_split.md), Phase 3.

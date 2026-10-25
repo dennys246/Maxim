@@ -164,6 +164,9 @@ your metric can actually see.
   headroom.
 - **Measured:** Exp 37 Mistral24B fire, 2026-06-11; generalized as apparatus
   standard S7 after being blown through again in Exp 48's v1 gate.
+  *Re-assessment 2026-10-25 ([#1301 re-assessment](../experiments/narrator_defects_reassessment.md)): bounded
+  by the prompt line only.* The Mistral24B fire ran with the AUT told `respond` was NOT AVAILABLE (#1260), but made
+  0 `respond` calls, so the follow-up channel never fired.
 - **Mitigation:** S7 ceiling clauses in gates (gate v2's LEARNED-AT-CEILING is
   the canonical instance): a ceiling is *reported*, never silently
   passed/failed.
@@ -222,9 +225,10 @@ your metric can actually see.
   or sampling defaults. `n_ctx` is partially excluded — 4096 overflows the
   prompt (10 dead calls) under the same prompt-construction code, so June
   cannot have been running there.
-  *Added 2026-10-25 ([#1301 re-assessment](../experiments/narrator_defects_reassessment.md)):* one more
-  uncontrolled difference. Both fires ran with the AUT told `respond` was NOT AVAILABLE (#1260), and Qwen32B's
-  `respond` volume rose from 6 calls (June) to 32 (August), so that defect's effect was not constant between them.
+  *Added 2026-10-25 ([#1301 re-assessment](../experiments/narrator_defects_reassessment.md)):* the leaked prompt
+  line was identical in both fires (the AUT was told `respond` was NOT AVAILABLE, #1260), but the model's response
+  to it differed: Qwen32B's `respond` volume rose from 6 calls (June) to 32 (August), each drawing a follow-up, so
+  that defect's effect was not constant between the fires this entry compares.
 - **Why it was undetectable:** the run record stamps `model` (the REQUESTED
   profile name) and nothing else about what served it. No `n_ctx`, no
   quantization, no endpoint, no server build. Every hour of the 2026-08-22

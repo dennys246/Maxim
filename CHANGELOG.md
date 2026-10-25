@@ -33,13 +33,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Evidence re-assessment: narrator-driven runs recorded before the #1261 and #1260 fixes** (#1301,
   `docs/experiments/narrator_defects_reassessment.md`). These are claims in earlier release notes. No ledger row
   changes status, and released sections stay as published.
-  - **Unaffected:** T1-16 (Exp 63), the substrate-primary rows and Roy-0.
-  - **Bounded:** the Exp 37 Goldilocks map (T1-2), the Exp 38/40 counter-prior dominance, the Exp 44 counterfactual,
-    Exp 12's "7/7 recalled", the 2026-08-18 heartbeat records, and L8's drift comparison. In those runs the
-    generative narrator was AUT-blind, and every LLM agent under test was told `respond` was not available, each
-    reply drawing a follow-up.
+  - **Unaffected:** T1-16's gates (Exp 63), the substrate-primary rows (T1-3, T1-6, T1-8, T1-9, T1-10), the
+    substrate-primary Roy iterations (Roy-0, 1b, 2pc, 2c, 4, 5a, 5b, 3c), limits L7, and the Exp 09 and Exp 10
+    results that read no words.
+  - **Bounded:** the Exp 37 Goldilocks map (T1-2), the Exp 38 counter-prior dominance at GPT-4o, DeepSeek-V3 and
+    R1, Exp 40, the Exp 44 counterfactual, Exp 12's "7/7 recalled", the 2026-08-18 heartbeat records (T1-1, T3-9),
+    the T3-9 O19 re-run, Roy-1a/3 and Exp 30/33/34, Exp 18's non-`respond` tool shift, Exp 11/08/e0, limits L6
+    (the prompt line only) and L8's drift comparison. Every LLM agent under test in those runs was told `respond`
+    was not available, each reply drawing a follow-up, and the narrator saw delivery receipts in place of the
+    agent's `respond` words (the generative narrator saw nothing else).
   - **Withdrawn until re-run on the fixed path (#1461):** Exp 12's "3 respond hits vs 1", Exp 32's "respond
-    tripled", Exp 18's `respond` shift, and the hippocampal-recall "behavioural recall fails".
+    tripled", Exp 18's `respond` shift, the hippocampal-recall "behavioural recall fails", sem_tool_discovery_s1's
+    "affordances from turn 1", and Exp 38 Sonnet's interaction and ablation values (two of its five arm-A
+    deceptive trials are `respond` loops scored 0.0, a confound that favours dominance). The 1.0 "dominance across
+    four models" now reads: dominance at GPT-4o, DeepSeek-V3 and R1; Sonnet's verdict rests on first-contact over
+    3 of 5 arm-A deceptive trials.
 
 ## [1.3.3] - 2026-10-24 — "Release pipeline"
 

@@ -158,7 +158,7 @@ Companion reproduction runbooks are in [protocols/](protocols/).
 |---|---|---|---|
 | [valence_annotation_poc.md](valence_annotation_poc.md) | 2026-04-17 | recorded | PASS — SEM pain → Hebbian edge valence annotation pipeline validated end-to-end. |
 | [sem_learning_loop_poc.md](sem_learning_loop_poc.md) | 2026-04-17 | recorded | PASS — full pain/success → NAc learning → retrieval cycle validated; agent avoids previously-punished affordances in retrieval. |
-| [sem_tool_discovery_s1.md](sem_tool_discovery_s1.md) | 2026-04-20 | recorded | S1: Universal sense + discover_tools + hybrid prompt mode PoC; top-k affordance visibility on turn 1 confirmed. |
+| [sem_tool_discovery_s1.md](sem_tool_discovery_s1.md) | 2026-04-20 | recorded | S1: Universal sense + discover_tools + hybrid prompt mode PoC; top-k affordance visibility on turn 1 confirmed. *"Affordances from turn 1" withdrawn 2026-10-25 by the [#1301 re-assessment](narrator_defects_reassessment.md).* |
 | [concept_decomposition_validation.md](concept_decomposition_validation.md) | 2026-04-17 | recorded | PASS — decomposition yields +63.6 pp improvement in concept-level cross-modal recall (36.4% → 100.0%); Stage 1 validated. |
 
 ### Imagination + component index
@@ -197,7 +197,7 @@ ever drifts.
 | Entry | Date | Status | Decision |
 |---|---|---|---|
 | [37_cross_model_results.md](37_cross_model_results.md) | 2026-06-13 | PARTIAL (audit 2026-09-13); four local-model fires complete, cloud arm deferred | Substrate visibility is Goldilocks-dependent; the R1 variant produced the first clean Wire-A attribution. Deferred cloud comparisons are not results. |
-| [38_counter_prior_substrate.md](38_counter_prior_substrate.md) | 2026-06-13 | fired | Across the completed model set, carried substrate did not override a strong wrong prior. |
+| [38_counter_prior_substrate.md](38_counter_prior_substrate.md) | 2026-06-13 | fired | Across the completed model set, carried substrate did not override a strong wrong prior. *Bounded 2026-10-25 by the [#1301 re-assessment](narrator_defects_reassessment.md); Sonnet's interaction and ablation values withdrawn.* |
 | [39_substrate_primary_counter_prior.md](39_substrate_primary_counter_prior.md) | 2026-06-13 | pre-registered predecessor | Frozen counter-prior design; the executable line continued through Exp 41/42. |
 | [40_counter_prior_goldilocks.md](40_counter_prior_goldilocks.md) | 2026-06-16 | fired | Counter-prior dominance also held on Qwen2.5-32B, where the prior-aligned task had shown headroom. |
 | [41_substrate_primary_exploration.md](41_substrate_primary_exploration.md) | 2026-06-19 | void | Mechanism operated, but the experiment could not isolate exploration and the primary metric floored. |
