@@ -180,21 +180,24 @@ class ReachyAudioStream(AudioStream):
         """Push audio samples to the speaker.
 
         Args:
-            samples: Audio samples as float32 numpy array.
+            samples: Audio samples, float32 in [-1, 1] (or int16), at
+                ``output_sample_rate``.
 
         Returns:
-            True if samples were successfully queued.
+            True only if the samples reached a player started by
+            ``maxim.utils.audio.start_device_player``; False, with a WARNING, when it
+            was never started or its audio is closed (the SDK drops those silently,
+            #1435), or the samples are out of scale.
         """
         if not self._active:
             return False
 
+        from maxim.utils.audio import push_to_started_player
+
         with self._lock:
-            try:
-                self._mini.media.push_audio_sample(samples)
-                return True
-            except Exception as e:
-                logger.debug("Audio push failed: %s", e)
-                return False
+            # Resampled from the rate this stream advertises to the rate the started player
+            # recorded, so a caller trusting ``output_sample_rate`` never plays at the wrong speed.
+            return push_to_started_player(self._mini, samples, sample_rate=self._output_rate, log=logger)
 
     @property
     def input_sample_rate(self) -> int:

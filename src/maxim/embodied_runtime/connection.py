@@ -152,6 +152,11 @@ class ConnectionMixin:
         if mini is None:
             return
 
+        # Forget and stop the speaker player first: close() keeps the same manager with
+        # ``audio = None``, so a stale record would let the sink claim a silent push (#1435).
+        from maxim.utils.audio import stop_device_player
+
+        stop_device_player(mini, log=getattr(self, "log", None))
         try:
             mini.media.close()
         except Exception as e:
@@ -317,6 +322,11 @@ class ConnectionMixin:
                 except Exception:
                     pass
 
+                from maxim.utils.audio import stop_device_player
+
+                stop_device_player(
+                    old_mini, log=getattr(self, "log", None)
+                )  # before the close, as in _release_media (#1435)
                 try:
                     media = getattr(old_mini, "media", None)
                     if media is not None:
@@ -377,6 +387,11 @@ class ConnectionMixin:
 
             self._reset_connection_failures()
             self._restore_capabilities()
+            # The new SDK handle's speaker player starts here, as at media start (#1435).
+            if getattr(getattr(self, "_capabilities", None), "has_audio", True):
+                from maxim.utils.audio import start_device_player
+
+                start_device_player(getattr(self, "mini", None), log=getattr(self, "log", None))
             self.log.info("Soft reconnect complete.")
             return True
         finally:

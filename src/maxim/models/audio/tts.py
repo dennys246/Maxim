@@ -11,9 +11,14 @@ Voice provisioning (~63 MB per voice, pinned and sha256-verified in ``models/dow
 Intended device-bootstrap usage (the caller lives in the device's bootstrap, e.g. maxim-pulse's Reachy app; no
 pymaxim module wires it yet): arm spoken-code pairing only once the ``VoiceProvisioner`` is ready::
 
+    start_device_player(mini)       # once, before any speech: wobbler off, then the player (#1435)
     voice = VoiceProvisioner(); voice.start()
     announcer = make_pairing_announcer(voice.engine, make_device_speak_sink(mini))
     app = build_app(dist, pairing_announcer=announcer, pairing_ready=voice.is_ready)
+    ...
+    stop_device_player(mini)        # last, before closing media
+
+Without ``start_device_player`` the device sink refuses (False + WARNING); it never starts the player itself.
 """
 
 from __future__ import annotations
