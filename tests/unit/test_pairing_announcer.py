@@ -117,3 +117,14 @@ def test_speak_failure_does_not_propagate_and_never_logs_the_code(caplog):
     for rec in caplog.records:
         assert code not in rec.getMessage()
     assert any("OSError" in r.getMessage() for r in caplog.records)
+
+
+def test_a_refusing_speaker_is_logged_and_never_logs_the_code(caplog):
+    """#1435: a sink that refuses (a Reachy player nobody started) returns False; the announcer says so, type-free."""
+    code = "135135"
+    announce = make_pairing_announcer(_FakeTTS(), lambda samples, sample_rate: False)
+    with caplog.at_level(logging.WARNING):
+        assert announce(code) is None
+    assert any("did not play the code" in r.getMessage() for r in caplog.records)
+    for rec in caplog.records:
+        assert code not in rec.getMessage()
