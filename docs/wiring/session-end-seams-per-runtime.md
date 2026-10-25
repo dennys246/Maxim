@@ -19,8 +19,8 @@ There is no single "session end". Each runtime reaches a different subset of the
 
 `AgentInstance.shutdown` calls `bio_stack.save_cerebellum()` directly, never `BioStack.on_session_end`, so only the
 runtimes that call `on_session_end` themselves run the distributor's cleanup. In `src/`, that is only
-`simulation/minecraft_harness.py`. A post-sim `/new` goal recurses into `start_simulation_mode` and builds a fresh AUT,
-so each level has its own session end.
+`simulation/minecraft_harness.py`. A post-sim `/new` goal recurses into `start_simulation_mode`: it builds a fresh throwaway AUT, or, under
+adoption, re-adopts the same persistent agent, so each level has its own in-sim session end.
 
 `--resume-sim` (`_restore_aut_from_session`) restores the Hippocampus, NAc, EC and ATL only. It restores no Cerebellum
 and nothing a later stage would add.
