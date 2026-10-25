@@ -88,10 +88,11 @@ class AudioStream(ABC):
         """Push audio samples to the speaker.
 
         Args:
-            samples: Audio samples as float32 numpy array.
+            samples: Audio samples, float32 in [-1, 1] (or int16), at ``output_sample_rate``.
 
         Returns:
-            True if samples were successfully queued for playback.
+            True only if the samples reached a started player; False when nothing will
+            play (a silent drop is never reported as queued, #1435).
         """
         ...
 
