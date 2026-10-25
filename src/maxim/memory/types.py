@@ -872,13 +872,13 @@ class CompressedMemory(CompressedRecord):
 
     def keywords(self) -> set[str]:
         """Extract keywords from compressed episodic data (``memory/text.py``'s one standard, D3)."""
-        return self.content_tokens()
+        return set(self.content_tokens())
 
-    def content_tokens(self) -> set[str]:
+    def content_tokens(self) -> frozenset[str]:
         """The content keys a query matches this record on: what compression kept, its goal and tool."""
         from maxim.memory.text import content_tokens
 
-        return content_tokens(self.goal, self.tool_name)
+        return frozenset(content_tokens(self.goal, self.tool_name))
 
     @property
     def input_text(self) -> str:
@@ -1084,6 +1084,10 @@ class EpisodicMemory(MemoryRecord):
     # written before 2S-b). Episodic only: compression drops it, as it drops the concept refs. Not
     # EC's ``SituationSignature`` (a text signature keyed by memory id) -- this is substrate clusters.
     situation: dict[str, str] | None = field(default=None, repr=False, compare=False)
+    # ``content_tokens``' cache: never persisted, never compared (Session R, SF5).
+    _content_cache: tuple[tuple[Any, ...], frozenset[str]] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     @property
     def duration_ms(self) -> float:
@@ -1091,29 +1095,49 @@ class EpisodicMemory(MemoryRecord):
 
     def keywords(self) -> set[str]:
         """Extract keywords from episodic memory fields (``memory/text.py``'s one standard, D3)."""
-        return self.content_tokens()
+        return set(self.content_tokens())
 
-    def content_tokens(self) -> set[str]:
-        """The content keys a query matches this record on, over the fields captures actually WRITE (#1064): what it
-        heard (``cli_input``, ``transcript``, the observation's text values), its active goal (``# active goal on
-        purpose``: the context it happened in), tool, detected objects and people, the rationale, and the outcome's
-        output and error. ``observations["text"]``, which the old ranker read, no capture writes."""
-        from maxim.memory.text import content_tokens
-
-        result = self.outcome.result
-        outcome_text = [result.get("output"), result.get("error")] if isinstance(result, dict) else [result]
-        return content_tokens(
+    def text_fields(self) -> list[Any]:
+        """The record's readable TEXT, the one field list the substring search, ``matching_sentence`` and the
+        ranker all read (design review S4: two lists drifted, #845): what it heard (``cli_input``, ``transcript``,
+        the observation), the rationale and reasoning, and the outcome: its whole result (a stored tool result's
+        output and error, a Reflexion reflection, a pain context) and error. Captures write these;
+        ``observations["text"]``, which the old ranker read, none does."""
+        return [
             self.perception.cli_input,
             self.perception.transcript,
             self.perception.observations,
-            self.context.active_goal,
-            self.action.tool_name,
-            self.perception.detected_objects,
-            self.perception.detected_people,
             self.perception.decision_rationale,
-            outcome_text,
+            self.decision.reasoning,
+            self.outcome.result,  # whole: a reflection, a stdout, a pain context (values only, metadata keys skipped)
             self.outcome.error,
+        ]
+
+    def content_tokens(self) -> frozenset[str]:
+        """The content keys a query matches this record on (#1064): its ``text_fields`` plus its labels -- the active
+        goal (``# active goal on purpose``: the context it happened in), tool, detected objects and people.
+
+        Cached on the record (design review SF5: re-keying every record's text on every query cost ~1 s on a
+        2,000-record store, under the store's read lock). A stored record is not edited after capture; a field
+        object replaced (MemoryAgent's own staged copies) invalidates the cache (the objects are held and compared
+        with ``is``, never their ``id()``, which a freed object's successor can reuse)."""
+        from maxim.memory.text import content_tokens
+
+        stamp = (self.perception, self.decision, self.outcome, self.context, self.action)
+        cached = self._content_cache
+        if cached is not None and all(a is b for a, b in zip(cached[0], stamp)):
+            return cached[1]
+        tokens = frozenset(
+            content_tokens(
+                *self.text_fields(),
+                self.context.active_goal,
+                self.action.tool_name,
+                self.perception.detected_objects,
+                self.perception.detected_people,
+            )
         )
+        self._content_cache = (stamp, tokens)
+        return tokens
 
     @property
     def input_text(self) -> str:

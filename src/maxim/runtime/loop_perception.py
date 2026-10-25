@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, NamedTuple
 
 from maxim.utils.logging import log_swallowed_exception
 
@@ -66,9 +66,10 @@ class PerceptionOutcome:
 def take_observation(*, sim: Any, ctrl: Any) -> Any:
     """§1: this tick's observation, merged into ``state.data``.
 
-    A user input in it is consumed where it is read, by ``PerceptionAgent.propose_intent`` (#1414): it must outlive
-    this tick, because the loop skips ``propose_intent`` while an LLM answer is pending. The environment, the Default Network and the state are the loop's own, read off
-    ``ctrl`` (the setup built it from them, and the loop never rebinds them).
+    A user input in it is read once, by ``take_user_input`` at the top of §1.2, which publishes what a person said to
+    memory and clears the state's copy (#1414: consumed once; it used to wait for §3's ``propose_intent``, which the
+    loop skips while an LLM answer is pending). The environment, the Default Network and the state are the loop's
+    own, read off ``ctrl`` (the setup built it from them, and the loop never rebinds them).
     """
     observation = sim.next_observation(ctrl.environment, ctrl.default_network)
     ctrl.state.update(observation)
@@ -105,15 +106,34 @@ def perceive(
     )
 
 
-def take_user_input(observation: Any, state: Any, agent: Any) -> tuple[Any, Any, Any, bool]:
-    """§1.6's input read: the tick's ``(transcript, hard_override, cli_input, is_agentic_voice_input)``, and the user's
-    input published to memory ONCE, here, as it arrives (Session R, owner decision 2026-10-24).
+class UserInput(NamedTuple):
+    """One tick's input, read once (``take_user_input``): the fields the loop reads, and ``addressed``, the words
+    that ADDRESS the agent ("" when none), which are memorized and always enriched."""
 
-    The input comes from the observation, else the interactive CLI thread's ``pending_cli_input``, else the voice
-    thread's ``pending_voice_input`` (only forwarded once the wake word opened an agentic session); both pending
-    slots are always popped, so an input is processed once. A real turn -- not a synthetic ``[ACTION_FOLLOWUP`` --
-    is handed to ``agent.publish_arrival``, so memory hears every utterance whatever the loop does next; it was
-    heard only when §3 ran, which in Talk it never did. An agent with no perception pipeline has no memory to tell.
+    transcript: Any
+    hard_override: Any
+    cli_input: Any
+    is_agentic_voice_input: bool
+    addressed: str
+
+
+# Where the loop puts a reply it makes itself (an auto-approved confirmation, a sim-resolved one, a timeout retry):
+# processed like typed input, never memorized as something a person said (owner decision 2026-10-25).
+LOOP_REPLY_SLOT = "pending_loop_reply"
+
+
+def take_user_input(observation: Any, state: Any, agent: Any) -> UserInput:
+    """The tick's input, from every channel, read ONCE at the top of the pass (§1.2), and the words that address the
+    agent published to memory as they arrive (Session R, owner decisions 2026-10-24/25).
+
+    The input comes from the observation, else the loop's own reply (``LOOP_REPLY_SLOT``, which keeps a person's
+    pending input for the next tick), else the interactive CLI / robot / API mailbox ``pending_cli_input``, else the
+    voice thread's ``pending_voice_input`` (only forwarded once the wake word opened an agentic session); each slot
+    read is popped, so an input is processed once. ``addressed`` is what a person said: the pending CLI and voice
+    channels always, the observation's ``cli_input`` when its source addresses the agent (``_addresses``), never the
+    loop's own reply or a synthetic ``[ACTION_FOLLOWUP``. It is handed to ``agent.publish_arrival`` (memory hears
+    every utterance whatever the loop does next; §3 alone used to publish it, which in Talk never ran) and the
+    observation's ``cli_input`` copy in ``state.data`` is cleared, so §3 never publishes it again (#1414).
     """
     transcript = hard_override = cli_input = None
     if hasattr(observation, "get"):
@@ -124,24 +144,36 @@ def take_user_input(observation: Any, state: Any, agent: Any) -> tuple[Any, Any,
         transcript = getattr(observation, "transcript", None)
         hard_override = getattr(observation, "hard_override", None)
         cli_input = getattr(observation, "cli_input", None)
+    addressed = str(cli_input) if cli_input and _addresses(observation) else ""  # the words the loop processes
 
-    pending_cli = state.data.pop("pending_cli_input", None)
-    if not cli_input:
-        cli_input = pending_cli
+    loop_reply = state.data.pop("pending_loop_reply", None)  # LOOP_REPLY_SLOT
+    if not cli_input and loop_reply:
+        cli_input = loop_reply  # the loop answering itself; a person's pending input waits for the next tick
+    else:
+        pending_cli = state.data.pop("pending_cli_input", None)  # always read once, discarded behind an observation
+        if not cli_input and pending_cli:
+            cli_input = addressed = pending_cli
 
     voice_input = state.data.pop("pending_voice_input", None)
     state.data.pop("pending_voice_transcript", None)
     is_agentic_voice_input = False
     if not cli_input and voice_input:  # CLI takes priority
-        cli_input = voice_input
+        cli_input = addressed = voice_input
         is_agentic_voice_input = True  # came from an agentic voice session (wake word already said)
-        logger.info("Using voice transcript as user input: %s", voice_input[:50] if voice_input else "")
+        logger.info("Using voice transcript as user input: %s", voice_input[:50])
 
-    text = str(cli_input).strip() if cli_input else ""
-    publish = getattr(agent, "publish_arrival", None)
-    if text and not text.startswith("[ACTION_FOLLOWUP") and callable(publish):
-        publish(state, text, source="voice" if is_agentic_voice_input else "cli")
-    return transcript, hard_override, cli_input, is_agentic_voice_input
+    text = str(addressed).strip() if addressed else ""
+    if text.startswith("[ACTION_FOLLOWUP"):
+        text = ""
+    if text:
+        if str(state.data.get("cli_input") or "").strip() == text:
+            state.data.pop("cli_input", None)  # the runtime owns the state: §3 must not publish it again
+        # ``maxim.api`` runs duck-typed embedder agents too: one without ``publish_arrival`` (``agents/base.py``'s
+        # explicit default does nothing) has no memory pipeline to tell. A capability probe, not a swallow.
+        publish = getattr(agent, "publish_arrival", None)
+        if callable(publish):
+            publish(state, text, source="voice" if is_agentic_voice_input else "cli")
+    return UserInput(transcript, hard_override, cli_input or None, is_agentic_voice_input, text)
 
 
 def percept_text(observation: Any) -> str:
@@ -165,19 +197,12 @@ def percept_text(observation: Any) -> str:
 ADDRESSED_SOURCES: frozenset[str] = frozenset({"cli", "voice", "speech", "transcript"})
 
 
-def addressed_text(observation: Any) -> str:
-    """The words this tick ADDRESSES the agent with, or "" (Session R, owner decision D5 2026-10-24).
-
-    Innate prior (behaviour tier): being addressed is salient, so an addressed input is always enriched, and recall
-    runs on every user turn, the first one after a restart included, where the PFC gate's empty working memory used
-    to reject it. Read from the percept's SOURCE, never from which field carries the text. Deliberation keeps its
-    scored gate: this decides recall only.
-    """
-    text = percept_text(observation)
-    if not text:
-        return ""
+def _addresses(observation: Any) -> bool:
+    """Whether the observation's SOURCE addresses the agent (``ADDRESSED_SOURCES``, or no source at all): read from
+    the source, never from which field carries the text (Session R, owner decision D5 2026-10-24). Being addressed
+    is salient (innate prior): what a person says is always enriched for recall; deliberation keeps its gate."""
     source = observation.get("source") if hasattr(observation, "get") else getattr(observation, "source", None)
-    return text if source is None or source in ADDRESSED_SOURCES else ""
+    return source is None or source in ADDRESSED_SOURCES
 
 
 def imagine(*, step_num: int, observation: Any, state: Any, imagination_trigger: Any | None) -> list:

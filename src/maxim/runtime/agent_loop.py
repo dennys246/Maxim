@@ -28,7 +28,7 @@ from maxim.runtime.loop_setup import build_loop_run
 from maxim.runtime.loop_controller import _handle_planning_failure
 from maxim.runtime.loop_substrate import substrate_tick
 from maxim.runtime.loop_planning import drain_approved
-from maxim.runtime.loop_perception import addressed_text, perceive, percept_text, take_observation, take_user_input
+from maxim.runtime.loop_perception import perceive, percept_text, take_observation, take_user_input
 
 # Module reference, not a name import: a test that patches the leaf also reaches the loop's call.
 from maxim.runtime import substrate_proposal as _sp
@@ -1204,14 +1204,22 @@ def run_agentic_loop(
         # ThoughtGate + BioEnrichment.  The multi-cycle deliberation
         # (LLM calls) happens later at the submission point (section 2)
         # where StructuredContext is available.
+        # Ensure maxim_runtime carries the RUN mode for MemoryAgent (PerceptionAgent -> MemoryAgent -> ExecAgent):
+        # before the input's arrival percept, which carries it
+        if "maxim_runtime" not in state.data:
+            state.data["maxim_runtime"] = {}
+        seed_runtime_run_mode(state)  # keeps a mode already there (#963 Q5: the run mode, not the operational one)
+
+        # The tick's input, read ONCE from every channel and memorized as it arrives (Session R): §1.2 enriches it
+        _user_input = take_user_input(observation, state, agent)
+        transcript, hard_override, cli_input, is_agentic_voice_input, _addressed = _user_input
         _percept_enrichment_text = ""
         _percept_text_for_cycle = ""
         _pfc_gate_passed = False
         _wms = None
         if bio_enrichment_pipeline is not None or thought_gate is not None:
             try:
-                _percept_text_for_cycle = percept_text(observation)
-                _addressed = addressed_text(observation)  # always enriched: recall on every user turn (D5)
+                _percept_text_for_cycle = percept_text(observation)  # what the gate (deliberation) reads, as before
                 # Defaults so the no-gate path (and an exception) still log
                 # coherent numbers rather than tripping a NameError.
                 _gate_score = 0.0
@@ -1259,7 +1267,8 @@ def run_agentic_loop(
                         _wms = getattr(_exec, "working_memory", None)
 
                 # Gate-fired minimum: always enrich cycle 1 when gate passes
-                if (_pfc_gate_passed or _addressed) and bio_enrichment_pipeline is not None and _percept_text_for_cycle:
+                _enrich_text = _percept_text_for_cycle or _addressed  # a mailbox input (voice, CLI, API) too (D5)
+                if (_pfc_gate_passed or _addressed) and bio_enrichment_pipeline is not None and _enrich_text:
                     from maxim.integration.bio_enrichment import EnrichmentContext
 
                     # Collect entity refs resolved by ImaginationTrigger this tick
@@ -1272,7 +1281,7 @@ def run_agentic_loop(
                         user_input=_addressed,
                     )
                     _enrich_result = bio_enrichment_pipeline.enrich(  # recall-only when only addressed (D5)
-                        _percept_text_for_cycle,
+                        _enrich_text,
                         context=_enrich_ctx,
                         bypass_gate=True,
                         evaluate_reflexes=_pfc_gate_passed,
@@ -1299,7 +1308,9 @@ def run_agentic_loop(
                             score=_gate_score,
                             threshold=_gate_threshold,
                             enrichment_sections=_n_sections,
-                            reason="" if _pfc_gate_passed else f"{_gate_reason}; addressed input: recall only",
+                            reason=""
+                            if _pfc_gate_passed
+                            else "; ".join(r for r in (_gate_reason, "addressed input: recall only") if r),
                         )
                         # Push cycle 1 enrichment to thinking panel
                         _c1_tags: list[str] = []
@@ -1387,14 +1398,6 @@ def run_agentic_loop(
             sim_contemplation(gate_passed=True, refined=False, score=_gate_score)
             if thought_gate is not None:
                 thought_gate.reset_refractory(step_num)
-
-        # Ensure maxim_runtime carries the RUN mode for MemoryAgent (PerceptionAgent -> MemoryAgent -> ExecAgent)
-        if "maxim_runtime" not in state.data:
-            state.data["maxim_runtime"] = {}
-        seed_runtime_run_mode(state)  # keeps a mode already there (#963 Q5: the run mode, not the operational one)
-
-        # The tick's user input, from every channel, published to memory as it arrives (Session R)
-        transcript, hard_override, cli_input, is_agentic_voice_input = take_user_input(observation, state, agent)
 
         # Store CLI input in state and memory for LLM processing
         if cli_input:
@@ -2222,7 +2225,7 @@ def run_agentic_loop(
                         # Inject the response as if the user typed it
                         sim.log("PIPELINE", f"Auto-resolved confirmation for {tool_name}: {sim_response}")
                         ctrl.pending_confirmation = _pending
-                        state.data["pending_cli_input"] = sim_response
+                        state.data["pending_loop_reply"] = sim_response
                     else:
                         # Production mode: display prompt if interactive, auto-resolve if not
                         from maxim.simulation.sim_logger import should_prompt, display_scene
@@ -2249,7 +2252,7 @@ def run_agentic_loop(
                                 display_scene("  Type 'yes' or 'no' to confirm/reject:")
                         else:
                             # Non-interactive: auto-approve via supervision policy
-                            state.data["pending_cli_input"] = "yes"
+                            state.data["pending_loop_reply"] = "yes"
                             sim.log("PIPELINE", f"Auto-approved (non-interactive): {tool_name}")
 
                         ctrl.pending_confirmation = _pending

@@ -30,9 +30,9 @@ def _rank_by_relevance(
     every slot, so this path was mostly recency. Recency breaks ties among the rest; a query with no
     content token returns nothing.
     """
-    from maxim.memory.text import normalize_tokens
+    from maxim.memory.text import key_tokens
 
-    query_tokens = set(normalize_tokens(query))
+    query_tokens = set(key_tokens(query))
     if not query_tokens:
         return []
 
@@ -523,10 +523,10 @@ class RetrievalMixin:
             weight += 0.25
         elif new_goal and old_goal:
             # Partial goal overlap via word intersection
-            from maxim.memory.text import normalize_tokens  # the one standard (D3)
+            from maxim.memory.text import key_tokens  # the one standard (D3)
 
-            w1 = set(normalize_tokens(new_goal))
-            w2 = set(normalize_tokens(old_goal))
+            w1 = set(key_tokens(new_goal))
+            w2 = set(key_tokens(old_goal))
             if w1 and w2:
                 overlap = len(w1 & w2) / len(w1 | w2)
                 weight += 0.25 * overlap

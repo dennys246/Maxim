@@ -226,11 +226,14 @@ def test_every_input_channel_is_published_once_at_arrival(observation: dict, pen
     assert "pending_cli_input" not in state.data and "pending_voice_input" not in state.data  # processed once
 
 
-def test_an_arrival_reaches_memory_agent_even_with_a_capture_manager_and_is_not_republished() -> None:
+@pytest.mark.parametrize("typed", ["My name is Denny.", "My name is Denny.\n", "  My name is Denny.  "])
+def test_an_arrival_reaches_memory_agent_even_with_a_capture_manager_and_is_not_republished(typed: str) -> None:
     """The robot builds ``PerceptionAgent`` with a CaptureManager, so ``propose_intent`` returns before publishing;
-    the user's words now arrive regardless. The slot is cleared, so a later §3 never publishes them again (#1414)."""
+    the user's words now arrive regardless. The runtime clears the slot (whitespace and all, executor review 4), so a
+    later §3 never publishes them again (#1414: consumed once)."""
     from maxim.agents.bus import AgentBus, Percept
     from maxim.agents.perception_agent import PerceptionAgent
+    from maxim.runtime.loop_perception import take_user_input
     from maxim.runtime.state import RuntimeState
 
     bus = AgentBus()
@@ -239,12 +242,43 @@ def test_an_arrival_reaches_memory_agent_even_with_a_capture_manager_and_is_not_
     agent = PerceptionAgent(bus=bus)
     agent._capture_manager = object()  # the robot's vision/audio path
     state = RuntimeState()
-    state.data["cli_input"] = "My name is Denny."
-    agent.publish_arrival(state, "My name is Denny.", source="voice")
+    state.data["cli_input"] = typed  # take_observation merged the observation into the state
+    take_user_input({"cli_input": typed}, state, agent)
     agent._capture_manager = None
     agent.propose_intent(state, None)
-    texts = [p.cli_input for p in heard if p.cli_input]
-    assert texts == ["My name is Denny."] and heard[0].source == "voice"
+    assert [p.cli_input for p in heard if p.cli_input] == ["My name is Denny."]
+
+
+def test_a_reply_the_loop_makes_itself_is_never_memorized_and_a_persons_waits() -> None:
+    """Owner decision 2026-10-25: the auto-approve "yes", a sim-resolved confirmation and a timeout retry are the
+    loop answering itself (``LOOP_REPLY_SLOT``): processed, never published. A person's own "yes" is memorized."""
+    from maxim.runtime.loop_perception import LOOP_REPLY_SLOT, take_user_input
+    from maxim.runtime.state import RuntimeState
+
+    state, agent = RuntimeState(), _Recorder()
+    state.data[LOOP_REPLY_SLOT] = "yes"
+    state.data["pending_cli_input"] = "what about the lighthouse?"
+    first = take_user_input({}, state, agent)
+    assert first.cli_input == "yes" and first.addressed == "" and agent.calls == []
+    second = take_user_input({}, state, agent)  # the person's input waited a tick, untouched
+    assert second.cli_input == "what about the lighthouse?" and agent.calls == [("what about the lighthouse?", "cli")]
+    take_user_input({}, _with(state, "pending_cli_input", "yes"), agent)
+    assert agent.calls[-1] == ("yes", "cli")
+
+
+def _with(state: Any, key: str, value: Any) -> Any:
+    state.data[key] = value
+    return state
+
+
+def test_a_world_event_on_the_cli_field_is_not_published_as_a_person() -> None:
+    """``sim_adapter`` copies a world event's content into ``cli_input``; its source says it is not addressed."""
+    from maxim.runtime.loop_perception import take_user_input
+    from maxim.runtime.state import RuntimeState
+
+    agent = _Recorder()
+    got = take_user_input({"cli_input": "a creeper hisses", "source": "minecraft"}, RuntimeState(), agent)
+    assert got.cli_input == "a creeper hisses" and got.addressed == "" and agent.calls == []
 
 
 def test_the_bus_reraises_a_capture_contract_break_after_every_handler_ran() -> None:
@@ -270,15 +304,16 @@ def test_the_bus_reraises_a_capture_contract_break_after_every_handler_ran() -> 
     [
         ({"cli_input": "hi", "source": "cli"}, True),
         ({"cli_input": "hi"}, True),  # no source: the interactive CLI / API / robot channel
-        ({"transcript": "hi", "source": "voice"}, True),
+        ({"cli_input": "hi", "source": "voice"}, True),
         ({"cli_input": "a creak in the dark", "source": "minecraft"}, False),
         ({"source": "cli"}, False),
     ],
 )
 def test_addressed_input_is_read_from_its_source(observation: dict, addressed: bool) -> None:
-    from maxim.runtime.loop_perception import addressed_text
+    from maxim.runtime.loop_perception import take_user_input
+    from maxim.runtime.state import RuntimeState
 
-    assert bool(addressed_text(observation)) is addressed
+    assert bool(take_user_input(observation, RuntimeState(), _Recorder()).addressed) is addressed
 
 
 def test_a_follow_up_carries_the_executed_tools_untrusted_declaration_through_an_alias() -> None:
@@ -294,3 +329,178 @@ def test_a_follow_up_carries_the_executed_tools_untrusted_declaration_through_an
     proposal = SimpleNamespace(triggering_input="why?")
     assert _tool_followup(executor, "reflect", "r", proposal, "process", "active").untrusted_output is True
     assert _tool_followup(executor, "bash", "r", proposal, "process", "active").untrusted_output is False
+
+
+# ── design review round 1 folds ─────────────────────────────────────────────────────────────────────────────────
+
+
+def test_normalize_tokens_is_frozen() -> None:
+    """ATL concept names are persisted from ``normalize_tokens``: its quirks are part of the stored data and change
+    only with a migration (the bio-memory brief's one-standard invariant)."""
+    from maxim.memory.text import normalize_tokens
+
+    golden = {
+        "What is Denny's favorite color?": ["denny", "favorite", "color"],
+        "My name is Denny and my favourite colour is green.": ["name", "denny", "favourite", "colour", "green"],
+        "navigate_to_kitchen": ["navigate", "kitchen"],
+        "grasping the mugs": ["grasp", "mug"],
+        "used status of batteries": ["us", "statu", "battery"],
+        "Al saw a TV": ["saw"],
+        "carried the settings": ["carry", "setting"],
+    }
+    assert {text: normalize_tokens(text) for text in golden} == golden
+
+
+def test_keys_are_idempotent_so_a_store_keys_a_keyed_word_the_same() -> None:
+    from maxim.memory.text import key_tokens, settle_key
+
+    for word in ("settings", "buildings", "meetings", "closing", "parsed", "used", "Dennis"):
+        once = key_tokens(word)
+        assert [settle_key(t) for t in once] == once, word
+        assert key_tokens(" ".join(t for t in once if len(t) >= 3)) == [t for t in once if len(t) >= 3], word
+
+
+@pytest.mark.parametrize(("said", "stored"), [("the settings", "settings"), ("a meeting", "meetings")])
+def test_every_store_matches_an_inflection_against_its_stored_form(tmp_path: Path, said: str, stored: str) -> None:
+    from maxim.decisions.causal_link import Valence
+    from maxim.decisions.nac import NAc
+    from maxim.memory.atl import ATL
+    from maxim.memory.semantic_types import SemanticMemory
+
+    nac = NAc()
+    for _ in range(10):
+        nac.observe(
+            event_type="tool",
+            event_signature=f"tool:open_{stored}",
+            outcome_type="result",
+            outcome_signature="success",
+            outcome_valence=Valence.POSITIVE,
+            delta_seconds=1.0,
+        )
+    from maxim.integration.bio_enrichment import BioEnrichmentPipeline
+
+    keywords = BioEnrichmentPipeline()._extract_keywords(said)
+    assert [lk.event_signature for lk in nac.scan_links_for_keywords(keywords)] == [f"tool:open_{stored}"]
+
+    atl = ATL()
+    atl.store(SemanticMemory(id="c1", timestamp=time.time(), name=stored, category="object"))
+    assert [c.id for c in atl.recall(name_token=keywords[0])] == ["c1"]
+
+    h = _hippocampus(tmp_path)
+    mid = _say(h, f"The {stored} are on Monday.")
+    assert [m.id for m in h.recall(query=said, limit=3)] == [mid]
+
+
+def test_a_compressed_substrate_concept_is_never_token_indexed_after_a_reload(tmp_path: Path) -> None:
+    """A ``CompressedSemantic`` drops ``substrate_modality``; the guard keys on the category compression keeps."""
+    from maxim.memory.atl import ATL
+    from maxim.memory.semantic_types import CompressedSemantic, SemanticMemory
+
+    raw = SemanticMemory(id="s1", timestamp=time.time(), name=_FACT, category="substrate", substrate_modality="text")
+    atl = ATL()
+    atl.store(CompressedSemantic.from_semantic(raw))
+    reloaded = ATL()
+    reloaded.load_state(atl.dump())
+    assert reloaded.recall(name_token="green") == [] and atl.recall(name_token="green") == []
+
+
+def test_a_deliberation_cycle_never_recalls_the_turns_own_words(tmp_path: Path) -> None:
+    """A deliberation cycle enriches the model's reasoning, with no ``user_input`` of its own: it inherits the turn's,
+    so the just-stored capture is not rendered as "earlier input" (design review SF4)."""
+    from maxim.integration.bio_enrichment import BioEnrichmentPipeline, EnrichmentContext
+
+    h = _hippocampus(tmp_path)
+    fact = _say(h, _FACT)
+    turn = "Remember that my lighthouse is painted red."
+    _say(h, turn)
+    pipe = BioEnrichmentPipeline(hippocampus=h)
+    pipe._query_hippocampus_traced(turn, [], context=EnrichmentContext(user_input=turn))
+    found, *_ = pipe._query_hippocampus_traced(
+        "The user says their lighthouse is painted red and Denny likes green.", [], context=EnrichmentContext()
+    )
+    assert [s.memory_id for s in found] == [fact]
+
+
+def test_a_records_content_tokens_follow_a_replaced_field() -> None:
+    from maxim.memory.types import EpisodicMemory, Perception
+
+    mem = EpisodicMemory(id="m", timestamp=1.0, perception=Perception(cli_input="the brass key"))
+    assert "brass" in mem.content_tokens()
+    mem.perception = Perception(cli_input="a silver spoon")  # a staged copy replaces a field object
+    assert "silver" in mem.content_tokens() and "brass" not in mem.content_tokens()
+
+
+# ── delta round folds ────────────────────────────────────────────────────────────────────────────────────────────
+
+
+def test_a_reflection_and_any_stored_result_text_stay_searchable(tmp_path: Path) -> None:
+    """The one text-field list is the SUPERSET (delta review B2): a Reflexion reflection and a ``stdout`` are text the
+    record holds, found by the substring search and ``matching_sentence`` as by the ranker."""
+    h = _hippocampus(tmp_path)
+    mid = h.capture_from_loop(
+        observation={},
+        state={},
+        intent={"goal": "learn_from_failure"},
+        decision={},
+        action={},
+        result={"reflection": "Next time quote the glob pattern.", "stdout": "kitten.txt"},
+        encoding=EncodingSignals.unmeasured("loop"),
+        situation=None,
+    )
+    for word in ("glob", "kitten"):
+        assert [m.id for m in h.search_by_content(word)] == [mid], word
+    [record] = h.recall_by_ids([mid])
+    assert h.matching_sentence(record, "glob") == "Next time quote the glob pattern."
+    assert [m.id for m in h.recall(query="the glob", limit=3)] == [mid]
+
+
+def test_a_persons_input_that_waited_behind_a_loop_reply_survives_the_confirmation() -> None:
+    """Delta review S1: the controller's confirmation path popped the input slots after ``take_user_input`` had read
+    them, dropping a person's input that was waiting for the next tick behind the loop's own "yes"."""
+    from maxim.runtime.loop_perception import take_user_input
+    from maxim.runtime.state import RuntimeState
+
+    state, agent = RuntimeState(), _Recorder()
+    state.data["pending_loop_reply"] = "yes"
+    state.data["pending_cli_input"] = "and also, my cat is called Miso"
+    assert take_user_input({}, state, agent).cli_input == "yes"  # this tick: the loop answers its own confirmation
+    _confirm_and_finish(state)
+    assert take_user_input({}, state, agent).cli_input == "and also, my cat is called Miso"
+    assert agent.calls == [("and also, my cat is called Miso", "cli")]
+
+
+def _confirm_and_finish(state: Any) -> None:
+    """``LoopController.handle_confirmation`` on a pending confirmation the loop's "yes" answers, dispatch stubbed."""
+    from types import SimpleNamespace
+
+    from maxim.runtime.loop_controller import LoopController
+
+    ctrl = LoopController.__new__(LoopController)
+    ctrl.state = state
+    ctrl.pending_confirmation = SimpleNamespace(tool_name="t", action={"tool_name": "t", "params": {}})
+    ctrl.pending_proposal = None
+    ctrl.clear_pending_user_input = lambda: None
+    try:
+        ctrl.handle_confirmation(
+            "yes",
+            execute_and_learn=lambda **k: (_ for _ in ()).throw(RuntimeError("stub")),
+            book_refusal=lambda **k: None,
+            observation={},
+        )
+    except Exception:  # the stub raises out of the dispatch; the finally under test still ran
+        pass
+
+
+def test_an_observation_with_a_transcript_and_a_cli_input_publishes_the_cli_input() -> None:
+    """Delta review S3: the loop processes ``cli_input``, so memory hears ``cli_input`` (and §3 then finds its copy
+    cleared), never the transcript beside it."""
+    from maxim.runtime.loop_perception import take_user_input
+    from maxim.runtime.state import RuntimeState
+
+    agent, state = _Recorder(), RuntimeState()
+    state.data["cli_input"] = "the typed words"
+    got = take_user_input(
+        {"cli_input": "the typed words", "transcript": "a heard chunk", "source": "cli"}, state, agent
+    )
+    assert agent.calls == [("the typed words", "cli")] and got.addressed == "the typed words"
+    assert "cli_input" not in state.data

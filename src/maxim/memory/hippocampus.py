@@ -707,6 +707,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         # A pre-built record keeps its own situation unless one is passed; either is validated.
         memory.situation = _require_situation(situation if situation is not None else memory.situation)
         self._stamp_encoding_strength(memory, experience_us=experience_us, capture_seq=capture_seq)
+        memory.content_tokens()  # keyed once here, outside the lock: a query never re-keys a store (SF5)
 
         with self._rwlock.write():
             self._insert_and_index_locked(memory_id, memory)
@@ -1390,9 +1391,13 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
 
     @staticmethod
     def _searchable_values(memory: Any) -> list[Any]:
-        """The fields ``search_by_content`` matches on: perception observations, outcome result,
-        decision reasoning, and a compressed record's summary. One list for the matcher and for
+        """The fields ``search_by_content`` matches on: an episode's ``text_fields`` (what it heard, its reasoning,
+        its outcome), else perception observations, outcome result, decision reasoning, and a compressed record's
+        summary. One list for the matcher and for
         ``matching_sentence`` (#845: a consumer kept its own copy, and the two drifted)."""
+        text_fields = getattr(memory, "text_fields", None)
+        if callable(text_fields):  # an episode names its own text, the list its ranker reads too (S4)
+            return list(text_fields())
         perception = getattr(memory, "perception", None)
         outcome = getattr(memory, "outcome", None)
         decision = getattr(memory, "decision", None)

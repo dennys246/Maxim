@@ -448,6 +448,7 @@ class ConceptQueryTool(Tool):
     """Search semantic knowledge base for concepts and relationships."""
 
     name = "concept_query"
+    untrusted_output = True  # replays ATL names, which can be raw stored text: framed external (Session R)
     description = (
         "Search your semantic knowledge base for concepts, facts, and "
         "relationships. Query by name, category, or explore relationships "

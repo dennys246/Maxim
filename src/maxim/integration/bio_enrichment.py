@@ -181,6 +181,7 @@ class BioEnrichmentPipeline:
         # reward bias), so the trace's label is kept apart from it and changes no behaviour.
         self._trace_agent_id = trace_agent_id
         self._unrendered_episodes = 0  # recalled episodes that rendered as "past experience" (#1444)
+        self._turn_input = ""  # the latest user words the percept path enriched: the turn a thought belongs to
 
     def enrich(
         self,
@@ -652,9 +653,9 @@ class BioEnrichmentPipeline:
         """The content keys of ``text``, in order and once each: ``memory/text.py``'s one standard (owner decision D3,
         2026-10-24), the same function every store keys its text with, so a cue and a stored record agree on what a
         word is ("Denny's" is ``denny``; "color?" is ``color``)."""
-        from maxim.memory.text import normalize_tokens
+        from maxim.memory.text import key_tokens
 
-        return list(dict.fromkeys(normalize_tokens(text)))
+        return list(dict.fromkeys(key_tokens(text)))
 
     def _query_hippocampus(
         self,
@@ -686,7 +687,8 @@ class BioEnrichmentPipeline:
         3. **Goal path**: query by goal (when goal matches prior sessions).
         4. **Substring path**: legacy full-text search (fallback).
 
-        A record holding exactly ``context.user_input`` is skipped on every path: it is this turn's own capture.
+        A record holding exactly the turn's own words (``context.user_input``, else the turn's last) is skipped on
+        every path: it is this turn's own capture.
         """
         if self._hippocampus is None:
             return [], [], None, []
@@ -697,15 +699,18 @@ class BioEnrichmentPipeline:
         horizon: int | None = None
         holes: list[list[int]] = []
 
-        from maxim.memory.text import normalize_tokens
-
-        own_words = normalize_tokens(getattr(context, "user_input", "") or "") if context else []
+        # This turn's own words: the percept path names them; a deliberation cycle or a thought enriches the model's
+        # text and inherits the turn's (design review SF4), so the just-stored capture is never "earlier input".
+        turn_input = (getattr(context, "user_input", "") or "") if context else ""
+        if turn_input:
+            self._turn_input = turn_input
+        own_words = _same_words(turn_input or self._turn_input)
 
         def _add_memory(mem: Any, relevance: float, path: str) -> None:
             if mem.id in seen_ids:
                 return
             seen_ids.add(mem.id)
-            if own_words and normalize_tokens(_input_text(mem)) == own_words:
+            if own_words and _same_words(_input_text(mem)) == own_words:
                 return  # this turn's own capture, stored before the query ran
             summary = self._summarize_episode(mem)
             valence = getattr(mem, "valence", None)
@@ -815,8 +820,9 @@ class BioEnrichmentPipeline:
         words like ``"rusty"`` / ``"sword"`` / ``"slash"``. The exact
         ``get_links_for_event`` lookup will never match narrative
         keywords against compound tool signatures, so this delegates to
-        ``scan_links_for_keywords`` which does case-insensitive substring
-        containment + dedupe + confidence sort.
+        ``scan_links_for_keywords``, which matches the keywords (already
+        content keys, ``memory/text.py::key_tokens``) against each
+        signature's own keys, then dedupes and sorts by confidence.
         """
         if self._nac is None:
             return []
@@ -1059,6 +1065,14 @@ class BioEnrichmentPipeline:
 # enrichment section's budget.
 _RECALLED_TEXT_MAX_CHARS = 240
 _RECALLED_RESULT_MAX_CHARS = 80
+
+
+def _same_words(text: str) -> str:
+    """``text`` as the same words compare: NFKC, case-folded, whitespace collapsed. Not the content keys, which are
+    lossy ("My name is Al" and "My name?" key alike; "yes" keys to nothing)."""
+    import unicodedata
+
+    return " ".join(unicodedata.normalize("NFKC", text).casefold().split())
 
 
 def _input_text(mem: Any) -> str:

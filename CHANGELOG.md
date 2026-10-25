@@ -30,20 +30,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   color?" got "I do not have information"). Six defects composed into that one symptom, and each alone fixed
   nothing:
   - **Your words were never memorized.** Loop §3 alone published them to memory, and Talk never reached it (a
-    proposal was always pending), so in a measured session 0 of 4 utterances were stored. The user's input is now
+    proposal was always pending), so in a measured session 0 of 4 utterances were stored. What a person says is now
     published once, as it arrives, on every channel (Talk, the CLI, voice and the robot, whose capture manager
-    skipped the old path): `runtime/loop_perception.py::take_user_input`.
+    skipped the old path): `runtime/loop_perception.py::take_user_input`. Replies the loop makes itself (an
+    auto-approved confirmation, a sim-resolved one, a timeout retry) are not memorized as someone's words.
   - **A recalled memory showed only its tool.** What an episode heard now renders, framed as untrusted content
     (recalled text replayed into later prompts is a stored prompt-injection channel), bounded.
   - **Stored tool results were their Python repr.** `hippocampus.json` is now `_format_version` 1.1 and stores a
     result as data; 1.0 files load, their reprs parsed (never evaluated).
-  - **Recall ignored your question** and ranked on a field no capture writes. One tokenizer now keys every memory
-    store (Hippocampus, NAc, ATL), the ranker scores what captures write and returns nothing unrelated, and recall
-    cues on what you just said.
-  - **The first question after a restart was never enriched** (the reflection gate rejected an empty working memory):
-    an addressed input is now always enriched. Multi-cycle deliberation keeps its gate.
-  - **No prompt carries a partial untrusted-content frame**, wherever text is cut, and a user's own text can no longer
-    open or close one.
+  - **Recall ignored your question** and ranked on a field no capture writes. One tokenizer now keys text recall in
+    every memory store (Hippocampus, NAc, ATL), the ranker scores what captures write and returns nothing unrelated,
+    and recall cues on what you just said. Keys are computed once per record, so a large store stays fast.
+  - **The first question after a restart was never recalled for** (the reflection gate rejected an empty working
+    memory): an addressed input is now always enriched for recall, on every channel. Reflexes and multi-cycle
+    deliberation keep the gate.
+  - **No prompt section carries a partial untrusted-content frame**, wherever its text was cut, every `LLMRouter`
+    call neutralizes a stray frame marker, and a person's own text can no longer open or close one.
+
+  Limits: a fact survives until its memory is compressed (about a day; the compressed record keeps the words in a
+  later release, with #1137). The agent bus now re-raises a memory capture-contract break to the publisher, after
+  every handler ran. Ledger: T1-16 (carried memory in recall, Exp 63) is STALE until it is re-run on the new ranker.
 
 ### Changed
 

@@ -1216,7 +1216,7 @@ def execute_and_learn(
                     "original_request": action.get("_original_request"),
                     "timeout_s": timeout_s,
                 }
-                state.data["pending_cli_input"] = sim_timeout_response
+                state.data["pending_loop_reply"] = sim_timeout_response
             else:
                 state.data["pending_timeout_retry"] = {
                     "original_request": action.get("_original_request"),

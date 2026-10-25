@@ -300,3 +300,60 @@ These become follow-up issues:
   PR is phase 0 of it.
 - **Found, not R's, to be filed:** a sixth identical Talk reply is suppressed by a repeat guard, and that turn then
   times out silently after the full timeout.
+
+## 11. The three-lens review (2026-10-25), and where the build differs from §1–§9
+
+The verdicts were:
+- Executor: SOUND WITH CONDITIONS.
+- Wire: SOUND WITH CONDITIONS.
+- Architecture: NOT READY, on T1-16.
+
+All findings were folded into this branch.
+
+**Owner decisions:**
+- **T1-16 goes STALE**, re-run owed. This is the strict option. The judge must be rebuilt for the cue path first.
+  A STALE row blocks the next release (1.3.4) until that re-run, or until a committed machine-readable exception
+  at the cut (M25).
+- **A person's own "yes" is memorized.** The loop's own replies are not: they move to `LOOP_REPLY_SLOT`.
+
+**How the build differs from the text above:**
+- **The input is read once, at the top of §1.2** (`take_user_input`), not in §1.6. §1.2 enriches the same text, so the
+  pending voice, CLI and API channels are recalled for, not only memorized. The classifier is
+  `loop_perception.py::_addresses`, not one in `thought_gate.py`, which is untouched (N2/N7). Rule T is paid by
+  extractions in `agent_loop.py` and `tool_dispatch.py`.
+- **The runtime clears the input slot**, not the agent (ARCHITECTURE.md: agents do not mutate state).
+  `agents/base.py::Agent` declares a default `publish_arrival`. `maxim.api` runs duck-typed agents, so the call is a
+  capability probe.
+- **Keys are idempotent.** `key_tokens` and `settle_key` sit on top of the frozen `normalize_tokens`, which is not
+  idempotent. NAc settles the keys it is handed, and does not re-tokenize them. NAc keeps the namespace segment (N9's
+  drop would lose `look_at`), and its docstring says so.
+- **There is one text-field list, `EpisodicMemory.text_fields`**, used by search, `matching_sentence` and the ranker.
+  Content keys are computed once per record, at capture and load, outside the lock. On a 2,000-record store the first
+  enrichment takes 7 ms; it used to take about 900 ms per query.
+- **The ATL substrate exclusion keys on `category == "substrate"`**, which compression keeps.
+- **Self-recall compares NFKC case-folded text.** Deliberation and thoughts inherit the turn's words.
+- **The P3.5 envelope stays at schema 1** (§3 and F17 said `version=` passes through `wrap_envelope`). Its payload reads
+  back through `Outcome.from_dict`'s parse, as `hippocampus_persistence.py` documents.
+- **The legacy-repr compat test lives in `tests/unit/test_recall_memory_seams_1444.py`.**
+  `tests/integration/test_persistence_compat.py` pins that the 0.8 fixture re-saves as 1.1.
+- **New guards** close the deletion probes that stayed green:
+  - the router seam;
+  - the follow-up consumer of `untrusted_output`;
+  - the transcript per-item drop;
+  - the three defang call sites;
+  - a carryover cut that really splits a frame;
+  - frozen-tokenizer golden vectors.
+
+  The recall-only half of D5 is pinned by #1178's strict L5 gate, which XPASSes if reflexes run.
+
+**Delta round 1 (2026-10-25)** found more, all folded with guards:
+- **B1:** the mypy ratchet: `content_tokens` returns a frozenset.
+- **B2:** the one text-field list must be the superset. The whole outcome result is searched: Reflexion
+  reflections, `stdout`, pain contexts.
+- **S1:** the controller's confirmation and timeout pops dropped a person's input that was waiting behind a loop
+  reply. They are removed, because `take_user_input` has already read and popped the tick's slots.
+- **S2:** the run mode is seeded before the arrival percept.
+- **S2b:** the PFC gate reads only the observation's text, as before. A mailbox input is enriched for recall only,
+  so no new deliberation starts (D5).
+- **S3:** memory hears the `cli_input` the loop processes, not a transcript beside it.
+- **N1:** the content cache holds the field objects, never their `id()`.

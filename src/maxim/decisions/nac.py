@@ -702,9 +702,9 @@ def _signature_tokens(signature: str) -> frozenset[str]:
     """An event signature's content words (``scan_links_for_keywords``): split on ``:``/``_``/``-`` and normalized by
     ``memory/text.py``'s one standard. Memoized: enrichment scans every signature on every enrich, inside a < 50 ms
     budget."""
-    from maxim.memory.text import normalize_tokens
+    from maxim.memory.text import key_tokens
 
-    return frozenset(normalize_tokens(re.sub(r"[:_\-]+", " ", signature)))
+    return frozenset(key_tokens(re.sub(r"[:_\-]+", " ", signature)))
 
 
 class NAc(StoreFileOwnership):
@@ -1875,9 +1875,10 @@ class NAc(StoreFileOwnership):
         """
         if not keywords:
             return []
-        from maxim.memory.text import normalize_tokens
+        from maxim.memory.text import settle_key
 
-        kw_tokens = {t for kw in keywords if kw and len(kw) >= min_keyword_length for t in normalize_tokens(kw)}
+        # The keywords arrive KEYED (enrichment's ``key_tokens``): settled, never re-tokenized (design review S1/SF2)
+        kw_tokens = {settle_key(kw.lower()) for kw in keywords if kw and len(kw) >= min_keyword_length}
         if not kw_tokens:
             return []
         matched: list[CausalLink] = []

@@ -275,23 +275,21 @@ class PerceptionAgent(Agent):
         return percept
 
     def publish_arrival(self, state: Any, text: str, *, source: str) -> None:
-        """Publish a user's input as a ``Percept`` ONCE, when it arrives (Session R; the experience stream's first
-        producer, docs/plans/experience_stream.md).
+        """Publish a person's input as a ``Percept`` ONCE, when it arrives (Session R; the experience stream's first
+        producer, docs/plans/experience_stream.md). The runtime decides what arrived and clears its slot
+        (``loop_perception.take_user_input``); this reads the state and never changes it.
 
         It used to be published only by ``propose_intent`` at loop §3, which the loop skips while a proposal is
-        pending -- in Talk, every turn -- from the one ``state.data["cli_input"]`` slot the next input overwrites (or
-        a non-text sim percept erases with ``None``): 0 of 4 utterances reached memory in a measured Talk session.
-        Also on the robot, whose CaptureManager makes ``propose_intent`` return early. Built by the same
-        ``process_observation`` §3 used, over the state plus this input, with ``source`` the channel it came by;
-        the slot is cleared after, so §3 never publishes it again (#1414: an input is consumed once).
+        pending -- in Talk, every turn -- from the one ``state.data["cli_input"]`` slot the next input overwrites:
+        0 of 4 utterances reached memory in a measured Talk session. Also on the robot, whose CaptureManager makes
+        ``propose_intent`` return early. Built by the same ``process_observation`` §3 used, over the state plus this
+        input, with ``source`` the channel it came by.
         """
         data = getattr(state, "data", None)
         obs = dict(data) if isinstance(data, dict) else {}
         obs["cli_input"] = text
         percept = self.process_observation(obs)
         percept.source = source
-        if isinstance(data, dict) and data.get("cli_input") == text:
-            data.pop("cli_input", None)
         self._bus.publish(percept)
 
     def propose_intent(self, state: Any, memory: Any, **kwargs: Any) -> dict[str, Any] | None:

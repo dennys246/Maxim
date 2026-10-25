@@ -287,13 +287,33 @@ def text_values(value: Any, *, depth: int = 3) -> Iterator[str]:
             yield from text_values(inner, depth=depth - 1)
 
 
+def settle_key(token: str) -> str:
+    """One WORD as a content key: normalized until it stops changing; a key the tokenizer would drop (under 3
+    characters, "used" -> "us") keeps its last form. Idempotent: a keyed word keys to itself, so a store that is
+    handed keys (NAc's keyword scan) settles them rather than re-tokenizing them."""
+    for _ in range(4):
+        again = normalize_tokens(token)
+        if not again or again == [token]:
+            return token
+        token = again[0]
+    return token
+
+
+def key_tokens(text: str) -> list[str]:
+    """The content KEYS of ``text``: ``normalize_tokens``, each token settled to a fixed point, so keying is
+    idempotent (design review S1/SF2: "settings" -> "setting" -> "set" when a keyed word was keyed again, which lost
+    NAc and ATL matches). Every store keys text through this, on the write and the read side; ``normalize_tokens``
+    itself stays frozen (ATL names are persisted from it)."""
+    return [settle_key(t) for t in normalize_tokens(text)]
+
+
 def content_tokens(*values: Any) -> set[str]:
-    """``normalize_tokens`` over the readable text of ``values``: the one content key every store matches on."""
+    """``key_tokens`` over the readable text of ``values``: the one content key every store matches on."""
     tokens: set[str] = set()
     for value in values:
         for text in text_values(value):
-            tokens.update(normalize_tokens(text))
+            tokens.update(key_tokens(text))
     return tokens
 
 
-__all__ = ["normalize_tokens", "text_values", "content_tokens"]
+__all__ = ["normalize_tokens", "key_tokens", "settle_key", "text_values", "content_tokens"]

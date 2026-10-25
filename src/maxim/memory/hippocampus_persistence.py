@@ -180,6 +180,7 @@ class PersistenceMixin(StoreFileOwnership):
                 temp_compressed_count += 1
             else:
                 memory = EpisodicMemory.from_dict(m_data)
+                memory.content_tokens()  # keyed at load, outside the lock, so the first query is not a cold one
                 temp_memories[memory.id] = memory
 
         # P4 Stage 1 — parse the node-modality sidecar outside any lock,

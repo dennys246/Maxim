@@ -255,7 +255,7 @@ class ATL(StoreFileOwnership, MemoryLayer):
         Supported filters: name, name_token, category, min_confidence,
         property_key, property_value, include_compressed,
         substrate_modality. ``name_token`` is one content word, keyed by
-        ``memory/text.py::normalize_tokens`` (substrate concepts are not
+        ``memory/text.py::key_tokens`` (substrate concepts are not
         indexed by it).
         """
         with self._stats_lock:
@@ -800,11 +800,13 @@ class ATL(StoreFileOwnership, MemoryLayer):
             # The token index (Session R, D3): a concept is found by any of its name's content words, through the one
             # standard every store keys text with, so "mugs" finds "mug" and "Denny" finds "denny". Not for substrate
             # concepts: their names are raw percept text (``activate_substrate_node(text=...)``) or EC ids, so a
-            # word match would surface a stored utterance verbatim as a "concept". Rebuilt on load: not persisted.
-            if not (isinstance(concept, SemanticMemory) and concept.substrate_modality):
-                from maxim.memory.text import normalize_tokens
+            # word match would surface a stored utterance verbatim as a "concept". Keyed on the CATEGORY, which
+            # compression keeps (a ``CompressedSemantic`` drops ``substrate_modality``: design review S5/SF3). Rebuilt on
+            # load: not persisted.
+            if concept.category != "substrate" and not getattr(concept, "substrate_modality", None):
+                from maxim.memory.text import key_tokens
 
-                keys.update(f"name_token:{t}" for t in normalize_tokens(concept.name))
+                keys.update(f"name_token:{t}" for t in key_tokens(concept.name))
         if concept.category:
             keys.add(f"category:{concept.category}")
 
