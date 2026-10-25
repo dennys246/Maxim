@@ -493,9 +493,9 @@ predictor is created.
 | GL2a — autonomic, record-only | the signed body-consequence record, `InteroceptiveOutcome` (deviation, pain, relief, urgency), on the **tool path only** (G9): scoped to the invoked affordance's declared drives, net of declared drift, with relief and harm following need (G14, G11); **no event id** (G17: `PhysicalEventId`, the per-agent sequencer, its session-id source and the cross-session resume land together at a post-fence resume stage before GL4 S1, and GL2a records are never training data); a `repr=False` field (#1189); recorded, and nothing reads it to act. The out-of-band record lands after the fence | the producer side of the relief store (record only) | **BUILT 2026-10-09** ([autonomic_layer.md](autonomic_layer.md) §5.2), outside the fence (owner decisions G1, G14) |
 | GL2b — regulatory fixes | a heat corrective need; burn as pain (a `NociceptorSpec`; where it is declared is an owner decision at GL2b's start, with a variant body the strict-default recommendation); valence keyed on the cause, after [#1161](https://github.com/dennys246/Maxim/issues/1161) | none: these are defects, one issue each, in the nociception vocabulary ([deferred/nociception_layer.md](deferred/nociception_layer.md), revived into autonomic_layer.md) | after GL2a; fenced where it touches the loop |
 | GL2c — the positive producer | satiation / relief: the Reaction `EntropicDriveSpec` promised and nobody built; off by default, it fires T1-11, T1-12 and T1-13/14/15 under any routing and lands only with a batched live re-run of Exp 60/61/62 (+ the T1-11 and T1-12 arguments or re-runs; owner decision G7); harness-made crossings (rescue, heal, respawn, teacher and mother feeds) are `apparatus` and deliver nothing (G16), and the re-run reports satiation counts per arm and per cause | **the cluster-keyed relief store**, with [fear_learning.md](fear_learning.md) Exp A and [coding_world.md](coding_world.md) C3's reserved sign | after R4's routing audit |
-| GL3 — relay | GL3.B0, the census (ingress inventory, red gates; tests only) first; then GL3.B1, the `Receptor` registry over the existing sources, byte-identical, landing **with** provenance on the write path, whose consumers are GL5's experiment and the forward model's contamination guard (owner decision G8); GL3.B2, the handoff to GL4. The first `AfferentTrack` slice, GL3.B3, is the thermal dual-track fan-out (`nociceptive_fast` + `affective_slow`, one shared pid reaching credit), behind a flag, with no preemption; it needs GL2b's `NociceptorSpec` and carries the seq-authority handover as its stage gate. Nociceptive-fast preemption in substrate-primary, GL3.B4, enters only as a **declared 1.4 rung arm** (the owner names the rung). GL3.B5–B8 (text receptors, the `reflex` track, LLM-primary + the wake hook, hardware edges) each wait for a rung that names them. The timing defects L1, L2, L5 and L7 are to file as defect issues, fixable without the registry | none: infrastructure, entering only with its consumer (decision 5) | GL3.B0 runs now (tests only, inside the fence); GL3.B1 onward after the decomposition fence |
+| GL3 — relay | GL3.B0, the census (ingress inventory, red gates; tests only) first; then GL3.B1, the `Receptor` registry over the existing sources, byte-identical, landing **with** provenance on the write path, whose consumers are GL5's experiment and the forward model's contamination guard (owner decision G8); GL3.B2, the handoff to GL4. The first `AfferentTrack` slice, GL3.B3, is the thermal dual-track fan-out (`nociceptive_fast` + `affective_slow` under the invocation pid; credit only through the PainBus publishes at transduction, `affective_slow` record-only), behind a flag, with no preemption; it needs GL2b's `NociceptorSpec` and carries the seq-authority handover as its stage gate. Nociceptive-fast preemption in substrate-primary, GL3.B4, enters only as a **declared 1.4 rung arm** (the owner names the rung). GL3.B5–B8 (text receptors, the `reflex` track, LLM-primary + the wake hook, hardware edges) each wait for a rung that names them. The timing defects L1, L2, L5 and L7 are to file as defect issues, fixable without the registry | none: infrastructure, entering only with its consumer (decision 5) | GL3.B0 runs now (tests only, inside the fence); GL3.B1 onward after the decomposition fence |
 | GL4 — latent forward model | S0a audit; S0b paired-data capture audit; S1 Cerebellum target fix; S2 offline predictor; S3 session-end retrain + guards; S4 opt-in consequence EC modality | **the graded predictor**: S0a is the audit §Phase 5 mandates | GL4 S0a (audit) and the paper run now; S0b needs a fresh capture (a sim run); S1 is `src/` inside G1's fence exemption and waits for GL2a and the post-fence pid resume (G15); S3 and S4 wait for the fence (owner decision G1) |
-| GL5 — the first claim | consequence similarity transfers learned value where names differ and blocks it where names collide; successor candidate to T1-5, living in the **cradle** (G19: the GL1 census found every harm-class collision in a cradle `touch` / `warm_self` variant). **An acquired-equivalence design** (owner decision G13): authored items whose sensed readings and consequences disagree, experience of each required, gated against a no-learning sensed-similarity baseline; the jet triad is a control, and the Minecraft arm tests consequence prediction, not transfer | T9 | four-lens prereg review; sim |
+| GL5 — the first claim | the consequence representation carries learned value between items that share consequences where names differ, measured as learner state (no choice claim), and an acquired-distinctiveness arm carries "blocks it where names collide" (G27); successor candidate to T1-5, living in the **cradle** (G19: the GL1 census found every harm-class collision in a cradle `touch` / `warm_self` variant). **An acquired-equivalence design** (owner decision G13, amended by G21): authored items whose sensed readings and consequences disagree, experience of each required, through a designed mediating path (consequence nodes from experienced Stage-1 outcomes, a per-item membership map frozen by a harness-only trigger, and a node-keyed learner); the AE gate credits that representation and must beat **matched-class floors that could win** (the same learner keyed on identity-similarity nodes and on sensed-reading nodes; binding now, G30, only margins at S5 start), with `tabular_q` and `random` run as BF2's declared floors, zero by construction on this learner-state readout; the acquired-distinctiveness arm has its own gate (against the same matched-class floors, plus an equivalence bound to the no-revaluation control); an untried-item arm credits the predictor against the per-item twin, `tabular_q` and `random`; a floor match on any gated arm is `PARTIAL (narrow: floor matched)`, and the sensed-similarity baseline is reported, not gated; on EARNED, which ledger row it writes is asked at S5 start (strict default: a narrow learner-state row, no `[behavioral]` graduation and no T1-5 supersession by itself); a composed-loop toy comes before the prereg; the jet triad is a control, and the Minecraft arm tests consequence prediction, not transfer; S5 depends on GL3.B1 (the writer-kind map and apparatus window that stamp its resets) | T9 | composed-loop toy, then four-lens prereg review; sim |
 | GL6 — a selection consumer | the predicted consequence enters `recommend_action` as a **declared arm** | R4's selection surface | only if GL5 earns; rig re-runs after E3 |
 
 **It depends on R4.** The line routes no consequence-credited value to the selection surface before R4's
@@ -529,7 +529,8 @@ decision (1).
   discount), in [outstanding.md](outstanding.md).
 - Narrator-written consequences are `narrated`, never `experienced`, and are used at a declared
   discount (owner decision G6). Harness writes to a drive are `apparatus`: recorded, never trained on,
-  never credited (owner decision G16, 2026-10-09).
+  never credited (owner decision G16, 2026-10-09; under TR20, G24, the credit half acts only once
+  GL3.B1's credit flag flips, and until then every writer credits as today).
 
 **Blast radius, in short** (the full walk is in grounding.md):
 - **No earned row fires** for GL0, or for GL4 S0–S2 while it has no consumer.
@@ -683,9 +684,11 @@ frozen status verbatim; **EARNED** per rung = every frozen gate of that rung's p
   - **(b) The plans reviewed:** grounding.md (the umbrella's own review included) and its three
     sub-plans have each been through the
     four-lens design review with no unfolded DO-NOT-BUILD, and through the three-lens review every
-    sub-plan gets. (The umbrella and `autonomic_layer.md` had theirs 2026-10-09; the remaining two,
-    [thalamic_relay.md](thalamic_relay.md) and [latent_forward_model.md](latent_forward_model.md), go to Session E,
-    paper only, before 1.4.0; owner decision 2026-10-18.)
+    sub-plan gets. (The umbrella and `autonomic_layer.md` had theirs 2026-10-09. The remaining two,
+    [thalamic_relay.md](thalamic_relay.md) and [latent_forward_model.md](latent_forward_model.md), went to
+    Session E, paper only (owner decision 2026-10-18), and are **DONE 2026-10-24**: 12 and 10
+    DO-NOT-BUILDs, all folded under owner decisions G21–G27 (DECISIONS.md 2026-10-24;
+    [grounding.md](grounding.md) §T8 (b) detail); follow-ups #1449 and #1450.)
   - **(c) Dormancy and re-points done**, for the markers the line owns:
     - `Hippocampus.retrieve_cross_modal` is marked Dormant;
     - `episode.py::apply_hebbian_on_close`, bugs-ledger D6 and ledger T3-7 are re-pointed from "the 1.3
@@ -695,10 +698,26 @@ frozen status verbatim; **EARNED** per rung = every frozen gate of that rung's p
   Any grounding `src/` stage that ships before the cut (GL2a, GL4 S1, GL3.B1, the registry+provenance stage)
   is walked under T4. If it has no
   consumer, it is handled under T4a. T8 carries no behavioural claim, and no earned row's trigger fires.
-- **T9 (conditional) — the first grounding claim** (GL5; GL6 only if GL5 earns). Its claim is unchanged,
-  and it is tested by an acquired-equivalence design (owner decision G13, 2026-10-09): items whose sensed
-  readings and consequences disagree, experience of each item required, and the model gated against a
-  no-learning sensed-similarity baseline, so a PASS cannot be produced by perceptual similarity alone.
+- **T9 (conditional) — the first grounding claim** (GL5; GL6 only if GL5 earns). **Reworded 2026-10-24
+  (owner decision G27):** the consequence representation carries learned value between items that share
+  consequences where names differ, **measured as learner state, with no claim about choice**; an
+  acquired-distinctiveness arm carries "blocks it where names collide". It is tested by an
+  acquired-equivalence design (owner decision G13, 2026-10-09; the mediating path and gate amended by
+  G21): items whose sensed readings and consequences disagree, experience of each item required, value
+  carried through consequence nodes formed from experienced outcomes and a node-keyed learner. The gate
+  (folded by the 2026-10-24 pre-merge review): the representation beats **matched-class floors that could
+  win**, the same learner keyed on identity-similarity nodes and on sensed-reading nodes (G21's strict
+  reading; **confirmed by the owner as binding floors of the T9/AE gate now, DECISIONS.md G30,
+  2026-10-24; only their margins are set at S5 start**); `tabular_q` and `random` on the same state keys still run as BF2's declared floors, but on a
+  learner-state readout they are zero by construction, so beating them alone means nothing. The
+  acquired-distinctiveness arm has its **own gate**: value learned on one same-name item must transfer to
+  its twin less than each matched-class floor does, within an equivalence bound of the no-revaluation
+  control. The predictor beats the per-item twin, `tabular_q` and `random` on untried items. A floor match
+  on any gated arm is `PARTIAL (narrow: floor matched)`, stated in advance. The no-learning
+  sensed-similarity baseline predicts the wrong sign, so it is reported, not gated. **On EARNED**, which
+  ledger row it writes, its tier and whether it supersedes T1-5 are asked at S5 start; the strict default,
+  offered first, is a narrow learner-state row (Tier 3, or a `(narrow: learner state)` qualifier): a
+  learner-state result does not by itself graduate a `[behavioral]` invariant or supersede T1-5.
   The jet triad is a control for generalisation from sensed features. Same rule as T5/T6:
   it ships in 1.4.0 only if its outcome is recorded by the time T1–T4, T7 and T8 hold, otherwise in
   1.4.x. A recorded null ships as a null; an unrun GL5 is neither claimed nor a failure. **It is never
@@ -1055,6 +1074,17 @@ DECISIONS.md 2026-10-09; the fold is [grounding.md](grounding.md) §GL1.
 GL2a; the type, sequencer, session-id source and resume land together at the post-fence resume stage,
 G17; `embodiment/event_id.py` leaves the exempt set; GL4 S1's exemption is moot); GL4 S0a is Phase 5's
 audit (G18); the GL5 claim lives in the cradle (G19); the L0 gate is a measurement only (G20).
+
+*2026-10-24 (T8 (b) design reviews, owner decisions G21–G27):* T8 (b) marked done; §The grounding line's
+GL5 row and T9 reworded (G21, G27). The record is DECISIONS.md 2026-10-24; the folds are in
+[thalamic_relay.md](thalamic_relay.md) and [latent_forward_model.md](latent_forward_model.md), and the
+umbrella's in [grounding.md](grounding.md) §T8 (b) detail. The same day's three-lens pre-merge round
+on that fold re-worded both again: matched-class floors gate the AE and AD arms (`tabular_q` and `random`
+are zero by construction on the learner-state readout), the AD arm has its own gate, the untried-item arm
+also beats `tabular_q` and `random`, and the EARNED row is an S5-start owner decision with a narrow
+learner-state row as the strict default. Its delta round (owner decisions G28–G30) confirmed the
+matched-class floors as binding floors of T9 now, with only their margins set at S5 start (G30), and
+put GL3.B1 in S5's dependencies.
 
 *2026-10-10 (baseline floors):* §Parallel lines gains "Baseline floors"; §What is NOT in 1.4 gains a
 dated note on the benchmark-framework line. Companion edits: [README.md](README.md) (§Active entry),
