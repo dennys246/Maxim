@@ -4,7 +4,7 @@
   "min_package_statements": 200,
   "overall": {
     "percent": 70.2,
-    "missing": 28473
+    "missing": 28466
   },
   "packages": {
     "maxim/<root>": {
@@ -77,7 +77,7 @@
     },
     "maxim/imagination": {
       "percent": 89.3,
-      "missing": 65
+      "missing": 60
     },
     "maxim/inference": {
       "percent": 22.3,
@@ -145,7 +145,7 @@
     },
     "maxim/simulation": {
       "percent": 75.1,
-      "missing": 2550
+      "missing": 2544
     },
     "maxim/spatial": {
       "percent": 40.1,
@@ -171,7 +171,7 @@
   "files": {
     "src/maxim/simulation/orchestrator.py": {
       "percent": 70.7,
-      "missing": 393
+      "missing": 388
     }
   },
   "retired_files": []
