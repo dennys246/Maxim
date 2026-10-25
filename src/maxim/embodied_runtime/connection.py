@@ -324,7 +324,9 @@ class ConnectionMixin:
 
                 from maxim.utils.audio import stop_device_player
 
-                stop_device_player(old_mini, log=self.log)  # before the close, as in _release_media (#1435)
+                stop_device_player(
+                    old_mini, log=getattr(self, "log", None)
+                )  # before the close, as in _release_media (#1435)
                 try:
                     media = getattr(old_mini, "media", None)
                     if media is not None:
@@ -389,7 +391,7 @@ class ConnectionMixin:
             if getattr(getattr(self, "_capabilities", None), "has_audio", True):
                 from maxim.utils.audio import start_device_player
 
-                start_device_player(getattr(self, "mini", None), log=self.log)
+                start_device_player(getattr(self, "mini", None), log=getattr(self, "log", None))
             self.log.info("Soft reconnect complete.")
             return True
         finally:
