@@ -1,5 +1,7 @@
 # Experiment 37: Cross-Session Behavioral Delta — Cradle Graduation
 
+> **Re-assessment 2026-10-25 ([#1301](https://github.com/dennys246/Maxim/issues/1301)): bounded.** In the June fires and the 2026-08-21 re-fire, the generative narrator was AUT-blind (#1261), and every arm's AUT was told `respond` was NOT AVAILABLE, each call drawing a follow-up (#1260). The scored fractions read affordance actions, not words. But the `respond` bursts used action budget unevenly across arms and moved turn bins and first-contact indices ([narrator_defects_reassessment.md](narrator_defects_reassessment.md)).
+
 > **Ledger: STALE since 2026-10-02, row T1-2** (the "prompt construction change" trigger fired with #1042). 1.3.2
 > shipped with the row STALE under the committed exception `release-1.3.2-T1-2`
 > (`docs/experiments/evidence_exceptions.json`), which covers that release only. The owed re-fire is L8's

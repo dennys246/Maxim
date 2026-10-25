@@ -17,6 +17,10 @@ not a caveat.
    that reasoning can *amplify* the wrong prior (Exp 38/40).
 4. Open, provenance-stamped apparatus (campaign runner, gates, manifests).
 
+*Re-assessment 2026-10-25 ([#1301](experiments/narrator_defects_reassessment.md)):* the evidence for Contributions 2
+and 3 is bounded. It was recorded with the AUT told `respond` was NOT AVAILABLE (#1260), and with an AUT-blind narrator
+(#1261). The Exp 44b confirmatory and any Exp 38/40 re-fire run on the fixed path.
+
 ---
 
 ## 3. Methods

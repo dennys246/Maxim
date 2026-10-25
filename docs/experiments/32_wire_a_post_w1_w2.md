@@ -1,5 +1,7 @@
 # 32 — Wire-A post-W1+W2 integration test (Roy-3a)
 
+> **Re-assessment 2026-10-25 ([#1301](https://github.com/dennys246/Maxim/issues/1301)): the "respond tripled (47 vs 11)" observation is withdrawn.** It is a `respond` count from a prompt that said `respond` was NOT AVAILABLE, each call drawing a follow-up (#1260). The wiring-bug findings stand ([#1461](https://github.com/dennys246/Maxim/issues/1461); [narrator_defects_reassessment.md](narrator_defects_reassessment.md)).
+
 **Status:** Run complete 2026-05-27. **AMBIGUOUS-WITH-WIRING-BUG verdict.** PRIMARY criterion failed but two upstream wiring gaps identified — neither sits inside W1 or W2 themselves.
 **Branch:** main (post-PR-#288 merge at `5bf450b`).
 **Plan:** [docs/plans/archive/v1_refinement.md](../plans/archive/v1_refinement.md) §1.5 integration test.

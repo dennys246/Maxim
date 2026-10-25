@@ -1,5 +1,7 @@
 # Hippocampal Recall Experiment — Run Notes
 
+> **Re-assessment 2026-10-25 ([#1301](https://github.com/dennys246/Maxim/issues/1301)): the behavioural-recall half is withdrawn.** Passing the door needs speech, and the AUT's prompt said `respond` was NOT AVAILABLE (#1260). So this run neither supports nor refutes behavioural recall. The memory-survival half stands. Re-run on the fixed path before citing ([#1461](https://github.com/dennys246/Maxim/issues/1461); [narrator_defects_reassessment.md](narrator_defects_reassessment.md)).
+
 > **Status (audit 2026-09-13): PARTIAL** — memory survival after 3 interference turns confirmed
 > (1.0) but behavioral recall from indirect cues failed (the AUT never connected the door cue to
 > "say Verath"); the memory-exists-vs-recall-fails split motivated the introspection

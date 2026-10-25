@@ -30,6 +30,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   address guidance, with warnings), commands shown in a distinct style, and readable light-theme status colours.
   Pulse verified it on a real Reachy (CM4) on 1.3.3. `scripts/console_ui_pin.json` pins tag v0.4.3 at commit
   `c174126`, asset sha256 `cdad1982…b731`.
+- **Evidence re-assessment: narrator-driven runs recorded before the #1261 and #1260 fixes** (#1301,
+  `docs/experiments/narrator_defects_reassessment.md`). These are claims in earlier release notes. No ledger row
+  changes status, and released sections stay as published.
+  - **Unaffected:** T1-16 (Exp 63), the substrate-primary rows and Roy-0.
+  - **Bounded:** the Exp 37 Goldilocks map (T1-2), the Exp 38/40 counter-prior dominance, the Exp 44 counterfactual,
+    Exp 12's "7/7 recalled", the 2026-08-18 heartbeat records, and L8's drift comparison. In those runs the
+    generative narrator was AUT-blind, and every LLM agent under test was told `respond` was not available, each
+    reply drawing a follow-up.
+  - **Withdrawn until re-run on the fixed path (#1461):** Exp 12's "3 respond hits vs 1", Exp 32's "respond
+    tripled", Exp 18's `respond` shift, and the hippocampal-recall "behavioural recall fails".
 
 ## [1.3.3] - 2026-10-24 — "Release pipeline"
 

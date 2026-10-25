@@ -222,6 +222,9 @@ your metric can actually see.
   or sampling defaults. `n_ctx` is partially excluded — 4096 overflows the
   prompt (10 dead calls) under the same prompt-construction code, so June
   cannot have been running there.
+  *Added 2026-10-25 ([#1301 re-assessment](../experiments/narrator_defects_reassessment.md)):* one more
+  uncontrolled difference. Both fires ran with the AUT told `respond` was NOT AVAILABLE (#1260), and Qwen32B's
+  `respond` volume rose from 6 calls (June) to 32 (August), so that defect's effect was not constant between them.
 - **Why it was undetectable:** the run record stamps `model` (the REQUESTED
   profile name) and nothing else about what served it. No `n_ctx`, no
   quantization, no endpoint, no server build. Every hour of the 2026-08-22

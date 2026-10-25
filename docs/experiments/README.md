@@ -241,6 +241,7 @@ ever drifts.
 Records that carry no row above (none takes or gates a ledger claim); status in the linked file wins.
 
 - [DESIGN_REVIEW.md](DESIGN_REVIEW.md) — the four-lens experiment-design review charter (run before building a harness).
+- [narrator_defects_reassessment.md](narrator_defects_reassessment.md) — the #1301 re-assessment (2026-10-25) of every claim resting on a narrator-driven run recorded before the #1261/#1260 fixes. It gives each claim an outcome: unaffected, bounded or withdrawn. No status moves.
 - [exp58_survival_wants_prereg.md](exp58_survival_wants_prereg.md) — Exp 58, frozen 2026-09-14, no live data; the "dark = danger" cue was blocked at the instrument and swapped to water ([Exp 60](exp60_drowning_avoidance_prereg.md)).
 - [exp59_layered_cave_prereg.md](exp59_layered_cave_prereg.md) — Exp 59, an idea capture (2026-09-14), not a pre-registration; no harness.
 - [r2_learned_bias_prereg.md](r2_learned_bias_prereg.md) — R2 learned-bias v1, superseded without data.
@@ -251,4 +252,4 @@ Records that carry no row above (none takes or gates a ledger claim); status in 
 
 | Entry | Date | Status | Decision |
 |---|---|---|---|
-| [12_v1_phased_attribution.md](12_v1_phased_attribution.md) | 2026-04-30 | recorded | **Clean pass.** Phase A (substrate-only) recalls token across sessions; all 7 phases recalled. Confound flags scheduled for removal in 1.0. |
+| [12_v1_phased_attribution.md](12_v1_phased_attribution.md) | 2026-04-30 | recorded | **Clean pass.** Phase A (substrate-only) recalls token across sessions; all 7 phases recalled. Confound flags scheduled for removal in 1.0. *Bounded 2026-10-25 by the [#1301 re-assessment](narrator_defects_reassessment.md).* |
