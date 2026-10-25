@@ -1,5 +1,1051 @@
 {
  "arms": {
+  "generative": {
+   "action_log": [
+    {
+     "_format_version": "1.2",
+     "_record_kind": "header",
+     "session_id": "<STAMP>"
+    },
+    {
+     "agent_id": "sim_aut",
+     "block_reason": null,
+     "blocked": false,
+     "entity_class": null,
+     "error": null,
+     "nac_failure_booked": null,
+     "output": "{'delivered': True, 'mode': 'cli'}",
+     "pain": null,
+     "params": {
+      "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+     },
+     "rpe": 0.5,
+     "session_id": "<STAMP>",
+     "success": true,
+     "tool": "respond"
+    },
+    {
+     "agent_id": "sim_aut",
+     "block_reason": null,
+     "blocked": false,
+     "entity_class": null,
+     "error": null,
+     "nac_failure_booked": null,
+     "output": "{'delivered': True, 'mode': 'cli'}",
+     "pain": null,
+     "params": {
+      "message": "I heard: the stranger asks your favourite colour."
+     },
+     "rpe": 0.5,
+     "session_id": "<STAMP>",
+     "success": true,
+     "tool": "respond"
+    }
+   ],
+   "arm": "generative",
+   "aut_calls": [
+    {
+     "answer": {
+      "params": {
+       "message": "I heard: the stranger asks your favourite colour."
+      },
+      "tool_name": "respond"
+     },
+     "kind": "plan",
+     "request": "the stranger asks your favourite colour."
+    }
+   ],
+   "aut_nac": {
+    "_format_version": "1.4",
+    "cluster_fear": {},
+    "cluster_reward_bias": {},
+    "cluster_reward_source": {},
+    "event_outcome_welford": {},
+    "goal_reward_bias": {
+     "check how the agent answers two short questions": "+ in (0, 0.2], decayed below its last write"
+    },
+    "inherent_bias_keys": [],
+    "links": {
+     "tool:respond": [
+      {
+       "confidence": 0.475,
+       "context_factors": {},
+       "contributors": [],
+       "domain": null,
+       "event_context": {
+        "goal": "direct_answer"
+       },
+       "event_signature": "tool:respond",
+       "event_type": "tool",
+       "id": "60665ba2d728dfa1",
+       "imagined": false,
+       "last_rpe": 0.5,
+       "memory_ids": [],
+       "observation_count": 1,
+       "outcome_signature": "plan:direct_answer:success",
+       "outcome_type": "plan_result",
+       "outcome_valence": "positive",
+       "percept_refs": [],
+       "predicted_value": 0.57,
+       "prediction_history": [
+        0.5
+       ],
+       "source": "local"
+      },
+      {
+       "confidence": 0.475,
+       "context_factors": {},
+       "contributors": [],
+       "domain": null,
+       "event_context": {
+        "agent_id": "sim_aut",
+        "goal": "scripted respond"
+       },
+       "event_signature": "tool:respond",
+       "event_type": "tool",
+       "id": "73851f2fc2283f54",
+       "imagined": false,
+       "last_rpe": 0.5,
+       "memory_ids": [],
+       "observation_count": 1,
+       "outcome_signature": "success:{'delivered': True, 'mode': 'cli'}",
+       "outcome_type": "tool_result",
+       "outcome_valence": "positive",
+       "percept_refs": [],
+       "predicted_value": 0.57,
+       "prediction_history": [
+        0.5
+       ],
+       "source": "local"
+      },
+      {
+       "confidence": 0.475,
+       "context_factors": {},
+       "contributors": [],
+       "domain": null,
+       "event_context": {
+        "goal": "scripted respond"
+       },
+       "event_signature": "tool:respond",
+       "event_type": "tool",
+       "id": "a90147485f2b8873",
+       "imagined": false,
+       "last_rpe": 0.5,
+       "memory_ids": [],
+       "observation_count": 1,
+       "outcome_signature": "plan:scripted respond:success",
+       "outcome_type": "plan_result",
+       "outcome_valence": "positive",
+       "percept_refs": [],
+       "predicted_value": 0.57,
+       "prediction_history": [
+        0.5
+       ],
+       "source": "local"
+      },
+      {
+       "confidence": 0.475,
+       "context_factors": {},
+       "contributors": [],
+       "domain": null,
+       "event_context": {
+        "agent_id": "sim_aut",
+        "goal": "direct_answer"
+       },
+       "event_signature": "tool:respond",
+       "event_type": "tool",
+       "id": "a9ee8012a42828cd",
+       "imagined": false,
+       "last_rpe": 0.5,
+       "memory_ids": [],
+       "observation_count": 1,
+       "outcome_signature": "success:{'delivered': True, 'mode': 'cli'}",
+       "outcome_type": "tool_result",
+       "outcome_valence": "positive",
+       "percept_refs": [],
+       "predicted_value": 0.57,
+       "prediction_history": [
+        0.5
+       ],
+       "source": "local"
+      },
+      {
+       "confidence": 0.475,
+       "context_factors": {},
+       "contributors": [],
+       "domain": null,
+       "event_context": {
+        "params": {
+         "message": "I heard: the stranger asks your favourite colour."
+        }
+       },
+       "event_signature": "tool:respond",
+       "event_type": "tool",
+       "id": "ca3a53e490997183",
+       "imagined": false,
+       "last_rpe": 0.5,
+       "memory_ids": [],
+       "observation_count": 1,
+       "outcome_signature": "tool:respond:positive",
+       "outcome_type": "result",
+       "outcome_valence": "positive",
+       "percept_refs": [],
+       "predicted_value": 0.57,
+       "prediction_history": [
+        0.5
+       ],
+       "source": "local"
+      },
+      {
+       "confidence": 0.475,
+       "context_factors": {},
+       "contributors": [],
+       "domain": null,
+       "event_context": {
+        "params": {
+         "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+        }
+       },
+       "event_signature": "tool:respond",
+       "event_type": "tool",
+       "id": "e342a634de19a671",
+       "imagined": false,
+       "last_rpe": 0.5,
+       "memory_ids": [],
+       "observation_count": 1,
+       "outcome_signature": "tool:respond:positive",
+       "outcome_type": "result",
+       "outcome_valence": "positive",
+       "percept_refs": [],
+       "predicted_value": 0.57,
+       "prediction_history": [
+        0.5
+       ],
+       "source": "local"
+      }
+     ]
+    },
+    "outcome_index": {
+     "plan:direct_answer:success": [
+      "60665ba2d728dfa1"
+     ],
+     "plan:scripted respond:success": [
+      "a90147485f2b8873"
+     ],
+     "success:{'delivered': True, 'mode': 'cli'}": [
+      "73851f2fc2283f54",
+      "a9ee8012a42828cd"
+     ],
+     "tool:respond:positive": [
+      "ca3a53e490997183",
+      "e342a634de19a671"
+     ]
+    },
+    "percept_valences": {},
+    "priors": {},
+    "reward_bias": {},
+    "total_observations": 6,
+    "version": "1.0"
+   },
+   "bridge_finish_calls": [
+    {}
+   ],
+   "data_home_files": [
+    "orchestrator/angular_gyrus.json",
+    "orchestrator/atl.json",
+    "orchestrator/cerebellum.json",
+    "orchestrator/ec.json",
+    "orchestrator/hippocampus.json",
+    "orchestrator/nac.json",
+    "orchestrator/scn.json",
+    "sim_reports/<STAMP>/actions.jsonl",
+    "sim_reports/<STAMP>/aut_atl.json",
+    "sim_reports/<STAMP>/aut_ec.json",
+    "sim_reports/<STAMP>/aut_hippocampus.json",
+    "sim_reports/<STAMP>/aut_nac.json",
+    "sim_reports/<STAMP>/aut_scn.json",
+    "sim_reports/<STAMP>/bio_telemetry.jsonl",
+    "sim_reports/<STAMP>/report.json",
+    "sim_reports/<STAMP>/generated_campaign.yaml",
+    "sim_sandbox/sim_agent_<STAMP>.jsonl",
+    "sim_sandbox/sim_agent_<STAMP>_<RAND>/angular_gyrus.json",
+    "sim_sandbox/sim_agent_<STAMP>_<RAND>/atl.json",
+    "sim_sandbox/sim_agent_<STAMP>_<RAND>/ec.json",
+    "sim_sandbox/sim_agent_<STAMP>_<RAND>/hippocampus.json",
+    "sim_sandbox/sim_agent_<STAMP>_<RAND>/nac.json",
+    "sim_sandbox/sim_agent_<STAMP>_<RAND>/scn.json"
+   ],
+   "events": [
+    {
+     "inject": "aut#1",
+     "text": "A stranger asks your name.",
+     "thread": "MainThread"
+    },
+    {
+     "inject": "aut#1",
+     "text": "The stranger asks your favourite colour.",
+     "thread": "MainThread"
+    },
+    {
+     "finish_context": {},
+     "finish_runner": "generative_runner",
+     "stop_event_set": true,
+     "thread": "MainThread"
+    },
+    {
+     "inject": "narrator#1",
+     "stop_event_set": true,
+     "text": "SIMULATION GOAL: check how the agent answers two short questions\n\nYou are a simulation orchestrator testing an AI agent. You MUST use ONLY these tools (no others exist):\n  - send_message: Talk to the agent (your PRIMARY tool)\n  - observe_ac",
+     "thread": "MainThread"
+    }
+   ],
+   "lifecycle": [
+    "status: SIMULATION MODE \u2014 generative",
+    "status: Goal: check how the agent answers two short questions",
+    "status: Max turns: 10",
+    "status: Environment: simulated filesystem with pain triggers",
+    "status: Commands: /cancel  /new <goal>  /status  /report  /help",
+    "status: Generative Campaign: check how the agent answers two short questions",
+    "status: Max turns: 10",
+    "status: Arc: <WORK>/arc.yaml",
+    "summary: Generative campaign complete: 2 turns",
+    "status: Shutting down agent loops...",
+    "status: Waiting for AUT to finish...",
+    "status: Stopping LLM workers...",
+    "status: Building simulation report...",
+    "status: Saving report to <WORK>/data/sim_reports/<STAMP>/...",
+    "status: Saving action log (2 records)...",
+    "status: Saving AUT state (<N> memories, 6 causal links)...",
+    "status: Running LLM analysis roundup...",
+    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 2 |   Finish: completed |   Actions: 2 (0 blocked) |   AUT Memories: <N> | Causal Links: 6 |   Bio events: \u25b2 Learn: 6 |  |   Top Causal Links: |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |     tool:respond \u2192 plan:direct_answer:success (conf=0.47, obs=1) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 2 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
+   ],
+   "live_sim_threads_after": [],
+   "maxim_env_after": {
+    "MAXIM_ALLOW_BASH": "1",
+    "MAXIM_DATA_HOME": "<WORK>/data",
+    "MAXIM_SIM_HARD_ABORT": "0"
+   },
+   "nac_credits": {
+    "aut": [
+     {
+      "activation": 0.3,
+      "agent_id": "sim_aut",
+      "method": "update_eligibility",
+      "node_id": "tool:respond",
+      "post": 0.3,
+      "temporal_sig": true
+     },
+     {
+      "goal_tag": "check how the agent answers two short questions",
+      "method": "credit_goal",
+      "post": 0.15,
+      "reward": 1.0
+     },
+     {
+      "activation": 0.3,
+      "agent_id": "sim_aut",
+      "method": "update_eligibility",
+      "node_id": "tool:respond",
+      "temporal_sig": true
+     },
+     {
+      "goal_tag": "check how the agent answers two short questions",
+      "method": "credit_goal",
+      "reward": 1.0
+     }
+    ],
+    "other": []
+   },
+   "narrator_calls": [],
+   "other_llm_calls": {
+    "roundup": [
+     {
+      "answer": [
+       "issues",
+       "recommendations",
+       "summary"
+      ],
+      "kind": "direct",
+      "request": "# Simulation Report \u2014 check how the agent answers two short questions\nMode: gene"
+     }
+    ],
+    "story_decide": [
+     {
+      "answer": [
+       "done",
+       "notes",
+       "phase",
+       "scene_type"
+      ],
+      "kind": "direct",
+      "request": "Remaining phases: probe"
+     },
+     {
+      "answer": [
+       "done",
+       "notes",
+       "phase",
+       "scene_type"
+      ],
+      "kind": "direct",
+      "request": "Story so far: [Turn 1] A stranger asks your name."
+     }
+    ],
+    "story_generate": [
+     {
+      "answer": [
+       "narrative"
+      ],
+      "kind": "direct",
+      "request": "Generate the opening scene."
+     },
+     {
+      "answer": [
+       "narrative"
+      ],
+      "kind": "direct",
+      "request": "Generate the next scene."
+     }
+    ]
+   },
+   "report": {
+    "_format_version": "1.0",
+    "apparatus": {
+     "substrate_actions_per_turn": null
+    },
+    "aut_backend_class": "",
+    "aut_causal_links": 6,
+    "aut_endpoint": "",
+    "aut_model": "",
+    "aut_nac_summary": {
+     "top_links": [
+      {
+       "confidence": 0.475,
+       "event": "tool:respond",
+       "observations": 1,
+       "outcome": "tool:respond:positive"
+      },
+      {
+       "confidence": 0.475,
+       "event": "tool:respond",
+       "observations": 1,
+       "outcome": "success:{'delivered': True, 'mode': 'cli'}"
+      },
+      {
+       "confidence": 0.475,
+       "event": "tool:respond",
+       "observations": 1,
+       "outcome": "plan:direct_answer:success"
+      },
+      {
+       "confidence": 0.475,
+       "event": "tool:respond",
+       "observations": 1,
+       "outcome": "tool:respond:positive"
+      },
+      {
+       "confidence": 0.475,
+       "event": "tool:respond",
+       "observations": 1,
+       "outcome": "success:{'delivered': True, 'mode': 'cli'}"
+      }
+     ],
+     "total_links": 6
+    },
+    "aut_provider": "",
+    "bio_telemetry_path": "<WORK>/data/sim_reports/<STAMP>/bio_telemetry.jsonl",
+    "blocked_actions": 0,
+    "cost_usd": 0.0,
+    "fear_blocks_count": 0,
+    "finish_reason": "completed",
+    "goal": "check how the agent answers two short questions",
+    "lane_breakdown": {},
+    "language_backend_class": "",
+    "language_endpoint": "",
+    "language_model": "orch-golden-fake",
+    "language_provider": "",
+    "learn_events_count": 6,
+    "llm_finish_reason": "",
+    "llm_finish_status": "",
+    "llm_finish_summary": "",
+    "llm_issues_found": [
+     "none observed"
+    ],
+    "llm_recommendations": [
+     "keep going"
+    ],
+    "llm_summary": "golden roundup",
+    "mode": "generative",
+    "pain_events_count": 0,
+    "provenance": {
+     "aut_budget_n_ctx": 8192,
+     "aut_model_attribution": "not_established",
+     "aut_profile": null,
+     "aut_router_n_ctx": 8192,
+     "aut_router_serial": "<build-1>",
+     "code_changed_during_run": false,
+     "code_tree_sha256": "<MASKED>",
+     "concurrent_sims": false,
+     "configured_n_ctx": 8192,
+     "configured_n_ctx_source": "default",
+     "end_code_tree_sha256": "<MASKED>",
+     "end_executed_git_hash": "<MASKED>",
+     "executed_git_hash": "<MASKED>",
+     "executed_maxim_file": "<MASKED>",
+     "global_seed": null,
+     "language_budget_n_ctx": 8192,
+     "language_profile": null,
+     "language_router_n_ctx": 8192,
+     "language_router_serial": "<build-1>",
+     "leader_disk_heads": {},
+     "llm_calls": {
+      "<build-1>": {
+       "counts": {
+        "budget_reject": 0,
+        "exhausted": 0,
+        "raised": 0,
+        "started": 0,
+        "success": 0
+       },
+       "entries": []
+      }
+     },
+     "maxim_version": "<MASKED>",
+     "model_changed_during_run": false,
+     "provenance_schema": 2,
+     "python": "<MASKED>",
+     "pythonpath": "<MASKED>",
+     "sampling_complete": true,
+     "sampling_problems": [],
+     "scenario_content_sha256": null,
+     "scenario_inputs": [
+      {
+       "path": "<WORK>/arc.yaml",
+       "sha256": "43eb2a75db09cfe59e662908c5e5580c6e5a6b5cfd5666c107ffbc789ece0a28"
+      }
+     ],
+     "scenario_sha256": "<MASKED>",
+     "serving_captured": true,
+     "session_index": 0,
+     "working_tree_dirty_src_scripts": "<MASKED>"
+    },
+    "provider_failures": {},
+    "record_kind": "sim_report",
+    "response_texts": [
+     "I'm Maxim, a robot assistant designed to understand reality and help people.",
+     "I heard: the stranger asks your favourite colour."
+    ],
+    "session_id": "<STAMP>",
+    "substrate_metrics": {},
+    "tool_success_rates": {
+     "respond": 1.0
+    },
+    "tool_usage": {
+     "respond": 2
+    },
+    "total_actions": 2,
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "turns": 2
+   },
+   "report_json_emitted": true,
+   "report_writer_args": [
+    {
+     "args": [
+      {
+       "session_id": "<STAMP>",
+       "type": "SimulationReport"
+      }
+     ],
+     "kwargs": {
+      "base_dir": "<WORK>/data/sim_reports"
+     },
+     "shared_refs": [],
+     "writer": "save_report"
+    },
+    {
+     "args": [
+      {
+       "type": "SimulationBridge"
+      }
+     ],
+     "kwargs": {
+      "base_dir": "<WORK>/data/sim_reports",
+      "session_id": "<STAMP>"
+     },
+     "shared_refs": [],
+     "writer": "save_action_log"
+    },
+    {
+     "args": [],
+     "kwargs": {
+      "atl": {
+       "type": "ATL"
+      },
+      "base_dir": "<WORK>/data/sim_reports",
+      "ec": {
+       "type": "EntorhinalCortex"
+      },
+      "hippocampus": {
+       "type": "Hippocampus"
+      },
+      "nac": {
+       "type": "NAc"
+      },
+      "scn": {
+       "type": "SCN"
+      },
+      "session_id": "<STAMP>"
+     },
+     "shared_refs": [
+      "hippocampus._scn -> scn"
+     ],
+     "writer": "save_aut_state"
+    },
+    {
+     "args": [
+      {
+       "session_id": "<STAMP>",
+       "type": "SimulationReport"
+      }
+     ],
+     "kwargs": {
+      "llm_router": {
+       "call_serial": "<build-1>",
+       "type": "_RouterView"
+      }
+     },
+     "shared_refs": [],
+     "writer": "analyze_simulation"
+    },
+    {
+     "args": [
+      {
+       "session_id": "<STAMP>",
+       "type": "SimulationReport"
+      }
+     ],
+     "kwargs": {
+      "base_dir": "<WORK>/data/sim_reports"
+     },
+     "shared_refs": [],
+     "writer": "save_report"
+    },
+    {
+     "args": [
+      {
+       "session_id": "<STAMP>",
+       "type": "SimulationReport"
+      },
+      "<WORK>/report_json.json"
+     ],
+     "kwargs": {},
+     "shared_refs": [],
+     "writer": "emit_report_json"
+    }
+   ],
+   "report_writes": [
+    "save_report",
+    "save_action_log",
+    "save_aut_state",
+    "analyze_simulation",
+    "save_report",
+    "emit_report_json"
+   ],
+   "result": {
+    "actions": [
+     {
+      "block_reason": null,
+      "blocked": false,
+      "result_output": "{'delivered': True, 'mode': 'cli'}",
+      "result_success": true,
+      "tool_args": {
+       "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+      },
+      "tool_name": "respond",
+      "utterance": "I'm Maxim, a robot assistant designed to understand reality and help people."
+     },
+     {
+      "block_reason": null,
+      "blocked": false,
+      "result_output": "{'delivered': True, 'mode': 'cli'}",
+      "result_success": true,
+      "tool_args": {
+       "message": "I heard: the stranger asks your favourite colour."
+      },
+      "tool_name": "respond",
+      "utterance": "I heard: the stranger asks your favourite colour."
+     }
+    ],
+    "blocked_actions": 0,
+    "campaign_analysis": {
+     "causal_links": {
+      "available": true,
+      "link_count": 6,
+      "links": [
+       {
+        "confidence": 0.475,
+        "event": "tool:respond",
+        "observations": 1,
+        "outcome": "tool:respond:positive",
+        "valence": ""
+       },
+       {
+        "confidence": 0.475,
+        "event": "tool:respond",
+        "observations": 1,
+        "outcome": "success:{'delivered': True, 'mode': 'cli'}",
+        "valence": ""
+       },
+       {
+        "confidence": 0.475,
+        "event": "tool:respond",
+        "observations": 1,
+        "outcome": "plan:direct_answer:success",
+        "valence": ""
+       },
+       {
+        "confidence": 0.475,
+        "event": "tool:respond",
+        "observations": 1,
+        "outcome": "tool:respond:positive",
+        "valence": ""
+       },
+       {
+        "confidence": 0.475,
+        "event": "tool:respond",
+        "observations": 1,
+        "outcome": "success:{'delivered': True, 'mode': 'cli'}",
+        "valence": ""
+       },
+       {
+        "confidence": 0.475,
+        "event": "tool:respond",
+        "observations": 1,
+        "outcome": "plan:scripted respond:success",
+        "valence": ""
+       }
+      ]
+     },
+     "concepts": {
+      "available": true,
+      "concepts": [
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "respond respond"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "script respond"
+       },
+       {
+        "category": "action",
+        "confidence": 0.571,
+        "name": "respond"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.5,
+        "name": "respond"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.5,
+        "name": "script"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "answer respond"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "direct respond"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "direct answer"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.5,
+        "name": "answer"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.5,
+        "name": "direct"
+       }
+      ],
+      "count": 10
+     },
+     "system_stats": {
+      "atl_concepts": 10,
+      "available": true,
+      "ec_signatures": 0,
+      "nac_causal_links": 6
+     },
+     "temporal": {
+      "keys": [
+       "available",
+       "current_phase",
+       "phase_coherence",
+       "signatures"
+      ]
+     }
+    },
+    "finish_reason": "completed",
+    "goal": "check how the agent answers two short questions",
+    "mode": "generative",
+    "router_stats": {
+     "json_compliance_rate": 1.0,
+     "json_first_try": 0,
+     "json_repaired": 0,
+     "json_total": 0
+    },
+    "session_dir": "<WORK>/data/sim_reports/<STAMP>",
+    "session_id": "<STAMP>",
+    "subsystem_snapshot": {
+     "causal_links": {
+      "available": true,
+      "link_count": 6,
+      "links": [
+       {
+        "confidence": 0.475,
+        "event": "tool:respond",
+        "observations": 1,
+        "outcome": "tool:respond:positive",
+        "valence": ""
+       },
+       {
+        "confidence": 0.475,
+        "event": "tool:respond",
+        "observations": 1,
+        "outcome": "success:{'delivered': True, 'mode': 'cli'}",
+        "valence": ""
+       },
+       {
+        "confidence": 0.475,
+        "event": "tool:respond",
+        "observations": 1,
+        "outcome": "plan:direct_answer:success",
+        "valence": ""
+       },
+       {
+        "confidence": 0.475,
+        "event": "tool:respond",
+        "observations": 1,
+        "outcome": "tool:respond:positive",
+        "valence": ""
+       },
+       {
+        "confidence": 0.475,
+        "event": "tool:respond",
+        "observations": 1,
+        "outcome": "success:{'delivered': True, 'mode': 'cli'}",
+        "valence": ""
+       },
+       {
+        "confidence": 0.475,
+        "event": "tool:respond",
+        "observations": 1,
+        "outcome": "plan:scripted respond:success",
+        "valence": ""
+       }
+      ]
+     },
+     "concepts": {
+      "available": true,
+      "concepts": [
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "respond respond"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "script respond"
+       },
+       {
+        "category": "action",
+        "confidence": 0.571,
+        "name": "respond"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.5,
+        "name": "respond"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.5,
+        "name": "script"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "answer respond"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "direct respond"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "direct answer"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.5,
+        "name": "answer"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.5,
+        "name": "direct"
+       }
+      ],
+      "count": 10
+     },
+     "hippocampus_stats": {
+      "compressed_memories": 0,
+      "graph_enabled": true,
+      "over_capacity_inserts_this_process": 0,
+      "successful": 2
+     },
+     "nac_stats": {
+      "eligibility_traces": 1,
+      "event_signatures": 1,
+      "outcome_signatures": 4,
+      "pending_events": 0,
+      "priors": 0,
+      "reward_biases": 0,
+      "total_links": 6,
+      "total_observations": 6
+     },
+     "pain_stats": {
+      "available": true,
+      "pain_counts": {
+       "anticipated": 0,
+       "cognitive_overload": 0,
+       "direction_thrashing": 0,
+       "excessive_acceleration": 0,
+       "excessive_velocity": 0,
+       "external_signal": 0,
+       "movement_failure": 0,
+       "resource_exhaustion": 0,
+       "safety_violation": 0,
+       "sustained_strain": 0,
+       "tool_failure": 0,
+       "tool_invalid_input": 0,
+       "tool_sustained": 0,
+       "tool_timeout": 0
+      },
+      "sample_count": 0,
+      "total_pain_signals": 0
+     },
+     "system_stats": {
+      "atl_concepts": 10,
+      "available": true,
+      "ec_signatures": 0,
+      "nac_causal_links": 6
+     },
+     "temporal": {
+      "keys": [
+       "available",
+       "current_phase",
+       "phase_coherence",
+       "signatures"
+      ]
+     }
+    },
+    "summary": "golden roundup",
+    "tool_stats": {
+     "alias_redirects": [],
+     "hallucination_rate": 0.0,
+     "tools_attempted": [
+      "respond",
+      "respond"
+     ],
+     "tools_hallucinated": [],
+     "tools_succeeded": [
+      "respond",
+      "respond"
+     ],
+     "total_attempts": 2,
+     "total_hallucinated": 0,
+     "total_successes": 2
+    },
+    "total_actions": 2,
+    "turns": 2
+   },
+   "sim_reports_files": [
+    "<STAMP>/actions.jsonl",
+    "<STAMP>/aut_atl.json",
+    "<STAMP>/aut_ec.json",
+    "<STAMP>/aut_hippocampus.json",
+    "<STAMP>/aut_nac.json",
+    "<STAMP>/aut_scn.json",
+    "<STAMP>/bio_telemetry.jsonl",
+    "<STAMP>/report.json",
+    "<STAMP>/generated_campaign.yaml"
+   ],
+   "stdin_lines": [],
+   "threads_left_alive": {
+    "added": [
+     "plan-dashboard",
+     "plan-dashboard",
+     "plan-logger",
+     "plan-logger"
+    ]
+   },
+   "turns": [
+    {
+     "actions": [
+      {
+       "args": {
+        "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+       },
+       "blocked": false,
+       "output": "{'delivered': True, 'mode': 'cli'}",
+       "success": true,
+       "tool": "respond"
+      }
+     ],
+     "noop_count": 0,
+     "response": "I'm Maxim, a robot assistant designed to understand reality and help people.",
+     "text": "A stranger asks your name.",
+     "timed_out": false,
+     "turn": 1
+    },
+    {
+     "actions": [
+      {
+       "args": {
+        "message": "I heard: the stranger asks your favourite colour."
+       },
+       "blocked": false,
+       "output": "{'delivered': True, 'mode': 'cli'}",
+       "success": true,
+       "tool": "respond"
+      }
+     ],
+     "noop_count": 0,
+     "response": "I heard: the stranger asks your favourite colour.",
+     "text": "The stranger asks your favourite colour.",
+     "timed_out": false,
+     "turn": 2
+    }
+   ],
+   "unsorted_prompts": []
+  },
   "narrator": {
    "action_log": [
     {
@@ -3234,5 +4280,5 @@
    "unsorted_prompts": []
   }
  },
- "generated_at_commit": "3009cb23bb48"
+ "generated_at_commit": "d9dffe6e615d"
 }

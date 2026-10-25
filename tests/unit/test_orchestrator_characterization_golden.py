@@ -13,7 +13,9 @@ HOW IT RUNS. ``tests/unit/_orch_harness.py`` (read its docstring) runs the REAL 
   - the real threads, on the wall clock, with the real 3 s settle;
   - class-level hooks on ``SimulationBridge`` for causal synchronisation.
 
-Three arms: ``precampaign``, ``narrator`` (with the AUT on its own router build) and ``stdin``.
+The slice-0 arms: ``precampaign``, ``narrator`` (with the AUT on its own router build) and ``stdin``. Then the
+arms the 1.4.0 gate requires (``scripts/release_gates.json`` ``arms``): ``generative`` (the harness docstring
+lists each arm's script).
 
 WHAT IS RECORDED. Only causally ordered facts:
 
@@ -118,6 +120,8 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:  # run as a script 
 from tests.unit._orch_harness import (  # noqa: E402
     _MASKED,
     _PROVENANCE_MASKED,
+    _PROVENANCE_PATH_BOUND,
+    _STORY_SCENES,
     ARMS,
     GOAL,
     REPO_ROOT,
@@ -217,6 +221,41 @@ def test_pre_campaign_turns_run_without_a_narrator(tmp_path_factory: pytest.Temp
     assert any(f.startswith("campaign_analysis_") for f in t["sim_reports_files"])
 
 
+# ── the arms added after slice 0 (1.4.0 gate ``arms``: scripts/release_gates.json) ──
+
+
+@pytest.mark.timeout(240)
+def test_generative_arm_the_campaign_stops_the_run_before_the_kickoff_reaches_the_narrator(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    """``generative=True`` (§9): the generative campaign runs on the calling thread and its ``_finish_runner`` sets
+    ``stop_event``; only THEN is the narrator's kickoff injected, so the narrator loop never plans on it (the
+    #1226 premise correction, Session C 2026-10-14). Pinned as current behaviour."""
+    t = _trace("generative", tmp_path_factory)
+    story = t["other_llm_calls"]
+    assert [c["request"] for c in story["story_generate"]] == [
+        "Generate the opening scene.",
+        "Generate the next scene.",
+    ]
+    assert len(story["story_decide"]) == 2  # the third decide exhausts the one-phase arc without a call
+    assert [turn["text"] for turn in t["turns"]] == list(_STORY_SCENES)
+    (runner,) = [e for e in t["events"] if "finish_runner" in e]
+    assert runner == {
+        "finish_context": {},  # a completed generative campaign records no finish_context (#1002)
+        "finish_runner": "generative_runner",
+        "stop_event_set": True,
+        "thread": "MainThread",
+    }
+    after = t["events"][t["events"].index(runner) + 1 :]
+    kickoff = [e for e in after if e.get("inject") == "narrator#1"]
+    assert len(kickoff) == 1 and kickoff[0]["text"].startswith("SIMULATION GOAL: " + GOAL)
+    assert kickoff[0]["stop_event_set"] is True  # the run was already stopping when the kickoff landed
+    assert [e for e in t["events"] if e.get("inject") == "narrator#1"] == kickoff  # nothing reached it before
+    assert t["narrator_calls"] == []  # the narrator never planned on the kickoff
+    assert t["result"]["finish_reason"] == "completed"
+    assert t["bridge_finish_calls"] == [{}]
+
+
 # ── #1260: the narrator's tool descriptions are the narrator's alone ──────────
 #
 # Until #1260, §5 of ``start_simulation_mode`` wrote the narrator's tool descriptions into the process-global
@@ -302,7 +341,8 @@ def test_the_golden_is_non_vacuous() -> None:
         assert {"<STAMP>/report.json", "<STAMP>/actions.jsonl"} <= set(t["sim_reports_files"]), name
         assert t["report_json_emitted"] is True, name
         prov = t["report"]["provenance"]
-        assert {k for k, v in prov.items() if v == _MASKED} == set(_PROVENANCE_MASKED), name
+        path_bound = set(_PROVENANCE_PATH_BOUND) if prov["scenario_inputs"] else set()
+        assert {k for k, v in prov.items() if v == _MASKED} == set(_PROVENANCE_MASKED) | path_bound, name
         assert prov["serving_captured"] is True and prov["configured_n_ctx_source"] == "default", name
         assert "orchestrator/nac.json" in t["data_home_files"], name  # written only by the narrator's shutdown()
         assert "plan-logger" in t["threads_left_alive"]["added"], name  # #1263's plan writers (its DN part is fixed)

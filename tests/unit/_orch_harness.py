@@ -9,7 +9,7 @@ covers the AUT build, the narrator pipeline, the ``sim.aut`` thread, campaign di
 reader, the stall detector, the narrator loop on the calling thread, teardown, the report and the
 ``SimulationResult``. Nothing in ``src/`` is stubbed except the LLM. ``FakeRouter`` is patched in at
 ``maxim.runtime.lane_backends.build_primary_router``, the seam ``test_api_expansion.py`` already
-uses. Three arms (owner decision (a), 2026-10-13):
+uses. The slice-0 arms (owner decision (a), 2026-10-13):
 
   1. ``precampaign``: three ``pre_campaign_turns`` and no narrator LLM. The runner ends the run.
   2. ``narrator``: the fake narrator calls ``send_message`` twice and then ``finish_simulation``.
@@ -19,6 +19,13 @@ uses. Three arms (owner decision (a), 2026-10-13):
   3. ``stdin``: operator commands fed through a queue-backed ``sys.stdin``: ``/status``, ``/pause``,
      free text while paused (which goes to the AUT), ``/resume``, free text while running (which
      goes to the narrator as guidance), and ``/cancel``.
+
+Then the arms the 1.4.0 gate requires before the slices that move their code (``scripts/release_gates.json``
+``arms``; roadmap_1_3_x.md §1.3.5), added 2026-10-24 without changing the three above:
+
+  4. ``generative``: ``generative=True`` with a one-phase, two-turn arc (``_GENERATIVE_ARC``). The generative
+     campaign's own narrator (``simulation/narrator.py``, the ``story_*`` roles) drives both turns on the calling
+     thread; its ``_finish_runner`` sets ``stop_event``, and only then is the narrator kickoff injected (§9).
 
 The TTY read loops (the raw-mode stdin reader and the post-sim raw-mode "new goal" prompt) are
 deliberately left uncharacterized (owner decision (e)). Every arm runs non-interactive
@@ -61,8 +68,10 @@ threads and its real 3 s settle, so the trace records only CAUSALLY ORDERED fact
 It never records a cross-thread interleaving or a stall-detector injection. The arms stay shorter
 than the detector's first diversity checkpoint (3 turns) and its idle threshold (30 s).
 
-CAUSAL SYNCHRONISATION. Two class-level hooks on ``SimulationBridge``; class attributes hold
-wherever a slice moves the CALLER:
+CAUSAL SYNCHRONISATION. Class-level hooks on ``SimulationBridge`` (and, for the ``events`` arms,
+``ConversationalSource.inject_cli`` and the module attribute ``orchestrator._finish_runner``); class
+attributes hold wherever a slice moves the CALLER, and a slice that moves ``_finish_runner`` must keep
+calling it through ``orchestrator`` or extend the patch list:
 
   - ``send_and_wait``: records the turn, then runs the arm's after-turn step ON THE CALLING THREAD,
     before the turn returns to its caller. The stdin arm uses it to feed operator lines and to wait
@@ -152,10 +161,26 @@ _PRECAMPAIGN_TURNS: list[dict[str, Any]] = [
     {"text": "A bell rings twice.", "phase": "middle", "salience": 0.9},
     {"text": "The room goes dark.", "phase": "end", "novelty": 0.5},
 ]
+# The generative arm's arc (written into the work dir, so its path scrubs to ``<WORK>``): one phase of two turns, so
+# the narrator's third ``decide`` exhausts the arc without an LLM call and the campaign completes.
+_GENERATIVE_ARC = """\
+name: orch_golden_arc
+description: two short probes
+phases:
+  - name: probe
+    turns: [2, 2]
+    instruction: Ask the agent one short question.
+"""
+_STORY_SCENES = ("A stranger asks your name.", "The stranger asks your favourite colour.")
+# Per arm: ``max_turns``; the ``start_simulation_mode`` keywords it adds (``kwargs``; ``arc_yaml`` is filled in by
+# ``run_arm``); and ``events``: record every ``ConversationalSource.inject_cli`` and every campaign-runner finish
+# (``orchestrator._finish_runner``), in call order (the trace's ``events`` key). Only the arms added after slice 0
+# set it, so the slice-0 arms' traces stay byte-identical.
 ARMS: dict[str, dict[str, Any]] = {
     "precampaign": {"max_turns": 10, "pre_campaign_turns": _PRECAMPAIGN_TURNS},
     "narrator": {"max_turns": 10, "aut_model": "orch-golden-aut"},
     "stdin": {"max_turns": 10},
+    "generative": {"max_turns": 10, "kwargs": {"generative": True}, "arc": _GENERATIVE_ARC, "events": True},
 }
 # The report writers the run calls, in order (a removed or reordered save shows even when a later
 # save of the same file masks it on disk).
@@ -219,6 +244,8 @@ class FakeRouter:
             "fear": [],
             "roundup": [],
             "manifest": [],
+            "story_decide": [],
+            "story_generate": [],
         }
         self.unsorted: list[str] = []
         self.prompts: dict[str, list[str]] = {role: [] for role in self.calls}  # raw, for RUN_SIDE only
@@ -245,6 +272,11 @@ class FakeRouter:
             roles.append("fear")
         if "List the entities:" in prompt and '"entities"' in prompt:
             roles.append("manifest")
+        # The generative campaign's narrator (``simulation/narrator.py``): its decision and generation calls.
+        if prompt.startswith("You are the narrative director for a cognitive agent simulation."):
+            roles.append("story_decide")
+        if prompt.startswith("You are a vivid, immersive narrator."):
+            roles.append("story_generate")
         if prompt.startswith("TOOL_PROMPT|You just executed "):
             m = _TOOL_LIST.search(prompt)
             roster = m.group(1) if m else ""
@@ -318,6 +350,13 @@ class FakeRouter:
     def _answer_manifest(self, call: dict[str, Any]) -> dict[str, Any]:
         return {"entities": []}
 
+    def _answer_story_decide(self, call: dict[str, Any]) -> dict[str, Any]:
+        return {"phase": "probe", "scene_type": "question", "notes": "ask one short question", "done": False}
+
+    def _answer_story_generate(self, call: dict[str, Any]) -> dict[str, Any]:
+        n = len(self.calls["story_generate"])  # this call is appended after it is answered
+        return {"narrative": _STORY_SCENES[n] if n < len(_STORY_SCENES) else "unscripted scene"}
+
 
 class _RouterView:
     """One ``build_primary_router`` build: the shared ``FakeRouter`` under that build's own ``call_serial``
@@ -353,6 +392,9 @@ def _describe(prompt: str) -> dict[str, Any]:
     if prompt.startswith("TOOL_PROMPT|"):
         req = _USER_REQUEST.search(prompt)
         return {"kind": "plan", "request": (req.group(1) if req else "")[:120].lower()}
+    if prompt.startswith(("You are the narrative director", "You are a vivid, immersive narrator")):
+        # The story narrator's prompts: what it was asked is the closing user part, after the system text.
+        return {"kind": "direct", "request": prompt.rstrip().rsplit("\n", 1)[-1][:120]}
     return {"kind": "direct", "request": prompt[:80]}
 
 
@@ -412,6 +454,7 @@ _TMP_SUFFIX = re.compile(r"(sim_agent_<STAMP>_)[A-Za-z0-9_]{8}")
 
 def _scrub(text: str, work: Path) -> str:
     text = text.replace(str(work.resolve()), "<WORK>").replace(str(work), "<WORK>")
+    text = text.replace(str(REPO_ROOT), "<REPO>")  # a spec file read from the checkout (the imagination arm)
     text = _STAMP.sub("<STAMP>", text)
     text = _DASH_STAMP.sub("<STAMP>", text)
     text = _TMP_SUFFIX.sub(r"\1<RAND>", text)
@@ -535,6 +578,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     from maxim.models.language.cancellation import reset_shutdown
     from maxim.similarity import ec as ec_mod
     from maxim.simulation import bridge as bridge_mod
+    from maxim.simulation import conversational_source as conv_mod
     from maxim.simulation import orchestrator as orch
     from maxim.simulation import report as report_mod
     from maxim.simulation import sim_logger as SL
@@ -565,7 +609,13 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     stdin = QueueStdin() if arm in ("narrator", "stdin") else io.StringIO("")
     counter = iter(range(1, 1_000_000))
     Bridge = bridge_mod.SimulationBridge
-    orig_send, orig_finish = Bridge.send_and_wait, Bridge.finish
+    orig_send, orig_finish, orig_bridge_init = Bridge.send_and_wait, Bridge.finish, Bridge.__init__
+    Source = conv_mod.ConversationalSource
+    orig_inject = Source.inject_cli
+    bridges: list[Any] = []  # every SimulationBridge the run built (a /new re-entry builds a second)
+    events: list[dict[str, Any]] = []  # ``inject_cli`` calls and campaign-runner finishes, in call order
+    run_stops: list[threading.Event] = []  # the stop_event each ``_finish_runner`` was handed
+    narrator_sources: list[int] = []  # id() of each non-bridge source, in first-injection order
     orig_status, orig_summary = SL.display_status, SL.display_summary
 
     def _feed(line: str) -> None:
@@ -609,6 +659,42 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
                     _wait_aut_settled(self, before)
                     turns[-1]["paused_aut_actions"] = [_action_view(a) for a in self.action_sink.actions[before:]]
         return result
+
+    def bridge_init(self: Any, *args: Any, **kwargs: Any) -> None:
+        orig_bridge_init(self, *args, **kwargs)
+        bridges.append(self)
+
+    def inject_cli(self: Any, text: str, *args: Any, **kwargs: Any) -> None:
+        """Every percept injected into a ``ConversationalSource``: which source (the AUT's, owned by a bridge, or a
+        narrator's), the injecting thread, and the text. Recorded in call order; an arm that records them makes that
+        order causal (module docstring, CAUSAL SYNCHRONISATION)."""
+        bridge_index = next((i for i, b in enumerate(bridges) if b.percept_source is self), None)
+        if bridge_index is not None:
+            source = f"aut#{bridge_index + 1}"
+        else:
+            if id(self) not in narrator_sources:
+                narrator_sources.append(id(self))
+            source = f"narrator#{narrator_sources.index(id(self)) + 1}"
+        event = {"inject": source, "thread": threading.current_thread().name, "text": text[:240]}
+        if run_stops:  # a campaign runner already ended: was the run already stopping when this landed?
+            event["stop_event_set"] = run_stops[-1].is_set()
+        events.append(event)
+        orig_inject(self, text, *args, **kwargs)
+
+    orig_finish_runner = orch._finish_runner
+
+    def finish_runner(bridge: Any, stop_event: threading.Event, runner: str, outcome: Any, **kwargs: Any) -> None:
+        """A campaign runner returned (``orchestrator._finish_runner``): recorded with the stop it handed over."""
+        orig_finish_runner(bridge, stop_event, runner, outcome, **kwargs)
+        run_stops.append(stop_event)
+        events.append(
+            {
+                "finish_runner": runner,
+                "thread": threading.current_thread().name,
+                "stop_event_set": stop_event.is_set(),
+                "finish_context": dict(bridge.finish_context or {}),
+            }
+        )
 
     def finish(self: Any) -> None:
         finish_calls.append(dict(self.finish_context))  # the finish_context each finish() saw
@@ -672,6 +758,9 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     patches: list[tuple[Any, str, Any]] = [
         (Bridge, "send_and_wait", send_and_wait),
         (Bridge, "finish", finish),
+        (Bridge, "__init__", bridge_init),
+        (Source, "inject_cli", inject_cli),
+        (orch, "_finish_runner", finish_runner),
         (SL, "display_status", display_status),
         (SL, "display_summary", display_summary),
         (ec_mod, "uuid4", lambda: uuid.UUID(int=next(counter))),
@@ -705,6 +794,10 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     reset_shutdown()
     for obj, name, replacement in patches:
         setattr(obj, name, replacement)
+    kwargs = copy.deepcopy(spec.get("kwargs", {}))
+    if "arc" in spec:
+        (work / "arc.yaml").write_text(spec["arc"])
+        kwargs["arc_yaml"] = str(work / "arc.yaml")
     threads_before = threading.enumerate()
     t0 = time.monotonic()
     try:
@@ -714,6 +807,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
             sandbox_backend="tmpdir",
             pre_campaign_turns=copy.deepcopy(spec.get("pre_campaign_turns")),
             aut_model=spec.get("aut_model"),
+            **kwargs,
         )
         elapsed = time.monotonic() - t0
         stragglers = _join_sim_threads()
@@ -747,6 +841,8 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
             "threads_left_alive": threads_left,
             "maxim_env_after": env_after,
         }
+        if spec.get("events"):
+            trace["events"] = events
         canon = _canon(_label_serials(trace, builds), work)
         canon["_elapsed_s"] = round(elapsed, 1)  # dropped by the test before comparing (timing only)
         return canon
@@ -1159,10 +1255,18 @@ _PROVENANCE_MASKED = {
 _MASKED = "<MASKED>"
 
 
+# Provenance keys masked only when the run READ scenario files (``provenance.scenario_inputs`` non-empty), with the
+# reason. Measured 2026-10-24 (generative arm, two identical runs): the hash covers each input's ABSOLUTE path, and
+# the arc file lives in the per-run work dir. The inputs themselves stay pinned (path scrubbed, sha256 by value).
+_PROVENANCE_PATH_BOUND = {
+    "scenario_sha256": "hashes goal + scenario_inputs, whose paths are absolute (the work dir, the checkout)",
+}
+
+
 def _report_view(path: Path) -> dict[str, Any]:
     data = json.loads(path.read_text())
     view = {k: v for k, v in data.items() if k not in _REPORT_DROPPED and k != "provenance"}
-    view["provenance"] = {
-        k: (_MASKED if k in _PROVENANCE_MASKED else v) for k, v in (data.get("provenance") or {}).items()
-    }
+    prov = data.get("provenance") or {}
+    masked = set(_PROVENANCE_MASKED) | (set(_PROVENANCE_PATH_BOUND) if prov.get("scenario_inputs") else set())
+    view["provenance"] = {k: (_MASKED if k in masked else v) for k, v in prov.items()}
     return view
