@@ -226,3 +226,51 @@ These become follow-up issues:
   - ATL names in "Related concepts";
   - PromptBuilder's Dormant `transcript[:80]`.
 - Talk's `CWD Context` listing.
+
+## 9. Round 2 folds (v2 verdict SOUND WITH CONDITIONS; these supersede the text above where they differ)
+
+- **N1 (D5, faithfully).**
+  - `user_input=True` passes before the refractory and energy checks: "always" means always.
+  - The innate-prior branch neither calls `record_escalation` nor moves `_last_pass_tick`, so an unscored pass never
+    trains the adaptive threshold.
+- **N2: user input comes from the percept's SOURCE, never from which field carries the text.**
+  - Text arriving with a cli or voice source is user input.
+  - Sim narration that `sim_adapter` puts in `cli_input` is not, so the gate is not disabled for sims.
+  - The classification lives in `thought_gate.py` (one function), and the call site passes the observation's
+    source.
+- **N3: what rule 2 may delete is bounded.**
+  - Per-item and per-section drops stay. They are where cut recalled text is removed, inside one item or one
+    section.
+  - The router backstop moves to `LLMRouter._complete_text`, so every router path is covered, `route()` included.
+    It never deletes and never crosses `\x1e` or the system message. It neutralizes stray markers in place (the
+    `_FRAME_TOKEN` defang), and counts and logs each one.
+  - Raw user-facing inputs are defanged where PromptBuilder renders them: `=== User Request ===`, deferred inputs
+    and the follow-up `Original request`. A pasted closer then cannot cut a section.
+  - The claim is corrected to "every LLMRouter call".
+  - `agents/llm_agent.py::LLMAgent.generate` callers are out of scope: the narrator, `simulation_generator`,
+    interactive continuation and the `tool_pain_bridge` reflection. They never carry recalled text, and the
+    narrator's raw view of Maxim's reply is the existing LLM-echo class.
+- **N4.** `TOOL_OUTPUT_RULE` is added when a framed section is added (`PromptBudgeter.add`), so `_fit` budgets it.
+- **N5.**
+  - The executed tool's `untrusted_output` is stamped onto the `ActionFollowup` at dispatch, after alias
+    resolution, so `reflect`/`research` → `think` carry it.
+  - It is set on `think`, `examine` and `memory_recall`.
+  - The default stays `False`, so other tools keep their current label. That is the #823 behaviour, and only the
+    label differs.
+  - The carryover and context-pool `[:100]` cuts also fall under rule 2's per-item drop, so their safety does not
+    depend on header length.
+- **N6.**
+  - `content_text_tokens` removes whole frame regions (`_FRAMED_REGION`, then any residual markers), because every
+    frame in a record is derived text.
+  - It skips metadata keys (`source`, `modality`, `has_maxim`, `detections_count`, `_skill_name`, `bio_response`).
+  - **The self-recall skip** applies in `_add_memory` on every path. It is keyed on `EnrichmentContext.user_input`
+    (new; the turn's user text, set at the agent_loop call site; empty in deliberation and ThinkTool calls): a
+    record whose input text normalizes to it is skipped.
+- **N7 (rule T).** `run_agentic_loop` is pinned at 2,411 lines. The touched gate block (the `should_think` call and
+  its decision bookkeeping) moves into `thought_gate.py::gate_percept(...)`, so the function shrinks by more than
+  the lines touched. No touch exemption is needed.
+- **NITs:**
+  - N9: the NAc signature tokens drop the namespace segment before the first `:`, and are memoized per signature.
+  - N10: the 24 test call sites of `should_think` add the keyword.
+  - N11: `--goal` text stored raw goes on the F15 follow-up list.
+  - F6: the brief's activation invariant names the known gap in the same commit.
