@@ -178,8 +178,10 @@ operator's installed sentence-transformers; a measurement, not a gate):
 | escape water ↔ flee | 0.568 | bind |
 
 Under the word prior, an aversion learned on `flame_jet` leaks **more** to `water_jet` than to
-`fire_breath`. A consequence-grounded representation has to reverse that ordering; that reversal is
-the falsifiable signature the grounding line tests (GL5).
+`fire_breath`. A consequence-grounded representation has to reverse that ordering. *Amended 2026-10-24:* that
+reversal is no longer the test. Sensed readings and consequences were authored together, so generalisation over
+sensed features alone predicts it (GL1, G13). The jet triad is now a control, and GL5 is an acquired-equivalence
+design with a designed mediating path (G21, G27).
 
 **What #1120 established about the transfer test** (real encoder, 2026-10-07):
 1. The negative controls looked up `atl.recall(name="water")` by exact name and missed `water jet`,
@@ -319,9 +321,10 @@ ones above it):
    trained on experienced pairs, plus narrated pairs at the declared discount (owner decision G6),
    with the Cerebellum watching the body that changed
    rather than the entity that owns the modulator. (Latent forward model, GL4.)
-6. **Concept similarity reads that prediction**, with the word embedding as the prior that experience
-   overrides: the jet ordering inverts, `touch`-on-fire separates from `touch`-on-blanket. (GL4 S4,
-   tested in GL5.)
+6. **A consequence representation carries learned value between items that share consequences**,
+   with the word embedding as the prior that experience overrides: consequence nodes formed from
+   experienced outcomes, a node-keyed learner, and `touch`-on-fire separating from `touch`-on-blanket.
+   (GL4 S4; tested in GL5 as learner state, owner decisions G21 and G27, 2026-10-24.)
 7. **Selection reads it**, as a declared arm, never as a silent default. (GL6.)
 
 The plan that sequences these, with gates, reviews and blast radius per stage, is
@@ -339,3 +342,4 @@ The plan that sequences these, with gates, reviews and blast radius per stage, i
   dispatch on the loop thread (§7); the `thermal_contact` reflex does call `evaluate_failures` (§3);
   GL3 stage IDs prefixed; T1-12 joins the satiation rows (§8); §9 item 5 admits narrated pairs at the
   declared discount.
+- 2026-10-24 (T8 (b) design reviews): the jet reversal is a control, not the GL5 signature; GL5 tests learner state through a designed mediating path (G13 amended by G21, G27).

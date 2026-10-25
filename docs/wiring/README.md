@@ -31,6 +31,16 @@ that generalizes belongs here.
   the generative path; what every `maxim --sim` AUT gets outside the factory (FearGate, imagination steered by NAc
   biases, `examine` recall); the seed, zero-engagement and sign traps. (B4 design review, 2026-10-18.)
 
+- [session-end-seams-per-runtime.md](session-end-seams-per-runtime.md) — there is no single session end: on
+  `maxim --sim` the AUT never reaches `BioStack.on_session_end` (only the narrator's `shutdown()` runs), so a
+  session-end behaviour wired at `AgentInstance.shutdown` passes a caller grep and misses the AUT; name the runtime
+  and the instance, and prove it through the runtime's real teardown (#1449). (T8 (b) design review, 2026-10-24.)
+
+- [provenance-lives-at-the-write.md](provenance-lives-at-the-write.md) — experienced, narrated and apparatus writes
+  share the same body slots with no stored writer, so provenance must be stamped at the write; the body world
+  credits through `record_outcome` and the PainBus subscribers, not `credit_node`; the survival rows' loop is
+  `water_trial.py`, which never sees `LoopRun`. (T8 (b) design review, 2026-10-24.)
+
 - [substrate-learning-channels.md](substrate-learning-channels.md) — the TWO learning channels a
   successful action writes (state-blind tool-success **causal link** vs state-conditioned
   **cluster reward bias**), why they confound behavioural credit-isolation, and how to design a
