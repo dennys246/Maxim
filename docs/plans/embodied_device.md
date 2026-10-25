@@ -137,7 +137,7 @@ prepares for it without deciding it:
   - Session H takes #1438's bounded stop, with #1344, as one mechanism whose deadline the caller sets.
   - #1439 is this plan's step 1.
   - **#1435's interim lifecycle owner:** until `embody()` exists, whoever holds the SDK handle calls
-    `start_playing()` and `disable_wobbling()` once: `MediaLoopMixin` at media start, and a documented call for
+    `disable_wobbling()` and then `start_playing()` once, through `maxim.utils.audio.start_device_player`: `MediaLoopMixin` at media start, and a documented call for
     bare-SDK embedders (pulse's bootstrap). The sink never starts the player; it refuses loudly when the player is
     not started. **The sink normalizes the scale before resampling**, and `response_output`'s own pre-resample goes in
     the same PR, so R6's clip cannot survive the fix.
@@ -148,6 +148,18 @@ Pulse will read `/proc/device-tree/model` on the robot and send it.
 **Pulse's interim owner (2026-10-24):** pulse #57's bootstrap is #1435's interim lifecycle owner for a bare-SDK
 embedder: `start_playing()`, then `disable_wobbling()` once at start, and `stop_playing()` last, pinned by pulse's
 tests. When `embody()` owns this, pulse drops its copy, and a test on each side pins exactly one owner.
+
+**Superseded by #1435's owner decisions (2026-10-24, [speaker_sink_1435.md](speaker_sink_1435.md)):**
+- the sink can only trust a start it recorded, so pulse's bootstrap calls maxim's pair instead of the SDK:
+  `maxim.utils.audio.start_device_player(reachy_mini)` once at start, `stop_device_player(reachy_mini)` last;
+- the order is **`disable_wobbling()` first, then `start_playing()`**, so a pre-existing wobbler is never started;
+  a missing or failing disable means the player is not started;
+- **pulse ships that release first**: 1.3.4 does not publish before it (mechanization backlog M78);
+- a WebRTC (off-robot) handle plays on the robot only once `start_device_player` ran and its send chain has been
+  built, else on local speakers (known gap: the SDK never clears the chain, so after a mid-session peer drop a push is a silent drop reported as played; the device plan's step 3 closes it);
+- #1435's named fence exceptions also cover `embodied_runtime/connection.py` (drop the record before every media
+  close, restart the player after a soft reconnect) and `embodied_runtime/selfy.py` (`Maxim.push_audio_sample`'s
+  fallback).
 
 ## 5. Order
 
@@ -167,6 +179,12 @@ tests. When `embody()` owns this, pulse drops its copy, and a test on each side 
    `voice.ready(PLAYS)`. A device whose output cannot play (WebRTC, the local fallback) never arms spoken pairing and
    shows the paste path; the note to pulse says so. PLAYS is reachable here because #1435's interim owner starts the
    player (§4). Before step 5 it is proven against the SDK-faithful fake.
+   **It absorbs #1435's interim record** (`utils/audio.py::_PLAYERS` and `start_device_player`/`stop_device_player`):
+   the reshaped port holds "started" as its own state, the free sinks (`push_audio_to_device`,
+   `make_device_speak_sink`) become thin callers of it, and no second "started" record is built. #1435 routed
+   `ReachyAudioStream.push_sample` through the free function, the reverse of this direction; step 3 flips it back. A
+   connected WebRTC send chain plays (owner decision 2026-10-24), so "cannot play" above means an unconnected one;
+   PLAYS must also see a peer drop, which #1435's probe cannot (the SDK never clears `_appsrc`).
 4. **`ReachyMiniController.adopt` and `MaximHandle.embody`**, under embodiment.md §1. The single-connection guard and
    **the embodied census** land here.
 5. **Listening**, attached through `embody()`: CaptureManager as the one consumer, the wake word as the first state

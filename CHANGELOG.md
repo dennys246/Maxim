@@ -31,6 +31,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Pulse verified it on a real Reachy (CM4) on 1.3.3. `scripts/console_ui_pin.json` pins tag v0.4.3 at commit
   `c174126`, asset sha256 `cdad1982…b731`.
 
+### Fixed
+
+- **The Reachy speaker tells the truth, at the right speed and scale** ([#1435](https://github.com/dennys246/Maxim/issues/1435),
+  found by maxim-pulse on a real Reachy). Nothing in maxim started the SDK's player, so every robot utterance and
+  the spoken pairing code were dropped while the sink reported success; Piper's 22,050 Hz played at 73% speed on the
+  16,000 Hz device; and the runtime voice's own resample hard-clipped (int16 scale on a float32 device).
+  - New lifecycle calls in `maxim.utils.audio`: `start_device_player(mini)` disables the head wobbler FIRST, then
+    starts the player once and records it; `stop_device_player(mini)` stops it last. The embodied runtime calls
+    them at media start, at media close and after a soft reconnect. **A bare-SDK embedder (pulse's announcer
+    bootstrap) must call them** before `make_device_speak_sink(mini)`; a sink whose player maxim did not start now
+    refuses.
+  - `push_audio_to_device` (and `ReachyAudioStream.push_sample`, `Maxim.push_audio_sample`) returns False with a
+    WARNING when the player is not started or its audio is closed, and never reports the SDK's silent drop as
+    played. On the LOCAL backend it normalizes to float32 in [-1, 1] and resamples to the device's
+    `get_output_audio_samplerate()`. A WebRTC (off-robot) handle plays on the robot once the player was started and
+    its send chain has been built, else on local speakers with one WARNING; an unknown media backend refuses. Known
+    gap: the SDK never clears a WebRTC send chain, so a push after a mid-session peer drop still reports played.
+  - Float audio outside [-1, 1], non-finite audio and integer dtypes other than int16 are refused, not guessed.
+  - The `speak` tool reports `spoken` from what the speaker did, instead of always True; the pairing announcer logs
+    (never the code) when its sink refuses.
+
+### Changed
+
+- **Breaking, for custom speakers ([#1435](https://github.com/dennys246/Maxim/issues/1435)):** `ResponseOutput`'s
+  `speaker_fn` is now called as `speaker_fn(samples, sample_rate=<tts rate>)` and must return whether it played (it
+  no longer pre-resamples to a guessed 16 kHz); a single-argument `speaker_fn` now fails and reports `spoken: False`.
+  `LocalSpeaker` accepts `sample_rate`. `push_audio_to_device` requires `sample_rate`, and the
+  `make_device_speak_sink(...)` sink and `MediaLoopMixin.speak` take it keyword-only, so a caller can no longer fall
+  back to a silent 16 kHz. `ReachyAudioStream.push_sample` resamples from the stream's `output_sample_rate`.
+  **Embedders must call `start_device_player(mini)` before speaking** (see Fixed); maxim-pulse ships that change
+  first, and 1.3.4 does not publish before it (mechanization backlog M78).
+
 ## [1.3.3] - 2026-10-24 — "Release pipeline"
 
 The release-pipeline and pulse-seam release: the fixes maxim-pulse found, the Console's live stream from a clean

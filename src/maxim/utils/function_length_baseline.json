@@ -61,7 +61,7 @@
     {
       "file": "src/maxim/embodied_runtime/media_loop.py",
       "qualname": "MediaLoopMixin.live",
-      "lines": 587
+      "lines": 566
     },
     {
       "file": "src/maxim/embodied_runtime/selfy.py",

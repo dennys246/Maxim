@@ -1,6 +1,6 @@
 # #1435 approach note — the Reachy speaker sink (Session S, 1.3.4)
 
-Status: DRAFT for the adversarial design pass. Decided by the owner (2026-10-24), not re-opened here: the sink never
+Status: ADOPTED 2026-10-24 (adversarial design pass folded below; owner decisions at the end). Built in the #1435 PR. Decided by the owner (2026-10-24), not re-opened here: the sink never
 starts the player; whoever holds the SDK handle starts it once (MediaLoopMixin at media start + a documented call for
 bare-SDK embedders) and disables the wobbler; the sink refuses loudly when not started; it normalizes scale, then
 resamples to `get_output_audio_samplerate()`; `response_output`'s pre-resample and `tools/response.py`'s unconditional
@@ -45,8 +45,10 @@ New in `utils/audio.py` (one module owns the sink and its lifecycle):
 - The sink reads the record for `mini.media`: absent → False + WARNING naming `start_device_player` (rate-limited,
   one per manager, so a stopped player during shutdown does not flood).
 Rejected: (b) — fact 1. (c) ask Pollen — worth filing upstream, cannot gate 1.3.4. A typed `DevicePlayer` token
-passed to the sink instead of `mini` (push the invariant into the type) — cleaner, but breaks
-`make_device_speak_sink(mini)`'s signature that pulse calls; the registry keeps it and still refuses loudly.
+passed to the sink instead of `mini` (push the invariant into the type): the embodied-device plan's step 3 owns that
+type (the reshaped `AudioStream` holding PLAYS), and a token now would be a third API shape to deprecate. (The
+draft's reason, keeping `make_device_speak_sink(mini)` unchanged for pulse, did not hold: pulse changes anyway, Q1.)
+Every path fails loudly meanwhile: False, a WARNING, `spoken: False`.
 
 **D2 — scale, then rate, in one conversion.** `_to_device_float32` becomes strict: int16 → /32768-style scale;
 float input must already be in [-1, 1] (peak > 1.0 + epsilon → refuse, False + WARNING, never guess the scale).
@@ -123,5 +125,68 @@ Q4. `Selfy.push_audio_sample` + `ReachyAudioStream.push_sample` have no `src/` c
 - Q2 order: DISABLE the wobbler, THEN start_playing; absent/raising disable → never start (False + WARNING); repeat
   starts re-issue the disable.
 - Q3 fence: named exception for embodied_runtime/connection.py — pop on close, restart after a soft reconnect.
-- Q4 table: LOCAL-but-not-started → refuse (False + WARNING); WebRTC/non-LOCAL → local speakers + one WARNING
-  (spoken = played locally); MAXIM_TTS_LOCAL and mini=None → local.
+- Q4 (the decision table; the draft's Q4 about the caller-less sinks was already answered by "cover both sinks"):
+  LOCAL-but-not-started → refuse (False + WARNING); WebRTC/non-LOCAL → local speakers + one WARNING (spoken = played
+  locally); MAXIM_TTS_LOCAL and mini=None → local. **The WebRTC row is REVISED below.**
+
+## The three-lens review round (2026-10-24, on staged tree 6c05039e) and its folds
+No BLOCKER from Executor, Architecture or Wire integrity. Owner decisions taken from it:
+- **WebRTC row revised** (Wire integrity SF-1: at SDK 1.8.3 a connected WebRTC push reaches the robot, so the
+  draft's "WebRTC cannot play" was wrong): the robot when `start_device_player` ran AND the send chain has been built,
+  read through one typed private probe (`_webrtc_send_chain_ready`: `media.audio._appsrc is not None`) pinned by a
+  contract test against the installed SDK; otherwise local speakers with one WARNING per state. `no_media` → local;
+  any other or missing backend → refuse (SF-4), never a silent re-route. `start_device_player` runs for WebRTC too:
+  its `disable_wobbling()` also turns off the daemon-side wobbler that incoming WebRTC audio drives.
+- **`selfy.py` named fence exception granted.**
+- D1's rejection of option (b) stands for LOCAL (`_appsrc` exists before `start_playing`); for WebRTC `_appsrc` is
+  the only signal there is, read in one place. The delta round (Architecture SF-1) found it means "built", not
+  "connected": the SDK never clears it, so **after a mid-session peer drop a WebRTC push is a silent drop reported as
+  played. Known gap, recorded, not closable without more private state**; the device plan's step 3 (PLAYS) owns it,
+  and the contract test fails if the SDK starts clearing `_appsrc`, forcing the docs to be revisited.
+
+## The delta round (2026-10-24, staged tree 42e4ea56 against 6c05039e)
+No BLOCKER. Wire integrity: no further round owed. Folds:
+- Executor SF-1: `start_device_player` probes `weakref.ref(media)` BEFORE `start_playing` (the old guard was dead:
+  `WeakKeyDictionary.__contains__` returns False instead of raising, so the player started and then the record raised).
+- Executor N-2/N-6: the re-check under the lock compares the recorded rate and checks closed audio again.
+- Executor N-3: a non-numeric `sample_rate` is refused, not raised.
+- Executor N-4/N-5 and Wire N-1..N-5: the "never started but chain built" WebRTC row, the defensive lines, the
+  `selfy` rate contract, and "one WARNING per manager until its next start" (not "per state").
+- Architecture SF-1/SF-2, N-1/N-2: "built", not "connected", everywhere, with the gap above; the SDK contract test
+  skips in CI until the R2 reachy cell exists (M69), so it is a local check today; the brief's refusal is LOCAL's.
+- Architecture SF-3: the release-guide line for M78 is `docs/publication_guide.md`'s (the process session's file);
+  handed off as a stub in the PR description.
+
+Folds:
+- Executor SF1: `on_failure` (which may soft-reconnect under the runtime's media lock) runs after the record lock is
+  released; the conversion runs outside it, and the record is re-checked under it before the push (F14).
+- Executor SF5 / Architecture SF4 (corrects F7): `ReachyAudioStream.push_sample` resamples from the rate the stream
+  advertises (`output_sample_rate`) to the recorded device rate; F7's "checked and refused" was never built.
+- Architecture SF5: `sample_rate` is required on `push_audio_to_device`, and keyword-only on the
+  `make_device_speak_sink` sink and `MediaLoopMixin.speak` (a silent 16 kHz default replayed #1435).
+- Architecture SF7: the source scan also forbids a direct `.push_audio_sample(` outside `utils/audio.py`.
+- Architecture SF6: a contract test binds the fake's assumptions and the WebRTC probe to the installed SDK.
+- Wire SF-3 / Executor SF6: the `make_device_speak_sink` and `models/audio/tts.py` docstrings show the start/stop pair.
+- Wire N-1: the pairing announcer logs (type-free, never the code) when the sink returns False.
+- Executor SF2–SF4: tests for the lock (a stop waits for an in-flight push; a stop during the conversion refuses),
+  stop-before-close on reconnect, and every refusal row of the lifecycle calls.
+- Release gate (Architecture SF1, Wire SF-2): mechanization backlog **M78**; the roadmap §1.3.4 line is owed when
+  PR #1448 (which rewrites that section) merges.
+- Not folded, recorded: N-3 (`live` starts the player before its `try:`; the CLI's `shutdown()` covers it, and the
+  record stays true); N-5 (`speak` returns `success=True` with nothing delivered when `also_print=False`; it
+  predates this, Session V's file); `ReachyMini.cancel_move()` stops the player behind the record (no maxim caller;
+  noted in the `_PLAYERS` comment); one owner per device is guarded only at `embody()` (device plan §4).
+- **Deletion probes:** 27 mechanisms, each deleted on its own in place and restored; all 27 turn a test red (the
+  probe list is in the PR description).
+
+## Built (2026-10-24), and what stays open
+- `utils/audio.py`: `start_device_player`, `stop_device_player`, `push_to_started_player` (resamples from the given
+  `sample_rate`), the strict `_to_device_float32`, and the decision table in `push_audio_to_device`.
+- Callers: `MediaLoopMixin._start_media_audio` (extracted from `live`, before `_start_agentic_runtime`; `live`'s pin
+  587 → 566), `ConnectionMixin._release_media` and `_soft_reconnect` (pop before close, restart after), and
+  `ReachyAudioStream.push_sample` plus `Maxim.push_audio_sample`'s fallback (`selfy.py`; its named fence exception
+  was granted in the review round).
+- F10: `ResponseOutput.output_response` keeps returning the saved file's path (its callers use it); a refused
+  utterance there logs a WARNING. The `speak` tool, the one caller that reports speech, returns the truth.
+- Open: the R2 reachy cell's device smoke (audio reached a STARTED player at the device rate, floor and latest) is
+  #1435's hardware check; R1's in-memory "has spoken" stays the readiness signal until the device plan's step 3.
