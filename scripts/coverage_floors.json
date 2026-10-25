@@ -3,8 +3,8 @@
   "band": 1.0,
   "min_package_statements": 200,
   "overall": {
-    "percent": 69.0,
-    "missing": 29255
+    "percent": 70.1,
+    "missing": 28635
   },
   "packages": {
     "maxim/<root>": {
@@ -52,8 +52,8 @@
       "missing": 494
     },
     "maxim/embodied_runtime": {
-      "percent": 31.7,
-      "missing": 2046
+      "percent": 34.0,
+      "missing": 1991
     },
     "maxim/embodiment": {
       "percent": 84.7,
@@ -164,8 +164,8 @@
       "missing": 190
     },
     "maxim/utils": {
-      "percent": 61.3,
-      "missing": 2188
+      "percent": 63.6,
+      "missing": 2135
     }
   },
   "files": {
