@@ -197,7 +197,7 @@ def pass_table_problems(table, where: str, *, at_base: bool = False) -> list[str
 
 
 def obliges_problem(entry: dict) -> str | None:
-    """`obliges` (BF2, docs/plans/baseline_floors_b1_evidence.md §3): read by scripts/lint_bf2_obligation.py from the
+    """`obliges` (BF2, docs/plans/archive/baseline_floors_b1_evidence.md §3): read by scripts/lint_bf2_obligation.py from the
     MERGE-BASE table, so a PR cannot loosen its own obligation. Shape: {row: one of the entry's rows, values: the
     non-empty obliging verdict values (each a value the entry's targets list), clears: the clearing values}."""
     ob = entry.get("obliges")

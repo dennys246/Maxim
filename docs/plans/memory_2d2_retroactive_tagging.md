@@ -1,5 +1,7 @@
 # Memory strength 2d-2 — retroactive tagging (design v2)
 
+> **SHIPPED (2026-10-24 plans archive; it stays at this path because `src/` or the code's docs cite it):** built 2026-09-25; its rule lives in docs/agents/bio-memory.md, and the leftovers in deferred/retro_tagging_extensions.md.
+
 > **DECIDED 2026-09-25 (owner) — design v2; BUILT 2026-09-25** (two build findings folded below,
 > §Build notes). The second slice of memory-strength
 > Phase 2's look-back ([memory_strength_and_forgetting.md](memory_strength_and_forgetting.md) decision

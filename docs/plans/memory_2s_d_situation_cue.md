@@ -1,5 +1,7 @@
 # Memory strength 2S-d — the situation cue (design)
 
+> **SHIPPED (2026-10-24 plans archive; it stays at this path because `src/` or the code's docs cite it):** built; its rule lives in docs/agents/bio-memory.md, the leftovers in deferred/situation_cue_fallback.md, and 2S-e (parked, #900) in memory_strength_and_forgetting.md.
+
 > **DECIDED 2026-09-25 (owner) — design v2, BUILT.** v1 had one design review (bio-fidelity +
 > wiring: no DO-NOT-BUILD, six SHOULD-FIX); the owner changed two decisions on it (recall only, a
 > minimum match) and the rest were folded — §Review record. Phase 2S-d of

@@ -1,5 +1,7 @@
 # The agent's internet toggle lowers its own session only (#1345): approach note
 
+> **ARCHIVED (2026-10-24 plans archive):** #1345 shipped (PR #1401, 2026-10-20). The rule lives in docs/agents/runtime-tools.md.
+
 **Status:** approach note for the adversarial design pass (gate rule). Session H, 1.3.3. Owner decision 2026-10-19 (#1345's direction, strict option): the agent may lower internet access for its own session only, in memory, never persisted, and may not raise it back.
 
 ## The defect

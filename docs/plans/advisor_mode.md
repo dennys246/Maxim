@@ -7,6 +7,11 @@ day. Two three-lens review rounds have been folded in.
 **Owner decisions AD1–AD9 were made 2026-10-17:** all as recommended, with AD2 reframed as the atonia gate. AD7, the
 cut, was settled the same day: **the atonia gate ships as its own patch, 1.3.4**, split out of 1.3.3.
 
+> **Renumbered 2026-10-24 (owner decision):** 1.3.4 now ships the robot and recall fixes. The gate keeps its own clock
+> and takes the **next free patch number** when it is done. Where this document says "1.3.4", read "the gate's
+> release". Nothing else in the plan changes: its scope, decisions and exit are as written
+> ([roadmap_1_3_x.md](roadmap_1_3_x.md) §The atonia gate).
+
 Each gate item gets an approach note and an adversarial design pass before code (CLAUDE.md "Faster without lowering
 the bar", item 1).
 
