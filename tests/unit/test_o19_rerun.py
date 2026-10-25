@@ -1693,15 +1693,49 @@ def _random_store(rng, n: int) -> list[dict]:
     return out
 
 
+def _executed_ranker():
+    """Exp 63's executed ranker (52653848), vendored at ``tests/fixtures/exp63/executed_ranker.py``."""
+    import importlib.util
+
+    path = REPO / "tests" / "fixtures" / "exp63" / "executed_ranker.py"
+    spec = importlib.util.spec_from_file_location("exp63_executed_ranker", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_vendored_ranker_is_the_executed_commits() -> None:
+    """The vendored function is ``_rank_by_relevance`` byte for byte at the executed commit (where history exists)."""
+    import subprocess
+
+    module = _executed_ranker()
+    try:
+        src = subprocess.run(
+            ["git", "show", f"{module.EXECUTED_COMMIT}:src/maxim/memory/hippocampus_retrieval.py"],
+            cwd=REPO,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        pytest.skip("the executed commit is not in this clone's history")
+    function = src[src.index("def _rank_by_relevance(") : src.index("\ndef _memory_summary(")].rstrip()
+    vendored = (REPO / "tests" / "fixtures" / "exp63" / "executed_ranker.py").read_text()
+    assert vendored[vendored.index("def _rank_by_relevance(") :].rstrip() == function
+
+
 def test_the_frozen_ranker_is_the_shipped_ranker() -> None:
-    """The judge's frozen copy, pinned BEHAVIOURALLY to ``hippocampus_retrieval._rank_by_relevance`` (over records
-    rebuilt by the store's own ``from_dict``): the same order for the same input order, exact ties included, and
-    every shipped output is a linearisation of the judge's tie groups. When #1064 changes the shipped ranker, this
-    pin is re-pointed at the executed commit's ranker (``git show``), never deleted."""
+    """The judge's frozen copy, pinned BEHAVIOURALLY to the ranker Exp 63 EXECUTED (over records rebuilt by the
+    store's own ``from_dict``): the same order for the same input order, exact ties included, and every executed
+    output is a linearisation of the judge's tie groups. Re-pointed 2026-10-24 (Session R, #1064) from the shipped
+    ``hippocampus_retrieval._rank_by_relevance``, which #1064 changed, to the executed commit's (52653848, vendored);
+    never deleted. The judge re-judges the committed evidence, so it must agree with the code that produced it."""
     import random
 
-    from maxim.memory.hippocampus_retrieval import _rank_by_relevance
     from maxim.memory.types import CompressedMemory, EpisodicMemory
+
+    _rank_by_relevance = _executed_ranker()._rank_by_relevance
 
     def load(d):
         return CompressedMemory.from_dict(d) if d.get("_compressed", False) else EpisodicMemory.from_dict(d)
@@ -1917,9 +1951,11 @@ def test_exp63_carried_never_leave_the_top3_in_the_pass_mock(exp63_phases) -> No
 
 
 def test_the_frozen_ranker_caps_observation_text_at_50_words() -> None:
-    """E1: a query word that appears only after word 50 of the observation text does not score (both rankers)."""
-    from maxim.memory.hippocampus_retrieval import _rank_by_relevance
+    """E1: a query word that appears only after word 50 of the observation text does not score (the judge and the
+    ranker Exp 63 executed; re-pointed with the pin above, Session R #1064)."""
     from maxim.memory.types import EpisodicMemory, Perception
+
+    _rank_by_relevance = _executed_ranker()._rank_by_relevance
 
     filler = " ".join(f"w{i}" for i in range(50))
     late = EpisodicMemory(id="late", timestamp=2.0, perception=Perception(observations={"text": f"{filler} guard"}))

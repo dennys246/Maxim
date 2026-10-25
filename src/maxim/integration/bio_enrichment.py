@@ -189,6 +189,7 @@ class BioEnrichmentPipeline:
         context: EnrichmentContext | None = None,
         bypass_gate: bool = False,
         working_memory: Any | None = None,
+        evaluate_reflexes: bool = True,
     ) -> EnrichmentResult | None:
         """Enrich text with bio-system associations.
 
@@ -205,6 +206,11 @@ class BioEnrichmentPipeline:
                 result.  This is the PFC's short-term/working-memory
                 retrieval path — even in a fresh session, the agent's
                 recent actions inform the next decision.
+            evaluate_reflexes: Run the reflex registry on the text (the body
+                responds before the mind decides). ``False`` for a recall-only
+                enrichment: the loop's addressed input that the PFC gate
+                rejected (D5) is recalled for, but its reflexes stay behind the
+                gate until #1178's L5 fix moves them.
 
         Returns:
             EnrichmentResult or None if below threshold.
@@ -299,7 +305,9 @@ class BioEnrichmentPipeline:
         # mind decides.  Predictions are passed in (not re-queried) for
         # pre-emption suppression.
         latent_affordance_strs: list[str] = []
-        reflexes_fired = self._evaluate_reflexes(text, tuple(predictions), latent_affordance_strs)
+        reflexes_fired = (
+            self._evaluate_reflexes(text, tuple(predictions), latent_affordance_strs) if evaluate_reflexes else ()
+        )
 
         # Merge latent affordances into affordances (reflex-triggered
         # motor programs the agent can take — "dodge", "block", etc.)
@@ -697,7 +705,7 @@ class BioEnrichmentPipeline:
             if mem.id in seen_ids:
                 return
             seen_ids.add(mem.id)
-            if own_words and normalize_tokens(getattr(mem, "input_text", "") or "") == own_words:
+            if own_words and normalize_tokens(_input_text(mem)) == own_words:
                 return  # this turn's own capture, stored before the query ran
             summary = self._summarize_episode(mem)
             valence = getattr(mem, "valence", None)
@@ -1025,7 +1033,7 @@ class BioEnrichmentPipeline:
         goal = mem.goal or ""
         if goal:
             parts.append(f"(goal: {goal[:40]})")
-        heard = _bounded_text(getattr(mem, "input_text", "") or "", _RECALLED_TEXT_MAX_CHARS)
+        heard = _bounded_text(_input_text(mem), _RECALLED_TEXT_MAX_CHARS)
         if heard:
             parts.append(f"earlier input: {_frame_recalled('recalled_input', heard)}")
         # Outcome
@@ -1051,6 +1059,13 @@ class BioEnrichmentPipeline:
 # enrichment section's budget.
 _RECALLED_TEXT_MAX_CHARS = 240
 _RECALLED_RESULT_MAX_CHARS = 80
+
+
+def _input_text(mem: Any) -> str:
+    """What a recalled record heard: both stored kinds answer ``input_text`` as a ``str``; any other reader-side
+    record (a duck-typed one) has heard nothing this pipeline can render."""
+    text = getattr(mem, "input_text", "")
+    return text if isinstance(text, str) else ""
 
 
 def _bounded_text(text: str, limit: int) -> str:

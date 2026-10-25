@@ -588,6 +588,9 @@ _E_SINKS: dict[str, tuple[int | None, str | None]] = {
     # The Default Network controller's own lookups (``LoopController.configure_dn_for_mode`` forwards to them).
     "configure_for_mode": (0, "mode_name"),
     "inhibit_for_tool": (0, "mode_name"),
+    # ``execute_and_learn``'s follow-up builder (Session R): it forwards its mode slot to ``ActionFollowup(mode=)``,
+    # so its callers' mode argument is checked here, at the call site.
+    "_tool_followup": (5, "mode"),
 }
 # The sinks that are FUNCTIONS (the classes, ``ModeInfo`` / ``ActionFollowup`` / ``StructuredContext``, are named in
 # annotations and ``isinstance`` too, so only their calls are checked). A function sink may not be aliased.

@@ -27,7 +27,7 @@ def _rank_by_relevance(
     a record is scored on the fields captures actually write (``content_tokens``: what it heard, its goal, tool,
     objects, rationale and outcome). The score is the fraction of query tokens the record holds. A record holding
     none is NOT returned (owner decision D1, 2026-10-24): before, ~90-95% of a store scored 0 and recency filled
-    every slot, so this path was recency with extra steps. Recency breaks ties among the rest; a query with no
+    every slot, so this path was mostly recency. Recency breaks ties among the rest; a query with no
     content token returns nothing.
     """
     from maxim.memory.text import normalize_tokens

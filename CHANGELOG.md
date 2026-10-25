@@ -23,6 +23,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Talk remembers what you told it in an earlier session** (#1444, #1163, #1064, #1447; found by maxim-pulse on a
+  real Reachy: "My name is Denny and my favourite colour is green", a restart, then "What is Denny's favorite
+  color?" got "I do not have information"). Six defects composed into that one symptom, and each alone fixed
+  nothing:
+  - **Your words were never memorized.** Loop §3 alone published them to memory, and Talk never reached it (a
+    proposal was always pending), so in a measured session 0 of 4 utterances were stored. The user's input is now
+    published once, as it arrives, on every channel (Talk, the CLI, voice and the robot, whose capture manager
+    skipped the old path): `runtime/loop_perception.py::take_user_input`.
+  - **A recalled memory showed only its tool.** What an episode heard now renders, framed as untrusted content
+    (recalled text replayed into later prompts is a stored prompt-injection channel), bounded.
+  - **Stored tool results were their Python repr.** `hippocampus.json` is now `_format_version` 1.1 and stores a
+    result as data; 1.0 files load, their reprs parsed (never evaluated).
+  - **Recall ignored your question** and ranked on a field no capture writes. One tokenizer now keys every memory
+    store (Hippocampus, NAc, ATL), the ranker scores what captures write and returns nothing unrelated, and recall
+    cues on what you just said.
+  - **The first question after a restart was never enriched** (the reflection gate rejected an empty working memory):
+    an addressed input is now always enriched. Multi-cycle deliberation keeps its gate.
+  - **No prompt carries a partial untrusted-content frame**, wherever text is cut, and a user's own text can no longer
+    open or close one.
+
 ### Changed
 
 - **The wheel vendors maxim-pulse Console v0.4.3** (was v0.4.2; contract 0.6.0, unchanged). It is now the newest pulse

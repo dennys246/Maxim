@@ -1271,8 +1271,11 @@ def run_agentic_loop(
                         resolved_entities=_resolved_entity_refs,
                         user_input=_addressed,
                     )
-                    _enrich_result = bio_enrichment_pipeline.enrich(
-                        _percept_text_for_cycle, context=_enrich_ctx, bypass_gate=True
+                    _enrich_result = bio_enrichment_pipeline.enrich(  # recall-only when only addressed (D5)
+                        _percept_text_for_cycle,
+                        context=_enrich_ctx,
+                        bypass_gate=True,
+                        evaluate_reflexes=_pfc_gate_passed,
                     )
                     if _enrich_result is not None:
                         _percept_enrichment_text = bio_enrichment_pipeline.format_thought_response(_enrich_result)

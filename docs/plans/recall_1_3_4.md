@@ -1,7 +1,7 @@
 # Cross-session recall (1.3.4, Session R): approach note
 
-**Status:** DRAFT v2. The adversarial design pass, round 1, is folded (verdict on v1: NOT SOUND on F1). This version
-goes to the delta round.
+**Status:** v4, as built. Design rounds 1 and 2 are folded (§9). §10 records what building found and the owner
+decisions it took.
 
 **Issues:** #1444, #1163, #1064 and #1447, shipped as ONE change, plus the first-turn gate (F1) and the
 tool-result channel (F3).
@@ -274,3 +274,29 @@ These become follow-up issues:
   - N10: the 24 test call sites of `should_think` add the keyword.
   - N11: `--goal` text stored raw goes on the F15 follow-up list.
   - F6: the brief's activation invariant names the known gap in the same commit.
+
+## 10. What building found (2026-10-24), and the owner decisions it took
+
+- **D5, refined (supersedes §1 and N1).** A pass of the PFC gate also starts multi-cycle deliberation, up to 3
+  extra LLM calls. Sims tag narrator and scenario text `cli`, so "a user input always passes" would have multiplied
+  LLM calls in every LLM-primary sim.
+  - Owner decision: **an addressed input is always ENRICHED.** Recall runs on every user turn, the first after a
+    restart included.
+  - **Deliberation keeps its scored gate.** `ThoughtGate` is unchanged.
+  - The call site logs the gate's real decision.
+- **A sixth defect: the user's words were never memorized in Talk.** It is measured and fixed here (owner decision
+  D8, folded into this PR so the red gate flips in place).
+  - §3's `propose_intent` alone published the input to `MemoryAgent`, and the loop skips §3 while a proposal is
+    pending.
+  - The single `state.data["cli_input"]` slot was overwritten by the next input, or erased by a non-text sim
+    percept.
+  - On the robot, the CaptureManager made `propose_intent` return early.
+  - The fix: `loop_perception.py::take_user_input` publishes every real turn from every channel once, at arrival.
+    This is the experience stream's first producer (docs/plans/experience_stream.md, the 1.4 plan, drafted in
+    parallel).
+  - `AgentBus.publish` re-raises capture-contract breaks.
+- **The deeper direction (owner, 2026-10-24).** Memory should be a free-flowing component, not tied to loop state or
+  stages. A four-lens parallel review (write side, read side, bio-faithful, architecture) shaped the 1.4 plan. This
+  PR is phase 0 of it.
+- **Found, not R's, to be filed:** a sixth identical Talk reply is suppressed by a repeat guard, and that turn then
+  times out silently after the full timeout.

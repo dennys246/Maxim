@@ -605,6 +605,8 @@ def _parse_legacy_tool_output_repr(text: str) -> dict[str, Any] | None:
         call = tree.body
         if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == "ToolOutput"):
             return None
+        if call.args or "success" not in {kw.arg for kw in call.keywords}:
+            return None  # a dataclass repr names every field, success first: anything else is not one
         values: dict[str, Any] = {}
         for kw in call.keywords:
             if kw.arg not in _RESULT_KEYS:

@@ -111,7 +111,11 @@ class TestMemoryRecordKeywords:
         kws = ep.keywords()
         assert "mug" in kws
         assert "table" in kws
-        assert "dennis" in kws
+        # memory/text.py's one standard (D3) keys every store: a name is keyed as the tokenizer keys it ("Dennis" ->
+        # "denni", its frozen trailing-s rule), on the write and the read side alike
+        from maxim.memory.text import normalize_tokens
+
+        assert normalize_tokens("Dennis")[0] in kws
         assert "navigate" in kws
         assert "grasp" in kws
 
