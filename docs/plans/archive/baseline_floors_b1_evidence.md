@@ -1,6 +1,8 @@
 # Baseline floors B1: the `b1_verdict` evidence entry, its complete-run rule and the BF2 obligation (approach note)
 
-> **Approach note v5, 2026-10-11**, for [baseline_floors_b1_build.md](baseline_floors_b1_build.md) PR-C.
+> **ARCHIVED (2026-10-24 plans archive):** Design pass complete; built in #1245. The BF2-obligation rule now lives in docs/agents/simulation-experiments.md; `lint_bf2_obligation.py` keeps citing it as its spec.
+
+> **Approach note v5, 2026-10-11**, for [baseline_floors_b1_build.md](../baseline_floors_b1_build.md) PR-C.
 >
 > **Why it got a design pass.** It changes a gate: the merge-base pass table
 > (`docs/experiments/evidence_pass_table.json`), a new complete-run rule in `scripts/_evidence_records.py`, and a new

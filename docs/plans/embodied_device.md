@@ -142,8 +142,13 @@ prepares for it without deciding it:
     not started. **The sink normalizes the scale before resampling**, and `response_output`'s own pre-resample goes in
     the same PR, so R6's clip cannot survive the fix.
 
-**Still open:** which board the robot runs on (pulse notes the SDK names a CM4). It sets the on-robot defaults.
-Pulse will read `/proc/device-tree/model` on the robot and send it.
+**The board (read by pulse on the owner's robot, 2026-10-24):** a Raspberry Pi Compute Module 4 Rev 1.1: 4 ×
+Cortex-A72 cores and 3.7 GiB of RAM, about 3.0 GiB free with the app running. On-robot defaults:
+- speech-to-text runs on the leader by default (decision 1);
+- the offline fallback is `tiny.en`, `base.en` at most, int8, CPU, 4 threads. Never pulse's earlier
+  `distil-large-v3`, and never forced to CUDA.
+
+RAM is tight, so step 1 (one agent) also frees the idle second agent's memory: a second reason it comes first.
 
 **Pulse's interim owner (2026-10-24):** pulse #57's bootstrap is #1435's interim lifecycle owner for a bare-SDK
 embedder: `start_playing()`, then `disable_wobbling()` once at start, and `stop_playing()` last, pinned by pulse's

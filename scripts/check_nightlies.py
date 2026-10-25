@@ -58,7 +58,7 @@ AT_HINT = (
     "no green, recent nightly tested this commit. Before tagging (or on a rehearsal): dispatch one on main while "
     "main is still at this commit. After the approval wait (publish): if main has moved on, no re-run can test this "
     "commit -- reject this run and cut the release again from a commit a green nightly tested "
-    "(docs/plans/release_pipeline.md, SF4)"
+    "(docs/plans/archive/release_pipeline.md, SF4)"
 )
 
 

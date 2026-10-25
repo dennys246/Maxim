@@ -1,7 +1,7 @@
 """The publish workflow's shape (#1372): .github/workflows/release.yml, read PARSED (a comment satisfies nothing).
 
 Each pin is a way the workflow could publish the wrong bytes, publish without the owner, or hold a credential it
-should not. Design and its adversarial pass: docs/plans/release_pipeline.md."""
+should not. Design and its adversarial pass: docs/plans/archive/release_pipeline.md."""
 
 from __future__ import annotations
 

@@ -5,7 +5,7 @@
 # exact wheel, then WAITS; nothing reaches PyPI until the owner approves the `publish` job. No Test PyPI (owner standard
 # 2026-10-16): the exact built wheel is installed in a clean venv instead.
 #
-# Design, its adversarial pass and every fold (SF1-SF11, N1-N9): docs/plans/release_pipeline.md. Shape pinned by
+# Design, its adversarial pass and every fold (SF1-SF11, N1-N9): docs/plans/archive/release_pipeline.md. Shape pinned by
 # tests/unit/test_release_workflow_shape.py. Order of a release: the bump PR merges -> a nightly runs green on the
 # commit to be tagged -> the owner pushes a signed `vX.Y.Z` tag on it -> this workflow -> the owner approves.
 #

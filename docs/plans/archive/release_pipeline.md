@@ -1,5 +1,7 @@
 # The release pipeline: tag-triggered trusted publishing (approach note, #1372 + #938)
 
+> **ARCHIVED (2026-10-24 plans archive):** 1.3.3 published through `release.yml` (2026-10-24); its hand-off is applied to docs/publication_guide.md. The rules live in docs/agents/ci-testing.md; code still cites its finding ids (SF4, SF11) here.
+
 Status: APPROACH NOTE, 2026-10-18, Session P. Its design pass is below. Owner decisions (2026-10-18):
 - a GitHub `pypi` environment with the owner as **required reviewer**;
 - a `v*` tag ruleset;
@@ -195,6 +197,10 @@ therefore never passes `--only-when-releasing`, `--contract-drift-ok-unless-rele
   nightly drift check. The in-workflow checks fail closed when they are relied on.
 
 ## Hand-off to the process session (`docs/publication_guide.md`, not edited here)
+
+**Applied 2026-10-24**, after 1.3.3 shipped through the workflow: `docs/publication_guide.md` now describes the
+`release.yml` path, and the hand path is retired to an emergency-only step that needs an owner decision. The list
+below is kept as the record.
 
 1. **§2b is stale.** After #938, push and schedule runs no longer run the nightly check, so "every later PR and
    push to main" no longer goes red. Release PRs still do.

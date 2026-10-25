@@ -7,7 +7,7 @@ pulse tag, the commit it peels to, its contract, the release asset's sha256 and 
 (``--verify-pin``); ``audit_release_build.py`` re-checks the built wheel and sdist against it.
 
 Everything here is offline and pure except `releasing()`, so both scripts and their tests share one definition. The design and its
-adversarial pass: docs/plans/r4_console_vendor_gate.md.
+adversarial pass: docs/plans/archive/r4_console_vendor_gate.md.
 
 Two definitions live here and nowhere else:
 
