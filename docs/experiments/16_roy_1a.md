@@ -1,5 +1,7 @@
 # Roy-1a — llm-primary on held-out fixture (first methodology iteration)
 
+> **Re-assessment 2026-10-25 ([#1301](https://github.com/dennys246/Maxim/issues/1301)): bounded.** The llm-primary test phase ran with the AUT told `respond` was NOT AVAILABLE, each call drawing a follow-up (#1260). The NULL rests on the priming-side cluster bias (substrate-primary priming, unaffected) and non-`respond` primaries. Don't cite the salience KS, the episode deltas or the `respond` counts reported beside them; `goal_reward_bias_l2` (0.2714) is bounded too, since it comes from llm-primary tool-outcome credit and each follow-up added an outcome ([narrator_defects_reassessment.md](narrator_defects_reassessment.md)).
+
 > **Status (audit 2026-09-13): NULL** — priming substrate carries forward structurally
 > (cluster-bias L2 2.45, unchanged across AUT modes) but zero behavioral expression via the
 > cluster path under llm-primary test; the salience KS divergence (0.879, p=2.1e-9) is the

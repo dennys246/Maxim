@@ -17,6 +17,14 @@ not a caveat.
    that reasoning can *amplify* the wrong prior (Exp 38/40).
 4. Open, provenance-stamped apparatus (campaign runner, gates, manifests).
 
+*Re-assessment 2026-10-25 ([#1301 re-assessment](experiments/narrator_defects_reassessment.md)):* the evidence for
+Contributions 2 and 3 is bounded. It was recorded with the AUT told `respond` was NOT AVAILABLE (#1260), and with a
+narrator that saw delivery receipts in place of the AUT's `respond` words (#1261). For Contribution 3, Sonnet's Exp 38
+interaction value and its three ablation values are **withdrawn** (two of its five arm-A deceptive trials are `respond`
+loops scored 0.0, a confound that favours dominance). The cross-model claim now reads: dominance at GPT-4o,
+DeepSeek-V3 and R1; Sonnet's interaction withdrawn, its verdict resting on first-contact over 3 of 5 arm-A deceptive
+trials. The Exp 44b confirmatory and any Exp 38/40 re-fire run on the fixed path.
+
 ---
 
 ## 3. Methods
