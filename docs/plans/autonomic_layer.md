@@ -411,16 +411,19 @@ draft's separate `ConsequenceCode` is dropped).
 **One join rule everywhere:** a training pair joins on `pid`, on the tool path and out-of-band alike,
 and on nothing else. The executor's `uuid4` invocation id is not persisted-stable and is never a join
 key; from the post-fence resume stage (G17; GL2a records carry no `pid` and never train), on the
-tool path `Executor._stamp_invocation` mints the `pid` and stamps it on the `ToolOutput`
-(inside `ToolOutput.interoceptive_outcome`, beside the in-process invocation id) so the forward model's
-`ActionContext` and this record carry the same one. While the target is this fixed code, the predictor
+tool path `Executor._run_started` mints the `pid` before `tool.run` (amended 2026-10-24 by the T8 (b)
+pre-merge round, Wire B3; see §3.1.2), and `Executor._stamp_invocation` stamps that same pid on the
+`ToolOutput` (inside `ToolOutput.interoceptive_outcome`, beside the in-process invocation id) and mints
+nothing, so the forward model's `ActionContext`, this record and GL3's H3t track copies carry the same
+one. While the target is this fixed code, the predictor
 is supervised regression in a JEPA shape (owner decision G2).
 
 #### 3.1.2 Identity: `PhysicalEventId`, one sequencer per agent, one declared cross-thread edge
 
 A burn is one physical event seen on more than one `AfferentTrack` (GL3: nociceptive-fast and
 affective-slow). Every track copy and this record carry the same `PhysicalEventId(agent_id, session_id,
-seq)`. The contract (canonical across the grounding plans; amended 2026-10-09 by G9, G15 and G17).
+seq)`; on the tool path that pid is the invocation pid minted at `Executor._run_started` (below; the
+one-pid rule GL3.B2 and GL3.B3 share, 2026-10-24). The contract (canonical across the grounding plans; amended 2026-10-09 by G9, G15 and G17).
 **Everything in this subsection lands at the post-fence resume stage (G17), not GL2a**: GL2a's record
 carries no event id, and records written before that stage are never forward-model training data.
 
@@ -438,13 +441,28 @@ carries no event id, and records written before that stage are never forward-mod
   (`agent_id == ""`, the `simulation/tools.py` `scene_emb`, the `simulation/foundry.py` wrappers,
   `maxim.create.embodiment()`, the `scripts/orient_substrate/*` probes' `Embodiment(root=...)`) are not
   the AUT: they mint no record and no id, so public-API users of `create.embodiment()` get no record
-  (stated, wiring S3). `seq` is assigned only when a record is **emitted**, so it is stable under
-  `_StepClock` lockstep tests. The sequencer serialises minting with its own private lock (G9).
-- **When a pid is minted** (wiring S3). Only when the invocation reached `tool.run` **and**
-  `self.embodiment.agent_id` is non-empty. `_stamp_invocation` also runs on the inactive-scene,
-  unregistered-tool and exception paths, and those mint nothing. A synthetic `ToolOutput` built by a
-  wrapper (`runtime/fear_gate.py::FearGatedExecutor` returns a new one on a block) carries no record,
-  which is correct.
+  (stated, wiring S3). `seq` is assigned at the mint, `Executor._run_started`, when an invocation will
+  reach `tool.run` (next bullet), not when a record is emitted (amended 2026-10-24 by the T8 (b) delta
+  round, Executor S-E, Wire D-4): seqs are unique and monotonic, not dense, because the exception path
+  consumes a minted pid with no record (a seq gap). It is still stable under `_StepClock` lockstep
+  tests, because there a raising tool raises at the same step in every run (the scripted world and
+  tools are deterministic), so the gap falls at the same seq; a lockstep test asserts the pids, gaps
+  included, and does not assume density. The sequencer serialises minting with its own private lock
+  (G9), on whatever thread runs `execute` (`thalamic_relay.md` §5.2: the determinism claim is scoped to
+  the single-threaded loop paths; `ConcurrentExecutor` is outside it).
+- **When a pid is minted** (wiring S3; **amended 2026-10-24 by the T8 (b) pre-merge round, Wire B3**,
+  `thalamic_relay.md` §The T8 (b) four-lens design review → "Pre-merge review round"). Only when the
+  invocation will reach `tool.run` **and** `self.embodiment.agent_id` is non-empty, and **at
+  `Executor._run_started`, before `tool.run`**: at the point it takes the raw before-snapshot, after its
+  inactive-scene and unregistered-tool checks, which return through `_stamp_invocation` and mint
+  nothing. The pid is not minted after `tool.run` returns: GL3's H3t emit (the burn transduced inside
+  `ModulatorAffordanceTool.execute`, inside `tool.run`) **reuses** it, so the record, both track copies
+  and the forward model's pair carry one pid with no `caused_by` hop. A mint after the call could not be
+  joined, because the H3t event would exist before its target pid. `_stamp_invocation` stamps the pid
+  minted at `_run_started` and mints nothing itself. On the exception path the minted pid is consumed
+  with no record (a seq gap: seqs are unique and monotonic, never dense). A synthetic `ToolOutput` built
+  by a wrapper (`runtime/fear_gate.py::FearGatedExecutor` returns a new one on a block) carries no
+  record, which is correct.
 - **No pid at GL2a; the identity and its resume land together (owner decision G17, superseding G15's
   GL2a half).** No deterministic session id exists today: every session id is wall-clock
   `time.strftime` (`simulation/orchestrator.py`, `simulation/research_orchestrator.py`,

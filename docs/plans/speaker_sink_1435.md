@@ -154,7 +154,7 @@ No BLOCKER. Wire integrity: no further round owed. Folds:
   `selfy` rate contract, and "one WARNING per manager until its next start" (not "per state").
 - Architecture SF-1/SF-2, N-1/N-2: "built", not "connected", everywhere, with the gap above; the SDK contract test
   skips in CI until the R2 reachy cell exists (M69), so it is a local check today; the brief's refusal is LOCAL's.
-- Architecture SF-3: the release-guide line for M78 is `docs/publication_guide.md`'s (the process session's file);
+- Architecture SF-3: the release-guide line for M79 is `docs/publication_guide.md`'s (the process session's file);
   handed off as a stub in the PR description.
 
 Folds:
@@ -170,7 +170,7 @@ Folds:
 - Wire N-1: the pairing announcer logs (type-free, never the code) when the sink returns False.
 - Executor SF2–SF4: tests for the lock (a stop waits for an in-flight push; a stop during the conversion refuses),
   stop-before-close on reconnect, and every refusal row of the lifecycle calls.
-- Release gate (Architecture SF1, Wire SF-2): mechanization backlog **M78**, and the gate line in roadmap_1_3_x.md
+- Release gate (Architecture SF1, Wire SF-2): mechanization backlog **M79**, and the gate line in roadmap_1_3_x.md
   §1.3.4 (added after PR #1448 merged).
 - Not folded, recorded: N-3 (`live` starts the player before its `try:`; the CLI's `shutdown()` covers it, and the
   record stays true); N-5 (`speak` returns `success=True` with nothing delivered when `also_print=False`; it

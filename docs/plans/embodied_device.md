@@ -159,7 +159,7 @@ tests. When `embody()` owns this, pulse drops its copy, and a test on each side 
   `maxim.utils.audio.start_device_player(reachy_mini)` once at start, `stop_device_player(reachy_mini)` last;
 - the order is **`disable_wobbling()` first, then `start_playing()`**, so a pre-existing wobbler is never started;
   a missing or failing disable means the player is not started;
-- **pulse ships that release first**: 1.3.4 does not publish before it (mechanization backlog M78);
+- **pulse ships that release first**: 1.3.4 does not publish before it (mechanization backlog M79);
 - a WebRTC (off-robot) handle plays on the robot only once `start_device_player` ran and its send chain has been
   built, else on local speakers (known gap: the SDK never clears the chain, so after a mid-session peer drop a push is a silent drop reported as played; the device plan's step 3 closes it);
 - #1435's named fence exceptions also cover `embodied_runtime/connection.py` (drop the record before every media

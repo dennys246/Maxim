@@ -61,7 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `make_device_speak_sink(...)` sink and `MediaLoopMixin.speak` take it keyword-only, so a caller can no longer fall
   back to a silent 16 kHz. `ReachyAudioStream.push_sample` resamples from the stream's `output_sample_rate`.
   **Embedders must call `start_device_player(mini)` before speaking** (see Fixed); maxim-pulse ships that change
-  first, and 1.3.4 does not publish before it (mechanization backlog M78).
+  first, and 1.3.4 does not publish before it (mechanization backlog M79).
 
 ## [1.3.3] - 2026-10-24 — "Release pipeline"
 
