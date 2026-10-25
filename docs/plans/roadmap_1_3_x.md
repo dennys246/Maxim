@@ -1037,7 +1037,7 @@ A file under "Shares" is edited in small separate hunks, each merged with `main`
 
 | Session | Line | Owns | Shares | Starts with |
 |---|---|---|---|---|
-| **S (pulse seam, robot)** | #1435 → #1436 → #1437; R3 #1336 with the 0.7.0 tag plan sent to pulse up front, plus #1428 and #1430/#1431; R2's reachy cell; the `console/health.py` fixes #1285 #1286 #1287 #1291; R1's remaining audit | as in 1.3.3 (`console/` except `handle.py`, `models/audio/`, `utils/audio.py`, `utils/response_output.py`, the extras), plus named exceptions for `embodied_runtime/media_loop.py` and `hardware/reachy/streams.py` | `console/handle.py` with V; `tools/response.py` (#1435's honesty hunk) with V; the one-line `cli.py` hunk for #1437 with A | #1435's design pass |
+| **S (pulse seam, robot)** | #1435 → #1436 → #1437; R3 #1336 with the 0.7.0 tag plan sent to pulse up front, plus #1428 and #1430/#1431; R2's reachy cell; the `console/health.py` fixes #1285 #1286 #1287 #1291; R1's remaining audit | as in 1.3.3 (`console/` except `handle.py`, `models/audio/`, `utils/audio.py`, `utils/response_output.py`, the extras), plus named exceptions for `embodied_runtime/media_loop.py` and `hardware/reachy/streams.py`, and (#1435's review round, owner 2026-10-24) `embodied_runtime/connection.py` and `embodied_runtime/selfy.py` | `console/handle.py` with V; `tools/response.py` (#1435's honesty hunk) with V; the one-line `cli.py` hunk for #1437 with A | #1435's design pass |
 | **R (recall), new** | **#1444 + #1163 + #1064 + #1447, as ONE end-to-end change**: the user's words rendered, framed untrusted (#1444); the `ToolOutput` repr kept out of the record (#1163, at the persistence seam in `memory/types.py`); one shared tokenizer that ranks on what captures write (#1064); the query cues on the user's input (#1447). Then #1137, #1153, and #845 item 1. | `integration/bio_enrichment.py`, `memory/` (hippocampus, retrieval, types), `math/angular_gyrus.py` | `runtime/loop_state.py` (#845 item 1) with A; its tests build through V's `runtime/agent_factory.py` (tests only) | the strict red gate (below) |
 | **H (hardening)** | the bounded stop #1438 with #1344, as one mechanism whose deadline the caller sets; LLM routing #1369 #1370 #1371 #1408, #1417 (which closes #1415), #1396; keys and config #1402 #1403; CI #1442 #1271 #1313 #1426 #1325, and #1384 with Session P's design pass; sim-record scrub #1404 | as in 1.3.3 (`runtime/role.py`, `leader_mode.py`, `local_server_spawner.py`, `comms/`, the scripts each issue names), plus `runtime/lane_backends.py`, `tunnel/keys.py`, `scripts/pr_merge_readiness.py` | `console/server.py::_drain_and_stop_handle` (#1438) with S; `cli.py` (item 9's installer) with A | #1442 and #1402/#1403 (small, decided), then #1438 + #1344's approach note |
 | **V (atonia gate)** | its own section, below | as in 1.3.3 | as in 1.3.3 | paper first: the approach notes and design passes |
@@ -1108,7 +1108,10 @@ Also, an utterance shaped like an instruction appears only inside the frame. Ide
     - the sink refuses loudly when the player is not started, normalizes the scale and resamples to
       `get_output_audio_samplerate()`, and `response_output`'s pre-resample goes in the same PR.
 
-    Design pass first (detecting "started" has no public SDK query). Rides with R2's reachy cell, whose device smoke
+    Design pass first (detecting "started" has no public SDK query); done, with the owner decisions, in
+    [speaker_sink_1435.md](speaker_sink_1435.md). **Release gate (owner decision 2026-10-24): 1.3.4 does not publish
+    before maxim-pulse releases the build that calls `start_device_player`/`stop_device_player`** (released pulse
+    starts the SDK player itself, so its pairing code would go silent on 1.3.4; mechanization backlog M78). Rides with R2's reachy cell, whose device smoke
     asserts audio reached a STARTED player at the device rate. R1's in-memory "has spoken" stays the readiness signal
     until the embodied-device plan's step 3 makes it PLAYS.
   - **The device defects from pulse's review** (Maxim-pulse #58, 2026-10-24). Each one is bounded, none waits for
