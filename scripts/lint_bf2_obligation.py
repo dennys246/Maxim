@@ -6,7 +6,7 @@ matched)`. The evidence gate (scripts/lint_evidence_gate.py) gates MOVES; nothin
 ordinary Exp 60 re-run could re-earn EARNED over a floor-matched B1 verdict. This lint closes that for T1-13 (owner
 decision D1, 2026-10-11; a partial mechanization of backlog row M46). The obligation is pass-table data (`obliges`
 on the `b1_verdict` entry), read from the MERGE-BASE like the gate's own rule data.
-Spec: docs/plans/baseline_floors_b1_evidence.md §3.
+Spec: docs/plans/archive/baseline_floors_b1_evidence.md §3.
 
 Rules, judged at HEAD against the merge-base:
 - B1 verdicts are append-only by identity (data_sha256, verdict value): every pair on the merge-base is still present

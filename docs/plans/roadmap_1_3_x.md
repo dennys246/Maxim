@@ -826,6 +826,10 @@ Owner decisions taken with this path (2026-10-16):
   credit, a learning curve rather than a fixed argmax)?
 - **1.3.3 is split (2026-10-17).** 1.3.3 ships the release pipeline and pulse's blockers fast. The atonia gate becomes
   1.3.4, on its own clock. The orchestrator becomes 1.3.5, and loop phase 2 becomes 1.3.6.
+- **1.3.4 becomes the robot and recall fixes (2026-10-24).** The atonia gate keeps its own clock and takes the next
+  free patch number when it is done. The labels "1.3.5" (the orchestrator) and "1.3.6" (loop phase 2) stay as the
+  names of those lines, because other docs cite them; each release's actual number is assigned at its cut, in the
+  order releases ship.
 - **B3 runs Reflexion first** (2026-10-17), as one end-of-session reflection call. Episodic retrieval may follow as a
   second arm.
 - **T1-2 (Exp 37) is resolved by B4 before 1.4.0.** The B4 re-fire (L8's dose-response design) runs after the
@@ -911,7 +915,7 @@ Owner decisions taken with this path (2026-10-16):
       Models button), same contract 0.6.0; pulse tags nothing further until 1.3.3 is on PyPI.*
   - **Cut rule:** R3's contract 0.7.0 lands only together with a pulse tag built for 0.7.0. Otherwise it slips past
     the cut, and the release vendors v0.4.2 (amended 2026-10-22, was v0.4.1) at contract 0.6.0. Since R4 the bump itself merges, and `main` is then unreleasable until the console pin moves to a
-    0.7.0 pulse tag; at the cut, revert the bump or wait ([r4_console_vendor_gate.md](r4_console_vendor_gate.md)).
+    0.7.0 pulse tag; at the cut, revert the bump or wait ([archive/r4_console_vendor_gate.md](archive/r4_console_vendor_gate.md)).
   - **The 1.3.3 release checklist for the pulse seam** (Session S's code is done once #1388 merges; these are what
     is left, in order):
     - [x] **#1388 merges** once `scripts/pr_merge_readiness.py 1388` exits 0.
@@ -992,7 +996,7 @@ signed commit.
 | **S (pulse seam)** | #1332 the piper fix; #1347 the console extra's `/ws`; R1 #1334; R2 #1335 (tts first); R3 #1336 (stall and health kinds); #1292 F4 (moved 2026-10-24 to embodied_device.md) | `models/audio/`, `console/` except `handle.py` (schemas, announcer, server, health, `ui_bundle.py`, `openapi.json`, `contract_surface.json`), the stall-dict hunk of `runtime/heartbeat.py`, `utils/audio.py`, `utils/response_output.py`, `.github/constraints/console.txt`, `tests/unit/test_console_ui_bundle.py`, the extras in `pyproject.toml` | `console/handle.py` with V; `test.yml` (the matrix lane) | #1332's red gate against the real library |
 | **V (atonia gate → 1.3.4)** | advisor_mode.md items 2, 3, 6, then 1 with 5, and 10 (then 4, 12, 7, 11, and Profile A's 13, 8, 14); #1338, #1342; #1362; #1366 (proposed 2026-10-18); #1377 | `tools/` except the `InternetAccessTool` hunk; `runtime/executor.py`, `runtime/bootstrap.py`, `runtime/agent_factory.py`, `runtime/prefetch.py`, `runtime/tool_dispatch.py`, `runtime/concurrent_executor.py`, `runtime/agent_pool.py`; `api.py`, `create.py`, `modes/`, `agents/autonomy.py`; `embodied_runtime/agentic_runtime.py`, `embodiment/tool_bridge.py`, `simulation/{foundry,minecraft_harness,tools,tools_dm,research_tools,campaign_runner,dm_runtime}.py`. `utils/internet_access.py` (H shares the #1345 hunk). For item 10: `utils/http.py` (the offline refusal), `models/download.py`, `models/language/{llama_backend,transformers_backend}.py`, `models/vision/`, `similarity/{encoder,semantic}.py`, `inference/transcribe_audio.py`, `simulation/container_runner.py`, `runtime/decision_log.py`; `doctor/` (item 11) | `console/handle.py` with S. `models/audio/tts.py` (the `ensure_tts_voice` hunk) with S. `tools/internet_search.py` and `tools/comms.py` with H. `runtime/config_loader.py`: the one shared 1.4 config-format bump. **`orchestrator.py` and `agent_loop.py` under the AD8 fence exception.** `cli.py` is Session A's file. Rule T applies to the pinned functions in advisor_mode.md §Order and the fence | the approach notes and design passes for items 2, 3, 1, 5 and 10, together |
 | **H (hardening)** | security #1311 #1312 #1314 #957 #997; LLM routing #1369 #1370 #1371 (if ready; proposed 2026-10-18); the `node_security` remainder; fail-loud Stage 3; #1337; #1310 (the owner's strict `passed`); the comms recipient allowlist (O4, non-advisor); #1343; #1345; advisor_mode.md item 9's process-level yield, converging with #1267 on one SIGTERM installer (#1344); CI and evidence truth (#1313 #1203 #1121 #1218 …); the 1.4.0 gate items #1305 #1263 #1264 #1265 #1267; M25; the small fixes | `runtime/role.py`, `runtime/leader_mode.py`, `runtime/local_server_spawner.py` (including R1's decision on `_health_check`), `simulation/benchmark.py`, `cli_utils.py`, `comms/` and the scripts each issue names | `tools/comms.py` (the allowlist hunk) and `tools/internet_search.py` plus `utils/internet_access.py` (#1345) with V; `cli.py` (#1310's exit code, #1337, #1343's consent hunk, item 9's installer) with Session A; `test.yml` (the CI-truth hunks) | #1337 and #1310 (small, decided), then security |
-| **E (E1, B4 and T8 (b), paper only)** | *E1 and B4 DONE 2026-10-18/19 (#1382: floor decision, replays, both preregs DRAFT v2 through review); T8 (b) open.* The BF2 floor decision for E1; the argmax and hunger-state replays (offline, committed); E1's prereg draft through the four-lens design review; **B4's prereg through its four-lens design review** ([#1354](https://github.com/dennys246/Maxim/issues/1354); a new claim, L8's dose-response design); **T8 (b): the four-lens design reviews of [thalamic_relay.md](thalamic_relay.md) and [latent_forward_model.md](latent_forward_model.md)**, paper only, before 1.4.0 (owner decision 2026-10-18) | `docs/experiments/`, the replay scripts under `scripts/` | nothing in `src/` (the fence lifts when 1.3.6's decomposition slices land — the point at which T0 can pass) | the floor decision, presented as options to the owner |
+| **E (E1, B4 and T8 (b), paper only)** | *E1 and B4 DONE 2026-10-18/19 (#1382: floor decision, replays, both preregs DRAFT v2 through review; B4's four-lens design review ran there, v1 2026-10-18, folded into DRAFT v2; the delta at freeze gets its own round). T8 (b) DONE 2026-10-24: the four-lens reviews of both plans, folded (owner decisions G21–G27; follow-ups #1449, #1450).* The BF2 floor decision for E1; the argmax and hunger-state replays (offline, committed); E1's prereg draft through the four-lens design review; **B4's prereg through its four-lens design review** ([#1354](https://github.com/dennys246/Maxim/issues/1354); a new claim, L8's dose-response design); **T8 (b): the four-lens design reviews of [thalamic_relay.md](thalamic_relay.md) and [latent_forward_model.md](latent_forward_model.md)**, paper only, before 1.4.0 (owner decision 2026-10-18) | `docs/experiments/`, the replay scripts under `scripts/` | nothing in `src/` (the fence lifts when 1.3.6's decomposition slices land — the point at which T0 can pass) | the floor decision, presented as options to the owner |
 | **A (decomposition)** | 1.3.5 can start now: the five orchestrator characterization arms are tests only | `orchestrator.py`, `agent_loop.py` (the fence), `cli.py` (Session A's file) | grants V's AD8 hunks; V's `cli.py` hunks (the agentic-path call site, #1338's server-mode readiness); H's `cli.py` hunks (#1310, #1337, #1343, item 9's installer) | the characterization arms |
 
 **At most four code sessions run at once:** P, S, V and H, or A in place of one of them. E is paper only and does not
@@ -1009,14 +1013,63 @@ The 1.3.3 cut waits for P (the new pipeline publishes it) and for S's #1332, #13
 them. Session V's atonia items do not hold the 1.3.3 cut; they are 1.3.4 (owner decision 2026-10-17). Session H's items ship in
 1.3.3 if they are ready, and otherwise slip to the next patch without holding the cut.
 
-### 1.3.4, "The atonia gate" (split out of 1.3.3, owner decision 2026-10-17)
-- **[advisor_mode.md](advisor_mode.md) items 2, 3, 6, then 1 with a minimal 5, and 10** (Session V), plus item 9 if Session H
-  has not already shipped it in 1.3.3. Items 4 and 12 join it if they are ready, which starts AvServ's Phase 2 drill;
-  items 5 (full), 7, 8, 11, 13 and 14 follow in a later patch.
-- **It ships when it is done, on its own clock.** It is a security-critical gate with five design passes, so it does
-  not hold 1.3.3. The orchestrator and loop phase 2 do not wait for it, and if they are ready first they ship first.
-- **The pulse seam, second slice (Session S).** These follow 1.3.3's first slice. They ride 1.3.4 if they are ready,
-  hold nothing, and are filed as issues when Session S starts them:
+### 1.3.4, "The robot and recall fixes" (owner decision 2026-10-24)
+
+**Why it comes first:** maxim-pulse's real-Reachy sessions on 1.3.3 found user-facing defects. The robot's speech
+is silent or slowed, its voice input is off, Talk forgets what the user said across sessions, and a stop can kill
+the memory save. The atonia gate still has five design passes ahead, so these would otherwise sit unreleased on
+`main` for weeks. 1.3.4 ships them when they are ready. The gate takes the next free number (§The atonia gate,
+below). Each line below rides 1.3.4 only if it is ready, and none holds the cut for another.
+
+**The backlog triage of 2026-10-24** (all 166 open issues read against main by three agents):
+- **Closed** with evidence: #1362, #873, #989, #1028 (fixed); #1340, #1341 (stale since the xdist revert); #1292
+  (superseded by the embodied-device plan); #1416 (duplicate of #1431); #962 (folded into #1193).
+- **Retitled**, because their silent halves had shipped: #819, #1200, #832.
+- **Fenced**, so they wait for Session A's decomposition (1.3.5 and 1.3.6), about 30 issues:
+  - the orchestrator lifecycle (#1259, #1262–#1267, #1005–#1009, #932, #981, #1228, #1393);
+  - the agent-loop gate items (#835, #965, #1054, #1057, #1176, #1178, #1147, #863).
+- **Parked as design work or owner decisions**, about 20: the encoding pair #784/#899, authority and approval
+  (#834, #922, #1185, #960), fear and extinction (#1072, #1373), executive function (#1073), #1144, #848.
+- **The rest are bounded and unfenced.** They are batched by file below and in each session's line.
+
+**Sessions** (at most four code sessions at once; paper work doesn't count). The "Owns" column is the file fence.
+A file under "Shares" is edited in small separate hunks, each merged with `main` locally in a signed commit.
+
+| Session | Line | Owns | Shares | Starts with |
+|---|---|---|---|---|
+| **S (pulse seam, robot)** | #1435 → #1436 → #1437; R3 #1336 with the 0.7.0 tag plan sent to pulse up front, plus #1428 and #1430/#1431; R2's reachy cell; the `console/health.py` fixes #1285 #1286 #1287 #1291; R1's remaining audit | as in 1.3.3 (`console/` except `handle.py`, `models/audio/`, `utils/audio.py`, `utils/response_output.py`, the extras), plus named exceptions for `embodied_runtime/media_loop.py` and `hardware/reachy/streams.py` | `console/handle.py` with V; `tools/response.py` (#1435's honesty hunk) with V; the one-line `cli.py` hunk for #1437 with A | #1435's design pass |
+| **R (recall), new** | **#1444 + #1163 + #1064 + #1447, as ONE end-to-end change**: the user's words rendered, framed untrusted (#1444); the `ToolOutput` repr kept out of the record (#1163, at the persistence seam in `memory/types.py`); one shared tokenizer that ranks on what captures write (#1064); the query cues on the user's input (#1447). Then #1137, #1153, and #845 item 1. | `integration/bio_enrichment.py`, `memory/` (hippocampus, retrieval, types), `math/angular_gyrus.py` | `runtime/loop_state.py` (#845 item 1) with A; its tests build through V's `runtime/agent_factory.py` (tests only) | the strict red gate (below) |
+| **H (hardening)** | the bounded stop #1438 with #1344, as one mechanism whose deadline the caller sets; LLM routing #1369 #1370 #1371 #1408, #1417 (which closes #1415), #1396; keys and config #1402 #1403; CI #1442 #1271 #1313 #1426 #1325, and #1384 with Session P's design pass; sim-record scrub #1404 | as in 1.3.3 (`runtime/role.py`, `leader_mode.py`, `local_server_spawner.py`, `comms/`, the scripts each issue names), plus `runtime/lane_backends.py`, `tunnel/keys.py`, `scripts/pr_merge_readiness.py` | `console/server.py::_drain_and_stop_handle` (#1438) with S; `cli.py` (item 9's installer) with A | #1442 and #1402/#1403 (small, decided), then #1438 + #1344's approach note |
+| **V (atonia gate)** | its own section, below | as in 1.3.3 | as in 1.3.3 | paper first: the approach notes and design passes |
+| **A (decomposition)** | 1.3.5's characterization arms, then the orchestrator slices | `orchestrator.py`, `agent_loop.py`, `cli.py` | grants the hunks above | the five arms |
+| **E (paper only)** | B4's design review #1354; T8 (b); the #1301 evidence re-assessment; #1226 once B4's dry run confirms it | `docs/experiments/` | nothing in `src/` | B4 |
+
+**Order** (the box takes four concurrent full suites):
+- **Wave 1:** S, R and A, plus V on paper and E on paper. S and R are the user-facing fixes; A is on 1.4.0's critical
+  path and unblocks the fenced 30.
+- **H runs while V is on paper.** When V starts code, H finishes the PR it has open, then waits for the next slot. That
+  slot opens when a session is waiting on a merge.
+
+**Session R's red gate** (lands first, `xfail(strict=True)`, flipped in place). It runs through the shipped
+composition, the way `MaximHandle` builds it, in a tmp home:
+1. Capture "My name is Denny and my favourite colour is green." through `MemoryAgent`.
+2. Add 30 or more newer, unrelated captures, so recency cannot rescue the fact.
+3. `shutdown()`, then rebuild from the same home.
+4. Enrich "What is Denny's favorite color?" under Talk's goal.
+5. The text the LLM receives contains "green", inside the untrusted frame, and no `ToolOutput(` repr.
+
+Also, an utterance shaped like an instruction appears only inside the frame. Ideally the gate drives
+`MaximHandle.talk` with a mocked worker, so the fix ships with its caller.
+
+**Ledger:**
+- R's fixes to the ranker and to the record shape (#1064, #1163, #1447) fire T1-16's named re-run trigger. The row
+  is bounded by its own text ("on the goal-keyword ranker", "not about cue-dependent retrieval"), not at risk.
+- So R does the trigger walk and re-points `tests/unit/test_o19_rerun.py::test_the_frozen_ranker_is_the_shipped_ranker`
+  at the executed commit's ranker. It never deletes it.
+- On the robot, the stop fix (#1438, H) is also needed. The embodied-device plan's step 1 must carry `console_agent`'s
+  home across.
+
+- **Session S: the pulse seam's second slice and the robot defects.** These follow 1.3.3's first slice:
   - **R3 ([#1336](https://github.com/dennys246/Maxim/issues/1336)), the stall and health kinds first** (slipped from
     1.3.3, owner decision 2026-10-18). Contract 0.7.0 lands only together with a pulse tag built for 0.7.0 (the cut rule
     above; since R4 the bump makes `main` unreleasable until the console pin moves). Ask pulse for that tag at the
@@ -1072,6 +1125,13 @@ them. Session V's atonia items do not hold the 1.3.3 cut; they are 1.3.4 (owner 
     kills at ~20 s; `_drain_and_stop_handle`'s defaults allow up to ~110 s; Session H, with #1344).
     [#1439](https://github.com/dennys246/Maxim/issues/1439) (Talk reaches the body-less `console_agent`) is not
     bounded: its fix is the plan's one-agent-per-device contract.
+    [#1444](https://github.com/dennys246/Maxim/issues/1444), cross-session recall drops what the user said
+    (`integration/bio_enrichment.py::_summarize_episode` renders a tool-less episode as "past experience"). Every
+    Talk user hits it, not only the robot. The fix renders the user's words bounded and **framed as untrusted
+    content**, because recalled text replayed into later prompts is a stored-injection channel. It gets a strict
+    red gate across two sessions on the shipped path. The owner is the bio-memory area (read
+    docs/agents/bio-memory.md first). The plan's step 1 must carry `console_agent`'s home across, or these facts
+    are lost in the fold.
   - **Talk states and chooses its real toolset** ([#1430](https://github.com/dennys246/Maxim/issues/1430), then
     [#1431](https://github.com/dennys246/Maxim/issues/1431), requested by maxim-pulse). #1430: the Talk prompt names
     the tools it actually has (from `TALK_CONVERSATIONAL_TOOLS`), so it stops claiming capabilities it lacks. #1431:
@@ -1080,8 +1140,17 @@ them. Session V's atonia items do not hold the 1.3.3 cut; they are 1.3.4 (owner 
     from the tool's own annotations, and enabling a tool never raises the operator's internet switch. A declared
     seam and a contract change, so it rides R3's 0.7.0 bump with #1428. Owner decisions owed at its start: the first
     set, the MCP spec revision, per install or per conversation, and whether `ddgs` joins the `console` extra.
-- **Session V's other issues ride with it** unless they land before the 1.3.3 cut: #1338, #1342, #1362 and #1366
-  (#1366 proposed 2026-10-18, owner to confirm).
+
+### The atonia gate (own clock; it takes the next free patch number when it ships)
+
+*It was "1.3.4" until 2026-10-24. Owner decision 2026-10-24: 1.3.4 ships the robot, recall and console fixes when
+they are ready, and the gate takes the next free number when it is done, still on its own clock.*
+- **[advisor_mode.md](advisor_mode.md) items 2, 3, 6, then 1 with a minimal 5, and 10** (Session V), plus item 9 if Session H
+  has not already shipped it in 1.3.3. Items 4 and 12 join it if they are ready, which starts AvServ's Phase 2 drill;
+  items 5 (full), 7, 8, 11, 13 and 14 follow in a later patch.
+- **It ships when it is done, on its own clock.** It is a security-critical gate with five design passes, so it does
+  not hold 1.3.3. The orchestrator and loop phase 2 do not wait for it, and if they are ready first they ship first.
+- **Session V's other issues ride with it**: #1338, #1342 and #1366, plus #1377. (#1362 is closed: fixed in 1.3.3.)
 - **Exit:** the registration and dispatch sweeps, the builder-refusal tests and item 10's census test pass.
 
 ### The embodied device (own clock, in parallel; not 1.3.4 scope)
@@ -1157,9 +1226,9 @@ them. Session V's atonia items do not hold the 1.3.3 cut; they are 1.3.4 (owner 
 - **T3:** E1, run under the redesigned and reviewed prereg.
 - **T4:** the trigger walk, with T1-2 resolved by B4.
 - **T4a, T7** (the release-PR caller grep) **and T8** (b) and (c). T8 (b), the four-lens design reviews of
-  thalamic_relay.md and latent_forward_model.md (grounding.md and autonomic_layer.md had theirs 2026-10-09), is done
-  in Session E, paper only, before 1.4.0 (owner decision 2026-10-18); (c), the Dormancy markers and re-points, is
-  checked at 1.4.0.
+  thalamic_relay.md and latent_forward_model.md (grounding.md and autonomic_layer.md had theirs 2026-10-09), is
+  **DONE 2026-10-24** in Session E, paper only (owner decision 2026-10-18): both plans reviewed and folded, owner
+  decisions G21–G27, follow-ups #1449 and #1450; (c), the Dormancy markers and re-points, is checked at 1.4.0.
 - **The name** follows the release rule: the highest EARNED rung.
 
 ### After 1.4.0, or when a 1.4 rung names them
@@ -1184,7 +1253,8 @@ them. Session V's atonia items do not hold the 1.3.3 cut; they are 1.3.4 (owner 
 3. **E1 may still fail BF2** after its redesign, leaving 1.4 without an Ambition-axis result.
 4. **T1-2 waits on B4 (#1354).** B4 waits on B2 (#1352) and B3 (#1353), which wait on 1.3.5 and 1.3.6. This is the
    longest chain to 1.4.0, longer than E1's. If B4 slips, 1.4.0 slips (owner decision).
-   - B4's four-lens design review is paper, so it runs now in Session E's lane. Only the run waits.
+   - B4's four-lens design review ran in Session E's lane (v1 2026-10-18, folded into DRAFT v2 by #1382).
+     The delta at freeze gets its own round. Only the run waits.
 5. **Plan text drifts without a lint** (M2, M36). Each patch release re-reads its plans as part of its release
    transaction.
 

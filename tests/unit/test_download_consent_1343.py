@@ -7,7 +7,7 @@ EVERY router reaches when its local file is missing. So a multi-GB GGUF download
 
 ``download_llm`` stays public: calling it is the consent on the explicit-request paths (``maxim.download_model``,
 ``python -m maxim.models.download --llm``). The guard is an allow-list of its callers in ``src/``.
-Design: docs/plans/download_consent_gate.md.
+Design: docs/plans/archive/download_consent_gate.md.
 """
 
 from __future__ import annotations

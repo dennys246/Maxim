@@ -1,5 +1,7 @@
 # Oasis release format v2 — the Queen-signed entry index (design)
 
+> **SHIPPED (2026-10-24 plans archive; it stays at this path because `src/` or the code's docs cite it):** PRs A–C shipped 2026-09-25 (public_oasis item 7); src/ cites its sections (§Receiver state, §Envelope) as the format-v2 spec, and its rule lives in docs/agents/bio-memory.md.
+
 > **DECIDED 2026-09-25 (owner) — design v2, ready to build.** [public_oasis.md](public_oasis.md) Phase 0
 > **item 7** ("Releases carry a Queen-signed entry index — owed by social_referencing"), carrying the
 > deferred **signing scheme v2** ([deferred/signed_signer_identity.md](deferred/signed_signer_identity.md),

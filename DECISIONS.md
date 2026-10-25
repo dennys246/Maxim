@@ -2,6 +2,97 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-10-24 — Grounding T8 (b) design-review decisions (G21–G30)
+
+### Decision
+
+The T8 (b) four-lens design reviews of `docs/plans/thalamic_relay.md` (GL3) and
+`docs/plans/latent_forward_model.md` (GL4–GL5) read both plans at `d9dffe6e` (reports:
+`docs/plans/reviews/grounding_gl3/` and `docs/plans/reviews/grounding_gl4/`, one file per lens). They returned
+12 and 10 DO-NOT-BUILDs. The owner took the strict option on every one on 2026-10-24. Each plan's "The T8 (b)
+four-lens design review" section lists each DO-NOT-BUILD with the place it is folded. G1–G20 stand.
+
+1. **G21. GL5's acquired-equivalence test gets a mediating path, and its credit is split.** Both the
+   confounding and bio-faithful lenses showed that the shipped kernel-ridge predictor and the α blend predict
+   C ≥ B, the sensed baseline's ordering, so as drafted S5 could only confirm the baseline. S4 now forms
+   consequence nodes from each item's experienced Stage-1 outcomes and freezes their membership at the end of
+   Stage 1. A fast learner keyed on the node carries Stage-2 value, and B is read through its node membership.
+   The acquired-equivalence gate (Δ_B − Δ_C > a pre-registered margin) credits only that consequence
+   representation, and it must beat `tabular_q` and `random` (BF2). The sensed-similarity baseline is reported,
+   not gated, because beating a baseline that predicts the wrong sign is cheap. A separate untried-item arm
+   credits the `ConsequencePredictor`, which must beat the per-item outcome twin there. A floor match on
+   either arm is `PARTIAL (narrow: floor matched)`. A composed-loop toy must predict B > C, and show every floor
+   does not, before S5's prereg. G13's design stands; this decision supplies the path G13 assumed.
+   *Why split:* on items the agent has tried, the per-item outcome twin is the mediating mechanism itself, so
+   "beat the twin" could not pass there.
+   *Pre-merge review notes (2026-10-24):*
+   - `ECConfig.frozen_centroid_modalities` freezes a node's prototype only. The path therefore names two new pieces:
+     a per-item → node membership map, and a freeze trigger that only the S5 harness calls, tiered as an experimenter
+     control.
+   - `NAc._reward_bias` cannot carry the value. It is one scalar, clamped to [0, 0.20], and it widens the EC
+     recognition radius.
+   - On a learner-state readout, `tabular_q` and `random` are zero by construction. The AE gate must also beat
+     matched-class floors: the same learner keyed on identity-similarity nodes and on sensed-reading nodes. This is
+     G21's strict reading, folded by the review and reported to the owner.
+2. **G22. The Cerebellum learns signed body reafference.** Its S1 target is the per-sensor change of the
+   invoked affordance's declared body sensors, net of declared drift, on caused entries only. The existing
+   object-readings model stays beside it, and alliesthesia is applied when the prediction is read. Level terms
+   (valence, `drive_pain`, urgency, `deviation_after`) leave the target. The observe call moves from
+   `tool_bridge.py` into the executor, where the consequence record exists. Q6 ("no situation in the key") is
+   safe under this target and is decided.
+3. **G23. S0b captures on shipped bodies only.** The capture is many short fresh-body sessions with scene and
+   name order permuted. The prereg computes the expected number of records away from the range edges from the
+   YAML before capture, and restates its floors if they cannot be met. There is no capture-only body, and
+   apparatus resets are never training pre-states.
+4. **G24. GL3 takes the strict fold on all seven DO-NOT-BUILD clusters** (plan rows TR18–TR24):
+   - Every PainBus publish stays at its transduction pass (the W-4 order), and `affective_slow` adds deliveries
+     only to sinks that are not PainBus subscribers.
+   - Per-pass body transduction is a named GL3.B4 prerequisite, settled with #1176, with sham and negative
+     controls.
+   - GL3.B1's provenance is always recorded and acted on only behind the OFF credit flag.
+   - The registry is bound to the Embodiment.
+   - Provenance reaches the writers that credit, `apparatus` gets a producer, and the GL3.B1 PR lands the M39
+     lint plus a route counter.
+   - The last writer of each sensor is stamped at write time.
+   - GL3.B3 has a named cradle harness and a drain hook on the tool path.
+5. **G25. GL4's remaining DO-NOT-BUILDs fold as the lenses proposed:**
+   - S2 is re-scoped as a capability check.
+   - S3 names the `--sim` AUT's real session-end seam, which is fenced (#1449).
+   - S1 records raw inputs, and S2/S3 embed them offline.
+   - The `object` block is what a receptor delivers to the AUT, marked absent when nothing was sensed.
+   - Consequence ranges are centred on [−1, 1], so "nothing happens" is the zero vector.
+6. **G26. G23 applies to the S0b capture; S5's per-trial reset is a control.** S5 resets the body to a frozen
+   pre-state band before every trial, as G21's artifact-route fold requires. The reset is stamped `apparatus` and never
+   trains the predictor. The S5 prereg says how this squares with G23. *Narrowed by the pre-merge review:* the reset
+   forms no training pair.
+7. **G27. The acquired-equivalence readout is learner state, and T9 is reworded to match.** There is no selection
+   seam on tried items (Q12: none). The AE gate reads the node-keyed learner's value through node membership, so T9
+   claims that the consequence representation carries learned value from A to B, measured as learner state. It makes
+   no claim about choice. The "blocks it where names collide" half is carried by an acquired-distinctiveness arm.
+   *Pre-merge review notes (2026-10-24):* the arm has its own gate. Which ledger row an EARNED result writes is asked at S5 start. The strict default is a
+   narrow learner-state row, with no `[behavioral]` graduation and no T1-5 supersession on its own.
+
+8. **G28. #1176's per-pass body transduction lands unflagged.** It is the root-cause fix for L1, so it ships in
+   #1176's own PR, not behind a GL3 flag, with its own trigger walk and the T1-13/14/15 re-runs. The latency record
+   is re-frozen as v2 after it lands. GL3.B4 then gates action latency given a publish, comparing the preemption flag
+   on and off on that tree, and reports publish latency. (Plan row TR28; ratifies a fold of the pre-merge review.)
+9. **G29. An unwritten writer-kind slot reads as `legacy`.** It is not a new provenance kind. A missing slot means the
+   sensor has not yet been written, the reader maps it to `legacy` (credited as today), and nothing defaults to
+   `experienced`. The share of experienced drift that reads `legacy` is reported. (Plan row TR29.)
+10. **G30. The matched-class floors are binding.** The AE gate must beat the same node-keyed learner keyed on
+    identity-similarity nodes and on sensed-reading nodes, as well as `tabular_q` and `random` (BF2). Only the margins
+    are set at S5 start.
+
+### Rationale
+
+Every finding was folded with its strict option, the default recommendation for a gate (CLAUDE.md "Weak evidence
+never gates"). G21's split was asked separately, because the first form of the T9 option ("T9 must beat the twin")
+contradicted the mediating path it was paired with. G26 and G27 were asked after the fold, when it surfaced a
+conflict between G21's reset and G23, and showed that the mediating path's AE readout is learner state. G28–G30 were
+asked after the three-lens pre-merge round, whose folds had taken those three choices on the owner's behalf; the
+owner took the strict option on each, and stopped the rounds there because the findings had converged. Follow-ups that touch built tests or `src/` are filed:
+#1449 (the AUT session end) and #1450 (the GL3.B0 red-gate positive controls and one protective-pick world).
+
 ## 2026-10-14 — A leader fails closed, shipped as a patch (L1–L5)
 
 ### Decision (owner, 2026-10-14)
@@ -42,7 +133,7 @@ leaving a known-open default in place until 1.4; 1.1.1 is the precedent for a be
 
 ### Rationale
 
-The adversarial design pass on the approach note (docs/plans/baseline_floors_b1_evidence.md, five rounds) found that a
+The adversarial design pass on the approach note (docs/plans/archive/baseline_floors_b1_evidence.md, five rounds) found that a
 FEAR-only Exp 60 re-run could re-earn EARNED over a floor-matched B1 verdict (the gate gates moves, not missing moves),
 and that a crash mid-attempt let `--resume` restart the key after its outcome was seen. Both were taken as the strict
 option. The cost of D2 is that an accidental crash on a gated arm makes the campaign INCOMPLETE; a harness bug fix

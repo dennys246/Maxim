@@ -1,5 +1,7 @@
 # The model-download consent gate (#1343): approach note
 
+> **ARCHIVED (2026-10-24 plans archive):** #1343 shipped (PR #1400, 2026-10-20). The rule now lives in docs/agents/llm-routing.md §3.
+
 **Status:** approach note for the adversarial design pass (gate rule, CLAUDE.md "Faster without lowering the bar"). Session H, 1.3.3. Owner decision 2026-10-19: H takes the hunks in Session V's `models/download.py` and `models/language/llama_backend.py`; V's item 10 (offline) builds on this one gate.
 
 ## The defect

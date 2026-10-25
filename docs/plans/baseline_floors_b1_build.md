@@ -1,5 +1,7 @@
 # Baseline floors B1 — build plan v2 (reviewed; for the owner before code)
 
+> **SHIPPED (2026-10-24 plans archive; it stays at this path because `src/` or the code's docs cite it):** PR-A #1236, PR-B #1238, PR-C #1245, fix #1258 and the run #1283 shipped; it is B1's build record.
+
 > **Build plan v2, 2026-10-11**, for [../experiments/b1_exp60_floor_prereg.md](../experiments/b1_exp60_floor_prereg.md)
 > (v3: its §Frozen implementation rules come from this review). v1 had a four-lens parallel review (Executor,
 > Architecture, Wire integrity, Experiment integrity); every lens returned DO-NOT-BUILD items, all folded here
@@ -104,7 +106,7 @@
 
 ### PR-C as built (2026-10-11): the evidence half; the freeze is its own step
 
-Design: [baseline_floors_b1_evidence.md](baseline_floors_b1_evidence.md) (five adversarial rounds, owner decisions
+Design: [archive/baseline_floors_b1_evidence.md](archive/baseline_floors_b1_evidence.md) (five adversarial rounds, owner decisions
 D1–D2). Built:
 - the `b1_verdict` pass-table entry (PARTIAL at scope `narrow` from a floor-matched verdict only);
 - the `b1_campaign` complete-run rule (`scripts/_evidence_records.py`), on top of `_campaign_rule`;
