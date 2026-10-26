@@ -3,7 +3,9 @@
 ``cli.py::_main_impl``'s run loop catches any exception from the robot runtime, logs ``❌ Maxim stopped`` and
 breaks out of the loop. It used to ``return 0`` after it: loud for a human at the terminal, invisible to a supervisor
 or script (systemd, maxim-pulse's app, CI), which read the exit code. A missing robot module fails at import since
-#1436, and this path turned that into exit 0 as well.
+#1436, and this path turned that into exit 0 as well. The review round (owner decisions 2026-10-26) settled the
+table: a crash exits 1; a typed backend error or leader refusal reaches ``cli.main`` and exits 2 with its fix or
+reason; an operator's Ctrl+C exits 130 wherever it lands.
 
 These drive the REAL ``cli.main`` down the robot path, with ``embodied_runtime.selfy.Maxim`` replaced by a class
 that raises on construction (the runtime resolves it by module attribute at call time).
@@ -35,7 +37,67 @@ def test_a_robot_session_that_stops_on_an_exception_exits_nonzero_1468(
     assert _run_robot_session(monkeypatch, tmp_path, RuntimeError("reachy unreachable")) == 1
 
 
+@pytest.mark.xfail(strict=True, reason="#1468 review (owner 2026-10-26): Ctrl+C inside a run exits 0, outside it 130")
 @pytest.mark.timeout(120)
-def test_an_operator_interrupt_still_exits_zero_1468(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Ctrl+C is the operator ending the session, not a failure: it keeps exiting 0."""
-    assert _run_robot_session(monkeypatch, tmp_path, KeyboardInterrupt()) == 0
+def test_an_operator_interrupt_exits_130_1468(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """One code for one operator action (owner decision 2026-10-26): a Ctrl+C inside a run exits 130, as one that
+    lands outside it does (``cli.main``'s handler), the Unix convention for SIGINT."""
+    assert _run_robot_session(monkeypatch, tmp_path, KeyboardInterrupt()) == 130
+
+
+@pytest.mark.xfail(
+    strict=True, reason="#1468 review: the run loop's catch-all turns a BackendError into 1, hiding its fix hint"
+)
+@pytest.mark.timeout(120)
+def test_a_backend_error_inside_a_run_exits_2_with_its_fix_hint_1468(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A typed backend error (here: auth) reaches ``cli.main``, which renders its ``fix_hint`` and exits 2 (owner
+    decision 2026-10-26): a supervisor can tell "the operator must act" (2) from "crashed" (1)."""
+    from maxim.models.language.types import BackendAuthFailed
+    from maxim.utils import logging as maxim_logging
+
+    warned: list[dict] = []
+    monkeypatch.setattr(maxim_logging, "user_warn", lambda message, **kw: warned.append({"message": message, **kw}))
+    assert _run_robot_session(monkeypatch, tmp_path, BackendAuthFailed("the provider refused the key")) == 2
+    assert [w["fix"] for w in warned] == [BackendAuthFailed.fix_hint]
+
+
+@pytest.mark.xfail(strict=True, reason="#1468 review: a LeaderRefusal inside a run is swallowed by the catch-all")
+@pytest.mark.timeout(120)
+def test_a_leader_refusal_inside_a_run_exits_2_and_says_why_1468(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``LeaderRefusal`` is a security refusal, not an availability fallback: a broad ``except Exception`` must not
+    absorb it (its own docstring). ``cli.main`` prints it and exits 2, as server mode and the early leader boot do."""
+    from maxim.exceptions import LeaderRefusal
+
+    assert _run_robot_session(monkeypatch, tmp_path, LeaderRefusal("no usable leader key")) == 2
+    assert "no usable leader key" in capsys.readouterr().err
+
+
+@pytest.mark.timeout(120)
+def test_a_run_that_fails_in_live_exits_nonzero_and_still_shuts_down_1468(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The commoner real failure: the runtime builds, then ``live()`` raises. The session exits 1, and the loop's
+    teardown (``cli._end_robot_run``) still stops the runtime it built."""
+    from maxim import cli
+    from maxim.embodied_runtime import selfy
+
+    shutdowns: list[str] = []
+
+    class _FailsLive:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def live(self, **kwargs: object) -> None:
+            raise RuntimeError("the robot's media loop died")
+
+        def shutdown(self) -> None:
+            shutdowns.append("shutdown")
+
+    monkeypatch.setattr(selfy, "Maxim", _FailsLive)
+    rc = cli.main(["--mode", "live", "--home-dir", str(tmp_path / "robot"), "--interactive", "false"])
+    assert rc == 1
+    assert shutdowns == ["shutdown"]
