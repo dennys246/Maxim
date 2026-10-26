@@ -297,7 +297,7 @@ def judge_provenance(prov, j: Judgement, ctx: Ctx, label: str, *, allow_dirty_ok
     return tree
 
 
-def judge_apparatus_check(row: dict, j: Judgement, label: str, *, allow_dirty_ok: bool = True) -> None:
+def judge_apparatus_check(row: dict, j: Judgement, label: str) -> None:
     """The row-level ``apparatus_record_check`` (exp60_run, b1_floor_run), judged beside ``provenance.allow_dirty``
     (#1220). The writers stamp one fact twice: ``problem`` (why the apparatus record is not the committed one) makes
     ``allow_dirty`` True in both places. Absent means nothing to judge. A row under data/ was written to a gated
@@ -328,10 +328,9 @@ def judge_apparatus_check(row: dict, j: Judgement, label: str, *, allow_dirty_ok
             f"{label}: apparatus_record_check and provenance disagree: allow_dirty on a clean tree with no waived check"
         )
     elif waived:
-        if allow_dirty_ok:
-            j.allowed_dirty = True
-        else:
-            j.fail(f"{label}: a waived apparatus check where no allowance is accepted")
+        j.allowed_dirty = True  # an allowance like provenance's: established, never sole support
+    # A granted allowance on a DIRTY tree with no waived check is legitimate (preflight's dirty-tree grant) and is
+    # judge_provenance's to judge, not this function's.
 
 
 def check_skew(ts, executed, j: Judgement, ctx: Ctx, label: str) -> None:

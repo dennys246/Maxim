@@ -103,6 +103,7 @@ __all__ = [
     "executed_code_provenance",
     "in_process_code_provenance",
     "is_gated_path",
+    "apparatus_check_stamp",
     "path_within",
     "preflight_gated_record",
     "preflight_gated_record_or_exit",
@@ -260,7 +261,9 @@ def path_within(root: Path | str, path: Path | str) -> bool:
       answers for case folding, Unicode normalization and firmlinks. A missing component is skipped and an
       unreadable one (EACCES) is skipped too, never treated as a match;
     * spelling: NFC-normalized, case-folded ``path`` equals ``root`` or starts with it plus a separator, so a
-      not-yet-created ``root`` (a fresh clone) and a case-sensitive filesystem are covered too.
+      not-yet-created ``root`` (a fresh clone) and a case-sensitive filesystem are covered too. Deliberately
+      stricter than the filesystem there: on Linux a genuinely separate ``docs/Experiments/...`` directory counts as
+      within (gated / governed). That fails closed; do not "fix" it back.
 
     Errors count as WITHIN only where the answer cannot be established: ``root``'s own stat (other than missing)
     or ``resolve()`` of either path (a symlink loop raises RuntimeError before Python 3.13). An unrelated path
@@ -298,6 +301,26 @@ def _shown(path: Path, root: Path) -> str:
         return str(path)
 
 
+def _resolved(path: Path | str) -> Path:
+    """``Path.resolve()``, or the absolute spelling when it cannot resolve (a symlink loop raises RuntimeError before
+    Python 3.13, OSError after): the caller's gate then judges that spelling, and path_within counts it as within."""
+    try:
+        return Path(path).resolve()
+    except (OSError, RuntimeError):
+        return Path(path).absolute()
+
+
+def apparatus_check_stamp(gated: bool, problem: str | None, provenance: dict) -> tuple[dict, dict]:
+    """The row-level ``apparatus_record_check`` and the provenance it implies, from ONE place (#1220).
+
+    The two are stamps of one fact: ``problem`` (why the apparatus record a gated run read is not the one committed
+    on main, waived by ``--allow-dirty``) makes ``allow_dirty`` True in both. ``_evidence_records.judge_apparatus_check``
+    fails a row whose stamps disagree; building both here keeps every writer (exp60_run, b1_floor_run) from drifting.
+    The key ``apparatus_record_check`` is reserved for this shape."""
+    check = {"gated": bool(gated), "problem": problem, "allow_dirty": problem is not None}
+    return check, ({**provenance, "allow_dirty": True} if problem is not None else provenance)
+
+
 def is_gated_path(repo_root: Path | str, out_path: Path | str | None) -> bool:
     """True when ``out_path`` resolves inside ``<repo_root>/docs/experiments/data/`` (case-folded, #1218)."""
     if out_path is None:
@@ -325,7 +348,7 @@ def preflight_gated_record(
     dirty = difference is not None
     if gated and dirty and not allow_dirty:
         raise DirtyTreeError(
-            f"refusing to write a GATED record ({_shown(Path(out_path).resolve(), root)}) "
+            f"refusing to write a GATED record ({_shown(_resolved(out_path), root)}) "
             f"from a DIRTY tree: the code on disk in {root} is not HEAD's ({difference}).\n"
             "  A result whose code-under-test cannot be established is not a validation "
             "(Exp 42b corollary; Exp 53/53b release-day incident).\n"
@@ -817,7 +840,7 @@ def evidence_out_paths(
 
     root = Path(repo_root).resolve()
     governed_root = (root / EVIDENCE_DIR).resolve()
-    resolved = [Path(p).resolve() for p in committed_paths]
+    resolved = [_resolved(p) for p in committed_paths]
     governed = [p for p in resolved if path_within(governed_root, p)]
     if not governed:
         return resolved

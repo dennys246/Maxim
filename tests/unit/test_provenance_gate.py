@@ -229,3 +229,23 @@ def test_an_unreadable_unrelated_ancestor_still_passes_through(repo: Path, tmp_p
         assert P.is_gated_path(repo, locked / "inner" / "t.jsonl") is False
     finally:
         locked.chmod(0o700)
+
+
+@pytest.mark.parametrize("problem", [None, "not the committed record"])
+def test_the_apparatus_stamp_builds_both_stamps_of_one_fact(problem) -> None:
+    check, prov = P.apparatus_check_stamp(True, problem, {"executed_git_hash": "x"})
+    assert check == {"gated": True, "problem": problem, "allow_dirty": problem is not None}
+    assert prov.get("allow_dirty", False) is (problem is not None)
+
+
+def test_a_symlink_loop_is_redirected_by_the_d27_check_not_crashed(tmp_path: Path, capsys) -> None:
+    (tmp_path / "loop").symlink_to(tmp_path / "loop")
+    out = P.evidence_out_paths(tmp_path, [tmp_path / "loop" / "x.json"], write_experiment_results=False)
+    assert out[0].name == "x.json" and "NOT updating committed record" in capsys.readouterr().out
+
+
+def test_a_symlink_loop_on_a_dirty_tree_is_a_typed_refusal(repo: Path, monkeypatch) -> None:
+    (repo / "loop").symlink_to(repo / "loop")
+    monkeypatch.setattr(P, "working_tree_difference", lambda *a, **k: "src/x.py: untracked")
+    with pytest.raises(P.DirtyTreeError):
+        P.preflight_gated_record(repo, repo / "loop" / "t.jsonl")
