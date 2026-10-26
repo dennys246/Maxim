@@ -162,7 +162,9 @@ class HiveRegistry:
         self.path = Path(path) if path is not None else registry_path()
 
     def _load(self) -> list[dict[str, Any]]:
-        if not self.path.is_file():
+        from maxim.utils.paths import config_file_present
+
+        if not config_file_present(self.path):  # an unreadable dir raises, never reads as empty (#1403)
             return []
         # A present-but-unreadable registry is NOT treated as empty (that would let
         # the next add overwrite the operator's whole known-Oases list). Fail loud.

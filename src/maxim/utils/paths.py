@@ -21,10 +21,34 @@ Environment variables:
 from __future__ import annotations
 
 import os
+import stat
 from pathlib import Path
+
+from maxim.exceptions import ConfigDirUnreadable
 
 # Defined in maxim.exceptions (MaximMemoryError + ValueError, #932); importable from here as before.
 from maxim.exceptions import RunDirAmbiguous, RunDirNotFound  # noqa: F401
+
+
+def config_file_present(path: Path) -> bool:
+    """Whether the operator config file at ``path`` exists as a regular file; raises when that cannot be told.
+
+    The probe for every file in the declarative config dir (``config.json``, ``profiles.yml``, ``peer.yml``,
+    ``mesh.yml``). Only a missing file (or a missing parent) is False, as is something that is not a regular file,
+    matching ``Path.is_file``. A path that cannot be stat'd (an unreadable ``~/.config/maxim``) is a
+    :class:`~maxim.exceptions.ConfigDirUnreadable` (a ``ConfigurationError``) naming the directory and the fix (#1403): ``Path.is_file`` raises a raw
+    ``PermissionError`` there on Python <=3.13 and returns False on 3.14, which silently drops the operator's config.
+    """
+    try:
+        st = os.stat(path)
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    except OSError as e:
+        raise ConfigDirUnreadable(
+            f"cannot read the maxim config directory {path.parent} ({e.strerror or type(e).__name__}); "
+            f"fix its permissions: chmod 700 {path.parent}"
+        ) from e
+    return stat.S_ISREG(st.st_mode)
 
 
 # ---------------------------------------------------------------------------

@@ -881,6 +881,37 @@ def _early_leader_boot() -> int | None:
     return None
 
 
+def _detect_role_or_warn(raw_argv: list[str]) -> None:
+    """Run role detection once at startup (Plan 2 R2a); a failure warns and startup continues, except an
+    unreadable config dir, which every later step would hit too."""
+    from maxim.exceptions import ConfigDirUnreadable
+
+    try:
+        from maxim.runtime.role import detect_and_apply_role
+
+        detect_and_apply_role(raw_argv)
+    except ConfigDirUnreadable:
+        raise  # an unreadable config dir is not "role unknown": cli.main renders it, once (#1403)
+    except Exception as _role_err:
+        # Fix #3 (R2 review): role detection failures must not block
+        # startup, but a silent DEBUG log hides real problems. Promote
+        # to WARNING and emit a structured event so the failure shows
+        # up in both human logs and the JSONL stream.
+        _role_logger = logging.getLogger(__name__)
+        _role_logger.warning("role detection failed: %s", _role_err)
+        try:
+            from maxim.utils.structured_logging import log_structured
+
+            log_structured(
+                _role_logger,
+                logging.WARNING,
+                event="role_detection_failed",
+                data={"error": f"{type(_role_err).__name__}: {_role_err}"},
+            )
+        except Exception:
+            pass
+
+
 def _main_impl(argv: Sequence[str] | None = None) -> int:
     """Original ``main`` body.  Wrapped by :func:`main` for typed-error surfacing."""
     # Detect Blackwell GPU and apply GStreamer guards BEFORE any CUDA-touching
@@ -915,28 +946,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
     # BEFORE subcommand dispatch (so `maxim doctor` / `maxim peer X` both
     # emit the event instead of only the sim loop). See
     # docs/plans/archive/llm_path_typed_errors.md R2a + feedback_subcommand_logging_gap.md.
-    try:
-        from maxim.runtime.role import detect_and_apply_role
-
-        detect_and_apply_role(raw_argv)
-    except Exception as _role_err:
-        # Fix #3 (R2 review): role detection failures must not block
-        # startup, but a silent DEBUG log hides real problems. Promote
-        # to WARNING and emit a structured event so the failure shows
-        # up in both human logs and the JSONL stream.
-        _role_logger = logging.getLogger(__name__)
-        _role_logger.warning("role detection failed: %s", _role_err)
-        try:
-            from maxim.utils.structured_logging import log_structured
-
-            log_structured(
-                _role_logger,
-                logging.WARNING,
-                event="role_detection_failed",
-                data={"error": f"{type(_role_err).__name__}: {_role_err}"},
-            )
-        except Exception:
-            pass
+    _detect_role_or_warn(raw_argv)
 
     # C7a of config_unification.md: solo + cloud-key auto-detect.
     # Runs AFTER detect_and_apply_role so MAXIM_ROLE is exported and
@@ -2507,10 +2517,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     except KeyboardInterrupt:
         return 130
     except Exception as e:
+        from maxim.exceptions import ConfigurationError
+
+        if isinstance(e, ConfigurationError):
+            # Checked before importing models.language: an unreadable config dir fails that import too (#1403).
+            from maxim.utils.logging import user_warn
+
+            user_warn(f"{type(e).__name__}: {e}", source="config", event="configuration_error_uncaught")
+            return 2
         try:
             from maxim.models.language.types import BackendError
         except Exception:
-            raise
+            raise e from None
 
         if isinstance(e, BackendError):
             from maxim.utils.logging import user_warn

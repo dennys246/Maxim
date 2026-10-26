@@ -1835,7 +1835,9 @@ def _maybe_migrate_from_peer_yml(target: Path) -> None:
     if _migration_attempted:
         return
 
-    if target.is_file():
+    from maxim.utils.paths import config_file_present
+
+    if config_file_present(target):
         # Not applicable — config.json already exists. Set the flag so
         # we don't repeatedly stat the file on every load_config call.
         _migration_attempted = True
@@ -2019,7 +2021,9 @@ def load_config(path: Path | None = None) -> MaximConfig:
     # subsequent calls.
     _maybe_migrate_from_peer_yml(effective_path)
 
-    if not effective_path.is_file():
+    from maxim.utils.paths import config_file_present
+
+    if not config_file_present(effective_path):
         return _with_explicit(MaximConfig(), frozenset())
 
     try:

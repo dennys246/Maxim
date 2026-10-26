@@ -41,7 +41,6 @@ def locked_config_dir(tmp_path, monkeypatch):
     os.chmod(cfg, 0o700)
 
 
-@pytest.mark.xfail(strict=True, reason="#1403 red gate")
 def test_config_file_present_tells_missing_from_unreadable(tmp_path, locked_config_dir):
     from maxim.utils.paths import config_file_present
 
@@ -56,7 +55,6 @@ def test_config_file_present_tells_missing_from_unreadable(tmp_path, locked_conf
     assert f"chmod 700 {locked_config_dir}" in str(exc.value)
 
 
-@pytest.mark.xfail(strict=True, reason="#1403 red gate")
 def test_profiles_loader_refuses_typed(locked_config_dir):
     from maxim.models.language.profile_loader import load_user_profiles
 
@@ -64,7 +62,6 @@ def test_profiles_loader_refuses_typed(locked_config_dir):
         load_user_profiles(path=locked_config_dir / "profiles.yml")
 
 
-@pytest.mark.xfail(strict=True, reason="#1403 red gate")
 def test_load_config_refuses_instead_of_defaulting(locked_config_dir):
     """On 3.14 ``is_file`` returned False here, so load_config silently served defaults."""
     from maxim.runtime.config_loader import load_config
@@ -73,7 +70,6 @@ def test_load_config_refuses_instead_of_defaulting(locked_config_dir):
         load_config(locked_config_dir / "config.json")
 
 
-@pytest.mark.xfail(strict=True, reason="#1403 red gate")
 def test_role_probe_does_not_swallow_the_refusal(locked_config_dir):
     """``_peer_yml_exists`` caught every exception and said "no peer.yml": a peer whose config dir is
     unreadable silently detected as solo."""
@@ -83,7 +79,6 @@ def test_role_probe_does_not_swallow_the_refusal(locked_config_dir):
         role._peer_yml_exists()
 
 
-@pytest.mark.xfail(strict=True, reason="#1403 red gate")
 def test_cli_prints_one_typed_error_not_a_traceback(locked_config_dir):
     env = {**os.environ, "PYTHONPATH": str(_REPO_SRC)}
     proc = subprocess.run(
@@ -97,3 +92,26 @@ def test_cli_prints_one_typed_error_not_a_traceback(locked_config_dir):
     assert "Traceback" not in out, out[-3000:]
     assert proc.returncode == 2, out[-3000:]
     assert f"chmod 700 {locked_config_dir}" in out
+
+
+@pytest.mark.parametrize("loader", ["peer.yml", "mesh.yml", "hive.json"])
+def test_every_declarative_loader_refuses_rather_than_reading_absent(locked_config_dir, loader):
+    """Each loader read "missing" for an unreadable dir on 3.14 (``is_file`` returned False): the registry
+    as empty, the mesh and peer config as unset. All three go through ``config_file_present``."""
+    from maxim.exceptions import ConfigDirUnreadable
+
+    if loader == "peer.yml":
+        from maxim.peer.config import read_peer_config as call
+    elif loader == "mesh.yml":
+        from maxim.peer.mesh_config import read_mesh_config
+
+        def call():
+            return read_mesh_config(locked_config_dir / "mesh.yml")
+    else:
+        from maxim.hivemind.registry import HiveRegistry
+
+        def call():
+            return HiveRegistry(locked_config_dir / "hive.json")._load()
+
+    with pytest.raises(ConfigDirUnreadable):
+        call()

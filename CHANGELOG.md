@@ -54,6 +54,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An unreadable `~/.config/maxim` is one typed error, not a traceback** ([#1403](https://github.com/dennys246/Maxim/issues/1403)).
+  With the config dir at mode 000, every `maxim` command (even `--help`) died with a raw `PermissionError` traceback
+  from the `profiles.yml` probe at `models.language` import. On Python 3.14 the same state was silent: `Path.is_file`
+  returned False, so the operator's `config.json`, `profiles.yml`, `peer.yml`, `mesh.yml` and `hive.json` were read
+  as absent (a peer detected as solo; the Oasis registry read as empty). Every one of those probes now goes through
+  `utils/paths.py::config_file_present`, which raises `maxim.exceptions.ConfigDirUnreadable` (a
+  `ConfigurationError`) naming the directory and `chmod 700 <dir>`. `cli.main` renders any uncaught
+  `ConfigurationError` as one line and exits 2; role detection re-raises this one instead of warning past it.
+
 - **The Reachy speaker tells the truth, at the right speed and scale** ([#1435](https://github.com/dennys246/Maxim/issues/1435),
   found by maxim-pulse on a real Reachy). Nothing in maxim started the SDK's player, so every robot utterance and
   the spoken pairing code were dropped while the sink reported success; Piper's 22,050 Hz played at 73% speed on the
