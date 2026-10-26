@@ -285,6 +285,125 @@ class TestReplaysPr654:
         assert result.exit_code == READY
 
 
+def _run(name, conclusion, *, started_at, run_id, status="completed", app_id=None):
+    return {
+        "name": name,
+        "status": status,
+        "conclusion": conclusion,
+        "output_title": None,
+        "started_at": started_at,
+        "id": run_id,
+        "app_id": app_id,
+    }
+
+
+class TestOnlyTheLatestRunPerCheckIsJudged:
+    """#1442: editing a PR's description starts a second `Tests` run on the same head
+    commit and the workflow's `concurrency` block cancels the first. GitHub's merge gate
+    reads the latest run per check name; the script read every run and printed one
+    `check-failed … cancelled` row per job of the superseded run (seen on #1433)."""
+
+    def test_a_superseded_cancelled_run_under_a_later_success_is_not_blocking(self):
+        checks = [
+            _run("unit-tests", "cancelled", started_at="2026-10-23T10:00:00Z", run_id=1),
+            *_REQUIRED,
+        ]
+        checks[1] = {**checks[1], "started_at": "2026-10-23T10:05:00Z", "id": 2}
+        result = _eval(checks=checks)
+        assert "check-failed" not in _codes(result)
+        assert result.exit_code == READY
+
+    def test_a_latest_cancelled_run_is_still_blocking(self):
+        checks = [
+            {**_REQUIRED[0], "started_at": "2026-10-23T10:00:00Z", "id": 1},
+            _run("unit-tests", "cancelled", started_at="2026-10-23T10:05:00Z", run_id=2),
+            *_REQUIRED[1:],
+        ]
+        result = _eval(checks=checks)
+        assert "check-failed" in _codes(result)
+        assert result.exit_code == BLOCKED
+
+    def test_an_older_success_does_not_hide_a_newer_failure(self):
+        checks = [
+            *_REQUIRED[1:],
+            _run("unit-tests", "failure", started_at="2026-10-23T10:05:00Z", run_id=2),
+            {**_REQUIRED[0], "started_at": "2026-10-23T10:00:00Z", "id": 1},
+        ]
+        result = _eval(checks=checks)
+        assert "check-failed" in _codes(result)
+        assert result.exit_code == BLOCKED
+
+    def test_a_queued_rerun_without_started_at_is_the_latest(self):
+        """A queued run has `started_at: null`; it is newer than any started run, so the
+        verdict waits on it rather than reporting the old run's failure."""
+        checks = [
+            _run("unit-tests", "failure", started_at="2026-10-23T10:00:00Z", run_id=1),
+            _run("unit-tests", None, started_at=None, run_id=2, status="queued"),
+            *_REQUIRED[1:],
+        ]
+        result = _eval(checks=checks)
+        assert "check-failed" not in _codes(result)
+        assert result.exit_code == UNSETTLED
+
+    def test_same_start_time_breaks_the_tie_on_id(self):
+        checks = [
+            _run("unit-tests", "success", started_at="2026-10-23T10:00:00Z", run_id=2),
+            _run("unit-tests", "cancelled", started_at="2026-10-23T10:00:00Z", run_id=1),
+            *_REQUIRED[1:],
+        ]
+        assert _eval(checks=checks).exit_code == READY
+
+    def test_a_settled_run_without_started_at_is_the_oldest(self):
+        """A job cancelled before it began is settled with no start time; it must not
+        outrank the green run that replaced it (review fold)."""
+        checks = [
+            _run("unit-tests", "cancelled", started_at=None, run_id=1),
+            _run("unit-tests", "success", started_at="2026-10-23T10:05:00Z", run_id=2),
+            *_REQUIRED[1:],
+        ]
+        assert _eval(checks=checks).exit_code == READY
+
+    def test_a_same_named_check_from_another_app_is_still_judged(self):
+        """A check is name + app: a failing `lint` posted by a second app is not
+        superseded by the Actions `lint` job that started later."""
+        checks = [
+            _run("lint", "failure", started_at="2026-10-23T10:00:00Z", run_id=1, app_id=99),
+            _run("lint", "success", started_at="2026-10-23T10:01:00Z", run_id=2, app_id=15368),
+            _REQUIRED[0],
+            *_REQUIRED[2:],
+        ]
+        assert _eval(checks=checks).exit_code == BLOCKED
+
+    def test_dropped_runs_are_reported_not_silent(self):
+        checks = [_run("unit-tests", "cancelled", started_at="2026-10-23T10:00:00Z", run_id=1), *_REQUIRED]
+        assert "superseded-runs-ignored" in _codes(_eval(checks=checks))
+        assert "superseded-runs-ignored" not in _codes(_eval())
+
+    def test_composed_shell_and_verdict_on_the_1433_shape(self, monkeypatch):
+        """The real composition: two check suites on one head SHA, the first cancelled by
+        the second; `_slurped_check_runs` feeds `evaluate` and the verdict is READY."""
+        import pr_merge_readiness as mod
+
+        def _api(name, conclusion, started, run_id):
+            return {
+                "name": name,
+                "id": run_id,
+                "status": "completed",
+                "conclusion": conclusion,
+                "started_at": started,
+                "app": {"id": 15368},
+                "output": {},
+            }
+
+        names = [c["name"] for c in _REQUIRED]
+        old = [_api(n, "cancelled", "2026-10-23T10:00:00Z", i) for i, n in enumerate(names, 1)]
+        new = [_api(n, "success", "2026-10-23T10:04:00Z", i) for i, n in enumerate(names, 100)]
+        monkeypatch.setattr(mod, "_gh_json", lambda *a, **k: [{"check_runs": new}, {"check_runs": old}])
+        result = _eval(checks=mod._slurped_check_runs("o/r", "sha"))
+        assert result.exit_code == READY
+        assert "check-failed" not in _codes(result)
+
+
 class TestIoShell:
     """Review MODERATE M7: every earlier bug lived in the untested shell."""
 
@@ -300,6 +419,20 @@ class TestIoShell:
         monkeypatch.setattr(mod, "_gh_json", lambda *a, **k: pages)
         runs = mod._slurped_check_runs("o/r", "sha")
         assert [r["name"] for r in runs] == ["unit-tests", "lint"]
+
+    def test_slurped_check_runs_carry_started_at_and_id(self, monkeypatch):
+        """The latest-run filter orders on these two fields; dropping them in the shell
+        would leave the pure filter judging every run as equally old."""
+        import pr_merge_readiness as mod
+
+        page = {
+            "check_runs": [
+                {"name": "lint", "id": 7, "started_at": "2026-10-23T10:00:00Z", "app": {"id": 15368}, "output": {}}
+            ]
+        }
+        monkeypatch.setattr(mod, "_gh_json", lambda *a, **k: [page])
+        (run,) = mod._slurped_check_runs("o/r", "sha")
+        assert (run["id"], run["started_at"], run["app_id"]) == (7, "2026-10-23T10:00:00Z", 15368)
 
     def test_slurped_check_runs_tolerates_a_single_object(self, monkeypatch):
         import pr_merge_readiness as mod
