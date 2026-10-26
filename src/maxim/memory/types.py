@@ -935,7 +935,7 @@ class CompressedMemory(CompressedRecord):
         return {
             "id": self.id,
             "type": "compressed_episodic",
-            "goal": record_active_goal(self),  # the active goal, as an episode's context reports it (#1137)
+            "goal": self.goal,  # intent-first, as EpisodicMemory.to_context_dict reports ``self.goal``
             "tool": self.tool_name,
             "success": self.success,
             "had_user_input": self.had_user_input,

@@ -27,7 +27,8 @@ logger = logging.getLogger(__name__)
 # (``{"success", "output", "error"}``) where "1.0" stored the ``ToolOutput`` repr string; the loader reads both
 # (``memory/types.py::Outcome.from_dict`` parses a 1.0 repr, owner decision D2). "1.2" (#1137) adds a compressed
 # record's ``active_goal`` and ``heard`` (what its episode heard, bounded); an older record loads without them, and an
-# older build re-saving a 1.2 file drops them (it ignores unknown keys and stamps its own version). The P3.5 envelope (``dump`` under ``snapshot.wrap_envelope``) stays at schema 1: its payload reads back the same way.
+# older build re-saving a 1.2 file drops them (it ignores unknown keys and stamps its own version). The P3.5
+# envelope (``dump`` under ``snapshot.wrap_envelope``) stays at schema 1: its payload reads back the same way.
 HIPPOCAMPUS_FORMAT_VERSION = "1.2"
 
 

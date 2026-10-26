@@ -176,3 +176,20 @@ def test_a_compressed_records_keys_are_cached_and_follow_its_words() -> None:
     compressed.heard = "a silver spoon"
     assert "silver" in compressed.content_tokens() and "zanzibar" not in compressed.content_tokens()
     assert "zanzibar" not in repr(compressed)  # raw stored words stay out of the repr
+
+
+def test_bounding_is_idempotent_whatever_the_cut_lands_on() -> None:
+    """Delta review S1: a cut landing on a space left 238 + "…", which NFKC expanded past the limit on the next
+    bound. A cut now ends in "...", NFKC's fixed point."""
+    import random
+
+    from maxim.memory.text import RECALLED_WORDS_MAX_CHARS, bounded_words
+
+    rng = random.Random(1137)
+    samples = ["a" * 238 + " " + "b" * 20, "ﷺ" * 40 + " green"] + [
+        " ".join("".join(rng.choice("abcdeﬁ…") for _ in range(rng.randint(1, 9))) for _ in range(80))
+        for _ in range(300)
+    ]
+    for text in samples:
+        once = bounded_words(text)
+        assert len(once) <= RECALLED_WORDS_MAX_CHARS and bounded_words(once) == once, text[:40]

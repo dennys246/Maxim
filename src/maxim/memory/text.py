@@ -324,11 +324,12 @@ RECALLED_WORDS_MAX_CHARS = 240
 
 def bounded_words(text: str, limit: int = RECALLED_WORDS_MAX_CHARS) -> str:
     """``text`` NFKC-normalized and whitespace-collapsed, THEN cut to ``limit`` (normalization first, so it cannot
-    grow past the bound; a cut ends in "…", which a later NFKC pass renders as "..."). Idempotent under re-bounding."""
+    grow past the bound). A cut ends in "...", NFKC's own fixed point (a "…" expanded to "..." on the next pass and
+    pushed a re-bound over the limit), so bounding is idempotent and a compressed record renders as its episode did."""
     import unicodedata
 
     text = " ".join(unicodedata.normalize("NFKC", text or "").split())
-    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+    return text if len(text) <= limit else text[: limit - 3].rstrip() + "..."
 
 
 __all__ = [
