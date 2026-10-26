@@ -67,6 +67,8 @@ PARTS: tuple[tuple[str, str], ...] = (
     # tty_stdin.py (the nested _stdin_reader_raw and the post-sim raw prompt loop)
     ("tty_stdin.py", "stdin_reader_raw"),
     ("tty_stdin.py", "read_post_sim_goal_raw"),
+    # #1454's interim prompt fix (2026-10-26, rule T): the interactive post-sim report view + new-goal prompt
+    ("orchestrator.py", "_show_report_and_post_sim_prompt"),
 )
 
 # Every module a slice moved ``start_simulation_mode`` code into, as a dotted name. The slice that creates one

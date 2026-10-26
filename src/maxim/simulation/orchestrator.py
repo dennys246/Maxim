@@ -527,6 +527,36 @@ def _select_aut_prompt_handler(prompt_handler: Any, stop_event: Any) -> tuple[An
         return None, None
 
 
+def _show_report_and_post_sim_prompt(report: Any, report_dir: str) -> Any:
+    """Show the report IN the Live panel so the user can scroll it, then prompt for a new goal; returns the active
+    display (None without one). Moved out of ``start_simulation_mode``'s interactive tail (#1454's interim prompt
+    fix carried by the move, rule T)."""
+    from maxim.simulation.report import print_report
+    from maxim.simulation.sim_logger import get_active_display
+
+    # Reset scroll to bottom first so the report appears at the end,
+    # then scroll up to show the start of the report.
+    display = get_active_display()
+    if display is not None:
+        display.scroll(-999999)  # Jump to bottom before report
+
+    log_count_before = display.log_count if display is not None else 0
+    _saved_session_dir = Path(report_dir) / report.session_id
+    print_report(report, session_dir=_saved_session_dir)
+    log_count_after = display.log_count if display is not None else 0
+    report_lines = log_count_after - log_count_before
+
+    if display is not None:
+        # Scroll up to show the start of the report
+        if report_lines > 0:
+            display.scroll(report_lines)
+        # No promise that learning reaches the next run: the re-entered run builds a fresh AUT (#1454); the 1.3.5
+        # /new slice makes the learning carry and restores the promise with it (owner decision 2026-10-26).
+        display.set_prompt("Tell me a new simulation to imagine, or press Enter to finish.\n\n> ")
+        display.set_urgent(True)
+    return display
+
+
 def start_simulation_mode(
     goal: str,
     mode: str = "generative",
@@ -3277,27 +3307,7 @@ def start_simulation_mode(
             logger.warning("Failed to emit report JSON to %r: %s", _report_json_path, e)
 
     if _is_interactive:
-        # Show the report IN the Live panel so the user can scroll it.
-        # Reset scroll to bottom first so the report appears at the end,
-        # then scroll up to show the start of the report.
-        display = get_active_display()
-        if display is not None:
-            display.scroll(-999999)  # Jump to bottom before report
-
-        log_count_before = display.log_count if display is not None else 0
-        _saved_session_dir = Path(report_dir) / report.session_id
-        print_report(report, session_dir=_saved_session_dir)
-        log_count_after = display.log_count if display is not None else 0
-        report_lines = log_count_after - log_count_before
-
-        if display is not None:
-            # Scroll up to show the start of the report
-            if report_lines > 0:
-                display.scroll(report_lines)
-            display.set_prompt(
-                "Tell me a new simulation to imagine (memory carries over), or press Enter to finish.\n\n> "
-            )
-            display.set_urgent(True)
+        display = _show_report_and_post_sim_prompt(report, report_dir)
 
         # Wait for user input: a goal (continue) or Enter (finish).
         # Live is still running — arrow keys scroll the report.
