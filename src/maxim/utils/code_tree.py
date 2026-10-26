@@ -29,6 +29,7 @@ import hashlib
 import os
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 # The code scope, as ``scripts/_provenance.py::DIRTY_SCOPE``; the root ``.gitignore`` is always added.
@@ -59,7 +60,12 @@ def git_out(repo: Path | str, *args: str, stdin: bytes | None = None, ok: tuple[
     case-insensitively or decompose unicode names. So neither the environment nor per-user config can
     change what git reports. (Not reading user, system or ``GIT_CONFIG_*`` config is defense in depth: no
     setting found that moves these listings is left unpinned by a ``-c`` above, and git reads
-    ``core.worktree`` only from the repo's own config, which :func:`_top_level_problem` catches.)"""
+    ``core.worktree`` only from the repo's own config, which :func:`_top_level_problem` catches.)
+
+    Under the offline latch it returns ``None`` without spawning (#1315 §1A.7): a stdlib probe of an already
+    imported ``maxim._offline``, so this module imports nothing (it is loaded by path, where the probe is False)."""
+    if getattr(sys.modules.get("maxim._offline"), "is_offline", lambda: False)():
+        return None
     env = {k: v for k, v in os.environ.items() if k not in _INHERITED and not k.startswith("GIT_CONFIG")}
     env["GIT_CONFIG_GLOBAL"] = os.devnull
     env["GIT_CONFIG_NOSYSTEM"] = "1"

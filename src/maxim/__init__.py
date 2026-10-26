@@ -15,6 +15,24 @@ Public API (verb-based):
 
 __version__ = "1.3.3"
 
+
+def _self_engage_offline() -> None:
+    """Latch a process started with ``MAXIM_OFFLINE`` truthy from its first ``import maxim`` (#1315 §6
+    "Self-engage in children": spawn-mode multiprocessing children and sub-sims). Stdlib-only and cheap: the leaf
+    ``maxim._offline`` is imported only when the variable is set, so an ordinary import carries no audit hook."""
+    import os
+
+    raw = os.environ.get("MAXIM_OFFLINE")
+    if not raw:
+        return
+    from maxim import _offline
+
+    if _offline.truthy(raw):
+        _offline.engage("MAXIM_OFFLINE set at import maxim")
+
+
+_self_engage_offline()
+
 # Verb-based public API — lazy-loaded to keep ``import maxim`` fast.
 _API_VERBS = frozenset(
     {
@@ -182,6 +200,11 @@ def get_version_info() -> dict[str, str]:
     import os
 
     info: dict[str, str] = {"version": __version__}
+
+    from maxim._offline import is_offline
+
+    if is_offline():
+        return info  # every git spawn is refused offline (#1315 §1A.7): no stamp, and nothing swallowed
 
     # Guard: only shell out to git if we're in a repo (PyPI installs won't
     # have .git). See ``_has_git_metadata`` for the dir/file shape handling.

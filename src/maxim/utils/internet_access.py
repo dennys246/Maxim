@@ -196,10 +196,11 @@ SESSION_LOWERED_ENV = "MAXIM_INTERNET_LOWERED"
 
 def session_internet_lowered() -> bool:
     """Whether this session's internet was lowered (``MAXIM_INTERNET_LOWERED``, the canonical truthy parser; a value
-    that is set but not truthy, e.g. ``0``, is an explicit "not lowered")."""
-    from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env
+    that is set but not truthy, e.g. ``0``, is an explicit "not lowered"). Offline implies lowered, on the READ side
+    only (#1315 §1A.1): the offline latch writes no ``MAXIM_INTERNET_LOWERED`` and logs nothing here."""
+    from maxim._offline import is_offline, truthy
 
-    return annotation_disabled_via_env(os.environ.get(SESSION_LOWERED_ENV))
+    return is_offline() or truthy(os.environ.get(SESSION_LOWERED_ENV))
 
 
 def lower_internet_for_session() -> None:

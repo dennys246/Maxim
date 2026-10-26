@@ -449,9 +449,6 @@ def engaged_child(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize("channel", REFUSED_CHANNELS)
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason=_reason("V8 / step 0b", "maxim._offline's audit hook refuses it")
-)
 def test_engaged_latch_refuses_each_channel(engaged_child: dict[str, Any], channel: str) -> None:
     """After ``engage("test")`` one call of this channel raises ``OfflineRefusal`` and the ledger records it (§6:
     "While engaged, it refuses"). Fails today: ``maxim._offline`` does not exist."""
@@ -465,7 +462,6 @@ def test_engaged_latch_refuses_each_channel(engaged_child: dict[str, Any], chann
     assert res["ledger_delta"] >= 1, f"{channel}: refused but the refusal ledger did not record it"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=_reason("V8 / step 0b", "inbound passes the latch"))
 def test_engaged_latch_allows_inbound_listen(engaged_child: dict[str, Any]) -> None:
     """Inbound ``bind``/``listen`` on 127.0.0.1 is NOT refused (§6: "Inbound is not refused"). Fails today on the
     existence check (``maxim._offline`` does not exist)."""
@@ -476,9 +472,6 @@ def test_engaged_latch_allows_inbound_listen(engaged_child: dict[str, Any]) -> N
     assert res["ledger_delta"] == 0, "an inbound bind/listen was booked as a refusal"
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason=_reason("§6 'Engaging the latch'", "OfflineRefusal(RuntimeError)")
-)
 def test_offline_refusal_is_a_runtime_error_not_an_oserror(engaged_child: dict[str, Any]) -> None:
     """``OfflineRefusal`` subclasses ``RuntimeError`` and never ``OSError``, so the narrow ``except OSError`` sites
     (``git_out``, ``_find_orphans_ps``, ``git_root_refusal``) cannot absorb it. Fails today: no module."""
@@ -512,9 +505,6 @@ emit()
 """
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason=_reason("§6 self-engage", "maxim/__init__ engages on MAXIM_OFFLINE")
-)
 def test_self_engage_from_env(tmp_path: Path) -> None:
     """A child started with ``MAXIM_OFFLINE=yes`` (a canonical truthy value that is not "1") is latched after
     ``import maxim``, and the latch is real (a resolve refuses). Fails today: no ``maxim._offline``."""
@@ -545,9 +535,6 @@ emit()
 """
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason=_reason("§6 self-engage", "the hook is added only by engage()")
-)
 def test_no_hook_without_the_variable(tmp_path: Path) -> None:
     """Without ``MAXIM_OFFLINE`` the child carries NO audit hook after ``import maxim``: ``hook_installed()`` is
     False and a synthetic spawn / resolve audit event passes (module docstring: there is no API that lists hooks).
@@ -582,7 +569,6 @@ TRUTHY_TABLE: tuple[tuple[str | None, bool], ...] = (
 
 
 @pytest.mark.parametrize(("raw", "expected"), TRUTHY_TABLE)
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=_reason("§1A.1", "maxim._offline.truthy exists"))
 def test_one_truthy_parser(raw: str | None, expected: bool) -> None:
     """``maxim._offline.truthy`` and ``cluster_bias_annotation.annotation_disabled_via_env`` agree on every row.
     Fails today: no ``maxim._offline``."""
@@ -593,9 +579,6 @@ def test_one_truthy_parser(raw: str | None, expected: bool) -> None:
     assert annotation_disabled_via_env(raw) is off.truthy(raw), f"the two parsers disagree on {raw!r}"
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason=_reason("§1A.1", "annotation_disabled_via_env delegates to truthy")
-)
 def test_annotation_parser_delegates_to_offline_truthy(monkeypatch: pytest.MonkeyPatch) -> None:
     """``annotation_disabled_via_env`` calls ``maxim._offline.truthy`` (one parser, not two that agree today): a spy
     swapped in for ``truthy`` (on the module, and on ``cluster_bias_annotation`` when it binds the name) is called.
@@ -620,7 +603,6 @@ def test_annotation_parser_delegates_to_offline_truthy(monkeypatch: pytest.Monke
 # ── 4. stdlib only ────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=_reason("§1A.1", "maxim/_offline.py exists, stdlib-only"))
 def test_offline_module_is_stdlib_only() -> None:
     """``maxim/_offline.py`` imports only the standard library (the ``test_clean_flag_998`` AST pattern), so importing
     it never runs ``maxim.utils``. Fails today: the file does not exist."""
@@ -674,7 +656,6 @@ def _provenance_child(tmp_path: Path, which: str) -> dict[str, Any]:
     return out
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=_reason("§1A.7", "git_out returns None when offline"))
 def test_offline_git_out_spawns_nothing(tmp_path: Path) -> None:
     """Latched, ``code_tree.git_out([...])`` returns ``None`` and spawns nothing (its stdlib probe of
     ``sys.modules["maxim._offline"]``). Fails today: no ``maxim._offline``."""
@@ -686,7 +667,6 @@ def test_offline_git_out_spawns_nothing(tmp_path: Path) -> None:
     assert not out["spy"], f"git_out spawned under offline: {out['spy']}"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=_reason("§1A.7", "_code_stamp labels 'unknown: offline'"))
 def test_offline_code_stamp_says_offline(tmp_path: Path) -> None:
     """Latched, in a git checkout, ``simulation/report.py::_code_stamp`` yields ``executed_git_hash ==
     "unknown: offline"`` and spawns nothing. Fails today: no ``maxim._offline``."""
@@ -698,7 +678,6 @@ def test_offline_code_stamp_says_offline(tmp_path: Path) -> None:
     assert not out["spy"], f"_code_stamp spawned under offline: {out['spy']}"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=_reason("§1A.7", "get_version_info early-returns"))
 def test_offline_version_info_spawns_nothing(tmp_path: Path) -> None:
     """Latched, ``maxim.get_version_info()`` spawns nothing (an ``is_offline()`` early return, not a swallowed
     refusal). Fails today: no ``maxim._offline``."""
@@ -973,9 +952,6 @@ emit()
 """
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason=_reason("§1A.1", "session_internet_lowered() reads the latch")
-)
 def test_offline_implies_internet_lowered(tmp_path: Path) -> None:
     """Latched, ``utils/internet_access.py::session_internet_lowered()`` returns True on the READ side, with
     ``MAXIM_INTERNET_LOWERED`` never written (``engage()`` calls nothing in ``maxim.utils``). Fails today: no
@@ -1022,11 +998,6 @@ emit()
 """
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=_reason("§1A.7 composed", "an offline report.json says 'unknown: offline' and spawns nothing"),
-)
 def test_offline_sim_report_says_offline(tmp_path: Path) -> None:
     """§1A.7's composed gate, at the report writer: latched, in a git checkout, the shipped provenance-to-report path
     (``capture_start_provenance`` -> ``run_provenance`` -> ``SimulationReport`` -> ``save_report``) writes a
@@ -1080,11 +1051,6 @@ emit()
 """
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=_reason("§1A.1 engage step 3", "utils/http.py registers close_all through on_engage"),
-)
 def test_a_client_pooled_before_engage_cannot_send_after(tmp_path: Path) -> None:
     """A ``utils/http.py`` client that pooled a keep-alive connection to a local listener BEFORE ``engage()`` cannot
     send after it: the next request raises or records ``OfflineRefusal`` and the listener receives nothing more.
@@ -1137,9 +1103,6 @@ emit()
 """
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason=_reason("§1A.1 engage step 2", "engage() sets the library flags")
-)
 def test_engage_sets_already_imported_library_flags(tmp_path: Path) -> None:
     """With ``huggingface_hub`` imported FIRST (and ultralytics, where installed), ``engage()`` sets
     ``huggingface_hub.constants.HF_HUB_OFFLINE = True`` and ``ultralytics.utils.ONLINE = False`` through
@@ -1277,9 +1240,6 @@ def _pops_maxim_offline(node: ast.stmt) -> bool:
     return is_environ_pop and isinstance(first, ast.Constant) and first.value == "MAXIM_OFFLINE"
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason=_reason("§1A.1 'Tests'", "conftest pops MAXIM_OFFLINE first")
-)
 def test_conftest_pops_maxim_offline_before_importing_maxim() -> None:
     """``tests/conftest.py`` runs ``os.environ.pop("MAXIM_OFFLINE", None)`` as a top-level statement BEFORE its first
     ``import maxim`` (a developer shell must not latch the pytest process). Fails today: there is no such pop."""

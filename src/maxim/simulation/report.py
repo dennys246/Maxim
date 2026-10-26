@@ -293,6 +293,15 @@ def resume_stamp(resume: dict[str, Any]) -> dict[str, Any]:
 def _code_stamp(maxim_file: Path) -> dict[str, Any]:
     from maxim import _has_git_metadata
 
+    from maxim._offline import is_offline
+
+    if is_offline():  # every git spawn is refused offline (#1315 §1A.7): no stamp, so it cannot gate a claim (M1)
+        return {
+            "executed_maxim_file": str(maxim_file),
+            "executed_git_hash": "unknown: offline",
+            "working_tree_dirty_src_scripts": True,
+            "code_tree_sha256": "unknown: offline",
+        }
     repo = maxim_file.parents[2]  # src/maxim/__init__.py -> repo
     in_checkout = _has_git_metadata(str(repo)) and (repo / "src" / "maxim").resolve() == maxim_file.parent
     return {

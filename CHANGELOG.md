@@ -25,6 +25,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The offline latch, step 0b of the atonia gate** ([#1315](https://github.com/dennys246/Maxim/issues/1315) item 10,
+  `docs/plans/atonia_gate_approach_notes.md` §1A.1/§6). New stdlib-only leaf `maxim/_offline.py`: `engage(reason)`
+  is one-way and, on first use, adds an audit hook that refuses every outbound connect (loopback and `AF_UNIX`
+  included), INET send, DNS lookup and Python-level spawn with `OfflineRefusal(RuntimeError)`, booking each in a
+  refusal ledger; inbound `bind`/`listen` pass. A truthy `MAXIM_OFFLINE` engages it at `import maxim` (so children
+  self-engage) and at any `is_offline()` call; no process that never engages carries the hook. `engage()` sets the
+  HF/YOLO offline variables and the already-imported library flags, and `utils/http.py` closes its pool, builds
+  strict proxy-free clients and refuses every request while engaged. Offline implies `MAXIM_INTERNET_LOWERED` on the
+  read side; `code_tree.git_out` and `get_version_info` spawn nothing offline, and a sim report's code stamp says
+  `"unknown: offline"`. **Behaviour change:** the canonical MAXIM_* truthy parser is now `maxim._offline.truthy`
+  ("1/true/yes/on"), and `annotation_disabled_via_env` delegates to it, so `t` and `y` no longer count as truthy
+  for the toggles it parses. Item 10's call-site refusals (HF, whisper, ultralytics, downloads, docker, the router)
+  and the `llm.offline` config key are not in this step.
 - **The wheel vendors maxim-pulse Console v0.4.4** (was v0.4.2 at 1.3.3, then v0.4.3; contract 0.6.0, unchanged). It is
   now the newest pulse tag for this contract, so R4's release gate requires it. v0.4.3 brought clearer leader setup
   (key and address guidance, with warnings), commands shown in a distinct style, and readable light-theme status
