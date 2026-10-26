@@ -1,5 +1,7 @@
 # MediaMTX
 
+> **Stale (2026-10-25):** the RTSP bridge that published to MediaMTX (`tools/rtsp_bridge.py`) was removed in the 1.0 cleanup, its launcher script was deleted in #1436, and the "shredder segmenter protocol" this page mentions went with the skills system ([skills.md](skills.md)). Kept as history; reviving it is [deferred/reachy_orient_live.md](plans/deferred/reachy_orient_live.md).
+
 MediaMTX is the RTSP relay that sits between Maxim (publisher) and consumers like ShredderSegmenter. It's a single binary with zero configuration needed for basic use.
 
 ## Auto-Start (Default Behavior)
