@@ -325,3 +325,16 @@ def _build_minimal_router(LLMRouter):
     if not router._providers:
         router._providers = {"local": {"type": "llama_cpp", "model": "smollm-1.7b-instruct"}}
     return router
+
+
+def test_the_spec_only_probe_never_imports_and_never_raises():
+    import sys
+
+    from maxim.utils.optional_deps import optional_dependency_installed
+
+    assert optional_dependency_installed("json") is True
+    assert optional_dependency_installed("zz_not_installed_1436") is False
+    assert optional_dependency_installed("zz_not_installed_1436.sub") is False
+    sys.modules.pop("colorsys", None)
+    assert optional_dependency_installed("colorsys") is True
+    assert "colorsys" not in sys.modules, "find_spec only: the probe must not import the package"

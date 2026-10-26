@@ -288,7 +288,8 @@ direct `on_session_end` callers, and `AgentInstance.shutdown` ends whatever is o
   - a hung-tool session is logged and its files stay intact.
   - Also: the `test_memory_hub` suite and the briefs (§10).
 - **PR 2:**
-  - a SIGTERM mid-sim → report.json marked yielded, exit 0;
+  - a SIGTERM mid-sim → report.json marked yielded, exit 4 (a failure for evidence);
+  - a SIGTERM to `maxim serve` / chat → clean yield, exit 0;
   - a SIGTERM at startup → no report;
   - a blocked stop → exit 75.
 
@@ -298,14 +299,16 @@ direct `on_session_end` callers, and `AgentInstance.shutdown` ends whatever is o
 - The CLI sim's refusal is mislabelled as `aut_died`.
 - The NAc imagination-link mutation after the NAc save.
 - The escalation bridge: a non-atomic save of a machine-wide file (with #984).
-- **The library still exits the process in two places,** which breaks §2 in an embedder:
+- **The library still exits the process or installs signal handlers outside Maxim-owned processes** (`maxim bench`'s two
+  SIGINT handlers are Maxim-owned and stay; `simulation/tty_stdin.py`'s dead SIGTERM handler is removed by PR 2). Two
+  sites break §2 in an embedder:
   - `simulation/orchestrator.py`'s stall hard-abort thread calls `os._exit(4)`, which can kill pulse mid-save on a wedged
     campaign;
   - `inference/transcribe_audio.py` installs signal handlers with an `except Exception: pass`.
 
   Both are rerouted through `request_stop`. Mechanization backlog: a CI grep that only `cli.py` (and `console/server.py`'s
-  serve path) calls `signal.signal` / `os._exit`, with these two as listed exceptions ([outstanding.md](outstanding.md) **M80**).
-- An embedder rebuilding a handle in-process while a stop thread is alive. Mechanization backlog **M81**: a per-home
+  serve path) and `bench/` call `signal.signal` / `os._exit`, with these sites as listed exceptions ([outstanding.md](outstanding.md) **M81**).
+- An embedder rebuilding a handle in-process while a stop thread is alive. Mechanization backlog **M82**: a per-home
   "stop in progress" lock taken by `end_session`.
 - **Pulse:**
   - catch `KeyFileUnusable`;
@@ -337,7 +340,7 @@ direct `on_session_end` callers, and `AgentInstance.shutdown` ends whatever is o
 - **runtime-tools.md:**
   - the thread model (the capture thread is the session's, by handle);
   - the console stop invariant (deadline + caps);
-  - new: the library never exits the process (Regression guard: process invariant, mechanization backlog M80).
+  - new: the library never exits the process (Regression guard: process invariant, mechanization backlog M81).
 - **persistence-config.md:** `Deadline` is never persisted; the pidfile's `_format_version` and owner rules; the config
   rows.
 - **`docs/wiring/session-end-seams-per-runtime.md`:** the session-end column per runtime.
