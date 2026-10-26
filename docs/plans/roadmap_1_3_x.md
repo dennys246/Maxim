@@ -1037,7 +1037,7 @@ A file under "Shares" is edited in small separate hunks, each merged with `main`
 
 | Session | Line | Owns | Shares | Starts with |
 |---|---|---|---|---|
-| **S (pulse seam, robot)** | #1435 → #1436 → #1437; R3 #1336 with the 0.7.0 tag plan sent to pulse up front, plus #1428 and #1430/#1431; R2's reachy cell; the `console/health.py` fixes #1285 #1286 #1287 #1291; R1's remaining audit | as in 1.3.3 (`console/` except `handle.py`, `models/audio/`, `utils/audio.py`, `utils/response_output.py`, the extras), plus named exceptions for `embodied_runtime/media_loop.py` and `hardware/reachy/streams.py`, and (#1435's review round, owner 2026-10-24) `embodied_runtime/connection.py` and `embodied_runtime/selfy.py` | `console/handle.py` with V; `tools/response.py` (#1435's honesty hunk) with V; the one-line `cli.py` hunk for #1437 with A | #1435's design pass |
+| **S (pulse seam, robot)** | #1435 → #1436 → #1437; R3 #1336 with the 0.7.0 tag plan sent to pulse up front, plus #1428 and #1430/#1431; R2's reachy cell; the `console/health.py` fixes #1285 #1286 #1287 #1291; R1's remaining audit | as in 1.3.3 (`console/` except `handle.py`, `models/audio/`, `utils/audio.py`, `utils/response_output.py`, the extras), plus named exceptions for `embodied_runtime/media_loop.py` and `hardware/reachy/streams.py`, and (#1435's review round, owner 2026-10-24) `embodied_runtime/connection.py` and `embodied_runtime/selfy.py`, and (#1436's review round, owner 2026-10-25) `embodied_runtime/workers.py`, `utils/optional_deps.py` and two Exp 2 record notes in `docs/experiments/` | `console/handle.py` with V; `tools/response.py` (#1435's honesty hunk) with V; the one-line `cli.py` hunk for #1437 with A | #1435's design pass |
 | **R (recall), new** | **#1444 + #1163 + #1064 + #1447, as ONE end-to-end change**: the user's words rendered, framed untrusted (#1444); the `ToolOutput` repr kept out of the record (#1163, at the persistence seam in `memory/types.py`); one shared tokenizer that ranks on what captures write (#1064); the query cues on the user's input (#1447). Then #1137, #1153, and #845 item 1. | `integration/bio_enrichment.py`, `memory/` (hippocampus, retrieval, types), `math/angular_gyrus.py` | `runtime/loop_state.py` (#845 item 1) with A; its tests build through V's `runtime/agent_factory.py` (tests only) | the strict red gate (below) |
 | **H (hardening)** | the bounded stop #1438 with #1344, as one mechanism whose deadline the caller sets; LLM routing #1369 #1370 #1371 #1408, #1417 (which closes #1415), #1396; keys and config #1402 #1403; CI #1442 #1271 #1313 #1426 #1325, and #1384 with Session P's design pass; sim-record scrub #1404 | as in 1.3.3 (`runtime/role.py`, `leader_mode.py`, `local_server_spawner.py`, `comms/`, the scripts each issue names), plus `runtime/lane_backends.py`, `tunnel/keys.py`, `scripts/pr_merge_readiness.py` | `console/server.py::_drain_and_stop_handle` (#1438) with S; `cli.py` (item 9's installer) with A | #1442 and #1402/#1403 (small, decided), then #1438 + #1344's approach note |
 | **V (atonia gate)** | its own section, below | as in 1.3.3 | as in 1.3.3 | paper first: the approach notes and design passes |
@@ -1111,7 +1111,8 @@ Also, an utterance shaped like an instruction appears only inside the frame. Ide
     Design pass first (detecting "started" has no public SDK query); done, with the owner decisions, in
     [speaker_sink_1435.md](speaker_sink_1435.md). **Release gate (owner decision 2026-10-24): 1.3.4 does not publish
     before maxim-pulse releases the build that calls `start_device_player`/`stop_device_player`** (released pulse
-    starts the SDK player itself, so its pairing code would go silent on 1.3.4; mechanization backlog M79). Rides with R2's reachy cell, whose device smoke
+    starts the SDK player itself, so its pairing code would go silent on 1.3.4; mechanization backlog M79). **Met 2026-10-25:**
+    pulse v0.4.4 calls the pair (vendored by #1462). Rides with R2's reachy cell, whose device smoke
     asserts audio reached a STARTED player at the device rate. R1's in-memory "has spoken" stays the readiness signal
     until the embodied-device plan's step 3 makes it PLAYS.
   - **The device defects from pulse's review** (Maxim-pulse #58, 2026-10-24). Each one is bounded, none waits for
@@ -1183,6 +1184,21 @@ they are ready, and the gate takes the next free number when it is done, still o
   [#865](https://github.com/dennys246/Maxim/issues/865), the `sim_logger` move out of `simulation/` (from §1.3.2's
   "After the decomposition"; each its own reviewed PR; owner decision 2026-10-18). #866's import rewrite in
   `runtime/agent_loop.py` needs Session A to grant that one hunk (record it as a fence touch).
+  **Homed 2026-10-26** (filed by the characterization arms, #1459; addendum from the open-issue deep dive):
+  [#1451](https://github.com/dennys246/Maxim/issues/1451) rides with #1262 (strict red gate first: a percept that arrives while a planning job is in flight is
+  stranded); [#1452](https://github.com/dennys246/Maxim/issues/1452) rides with #1259 and #1288 (the idle nudge is unreachable for a live narrator); [#1453](https://github.com/dennys246/Maxim/issues/1453),
+  [#1454](https://github.com/dennys246/Maxim/issues/1454) and [#1457](https://github.com/dennys246/Maxim/issues/1457) are ONE `/new` slice, with the owner's decisions of 2026-10-26 recorded on each issue (run
+  settings carry and campaign-scoped inputs do not, by a test that classifies every parameter; the learning carries;
+  `--report-json` describes the returned run; the slice also makes the post-sim prompt ONE constant used by both the panel and the raw reader, pinned by equality and tied to the `new_goal` characterization arm, and takes the whole interactive post-sim block, which returns `_new_goal`, as its unit, leaving the recursion in the caller); [#1456](https://github.com/dennys246/Maxim/issues/1456) (the golden flake) stays with #1459's tests and is never
+  closed on non-recurrence.
+  **Fence touches (2026-10-26):** Session H takes the one-line `cli.py` hunk for [#1392](https://github.com/dennys246/Maxim/issues/1392) (the CLI scenario path
+  calls the new `validation.py` helper, so the bio expectations get the real snapshot), recorded like #1437's.
+  Session A took two small 1.3.4 hunks of its own, each with strict red gates and paid for under rule T:
+  [#1468](https://github.com/dennys246/Maxim/issues/1468) (one exit-code table for a run, owner decisions 2026-10-26: a crash 1, a typed backend error or leader
+  refusal 2 via `cli.main`, Ctrl+C 130; the run loop's teardown and error mapping moved to `cli.py`'s
+  `_end_robot_run` and `_run_stopped_on`) and #1454's interim prompt fix (the post-sim prompt drops "(memory carries over)"; the
+  report view and prompt moved to `orchestrator.py::_show_report_and_post_sim_prompt`, registered in
+  `tests/unit/_orchestrator_source.py`'s `PARTS`). The `/new` slice restores the promise with the behaviour.
 - **Meets B2's entry condition** ([#1352](https://github.com/dennys246/Maxim/issues/1352), the bare LLM loop). B2's code
   prerequisites land in 1.3.6.
 - **Exit:** `start_simulation_mode` and its descendants pass gate rule 4, and all five arms are satisfied.

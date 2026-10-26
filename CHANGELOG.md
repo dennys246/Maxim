@@ -66,6 +66,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `resolve_setting` re-raise it instead of falling past it. The remaining writers and setup-wizard probes of the
   same dir are follow-up work.
 
+- **A run that stops on an error exits non-zero, with one exit-code table** ([#1468](https://github.com/dennys246/Maxim/issues/1468);
+  owner decisions 2026-10-26). `maxim`'s run loop (robot `--mode` runs and `--mode agentic`, scenario sims included)
+  logged `❌ Maxim stopped` and returned 0, so a supervisor reading the exit code (systemd, maxim-pulse's app, CI,
+  `scripts/exp49/run_trials.py`) saw a clean stop; since #1436 a missing robot module failing at import took the same
+  path. Now: an unexpected exception exits `1`; a typed backend error (`BackendError`) or a security refusal
+  (`LeaderRefusal`) reaches `cli.main`, which prints its fix hint or reason and exits `2` (the loop's catch-all used to
+  absorb both, against `LeaderRefusal`'s own rule that a broad handler re-raises it); Ctrl+C exits `130` wherever it
+  lands (it was `0` inside a run, `130` outside). A failure the runtime absorbs and keeps running through still exits
+  `0`. `docs/user/cli-reference.md` lists the codes. The loop's teardown moved to `cli.py::_end_robot_run`, its
+  error-to-code mapping to `cli.py::_run_stopped_on`.
+- **The post-sim `/new` prompt no longer promises that memory carries over**
+  ([#1454](https://github.com/dennys246/Maxim/issues/1454), interim). The re-entered run builds a fresh agent under
+  test, so its learning did not reach the next run; only the narrator's memory does. The prompt (both the panel and
+  the raw-mode reader) and `docs/user/simulation.md` now say so. The 1.3.5 `/new` slice makes the learning carry
+  (owner decision 2026-10-26) and restores the promise with it.
+- **The robot hears again** ([#1436](https://github.com/dennys246/Maxim/issues/1436), found by maxim-pulse's device
+  review). Since `db274547` (2026-04-03) deleted a re-export shim, the robot's transcription start and the audio
+  writer imported it lazily, so every robot session ran with no voice input behind one warning. Both now import
+  `maxim.inference.transcribe_audio` at module top level, so a missing module fails at import. Voice input that cannot
+  start says so with ONE ERROR (`Voice input is OFF: ...`): a missing `audio` extra names `pip install
+  'pymaxim[audio]'` (probed without importing faster-whisper into the parent), and a transcriber that dies after
+  spawn is reported once by the audio writer, which then stops queueing chunks nobody will read. The transcription
+  start moved out of `MediaLoopMixin.live` (566 → 425 lines); the transcriber runs in its own process group (a
+  terminal Ctrl-C no longer stops it ahead of the parent; it exits when its parent dies), and each run keeps its chunks in
+  `audio/chunks/<run_id>/` (a shared directory fed an earlier session's leftover audio to the next one). Verified with
+  fakes and a real spawned child that fails to load its model; the on-robot check is R2's reachy cell.
+- **A new CI lint, `scripts/lint_dead_imports.py`** (Added), resolves every `maxim` import in `src/` and `scripts/`, at any
+  depth (lazy, `TYPE_CHECKING`, class body), against the tree: the module and the imported name must exist. It found
+  seven more dead imports, all fixed: `MaximAgent.wire_communication` imported the deleted communication bridge, so
+  with comms enabled (`MAXIM_COMMS_ENABLED`) the robot's agentic runtime failed to start behind one warning; the
+  deleted protocol system's start-up block in `agentic_runtime.py` failed on every run; a `TYPE_CHECKING` import in
+  `default_network/behaviors` named a moved class. Two scripts that could no longer run were deleted:
+  `scripts/rtsp_bridge.py` (its bridge was removed in 1.0) and `scripts/behavioral_convergence_exp2.py` (Exp 2's
+  recorded result describes fe1124b9, where it was re-run on 2026-10-25: 13/13). Added:
+  `utils.optional_deps.optional_dependency_installed`, a spec-only probe, and `utils.audio.run_in_own_process_group`.
 - **The Reachy speaker tells the truth, at the right speed and scale** ([#1435](https://github.com/dennys246/Maxim/issues/1435),
   found by maxim-pulse on a real Reachy). Nothing in maxim started the SDK's player, so every robot utterance and
   the spoken pairing code were dropped while the sink reported success; Piper's 22,050 Hz played at 73% speed on the

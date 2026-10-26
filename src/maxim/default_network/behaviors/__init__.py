@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 from maxim.default_network.behaviors.base import Behavior, BehaviorState
 
 if TYPE_CHECKING:
-    from maxim.default_network.novelty import ThreadSafeNoveltyTracker
+    from maxim.salience import ThreadSafeNoveltyTracker
 from maxim.default_network.behaviors.orienting import OrientingResponse
 from maxim.default_network.behaviors.social import SocialAttention
 from maxim.default_network.behaviors.motion import MotionTracking

@@ -3,7 +3,9 @@ from __future__ import annotations
 import logging
 import math
 import os
+import signal
 import threading
+import time
 import weakref
 from typing import Any, Callable, Optional
 
@@ -446,6 +448,38 @@ def make_device_speak_sink(mini: Any) -> Callable[..., bool]:
         return push_audio_to_device(mini, samples, sample_rate)
 
     return speak
+
+
+def run_in_own_process_group(target: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    """Child-process entry: leave the terminal's process group, then run ``target(*args, **kwargs)``.
+
+    For the robot's spawned transcriber (#1436): in the terminal's foreground group a Ctrl-C
+    reached the child first, it exited before the parent noticed the stop, and the audio writer
+    reported "Voice input is OFF" on every ordinary shutdown. In its own group only the parent's
+    teardown stops it (the shutdown file, then SIGTERM, then SIGKILL), or the parent's death: leaving
+    the group also stops the terminal's SIGHUP from reaching it, so a watchdog thread SIGTERMs the
+    child once its parent is gone (a hard-killed parent never runs its teardown, and an orphaned
+    transcriber would keep its model, and GPU memory, loaded). A module-level function, so a spawn
+    context can pickle it; it lives here, not beside its caller, so the child does not import the
+    embodied runtime. No-op grouping where ``os.setpgrp`` does not exist.
+    """
+    setpgrp = getattr(os, "setpgrp", None)
+    if setpgrp is not None:
+        setpgrp()
+    import multiprocessing
+
+    # The spawning parent's pid, not getppid(): if the parent died while this child was still
+    # importing, getppid() would already name the reaper and the watchdog would never fire.
+    spawner = multiprocessing.parent_process()
+    parent = spawner.pid if spawner is not None and spawner.pid else os.getppid()
+
+    def _exit_when_orphaned() -> None:
+        while os.getppid() == parent:
+            time.sleep(1.0)
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    threading.Thread(target=_exit_when_orphaned, name="transcriber-parent-watch", daemon=True).start()
+    return target(*args, **kwargs)
 
 
 def stop_local_audio() -> None:
