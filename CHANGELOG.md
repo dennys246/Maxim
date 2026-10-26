@@ -54,6 +54,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`ensure_key` / `ensure_console_token` never overwrite a key file they cannot read**
+  ([#1402](https://github.com/dennys246/Maxim/issues/1402)). They read through the lenient readers, which return None
+  for a missing file and for an unusable one alike (mode 000, a directory, non-UTF-8, oversized), then wrote a new key
+  over it: a silent rotation that 401'd every peer or device with nothing naming why. Now only a missing or empty file
+  is generated (an empty one is replaced at 0600, never inheriting its old mode), under the key's lock with a re-read,
+  as `ensure_local_server_key` does (#1314); rotations take the same lock. Anything else raises the new key-neutral
+  `maxim.exceptions.KeyFileUnusable` (`.path`, `.reason`, `.fix_hint`; `LeaderKeyError` now subclasses it), and
+  every caller presents it: `maxim tunnel setup` prints it and exits 1; `maxim serve` and `--show-token` print it and
+  exit 2 before building the app; `/api/pair/claim` answers **503** (reason only, path in the device log) and the
+  spoken code is consumed; `device_console_handoff` raises it to the device bootstrap. The fix hint never suggests a
+  rotation, which would keep the unusable mode.
+
 - **The Reachy speaker tells the truth, at the right speed and scale** ([#1435](https://github.com/dennys246/Maxim/issues/1435),
   found by maxim-pulse on a real Reachy). Nothing in maxim started the SDK's player, so every robot utterance and
   the spoken pairing code were dropped while the sink reported success; Piper's 22,050 Hz played at 73% speed on the

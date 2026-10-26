@@ -15,14 +15,16 @@ Layout:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import platform
 import secrets
 import stat
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
-from maxim.exceptions import LeaderRefusal
+from maxim.exceptions import KeyFileUnusable, LeaderRefusal
 
 
 KEY_BYTES = 32  # 256-bit random key → 43 char base64url-ish string
@@ -136,19 +138,91 @@ def _write_key_secret(key: str, name: str) -> Path:
 
 
 def ensure_key() -> str:
-    """Return the existing mesh key if present, else generate, save, and return a new one."""
-    existing = read_key()
-    if existing:
-        return existing
-    key = generate_key()
-    write_key(key)
-    return key
+    """Return the mesh key, generating one only when the file is missing or empty (#1402).
+
+    A file that exists but cannot be used raises :class:`~maxim.exceptions.KeyFileUnusable`, never an overwrite.
+    """
+    return _ensure_named_key(MESH_KEY_NAME, lambda key: write_key(key))
 
 
 def rotate_key() -> str:
     """Generate a new mesh key, overwrite the file, return the new value."""
     key = generate_key()
-    write_key(key)
+    with _key_creation_lock(key_file_path()):
+        write_key(key)
+    return key
+
+
+def _key_unusable_fix(path: Path, name: str) -> str:
+    """How to repair an unusable key file. Never "rotate": a rotation keeps the unusable mode (#1402 design pass)."""
+    holders = (
+        "every peer then needs `maxim peer key set <key>`"
+        if name == MESH_KEY_NAME
+        else "every signed-in device must pair or sign in again"
+    )
+    return (
+        f"Make it readable (`chmod 600 {path}`, or move it aside if it is a directory or not a regular file), "
+        f"or remove it so the next start generates a new one ({holders})."
+    )
+
+
+def _existing_key(name: str, path: Path) -> str | None:
+    """The key in the named file; None when it is missing or empty (both generate); KeyFileUnusable otherwise."""
+    try:
+        raw, _mode = _read_key_file(path)
+    except LeaderKeyMissing:
+        return None
+    except LeaderKeyError as e:
+        # Plain KeyFileUnusable: a console token is not a leader key, and this is not a LeaderRefusal.
+        raise KeyFileUnusable(path=path, reason=e.reason, fix_hint=_key_unusable_fix(path, name)) from e
+    key = raw.lstrip("\ufeff").strip()
+    if not key:
+        logging.getLogger(__name__).info("key file is empty; generating a new key: %s", path)
+        return None
+    return key
+
+
+@contextlib.contextmanager
+def _key_creation_lock(path: Path) -> Iterator[None]:
+    """The per-file lock every writer of a named key holds, so an ensure never re-reads a half-written rotation."""
+    from maxim.utils.process_lock import LockContended, file_lock
+
+    try:
+        with file_lock(path.with_name(path.name + ".lock"), timeout_s=_LOCAL_KEY_LOCK_TIMEOUT_S):
+            yield
+    except LockContended as e:
+        raise KeyFileUnusable(
+            path=path,
+            reason="another process holds the key-creation lock",
+            fix_hint=f"Retry; if it persists, remove the stale lock file {path}.lock.",
+        ) from e
+
+
+def _ensure_named_key(name: str, write: Callable[[str], object], *, prefix: str = "") -> str:
+    """The named key, created when (and only when) its file is missing or empty; the #1314 shape.
+
+    Read first without a lock (a valid key in a read-only directory still works). Creation happens under the key's
+    lock with a re-read inside it, an empty file is unlinked first (so the new key is 0600 from creation rather than
+    inheriting the empty file's mode), and the value returned is the one read back from disk.
+    """
+    path = key_file_path(name)
+    key = _existing_key(name, path)
+    if key is not None:
+        return key
+    try:
+        with _key_creation_lock(path):
+            if _existing_key(name, path) is None:
+                path.unlink(missing_ok=True)
+                write(generate_key(prefix=prefix))
+    except OSError as e:
+        raise KeyFileUnusable(
+            path=path, reason=f"cannot create key file ({type(e).__name__})", fix_hint=_key_unusable_fix(path, name)
+        ) from e
+    key = _existing_key(name, path)
+    if key is None:
+        raise KeyFileUnusable(
+            path=path, reason="key file is empty after it was written", fix_hint=_key_unusable_fix(path, name)
+        )
     return key
 
 
@@ -160,7 +234,7 @@ MIN_LEADER_KEY_CHARS = 16
 _LEADER_KEY_FIX = "Run `maxim tunnel key rotate` on the leader, then `maxim peer key set <key>` on each peer."
 
 
-class LeaderKeyError(LeaderRefusal):
+class LeaderKeyError(KeyFileUnusable, LeaderRefusal):
     """The leader role has no usable mesh key, so the leader refuses to start.
 
     A leader serves inference and admin endpoints on every interface; without a
@@ -171,10 +245,7 @@ class LeaderKeyError(LeaderRefusal):
     """
 
     def __init__(self, *, path: Path, reason: str, fix_hint: str = _LEADER_KEY_FIX) -> None:
-        self.path = path
-        self.reason = reason
-        self.fix_hint = fix_hint
-        super().__init__(f"leader key unusable ({reason}): {path}")
+        super().__init__(path=path, reason=reason, fix_hint=fix_hint, message=f"leader key unusable ({reason}): {path}")
 
 
 class LeaderKeyMissing(LeaderKeyError):
@@ -381,13 +452,14 @@ def read_console_token() -> str | None:
 
 
 def ensure_console_token() -> str:
-    """Return the existing console token, else generate (mxc_-prefixed), save, return."""
-    existing = read_console_token()
-    if existing:
-        return existing
-    token = generate_key(prefix=CONSOLE_TOKEN_PREFIX)
-    _write_key_secret(token, CONSOLE_KEY_NAME)
-    return token
+    """Return the console token, generating one (mxc_-prefixed) only when the file is missing or empty (#1402).
+
+    A file that exists but cannot be used raises :class:`~maxim.exceptions.KeyFileUnusable`, never an overwrite:
+    that would log out every device with no message naming why.
+    """
+    return _ensure_named_key(
+        CONSOLE_KEY_NAME, lambda token: _write_key_secret(token, CONSOLE_KEY_NAME), prefix=CONSOLE_TOKEN_PREFIX
+    )
 
 
 def rotate_console_token() -> str:
@@ -397,7 +469,8 @@ def rotate_console_token() -> str:
     rotation is the console's revocation story (hardening plan, decision A5).
     """
     token = generate_key(prefix=CONSOLE_TOKEN_PREFIX)
-    _write_key_secret(token, CONSOLE_KEY_NAME)
+    with _key_creation_lock(key_file_path(CONSOLE_KEY_NAME)):
+        _write_key_secret(token, CONSOLE_KEY_NAME)
     return token
 
 

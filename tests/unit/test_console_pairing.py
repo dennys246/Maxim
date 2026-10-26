@@ -112,7 +112,6 @@ class TestHappyPath:
         assert token == keys.read_console_token()  # same file as maxim serve / --show-token
         assert c.get("/api/identity", headers={"Authorization": f"Bearer {token}"}).status_code == 200
 
-    @pytest.mark.xfail(strict=True, reason="#1402 red gate")
     @pytest.mark.skipif(sys.platform == "win32" or os.geteuid() == 0, reason="POSIX permission bits")
     def test_unusable_disk_token_answers_503_and_burns_the_code(self, _isolated):
         """#1402: a correct code with an unreadable token file is a 503 naming the reason (never the absolute

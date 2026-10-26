@@ -23,6 +23,7 @@ from maxim.tunnel.cloudflared import (
     run_tunnel_login,
     run_tunnel_route_dns,
 )
+from maxim.exceptions import KeyFileUnusable
 from maxim.tunnel.config import (
     CONFIG_PATH,
     TunnelConfig,
@@ -87,6 +88,20 @@ def run_tunnel_subcommand(argv: Sequence[str]) -> int:
 
 
 # ─── setup ────────────────────────────────────────────────────────────────
+
+
+def _setup_api_key() -> str | None:
+    """Setup step 7: the mesh key, generated if missing; None (refusal printed) if the file is unusable (#1402)."""
+    try:
+        key = ensure_key()
+    except KeyFileUnusable as e:
+        print(f"✗ {e}")
+        print(f"  {e.fix_hint}")
+        return None
+    print(f"✓ API key ready at {key_file_path()}")
+    print(f"  {truncate_for_display(key)}")
+    print()
+    return key
 
 
 def _cmd_setup() -> int:
@@ -220,10 +235,9 @@ def _cmd_setup() -> int:
     print()
 
     # 7. Generate API key if not present
-    key = ensure_key()
-    print(f"✓ API key ready at {key_file_path()}")
-    print(f"  {truncate_for_display(key)}")
-    print()
+    key = _setup_api_key()
+    if key is None:
+        return 1
 
     # 8. Summary
     print("─" * 62)

@@ -52,7 +52,6 @@ _EMPTY_CASES = [
         keys.ensure_console_token,
         keys.CONSOLE_KEY_NAME,
         id="console",
-        marks=pytest.mark.xfail(strict=True, reason="#1402 red gate: inherits 0644 from the empty file"),
     ),
 ]
 
@@ -64,7 +63,6 @@ _ENSURES = [
 
 @_POSIX_PERMS
 @pytest.mark.parametrize(("ensure", "name"), _ENSURES)
-@pytest.mark.xfail(strict=True, reason="#1402 red gate")
 def test_an_unreadable_key_survives_ensure_byte_identical(key_dir, ensure, name):
     path = _unreadable(key_dir / name)
     with pytest.raises(_kfu()) as exc:
@@ -77,7 +75,6 @@ def test_an_unreadable_key_survives_ensure_byte_identical(key_dir, ensure, name)
 
 
 @pytest.mark.parametrize(("ensure", "name"), _ENSURES)
-@pytest.mark.xfail(strict=True, reason="#1402 red gate")
 def test_a_directory_at_the_key_path_is_refused_not_replaced(key_dir, ensure, name):
     (key_dir / name).mkdir()
     with pytest.raises(_kfu()):
@@ -86,7 +83,6 @@ def test_a_directory_at_the_key_path_is_refused_not_replaced(key_dir, ensure, na
 
 
 @_POSIX_PERMS
-@pytest.mark.xfail(strict=True, reason="#1402 red gate")
 def test_the_console_refusal_is_not_a_leader_refusal(key_dir):
     """A solo console's token is not the leader key: no "leader key unusable", no LeaderRefusal handling."""
     _unreadable(key_dir / keys.CONSOLE_KEY_NAME)
@@ -116,7 +112,6 @@ def test_a_missing_key_is_generated_and_then_stable(key_dir, ensure, name):
     assert (key_dir / name).read_text().strip() == first
 
 
-@pytest.mark.xfail(strict=True, reason="#1402 red gate")
 def test_leader_key_errors_share_the_key_neutral_base():
     assert issubclass(keys.LeaderKeyError, _kfu())
     assert issubclass(keys.LeaderKeyError, LeaderRefusal)
@@ -125,7 +120,6 @@ def test_leader_key_errors_share_the_key_neutral_base():
 
 
 @_POSIX_PERMS
-@pytest.mark.xfail(strict=True, reason="#1402 red gate")
 def test_tunnel_setup_key_step_presents_the_refusal(key_dir, capsys):
     from maxim.tunnel import cli as tunnel_cli
 
@@ -136,7 +130,6 @@ def test_tunnel_setup_key_step_presents_the_refusal(key_dir, capsys):
 
 
 @_POSIX_PERMS
-@pytest.mark.xfail(strict=True, reason="#1402 red gate")
 def test_serve_show_token_exits_2_naming_the_file(key_dir, capsys):
     from maxim.console import server
 
@@ -145,3 +138,78 @@ def test_serve_show_token_exits_2_naming_the_file(key_dir, capsys):
     out = capsys.readouterr().out
     assert str(key_dir / keys.CONSOLE_KEY_NAME) in out
     assert "mxc_" not in out
+
+
+@_POSIX_PERMS
+def test_serve_startup_refuses_before_building_the_app(key_dir, monkeypatch, capsys):
+    from maxim.console import server
+
+    monkeypatch.delenv("MAXIM_CONSOLE_SANDBOX", raising=False)
+    monkeypatch.setattr(server, "build_app", lambda *a, **k: pytest.fail("app built over an unusable token"))
+    _unreadable(key_dir / keys.CONSOLE_KEY_NAME)
+    assert server.run_serve([]) == 2
+    assert str(key_dir / keys.CONSOLE_KEY_NAME) in capsys.readouterr().out
+
+
+@_POSIX_PERMS
+def test_device_handoff_raises_typed(key_dir):
+    from maxim.console.server import device_console_handoff
+
+    _unreadable(key_dir / keys.CONSOLE_KEY_NAME)
+    with pytest.raises(_kfu()):
+        device_console_handoff("reachy.local")
+
+
+def test_a_held_creation_lock_is_a_typed_refusal(key_dir, monkeypatch):
+    import contextlib
+
+    from maxim.utils import process_lock
+
+    @contextlib.contextmanager
+    def _held(*a, **k):
+        raise process_lock.LockContended("held")
+        yield
+
+    monkeypatch.setattr(process_lock, "file_lock", _held)
+    with pytest.raises(_kfu(), match="key-creation lock"):
+        keys.ensure_console_token()
+    assert not (key_dir / keys.CONSOLE_KEY_NAME).exists()
+
+
+def test_a_key_that_cannot_be_created_is_a_typed_refusal(key_dir, monkeypatch):
+    def _denied(key, name):
+        raise PermissionError("read-only config dir")
+
+    monkeypatch.setattr(keys, "_write_key_secret", _denied)
+    with pytest.raises(_kfu(), match="cannot create key file"):
+        keys.ensure_console_token()
+
+
+def test_a_writer_that_leaves_nothing_is_a_typed_refusal(key_dir, monkeypatch):
+    monkeypatch.setattr(keys, "_write_key_secret", lambda key, name: None)
+    with pytest.raises(_kfu(), match="empty after it was written"):
+        keys.ensure_console_token()
+
+
+@pytest.mark.parametrize(
+    ("rotate", "name"),
+    [(keys.rotate_key, keys.MESH_KEY_NAME), (keys.rotate_console_token, keys.CONSOLE_KEY_NAME)],
+)
+def test_rotation_writes_under_the_creation_lock(key_dir, monkeypatch, rotate, name):
+    import contextlib
+
+    from maxim.utils import process_lock
+
+    held = []
+    real = process_lock.file_lock
+
+    @contextlib.contextmanager
+    def _spy(path, **k):
+        with real(path, **k):
+            held.append(str(path))
+            yield
+
+    monkeypatch.setattr(process_lock, "file_lock", _spy)
+    new = rotate()
+    assert held == [str(key_dir / f"{name}.lock")]
+    assert (key_dir / name).read_text().strip() == new
