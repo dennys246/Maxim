@@ -1,6 +1,6 @@
 # The atonia gate: approach notes for items 2, 3, 1, 5 and 10
 
-**Status:** DRAFT v6.6 (design passes, three-lens round and two deltas folded; red-gate review decisions folded), approach notes (CLAUDE.md "Faster without lowering the bar", item 1). Owner decisions V1–V8
+**Status:** DRAFT v6.7 (design passes, three-lens round and two deltas folded; red-gate review decisions folded), approach notes (CLAUDE.md "Faster without lowering the bar", item 1). Owner decisions V1–V8
 were made 2026-10-24 and V9–V10 on 2026-10-25. Session V, paper only: nothing in `src/` changes until the owner has read the folded
 plan and the red-gate PR is opened.
 - **v1** was written from a read-only census at `d9dffe6e` (origin/main, 2026-10-24).
@@ -352,28 +352,55 @@ caller those catches protected, so list each caller.
 
 advisor_mode.md's draft interfaces are **superseded by this shape**, and that file says so.
 
-**`open()`** (owner decisions 2026-10-26, from AvServ's questions, A–D) takes, keyword-only:
+**`open()`** (owner decisions 2026-10-26, from AvServ's questions, A–D; refined by the v6.6 three-lens round, v6.7)
+takes, keyword-only:
 - `home_dir`, `model` and `report_dir`;
 - `cursor=None`, `max_calls=8`, `turn_timeout_s=120` and `log_mode=0o600`;
-- **`n_ctx`, `max_prompt_tokens` and `n_gpu_layers=-1`** (A).
+- **`n_ctx=None`, `max_prompt_tokens=None` and `n_gpu_layers=-1`** (A).
 
-`session.limits` exposes the last three read-only, after `open()` resolves them: `n_ctx` defaults to the GGUF's
-trained context, and `max_prompt_tokens` defaults to `n_ctx` minus the completion budget.
+**Limits (A).**
+- `n_ctx=None` resolves through the **shared `Llama` kwargs builder's clamp** (§1A.3) to `min(trained context,
+  8192)`, never the full trained context: a 128K default means minutes of prefill, or a memory failure at `open()`.
+- The completion budget is fixed at **1024 tokens**.
+- `max_prompt_tokens=None` resolves to `n_ctx - 1024`.
+- `open()` refuses (`AdvisorCompositionError`) when `max_prompt_tokens + 1024 > n_ctx`.
+- `session.limits` is a frozen object whose attributes read back the **actual** values: `n_ctx`,
+  `max_prompt_tokens`, `completion_tokens` and `n_gpu_layers`.
 
 **`session.ingest(events, *, stop=None)`.** Each event is `{event_id, kind, occurred_at, payload, text, cursor?}`.
-- **Cursors (C).** `cursor` is the caller's opaque feed cursor; Maxim never parses it, only echoes it.
-  `covered.cursor_out` is the `cursor` of the last event the turn judged, or that event's `event_id` when it carries
-  none. For `error` and `abandoned` reports, `cursor_out == cursor_in`.
-- **Stopping (D).** The library installs no signal handler (bounded_stop.md). `ingest()` honours the process stop
-  request, `utils/cancellation.py::current_stop()`, which the embedder's SIGTERM handler sets with
-  `request_stop(Deadline(...), "yield")`. It also honours an optional per-call `stop: StopRequest`. A stop that lands
-  during sampling ends the turn at the next token, and the report is `abandoned`, with no judgement and
-  `cursor_out == cursor_in`. A stop that lands during prefill takes effect when prefill returns, which the token cap
-  bounds. `session.close()` then writes the log's close record.
-- **Prompt too long (B).** A `prompt_too_long` error report carries `extra.prompt_tokens` and
-  `extra.max_prompt_tokens`, so the caller can size its batches.
+- **The prompt cap (B).**
+  - The **session** is the one place the cap is checked: it compares `len(prompt.ids)` against `max_prompt_tokens`
+    before any completion, so prefill is bounded by tokens, not by time.
+  - Every report carries a named field, `"prompt": {"tokens": N, "max_tokens": M}`, not an `extra` key, so AvServ can
+    size its batches from any report.
+  - An over-cap prompt gives `error` with reason `prompt_too_long`, and the backend never completes.
+- **Cursors (C).**
+  - `cursor` is the caller's opaque feed cursor; Maxim never parses it, only echoes it.
+  - If `open()` received a `cursor`, every event must carry `cursor`; otherwise `ingest()` raises
+    `AdvisorInputError` before any turn.
+  - **Maxim decides what was handled:** every event in the batch is either judged or listed in `inputs[]` as
+    rejected. So on `ok`, `covered.cursor_out` is the **last event's** `cursor`, and a rejected event can never be
+    re-fed forever.
+  - For `error` and `abandoned`, `cursor_out == cursor_in`.
+  - There is no `event_id` fallback. With no `cursor` given, both cursor fields are `null`.
+- **Stopping (D, session-scoped).**
+  - The library installs no signal handler and never exits (bounded_stop.md's principle). The embedder's handler calls
+    **`session.request_stop(deadline_s, reason="yield")`**, which is thread-safe and callable from a signal handler.
+    An optional per-call `stop=` (a `threading.Event`-like object) abandons only that call.
+  - **The process-wide `StopRequest` is not consulted.** It is sticky, and `MaximHandle.stop()` sets it too, so in an
+    embedding process it would abandon unrelated sessions. This design also does not wait for bounded_stop PR 0.
+  - **Per-token checking.** The closed backend's `complete_tokens(..., should_stop)` consults `should_stop()` on every
+    sampled token, in its `stopping_criteria`. A stop ends the turn at the next token, and the report is `abandoned`:
+    no judgement, `cursor_out == cursor_in`.
+  - **Prefill.** A stop that lands during prefill takes effect when prefill returns, which the token cap bounds.
+  - **After a stop:**
+    - the session is stopped;
+    - a further `ingest()`, or one called while the stop was already set, raises a typed `AdvisorStopped` and runs no
+      turn;
+    - `close()` still writes the log's close record.
 - **`degraded`.** In this release the observer has **no `degraded` producer**: it loads no optional weights. The
-  status stays in the schema. A rejected input keeps the report `ok`, with `inputs[].rejected` filled.
+  status stays in the schema. A rejected input keeps the report `ok`, with `inputs[].rejected` filled. §4.2's status
+  table and §6's degraded paths apply to non-observer runs.
 
 **The report:**
 
@@ -739,7 +766,8 @@ Replacing `ProposalQueue` closes the drain path only. Under V1 none of these is 
   The closed entry point constructs llama-cpp-python's `Llama` **eagerly**, at `open()`, from the path alone. It takes
   no profile, does no lazy load, has no cost tracker and no `atexit`, and reads no env. It exposes exactly three calls
   (§1A.10): `open_closed_local_backend`, `build_prompt(template, segments)` (the whole tokenize-and-defang), and
-  `complete_tokens(prompt_ids, *, grammar, max_tokens, max_prompt_tokens, deadline)`. It does not import
+  `complete_tokens(prompt_ids, *, grammar, max_tokens, deadline, should_stop)`. The prompt cap is checked by the
+  session (§1A.8), not here. It does not import
   `agents.llm_worker` or anything under `runtime/`.
   - **The bound is two-part.** Prompt prefill (`eval`) cannot be interrupted, so `max_prompt_tokens` is checked
     before `eval`, and an over-long prompt returns `status: "error"` with `reason: "prompt_too_long"`. After that,
@@ -1457,7 +1485,19 @@ class, and the reset guard's fail-closed name match.
 | `log_mode` missing from §4.2's signature | §1A.8 wins; §4.2 points to it |
 | Context size and prompt cap | A: `n_ctx`, `max_prompt_tokens`, `n_gpu_layers` and `session.limits`. B: token counts on a `prompt_too_long` report |
 | Is the cursor opaque, and what sets `cursor_out`? | C: a per-event `cursor`; `cursor_out` is the last judged event's cursor |
-| SIGTERM during `ingest()` | D: the process `StopRequest`, plus an optional per-call `stop=`; the result is `abandoned`, then `close()` |
+| SIGTERM during `ingest()` | D (v6.7): `session.request_stop()` plus a per-call `stop=`, checked per token; the result is `abandoned`, then `AdvisorStopped`, then `close()` |
 | `degraded` | No producer in this release; rejected inputs stay `ok` |
 | GPU default; `nvidia-smi` under the latch | A: `n_gpu_layers=-1`; the supervisor runs the GPU checks before `open()` (item 11 later) |
-| Phase 1 web research | Out of the gate's scope: the 1.3.2 harness in the sandbox; no `ddgs`; `http_fetch` honours `HTTPS_PROXY` |
+| Phase 1 web research | Out of the gate's scope: the 1.3.2 harness in the sandbox; no `ddgs`. **Corrected in v6.7:** `http_fetch` at defaults (`block_private_ips=True`) uses `fetch_url(public_only=True)`, which **never uses a proxy** (#824), so the sandbox's egress proxy must be transparent (network-level redirect), not an explicit `HTTPS_PROXY` |
+
+**v6.6 three-lens round** (v6.7; `v66_executor.md`, `v66_architecture.md`, `v66_wire.md`):
+
+| Finding | Fold |
+|---|---|
+| Wire B1: `http_fetch` does not honour a proxy at defaults (#824) | The answer corrected: the egress proxy must be transparent |
+| All three: the process stop is sticky, `MaximHandle.stop` sets it, nothing checks it per token | D is session-scoped, with `should_stop` per token and `AdvisorStopped` after a stop |
+| Architecture and Wire: "judged" undefined; the `event_id` fallback | C: Maxim decides; the last event's cursor; cursors required when used |
+| All three: the trained-context default; the budget undefined; the cap unchecked against `n_ctx` | A: the builder's clamp (at most 8192); budget 1024; `open()` refuses an over-large cap |
+| All three: two producers for `prompt_too_long`; counts in `extra` | B: the session is the one producer; a named `prompt` field on every report |
+| Architecture S6, Executor S5: `degraded` contradicts §4.2/§6 | Stated: §4.2/§6's `degraded` is for non-observer runs |
+| Executor S3: a leaked process stop could mask gates | Moot: no process stop is used |

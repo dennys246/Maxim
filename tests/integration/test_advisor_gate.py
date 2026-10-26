@@ -283,6 +283,9 @@ class FakeBackend:
         self.templates: list[str] = []
         self.segments: list[list[str]] = []
         self.completions = 0
+        self.n_ctx = 4096  # the resolved context the session reads back (v6.7 A); _install_fake applies n_ctx=
+        self.on_token: Any = None  # v6.7 D: called with the token index, to raise a stop mid-turn
+        self.tokens_sampled = 0
 
     def build_prompt(self, template: str, segments: Any) -> Any:
         segs = [str(s) for s in segments]
@@ -291,11 +294,18 @@ class FakeBackend:
         spans = [(1 + i, 2 + i) for i in range(len(segs))]
         return SimpleNamespace(ids=list(range(1 + len(segs) + 1)), untrusted_spans=spans, rejected=())
 
-    def complete_tokens(self, prompt_ids: Any, **_kw: Any) -> Any:
+    def complete_tokens(self, prompt_ids: Any, **kw: Any) -> Any:
         self.completions += 1
         if self.mode == "raise":
             raise RuntimeError("fake backend: completion failed")
         text = self.completion if isinstance(self.completion, str) else json.dumps(self.completion)
+        should_stop = kw.get("should_stop")
+        for i in range(8):  # v6.7 D: the per-token stopping criterion, as llama-cpp's stopping_criteria calls it
+            if self.on_token is not None:
+                self.on_token(i)
+            self.tokens_sampled += 1
+            if callable(should_stop) and should_stop():
+                return SimpleNamespace(text=text[: len(text) // 3], deadline_hit=True, finish_reason="stop")
         if self.mode == "deadline":  # a complete, valid completion: tests the deadline row alone
             return SimpleNamespace(text=text, deadline_hit=True, finish_reason="stop")
         if self.mode == "deadline_half":  # v6.3: the deadline wins and the half-JSON is never parsed
@@ -311,6 +321,8 @@ def _install_fake(monkeypatch: pytest.MonkeyPatch, backend: FakeBackend) -> list
 
     def factory(*args: Any, **kwargs: Any) -> FakeBackend:
         calls.append((args, kwargs))
+        if kwargs.get("n_ctx"):  # the builder honours an explicit n_ctx; otherwise its clamp chose 4096 here
+            backend.n_ctx = int(kwargs["n_ctx"])
         return backend
 
     monkeypatch.setattr(sess, "_backend_factory", factory)
@@ -1389,66 +1401,91 @@ def test_report_status_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cas
     assert report["log_last_seq"] == log["last_seq"], (report["log_last_seq"], log["last_seq"])
 
 
-# ── 7b. v6.6: limits, prompt cap, cursors, cooperative stop (AvServ's questions) ──
+# ── 7b. v6.7: limits, prompt cap, cursors, session-scoped stop (AvServ's questions, notes §1A.8) ──
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.6 A: flips with session.limits")
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.7 A: flips with session.limits")
 def test_open_exposes_limits(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """``open(n_ctx=, max_prompt_tokens=, n_gpu_layers=)`` reach the backend factory and read back from
-    ``session.limits``; ``n_gpu_layers`` defaults to -1 (offload everything)."""
+    """``session.limits`` reads back the ACTUAL values (n_ctx, max_prompt_tokens, completion_tokens 1024,
+    n_gpu_layers); defaults resolve to the backend's n_ctx and n_ctx-1024; ``n_gpu_layers`` defaults to -1; and
+    ``open()`` refuses a cap that leaves no room for the 1024-token completion."""
     advisor = _require_advisor()
-    calls = _install_fake(monkeypatch, FakeBackend())
+    _install_fake(monkeypatch, FakeBackend())
     home_dir, report_dir, model = _dirs(tmp_path)
     session = advisor.open(
-        home_dir=home_dir, model=model, report_dir=report_dir, n_ctx=2048, max_prompt_tokens=1500, n_gpu_layers=12
+        home_dir=home_dir, model=model, report_dir=report_dir, n_ctx=2048, max_prompt_tokens=1000, n_gpu_layers=12
     )
     try:
         limits = getattr(session, "limits", None)
-        assert limits is not None, "AdvisorSession has no .limits (v6.6 A)"
-        got = {k: getattr(limits, k, None) for k in ("n_ctx", "max_prompt_tokens", "n_gpu_layers")}
-        assert got == {"n_ctx": 2048, "max_prompt_tokens": 1500, "n_gpu_layers": 12}, got
-        assert calls, "open() never built the backend"
-        _args, kwargs = calls[-1]
-        assert kwargs.get("n_ctx") == 2048 and kwargs.get("n_gpu_layers") == 12, f"factory kwargs: {kwargs}"
+        assert limits is not None, "AdvisorSession has no .limits (v6.7 A)"
+        got = {k: getattr(limits, k, None) for k in ("n_ctx", "max_prompt_tokens", "completion_tokens", "n_gpu_layers")}
+        assert got == {"n_ctx": 2048, "max_prompt_tokens": 1000, "completion_tokens": 1024, "n_gpu_layers": 12}, got
     finally:
         session.close()
+    _install_fake(monkeypatch, FakeBackend())  # n_ctx 4096 when none is given (the builder's clamp)
+    d2 = tmp_path / "defaults"
+    d2.mkdir()
+    s2 = advisor.open(home_dir=home_dir, model=model, report_dir=_mkdir(d2 / "r"))
+    try:
+        assert (s2.limits.n_ctx, s2.limits.max_prompt_tokens) == (4096, 4096 - 1024), (
+            s2.limits.n_ctx,
+            s2.limits.max_prompt_tokens,
+        )
+    finally:
+        s2.close()
     default = inspect.signature(advisor.open).parameters.get("n_gpu_layers")
-    assert default is not None and default.default == -1, "n_gpu_layers must default to -1 (v6.6 A)"
+    assert default is not None and default.default == -1, "n_gpu_layers must default to -1 (v6.7 A)"
+    err = getattr(advisor, "AdvisorCompositionError", Exception)
+    _install_fake(monkeypatch, FakeBackend())
+    _expect_raises(
+        err,
+        lambda: advisor.open(
+            home_dir=home_dir, model=model, report_dir=_mkdir(tmp_path / "r3"), n_ctx=2048, max_prompt_tokens=1500
+        ),
+        "a max_prompt_tokens leaving no room for the 1024-token completion",
+    )
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.6 B: flips with the prompt cap")
+def _mkdir(p: Path) -> Path:
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.7 B: flips with the session's cap")
 def test_prompt_too_long_reports_token_counts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A prompt over ``max_prompt_tokens`` is refused before completion: ``error``/``prompt_too_long`` carrying
-    ``extra.prompt_tokens`` and ``extra.max_prompt_tokens``, and the backend never completes."""
+    """The SESSION checks ``len(prompt.ids)`` before any completion: an over-cap prompt is ``error`` /
+    ``prompt_too_long`` with the named ``prompt`` field filled, and the backend never completes. Every report carries
+    ``prompt``."""
     advisor = _require_advisor()
     backend = FakeBackend()
     _install_fake(monkeypatch, backend)
     home_dir, report_dir, model = _dirs(tmp_path)
-    session = advisor.open(home_dir=home_dir, model=model, report_dir=report_dir, max_prompt_tokens=2)
+    session = advisor.open(home_dir=home_dir, model=model, report_dir=report_dir, n_ctx=2048, max_prompt_tokens=2)
     try:
         report = _as_dict(session.ingest(EVENTS))
     finally:
         session.close()
-    prompt_tokens = 1 + len(EVENTS) * 2 + 1  # FakeBackend.build_prompt: one id per segment (text, payload) + 2
     assert report.get("status") == "error" and report.get("reason") == "prompt_too_long", report.get("reason")
-    extra = report.get("extra") or {}
-    assert extra.get("max_prompt_tokens") == 2, extra
-    assert isinstance(extra.get("prompt_tokens"), int) and extra["prompt_tokens"] > 2, extra
-    assert extra["prompt_tokens"] <= prompt_tokens + 64, extra  # the template may add ids; never a guess
-    assert backend.completions == 0, "an over-long prompt reached completion (prefill is bounded by the cap)"
+    prompt = report.get("prompt") or {}
+    ids = 1 + 2 * len(EVENTS) + 1  # FakeBackend.build_prompt: one id per segment (text and payload per event) + 2
+    assert prompt.get("max_tokens") == 2, prompt
+    assert prompt.get("tokens") == ids, f"prompt.tokens {prompt.get('tokens')!r}, the built prompt had {ids} ids"
+    assert backend.completions == 0, "an over-cap prompt reached completion (prefill is bounded by the cap)"
+    ok, _s, _r = _ingest(_mkdir(tmp_path / "ok"), monkeypatch, FakeBackend())
+    assert isinstance((ok.get("prompt") or {}).get("tokens"), int), "an ok report lacks the named prompt field"
 
 
 CURSORED = [
     {"event_id": "e1", "kind": "note", "text": "a person walked past the door", "payload": {}, "cursor": "feed:101"},
-    {"event_id": "e2", "kind": "note", "text": "the hall light went out", "payload": {}},
+    {"event_id": "e2", "kind": "note", "text": "the hall light went out", "payload": {}, "cursor": "feed:102"},
 ]
 
 
 @pytest.mark.parametrize("case", ["ok", "error", "abandoned"])
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.6 C: flips with per-event cursors")
-def test_cursor_out_follows_the_last_judged_event(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
-    """``cursor`` is opaque and echoed. ``ok``: ``cursor_out`` is the last judged event's cursor, or its ``event_id``
-    when it carries none (here e2, so ``"e2"``). ``error``/``abandoned``: ``cursor_out == cursor_in``."""
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.7 C: flips with per-event cursors")
+def test_cursor_out_follows_the_last_event(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
+    """``cursor`` is opaque and echoed. ``ok``: every event is judged or listed as rejected, so ``cursor_out`` is the
+    LAST event's cursor. ``error``/``abandoned``: ``cursor_out == cursor_in``. No ``event_id`` fallback."""
     advisor = _require_advisor()
     backend = {"ok": FakeBackend("ok"), "error": FakeBackend("raise"), "abandoned": FakeBackend("deadline")}[case]
     _install_fake(monkeypatch, backend)
@@ -1460,58 +1497,85 @@ def test_cursor_out_follows_the_last_judged_event(tmp_path: Path, monkeypatch: p
         session.close()
     covered = report.get("covered") or {}
     assert covered.get("cursor_in") == "feed:100", covered
-    want = "e2" if case == "ok" else "feed:100"
+    want = "feed:102" if case == "ok" else "feed:100"
     assert covered.get("cursor_out") == want, f"{case}: cursor_out {covered.get('cursor_out')!r}, want {want!r}"
-    first = [dict(CURSORED[0])]
-    if case == "ok":
-        session2 = advisor.open(home_dir=home_dir, model=model, report_dir=report_dir, cursor="feed:100")
-        try:
-            r2 = _as_dict(session2.ingest(first))
-        finally:
-            session2.close()
-        assert (r2.get("covered") or {}).get("cursor_out") == "feed:101", r2.get("covered")
 
 
-class _StopDuringCompletion(FakeBackend):
-    """Raises the process stop request mid-turn, then answers as the deadline would (the stop ends the turn)."""
-
-    def complete_tokens(self, prompt_ids: Any, **kw: Any) -> Any:
-        from maxim.utils.cancellation import request_stop
-        from maxim.utils.deadline import Deadline
-
-        request_stop(Deadline(5.0), "yield")
-        return super().complete_tokens(prompt_ids, **kw)
-
-
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.6 D: flips with the cooperative stop")
-def test_ingest_honours_the_process_stop_request(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The library installs no handler (bounded_stop.md). A ``request_stop`` raised during a turn makes ``ingest``
-    return ``abandoned`` (no proposals, ``cursor_out == cursor_in``); ``ingest`` also accepts a per-call ``stop=``;
-    ``close()`` writes the close record afterwards."""
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.7 C: flips with the cursor contract")
+def test_cursor_required_on_every_event_when_used(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """With ``open(cursor=)``, an event without ``cursor`` makes ``ingest`` raise ``AdvisorInputError`` before any
+    turn; with no cursor at all, both cursor fields are ``null``."""
     advisor = _require_advisor()
-    cancellation = importlib.import_module("maxim.utils.cancellation")
-    assert hasattr(cancellation, "request_stop") and hasattr(cancellation, "current_stop"), (
-        "no StopRequest seam yet (bounded_stop.md PR 0): utils/cancellation.request_stop/current_stop"
-    )
-    params = inspect.signature(_session_mod().AdvisorSession.ingest).parameters
-    assert "stop" in params and params["stop"].kind is params["stop"].KEYWORD_ONLY, "ingest(events, *, stop=None)"
-    _install_fake(monkeypatch, _StopDuringCompletion("ok"))
+    backend = FakeBackend()
+    _install_fake(monkeypatch, backend)
     home_dir, report_dir, model = _dirs(tmp_path)
     session = advisor.open(home_dir=home_dir, model=model, report_dir=report_dir, cursor="feed:100")
     try:
-        report = _as_dict(session.ingest(CURSORED))
+        err = getattr(advisor, "AdvisorInputError", None)
+        assert err is not None, "no AdvisorInputError (v6.7 C)"
+        _expect_raises(err, lambda: session.ingest(EVENTS), "events without cursor under open(cursor=)")
+        assert backend.completions == 0, "a cursorless batch reached completion"
     finally:
         session.close()
-        reset = getattr(cancellation, "_reset_for_tests", None)
-        if callable(reset):
-            reset()
-    assert report.get("status") == "abandoned", f"status {report.get('status')!r} after a stop request"
+    report, _s, _r = _ingest(_mkdir(tmp_path / "none"), monkeypatch, FakeBackend())
+    covered = report.get("covered") or {}
+    assert covered.get("cursor_in") is None and covered.get("cursor_out") is None, covered
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.7 D: flips with the session stop")
+def test_session_stop_abandons_at_the_next_token(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``session.request_stop`` mid-turn ends the turn at the next token (the backend's ``should_stop``):
+    ``abandoned``, no proposals, ``cursor_out == cursor_in``. Then ``ingest`` raises ``AdvisorStopped`` and runs no
+    turn, and ``close()`` still writes the close record. The process-wide StopRequest is never consulted."""
+    advisor = _require_advisor()
+    backend = FakeBackend("ok")
+    _install_fake(monkeypatch, backend)
+    home_dir, report_dir, model = _dirs(tmp_path)
+    session = advisor.open(home_dir=home_dir, model=model, report_dir=report_dir, cursor="feed:100")
+    assert callable(getattr(session, "request_stop", None)), "AdvisorSession has no request_stop (v6.7 D)"
+    backend.on_token = lambda i: session.request_stop(5.0, reason="yield") if i == 2 else None
+    try:
+        report = _as_dict(session.ingest(CURSORED))
+        assert backend.tokens_sampled <= 4, f"the stop was not checked per token: {backend.tokens_sampled} sampled"
+        stopped = getattr(advisor, "AdvisorStopped", None)
+        assert stopped is not None, "no AdvisorStopped (v6.7 D)"
+        before = backend.completions
+        _expect_raises(stopped, lambda: session.ingest(CURSORED), "ingest after a stop")
+        assert backend.completions == before, "a stopped session ran another turn"
+    finally:
+        session.close()
+    assert report.get("status") == "abandoned", f"status {report.get('status')!r} after a stop"
     assert report.get("proposals") == [], "an abandoned turn dispatched proposals"
     assert (report.get("covered") or {}).get("cursor_out") == "feed:100", report.get("covered")
     from maxim.advisor.log import read_log
 
     log = read_log(_log_path(report_dir, report["session_id"]))
-    assert log["closed"] is True, "close() did not write the close record after an abandoned turn"
+    assert log["closed"] is True, "close() did not write the close record after a stop"
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.7 D: flips with the per-call stop")
+def test_per_call_stop_abandons_only_that_call(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``ingest(events, stop=event)``: a set per-call stop abandons that call only; the next ``ingest`` (no stop)
+    runs normally. A process-wide stop request set meanwhile changes nothing."""
+    advisor = _require_advisor()
+    params = inspect.signature(_session_mod().AdvisorSession.ingest).parameters
+    assert "stop" in params and params["stop"].kind is params["stop"].KEYWORD_ONLY, "ingest(events, *, stop=None)"
+    import threading
+
+    backend = FakeBackend("ok")
+    _install_fake(monkeypatch, backend)
+    home_dir, report_dir, model = _dirs(tmp_path)
+    session = advisor.open(home_dir=home_dir, model=model, report_dir=report_dir)
+    flag = threading.Event()
+    backend.on_token = lambda i: flag.set() if i == 1 else None
+    try:
+        first = _as_dict(session.ingest(EVENTS, stop=flag))
+        backend.on_token = None
+        second = _as_dict(session.ingest(EVENTS))
+    finally:
+        session.close()
+    assert first.get("status") == "abandoned", first.get("status")
+    assert second.get("status") == "ok", f"a per-call stop leaked into the next call: {second.get('status')!r}"
 
 
 # ── 8. special-token defang ───────────────────────────────────────────────
