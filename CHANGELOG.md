@@ -66,7 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `maxim serve`, `--show-token` and `--rotate-token` print it and exit 2 before building the app; `/api/pair/claim`
   answers **503** (reason only, path in the device log) and the spoken code is consumed. `device_console_handoff`
   raises it to the device bootstrap, which must now present it (maxim-pulse `apps/reachy`). The fix hint never
-  suggests a rotation, which would keep the unusable mode.
+  suggests a rotation, which would keep the unusable mode. `maxim tunnel setup` no longer prints any part of the key (CodeQL py/clear-text-logging-sensitive-data): it names the key file and `maxim tunnel key show`.
 
 - **The robot hears again** ([#1436](https://github.com/dennys246/Maxim/issues/1436), found by maxim-pulse's device
   review). Since `db274547` (2026-04-03) deleted a re-export shim, the robot's transcription start and the audio

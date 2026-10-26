@@ -248,7 +248,9 @@ def test_tunnel_setup_key_step_reports_a_ready_key(key_dir, capsys):
     from maxim.tunnel import cli as tunnel_cli
 
     key = tunnel_cli._setup_api_key()
-    assert key and "API key ready" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert key and "API key ready" in out
+    assert key[:6] not in out  # no key material on the terminal, not even a prefix (#1490 CodeQL)
 
 
 def test_rotate_commands_report_a_held_lock(key_dir, monkeypatch, capsys):

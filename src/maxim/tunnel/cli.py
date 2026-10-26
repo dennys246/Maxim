@@ -98,8 +98,9 @@ def _setup_api_key() -> str | None:
         print(f"✗ {e}")
         print(f"  {e.fix_hint}")
         return None
-    print(f"✓ API key ready at {key_file_path()}")
-    print(f"  {truncate_for_display(key)}")
+    # No key material on the terminal, not even a prefix (CodeQL py/clear-text-logging-sensitive-data, #1490): the
+    # operator reads it with `maxim tunnel key show` / `export` when they need it.
+    print(f"✓ API key ready at {key_file_path()} (view it with `maxim tunnel key show`)")
     print()
     return key
 
@@ -246,7 +247,7 @@ def _cmd_setup() -> int:
     print(f"  Tunnel:    {tunnel_name} ({tunnel_id})")
     print(f"  Hostname:  https://{hostname}")
     print(f"  Local:     http://localhost:{port}")
-    print(f"  API key:   {truncate_for_display(key)}")
+    print(f"  API key:   ready ({key_file_path()})")
     print()
     print("Next steps:")
     print("  1. Test the tunnel in the foreground first:")
