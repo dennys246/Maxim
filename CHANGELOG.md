@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- `MaximAgent.wire_communication` (public in 1.3.3; [#1466](https://github.com/dennys246/Maxim/issues/1466)): it stored
+  a gateway nothing read, and with a `nac` it crashed on the deleted communication bridge until #1436.
+
 ### Changed
 
 - **The wheel vendors maxim-pulse Console v0.4.4** (was v0.4.2 at 1.3.3, then v0.4.3; contract 0.6.0, unchanged). It is
@@ -54,6 +59,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`ensure_key` / `ensure_console_token` never overwrite a key file they cannot read**
+  ([#1402](https://github.com/dennys246/Maxim/issues/1402)). They read through the lenient readers, which return None
+  for a missing file and for an unusable one alike (mode 000, a directory, non-UTF-8, oversized), then wrote a new key
+  over it: a silent rotation that 401'd every peer or device with nothing naming why. All three key ensures (mesh key,
+  console token, and `ensure_local_server_key`'s spawn key) now go through one helper: a key is generated only for a
+  missing or empty file (an empty file is unlinked first, so the new key is never written over its old mode), under
+  the key's lock with a re-read inside it, and rotations take the same lock. Anything else raises the new key-neutral
+  `maxim.exceptions.KeyFileUnusable` (`.path`, `.reason`, `.fix_hint`; `LeaderKeyError` and `LocalServerKeyError` now
+  subclass it). In-repo callers present it: `maxim tunnel setup` and `maxim tunnel key rotate` print it and exit 1;
+  `maxim serve`, `--show-token` and `--rotate-token` print it and exit 2 before building the app; `/api/pair/claim`
+  answers **503** (reason only, path in the device log) and the spoken code is consumed. `device_console_handoff`
+  raises it to the device bootstrap, which must now present it (maxim-pulse `apps/reachy`). The fix hint never
+  suggests a rotation, which would keep the unusable mode. `maxim tunnel setup` no longer prints any part of the key (CodeQL py/clear-text-logging-sensitive-data): it names the key file and `maxim tunnel key show`.
+
+- **Inbound comms reach the robot at last** ([#1466](https://github.com/dennys246/Maxim/issues/1466), corrected):
+  every comms HTTP endpoint (`/api/twilio/sms`, `/api/twilio/voice`, `/api/command`, `/api/status`, `/api/goals`) answered 422 since
+  `comms/api.py` was written, because a postponed `request: Request` annotation could not be resolved, so no inbound
+  SMS ever reached the bus. Fixed; tests drive the real routes (webhook SMS → `TwilioChannel.receive_sms` →
+  `CommunicationGateway.receive_inbound` → the bus; a forged Twilio signature and a wrong API token are refused). The
+  `comms` extra now includes `python-multipart`, which the webhooks need to parse form bodies.
+- **Dead comms code removed** (#1466): inbound comms are pushed by webhook, never polled. The headless loop's "poll" read a never-assigned `_gateway` and
+  called a `gateway.poll()` that does not exist (assigning `_gateway` would have swallowed an `AttributeError` every
+  0.5 s), and `MaximAgent.wire_communication` stored a gateway nothing read; both are deleted, with its call sites in
+  `agentic_runtime.py` and `cli.py`.
 - **A run that stops on an error exits non-zero, with one exit-code table** ([#1468](https://github.com/dennys246/Maxim/issues/1468);
   owner decisions 2026-10-26). `maxim`'s run loop (robot `--mode` runs and `--mode agentic`, scenario sims included)
   logged `❌ Maxim stopped` and returned 0, so a supervisor reading the exit code (systemd, maxim-pulse's app, CI,
@@ -82,7 +111,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fakes and a real spawned child that fails to load its model; the on-robot check is R2's reachy cell.
 - **A new CI lint, `scripts/lint_dead_imports.py`** (Added), resolves every `maxim` import in `src/` and `scripts/`, at any
   depth (lazy, `TYPE_CHECKING`, class body), against the tree: the module and the imported name must exist. It found
-  seven more dead imports, all fixed: `MaximAgent.wire_communication` imported the deleted communication bridge, so
+  seven more dead imports, all fixed: `MaximAgent.wire_communication` (since removed, #1466) imported the deleted communication bridge, so
   with comms enabled (`MAXIM_COMMS_ENABLED`) the robot's agentic runtime failed to start behind one warning; the
   deleted protocol system's start-up block in `agentic_runtime.py` failed on every run; a `TYPE_CHECKING` import in
   `default_network/behaviors` named a moved class. Two scripts that could no longer run were deleted:

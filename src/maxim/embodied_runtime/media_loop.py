@@ -668,22 +668,14 @@ class MediaLoopMixin:
         )
 
     def _run_headless_loop(self, stop_event: threading.Event) -> None:
-        """Event-driven loop for headless mode (no media capture).
+        """Keep the main thread alive in headless mode (no media capture) while the agentic thread runs.
 
-        Replaces the tight frame-capture loop with a slow poll that:
-        - Processes gateway events (incoming SMS, webhooks) if comms enabled
-        - Keeps the main thread alive while the agentic thread runs
-        - Uses 0.5s sleep (not 30Hz polling) to minimize CPU usage
+        Wakes every 0.5 s (not 30 Hz) only to notice ``stop_event``. Inbound comms are NOT polled
+        here: they are pushed by webhook (``runtime/bootstrap.py::build_comms_stack`` starts the API
+        server; ``comms/api.py`` -> ``CommunicationGateway.receive_inbound`` -> the bus). A poll that
+        called a nonexistent ``gateway.poll()`` on a never-assigned ``_gateway`` was removed (#1466).
         """
-        gateway = getattr(self, "_gateway", None)
         while not stop_event.is_set():
-            # Poll gateway for incoming messages (SMS, webhook, etc.)
-            if gateway is not None:
-                try:
-                    gateway.poll()
-                except Exception as e:
-                    log_swallowed_exception(e, operation="gateway_poll")
-            # Sleep until next poll (event-driven, not frame-rate-driven)
             stop_event.wait(timeout=0.5)
 
     def _enqueue_motor(self, fn, *args, **kwargs):
