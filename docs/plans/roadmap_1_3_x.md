@@ -1111,7 +1111,8 @@ Also, an utterance shaped like an instruction appears only inside the frame. Ide
     Design pass first (detecting "started" has no public SDK query); done, with the owner decisions, in
     [speaker_sink_1435.md](speaker_sink_1435.md). **Release gate (owner decision 2026-10-24): 1.3.4 does not publish
     before maxim-pulse releases the build that calls `start_device_player`/`stop_device_player`** (released pulse
-    starts the SDK player itself, so its pairing code would go silent on 1.3.4; mechanization backlog M79). Rides with R2's reachy cell, whose device smoke
+    starts the SDK player itself, so its pairing code would go silent on 1.3.4; mechanization backlog M79). **Met 2026-10-25:**
+    pulse v0.4.4 calls the pair (vendored by #1462). Rides with R2's reachy cell, whose device smoke
     asserts audio reached a STARTED player at the device rate. R1's in-memory "has spoken" stays the readiness signal
     until the embodied-device plan's step 3 makes it PLAYS.
   - **The device defects from pulse's review** (Maxim-pulse #58, 2026-10-24). Each one is bounded, none waits for
