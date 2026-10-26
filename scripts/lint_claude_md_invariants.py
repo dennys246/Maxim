@@ -43,6 +43,7 @@ step stays a single-line invocation.
 
 from __future__ import annotations
 
+import ast
 import re
 import sys
 from pathlib import Path
@@ -183,6 +184,65 @@ def _broken_repo_links(doc_path: Path, repo_root: Path) -> list[tuple[int, str]]
     return broken
 
 
+CITATION = re.compile(r"((?:[\w.-]+/)*[\w.-]+\.py)::([A-Za-z_][\w.]*[\w])")
+
+
+def _defined_names(module: Path) -> set[str]:
+    """Every name a module binds anywhere: defs, classes, assignments (incl. attribute targets) and imports, so a
+    re-export (``from x import Y as Y``) counts as defined there."""
+    tree = ast.parse(module.read_text())
+    out: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            out.add(node.name)
+        elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                for sub in ast.walk(target):
+                    if isinstance(sub, ast.Name):
+                        out.add(sub.id)
+                    elif isinstance(sub, ast.Attribute):
+                        out.add(sub.attr)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            out.update(alias.asname or alias.name.split(".")[0] for alias in node.names)
+    return out
+
+
+def _citation_candidates(cited: str, repo_root: Path) -> list[Path]:
+    """Every file a ``path.py`` citation can mean: the path from the repo root, from ``src/maxim`` or from ``src``, and
+    any file under ``src/maxim``, ``scripts`` or ``tests`` whose path ENDS with it (briefs cite bare names)."""
+    found = {
+        c.resolve()
+        for base in (repo_root, repo_root / "src" / "maxim", repo_root / "src")
+        if (c := base / cited).is_file()
+    }
+    for base in (repo_root / "src" / "maxim", repo_root / "scripts", repo_root / "tests"):
+        if base.is_dir():
+            found.update(h.resolve() for h in base.rglob(Path(cited).name) if h.as_posix().endswith(cited))
+    return sorted(found)
+
+
+def _stale_citations(doc_path: Path, repo_root: Path) -> list[tuple[int, str]]:
+    """(line_num, citation) for every ``path.py::symbol`` that no candidate file defines (#1121). Resolved by AST, so
+    a symbol moved or renamed after a decomposition slice fails here instead of in a reviewer's reading. A dotted
+    ``Class.method`` needs every part bound in one file; a bare file name passes if ANY file of that name defines it."""
+    stale: list[tuple[int, str]] = []
+    cache: dict[Path, set[str]] = {}
+    for i, line in enumerate(doc_path.read_text().split("\n"), start=1):
+        for m in CITATION.finditer(line):
+            cited, symbol = m.group(1), m.group(2)
+            parts = symbol.split(".")
+            ok = False
+            for candidate in _citation_candidates(cited, repo_root):
+                names = cache.setdefault(candidate, _defined_names(candidate))
+                if all(part in names for part in parts):
+                    ok = True
+                    break
+            if not ok:
+                stale.append((i, f"{cited}::{symbol}"))
+    return stale
+
+
 def lint(claude_md_path: Path) -> int:
     if not claude_md_path.exists():
         print(f"ERROR: {claude_md_path} does not exist", file=sys.stderr)
@@ -253,6 +313,19 @@ def lint(claude_md_path: Path) -> int:
             for line_num, target in broken:
                 print(f"  {rel}:{line_num}: {target}", file=sys.stderr)
 
+    # Check 4 — every ``path.py::symbol`` citation resolves by AST (#1121), CLAUDE.md + briefs.
+    for doc, _ in docs:
+        stale = _stale_citations(doc, repo_root)
+        if stale:
+            failed = True
+            rel = doc.relative_to(repo_root)
+            print(
+                f"FAIL: {len(stale)} file::symbol citation(s) in {rel} name a symbol no such file defines:",
+                file=sys.stderr,
+            )
+            for line_num, citation in stale:
+                print(f"  {rel}:{line_num}: {citation}", file=sys.stderr)
+
     if failed:
         print(
             "\nSee CLAUDE.md 'Working principles for new mechanisms' Principle 5 for the format "
@@ -265,7 +338,7 @@ def lint(claude_md_path: Path) -> int:
     print(
         f"PASS: {n_docs} doc(s) audited — all tagged invariants carry the required field, "
         f"CLAUDE.md ~{est_tokens} est. tokens (ceiling {TOKEN_CEILING}), AGENTS.md adapter "
-        "matches, all repo links resolve."
+        "matches, all repo links and file::symbol citations resolve."
     )
     return 0
 
