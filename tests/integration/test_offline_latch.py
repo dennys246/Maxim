@@ -1,6 +1,6 @@
 """#1315 item 10 strict red gates: the offline latch (V8, step 0b), its call-site refusals and its config key.
 
-WHAT THIS FILE IS. Tests only, written before the code (``docs/plans/atonia_gate_approach_notes.md``, DRAFT v6.2:
+WHAT THIS FILE IS. Tests only, written before the code (``docs/plans/atonia_gate_approach_notes.md``, DRAFT v6.4:
 §0, the V1–V10 decisions, §1A (which wins over §2–§6) and §6; ``docs/plans/advisor_mode.md`` §"Item 10"). Each gate
 is ``xfail(strict=True, raises=AssertionError)``: it fails TODAY with an ``AssertionError`` for the reason its
 docstring names, and the day the behaviour is right it XPASSes, which strict turns into a failure until the decorator
@@ -22,6 +22,9 @@ THE GATES, AND WHAT FLIPS EACH
   * ``test_offline_implies_internet_lowered`` -- §1A.1, the read-side coupling. ``test_evidence_records_refuse_an_
     offline_code_stamp`` is a passing guard (it holds today). ``test_offline_sim_report_says_offline`` -- §1A.7's
     composed gate at the report writer (its docstring states the scope).
+  * ``test_a_client_pooled_before_engage_cannot_send_after`` / ``test_engage_sets_already_imported_library_flags``
+    -- notes v6.4 §1A.1, ``engage()``'s steps 3 and 2. ``test_no_caller_of_reset_for_tests_outside_tests`` is a
+    passing lint-style guard.
   * ``test_router_refuses_cloud_and_remote_lanes_at_build`` / ``test_router_refuses_a_pre_engage_lane_at_dispatch``
     -- §6 layer 3, the router predicate.
   * ``test_llm_offline_is_a_config_key`` / ``test_config_version_owns_llm_offline`` /
@@ -32,7 +35,9 @@ SEAMS THESE GATES PIN (the notes leave them open; chosen here, change them only 
   * ``maxim._offline``: ``engage(reason: str) -> None``; ``is_offline() -> bool``; ``OfflineRefusal(RuntimeError)``;
     ``truthy(value: str | None) -> bool``; ``ledger() -> Sequence`` (one entry per refusal, appended BEFORE the
     raise, a fresh sequence per call); ``hook_installed() -> bool`` (whether THIS process ever added the audit hook);
-    ``_reset_for_tests()`` (named by ``tests/integration/test_advisor_gate.py``).
+    ``_reset_for_tests()`` (in ``src/`` per v6.4; it disengages and restores the five env keys, its callers are
+    linted to ``tests/``, and the conftest autouse fixture calls it); ``on_engage(fn)`` and ``engage_callbacks()``
+    (the read seam chosen here, a sequence of the registered callbacks).
   * "No hook without the variable" is checked by the installed flag AND behaviourally (a synthetic
     ``sys.audit("subprocess.Popen", ...)`` and ``sys.audit("socket.getaddrinfo", ...)`` pass), because Python
     offers no API that lists audit hooks.
@@ -1037,6 +1042,177 @@ def test_offline_sim_report_says_offline(tmp_path: Path) -> None:
     _assert_spy_saw_nothing("the report writer", {"spy_events": out["spy"], "spy_blocked": out.get("spy_blocked")})
     assert out["raised"] is None, f"the offline report writer raised: {out['raised']}"
     assert out["executed_git_hash"] == "unknown: offline", f"report.json says {out['executed_git_hash']!r}"
+
+
+# ── 7c. engage()'s other two steps: the pooled client and the library flags (notes v6.4 §1A.1) ──
+
+_POOLED_BODY = r"""
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+off = require_offline_module()
+SEEN = []  # the client port of every request the listener received
+
+class _Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"  # keep-alive, so the client pools the connection
+    def do_GET(self):
+        SEEN.append(self.client_address[1])
+        body = b"ok"
+        self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers()
+        self.wfile.write(body)
+    def log_message(self, *a):
+        pass
+
+server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)  # inbound bind/listen on loopback: allowed
+threading.Thread(target=server.serve_forever, daemon=True).start()
+from maxim.utils import http
+OUT["has_on_engage"] = callable(getattr(off, "on_engage", None))
+callbacks = getattr(off, "engage_callbacks", None)
+OUT["close_all_registered"] = callable(callbacks) and any(cb is http.close_all for cb in callbacks())
+http.register_endpoint(http.HTTPEndpoint(name="offline-pool-probe", base_url=f"http://127.0.0.1:{server.server_address[1]}"))
+http.get("offline-pool-probe", "/")
+http.get("offline-pool-probe", "/")
+OUT["pre_ports"] = list(SEEN)
+off.engage("test")
+install_spy()  # after the latch
+OUT["post"] = attempt(off, "pooled_request", lambda: http.get("offline-pool-probe", "/"))
+OUT["seen"] = list(SEEN)
+server.shutdown()
+emit()
+"""
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=_reason("§1A.1 engage step 3", "utils/http.py registers close_all through on_engage"),
+)
+def test_a_client_pooled_before_engage_cannot_send_after(tmp_path: Path) -> None:
+    """A ``utils/http.py`` client that pooled a keep-alive connection to a local listener BEFORE ``engage()`` cannot
+    send after it: the next request raises or records ``OfflineRefusal`` and the listener receives nothing more.
+    ``send``/``sendall`` raise no audit event, so only ``engage()``'s ``on_engage`` callback (``close_all``) can stop
+    that socket. Scope, stated: this covers ``utils.http``'s registry pools only. The pools outside it
+    (``openai_backend``'s ``address_checked_client``, and the Anthropic and OpenAI SDKs' own clients) are not closed
+    by ``close_all``; the notes cover them by another layer (the router predicate refuses at dispatch, and cloud SDKs
+    are never built after the latch), gated by ``test_router_refuses_a_pre_engage_lane_at_dispatch``. Also pins the
+    seam: ``maxim._offline.on_engage`` exists, and ``maxim._offline.engage_callbacks()``
+    (the read seam chosen here) holds ``utils.http.close_all``. Fails today: no ``maxim._offline``."""
+    out = _run_child(tmp_path, _POOLED_BODY, spy="body")
+    _assert_offline_built(out)
+    require(
+        len(out["pre_ports"]) == 2 and out["pre_ports"][0] == out["pre_ports"][1],
+        f"the client did not pool a keep-alive connection before engage: {out['pre_ports']}",
+    )
+    assert out["has_on_engage"], "maxim._offline has no on_engage"
+    assert out["close_all_registered"], "utils.http did not register close_all through on_engage"
+    _assert_spy_saw_nothing("pooled_request", out["post"])
+    assert len(out["seen"]) == 2, f"the listener received a request after engage(): ports {out['seen']}"
+    res = out["post"]
+    assert res["refusal"] or res["ledger_delta"] > 0, f"the pooled request was not refused as offline: {res}"
+
+
+_FLAGS_BODY = r"""
+import tempfile
+STATE["window"] = "__preimport__"
+import huggingface_hub, huggingface_hub.constants
+ULTRA = importlib.util.find_spec("ultralytics") is not None
+if ULTRA:
+    # Its import-time is_online() resolves a host: import it with YOLO_OFFLINE for this one import (no egress), then
+    # set ONLINE back to True, standing in for a process that imported it online before the latch went up.
+    os.environ["YOLO_OFFLINE"] = "true"
+    try:
+        import ultralytics.utils
+        ultralytics.utils.ONLINE = True
+    except Exception as e:  # noqa: BLE001
+        OUT["ultra_import"] = type(e).__name__ + ": " + str(e)[:120]
+    finally:
+        os.environ.pop("YOLO_OFFLINE", None)
+STATE["window"] = None
+off = require_offline_module()
+OUT["hf_before"] = huggingface_hub.constants.HF_HUB_OFFLINE
+off.engage("test")
+OUT["hf_after"] = huggingface_hub.constants.HF_HUB_OFFLINE
+OUT["ultra_online_after"] = getattr(sys.modules.get("ultralytics.utils"), "ONLINE", "absent") if ULTRA else "not installed"
+OUT["direct"] = attempt(off, "hf_hub_download", lambda: huggingface_hub.hf_hub_download(
+    "gpt2", "config.json", cache_dir=tempfile.mkdtemp()))
+emit()
+"""
+
+
+@pytest.mark.xfail(
+    strict=True, raises=AssertionError, reason=_reason("§1A.1 engage step 2", "engage() sets the library flags")
+)
+def test_engage_sets_already_imported_library_flags(tmp_path: Path) -> None:
+    """With ``huggingface_hub`` imported FIRST (and ultralytics, where installed), ``engage()`` sets
+    ``huggingface_hub.constants.HF_HUB_OFFLINE = True`` and ``ultralytics.utils.ONLINE = False`` through
+    ``sys.modules``, and a direct ``hf_hub_download`` then raises ``OfflineModeIsEnabled`` with no socket event (the
+    spy is installed first). Fails today: no ``maxim._offline``."""
+    out = _run_child(tmp_path, _FLAGS_BODY)
+    _assert_offline_built(out)
+    require(out["hf_before"] is False, f"HF_HUB_OFFLINE was already {out['hf_before']!r} before engage()")
+    assert out["hf_after"] is True, "engage() did not set huggingface_hub.constants.HF_HUB_OFFLINE"
+    require(
+        not out.get("ultra_import"), f"ultralytics could not be imported for the flag check: {out.get('ultra_import')}"
+    )
+    if out["ultra_online_after"] != "not installed":
+        assert out["ultra_online_after"] is False, f"ultralytics.utils.ONLINE is {out['ultra_online_after']!r}"
+    _assert_spy_saw_nothing("hf_hub_download", out["direct"])
+    assert out["direct"].get("hf_offline"), f"hf_hub_download did not raise OfflineModeIsEnabled: {out['direct']}"
+
+
+_RESET = "_reset_for_tests"
+
+
+def _reset_references(roots: tuple[Path, ...], base: Path) -> list[str]:
+    """Every reference to ``_reset_for_tests`` under ``roots``: an attribute or a name, an import alias (``from ...
+    import _reset_for_tests as r``), a star import from ``maxim._offline``, and the bare string (``getattr(m,
+    "_reset_for_tests")``). The ``def`` itself is not a reference."""
+    hits: list[str] = []
+    for root in roots:
+        for path in sorted(root.rglob("*.py")):
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+            except SyntaxError as e:
+                raise ScenarioBroken(f"{path} does not parse: {e}") from e
+            rel = str(path.relative_to(base))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Attribute):
+                    hit = node.attr == _RESET
+                elif isinstance(node, ast.Name):
+                    hit = node.id == _RESET
+                elif isinstance(node, ast.Constant):
+                    hit = isinstance(node.value, str) and _RESET in node.value
+                elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                    star = isinstance(node, ast.ImportFrom) and (node.module or "").endswith("_offline")
+                    hit = any(
+                        _RESET in (alias.name, alias.asname)
+                        or alias.name.endswith(f".{_RESET}")
+                        or (star and alias.name == "*")
+                        for alias in node.names
+                    )
+                else:
+                    continue
+                if hit:
+                    hits.append(f"{rel}:{node.lineno}")
+    return hits
+
+
+def test_no_caller_of_reset_for_tests_outside_tests(tmp_path: Path) -> None:
+    """``maxim._offline._reset_for_tests`` disengages the latch, so nothing outside ``tests/`` may reference it
+    (notes v6.4: a guard forbids any caller outside ``tests/``). An AST scan of ``src/`` and ``scripts/`` that also
+    sees aliased imports, star imports and the getattr string. It holds today, when nothing references it; the
+    deletion-style probe below proves the scan is not blind to an aliased caller."""
+    require(any(True for _ in SRC.rglob("*.py")), "the scan found no src/ files")
+    hits = _reset_references((SRC, REPO / "scripts"), REPO)
+    assert not hits, f"_reset_for_tests is referenced outside tests/: {hits}"
+
+    probe = tmp_path / "probe_tree"
+    probe.mkdir()
+    (probe / "aliased.py").write_text("from maxim._offline import _reset_for_tests as r\n\nr()\n")
+    (probe / "by_string.py").write_text('import maxim._offline as m\n\ngetattr(m, "_reset_for_tests")()\n')
+    (probe / "star.py").write_text("from maxim._offline import *\n")
+    (probe / "clean.py").write_text("import maxim._offline as m\n\nm.is_offline()\n")
+    caught = {hit.split(":")[0] for hit in _reset_references((probe,), probe)}
+    assert caught == {"aliased.py", "by_string.py", "star.py"}, f"the scan is blind to a caller form: {sorted(caught)}"
 
 
 # ── 8. config (§1A.6) ─────────────────────────────────────────────────────

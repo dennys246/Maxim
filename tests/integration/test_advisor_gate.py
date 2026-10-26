@@ -1,7 +1,7 @@
 """#1315 item 1 strict red gates: the atonia composition ``maxim.advisor``, plus step 0a's executor closure.
 
 WHAT THIS FILE IS. Tests only, written before the code (``docs/plans/atonia_gate_approach_notes.md``, DRAFT
-v6.3: §0, the V1–V10 decisions, §1A (which wins over §2–§6), §4 and §5). Each gate is
+v6.4: §0, the V1–V10 decisions, §1A (which wins over §2–§6), §4 and §5). Each gate is
 ``xfail(strict=True, raises=AssertionError)``: it fails TODAY with an ``AssertionError`` for the reason its
 docstring names, and the day the behaviour is right it XPASSes, which strict turns into a failure until the
 decorator is removed. A gate that does not flip is data; do not re-point it.
@@ -59,7 +59,8 @@ SEAMS THESE GATES PIN (the notes leave them open; chosen here, change them only 
     ``closed_local._token_attr(handle, token_id) -> int`` is the one attribute lookup (monkeypatched for the
     synthetic refuse branch).
   * ``maxim.advisor._session._build_dispatch_stack(propose_tool, *, layers, registry_tools)`` -- the ONE builder:
-    ``open()`` calls it with all three layers and ``registry_tools=None`` (``test_open_builds_all_three_layers``);
+    ``open()`` calls it, resolved through ``_session``'s globals at call time, with all three layers and
+    ``registry_tools=None`` (``test_open_builds_all_three_layers``);
     the sweeps call it with fewer, which is test-only use. ``layers`` is a subset of ``{"sealed", "ceiling",
     "pin"}``. Without "sealed" the registry is
     an ordinary ``ToolRegistry`` over exactly ``registry_tools``; without "ceiling" the ceiling is ``Effect.ALL``;
@@ -68,8 +69,9 @@ SEAMS THESE GATES PIN (the notes leave them open; chosen here, change them only 
     AdvisorCompositionError, SealedRegistryError}``; ``session._executor.registry``; ``session.session_id``.
   * A refused dispatch's ``ToolOutput`` carries ``error_kind`` (a ``ToolErrorKind``) and
     ``metadata["refusal_layer"]``, one of ``"forbid"``, ``"mode"``, ``"registry"``, ``"permissions"``,
-    ``"ceiling"``, ``"pin"`` (v6.3). ``NOT_REGISTERED`` is layer ``"registry"``: the sealed registry is just a
-    registry, so there is no "sealed" refusal layer.
+    ``"ceiling"``, ``"pin"``, ``"offline"`` (v6.4: one kind per layer). ``NOT_REGISTERED`` is layer ``"registry"``:
+    the sealed registry is just a registry, so there is no "sealed" refusal layer. A pinned policy refuses every
+    non-pinned name at ``"pin"``, never ``"permissions"``.
   * The report is a ``Mapping`` (or has ``to_dict()``); ``error_kind`` serialises by ``.value`` (snake_case).
   * Deadline precedence (v6.3): ``deadline_hit`` -> ``abandoned``, and the output is NOT parsed.
   * Events are dicts ``{"event_id", "kind", "text", "payload"}``.
@@ -172,6 +174,13 @@ ENV_READ_ALLOW = frozenset(
 )
 # §4.2: library reads are allowed BY CALLER module (numpy's and threadpoolctl's knobs drift across versions).
 ENV_READ_ALLOW_CALLERS = ("numpy", "threadpoolctl")
+
+
+def _allowed_caller(module: str) -> bool:
+    """The package itself or a dotted submodule: ``numpy`` / ``numpy._core``, never ``numpyish``."""
+    return any(module == p or module.startswith(p + ".") for p in ENV_READ_ALLOW_CALLERS)
+
+
 # The latch's own exports (v6.3: engage() writes exactly these five) plus numpy's two import-time writes.
 LATCH_ENV_WRITES = frozenset(
     {"HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_HUB_DISABLE_TELEMETRY", "YOLO_OFFLINE", "MAXIM_OFFLINE"}
@@ -186,7 +195,8 @@ ENV_WILDCARD_ALLOW = frozenset({("maxim.advisor._refusals", "code_loading_vars_s
 GATE_KIND_VALUES = frozenset(
     {"not_registered", "inactive_scene", "policy_ceiling", "policy_permissions", "policy_pin", "mode", "offline"}
 )
-REFUSAL_LAYERS = frozenset({"forbid", "mode", "registry", "permissions", "ceiling", "pin"})
+# v6.4: one kind per layer; "offline" is OFFLINE (an OfflineRefusal raised inside a tool body).
+REFUSAL_LAYERS = frozenset({"forbid", "mode", "registry", "permissions", "ceiling", "pin", "offline"})
 
 REPORT_KEYS = frozenset(
     {
@@ -386,6 +396,43 @@ _CHILD_SCRIPT = textwrap.dedent(
         except TypeError:
             return repr(x)[:200]
 
+    # The "open" audit event carries no dir_fd, so os.open is wrapped: the wrapper parks its dir_fd for the hook and
+    # maps every directory fd it returns to that directory's path. A relative name is then resolved against its
+    # dir_fd, not the CWD; an unknown dir_fd resolves under "<unknown dir_fd>", which no allow-list matches.
+    import threading
+    import stat as _stat
+    _REAL_OS_OPEN, _REAL_OS_CLOSE = os.open, os.close
+    FDPATH = {}
+    PENDING = threading.local()
+
+    def _base(dir_fd):
+        if dir_fd is None:
+            return os.getcwd()
+        return FDPATH.get(dir_fd, "<unknown dir_fd>")
+
+    def _resolve(sp):
+        if os.path.isabs(sp):
+            return os.path.normpath(sp)
+        return os.path.normpath(os.path.join(_base(getattr(PENDING, "dir_fd", None)), sp))
+
+    def _os_open(path, flags, mode=0o777, *, dir_fd=None):
+        PENDING.dir_fd = dir_fd
+        try:
+            fd = _REAL_OS_OPEN(path, flags, mode, dir_fd=dir_fd)
+        finally:
+            PENDING.dir_fd = None
+        try:
+            if _stat.S_ISDIR(os.fstat(fd).st_mode):
+                sp = _p(path)
+                FDPATH[fd] = sp if os.path.isabs(sp) else os.path.normpath(os.path.join(_base(dir_fd), sp))
+        except OSError:
+            pass
+        return fd
+
+    def _os_close(fd):
+        FDPATH.pop(fd, None)
+        return _REAL_OS_CLOSE(fd)
+
     def _hook(ev, args):
         if not STATE["hook"]:
             return
@@ -394,8 +441,17 @@ _CHILD_SCRIPT = textwrap.dedent(
             w = (isinstance(mode, str) and any(c in mode for c in "wax+")) or (
                 isinstance(flags, int) and bool(flags & WFLAGS))
             sp = _p(path)
+            full = _resolve(sp) if isinstance(sp, str) and sp != "<fd>" else sp
             if w:
-                OUT["events"].append(["open_write", sp])
+                # Relative to a KNOWN dir_fd: record the resolved absolute path, so _outside() can check it.
+                known = isinstance(sp, str) and not os.path.isabs(sp) and not str(full).startswith("<unknown")
+                OUT["events"].append(["open_write", full if known and getattr(PENDING, "dir_fd", None) is not None
+                                      else sp])
+            elif isinstance(sp, str) and sp != "<fd>" and (
+                    (isinstance(flags, int) and bool(flags & getattr(os, "O_DIRECTORY", 0))) or os.path.isdir(full)):
+                # A directory fd is a dir_fd base: record it (resolved against ITS dir_fd), so a relative write
+                # maps to a known directory.
+                OUT["events"].append(["open_dir", full])
             elif isinstance(sp, str) and sp.startswith(ROOTS):
                 OUT["events"].append(["open_read", sp])
         elif (ev.startswith("socket.") or ev in SPAWN or ev.startswith("os.exec")
@@ -465,6 +521,7 @@ _CHILD_SCRIPT = textwrap.dedent(
 
     atexit.register(_emit)  # registered FIRST, so it runs LAST: maxim's own atexit writes are still audited
     sys.addaudithook(_hook)
+    os.open, os.close = _os_open, _os_close
     os.environ = RecordingEnviron(os.environ)
     os.environb = RecordingEnviron(os.environb)
     import posix
@@ -522,9 +579,11 @@ _CHILD_SCRIPT = textwrap.dedent(
 )
 
 
-def _tree(root: Path) -> dict[str, tuple[str, str]]:
+def _tree(root: Path, exclude: Path | None = None) -> dict[str, tuple[str, str]]:
     snap: dict[str, tuple[str, str]] = {}
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        if exclude is not None:
+            dirnames[:] = [d for d in dirnames if Path(dirpath) / d != exclude]
         for name in dirnames + filenames:
             p = Path(dirpath) / name
             rel = str(p.relative_to(root))
@@ -565,12 +624,24 @@ def _sandbox(tmp_path: Path, *, hostile_profiles: bool = True) -> SimpleNamespac
     model = harness / "model.gguf"
     model.write_bytes(b"GGUF-fake")
     return SimpleNamespace(
-        home=home, tmp=tmp, cwd=cwd, xdg=xdg, home_dir=home_dir, report_dir=report_dir, harness=harness, model=model
+        home=home,
+        tmp=tmp,
+        cwd=cwd,
+        xdg=xdg,
+        home_dir=home_dir,
+        report_dir=report_dir,
+        harness=harness,
+        model=model,
+        root=tmp_path,
     )
 
 
 # The trees the parent snapshots around a child; only report_dir may change.
-TREES = ("home", "tmp", "cwd", "home_dir")
+TREES = ("home", "tmp", "cwd", "home_dir", "root")  # "root": ALL of tmp_path except report_dir (delta S1)
+
+
+def _snap(sb: Any, k: str) -> dict[str, tuple[str, str]]:
+    return _tree(sb.root, exclude=sb.report_dir) if k == "root" else _tree(getattr(sb, k))
 
 
 def _run_child(
@@ -594,7 +665,7 @@ def _run_child(
     script.write_text(_CHILD_SCRIPT)
     cfg_path = sb.harness / "cfg.json"
     cfg_path.write_text(json.dumps(cfg))
-    before = {k: _tree(getattr(sb, k)) for k in TREES}
+    before = {k: _snap(sb, k) for k in TREES}
     env = {
         "HOME": str(sb.home),
         "TMPDIR": str(sb.tmp),
@@ -627,7 +698,7 @@ def _run_child(
         out.get("maxim_file") and str(out["maxim_file"]).startswith(str(SRC)),
         f"the child imported a maxim outside this checkout: {out.get('maxim_file')!r}",
     )
-    after = {k: _tree(getattr(sb, k)) for k in TREES}
+    after = {k: _snap(sb, k) for k in TREES}
     sb.before, sb.after = before, after
     return out, sb
 
@@ -754,7 +825,7 @@ def test_env_read_set(tmp_path: Path, backend: str) -> None:
         {
             f"{r[0]} <- {r[1]}.{r[2]}"
             for r in out["env_reads"]
-            if r[0] not in ENV_READ_ALLOW and not str(r[1]).startswith(ENV_READ_ALLOW_CALLERS)
+            if r[0] not in ENV_READ_ALLOW and not _allowed_caller(str(r[1]))
         }
     )
     assert not outside, f"env reads outside the pinned allow-list: {outside}"
@@ -862,20 +933,59 @@ def test_builder_refusals_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, 
 
 # ── 4. registration sweep (b) ─────────────────────────────────────────────
 
-# ToolRegistry's public READ surface, by prefix. Every other public method is treated as a writer (fail-closed: a
-# writer added to ToolRegistry later joins the sweep without anyone editing this file).
-_REGISTRY_READER_PREFIXES = ("get", "find", "list", "is_", "has_", "advertised", "tool_descriptions")
+# ToolRegistry's public READ attributes, EXACTLY (delta D2: a prefix would let ``get_or_register`` escape). A
+# property that only reads must be listed here explicitly too (delta2 N2). Every other public attribute is a writer
+# and joins the sweep (a method is called, a property/descriptor/constant is assigned; both must raise); test_toolregistry_public_methods_are_classified fails loudly on a
+# new public method until someone classifies it here or in _REGISTRY_WRITERS.
+_REGISTRY_READERS = frozenset(
+    {
+        "get",
+        "find",
+        "list",
+        "list_all",
+        "advertised",
+        "tool_descriptions",
+        "get_active_tools",
+        "get_scene_tools",
+        "get_active_scenes",
+        "get_tool_scene",
+        "is_tool_active",
+        "get_auto_fire_tools",
+        "get_tools_by_kind",
+        "find_similar",
+    }
+)
+_REGISTRY_WRITERS = frozenset(
+    {"register", "deregister", "register_scene_tools", "activate_scene", "deactivate_scene", "deactivate_tool"}
+)
+
+
+def _registry_public_methods() -> set[str]:
+    """EVERY public class attribute along ToolRegistry's MRO (bar ``object``): methods, properties, descriptors,
+    constants. A property can mutate on access or on set, so it is classified like a method (delta2 N2)."""
+    from maxim.tools.registry import ToolRegistry
+
+    return {n for k in ToolRegistry.__mro__ if k is not object for n in vars(k) if not n.startswith("_")}
+
+
+def _registry_attr(name: str) -> Any:
+    from maxim.tools.registry import ToolRegistry
+
+    return inspect.getattr_static(ToolRegistry, name)
+
+
+def test_toolregistry_public_methods_are_classified() -> None:
+    """A guard, not a red gate: every public ToolRegistry method is a known reader or writer (delta D2)."""
+    unknown = _registry_public_methods() - _REGISTRY_READERS - _REGISTRY_WRITERS
+    assert not unknown, (
+        f"new public ToolRegistry method(s) {sorted(unknown)}: classify each in _REGISTRY_READERS or "
+        "_REGISTRY_WRITERS (an unclassified one is already swept as a writer)"
+    )
 
 
 def _registry_public_writers() -> list[str]:
-    from maxim.tools.registry import ToolRegistry
-
-    names = sorted(
-        n
-        for n, v in vars(ToolRegistry).items()
-        if not n.startswith("_") and callable(v) and not n.startswith(_REGISTRY_READER_PREFIXES)
-    )
-    require("register" in names and "deregister" in names, f"writer derivation looks wrong: {names}")
+    names = sorted(_registry_public_methods() - _REGISTRY_READERS)  # fail-closed: unknown means writer
+    require(_REGISTRY_WRITERS <= set(names), f"writer derivation looks wrong: {names}")
     return names
 
 
@@ -918,6 +1028,11 @@ def test_registration_sweep_b(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
         intruder = type(tool)()
         writers = _registry_public_writers()
         for name in writers:
+            attr = _registry_attr(name)
+            if not callable(attr) or inspect.isdatadescriptor(attr):
+                # A property / data descriptor / constant not on the reader list: assigning it must raise.
+                _expect_raises(sealed_err, lambda n=name: setattr(registry, n, None), f"sealed registry .{name} = …")
+                continue
             assert hasattr(registry, name), f"the sealed registry has no {name}: it must exist and raise, not vanish"
             args, kwargs = _writer_args(name, intruder)
             method = getattr(registry, name)
@@ -949,6 +1064,10 @@ def test_open_builds_all_three_layers(tmp_path: Path, monkeypatch: pytest.Monkey
         return out
 
     monkeypatch.setattr(sess, "_build_dispatch_stack", spy)
+    # The seam is ``_session._build_dispatch_stack`` resolved at call time (pinned in the SEAMS block). A name
+    # re-bound into the package by ``from ._session import ...`` is patched too, so the spy cannot be dodged.
+    if hasattr(advisor, "_build_dispatch_stack"):
+        monkeypatch.setattr(advisor, "_build_dispatch_stack", spy)
     session = _open(advisor, tmp_path)
     try:
         assert len(calls) == 1, f"open() called _build_dispatch_stack {len(calls)} times"
@@ -1082,8 +1201,10 @@ def _outside(path: str, sb: Any) -> bool:
         return False
     p = Path(path)
     if not p.is_absolute():
-        # A dir_fd-relative name (atomic_write_json_at's temp name included, v6.3): the CWD is read-only in the
-        # child, so it cannot have landed there, and the HOME/TMPDIR/home_dir diffs catch any other directory.
+        # A dir_fd-relative name (atomic_write_json_at's temp name included, v6.3). The audit event carries no
+        # dir_fd, so three checks bound it: the CWD is read-only in the child; every directory the child opens is
+        # recorded and must be report_dir or home_dir (test_no_effect); and ALL of tmp_path but report_dir is
+        # diffed. A relative name therefore cannot land anywhere unseen.
         return False
     try:
         p.resolve().relative_to(sb.report_dir.resolve())
@@ -1107,11 +1228,22 @@ def test_no_effect(tmp_path: Path, backend: str) -> None:
     assert not net_spawn, f"socket/spawn/exec events: {net_spawn[:10]}"
     writes = [e for e in out["events"] if e[0] == "open_write" and _outside(e[1], sb)]
     assert not writes, f"write-mode opens outside report_dir: {writes[:10]}"
-    fs = [e for e in out["events"] if e[0].startswith(("os.", "shutil.")) and any(_outside(a, sb) for a in e[1][:1])]
+    # Both paths of a rename/replace/link/symlink (os.replace raises "os.rename"); ints (modes, fds) map to "<fd>".
+    fs = [
+        e
+        for e in out["events"]
+        if e[0].startswith(("os.", "shutil."))
+        and e[0] not in ("os.exec", "os.system")
+        and isinstance(e[1], list)
+        and any(isinstance(a, str) and _outside(a, sb) for a in e[1][:2])
+    ]
     assert not fs, f"filesystem mutations outside report_dir: {fs[:10]}"
+    allowed_dirs = {sb.report_dir.resolve(), sb.home_dir.resolve()}
+    dirs = [e[1] for e in out["events"] if e[0] == "open_dir" and Path(e[1]).resolve() not in allowed_dirs]
+    assert not dirs, f"directory opens (dir_fd bases) other than report_dir/home_dir: {sorted(set(dirs))[:10]}"
     reads = [e for e in out["events"] if e[0] == "open_read"]
     assert not reads, f"reads of the fresh HOME/TMPDIR/CWD (config.json, profiles.yml, cost_state...): {reads[:10]}"
-    for k in TREES:  # home_dir included: the observer uses no data home (§4.2; owner decision 2026-10-25)
+    for k in TREES:  # home_dir: no data home (§4.2); root: all of tmp_path but report_dir (delta S1)
         assert sb.before[k] == sb.after[k], (
             f"{k} tree changed: +{sorted(set(sb.after[k]) - set(sb.before[k]))[:10]} "
             f"~{sorted(n for n in sb.before[k] if sb.after[k].get(n) != sb.before[k][n])[:10]}"

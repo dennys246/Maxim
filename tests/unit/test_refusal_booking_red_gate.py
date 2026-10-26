@@ -1,6 +1,6 @@
 """#1315 §1A.2 behavioural red gate: a gate refusal books NO learning, through both dispatch paths.
 
-WHAT THIS FILE IS. Tests only (``docs/plans/atonia_gate_approach_notes.md`` DRAFT v6.3 §1A.2, "The behavioural red
+WHAT THIS FILE IS. Tests only (``docs/plans/atonia_gate_approach_notes.md`` DRAFT v6.4 §1A.2, "The behavioural red
 gate is the enforcement, not this table"). For every gate refusal kind, one refusal is driven through
 ``runtime/tool_dispatch.py::execute_and_learn`` AND ``execute_parallel_actions``, with ``drive_relief_only`` both
 False (substrate-primary) and True (the shipped llm-primary default), on the cheapest REAL fixtures:
@@ -10,7 +10,7 @@ False (substrate-primary) and True (the shipped llm-primary default), on the che
 - the real ``ToolPainBridge`` that ``build_executor`` builds, a real ``ToolRegistry``, a real
   ``AutonomyController`` and the real ``record_outcome``.
 
-THE KINDS (``KIND_TO_ERROR_KIND``): mode, permissions, unregistered and inactive_scene exist today. POLICY_CEILING,
+THE KINDS (``KIND_TO_REFUSAL``): mode, permissions, unregistered and inactive_scene exist today. POLICY_CEILING,
 POLICY_PIN, the offline ceiling (V7: ``policy.ceiling & OFFLINE_CEILING`` with the latch engaged) and an
 ``OfflineRefusal`` raised inside a tool body (the ``_fail_ran`` booking-order case, §1A.2) assert their API exists
 first, so they fail today with that AssertionError. The tool body raises from ``execute`` -- the shipped path for a
@@ -42,7 +42,9 @@ it.
 
 The scenario (the refusal happened, of the expected kind, and the autonomy gate admitted the action) is checked
 first and raises ``ScenarioBroken``, never an ``AssertionError``. One exception: for the new kinds, the refusal being
-TYPED (its ``error_kind``) is item 3's own behaviour, so a wrong kind there is an AssertionError.
+TYPED (its ``error_kind`` ``.value`` and its ``metadata["refusal_layer"]``, one kind per layer, notes v6.4) is item
+3's own behaviour, so a mismatch there is an AssertionError: the offline-in-tool-body case expects ``"offline"`` at
+layer ``"offline"``, the offline-ceiling case ``"policy_ceiling"`` at layer ``"ceiling"``.
 """
 
 from __future__ import annotations
@@ -72,16 +74,17 @@ GOAL = "probe the gate"
 CLUSTER = "c-refusal"
 POLICY_REASON = "red-gate probe (§1A.2 booking)"
 
-# Each case's expected ToolErrorKind member name(s). The legacy kinds also accept today's error text (``_LEGACY_TEXT``).
-KIND_TO_ERROR_KIND: dict[str, frozenset[str]] = {
-    "mode": frozenset({"MODE"}),
-    "permissions": frozenset({"POLICY_PERMISSIONS"}),
-    "unregistered": frozenset({"NOT_REGISTERED"}),
-    "inactive_scene": frozenset({"INACTIVE_SCENE"}),
-    "policy_ceiling": frozenset({"POLICY_CEILING"}),
-    "policy_pin": frozenset({"POLICY_PIN"}),
-    "offline_ceiling": frozenset({"POLICY_CEILING", "OFFLINE"}),
-    "offline_in_tool_body": frozenset({"OFFLINE"}),
+# Each case's expected (ToolErrorKind ``.value``, ``metadata["refusal_layer"]``): one kind per layer (notes v6.4
+# §1A.2). ``ToolErrorKind`` is serialised by ``.value``. The legacy kinds also accept today's error text.
+KIND_TO_REFUSAL: dict[str, tuple[str, str]] = {
+    "mode": ("mode", "mode"),
+    "permissions": ("policy_permissions", "permissions"),
+    "unregistered": ("not_registered", "registry"),
+    "inactive_scene": ("inactive_scene", "registry"),
+    "policy_ceiling": ("policy_ceiling", "ceiling"),
+    "policy_pin": ("policy_pin", "pin"),
+    "offline_ceiling": ("policy_ceiling", "ceiling"),  # V7's offline AND is a ceiling refusal
+    "offline_in_tool_body": ("offline", "offline"),  # an OfflineRefusal raised inside a tool body
 }
 _LEGACY_TEXT = {
     "mode": "passive mode",
@@ -89,7 +92,7 @@ _LEGACY_TEXT = {
     "unregistered": "Tool not registered",
     "inactive_scene": "is not active",
 }
-KINDS = tuple(KIND_TO_ERROR_KIND)
+KINDS = tuple(KIND_TO_REFUSAL)
 PATHS = ("execute_and_learn", "execute_parallel_actions")
 
 # NAc's learned state: every map a booking could touch (snapshot before/after, beside the method spies).
@@ -148,8 +151,8 @@ def _require_offline(*names: str) -> Any:
 
 
 def _require_kinds(kind: str) -> None:
-    for member in KIND_TO_ERROR_KIND[kind]:
-        assert hasattr(ToolErrorKind, member), f"item 3 not built: ToolErrorKind has no {member}"
+    member = KIND_TO_REFUSAL[kind][0].upper()
+    assert hasattr(ToolErrorKind, member), f"item 3 not built: ToolErrorKind has no {member}"
 
 
 # ── the rig ───────────────────────────────────────────────────────────────
@@ -371,16 +374,18 @@ def _check_refusal(kind: str, outputs: list[Any]) -> None:
     require(len(outputs) == 1, f"the executor dispatched {len(outputs)} times")
     out = outputs[0]
     require(getattr(out, "success", None) is False, f"the {kind} call was not refused: {out!r}")
-    error_kind = getattr(getattr(out, "error_kind", None), "name", None)
-    expected = KIND_TO_ERROR_KIND[kind]
+    error_kind = getattr(getattr(out, "error_kind", None), "value", None)
+    layer = (getattr(out, "metadata", None) or {}).get("refusal_layer")
+    want_kind, want_layer = KIND_TO_REFUSAL[kind]
     if kind in _LEGACY_TEXT:
         require(
-            error_kind in expected or _LEGACY_TEXT[kind] in str(out.error or ""),
+            error_kind == want_kind or _LEGACY_TEXT[kind] in str(out.error or ""),
             f"not the {kind} refusal: {error_kind} / {out.error!r}",
         )
-    else:  # typing the refusal is item 3's own behaviour, so a wrong kind is the defect
-        assert error_kind in expected, (
-            f"the {kind} refusal is not typed {sorted(expected)}: {error_kind} / {out.error!r}"
+    else:  # typing the refusal (kind AND layer) is item 3's own behaviour, so a mismatch is the defect
+        assert (error_kind, layer) == (want_kind, want_layer), (
+            f"the {kind} refusal is ({error_kind!r}, layer {layer!r}), not ({want_kind!r}, layer {want_layer!r}): "
+            f"{out.error!r}"
         )
 
 
@@ -469,11 +474,11 @@ def test_a_gate_refusal_books_no_learning(kind: str, path: str, drive_relief_onl
     reason="#1315 item 3 / §1A.2: tools/base.py has no GATE_REFUSAL_KINDS yet",
 )
 def test_cases_cover_every_gate_refusal_kind() -> None:
-    """Every member of ``GATE_REFUSAL_KINDS`` has a case in ``KIND_TO_ERROR_KIND``, so a new kind joins the gate.
+    """Every member of ``GATE_REFUSAL_KINDS`` has a case in ``KIND_TO_REFUSAL``, so a new kind joins the gate.
     Fails today: the frozenset does not exist."""
     import maxim.tools.base as base
 
     assert hasattr(base, "GATE_REFUSAL_KINDS"), "item 3 not built: tools/base.py has no GATE_REFUSAL_KINDS"
-    covered = set().union(*KIND_TO_ERROR_KIND.values())
-    missing = sorted(m.name for m in base.GATE_REFUSAL_KINDS if m.name not in covered)
+    covered = {want_kind for want_kind, _layer in KIND_TO_REFUSAL.values()}
+    missing = sorted(m.value for m in base.GATE_REFUSAL_KINDS if m.value not in covered)
     assert not missing, f"GATE_REFUSAL_KINDS members with no booking case: {missing}"

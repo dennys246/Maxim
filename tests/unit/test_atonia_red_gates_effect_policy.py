@@ -126,7 +126,9 @@ GATE_KIND_NAMES = (
     "MODE",
     "OFFLINE",
 )  # §1A.2 (v6.3): the seven members of GATE_REFUSAL_KINDS
-REFUSAL_LAYERS = frozenset({"forbid", "mode", "registry", "permissions", "ceiling", "pin"})  # §1A.2 v6.3
+# §1A.2 v6.4: one kind per layer ("ceiling" = POLICY_CEILING incl. the V7 offline AND; "pin" = POLICY_PIN for any
+# non-pinned name; "offline" = OFFLINE, an OfflineRefusal raised inside a tool body).
+REFUSAL_LAYERS = frozenset({"forbid", "mode", "registry", "permissions", "ceiling", "pin", "offline"})
 
 
 def _require_gate_kinds() -> Any:
@@ -1205,9 +1207,9 @@ def test_v7_offline_ceiling_is_enumerated_and_anded_at_dispatch(tmp_path: Path) 
     """§1A.2: ``OFFLINE_CEILING`` is exactly READ|SELF_SCOPE|WRITE_LOCAL|ACTUATE|GOVERN, and whenever
     ``is_offline()`` the seam ANDs it with the policy ceiling, at dispatch and in ``permits()``: under an
     ``unrestricted`` policy, NETWORK, COMMS and undeclared (ALL) tools are refused and never run, READ and
-    WRITE_LOCAL run. The latch is one-way and process-wide, so the engaged half runs in a child process. The kind of
-    an offline ceiling refusal is not pinned between ``policy_ceiling`` and ``offline``; both are accepted, with
-    layer ``"ceiling"``."""
+    WRITE_LOCAL run. The latch is one-way and process-wide, so the engaged half runs in a child process. v6.4 pins
+    the kind: an offline-ceiling refusal is ``policy_ceiling`` at layer ``"ceiling"`` (``offline`` is only for an
+    ``OfflineRefusal`` raised inside a tool body)."""
     assert importlib.util.find_spec("maxim._offline") is not None, "step 0b not built: maxim/_offline.py is missing"
     base = _require_effect()
     _require_policy()
@@ -1239,7 +1241,7 @@ def test_v7_offline_ceiling_is_enumerated_and_anded_at_dispatch(tmp_path: Path) 
     for name in ("c_net", "c_comms", "c_undeclared"):
         t = out["tools"][name]
         assert not t["permits"], f"permits() offers {name} under the latch: {t}"
-        assert not t["success"] and t["kind"] in ("policy_ceiling", "offline"), f"{name} offline: {t}"
+        assert not t["success"] and t["kind"] == "policy_ceiling", f"{name} offline: {t}"
         assert t["layer"] == "ceiling", f"{name}'s refusal layer is {t['layer']!r}, not 'ceiling'"
     assert sorted(out["ran"]) == ["c_read", "c_write"], f"tools ran under the latch: {out['ran']}"
 
@@ -1324,6 +1326,27 @@ def test_item3_record_outcome_refused_is_required_keyword() -> None:
     assert p.default is inspect.Parameter.empty, f"refused= has a default ({p.default!r}); it must be required"
 
 
+_NO_CLASS_NAMES = frozenset({"web_search", "list_directory"})  # name-set entries no src/maxim class implements
+
+
+def _classes_named(tool_name: str) -> list[tuple[str, str]]:
+    """Every (module, class) in the Tool closure whose OWN body assigns ``name = "<tool_name>"`` (module-level
+    classes only, so the result is importable by attribute)."""
+    out = []
+    for (mod_name, cls_name), (m, cdef) in sorted(_tool_closure().items()):
+        if cdef not in m.tree.body:
+            continue
+        for n in cdef.body:
+            if (
+                isinstance(n, ast.Assign)
+                and any(isinstance(t, ast.Name) and t.id == "name" for t in n.targets)
+                and isinstance(n.value, ast.Constant)
+                and n.value.value == tool_name
+            ):
+                out.append((mod_name, cls_name))
+    return out
+
+
 @pytest.mark.xfail(
     strict=True, raises=AssertionError, reason="#1315 §1A.11: the mode gate's name sets agree with Effect"
 )
@@ -1331,9 +1354,13 @@ def test_1a11_mode_name_sets_declare_matching_effect(tmp_path: Path, monkeypatch
     """§1A.11: until the name sets collapse, every tool in ``modes/definitions.py``'s ``HOST_ACTING_TOOLS``,
     ``NETWORK_CAPABILITY_TOOLS`` and ``FILESYSTEM_CAPABILITY_TOOLS`` declares a matching flag. "Matching" is not
     spelled out; chosen: NETWORK set -> has NETWORK; HOST_ACTING -> exceeds READ|SELF_SCOPE (it acts outside
-    Maxim's own state); FILESYSTEM -> ``read_*``/``list_*`` has READ, the rest has WRITE_LOCAL. Names the default
-    registry does not build (``web_search``, ``list_directory``, ``maxim_command`` without a live runtime,
-    ``execute_sandbox_script`` without a sandbox) are out of this probe and listed in the failure if a rule misses."""
+    Maxim's own state); FILESYSTEM -> ``read_*``/``list_*`` has READ, the rest has WRITE_LOCAL. Besides the default
+    registry's instances, every src/maxim class whose own body sets ``name = "<n>"`` is checked (the real
+    ``maxim_command`` needs a live runtime and the registry holds its stub; ``execute_sandbox_script`` needs a
+    sandbox) (AST lookup; an instance made with
+    ``__new__`` so ``effect_of`` reads that class's record without running ``__init__``). Names with no class at all
+    (today ``web_search`` and ``list_directory``: name-set entries no tool implements) are pinned in
+    ``_NO_CLASS_NAMES``; a new class for one of them joins the check automatically."""
     from maxim.modes import definitions as md
 
     monkeypatch.chdir(tmp_path)
@@ -1343,20 +1370,38 @@ def test_1a11_mode_name_sets_declare_matching_effect(tmp_path: Path, monkeypatch
     }
     present = {n: t for n, t in present.items() if t is not None}
     require(len(present) >= 10, f"the default registry builds only {sorted(present)} of the name sets")
+    names = md.HOST_ACTING_TOOLS | md.NETWORK_CAPABILITY_TOOLS | md.FILESYSTEM_CAPABILITY_TOOLS
+    # Every class that implements a name is checked, not only the registry's instance: the default registry holds
+    # the observation-only stub for ``maxim_command``, and the real ``MaximCommandTool`` must agree too.
+    by_class = {n: _classes_named(n) for n in sorted(names)}
+    no_class = {n for n in names if not by_class[n] and n not in present}
+    require(no_class == _NO_CLASS_NAMES, f"name-set entries with no class changed: {sorted(no_class)}")
+    require(
+        ("maxim.tools.reachy", "MaximCommandTool") in by_class["maxim_command"] and by_class["execute_sandbox_script"],
+        f"class lookup: {by_class}",
+    )
     _require_effect()
     from maxim.tools.base import Effect, effect_of, exceeds
 
+    subjects: list[tuple[str, Any]] = sorted(present.items())
+    for n, refs in sorted(by_class.items()):
+        for mod_name, cls_name in refs:
+            cls = getattr(importlib.import_module(mod_name), cls_name, None)
+            require(isinstance(cls, type), f"{mod_name}.{cls_name} is not importable as a class")
+            subjects.append((f"{n} ({mod_name}::{cls_name})", cls.__new__(cls)))
+
     wrong = []
-    for n, t in sorted(present.items()):
+    for label, t in subjects:
+        n = label.split(" ")[0]
         e = effect_of(t)
         if n in md.NETWORK_CAPABILITY_TOOLS and not e & Effect.NETWORK:
-            wrong.append(f"{n}: network set, effect {e!r}")
+            wrong.append(f"{label}: network set, effect {e!r}")
         if n in md.HOST_ACTING_TOOLS and not exceeds(e, Effect.READ | Effect.SELF_SCOPE):
-            wrong.append(f"{n}: host-acting set, effect {e!r}")
+            wrong.append(f"{label}: host-acting set, effect {e!r}")
         if n in md.FILESYSTEM_CAPABILITY_TOOLS:
             need = Effect.READ if n.startswith(("read_", "list_")) else Effect.WRITE_LOCAL
             if not e & need:
-                wrong.append(f"{n}: filesystem set, effect {e!r} lacks {need!r}")
+                wrong.append(f"{label}: filesystem set, effect {e!r} lacks {need!r}")
     assert not wrong, f"name sets and Effect disagree: {wrong}"
 
 

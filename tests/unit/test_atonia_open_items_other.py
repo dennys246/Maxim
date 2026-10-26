@@ -32,9 +32,9 @@ SEAMS THESE GATES PIN (the plans leave them open; chosen here, change them only 
   * O4: with no allowlist configured, ``send_message`` to an arbitrary recipient returns a refusal typed
     ``ToolErrorKind.PERMISSION_DENIED`` (a tool's own path refusal, §1A.2) and never calls the channel. ``Tool.run``
     swallows exceptions, so a crash (another kind, or none) does not satisfy it.
-  * O6: driven through the real producers: ``CommunicationGateway.receive_inbound`` builds the percept,
-    ``MemoryAgent._on_percept`` receives it and ``MemoryAgent.build_context`` builds the context, and a real
-    ``ExecAgent`` (``enabled=False``, a stand-in router) builds the prompt. The inbound text must sit only inside a
+  * O6: driven through the real producers to the LIVE prompt seam: ``CommunicationGateway(bus=AgentBus)``, the
+    bus subscription into ``MemoryAgent._on_percept``, ``MemoryAgent.build_context``, and ``LLMWorker``'s
+    ``PromptBuilder.build_prompt`` (a router stub; nothing is dispatched). The inbound text must sit only inside a
     ``frame_tool_output`` frame (``content_safety.outside_tool_output`` of the prompt no longer holds it).
   * O9: ``maxim.create.agent(..., ephemeral=True, persistence_dir=<caller dir>)`` writes nothing under a per-test
     ``HOME``.
@@ -278,34 +278,109 @@ def test_o4_send_message_refuses_an_unlisted_recipient() -> None:
 # ── O6 (item 4, after the gate) ───────────────────────────────────────────
 
 
+class _PromptRouterStub:
+    """The router surface ``LLMWorker.__init__`` reads; the gate builds a prompt and never dispatches."""
+
+    def get_provider_configs(self) -> dict[str, Any]:
+        return {"local": {"n_ctx": 8192}}
+
+    def cloud_allowed(self) -> bool:
+        return False
+
+    def get_token_counter(self) -> Any:
+        return None
+
+
+def _inbound_via_api_command(bus: Any) -> None:
+    """``comms/api.py::inject_command`` (``POST /api/command``): ``receive_inbound(channel="api", ...)``, no metadata."""
+    from maxim.comms.gateway import CommunicationGateway
+
+    CommunicationGateway(bus=bus).receive_inbound(channel="api", sender="api_user", text=INJECTION)
+
+
+def _inbound_via_twilio_sms(bus: Any) -> None:
+    """``TwilioChannel.receive_sms``: the body ALSO rides in ``percept.metadata["conversation_context"]``
+    (``ConversationManager.get_context_for_prompt``, "for injection into LLM context"). The channel is built with
+    ``__new__`` so the twilio client (an optional dependency, not on this path) is never constructed."""
+    from maxim.comms.channels.twilio_channel import TwilioChannel
+    from maxim.comms.conversation import ConversationManager
+    from maxim.comms.gateway import CommunicationGateway
+
+    channel = TwilioChannel.__new__(TwilioChannel)
+    channel.conv_manager = ConversationManager(bus)
+    channel.gateway = CommunicationGateway(bus=bus)
+    channel.from_number = "+15550000000"
+    channel.voice_enabled = False
+    channel.receive_sms("+15550002222", INJECTION)
+
+
+O6_PRODUCERS = {"api_command": _inbound_via_api_command, "twilio_sms": _inbound_via_twilio_sms}
+
+
+@pytest.mark.parametrize("producer", sorted(O6_PRODUCERS))
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="advisor_mode.md O6 / item 4 (inbound framing; a release after the atonia gate's)",
+    reason="advisor_mode.md O6 / item 4 (inbound framing at the live PromptBuilder; a release after the atonia gate's)",
 )
-def test_o6_inbound_comms_reach_the_prompt_framed() -> None:
-    """Inbound comms text, through the real gateway -> MemoryAgent -> ExecAgent path, reaches the prompt only inside
-    an untrusted-data frame. Today it is inlined as ``[User via sms ...] <text>``, outside every frame."""
-    from maxim.agents.bus import AgentBus
-    from maxim.agents.exec_agent import ExecAgent
+def test_o6_inbound_comms_reach_the_prompt_framed(producer: str) -> None:
+    """Inbound comms text reaches the LIVE prompt, and only inside an untrusted-data frame, for BOTH production
+    producers: ``POST /api/command`` (channel ``"api"``) and ``TwilioChannel.receive_sms`` (channel ``"twilio:sms"``,
+    which also carries the body in ``metadata["conversation_context"]``).
+
+    The path is the production one end to end: the producer -> ``CommunicationGateway(bus=AgentBus)`` -> the bus
+    subscription -> ``MemoryAgent._on_percept`` -> ``MemoryAgent.build_context()`` -> ``LLMWorker``'s
+    ``PromptBuilder.build_prompt`` (the live seam; ``ExecAgent._build_llm_context`` is dormant since 2026-10-06),
+    with the request shaped as ``LLMWorker.submit_context`` shapes a tool-aware planning turn. The check is on the
+    composed prompt text, so the text must not appear unframed through ANY carrier (``percept.content``,
+    ``comms_messages``, ``conversation_context``). Out of this verbatim check, for item 4's scope: the substrate
+    encodes comms ``content`` into concept chunks (``memory_hub.on_percept_received``), which could surface later
+    through the dormant ``concept_context``.
+
+    Fails today, and plainly: PromptBuilder never reads ``comms_messages`` or ``conversation_context`` and
+    ``build_observation_section`` never renders ``percept.content``, so inbound comms text does not reach the live
+    prompt at all."""
+    from maxim.agents.autonomy import AutonomyLevel
+    from maxim.agents.bus import AgentBus, Percept
+    from maxim.agents.llm_types import LLMRequest, ModeInfo
+    from maxim.agents.llm_worker import LLMWorker
     from maxim.agents.memory_agent import MemoryAgent
-    from maxim.comms.gateway import CommunicationGateway
     from maxim.utils.content_safety import outside_tool_output
 
     bus = AgentBus()
-    memory = MemoryAgent(bus)
-    published: list[Any] = []
-    CommunicationGateway(bus=SimpleNamespace(publish=published.append)).receive_inbound(
-        "sms", "+15550002222", INJECTION
-    )
-    require(len(published) == 1, f"receive_inbound published {len(published)} percepts")
-    memory._on_percept(published[0])
+    memory = MemoryAgent(bus)  # subscribes _on_percept to the bus, as production wires it
+    seen: list[Any] = []
+    bus.subscribe(Percept, seen.append)
+    O6_PRODUCERS[producer](bus)
+    require(len(seen) == 1 and seen[0].content == INJECTION, f"{producer}: no comms percept reached the bus")
+    if producer == "twilio_sms":
+        carried = (seen[0].metadata or {}).get("conversation_context", "")
+        require(INJECTION in carried, "the Twilio percept does not carry the body in conversation_context")
     ctx = memory.build_context()
     require(any(m.get("content") == INJECTION for m in ctx.comms_messages), "MemoryAgent did not keep the message")
-    exec_agent = ExecAgent(bus, memory, enabled=False, shared_router=MagicMock())
-    prompt = exec_agent._build_llm_context(ctx)
-    require(INJECTION in prompt, "the inbound text never reached the prompt")
-    assert INJECTION not in outside_tool_output(prompt), "inbound comms text reaches the prompt unframed"
+    worker = LLMWorker(llm=_PromptRouterStub(), n_ctx=8192)
+    request = LLMRequest(
+        request_id="o6",
+        context=ctx,
+        mode=ModeInfo(name="passive", goal="assist the user", context_prompt=""),
+        autonomy_level=AutonomyLevel.SUPERVISED,
+        internet_access=False,
+        internet_policy_summary="",
+        available_tools={"respond", "think"},
+        tool_descriptions={"respond": "reply to the user", "think": "reason"},
+        use_tool_prompting=True,
+        deliberation_available=False,
+        deferred_inputs=[],
+    )
+    prompt = worker._prompt_builder.build_prompt(request)
+    require(prompt, "PromptBuilder built an empty prompt: the request is not a tool-aware planning turn")
+    assert INJECTION in prompt, (
+        f"{producer}: PromptBuilder does not read inbound comms at all: the inbound text never reaches the live "
+        "prompt (percept.content, comms_messages and conversation_context are not rendered)"
+    )
+    assert INJECTION not in outside_tool_output(prompt), (
+        f"{producer}: inbound comms text reaches the live prompt unframed"
+    )
 
 
 # ── O9 (item 7, after the gate) ───────────────────────────────────────────
@@ -331,6 +406,14 @@ def test_o9_ephemeral_agent_writes_nothing_outside_the_callers_directory(
     home = tmp_path / "home"  # per test, so no other in-process writer lands in the diff
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
+    for var, sub in (
+        ("XDG_CONFIG_HOME", ".config"),
+        ("XDG_CACHE_HOME", ".cache"),
+        ("HF_HOME", "hf"),
+        ("TORCH_HOME", "torch"),
+    ):
+        monkeypatch.setenv(var, str(home / sub))  # every user-dir root under the watched HOME
+    monkeypatch.delenv("MAXIM_DATA_HOME", raising=False)
     caller = tmp_path / "caller"
     caller.mkdir()
     before = _tree(home)

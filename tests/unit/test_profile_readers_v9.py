@@ -66,7 +66,8 @@ READERS: tuple[str, ...] = (
     "list_llm_profiles",
     "build_model_path (load_llm_config)",
     "ensure_available lookup",
-    "lane resolution (lane_backends._validate_swap_profile)",
+    "model swap validator (lane_backends._validate_swap_profile)",
+    "router-build placement tail (lane_backends._placement_entry_to_provider, LOCAL)",
     "doctor VRAM projection (name)",
 )
 
@@ -133,7 +134,16 @@ _READER_BODY = textwrap.dedent(
             OUT["detail"] = said
             # Positive: the profile was FOUND in the registry and reported as not downloaded (no consent here).
             OUT["ok"] = any(f"Profile '{NAME}' is not downloaded" in c for c in said)
-        elif reader == "lane resolution (lane_backends._validate_swap_profile)":
+        elif reader == "router-build placement tail (lane_backends._placement_entry_to_provider, LOCAL)":
+            # build_primary_router compiles the placement TAIL (fallback entries) through this mapper; the primary LOCAL
+            # lane goes through load_llm_config(profile_override=...), the build_model_path reader above.
+            from maxim.runtime.lane_backends import _placement_entry_to_provider
+            from maxim.runtime.worker_pool import Origin, ProviderPlacement
+            prov, is_cloud = _placement_entry_to_provider(ProviderPlacement(origin=Origin.LOCAL, model=ALIAS), "local")
+            OUT["detail"] = (prov, is_cloud)
+            OUT["ok"] = (prov is not None and not is_cloud and prov.get("model") == NAME
+                         and os.path.basename(prov.get("model_path") or "") == HF_FILE)
+        elif reader == "model swap validator (lane_backends._validate_swap_profile)":
             from maxim.runtime.lane_backends import _validate_swap_profile
             resolved, data = _validate_swap_profile(ALIAS)
             OUT["detail"] = (resolved, data.get("backend"))

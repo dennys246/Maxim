@@ -282,15 +282,37 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             item.add_marker(skip)
 
 
+# What ``maxim._offline.engage()`` writes to ``os.environ`` (#1315 notes v6.4 §1A.1).
+_OFFLINE_ENV_KEYS = (
+    "HF_HUB_OFFLINE",
+    "TRANSFORMERS_OFFLINE",
+    "HF_HUB_DISABLE_TELEMETRY",
+    "YOLO_OFFLINE",
+    "MAXIM_OFFLINE",
+)
+
+
 @pytest.fixture(autouse=True)
 def _reset_offline_latch():
-    """Reset the offline latch after every test that engaged it in-process (#1315 §1A.1: the reset lives here, and
-    touches ``maxim._offline``'s private state; ``src/`` has no reset). A no-op until step 0b ships the module."""
+    """Reset the offline latch after every test (#1315 §1A.1): restore the five env keys ``engage()`` writes, so a
+    stray ``MAXIM_OFFLINE`` cannot re-engage the latch in a later test, and call ``maxim._offline._reset_for_tests()``
+    when the module is loaded. A loaded module without that reset fails the test. Until step 0b ships the module
+    this only restores keys nothing changed."""
+    saved = {key: os.environ.get(key) for key in _OFFLINE_ENV_KEYS}
     yield
-    offline = sys.modules.get("maxim._offline")
-    reset = getattr(offline, "_reset_for_tests", None) if offline is not None else None
-    if callable(reset):
-        reset()
+    try:
+        offline = sys.modules.get("maxim._offline")
+        if offline is not None:
+            reset = getattr(offline, "_reset_for_tests", None)
+            if not callable(reset):
+                pytest.fail("maxim._offline is loaded but has no _reset_for_tests(): the latch cannot be reset")
+            reset()
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 @pytest.fixture(autouse=True)
