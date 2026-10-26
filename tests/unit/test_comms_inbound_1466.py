@@ -12,6 +12,8 @@ from __future__ import annotations
 import threading
 from types import SimpleNamespace
 
+import pytest
+
 
 class _Bus:
     def __init__(self) -> None:
@@ -62,3 +64,69 @@ def test_maxim_agent_has_no_dead_gateway_wiring():
     from maxim.agents.maxim_agent import MaximAgent
 
     assert not hasattr(MaximAgent, "wire_communication")
+
+
+# ── The HTTP hop (#1466 review: every comms endpoint answered 422 since comms/api.py was written) ──────────────
+
+
+def _api(monkeypatch, bus):
+    """The real comms app over a real gateway and Twilio channel; only Twilio's signature validator is stubbed."""
+    import sys
+    import types
+
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    from maxim.comms.api import create_api_app
+    from maxim.comms.channels.twilio_channel import TwilioChannel
+    from maxim.comms.conversation import ConversationManager
+    from maxim.comms.gateway import CommunicationGateway
+
+    validator = types.ModuleType("twilio.request_validator")
+
+    class _AlwaysValid:
+        def __init__(self, token):
+            pass
+
+        def validate(self, *args):
+            return True
+
+    validator.RequestValidator = _AlwaysValid
+    monkeypatch.setitem(sys.modules, "twilio", sys.modules.get("twilio") or types.ModuleType("twilio"))
+    monkeypatch.setitem(sys.modules, "twilio.request_validator", validator)
+    monkeypatch.setenv("TWILIO_AUTH_TOKEN", "test-token")
+    monkeypatch.setenv("MAXIM_API_TOKEN", "api-token")
+
+    gateway = CommunicationGateway(bus=bus)
+    channel = TwilioChannel.__new__(TwilioChannel)
+    channel.gateway = gateway
+    channel.conv_manager = ConversationManager(bus=bus, nac=None)
+    gateway.register_channel("twilio", channel)
+    return TestClient(create_api_app(bus=bus, gateway=gateway))
+
+
+@pytest.mark.xfail(
+    strict=True, reason="#1466 review: FastAPI cannot resolve the function-local `Request` annotation (422)"
+)
+def test_a_twilio_webhook_post_reaches_the_bus(monkeypatch):
+    bus = _Bus()
+    client = _api(monkeypatch, bus)
+    r = client.post(
+        "/api/twilio/sms", data={"From": "+15550100", "Body": "are you there?"}, headers={"X-Twilio-Signature": "s"}
+    )
+    assert r.status_code == 200, r.text
+    (percept,) = bus.published
+    assert "are you there?" in str(percept.content)
+
+
+@pytest.mark.xfail(
+    strict=True, reason="#1466 review: FastAPI cannot resolve the function-local `Request` annotation (422)"
+)
+def test_the_authenticated_command_endpoint_reaches_the_bus(monkeypatch):
+    bus = _Bus()
+    client = _api(monkeypatch, bus)
+    assert client.post("/api/command", json={"command": "status"}).status_code == 401, "no token, no command"
+    r = client.post("/api/command", json={"command": "status"}, headers={"Authorization": "Bearer api-token"})
+    assert r.status_code == 200, r.text
+    assert len(bus.published) == 1
