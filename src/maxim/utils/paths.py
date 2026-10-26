@@ -20,6 +20,7 @@ Environment variables:
 
 from __future__ import annotations
 
+import errno
 import os
 import stat
 from pathlib import Path
@@ -34,21 +35,30 @@ def config_file_present(path: Path) -> bool:
     """Whether the operator config file at ``path`` exists as a regular file; raises when that cannot be told.
 
     The probe for every file in the declarative config dir (``config.json``, ``profiles.yml``, ``peer.yml``,
-    ``mesh.yml``). Only a missing file (or a missing parent) is False, as is something that is not a regular file,
-    matching ``Path.is_file``. A path that cannot be stat'd (an unreadable ``~/.config/maxim``) is a
-    :class:`~maxim.exceptions.ConfigDirUnreadable` (a ``ConfigurationError``) naming the directory and the fix (#1403): ``Path.is_file`` raises a raw
-    ``PermissionError`` there on Python <=3.13 and returns False on 3.14, which silently drops the operator's config.
+    ``mesh.yml``, ``hive.json``). Only a missing file (or a missing parent) is False, as is something that is not a
+    regular file, matching ``Path.is_file``. A path that cannot be stat'd (an unreadable ``~/.config/maxim``) raises
+    :class:`~maxim.exceptions.ConfigDirUnreadable` (a ``ConfigurationError``) naming the fix (#1403): ``Path.is_file``
+    raises a raw ``PermissionError`` there on Python <=3.13 and returns False on 3.14, which silently drops the
+    operator's config. Key files use ``tunnel/keys.py::key_exists`` instead, whose unstat-able path counts as present
+    (its callers then read through the strict reader and report the reason).
     """
     try:
         st = os.stat(path)
     except (FileNotFoundError, NotADirectoryError):
         return False
     except OSError as e:
-        raise ConfigDirUnreadable(
-            f"cannot read the maxim config directory {path.parent} ({e.strerror or type(e).__name__}); "
-            f"fix its permissions: chmod 700 {path.parent}"
-        ) from e
+        raise ConfigDirUnreadable(_unreadable_config_message(path, e)) from e
     return stat.S_ISREG(st.st_mode)
+
+
+def _unreadable_config_message(path: Path, err: OSError) -> str:
+    """Name what failed and, for a permission error, the directory that blocks it: the nearest ancestor this
+    process cannot enter, which is not always the file's own directory (``~/.config`` itself may be locked)."""
+    msg = f"cannot read {path} ({err.strerror or type(err).__name__})"
+    if err.errno not in (errno.EACCES, errno.EPERM):
+        return msg
+    blocker = next((d for d in reversed(path.parents) if not os.access(d, os.X_OK)), path.parent)
+    return f"{msg}; {blocker} is not accessible: chmod 700 {blocker}"
 
 
 # ---------------------------------------------------------------------------

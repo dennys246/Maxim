@@ -2508,7 +2508,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     invisible to the user.
 
     On ``BackendError``: render via ``user_warn`` (display panel + JSONL
-    + stderr) and exit 2.  ``KeyboardInterrupt`` exits cleanly with 130
+    + stderr) and exit 2; ``ConfigDirUnreadable`` (an unreadable config
+    dir, #1403) the same way, with the traceback at DEBUG.  ``KeyboardInterrupt`` exits cleanly with 130
     (Ctrl-C convention) so the live display can flush.  Any other
     exception re-raises — we don't want to swallow bugs.
     """
@@ -2517,18 +2518,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     except KeyboardInterrupt:
         return 130
     except Exception as e:
-        from maxim.exceptions import ConfigurationError
+        from maxim.exceptions import ConfigDirUnreadable
 
-        if isinstance(e, ConfigurationError):
+        if isinstance(e, ConfigDirUnreadable):
             # Checked before importing models.language: an unreadable config dir fails that import too (#1403).
             from maxim.utils.logging import user_warn
 
-            user_warn(f"{type(e).__name__}: {e}", source="config", event="configuration_error_uncaught")
+            logging.getLogger(__name__).debug("unreadable config dir", exc_info=True)
+            user_warn(f"{type(e).__name__}: {e}", source="config", event="config_dir_unreadable")
             return 2
         try:
             from maxim.models.language.types import BackendError
         except Exception:
-            raise e from None
+            raise e  # the original error, with the failed import as its context
 
         if isinstance(e, BackendError):
             from maxim.utils.logging import user_warn

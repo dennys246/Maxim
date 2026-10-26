@@ -50,7 +50,7 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any, Literal
 
-from maxim.exceptions import ConfigurationError
+from maxim.exceptions import ConfigDirUnreadable, ConfigurationError
 
 logger = logging.getLogger(__name__)
 
@@ -1098,6 +1098,10 @@ def resolve_setting(
     if config is None:
         try:
             config = get_config()
+        except ConfigDirUnreadable:
+            # Not a malformed file to fall past: defaults here would silently drop the operator's settings,
+            # `tools.deny` among them (fail open), when nothing in the config dir can be read (#1403).
+            raise
         except Exception:
             # If load_config raised (parse error, permission denied), preserve
             # the legacy fall-through-to-default behaviour rather than

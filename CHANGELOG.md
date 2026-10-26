@@ -58,10 +58,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   With the config dir at mode 000, every `maxim` command (even `--help`) died with a raw `PermissionError` traceback
   from the `profiles.yml` probe at `models.language` import. On Python 3.14 the same state was silent: `Path.is_file`
   returned False, so the operator's `config.json`, `profiles.yml`, `peer.yml`, `mesh.yml` and `hive.json` were read
-  as absent (a peer detected as solo; the Oasis registry read as empty). Every one of those probes now goes through
-  `utils/paths.py::config_file_present`, which raises `maxim.exceptions.ConfigDirUnreadable` (a
-  `ConfigurationError`) naming the directory and `chmod 700 <dir>`. `cli.main` renders any uncaught
-  `ConfigurationError` as one line and exits 2; role detection re-raises this one instead of warning past it.
+  as absent (a peer detected as solo; the Oasis registry read as empty; `resolve_setting` fell back to defaults, so
+  the console dropped the operator's `tools.deny`). Every read probe of those files on the startup and loader path
+  now goes through `utils/paths.py::config_file_present`, which raises `maxim.exceptions.ConfigDirUnreadable` (a
+  `ConfigurationError`) naming the directory that blocks access and, for a permission error, `chmod 700 <dir>`.
+  `cli.main` renders it as one line and exits 2 (other errors keep their traceback); role detection and
+  `resolve_setting` re-raise it instead of falling past it. The remaining writers and setup-wizard probes of the
+  same dir are follow-up work.
 
 - **The Reachy speaker tells the truth, at the right speed and scale** ([#1435](https://github.com/dennys246/Maxim/issues/1435),
   found by maxim-pulse on a real Reachy). Nothing in maxim started the SDK's player, so every robot utterance and
