@@ -1,6 +1,6 @@
 # The atonia gate: approach notes for items 2, 3, 1, 5 and 10
 
-**Status:** DRAFT v6.5 (design passes, three-lens round and two deltas folded; red-gate review decisions folded), approach notes (CLAUDE.md "Faster without lowering the bar", item 1). Owner decisions V1–V8
+**Status:** DRAFT v6.6 (design passes, three-lens round and two deltas folded; red-gate review decisions folded), approach notes (CLAUDE.md "Faster without lowering the bar", item 1). Owner decisions V1–V8
 were made 2026-10-24 and V9–V10 on 2026-10-25. Session V, paper only: nothing in `src/` changes until the owner has read the folded
 plan and the red-gate PR is opened.
 - **v1** was written from a read-only census at `d9dffe6e` (origin/main, 2026-10-24).
@@ -352,7 +352,28 @@ caller those catches protected, so list each caller.
 
 advisor_mode.md's draft interfaces are **superseded by this shape**, and that file says so.
 
-**`open()`** takes `home_dir`, `model`, `report_dir`, `cursor`, `max_calls`, `turn_timeout_s` and `log_mode`.
+**`open()`** (owner decisions 2026-10-26, from AvServ's questions, A–D) takes, keyword-only:
+- `home_dir`, `model` and `report_dir`;
+- `cursor=None`, `max_calls=8`, `turn_timeout_s=120` and `log_mode=0o600`;
+- **`n_ctx`, `max_prompt_tokens` and `n_gpu_layers=-1`** (A).
+
+`session.limits` exposes the last three read-only, after `open()` resolves them: `n_ctx` defaults to the GGUF's
+trained context, and `max_prompt_tokens` defaults to `n_ctx` minus the completion budget.
+
+**`session.ingest(events, *, stop=None)`.** Each event is `{event_id, kind, occurred_at, payload, text, cursor?}`.
+- **Cursors (C).** `cursor` is the caller's opaque feed cursor; Maxim never parses it, only echoes it.
+  `covered.cursor_out` is the `cursor` of the last event the turn judged, or that event's `event_id` when it carries
+  none. For `error` and `abandoned` reports, `cursor_out == cursor_in`.
+- **Stopping (D).** The library installs no signal handler (bounded_stop.md). `ingest()` honours the process stop
+  request, `utils/cancellation.py::current_stop()`, which the embedder's SIGTERM handler sets with
+  `request_stop(Deadline(...), "yield")`. It also honours an optional per-call `stop: StopRequest`. A stop that lands
+  during sampling ends the turn at the next token, and the report is `abandoned`, with no judgement and
+  `cursor_out == cursor_in`. A stop that lands during prefill takes effect when prefill returns, which the token cap
+  bounds. `session.close()` then writes the log's close record.
+- **Prompt too long (B).** A `prompt_too_long` error report carries `extra.prompt_tokens` and
+  `extra.max_prompt_tokens`, so the caller can size its batches.
+- **`degraded`.** In this release the observer has **no `degraded` producer**: it loads no optional weights. The
+  status stays in the schema. A rejected input keeps the report `ok`, with `inputs[].rejected` filled.
 
 **The report:**
 
@@ -686,7 +707,7 @@ Replacing `ProposalQueue` closes the drain path only. Under V1 none of these is 
 ### 4.2 The design
 
 - **The API.** `maxim.advisor` (Experimental, lazily exported):
-  - `open(*, home_dir, model, report_dir, cursor=None, max_calls=8, turn_timeout_s=120)` returns `AdvisorSession`;
+  - `open(...)` returns `AdvisorSession`; its full signature is §1A.8's, which wins;
   - `session.ingest(events) -> AdvisorReport` (AD4's schema);
   - `close()` writes the log's close record.
 
@@ -1428,3 +1449,15 @@ realpath-keyed executables, `pinned_executable`); they are history, not instruct
 owed.** Both fail-open folds are closed. Its NITs are folded here (invariant 3's out-of-model forms) or recorded for the
 build PRs: the `receive_voice` arm and the `triggering_input` route for O6 (#1481), the double-rendering XPASS
 class, and the reset guard's fail-closed name match.
+
+**AvServ's questions, plan 50 §18.6** (v6.6, owner decisions 2026-10-26):
+
+| Question | Answer and fold |
+|---|---|
+| `log_mode` missing from §4.2's signature | §1A.8 wins; §4.2 points to it |
+| Context size and prompt cap | A: `n_ctx`, `max_prompt_tokens`, `n_gpu_layers` and `session.limits`. B: token counts on a `prompt_too_long` report |
+| Is the cursor opaque, and what sets `cursor_out`? | C: a per-event `cursor`; `cursor_out` is the last judged event's cursor |
+| SIGTERM during `ingest()` | D: the process `StopRequest`, plus an optional per-call `stop=`; the result is `abandoned`, then `close()` |
+| `degraded` | No producer in this release; rejected inputs stay `ok` |
+| GPU default; `nvidia-smi` under the latch | A: `n_gpu_layers=-1`; the supervisor runs the GPU checks before `open()` (item 11 later) |
+| Phase 1 web research | Out of the gate's scope: the 1.3.2 harness in the sandbox; no `ddgs`; `http_fetch` honours `HTTPS_PROXY` |

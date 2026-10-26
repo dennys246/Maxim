@@ -848,7 +848,18 @@ def test_builder_refusals_signature() -> None:
         "open() takes *args/**kwargs, so it accepts a robot= or tools= nobody pinned"
     )
     assert all(p.kind is p.KEYWORD_ONLY for p in params.values()), "open() has a positional parameter"
-    expected = {"home_dir", "model", "report_dir", "cursor", "max_calls", "turn_timeout_s", "log_mode"}
+    expected = {
+        "home_dir",
+        "model",
+        "report_dir",
+        "cursor",
+        "max_calls",
+        "turn_timeout_s",
+        "log_mode",
+        "n_ctx",  # v6.6 A
+        "max_prompt_tokens",  # v6.6 A
+        "n_gpu_layers",  # v6.6 A
+    }
     assert set(params) == expected, f"open()'s parameters are {sorted(params)}, not §1A.8's {sorted(expected)}"
     for banned in ("robot", "embodiment", "tools", "registry", "tool_registry", "executor", "controller"):
         assert banned not in params, f"open() takes {banned}="
@@ -1376,6 +1387,131 @@ def test_report_status_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cas
 
     log = read_log(_log_path(report_dir, report["session_id"]))
     assert report["log_last_seq"] == log["last_seq"], (report["log_last_seq"], log["last_seq"])
+
+
+# ── 7b. v6.6: limits, prompt cap, cursors, cooperative stop (AvServ's questions) ──
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.6 A: flips with session.limits")
+def test_open_exposes_limits(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``open(n_ctx=, max_prompt_tokens=, n_gpu_layers=)`` reach the backend factory and read back from
+    ``session.limits``; ``n_gpu_layers`` defaults to -1 (offload everything)."""
+    advisor = _require_advisor()
+    calls = _install_fake(monkeypatch, FakeBackend())
+    home_dir, report_dir, model = _dirs(tmp_path)
+    session = advisor.open(
+        home_dir=home_dir, model=model, report_dir=report_dir, n_ctx=2048, max_prompt_tokens=1500, n_gpu_layers=12
+    )
+    try:
+        limits = getattr(session, "limits", None)
+        assert limits is not None, "AdvisorSession has no .limits (v6.6 A)"
+        got = {k: getattr(limits, k, None) for k in ("n_ctx", "max_prompt_tokens", "n_gpu_layers")}
+        assert got == {"n_ctx": 2048, "max_prompt_tokens": 1500, "n_gpu_layers": 12}, got
+        assert calls, "open() never built the backend"
+        _args, kwargs = calls[-1]
+        assert kwargs.get("n_ctx") == 2048 and kwargs.get("n_gpu_layers") == 12, f"factory kwargs: {kwargs}"
+    finally:
+        session.close()
+    default = inspect.signature(advisor.open).parameters.get("n_gpu_layers")
+    assert default is not None and default.default == -1, "n_gpu_layers must default to -1 (v6.6 A)"
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.6 B: flips with the prompt cap")
+def test_prompt_too_long_reports_token_counts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A prompt over ``max_prompt_tokens`` is refused before completion: ``error``/``prompt_too_long`` carrying
+    ``extra.prompt_tokens`` and ``extra.max_prompt_tokens``, and the backend never completes."""
+    advisor = _require_advisor()
+    backend = FakeBackend()
+    _install_fake(monkeypatch, backend)
+    home_dir, report_dir, model = _dirs(tmp_path)
+    session = advisor.open(home_dir=home_dir, model=model, report_dir=report_dir, max_prompt_tokens=2)
+    try:
+        report = _as_dict(session.ingest(EVENTS))
+    finally:
+        session.close()
+    prompt_tokens = 1 + len(EVENTS) * 2 + 1  # FakeBackend.build_prompt: one id per segment (text, payload) + 2
+    assert report.get("status") == "error" and report.get("reason") == "prompt_too_long", report.get("reason")
+    extra = report.get("extra") or {}
+    assert extra.get("max_prompt_tokens") == 2, extra
+    assert isinstance(extra.get("prompt_tokens"), int) and extra["prompt_tokens"] > 2, extra
+    assert extra["prompt_tokens"] <= prompt_tokens + 64, extra  # the template may add ids; never a guess
+    assert backend.completions == 0, "an over-long prompt reached completion (prefill is bounded by the cap)"
+
+
+CURSORED = [
+    {"event_id": "e1", "kind": "note", "text": "a person walked past the door", "payload": {}, "cursor": "feed:101"},
+    {"event_id": "e2", "kind": "note", "text": "the hall light went out", "payload": {}},
+]
+
+
+@pytest.mark.parametrize("case", ["ok", "error", "abandoned"])
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.6 C: flips with per-event cursors")
+def test_cursor_out_follows_the_last_judged_event(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
+    """``cursor`` is opaque and echoed. ``ok``: ``cursor_out`` is the last judged event's cursor, or its ``event_id``
+    when it carries none (here e2, so ``"e2"``). ``error``/``abandoned``: ``cursor_out == cursor_in``."""
+    advisor = _require_advisor()
+    backend = {"ok": FakeBackend("ok"), "error": FakeBackend("raise"), "abandoned": FakeBackend("deadline")}[case]
+    _install_fake(monkeypatch, backend)
+    home_dir, report_dir, model = _dirs(tmp_path)
+    session = advisor.open(home_dir=home_dir, model=model, report_dir=report_dir, cursor="feed:100")
+    try:
+        report = _as_dict(session.ingest(CURSORED))
+    finally:
+        session.close()
+    covered = report.get("covered") or {}
+    assert covered.get("cursor_in") == "feed:100", covered
+    want = "e2" if case == "ok" else "feed:100"
+    assert covered.get("cursor_out") == want, f"{case}: cursor_out {covered.get('cursor_out')!r}, want {want!r}"
+    first = [dict(CURSORED[0])]
+    if case == "ok":
+        session2 = advisor.open(home_dir=home_dir, model=model, report_dir=report_dir, cursor="feed:100")
+        try:
+            r2 = _as_dict(session2.ingest(first))
+        finally:
+            session2.close()
+        assert (r2.get("covered") or {}).get("cursor_out") == "feed:101", r2.get("covered")
+
+
+class _StopDuringCompletion(FakeBackend):
+    """Raises the process stop request mid-turn, then answers as the deadline would (the stop ends the turn)."""
+
+    def complete_tokens(self, prompt_ids: Any, **kw: Any) -> Any:
+        from maxim.utils.cancellation import request_stop
+        from maxim.utils.deadline import Deadline
+
+        request_stop(Deadline(5.0), "yield")
+        return super().complete_tokens(prompt_ids, **kw)
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.6 D: flips with the cooperative stop")
+def test_ingest_honours_the_process_stop_request(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The library installs no handler (bounded_stop.md). A ``request_stop`` raised during a turn makes ``ingest``
+    return ``abandoned`` (no proposals, ``cursor_out == cursor_in``); ``ingest`` also accepts a per-call ``stop=``;
+    ``close()`` writes the close record afterwards."""
+    advisor = _require_advisor()
+    cancellation = importlib.import_module("maxim.utils.cancellation")
+    assert hasattr(cancellation, "request_stop") and hasattr(cancellation, "current_stop"), (
+        "no StopRequest seam yet (bounded_stop.md PR 0): utils/cancellation.request_stop/current_stop"
+    )
+    params = inspect.signature(_session_mod().AdvisorSession.ingest).parameters
+    assert "stop" in params and params["stop"].kind is params["stop"].KEYWORD_ONLY, "ingest(events, *, stop=None)"
+    _install_fake(monkeypatch, _StopDuringCompletion("ok"))
+    home_dir, report_dir, model = _dirs(tmp_path)
+    session = advisor.open(home_dir=home_dir, model=model, report_dir=report_dir, cursor="feed:100")
+    try:
+        report = _as_dict(session.ingest(CURSORED))
+    finally:
+        session.close()
+        reset = getattr(cancellation, "_reset_for_tests", None)
+        if callable(reset):
+            reset()
+    assert report.get("status") == "abandoned", f"status {report.get('status')!r} after a stop request"
+    assert report.get("proposals") == [], "an abandoned turn dispatched proposals"
+    assert (report.get("covered") or {}).get("cursor_out") == "feed:100", report.get("covered")
+    from maxim.advisor.log import read_log
+
+    log = read_log(_log_path(report_dir, report["session_id"]))
+    assert log["closed"] is True, "close() did not write the close record after an abandoned turn"
 
 
 # ── 8. special-token defang ───────────────────────────────────────────────
