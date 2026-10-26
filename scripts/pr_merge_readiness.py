@@ -86,6 +86,29 @@ class Readiness:
         )
 
 
+def _latest_run_per_name(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep only the newest run of each check name, as GitHub's merge gate does (#1442).
+
+    A head commit can carry several runs of one check: editing a PR's description starts a
+    second workflow run and the `concurrency` block cancels the first. The cancelled run is
+    superseded, not failed. "Newest" orders on `started_at`, then `id`. A queued run has no
+    `started_at` yet and counts as the newest, so a verdict waits on a pending re-run rather
+    than repeating the old run's result. Input order is kept for the survivors.
+    """
+
+    def _age(c: dict[str, Any]) -> tuple[int, str, int]:
+        started = c.get("started_at")
+        return (1 if not started else 0, str(started or ""), int(c.get("id") or 0))
+
+    newest: dict[str, dict[str, Any]] = {}
+    for c in checks:
+        name = str(c.get("name", ""))
+        if name not in newest or _age(c) >= _age(newest[name]):
+            newest[name] = c
+    kept = {id(c) for c in newest.values()}
+    return [c for c in checks if id(c) in kept]
+
+
 def _required_missing(
     checks: list[dict[str, Any]],
     required_contexts: tuple[str, ...] | None,
@@ -111,6 +134,7 @@ def evaluate(
 ) -> Readiness:
     """Pure verdict over already-fetched data (so this is testable without network)."""
     findings: list[Finding] = []
+    checks = _latest_run_per_name(checks)
 
     # ── 0. A closed/merged PR has no merge to gate. Say so plainly rather than
     #      reporting UNKNOWN merge fields as if they were an unsettled diagnosis.
@@ -257,6 +281,8 @@ def _slurped_check_runs(slug: str, sha: str) -> list[dict[str, Any]]:
     return [
         {
             "name": c.get("name"),
+            "id": c.get("id"),
+            "started_at": c.get("started_at"),
             "status": c.get("status"),
             "conclusion": c.get("conclusion"),
             "output_title": (c.get("output") or {}).get("title"),

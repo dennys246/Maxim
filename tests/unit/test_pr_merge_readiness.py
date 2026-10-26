@@ -302,7 +302,6 @@ class TestOnlyTheLatestRunPerCheckIsJudged:
     reads the latest run per check name; the script read every run and printed one
     `check-failed … cancelled` row per job of the superseded run (seen on #1433)."""
 
-    @pytest.mark.xfail(strict=True, reason="#1442 red gate: superseded runs are still judged")
     def test_a_superseded_cancelled_run_under_a_later_success_is_not_blocking(self):
         checks = [
             _run("unit-tests", "cancelled", started_at="2026-10-23T10:00:00Z", run_id=1),
@@ -333,7 +332,6 @@ class TestOnlyTheLatestRunPerCheckIsJudged:
         assert "check-failed" in _codes(result)
         assert result.exit_code == BLOCKED
 
-    @pytest.mark.xfail(strict=True, reason="#1442 red gate: superseded runs are still judged")
     def test_a_queued_rerun_without_started_at_is_the_latest(self):
         """A queued run has `started_at: null`; it is newer than any started run, so the
         verdict waits on it rather than reporting the old run's failure."""
@@ -346,7 +344,6 @@ class TestOnlyTheLatestRunPerCheckIsJudged:
         assert "check-failed" not in _codes(result)
         assert result.exit_code == UNSETTLED
 
-    @pytest.mark.xfail(strict=True, reason="#1442 red gate: superseded runs are still judged")
     def test_same_start_time_breaks_the_tie_on_id(self):
         checks = [
             _run("unit-tests", "success", started_at="2026-10-23T10:00:00Z", run_id=2),
@@ -372,7 +369,6 @@ class TestIoShell:
         runs = mod._slurped_check_runs("o/r", "sha")
         assert [r["name"] for r in runs] == ["unit-tests", "lint"]
 
-    @pytest.mark.xfail(strict=True, reason="#1442 red gate: started_at/id are not slurped")
     def test_slurped_check_runs_carry_started_at_and_id(self, monkeypatch):
         """The latest-run filter orders on these two fields; dropping them in the shell
         would leave the pure filter judging every run as equally old."""
