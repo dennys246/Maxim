@@ -47,6 +47,21 @@ from maxim.utils.store_ownership import StoreFileOwnership, is_unreadable_store_
 logger = logging.getLogger(__name__)
 
 
+class UnknownMathCategory(ValueError):
+    """A recall named a category ``MathCategory`` does not have (#1153)."""
+
+
+def _category_name(category: MathCategory | str) -> str:
+    """The name the store keys ``category`` by (``_index_record`` writes ``record.category.name``)."""
+    if isinstance(category, MathCategory):
+        return category.name
+    try:
+        return MathCategory[str(category).strip().upper()].name
+    except KeyError:
+        valid = ", ".join(c.name for c in MathCategory)
+        raise UnknownMathCategory(f"unknown math category {category!r}; one of: {valid}") from None
+
+
 @dataclass
 class AngularGyrusConfig:
     """Configuration for the Angular Gyrus math memory + computation layer."""
@@ -204,9 +219,11 @@ class AngularGyrus(StoreFileOwnership, MemoryLayer):
     ) -> list[MathMemory | CompressedMathMemory]:
         """Query math records by filters.
 
-        ``category`` is a ``MathCategory`` or its name: the store keys a record by ``category.name``
-        (``_index_record``), so the enum is keyed the same way (#1153: an enum built
-        ``category:MathCategory.PATTERN``, a key nothing had, and every enum-keyed recall came back empty).
+        ``category`` is a ``MathCategory`` or its name in any case ("pattern" finds PATTERN): the store keys a
+        record by ``category.name`` (``_index_record``), so every form is keyed the same way (#1153: an enum built
+        ``category:MathCategory.PATTERN`` and a lower-case name ``category:pattern``, keys nothing had, so those
+        recalls came back empty). A name that is no category raises ``UnknownMathCategory`` (owner decision
+        2026-10-25: fail loud; the math tool returns it to the model as a tool error).
 
         ``touch=False`` reads without counting an access: for a caller whose result nothing uses, so it does
         not move the ``access_count`` this method ranks by and retention reads (#1128).
@@ -221,7 +238,7 @@ class AngularGyrus(StoreFileOwnership, MemoryLayer):
                 candidate_ids = ids if candidate_ids is None else candidate_ids & ids
 
             if category is not None:
-                key = f"category:{category.name if isinstance(category, MathCategory) else category}"
+                key = f"category:{_category_name(category)}"
                 ids = self._context_index.get(key, set())
                 candidate_ids = ids if candidate_ids is None else candidate_ids & ids
 

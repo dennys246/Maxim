@@ -27,8 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **An Angular Gyrus recall by `MathCategory` found nothing** (#1153). The store keys a record by the category's
   name, and `recall(category=MathCategory.PATTERN)` looked up a key built from the enum itself, so every enum-keyed
-  recall came back empty (its one caller, MemoryAgent's knowledge fallback, is Dormant). `recall` now takes the enum
-  or its name.
+  recall came back empty (its one enum caller, MemoryAgent's knowledge fallback, is Dormant), and so did a
+  lower-case name, which the `math` tool passes straight from the model. `recall` now takes the enum or its name in
+  any case, and an unknown category name raises an error the tool returns to the model.
 
 ### Changed
 
