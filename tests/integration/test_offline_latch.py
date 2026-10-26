@@ -80,7 +80,6 @@ import dataclasses
 import importlib
 import importlib.util
 import json
-import logging
 import subprocess
 import sys
 import textwrap
@@ -1248,39 +1247,8 @@ def test_config_version_owns_llm_offline() -> None:
     assert _vkey("1.3") < _vkey(owner) <= _vkey(CONFIG_FORMAT_VERSION), (owner, CONFIG_FORMAT_VERSION)
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason=_reason("§1A.6", "config downgrade warns on dropping llm.offline")
-)
-def test_downgrade_warns_when_it_drops_llm_offline(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    """``maxim config downgrade`` of a newer file carrying ``llm.offline: true`` warns that the run now goes ONLINE,
-    naming the key. Today the generic "set aside" WARNING names it but never says the run goes online.
-
-    The build that drops the key is one that does not know it (§1A.6's stated fail-open). This build will know it
-    once the gate lands, so ``unknown_config_entries`` is wrapped to always report ``llm.offline`` as dropped (a
-    no-op today, when it genuinely is unknown): the gate pins the warning, not which build emits it."""
-    from maxim.runtime import config_loader
-    from maxim.runtime.config_writer import downgrade_config
-
-    real = config_loader.unknown_config_entries
-
-    def dropping(data: dict[str, Any]) -> dict[str, Any]:
-        return {**real(data), "llm.offline": True}
-
-    monkeypatch.setattr(config_loader, "unknown_config_entries", dropping)
-    major, minor = _vkey(config_loader.CONFIG_FORMAT_VERSION)
-    target = tmp_path / "config.json"
-    target.write_text(json.dumps({"_format_version": f"{major}.{minor + 1}", "llm": {"offline": True}}))
-    with caplog.at_level(logging.WARNING):
-        result = downgrade_config(target)
-    require("llm.offline" in result.preserved, f"the downgrade did not drop llm.offline: {result.preserved}")
-    warned = [
-        r.getMessage()
-        for r in caplog.records
-        if r.levelno >= logging.WARNING and "llm.offline" in r.getMessage() and " online" in r.getMessage().lower()
-    ]
-    assert warned, "no WARNING says dropping llm.offline: true makes the run go online"
+# The §1A.6 downgrade-warning gate lives in tests/unit/test_config_downgrade_974.py: CI's IM2 grep allows
+# callers of the config downgrade writer only in the config test files.
 
 
 # ── 9. conftest ───────────────────────────────────────────────────────────
