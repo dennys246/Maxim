@@ -51,7 +51,7 @@
     {
       "file": "src/maxim/embodied_runtime/agentic_runtime.py",
       "qualname": "AgenticRuntimeMixin._start_agentic_runtime",
-      "lines": 924
+      "lines": 870
     },
     {
       "file": "src/maxim/embodied_runtime/agentic_runtime.py",
@@ -61,7 +61,7 @@
     {
       "file": "src/maxim/embodied_runtime/media_loop.py",
       "qualname": "MediaLoopMixin.live",
-      "lines": 566
+      "lines": 425
     },
     {
       "file": "src/maxim/embodied_runtime/selfy.py",

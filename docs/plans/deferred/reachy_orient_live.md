@@ -13,7 +13,7 @@ onboard DoA. Sim-validated in Phase 0a; this is the hardware-in-loop step.
 - [`ShredderSegmenter/docs/plans/archive/maxim_mvp_plan.md`](../../../ShredderSegmenter/docs/plans/archive/maxim_mvp_plan.md)
   + `maxim_integration.md` are the **camera-streaming / product-registration** layer: Reachy camera →
   RTSP/MediaMTX → ShredderSegmenter site-agent records video. **Note (2026-07):** Maxim's own bridge
-  (`tools/rtsp_bridge.py` / `scripts/rtsp_bridge.py`) was **stripped in the v1.0 cleanup and is broken**
+  (`tools/rtsp_bridge.py` / `scripts/rtsp_bridge.py`) was **stripped in the v1.0 cleanup**; its leftover launcher script was deleted in #1436
   (imports a deleted module) — the working standalone producer now lives as `agent/reachy_streamer.py`
   in ShredderSegmenter (SDK `get_frame` → ffmpeg → MediaMTX, zero `maxim.*`). Zero DoA / orienting / NAc content.
 - **This runbook is the orient / motor-control + learning layer**: DoA → head turn → NAc learns to

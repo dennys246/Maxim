@@ -52,8 +52,8 @@
       "missing": 494
     },
     "maxim/embodied_runtime": {
-      "percent": 34.0,
-      "missing": 1991
+      "percent": 39.2,
+      "missing": 1819
     },
     "maxim/embodiment": {
       "percent": 84.7,
@@ -80,8 +80,8 @@
       "missing": 60
     },
     "maxim/inference": {
-      "percent": 22.3,
-      "missing": 539
+      "percent": 23.5,
+      "missing": 536
     },
     "maxim/integration": {
       "percent": 68.4,

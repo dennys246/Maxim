@@ -1475,6 +1475,14 @@ jobs:
         run: |
           python3 scripts/lint_orphan_modules.py
 
+      - name: Dead-import lint (#1436)
+        # Every maxim import in src/ and scripts/, at any depth (lazy, TYPE_CHECKING, class body),
+        # must name a module and a name that exist. #1436: a lazy import of a deleted shim left the
+        # robot's voice input off for six months behind one warning. Zero tolerance, no allowlist.
+        # Positive control: tests/unit/test_lint_dead_imports.py.
+        run: |
+          python3 scripts/lint_dead_imports.py
+
       - name: Harness provenance lint (Exp 42b retraction lesson)
         run: |
           # Any scripts/**/*.py that spawns `maxim` sub-sims must call
