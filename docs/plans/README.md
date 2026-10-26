@@ -523,7 +523,7 @@ Earlier archives (foundations, cleanup, peer/leader, simulator, substrate):
 
 The 0.3 release demonstrates the core 1.0 claim at prototype scale:
 
-1. **Tier 1 (substrate):** Bio-systems learn affective associations and persist them across sessions (Exp 1: 11/11, Exp 2: 13/13)
+1. **Tier 1 (substrate):** Bio-systems learn affective associations and persist them across sessions (Exp 1: 11/11, Exp 2: 13/13 at fe1124b9: it measured the since-removed `EnergyReactionBridge`)
 2. **Tier 2 (LLM reads learning):** The LLM makes different decisions when it sees the agent's learned valence (Exp 3: 12/12)
 3. **Tier 3 (organic learning):** The agent learns from its own actions without scripted training (Exp 4: 5/5, teal rate 0% -> 25% -> 100%)
 

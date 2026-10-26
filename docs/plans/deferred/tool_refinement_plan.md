@@ -80,7 +80,7 @@ Living registry — tools live in [src/maxim/tools/](../../../src/maxim/tools).
 - **Define intent**: [define_live_intent.py](../../../src/maxim/tools/define_live_intent.py)
 - **Learned index**: [learned_index.py](../../../src/maxim/tools/learned_index.py)
 - **Novelty**: [novelty.py](../../../src/maxim/tools/novelty.py)
-- **RTSP bridge**: [rtsp_bridge.py](../../../src/maxim/tools/rtsp_bridge.py)
+- **RTSP bridge**: `tools/rtsp_bridge.py` (removed in the 1.0 cleanup; its launcher script was deleted in #1436)
 
 ---
 

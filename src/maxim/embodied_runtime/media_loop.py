@@ -7,11 +7,13 @@ import time
 import wave
 from typing import Optional
 import numpy as np
-from maxim.utils.audio import resample_audio, to_int16
+from maxim.utils.audio import resample_audio, run_in_own_process_group, to_int16
 from maxim.utils.data_management import CLIInputLogger, TrainingSampleLogger, build_home
 from maxim.utils.logging import configure_logging, log_swallowed_exception, warn, warn_unless_refusal
 from maxim.data.camera.display import prepare_display, show_photo
 from maxim.inference.observation import display_detections, passive_observation
+from maxim.inference.transcribe_audio import load_whisper_config, watch_and_transcribe
+from maxim.utils.optional_deps import OptionalDependencyError, optional_dependency_installed
 from maxim.utils.gpu_compat import detect_blackwell
 
 _gpu_state = detect_blackwell()
@@ -48,7 +50,7 @@ class MediaLoopMixin:
         video_path = os.path.join(self.home_dir, "videos", f"reachy_video_{run_id}.mp4")
         audio_path = os.path.join(self.home_dir, "audio", f"reachy_audio_{run_id}.wav")
         transcript_path = os.path.join(self.home_dir, "transcript", f"reachy_transcript_{run_id}.jsonl")
-        chunk_dir = os.path.join(self.home_dir, "audio", "chunks")
+        chunk_dir = os.path.join(self.home_dir, "audio", "chunks", run_id)  # per run: no stale chunks (#1436)
         cli_path = os.path.join(self.home_dir, "cli", f"cli_input_{run_id}.jsonl")
         vision_events_path = os.path.join(self.home_dir, "vision", f"vision_events_{run_id}.jsonl")
 
@@ -174,150 +176,9 @@ class MediaLoopMixin:
         motor_queue: queue.Queue = queue.Queue(maxsize=4)
         self._motor_queue = motor_queue if parallel and motor else None
 
-        transcribe_process = None
-        transcribe_shutdown_file = None
-        if self.audio and parallel and self._robot is not None:
-            os.makedirs(chunk_dir, exist_ok=True)
-            try:
-                from maxim.data.audio._file_based_transcription import watch_and_transcribe
-                from maxim.models.audio.transcription import load_whisper_config
-
-                # Load whisper config (from ~/.maxim/util/whisper.json)
-                whisper_cfg = load_whisper_config()
-                self.log.info(
-                    "Whisper config: model=%s, device=%s, compute_type=%s",
-                    whisper_cfg.model,
-                    whisper_cfg.device,
-                    whisper_cfg.compute_type,
-                )
-
-                # Use file-based IPC instead of multiprocessing Queues
-                # Queues use shared memory which conflicts with TensorFlow+CUDA in parent
-                # File watching completely isolates parent and child processes
-                # See: https://github.com/tensorflow/tensorflow/issues/8220
-                #      https://github.com/OpenNMT/CTranslate2/issues/1693
-                ctx = mp.get_context("spawn")
-                if self.log:
-                    self.log.debug("Using file-based IPC (no shared memory)")
-
-                # Get config values (can be overridden by env vars)
-                vad_filter = whisper_cfg.vad_filter
-                compute_type = whisper_cfg.compute_type
-                whisper_model = whisper_cfg.model
-                whisper_device = whisper_cfg.device
-
-                # Auto-detect Blackwell GPUs (RTX 50 series) and adjust compute type
-                # CTranslate2 has compatibility issues with sm_120 (Blackwell) architecture:
-                # - int8 compute types fail with CUBLAS_STATUS_NOT_SUPPORTED
-                # - float16 works fine on Blackwell CUDA
-                # See: https://github.com/OpenNMT/CTranslate2/issues/1865
-                #      https://github.com/SYSTRAN/faster-whisper/issues/1260
-                blackwell_detected = False
-
-                # Resolve "auto" device
-                if whisper_device == "auto":
-                    whisper_device = "cuda"  # Default to CUDA
-
-                # Use nvidia-smi for detection (works even when CUDA_VISIBLE_DEVICES="")
-                # This allows detection after parent has hidden GPUs from TensorFlow
-                try:
-                    import subprocess
-
-                    result = subprocess.run(
-                        ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
-                        capture_output=True,
-                        text=True,
-                        timeout=2,
-                    )
-                    if result.returncode == 0:
-                        gpu_names = result.stdout.strip().lower()
-                        if "rtx 50" in gpu_names or "5080" in gpu_names or "5090" in gpu_names:
-                            blackwell_detected = True
-                            self.log.warning("⚠️  Detected Blackwell GPU (nvidia-smi)")
-                except Exception as e:
-                    self.log.debug(f"nvidia-smi check failed: {e}")
-
-                # For Blackwell GPUs: int8 fails, but float16 works on CUDA
-                # Use float16 instead of falling back to CPU (faster and uses less VRAM than float32)
-                if blackwell_detected and "int8" in compute_type.lower():
-                    compute_type = "float16"
-                    self.log.info("   Compute type auto-changed: int8 → float16 (int8 incompatible with Blackwell)")
-                    self.log.info("   Keeping CUDA device (float16 works on Blackwell)")
-
-                # Build VAD parameters dict for fine-tuned voice detection
-                # Lower threshold = more sensitive to speech (default Silero is 0.5)
-                vad_parameters = (
-                    {
-                        "threshold": whisper_cfg.vad_threshold,
-                        "min_speech_duration_ms": whisper_cfg.vad_min_speech_duration_ms,
-                        "min_silence_duration_ms": whisper_cfg.vad_min_silence_duration_ms,
-                        "speech_pad_ms": whisper_cfg.vad_speech_pad_ms,
-                    }
-                    if vad_filter
-                    else None
-                )
-
-                self.log.info("Whisper model: %s", whisper_model)
-                self.log.info("Transcription VAD filter: %s", "enabled" if vad_filter else "disabled")
-                if vad_filter:
-                    self.log.info("VAD threshold: %.2f (lower = more sensitive)", whisper_cfg.vad_threshold)
-                self.log.info("Whisper compute type: %s", compute_type)
-                self.log.info("Whisper device: %s (will fallback to CPU if unavailable)", whisper_device)
-
-                # Get original CUDA devices for subprocess (stored before we hid GPUs)
-                cuda_devices_for_subprocess = None
-                if whisper_device == "cuda":
-                    cuda_devices_for_subprocess = _original_cuda_devices
-                    if cuda_devices_for_subprocess:
-                        self.log.info(
-                            "Whisper subprocess will use GPU: CUDA_VISIBLE_DEVICES=%s", cuda_devices_for_subprocess
-                        )
-
-                # Set environment flag for CPU-only mode BEFORE spawning subprocess
-                # This ensures CUDA_VISIBLE_DEVICES is set at module import time
-                if whisper_device == "cpu":
-                    os.environ["MAXIM_TRANSCRIPTION_WORKER_CPU_ONLY"] = "1"
-                    self.log.debug("Set MAXIM_TRANSCRIPTION_WORKER_CPU_ONLY=1 for subprocess")
-
-                # Create shutdown signal file path
-                transcribe_shutdown_file = os.path.join(chunk_dir, ".shutdown")
-
-                transcribe_process = ctx.Process(
-                    target=watch_and_transcribe,
-                    args=(chunk_dir, transcript_path),
-                    kwargs={
-                        "model_size_or_path": whisper_model,
-                        "device": whisper_device,
-                        "compute_type": compute_type,
-                        "language": whisper_cfg.language,
-                        "beam_size": whisper_cfg.beam_size,
-                        "vad_filter": vad_filter,
-                        "vad_parameters": vad_parameters,
-                        "cleanup_chunks": whisper_cfg.cleanup_chunks,
-                        "verbosity": int(self.verbosity or 0),
-                        "log_file": log_path,
-                        "shutdown_file": transcribe_shutdown_file,
-                        "cuda_devices": cuda_devices_for_subprocess,
-                    },
-                    daemon=True,
-                )
-                transcribe_process.start()
-                self.log.debug("Transcription process started, waiting for initialization...")
-                time.sleep(0.1)
-                if not transcribe_process.is_alive():
-                    warn(
-                        "Transcription worker exited immediately (is `faster-whisper` installed and model available?).",
-                        logger=self.log,
-                    )
-                    transcribe_process = None
-                    transcribe_shutdown_file = None
-                else:
-                    self.log.debug("Transcription process alive and running")
-            except Exception as e:
-                transcribe_process = None
-                transcribe_shutdown_file = None
-                warn("Failed to start transcription worker: %s", e, logger=self.log)
-
+        transcribe_process, transcribe_shutdown_file = self._start_transcription_worker(
+            parallel=parallel, chunk_dir=chunk_dir, transcript_path=transcript_path, log_path=log_path
+        )
         self.log.debug("Continuing with main loop setup after transcription worker...")
 
         # Import worker functions from workers module
@@ -629,6 +490,139 @@ class MediaLoopMixin:
                 self._release_media()
         except Exception:
             pass
+
+    def _start_transcription_worker(
+        self, *, parallel: bool, chunk_dir: str, transcript_path: str, log_path: str
+    ) -> tuple[Optional[mp.process.BaseProcess], Optional[str]]:
+        """Spawn the robot's voice-input transcriber; return ``(process, shutdown_file)`` or ``(None, None)``.
+
+        Extracted from ``live()`` for #1436, which found this start importing a module deleted on
+        2026-04-03, so every robot session ran deaf behind one warning. The split (owner decision
+        2026-10-25): its maxim imports sit at module top level, so a missing maxim module fails at
+        import, never here; a missing ``audio`` extra keeps the session running with ONE ERROR naming
+        the fix; any other start failure is ONE ERROR too. A worker that dies later is reported by
+        ``workers.py::audio_writer_worker``. The probe is spec-only: this parent hides its GPUs and
+        must not load faster-whisper's native CUDA libraries itself.
+
+        Interim: the embodied-device plan's step 5 Listener replaces this file-IPC path (and owns
+        listening state); build nothing new on it.
+        """
+        if not (self.audio and parallel and self._robot is not None):
+            return None, None
+        if not optional_dependency_installed("faster_whisper"):
+            self.log.error(
+                "Voice input is OFF: speech-to-text needs faster-whisper. %s",
+                OptionalDependencyError("faster_whisper").fix_hint,
+            )
+            return None, None
+        os.makedirs(chunk_dir, exist_ok=True)
+        try:
+            # Load whisper config (from ~/.maxim/util/whisper.json)
+            whisper_cfg = load_whisper_config()
+            self.log.info(
+                "Whisper config: model=%s, device=%s, compute_type=%s",
+                whisper_cfg.model,
+                whisper_cfg.device,
+                whisper_cfg.compute_type,
+            )
+
+            # Use file-based IPC instead of multiprocessing Queues
+            # Queues use shared memory which conflicts with TensorFlow+CUDA in parent
+            # File watching completely isolates parent and child processes
+            # See: https://github.com/tensorflow/tensorflow/issues/8220
+            #      https://github.com/OpenNMT/CTranslate2/issues/1693
+            ctx = mp.get_context("spawn")
+            if self.log:
+                self.log.debug("Using file-based IPC (no shared memory)")
+
+            # Get config values (can be overridden by env vars)
+            vad_filter = whisper_cfg.vad_filter
+            compute_type = whisper_cfg.compute_type
+            whisper_model = whisper_cfg.model
+            whisper_device = whisper_cfg.device
+
+            # Resolve "auto" device
+            if whisper_device == "auto":
+                whisper_device = "cuda"  # Default to CUDA
+
+            # Blackwell GPUs (RTX 50 series): CTranslate2's int8 compute types fail with
+            # CUBLAS_STATUS_NOT_SUPPORTED on sm_120, while float16 works on CUDA. Detected once
+            # at import by utils.gpu_compat (nvidia-smi works even with CUDA_VISIBLE_DEVICES="").
+            # See: https://github.com/OpenNMT/CTranslate2/issues/1865
+            #      https://github.com/SYSTRAN/faster-whisper/issues/1260
+            if _gpu_state.blackwell_detected and "int8" in compute_type.lower():
+                compute_type = "float16"
+                self.log.info("   Compute type auto-changed: int8 → float16 (int8 incompatible with Blackwell)")
+                self.log.info("   Keeping CUDA device (float16 works on Blackwell)")
+
+            # Build VAD parameters dict for fine-tuned voice detection
+            # Lower threshold = more sensitive to speech (default Silero is 0.5)
+            vad_parameters = (
+                {
+                    "threshold": whisper_cfg.vad_threshold,
+                    "min_speech_duration_ms": whisper_cfg.vad_min_speech_duration_ms,
+                    "min_silence_duration_ms": whisper_cfg.vad_min_silence_duration_ms,
+                    "speech_pad_ms": whisper_cfg.vad_speech_pad_ms,
+                }
+                if vad_filter
+                else None
+            )
+
+            self.log.info("Whisper model: %s", whisper_model)
+            self.log.info("Transcription VAD filter: %s", "enabled" if vad_filter else "disabled")
+            if vad_filter:
+                self.log.info("VAD threshold: %.2f (lower = more sensitive)", whisper_cfg.vad_threshold)
+            self.log.info("Whisper compute type: %s", compute_type)
+            self.log.info("Whisper device: %s (will fallback to CPU if unavailable)", whisper_device)
+
+            # Get original CUDA devices for subprocess (stored before we hid GPUs)
+            cuda_devices_for_subprocess = None
+            if whisper_device == "cuda":
+                cuda_devices_for_subprocess = _original_cuda_devices
+                if cuda_devices_for_subprocess:
+                    self.log.info(
+                        "Whisper subprocess will use GPU: CUDA_VISIBLE_DEVICES=%s", cuda_devices_for_subprocess
+                    )
+
+            # Set environment flag for CPU-only mode BEFORE spawning subprocess
+            # This ensures CUDA_VISIBLE_DEVICES is set at module import time
+            if whisper_device == "cpu":
+                os.environ["MAXIM_TRANSCRIPTION_WORKER_CPU_ONLY"] = "1"
+                self.log.debug("Set MAXIM_TRANSCRIPTION_WORKER_CPU_ONLY=1 for subprocess")
+
+            # Create shutdown signal file path
+            transcribe_shutdown_file = os.path.join(chunk_dir, ".shutdown")
+
+            transcribe_process = ctx.Process(
+                target=run_in_own_process_group,  # a terminal Ctrl-C must not stop it before the parent does
+                args=(watch_and_transcribe, chunk_dir, transcript_path),
+                kwargs={
+                    "model_size_or_path": whisper_model,
+                    "device": whisper_device,
+                    "compute_type": compute_type,
+                    "language": whisper_cfg.language,
+                    "beam_size": whisper_cfg.beam_size,
+                    "vad_filter": vad_filter,
+                    "vad_parameters": vad_parameters,
+                    "cleanup_chunks": whisper_cfg.cleanup_chunks,
+                    "verbosity": int(self.verbosity or 0),
+                    "log_file": log_path,
+                    "shutdown_file": transcribe_shutdown_file,
+                    "cuda_devices": cuda_devices_for_subprocess,
+                },
+                daemon=True,
+            )
+            transcribe_process.start()
+            self.log.debug("Transcription process started, waiting for initialization...")
+            time.sleep(0.1)
+            if not transcribe_process.is_alive():
+                self.log.error("Voice input is OFF: the transcription worker exited immediately (see its log)")
+                return None, None
+            self.log.debug("Transcription process alive and running")
+            return transcribe_process, transcribe_shutdown_file
+        except Exception as e:
+            self.log.error("Voice input is OFF: failed to start the transcription worker: %s", e)
+            return None, None
 
     def sleep(
         self,

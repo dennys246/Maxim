@@ -193,7 +193,7 @@ Try to log at least one new experiment entry per version bump, so the empirical 
 
 **Result:** 13/13 hypotheses confirmed. Food +0.753, water +0.135, poison -0.495. Energy bridge: 1 hunger, 1 fatigue, 3 satiation. Key finding: environmental satiation creates background positive credit; discriminant is relative bias strength.
 
-**Reproduction:** `PYTHONPATH=src python scripts/behavioral_convergence_exp2.py`
+**Reproduction:** `PYTHONPATH=src python scripts/behavioral_convergence_exp2.py` at fe1124b9 (the script was deleted in #1436: it could not run after 7d21247a)
 
 ---
 
