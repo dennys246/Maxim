@@ -905,11 +905,6 @@ class AgenticRuntimeMixin:
                 exec_agent._llm_worker = llm_worker
                 exec_agent._owns_llm_worker = False
 
-        # Wire communication gateway if available
-        if gateway is not None:
-            agent.wire_communication(gateway=gateway, nac=nac)
-            self.log.info("Communication gateway wired")
-
         # Create FearAgent for safety gating (both DN movement and tool calls)
         fear_agent = None
         try:
