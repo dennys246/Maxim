@@ -5,9 +5,12 @@ Security is built in from the start:
 - Twilio HMAC signature verification for webhooks
 - Rate limiting on every endpoint
 - Bound to 127.0.0.1 only (use ngrok/Cloudflare Tunnel for HTTPS)
-"""
 
-from __future__ import annotations
+No ``from __future__ import annotations`` here: the endpoints' ``request: Request`` annotation names a
+fastapi class imported inside ``create_api_app``, and FastAPI resolves annotations from the module's
+globals, so a postponed (string) annotation could not be resolved and every endpoint demanded a
+``request`` query parameter, answering 422 since this file was written (#1466).
+"""
 
 import hmac
 import logging

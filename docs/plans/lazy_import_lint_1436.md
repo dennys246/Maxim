@@ -177,7 +177,7 @@ Folds:
   `tests/unit/test_optional_deps.py`; `embodied_device.md` (R5 fixed; the file-IPC path is the interim path, replaced
   by step 5's Listener before deletion); `ci-testing.md`'s tree-wide lints row; Exp 2's records and the two READMEs
   say what it measured (the Architecture lens re-ran it at fe1124b9: 13/13); `mediaMTX.md` marked stale.
-- Follow-up issues filed: #1466 (inbound comms never polled: `Maxim._gateway` is never assigned), #1467 (protocol
+- Follow-up issues filed: #1466 (filed as "inbound comms never polled"; premise corrected 2026-10-26: inbound is webhook-pushed, the poll was dead code, and the real defect was every comms endpoint answering 422), #1467 (protocol
   plumbing), #1468 (a session that stops on an exception exits 0).
 - The staged M79 "met" note moved to its own branch (`docs/m79-met`), so this PR's diff is #1436's alone.
 - Hand-off (CLAUDE.md is the process session's file): extend the "Dead code accumulates silently" lesson with "...and

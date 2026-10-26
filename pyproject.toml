@@ -167,6 +167,7 @@ comms = [
     "twilio>=9.0.0",
     "fastapi>=0.100.0",
     "uvicorn>=0.24.0",
+    "python-multipart>=0.0.18",  # the Twilio webhooks parse form bodies (request.form()); 0.0.18 fixes CVE-2024-53981 (#1466)
 ]
 # Phase 4: Neural semantic similarity (requires torch).
 # ⚠️ NOT for aarch64/Pi. torch >= 2.11 DROPPED the `platform_machine == "x86_64"`
