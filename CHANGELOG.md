@@ -47,9 +47,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **No prompt section carries a partial untrusted-content frame**, wherever its text was cut, every `LLMRouter`
     call neutralizes a stray frame marker, and a person's own text can no longer open or close one.
 
-  Limits: a fact survives until its memory is compressed (about a day; the compressed record keeps the words in a
-  later release, with #1137). The agent bus now re-raises a memory capture-contract break to the publisher, after
-  every handler ran. Ledger: T1-16 (carried memory in recall, Exp 63) is STALE until it is re-run on the new ranker.
+  - **It lasts past compression** (#1137, owner decision 2026-10-25: a release condition for the recall claim). A
+    compressed memory used to keep only that the episode had user input, so a fact the user stated was gone once
+    its record aged (about 3 days for a user's words). A compressed memory now keeps what the episode heard
+    (bounded, rendered framed like any recalled words) and the episode's active goal, which compression also lost.
+    `hippocampus.json` is now `_format_version` 1.2; older files load, their compressed records keeping neither.
+
+  The agent bus now re-raises a memory capture-contract break to the publisher, after every handler ran. Ledger: T1-16 (carried memory in recall, Exp 63) is STALE until it is re-run on the new ranker.
 
 ### Changed
 

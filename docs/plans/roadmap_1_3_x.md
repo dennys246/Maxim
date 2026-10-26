@@ -1238,8 +1238,9 @@ they are ready, and the gate takes the next free number when it is done, still o
 - **Design work:** [#1185](https://github.com/dennys246/Maxim/issues/1185), #922, #834 and #832 item 2 ([#1315](https://github.com/dennys246/Maxim/issues/1315) moved to 1.3.4 (the atonia gate), 2026-10-17).
 - **Mechanisms that enter through Phase 5 or the grounding line:** [#1026](https://github.com/dennys246/Maxim/issues/1026), [#1064](https://github.com/dennys246/Maxim/issues/1064), plus #784, #848, #880, #899,
   #1072–#1075, #1144, #1161, #1180, #1181, #816 (the reversible-compression half) and #819 (the eviction half).
-  Beside them (proposed 2026-10-18, owner to confirm): [#1137](https://github.com/dennys246/Maxim/issues/1137)
-  (compression keeps only the intent goal) with #816, on its trigger in §1.3.2's "1.4, by design"; and
+  Beside them (proposed 2026-10-18): [#1137](https://github.com/dennys246/Maxim/issues/1137) (compression keeps only
+  the intent goal) **moved to 1.3.4, Session R's next PR (owner decision 2026-10-25)**: it also keeps the user's
+  words, a release condition for the recall claim; and
   [#1373](https://github.com/dennys246/Maxim/issues/1373) (`cluster_fear` is permanent until extinction exists) with
   #1072 ([fear_learning.md](fear_learning.md)), on its trigger: extinction exists, or fear_learning revives.
   [#1064](https://github.com/dennys246/Maxim/issues/1064) (the recall ranker) is also a re-run trigger for T1-16.

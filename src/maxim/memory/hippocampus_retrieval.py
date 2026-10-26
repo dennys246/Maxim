@@ -6,7 +6,7 @@ import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
-from maxim.memory.types import CompressedMemory, EpisodicMemory, outcome_label
+from maxim.memory.types import CompressedMemory, EpisodicMemory, outcome_label, record_active_goal
 
 if TYPE_CHECKING:
     from maxim.agents.working_memory import WorkingMemorySet
@@ -51,7 +51,8 @@ def _memory_summary(mem: EpisodicMemory | CompressedMemory) -> str:
     """One-line summary of a memory for WorkingMemorySet RECALL entries."""
     if isinstance(mem, CompressedMemory):
         outcome = outcome_label(mem.success)
-        return f"[recalled] {mem.goal or 'unknown goal'} → {mem.tool_name} ({outcome})"
+        # active goal on purpose, like the episode branch below; the intent goal on a record compressed before #1137
+        return f"[recalled] {record_active_goal(mem) or 'unknown goal'} → {mem.tool_name} ({outcome})"
     goal = mem.context.active_goal or mem.decision.intent.get(
         "goal", ""
     )  # active goal on purpose, not ``.goal`` (intent-first): the two differ for pain/reflexion/motor records (#1137)
@@ -515,7 +516,7 @@ class RetrievalMixin:
         # Boost for shared goal. # active goal on purpose, not ``.goal`` (intent-first): the two differ for pain/reflexion/motor records (#1137)
         new_goal = new_memory.context.active_goal or ""
         if isinstance(recalled_memory, CompressedMemory):
-            old_goal = recalled_memory.goal or ""
+            old_goal = record_active_goal(recalled_memory) or ""  # active goal on purpose (#1137)
         else:
             old_goal = recalled_memory.context.active_goal or ""
 

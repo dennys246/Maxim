@@ -466,13 +466,28 @@ class Action:
 def record_active_goal(record: Any) -> str | None:
     """A memory record's ACTIVE goal (the context it served), whichever kind it is (#995, #1137).
 
-    An ``EpisodicMemory`` keeps it on ``context.active_goal``. A ``CompressedMemory`` has lost it and keeps
-    only ``goal`` (intent-first), which is the closest it can answer until #1137. Not the same fact as
-    ``record.goal`` for pain, reflexion and motor episodes."""
+    An ``EpisodicMemory`` keeps it on ``context.active_goal``; a ``CompressedMemory`` on ``active_goal`` since 1.2
+    (#1137). One compressed before 1.2 kept only ``goal`` (intent-first), the closest it can answer. Not the same
+    fact as ``record.goal`` for pain, reflexion and motor episodes."""
     context = getattr(record, "context", None)
     if context is not None:
         return context.active_goal
-    return getattr(record, "goal", None)
+    kept = getattr(record, "active_goal", None)
+    return kept if kept is not None else getattr(record, "goal", None)
+
+
+# How many characters of what an episode heard compression keeps (#1137): the same bound enrichment renders recalled
+# input at (bio_enrichment._RECALLED_TEXT_MAX_CHARS), so a compressed record renders as its episode did.
+_KEPT_WORDS_MAX_CHARS = 240
+
+
+def _kept_words(text: str) -> str:
+    """``text`` as compression keeps it: NFKC-normalized, whitespace collapsed, then bounded (normalization first, so
+    it cannot grow past the bound)."""
+    import unicodedata
+
+    text = " ".join(unicodedata.normalize("NFKC", text or "").split())
+    return text if len(text) <= _KEPT_WORDS_MAX_CHARS else text[: _KEPT_WORDS_MAX_CHARS - 1].rstrip() + "…"
 
 
 def outcome_label(success: bool | None) -> str:
@@ -820,6 +835,11 @@ class CompressedMemory(CompressedRecord):
 
     Inherits from CompressedRecord: id, timestamp, created_at, accessed_at,
     access_count, long_term, consolidated_at, edge_count, touch().
+
+    Forward compatibility (persisted in ``hippocampus.json``): every field has a default, and ``from_dict`` reads each
+    with ``data.get``, so a file written before a field existed loads (``active_goal`` and ``heard`` since 1.2,
+    #1137: ``None``/``""`` on older files, read as "not kept"). A new field follows the same rule and bumps
+    ``hippocampus_persistence.HIPPOCAMPUS_FORMAT_VERSION``.
     """
 
     # Carried from the full episode (Phase 2c): compression must not reset how well-learned a trace
@@ -858,11 +878,18 @@ class CompressedMemory(CompressedRecord):
     # The intent goal, else the active goal (from_episodic). NOT the active goal itself: a compressed record
     # has lost that (#1137); ``EpisodicMemory.goal`` answers the same way.
     goal: str | None = None
+    # The episode's ACTIVE goal, the context it served (#1137): a different fact from ``goal`` for pain, reflexion and
+    # motor records. ``None`` = compressed before 1.2, when it was not kept (``record_active_goal`` falls back).
+    active_goal: str | None = None
     tool_name: str = ""
     success: bool | None = None  # None: not an action outcome (#843)
 
     # Minimal perception summary
     had_user_input: bool = False
+    # What the episode HEARD, bounded (#1137, owner decision D7): compression used to keep only the bool above, so a
+    # fact the user stated was lost once its record aged (about 3 days for a user's words). Raw stored text from
+    # outside the agent: render it only framed, through ``input_text`` (bio_enrichment frames it, #1444).
+    heard: str = ""
     object_count: int = 0
     novelty: float = 0.5
     salience: float = 0.5
@@ -875,15 +902,16 @@ class CompressedMemory(CompressedRecord):
         return set(self.content_tokens())
 
     def content_tokens(self) -> frozenset[str]:
-        """The content keys a query matches this record on: what compression kept, its goal and tool."""
+        """The content keys a query matches this record on: what compression kept -- what it heard, its goals, tool."""
         from maxim.memory.text import content_tokens
 
-        return frozenset(content_tokens(self.goal, self.tool_name))
+        return frozenset(content_tokens(self.heard, self.goal, self.active_goal, self.tool_name))
 
     @property
     def input_text(self) -> str:
-        """What the episode heard or was told: compression keeps only ``had_user_input``, not the words (#1137 PR)."""
-        return ""
+        """What the episode heard or was told, as compression kept it (bounded, #1137); "" if it heard nothing or was
+        compressed before 1.2. Raw stored text: render it only framed (#1444)."""
+        return self.heard
 
     def to_context_dict(self) -> dict[str, Any]:
         """Format compressed memory for LLM context."""
@@ -911,9 +939,11 @@ class CompressedMemory(CompressedRecord):
             long_term=memory.long_term,
             consolidated_at=memory.consolidated_at,
             goal=memory.goal,
+            active_goal=memory.context.active_goal,  # active goal on purpose: kept beside the intent goal (#1137)
             tool_name=memory.tool_name,
             success=memory.outcome.success,
             had_user_input=bool(memory.perception.cli_input or memory.perception.transcript),
+            heard=_kept_words(memory.input_text),
             object_count=len(memory.perception.detected_objects),
             novelty=memory.perception.novelty,
             salience=memory.perception.salience,
@@ -943,9 +973,11 @@ class CompressedMemory(CompressedRecord):
             "last_scored_at": self.last_scored_at,
             "access_contexts": list(self.access_contexts),
             "goal": self.goal,
+            "active_goal": self.active_goal,
             "tool_name": self.tool_name,
             "success": self.success,
             "had_user_input": self.had_user_input,
+            "heard": self.heard,
             "object_count": self.object_count,
             "novelty": self.novelty,
             "salience": self.salience,
@@ -972,9 +1004,11 @@ class CompressedMemory(CompressedRecord):
             last_scored_at=data.get("last_scored_at", 0.0),
             access_contexts=deque(data.get("access_contexts", []), maxlen=10),
             goal=data.get("goal"),
+            active_goal=data.get("active_goal"),
             tool_name=data.get("tool_name", ""),
             success=data.get("success"),
             had_user_input=data.get("had_user_input", False),
+            heard=data.get("heard") or "",
             object_count=data.get("object_count", 0),
             novelty=data.get("novelty", 0.5),
             salience=data.get("salience", 0.5),

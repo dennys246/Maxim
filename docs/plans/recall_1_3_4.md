@@ -357,3 +357,21 @@ All findings were folded into this branch.
   so no new deliberation starts (D5).
 - **S3:** memory hears the `cli_input` the loop processes, not a transcript beside it.
 - **N1:** the content cache holds the field objects, never their `id()`.
+
+## 12. #1137 (owner decision 2026-10-25: in 1.3.4, Session R's next PR after #1465)
+
+Without this change the 1.3.4 recall fix stopped working once a record was compressed, which for a user's words
+under `access_based` is 3 × `compression_age`, about 3 days. It ships as a release condition for the recall claim.
+
+- **`CompressedMemory.active_goal`** keeps the episode's context goal beside the intent `goal`. `record_active_goal`
+  reads it on both kinds. `_memory_summary` and `_compute_association_weight` now read the active goal.
+- **`CompressedMemory.heard`** keeps what the episode heard: NFKC-normalized, whitespace-collapsed and bounded to 240
+  characters, the render bound. It is stored raw, and `input_text` returns it, so recall frames it at render exactly
+  as it frames an episode's words.
+- **The format:** `hippocampus.json` is 1.2. A 1.1 file loads, and a compressed record keeps neither field
+  (fixture: `tests/fixtures/persistence_1_1/hippocampus_1_1.json`).
+- **The red gate:** `tests/unit/test_compressed_recall_1137.py` (strict xfail at `c79ef22b`, flipped in place). It
+  extends #1444's gate with forced compression, and a non-vacuity test pins that the record is compressed. Deleting
+  `heard` or `input_text` turns it red.
+- **Not changed:** `bridges/planning_bridge.py` still skips compressed records (its template key needs an action),
+  and the Dormant `integration/recall.py::EpisodicRecallSource` reads `record_active_goal` as before.

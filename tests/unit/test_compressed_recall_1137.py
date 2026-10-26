@@ -12,6 +12,9 @@ the compression threshold, the only test-side manipulation, standing in for days
 full consolidation, which compresses them, and saves. A new handle on the same home asks. The fact's record must be a
 ``CompressedMemory`` on reload (so the gate cannot pass on an uncompressed store), and "green" must reach the prompt
 inside the untrusted-content frame.
+
+Landed as a strict xfail (``c79ef22b``) and flipped in place by #1137's shape: ``CompressedMemory`` keeps the
+episode's active goal and, bounded, what it heard; ``input_text`` answers it, so recall renders it framed.
 """
 
 from __future__ import annotations
@@ -89,7 +92,6 @@ def test_the_facts_memory_was_compressed(compressed_session):
     ]
 
 
-@pytest.mark.xfail(strict=True, reason="#1137: a compressed record keeps no words, so the fact is lost")
 def test_a_compressed_fact_still_reaches_the_prompt_framed(compressed_session):
     prompts = compressed_session["prompts"]
     assert any("green" in body.lower() for p in prompts for body in _framed_bodies(p)), prompts[-1]
