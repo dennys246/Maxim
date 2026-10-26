@@ -1,5 +1,7 @@
 # 34 — Wire-A post-Fix-A+B clean measurement (Roy-3a)
 
+> **Re-assessment 2026-10-25 ([#1301](https://github.com/dennys246/Maxim/issues/1301)): bounded.** The llm-primary test phase ran with the AUT told `respond` was NOT AVAILABLE, each call drawing a follow-up (#1260). The 0/0/0 primary (`sense_food_source`) stands on non-`respond` evidence; don't cite the `respond` counts reported beside it ([narrator_defects_reassessment.md](narrator_defects_reassessment.md)).
+
 **Status:** Run complete 2026-05-28. **PRIMARY failed (Arm A=0/B=0/C=0) BUT the failure mode narrowed sharply** — Fix B's pipeline works end-to-end; the residual gap is a substrate→scene-entity semantic mismatch at the **manifest LLM**, not at the runtime annotation pipeline.
 **Branch:** main @ `b1e20ee` (post-PR-#292 merge — Fix B landed).
 **Plan:** [docs/plans/archive/v1_refinement.md](../plans/archive/v1_refinement.md) §1.5 integration test, re-run after Fix B.
