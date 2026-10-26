@@ -703,6 +703,41 @@ def _runtime_mode_switch_allowed(requested: str, *, current_operational: str, gr
     return True
 
 
+def _run_stopped_on(error: Exception, logger: Any, *, verbosity: int) -> int:
+    """A robot/agentic run stopped on ``error``: the run loop's exit code (#1468, owner decisions 2026-10-26).
+
+    A typed backend error or a leader refusal is RE-RAISED to :func:`main`, which renders its fix hint (or the
+    refusal's reason) and exits 2, so a supervisor can tell "the operator must act" from a crash; a refusal is
+    never absorbed by a broad handler (``exceptions.LeaderRefusal``). Anything else is logged as before and is a
+    crash: 1. The loop's ``finally`` (``_end_robot_run``) runs either way."""
+    from maxim.exceptions import LeaderRefusal
+    from maxim.models.language.types import BackendError
+
+    if isinstance(error, (BackendError, LeaderRefusal)):
+        raise error
+    log_exception(logger, error, verbosity=verbosity, message="❌ Maxim stopped")
+    return 1
+
+
+def _end_robot_run(maxim: Any) -> None:
+    """The robot run loop's teardown, after every run (moved out of ``_main_impl``'s ``finally``, #1468):
+    stop the runtime, then the LLM server subprocess."""
+    if maxim is not None:
+        try:
+            maxim.shutdown()
+        except Exception:
+            pass
+    # Belt-and-suspenders: kill the LLM server subprocess even if
+    # shutdown() didn't reach it (e.g. double Ctrl+C, thread hang).
+    # This prevents ghost llama-cpp-server processes holding VRAM.
+    try:
+        from maxim.runtime.lane_backends import stop_active_spawner
+
+        stop_active_spawner()
+    except Exception:
+        pass
+
+
 def _after_run_mode_request(args: Any, maxim: Any, mode: str) -> str | None:
     """Act on the run's ``requested_mode`` once the robot runtime returns (#829). Re-execs (does not
     return) for an allowed switch; returns the run mode to continue with in-process when the re-exec
@@ -1895,6 +1930,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
     build_home(args.home_dir)
     mode = str(getattr(args, "mode", "active")).strip().lower()
+    exit_code = 0  # what a supervisor reads (#1468): a crash 1, a Ctrl+C 130; typed errors go to main() (2)
     while True:
         run_id = time.strftime("%Y-%m-%d_%H%M%S")
         log_path = os.path.join(args.home_dir, "logs", f"reachy_log_{run_id}.log")
@@ -2454,37 +2490,20 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
         except KeyboardInterrupt:
             logger.warning("Interrupted by user (Ctrl+C).")
+            exit_code = 130  # one code for one operator action, as main()'s handler gives (#1468)
             break
         except Exception as e:
-            log_exception(
-                logger,
-                e,
-                verbosity=getattr(args, "verbosity", 0),
-                message="❌ Maxim stopped",
-            )
+            exit_code = _run_stopped_on(e, logger, verbosity=getattr(args, "verbosity", 0))
             break
         finally:
-            if maxim is not None:
-                try:
-                    maxim.shutdown()
-                except Exception:
-                    pass
-            # Belt-and-suspenders: kill the LLM server subprocess even if
-            # shutdown() didn't reach it (e.g. double Ctrl+C, thread hang).
-            # This prevents ghost llama-cpp-server processes holding VRAM.
-            try:
-                from maxim.runtime.lane_backends import stop_active_spawner
-
-                stop_active_spawner()
-            except Exception:
-                pass
+            _end_robot_run(maxim)
 
         next_mode = _after_run_mode_request(args, maxim, mode)
         if next_mode is None:
             break
         mode = next_mode
 
-    return 0
+    return exit_code
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -2502,10 +2521,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     (Ctrl-C convention) so the live display can flush.  Any other
     exception re-raises — we don't want to swallow bugs.
     """
+    from maxim.exceptions import LeaderRefusal
+
     try:
         return _main_impl(argv)
     except KeyboardInterrupt:
         return 130
+    except LeaderRefusal as refusal:
+        # A security refusal is the operator's to act on: say why and exit 2, as server mode and the early leader
+        # boot do (#1468 review, owner decision 2026-10-26).
+        _fix = getattr(refusal, "fix_hint", None)
+        print(f"\n  ✗ Refusing to run: {refusal}\n" + (f"    → {_fix}\n" if _fix else ""), file=sys.stderr)
+        logging.getLogger("maxim").error("maxim refused: %s", refusal)
+        return 2
     except Exception as e:
         try:
             from maxim.models.language.types import BackendError
