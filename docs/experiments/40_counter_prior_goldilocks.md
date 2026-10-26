@@ -1,5 +1,7 @@
 # Exp 40 — Counter-Prior in the Goldilocks Zone (Qwen-32B) — pre-registration
 
+> **Re-assessment 2026-10-25 ([#1301](https://github.com/dennys246/Maxim/issues/1301)): bounded.** In this fire every arm's AUT was told `respond` was NOT AVAILABLE, each call drawing a follow-up (#1260), and the generative narrator, which never sees non-speech actions, saw only delivery receipts for the `respond` calls (#1261; 0 `say`/`speak` in this record). The scored fractions read affordance actions, not words. The 45 `respond` calls are near-uniform (3 in 13 of the 14 affected trials, 6 in one), but each follow-up moved turn bins and first-contact indices ([narrator_defects_reassessment.md](narrator_defects_reassessment.md)).
+
 **Status:** FIRED 2026-06-16 — **COUNTER-PRIOR — dominance demonstrated** (60/60, H1, exit 0). Pre-registered + frozen 2026-06-15 *before* the fire; executes the Exp 38 §8 follow-up
 ("re-run at Qwen14B + Qwen32B… Qwen32B's anomalous +1.43 SD signal is the one to
 watch"). **Metrics inherited verbatim from [38_counter_prior_substrate.md](38_counter_prior_substrate.md) §5

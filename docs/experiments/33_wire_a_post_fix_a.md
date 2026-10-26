@@ -1,5 +1,7 @@
 # 33 — Wire-A post-Fix-A clean measurement (Roy-3a)
 
+> **Re-assessment 2026-10-25 ([#1301](https://github.com/dennys246/Maxim/issues/1301)): bounded.** The llm-primary test phase ran with the AUT told `respond` was NOT AVAILABLE, each call drawing a follow-up (#1260). The 0/0/0 primary (`sense_food_source`) and "Wire-A reaches the LLM" stand on non-`respond` evidence; don't cite the `respond` counts reported beside them ([narrator_defects_reassessment.md](narrator_defects_reassessment.md)).
+
 **Status:** Run complete 2026-05-27. **PRIMARY failed (Arm A=0/B=0/C=0) BUT Wire-A demonstrably reaches the LLM for the first time.** This is the clean substrate→action conversion gap measurement that exp 30 and exp 32 could not produce because of Bug A.
 **Branch:** main @ `cdd005a` (post-PR-#290 merge — Fix A landed).
 **Plan:** [docs/plans/archive/v1_refinement.md](../plans/archive/v1_refinement.md) §1.5 integration test, re-run after Fix A.
