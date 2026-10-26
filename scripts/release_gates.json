@@ -243,27 +243,37 @@
           {
             "arm": "persistent_agent",
             "scope": "An adopted persistent_agent arm: the HANDLE seam's branches 3 and 4 (no session AUT snapshot, the tool-lease restore, the DefaultNetwork pain-bridge unsubscribe), owed before the slice that moves \u00a713 teardown or \u00a714 report/save (roadmap_1_3_x.md, orchestrator slice 0 review 2026-10-13).",
-            "evidence": []
+            "evidence": [
+              "tests/unit/test_orchestrator_characterization_golden.py::test_persistent_agent_arm_the_handle_keeps_its_state_and_gets_its_registry_and_bus_back"
+            ]
           },
           {
             "arm": "imagination",
             "scope": "An imagination-enabled arm reaching \u00a77 (the ImaginationTrigger wiring and its teardown), owed before the teardown/report slices.",
-            "evidence": []
+            "evidence": [
+              "tests/unit/test_orchestrator_characterization_golden.py::test_imagination_arm_the_trigger_resolves_the_manifest_and_its_teardown_clears_the_imagined"
+            ]
           },
           {
             "arm": "new_goal",
             "scope": "A /new arm: the post-sim reader faked to return a goal, so the run re-enters start_simulation_mode; owed before the teardown/report slices.",
-            "evidence": []
+            "evidence": [
+              "tests/unit/test_orchestrator_characterization_golden.py::test_new_goal_arm_the_post_sim_goal_re_enters_the_run_with_a_fresh_aut"
+            ]
           },
           {
             "arm": "stall",
             "scope": "A stall-detector arm that reaches the detector's injections (past its first diversity checkpoint and its idle threshold), owed before the slice that moves \u00a711.",
-            "evidence": []
+            "evidence": [
+              "tests/unit/test_orchestrator_characterization_golden.py::test_stall_arm_the_detector_injects_its_checkpoint_and_nudges_the_finished_narrator"
+            ]
           },
           {
             "arm": "generative",
             "scope": "A generative-campaign arm (generative=True) pinning that the generative campaign sets stop_event before the \u00a79 resume/kickoff injection reaches the narrator.",
-            "evidence": []
+            "evidence": [
+              "tests/unit/test_orchestrator_characterization_golden.py::test_generative_arm_the_campaign_stops_the_run_before_the_kickoff_reaches_the_narrator"
+            ]
           }
         ]
       },
