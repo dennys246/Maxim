@@ -181,3 +181,47 @@ def test_executed_code_provenance_stamps_dirty_flag_and_refuses_gated_dirty_writ
         repo, sys.executable, out_path=repo / "docs/experiments/data/x.jsonl", allow_dirty=True
     )
     assert prov["allow_dirty"] is True and prov["working_tree_dirty_src_scripts"] is True
+
+
+# ── #1218: the gated / governed checks fold case (macOS APFS is case-insensitive) ─────────────────────────────
+_RED_1218 = pytest.mark.xfail(
+    strict=True, reason="#1218: is_gated_path / the D27 governed check compare case-sensitively"
+)
+
+
+@_RED_1218
+def test_a_differently_cased_out_path_into_the_gated_dir_is_gated(repo: Path) -> None:
+    assert P.is_gated_path(repo, repo / "docs/Experiments/Data/t.jsonl") is True
+
+
+@_RED_1218
+def test_a_differently_cased_spelling_is_gated_before_the_data_dir_exists(tmp_path: Path) -> None:
+    assert P.is_gated_path(tmp_path, tmp_path / "Docs/experiments/DATA/new/t.jsonl") is True
+
+
+@_RED_1218
+def test_a_differently_cased_governed_path_is_redirected_not_written(tmp_path: Path, capsys) -> None:
+    (tmp_path / "docs/experiments/results").mkdir(parents=True)
+    out = P.evidence_out_paths(tmp_path, [tmp_path / "docs/Experiments/Results/x.json"], write_experiment_results=False)
+    assert not str(out[0]).lower().startswith(str(tmp_path).lower())
+    assert "NOT updating committed record" in capsys.readouterr().out
+
+
+@_RED_1218
+def test_an_unresolvable_out_path_counts_as_gated(repo: Path) -> None:
+    (repo / "loop").symlink_to(repo / "loop")  # resolve() raises on a loop (RuntimeError before 3.13, OSError after)
+    assert P.is_gated_path(repo, repo / "loop" / "t.jsonl") is True
+
+
+def test_an_unrelated_path_is_not_gated_even_when_the_data_dir_is_missing(tmp_path: Path) -> None:
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    assert P.is_gated_path(tmp_path, other / "t.jsonl") is False
+    assert P.is_gated_path(tmp_path, Path("/tmp/x.jsonl")) is False
+
+
+def test_the_exact_spelling_and_a_symlink_into_the_gated_dir_are_gated(repo: Path) -> None:
+    assert P.is_gated_path(repo, repo / "docs/experiments/data/t.jsonl") is True
+    (repo / "alias").symlink_to(repo / "docs/experiments/data")
+    assert P.is_gated_path(repo, repo / "alias/t.jsonl") is True
+    assert P.is_gated_path(repo, repo / "docs/experiments/data-old/t.jsonl") is False
