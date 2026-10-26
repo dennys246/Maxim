@@ -19,8 +19,9 @@ both, so they are stated as rules rather than intentions:
 
 1. **Never assert a NEGATIVE over an unsettled snapshot.** "Required check absent" is a
    claim about something not existing; it is only sound once nothing is in flight.
-   Right after a push, checks legitimately do not exist yet. A settled *failure* is a
-   positive fact and does outrank in-flight; an absence does not.
+   Right after a push, checks legitimately do not exist yet. A settled *failure* of
+   a check's latest run is a positive fact and does outrank in-flight; an absence does not.
+   (A run superseded by a newer run of the same check is not judged at all, #1442.)
 2. **Report what each surface SAYS, never a remembered cause.** No list of known causes
    is encoded here — the list is always missing the next variant. A surface that could
    not be read is reported as UNVERIFIED, never as "nothing found".
@@ -86,27 +87,36 @@ class Readiness:
         )
 
 
-def _latest_run_per_name(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Keep only the newest run of each check name, as GitHub's merge gate does (#1442).
+def _latest_run_per_check(checks: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+    """Keep only the newest run of each check, as GitHub's merge gate does (#1442).
+
+    Returns the survivors (input order kept) and how many superseded runs were dropped.
 
     A head commit can carry several runs of one check: editing a PR's description starts a
     second workflow run and the `concurrency` block cancels the first. The cancelled run is
-    superseded, not failed. "Newest" orders on `started_at`, then `id`. A queued run has no
-    `started_at` yet and counts as the newest, so a verdict waits on a pending re-run rather
-    than repeating the old run's result. Input order is kept for the survivors.
+    superseded, not failed. The check-runs API's default ``filter=latest`` does NOT collapse
+    these: it collapses re-runs inside one check suite, and each workflow run is its own suite.
+
+    A check is its name plus the app that posted it (a ruleset context can pin the app), so a
+    same-named check from another app is judged on its own, never hidden. "Newest" orders on
+    `started_at`, then `id`. An unsettled run with no `started_at` yet counts as the newest, so
+    a verdict waits on a pending re-run rather than repeating the old run's result; a SETTLED
+    run with no `started_at` (cancelled before it began) counts as the oldest.
     """
 
     def _age(c: dict[str, Any]) -> tuple[int, str, int]:
         started = c.get("started_at")
-        return (1 if not started else 0, str(started or ""), int(c.get("id") or 0))
+        pending = not started and str(c.get("status", "")).lower() in _UNSETTLED
+        run_id = c.get("id")
+        return (1 if pending else 0, str(started or ""), run_id if isinstance(run_id, int) else 0)
 
-    newest: dict[str, dict[str, Any]] = {}
+    newest: dict[tuple[str, Any], dict[str, Any]] = {}
     for c in checks:
-        name = str(c.get("name", ""))
-        if name not in newest or _age(c) >= _age(newest[name]):
-            newest[name] = c
+        key = (str(c.get("name", "")), c.get("app_id"))
+        if key not in newest or _age(c) >= _age(newest[key]):
+            newest[key] = c
     kept = {id(c) for c in newest.values()}
-    return [c for c in checks if id(c) in kept]
+    return [c for c in checks if id(c) in kept], len(checks) - len(kept)
 
 
 def _required_missing(
@@ -134,7 +144,16 @@ def evaluate(
 ) -> Readiness:
     """Pure verdict over already-fetched data (so this is testable without network)."""
     findings: list[Finding] = []
-    checks = _latest_run_per_name(checks)
+    checks, superseded = _latest_run_per_check(checks)
+    if superseded:
+        findings.append(
+            Finding(
+                "INFO",
+                "superseded-runs-ignored",
+                f"{superseded} older run(s) of a check that ran again on this commit were ignored; "
+                "the latest run of each check is judged, as GitHub's merge gate does",
+            )
+        )
 
     # ── 0. A closed/merged PR has no merge to gate. Say so plainly rather than
     #      reporting UNKNOWN merge fields as if they were an unsettled diagnosis.
@@ -283,6 +302,7 @@ def _slurped_check_runs(slug: str, sha: str) -> list[dict[str, Any]]:
             "name": c.get("name"),
             "id": c.get("id"),
             "started_at": c.get("started_at"),
+            "app_id": (c.get("app") or {}).get("id"),
             "status": c.get("status"),
             "conclusion": c.get("conclusion"),
             "output_title": (c.get("output") or {}).get("title"),
