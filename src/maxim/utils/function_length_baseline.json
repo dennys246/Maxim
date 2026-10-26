@@ -16,7 +16,7 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1599
+      "lines": 1583
     },
     {
       "file": "src/maxim/cli_parser.py",
