@@ -275,11 +275,15 @@ agent.nac = maxim.load.nac("/path/to/trained_nac.json")
 Orchestrate multiple agents:
 
 ```python
-pool = maxim.create.pool(max_workers=4)
+# A pool's turns are LLM turns: create.pool raises ConfigurationError without a router (#1338)
+pool = maxim.create.pool(max_workers=4, llm_router=maxim.create.router("claude-sonnet"))
 pool.add(maxim.create.agent("guard", personality="stern and loyal"))
 pool.add(maxim.create.agent("merchant", personality="cunning trader"))
 
-# Run individual turns (no LLM needed for subsystem operations)
+# Run a turn; an LLM failure comes back as result.error with no result.response
+result = pool.run_turn("guard", "A stranger approaches.")
+
+# Subsystem operations need no LLM
 guard = pool.get_agent("guard")
 guard.hippocampus.store_observation("A stranger entered the market")
 

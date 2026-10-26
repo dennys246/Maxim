@@ -355,14 +355,23 @@ class TestCreatePool:
     def test_create_pool(self):
         import maxim
 
-        pool = maxim.create.pool()
-        assert pool is not None
+        router = object()
+        pool = maxim.create.pool(llm_router=router)
+        assert pool._llm_router is router
         pool.shutdown()
+
+    def test_create_pool_without_an_llm_raises(self):
+        """#1338: a pool with no LLM router could only return persona stubs, so it is refused at construction."""
+        import maxim
+        from maxim.exceptions import ConfigurationError
+
+        with pytest.raises(ConfigurationError, match="LLM router"):
+            maxim.create.pool()
 
     def test_pool_add_remove(self):
         import maxim
 
-        pool = maxim.create.pool()
+        pool = maxim.create.pool(llm_router=object())
         agent = maxim.create.agent("pool_test_1", remembers=False, learns=False)
         pool.add(agent)
         pool.remove("pool_test_1")
@@ -371,7 +380,7 @@ class TestCreatePool:
     def test_pool_multiple_agents(self):
         import maxim
 
-        pool = maxim.create.pool()
+        pool = maxim.create.pool(llm_router=object())
         a1 = maxim.create.agent("pool_a1", remembers=False, learns=False)
         a2 = maxim.create.agent("pool_a2", remembers=False, learns=False)
         pool.add(a1)

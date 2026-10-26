@@ -207,7 +207,7 @@ agent.personality = "bold and reckless"  # Mutable
 agent.shutdown()
 
 # Multi-agent orchestration
-pool = maxim.create.pool()
+pool = maxim.create.pool(llm_router=maxim.create.router("claude-sonnet"))  # a pool needs an LLM
 pool.add(maxim.create.agent("guard", personality="stern"))
 pool.add(maxim.create.agent("merchant", personality="cunning"))
 

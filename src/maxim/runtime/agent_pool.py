@@ -161,7 +161,8 @@ class AgentPool:
             percept: Text delivered to the agent (scene narrative, etc.).
 
         Returns:
-            TurnResult with the agent's response and actions.
+            TurnResult with the agent's response and actions. A failed turn, including an LLM call that failed or
+            returned no text (#1338), comes back with ``error`` set and ``response`` None; it never raises.
         """
         import time
 
@@ -345,36 +346,18 @@ class AgentPool:
 
         Uses the LLM router (if available) to produce in-character dialogue
         based on the agent's personality and the scene percept.  Falls back
-        to a personality-echo response when no LLM router is configured.
+        to a personality-echo response only when no LLM router is configured.
+
+        Raises:
+            ModelInferenceError: the router was called and failed or returned no text (#1338). ``run_turn`` turns
+                it into a ``TurnResult`` with ``error`` set and no ``response``; it is never a persona stub.
         """
         personality = instance.personality or ""
         if not personality:
             return None
 
-        # Try LLM inference if router is available
         if self._llm_router is not None:
-            try:
-                prompt = (
-                    f"You are an NPC in a narrative scenario.\n"
-                    f"Your personality: {personality}\n\n"
-                    f"{percept}\n\n"
-                    f"Respond in character with 1-2 sentences of dialogue or action. "
-                    f"Stay in character. Be concise."
-                )
-                result = self._llm_router.generate(
-                    prompt,
-                    function="npc_dialogue",
-                    max_tokens=100,
-                )
-                if result and hasattr(result, "text") and result.text:
-                    response = result.text.strip()
-                    # Strip quotes if the LLM wrapped its response
-                    if response.startswith('"') and response.endswith('"'):
-                        response = response[1:-1]
-                    log.debug("NPC '%s' LLM response: %s", instance.agent_id, response[:80])
-                    return response
-            except Exception as e:
-                log.debug("NPC '%s' LLM inference failed, using fallback: %s", instance.agent_id, e)
+            return self._generate_llm_response(instance.agent_id, personality, percept)
 
         # Fallback: personality-based echo (no LLM available)
         # Extract a short phrase from the personality for a contextual stub
@@ -382,3 +365,32 @@ class AgentPool:
         if len(persona_snippet) > 60:
             persona_snippet = persona_snippet[:60] + "..."
         return f"*{persona_snippet}*"
+
+    def _generate_llm_response(self, agent_id: str, personality: str, percept: str) -> str:
+        """One in-character LLM line, or a typed ``ModelInferenceError`` (#1338: never a silent persona stub)."""
+        from maxim.exceptions import ModelInferenceError
+
+        prompt = (
+            f"You are an NPC in a narrative scenario.\n"
+            f"Your personality: {personality}\n\n"
+            f"{percept}\n\n"
+            f"Respond in character with 1-2 sentences of dialogue or action. "
+            f"Stay in character. Be concise."
+        )
+        try:
+            result = self._llm_router.generate(prompt, function="npc_dialogue", max_tokens=100)
+        except Exception as e:
+            raise ModelInferenceError(
+                f"NPC '{agent_id}' LLM inference failed: {e}", context={"agent_id": agent_id}
+            ) from e
+        text = getattr(result, "text", None) if result else None
+        if not text or not text.strip():
+            raise ModelInferenceError(
+                f"NPC '{agent_id}' LLM inference returned no text", context={"agent_id": agent_id}
+            )
+        response = text.strip()
+        # Strip quotes if the LLM wrapped its response
+        if response.startswith('"') and response.endswith('"'):
+            response = response[1:-1]
+        log.debug("NPC '%s' LLM response: %s", agent_id, response[:80])
+        return response

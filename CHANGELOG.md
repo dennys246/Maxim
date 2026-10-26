@@ -54,6 +54,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Fail loud on LLM readiness** ([#1338](https://github.com/dennys246/Maxim/issues/1338); advisor-mode item 6, O8).
+  Three silent paths made a process with no working LLM look alive:
+  - **`maxim.create.pool()` now takes `llm_router=` and raises `ConfigurationError` without it** (a behaviour change to a
+    stable API). It used to build a pool with no router, whose NPC turns could only return a persona stub. Pass
+    `llm_router=maxim.create.router(<profile>)`.
+  - **`AgentPool.run_turn` reports an LLM failure.** A router call that raised or returned no text was logged at DEBUG
+    and answered with the persona stub as a successful response; it now comes back as a `TurnResult` with `error` set
+    and `response` None (a `ModelInferenceError` inside; `run_turn` still never raises).
+  - **CLI server mode exits 1 and says "not ready"** when `wait_ready` returns False after 180 s, the router does not
+    start, or its init fails, instead of printing "LLM server ready" and idling with exit 0. The spawned server is
+    stopped on that exit. Server mode moved to `cli.py::_run_server_mode` (rule T).
+
 - **A run that stops on an error exits non-zero, with one exit-code table** ([#1468](https://github.com/dennys246/Maxim/issues/1468);
   owner decisions 2026-10-26). `maxim`'s run loop (robot `--mode` runs and `--mode agentic`, scenario sims included)
   logged `❌ Maxim stopped` and returned 0, so a supervisor reading the exit code (systemd, maxim-pulse's app, CI,

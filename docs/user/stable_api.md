@@ -107,7 +107,7 @@ over a file it never read and `create.hippocampus` / `create.atl` raise at const
 | `create.scn()` | ✅ | |
 | `create.angular_gyrus(...)` | ✅ | |
 | `create.agent(name, ...) -> AgentInstance` | ✅ | Raises `FileExistsError` when the agent's home already holds persisted state (#939); continue it with `load.agent(name)`. |
-| `create.pool(...) -> AgentPool` | ✅ | |
+| `create.pool(..., llm_router=...) -> AgentPool` | ✅ | Needs an LLM router (`llm_router=maxim.create.router(<profile>)`); without one it raises `ConfigurationError` (#1338), since a pool with no LLM could only return persona stubs. An LLM failure in `run_turn` comes back as a `TurnResult` with `error` set and no `response`. |
 | `create.entity(template_ref, ...) -> Entity` | ✅ | |
 | `create.embodiment(root_entity, ...) -> Embodiment` | ✅ | |
 | `create.templates() -> dict[str, list[str]]` | ✅ | |

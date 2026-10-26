@@ -12,7 +12,7 @@ Example::
     hippo = maxim.create.hippocampus()
     agent = maxim.create.agent("scout", personality="cautious")
     guard = maxim.create.entity("npcs/guard")
-    pool = maxim.create.pool()
+    pool = maxim.create.pool(llm_router=maxim.create.router("claude-sonnet"))
 """
 
 from __future__ import annotations
@@ -275,28 +275,43 @@ def agent(
     return factory.create_agent(config)
 
 
-def pool(*, max_workers: int = 4) -> "AgentPool":
+def pool(*, max_workers: int = 4, llm_router: Any = None) -> "AgentPool":
     """Create a multi-agent pool for concurrent turn execution.
+
+    A pool's NPC turns are LLM turns, so the pool needs an LLM router (#1338). Build one with
+    ``maxim.create.router(...)`` and pass it. With no router this raises instead of returning a pool whose turns
+    could only ever produce a persona stub.
 
     Args:
         max_workers: Max concurrent agent turns.
+        llm_router: The LLM router the pool's turns generate with (e.g. ``maxim.create.router("claude-sonnet")``).
 
     Returns:
         ``AgentPool`` with ``.add()``, ``.run_turn()``, ``.run_round()``,
         ``.export_all_memories()``, ``.shutdown()`` methods.
 
+    Raises:
+        ConfigurationError: ``llm_router`` was not given.
+
     Example::
 
-        pool = maxim.create.pool()
+        pool = maxim.create.pool(llm_router=maxim.create.router("claude-sonnet"))
         pool.add(maxim.create.agent("guard", personality="stern"))
         pool.add(maxim.create.agent("merchant", personality="cunning"))
         result = pool.run_turn("guard", "A stranger approaches.")
         pool.shutdown()
     """
+    if llm_router is None:
+        from maxim.exceptions import ConfigurationError
+
+        raise ConfigurationError(
+            "create.pool() needs an LLM router: pass llm_router=maxim.create.router(<profile>). "
+            "A pool with no LLM can only return persona stubs (#1338)."
+        )
     from maxim.mesh.bus import LocalMessageBus
     from maxim.runtime.agent_pool import AgentPool
 
-    return AgentPool(bus=LocalMessageBus(), max_workers=max_workers)
+    return AgentPool(bus=LocalMessageBus(), max_workers=max_workers, llm_router=llm_router)
 
 
 # ── SEM Entities ───────────────────────────────────────────────────────
