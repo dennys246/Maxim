@@ -103,3 +103,74 @@ def test_failure_flag_is_in_metadata(failed):
     with patch("maxim.tools.internet_search._search_duckduckgo", return_value=ret):
         out = tool.execute(query="q")
     assert bool(out.metadata.get("search_failed", False)) is failed
+
+
+class TestHtmlScraperGoesThroughUtilsHttp:
+    """The real ``_search_duckduckgo_lite``, not a patch of it: the urllib3 pool it used whenever urllib3
+    was importable skipped utils/http (the #825 cap, the caller's timeout, the proxy settings), and its
+    blanket except turned every failure into ``[]`` -- "nothing matched"."""
+
+    _PAGE = (
+        b'<a rel="nofollow" class="result__a" href="https://example.com/a">Example A</a>'
+        b'<a class="result__snippet" href="https://example.com/a">An example snippet about A</a>'
+    )
+
+    def _search(self, scrape):
+        from maxim.utils import http
+
+        def fetch(url, **kwargs):
+            if url.startswith("https://html.duckduckgo.com/"):
+                return scrape(url, **kwargs)
+            return http.Response(
+                status=200, headers={}, content=b"{}", elapsed_ms=0.0, endpoint="_external", request_id="r"
+            )
+
+        with (
+            patch("maxim.tools.internet_search._search_with_ddg_package", return_value=None),
+            patch("maxim.utils.http.fetch_url", side_effect=fetch),
+        ):
+            return _search_duckduckgo("anything", timeout_s=4.0)
+
+    def test_a_transport_failure_is_reported_not_swallowed(self):
+        def boom(url, **kwargs):
+            raise OSError("connection refused")
+
+        results, failure = self._search(boom)
+        assert results == []
+        assert failure and "connection refused" in failure
+
+    def test_a_bot_challenge_202_is_a_failure_not_an_empty_result(self):
+        # Captured live 2026-10-26: html.duckduckgo.com answered a scripted query with HTTP 202 and its
+        # "anomaly" challenge page, which parses to zero links.
+        from maxim.utils import http
+
+        def challenge(url, **kwargs):
+            return http.Response(
+                status=202,
+                headers={},
+                content=b"<div class='anomaly-modal__title'>bots</div>",
+                elapsed_ms=0.0,
+                endpoint="_external",
+                request_id="r",
+            )
+
+        results, failure = self._search(challenge)
+        assert results == []
+        assert failure and "HTTP 202" in failure
+
+    def test_a_page_is_fetched_bounded_with_the_callers_timeout(self):
+        from maxim.utils import http
+
+        seen = {}
+
+        def page(url, **kwargs):
+            seen.update(kwargs)
+            return http.Response(
+                status=200, headers={}, content=self._PAGE, elapsed_ms=0.0, endpoint="_external", request_id="r"
+            )
+
+        results, failure = self._search(page)
+        assert failure is None
+        assert [r["url"] for r in results] == ["https://example.com/a"]
+        assert seen["max_bytes"] == 2_000_000
+        assert seen["timeout"].read_s == 4.0

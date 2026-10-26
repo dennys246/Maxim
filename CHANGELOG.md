@@ -54,6 +54,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Web search no longer fetches outside `maxim.utils.http`, and a broken search is reported as broken.**
+  `tools/internet_search.py::_search_duckduckgo_lite` used its own urllib3 pool whenever urllib3 was importable. That pool
+  skipped the 2 MB download cap (#825), the caller's timeout and the proxy settings. Its blanket except also turned every
+  failure into an empty result, so the agent heard "nothing matched". It now fetches through `fetch_url`, and it raises on
+  any status other than 200, including the HTTP 202 bot-challenge page DuckDuckGo serves to scripted queries. The
+  existing failure path then reports the failure. A new lint, `scripts/lint_http_surface.py` (CI lint job), keeps every
+  HTTP client library (urllib3, requests, httpx, httpcore, aiohttp, http.client, urllib.request, in any import
+  spelling) inside `utils/http.py`. It also pins raw socket dials per file and registers the SDKs that egress on
+  their own.
+
 - **A run that stops on an error exits non-zero, with one exit-code table** ([#1468](https://github.com/dennys246/Maxim/issues/1468);
   owner decisions 2026-10-26). `maxim`'s run loop (robot `--mode` runs and `--mode agentic`, scenario sims included)
   logged `❌ Maxim stopped` and returned 0, so a supervisor reading the exit code (systemd, maxim-pulse's app, CI,
