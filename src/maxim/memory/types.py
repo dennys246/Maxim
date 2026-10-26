@@ -467,27 +467,24 @@ def record_active_goal(record: Any) -> str | None:
     """A memory record's ACTIVE goal (the context it served), whichever kind it is (#995, #1137).
 
     An ``EpisodicMemory`` keeps it on ``context.active_goal``; a ``CompressedMemory`` on ``active_goal`` since 1.2
-    (#1137). One compressed before 1.2 kept only ``goal`` (intent-first), the closest it can answer. Not the same
-    fact as ``record.goal`` for pain, reflexion and motor episodes."""
+    (#1137), "" when its episode had none. One compressed before 1.2 (``active_goal is None``) kept only ``goal``
+    (intent-first), the closest it can answer. Not the same fact as ``record.goal`` for pain, reflexion and motor
+    episodes."""
     context = getattr(record, "context", None)
     if context is not None:
         return context.active_goal
     kept = getattr(record, "active_goal", None)
-    return kept if kept is not None else getattr(record, "goal", None)
-
-
-# How many characters of what an episode heard compression keeps (#1137): the same bound enrichment renders recalled
-# input at (bio_enrichment._RECALLED_TEXT_MAX_CHARS), so a compressed record renders as its episode did.
-_KEPT_WORDS_MAX_CHARS = 240
+    if kept is None:  # compressed before 1.2: not kept
+        return getattr(record, "goal", None)
+    return kept or None  # kept: "" was "no active goal"
 
 
 def _kept_words(text: str) -> str:
-    """``text`` as compression keeps it: NFKC-normalized, whitespace collapsed, then bounded (normalization first, so
-    it cannot grow past the bound)."""
-    import unicodedata
+    """What compression keeps of what an episode heard: ``memory/text.py::bounded_words`` at the one recall bound, so a
+    compressed record renders as its episode did (#1137)."""
+    from maxim.memory.text import bounded_words
 
-    text = " ".join(unicodedata.normalize("NFKC", text or "").split())
-    return text if len(text) <= _KEPT_WORDS_MAX_CHARS else text[: _KEPT_WORDS_MAX_CHARS - 1].rstrip() + "…"
+    return bounded_words(text)
 
 
 def outcome_label(success: bool | None) -> str:
@@ -829,7 +826,8 @@ class CompressedMemory(CompressedRecord):
 
     Used for long-term storage when full EpisodicMemory data is no longer needed.
     Preserves essential information for basic queries while significantly
-    reducing memory footprint (~200 bytes vs ~2.5KB for full EpisodicMemory).
+    reducing memory footprint (well under 1 KB as JSON with a short ``heard``, at most ~2 KB with 240 non-ASCII
+    characters, vs several KB for a full EpisodicMemory).
 
     Compressed memories still appear in queries but have limited data.
 
@@ -879,7 +877,8 @@ class CompressedMemory(CompressedRecord):
     # has lost that (#1137); ``EpisodicMemory.goal`` answers the same way.
     goal: str | None = None
     # The episode's ACTIVE goal, the context it served (#1137): a different fact from ``goal`` for pain, reflexion and
-    # motor records. ``None`` = compressed before 1.2, when it was not kept (``record_active_goal`` falls back).
+    # motor records. "" = kept, the episode had none; ``None`` = compressed before 1.2, when it was not kept
+    # (``record_active_goal`` falls back to ``goal`` only then).
     active_goal: str | None = None
     tool_name: str = ""
     success: bool | None = None  # None: not an action outcome (#843)
@@ -889,7 +888,11 @@ class CompressedMemory(CompressedRecord):
     # What the episode HEARD, bounded (#1137, owner decision D7): compression used to keep only the bool above, so a
     # fact the user stated was lost once its record aged (about 3 days for a user's words). Raw stored text from
     # outside the agent: render it only framed, through ``input_text`` (bio_enrichment frames it, #1444).
-    heard: str = ""
+    heard: str = field(default="", repr=False)  # raw stored text: kept out of the repr, rendered only framed
+    # ``content_tokens``' cache: never persisted, never compared.
+    _content_cache: tuple[tuple[Any, ...], frozenset[str]] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
     object_count: int = 0
     novelty: float = 0.5
     salience: float = 0.5
@@ -901,11 +904,25 @@ class CompressedMemory(CompressedRecord):
         """Extract keywords from compressed episodic data (``memory/text.py``'s one standard, D3)."""
         return set(self.content_tokens())
 
+    def text_fields(self) -> list[Any]:
+        """The record's readable TEXT, the list substring search and ``matching_sentence`` read (as an episode's
+        ``text_fields``): what its episode heard, as compression kept it (#1137 review: the ranker saw it, search
+        did not)."""
+        return [self.heard]
+
     def content_tokens(self) -> frozenset[str]:
-        """The content keys a query matches this record on: what compression kept -- what it heard, its goals, tool."""
+        """The content keys a query matches this record on: what compression kept -- what it heard, its goals, tool.
+        Cached by its inputs (#1137 review: an old store is mostly compressed records, and re-keying each on every
+        query cost ~0.5 s per query on 2,000 of them, the SF5 regression)."""
         from maxim.memory.text import content_tokens
 
-        return frozenset(content_tokens(self.heard, self.goal, self.active_goal, self.tool_name))
+        stamp = (self.heard, self.goal, self.active_goal, self.tool_name)
+        cached = self._content_cache
+        if cached is not None and cached[0] == stamp:
+            return cached[1]
+        tokens = frozenset(content_tokens(*stamp))
+        self._content_cache = (stamp, tokens)
+        return tokens
 
     @property
     def input_text(self) -> str:
@@ -918,7 +935,7 @@ class CompressedMemory(CompressedRecord):
         return {
             "id": self.id,
             "type": "compressed_episodic",
-            "goal": self.goal,
+            "goal": record_active_goal(self),  # the active goal, as an episode's context reports it (#1137)
             "tool": self.tool_name,
             "success": self.success,
             "had_user_input": self.had_user_input,
@@ -939,7 +956,7 @@ class CompressedMemory(CompressedRecord):
             long_term=memory.long_term,
             consolidated_at=memory.consolidated_at,
             goal=memory.goal,
-            active_goal=memory.context.active_goal,  # active goal on purpose: kept beside the intent goal (#1137)
+            active_goal=memory.context.active_goal or "",  # kept beside the intent goal; "" = it had none (#1137)
             tool_name=memory.tool_name,
             success=memory.outcome.success,
             had_user_input=bool(memory.perception.cli_input or memory.perception.transcript),

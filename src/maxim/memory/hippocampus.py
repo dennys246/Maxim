@@ -1391,9 +1391,9 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
 
     @staticmethod
     def _searchable_values(memory: Any) -> list[Any]:
-        """The fields ``search_by_content`` matches on: an episode's ``text_fields`` (what it heard, its reasoning,
-        its outcome), else perception observations, outcome result, decision reasoning, and a compressed record's
-        summary. One list for the matcher and for
+        """The fields ``search_by_content`` matches on: a record's ``text_fields`` (an episode: what it heard, its
+        reasoning, its outcome; a compressed record: what its episode heard, #1137), else a duck-typed record's
+        perception observations, outcome result, decision reasoning, and summary. One list for the matcher and for
         ``matching_sentence`` (#845: a consumer kept its own copy, and the two drifted)."""
         text_fields = getattr(memory, "text_fields", None)
         if callable(text_fields):  # an episode names its own text, the list its ranker reads too (S4)

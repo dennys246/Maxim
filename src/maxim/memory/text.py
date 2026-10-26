@@ -316,4 +316,27 @@ def content_tokens(*values: Any) -> set[str]:
     return tokens
 
 
-__all__ = ["normalize_tokens", "key_tokens", "settle_key", "text_values", "content_tokens"]
+# How much of what an episode heard is kept and rendered (#1444, #1137): ONE bound, used by enrichment's render and by
+# compression's ``CompressedMemory.heard``, so a compressed record renders as its episode did. A reviewed constant: it
+# holds a stated fact or a question; three recalled episodes stay well under the enrichment section's budget.
+RECALLED_WORDS_MAX_CHARS = 240
+
+
+def bounded_words(text: str, limit: int = RECALLED_WORDS_MAX_CHARS) -> str:
+    """``text`` NFKC-normalized and whitespace-collapsed, THEN cut to ``limit`` (normalization first, so it cannot
+    grow past the bound; a cut ends in "…", which a later NFKC pass renders as "..."). Idempotent under re-bounding."""
+    import unicodedata
+
+    text = " ".join(unicodedata.normalize("NFKC", text or "").split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+__all__ = [
+    "normalize_tokens",
+    "key_tokens",
+    "settle_key",
+    "text_values",
+    "content_tokens",
+    "bounded_words",
+    "RECALLED_WORDS_MAX_CHARS",
+]

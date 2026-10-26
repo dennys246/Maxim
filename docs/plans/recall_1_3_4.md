@@ -375,3 +375,17 @@ under `access_based` is 3 × `compression_age`, about 3 days. It ships as a rele
   `heard` or `input_text` turns it red.
 - **Not changed:** `bridges/planning_bridge.py` still skips compressed records (its template key needs an action),
   and the Dormant `integration/recall.py::EpisodicRecallSource` reads `record_active_goal` as before.
+
+**#1137's three-lens review (2026-10-25), folded.** Executor+Architecture found one blocker; Wire found no blocker.
+- **The blocker:** `CompressedMemory.content_tokens` was uncached. An old store is mostly compressed records, so on
+  2,000 of them each query took about 0.53 s, the SF5 regression again. They are now cached, and keyed at
+  compression and at load: about 5 ms per query.
+- **SF:** compressed words reached the ranker but not substring search or ExamineTool. `CompressedMemory.text_fields`
+  is now `[heard]`.
+- **SF:** `active_goal=None` meant both "pre-1.2" and "the episode had none". The second case is now stored as `""`.
+- **SF:** the new lines had no tests (round trip, bound, the two readers). They are tested now.
+- **NIT:** one bound, `memory/text.py::bounded_words` / `RECALLED_WORDS_MAX_CHARS`, shared by the render and
+  compression.
+- **NIT:** `heard` is kept out of the repr.
+- **NIT:** the stale size claim and `to_context_dict`'s goal are fixed, and the downgrade note is in
+  `hippocampus_persistence.py` and `docs/user/upgrading.md`.
