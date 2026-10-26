@@ -194,3 +194,6 @@ already names the reaper when the parent died during the child's imports; a dele
 gone. A real-spawn test kills the parent hard and asserts the child exits. Also folded: fixtures for loop-`else`
 bindings; the heavy-import subprocess test pins this checkout's `src`. Recorded, not folded: each run leaves an empty
 `audio/chunks/<run_id>/` (`cleanup_chunks` removes files; removing the directory would grow the pinned `live()`).
+Narrow check on 4d9d23b9: no further round owed. Recorded NIT: the watchdog assumes the spawner is the child's OS
+parent, true for the `spawn` context its only caller uses; under `forkserver` it would fire at once. A future caller with
+another context must switch the watchdog to the parent sentinel (`multiprocessing.parent_process().join()`).
