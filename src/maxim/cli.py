@@ -2273,11 +2273,6 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 state.data["internet_access"] = effective_internet_enabled(internet_enabled)
                 state.data["autonomy_level"] = initial_level.value
 
-                # Wire communication gateway if available
-                if gateway is not None:
-                    agentic_agent.wire_communication(gateway=gateway)
-                    logger.info("Communication gateway wired")
-
                 logger.info(
                     "Starting MaximAgent (memory_path=%s, embeddings=%s, reset=%s, autonomy=%s, internet=%s, comms=%s)",
                     memory_path,

@@ -16,7 +16,7 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1567
+      "lines": 1583
     },
     {
       "file": "src/maxim/cli_parser.py",
@@ -51,7 +51,7 @@
     {
       "file": "src/maxim/embodied_runtime/agentic_runtime.py",
       "qualname": "AgenticRuntimeMixin._start_agentic_runtime",
-      "lines": 870
+      "lines": 865
     },
     {
       "file": "src/maxim/embodied_runtime/agentic_runtime.py",
