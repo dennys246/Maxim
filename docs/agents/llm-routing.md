@@ -25,7 +25,7 @@ Probe timers are separate and short: `MAXIM_REMOTE_PROBE_FIRST_TIMEOUT_S` 1.5s /
 
 | Area | Key files |
 |---|---|
-| Router | `models/language/router.py` (provider fallback, typed exception branches, `dispatch_exhausted` aggregated WARN), `models/language/config.py` (profiles), `models/language/json_parser.py` (JSON repair), `models/language/types.py` (`BackendError` hierarchy) |
+| Router | `models/language/router.py` (provider fallback, typed exception branches, `dispatch_exhausted` aggregated WARN; the public calls are `route`, `generate_json` and the plain-text `generate`, all over the one `_complete_text` dispatch, #1338), `models/language/config.py` (profiles), `models/language/json_parser.py` (JSON repair), `models/language/types.py` (`BackendError` hierarchy) |
 | Peer backend | `models/language/maxim_peer_backend.py` (one HTTP call, typed failure, strict mid-stream fail, `health_check` + `for_url` factory) |
 | Lane tiers | `runtime/function_router.py`, `runtime/lane_models.py`, `runtime/lane_backends.py` (`BACKEND_CLASSES` dispatch table, auto-spawn, decision log) |
 | Proxy + server | `runtime/leader_proxy.py` (admission gate, keepalive), `runtime/llm_server.py` (singleton spawn guard, `active_llm_model.{role}.txt`) |

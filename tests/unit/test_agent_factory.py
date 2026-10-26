@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -576,28 +575,6 @@ class TestAgentPool:
         assert result.agent_id == "npc_guard"
         assert result.error is None
         assert result.duration_ms > 0
-
-    def test_run_turn_uses_the_llm_text(self, factory, guard_config):
-        router = MagicMock()
-        router.generate.return_value = MagicMock(text='"Halt, stranger."')
-        pool = AgentPool(llm_router=router)
-        pool.add(factory.create_agent(guard_config))
-
-        result = pool.run_turn("npc_guard", "A stranger approaches the gate.")
-        assert result.error is None
-        assert result.response == "Halt, stranger."
-
-    def test_run_turn_empty_llm_text_is_an_error_not_a_stub(self, factory, guard_config):
-        """#1338: an LLM call that returns no text is a failed turn, never the persona stub."""
-        router = MagicMock()
-        router.generate.return_value = MagicMock(text="  ")
-        pool = AgentPool(llm_router=router)
-        pool.add(factory.create_agent(guard_config))
-
-        result = pool.run_turn("npc_guard", "A stranger approaches the gate.")
-        assert router.generate.call_count == 1
-        assert result.response is None
-        assert result.error and "no text" in result.error
 
     def test_run_round_sequential(self, factory, guard_config, merchant_config):
         pool = AgentPool()

@@ -275,7 +275,8 @@ agent.nac = maxim.load.nac("/path/to/trained_nac.json")
 Orchestrate multiple agents:
 
 ```python
-# A pool's turns are LLM turns: create.pool raises ConfigurationError without a router (#1338)
+# A pool's turns are LLM turns: create.pool raises ConfigurationError without a router (#1338), and
+# create.router raises it when the profile's key (here ANTHROPIC_API_KEY) or a local profile is missing
 pool = maxim.create.pool(max_workers=4, llm_router=maxim.create.router("claude-sonnet"))
 pool.add(maxim.create.agent("guard", personality="stern and loyal"))
 pool.add(maxim.create.agent("merchant", personality="cunning trader"))

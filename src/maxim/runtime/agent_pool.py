@@ -46,6 +46,7 @@ class TurnResult:
     actions: list[dict[str, Any]] = field(default_factory=list)
     timed_out: bool = False
     error: str | None = None
+    error_type: str | None = None  # the failure's class name, e.g. "ModelInferenceError" for an LLM failure (#1338)
     duration_ms: float = 0.0
     percept: Any = None  # Typed Percept created from the input string (Phase 4)
 
@@ -162,7 +163,8 @@ class AgentPool:
 
         Returns:
             TurnResult with the agent's response and actions. A failed turn, including an LLM call that failed or
-            returned no text (#1338), comes back with ``error`` set and ``response`` None; it never raises.
+            returned no text (#1338), comes back with ``error`` set, ``error_type`` naming the failure's class
+            (``"ModelInferenceError"`` for the LLM) and ``response`` None; it never raises.
         """
         import time
 
@@ -230,6 +232,7 @@ class AgentPool:
             return TurnResult(
                 agent_id=agent_id,
                 error=str(e),
+                error_type=type(e).__name__,
                 duration_ms=elapsed,
             )
 
@@ -270,7 +273,7 @@ class AgentPool:
             try:
                 results[agent_id] = future.result()
             except Exception as e:
-                results[agent_id] = TurnResult(agent_id=agent_id, error=str(e))
+                results[agent_id] = TurnResult(agent_id=agent_id, error=str(e), error_type=type(e).__name__)
 
         return results
 
@@ -344,20 +347,20 @@ class AgentPool:
     ) -> str | None:
         """Generate a response for an NPC agent.
 
-        Uses the LLM router (if available) to produce in-character dialogue
-        based on the agent's personality and the scene percept.  Falls back
-        to a personality-echo response only when no LLM router is configured.
+        With an LLM router (every pool ``create.pool`` builds) the response is the router's in-character text, for an
+        agent with or without a personality. Only a bare ``AgentPool()`` with no router falls back to a
+        personality-echo stub (``None`` when the agent has no personality); ``create.pool`` refuses to build that
+        pool (#1338).
 
         Raises:
             ModelInferenceError: the router was called and failed or returned no text (#1338). ``run_turn`` turns
                 it into a ``TurnResult`` with ``error`` set and no ``response``; it is never a persona stub.
         """
         personality = instance.personality or ""
-        if not personality:
-            return None
-
         if self._llm_router is not None:
             return self._generate_llm_response(instance.agent_id, personality, percept)
+        if not personality:
+            return None
 
         # Fallback: personality-based echo (no LLM available)
         # Extract a short phrase from the personality for a contextual stub
@@ -367,24 +370,24 @@ class AgentPool:
         return f"*{persona_snippet}*"
 
     def _generate_llm_response(self, agent_id: str, personality: str, percept: str) -> str:
-        """One in-character LLM line, or a typed ``ModelInferenceError`` (#1338: never a silent persona stub)."""
-        from maxim.exceptions import ModelInferenceError
+        """One in-character LLM line via ``LLMRouter.generate``, or a typed ``ModelError`` (#1338: never a stub)."""
+        from maxim.exceptions import LeaderRefusal, ModelError, ModelInferenceError
 
-        prompt = (
-            f"You are an NPC in a narrative scenario.\n"
-            f"Your personality: {personality}\n\n"
-            f"{percept}\n\n"
-            f"Respond in character with 1-2 sentences of dialogue or action. "
-            f"Stay in character. Be concise."
-        )
+        system = "You are an NPC in a narrative scenario.\n"
+        if personality:
+            system += f"Your personality: {personality}\n"
+        system += "Respond in character with 1-2 sentences of dialogue or action. Stay in character. Be concise."
         try:
-            result = self._llm_router.generate(prompt, function="npc_dialogue", max_tokens=100)
-        except Exception as e:
+            text = self._llm_router.generate(
+                percept, system=system, max_tokens=100, request_context={"agent_id": agent_id}
+            )
+        except (ModelError, LeaderRefusal):
+            raise
+        except Exception as e:  # a router that is not an LLMRouter: still a typed failure, never a stub
             raise ModelInferenceError(
                 f"NPC '{agent_id}' LLM inference failed: {e}", context={"agent_id": agent_id}
             ) from e
-        text = getattr(result, "text", None) if result else None
-        if not text or not text.strip():
+        if not isinstance(text, str) or not text.strip():
             raise ModelInferenceError(
                 f"NPC '{agent_id}' LLM inference returned no text", context={"agent_id": agent_id}
             )

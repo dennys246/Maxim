@@ -399,6 +399,23 @@ def templates() -> dict[str, list[str]]:
 # ── LLM Router ─────────────────────────────────────────────────────────
 
 
+def _router_missing_reason(model: str) -> str:
+    """Why ``create.router(model)`` built no backend: the cloud profile's missing key, else the local profile."""
+    from maxim.models.language.config import _BUILTIN_PROFILES, normalize_llm_profile
+
+    profile_name = normalize_llm_profile(model) or model
+    profile = _BUILTIN_PROFILES.get(profile_name, {})
+    key_env = str(profile.get("api_key_env", "") or "")
+    if profile.get("cloud") and key_env and not os.environ.get(key_env):
+        return (
+            f"create.router({model!r}) built no LLM backend: the cloud profile needs {key_env} (export {key_env}=...)"
+        )
+    return (
+        f"create.router({model!r}) built no LLM backend: configure a local LLM profile or a cloud provider key "
+        "(`maxim --list-models` lists profiles; `maxim doctor` shows what is missing)"
+    )
+
+
 def router(model: str = "mistral-7b") -> Any:
     """Create an LLM router for inference without the full agent loop.
 
@@ -409,7 +426,12 @@ def router(model: str = "mistral-7b") -> Any:
         model: LLM profile name (e.g. ``"mistral-7b"``, ``"claude-sonnet"``).
 
     Returns:
-        ``LLMRouter`` with ``.generate()``, ``.generate_json()`` methods.
+        ``LLMRouter`` with ``.generate()`` (plain text; raises ``ModelInferenceError`` on a failure or no text) and
+        ``.generate_json()`` methods.
+
+    Raises:
+        ConfigurationError: no LLM backend could be built for ``model``. The message names what is missing: the
+            provider key (e.g. ``ANTHROPIC_API_KEY``) for a cloud profile, or a configured local profile (#1338).
 
     Example::
 
@@ -425,6 +447,10 @@ def router(model: str = "mistral-7b") -> Any:
         from maxim.runtime.lane_backends import build_primary_router
 
         router_instance, _ = build_primary_router()
+        if router_instance is None:
+            from maxim.exceptions import ConfigurationError
+
+            raise ConfigurationError(_router_missing_reason(model))
         return router_instance
     finally:
         # Restore original env state

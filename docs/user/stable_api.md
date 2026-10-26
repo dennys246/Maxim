@@ -107,11 +107,11 @@ over a file it never read and `create.hippocampus` / `create.atl` raise at const
 | `create.scn()` | ✅ | |
 | `create.angular_gyrus(...)` | ✅ | |
 | `create.agent(name, ...) -> AgentInstance` | ✅ | Raises `FileExistsError` when the agent's home already holds persisted state (#939); continue it with `load.agent(name)`. |
-| `create.pool(..., llm_router=...) -> AgentPool` | ✅ | Needs an LLM router (`llm_router=maxim.create.router(<profile>)`); without one it raises `ConfigurationError` (#1338), since a pool with no LLM could only return persona stubs. An LLM failure in `run_turn` comes back as a `TurnResult` with `error` set and no `response`. |
+| `create.pool(..., llm_router=...) -> AgentPool` | ✅ | **Breaking since the next release after 1.3.3, owner decision 2026-10-26 (#1338):** needs an LLM router (`llm_router=maxim.create.router(<profile>)`) and raises `ConfigurationError` without one, since a pool with no LLM could only return persona stubs. An LLM failure in `run_turn` comes back as a `TurnResult` with `error` set, `error_type` naming the class and no `response`. |
 | `create.entity(template_ref, ...) -> Entity` | ✅ | |
 | `create.embodiment(root_entity, ...) -> Embodiment` | ✅ | |
 | `create.templates() -> dict[str, list[str]]` | ✅ | |
-| `create.router(model) -> LLMRouter` | ✅ | |
+| `create.router(model) -> LLMRouter` | ✅ | **Breaking since the next release after 1.3.3, owner decision 2026-10-26 (#1338):** raises `ConfigurationError` naming what is missing (the cloud profile's key or a configured local profile) instead of returning `None`. `LLMRouter.generate(prompt, *, system=None, max_tokens=256, temperature=None, request_context=None) -> str` returns the text or raises `ModelInferenceError`. |
 
 ### `maxim.load.*` — deserialization namespace
 
