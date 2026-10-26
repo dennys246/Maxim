@@ -54,10 +54,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **A robot session that stops on an exception exits non-zero** ([#1468](https://github.com/dennys246/Maxim/issues/1468)).
-  `maxim`'s robot run loop logged `❌ Maxim stopped` and then returned 0, so a supervisor reading the exit code
-  (systemd, maxim-pulse's app, CI) saw a clean stop; since #1436 a missing robot module failing at import took the
-  same path. It now exits 1. An operator's Ctrl+C still exits 0. The loop's teardown moved to `cli.py::_end_robot_run`.
+- **A run that stops on an error exits non-zero, with one exit-code table** ([#1468](https://github.com/dennys246/Maxim/issues/1468);
+  owner decisions 2026-10-26). `maxim`'s run loop (robot `--mode` runs and `--mode agentic`, scenario sims included)
+  logged `❌ Maxim stopped` and returned 0, so a supervisor reading the exit code (systemd, maxim-pulse's app, CI,
+  `scripts/exp49/run_trials.py`) saw a clean stop; since #1436 a missing robot module failing at import took the same
+  path. Now: an unexpected exception exits `1`; a typed backend error (`BackendError`) or a security refusal
+  (`LeaderRefusal`) reaches `cli.main`, which prints its fix hint or reason and exits `2` (the loop's catch-all used to
+  absorb both, against `LeaderRefusal`'s own rule that a broad handler re-raises it); Ctrl+C exits `130` wherever it
+  lands (it was `0` inside a run, `130` outside). A failure the runtime absorbs and keeps running through still exits
+  `0`. `docs/user/cli-reference.md` lists the codes. The loop's teardown moved to `cli.py::_end_robot_run`, its
+  error-to-code mapping to `cli.py::_run_stopped_on`.
 - **The post-sim `/new` prompt no longer promises that memory carries over**
   ([#1454](https://github.com/dennys246/Maxim/issues/1454), interim). The re-entered run builds a fresh agent under
   test, so its learning did not reach the next run; only the narrator's memory does. The prompt (both the panel and

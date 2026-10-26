@@ -37,7 +37,6 @@ def test_a_robot_session_that_stops_on_an_exception_exits_nonzero_1468(
     assert _run_robot_session(monkeypatch, tmp_path, RuntimeError("reachy unreachable")) == 1
 
 
-@pytest.mark.xfail(strict=True, reason="#1468 review (owner 2026-10-26): Ctrl+C inside a run exits 0, outside it 130")
 @pytest.mark.timeout(120)
 def test_an_operator_interrupt_exits_130_1468(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """One code for one operator action (owner decision 2026-10-26): a Ctrl+C inside a run exits 130, as one that
@@ -45,9 +44,6 @@ def test_an_operator_interrupt_exits_130_1468(monkeypatch: pytest.MonkeyPatch, t
     assert _run_robot_session(monkeypatch, tmp_path, KeyboardInterrupt()) == 130
 
 
-@pytest.mark.xfail(
-    strict=True, reason="#1468 review: the run loop's catch-all turns a BackendError into 1, hiding its fix hint"
-)
 @pytest.mark.timeout(120)
 def test_a_backend_error_inside_a_run_exits_2_with_its_fix_hint_1468(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -63,7 +59,6 @@ def test_a_backend_error_inside_a_run_exits_2_with_its_fix_hint_1468(
     assert [w["fix"] for w in warned] == [BackendAuthFailed.fix_hint]
 
 
-@pytest.mark.xfail(strict=True, reason="#1468 review: a LeaderRefusal inside a run is swallowed by the catch-all")
 @pytest.mark.timeout(120)
 def test_a_leader_refusal_inside_a_run_exits_2_and_says_why_1468(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]

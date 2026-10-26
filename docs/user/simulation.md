@@ -38,6 +38,12 @@ The CLI treats process success as **run integrity**, not as a favorable result:
   `worker_unavailable`, `aut_died`, `aborted`, `cancel`, or `stuck`). This is the
   same code used whether teardown completed normally or the hard-abort backstop
   had to terminate the process.
+- `2` — the operator must act: a typed backend error (its fix hint is printed) or a
+  security refusal such as a leader with no usable key (its reason is printed).
+- `130` — interrupted by Ctrl+C.
+
+(`2` and `130` are the CLI's run-wide codes, since 1.3.4; see
+[cli-reference.md](cli-reference.md). A scenario-file sim runs through the same loop.)
 
 Automation must reject non-zero exits before including a session in analysis.
 Embeddable Python surfaces return a structured `finish_reason`; they do not exit
@@ -158,7 +164,7 @@ maxim --sim "test basic recall" --interactive false --sim-max-turns 5
 - **Live display switching** — type `/display clean`, `/display bio`, or `/display debug` to change verbosity on the fly.
 - **Scroll the log** — arrow up/down (3 lines), left (page up), right (jump to bottom). Scroll position holds when scrolled up.
 - **Pause/resume** — `/pause` stops the orchestrator from sending probes. You can talk to the agent freely while paused. `/resume` continues.
-- **Post-sim review** — when the simulation finishes, the report appears in the scrollable log. You can scroll through it, then type a new goal to run another simulation or press Enter to finish. The narrator's memory carries over to the next run; the agent under test starts fresh for now ([#1454](https://github.com/dennys246/Maxim/issues/1454)).
+- **Post-sim review** — when the simulation finishes, the report appears in the scrollable log. You can scroll through it, then type a new goal to run another simulation or press Enter to finish. The narrator's memory carries over to the next run; in a plain `--sim` run the agent under test starts fresh for now ([#1454](https://github.com/dennys246/Maxim/issues/1454)).
 - **End-of-sim review** — when the simulation finishes, the display waits for you to press Enter before showing the report. Scroll the logs at your own pace.
 
 **Display layout:**
