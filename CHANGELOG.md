@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- `MaximAgent.wire_communication` (public in 1.3.3; [#1466](https://github.com/dennys246/Maxim/issues/1466)): it stored
+  a gateway nothing read, and with a `nac` it crashed on the deleted communication bridge until #1436.
+
 ### Changed
 
 - **The wheel vendors maxim-pulse Console v0.4.4** (was v0.4.2 at 1.3.3, then v0.4.3; contract 0.6.0, unchanged). It is
@@ -54,9 +59,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Dead comms code removed** ([#1466](https://github.com/dennys246/Maxim/issues/1466), corrected): inbound comms
-  are pushed by webhook (`comms/api.py` → `TwilioChannel.receive_sms` → `CommunicationGateway.receive_inbound` → the
-  bus), which a new positive-control test now pins. The headless loop's "poll" read a never-assigned `_gateway` and
+- **Inbound comms reach the robot at last** ([#1466](https://github.com/dennys246/Maxim/issues/1466), corrected):
+  every comms HTTP endpoint (`/api/twilio/sms`, `/api/twilio/voice`, `/api/command`, `/api/status`) answered 422 since
+  `comms/api.py` was written, because a postponed `request: Request` annotation could not be resolved, so no inbound
+  SMS ever reached the bus. Fixed; tests drive the real routes (webhook SMS → `TwilioChannel.receive_sms` →
+  `CommunicationGateway.receive_inbound` → the bus; the command endpoint still refuses without its token).
+- **Dead comms code removed** (#1466): inbound comms are pushed by webhook, never polled. The headless loop's "poll" read a never-assigned `_gateway` and
   called a `gateway.poll()` that does not exist (assigning `_gateway` would have swallowed an `AttributeError` every
   0.5 s), and `MaximAgent.wire_communication` stored a gateway nothing read; both are deleted, with its call sites in
   `agentic_runtime.py` and `cli.py`.
@@ -73,7 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fakes and a real spawned child that fails to load its model; the on-robot check is R2's reachy cell.
 - **A new CI lint, `scripts/lint_dead_imports.py`** (Added), resolves every `maxim` import in `src/` and `scripts/`, at any
   depth (lazy, `TYPE_CHECKING`, class body), against the tree: the module and the imported name must exist. It found
-  seven more dead imports, all fixed: `MaximAgent.wire_communication` imported the deleted communication bridge, so
+  seven more dead imports, all fixed: `MaximAgent.wire_communication` (since removed, #1466) imported the deleted communication bridge, so
   with comms enabled (`MAXIM_COMMS_ENABLED`) the robot's agentic runtime failed to start behind one warning; the
   deleted protocol system's start-up block in `agentic_runtime.py` failed on every run; a `TYPE_CHECKING` import in
   `default_network/behaviors` named a moved class. Two scripts that could no longer run were deleted:

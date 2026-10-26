@@ -9,7 +9,6 @@ nothing read. The positive control pins the live path; the strict red gates pin 
 
 from __future__ import annotations
 
-import threading
 from types import SimpleNamespace
 
 import pytest
@@ -23,8 +22,9 @@ class _Bus:
         self.published.append(percept)
 
 
-def test_a_webhook_sms_reaches_the_bus_as_a_percept():
-    """The live inbound path (positive control): no polling anywhere on it."""
+def test_a_twilio_channel_sms_reaches_the_bus_as_a_percept():
+    """Entered at the channel (the route's callee): channel -> gateway -> bus, no polling anywhere on it.
+    The HTTP hop in front of it is pinned by test_a_twilio_webhook_post_reaches_the_bus."""
     from maxim.comms.channels.twilio_channel import TwilioChannel
     from maxim.comms.conversation import ConversationManager
     from maxim.comms.gateway import CommunicationGateway
@@ -41,23 +41,26 @@ def test_a_webhook_sms_reaches_the_bus_as_a_percept():
     assert percept.metadata.get("external") is True
 
 
-def test_the_headless_loop_never_polls_a_gateway(monkeypatch):
+def test_the_headless_loop_never_polls_a_gateway():
+    """Even a gateway that HAS a poll() is never polled: inbound is pushed, not polled."""
     import maxim.embodied_runtime.media_loop as ml
-    from maxim.comms.gateway import CommunicationGateway
 
-    swallowed = []
-    monkeypatch.setattr(ml, "log_swallowed_exception", lambda e, **k: swallowed.append(e))
-    runtime = SimpleNamespace(_gateway=CommunicationGateway(bus=_Bus()))
-    stop = threading.Event()
+    polls = []
+    runtime = SimpleNamespace(_gateway=SimpleNamespace(poll=lambda: polls.append(1)))
 
-    class _OneTurn(threading.Event):
+    class _OnePass:
+        def __init__(self):
+            self.passes = 0
+
+        def is_set(self):
+            return self.passes > 0
+
         def wait(self, timeout=None):
-            stop.set()
+            self.passes += 1
             return True
 
-    stop.wait = _OneTurn().wait  # one loop pass, then stop
-    ml.MediaLoopMixin._run_headless_loop(runtime, stop)
-    assert swallowed == [], f"the loop swallowed {swallowed!r}"
+    ml.MediaLoopMixin._run_headless_loop(runtime, _OnePass())
+    assert polls == []
 
 
 def test_maxim_agent_has_no_dead_gateway_wiring():
@@ -106,9 +109,6 @@ def _api(monkeypatch, bus):
     return TestClient(create_api_app(bus=bus, gateway=gateway))
 
 
-@pytest.mark.xfail(
-    strict=True, reason="#1466 review: FastAPI cannot resolve the function-local `Request` annotation (422)"
-)
 def test_a_twilio_webhook_post_reaches_the_bus(monkeypatch):
     bus = _Bus()
     client = _api(monkeypatch, bus)
@@ -120,9 +120,6 @@ def test_a_twilio_webhook_post_reaches_the_bus(monkeypatch):
     assert "are you there?" in str(percept.content)
 
 
-@pytest.mark.xfail(
-    strict=True, reason="#1466 review: FastAPI cannot resolve the function-local `Request` annotation (422)"
-)
 def test_the_authenticated_command_endpoint_reaches_the_bus(monkeypatch):
     bus = _Bus()
     client = _api(monkeypatch, bus)
