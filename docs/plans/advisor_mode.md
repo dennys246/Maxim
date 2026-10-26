@@ -276,15 +276,25 @@ proposal log back into a dispatch.
 
 ### Item 9: a bounded yield
 
-**Process-level first** (in 1.3.3 if Session H finishes it, otherwise in 1.3.4).
-- **One handler, installed at process entry.** `cli.py::main` installs it on the main thread. Library callers call an
-  explicit `install_yield_handler()`, which raises off the main thread instead of silently failing; that silent
-  failure is #1344's root cause. #1267's fix to the dead handler in the `tty_stdin.py` thread converges on this
+> **Amended 2026-10-25 (owner decisions, Session H).** The design is [bounded_stop.md](bounded_stop.md). Once a session
+> is open, the handler is COOPERATIVE: it publishes a stop request and never raises `KeyboardInterrupt` into the save
+> path (a raise there half-saves the stores, and inside `RWLock.acquire_write` it deadlocks). One handler covers SIGINT
+> and SIGTERM. A clean yield exits 0, except that a yielded SIM run is a failure for evidence (finish `yielded`, exit 4;
+> 2026-10-26). The library never exits the process: only Maxim-owned processes (the CLI, `maxim serve`) handle signals.
+> The struck sentences below are superseded by that design and kept for the record.
+
+**Process-level first** (*superseded: 1.3.4, Session H, per bounded_stop.md §3*).
+- **One handler, installed at process entry.** `cli.py::main` installs it on the main thread. ~~Library callers call an
+  explicit `install_yield_handler()`, which raises off the main thread instead of silently failing~~ (*superseded: the
+  library installs no handler; an embedder passes a deadline*); that silent failure is #1344's root cause. #1267's fix to the dead handler in the `tty_stdin.py` thread converges on this
   installer. Session H owns both.
-- **What the handler does.** It raises `KeyboardInterrupt` on the main thread, reusing the existing graceful SIGINT
-  path (the first stage of `cli.py`'s `_force_exit_handler`, and `api.run`'s `finally`). No fenced code changes.
-  - The sim's `stop_event` is a local inside the fenced `start_simulation_mode`, and `cancellation.request_shutdown()`
-    is read only by two LLM backends, not by the loop. So neither is a way in. `request_shutdown()` is still called,
+- **What the handler does.** ~~It raises `KeyboardInterrupt` on the main thread, reusing the existing graceful SIGINT
+  path (the first stage of `cli.py`'s `_force_exit_handler`, and `api.run`'s `finally`). No fenced code changes.~~
+  (*superseded: it raises only before any session opens; afterwards it publishes the stop request, and the granted fence
+  hunks add `start_simulation_mode(stop_event=)`. See bounded_stop.md §4-§6.*)
+  - ~~The sim's `stop_event` is a local inside the fenced `start_simulation_mode`, and `cancellation.request_shutdown()`
+    is read only by two LLM backends, not by the loop. So neither is a way in.~~ (*superseded: the stop request plus the
+    external `stop_event=` are the way in.*) `request_shutdown()` is still called,
     so that in-flight backend calls stop.
   - The approach note verifies that the sim path's `KeyboardInterrupt` handling writes `report.json` and saves memory
     within the bound. If it does not, that needs a fence exception, not a workaround.
