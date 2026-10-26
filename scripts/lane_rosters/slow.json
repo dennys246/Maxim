@@ -54,8 +54,13 @@
     "tests/unit/test_exp62_run.py::test_one_row_of_each_arm_against_a_two_pool_scripted_bridge",
     "tests/unit/test_m1b_writer_stamps.py::test_the_exp56_mock_runs_write_stamped_records[exp56/instrument_check.py-phase0.json]",
     "tests/unit/test_m1b_writer_stamps.py::test_the_exp56_mock_runs_write_stamped_records[exp56/run_campaign.py-rows.jsonl]",
+    "tests/unit/test_orchestrator_characterization_golden.py::test_golden_is_identical_across_processes_and_hash_seeds[generative]",
+    "tests/unit/test_orchestrator_characterization_golden.py::test_golden_is_identical_across_processes_and_hash_seeds[imagination]",
     "tests/unit/test_orchestrator_characterization_golden.py::test_golden_is_identical_across_processes_and_hash_seeds[narrator]",
+    "tests/unit/test_orchestrator_characterization_golden.py::test_golden_is_identical_across_processes_and_hash_seeds[new_goal]",
+    "tests/unit/test_orchestrator_characterization_golden.py::test_golden_is_identical_across_processes_and_hash_seeds[persistent_agent]",
     "tests/unit/test_orchestrator_characterization_golden.py::test_golden_is_identical_across_processes_and_hash_seeds[precampaign]",
+    "tests/unit/test_orchestrator_characterization_golden.py::test_golden_is_identical_across_processes_and_hash_seeds[stall]",
     "tests/unit/test_orchestrator_characterization_golden.py::test_golden_is_identical_across_processes_and_hash_seeds[stdin]",
     "tests/unit/test_r3_run.py::test_offline_campaign_apparatus_and_one_event_per_in_process_arm",
     "tests/unit/test_simulation_agent.py::TestSpawnSubSimulationTool::test_spawn_creates_sub_bridge"
