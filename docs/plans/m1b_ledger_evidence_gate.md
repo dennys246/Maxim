@@ -529,7 +529,7 @@ name; unknown → NOT-ESTABLISHED. Outcomes: ESTABLISHED / LEGACY (in the snapsh
   (`completed`, `max_turns`, `complete`, `all_encounters_complete`, `campaign_end:*`; pinned against
   `sim_types.SIMULATION_FAILURE_FINISH_REASONS`), `resume_loaded` true when resumed.
 - **harness_row file:** only `harness_row` + `harness_header` lines; any `mock` not `false` sinks the file; every
-  non-`failed` row established (full hash, clean or `allow_dirty`; an `allow_dirty: true` on a CLEAN tree, which `exp60_run --allow-dirty` stamps when it waives an uncommitted apparatus record, is an allowance too: allowed-dirty, never sole support, refused on a verdict (2026-10-10); a header's or failed row's provenance is judged
+  non-`failed` row established (full hash, clean or `allow_dirty`; an `allow_dirty: true` on a CLEAN tree, which `exp60_run --allow-dirty` stamps when it waives an uncommitted apparatus record, is an allowance too: allowed-dirty, never sole support, refused on a verdict (2026-10-10); `allow_dirty` itself must be absent or a bool, never `"true"`/`1`/`null` (#1220, owner decision 2026-10-26); a row carrying the harness's `apparatus_record_check` must agree with its provenance (a waived check without `allow_dirty`, or `allow_dirty` on a clean tree with no waived check, fails), be well-formed, and say `gated: true`, since a committed data row was written to a gated path (#1220/#1218); a header's or failed row's provenance is judged
   too); `harness_family` is `spawning` or `in_process`;
   a `spawning` row's non-empty `sims[]` judged by the sim rules on the echoed fields, an `in_process` row carries
   none; one `code_tree_sha256` per file.

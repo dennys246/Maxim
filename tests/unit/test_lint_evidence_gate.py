@@ -3932,7 +3932,6 @@ def test_a_release_exception_moves_no_row() -> None:
 
 
 # ── #1220: the row-level apparatus check is judged beside provenance.allow_dirty ─────────────────────────────
-_RED_1220 = pytest.mark.xfail(strict=True, reason="#1220: the gate reads only provenance.allow_dirty")
 
 
 def _arc(problem=None, *, gated=True, allow_dirty=None) -> dict:
@@ -3950,13 +3949,11 @@ def _judge_rows(rig: Rig, name: str, make_row) -> R.Judgement:
     return _judge(rig, f"{DATA}/{name}.jsonl")
 
 
-@_RED_1220
 def test_a_waived_apparatus_check_without_the_provenance_waiver_fails(rig) -> None:
     j = _judge_rows(rig, "w1", lambda: _row(rig, apparatus_record_check=_arc("not committed on main")))
     assert j.status == G.NOT_ESTABLISHED and any("disagree" in r for r in j.reasons), j.reasons
 
 
-@_RED_1220
 def test_a_provenance_waiver_without_the_apparatus_waiver_fails(rig) -> None:
     j = _judge_rows(
         rig, "w2", lambda: _row(rig, provenance=_prov(rig, allow_dirty=True), apparatus_record_check=_arc())
@@ -3964,20 +3961,17 @@ def test_a_provenance_waiver_without_the_apparatus_waiver_fails(rig) -> None:
     assert j.status == G.NOT_ESTABLISHED and any("disagree" in r for r in j.reasons), j.reasons
 
 
-@_RED_1220
 @pytest.mark.parametrize("arc", [{"gated": True}, "yes", _arc(allow_dirty=True), _arc("", allow_dirty=True)])
 def test_a_malformed_apparatus_check_fails(rig, arc) -> None:
     j = _judge_rows(rig, "w3", lambda: _row(rig, apparatus_record_check=arc))
     assert j.status == G.NOT_ESTABLISHED, j.reasons
 
 
-@_RED_1220
 def test_an_ungated_apparatus_check_in_the_data_dir_fails(rig) -> None:
     j = _judge_rows(rig, "w4", lambda: _row(rig, apparatus_record_check=_arc(gated=False)))
     assert j.status == G.NOT_ESTABLISHED and any("gated" in r for r in j.reasons), j.reasons
 
 
-@_RED_1220
 @pytest.mark.parametrize("value", ["true", 1, None, "false", 0])
 def test_a_non_bool_allow_dirty_fails(rig, value) -> None:
     j = _judge_rows(rig, "w5", lambda: _row(rig, provenance=_prov(rig, allow_dirty=value)))

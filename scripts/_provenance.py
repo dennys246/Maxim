@@ -70,6 +70,7 @@ import os
 import subprocess
 import sys
 import time
+import unicodedata
 from pathlib import Path
 
 __all__ = [
@@ -102,6 +103,7 @@ __all__ = [
     "executed_code_provenance",
     "in_process_code_provenance",
     "is_gated_path",
+    "path_within",
     "preflight_gated_record",
     "preflight_gated_record_or_exit",
     "evidence_out_path",
@@ -240,15 +242,67 @@ def code_tree_sha256(repo_root: Path | str, scope: tuple[str, ...] = DIRTY_SCOPE
     return _code_tree.code_tree_sha256(repo_root, scope)
 
 
+_MISSING = (FileNotFoundError, NotADirectoryError)
+
+
+def _folded(path: Path) -> str:
+    return unicodedata.normalize("NFC", str(path)).casefold()
+
+
+def path_within(root: Path | str, path: Path | str) -> bool:
+    """True when ``path`` is ``root`` or inside it, by the filesystem's own identity OR a case-folded spelling (#1218).
+
+    The two evidence gates (``is_gated_path`` and the D27 governed check in ``evidence_out_paths``) share this.
+    ``Path.is_relative_to`` alone is a case-sensitive string test, so on macOS's case-insensitive APFS
+    ``docs/Experiments/Data/x`` wrote into the gated directory reading ungated. Both tests below fail CLOSED:
+
+    * identity: the nearest EXISTING ancestors of ``path`` are compared to ``root`` by ``(st_dev, st_ino)``, which
+      answers for case folding, Unicode normalization and firmlinks. A missing component is skipped and an
+      unreadable one (EACCES) is skipped too, never treated as a match;
+    * spelling: NFC-normalized, case-folded ``path`` equals ``root`` or starts with it plus a separator, so a
+      not-yet-created ``root`` (a fresh clone) and a case-sensitive filesystem are covered too.
+
+    Errors count as WITHIN only where the answer cannot be established: ``root``'s own stat (other than missing)
+    or ``resolve()`` of either path (a symlink loop raises RuntimeError before Python 3.13). An unrelated path
+    always passes through.
+    """
+    try:
+        root_resolved = Path(root).resolve()
+        path_resolved = Path(path).resolve()
+    except (OSError, RuntimeError, ValueError):
+        return True
+    try:
+        root_stat = os.stat(root_resolved)
+        root_id: tuple[int, int] | None = (root_stat.st_dev, root_stat.st_ino)
+    except _MISSING:
+        root_id = None
+    except OSError:
+        return True
+    if root_id is not None:
+        for candidate in (path_resolved, *path_resolved.parents):
+            try:
+                st = os.lstat(candidate)
+            except OSError:
+                continue  # missing or unreadable: not proven here; keep walking, never a match
+            if (st.st_dev, st.st_ino) == root_id:
+                return True
+    root_key, path_key = _folded(root_resolved), _folded(path_resolved)
+    return path_key == root_key or path_key.startswith(root_key.rstrip(os.sep) + os.sep)
+
+
+def _shown(path: Path, root: Path) -> str:
+    """``path`` relative to ``root`` for a message, or absolute when only path_within's identity/case test matched."""
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
+
+
 def is_gated_path(repo_root: Path | str, out_path: Path | str | None) -> bool:
-    """True when ``out_path`` resolves inside ``<repo_root>/docs/experiments/data/``."""
+    """True when ``out_path`` resolves inside ``<repo_root>/docs/experiments/data/`` (case-folded, #1218)."""
     if out_path is None:
         return False
-    gated_root = (Path(repo_root) / GATED_DATA_DIR).resolve()
-    try:
-        return Path(out_path).resolve().is_relative_to(gated_root)
-    except (OSError, ValueError):
-        return False
+    return path_within(Path(repo_root) / GATED_DATA_DIR, out_path)
 
 
 def preflight_gated_record(
@@ -271,7 +325,7 @@ def preflight_gated_record(
     dirty = difference is not None
     if gated and dirty and not allow_dirty:
         raise DirtyTreeError(
-            f"refusing to write a GATED record ({Path(out_path).resolve().relative_to(root)}) "
+            f"refusing to write a GATED record ({_shown(Path(out_path).resolve(), root)}) "
             f"from a DIRTY tree: the code on disk in {root} is not HEAD's ({difference}).\n"
             "  A result whose code-under-test cannot be established is not a validation "
             "(Exp 42b corollary; Exp 53/53b release-day incident).\n"
@@ -764,7 +818,7 @@ def evidence_out_paths(
     root = Path(repo_root).resolve()
     governed_root = (root / EVIDENCE_DIR).resolve()
     resolved = [Path(p).resolve() for p in committed_paths]
-    governed = [p for p in resolved if p.is_relative_to(governed_root)]
+    governed = [p for p in resolved if path_within(governed_root, p)]
     if not governed:
         return resolved
     if not write_experiment_results:
@@ -774,7 +828,7 @@ def evidence_out_paths(
             if p in governed:
                 redirected = tmp / p.name
                 print(
-                    f"[evidence] NOT updating committed record {p.relative_to(root)} "
+                    f"[evidence] NOT updating committed record {_shown(p, root)} "
                     f"(no --write-experiment-results); writing {redirected}"
                 )
                 out.append(redirected)
@@ -785,7 +839,7 @@ def evidence_out_paths(
     if difference is not None and not allow_dirty:
         raise DirtyTreeError(
             "refusing to OVERWRITE committed evidence "
-            f"({', '.join(str(p.relative_to(root)) for p in governed)}) from a DIRTY tree "
+            f"({', '.join(_shown(p, root) for p in governed)}) from a DIRTY tree "
             f"(the code on disk in {root} is not HEAD's: {difference}).\n"
             "  A degraded or in-progress run must not replace real evidence (D25/D27).\n"
             "  Fix: commit the harness/src changes and re-run from the clean tree, or pass --allow-dirty."
