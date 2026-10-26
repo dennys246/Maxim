@@ -168,8 +168,17 @@ def report(
     events = [r for r in rows if r.get("kind") == "event"]
     refused = [r for r in events if r.get("refusal")]
     clean: dict[str, list[dict[str, Any]]] = {arm: [] for arm in ARMS}
-    for r in events:
+    # One clean row per (arm, seed), as Exp 60/61/62 (#1038): a second one is NAMED and never counted, so a campaign
+    # restarted without --resume under one id cannot lift an arm to COMPLETE with repeated seeds.
+    seen: set[tuple[str, Any]] = set()
+    duplicates: list[str] = []
+    for r in sorted(events, key=lambda r: r.get("ts") or 0.0):
         if not r.get("refusal") and r.get("arm") in clean:
+            key = (r["arm"], r.get("seed"))
+            if key in seen:
+                duplicates.append(f"duplicate clean (arm, seed) row {key} — pass --campaign-id to select one campaign")
+                continue
+            seen.add(key)
             clean[r["arm"]].append(r)
     hashes = sorted({str((r.get("provenance") or {}).get("executed_git_hash")) for r in rows})
     arms: dict[str, Any] = {}
@@ -228,7 +237,7 @@ def report(
             else None,
             "censored": {hi: arms[hi]["censored"], lo: arms[lo]["censored"]},
         }
-    incomplete: list[str] = []
+    incomplete: list[str] = list(duplicates)
     for arm, n_need in FROZEN["arms"].items():
         if arms[arm]["n"] < n_need:
             incomplete.append(f"{arm}: {arms[arm]['n']} clean rows < {n_need}")
