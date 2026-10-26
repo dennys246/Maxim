@@ -59,6 +59,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`ensure_key` / `ensure_console_token` never overwrite a key file they cannot read**
+  ([#1402](https://github.com/dennys246/Maxim/issues/1402)). They read through the lenient readers, which return None
+  for a missing file and for an unusable one alike (mode 000, a directory, non-UTF-8, oversized), then wrote a new key
+  over it: a silent rotation that 401'd every peer or device with nothing naming why. All three key ensures (mesh key,
+  console token, and `ensure_local_server_key`'s spawn key) now go through one helper: a key is generated only for a
+  missing or empty file (an empty file is unlinked first, so the new key is never written over its old mode), under
+  the key's lock with a re-read inside it, and rotations take the same lock. Anything else raises the new key-neutral
+  `maxim.exceptions.KeyFileUnusable` (`.path`, `.reason`, `.fix_hint`; `LeaderKeyError` and `LocalServerKeyError` now
+  subclass it). In-repo callers present it: `maxim tunnel setup` and `maxim tunnel key rotate` print it and exit 1;
+  `maxim serve`, `--show-token` and `--rotate-token` print it and exit 2 before building the app; `/api/pair/claim`
+  answers **503** (reason only, path in the device log) and the spoken code is consumed. `device_console_handoff`
+  raises it to the device bootstrap, which must now present it (maxim-pulse `apps/reachy`). The fix hint never
+  suggests a rotation, which would keep the unusable mode. `maxim tunnel setup` no longer prints any part of the key (CodeQL py/clear-text-logging-sensitive-data): it names the key file and `maxim tunnel key show`.
+
 - **Inbound comms reach the robot at last** ([#1466](https://github.com/dennys246/Maxim/issues/1466), corrected):
   every comms HTTP endpoint (`/api/twilio/sms`, `/api/twilio/voice`, `/api/command`, `/api/status`, `/api/goals`) answered 422 since
   `comms/api.py` was written, because a postponed `request: Request` annotation could not be resolved, so no inbound

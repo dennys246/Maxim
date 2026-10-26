@@ -12,6 +12,8 @@ extra.
 from __future__ import annotations
 
 import logging
+import os
+import sys
 
 import pytest
 
@@ -109,6 +111,30 @@ class TestHappyPath:
         token = c.post("/api/pair/claim", json={"code": code}).json()["token"]
         assert token == keys.read_console_token()  # same file as maxim serve / --show-token
         assert c.get("/api/identity", headers={"Authorization": f"Bearer {token}"}).status_code == 200
+
+    @pytest.mark.skipif(sys.platform == "win32" or os.geteuid() == 0, reason="POSIX permission bits")
+    def test_unusable_disk_token_answers_503_and_burns_the_code(self, _isolated):
+        """#1402: a correct code with an unreadable token file is a 503 naming the reason (never the absolute
+        path), and the code is burned anyway (owner decision 2026-10-25: it was spoken aloud). The file is never
+        overwritten."""
+        announcer = _Announcer()
+        app = build_app(None, pairing_announcer=announcer)
+        token_path = keys.key_file_path(keys.CONSOLE_KEY_NAME)
+        token_path.parent.mkdir(parents=True, exist_ok=True)
+        token_path.write_text("mxc_" + "b" * 43 + "\n")
+        os.chmod(token_path, 0)
+        try:
+            c = TestClient(app)
+            assert c.post("/api/pair/request", json={}).status_code == 202
+            code = _spoken(announcer)
+            r = c.post("/api/pair/claim", json={"code": code})
+            assert r.status_code == 503
+            assert str(token_path.parent) not in r.text
+            os.chmod(token_path, 0o600)
+            assert c.post("/api/pair/claim", json={"code": code}).status_code == 410
+            assert token_path.read_text() == "mxc_" + "b" * 43 + "\n"
+        finally:
+            os.chmod(token_path, 0o600)
 
     def test_fail_closed_inject_plus_announcer_refused_at_build(self, _isolated):
         with pytest.raises(ConfigurationError, match="auth_token=None"):
