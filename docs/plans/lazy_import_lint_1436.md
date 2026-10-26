@@ -1,6 +1,6 @@
 # #1436 approach note: voice input fails loud, and a lint for lazy imports of missing code (Session S, 1.3.4)
 
-Status: ADOPTED 2026-10-25 (adversarial design pass folded at the end; the design sections above are superseded where the folds say so). Owner decisions, 2026-10-25:
+Status: ADOPTED 2026-10-25. **Read the two fold sections at the end first:** the adversarial pass and the three-lens round superseded parts of the sections above (the shipped lint is `scripts/lint_dead_imports.py`; a missing maxim module fails at import, not as a typed raise; there is no `listening_off_reason` attribute). Owner decisions, 2026-10-25:
 - **Split by cause.** A maxim-internal import failure (a code defect) raises a typed error and stops the session.
   A missing `audio` extra keeps the session running, with ONE ERROR naming `pip install 'pymaxim[audio]'` and a
   recorded `listening: off (reason)` on the runtime.
@@ -135,8 +135,9 @@ section wins.
   reads it today (N4).
 - **N1:** the `wire_communication` crash needs a comms gateway, which `agentic_runtime.py` builds only when
   `MAXIM_COMMS_ENABLED` is set. It is real but opt-in, not on the default robot path. The bridge's NAc wiring goes;
-  `register_promotion_source` (no other caller) and the unread `self._gateway` are listed as a follow-up.
-- **N2 (follow-up issue):** deleting the protocol block leaves always-None plumbing in several places:
+  the unused parameters and the unread `MaximAgent._gateway` are #1466 (`register_promotion_source` has one other
+  caller, the statistician, so it stays).
+- **N2 (#1467):** deleting the protocol block leaves always-None plumbing in several places:
   - `selfy.py::_protocol_activate`/`_protocol_deactivate` and the `_protocol_registry` initializer;
   - the teardown in `_stop_agentic_runtime`;
   - the `protocol_registry=` arguments in `agent_loop.py`, `loop_setup.py` and `loop_controller.py`;
@@ -145,7 +146,40 @@ section wins.
   These go to a follow-up issue so Session V's shared hunk stays one block.
 - **N3:** `docs/plans/deferred/tool_refinement_plan.md` links the deleted `tools/rtsp_bridge.py`; it is fixed with
   the script deletion.
-- **N5 (follow-up issue):** a session that stops on an exception still exits 0 (`cli.py`, `log_exception` then
+- **N5 (#1468):** a session that stops on an exception still exits 0 (`cli.py`, `log_exception` then
   `break`), which is invisible to supervisors.
 - **N6:** the real lint does not inherit the probe's weaknesses. It does not collect names bound inside functions
   nested in top-level `if`/`try`, and it checks a `__getattr__` module's closed literal set rather than exempting it.
+
+## The three-lens round (2026-10-25, tree 409d8f86) and its folds
+
+No BLOCKER beyond an unused import (Executor: ruff F401 in the flipped test). Owner decisions taken from it:
+- **The transcriber runs in its own process group** (Executor SF2, Wire S1). In the terminal's group a Ctrl-C stopped
+  the child before the parent noticed the stop, and the writer logged "Voice input is OFF" on every ordinary stop.
+  It is spawned through `utils.audio.run_in_own_process_group` (a light module, so the child does not import the
+  embodied runtime); the parent's teardown stops it. The writer also stays silent once its `stop_event` is set.
+- **A per-run chunk directory** (Wire S2): `audio/chunks/<run_id>/`. The shared directory fed an earlier session's
+  leftover chunks and tasks to the next transcriber as new speech.
+- **Named fence exceptions:** `embodied_runtime/workers.py`, `utils/optional_deps.py`, and the two Exp 2 record notes
+  in `docs/experiments/` (Session E's fence).
+
+Folds:
+- Executor SF3: a structural test pins `live()` → helper → `audio_writer_worker` and the per-run `chunk_dir` (the
+  composition #1436 broke). Executor SF4: the test no longer leaks `MAXIM_TRANSCRIPTION_WORKER_CPU_ONLY`.
+- Architecture SF5: a subprocess test pins that importing `media_loop`/`workers` loads no faster_whisper, ctranslate2
+  or torch (`inference/transcribe_audio.py` is Session V's file; a top-level faster_whisper there would break it).
+- `load_whisper_config` comes from `maxim.inference.transcribe_audio`, not the `models.audio.transcription` re-export
+  shim (Wire N1, Executor N6).
+- The lint: star re-exports accept any name, `AsyncWith`/`AsyncFor` and loop `else` bodies bind, and a `__getattr__`
+  module counts only the strings in its top-level literal tables; fixtures for each. Dynamic `import_module` strings
+  stay a recorded blind spot (mechanization backlog M80; none dead today, per two independent scans).
+- Docs: `optional_deps.py`'s docstring names the fourth intent and the probe's test moved to
+  `tests/unit/test_optional_deps.py`; `embodied_device.md` (R5 fixed; the file-IPC path is the interim path, replaced
+  by step 5's Listener before deletion); `ci-testing.md`'s tree-wide lints row; Exp 2's records and the two READMEs
+  say what it measured (the Architecture lens re-ran it at fe1124b9: 13/13); `mediaMTX.md` marked stale.
+- Follow-up issues filed: #1466 (inbound comms never polled: `Maxim._gateway` is never assigned), #1467 (protocol
+  plumbing), #1468 (a session that stops on an exception exits 0).
+- The staged M79 "met" note moved to its own branch (`docs/m79-met`), so this PR's diff is #1436's alone.
+- Hand-off (CLAUDE.md is the process session's file): extend the "Dead code accumulates silently" lesson with "...and
+  an import of a missing module or name fails CI. Regression guard: scripts/lint_dead_imports.py +
+  tests/unit/test_lint_dead_imports.py"; add `optional_dependency_installed` to the optional-deps lesson's intents.

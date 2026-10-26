@@ -482,6 +482,8 @@ def audio_writer_worker(
             return False
         if transcribe_process.is_alive():
             return True
+        if stop_event.is_set():  # the session is stopping: an exited transcriber is expected, not news
+            return False
         transcriber_gone = True
         pending_tasks = []
         maxim.log.error(

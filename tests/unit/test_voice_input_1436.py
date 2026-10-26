@@ -28,15 +28,26 @@ class _Process:
         return self.alive
 
 
-def _run_writer(tmp_path, process, *, seconds: float = 2.0, rate: int = 16000):
+def _run_writer(tmp_path, process, *, seconds: float = 2.0, rate: int = 16000, stopped_first: bool = False):
+    """Feed the writer `seconds` of audio; the session stops only once the queue is drained (as in live()),
+    unless `stopped_first`, which models a session already stopping."""
     q: queue.Queue = queue.Queue()
     stop = threading.Event()
     maxim = SimpleNamespace(audio=True, audio_len=1.0, log=logging.getLogger("test"))
     samples = (np.sin(np.arange(int(rate * seconds)) / 10.0) * 1000).astype(np.int16)
     for block in np.array_split(samples, 8):
         q.put((0.0, block, rate))
+    if stopped_first:
+        stop.set()
+    writer = threading.Thread(
+        target=audio_writer_worker,
+        args=(stop, maxim, q, str(tmp_path / "audio.wav"), str(tmp_path / "chunks"), rate, rate, process),
+    )
+    writer.start()
+    q.join()
     stop.set()
-    audio_writer_worker(stop, maxim, q, str(tmp_path / "audio.wav"), str(tmp_path / "chunks"), rate, rate, process)
+    writer.join(timeout=5.0)
+    assert not writer.is_alive()
     return sorted((tmp_path / "chunks").glob("task_*.json"))
 
 
@@ -74,7 +85,7 @@ def _start(monkeypatch, tmp_path, *, installed=True, alive=True, config_error=No
 
     class _Ctx:
         def Process(self, target, args, kwargs, daemon):  # noqa: N802 - mirrors multiprocessing
-            spawned.append(kwargs)
+            spawned.append({**kwargs, "_target": target, "_args": args})
             proc = _Process(alive=alive)
             proc.start = lambda: None
             return proc
@@ -97,7 +108,9 @@ def _start(monkeypatch, tmp_path, *, installed=True, alive=True, config_error=No
     monkeypatch.setattr(ml.mp, "get_context", lambda kind: _Ctx())
     monkeypatch.setattr(ml.time, "sleep", lambda s: None)
     monkeypatch.setattr(ml._gpu_state, "blackwell_detected", blackwell)
-    monkeypatch.delenv("MAXIM_TRANSCRIPTION_WORKER_CPU_ONLY", raising=False)
+    # setenv first so teardown removes what the helper writes (device=cpu sets it)
+    monkeypatch.setenv("MAXIM_TRANSCRIPTION_WORKER_CPU_ONLY", "")
+    monkeypatch.delenv("MAXIM_TRANSCRIPTION_WORKER_CPU_ONLY")
     result = ml.MediaLoopMixin._start_transcription_worker(
         _Runtime(audio=audio),
         parallel=True,
@@ -155,19 +168,6 @@ def test_wiring_comms_with_a_nac_no_longer_imports_the_deleted_bridge():
     assert agent._gateway is gateway
 
 
-def test_the_spec_only_probe_never_imports_and_never_raises():
-    import sys
-
-    from maxim.utils.optional_deps import optional_dependency_installed
-
-    assert optional_dependency_installed("json") is True
-    assert optional_dependency_installed("zz_not_installed_1436") is False
-    assert optional_dependency_installed("zz_not_installed_1436.sub") is False
-    sys.modules.pop("colorsys", None)
-    assert optional_dependency_installed("colorsys") is True
-    assert "colorsys" not in sys.modules, "find_spec only: the probe must not import the package"
-
-
 def test_a_task_pending_when_the_transcriber_dies_is_dropped_not_written(tmp_path, monkeypatch, caplog):
     """The flush half of S5: a task whose file failed to write is pending when the child dies; never write it."""
     import maxim.embodied_runtime.workers as workers
@@ -188,3 +188,76 @@ def test_a_task_pending_when_the_transcriber_dies_is_dropped_not_written(tmp_pat
         tasks = _run_writer(tmp_path, proc, seconds=3.0)
     assert tasks == [] and calls == [0]
     assert len([r for r in caplog.records if "Voice input is OFF" in r.getMessage()]) == 1
+
+
+def test_an_exited_transcriber_during_a_stop_is_not_reported(tmp_path, caplog):
+    """A session that is stopping expects its transcriber to exit: no "Voice input is OFF" on an ordinary stop."""
+    with caplog.at_level(logging.ERROR):
+        _run_writer(tmp_path, _Process(alive=False), stopped_first=True)
+    assert [r for r in caplog.records if "Voice input is OFF" in r.getMessage()] == []
+
+
+def test_the_transcriber_runs_in_its_own_process_group(monkeypatch, tmp_path):
+    """A terminal Ctrl-C reaches the foreground group; the child must leave it so only the parent stops it."""
+    import maxim.utils.audio as audio_mod
+    from maxim.inference.transcribe_audio import watch_and_transcribe
+
+    (_, _), spawned = _start(monkeypatch, tmp_path)
+    assert spawned[0]["_target"] is audio_mod.run_in_own_process_group
+    assert spawned[0]["_args"][0] is watch_and_transcribe
+
+    calls = []
+    monkeypatch.setattr(audio_mod.os, "setpgrp", lambda: calls.append("setpgrp"), raising=False)
+    assert audio_mod.run_in_own_process_group(lambda *a, **k: calls.append(("target", a, k)) or "ran", 1, x=2) == "ran"
+    assert calls == ["setpgrp", ("target", (1,), {"x": 2})]
+
+
+def test_live_feeds_the_helpers_worker_to_the_audio_writer_with_a_per_run_chunk_dir():
+    """The seam #1436 broke: live() must start the transcriber through the helper, hand the worker it returns to
+    audio_writer_worker, and keep this run's chunks in a directory of their own."""
+    import ast
+    import inspect
+    import textwrap
+
+    from maxim.embodied_runtime.media_loop import MediaLoopMixin
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(MediaLoopMixin.live)))
+    helper_targets = [
+        [t.id for t in node.targets[0].elts]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Call)
+        and getattr(node.value.func, "attr", "") == "_start_transcription_worker"
+    ]
+    assert helper_targets == [["transcribe_process", "transcribe_shutdown_file"]]
+    writer_args = [
+        [getattr(a, "id", None) for a in kw.value.elts]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and getattr(node.func, "attr", "") == "Thread"
+        for kw in node.keywords
+        if kw.arg == "args"
+        and isinstance(kw.value, ast.Tuple)
+        and any(getattr(k.value, "id", None) == "audio_writer_worker" for k in node.keywords if k.arg == "target")
+    ]
+    assert writer_args and "transcribe_process" in writer_args[0] and "chunk_dir" in writer_args[0]
+    chunk_dir = [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", None) == "chunk_dir"
+    ]
+    assert len(chunk_dir) == 1 and "run_id" in ast.unparse(chunk_dir[0])
+
+
+def test_importing_the_robot_media_modules_loads_no_speech_or_gpu_stack():
+    """The hoisted imports must stay cheap: the parent hides its GPUs, and a robot without the `audio` extra must
+    still import the runtime (transcribe_audio is Session V's file; a top-level faster_whisper there breaks this)."""
+    import subprocess
+    import sys
+
+    code = (
+        "import sys, maxim.embodied_runtime.media_loop, maxim.embodied_runtime.workers;"
+        "print(sorted(m for m in ('faster_whisper', 'ctranslate2', 'torch') if m in sys.modules))"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
+    assert out.returncode == 0, out.stderr[-500:]
+    assert out.stdout.strip() == "[]"

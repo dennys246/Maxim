@@ -39,7 +39,7 @@ Energy bridge: 1 hunger, 1 fatigue, 3 satiation reactions.
 
 ## Reproduction
 
-> **The script was deleted on 2026-10-25 ([#1436](https://github.com/dennys246/Maxim/issues/1436)).** It could not run after 7d21247a (2026-04-26) deleted `maxim.energy.reactions`, which it imported at top level. The result above stands as recorded; to reproduce it, check out fe1124b9, the last commit where the script ran, and run the commands there.
+> **The script was deleted on 2026-10-25 ([#1436](https://github.com/dennys246/Maxim/issues/1436)).** It could not run after 7d21247a (2026-04-26) deleted `maxim.energy.reactions`, which it imported at top level. The recorded result stands as history: it measured `EnergyReactionBridge`, also removed in 7d21247a, so it describes fe1124b9, not main. To reproduce it, check out fe1124b9 and run the commands there (re-run there on 2026-10-25: 13/13).
 
 ```bash
 PYTHONPATH=src python scripts/behavioral_convergence_exp2.py

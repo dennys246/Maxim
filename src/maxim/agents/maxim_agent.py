@@ -361,7 +361,7 @@ class MaximAgent(Agent):
         was deleted as dead in 3c6ad81d, but this still imported it whenever ``nac`` was given, so
         with comms enabled (``MAXIM_COMMS_ENABLED``) the robot's agentic runtime failed to start
         behind one warning (#1436, found by the dead-import lint). ``nac`` and ``memory_hub`` are
-        accepted and unused, so callers need no change; their removal is a follow-up.
+        accepted and unused, so callers need no change; their removal is #1466.
         """
         self._gateway = gateway
 

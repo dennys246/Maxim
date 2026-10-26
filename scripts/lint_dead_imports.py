@@ -14,6 +14,10 @@ catches it if the branch runs. This lint resolves every `import maxim...` / `fro
   `if TYPE_CHECKING:` block, which binds nothing at runtime). A module defining `__getattr__`
   accepts its closed set of string literals.
 
+Known blind spots (fail-open; none hides a dead import today): `importlib.import_module("maxim...")`
+string literals and dotted-path registries are not resolved, and a target that re-exports with
+`from x import *` accepts any name. Both are recorded in the design note's follow-ups.
+
 Zero tolerance, no allowlist: maxim-internal code is never optional, so a dead target is a defect
 wherever it sits. Why not the mypy ratchet: it only stops a file's error count rising (a new
 `import-not-found` can be offset elsewhere in the file, old ones are grandfathered) and does not
@@ -74,10 +78,11 @@ def _runtime_bindings(stmts: list[ast.stmt], names: set[str]) -> None:
                 _runtime_bindings(h.body, names)
             _runtime_bindings(node.orelse, names)
             _runtime_bindings(node.finalbody, names)
-        elif isinstance(node, (ast.With, ast.For, ast.While)):
-            if isinstance(node, ast.For):
+        elif isinstance(node, (ast.With, ast.AsyncWith, ast.For, ast.AsyncFor, ast.While)):
+            if isinstance(node, (ast.For, ast.AsyncFor)):
                 _bind_targets(node.target, names)
             _runtime_bindings(node.body, names)
+            _runtime_bindings(getattr(node, "orelse", []), names)
 
 
 class _Index:
@@ -93,11 +98,20 @@ class _Index:
             names: set[str] = set()
             _runtime_bindings(tree.body, names)
             lazy: set[str] | None = None
-            if "__getattr__" in names:  # a lazy module: its closed set of string literals
-                lazy = {n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)}
+            if "__getattr__" in names:  # a lazy module: the strings in its top-level literal tables
+                lazy = set()
+                for stmt in tree.body:
+                    value = getattr(stmt, "value", None)
+                    if isinstance(stmt, (ast.Assign, ast.AnnAssign)) and isinstance(
+                        value, (ast.Dict, ast.Set, ast.Tuple, ast.List)
+                    ):
+                        for n in ast.walk(value):
+                            if isinstance(n, ast.Constant) and isinstance(n.value, str):
+                                lazy.add(n.value)
             self._names[path] = (names, lazy)
         names, lazy = self._names[path]
-        return name in names or (lazy is not None and name in lazy)
+        # a `from x import *` re-export can bind any name: accept rather than guess (fail-open, documented)
+        return name in names or "*" in names or (lazy is not None and name in lazy)
 
 
 def _package_of(src: Path, path: Path) -> list[str] | None:

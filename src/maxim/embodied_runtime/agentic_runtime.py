@@ -781,7 +781,7 @@ class AgenticRuntimeMixin:
 
         # The protocol system (maxim.skills) was deleted in the 1.0 consolidation (3c6ad81d); its
         # start-up block stayed and failed behind one warning on every run until #1436's dead-import
-        # lint found it. Its always-None plumbing is a follow-up (docs/plans/lazy_import_lint_1436.md).
+        # lint found it. Its always-None plumbing is #1467.
 
         run_id = getattr(self, "run_id", None) or time.strftime("%Y-%m-%d_%H%M%S")
 

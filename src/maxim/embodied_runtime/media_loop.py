@@ -7,13 +7,12 @@ import time
 import wave
 from typing import Optional
 import numpy as np
-from maxim.utils.audio import resample_audio, to_int16
+from maxim.utils.audio import resample_audio, run_in_own_process_group, to_int16
 from maxim.utils.data_management import CLIInputLogger, TrainingSampleLogger, build_home
 from maxim.utils.logging import configure_logging, log_swallowed_exception, warn, warn_unless_refusal
 from maxim.data.camera.display import prepare_display, show_photo
 from maxim.inference.observation import display_detections, passive_observation
-from maxim.inference.transcribe_audio import watch_and_transcribe
-from maxim.models.audio.transcription import load_whisper_config
+from maxim.inference.transcribe_audio import load_whisper_config, watch_and_transcribe
 from maxim.utils.optional_deps import OptionalDependencyError, optional_dependency_installed
 from maxim.utils.gpu_compat import detect_blackwell
 
@@ -51,7 +50,7 @@ class MediaLoopMixin:
         video_path = os.path.join(self.home_dir, "videos", f"reachy_video_{run_id}.mp4")
         audio_path = os.path.join(self.home_dir, "audio", f"reachy_audio_{run_id}.wav")
         transcript_path = os.path.join(self.home_dir, "transcript", f"reachy_transcript_{run_id}.jsonl")
-        chunk_dir = os.path.join(self.home_dir, "audio", "chunks")
+        chunk_dir = os.path.join(self.home_dir, "audio", "chunks", run_id)  # per run: no stale chunks (#1436)
         cli_path = os.path.join(self.home_dir, "cli", f"cli_input_{run_id}.jsonl")
         vision_events_path = os.path.join(self.home_dir, "vision", f"vision_events_{run_id}.jsonl")
 
@@ -504,6 +503,9 @@ class MediaLoopMixin:
         the fix; any other start failure is ONE ERROR too. A worker that dies later is reported by
         ``workers.py::audio_writer_worker``. The probe is spec-only: this parent hides its GPUs and
         must not load faster-whisper's native CUDA libraries itself.
+
+        Interim: the embodied-device plan's step 5 Listener replaces this file-IPC path (and owns
+        listening state); build nothing new on it.
         """
         if not (self.audio and parallel and self._robot is not None):
             return None, None
@@ -592,8 +594,8 @@ class MediaLoopMixin:
             transcribe_shutdown_file = os.path.join(chunk_dir, ".shutdown")
 
             transcribe_process = ctx.Process(
-                target=watch_and_transcribe,
-                args=(chunk_dir, transcript_path),
+                target=run_in_own_process_group,  # a terminal Ctrl-C must not stop it before the parent does
+                args=(watch_and_transcribe, chunk_dir, transcript_path),
                 kwargs={
                     "model_size_or_path": whisper_model,
                     "device": whisper_device,

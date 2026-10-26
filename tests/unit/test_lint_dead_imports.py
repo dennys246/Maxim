@@ -2,7 +2,7 @@
 
 The guard's value is that it FIRES on an import of a module or name that no longer exists, at any
 depth, and does NOT false-flag a live one. The fixtures build a tiny `src/maxim` + `scripts/` tree.
-The repo-clean gate is strict-red until #1436's fix removes the ten dead imports it found.
+The repo-clean gate pins zero dead imports (#1436 removed the ten it found).
 """
 
 from __future__ import annotations
@@ -10,8 +10,6 @@ from __future__ import annotations
 import importlib.util
 import textwrap
 from pathlib import Path
-
-import pytest
 
 _REPO = Path(__file__).resolve().parent.parent.parent
 _SPEC = importlib.util.spec_from_file_location("lint_dead_imports", _REPO / "scripts" / "lint_dead_imports.py")
@@ -123,3 +121,43 @@ def test_a_dead_relative_import_fails(tmp_path):
         },
     )
     assert _LINT.check(repo) == ["src/maxim/pkg/a.py:2: module maxim.pkg.gone does not exist"]
+
+
+def test_bindings_in_handlers_else_branches_loops_and_with_blocks_count(tmp_path):
+    repo = _tree(
+        tmp_path,
+        {
+            "src/maxim/m.py": (
+                "import contextlib\n"
+                "try:\n    import nope_pkg\nexcept ImportError:\n    FROM_HANDLER = 1\n"
+                "if False:\n    pass\nelse:\n    FROM_ELSE = 1\n"
+                "with contextlib.suppress(Exception):\n    FROM_WITH = 1\n"
+                "for FROM_FOR in range(1):\n    pass\n"
+            ),
+            "src/maxim/a.py": "def f():\n    from maxim.m import FROM_HANDLER, FROM_ELSE, FROM_WITH, FROM_FOR\n",
+        },
+    )
+    assert _LINT.check(repo) == []
+
+
+def test_a_star_reexport_accepts_any_name(tmp_path):
+    repo = _tree(
+        tmp_path,
+        {
+            "src/maxim/base.py": "X = 1\n",
+            "src/maxim/facade.py": "from maxim.base import *\n",
+            "src/maxim/a.py": "def f():\n    from maxim.facade import X\n",
+        },
+    )
+    assert _LINT.check(repo) == []
+
+
+def test_a_lazy_module_counts_only_its_literal_tables_not_any_string(tmp_path):
+    repo = _tree(
+        tmp_path,
+        {
+            "src/maxim/lazy.py": '"""Mentions Ghost in a docstring."""\n_T = {"Known": 1}\ndef __getattr__(n):\n    return _T[n]\n',
+            "src/maxim/a.py": "def f():\n    from maxim.lazy import Ghost\n",
+        },
+    )
+    assert _LINT.check(repo) == ["src/maxim/a.py:2: maxim.lazy has no Ghost"]
