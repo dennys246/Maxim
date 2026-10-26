@@ -18,7 +18,7 @@ from typing import Any
 import time
 import uuid
 
-from maxim.math.angular_gyrus import AngularGyrus
+from maxim.math.angular_gyrus import AngularGyrus, resolve_category
 from maxim.math.ips import IPS
 from maxim.math.math_types import MathMemory
 from maxim.math.types import MathCategory
@@ -376,17 +376,16 @@ class MathTool(Tool):
 
         if operation == "store_memory":
             name = kwargs.get("name", "")
-            category_str = kwargs.get("category", "PATTERN")
+            category_arg = kwargs.get("category")
             domain = kwargs.get("domain", "learned")
             verbal = kwargs.get("verbal", "")
             code = kwargs.get("code", "")
             confidence = float(kwargs.get("confidence", 0.8))
             if not name:
                 return {"operation": "store_memory", "error": "name required"}
-            try:
-                category = MathCategory[category_str.upper()]
-            except (KeyError, AttributeError):
-                category = MathCategory.PATTERN
+            # The one category contract recall follows too (#1153): any case, blank or omitted = the PATTERN default,
+            # an unknown name raises (the model sees it as a tool error, never a record filed under PATTERN).
+            category = resolve_category(category_arg) or MathCategory.PATTERN
             now = time.time()
             record = MathMemory(
                 id=f"tool_{name}_{uuid.uuid4().hex[:8]}",

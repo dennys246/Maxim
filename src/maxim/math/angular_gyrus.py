@@ -51,12 +51,19 @@ class UnknownMathCategory(ValueError):
     """A recall named a category ``MathCategory`` does not have (#1153)."""
 
 
-def _category_name(category: MathCategory | str) -> str:
-    """The name the store keys ``category`` by (``_index_record`` writes ``record.category.name``)."""
-    if isinstance(category, MathCategory):
-        return category.name
+def resolve_category(category: MathCategory | str | None) -> MathCategory | None:
+    """The ONE category contract, for storing and recalling alike (#1153, owner decision 2026-10-25): a
+    ``MathCategory`` as it is; a name in any case ("pattern" is PATTERN); ``None`` or a blank name is no category
+    (no filter on recall; the caller's default on store); any other name raises ``UnknownMathCategory``, which the
+    math tool returns to the model as a tool error. Store and recall used to disagree: the tool stored an unknown
+    name as PATTERN and recalled it as a key nothing had."""
+    if category is None or isinstance(category, MathCategory):
+        return category
+    name = str(category).strip()
+    if not name:
+        return None
     try:
-        return MathCategory[str(category).strip().upper()].name
+        return MathCategory[name.upper()]
     except KeyError:
         valid = ", ".join(c.name for c in MathCategory)
         raise UnknownMathCategory(f"unknown math category {category!r}; one of: {valid}") from None
@@ -219,11 +226,10 @@ class AngularGyrus(StoreFileOwnership, MemoryLayer):
     ) -> list[MathMemory | CompressedMathMemory]:
         """Query math records by filters.
 
-        ``category`` is a ``MathCategory`` or its name in any case ("pattern" finds PATTERN): the store keys a
-        record by ``category.name`` (``_index_record``), so every form is keyed the same way (#1153: an enum built
+        ``category`` follows ``resolve_category``, the contract storing follows too: a ``MathCategory`` or its name
+        in any case, blank for no filter, and an unknown name raises ``UnknownMathCategory`` (#1153: an enum built
         ``category:MathCategory.PATTERN`` and a lower-case name ``category:pattern``, keys nothing had, so those
-        recalls came back empty). A name that is no category raises ``UnknownMathCategory`` (owner decision
-        2026-10-25: fail loud; the math tool returns it to the model as a tool error).
+        recalls came back empty).
 
         ``touch=False`` reads without counting an access: for a caller whose result nothing uses, so it does
         not move the ``access_count`` this method ranks by and retention reads (#1128).
@@ -237,8 +243,9 @@ class AngularGyrus(StoreFileOwnership, MemoryLayer):
                 ids = self._context_index.get(key, set())
                 candidate_ids = ids if candidate_ids is None else candidate_ids & ids
 
-            if category is not None:
-                key = f"category:{_category_name(category)}"
+            resolved = resolve_category(category)
+            if resolved is not None:  # the store keys a record by ``category.name`` (``_index_record``)
+                key = f"category:{resolved.name}"
                 ids = self._context_index.get(key, set())
                 candidate_ids = ids if candidate_ids is None else candidate_ids & ids
 

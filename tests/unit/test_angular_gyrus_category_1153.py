@@ -45,6 +45,39 @@ def test_a_category_name_in_any_case_finds_its_records_and_an_unknown_one_fails_
         ag.recall(category="patterns")
 
 
+def test_a_blank_category_is_no_filter():
+    """Owner decision 2026-10-25: a model filling an optional parameter with "" means no filter."""
+    ag = _gyrus()
+    everything = sorted(r.id for r in ag.recall(limit=1000))
+    assert {"m1", "p1"} <= set(everything)
+    for blank in ("", "  "):
+        assert sorted(r.id for r in ag.recall(limit=1000, category=blank)) == everything
+
+
+def test_storing_and_recalling_follow_one_category_contract():
+    """Owner decision 2026-10-25: store and recall are one contract. The tool used to file an unknown category under
+    PATTERN (so "store trend" succeeded while "recall trend" raised); now both raise, both take any case, and an
+    omitted or blank category stores under the PATTERN default."""
+    from maxim.math.types import MathCategory
+    from maxim.tools.math_tool import MathTool
+
+    tool = MathTool.__new__(MathTool)
+    tool._ag = _gyrus()
+    methods_before = len(tool._ag.recall(limit=1000, category=MathCategory.METHOD))
+    for spelled in ("method", "Method", "METHOD"):
+        stored = tool.run(operation="store_memory", name=f"median_{spelled}", category=spelled)
+        assert stored.success and stored.output["category"] == "METHOD", spelled
+    for blank in (None, ""):
+        stored = tool.run(operation="store_memory", name=f"guess_{blank!r}", category=blank)
+        assert stored.success and stored.output["category"] == MathCategory.PATTERN.name
+    refused = tool.run(operation="store_memory", name="x", category="trend")
+    assert refused.success is False and "unknown math category 'trend'" in (refused.error or "")
+    recalled = tool.run(operation="recall_memory", category="trend")
+    assert recalled.success is False and "unknown math category 'trend'" in (recalled.error or "")
+    stored_methods = tool.run(operation="recall_memory", category="method", limit=1000).output["count"]
+    assert stored_methods == methods_before + 3
+
+
 def test_the_math_tool_reports_an_unknown_category_to_the_model():
     from maxim.tools.math_tool import MathTool
 
