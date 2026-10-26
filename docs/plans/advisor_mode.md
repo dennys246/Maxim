@@ -12,6 +12,22 @@ cut, was settled the same day: **the atonia gate ships as its own patch, 1.3.4**
 > release". Nothing else in the plan changes: its scope, decisions and exit are as written
 > ([roadmap_1_3_x.md](roadmap_1_3_x.md) §The atonia gate).
 
+> **Approach notes and design passes done 2026-10-24 (Session V):**
+> [atonia_gate_approach_notes.md](atonia_gate_approach_notes.md) v5.1.
+> - **Reviews:** three adversarial passes plus four delta rounds; the last returned STOP.
+> - **Owner decisions V1–V8**, all as recommended:
+>   - **V1:** the observer runs one bounded turn per `ingest()`, not the agent loop.
+>   - **V2:** `Tool.effect` is a set of seven flags (`GOVERN` added), not an order.
+>   - **V3:** `ToolPolicy` is required hard on `Executor`, `build_executor` and `AgentConfig`.
+>   - **V4:** the observer's model is an in-process GGUF, through a closed backend rather than `LLMRouter`.
+>   - **V5:** a raise-only `MAXIM_OFFLINE`.
+>   - **V6:** `auto_sense` goes through the policy check.
+>   - **V7:** offline drops network, comms and undeclared tools.
+>   - **V8:** offline allows no subprocess and no endpoint at all, enforced by an audit-hook latch.
+>
+> **Where the two documents disagree, the notes win.** They replace items 1, 2, 3, 5 and 10's specs below. Their §8
+> lists every claim here that the census found stale.
+
 Each gate item gets an approach note and an adversarial design pass before code (CLAUDE.md "Faster without lowering
 the bar", item 1).
 
@@ -20,6 +36,8 @@ the bar", item 1).
 - **The observer** is the deployment that uses it: AvServ's Profile B.
 - **`maxim.advisor`** is its Experimental public API.
 - **Profile A**, the SAR research job, is a different composition (`maxim.research`). It is *not* inside the gate.
+  *(`maxim.research` is already an Experimental verb, `api.py::research`, so Profile A needs another name; decided
+  when items 13 and 14 start.)*
 
 ## Why an atonia gate (owner decision 2026-10-17)
 
@@ -52,6 +70,9 @@ safety-of-life consumer relies on. When it lands in `docs/agents/runtime-tools.m
 
 > Regression guard: the registration sweep (b), the dispatch sweep, the builder-refusal tests (embodiment, robot,
 > `MAXIM_*`, user config, prefetch root), item 10's census test and the behavioural no-effect test (§Red gates first).
+
+*(Superseded: the notes' §1A.9 states four invariants with `file::symbol` guards. Prefetch is moot under V1, and the
+census explains rather than enforces.)*
 
 **A behaviour on top, later.** An observe-and-speak *disposition* is a separate line, for 1.4 or later: an agent that
 learns when speaking up serves better than acting, close to [social_referencing.md](social_referencing.md). It enters
@@ -99,7 +120,7 @@ ships, **the sandbox is that channel's only guard**:
 | Tool dispatch | Any registered tool. Composite tools: the sub-sim tool spawns its own `bash`/`write_file` executor. Direct `executor.execute` callers. | items 1–3 | Maxim's gate |
 | Actuation | `embodied_runtime/movement.py`, reflexes and the Default Network, whenever an embodiment is attached | the closed builder refuses any embodiment or robot | Maxim's gate |
 | Environment | `MAXIM_ROLE=leader` (proxy, mesh, tunnel), other `MAXIM_*` toggles, `~/.config/maxim/config.json` | the closed builder builds from a closed config: it ignores `MAXIM_*` and the user config file | Maxim's gate |
-| Context (reads) | `runtime/prefetch.py` runs `find` and direct `open()` reads of `os.getcwd()` (captured at loop setup) on every input, outside the registry (#1342) | the closed builder: no prefetch, or prefetch rooted in an empty directory set before setup | Maxim's gate, once item 1 ships |
+| Context (reads) | `runtime/prefetch.py` runs `find` and direct `open()` reads of `os.getcwd()` (captured at loop setup) on every input, outside the registry (#1342) | the closed builder: no prefetch, or prefetch rooted in an empty directory set before setup *(superseded, V1: no loop, so no prefetch)* | Maxim's gate, once item 1 ships |
 | Egress | the LLM; cloud lanes and provider keys; model, encoder, vision, whisper and voice downloads; a second consent-free download in `llama_backend.py`; `transformers`; docker pulls; hivemind; the leader proxy and tunnel | item 10 (offline, a census-backed refusal) plus the closed builder (local LLM only) | Maxim's gate for fetches, once item 10 ships |
 | Disk | the loop's `data/agents/<agent>/runtime/state_*.json` under the CWD; Hippocampus, NAc and session saves; `lane_decisions.jsonl`; `MAXIM_LOG_FILE`; `utils/config.py::save_config`; `sim_reports` | item 7 (ephemeral) | sandbox only |
 | Inbound | `comms/api.py`, the tailed `<home>/cli/*.jsonl`, console `talk()` | item 4 (one framed entry point) | sandbox only |
@@ -134,6 +155,11 @@ consumers serve `actions.jsonl` rows as `ActionRecord` (Session S's contract). T
 - `Tool.effect`, because nothing classifies effects today;
 - a sealed registry, because a registry today silently replaces a same-name tool and accepts tools through several
   write paths.
+
+*(Superseded: the notes add more new mechanisms: `ToolPolicy`, the closed backend `closed_local`, `AdvisorLog` with
+strict `atomic_io` writers, the `maxim/_offline.py` latch, `current_policy`, the typed `ToolErrorKind` members, and
+step 0's lazy package inits. Each names its reason in the notes §1A.3. The mode tables also classify effects by name;
+their collapse is scheduled in §1A.11.)*
 
 ## What 1.3.2 already fixed (verified at the tag)
 
@@ -187,7 +213,8 @@ Owner priority: 1–3 first, then 6, 4, 5, 7, 8. AvServ's additions are items 9�
 - an autonomy controller with no proposal queue that any approval can drain. `approve` is a `ProposalQueue` method,
   the queue is held as `AutonomyController.proposal_queue`, and it is drained in
   `runtime/loop_planning.py::drain_approved`. So the composition replaces all three. Replacing only the executor would
-  not be enough.
+  not be enough. *(Superseded, V1: replacing the queue closes only the drain path, and three more approval paths
+  exist; the observer runs no loop at all; notes §4.1.)*
 
 **The builder:**
 - refuses an embodiment or robot;
@@ -208,7 +235,7 @@ proposal log back into a dispatch.
 ### Item 2: `Tool.effect` and the ceiling
 
 - **Effect classes.** #1315's set: READ, SELF_SCOPE, WRITE_LOCAL, NETWORK, COMMS, ACTUATE, proposed in that order,
-  lowest first.
+  lowest first. *(Superseded, V2: a set of seven flags with `GOVERN`, not an order; notes §2.)*
   - NETWORK covers reads that leave the machine: a GET can exfiltrate data in its URL.
   - An undeclared tool is the top class.
 - **Reading the effect.** It is read from `type(tool)` at registration and at dispatch, so neither instance mutation
@@ -285,7 +312,7 @@ proposal log back into a dispatch.
   caller never advances past events nobody judged.
 - The atomically written report is authoritative; the stdout status line is advisory.
 
-**Atomicity.** The report file is atomic (`atomic_write_json`). The proposal log is append-only JSONL, so a SIGKILL
+**Atomicity.** The report file is atomic (`atomic_write_json`; *superseded: `atomic_write_json_at(dir_fd, ...)`, notes §1A.3*). The proposal log is append-only JSONL, so a SIGKILL
 can tear its last line; readers drop a torn final record, and item 5's guard tests that. With one report per ingest
 call, a killed write leaves *no* report. That falls under "a missing report is not quiet".
 
@@ -311,6 +338,8 @@ call, a killed write leaves *no* report. That falls under "a missing report is n
 
 **What it does:**
 - Refuses Maxim's own HTTP at the single point, `utils/http.py`, except for the configured local LLM endpoint.
+  *(Superseded, V8: `utils/http.py` has no single chokepoint, and offline allows no endpoint; the enforcement is an
+  audit-hook latch; notes §6.)*
 - Sets `HF_HUB_OFFLINE` and `TRANSFORMERS_OFFLINE` **before the first import** of `huggingface_hub` or
   `transformers`, and passes `local_files_only=True` at each call site.
 - Forces `trust_remote_code=False`.
@@ -318,7 +347,8 @@ call, a killed write leaves *no* report. That falls under "a missing report is n
 - Refuses `ensure_tts_voice(auto=True)` too.
 - **Missing weights fail loudly.** The silent fallbacks become `status: "degraded"` (item 6): the encoder's hash
   embedding and semantic's lexical matching.
-- `llm.offline` drives the existing `hf_local_files_only`.
+- `llm.offline` drives the existing `hf_local_files_only`. *(Stale: that is the undocumented env var `MAXIM_LLM_HF_LOCAL_FILES_ONLY`, not a config
+  field; notes §6.)*
 
 **Configuration.**
 - **The knob:** `maxim config set llm.offline true`. It has no `_FIELD_TO_ENV` alias, stays off
@@ -530,6 +560,10 @@ Every fix ships with a caller on the shipped path, and each item gets the three-
 | AD9 | What may the gate's release promise? | **Experimental, with the effect-channel table in its docs.** |
 
 ## Draft interfaces, for AvServ to design against (Experimental)
+
+> **Superseded for the observer (2026-10-25):** the report and `open()` shape AvServ designs against is the notes'
+> §1A.8. It adds `session_id`, `proposals[]`, `log_last_seq`, `inputs[].rejected`, `reason`, status precedence, typed
+> refusals and an offline provenance. The owner relays it to AvServ. The draft below is kept as history.
 
 **The observer (Profile B).**
 
