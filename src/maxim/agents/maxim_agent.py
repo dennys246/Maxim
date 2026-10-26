@@ -355,19 +355,15 @@ class MaximAgent(Agent):
         nac: Any | None = None,
         memory_hub: Any | None = None,
     ) -> None:
-        """Wire CommunicationGateway and CommunicationBridge.
+        """Record the CommunicationGateway.
 
-        Call after MemoryHub is created. Sets up:
-        - CommunicationBridge for NAc reward attribution
-        - Registers bridge as PromotionSource with MemoryHub
+        The NAc reward-attribution bridge this used to wire (``bridges/communication_bridge.py``)
+        was deleted as dead in 3c6ad81d, but this still imported it whenever ``nac`` was given, so
+        with comms enabled (``MAXIM_COMMS_ENABLED``) the robot's agentic runtime failed to start
+        behind one warning (#1436, found by the dead-import lint). ``nac`` and ``memory_hub`` are
+        accepted and unused, so callers need no change; their removal is a follow-up.
         """
         self._gateway = gateway
-        if nac is not None:
-            from maxim.bridges.communication_bridge import CommunicationBridge
-
-            self._comm_bridge = CommunicationBridge(self._bus, nac)
-            if memory_hub and hasattr(memory_hub, "register_promotion_source"):
-                memory_hub.register_promotion_source(self._comm_bridge)
 
     def wire_preemption(
         self,

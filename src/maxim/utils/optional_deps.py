@@ -42,6 +42,7 @@ Regression guard: tests/unit/test_optional_deps.py.
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import logging
 from types import ModuleType
 
@@ -181,6 +182,20 @@ def optional_dependency_available(import_name: str) -> bool:
         importlib.import_module(import_name)
         return True
     except ImportError:
+        return False
+
+
+def optional_dependency_installed(import_name: str) -> bool:
+    """Return ``True`` iff *import_name* is installed, WITHOUT importing it (``importlib.util.find_spec``).
+
+    For a capability probe in a process that must not load the dependency itself: e.g. the robot's
+    parent process, which hides its GPUs and leaves faster-whisper (with its native CUDA libraries)
+    to a spawned transcription child (#1436). It proves the package is present, not that it works;
+    the consumer still reports a failure of its own. Never logs.
+    """
+    try:
+        return importlib.util.find_spec(import_name) is not None
+    except (ImportError, ValueError):  # a parent package missing, or a bad name
         return False
 
 

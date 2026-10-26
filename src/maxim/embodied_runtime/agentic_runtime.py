@@ -779,63 +779,9 @@ class AgenticRuntimeMixin:
         except Exception as e:
             warn("Failed to register introspection tools: %s", e, logger=self.log)
 
-        # --- Protocol system ---
-        try:
-            from maxim.skills.registry import ProtocolRegistry
-            from maxim.skills.tools import RunProtocolTool, StopProtocolTool, ListProtocolsTool
-
-            self._protocol_registry = ProtocolRegistry(
-                maxim=self,
-                tool_registry=registry,
-            )
-
-            # Register built-in protocols
-            try:
-                from maxim.skills.protocols.shredder_segmenter import ShredderSegmenterProtocol
-
-                duration_env = os.getenv("SHREDDER_DURATION_MINUTES", "0")
-                try:
-                    duration_min = float(duration_env)
-                except ValueError:
-                    duration_min = 0.0
-                interval_env = os.getenv("SHREDDER_HEALTH_INTERVAL", "30")
-                try:
-                    health_interval = float(interval_env)
-                except ValueError:
-                    health_interval = 30.0
-                self._protocol_registry.register(
-                    ShredderSegmenterProtocol(
-                        shredder_api_url=os.getenv("SHREDDER_API_URL"),
-                        shredder_license_id=os.getenv("SHREDDER_LICENSE_ID"),
-                        shredder_api_key=os.getenv("SHREDDER_API_KEY"),
-                        shredder_site_id=os.getenv("SHREDDER_SITE_ID"),
-                        duration_minutes=duration_min,
-                        health_endpoint_url=os.getenv("SHREDDER_HEALTH_URL", ""),
-                        health_interval_seconds=health_interval,
-                    )
-                )
-            except Exception as e:
-                warn("ShredderSegmenterProtocol not available: %s", e, logger=self.log)
-
-            # Register protocol management tools
-            registry.register(RunProtocolTool(self._protocol_registry))
-            registry.register(StopProtocolTool(self._protocol_registry))
-            registry.register(ListProtocolsTool(self._protocol_registry))
-
-            # Register activation + stop phrases for all protocols (permanent)
-            for proto in self._protocol_registry._protocols.values():
-                self._protocol_registry._register_phrases(proto.name, proto)
-
-            # Wire ProtocolRegistry to MemoryAgent for skill name injection (A7.1)
-            agent.memory._protocol_registry = self._protocol_registry
-
-            # Wire skill registry to ConceptContextBuilder for discovery (A7.5)
-            if memory_hub and memory_hub._concept_context_builder:
-                skills = self._protocol_registry.all_skills()
-                memory_hub._concept_context_builder.set_skill_registry(skills)
-
-        except Exception as e:
-            warn("Failed to initialize protocol system: %s", e, logger=self.log)
+        # The protocol system (maxim.skills) was deleted in the 1.0 consolidation (3c6ad81d); its
+        # start-up block stayed and failed behind one warning on every run until #1436's dead-import
+        # lint found it. Its always-None plumbing is a follow-up (docs/plans/lazy_import_lint_1436.md).
 
         run_id = getattr(self, "run_id", None) or time.strftime("%Y-%m-%d_%H%M%S")
 

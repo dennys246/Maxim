@@ -28,7 +28,6 @@ def _tree(tmp_path: Path, files: dict[str, str]) -> Path:
     return tmp_path
 
 
-@pytest.mark.xfail(strict=True, reason="#1436: ten dead maxim imports in src/ and scripts/ (voice input among them)")
 def test_the_repo_has_no_dead_maxim_imports():
     assert _LINT.check() == []
 
@@ -113,3 +112,14 @@ def test_main_reports_and_fails(tmp_path, monkeypatch, capsys):
     assert "dead-import lint: FAIL (1)" in capsys.readouterr().out
     monkeypatch.setattr(_LINT, "check", lambda: [])
     assert _LINT.main() == 0
+
+
+def test_a_dead_relative_import_fails(tmp_path):
+    repo = _tree(
+        tmp_path,
+        {
+            "src/maxim/pkg/__init__.py": "",
+            "src/maxim/pkg/a.py": "def f():\n    from .gone import x\n    from ..pkg import a\n",
+        },
+    )
+    assert _LINT.check(repo) == ["src/maxim/pkg/a.py:2: module maxim.pkg.gone does not exist"]

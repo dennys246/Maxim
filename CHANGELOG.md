@@ -33,6 +33,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The robot hears again** ([#1436](https://github.com/dennys246/Maxim/issues/1436), found by maxim-pulse's device
+  review). Since `db274547` (2026-04-03) deleted a re-export shim, the robot's transcription start and the audio
+  writer imported it lazily, so every robot session ran with no voice input behind one warning. Both now import
+  `maxim.inference.transcribe_audio` at module top level, so a missing module fails at import. Voice input that cannot
+  start says so with ONE ERROR (`Voice input is OFF: ...`): a missing `audio` extra names `pip install
+  'pymaxim[audio]'` (probed without importing faster-whisper into the parent), and a transcriber that dies after
+  spawn is reported once by the audio writer, which then stops queueing chunks nobody will read. The transcription
+  start moved out of `MediaLoopMixin.live` (566 → 425 lines).
+- **A new CI lint, `scripts/lint_dead_imports.py`**, resolves every `maxim` import in `src/` and `scripts/`, at any
+  depth (lazy, `TYPE_CHECKING`, class body), against the tree: the module and the imported name must exist. It found
+  seven more dead imports, all fixed: `MaximAgent.wire_communication` imported the deleted communication bridge, so
+  with comms enabled (`MAXIM_COMMS_ENABLED`) the robot's agentic runtime failed to start behind one warning; the
+  deleted protocol system's start-up block in `agentic_runtime.py` failed on every run; a `TYPE_CHECKING` import in
+  `default_network/behaviors` named a moved class. Two scripts that could no longer run were deleted:
+  `scripts/rtsp_bridge.py` (its bridge was removed in 1.0) and `scripts/behavioral_convergence_exp2.py` (Exp 2's
+  recorded result stands; it reproduces at fe1124b9). `utils.optional_deps.optional_dependency_installed` is a new
+  spec-only probe.
 - **The Reachy speaker tells the truth, at the right speed and scale** ([#1435](https://github.com/dennys246/Maxim/issues/1435),
   found by maxim-pulse on a real Reachy). Nothing in maxim started the SDK's player, so every robot utterance and
   the spoken pairing code were dropped while the sink reported success; Piper's 22,050 Hz played at 73% speed on the
