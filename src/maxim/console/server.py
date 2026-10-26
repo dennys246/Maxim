@@ -767,6 +767,10 @@ def post_pair_request(request: Request) -> PairRequestAccepted:
         409: {"description": "Pairing is not available on this deployment (no announcer).", **_PAIR_DETAIL},
         410: {"description": "No active code — expired, consumed, or never announced.", **_PAIR_DETAIL},
         429: {"description": "Claims are paced (~1.5 s apart) — retry momentarily.", **_PAIR_DETAIL},
+        503: {
+            "description": "The device's console token file is unusable (the code is consumed; fix, then re-request).",
+            **_PAIR_DETAIL,
+        },
     },
 )
 def post_pair_claim(body: PairClaimRequest, request: Request) -> PairClaimResult:
@@ -801,9 +805,20 @@ def post_pair_claim(body: PairClaimRequest, request: Request) -> PairClaimResult
     # static-token app — a paired owner must never receive a token the very
     # app refuses (caught by the happy-path test's sign-in assertion).
     if getattr(request.app.state, "auth_token_source", "static") == "disk":
+        from maxim.exceptions import KeyFileUnusable
         from maxim.tunnel.keys import ensure_console_token
 
-        return PairClaimResult(token=ensure_console_token())
+        try:
+            return PairClaimResult(token=ensure_console_token())
+        except KeyFileUnusable as e:
+            # The code is already burned (owner decision 2026-10-25: it was spoken aloud). The path stays in the
+            # host's log; the network answer names only the reason (#1402).
+            logger.warning("pairing: console token unusable (%s): %s — %s", e.reason, e.path, e.fix_hint)
+            raise HTTPException(
+                status_code=503,
+                detail=f"The console token file on this device is unusable ({e.reason}); fix it on the device, "
+                "then ask the robot for a new code.",
+            ) from e
     return PairClaimResult(token=request.app.state.auth_token)
 
 
@@ -2354,6 +2369,9 @@ def device_console_handoff(host: str, port: int = 8765) -> ConsoleHandoff:
     store, no log panel), so the credential rides it rather than a wider one
     (contrast: a first-comer LAN pairing window would ADD an unauthenticated
     network path; this adds none).
+
+    Raises :class:`maxim.exceptions.KeyFileUnusable` when a token file exists but cannot be used (unreadable, a
+    directory, oversized): it is never overwritten, since that would log out every device with no message (#1402).
     """
     from maxim.tunnel.keys import ensure_console_token
 
@@ -2375,6 +2393,40 @@ def device_console_handoff(host: str, port: int = 8765) -> ConsoleHandoff:
 
 
 # ── CLI runner ──────────────────────────────────────────────────────────────
+
+
+def _print_console_token(*, rotate: bool) -> int:
+    """`maxim serve --show-token` / `--rotate-token`: print the token, or why it cannot be read or rotated (#1402)."""
+    from maxim.exceptions import KeyFileUnusable
+    from maxim.tunnel.keys import rotate_console_token
+
+    if not rotate:
+        shown = _ensure_token_or_report()
+        if shown is None:
+            return 2
+        print(shown)
+        return 0
+    try:
+        rotated = rotate_console_token()
+    except KeyFileUnusable as e:  # the creation lock is held by another maxim process
+        print(f"maxim serve: {e}\nmaxim serve: {e.fix_hint}", flush=True)
+        return 2
+    print("maxim serve: console token ROTATED — every signed-in device is now logged out.")
+    print(rotated)
+    return 0
+
+
+def _ensure_token_or_report() -> str | None:
+    """`maxim serve`'s console token, or None after printing why an existing token file cannot be used (#1402)."""
+    from maxim.exceptions import KeyFileUnusable
+    from maxim.tunnel.keys import ensure_console_token
+
+    try:
+        return ensure_console_token()
+    except KeyFileUnusable as e:
+        print(f"maxim serve: {e}", flush=True)
+        print(f"maxim serve: {e.fix_hint}", flush=True)
+        return None
 
 
 def _resolve(field_path: str, cli_value: Any) -> Any:
@@ -2431,15 +2483,7 @@ def run_serve(argv: list[str]) -> int:
         return 0
 
     if args.show_token or args.rotate_token:
-        from maxim.tunnel.keys import ensure_console_token, rotate_console_token
-
-        if args.rotate_token:
-            token = rotate_console_token()
-            print("maxim serve: console token ROTATED — every signed-in device is now logged out.")
-        else:
-            token = ensure_console_token()
-        print(token)
-        return 0
+        return _print_console_token(rotate=args.rotate_token)
 
     port = int(_resolve("console.port", args.port))
     # Fail at start, not on the first Talk request, if the configured agent id
@@ -2464,9 +2508,9 @@ def run_serve(argv: list[str]) -> int:
     # owns the edge and the engine deliberately demands no token.
     token: str | None = None
     if not sandbox_on:
-        from maxim.tunnel.keys import ensure_console_token
-
-        token = ensure_console_token()
+        token = _ensure_token_or_report()
+        if token is None:
+            return 2
 
     # `maxim serve` samples health (owner decision 2026-10-13: the console always
     # runs the heartbeat); build_app keeps it off for tests and embedders.
