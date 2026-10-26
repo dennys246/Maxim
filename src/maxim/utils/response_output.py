@@ -109,7 +109,7 @@ class ResponseOutput:
         sandbox_path: Path | str,
         logger: logging.Logger | None = None,
         tts_engine: Any | None = None,
-        speaker_fn: Callable[[Any], None] | None = None,
+        speaker_fn: Callable[..., bool] | None = None,
     ):
         """Initialize response output manager.
 
@@ -117,7 +117,9 @@ class ResponseOutput:
             sandbox_path: Path to the sandbox directory.
             logger: Logger instance for debug output.
             tts_engine: Optional TTS engine for audio responses.
-            speaker_fn: Optional function to play audio samples.
+            speaker_fn: Optional audio sink, called as ``speaker_fn(samples, sample_rate=<int>)``
+                and returning whether the audio played (the sink resamples to its device's
+                rate; #1435).
         """
         self.sandbox_path = Path(sandbox_path)
         self.logger = logger or logging.getLogger(__name__)
@@ -283,14 +285,19 @@ class ResponseOutput:
 
         return "txt"
 
-    def _speak_response(self, text: str) -> None:
+    def _speak_response(self, text: str) -> bool:
         """Synthesize and play response via TTS.
 
         Args:
             text: The text to speak. Will be truncated at sentence boundary if too long.
+
+        Returns:
+            Whether the speaker reported that the audio played. False when TTS is off,
+            synthesis is empty or fails, or the sink refuses (#1435: a speak tool must
+            never report a silent drop as spoken).
         """
         if not self.audio_enabled:
-            return
+            return False
 
         # Truncate at sentence boundary for natural speech
         max_speech_length = 1000
@@ -306,19 +313,19 @@ class ResponseOutput:
 
             if len(audio) == 0:
                 self.logger.debug("TTS returned empty audio for text: %s", speech_text[:50])
-                return
+                return False
 
-            # Resample if needed (TTS typically outputs 22050Hz, Reachy needs 16000Hz)
-            if hasattr(self.tts, "sample_rate") and self.tts.sample_rate != 16000:
-                from maxim.utils.audio import resample_audio
-
-                audio = resample_audio(audio, self.tts.sample_rate, 16000)
-
-            # Play through speaker
-            self.speaker(audio)
+            # The sink resamples to its device's rate, so hand it the TTS's own rate. (A
+            # pre-resample here to a guessed 16 kHz returned float64 on the int16 scale,
+            # which hard-clipped on the device: pulse's R6, #1435.)
+            played = bool(self.speaker(audio, sample_rate=int(self.tts.sample_rate)))
+            if not played:
+                self.logger.warning("Speech did not play: the speaker refused (see its warning)")
+            return played
 
         except Exception as e:
             self.logger.warning("TTS failed: %s", e)
+            return False
 
 
 # Convenience function for quick CLI output

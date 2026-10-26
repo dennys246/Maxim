@@ -1,5 +1,7 @@
 # Exp 44 — Does a learned substrate steer the LLM? (trajectory-matched counterfactual)
 
+> **Re-assessment 2026-10-25 ([#1301](https://github.com/dennys246/Maxim/issues/1301)): bounded.** Both prompts of every pair carried the leaked `respond: NOT AVAILABLE` line (#1260), so the paired design cancels it. For the 44b pilot this is on record: in `data/44b_pilot/arms/*/seed1/capture.jsonl` all 90 planning prompts, full and ablated, carry the line (the 11 post-tool follow-up prompts list no tools). For Exp 44 arm A (no capture committed) it is inferred from the code. But base rates and the choice set were set under it, and the 44b confirmatory must run on the fixed path ([narrator_defects_reassessment.md](narrator_defects_reassessment.md)).
+
 **Status:** ARM A + COUNTERBALANCE COMPLETE (2026-07-28). **EXPLORATORY** — the final
 metrics were selected after observing pilot data; the confirmatory re-run at power is
 Exp 44b ([protocols/exp44b_preregistration.md](protocols/exp44b_preregistration.md)).

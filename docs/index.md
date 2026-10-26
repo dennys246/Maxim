@@ -104,7 +104,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 |----------|-------------|
 | [Experiments lab notebook](experiments/README.md) | Every experiment with status — the 1.3 headline rows: [Exp 60](experiments/exp60_drowning_avoidance_prereg.md) (anticipatory drowning-avoidance) and [Exp 61](experiments/exp61_shared_fear_prereg.md) (the survival fear transfers between agents), EARNED in 1.3.0; since B1 (2026-10-14/15) T1-13/14/15 (Exp 60/61/62) are PARTIAL, floor matched under BF2 ([baseline_floors.md](plans/baseline_floors.md)) — with [limits](limits/README.md) and the [graduation ledger](plans/behavioral_graduation_candidates.md) |
 | [Hippocampal Recall Experiment](experiments/hippocampal_recall_experiment.md) | Design and infrastructure for memory interference testing |
-| [Run Notes](experiments/hippocampal_recall_run_notes.md) | Results from 2026-04-06: Verath recall experiment |
+| [Run Notes](experiments/hippocampal_recall_run_notes.md) | Results from 2026-04-06: Verath recall experiment (behavioural half withdrawn 2026-10-25, [#1301 re-assessment](experiments/narrator_defects_reassessment.md)) |
 
 ---
 

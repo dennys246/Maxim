@@ -1,5 +1,7 @@
 # Experiment 09: Percept Reflex System PoC
 
+> **Re-assessment 2026-10-25 ([#1301](https://github.com/dennys246/Maxim/issues/1301); T3-9, no status change):** the EARNED 2026-04-25 result (raw LOST) and the 2026-09-24 re-run (a typed abort) are unaffected, since the reflexes fire on narration and read no AUT words. The 2026-10-03 O19 re-run is unaffected by #1261 (no speech) and bounded by #1260 (the prompt shapes the AUT's own deliberation). The surviving copy `20260818_004321` is bounded: all 6 of its `respond` calls are canned LLM-outage fallbacks ([narrator_defects_reassessment.md](narrator_defects_reassessment.md)).
+
 **Date:** 2026-04-25
 **Branch:** `feat/percept-reflex-system`
 **Version:** 0.8.0+ (percept reflex system)

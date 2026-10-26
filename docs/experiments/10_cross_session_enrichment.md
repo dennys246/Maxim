@@ -1,5 +1,7 @@
 # Experiment 10: Cross-Session Enrichment Validation
 
+> **Re-assessment 2026-10-25 ([#1301](https://github.com/dennys246/Maxim/issues/1301); T1-1, no status change):** the 2026-04 result, the 2026-09-27 re-run and the O19 campaigns are unaffected (surfaced memories, no speech, typed aborts). The 2026-08-18/19 heartbeat re-validation (hippocampus 108 → 535 → 295) is bounded: its store counts include the `respond` follow-up episodes (#1260), and all 7 of its `respond` calls are canned LLM-outage fallbacks ([narrator_defects_reassessment.md](narrator_defects_reassessment.md)).
+
 > **Status: SUPERSEDED 2026-10-04 by T1-16** ([Exp 63](exp63_carried_recall_prereg.md), EARNED narrow): the claim was re-tested as a new pre-registered experiment on current code. Before that: **STALE since 2026-09-30** (ledger T1-1, owner decision): every session of the 2026-09-27 re-run
 > ended `planning_failed`, a typed abort, which cannot back a status; the complete re-run (outstanding O19) restores it.
 >

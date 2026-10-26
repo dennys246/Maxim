@@ -162,9 +162,9 @@ class SpeakTool(Tool):
         if also_print:
             self._response_output._output_to_cli(text)
 
-        self._response_output._speak_response(text)
-
-        return ToolResult(
-            success=True,
-            output={"spoken": True, "printed": also_print},
-        )
+        # Report what the speaker said happened, never an unconditional True (#1435).
+        spoken = self._response_output._speak_response(text)
+        output: dict[str, Any] = {"spoken": spoken, "printed": also_print}
+        if not spoken:
+            output["reason"] = "the speaker did not play the audio"
+        return ToolResult(success=True, output=output)

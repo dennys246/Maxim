@@ -1,5 +1,7 @@
 # Experiment 11: Cradle Sensorimotor PoC
 
+> **Re-assessment 2026-10-25 ([#1301](https://github.com/dennys246/Maxim/issues/1301)): bounded.** The infrastructure findings stand. The behavioural observations ran with the AUT told `respond` was NOT AVAILABLE, each call drawing a follow-up (#1260), and with the generative narrator seeing only delivery receipts for `respond` (#1261) ([narrator_defects_reassessment.md](narrator_defects_reassessment.md)).
+
 **Date:** 2026-04-26
 **Branch:** feat/cradle-sensorimotor
 **Status:** Infrastructure validated, narrator generating cradle scenes
