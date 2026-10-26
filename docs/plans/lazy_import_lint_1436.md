@@ -183,3 +183,14 @@ Folds:
 - Hand-off (CLAUDE.md is the process session's file): extend the "Dead code accumulates silently" lesson with "...and
   an import of a missing module or name fails CI. Regression guard: scripts/lint_dead_imports.py +
   tests/unit/test_lint_dead_imports.py"; add `optional_dependency_installed` to the optional-deps lesson's intents.
+
+## The delta round (2026-10-25, 409d8f86 → 6618c63f) and its fold
+
+One SHOULD-FIX, a regression the process-group fold created: leaving the terminal's group also drops its SIGHUP, so a
+parent killed hard (terminal closed, SSH dropped; the parent has no SIGHUP handler, so `live()`'s teardown never runs)
+left the transcriber orphaned with its model loaded (reproduced). Fold: `run_in_own_process_group` starts a watchdog
+thread that SIGTERMs the child once its spawning parent (`multiprocessing.parent_process().pid`, not `getppid()`, which
+already names the reaper when the parent died during the child's imports; a deletion probe proved that race real) is
+gone. A real-spawn test kills the parent hard and asserts the child exits. Also folded: fixtures for loop-`else`
+bindings; the heavy-import subprocess test pins this checkout's `src`. Recorded, not folded: each run leaves an empty
+`audio/chunks/<run_id>/` (`cleanup_chunks` removes files; removing the directory would grow the pinned `live()`).

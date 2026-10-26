@@ -132,9 +132,14 @@ def test_bindings_in_handlers_else_branches_loops_and_with_blocks_count(tmp_path
                 "try:\n    import nope_pkg\nexcept ImportError:\n    FROM_HANDLER = 1\n"
                 "if False:\n    pass\nelse:\n    FROM_ELSE = 1\n"
                 "with contextlib.suppress(Exception):\n    FROM_WITH = 1\n"
-                "for FROM_FOR in range(1):\n    pass\n"
+                "for FROM_FOR in range(1):\n    pass\nelse:\n    FROM_LOOP_ELSE = 1\n"
+                "async def _f():\n    pass\n"
+                "while False:\n    pass\nelse:\n    FROM_WHILE_ELSE = 1\n"
             ),
-            "src/maxim/a.py": "def f():\n    from maxim.m import FROM_HANDLER, FROM_ELSE, FROM_WITH, FROM_FOR\n",
+            "src/maxim/a.py": (
+                "def f():\n    from maxim.m import FROM_HANDLER, FROM_ELSE, FROM_WITH, FROM_FOR, FROM_LOOP_ELSE, "
+                "FROM_WHILE_ELSE\n"
+            ),
         },
     )
     assert _LINT.check(repo) == []

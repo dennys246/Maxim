@@ -62,7 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   'pymaxim[audio]'` (probed without importing faster-whisper into the parent), and a transcriber that dies after
   spawn is reported once by the audio writer, which then stops queueing chunks nobody will read. The transcription
   start moved out of `MediaLoopMixin.live` (566 → 425 lines); the transcriber runs in its own process group (a
-  terminal Ctrl-C no longer stops it ahead of the parent), and each run keeps its chunks in
+  terminal Ctrl-C no longer stops it ahead of the parent; it exits when its parent dies), and each run keeps its chunks in
   `audio/chunks/<run_id>/` (a shared directory fed an earlier session's leftover audio to the next one). Verified with
   fakes and a real spawned child that fails to load its model; the on-robot check is R2's reachy cell.
 - **A new CI lint, `scripts/lint_dead_imports.py`** (Added), resolves every `maxim` import in `src/` and `scripts/`, at any

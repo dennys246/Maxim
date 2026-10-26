@@ -251,6 +251,7 @@ def test_live_feeds_the_helpers_worker_to_the_audio_writer_with_a_per_run_chunk_
 def test_importing_the_robot_media_modules_loads_no_speech_or_gpu_stack():
     """The hoisted imports must stay cheap: the parent hides its GPUs, and a robot without the `audio` extra must
     still import the runtime (transcribe_audio is Session V's file; a top-level faster_whisper there breaks this)."""
+    import os
     import subprocess
     import sys
 
@@ -258,6 +259,48 @@ def test_importing_the_robot_media_modules_loads_no_speech_or_gpu_stack():
         "import sys, maxim.embodied_runtime.media_loop, maxim.embodied_runtime.workers;"
         "print(sorted(m for m in ('faster_whisper', 'ctranslate2', 'torch') if m in sys.modules))"
     )
-    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
+    from pathlib import Path
+
+    env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[2] / "src")}  # this checkout's maxim
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120, env=env)
     assert out.returncode == 0, out.stderr[-500:]
     assert out.stdout.strip() == "[]"
+
+
+def test_an_orphaned_transcriber_exits_when_its_parent_dies_hard(tmp_path):
+    """Leaving the terminal's group also drops its SIGHUP: a parent killed without its teardown must not leave the
+    transcriber (and its model) running. A real spawn: the parent exits hard, the child must follow."""
+    import os
+    import subprocess
+    import sys
+    import time
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[2] / "src"
+    script = tmp_path / "parent.py"
+    script.write_text(
+        "import multiprocessing as mp, os, time\n"
+        "from maxim.utils.audio import run_in_own_process_group\n"
+        "if __name__ == '__main__':\n"
+        "    child = mp.get_context('spawn').Process(target=run_in_own_process_group, args=(time.sleep, 120))\n"
+        "    child.start()\n"
+        "    print(child.pid, flush=True)\n"
+        "    os._exit(0)  # a hard death: no teardown, no join\n"
+    )
+    env = {**os.environ, "PYTHONPATH": str(src)}
+    out = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, timeout=60, env=env)
+    pid = int(out.stdout.strip())
+    deadline = time.time() + 30.0
+    try:
+        while time.time() < deadline:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return  # the orphan exited
+            time.sleep(0.2)
+        pytest.fail("the orphaned transcriber outlived its parent")
+    finally:
+        try:
+            os.kill(pid, 9)
+        except ProcessLookupError:
+            pass
