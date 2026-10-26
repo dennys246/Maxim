@@ -8,8 +8,8 @@
   },
   "packages": {
     "maxim/<root>": {
-      "percent": 54.1,
-      "missing": 1509
+      "percent": 59.3,
+      "missing": 1340
     },
     "maxim/agents": {
       "percent": 69.3,
@@ -28,8 +28,8 @@
       "missing": 686
     },
     "maxim/comms": {
-      "percent": 25.1,
-      "missing": 215
+      "percent": 39.4,
+      "missing": 178
     },
     "maxim/console": {
       "percent": 93.8,
