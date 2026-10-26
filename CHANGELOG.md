@@ -54,6 +54,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Experiment harness follow-ups** ([#1038](https://github.com/dennys246/Maxim/issues/1038),
+  [#1024](https://github.com/dennys246/Maxim/issues/1024)).
+  - R3's report treats a second clean row for one (arm, seed) as INCOMPLETE and names it, as Exp 60/61/62 do. It used
+    to count both, so a campaign restarted without `--resume` could read COMPLETE.
+  - Exp 57's rows carry `ts` = the start of their cohort-rung (the run's start, as Exp 49 stamps a trial's), not
+    the time each row is written.
+  - Documented: `_provenance.append_refusal` refuses a run whose code tree is `unknown`, even for a fresh file, and
+    campaign ids must be letters, digits, `-` or `_` (`safe_campaign_id`).
+
 - **The robot hears again** ([#1436](https://github.com/dennys246/Maxim/issues/1436), found by maxim-pulse's device
   review). Since `db274547` (2026-04-03) deleted a re-export shim, the robot's transcription start and the audio
   writer imported it lazily, so every robot session ran with no voice input behind one warning. Both now import

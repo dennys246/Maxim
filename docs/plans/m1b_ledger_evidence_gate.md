@@ -436,8 +436,11 @@ The last writer fixes before 5b.
 - **The append refusal** (`_provenance.append_refusal`, every survival row writer): a file whose existing lines
   are not JSON, unstamped (pre-M1b), or from another `code_tree_sha256` takes no append (exit 2). A resume on the
   same tree (docs-only commits included, since the digest covers `src/` + `scripts/`) appends freely; the
-  verdicts' own one-`executed_git_hash` check stays stricter.
-- **`stamp_harness_row` requires an epoch `ts`** (the run's time, set by its writer); Exp 49 rows gain theirs.
+  verdicts' own one-`executed_git_hash` check stays stricter. It also refuses a run whose code tree is `unknown`, even
+  for a fresh file (a smoke from a tarball or a non-git copy on the rig): an unknown tree matches nothing, itself
+  included. Campaign ids must be letters, digits, `-` or `_` (`_provenance.safe_campaign_id`).
+- **`stamp_harness_row` requires an epoch `ts`**: the run's START, set by its writer. Exp 49 rows gain theirs; Exp 57
+  stamps each row with its cohort-rung's start, not the time it is written (#1024).
 - **The Exp 53/54 verdict kind** comes from the scoped runs' `start` lines (`experiment`), via
   `VERDICT_KIND_BY_EXPERIMENT`: `exp53_verdict`, `exp54_verdict`, `gate6_exp53_verdict` (uncited). A mix or an
   unknown experiment refuses; runs that predate the field (the 53b R1 replication) get
@@ -457,7 +460,8 @@ Deviations from the closed design, and consequences, stated:
   `r3-bench-1`, so its prereg runbook command no longer finds a gauntlet — refused with a message); re-benching on
   a new tree needs an explicit `--out` under the same id; `--campaign-id` is required even with `--gauntlet`.
   `_cal` still writes the gauntlet straight under `docs/experiments/data/` without the gated-write check
-  (pre-existing; it no longer overwrites a committed file).
+  (pre-existing; by default it no longer overwrites a committed file, but an explicit
+  `--gauntlet docs/experiments/data/r3_gauntlet.json` still overwrites the legacy file).
 - **R3 report:** R3's COMPLETE/INCOMPLETE moves to `r3_status` and the file is `_format_version: "1.1"` (owner
   decision); a pre-1.1 report reads `status` as R3's own value.
 - **Exp 62:** `run` refuses unless the file holds an UNREFUSED replay row for its campaign. Without
