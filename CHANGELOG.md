@@ -68,6 +68,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   raises it to the device bootstrap, which must now present it (maxim-pulse `apps/reachy`). The fix hint never
   suggests a rotation, which would keep the unusable mode.
 
+- **The robot hears again** ([#1436](https://github.com/dennys246/Maxim/issues/1436), found by maxim-pulse's device
+  review). Since `db274547` (2026-04-03) deleted a re-export shim, the robot's transcription start and the audio
+  writer imported it lazily, so every robot session ran with no voice input behind one warning. Both now import
+  `maxim.inference.transcribe_audio` at module top level, so a missing module fails at import. Voice input that cannot
+  start says so with ONE ERROR (`Voice input is OFF: ...`): a missing `audio` extra names `pip install
+  'pymaxim[audio]'` (probed without importing faster-whisper into the parent), and a transcriber that dies after
+  spawn is reported once by the audio writer, which then stops queueing chunks nobody will read. The transcription
+  start moved out of `MediaLoopMixin.live` (566 → 425 lines); the transcriber runs in its own process group (a
+  terminal Ctrl-C no longer stops it ahead of the parent; it exits when its parent dies), and each run keeps its chunks in
+  `audio/chunks/<run_id>/` (a shared directory fed an earlier session's leftover audio to the next one). Verified with
+  fakes and a real spawned child that fails to load its model; the on-robot check is R2's reachy cell.
+- **A new CI lint, `scripts/lint_dead_imports.py`** (Added), resolves every `maxim` import in `src/` and `scripts/`, at any
+  depth (lazy, `TYPE_CHECKING`, class body), against the tree: the module and the imported name must exist. It found
+  seven more dead imports, all fixed: `MaximAgent.wire_communication` imported the deleted communication bridge, so
+  with comms enabled (`MAXIM_COMMS_ENABLED`) the robot's agentic runtime failed to start behind one warning; the
+  deleted protocol system's start-up block in `agentic_runtime.py` failed on every run; a `TYPE_CHECKING` import in
+  `default_network/behaviors` named a moved class. Two scripts that could no longer run were deleted:
+  `scripts/rtsp_bridge.py` (its bridge was removed in 1.0) and `scripts/behavioral_convergence_exp2.py` (Exp 2's
+  recorded result describes fe1124b9, where it was re-run on 2026-10-25: 13/13). Added:
+  `utils.optional_deps.optional_dependency_installed`, a spec-only probe, and `utils.audio.run_in_own_process_group`.
 - **The Reachy speaker tells the truth, at the right speed and scale** ([#1435](https://github.com/dennys246/Maxim/issues/1435),
   found by maxim-pulse on a real Reachy). Nothing in maxim started the SDK's player, so every robot utterance and
   the spoken pairing code were dropped while the sink reported success; Piper's 22,050 Hz played at 73% speed on the
