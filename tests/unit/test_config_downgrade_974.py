@@ -405,3 +405,49 @@ def test_a_restored_or_superseded_value_is_never_offered_again(tmp_path: Path) -
     left = json.loads(cw.preserved_path(path).read_text())["entries"]
     assert left == {"llm": {**left["llm"], "value": {"future_knob": 1}}}  # the unknown key is still kept
     assert json.loads(path.read_text())["llm"]["n_ctx"] == 8192
+
+
+# ── the atonia gate (#1315 item 10, notes §1A.6) ──────────────────────────
+
+
+class _ScenarioBroken(Exception):
+    """A precondition of the red gate below failed: not the defect, so it must FAIL the run, not xfail."""
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason="#1315 item 10 §1A.6: flips when config downgrade warns that dropping llm.offline: true goes online",
+)
+def test_downgrade_warns_when_it_drops_llm_offline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """``maxim config downgrade`` of a newer file carrying ``llm.offline: true`` warns that the run now goes ONLINE,
+    naming the key. Today the generic "set aside" WARNING names it but never says the run goes online.
+
+    The build that drops the key is one that does not know it (§1A.6's stated fail-open). This build will know it
+    once the gate lands, so ``unknown_config_entries`` is wrapped to always report ``llm.offline`` as dropped (a
+    no-op today, when it genuinely is unknown): the gate pins the warning, not which build emits it. It lives here,
+    not in tests/integration/test_offline_latch.py, because CI's IM2 grep allows ``downgrade_config(`` callers only
+    in the config test files."""
+    import logging
+
+    real = cl.unknown_config_entries
+
+    def dropping(data: dict) -> dict:
+        return {**real(data), "llm.offline": True}
+
+    monkeypatch.setattr(cl, "unknown_config_entries", dropping)
+    major, minor = (int(p) for p in cl.CONFIG_FORMAT_VERSION.split(".")[:2])
+    target = tmp_path / "config.json"
+    target.write_text(json.dumps({"_format_version": f"{major}.{minor + 1}", "llm": {"offline": True}}))
+    with caplog.at_level(logging.WARNING):
+        result = cw.downgrade_config(target)
+    if "llm.offline" not in result.preserved:
+        raise _ScenarioBroken(f"the downgrade did not drop llm.offline: {result.preserved}")
+    warned = [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelno >= logging.WARNING and "llm.offline" in r.getMessage() and " online" in r.getMessage().lower()
+    ]
+    assert warned, "no WARNING says dropping llm.offline: true makes the run go online"

@@ -1,6 +1,6 @@
 # The atonia gate: approach notes for items 2, 3, 1, 5 and 10
 
-**Status:** DRAFT v6.2 (design passes, three-lens round and two deltas folded), approach notes (CLAUDE.md "Faster without lowering the bar", item 1). Owner decisions V1–V8
+**Status:** DRAFT v6.5 (design passes, three-lens round and two deltas folded; red-gate review decisions folded), approach notes (CLAUDE.md "Faster without lowering the bar", item 1). Owner decisions V1–V8
 were made 2026-10-24 and V9–V10 on 2026-10-25. Session V, paper only: nothing in `src/` changes until the owner has read the folded
 plan and the red-gate PR is opened.
 - **v1** was written from a read-only census at `d9dffe6e` (origin/main, 2026-10-24).
@@ -146,8 +146,22 @@ before them. Item 10's call-site refusals stay parallel.
 
 **`MAXIM_OFFLINE` and `MAXIM_INTERNET_LOWERED`.** Offline implies internet-lowered **on the read side**:
 `utils/internet_access.py::session_internet_lowered()` returns `True` when `maxim._offline.is_offline()`. `engage()`
-writes nothing and calls nothing in `maxim.utils`, so the leaf has no back-edge and nothing logs "lowered by the
-agent". `_offline.py` being stdlib-only is guarded by `tests/unit/test_offline_latch.py::test_offline_module_is_stdlib_only`
+**imports** nothing from `maxim.utils`, so the leaf has no back-edge and nothing logs "lowered by the agent".
+In order, `engage()` sets the latch, installs the audit hook if it is not yet installed, and then does exactly three
+things:
+1. **`os.environ` writes.** `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`, `HF_HUB_DISABLE_TELEMETRY`, `YOLO_OFFLINE` and
+   `MAXIM_OFFLINE` (§6), so libraries read them in-process and children inherit them. The observer's env-write
+   allow-list is exactly those five.
+2. **Flags on libraries that are already imported,** found through `sys.modules` and never imported:
+   `huggingface_hub.constants.HF_HUB_OFFLINE = True` and `ultralytics.utils.ONLINE = False`.
+3. **The callbacks registered through `maxim._offline.on_engage(fn)`.** `on_engage` is stdlib-only and runs `fn` at
+   once if the latch is already up. `utils/http.py` registers `close_all` at its own import, so a client pooled
+   before the latch is closed, and a keep-alive socket cannot keep sending: `send`/`sendall` raise no audit event,
+   so the hook alone could not stop it. **Red gate:** a client pooled before `engage()` cannot send after it.
+
+  The observer's closure excludes `maxim.utils.http`, so in the observer that callback is never registered and there
+  is nothing to close. `_offline.py` being stdlib-only is guarded by
+`tests/integration/test_offline_latch.py::test_offline_module_is_stdlib_only`
 (an AST check on the `test_clean_flag_998` pattern). The internet tools'
 `disabled_reason` and the prompt roster then agree. V5 cannot ride on `MAXIM_INTERNET_LOWERED` alone, because that
 covers neither HF nor the LLM. `MAXIM_OFFLINE` goes in llm-routing.md's env table, next to it.
@@ -155,7 +169,8 @@ covers neither HF nor the LLM. `MAXIM_OFFLINE` goes in llm-routing.md's env tabl
 **Tests.**
 - `tests/conftest.py` must `os.environ.pop("MAXIM_OFFLINE", None)` at the top of the module, **before** its
   `import maxim`, so a developer shell cannot latch the pytest process. The autouse scrub alone would be too late.
-- The conftest latch reset touches `maxim._offline`'s private state.
+- The conftest latch reset calls `maxim._offline._reset_for_tests()` (below). The `on_engage` callbacks stay
+  registered across a reset and run again on the next `engage()`.
 
 ### 1A.2 One dispatch seam, and one booking rule
 
@@ -191,7 +206,22 @@ arrive: executor denials return before pain is booked, and NAc is booked downstr
 - **What counts as refused.** `record_outcome` gains `refused: ToolErrorKind | None`, **keyword-only and required**
   (the TF8 `bridge_booked` precedent). It is threaded from `execute_and_learn` (both sites) and
   `execute_parallel_actions`. It is non-`None` only for the frozenset `tools/base.py::GATE_REFUSAL_KINDS` =
-  {`NOT_REGISTERED`, `POLICY_CEILING`, `POLICY_PERMISSIONS`, `POLICY_PIN`, `MODE`, `OFFLINE`}. **It is never
+  {`NOT_REGISTERED`, `INACTIVE_SCENE`, `POLICY_CEILING`, `POLICY_PERMISSIONS`, `POLICY_PIN`, `MODE`, `OFFLINE`}.
+  Each member's value is its snake_case name (`"not_registered"`, …), matching the existing members.
+  **`ToolErrorKind` is serialised by `.value` everywhere:** the report, the log and `actions.jsonl`.
+- **The refusal layer** goes in `ToolOutput.metadata["refusal_layer"]`. Each layer has exactly one kind:
+
+  | Layer | Kind |
+  |---|---|
+  | `"forbid"` | `POLICY_PERMISSIONS` (the autonomy forbid source) |
+  | `"mode"` | `MODE` |
+  | `"registry"` | `NOT_REGISTERED` or `INACTIVE_SCENE` |
+  | `"permissions"` | `POLICY_PERMISSIONS` |
+  | `"ceiling"` | `POLICY_CEILING`, including the V7 offline AND |
+  | `"pin"` | `POLICY_PIN`: a pinned policy's refusal of any non-pinned name, never `"permissions"` |
+  | `"offline"` | `OFFLINE`, an `OfflineRefusal` raised inside a tool body |
+  - `"registry"` means the name is not dispatchable in this registry (`NOT_REGISTERED`, `INACTIVE_SCENE`).
+  - The sealed registry is just a registry, so the executor needs no special case for it. **It is never
   `PERMISSION_DENIED`**, which tools return for their own path refusals: those keep booking their NAc negative,
   unchanged. A test pins the set. The five scripts that call `record_outcome` directly
   (`scripts/orient_substrate/9_tool_competition_repro.py`, `2_full_path_probe.py`,
@@ -335,7 +365,7 @@ advisor_mode.md's draft interfaces are **superseded by this shape**, and that fi
  "happening": "UNTRUSTED", "would_do": {"summary": "UNTRUSTED", "executed": false}, "rationale": "UNTRUSTED",
  "confidence": {"value": 0.6, "calibrated": false, "source": "model_self_report"},
  "proposals": [{"seq": 4, "summary": "UNTRUSTED", "target": "UNTRUSTED"}],
- "refusals": [{"seq": 5, "name": "bash", "error_kind": "POLICY_PIN", "layer": "pin", "effect": ["ALL"], "reason": "..."}],
+ "refusals": [{"seq": 5, "name": "bash", "error_kind": "not_registered", "layer": "registry", "effect": "unknown", "reason": "..."}],
  "log_last_seq": 5, "provenance": {"code": "unknown: offline", "model_sha256": "...", "maxim_version": "..."},
  "created_at": "...", "extra": {}}
 ```
@@ -347,7 +377,14 @@ advisor_mode.md's draft interfaces are **superseded by this shape**, and that fi
   `code: "unknown: offline"`.
 - **`Effect` is serialised as a sorted list of flag names**, never the `Flag` integer, which depends on declaration
   order. The same rule covers #1431's `/api/tools`.
-- **Status precedence:** `error` > `abandoned` > `degraded` > `ok`.
+- **Status precedence:** `error` > `abandoned` > `degraded` > `ok`. One exception: when the deadline flag is set,
+  the status is `abandoned` and the truncated output is **not parsed**, so a half-written JSON is never reported as
+  `error`.
+- **`report_dir` may hold transient names** while `atomic_write_json_at` writes (a temp file renamed through the
+  fd). Its final state is the report plus the log, nothing else.
+- **The closure:** `maxim.advisor` never imports `maxim.agents` directly. `agents.permissions` reaches it
+  transitively through `runtime.tool_policy` (`ToolPolicy` holds `AgentPermissions`), and that is allowed. The
+  closure forbids `agents.autonomy`, `agents.llm_worker` and the loop modules.
 - **Log records** carry `report_id` and `ts`, so every proposal and refusal joins to its report.
 - AvServ plan 50 is read-only to us, so **the owner relays the changed shape to AvServ**, a hand-off.
 
@@ -356,18 +393,29 @@ advisor_mode.md's draft interfaces are **superseded by this shape**, and that fi
 The advisor_mode.md guard line is superseded (prefetch root and the census-as-enforcement no longer apply).
 
 1. **[engineering] A tool's effect is declared in its class's own `__dict__`, recorded at class creation, and checked
-   at one dispatch seam.** Regression guard: `tests/unit/test_tool_effect.py::test_every_tool_declares_own_effect`
-   and `::test_process_and_code_runners_declare_all`, plus `src/maxim/tools/base.py::Tool.__init_subclass__`.
+   at one dispatch seam.** Regression guard:
+   `tests/unit/test_atonia_red_gates_effect_policy.py::test_item2_every_tool_declares_own_effect` and
+   `::test_item2_process_and_code_runners_declare_all`, plus `src/maxim/tools/base.py::Tool.__init_subclass__`.
 2. **[engineering] Every executor carries a `ToolPolicy`; `None` is a `TypeError`** (it joins the canonical-builder
    table). Regression guard: `src/maxim/runtime/bootstrap.py::build_executor` (required keyword-only `policy=`) and
-   `tests/unit/test_tool_policy.py::test_executor_refuses_missing_policy`.
-3. **[engineering] Offline is a one-way, process-wide audit-hook latch: no socket, no DNS, no spawn.** Regression
-   guard: `tests/integration/test_offline_latch.py::test_no_effect_subprocess` and
-   `src/maxim/_offline.py::engage`.
+   `tests/unit/test_atonia_red_gates_effect_policy.py::test_item3_policy_is_required_and_permissions_removed`.
+3. **[engineering] Offline is a one-way, process-wide audit-hook latch: once engaged, no new socket connection,
+   no send to a new destination, no DNS and no spawn at the Python level.** "One-way" means no non-test caller can
+   disengage it: `_reset_for_tests` exists, but a guard refuses any caller outside `tests/`, aliased imports
+   included. Disengaging it by `importlib.reload`, by writing its private state, or through a dynamically built name
+   is in-process code, out of the model (§0). **Stated residuals:**
+   - a connection opened **before** `engage()` keeps sending, because `send`/`sendall` raise no audit event;
+     `utils/http`'s pool is closed by its `on_engage` callback, but other pre-latch connections (the reachy_mini
+     websocket, the census's allow-listed raw-socket sites) are not;
+   - native networking is invisible to the hook (§6).
+
+   Regression guard: `tests/integration/test_offline_latch.py::test_no_effect_subprocess`,
+   `::test_a_client_pooled_before_engage_cannot_send_after`, `::test_no_caller_of_reset_for_tests_outside_tests`
+   and `src/maxim/_offline.py::engage`.
 4. **[engineering] The atonia composition dispatches only its pinned `propose_action` instance, imports nothing
    outside its closure, and reads only its pinned env set.** Regression guard:
-   `tests/integration/test_advisor_gate.py::test_per_layer_deletion_sweep`, `::test_import_closure`,
-   `::test_env_read_set` and `::test_no_effect`.
+   `tests/integration/test_advisor_gate.py::test_per_layer_deletion_sweep_ceiling`, `::…_pin`, `::…_sealed`,
+   `::test_open_builds_all_three_layers`, `::test_import_closure`, `::test_env_read_set` and `::test_no_effect`.
 
 ### 1A.10 Tests that actually run, and actually prove it
 
@@ -521,11 +569,12 @@ embodiment=None, …)` accepts `None`, and a bare `Executor` with no mode source
     and the key reached through introspection (`ToolPolicy.__new__.__globals__`) are all in-process code. Each is
     equivalent to `object.__setattr__` and out of the model (§0), and the docs say so. Future code would not write
     any of them by accident;
-  - `pinned` is snapshotted as `MappingProxyType(dict(instances))`, so a caller's dict cannot add pins later;
+  - the pins are snapshotted as `MappingProxyType(dict(instances))`, so a caller's dict cannot add pins later;
   - `__copy__` and `__deepcopy__` return `self`, and `__reduce__` raises.
 
   Tests cover construction, assignment, and mutation of the source dict. It holds `permissions: AgentPermissions`,
-  `ceiling: Effect`, `pinned: Mapping[str, Tool] | None` and `reason: str`. It lives in memory only, never persisted.
+  `ceiling: Effect`, `pins: Mapping[str, Tool] | None` and `reason: str`. The slot is `pins`, not `pinned`:
+  `__slots__` and a same-named classmethod raise `ValueError`. It lives in memory only, never persisted.
   Its docstring says CC3 does not apply, and the CC3 list records that. Its factories:
   - **`unrestricted(*, reason)`:** ceiling `ALL`, no allow-list. The mode gate still runs.
   - **`deny(names, *, reason)`:** the console's deny-only `tools.deny`. It keeps today's working deny list instead of
@@ -554,8 +603,8 @@ embodiment=None, …)` accepts `None`, and a bare `Executor` with no mode source
   4. Run that object.
 
   This closes the find/get race.
-- **Refusals are typed.** `tools/base.py::ToolErrorKind` (an `Enum`) gains `NOT_REGISTERED`, `POLICY_CEILING`,
-  `POLICY_PERMISSIONS`, `POLICY_PIN`, `MODE` and `OFFLINE`, and every refused dispatch carries one, plus the layer and
+- **Refusals are typed.** `tools/base.py::ToolErrorKind` (an `Enum`) gains `NOT_REGISTERED`, `INACTIVE_SCENE`,
+  `POLICY_CEILING`, `POLICY_PERMISSIONS`, `POLICY_PIN`, `MODE` and `OFFLINE`, and every refused dispatch carries one, plus the layer and
   the effect.
   The `effect` of an unregistered name is `"unknown"`; no lookup builds a registry to find it.
 - **A gate refusal is not a tool failure.** How each refusal is booked is §1A.2's table (superseding v3's text,
@@ -885,7 +934,10 @@ v1 rested on URL checks plus a census. **A list of sites cannot be the enforceme
      - an `ssh -L` forward, a reused server and a re-bound port therefore have nothing to impersonate.
    - **The boundary, stated in the docs.** The latch sees the Python `socket`, `subprocess` and `os` modules
      **only**. It is blind to:
-     - **native networking:** libuv (uvloop), gRPC, libzmq, libcurl, Rust clients;
+     - **native networking:** libuv (uvloop), gRPC, libzmq, libcurl, Rust clients. **`ddgs` is one of them:** it dials
+       through primp, a native client that raises no audit event (found by the red-gate census, 2026-10-26, when a
+       stub dry run sent one real DuckDuckGo request). Its call-site refusal (§6, layer 2) is therefore its only
+       in-process defence, and the census drives it through a blocking sentinel;
      - **un-audited spawns:** multiprocessing `spawn`'s `_posixsubprocess.fork_exec`.
 
      So:
@@ -956,8 +1008,11 @@ v1 rested on URL checks plus a census. **A list of sites cannot be the enforceme
 - `llm.offline` is read at CLI startup and at the first router or `api` verb build. A running `maxim serve` picks it
   up on restart, or with #1411's config generation once that covers it.
 - The observer always engages.
-- Tests reset the latch through a conftest fixture that touches the private state. No reset exists in `src/`, and the
-  census forbids one there. The hook is inert when not engaged, so it costs the suite nothing.
+- **Tests reset the latch through `maxim._offline._reset_for_tests()`.** It exists in `src/`, but **a lint forbids
+  any caller outside `tests/`**, so production code cannot disengage the latch. It disengages, restores the five
+  `os.environ` keys to their pre-engage values, and keeps the `on_engage` callbacks. The conftest autouse fixture
+  calls it after each test, and **fails** if `maxim._offline` is loaded but `_reset_for_tests` is missing. The hook
+  is inert when not engaged, so it costs the suite nothing.
 
 **The fallbacks become loud.** A missing encoder or semantic weight under offline logs one structured WARNING per
 process, records a `degraded` reason, and the observer's report says `degraded`. decision_log stamps it; it writes at
@@ -1329,3 +1384,47 @@ realpath-keyed executables, `pinned_executable`); they are history, not instruct
 | W11 | The `"_refused"` dict key; the batch rejection filed as out of scope |
 | W12 | Gate kinds constructed only in the executor (AST test) |
 | all of #6 | The behavioural zero-writes red gate is the enforcement |
+
+**Red-gate PR's three-lens review** (decisions the notes owed, v6.3; the reviews are in this directory, `redgates_*.md`):
+
+| Finding | Fold |
+|---|---|
+| `pinned` is both a factory and a slot (Python rejects it) | Slot `pins` |
+| `error_kind` serialised by name vs `.value` | `.value` everywhere |
+| Layer vocabulary | `metadata["refusal_layer"]`; `"registry"` for `NOT_REGISTERED`/`INACTIVE_SCENE` |
+| The inactive-scene refusal maps to no kind | `INACTIVE_SCENE` joins `GATE_REFUSAL_KINDS` |
+| Deadline plus half-JSON | The deadline wins: `abandoned`, not parsed |
+| What `engage()` writes | Exactly five `os.environ` keys; nothing in `maxim.utils` |
+| `atomic_write_json_at` temp names | Transient names allowed in `report_dir` |
+| `agents.permissions` in the closure | Allowed transitively; `agents.autonomy` forbidden |
+| §1A.9 guard nodeids that did not exist | Pointed at the real ones |
+| Race-gate lookup count | Behavioural only (§3: the run object is the checked object) |
+| Census encoder site | `local_files_only` plus a degraded record counts (§6) |
+| The env-read wildcard vs the prefix refusal | One sanctioned scanner, `maxim.advisor._refusals.code_loading_vars_set` |
+| Children run with `-B` | Stated: Profile B's root is read-only, so `.pyc` writes are out of the no-effect audit |
+
+**Red-gate delta round** (v6.4; `redgates_delta_*.md`):
+
+| Finding | Fold |
+|---|---|
+| Arch D1 (`close_all` dropped by v6.3), Wire D-S2 | `engage()`'s three steps; `on_engage` callbacks; a pooled-client red gate |
+| Arch D3, Exec S2/S3 | `_reset_for_tests` in `src/`, its callers linted to `tests/`; it restores the five env keys; the fixture fails if it is missing |
+| Arch D4, the Exec pin NIT | One kind per layer; `"offline"` added; `pinned()` refuses at `"pin"` |
+| Exec S1 (`dir_fd` writes, rename destination) | Test fold |
+| Arch D2 (prefix-based reader list) | Test fold: exact reader list |
+| Wire D-S1 (O6 ends at the dormant `ExecAgent._build_llm_context`) | Test fold: re-targeted at `PromptBuilder`, the live seam |
+
+**Narrow delta round** (v6.5; `redgates_delta2_*.md`): the Executor lens returned STOP.
+
+| Finding | Fold |
+|---|---|
+| Architecture S1 (the reset guard missed aliased imports) | Test fold: match `ast.alias`; proved by a probe |
+| Architecture S2 (invariant 3 overclaimed "no socket") | Invariant 3 restated, with residuals and guards |
+| Architecture NITs | `engage()` order stated; the reset text; callbacks persist across a reset |
+| Wire S1 (O6 drove only the `/api/command` producer) | Test fold: Twilio's `conversation_context` producer too |
+| Wire NITs; Executor N2 (properties escaping the classification) | Test folds |
+
+**Final narrow check** ([redgates_delta3.md](reviews/atonia_gate/redgates_delta3.md)): **STOP: no further round
+owed.** Both fail-open folds are closed. Its NITs are folded here (invariant 3's out-of-model forms) or recorded for the
+build PRs: the `receive_voice` arm and the `triggering_input` route for O6 (#1481), the double-rendering XPASS
+class, and the reset guard's fail-closed name match.
