@@ -213,3 +213,58 @@ def test_rotation_writes_under_the_creation_lock(key_dir, monkeypatch, rotate, n
     new = rotate()
     assert held == [str(key_dir / f"{name}.lock")]
     assert (key_dir / name).read_text().strip() == new
+
+
+@pytest.mark.parametrize(("ensure", "name"), _ENSURES)
+def test_a_key_created_while_waiting_for_the_lock_is_returned_not_overwritten(key_dir, monkeypatch, ensure, name):
+    """The re-read inside the lock: another process creates the key (and hands it to a device) between this
+    process's first read and its lock; regenerating would 401 that device with nothing naming why."""
+    import contextlib
+
+    from maxim.utils import process_lock
+
+    other = "mxc_" + "o" * 43
+
+    @contextlib.contextmanager
+    def _race(path, **k):
+        (key_dir / name).write_text(other + "\n")
+        os.chmod(key_dir / name, 0o600)
+        yield
+
+    monkeypatch.setattr(process_lock, "file_lock", _race)
+    assert ensure() == other
+    assert (key_dir / name).read_text().strip() == other
+
+
+def test_an_empty_local_server_key_is_regenerated_too(tmp_path, monkeypatch):
+    """Owner decision 2026-10-25 covers every ensure: the spawn key's empty file is missing, not a refusal."""
+    monkeypatch.setattr(keys, "key_file_path", lambda name=keys.MESH_KEY_NAME: tmp_path / name)
+    (tmp_path / keys.LOCAL_SERVER_KEY_NAME).write_text("\n")
+    key = keys.ensure_local_server_key()
+    assert key and (tmp_path / keys.LOCAL_SERVER_KEY_NAME).read_text().strip() == key
+
+
+def test_tunnel_setup_key_step_reports_a_ready_key(key_dir, capsys):
+    from maxim.tunnel import cli as tunnel_cli
+
+    key = tunnel_cli._setup_api_key()
+    assert key and "API key ready" in capsys.readouterr().out
+
+
+def test_rotate_commands_report_a_held_lock(key_dir, monkeypatch, capsys):
+    import contextlib
+
+    from maxim.console import server
+    from maxim.tunnel import cli as tunnel_cli
+    from maxim.utils import process_lock
+
+    @contextlib.contextmanager
+    def _held(*a, **k):
+        raise process_lock.LockContended("held")
+        yield
+
+    monkeypatch.setattr(process_lock, "file_lock", _held)
+    assert tunnel_cli._cmd_key_rotate() == 1
+    assert server.run_serve(["--rotate-token"]) == 2
+    out = capsys.readouterr().out
+    assert out.count("key-creation lock") == 2

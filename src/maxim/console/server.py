@@ -2465,7 +2465,13 @@ def run_serve(argv: list[str]) -> int:
         from maxim.tunnel.keys import rotate_console_token
 
         if args.rotate_token:
-            token = rotate_console_token()
+            from maxim.exceptions import KeyFileUnusable
+
+            try:
+                token = rotate_console_token()
+            except KeyFileUnusable as e:  # the creation lock is held by another maxim process (#1402)
+                print(f"maxim serve: {e}\nmaxim serve: {e.fix_hint}", flush=True)
+                return 2
             print("maxim serve: console token ROTATED — every signed-in device is now logged out.")
         else:
             token = _ensure_token_or_report()

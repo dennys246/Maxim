@@ -598,7 +598,12 @@ def _cmd_key_show() -> int:
 def _cmd_key_rotate() -> int:
     had_key = key_exists()
     old_display = truncate_for_display(read_key() or "")
-    key = rotate_key()
+    try:
+        key = rotate_key()
+    except KeyFileUnusable as e:  # the creation lock is held by another maxim process (#1402)
+        print(f"✗ {e}")
+        print(f"  {e.fix_hint}")
+        return 1
     print(f"✓ Generated new API key: {truncate_for_display(key)}")
     print(f"  Saved to: {key_file_path()}")
     if had_key:
