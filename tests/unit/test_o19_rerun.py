@@ -2818,11 +2818,53 @@ def test_a_signal_during_the_marker_push_unwinds_cleanly(tmp_path, monkeypatch, 
     )
 
     def _push(*a, **k):
+        # The handlers must already be installed WHEN the push runs (a real SIGTERM here used to kill the harness).
+        assert signal.getsignal(signal.SIGTERM) is h._raise_signal
+        assert signal.getsignal(signal.SIGHUP) is h._raise_signal
         raise h.HarnessSignal("signal 15")
 
     monkeypatch.setattr(h, "push_marker", _push)
+    monkeypatch.setattr(h, "_marker_landed", lambda ref: True)
     before = signal.getsignal(signal.SIGTERM)
     assert h.main(["run", "--exp", "63", "--write-experiment-results"]) == 1
-    assert "INTERRUPTED before the first phase" in capsys.readouterr().err
+    assert "reads as aborted" in capsys.readouterr().err
     assert not home.exists()
     assert signal.getsignal(signal.SIGTERM) is before
+
+
+def test_an_interrupted_push_that_never_landed_declares_nothing(tmp_path, monkeypatch, capsys) -> None:
+    """#1031 (review fold): if the marker did not reach origin, no attempt was declared: exit 2, local tag deleted."""
+    home = tmp_path / "o19-home-y"
+    home.mkdir()
+    monkeypatch.setattr(
+        h, "prepare", lambda args, exp, mock: (tmp_path / "rows.jsonl", {}, "rid", 1, home, None, None, None, {})
+    )
+    monkeypatch.setattr(h, "push_marker", lambda *a, **k: (_ for _ in ()).throw(h.HarnessSignal("signal 15")))
+    monkeypatch.setattr(h, "_marker_landed", lambda ref: False)
+    deleted = []
+    real_run = h.subprocess.run
+    monkeypatch.setattr(
+        h.subprocess,
+        "run",
+        lambda cmd, **k: deleted.append(cmd) if cmd[:3] == ["git", "tag", "-d"] else real_run(cmd, **k),
+    )
+    assert h.main(["run", "--exp", "63", "--write-experiment-results"]) == 2
+    assert "no attempt was declared" in capsys.readouterr().err
+    assert deleted and deleted[0][3] == h.marker_ref("63", 1, "rid")[len("refs/tags/") :]
+
+
+def test_a_row_write_blocks_the_harness_signals(tmp_path, monkeypatch) -> None:
+    """#1031 bullet 2: SIGTERM/SIGHUP are blocked while a row is written, so a phase's row is never lost or torn."""
+    import signal
+
+    seen = []
+    real_fsync = h.os.fsync
+
+    def _fsync(fd):
+        seen.append(signal.pthread_sigmask(signal.SIG_BLOCK, []))
+        return real_fsync(fd)
+
+    monkeypatch.setattr(h.os, "fsync", _fsync)
+    h.append_row(tmp_path / "rows.jsonl", {"a": 1})
+    assert signal.SIGTERM in seen[0] and signal.SIGHUP in seen[0]
+    assert signal.SIGTERM not in signal.pthread_sigmask(signal.SIG_BLOCK, [])

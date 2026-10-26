@@ -439,8 +439,11 @@ The last writer fixes before 5b.
   verdicts' own one-`executed_git_hash` check stays stricter. It also refuses a run whose code tree is `unknown`, even
   for a fresh file (a smoke from a tarball or a non-git copy on the rig): an unknown tree matches nothing, itself
   included. Campaign ids must be letters, digits, `-` or `_` (`_provenance.safe_campaign_id`).
-- **`stamp_harness_row` requires an epoch `ts`**: the run's START, set by its writer. Exp 49 rows gain theirs; Exp 57
-  stamps each row with its cohort-rung's start, not the time it is written (#1024).
+- **`stamp_harness_row` requires an epoch `ts`** (the run's time, set by its writer); Exp 49 rows gain theirs.
+  *Amended later (#1024, 2026-10-26, not part of 5a-3 as built):* the meaning is the UNIT's start, so a record's
+  "min ts over counted units" is the run's start. Exp 49 stamps a trial's start, and Exp 57 now stamps each row with
+  its cohort-rung's start, not its write time. `exp56/run_campaign.py` still stamps at the end of its pair-arm probe
+  (an end-time writer; a follow-up).
 - **The Exp 53/54 verdict kind** comes from the scoped runs' `start` lines (`experiment`), via
   `VERDICT_KIND_BY_EXPERIMENT`: `exp53_verdict`, `exp54_verdict`, `gate6_exp53_verdict` (uncited). A mix or an
   unknown experiment refuses; runs that predate the field (the 53b R1 replication) get

@@ -238,6 +238,18 @@ def remote_markers(exp: str) -> dict[str, dict]:
         raise Refused(f"the start markers on origin are not well formed: {exc}") from exc
 
 
+def marker_ref(exp: str, k: int, run_id: str) -> str:
+    return f"{v.MARKER_NAMESPACE}/{exp}/attempt-{k}-{run_id}"
+
+
+def _marker_landed(ref: str) -> bool | None:
+    """Whether ``ref`` is on origin: True / False, or None when origin cannot be asked."""
+    out = subprocess.run(["git", "ls-remote", "--tags", "origin", ref], cwd=REPO_ROOT, capture_output=True, text=True)
+    if out.returncode != 0:
+        return None
+    return bool(out.stdout.strip())
+
+
 def push_marker(exp: str, k: int, run_id: str, *, dry_run: bool) -> str:
     """The start marker: an annotated (unsigned) tag on HEAD, pushed. ``dry_run`` pushes a scratch name with
     ``--dry-run`` (credentials and remote reachable; a dry run does not exercise the ruleset)."""
@@ -249,7 +261,7 @@ def push_marker(exp: str, k: int, run_id: str, *, dry_run: bool) -> str:
         if out.returncode != 0:
             raise Refused(f"dry-run marker push failed: {out.stderr.strip()[-400:]}")
         return ref
-    ref = f"{v.MARKER_NAMESPACE}/{exp}/attempt-{k}-{run_id}"
+    ref = marker_ref(exp, k, run_id)
     name = ref[len("refs/tags/") :]
     tag = subprocess.run(
         ["git", "-c", "tag.gpgSign=false", "tag", "-a", name, "-m", f"O19 Exp {exp} attempt {k} ({run_id})", "HEAD"],
@@ -802,11 +814,22 @@ def exp63_attempt_problems(exp: str, data_root: Path, sessions: list) -> list[st
 
 
 def append_row(rows_file: Path, row: dict) -> None:
+    """Append one row, with SIGTERM/SIGHUP blocked for the write (#1031): a signal mid-write used to lose the row or
+    leave a torn JSON line, which a later attempt's within-campaign check cannot read. A signal that arrives while
+    blocked is delivered right after, so the harness still unwinds through its normal path."""
+    import signal  # noqa: PLC0415
+
     rows_file.parent.mkdir(parents=True, exist_ok=True)
-    with rows_file.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(row, sort_keys=True) + "\n")
-        f.flush()
-        os.fsync(f.fileno())
+    blocked = {signal.SIGTERM, signal.SIGHUP}
+    previous = signal.pthread_sigmask(signal.SIG_BLOCK, blocked) if hasattr(signal, "pthread_sigmask") else None
+    try:
+        with rows_file.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(row, sort_keys=True) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+    finally:
+        if previous is not None:
+            signal.pthread_sigmask(signal.SIG_SETMASK, previous)
 
 
 def check_campaign(exp: str) -> None:
@@ -954,9 +977,7 @@ def run(args: argparse.Namespace) -> int:
             print(f"REFUSED: {exc}", file=sys.stderr)
             return 2
         except HarnessSignal as exc:
-            # The marker may or may not have landed; either way no phase ran, which reads as an aborted attempt.
-            print(f"INTERRUPTED before the first phase ({exc}): the attempt reads as aborted", file=sys.stderr)
-            return 1
+            return _interrupted_at_the_marker(args, exp, k, run_id, mock, exc)
         return run_attempt(args, exp, mock, rows_file, provenance, run_id, k, home, gguf, read_served, marker, stamps)
     finally:
         for sig, handler in saved.items():
@@ -964,6 +985,27 @@ def run(args: argparse.Namespace) -> int:
         shutil.rmtree(home, ignore_errors=True)  # every exit path, not only a refusal (#1031's temp-home leak)
         if lock is not None:
             lock.close()
+
+
+def _interrupted_at_the_marker(args, exp: str, k: int, run_id: str, mock: bool, exc: BaseException) -> int:
+    """A signal during the marker step: no phase ran. Exit 1 (an attempt, aborted) only when the marker reached origin;
+    otherwise exit 2, nothing declared, and the local tag is deleted so a later ``git push --tags`` cannot publish it."""
+    if args.command == "preflight" or mock:
+        print(f"INTERRUPTED ({exc}): no attempt was declared", file=sys.stderr)
+        return 2
+    ref = marker_ref(exp, k, run_id)
+    landed = _marker_landed(ref)
+    if landed is False:
+        subprocess.run(["git", "tag", "-d", ref[len("refs/tags/") :]], cwd=REPO_ROOT, capture_output=True)
+        print(f"INTERRUPTED ({exc}) before the marker reached origin: no attempt was declared", file=sys.stderr)
+        return 2
+    state = "is on origin" if landed else "may be on origin (origin could not be asked: check it)"
+    print(
+        f"INTERRUPTED ({exc}) before the first phase: the marker {ref} {state}, so attempt {k} reads as aborted "
+        "(on a post-#1079 campaign a rowless marker bars the campaign's later attempts)",
+        file=sys.stderr,
+    )
+    return 1
 
 
 def run_attempt(args, exp, mock, rows_file, provenance, run_id, k, home, gguf, read_served, marker, stamps=None) -> int:

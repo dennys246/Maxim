@@ -176,7 +176,10 @@ def report(
         if not r.get("refusal") and r.get("arm") in clean:
             key = (r["arm"], r.get("seed"))
             if key in seen:
-                duplicates.append(f"duplicate clean (arm, seed) row {key} — pass --campaign-id to select one campaign")
+                duplicates.append(
+                    f"duplicate clean (arm, seed) row {key} — a campaign restarted without --resume: re-run it with "
+                    "--resume, or drop the repeated rows (--campaign-id selects only between campaigns)"
+                )
                 continue
             seen.add(key)
             clean[r["arm"]].append(r)
