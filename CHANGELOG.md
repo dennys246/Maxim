@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **An Angular Gyrus recall by `MathCategory` found nothing** (#1153). The store keys a record by the category's
+  name, and `recall(category=MathCategory.PATTERN)` looked up a key built from the enum itself, so every enum-keyed
+  recall came back empty (its one caller, MemoryAgent's knowledge fallback, is Dormant). `recall` now takes the enum
+  or its name.
+
 ### Changed
 
 - **The wheel vendors maxim-pulse Console v0.4.4** (was v0.4.2 at 1.3.3, then v0.4.3; contract 0.6.0, unchanged). It is

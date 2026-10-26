@@ -196,13 +196,17 @@ class AngularGyrus(StoreFileOwnership, MemoryLayer):
         limit: int = 10,
         *,
         name: str | None = None,
-        category: str | None = None,
+        category: MathCategory | str | None = None,
         domain: str | None = None,
         min_confidence: float | None = None,
         include_compressed: bool = True,
         touch: bool = True,
     ) -> list[MathMemory | CompressedMathMemory]:
         """Query math records by filters.
+
+        ``category`` is a ``MathCategory`` or its name: the store keys a record by ``category.name``
+        (``_index_record``), so the enum is keyed the same way (#1153: an enum built
+        ``category:MathCategory.PATTERN``, a key nothing had, and every enum-keyed recall came back empty).
 
         ``touch=False`` reads without counting an access: for a caller whose result nothing uses, so it does
         not move the ``access_count`` this method ranks by and retention reads (#1128).
@@ -217,7 +221,7 @@ class AngularGyrus(StoreFileOwnership, MemoryLayer):
                 candidate_ids = ids if candidate_ids is None else candidate_ids & ids
 
             if category is not None:
-                key = f"category:{category}"
+                key = f"category:{category.name if isinstance(category, MathCategory) else category}"
                 ids = self._context_index.get(key, set())
                 candidate_ids = ids if candidate_ids is None else candidate_ids & ids
 
