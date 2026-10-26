@@ -283,6 +283,17 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 
 @pytest.fixture(autouse=True)
+def _reset_offline_latch():
+    """Reset the offline latch after every test that engaged it in-process (#1315 §1A.1: the reset lives here, and
+    touches ``maxim._offline``'s private state; ``src/`` has no reset). A no-op until step 0b ships the module."""
+    yield
+    offline = sys.modules.get("maxim._offline")
+    reset = getattr(offline, "_reset_for_tests", None) if offline is not None else None
+    if callable(reset):
+        reset()
+
+
+@pytest.fixture(autouse=True)
 def _network_guard_for_marked_tests(request: pytest.FixtureRequest):
     """``@pytest.mark.allow_network`` lifts the in-process network guard for that one test (not CI's namespace)."""
     if request.node.get_closest_marker("allow_network") is None:

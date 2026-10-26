@@ -1,6 +1,6 @@
 """#1315 item 5 strict red gates: the proposal and refusal log ``maxim.advisor.log``, plus advisor_mode.md O7.
 
-WHAT THIS FILE IS. Tests only, written before the code (``docs/plans/atonia_gate_approach_notes.md`` §5 and §1A.8,
+WHAT THIS FILE IS. Tests only, written before the code (``docs/plans/atonia_gate_approach_notes.md`` v6.3, §5 and §1A.8,
 §1A winning over §2–§6). Each gate is ``xfail(strict=True, raises=AssertionError)``: it fails TODAY with an
 ``AssertionError`` (the module does not exist), and once the behaviour is right it XPASSes, which strict turns
 into a failure until the decorator is removed. advisor_mode.md's O3 row (no approval surface) is gated in
@@ -31,6 +31,10 @@ SEAMS THESE GATES PIN (the notes leave them open; chosen here):
     ``tests/integration/test_advisor_gate.py``'s docstring.
 
 PRECONDITIONS ARE NOT THE GATE: a broken scenario raises ``ScenarioBroken``, never an ``AssertionError``.
+``pytest.raises`` is not used inside a gate (a miss raises ``Failed``, not an ``AssertionError``); ``_expect_raises``
+asserts instead. The offline latch an in-process ``open()`` engages is reset by the ONE autouse fixture in
+``tests/conftest.py``. ``error_kind`` is serialised by ``ToolErrorKind.value`` and the refusal ``layer`` uses the
+v6.3 vocabulary (``"pin"``, ``"registry"``, ...).
 """
 
 from __future__ import annotations
@@ -60,6 +64,15 @@ class ScenarioBroken(Exception):
 def require(cond: Any, msg: str) -> None:
     if not cond:
         raise ScenarioBroken(msg)
+
+
+def _expect_raises(exc: type[BaseException] | tuple[type[BaseException], ...], fn: Any, what: str) -> BaseException:
+    """``pytest.raises`` for a gate: a miss is an ``AssertionError`` (``Failed`` is not one), never a red suite."""
+    try:
+        fn()
+    except exc as caught:
+        return caught
+    raise AssertionError(f"{what}: did not raise {exc!r}")
 
 
 def _log_mod() -> Any:
@@ -100,7 +113,7 @@ def _refusal(**over: Any) -> dict[str, Any]:
         "_record_kind": "refusal",
         "report_id": REPORT_ID,
         "name": "bash",
-        "error_kind": "POLICY_PIN",
+        "error_kind": "policy_pin",  # ToolErrorKind.value (v6.3)
         "layer": "pin",
         "effect": ["ALL"],
         "reason": "not the pinned instance",
@@ -182,8 +195,7 @@ def test_create_refuses_planted(report_dir: tuple[Path, int], tmp_path: Path, pl
         if planted == "symlink":
             target.write_text("victim")
         _path(d).symlink_to(target)
-    with pytest.raises(OSError):
-        log_mod.AdvisorLog.create(dfd, SESSION)
+    _expect_raises(OSError, lambda: log_mod.AdvisorLog.create(dfd, SESSION), f"create() over a planted {planted}")
     if planted == "file":
         assert _path(d).read_text() == "planted", "create() wrote into a planted file"
     elif planted == "symlink":
@@ -220,8 +232,8 @@ def test_append_one_ascii_line_per_record_no_nan(report_dir: tuple[Path, int]) -
     log = log_mod.AdvisorLog.create(dfd, SESSION)
     log.append(_proposal(arguments={"summary": "café\nline two ☃ 😀", "target": "\u0000"}))
     log.append(_refusal())
-    with pytest.raises(ValueError):
-        log.append(_proposal(arguments={"summary": "x", "score": float("nan")}))
+    nan = _proposal(arguments={"summary": "x", "score": float("nan")})
+    _expect_raises(ValueError, lambda: log.append(nan), "append() of a NaN")
     raw = _path(d).read_bytes()
     assert raw.isascii(), "append() wrote non-ASCII bytes"
     assert b"NaN" not in raw and b"Infinity" not in raw, "append() wrote a NaN/Infinity"
@@ -291,12 +303,10 @@ def test_append_oserror_marks_broken(report_dir: tuple[Path, int], monkeypatch: 
             _inject_write_failure(m, {1, 2})
         else:
             _SyncRecorder(m, fail=True)
-        with pytest.raises(OSError):
-            log.append(_refusal())
+        _expect_raises(OSError, lambda: log.append(_refusal()), f"append() under an injected {where} OSError")
     assert getattr(log, "broken", None) is True, "the log is not marked broken after an OSError"
     size_broken = _path(d).stat().st_size
-    with pytest.raises((OSError, RuntimeError)):
-        log.append(_proposal())
+    _expect_raises((OSError, RuntimeError), lambda: log.append(_proposal()), "append() on a broken log")
     assert _path(d).stat().st_size == size_broken, "a broken log wrote again"
     if where == "write":
         assert size_broken == size_before, "a failed os.write still left bytes"
@@ -349,8 +359,7 @@ def test_read_log_rejects_malformed(report_dir: tuple[Path, int], content: str) 
     else:
         rec = json.dumps({"_record_kind": "proposal", "seq": 1, "report_id": REPORT_ID, "ts": "t"}) + "\n"
         _path(d).write_text("" if content == "empty" else rec)
-    with pytest.raises(ValueError):
-        log_mod.read_log(_path(d))
+    _expect_raises(ValueError, lambda: log_mod.read_log(_path(d)), f"read_log() of a {content} file")
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 5: flips with read_log / close")
@@ -429,23 +438,8 @@ class _FakeBackend:
         return SimpleNamespace(text=json.dumps(_COMPLETION), deadline_hit=False, finish_reason="stop")
 
 
-@pytest.fixture
-def _no_latch_leak() -> Iterator[None]:
-    """open() engages item 10's process-wide latch (§4.2); an in-process test must leave it reset (§1A.1)."""
-    yield
-    off = sys.modules.get("maxim._offline")
-    if off is not None:
-        reset = getattr(off, "_reset_for_tests", None)
-        if callable(reset):
-            reset()
-        elif getattr(off, "is_offline", lambda: False)():
-            pytest.fail("the offline latch is up after an in-process open() and no _reset_for_tests exists (§1A.1)")
-
-
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 5 (advisor_mode.md O7): durable log")
-def test_o7_proposals_and_refusals_are_on_disk(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _no_latch_leak: None
-) -> None:
+def test_o7_proposals_and_refusals_are_on_disk(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """After ``ingest()`` and BEFORE ``close()``, the proposal and the refusal are records in the log file."""
     log_mod = _log_mod()
     assert importlib.util.find_spec("maxim.advisor._session") is not None, "item 1 not built: no _session"

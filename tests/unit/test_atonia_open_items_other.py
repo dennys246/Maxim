@@ -17,18 +17,27 @@ THE ROWS, THEIR OWNERS AND WHAT FLIPS EACH
   * O9 (item 7, ephemeral mode; a release after the gate) -- ``test_o9_*``.
 
 SEAMS THESE GATES PIN (the plans leave them open; chosen here, change them only with the fixing PR):
-  * O8 pool: "wires an LLM" is ``AgentPool._llm_router is not None``; "documents and raises" is any exception from
-    ``create.pool()`` called with no LLM argument.
-  * O8 run_turn: a typed failure is a raised exception OR a ``TurnResult`` with ``error`` set and no ``response``.
+  * O8 pool: "wires an LLM" is ``AgentPool._llm_router is not None``; "documents and raises" is
+    ``maxim.exceptions.ConfigurationError`` whose message names the LLM. ANY other exception propagates (an
+    ``ImportError`` from step 0a or a ``TypeError`` is not this fix, and stays red).
+  * O8 run_turn: the typed failure is ``maxim.exceptions.ModelError`` (raised), or the documented ``TurnResult`` with
+    ``error`` set and no ``response`` after the router was called. Any other exception propagates.
   * O8 server mode: driven through ``maxim.cli.main([])`` in a ``-I`` child with ``MAXIM_LLM_ENABLED=1`` /
     ``MAXIM_ROLE=solo`` (the "LLM enabled, no action" route into server mode), ``build_primary_router`` replaced by a
     router whose ``wait_ready`` returns False, and the idle ``threading.Event().wait()`` in ``cli.py`` turned into a
-    ``KeyboardInterrupt`` (the documented Ctrl+C exit). "Reported" is a non-zero return code or "not ready" in the
-    output.
-  * O4: with no allowlist configured, ``send_message`` delivers to NO arbitrary recipient (default deny).
-  * O6: inbound comms text reaches the ExecAgent prompt only inside a ``frame_tool_output`` frame
-    (``content_safety.outside_tool_output`` of the prompt no longer holds it).
-  * O9: ``maxim.create.agent(..., ephemeral=True, persistence_dir=<caller dir>)`` writes nothing under ``HOME``.
+    ``KeyboardInterrupt`` (the documented Ctrl+C exit). The GPU probes (``ensure_blackwell_guards``, which spawns
+    ``nvidia-smi``, and ``cli._check_gpu_status``, which imports tensorflow/torch and spawns ``uname``) are stubbed,
+    and a blocking egress spy (connect, resolve, spawn) runs from the first line, so the child stays under a second
+    and cannot egress. "Reported" is a non-zero return code or "not ready" in the output.
+  * O4: with no allowlist configured, ``send_message`` to an arbitrary recipient returns a refusal typed
+    ``ToolErrorKind.PERMISSION_DENIED`` (a tool's own path refusal, §1A.2) and never calls the channel. ``Tool.run``
+    swallows exceptions, so a crash (another kind, or none) does not satisfy it.
+  * O6: driven through the real producers: ``CommunicationGateway.receive_inbound`` builds the percept,
+    ``MemoryAgent._on_percept`` receives it and ``MemoryAgent.build_context`` builds the context, and a real
+    ``ExecAgent`` (``enabled=False``, a stand-in router) builds the prompt. The inbound text must sit only inside a
+    ``frame_tool_output`` frame (``content_safety.outside_tool_output`` of the prompt no longer holds it).
+  * O9: ``maxim.create.agent(..., ephemeral=True, persistence_dir=<caller dir>)`` writes nothing under a per-test
+    ``HOME``.
 
 PRECONDITIONS ARE NOT THE GATE: a broken scenario raises ``ScenarioBroken``, never an ``AssertionError``.
 """
@@ -37,12 +46,10 @@ from __future__ import annotations
 
 import inspect
 import json
-import os
 import re
 import subprocess
 import sys
 import textwrap
-import threading
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -79,10 +86,12 @@ def test_o8_create_pool_wires_an_llm_or_raises() -> None:
     """``maxim.create.pool()`` with no LLM argument either raises or returns a pool that has an LLM router. Today it
     returns a pool whose NPC turns can only ever produce the persona stub."""
     import maxim.create as create
+    from maxim.exceptions import ConfigurationError
 
     try:
         pool = create.pool()
-    except Exception:  # noqa: BLE001 -- "documents and raises" is a pass
+    except ConfigurationError as e:  # the documented refusal; any other exception propagates (stays red)
+        assert "llm" in str(e).lower(), f"create.pool() raised a ConfigurationError that does not name the LLM: {e}"
         return
     try:
         assert pool._llm_router is not None, "create.pool() returned an AgentPool with no LLM router"
@@ -107,6 +116,7 @@ class _FailingRouter:
 def test_o8_run_turn_llm_failure_is_typed() -> None:
     """When the LLM call fails, ``AgentPool.run_turn`` raises or returns a ``TurnResult`` with ``error`` set and no
     response. Today it returns the persona stub (``"*Stern guard*"``) as a successful response, logged at DEBUG."""
+    from maxim.exceptions import ModelError
     from maxim.runtime.agent_pool import AgentPool
 
     router = _FailingRouter()
@@ -119,7 +129,8 @@ def test_o8_run_turn_llm_failure_is_typed() -> None:
     try:
         try:
             result = pool.run_turn("guard", "A stranger approaches.")
-        except Exception:  # noqa: BLE001 -- a raised typed error is a pass
+        except ModelError:  # the typed failure; any other exception propagates (stays red)
+            require(router.calls == 1, f"the router was called {router.calls} times")
             return
         require(router.calls == 1, f"the router was called {router.calls} times")
         assert result.error and not result.response, (
@@ -135,9 +146,29 @@ _SERVER_CHILD = textwrap.dedent(
     CFG = json.load(open(sys.argv[1]))
     sys.path.insert(0, CFG["src"])
     sys.dont_write_bytecode = True
-    import threading
+    import socket, threading
+
+    BLOCKED = []
+
+    def _spy(event, args):
+        # Blocks egress (records, then raises): a server mode that tried to connect, resolve or spawn cannot.
+        egress = event in ("subprocess.Popen", "os.system", "os.posix_spawn") or event.startswith(
+            ("os.exec", "os.spawn", "socket.getaddrinfo", "socket.gethostby", "socket.getnameinfo")
+        )
+        if event == "socket.connect":
+            egress = getattr(args[0], "family", None) in (socket.AF_INET, socket.AF_INET6, socket.AF_UNIX)
+        if event in ("socket.sendto", "socket.sendmsg"):
+            egress = args[1] is not None and getattr(args[0], "family", None) in (socket.AF_INET, socket.AF_INET6)
+        if egress:
+            BLOCKED.append([event, repr(args)[:160]])
+            raise RuntimeError("SPY_BLOCKED: egress reached the test spy: " + event)
+
+    sys.addaudithook(_spy)
     import maxim
     import maxim.runtime.lane_backends as lb
+    import maxim.utils.gpu_detect as gpu_detect
+
+    gpu_detect.ensure_blackwell_guards = lambda *a, **k: None  # spawns nvidia-smi
 
     calls = []
 
@@ -162,10 +193,12 @@ _SERVER_CHILD = textwrap.dedent(
             return super().wait(timeout)
 
     threading.Event = _CtrlC
-    from maxim.cli import main
+    import maxim.cli as cli
 
-    rc = main([])
-    print(CFG["marker"] + json.dumps({"rc": rc, "calls": calls, "maxim_file": maxim.__file__}), flush=True)
+    cli._check_gpu_status = lambda *a, **k: None  # imports tensorflow/torch, spawns uname
+    rc = cli.main([])
+    out = {"rc": rc, "calls": calls, "blocked": BLOCKED, "maxim_file": maxim.__file__}
+    print(CFG["marker"] + json.dumps(out), flush=True)
     """
 )
 
@@ -208,6 +241,7 @@ def test_o8_server_mode_not_ready_is_reported(tmp_path: Path) -> None:
     require(line is not None, f"server-mode child did not report (rc={proc.returncode}): {proc.stderr[-3000:]}")
     out = json.loads(line[len(MARKER) :])
     require(str(out["maxim_file"]).startswith(str(SRC)), f"child imported another maxim: {out['maxim_file']!r}")
+    require(not out["blocked"], f"server mode tried to egress (blocked by the spy): {out['blocked']}")
     require("wait_ready" in out["calls"], f"server mode never asked wait_ready: {out['calls']}")
     text = proc.stdout + proc.stderr
     reported = out["rc"] not in (0, None) or re.search(r"not[ -]ready", text, re.IGNORECASE) is not None
@@ -232,8 +266,13 @@ def test_o4_send_message_refuses_an_unlisted_recipient() -> None:
     channel.send.return_value = True
     gateway = CommunicationGateway(bus=MagicMock())
     gateway.register_channel("sms", channel)
-    SendMessageTool(gateway).run(channel="sms", recipient="+15550001111", body="hello")
+    from maxim.tools.base import ToolErrorKind
+
+    result = SendMessageTool(gateway).run(channel="sms", recipient="+15550001111", body="hello")
     assert not channel.send.called, f"delivered to an unlisted recipient: {channel.send.call_args}"
+    assert result.success is False and result.error_kind is ToolErrorKind.PERMISSION_DENIED, (
+        f"not a typed recipient refusal: success={result.success}, error_kind={result.error_kind}, {result.error!r}"
+    )
 
 
 # ── O6 (item 4, after the gate) ───────────────────────────────────────────
@@ -245,23 +284,26 @@ def test_o4_send_message_refuses_an_unlisted_recipient() -> None:
     reason="advisor_mode.md O6 / item 4 (inbound framing; a release after the atonia gate's)",
 )
 def test_o6_inbound_comms_reach_the_prompt_framed() -> None:
-    """Inbound comms text reaches the ExecAgent prompt only inside an untrusted-data frame. Today it is inlined as
-    ``[User via sms ...] <text>``, so the text is outside every ``frame_tool_output`` frame."""
-    from maxim.agents.bus import StructuredContext
+    """Inbound comms text, through the real gateway -> MemoryAgent -> ExecAgent path, reaches the prompt only inside
+    an untrusted-data frame. Today it is inlined as ``[User via sms ...] <text>``, outside every frame."""
+    from maxim.agents.bus import AgentBus
     from maxim.agents.exec_agent import ExecAgent
+    from maxim.agents.memory_agent import MemoryAgent
+    from maxim.comms.gateway import CommunicationGateway
     from maxim.utils.content_safety import outside_tool_output
 
-    ctx = StructuredContext(
-        timestamp=0.0,
-        comms_messages=[{"direction": "inbound", "channel": "sms", "sender": "+15550002222", "content": INJECTION}],
+    bus = AgentBus()
+    memory = MemoryAgent(bus)
+    published: list[Any] = []
+    CommunicationGateway(bus=SimpleNamespace(publish=published.append)).receive_inbound(
+        "sms", "+15550002222", INJECTION
     )
-    agent = MagicMock()
-    agent._proposal_lock = threading.Lock()
-    agent._dn_escalation_context = None
-    try:
-        prompt = ExecAgent._build_llm_context(agent, ctx)
-    except (AttributeError, TypeError) as e:
-        raise ScenarioBroken(f"the prompt builder needs more of ExecAgent than this stand-in: {e!r}") from e
+    require(len(published) == 1, f"receive_inbound published {len(published)} percepts")
+    memory._on_percept(published[0])
+    ctx = memory.build_context()
+    require(any(m.get("content") == INJECTION for m in ctx.comms_messages), "MemoryAgent did not keep the message")
+    exec_agent = ExecAgent(bus, memory, enabled=False, shared_router=MagicMock())
+    prompt = exec_agent._build_llm_context(ctx)
     require(INJECTION in prompt, "the inbound text never reached the prompt")
     assert INJECTION not in outside_tool_output(prompt), "inbound comms text reaches the prompt unframed"
 
@@ -278,13 +320,17 @@ def _tree(root: Path) -> set[str]:
     raises=AssertionError,
     reason="advisor_mode.md O9 / item 7 (ephemeral mode; a release after the atonia gate's)",
 )
-def test_o9_ephemeral_agent_writes_nothing_outside_the_callers_directory(tmp_path: Path) -> None:
+def test_o9_ephemeral_agent_writes_nothing_outside_the_callers_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """An ephemeral ``create.agent`` that remembers and learns writes nothing under ``HOME`` (only the caller's
     directory). Today there is no ``ephemeral`` mode at all."""
     import maxim.create as create
 
     assert "ephemeral" in inspect.signature(create.agent).parameters, "maxim.create.agent has no ephemeral mode"
-    home = Path(os.environ["HOME"])
+    home = tmp_path / "home"  # per test, so no other in-process writer lands in the diff
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
     caller = tmp_path / "caller"
     caller.mkdir()
     before = _tree(home)

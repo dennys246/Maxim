@@ -1,33 +1,44 @@
 """#1315 item 1 strict red gates: the atonia composition ``maxim.advisor``, plus step 0a's executor closure.
 
 WHAT THIS FILE IS. Tests only, written before the code (``docs/plans/atonia_gate_approach_notes.md``, DRAFT
-v6.2: §0, the V1–V10 decisions, §1A (which wins over §2–§6), §4 and §5). Each gate is
+v6.3: §0, the V1–V10 decisions, §1A (which wins over §2–§6), §4 and §5). Each gate is
 ``xfail(strict=True, raises=AssertionError)``: it fails TODAY with an ``AssertionError`` for the reason its
 docstring names, and the day the behaviour is right it XPASSes, which strict turns into a failure until the
 decorator is removed. A gate that does not flip is data; do not re-point it.
 
 THE GATES, AND WHAT FLIPS EACH
   * ``test_executor_import_closure_step0a`` -- V9 / §1A.1 step 0a. ``import maxim.runtime.executor`` alone loads
-    ``runtime.agent_loop`` and ``agents.llm_worker`` today (about 830 modules). Flips with the lazy package inits.
+    ``runtime.agent_loop``, ``agents.llm_worker``, ``default_network``, ``memory`` and ``runtime.tool_dispatch``
+    today (about 830 modules). Flips with the lazy package inits.
     NOT an advisor gate: it fails today on the module list itself, a genuine behavioural red gate.
   * ``test_language_config_import_does_not_read_profiles`` -- V9 / §1A.1 step 0a. Importing
     ``models/language/config.py`` opens and parses ``$XDG_CONFIG_HOME/maxim/profiles.yml`` today; a hostile file
     is read before any refusal can run. Flips when the load moves to ``_ensure_user_profiles()``.
-  * Every child's audit hook BLOCKS egress (``_SpyBlocked`` after recording): INET connect/send, DNS, spawn.
+  * Every child's audit hook BLOCKS egress (``_SpyBlocked`` after recording): every socket connect/send (any
+    family, loopback and AF_UNIX included), DNS, spawn, exec and fork.
   * ``test_import_closure`` -- §4.2 / §1A.9 invariant 4. ``import maxim.advisor`` + ``open()`` + one ``ingest()``
     in a fresh child must not load the loop, the worker, memory, comms, the mesh family, ``huggingface_hub``,
-    ``httpx`` or ``maxim.utils.http``. Flips with item 1 on top of step 0a.
+    ``httpx`` or ``maxim.utils.http``. ``agents.permissions`` (transitive, through ``runtime.tool_policy``) is
+    allowed; ``agents.autonomy`` and ``agents.llm_worker`` are not (v6.3). Flips with item 1 on top of step 0a.
   * ``test_env_read_set`` -- §4.2 inputs table. The Python-level env read set from before the import through
-    ``close()`` is within ``ENV_READ_ALLOW`` and holds no wildcard (iteration/copy).
+    ``close()`` is within ``ENV_READ_ALLOW`` (plus numpy/threadpoolctl's own reads, by caller), holds no wildcard
+    but the one sanctioned scanner, and writes only ``engage()``'s five keys plus numpy's two (v6.3).
   * ``test_builder_refusals_*`` -- §4.2 "Refusals at open()": the signature, every code-loading variable, a model
     that is not a regular file, overlapping/missing directories (symlinks included).
-  * ``test_registration_sweep_b`` -- §4.2 "The sealed registry": exactly one ``ProposeActionTool``; every writer
-    raises ``SealedRegistryError``.
+  * ``test_registration_sweep_b`` -- §4.2 "The sealed registry": exactly one ``ProposeActionTool``; every public
+    writer of ``ToolRegistry`` (derived by introspection, so a new writer joins) raises ``SealedRegistryError``.
+  * ``test_open_builds_all_three_layers`` -- §4.2: the REAL ``open()`` builds its executor through
+    ``_build_dispatch_stack`` once, with all three layers, so the per-layer sweep proves the shipped composition.
   * ``test_per_layer_deletion_sweep_*`` -- §4.2 / §1A.10 sweep sets, each layer alone (the other two removed by
     the test-only build seam, below) refusing at THAT layer with THAT ``error_kind``.
   * ``test_no_effect`` -- §4.2: Python-level, no socket/spawn/exec, no write outside ``report_dir``, no read of
-    the fresh HOME/TMPDIR/CWD, and the trees diff clean. ``test_no_effect_c_level_disk_and_inbound`` is the
-    separate strict xfail for the parts items 7 (the C-level/Metal cache write) and 4 (framed inbound) own.
+    the fresh HOME/TMPDIR/CWD, the HOME/TMPDIR/CWD/``home_dir`` trees diff clean, and ``report_dir``'s FINAL state
+    is the report plus the log (transient ``atomic_write_json_at`` names are allowed, v6.3). The child's CWD is
+    made read-only, so a CWD-relative write fails loudly and every ``dir_fd``-relative name can be accepted.
+  * ``test_inbound_events_reach_backend_framed`` -- item 1 (§4.2): every untrusted segment is
+    ``frame_tool_output(..., external=True)`` output, and no event text is in the trusted template.
+  * ``test_no_effect_c_level_cache`` -- item 7's part: no C-level (Metal shader cache) write. Separate, so an
+    item-1 regression is never hidden behind it.
   * ``test_report_schema_and_status`` / ``test_report_status_*`` -- §1A.8 report shape and §4.2 status table.
   * ``test_special_token_defang*`` -- §4.2 / §1A.10: the token-id prompt build refuses every CONTROL /
     USER_DEFINED / UNKNOWN id and BOS inside an untrusted span; the synthetic refuse branch.
@@ -47,22 +58,32 @@ SEAMS THESE GATES PIN (the notes leave them open; chosen here, change them only 
     vocab_only=False)`` -- ``vocab_only=True`` is how the defang gate runs against vocab-only GGUFs, and
     ``closed_local._token_attr(handle, token_id) -> int`` is the one attribute lookup (monkeypatched for the
     synthetic refuse branch).
-  * ``maxim.advisor._session._build_dispatch_stack(propose_tool, *, layers, registry_tools)`` -- the TEST-ONLY
-    per-layer build. ``layers`` is a subset of ``{"sealed", "ceiling", "pin"}``. Without "sealed" the registry is
+  * ``maxim.advisor._session._build_dispatch_stack(propose_tool, *, layers, registry_tools)`` -- the ONE builder:
+    ``open()`` calls it with all three layers and ``registry_tools=None`` (``test_open_builds_all_three_layers``);
+    the sweeps call it with fewer, which is test-only use. ``layers`` is a subset of ``{"sealed", "ceiling",
+    "pin"}``. Without "sealed" the registry is
     an ordinary ``ToolRegistry`` over exactly ``registry_tools``; without "ceiling" the ceiling is ``Effect.ALL``;
     without "pin" the policy admits by name every registered tool, never by identity.
   * ``maxim.advisor._session.ProposeActionTool``; ``maxim.advisor.{open, AdvisorSession,
     AdvisorCompositionError, SealedRegistryError}``; ``session._executor.registry``; ``session.session_id``.
-  * A refused dispatch's ``ToolOutput`` carries ``error_kind`` (a ``ToolErrorKind``) and ``metadata["layer"]`` in
-    ``{"sealed", "ceiling", "pin"}``.
-  * The report is a ``Mapping`` (or has ``to_dict()``); ``error_kind`` serialises as the member NAME.
+  * A refused dispatch's ``ToolOutput`` carries ``error_kind`` (a ``ToolErrorKind``) and
+    ``metadata["refusal_layer"]``, one of ``"forbid"``, ``"mode"``, ``"registry"``, ``"permissions"``,
+    ``"ceiling"``, ``"pin"`` (v6.3). ``NOT_REGISTERED`` is layer ``"registry"``: the sealed registry is just a
+    registry, so there is no "sealed" refusal layer.
+  * The report is a ``Mapping`` (or has ``to_dict()``); ``error_kind`` serialises by ``.value`` (snake_case).
+  * Deadline precedence (v6.3): ``deadline_hit`` -> ``abandoned``, and the output is NOT parsed.
   * Events are dicts ``{"event_id", "kind", "text", "payload"}``.
-  * ``maxim._offline._reset_for_tests()`` -- the conftest latch reset §1A.1 names; ``_no_latch_leak`` uses it.
+  * The latch: an in-process ``open()`` engages it; the ONE autouse reset in ``tests/conftest.py`` restores it.
 
 THE FIXTURES OWED (§1A.10). ``TINY_GGUF`` (a tiny runnable model, named with size/source/sha256 by the item-1
 PR and fetched by CI's model-cache step) and ``VOCAB_DIR`` (llama.cpp's ``models/ggml-vocab-*.gguf`` at a
-pinned tag) do not exist yet. Gates that need them assert the path exists, so they fail for that reason too;
-gates that need ``llama_cpp`` FAIL when it is missing, never skip.
+pinned tag; all four of ``PINNED_VOCABS`` are required) do not exist yet. Gates that need them assert the path
+exists, so they fail for that reason too; gates that need ``llama_cpp`` FAIL when it is missing, never skip. They
+deliberately carry NO ``requires_model_cache`` marker: the fixtures are in-repo, so a missing one is a failure,
+never a lane skip.
+
+``pytest.raises`` is not used inside a gate: a miss raises ``Failed``, which is not an ``AssertionError``, so it
+would turn the suite red instead of leaving the gate as data. ``_expect_raises`` asserts instead.
 
 PRECONDITIONS ARE NOT THE GATE. A broken harness (a child that cannot report, a ``maxim`` imported from another
 checkout, an empty sweep set) raises ``ScenarioBroken``, never an ``AssertionError``, so it FAILS the run
@@ -101,6 +122,7 @@ MARKER = "@@ADVISOR_CHILD@@"
 FORBIDDEN_MODULES = (
     "maxim.runtime.agent_loop",
     "maxim.agents.llm_worker",
+    "maxim.agents.autonomy",  # O3: the approval/level surface; agents.permissions is allowed (v6.3)
     "maxim.default_network",
     "maxim.comms",
     "maxim.memory",
@@ -145,16 +167,26 @@ ENV_READ_ALLOW = frozenset(
         "NUMPY_MADVISE_HUGEPAGE",
         "OPENBLAS_MAIN_FREE",  # numpy._core sets it then reads it back (an OpenBLAS workaround)
         "GOTOBLAS_MAIN_FREE",  # likewise
+        "MAXIM_OFFLINE",  # maxim/__init__'s self-engage and is_offline() read it (§6; v6.3)
     }
 )
-# §4.2 "Env writes": numpy writes these two on import (measured as above). Nothing else may write.
-ENV_WRITE_ALLOW = frozenset({"OPENBLAS_MAIN_FREE", "GOTOBLAS_MAIN_FREE"})
+# §4.2: library reads are allowed BY CALLER module (numpy's and threadpoolctl's knobs drift across versions).
+ENV_READ_ALLOW_CALLERS = ("numpy", "threadpoolctl")
+# The latch's own exports (v6.3: engage() writes exactly these five) plus numpy's two import-time writes.
+LATCH_ENV_WRITES = frozenset(
+    {"HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_HUB_DISABLE_TELEMETRY", "YOLO_OFFLINE", "MAXIM_OFFLINE"}
+)
+ENV_WRITE_ALLOW = LATCH_ENV_WRITES | {"OPENBLAS_MAIN_FREE", "GOTOBLAS_MAIN_FREE"}
 # The prefix refusal (DYLD_*/GGML_*/LLAMA_*) cannot be done without iterating the environment, which §4.2's rule
-# records as a wildcard. The notes do not resolve that; this pins ONE sanctioned scanner, whose iteration is the
-# only wildcard allowed (module, function). Every other wildcard fails the gate.
+# records as a wildcard. v6.3 settles it: ONE sanctioned scanner, whose iteration is the only wildcard allowed
+# (module, function). Every other wildcard fails the gate.
 ENV_WILDCARD_ALLOW = frozenset({("maxim.advisor._refusals", "code_loading_vars_set")})
 
-GATE_KIND_NAMES = frozenset({"NOT_REGISTERED", "POLICY_CEILING", "POLICY_PERMISSIONS", "POLICY_PIN", "MODE"})
+# ToolErrorKind serialised by .value (v6.3).
+GATE_KIND_VALUES = frozenset(
+    {"not_registered", "inactive_scene", "policy_ceiling", "policy_permissions", "policy_pin", "mode", "offline"}
+)
+REFUSAL_LAYERS = frozenset({"forbid", "mode", "registry", "permissions", "ceiling", "pin"})
 
 REPORT_KEYS = frozenset(
     {
@@ -254,7 +286,9 @@ class FakeBackend:
         if self.mode == "raise":
             raise RuntimeError("fake backend: completion failed")
         text = self.completion if isinstance(self.completion, str) else json.dumps(self.completion)
-        if self.mode == "deadline":
+        if self.mode == "deadline":  # a complete, valid completion: tests the deadline row alone
+            return SimpleNamespace(text=text, deadline_hit=True, finish_reason="stop")
+        if self.mode == "deadline_half":  # v6.3: the deadline wins and the half-JSON is never parsed
             return SimpleNamespace(text=text[: len(text) // 2], deadline_hit=True, finish_reason="stop")
         return SimpleNamespace(text=text, deadline_hit=False, finish_reason="stop")
 
@@ -273,17 +307,13 @@ def _install_fake(monkeypatch: pytest.MonkeyPatch, backend: FakeBackend) -> list
     return calls
 
 
-@pytest.fixture
-def _no_latch_leak() -> Any:
-    """open() engages item 10's process-wide latch (§4.2); an in-process test must leave it reset (§1A.1)."""
-    yield
-    off = sys.modules.get("maxim._offline")
-    if off is not None:
-        reset = getattr(off, "_reset_for_tests", None)
-        if callable(reset):
-            reset()
-        elif getattr(off, "is_offline", lambda: False)():
-            pytest.fail("the offline latch is up after an in-process open() and no _reset_for_tests exists (§1A.1)")
+def _expect_raises(exc: type[BaseException] | tuple[type[BaseException], ...], fn: Any, what: str) -> BaseException:
+    """``pytest.raises`` for a gate: a miss is an ``AssertionError`` (``Failed`` is not one), never a red suite."""
+    try:
+        fn()
+    except exc as caught:
+        return caught
+    raise AssertionError(f"{what}: did not raise {exc!r}")
 
 
 def _dirs(tmp_path: Path) -> tuple[Path, Path, Path]:
@@ -332,8 +362,6 @@ _CHILD_SCRIPT = textwrap.dedent(
     FS = {"os.mkdir", "os.rename", "os.remove", "os.rmdir", "os.symlink", "os.link", "os.truncate",
           "os.chmod", "os.utime", "shutil.copyfile", "shutil.rmtree", "shutil.move"}
 
-    import socket as _socket
-    INET = (_socket.AF_INET, _socket.AF_INET6)
     DNS = {"socket.getaddrinfo", "socket.gethostbyname", "socket.gethostbyname_ex", "socket.gethostbyaddr",
            "socket.getnameinfo"}
     SEND = {"socket.connect", "socket.connect_ex", "socket.sendto", "socket.sendmsg"}
@@ -343,13 +371,10 @@ _CHILD_SCRIPT = textwrap.dedent(
         pass
 
     def _blocks(ev, args):
-        if ev in DNS or ev in ("subprocess.Popen", "os.system"):
+        # Every family (INET, loopback, AF_UNIX): aligned with the offline-latch child's spy.
+        if ev in DNS or ev in SEND or ev in ("subprocess.Popen", "os.system", "os.fork", "os.forkpty", "pty.spawn"):
             return True
-        if ev.startswith(("os.exec", "os.posix_spawn", "os.spawn")):
-            return True
-        if ev in SEND:
-            return getattr(args[0] if args else None, "family", None) in INET  # loopback included
-        return False
+        return ev.startswith(("os.exec", "os.posix_spawn", "os.spawn"))
 
     def _p(x):
         if isinstance(x, int):
@@ -384,7 +409,7 @@ _CHILD_SCRIPT = textwrap.dedent(
 
     def _caller():
         f = sys._getframe(2)
-        while f is not None and f.f_globals.get("__name__") in ("os", "_collections_abc", "__main__"):
+        while f is not None and f.f_globals.get("__name__") in ("os", "_collections_abc", "collections.abc", "__main__"):
             f = f.f_back
         return [f.f_globals.get("__name__"), f.f_code.co_name] if f is not None else ["?", "?"]
 
@@ -577,14 +602,20 @@ def _run_child(
         "PYTHONPATH": str(SRC),  # ignored under -I; the child inserts SRC itself from its config
         "PATH": "/usr/bin:/bin",
     }
-    proc = subprocess.run(  # noqa: S603 -- our own interpreter, our own script
-        [sys.executable, "-I", "-B", str(script), str(cfg_path)],
-        cwd=str(sb.cwd),
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=CHILD_TIMEOUT_S,
-    )
+    # A read-only CWD: a CWD-relative write fails loudly, so a dir_fd-relative name in an audit event (which carries
+    # no dir_fd) can be accepted, with the tree diffs as the backstop (three-lens B2).
+    sb.cwd.chmod(0o555)
+    try:
+        proc = subprocess.run(  # noqa: S603 -- our own interpreter, our own script
+            [sys.executable, "-I", "-B", str(script), str(cfg_path)],
+            cwd=str(sb.cwd),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=CHILD_TIMEOUT_S,
+        )
+    finally:
+        sb.cwd.chmod(0o755)
     line = next((ln for ln in proc.stdout.splitlines() if ln.startswith(MARKER)), None)
     if line is None:
         assert "maxim.advisor" not in proc.stderr or "No module named" not in proc.stderr, (
@@ -630,9 +661,11 @@ def test_executor_import_closure_step0a(tmp_path: Path) -> None:
     # No hostile profiles.yml here: its import-time parse is step 0a's OTHER red gate (§1A.1), not this one.
     out, _sb = _run_child(tmp_path, mode="executor", hostile_profiles=False)
     require(out.get("error") is None, f"importing maxim.runtime.executor crashed: {out.get('error')}")
-    loaded = [m for m in ("maxim.runtime.agent_loop", "maxim.agents.llm_worker") if m in out["modules"]]
+    cut = ("maxim.runtime.agent_loop", "maxim.agents.llm_worker", "maxim.runtime.tool_dispatch")
+    loaded = [m for m in out["modules"] if m in cut or m.startswith(("maxim.default_network", "maxim.memory"))]
+    roots = sorted({m if m in cut else ".".join(m.split(".")[:2]) for m in loaded})
     assert not loaded, (
-        f"import maxim.runtime.executor loads {loaded} ({len(out['modules'])} modules in sys.modules); "
+        f"import maxim.runtime.executor loads {roots} ({len(out['modules'])} modules in sys.modules); "
         "step 0a's lazy inits must cut them"
     )
 
@@ -717,7 +750,13 @@ def test_import_closure(tmp_path: Path, backend: str) -> None:
 def test_env_read_set(tmp_path: Path, backend: str) -> None:
     """From before ``import maxim.advisor`` through ``close()``, env reads stay in ``ENV_READ_ALLOW``, no wildcard."""
     out, _sb = _child_session(tmp_path, backend)
-    outside = sorted({f"{r[0]} <- {r[1]}.{r[2]}" for r in out["env_reads"] if r[0] not in ENV_READ_ALLOW})
+    outside = sorted(
+        {
+            f"{r[0]} <- {r[1]}.{r[2]}"
+            for r in out["env_reads"]
+            if r[0] not in ENV_READ_ALLOW and not str(r[1]).startswith(ENV_READ_ALLOW_CALLERS)
+        }
+    )
     assert not outside, f"env reads outside the pinned allow-list: {outside}"
     wild = [w for w in out["env_wild"] if (w[1], w[2]) not in ENV_WILDCARD_ALLOW]
     assert not wild, f"wildcard env reads (iteration/copy reads names nobody records): {wild[:20]}"
@@ -746,17 +785,14 @@ def test_builder_refusals_signature() -> None:
 
 @pytest.mark.parametrize("var", CODE_LOADING_SAMPLES)
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with open()'s env refusal")
-def test_builder_refusals_code_loading_env(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _no_latch_leak: Any, var: str
-) -> None:
+def test_builder_refusals_code_loading_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, var: str) -> None:
     """Each pinned code-loading variable (exact, or by the DYLD_/GGML_/LLAMA_ prefix) makes ``open()`` refuse."""
     advisor = _require_advisor()
     calls = _install_fake(monkeypatch, FakeBackend())
     monkeypatch.setenv(var, "/nonexistent/hostile")
     err = getattr(advisor, "AdvisorCompositionError", None)
     assert isinstance(err, type), "item 1 not built: no maxim.advisor.AdvisorCompositionError"
-    with pytest.raises(err):
-        _open(advisor, tmp_path)
+    _expect_raises(err, lambda: _open(advisor, tmp_path), f"open() with {var} set")
     assert not calls, f"open() built the backend before refusing {var}"
 
 
@@ -774,16 +810,14 @@ def _model_cases(tmp_path: Path) -> dict[str, Any]:
 
 @pytest.mark.parametrize("case", ["missing", "directory", "char_device", "profile_name", "url"])
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with open()'s model check")
-def test_builder_refusals_model(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _no_latch_leak: Any, case: str
-) -> None:
+def test_builder_refusals_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
     """A ``model`` that is not an existing regular file refuses (§4.2)."""
     advisor = _require_advisor()
     calls = _install_fake(monkeypatch, FakeBackend())
     err = getattr(advisor, "AdvisorCompositionError", None)
     assert isinstance(err, type), "item 1 not built: no maxim.advisor.AdvisorCompositionError"
-    with pytest.raises(err):
-        _open(advisor, tmp_path, model=_model_cases(tmp_path)[case])
+    model = _model_cases(tmp_path)[case]
+    _expect_raises(err, lambda: _open(advisor, tmp_path, model=model), f"open() with a {case} model")
     assert not calls, f"open() built the backend for a {case} model"
 
 
@@ -791,7 +825,7 @@ def test_builder_refusals_model(
     "case", ["same", "report_inside_home", "home_inside_report", "symlinked_parent", "report_is_symlink", "missing"]
 )
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with open()'s fd-based dir checks")
-def test_builder_refusals_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _no_latch_leak: Any, case: str) -> None:
+def test_builder_refusals_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
     """Overlapping, symlinked or missing ``home_dir``/``report_dir`` refuse, checked on the fd (§4.2)."""
     advisor = _require_advisor()
     _install_fake(monkeypatch, FakeBackend())
@@ -823,15 +857,49 @@ def test_builder_refusals_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, 
         report.symlink_to(target, target_is_directory=True)
     else:
         report = tmp_path / "does_not_exist"
-    with pytest.raises(err):
-        advisor.open(home_dir=home, model=model, report_dir=report)
+    _expect_raises(err, lambda: advisor.open(home_dir=home, model=model, report_dir=report), f"open() dirs: {case}")
 
 
 # ── 4. registration sweep (b) ─────────────────────────────────────────────
 
+# ToolRegistry's public READ surface, by prefix. Every other public method is treated as a writer (fail-closed: a
+# writer added to ToolRegistry later joins the sweep without anyone editing this file).
+_REGISTRY_READER_PREFIXES = ("get", "find", "list", "is_", "has_", "advertised", "tool_descriptions")
+
+
+def _registry_public_writers() -> list[str]:
+    from maxim.tools.registry import ToolRegistry
+
+    names = sorted(
+        n
+        for n, v in vars(ToolRegistry).items()
+        if not n.startswith("_") and callable(v) and not n.startswith(_REGISTRY_READER_PREFIXES)
+    )
+    require("register" in names and "deregister" in names, f"writer derivation looks wrong: {names}")
+    return names
+
+
+def _writer_args(name: str, intruder: Any) -> tuple[list[Any], dict[str, Any]]:
+    """Plausible arguments for ToolRegistry.<name>, from its signature; an unknown parameter is ScenarioBroken."""
+    from maxim.tools.registry import ToolRegistry
+
+    by_param = {"tool": intruder, "tools": [intruder], "scene_id": "scene", "name": "propose_action"}
+    by_param["tool_name"] = "propose_action"
+    args: list[Any] = []
+    kwargs: dict[str, Any] = {}
+    for p in list(inspect.signature(getattr(ToolRegistry, name)).parameters.values())[1:]:
+        if p.default is not p.empty or p.kind in (p.VAR_POSITIONAL, p.VAR_KEYWORD):
+            continue
+        require(p.name in by_param, f"ToolRegistry.{name} takes {p.name!r}: add it to _writer_args")
+        if p.kind is p.KEYWORD_ONLY:
+            kwargs[p.name] = by_param[p.name]
+        else:
+            args.append(by_param[p.name])
+    return args, kwargs
+
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with SealedToolRegistry")
-def test_registration_sweep_b(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _no_latch_leak: Any) -> None:
+def test_registration_sweep_b(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The session registry holds exactly one ``ProposeActionTool``; every writer raises ``SealedRegistryError``."""
     advisor = _require_advisor()
     _install_fake(monkeypatch, FakeBackend())
@@ -848,23 +916,48 @@ def test_registration_sweep_b(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _
             f"the one tool is {type(tool).__module__}.{type(tool).__name__}"
         )
         intruder = type(tool)()
-        writes = {
-            "register": lambda: registry.register(intruder),
-            "register_scene_tools": lambda: registry.register_scene_tools([intruder], "scene"),
-            "deregister": lambda: registry.deregister("propose_action"),
-            "activate_scene": lambda: registry.activate_scene("scene"),
-            "deactivate_scene": lambda: registry.deactivate_scene("scene"),
-            "deactivate_tool": lambda: registry.deactivate_tool("propose_action"),
-            "_register_scene_locked": lambda: registry._register_scene_locked([intruder], "scene"),
-            "_deactivate_scene_locked": lambda: registry._deactivate_scene_locked("scene"),
-        }
-        for name, call in writes.items():
+        writers = _registry_public_writers()
+        for name in writers:
             assert hasattr(registry, name), f"the sealed registry has no {name}: it must exist and raise, not vanish"
-            with pytest.raises(sealed_err):
-                call()
+            args, kwargs = _writer_args(name, intruder)
+            method = getattr(registry, name)
+            _expect_raises(sealed_err, lambda m=method, a=args, k=kwargs: m(*a, **k), f"sealed registry .{name}()")
         assert list(registry.list_all()) == ["propose_action"] and registry.get("propose_action") is tool, (
             "a write changed the sealed contents"
         )
+    finally:
+        session.close()
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips when open() uses the one builder")
+def test_open_builds_all_three_layers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The REAL ``open()`` builds through ``_build_dispatch_stack`` once, with all three layers (arch B1).
+
+    Without this, the per-layer sweeps below prove only the test-only use of the builder: ``open()`` could build an
+    ``Executor`` inline (say with ``ceiling=Effect.ALL`` left in) and every sweep would still pass.
+    """
+    advisor = _require_advisor()
+    sess = _session_mod()
+    _install_fake(monkeypatch, FakeBackend())
+    assert hasattr(sess, "_build_dispatch_stack"), "item 1 not built: no _session._build_dispatch_stack"
+    real = sess._build_dispatch_stack
+    calls: list[tuple[tuple[Any, ...], dict[str, Any], Any]] = []
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        out = real(*args, **kwargs)
+        calls.append((args, kwargs, out))
+        return out
+
+    monkeypatch.setattr(sess, "_build_dispatch_stack", spy)
+    session = _open(advisor, tmp_path)
+    try:
+        assert len(calls) == 1, f"open() called _build_dispatch_stack {len(calls)} times"
+        args, kwargs, built = calls[0]
+        assert frozenset(kwargs.get("layers", ())) == frozenset({"sealed", "ceiling", "pin"}), kwargs
+        assert kwargs.get("registry_tools") is None, "open() passed registry_tools (the test-only unsealed path)"
+        assert session._executor is built, "the session's executor is not the one the builder returned"
+        pinned = args[0] if args else kwargs.get("propose_tool")
+        assert session._executor.registry.get("propose_action") is pinned, "the pinned tool is not the registered one"
     finally:
         session.close()
 
@@ -912,12 +1005,12 @@ def _dispatch(executor: Any, name: str, params: dict[str, Any] | None = None) ->
 
 
 def _assert_refused(out: Any, name: str, kind: str, layer: str) -> None:
+    """``kind`` is the ToolErrorKind ``.value``; ``layer`` the ``metadata["refusal_layer"]`` (v6.3)."""
     assert not out.success, f"{name!r} RAN through the {layer} layer alone: {out.output!r}"
-    got = getattr(out.error_kind, "name", out.error_kind)
+    got = getattr(out.error_kind, "value", out.error_kind)
     assert got == kind, f"{name!r} refused as {got!r}, not {kind!r} (the {layer} layer must refuse it)"
-    assert (out.metadata or {}).get("layer") == layer, (
-        f"{name!r} refusal names layer {(out.metadata or {}).get('layer')!r}"
-    )
+    got_layer = (out.metadata or {}).get("refusal_layer")
+    assert got_layer == layer, f"{name!r} refusal names refusal_layer {got_layer!r}, not {layer!r}"
 
 
 PROPOSE_ARGS = {"summary": "keep watching", "target": "hall"}
@@ -937,7 +1030,7 @@ def test_per_layer_deletion_sweep_ceiling(tmp_path: Path, monkeypatch: pytest.Mo
     require(acting, "no default-registry tool exceeds READ: the ceiling sweep would be vacuous")
     _propose, ex = _stack({"ceiling"}, acting)
     for t in acting:
-        _assert_refused(_dispatch(ex, t.name), t.name, "POLICY_CEILING", "ceiling")
+        _assert_refused(_dispatch(ex, t.name), t.name, "policy_ceiling", "ceiling")
     ok = _dispatch(ex, "propose_action", PROPOSE_ARGS)  # control: the READ tool passes the ceiling layer
     assert ok.success, f"the READ propose_action was refused by the ceiling layer alone: {ok.error!r}"
 
@@ -955,17 +1048,18 @@ def test_per_layer_deletion_sweep_pin(tmp_path: Path, monkeypatch: pytest.Monkey
     impostor = sess.ProposeActionTool()  # same class, same name, a different object
     reads = [t for t in tools if not base.exceeds(base.effect_of(t), base.Effect.READ)]
     _propose, ex = _stack({"pin"}, [impostor], include_pinned=False)
-    _assert_refused(_dispatch(ex, "propose_action", PROPOSE_ARGS), "propose_action (impostor)", "POLICY_PIN", "pin")
+    _assert_refused(_dispatch(ex, "propose_action", PROPOSE_ARGS), "propose_action (impostor)", "policy_pin", "pin")
     _propose, ex = _stack({"pin"}, reads)
     for t in reads:
-        _assert_refused(_dispatch(ex, t.name), t.name, "POLICY_PIN", "pin")
+        _assert_refused(_dispatch(ex, t.name), t.name, "policy_pin", "pin")
     ok = _dispatch(ex, "propose_action", PROPOSE_ARGS)  # control: the pinned instance itself passes the pin layer
     assert ok.success, f"the pinned instance was refused by the pin layer alone: {ok.error!r}"
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with the sealed-contents layer")
 def test_per_layer_deletion_sweep_sealed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Sealed contents alone: every name but ``propose_action`` refuses as ``NOT_REGISTERED``, aliases included."""
+    """Sealed contents alone: every name but ``propose_action`` refuses as ``NOT_REGISTERED``, at layer
+    ``"registry"`` (v6.3: the sealed registry is just a registry), aliases included."""
     _require_advisor()
     tools = _default_registry_tools(tmp_path, monkeypatch)
     from maxim.runtime.executor import TOOL_ALIASES
@@ -975,7 +1069,7 @@ def test_per_layer_deletion_sweep_sealed(tmp_path: Path, monkeypatch: pytest.Mon
     names.discard("propose_action")
     _propose, ex = _stack({"sealed"}, None)
     for name in sorted(n for n in names if n):
-        _assert_refused(_dispatch(ex, name), name, "NOT_REGISTERED", "sealed")
+        _assert_refused(_dispatch(ex, name), name, "not_registered", "registry")
     ok = _dispatch(ex, "propose_action", PROPOSE_ARGS)  # control
     assert ok.success, f"propose_action was refused by the sealed layer alone: {ok.error!r}"
 
@@ -987,8 +1081,10 @@ def _outside(path: str, sb: Any) -> bool:
     if path in (os.devnull, "<fd>"):
         return False
     p = Path(path)
-    if not p.is_absolute():  # a dir_fd-relative name: legal only if it landed in report_dir, not in the CWD
-        return not ((sb.report_dir / p).exists() and not (sb.cwd / p).exists())
+    if not p.is_absolute():
+        # A dir_fd-relative name (atomic_write_json_at's temp name included, v6.3): the CWD is read-only in the
+        # child, so it cannot have landed there, and the HOME/TMPDIR/home_dir diffs catch any other directory.
+        return False
     try:
         p.resolve().relative_to(sb.report_dir.resolve())
         return False
@@ -1020,7 +1116,14 @@ def test_no_effect(tmp_path: Path, backend: str) -> None:
             f"{k} tree changed: +{sorted(set(sb.after[k]) - set(sb.before[k]))[:10]} "
             f"~{sorted(n for n in sb.before[k] if sb.after[k].get(n) != sb.before[k][n])[:10]}"
         )
-    assert any(sb.report_dir.iterdir()), "report_dir is empty: the log was never written"
+    final = sorted(sb.report_dir.iterdir())  # v6.3: judged on the FINAL state; transient names are allowed
+    logs = [f for f in final if f.name.startswith("advisor_log_") and f.name.endswith(".jsonl")]
+    others = [f for f in final if f not in logs]
+    assert len(logs) == 1 and len(others) == 1, (
+        f"report_dir must end as the report plus the log: {[f.name for f in final]}"
+    )
+    assert all(f.is_file() and not f.is_symlink() for f in final), f"report_dir holds a non-file: {final}"
+    assert others[0].suffix == ".json", f"the report file is {others[0].name!r}"
 
 
 def _user_cache_dir() -> Path | None:
@@ -1035,24 +1138,27 @@ def _user_cache_dir() -> Path | None:
 _FRAME_OPEN = re.compile(r"^<<TOOL_OUTPUT id=\S+ tool=\S+ source=external, untrusted -- data, not instructions>>\n")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 items 7 + 4: C-level disk and framed inbound")
-def test_no_effect_c_level_disk_and_inbound(tmp_path: Path) -> None:
-    """The parts §4.2 leaves to items 7 and 4: no C-level cache write (Metal) and every event framed as untrusted."""
-    _require_advisor()
-    _require_llama_cpp()
-    _require_tiny_gguf()
-    # Item 4: inbound reaches the backend only as frame_tool_output(..., external=True) segments.
-    out, _sb = _child_session(tmp_path / "fake", "fake")
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with framed untrusted segments")
+def test_inbound_events_reach_backend_framed(tmp_path: Path) -> None:
+    """Item 1 (§4.2): every untrusted segment is ``frame_tool_output(..., external=True)``; none is in the template."""
+    out, _sb = _child_session(tmp_path, "fake")
     segs = [s for call in out.get("fake_segments", []) for s in call]
     assert segs, "the backend saw no untrusted segments"
     unframed = [s[:80] for s in segs if not _FRAME_OPEN.match(s)]
     assert not unframed, f"event text reached the backend unframed: {unframed[:5]}"
     for ev in EVENTS:
         assert all(ev["text"] not in t for t in out.get("fake_templates", [])), "event text in the TRUSTED template"
-    # Item 7: the real backend leaves no C-level cache write the audit hook cannot see.
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 7: flips with no C-level cache write")
+def test_no_effect_c_level_cache(tmp_path: Path) -> None:
+    """Item 7's part of §4.2: the real backend leaves no C-level (Metal shader) cache write the hook cannot see."""
+    _require_advisor()
+    _require_llama_cpp()
+    _require_tiny_gguf()
     cache = _user_cache_dir()
     before = _tree(cache) if cache and cache.is_dir() else {}
-    _child_session(tmp_path / "real", "real")
+    _child_session(tmp_path, "real")
     after = _tree(cache) if cache and cache.is_dir() else {}
     new = sorted(set(after) - set(before))
     assert not new, f"C-level writes to the per-user cache directory: {new[:10]}"
@@ -1078,7 +1184,7 @@ def _ingest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, backend: FakeBacken
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with the §1A.8 report")
-def test_report_schema_and_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _no_latch_leak: Any) -> None:
+def test_report_schema_and_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A refused ``bash`` beside a ``propose_action``: §1A.8's keys, ``status == "ok"``, refusals filled, seq joined."""
     report, session, report_dir = _ingest(tmp_path, monkeypatch, FakeBackend("ok"))
     missing = REPORT_KEYS - set(report)
@@ -1092,7 +1198,8 @@ def test_report_schema_and_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert len(report["proposals"]) == 1, f"proposals: {report['proposals']}"
     refusals = report["refusals"]
     assert [r["name"] for r in refusals] == ["bash"], f"refusals: {refusals}"
-    assert refusals[0]["error_kind"] in GATE_KIND_NAMES, refusals[0]
+    assert refusals[0]["error_kind"] in GATE_KIND_VALUES, refusals[0]  # ToolErrorKind.value (v6.3)
+    assert refusals[0].get("layer") in REFUSAL_LAYERS, refusals[0]
     assert isinstance(refusals[0]["effect"], (list, str)), "effect must be flag names (sorted list) or 'unknown'"
     from maxim.advisor.log import read_log
 
@@ -1104,22 +1211,32 @@ def test_report_schema_and_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
 @pytest.mark.parametrize(
     "case",
-    ["completion_raises", "deadline", "not_json", "extra_field", "too_many_calls", "missing_field"],
+    [
+        "completion_raises",
+        "deadline",
+        "deadline_half_json",
+        "not_json",
+        "extra_field",
+        "too_many_calls",
+        "missing_field",
+    ],
 )
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with §4.2's status table")
-def test_report_status_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _no_latch_leak: Any, case: str) -> None:
-    """Never a false ``ok``: completion error / schema-invalid -> ``error``, deadline -> ``abandoned`` (§4.2)."""
+def test_report_status_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
+    """Never a false ``ok``: completion error / schema-invalid -> ``error``; deadline -> ``abandoned``, unparsed,
+    even when the truncated text is also schema-invalid (v6.3 precedence exception)."""
     many = dict(GOOD_COMPLETION, calls=[{"name": "propose_action", "arguments": PROPOSE_ARGS}] * 9)
     backend = {
         "completion_raises": FakeBackend("raise"),
-        "deadline": FakeBackend("deadline"),
+        "deadline": FakeBackend("deadline"),  # a valid completion with the flag set: the row alone
+        "deadline_half_json": FakeBackend("deadline_half"),  # v6.3: deadline wins, the half-JSON is not parsed
         "not_json": FakeBackend("ok", completion="the model rambled instead of JSON"),
         "extra_field": FakeBackend("ok", completion=dict(GOOD_COMPLETION, execute_now=True)),
         "too_many_calls": FakeBackend("ok", completion=many),  # > max_calls (8)
         "missing_field": FakeBackend("ok", completion={k: v for k, v in GOOD_COMPLETION.items() if k != "rationale"}),
     }[case]
     report, _session, report_dir = _ingest(tmp_path, monkeypatch, backend)
-    want = "abandoned" if case == "deadline" else "error"
+    want = "abandoned" if case.startswith("deadline") else "error"
     assert report.get("status") == want, f"{case}: status {report.get('status')!r}, want {want!r}"
     assert report.get("reason"), f"{case}: a non-ok report must carry a reason"
     assert report.get("proposals") == [], f"{case}: a failed turn dispatched proposals: {report.get('proposals')}"
@@ -1139,9 +1256,11 @@ def _vocab_files() -> list[Path]:
     pkg = Path(llama_cpp.__file__).parent
     found = sorted(pkg.rglob("ggml-vocab-*.gguf"))
     found += sorted(VOCAB_DIR.glob("ggml-vocab-*.gguf")) if VOCAB_DIR.is_dir() else []
-    assert found, (
-        f"no vocab GGUF: none vendored under {pkg} and the pinned fixture {VOCAB_DIR} "
-        f"(llama.cpp models/ggml-vocab-{{{','.join(PINNED_VOCABS)}}}.gguf) is not in the tree"
+    names = {f.name for f in found}
+    missing = [v for v in PINNED_VOCABS if f"ggml-vocab-{v}.gguf" not in names]
+    assert not missing, (
+        f"pinned vocab GGUFs missing (all four are required, §4.2): {missing}; none vendored under {pkg}, "
+        f"and the fixture dir {VOCAB_DIR} lacks them"
     )
     return found
 
@@ -1255,5 +1374,7 @@ def test_o3_no_approval_surface(tmp_path: Path) -> None:
     out, _sb = _child_session(tmp_path, "fake")
     inst = [a for a in out.get("session_attrs", []) if any(w in a.lower() for w in _APPROVAL_WORDS)]
     assert not inst, f"the live session exposes an approval surface: {inst}"
-    loaded = [m for m in out["modules_after_ingest"] if m == "maxim.agents.autonomy" or m.startswith("maxim.agents.")]
-    assert not loaded, f"maxim.advisor's closure imports maxim.agents (autonomy among them): {loaded}"
+    # v6.3: agents.permissions arrives transitively through runtime.tool_policy and is allowed.
+    banned = ("maxim.agents.autonomy", "maxim.agents.llm_worker")
+    loaded = [m for m in out["modules_after_ingest"] if m in banned or m.startswith(tuple(b + "." for b in banned))]
+    assert not loaded, f"maxim.advisor's closure imports the approval/worker surface: {loaded}"

@@ -19,6 +19,9 @@ THE GATES, AND WHAT FLIPS EACH
   * ``test_no_effect_subprocess`` -- §6 "The red gate" / §1A.9 invariant 3: the census gate over ``CENSUS_SITES``,
     run with the conftest-forced ``HF_HUB_OFFLINE``/``TRANSFORMERS_OFFLINE`` deleted (advisor_mode.md §Item 10).
     Flips with item 10's call-site refusals on top of 0b.
+  * ``test_offline_implies_internet_lowered`` -- §1A.1, the read-side coupling. ``test_evidence_records_refuse_an_
+    offline_code_stamp`` is a passing guard (it holds today). ``test_offline_sim_report_says_offline`` -- §1A.7's
+    composed gate at the report writer (its docstring states the scope).
   * ``test_router_refuses_cloud_and_remote_lanes_at_build`` / ``test_router_refuses_a_pre_engage_lane_at_dispatch``
     -- §6 layer 3, the router predicate.
   * ``test_llm_offline_is_a_config_key`` / ``test_config_version_owns_llm_offline`` /
@@ -33,6 +36,12 @@ SEAMS THESE GATES PIN (the notes leave them open; chosen here, change them only 
   * "No hook without the variable" is checked by the installed flag AND behaviourally (a synthetic
     ``sys.audit("subprocess.Popen", ...)`` and ``sys.audit("socket.getaddrinfo", ...)`` pass), because Python
     offers no API that lists audit hooks.
+  * The census sites a library backs (``ddgs``, ultralytics, faster-whisper, ``huggingface_hub``, twilio, the
+    Anthropic SDK, ``sentence_transformers``) are NOT APPLICABLE where that library is not installed: reported in a
+    warning and in the failure message, never counted as a pass, and the gate refuses to run with every site
+    not-applicable. ``HF_BACKED_SITES`` (§6 layer 2: ``local_files_only`` + ``HF_HUB_OFFLINE``) also pass on
+    ``OfflineModeIsEnabled`` or a degraded record: ``maxim._offline.degraded()`` (a sequence that grows) or a WARNING
+    naming "degraded" during the call.
   * The census counts a site as refused when an ``OfflineRefusal`` is raised (anywhere in the exception chain) or the
     ledger grew during its call, AND the blocking spy (added before ``engage``) saw no connect, send,
     resolve or spawn while it ran. Heavy third-party libraries (``httpx``, ``huggingface_hub``,
@@ -70,6 +79,7 @@ import logging
 import subprocess
 import sys
 import textwrap
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -94,6 +104,25 @@ CENSUS_SITES: tuple[str, ...] = (
     "similarity.encoder[missing model]",
     "simulation.container_runner.ensure_image",
     "hivemind.substrate_client.list_releases",
+    "tools.internet_search[ddgs package]",
+    "tools.internet_search._search_duckduckgo_lite[urllib3 bypass]",
+    "models.vision.ultralytics_engine[attempt_download_asset]",
+    "inference.transcribe_audio[faster-whisper WhisperModel]",
+    "huggingface_hub.hf_hub_download[direct]",
+    "comms.channels.twilio_channel.send",
+    "models.vision.rtm_engine[download_vision]",
+    "router[cloud lane dispatch]",
+)
+
+# HF-backed sites (§6 layer 2): ``local_files_only`` plus ``HF_HUB_OFFLINE`` is their handling, so they also pass on
+# ``huggingface_hub``'s ``OfflineModeIsEnabled`` or a ``degraded`` record (``maxim._offline.degraded()`` growing, or
+# a WARNING naming "degraded"), always with zero socket events.
+HF_BACKED_SITES: frozenset[str] = frozenset(
+    {
+        "similarity.encoder[missing model]",
+        "inference.transcribe_audio[faster-whisper WhisperModel]",
+        "huggingface_hub.hf_hub_download[direct]",
+    }
 )
 
 # The child's own spy: these audit events are a connect, a send, a resolve or a spawn.
@@ -172,7 +201,10 @@ _PRELUDE = textwrap.dedent(
         if not event.startswith(SPY) or not _is_egress(event, args):
             return
         rec = {"window": STATE["window"], "event": event, "args": repr(args)[:160]}
-        (OUT["spy"] if STATE["window"] is not None else OUT["spy_outside"]).append(rec)
+        if STATE["window"] == "__preimport__":
+            OUT.setdefault("spy_preimport", []).append(rec)  # a library's import-time probe, blocked; not a site
+        else:
+            (OUT["spy"] if STATE["window"] is not None else OUT["spy_outside"]).append(rec)
         raise _SpyBlocked(f"{SPY_BLOCKED}: {event}")
 
     def install_spy():
@@ -206,8 +238,30 @@ _PRELUDE = textwrap.dedent(
             exc = exc.__cause__ or exc.__context__
         return False
 
+    import logging as _logging
+
+    class _Warnings(_logging.Handler):
+        def emit(self, record):
+            if record.levelno >= _logging.WARNING and STATE["window"] is not None:
+                OUT.setdefault("warnings", []).append({"window": STATE["window"], "msg": record.getMessage()[:200]})
+
+    _logging.getLogger().addHandler(_Warnings())
+
+    def chain_names(exc):
+        names, seen = [], set()
+        while exc is not None and id(exc) not in seen:
+            seen.add(id(exc))
+            names.append(type(exc).__name__)
+            exc = exc.__cause__ or exc.__context__
+        return names
+
+    def _degraded_len(off):
+        fn = getattr(off, "degraded", None)
+        return len(fn()) if callable(fn) else 0
+
     def attempt(off, name, fn):
         before = len(off.ledger())
+        degraded_before = _degraded_len(off)
         STATE["window"] = name
         try:
             fn()
@@ -217,11 +271,15 @@ _PRELUDE = textwrap.dedent(
                 "raised": type(e).__name__,
                 "refusal": chain_has(e, off.OfflineRefusal),
                 "spy_blocked": chain_has(e, _SpyBlocked),
+                "hf_offline": "OfflineModeIsEnabled" in chain_names(e),
                 "msg": str(e)[:200],
             }
         finally:
             STATE["window"] = None
         res["ledger_delta"] = len(off.ledger()) - before
+        res["degraded"] = _degraded_len(off) > degraded_before or any(
+            w["window"] == name and "degraded" in w["msg"].lower() for w in OUT.get("warnings", [])
+        )
         res["spy_events"] = [e for e in OUT["spy"] if e["window"] == name]
         if res["spy_events"]:
             res["refusal"] = False  # the spy stopped it, whatever the chain says: never a pass
@@ -267,6 +325,7 @@ def _run_child(
         "MPLCONFIGDIR": str(tmp_path / "mpl"),
         "PYTHONPATH": str(SRC),  # ignored under -I; the child inserts SRC itself from its config
         "PATH": "/usr/bin:/bin",
+        "MAXIM_SKIP_REMOTE_PROBE": "1",  # no build-time probe of a lane URL (the router children's 127.0.0.1:9)
     }
     env.update(env_extra or {})
     for var in _HF_FORCED:
@@ -335,8 +394,9 @@ def _getaddrinfo():
     socket.getaddrinfo("example.com", 80)
 def _gethostbyaddr():
     socket.gethostbyaddr("8.8.8.8")
+UNIX_DIR = tempfile.mkdtemp(dir="/tmp")  # short: macOS caps sun_path at 103 bytes, checked BEFORE the audit event
 def _unix():
-    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.connect(os.path.join(tempfile.gettempdir(), "no.sock"))
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.connect(os.path.join(UNIX_DIR, "s.sock"))
 FAMILY = next((f for f in ("AF_PACKET", "AF_NETLINK", "AF_SYSTEM", "AF_ROUTE", "AF_VSOCK", "AF_BLUETOOTH")
                if hasattr(socket, f)), None)
 OUT["exotic_family"] = FAMILY
@@ -648,23 +708,41 @@ def test_offline_version_info_spawns_nothing(tmp_path: Path) -> None:
 # ── 6. the item 10 census gate ────────────────────────────────────────────
 
 _CENSUS_BODY = r"""
-import tempfile
+import dataclasses, tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 off = require_offline_module()
 TMP = Path(tempfile.mkdtemp())
-# Pre-import the heavy libraries BEFORE engage (module docstring): an import-time side effect is not a site's.
-for mod in ("httpx", "huggingface_hub", "sentence_transformers"):
+# Pre-import the heavy libraries BEFORE engage (module docstring): an import-time side effect is not a site's. A
+# library's import-time probe (ultralytics' is_online) is blocked by the spy and reported as "spy_preimport".
+OPTIONAL = ("httpx", "huggingface_hub", "sentence_transformers", "ddgs", "ultralytics", "faster_whisper", "twilio",
+            "anthropic")
+AVAILABLE = {}
+STATE["window"] = "__preimport__"
+for mod in OPTIONAL:
+    AVAILABLE[mod] = importlib.util.find_spec(mod) is not None  # installed: its site is driven, whatever the import does
+    if not AVAILABLE[mod]:
+        continue
     try:
         importlib.import_module(mod)
-    except ImportError:
-        pass
-ST_AVAILABLE = "sentence_transformers" in sys.modules
+    except Exception as e:  # noqa: BLE001 -- recorded, never a silent miss; the site's driver imports it again
+        OUT.setdefault("preimport_failed", {})[mod] = type(e).__name__ + ": " + str(e)[:120]
+STATE["window"] = None
+OUT["available"] = AVAILABLE
+# ddgs dials through a native client (primp) that raises no audit event, so neither the latch nor the spy sees it.
+# Its constructor is the spy for that site: reaching it is egress (recorded and blocked), never a pass.
+if "ddgs" in sys.modules:
+    class _DDGSBlocked:
+        def __init__(self, *a, **k):
+            OUT["spy"].append({"window": STATE["window"], "event": "ddgs.DDGS (native client, latch-blind)", "args": ""})
+            raise _SpyBlocked(SPY_BLOCKED + ": ddgs.DDGS")
+    sys.modules["ddgs"].DDGS = _DDGSBlocked
 from maxim.utils import http
 from maxim.models import download
 from maxim.similarity import encoder
 from maxim.simulation import container_runner
 from maxim.hivemind import substrate_client
+from maxim.tools import internet_search
 
 def _get_registered():
     http.register_endpoint(http.HTTPEndpoint(name="offline-gate-probe", base_url="http://127.0.0.1:9"))
@@ -674,6 +752,39 @@ def _encoder():
     # The model load every LinguisticEncoder goes through (``_ensure_model``); ec/atl are not on the fetch path.
     enc = encoder.LinguisticEncoder(MagicMock(), MagicMock(), encoder.EncoderConfig(model_name="maxim-offline-gate/missing-model"))
     enc._ensure_model()
+
+def _ultralytics():
+    from maxim.models.vision import ultralytics_engine
+    ultralytics_engine._ensure_weight_file(str(TMP / "yolo" / "yolov8n-seg.pt"), "yolov8n-seg.pt")
+
+def _whisper():
+    from maxim.inference.transcribe_audio import WhisperTranscriber
+    WhisperTranscriber(model_size_or_path="tiny")
+
+def _hf_direct():
+    import huggingface_hub
+    huggingface_hub.hf_hub_download("gpt2", "config.json", cache_dir=str(TMP / "hf"))
+
+def _twilio():
+    from maxim.comms.channels.twilio_channel import TwilioChannel
+    ch = TwilioChannel({"account_sid": "AC" + "0" * 32, "auth_token": "x", "from_number": "+15550000000"},
+                       conv_manager=MagicMock(), gateway=MagicMock())
+    ch.send("+15550001111", "hello")
+
+def _rtm():
+    from maxim.models.vision import rtm_engine
+    rtm_engine._resolve_model_path("rtmdet-m.onnx", str(TMP / "rtm"))
+
+def _cloud_lane():
+    from maxim.models.language.config import LLMConfig
+    from maxim.models.language.router import LLMRouter
+    cfg = dataclasses.replace(
+        LLMConfig(), enabled=True, cloud_enabled=True,
+        routing={"max_cost_per_request": 1.0, "max_cost_per_hour": 1.0, "max_cost_per_day": 1.0,
+                 "max_cost_per_month": 1.0},
+        providers={"claude": {"type": "anthropic", "model": "claude-sonnet-4-6", "api_key_env": "ANTHROPIC_API_KEY",
+                              "pricing_required": False, "redaction_policy": "standard"}})
+    LLMRouter(cfg).generate_json("hello")
 
 DRIVERS = {
     "utils.http.fetch_url": lambda: http.fetch_url("https://example.com/"),
@@ -687,6 +798,24 @@ DRIVERS = {
     "simulation.container_runner.ensure_image":
         lambda: container_runner.LocalDockerRunner().ensure_image("alpine:3.19"),
     "hivemind.substrate_client.list_releases": lambda: substrate_client.list_releases("https://oasis.invalid"),
+    "tools.internet_search[ddgs package]": lambda: internet_search._search_with_ddg_package("maxim", 1),
+    "tools.internet_search._search_duckduckgo_lite[urllib3 bypass]":
+        lambda: internet_search._search_duckduckgo_lite("maxim", 1),
+    "models.vision.ultralytics_engine[attempt_download_asset]": _ultralytics,
+    "inference.transcribe_audio[faster-whisper WhisperModel]": _whisper,
+    "huggingface_hub.hf_hub_download[direct]": _hf_direct,
+    "comms.channels.twilio_channel.send": _twilio,
+    "models.vision.rtm_engine[download_vision]": _rtm,
+    "router[cloud lane dispatch]": _cloud_lane,
+}
+NEEDS = {
+    "similarity.encoder[missing model]": "sentence_transformers",
+    "tools.internet_search[ddgs package]": "ddgs",
+    "models.vision.ultralytics_engine[attempt_download_asset]": "ultralytics",
+    "inference.transcribe_audio[faster-whisper WhisperModel]": "faster_whisper",
+    "huggingface_hub.hf_hub_download[direct]": "huggingface_hub",
+    "comms.channels.twilio_channel.send": "twilio",
+    "router[cloud lane dispatch]": "anthropic",
 }
 unknown = [s for s in CFG["sites"] if s not in DRIVERS]
 if unknown:
@@ -695,8 +824,9 @@ if unknown:
 off.engage("test")
 OUT["sites"] = {}
 for site in CFG["sites"]:
-    if site == "similarity.encoder[missing model]" and not ST_AVAILABLE:
-        OUT["sites"][site] = {"not_applicable": "sentence_transformers is not installed: the encoder has no fetch path"}
+    lib = NEEDS.get(site)
+    if lib is not None and not AVAILABLE.get(lib):
+        OUT["sites"][site] = {"not_applicable": f"{lib} is not installed"}
         continue
     OUT["sites"][site] = attempt(off, site, DRIVERS[site])
 emit()
@@ -712,22 +842,35 @@ def test_no_effect_subprocess(tmp_path: Path) -> None:
     """With the conftest-forced ``HF_HUB_OFFLINE``/``TRANSFORMERS_OFFLINE`` deleted from the child's env, every
     site in ``CENSUS_SITES`` raises or records ``OfflineRefusal`` before any socket event, and the spy hook saw no
     connect, send, resolve or spawn while it ran. Fails today: no ``maxim._offline``."""
-    out = _run_child(tmp_path, _CENSUS_BODY, cfg_extra={"sites": list(CENSUS_SITES)})
+    out = _run_child(
+        tmp_path,
+        _CENSUS_BODY,
+        cfg_extra={"sites": list(CENSUS_SITES)},
+        env_extra={"ANTHROPIC_API_KEY": "sk-ant-red-gate-fake"},  # the cloud lane would really dial without a refusal
+    )
     _assert_offline_built(out)
     require(out.get("error") is None, str(out.get("error")))
     require(not any(k in out["start_env"] for k in _HF_FORCED), f"HF vars present in the child: {out['start_env']}")
     require(sorted(out["sites"]) == sorted(CENSUS_SITES), f"the child drove {sorted(out['sites'])}")
     failures: list[str] = []
+    not_applicable = {site: res["not_applicable"] for site, res in out["sites"].items() if "not_applicable" in res}
+    require(len(not_applicable) < len(CENSUS_SITES), "every census site is not-applicable: nothing was driven")
     for site, res in out["sites"].items():
-        if "not_applicable" in res:
+        if site in not_applicable:
             continue
         events = [e for e in out["spy"] if e["window"] == site]
         if events or res.get("spy_blocked"):
             failures.append(f"{site}: {_LATCH_DID_NOT_REFUSE} (nor the call site): {events[:3] or res.get('msg')}")
             continue
-        if not (res["refusal"] or res["ledger_delta"] > 0):
+        refused = res["refusal"] or res["ledger_delta"] > 0
+        if site in HF_BACKED_SITES:
+            refused = refused or res.get("hf_offline") or res.get("degraded")
+        if not refused:
             failures.append(f"{site}: no OfflineRefusal raised or recorded (raised {res['raised']}: {res.get('msg')})")
-    assert not failures, "\n".join(failures)
+    if not_applicable:  # reported, never counted as a pass
+        warnings.warn(f"census sites not applicable here (library not installed): {not_applicable}", stacklevel=1)
+    na = f"\n(not applicable, not passed: {sorted(not_applicable)})" if not_applicable else ""
+    assert not failures, "\n".join(failures) + na
 
 
 # ── 7. the router predicate ───────────────────────────────────────────────
@@ -809,6 +952,91 @@ def test_router_refuses_a_pre_engage_lane_at_dispatch(tmp_path: Path) -> None:
     res = out["post"]
     _assert_spy_saw_nothing("dispatch", res)
     assert res["refusal"] or res["ledger_delta"] > 0, f"dispatch was not refused as offline: {res}"
+
+
+# ── 7b. the read-side couplings and the composed report (arch review S14) ─
+
+_LOWERED_BODY = r"""
+off = require_offline_module()
+off.engage("test")
+install_spy()  # after the latch
+from maxim.utils.internet_access import session_internet_lowered
+STATE["window"] = "lowered"
+OUT["lowered"] = session_internet_lowered()
+STATE["window"] = None
+OUT["env_lowered"] = os.environ.get("MAXIM_INTERNET_LOWERED")
+emit()
+"""
+
+
+@pytest.mark.xfail(
+    strict=True, raises=AssertionError, reason=_reason("§1A.1", "session_internet_lowered() reads the latch")
+)
+def test_offline_implies_internet_lowered(tmp_path: Path) -> None:
+    """Latched, ``utils/internet_access.py::session_internet_lowered()`` returns True on the READ side, with
+    ``MAXIM_INTERNET_LOWERED`` never written (``engage()`` calls nothing in ``maxim.utils``). Fails today: no
+    ``maxim._offline``."""
+    out = _run_child(tmp_path, _LOWERED_BODY, spy="body")
+    _assert_offline_built(out)
+    assert out["lowered"] is True, "session_internet_lowered() is False with the offline latch engaged"
+    assert out["env_lowered"] is None, f"engage() wrote MAXIM_INTERNET_LOWERED={out['env_lowered']!r}"
+
+
+def test_evidence_records_refuse_an_offline_code_stamp() -> None:
+    """``scripts/_evidence_records.py::unknown`` treats ``"unknown: offline"`` as unknown, so an offline run's
+    ``executed_git_hash`` cannot gate a claim (§1A.7, M1). A guard: it holds today (the ``"unknown:"`` prefix)."""
+    scripts = str(REPO / "scripts")
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    records = importlib.import_module("_evidence_records")
+    assert records.unknown("unknown: offline") is True, "an offline code stamp reads as a known commit"
+    assert records.unknown("0" * 40) is False, "the check refuses a real-looking hash too: it discriminates nothing"
+
+
+_REPORT_BODY = r"""
+import json as _json, tempfile
+from pathlib import Path
+off = require_offline_module()
+from maxim.simulation import report as sim_report
+TMP = Path(tempfile.mkdtemp())
+off.engage("test")
+STATE["window"] = "report"
+try:
+    start = sim_report.capture_start_provenance()
+    prov = sim_report.run_provenance(start, llm_worker=None, aut_worker=None, resume=None, adopted=False, goal="g")
+    rep = sim_report.SimulationReport(session_id="offline-gate", provenance=prov)
+    path = sim_report.save_report(rep, base_dir=str(TMP))
+    data = _json.loads(Path(path).read_text())
+    OUT["executed_git_hash"] = (data.get("provenance") or {}).get("executed_git_hash")
+    OUT["raised"] = None
+except BaseException as e:  # noqa: BLE001
+    OUT["raised"] = type(e).__name__ + ": " + str(e)[:200]
+    OUT["spy_blocked"] = chain_has(e, _SpyBlocked)
+finally:
+    STATE["window"] = None
+emit()
+"""
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=_reason("§1A.7 composed", "an offline report.json says 'unknown: offline' and spawns nothing"),
+)
+def test_offline_sim_report_says_offline(tmp_path: Path) -> None:
+    """§1A.7's composed gate, at the report writer: latched, in a git checkout, the shipped provenance-to-report path
+    (``capture_start_provenance`` -> ``run_provenance`` -> ``SimulationReport`` -> ``save_report``) writes a
+    ``report.json`` whose ``executed_git_hash`` is ``"unknown: offline"``, and spawns nothing (the spy is first).
+
+    Scope, stated: this is the report writer the sim loop calls, not a whole offline sim. A full sim with its LLM
+    mocked is not cheap here (the orchestrator's AUT, narrator and in-process-model startup); the item 10 PR owes
+    that end-to-end run. Fails today: no ``maxim._offline``."""
+    out = _run_child(tmp_path, _REPORT_BODY, cwd=REPO)
+    _assert_offline_built(out)
+    require((REPO / ".git").exists(), "the gate needs a git checkout, and this tree has no .git")
+    _assert_spy_saw_nothing("the report writer", {"spy_events": out["spy"], "spy_blocked": out.get("spy_blocked")})
+    assert out["raised"] is None, f"the offline report writer raised: {out['raised']}"
+    assert out["executed_git_hash"] == "unknown: offline", f"report.json says {out['executed_git_hash']!r}"
 
 
 # ── 8. config (§1A.6) ─────────────────────────────────────────────────────

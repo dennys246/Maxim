@@ -117,11 +117,23 @@ def _require_policy() -> Any:
     return mod
 
 
+GATE_KIND_NAMES = (
+    "NOT_REGISTERED",
+    "INACTIVE_SCENE",
+    "POLICY_CEILING",
+    "POLICY_PERMISSIONS",
+    "POLICY_PIN",
+    "MODE",
+    "OFFLINE",
+)  # §1A.2 (v6.3): the seven members of GATE_REFUSAL_KINDS
+REFUSAL_LAYERS = frozenset({"forbid", "mode", "registry", "permissions", "ceiling", "pin"})  # §1A.2 v6.3
+
+
 def _require_gate_kinds() -> Any:
     """``ToolErrorKind`` with §3's typed refusal members and ``GATE_REFUSAL_KINDS`` (§1A.2)."""
     import maxim.tools.base as base
 
-    for member in ("NOT_REGISTERED", "POLICY_CEILING", "POLICY_PERMISSIONS", "POLICY_PIN", "MODE", "OFFLINE"):
+    for member in GATE_KIND_NAMES:
         assert hasattr(base.ToolErrorKind, member), f"item 3 not built: ToolErrorKind has no {member}"
     assert hasattr(base, "GATE_REFUSAL_KINDS"), "item 3 not built: tools/base.py has no GATE_REFUSAL_KINDS"
     return base
@@ -707,7 +719,7 @@ def test_item3_policy_is_required_and_permissions_removed() -> None:
         Executor(reg, policy=policy)
     except Exception as e:
         raise ScenarioBroken(f"Executor(reg, policy=unrestricted) raised: {e}") from e
-    duck = SimpleNamespace(ceiling=None, permissions=None, pinned=None, reason="duck")
+    duck = SimpleNamespace(ceiling=None, permissions=None, pins=None, reason="duck")
     _expect_raises(TypeError, lambda: Executor(reg, policy=duck), "a duck-typed policy was accepted")
     _expect_raises(TypeError, lambda: Executor(reg, None), "a positional second argument was accepted")
     _expect_raises(
@@ -730,7 +742,8 @@ def test_item3_policy_is_required_and_permissions_removed() -> None:
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 3: ToolPolicy is sealed and unforgeable")
 def test_item3_tool_policy_is_sealed() -> None:
     """§3: no public constructor; ``__new__`` without the key raises; assignment and ``del`` raise; subclassing
-    raises; ``copy.copy``/``deepcopy`` return the same object; pickling raises; ``pinned`` is snapshotted. The
+    raises; ``copy.copy``/``deepcopy`` return the same object; pickling raises; the ``pins`` slot (v6.3: not
+    ``pinned``, which stays the factory) is snapshotted. The
     exception types are not pinned (any exception counts as a refusal)."""
     tp = _require_policy()
     ToolPolicy = tp.ToolPolicy
@@ -741,7 +754,7 @@ def test_item3_tool_policy_is_sealed() -> None:
     _expect_raises(Exception, lambda: ToolPolicy(), "ToolPolicy() constructed without the key")
     _expect_raises(
         Exception,
-        lambda: ToolPolicy(permissions=AgentPermissions(), ceiling=Effect.ALL, pinned=None, reason="forged"),
+        lambda: ToolPolicy(permissions=AgentPermissions(), ceiling=Effect.ALL, pins=None, reason="forged"),
         "ToolPolicy(...) constructed directly without the key",
     )
     _expect_raises(Exception, lambda: ToolPolicy.__new__(ToolPolicy), "ToolPolicy.__new__ without the key")
@@ -770,11 +783,11 @@ def test_item3_tool_policy_is_sealed() -> None:
     source = {"pin_a": a}
     pinned = ToolPolicy.pinned(source, ceiling=Effect.READ, reason="red-gate probe")
     source["pin_b"] = b
-    assert "pin_b" not in pinned.pinned, "mutating the source dict after build added a pin"
-    assert pinned.pinned["pin_a"] is a, "the pin is not the instance given"
+    assert "pin_b" not in pinned.pins, "mutating the source dict after build added a pin"
+    assert pinned.pins["pin_a"] is a, "the pin is not the instance given"
 
     def _pin_write() -> None:
-        pinned.pinned["pin_b"] = b
+        pinned.pins["pin_b"] = b
 
     _expect_raises(TypeError, _pin_write, "the pinned mapping is writable")
 
@@ -783,8 +796,10 @@ def test_item3_tool_policy_is_sealed() -> None:
 def test_item3_dispatch_checks_the_object_it_runs() -> None:
     """§3 "Dispatch checks the object it runs": register READ tool A; the registry then answers A on the first
     lookup and an above-ceiling tool B (same name) on every later one, so a check-then-get executor checks A and
-    runs B. Nothing above the ceiling may run, and the executor looks the tool up once (``get`` + ``find`` calls
-    counted together, per "Get the tool once"; alias resolution must reuse that lookup)."""
+    runs B. Behavioural only (v6.3): the ALL tool never runs, and the object that ran (if any) is an object the
+    check saw. "Checked" is observed by spying ``effect_of`` (the one lookup §2.2 gives the check), in
+    ``tools/base.py`` and wherever ``runtime/executor.py`` binds it. The lookup count is deliberately not asserted:
+    §3 resolves the alias with its own ``find`` before the single ``get``."""
     tp = _require_policy()
     _require_effect()
     from maxim.runtime.executor import Executor
@@ -800,6 +815,20 @@ def test_item3_dispatch_checks_the_object_it_runs() -> None:
     policy = tp.ToolPolicy.only(["race"], ceiling=Effect.READ, reason="red-gate probe")
     ex = Executor(reg, policy=policy)
 
+    import maxim.runtime.executor as executor_mod
+    import maxim.tools.base as base_mod
+
+    checked: list[int] = []
+    real_effect_of = base_mod.effect_of
+
+    def _spy_effect_of(obj: Any) -> Any:
+        checked.append(id(obj))
+        return real_effect_of(obj)
+
+    base_mod.effect_of = _spy_effect_of  # restored below (a monkeypatch fixture would also do)
+    bound_in_executor = getattr(executor_mod, "effect_of", None) is real_effect_of
+    if bound_in_executor:
+        executor_mod.effect_of = _spy_effect_of
     lookups: list[str] = []
     real_get, real_find = reg.get, reg.find
 
@@ -813,17 +842,22 @@ def test_item3_dispatch_checks_the_object_it_runs() -> None:
 
     reg.get = _swap(real_get, "get")  # type: ignore[method-assign]
     reg.find = _swap(real_find, "find")  # type: ignore[method-assign]
-    ex.execute({"tool_name": "race", "params": {}})
+    try:
+        ex.execute({"tool_name": "race", "params": {}})
+    finally:
+        base_mod.effect_of = real_effect_of
+        if bound_in_executor:
+            executor_mod.effect_of = real_effect_of
     assert not b_ran, f"an above-ceiling tool swapped in after the check RAN (lookups: {lookups})"
-    assert len(lookups) == 1, f"dispatch looked the tool up {len(lookups)} times ({lookups}), not once"
-    assert ran == ["race"], "the checked object did not run"
+    if ran:
+        assert id(a) in checked, "the object that ran is not an object the check saw"
 
 
 def _sub_sim_rig(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> SimpleNamespace:
     """Stub the sub-sim's heavy pieces; capture the child executor the loop would be handed."""
     import maxim.simulation.bridge as bridge_mod
 
-    loop_calls: list[tuple[Any, ...]] = []
+    loop_calls: list[dict[str, Any]] = []
     registry_calls: list[dict[str, Any]] = []
     import maxim.runtime.bootstrap as bootstrap
 
@@ -834,7 +868,16 @@ def _sub_sim_rig(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> SimpleNames
         return real_build(**kw)
 
     monkeypatch.setattr(bootstrap, "build_tool_registry", build_tool_registry)
-    monkeypatch.setattr("maxim.runtime.agent_loop.run_agentic_loop", lambda *a, **kw: loop_calls.append(a))
+    import inspect
+
+    import maxim.runtime.agent_loop as agent_loop
+
+    loop_sig = inspect.signature(agent_loop.run_agentic_loop)
+
+    def _fake_loop(*a: Any, **kw: Any) -> None:  # bound by name, so a positional/keyword switch cannot misread it
+        loop_calls.append(dict(loop_sig.bind(*a, **kw).arguments))
+
+    monkeypatch.setattr(agent_loop, "run_agentic_loop", _fake_loop)
     monkeypatch.setattr("maxim.agents.maxim_agent.MaximAgent", lambda *a, **kw: MagicMock(name="sub_agent"))
     monkeypatch.setattr(
         bridge_mod.SimulationBridge,
@@ -875,7 +918,7 @@ def test_item3_composite_spawn_builds_narrowed_child(tmp_path: Path, monkeypatch
     if rig.tool._sub_thread is not None:
         rig.tool._sub_thread.join(timeout=10)
     assert rig.loop_calls, f"the spawn built no child under a narrow dispatching policy (result: {out})"
-    child = rig.loop_calls[-1][5]  # run_agentic_loop(agent, env, state, memory, engine, executor, ...)
+    child = rig.loop_calls[-1]["executor"]
     assert not child.permits("bash"), "the spawned child's policy permits bash"
     bash = child.registry.find("bash")
     if bash is not None:
@@ -963,7 +1006,9 @@ def _drive_maxim_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, learnin
     require(len(loop_calls) == 1, "maxim.run never reached the loop")
     executor = loop_calls[0]["executor"]
     require(executor is not None and hasattr(executor, "execute"), "the loop got no executor")
-    return SimpleNamespace(executor=executor, home=os.path.realpath(api._api_home(str(home))))
+    return SimpleNamespace(
+        executor=executor, loop_kwargs=loop_calls[0], home=os.path.realpath(api._api_home(str(home)))
+    )
 
 
 @pytest.mark.parametrize("learning", [False, True])
@@ -1005,8 +1050,9 @@ def test_v10_registered_tools_dispatch_under_maxim_run(
 ) -> None:
     """Regression guard (V10, §1A.4): a tool registered through ``maxim.register_tool`` and one through
     ``@maxim.tool``, neither declaring an effect, are present in, and dispatch through, the registry and executor
-    ``maxim.run`` builds -- under the passive mode source the loop installs (``loop_setup``). Passes today; it must
-    keep passing when the ceiling lands (``maxim.run`` keeps ALL)."""
+    ``maxim.run`` builds -- with the mode and forbid sources the loop itself installs
+    (``loop_setup._prepare_executor`` on the state and autonomy controller ``maxim.run`` hands the loop; the run
+    mode resolves ``observe``). Passes today; it must keep passing when the ceiling lands (``maxim.run`` keeps ALL)."""
     import maxim.api as api
     from maxim.tools.base import Tool, ToolOutput
 
@@ -1033,8 +1079,10 @@ def test_v10_registered_tools_dispatch_under_maxim_run(
     finally:
         api.unregister_tool("v10_registered_probe")
         api.unregister_tool("v10_decorated_probe")
-    ex = run.executor
-    ex.set_mode_source(lambda: "passive")
+    from maxim.runtime.loop_setup import _prepare_executor
+
+    kw = run.loop_kwargs
+    ex = _prepare_executor(run.executor, None, kw["state"], kw.get("autonomy_controller"))
     for name in ("v10_registered_probe", "v10_decorated_probe"):
         assert ex.registry.find(name) is not None, f"{name} is missing from maxim.run's registry"
         out = ex.execute({"tool_name": name, "params": {}})
@@ -1070,6 +1118,17 @@ def test_o2_o5_ceiling_refuses_acting_tools_the_mode_gate_allows(tmp_path: Path)
         real = t.execute
         object.__setattr__(t, "execute", lambda _real=real, _n=t.name, **kw: (ran.append(_n), _real(**kw))[1])
 
+    params = {  # each tool's own schema keys, so input validation cannot be what stops the body
+        "write_file": {"path": str(tmp_path / "x.txt"), "content": "x"},
+        "send_message": {"channel": "webhook", "recipient": "someone", "body": "hi"},
+        "call_user": {"recipient": "someone", "message": "hi"},
+    }
+    # Positive control: with no ceiling, each body runs (so the refusal below is the ceiling's, not validation's).
+    for t in tools:
+        t.run(**params[t.name])
+    require(ran == list(names), f"positive control: with no ceiling the bodies ran {ran}, not {list(names)}")
+    ran.clear()
+
     tp = _require_policy()
     _require_effect()
     base = _require_gate_kinds()
@@ -1079,11 +1138,355 @@ def test_o2_o5_ceiling_refuses_acting_tools_the_mode_gate_allows(tmp_path: Path)
     policy = tp.ToolPolicy.only(list(names), ceiling=Effect.READ | Effect.SELF_SCOPE, reason="red-gate probe")
     ex = Executor(ToolRegistry(tools), policy=policy)
     ex.set_mode_source(lambda: "passive")
-    params = {
-        "write_file": {"path": str(tmp_path / "x.txt"), "content": "x"},
-        "send_message": {"recipient": "someone", "message": "hi"},
-        "call_user": {"recipient": "someone", "message": "hi"},
-    }
-    kinds = {n: ex.execute({"tool_name": n, "params": params[n]}).error_kind for n in names}
+    outs = {n: ex.execute({"tool_name": n, "params": params[n]}) for n in names}
+    kinds = {n: o.error_kind for n, o in outs.items()}
+    layers = {n: o.metadata.get("refusal_layer") for n, o in outs.items()}
     assert not ran, f"a ceiling of READ|SELF_SCOPE let these run: {ran}"
     assert all(k is base.ToolErrorKind.POLICY_CEILING for k in kinds.values()), f"refusal kinds: {kinds}"
+    assert all(v == "ceiling" for v in layers.values()), f"refusal layers (metadata['refusal_layer']): {layers}"
+
+
+# ══ gates the red-gate review listed as missing (arch S14) ══════════════
+
+OFFLINE_CEILING_NAMES = ("READ", "SELF_SCOPE", "WRITE_LOCAL", "ACTUATE", "GOVERN")  # V7: enumerated, never a complement
+
+_OFFLINE_DISPATCH_CHILD = r"""
+import json, sys
+import maxim._offline as off
+from maxim.runtime.executor import Executor
+from maxim.runtime.tool_policy import ToolPolicy
+from maxim.tools.base import Effect, Tool, ToolOutput
+from maxim.tools.registry import ToolRegistry
+
+ran = []
+
+def make(name, effect=None):
+    body = {"name": name, "description": name, "input_schema": {},
+            "execute": lambda self, **kw: (ran.append(name), ToolOutput(success=True, output=name))[1]}
+    if effect is not None:
+        body["effect"] = effect
+    return type("Child_" + name, (Tool,), body)()
+
+tools = [make("c_read", Effect.READ), make("c_net", Effect.READ | Effect.NETWORK), make("c_comms", Effect.COMMS),
+         make("c_write", Effect.WRITE_LOCAL), make("c_undeclared")]
+ex = Executor(ToolRegistry(tools), policy=ToolPolicy.unrestricted(reason="offline red-gate child"))
+off.engage("test")
+out = {"offline": off.is_offline(), "tools": {}}
+for t in tools:
+    permitted = ex.permits(t.name)
+    r = ex.execute({"tool_name": t.name, "params": {}})
+    out["tools"][t.name] = {"permits": permitted, "success": r.success,
+                            "kind": getattr(r.error_kind, "value", None),
+                            "layer": (r.metadata or {}).get("refusal_layer")}
+out["ran"] = ran
+print("RESULT " + json.dumps(out))
+"""
+
+
+def _find_offline_ceiling() -> Any:
+    """``OFFLINE_CEILING``. §1A.2 names it at the dispatch seam without a module; it is looked up in
+    ``tools/base.py``, ``runtime/executor.py`` and ``runtime/tool_policy.py`` (choice, stated)."""
+    for name in ("maxim.tools.base", "maxim.runtime.executor", "maxim.runtime.tool_policy"):
+        try:
+            mod = importlib.import_module(name)
+        except ImportError:
+            continue
+        if hasattr(mod, "OFFLINE_CEILING"):
+            return mod.OFFLINE_CEILING
+    raise AssertionError("item 3 / V7 not built: no OFFLINE_CEILING in tools/base, runtime/executor or tool_policy")
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason="#1315 item 3 / V7: OFFLINE_CEILING is enumerated and ANDed at the dispatch seam under the latch",
+)
+def test_v7_offline_ceiling_is_enumerated_and_anded_at_dispatch(tmp_path: Path) -> None:
+    """§1A.2: ``OFFLINE_CEILING`` is exactly READ|SELF_SCOPE|WRITE_LOCAL|ACTUATE|GOVERN, and whenever
+    ``is_offline()`` the seam ANDs it with the policy ceiling, at dispatch and in ``permits()``: under an
+    ``unrestricted`` policy, NETWORK, COMMS and undeclared (ALL) tools are refused and never run, READ and
+    WRITE_LOCAL run. The latch is one-way and process-wide, so the engaged half runs in a child process. The kind of
+    an offline ceiling refusal is not pinned between ``policy_ceiling`` and ``offline``; both are accepted, with
+    layer ``"ceiling"``."""
+    assert importlib.util.find_spec("maxim._offline") is not None, "step 0b not built: maxim/_offline.py is missing"
+    base = _require_effect()
+    _require_policy()
+    ceiling = _find_offline_ceiling()
+    expected = base.Effect(0)
+    for n in OFFLINE_CEILING_NAMES:
+        expected |= getattr(base.Effect, n)
+    assert ceiling == expected, f"OFFLINE_CEILING is {ceiling!r}, not {expected!r}"
+
+    import subprocess
+    import sys
+
+    env = {**os.environ, "PYTHONPATH": str(SRC)}
+    env.pop("MAXIM_OFFLINE", None)
+    proc = subprocess.run(  # noqa: S603 -- our own interpreter, our own script
+        [sys.executable, "-c", _OFFLINE_DISPATCH_CHILD],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    lines = [ln for ln in proc.stdout.splitlines() if ln.startswith("RESULT ")]
+    require(proc.returncode == 0 and lines, f"the offline child failed: rc={proc.returncode} {proc.stderr[-2000:]}")
+    out = json.loads(lines[-1][len("RESULT ") :])
+    require(out["offline"], "the child's latch did not engage")
+    for name in ("c_read", "c_write"):
+        assert out["tools"][name]["permits"] and out["tools"][name]["success"], f"{name} was refused offline: {out}"
+    for name in ("c_net", "c_comms", "c_undeclared"):
+        t = out["tools"][name]
+        assert not t["permits"], f"permits() offers {name} under the latch: {t}"
+        assert not t["success"] and t["kind"] in ("policy_ceiling", "offline"), f"{name} offline: {t}"
+        assert t["layer"] == "ceiling", f"{name}'s refusal layer is {t['layer']!r}, not 'ceiling'"
+    assert sorted(out["ran"]) == ["c_read", "c_write"], f"tools ran under the latch: {out['ran']}"
+
+
+@pytest.mark.xfail(
+    strict=True, raises=AssertionError, reason="#1315 item 3: GATE_REFUSAL_KINDS is exactly the seven, snake_case"
+)
+def test_item3_gate_refusal_kinds_are_the_seven() -> None:
+    """§1A.2 (v6.3): ``GATE_REFUSAL_KINDS`` is a frozenset of exactly NOT_REGISTERED, INACTIVE_SCENE,
+    POLICY_CEILING, POLICY_PERMISSIONS, POLICY_PIN, MODE and OFFLINE; each value is its snake_case name (the
+    existing members' form; ``.value`` is the serialisation everywhere); ``PERMISSION_DENIED`` is not in it."""
+    base = _require_gate_kinds()
+    kinds = base.GATE_REFUSAL_KINDS
+    assert isinstance(kinds, frozenset), f"GATE_REFUSAL_KINDS is a {type(kinds).__name__}, not a frozenset"
+    want = {getattr(base.ToolErrorKind, n) for n in GATE_KIND_NAMES}
+    assert set(kinds) == want, f"GATE_REFUSAL_KINDS is {sorted(k.name for k in kinds)}"
+    bad = {k.name: k.value for k in kinds if k.value != k.name.lower()}
+    assert not bad, f"gate kinds whose value is not the snake_case name: {bad}"
+    assert base.ToolErrorKind.PERMISSION_DENIED not in kinds, "a tool's own path refusal counts as a gate refusal"
+
+
+def _parents(tree: ast.AST) -> dict[int, ast.AST]:
+    out: dict[int, ast.AST] = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            out[id(child)] = node
+    return out
+
+
+@pytest.mark.xfail(
+    strict=True, raises=AssertionError, reason="#1315 item 3: gate kinds are produced only in runtime/executor.py"
+)
+def test_item3_gate_kinds_constructed_only_in_executor() -> None:
+    """§1A.2 "Who may produce a gate kind": outside ``runtime/executor.py`` (and their definition in
+    ``tools/base.py``) no ``src/maxim`` code produces a ``GATE_REFUSAL_KINDS`` member, so a tool body returning
+    ``MODE`` cannot exempt itself from NAc. "Produce" = a ``ToolErrorKind.<GATE>`` reference or a
+    ``ToolErrorKind("<gate value>")`` call that is not inside a comparison (reading a kind is allowed; choice,
+    stated). The executor must produce them (else nothing is typed)."""
+    _require_gate_kinds()
+    values = {n.lower() for n in GATE_KIND_NAMES}
+    allowed = {"maxim.runtime.executor", "maxim.tools.base"}
+    sites: dict[str, list[str]] = {}
+    for m in _index().values():
+        parents = _parents(m.tree)
+        for node in ast.walk(m.tree):
+            hit = None
+            if isinstance(node, ast.Attribute) and node.attr in GATE_KIND_NAMES:
+                owner = _dotted(node.value)
+                if owner and owner[-1] == "ToolErrorKind":
+                    hit = node.attr
+            elif isinstance(node, ast.Call) and (_dotted(node.func) or [""])[-1] == "ToolErrorKind":
+                if node.args and isinstance(node.args[0], ast.Constant) and node.args[0].value in values:
+                    hit = str(node.args[0].value)
+            if hit is None:
+                continue
+            p, in_compare = parents.get(id(node)), False
+            while p is not None and not in_compare:
+                in_compare = isinstance(p, ast.Compare)
+                p = parents.get(id(p))
+            if not in_compare:
+                sites.setdefault(m.name, []).append(f"{hit}@{getattr(node, 'lineno', '?')}")
+    assert "maxim.runtime.executor" in sites, "runtime/executor.py produces no gate refusal kind"
+    outside = {k: v for k, v in sites.items() if k not in allowed}
+    assert not outside, f"gate refusal kinds produced outside runtime/executor.py: {outside}"
+
+
+@pytest.mark.xfail(
+    strict=True, raises=AssertionError, reason="#1315 item 3: record_outcome takes refused= keyword-only, required"
+)
+def test_item3_record_outcome_refused_is_required_keyword() -> None:
+    """§1A.2 "What counts as refused": ``runtime/tool_dispatch.py::record_outcome`` gains ``refused:
+    ToolErrorKind | None``, keyword-only and REQUIRED (the TF8 ``bridge_booked`` precedent), so a call site that
+    forgets it is a ``TypeError``, never a silent NAc booking."""
+    import inspect
+
+    from maxim.runtime.tool_dispatch import record_outcome
+
+    params = inspect.signature(record_outcome).parameters
+    assert "refused" in params, "item 3 not built: record_outcome has no refused= parameter"
+    p = params["refused"]
+    assert p.kind is inspect.Parameter.KEYWORD_ONLY, f"refused= is {p.kind}, not keyword-only"
+    assert p.default is inspect.Parameter.empty, f"refused= has a default ({p.default!r}); it must be required"
+
+
+@pytest.mark.xfail(
+    strict=True, raises=AssertionError, reason="#1315 §1A.11: the mode gate's name sets agree with Effect"
+)
+def test_1a11_mode_name_sets_declare_matching_effect(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """§1A.11: until the name sets collapse, every tool in ``modes/definitions.py``'s ``HOST_ACTING_TOOLS``,
+    ``NETWORK_CAPABILITY_TOOLS`` and ``FILESYSTEM_CAPABILITY_TOOLS`` declares a matching flag. "Matching" is not
+    spelled out; chosen: NETWORK set -> has NETWORK; HOST_ACTING -> exceeds READ|SELF_SCOPE (it acts outside
+    Maxim's own state); FILESYSTEM -> ``read_*``/``list_*`` has READ, the rest has WRITE_LOCAL. Names the default
+    registry does not build (``web_search``, ``list_directory``, ``maxim_command`` without a live runtime,
+    ``execute_sandbox_script`` without a sandbox) are out of this probe and listed in the failure if a rule misses."""
+    from maxim.modes import definitions as md
+
+    monkeypatch.chdir(tmp_path)
+    reg = _full_default_registry(tmp_path)
+    present = {
+        n: reg.find(n) for n in md.HOST_ACTING_TOOLS | md.NETWORK_CAPABILITY_TOOLS | md.FILESYSTEM_CAPABILITY_TOOLS
+    }
+    present = {n: t for n, t in present.items() if t is not None}
+    require(len(present) >= 10, f"the default registry builds only {sorted(present)} of the name sets")
+    _require_effect()
+    from maxim.tools.base import Effect, effect_of, exceeds
+
+    wrong = []
+    for n, t in sorted(present.items()):
+        e = effect_of(t)
+        if n in md.NETWORK_CAPABILITY_TOOLS and not e & Effect.NETWORK:
+            wrong.append(f"{n}: network set, effect {e!r}")
+        if n in md.HOST_ACTING_TOOLS and not exceeds(e, Effect.READ | Effect.SELF_SCOPE):
+            wrong.append(f"{n}: host-acting set, effect {e!r}")
+        if n in md.FILESYSTEM_CAPABILITY_TOOLS:
+            need = Effect.READ if n.startswith(("read_", "list_")) else Effect.WRITE_LOCAL
+            if not e & need:
+                wrong.append(f"{n}: filesystem set, effect {e!r} lacks {need!r}")
+    assert not wrong, f"name sets and Effect disagree: {wrong}"
+
+
+@pytest.mark.xfail(
+    strict=True, raises=AssertionError, reason="#1315 item 2: entity tool generation is all-or-nothing under a ceiling"
+)
+def test_item2_entity_generation_is_all_or_nothing() -> None:
+    """§2.2: ``generate_tools_for_entity`` builds the full list, checks every tool, then registers, so one
+    above-ceiling tool means none of the entity's tools is registered. Whether it raises or returns is not
+    pinned; only the registry afterwards is asserted. The ceiling is the first generated tool's own effect, so at
+    least one tool fits it and the probe is not vacuous whatever item 2 classifies the sensor tools as."""
+    from maxim.embodiment.component_registry import ComponentRegistry
+    from maxim.embodiment.tool_bridge import generate_tools_for_entity
+    from maxim.tools.registry import ToolRegistry
+
+    sword = ComponentRegistry().instantiate("weapons/rusty_sword")
+    probe_tools = generate_tools_for_entity(sword, ToolRegistry())
+    require(len(probe_tools) >= 2, "the rusty_sword fixture generates fewer than two tools")
+    _require_effect()
+    from maxim.tools.base import effect_of, exceeds
+
+    ceiling = effect_of(probe_tools[0])
+    require(any(exceeds(effect_of(t), ceiling) for t in probe_tools), "no generated tool exceeds the first's effect")
+    reg = ToolRegistry(ceiling=ceiling)
+    before = set(reg.list_all())
+    try:
+        generate_tools_for_entity(ComponentRegistry().instantiate("weapons/rusty_sword"), reg)
+    except Exception:  # noqa: BLE001 -- a refusal may raise; the registry is the assertion
+        pass
+    added = set(reg.list_all()) - before
+    assert not added, f"a partial entity tool set was registered under the ceiling: {sorted(added)}"
+
+
+@pytest.mark.xfail(
+    strict=True, raises=AssertionError, reason="#1315 item 2: a ceiling refusal at injection logs a structured WARNING"
+)
+def test_item2_inject_refusal_warns_with_tool_and_ceiling(caplog: pytest.LogCaptureFixture) -> None:
+    """§2.2 / §1A.4: below ALL, an undeclared user tool drops LOUDLY: ``api._inject_registered_tools`` emits a
+    WARNING naming the tool and the ceiling. "Structured" is read as: the tool name and the ceiling's flag name
+    appear in the message or in the record's extra fields (choice, stated)."""
+    import logging
+
+    import maxim.api as api
+    from maxim.tools.base import Tool, ToolOutput
+
+    class _UndeclaredUserTool(Tool):
+        name = "atonia_undeclared_user_tool"
+        description = "probe"
+        input_schema: dict[str, Any] = {}
+
+        def execute(self, **kwargs: Any) -> ToolOutput:
+            return ToolOutput(success=True, output="ran")
+
+    _require_effect()
+    from maxim.tools.base import Effect
+    from maxim.tools.registry import ToolRegistry
+
+    api.register_tool(_UndeclaredUserTool())
+    try:
+        reg = ToolRegistry(ceiling=Effect.READ)
+        with caplog.at_level(logging.WARNING):
+            api._inject_registered_tools(reg)
+    finally:
+        api.unregister_tool("atonia_undeclared_user_tool")
+    assert reg.find("atonia_undeclared_user_tool") is None, "an undeclared (ALL) user tool was admitted under READ"
+    hits = [
+        r
+        for r in caplog.records
+        if r.levelno == logging.WARNING
+        and "atonia_undeclared_user_tool" in (blob := f"{r.getMessage()} {r.__dict__}")
+        and "READ" in blob
+    ]
+    assert hits, f"no WARNING names the tool and the ceiling: {[r.getMessage() for r in caplog.records]}"
+
+
+@pytest.mark.parametrize("learning", [False, True])
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason="#1315 §1A.4 / V10: @maxim.tool(effect=) and register_tool(..., effect=) are accepted and dispatch",
+)
+def test_v10_declared_effect_forms_dispatch_under_maxim_run(
+    learning: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """§1A.4: ``@maxim.tool(effect=Effect.READ)`` and ``register_tool(tool, effect=Effect.READ)`` are accepted (an
+    additive form), the injected tools record READ, and both dispatch through what ``maxim.run`` builds, with the
+    loop's own mode and forbid sources."""
+    import maxim.api as api
+    from maxim.tools.base import Tool, ToolOutput
+
+    _require_effect()
+    from maxim.tools.base import Effect, effect_of
+
+    calls: list[str] = []
+
+    class _DeclaredLater(Tool):
+        name = "v10_declared_registered"
+        description = "probe"
+        input_schema: dict[str, Any] = {}
+
+        def execute(self, **kwargs: Any) -> ToolOutput:
+            calls.append(self.name)
+            return ToolOutput(success=True, output="ok")
+
+    def v10_declared_decorated(text: str = "x") -> str:
+        """probe"""
+        calls.append("v10_declared_decorated")
+        return text
+
+    try:
+        try:
+            api.register_tool(_DeclaredLater(), effect=Effect.READ)
+        except TypeError as e:
+            raise AssertionError(f"register_tool does not accept effect=: {e}") from e
+        try:
+            api.tool(effect=Effect.READ)(v10_declared_decorated)
+        except TypeError as e:
+            raise AssertionError(f"@maxim.tool does not accept effect=: {e}") from e
+        run = _drive_maxim_run(monkeypatch, tmp_path, learning=learning)
+    finally:
+        api.unregister_tool("v10_declared_registered")
+        api.unregister_tool("v10_declared_decorated")
+    from maxim.runtime.loop_setup import _prepare_executor
+
+    kw = run.loop_kwargs
+    ex = _prepare_executor(run.executor, None, kw["state"], kw.get("autonomy_controller"))
+    for name in ("v10_declared_registered", "v10_declared_decorated"):
+        tool = ex.registry.find(name)
+        assert tool is not None, f"{name} is missing from maxim.run's registry"
+        assert effect_of(tool) == Effect.READ, f"{name} records {effect_of(tool)!r}, not the declared READ"
+        out = ex.execute({"tool_name": name, "params": {}})
+        assert out.success, f"{name} did not dispatch under maxim.run: {out.error}"
+    assert calls == ["v10_declared_registered", "v10_declared_decorated"], calls

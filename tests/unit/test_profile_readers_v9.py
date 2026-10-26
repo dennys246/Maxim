@@ -12,7 +12,9 @@ HOW. Each reader runs in a fresh ``sys.executable -I`` child whose ``XDG_CONFIG_
 (``PROFILE``) with one alias (``ALIAS``). A malformed ``profiles.yml`` must raise ``ConfigurationError`` on the first
 access AND on the second (§1A.1: "Failure is never cached").
 
-A reader that fails today is a real finding and is a strict xfail with its reason (``KNOWN_FAILING``).
+A reader that fails today is a real finding, and is its own def with a literal strict-xfail decorator (lint rule 3b):
+``test_download_llm_models_holds_a_user_profile`` (flips with 0a) and ``test_doctor_vram_projection_resolves_an_alias``
+(#1479, not 0a's; driven with a built-in alias).
 """
 
 from __future__ import annotations
@@ -63,25 +65,13 @@ READERS: tuple[str, ...] = (
     "normalize_llm_profile",
     "list_llm_profiles",
     "build_model_path (load_llm_config)",
-    "models.download LLM_MODELS",
     "ensure_available lookup",
+    "lane resolution (lane_backends._validate_swap_profile)",
     "doctor VRAM projection (name)",
-    "doctor VRAM projection (alias)",
 )
 
-# Readers that do not resolve the user profile TODAY (real findings, each a strict xfail).
-KNOWN_FAILING: dict[str, str] = {
-    "models.download LLM_MODELS": (
-        "the user profile is merged into models.download.LLM_MODELS only as a side effect of importing "
-        "models.language.config, so a process that reads the table first (import maxim.models.download) misses it; "
-        "flips with step 0a's ensuring download.llm_models() accessor"
-    ),
-    "doctor VRAM projection (alias)": (
-        "doctor/checks.py::_check_vram_context_pressure looks llm.profile up in _BUILTIN_PROFILES without "
-        "normalising it, so an alias set as llm.profile gets 'VRAM projection unavailable'; flips when the doctor "
-        "lookup normalises (step 0a's accessor migration, or its own fix)"
-    ),
-}
+# Built-in alias for the #1479 gate: it maps to a built-in profile that carries arch metadata.
+BUILTIN_ALIAS = "mistral"
 
 
 class ScenarioBroken(Exception):
@@ -141,10 +131,16 @@ _READER_BODY = textwrap.dedent(
             download.ensure_available(NAME, auto=False, interactive=False, logger=log)
             said = [str(c) for c in log.method_calls]
             OUT["detail"] = said
-            OUT["ok"] = not any("is not in the LLM_MODELS" in c for c in said)
+            # Positive: the profile was FOUND in the registry and reported as not downloaded (no consent here).
+            OUT["ok"] = any(f"Profile '{NAME}' is not downloaded" in c for c in said)
+        elif reader == "lane resolution (lane_backends._validate_swap_profile)":
+            from maxim.runtime.lane_backends import _validate_swap_profile
+            resolved, data = _validate_swap_profile(ALIAS)
+            OUT["detail"] = (resolved, data.get("backend"))
+            OUT["ok"] = resolved == NAME and data.get("backend") == "llama_cpp"
         elif reader.startswith("doctor VRAM projection"):
             from unittest.mock import patch
-            os.environ["MAXIM_LLM_PROFILE"] = ALIAS if "(alias)" in reader else NAME
+            os.environ["MAXIM_LLM_PROFILE"] = CFG.get("doctor_profile") or NAME
             os.environ["MAXIM_LLM_N_CTX"] = "4096"
             from maxim.doctor import checks
             with patch("maxim.runtime.capabilities.detect_compute_resources", return_value=(True, "cuda", 24.0, 64.0)):
@@ -183,7 +179,7 @@ _MALFORMED_BODY = textwrap.dedent(
 )
 
 
-def _run(tmp_path: Path, body: str, yml: str, reader: str = "") -> dict[str, Any]:
+def _run(tmp_path: Path, body: str, yml: str, reader: str = "", **cfg_extra: Any) -> dict[str, Any]:
     xdg = tmp_path / "xdg"
     (xdg / "maxim").mkdir(parents=True)
     (xdg / "maxim" / "profiles.yml").write_text(yml)
@@ -191,7 +187,15 @@ def _run(tmp_path: Path, body: str, yml: str, reader: str = "") -> dict[str, Any
     home.mkdir()
     script = tmp_path / "child.py"
     script.write_text(body)
-    cfg = {"src": str(SRC), "marker": MARKER, "profile": PROFILE, "alias": ALIAS, "hf_file": HF_FILE, "reader": reader}
+    cfg = {
+        "src": str(SRC),
+        "marker": MARKER,
+        "profile": PROFILE,
+        "alias": ALIAS,
+        "hf_file": HF_FILE,
+        "reader": reader,
+        **cfg_extra,
+    }
     cfg_path = tmp_path / "cfg.json"
     cfg_path.write_text(json.dumps(cfg))
     env = {
@@ -223,18 +227,41 @@ def _run(tmp_path: Path, body: str, yml: str, reader: str = "") -> dict[str, Any
     return out
 
 
-def _reader_param(reader: str) -> Any:
-    if reader in KNOWN_FAILING:
-        mark = pytest.mark.xfail(strict=True, raises=AssertionError, reason=f"V9 finding: {KNOWN_FAILING[reader]}")
-        return pytest.param(reader, marks=mark, id=reader)
-    return pytest.param(reader, id=reader)
-
-
-@pytest.mark.parametrize("reader", [_reader_param(r) for r in READERS])
+@pytest.mark.parametrize("reader", READERS)
 def test_every_public_reader_resolves_a_user_profile(tmp_path: Path, reader: str) -> None:
     """In a fresh process with one user profile and one alias in ``profiles.yml``, ``reader`` resolves both."""
     out = _run(tmp_path, _READER_BODY, PROFILES_YML, reader)
     assert out["ok"], f"{reader} did not resolve user profile {PROFILE!r} / alias {ALIAS!r}: {out['detail']}"
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "V9 finding: a user profile reaches models.download.LLM_MODELS only as a side effect of importing "
+        "models.language.config, so a process that reads the table first misses it; flips with step 0a's "
+        "ensuring download.llm_models() accessor"
+    ),
+)
+def test_download_llm_models_holds_a_user_profile(tmp_path: Path) -> None:
+    """``models.download``'s profile table (``llm_models()`` once 0a lands, ``LLM_MODELS`` today), read by a fresh
+    process that imported nothing else, holds the user profile."""
+    out = _run(tmp_path, _READER_BODY, PROFILES_YML, "models.download LLM_MODELS")
+    assert out["ok"], f"models.download's table does not hold user profile {PROFILE!r}"
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "#1479: doctor/checks.py::_check_vram_context_pressure looks llm.profile up without normalising it, so an "
+        "alias (built-in or user) gets 'VRAM projection unavailable'; step 0a does not fix it"
+    ),
+)
+def test_doctor_vram_projection_resolves_an_alias(tmp_path: Path) -> None:
+    """With ``llm.profile`` set to the built-in alias ``mistral``, the doctor's VRAM row projects (#1479)."""
+    out = _run(tmp_path, _READER_BODY, PROFILES_YML, "doctor VRAM projection (alias)", doctor_profile=BUILTIN_ALIAS)
+    assert out["ok"], f"the doctor's VRAM projection did not resolve alias {BUILTIN_ALIAS!r}: {out['detail']}"
 
 
 def test_a_malformed_profiles_file_raises_on_every_access(tmp_path: Path) -> None:
@@ -245,3 +272,32 @@ def test_a_malformed_profiles_file_raises_on_every_access(tmp_path: Path) -> Non
     assert len(accesses) == 2, accesses
     for i, mro in enumerate(accesses, start=1):
         assert mro is not None and "ConfigurationError" in mro, f"access {i} did not raise ConfigurationError: {mro}"
+
+
+# ── step 0a: the lazy package inits (V9) ──────────────────────────────────
+
+LAZY_PACKAGES: tuple[str, ...] = ("maxim.runtime", "maxim.agents", "maxim.tools", "maxim.utils")
+
+
+@pytest.mark.parametrize("package", LAZY_PACKAGES)
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason="#1315 V9 step 0a: the package __init__ is eager today; flips with its PEP 562 __getattr__ + lazy table",
+)
+def test_step0a_package_init_is_lazy(package: str) -> None:
+    """``package`` defines a module-level PEP 562 ``__getattr__`` and a lazy table ``_LAZY`` (name -> defining
+    module, the seam chosen here), and ``__all__`` is exactly the lazy table's names plus the names the init still
+    binds eagerly (§1A.1: "A test pins ``__all__`` against the lazy table"). Fails today: no ``__getattr__``."""
+    import importlib
+
+    mod = importlib.import_module(package)
+    assert callable(vars(mod).get("__getattr__")), f"{package} defines no module-level __getattr__ (PEP 562)"
+    lazy = vars(mod).get("_LAZY")
+    assert isinstance(lazy, dict) and lazy, f"{package} has no lazy table _LAZY"
+    exported = set(getattr(mod, "__all__", ()))
+    eager = {n for n in exported if n in vars(mod) and n not in lazy}
+    assert exported == set(lazy) | eager, (
+        f"{package}.__all__ does not match its lazy table: only in __all__ "
+        f"{sorted(exported - set(lazy) - eager)}, only in _LAZY {sorted(set(lazy) - exported)}"
+    )
