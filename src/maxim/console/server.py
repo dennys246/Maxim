@@ -2395,6 +2395,27 @@ def device_console_handoff(host: str, port: int = 8765) -> ConsoleHandoff:
 # ── CLI runner ──────────────────────────────────────────────────────────────
 
 
+def _print_console_token(*, rotate: bool) -> int:
+    """`maxim serve --show-token` / `--rotate-token`: print the token, or why it cannot be read or rotated (#1402)."""
+    from maxim.exceptions import KeyFileUnusable
+    from maxim.tunnel.keys import rotate_console_token
+
+    if not rotate:
+        shown = _ensure_token_or_report()
+        if shown is None:
+            return 2
+        print(shown)
+        return 0
+    try:
+        rotated = rotate_console_token()
+    except KeyFileUnusable as e:  # the creation lock is held by another maxim process
+        print(f"maxim serve: {e}\nmaxim serve: {e.fix_hint}", flush=True)
+        return 2
+    print("maxim serve: console token ROTATED — every signed-in device is now logged out.")
+    print(rotated)
+    return 0
+
+
 def _ensure_token_or_report() -> str | None:
     """`maxim serve`'s console token, or None after printing why an existing token file cannot be used (#1402)."""
     from maxim.exceptions import KeyFileUnusable
@@ -2462,23 +2483,7 @@ def run_serve(argv: list[str]) -> int:
         return 0
 
     if args.show_token or args.rotate_token:
-        from maxim.tunnel.keys import rotate_console_token
-
-        if args.rotate_token:
-            from maxim.exceptions import KeyFileUnusable
-
-            try:
-                token = rotate_console_token()
-            except KeyFileUnusable as e:  # the creation lock is held by another maxim process (#1402)
-                print(f"maxim serve: {e}\nmaxim serve: {e.fix_hint}", flush=True)
-                return 2
-            print("maxim serve: console token ROTATED — every signed-in device is now logged out.")
-        else:
-            token = _ensure_token_or_report()
-            if token is None:
-                return 2
-        print(token)
-        return 0
+        return _print_console_token(rotate=args.rotate_token)
 
     port = int(_resolve("console.port", args.port))
     # Fail at start, not on the first Talk request, if the configured agent id
