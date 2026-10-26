@@ -13,9 +13,31 @@ that raises on construction (the runtime resolves it by module attribute at call
 
 from __future__ import annotations
 
+import os
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _isolated_cli_process_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
+    """``cli.main`` writes process state a later test reads: ``last_runs.json`` under the data home (measured
+    2026-10-26: ``test_last_run.py::TestDataHome`` failed after these ran in the full suite) and the env vars it
+    exports at startup (``MAXIM_ROLE``). Each test gets its own HOME and data home, and ``os.environ`` is put back
+    exactly as it was, whatever the run wrote."""
+    from maxim.utils.paths import _reset_caches
+
+    saved_env = dict(os.environ)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "data"))
+    _reset_caches()
+    try:
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(saved_env)
+        _reset_caches()
 
 
 def _run_robot_session(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, raised: BaseException) -> int:
