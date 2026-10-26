@@ -120,12 +120,16 @@ def imported_modules(tree: ast.AST) -> Iterator[tuple[int, str]]:
             yield node.lineno, node.module
             for alias in node.names:
                 yield node.lineno, f"{node.module}.{alias.name}"
-        elif isinstance(node, ast.Call) and node.args:
+        elif isinstance(node, ast.Call):
             func = node.func
             name = func.attr if isinstance(func, ast.Attribute) else func.id if isinstance(func, ast.Name) else None
-            first = node.args[0]
-            if name in _DYNAMIC_IMPORTERS and isinstance(first, ast.Constant) and isinstance(first.value, str):
-                yield node.lineno, first.value
+            if name not in _DYNAMIC_IMPORTERS:
+                continue
+            # The module is the first positional argument, or the keyword form (import_module(name=...)).
+            candidates = node.args[:1] + [kw.value for kw in node.keywords if kw.arg in ("name", "import_name")]
+            for arg in candidates:
+                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                    yield node.lineno, arg.value
 
 
 def http_client_uses(text: str) -> list[tuple[int, str]]:

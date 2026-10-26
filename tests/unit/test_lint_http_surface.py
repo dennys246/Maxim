@@ -30,6 +30,7 @@ from scripts import lint_http_surface as L
         "import importlib\nimportlib.import_module('requests')\n",
         "from maxim.utils.optional_deps import require_optional_dependency\nrequire_optional_dependency('httpx')\n",
         "__import__('urllib3.util')\n",
+        "import importlib\nimportlib.import_module(name='httpx')\n",
     ],
 )
 def test_every_spelling_of_an_http_client_is_caught(src: str) -> None:

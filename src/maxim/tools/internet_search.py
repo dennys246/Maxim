@@ -12,6 +12,7 @@ import re
 import threading
 import time
 from typing import TYPE_CHECKING, Any
+import urllib.parse
 from urllib.parse import quote_plus, urlparse
 
 from maxim.tools.base import Tool, ToolResult
@@ -318,22 +319,17 @@ def _search_duckduckgo_lite(
 
     logger.debug(f"Found {len(links)} links and {len(snippets)} snippets")
 
-    # Filter out DuckDuckGo internal links
-    filtered_links = [
-        (url, title) for url, title in links if not url.startswith("//duckduckgo.com") and "duckduckgo.com" not in url
-    ]
-
-    for i, (url, title) in enumerate(filtered_links[:max_results]):
-        snippet = snippets[i] if i < len(snippets) else ""
-        # Clean up the URL (sometimes it's a redirect URL)
+    for url, title in links:
+        if len(results) >= max_results:
+            break
+        # Unwrap DuckDuckGo's redirect link (//duckduckgo.com/l/?uddg=<target>) BEFORE filtering: it is how the
+        # HTML page usually links a result, and filtering first dropped every one of them.
         if "uddg=" in url:
-            # Extract actual URL from DuckDuckGo redirect
-            import urllib.parse
-
-            parsed = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
-            actual_url = parsed.get("uddg", [url])[0]
-            url = urllib.parse.unquote(actual_url)
-
+            # parse_qs already percent-decodes the value; decoding it again would corrupt a target holding %26.
+            url = urllib.parse.parse_qs(urllib.parse.urlparse(url).query).get("uddg", [url])[0]
+        if url.startswith("//duckduckgo.com") or "duckduckgo.com" in urllib.parse.urlparse(url).netloc:
+            continue  # DuckDuckGo's own links (ads, settings)
+        snippet = snippets[len(results)] if len(results) < len(snippets) else ""
         results.append(
             _make_search_result(
                 title=title.strip(),

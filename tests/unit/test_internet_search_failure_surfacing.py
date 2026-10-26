@@ -139,6 +139,28 @@ class TestHtmlScraperGoesThroughUtilsHttp:
         assert results == []
         assert failure and "connection refused" in failure
 
+    def test_a_redirect_wrapped_result_is_unwrapped_not_dropped(self):
+        # DuckDuckGo's HTML page links each result through //duckduckgo.com/l/?uddg=<target>; the scraper filtered
+        # duckduckgo.com links BEFORE unwrapping, so a normal results page read as "nothing matched".
+        from maxim.utils import http
+
+        page = (
+            b'<a rel="nofollow" class="result__a" href="//duckduckgo.com/y.js?ad_domain=x">An ad</a>'
+            b'<a rel="nofollow" class="result__a" '
+            b'href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa%3Fq%3Da%2526b&amp;rut=abc">Example A</a>'
+            b'<a class="result__snippet" href="x">The snippet for example A</a>'
+        )
+
+        def wrapped(url, **kwargs):
+            return http.Response(
+                status=200, headers={}, content=page, elapsed_ms=0.0, endpoint="_external", request_id="r"
+            )
+
+        results, failure = self._search(wrapped)
+        assert failure is None
+        # Decoded once: the target's own %26 survives.
+        assert [(r["url"], r["title"]) for r in results] == [("https://example.com/a?q=a%26b", "Example A")]
+
     def test_a_bot_challenge_202_is_a_failure_not_an_empty_result(self):
         # Captured live 2026-10-26: html.duckduckgo.com answered a scripted query with HTTP 202 and its
         # "anomaly" challenge page, which parses to zero links.
