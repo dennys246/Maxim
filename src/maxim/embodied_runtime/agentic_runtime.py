@@ -57,6 +57,10 @@ def seed_run_mode(state: Any, mode: Any) -> None:
 class AgenticRuntimeMixin:
     """Mixin providing agentic runtime lifecycle management for the Maxim class."""
 
+    # Always None since the protocol system's deletion (#1436 removed its start-up block, the one
+    # assignment that typed it); the readers that remain are #1467's to remove.
+    _protocol_registry: Any
+
     def _resolve_body_wiring(self, pain_bus: Any, nac: Any) -> "tuple[str | None, Any]":
         """Resolve an optional SEM body to wire into ``build_executor``.
 
