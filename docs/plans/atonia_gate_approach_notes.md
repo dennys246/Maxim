@@ -1,6 +1,6 @@
 # The atonia gate: approach notes for items 2, 3, 1, 5 and 10
 
-**Status:** DRAFT v6.9 (design passes, three-lens round and two deltas folded; red-gate review decisions folded), approach notes (CLAUDE.md "Faster without lowering the bar", item 1). Owner decisions V1–V8
+**Status:** DRAFT v6.10 (design passes, three-lens round and two deltas folded; red-gate review decisions folded), approach notes (CLAUDE.md "Faster without lowering the bar", item 1). Owner decisions V1–V8
 were made 2026-10-24 and V9–V10 on 2026-10-25. Session V, paper only: nothing in `src/` changes until the owner has read the folded
 plan and the red-gate PR is opened.
 - **v1** was written from a read-only census at `d9dffe6e` (origin/main, 2026-10-24).
@@ -1545,3 +1545,10 @@ class, and the reset guard's fail-closed name match.
 | S2 (fail-open): `request_shutdown()`'s `_SHUTDOWN_EVENT` is a second process signal | The behavioural gate sets both process signals and asserts `ok` with no early stop |
 | S3 (fail-open): no case showed an error turn holds the cursor | The cursor gate adds an error turn between two `ok` turns |
 | S4 (fail-open): the tiny fixture never exercises the clamp | A gate patches the trained context to 131072 and spies `Llama`'s `n_ctx` (8192, never 0) |
+
+**v6.9 narrow check** (v6.10; `v69_check.md`):
+
+| Finding | Fold |
+|---|---|
+| S1 (fail-open): the process-stop gate runs on the fake, so a polling `closed_local` would pass | A structural gate: `closed_local` references no process-wide stop signal |
+| S2 (fail-closed): the clamp gate's nonexistent path never reaches `Llama` | A real temporary file; "never constructed" names what was raised |

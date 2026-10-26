@@ -97,6 +97,7 @@ instead of hiding as an expected failure.
 from __future__ import annotations
 
 import hashlib
+import ast
 import importlib
 import importlib.util
 import inspect
@@ -1560,6 +1561,35 @@ def test_session_stop_abandons_at_the_next_token(tmp_path: Path, monkeypatch: py
     assert log["closed"] is True, "close() did not write the close record after a stop"
 
 
+_SHUTDOWN_NAMES = ("is_shutdown_requested", "shutdown_wait", "_SHUTDOWN_EVENT", "request_shutdown", "current_stop")
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.10 D: flips with closed_local")
+def test_closed_local_reads_no_process_stop_signal() -> None:
+    """``closed_local``'s ``should_stop`` is the session's only stop (v6.7 D). The behavioural process-stop gate runs
+    against the fake backend, so this structural check covers the real one: ``closed_local`` references no
+    process-wide stop signal -- not the backends' shutdown event, not ``utils.cancellation.current_stop``."""
+    spec = importlib.util.find_spec("maxim.models.language.closed_local")
+    assert spec is not None and spec.origin, "item 1 not built: no maxim.models.language.closed_local"
+    tree = ast.parse(Path(spec.origin).read_text(encoding="utf-8"))
+    hits = []
+    for node in ast.walk(tree):
+        name = None
+        if isinstance(node, ast.Name):
+            name = node.id
+        elif isinstance(node, ast.Attribute):
+            name = node.attr
+        elif isinstance(node, ast.alias):
+            name = node.asname or node.name.rsplit(".", 1)[-1]
+            if node.name.endswith("cancellation"):
+                hits.append(f"imports {node.name}")
+        elif isinstance(node, ast.ImportFrom) and (node.module or "").endswith("cancellation"):
+            hits.append(f"from {node.module} import ...")
+        if name in _SHUTDOWN_NAMES:
+            hits.append(name)
+    assert not hits, f"closed_local reads a process-wide stop signal: {sorted(set(hits))}"
+
+
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.9 D: flips with the session stop")
 def test_process_stop_signals_do_not_stop_the_observer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Every process-wide stop signal set BEFORE ``ingest`` -- ``models.language.cancellation.request_shutdown()``
@@ -1661,7 +1691,7 @@ def test_closed_local_default_context_is_clamped() -> None:
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.9 A: flips with closed_local's clamp")
-def test_closed_local_clamps_a_huge_trained_context(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_closed_local_clamps_a_huge_trained_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A 128K-trained model: ``n_ctx=None`` reaches ``Llama`` as exactly 8192 -- never 0 (llama-cpp: unbounded) and
     never the trained 131072. The tiny fixture's context is under 8192, so this patches the metadata read."""
     spec = importlib.util.find_spec("maxim.models.language.closed_local")
@@ -1679,11 +1709,14 @@ def test_closed_local_clamps_a_huge_trained_context(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(llama_cpp, "Llama", _SpyLlama)
     if hasattr(closed_local, "Llama"):
         monkeypatch.setattr(closed_local, "Llama", _SpyLlama)
+    model = tmp_path / "model.gguf"  # a real regular file, so a path check passes; trained_context is patched
+    model.write_bytes(b"GGUF-fake")
+    raised: BaseException | None = None
     try:
-        closed_local.open_closed_local_backend("/nonexistent/model.gguf", n_ctx=None, n_gpu_layers=0, seed=0)
-    except Exception:  # the spy stops the load; closed_local may wrap that in its own error -- only the kwargs matter
-        pass
-    assert seen, "open_closed_local_backend never constructed Llama (through llama_cpp.Llama or closed_local.Llama)"
+        closed_local.open_closed_local_backend(str(model), n_ctx=None, n_gpu_layers=0, seed=0)
+    except Exception as exc:  # the spy stops the load; closed_local may wrap that in its own error
+        raised = exc
+    assert seen, f"open_closed_local_backend never constructed Llama (raised {raised!r})"
     assert seen[-1].get("n_ctx") == 8192, f"Llama got n_ctx={seen[-1].get('n_ctx')!r}, want 8192 (never 0)"
 
 
