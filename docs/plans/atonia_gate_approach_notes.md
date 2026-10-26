@@ -402,7 +402,8 @@ The advisor_mode.md guard line is superseded (prefetch root and the census-as-en
 3. **[engineering] Offline is a one-way, process-wide audit-hook latch: once engaged, no new socket connection,
    no send to a new destination, no DNS and no spawn at the Python level.** "One-way" means no non-test caller can
    disengage it: `_reset_for_tests` exists, but a guard refuses any caller outside `tests/`, aliased imports
-   included. **Stated residuals:**
+   included. Disengaging it by `importlib.reload`, by writing its private state, or through a dynamically built name
+   is in-process code, out of the model (§0). **Stated residuals:**
    - a connection opened **before** `engage()` keeps sending, because `send`/`sendall` raise no audit event;
      `utils/http`'s pool is closed by its `on_engage` callback, but other pre-latch connections (the reachy_mini
      websocket, the census's allow-listed raw-socket sites) are not;
@@ -1422,3 +1423,8 @@ realpath-keyed executables, `pinned_executable`); they are history, not instruct
 | Architecture NITs | `engage()` order stated; the reset text; callbacks persist across a reset |
 | Wire S1 (O6 drove only the `/api/command` producer) | Test fold: Twilio's `conversation_context` producer too |
 | Wire NITs; Executor N2 (properties escaping the classification) | Test folds |
+
+**Final narrow check** ([redgates_delta3.md](reviews/atonia_gate/redgates_delta3.md)): **STOP: no further round
+owed.** Both fail-open folds are closed. Its NITs are folded here (invariant 3's out-of-model forms) or recorded for the
+build PRs: the `receive_voice` arm and the `triggering_input` route for O6 (#1481), the double-rendering XPASS
+class, and the reset guard's fail-closed name match.
