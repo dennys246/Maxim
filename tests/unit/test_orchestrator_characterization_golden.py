@@ -333,7 +333,7 @@ def test_new_goal_arm_the_post_sim_goal_re_enters_the_run_with_a_fresh_aut(
     builds a second bridge, narrator source and throwaway AUT, and the caller gets the INNER run's result. The
     first AUT's learning does not reach the second: its NAc is saved under the first run's own fresh
     ``sim_agent_*`` dir and the re-entered run builds a new one (pinned as current behaviour, though the post-sim
-    prompt says "memory carries over", #1454; only the narrator's ``orchestrator/`` stores are shared)."""
+    prompt said "memory carries over" until 1.3.4 removed the claim, #1454; only the narrator's ``orchestrator/`` stores are shared)."""
     t = _trace("new_goal", tmp_path_factory)
     assert t["post_sim_reads"] == [NEW_GOAL, ""]  # asked after each run: a goal, then Enter
     plans = [c["request"] for c in t["narrator_calls"] if c["kind"] == "plan"]

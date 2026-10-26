@@ -1184,6 +1184,21 @@ they are ready, and the gate takes the next free number when it is done, still o
   [#865](https://github.com/dennys246/Maxim/issues/865), the `sim_logger` move out of `simulation/` (from §1.3.2's
   "After the decomposition"; each its own reviewed PR; owner decision 2026-10-18). #866's import rewrite in
   `runtime/agent_loop.py` needs Session A to grant that one hunk (record it as a fence touch).
+  **Homed 2026-10-26** (filed by the characterization arms, #1459; addendum from the open-issue deep dive):
+  [#1451](https://github.com/dennys246/Maxim/issues/1451) rides with #1262 (strict red gate first: a percept that arrives while a planning job is in flight is
+  stranded); [#1452](https://github.com/dennys246/Maxim/issues/1452) rides with #1259 and #1288 (the idle nudge is unreachable for a live narrator); [#1453](https://github.com/dennys246/Maxim/issues/1453),
+  [#1454](https://github.com/dennys246/Maxim/issues/1454) and [#1457](https://github.com/dennys246/Maxim/issues/1457) are ONE `/new` slice, with the owner's decisions of 2026-10-26 recorded on each issue (run
+  settings carry and campaign-scoped inputs do not, by a test that classifies every parameter; the learning carries;
+  `--report-json` describes the returned run; the slice also makes the post-sim prompt ONE constant used by both the panel and the raw reader, pinned by equality and tied to the `new_goal` characterization arm, and takes the whole interactive post-sim block, which returns `_new_goal`, as its unit, leaving the recursion in the caller); [#1456](https://github.com/dennys246/Maxim/issues/1456) (the golden flake) stays with #1459's tests and is never
+  closed on non-recurrence.
+  **Fence touches (2026-10-26):** Session H takes the one-line `cli.py` hunk for [#1392](https://github.com/dennys246/Maxim/issues/1392) (the CLI scenario path
+  calls the new `validation.py` helper, so the bio expectations get the real snapshot), recorded like #1437's.
+  Session A took two small 1.3.4 hunks of its own, each with strict red gates and paid for under rule T:
+  [#1468](https://github.com/dennys246/Maxim/issues/1468) (one exit-code table for a run, owner decisions 2026-10-26: a crash 1, a typed backend error or leader
+  refusal 2 via `cli.main`, Ctrl+C 130; the run loop's teardown and error mapping moved to `cli.py`'s
+  `_end_robot_run` and `_run_stopped_on`) and #1454's interim prompt fix (the post-sim prompt drops "(memory carries over)"; the
+  report view and prompt moved to `orchestrator.py::_show_report_and_post_sim_prompt`, registered in
+  `tests/unit/_orchestrator_source.py`'s `PARTS`). The `/new` slice restores the promise with the behaviour.
 - **Meets B2's entry condition** ([#1352](https://github.com/dennys246/Maxim/issues/1352), the bare LLM loop). B2's code
   prerequisites land in 1.3.6.
 - **Exit:** `start_simulation_mode` and its descendants pass gate rule 4, and all five arms are satisfied.

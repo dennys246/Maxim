@@ -33,6 +33,13 @@ Running `maxim` with no arguments launches a Rich interactive menu with campaign
 | `--list-models` | flag | | List all available models with download/key status and exit |
 | `--delete-model` | str | None | Delete a downloaded local model to free disk space |
 
+**Exit codes of a run** (`--mode` robot runs and `--mode agentic`; since 1.3.4, [#1468](https://github.com/dennys246/Maxim/issues/1468)):
+`0` the run ended normally; `1` it stopped on an unexpected exception (`❌ Maxim stopped` in the log); `2` the operator
+must act: a typed backend error (its fix hint is printed) or a security refusal such as a leader with no usable key
+(its reason is printed); `130` interrupted by Ctrl+C. A failure the runtime absorbs and keeps running through (a
+media-loop step that fails and is retried) is not a stop and does not change the code. Sims add `4`, a typed abort
+(incomplete or aborted run; [simulation.md](simulation.md) has the full contract), and share `2` and `130`.
+
 ## Cloud LLM Providers
 
 | Flag | Type | Default | Description |
