@@ -79,12 +79,10 @@ Diagnostics check:
 | Connection timeout | Firewall | Check firewall allows ports 8000, 8443 |
 | Intermittent drops | Wi-Fi instability | Use wired ethernet if possible |
 
-## RTSP Bridge (Optional)
-For external video streaming:
-```bash
-python scripts/rtsp_bridge.py
-```
-See `docs/mediaMTX.md` for MediaMTX relay setup.
+## RTSP Bridge (removed)
+The RTSP bridge for external video streaming was removed in the 1.0 cleanup (`tools/rtsp_bridge.py`), and its
+leftover launcher `scripts/rtsp_bridge.py`, which could no longer run, was deleted in #1436. Reviving it is tracked in
+[docs/plans/deferred/reachy_orient_live.md](../plans/deferred/reachy_orient_live.md).
 
 ---
 

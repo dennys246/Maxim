@@ -18,6 +18,7 @@ from typing import Any
 
 import numpy as np
 
+from maxim.inference.transcribe_audio import create_task_file
 from maxim.utils.audio import resample_audio, to_int16
 from maxim.utils.logging import warn
 from maxim.utils.queueing import put_latest
@@ -470,12 +471,30 @@ def audio_writer_worker(
     buffered_frames = 0
     total_frames = 0
     chunk_index = 0
+    # Voice input is off once the transcriber is gone: said ONCE, and no more chunk or task files
+    # pile up with no consumer (#1436 S5: a child that cannot load its model exits 0, seconds after
+    # spawn, long after the parent's start-up check).
+    transcriber_gone = False
+
+    def _transcriber_alive() -> bool:
+        nonlocal transcriber_gone, pending_tasks
+        if transcribe_process is None or transcriber_gone:
+            return False
+        if transcribe_process.is_alive():
+            return True
+        if stop_event.is_set():  # the session is stopping: an exited transcriber is expected, not news
+            return False
+        transcriber_gone = True
+        pending_tasks = []
+        maxim.log.error(
+            "Voice input is OFF: the transcription worker exited (see its log for why); "
+            "audio is still recorded, but nothing is transcribed for the rest of this session"
+        )
+        return False
 
     def _flush_pending() -> None:
-        from maxim.data.audio._file_based_transcription import create_task_file
-
         nonlocal pending_tasks
-        if transcribe_process is None:
+        if not _transcriber_alive():
             return
         while pending_tasks:
             try:
@@ -495,7 +514,7 @@ def audio_writer_worker(
 
     def _write_chunk(chunk_arr: np.ndarray, start_frame: int) -> None:
         nonlocal chunk_index
-        if transcribe_process is None:
+        if not _transcriber_alive():
             return
         chunk_path = os.path.join(chunk_dir, f"chunk_{chunk_index:06d}.wav")
         wf_chunk = wave.open(chunk_path, "wb")
@@ -582,8 +601,6 @@ def audio_writer_worker(
             _flush_pending()
             deadline = time.time() + 10.0
             while pending_tasks and time.time() < deadline:
-                from maxim.data.audio._file_based_transcription import create_task_file
-
                 try:
                     task = pending_tasks[0]
                     task_file = create_task_file(

@@ -30,6 +30,12 @@ This module makes the behaviour uniform and intentional, split by INTENT:
   detection, "use X if it happens to be present"). Absence is normal here, so
   this just returns a bool and never logs.
 
+- :func:`optional_dependency_installed` — the same probe WITHOUT importing the
+  dependency (``importlib.util.find_spec``), for a process that must not load
+  it itself: e.g. the robot's parent process, which hides its GPUs and leaves
+  faster-whisper's native CUDA libraries to a spawned child (#1436). Returns a
+  bool, never logs; the consumer still reports a failure of its own.
+
 - :func:`warn_optional_fallback` — for a deliberate DEGRADATION path that has
   a real working fallback (``sentence-transformers`` → bag-of-words,
   ``spacy`` → identity decomposition, ``ddgs`` → regex scraping). The fallback
@@ -42,6 +48,7 @@ Regression guard: tests/unit/test_optional_deps.py.
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import logging
 from types import ModuleType
 
@@ -181,6 +188,20 @@ def optional_dependency_available(import_name: str) -> bool:
         importlib.import_module(import_name)
         return True
     except ImportError:
+        return False
+
+
+def optional_dependency_installed(import_name: str) -> bool:
+    """Return ``True`` iff *import_name* is installed, WITHOUT importing it (``importlib.util.find_spec``).
+
+    For a capability probe in a process that must not load the dependency itself: e.g. the robot's
+    parent process, which hides its GPUs and leaves faster-whisper (with its native CUDA libraries)
+    to a spawned transcription child (#1436). It proves the package is present, not that it works;
+    the consumer still reports a failure of its own. Never logs.
+    """
+    try:
+        return importlib.util.find_spec(import_name) is not None
+    except (ImportError, ValueError):  # a parent package missing, or a bad name
         return False
 
 
