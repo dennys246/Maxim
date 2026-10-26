@@ -52,8 +52,10 @@ SEAMS THESE GATES PIN (the notes leave them open; chosen here, change them only 
   * The backend: ``build_prompt(template, segments) -> PromptIds`` with ``.ids`` (list[int]),
     ``.untrusted_spans`` (one ``(start, end)`` per segment, ``None`` when that segment is rejected) and
     ``.rejected`` (the rejected segment indices); ``complete_tokens(prompt_ids, *, grammar, max_tokens,
-    max_prompt_tokens, deadline) -> completion`` with ``.text`` (str) and ``.deadline_hit`` (bool, the
-    stopping-criterion flag of §4.2); an exception from it is a completion error.
+    deadline, should_stop) -> completion`` with ``.text`` (str), ``.deadline_hit`` (bool) and ``.stopped`` (bool:
+    ``should_stop()`` ended sampling, v6.8), both set by the per-token stopping criterion; an exception from it is a
+    completion error. The prompt cap is the SESSION's check, never the backend's (v6.7 B). The backend exposes the
+    resolved context as an ``n_ctx`` int attribute (v6.8 A), which ``session.limits`` reads back.
   * ``maxim.models.language.closed_local.open_closed_local_backend(path, *, n_ctx, n_gpu_layers, seed,
     vocab_only=False)`` -- ``vocab_only=True`` is how the defang gate runs against vocab-only GGUFs, and
     ``closed_local._token_attr(handle, token_id) -> int`` is the one attribute lookup (monkeypatched for the
@@ -135,6 +137,7 @@ FORBIDDEN_MODULES = (
     "huggingface_hub",
     "httpx",
     "maxim.utils.http",
+    "maxim.utils.cancellation",  # v6.7 D: the observer's stop is session-scoped; the process StopRequest is unread
 )
 FORBIDDEN_PREFIXES = ("maxim.default_network", "maxim.comms", "maxim.memory", "maxim.hivemind", "maxim.peer")
 FORBIDDEN_PREFIXES += ("maxim.mesh", "maxim.tunnel", "huggingface_hub", "httpx")
@@ -304,13 +307,15 @@ class FakeBackend:
             if self.on_token is not None:
                 self.on_token(i)
             self.tokens_sampled += 1
-            if callable(should_stop) and should_stop():
-                return SimpleNamespace(text=text[: len(text) // 3], deadline_hit=True, finish_reason="stop")
+            if callable(should_stop) and should_stop():  # v6.8: a stop is its own flag, never deadline_hit
+                return SimpleNamespace(
+                    text=text[: len(text) // 3], deadline_hit=False, stopped=True, finish_reason="stop"
+                )
         if self.mode == "deadline":  # a complete, valid completion: tests the deadline row alone
-            return SimpleNamespace(text=text, deadline_hit=True, finish_reason="stop")
+            return SimpleNamespace(text=text, deadline_hit=True, stopped=False, finish_reason="stop")
         if self.mode == "deadline_half":  # v6.3: the deadline wins and the half-JSON is never parsed
-            return SimpleNamespace(text=text[: len(text) // 2], deadline_hit=True, finish_reason="stop")
-        return SimpleNamespace(text=text, deadline_hit=False, finish_reason="stop")
+            return SimpleNamespace(text=text[: len(text) // 2], deadline_hit=True, stopped=False, finish_reason="stop")
+        return SimpleNamespace(text=text, deadline_hit=False, stopped=False, finish_reason="stop")
 
 
 def _install_fake(monkeypatch: pytest.MonkeyPatch, backend: FakeBackend) -> list[Any]:
@@ -550,8 +555,10 @@ _CHILD_SCRIPT = textwrap.dedent(
             self.segments.append(segs)
             return _NS(ids=list(range(len(segs) + 2)), untrusted_spans=[(1 + i, 2 + i) for i in range(len(segs))],
                        rejected=())
+        n_ctx = 4096  # v6.8 A: the resolved context the session reads back
+
         def complete_tokens(self, prompt_ids, **kw):
-            return _NS(text=json.dumps(self.completion), deadline_hit=False, finish_reason="stop")
+            return _NS(text=json.dumps(self.completion), deadline_hit=False, stopped=False, finish_reason="stop")
 
     class _NS:
         def __init__(self, **kw):
@@ -1545,6 +1552,7 @@ def test_session_stop_abandons_at_the_next_token(tmp_path: Path, monkeypatch: py
     finally:
         session.close()
     assert report.get("status") == "abandoned", f"status {report.get('status')!r} after a stop"
+    assert report.get("reason") == "stopped", f"a stop is reason 'stopped', not {report.get('reason')!r} (v6.8)"
     assert report.get("proposals") == [], "an abandoned turn dispatched proposals"
     assert (report.get("covered") or {}).get("cursor_out") == "feed:100", report.get("covered")
     from maxim.advisor.log import read_log
@@ -1576,6 +1584,42 @@ def test_per_call_stop_abandons_only_that_call(tmp_path: Path, monkeypatch: pyte
         session.close()
     assert first.get("status") == "abandoned", first.get("status")
     assert second.get("status") == "ok", f"a per-call stop leaked into the next call: {second.get('status')!r}"
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.8 C: flips with the session cursor")
+def test_cursor_carries_across_ingests(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The session's cursor advances on ``ok``: the second ``ingest``'s ``cursor_in`` is the first's ``cursor_out``.
+    With no ``open(cursor=)`` but cursored events, ``cursor_in`` is ``null`` and ``cursor_out`` the last event's."""
+    advisor = _require_advisor()
+    _install_fake(monkeypatch, FakeBackend())
+    home_dir, report_dir, model = _dirs(tmp_path)
+    session = advisor.open(home_dir=home_dir, model=model, report_dir=report_dir)
+    second = [dict(CURSORED[1], event_id="e3", cursor="feed:103")]
+    try:
+        r1 = _as_dict(session.ingest(CURSORED))
+        r2 = _as_dict(session.ingest(second))
+    finally:
+        session.close()
+    c1, c2 = r1.get("covered") or {}, r2.get("covered") or {}
+    assert c1.get("cursor_in") is None and c1.get("cursor_out") == "feed:102", c1
+    assert c2.get("cursor_in") == "feed:102" and c2.get("cursor_out") == "feed:103", c2
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.8 A: flips with closed_local's clamp")
+def test_closed_local_default_context_is_clamped() -> None:
+    """``open_closed_local_backend(path, n_ctx=None)`` resolves ``n_ctx`` to ``min(trained context, 8192)``, read
+    from the GGUF's metadata BEFORE the full load (llama-cpp's ``n_ctx=0`` means unbounded, so it is never passed);
+    an explicit ``n_ctx`` is honoured. ``_LlamaCppBackend``'s profile-driven ``n_ctx`` is unchanged."""
+    _require_tiny_gguf()
+    spec = importlib.util.find_spec("maxim.models.language.closed_local")
+    assert spec is not None, "item 1 not built: no maxim.models.language.closed_local"
+    closed_local = importlib.import_module("maxim.models.language.closed_local")
+    trained = closed_local.trained_context(TINY_GGUF)
+    assert isinstance(trained, int) and trained > 0, f"trained_context: {trained!r}"
+    backend = closed_local.open_closed_local_backend(TINY_GGUF, n_ctx=None, n_gpu_layers=0, seed=0)
+    assert backend.n_ctx == min(trained, 8192), (backend.n_ctx, trained)
+    explicit = closed_local.open_closed_local_backend(TINY_GGUF, n_ctx=128, n_gpu_layers=0, seed=0)
+    assert explicit.n_ctx == 128, explicit.n_ctx
 
 
 # ── 8. special-token defang ───────────────────────────────────────────────

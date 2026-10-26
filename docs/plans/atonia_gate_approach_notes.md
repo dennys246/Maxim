@@ -1,6 +1,6 @@
 # The atonia gate: approach notes for items 2, 3, 1, 5 and 10
 
-**Status:** DRAFT v6.7 (design passes, three-lens round and two deltas folded; red-gate review decisions folded), approach notes (CLAUDE.md "Faster without lowering the bar", item 1). Owner decisions V1–V8
+**Status:** DRAFT v6.8 (design passes, three-lens round and two deltas folded; red-gate review decisions folded), approach notes (CLAUDE.md "Faster without lowering the bar", item 1). Owner decisions V1–V8
 were made 2026-10-24 and V9–V10 on 2026-10-25. Session V, paper only: nothing in `src/` changes until the owner has read the folded
 plan and the red-gate PR is opened.
 - **v1** was written from a read-only census at `d9dffe6e` (origin/main, 2026-10-24).
@@ -359,8 +359,13 @@ takes, keyword-only:
 - **`n_ctx=None`, `max_prompt_tokens=None` and `n_gpu_layers=-1`** (A).
 
 **Limits (A).**
-- `n_ctx=None` resolves through the **shared `Llama` kwargs builder's clamp** (§1A.3) to `min(trained context,
-  8192)`, never the full trained context: a 128K default means minutes of prefill, or a memory failure at `open()`.
+- `n_ctx=None` resolves **in `closed_local`** to `min(trained context, 8192)`.
+  - It is never the full trained context: a 128K default means minutes of prefill, or a memory failure at `open()`.
+  - The trained context is read from the GGUF's metadata before the full load (`closed_local.trained_context(path)`;
+    llama-cpp's `n_ctx=0` means unbounded and is never passed).
+  - The clamp is `closed_local`'s alone. The shared `Llama` kwargs builder (§1A.3) receives an explicit `n_ctx`, so
+    `_LlamaCppBackend`'s profile-driven `n_ctx`, and the PromptBudgeter's agreement with it, are unchanged.
+  - The backend exposes the resolved value as an `n_ctx` int attribute.
 - The completion budget is fixed at **1024 tokens**.
 - `max_prompt_tokens=None` resolves to `n_ctx - 1024`.
 - `open()` refuses (`AdvisorCompositionError`) when `max_prompt_tokens + 1024 > n_ctx`.
@@ -376,8 +381,11 @@ takes, keyword-only:
   - An over-cap prompt gives `error` with reason `prompt_too_long`, and the backend never completes.
 - **Cursors (C).**
   - `cursor` is the caller's opaque feed cursor; Maxim never parses it, only echoes it.
-  - If `open()` received a `cursor`, every event must carry `cursor`; otherwise `ingest()` raises
-    `AdvisorInputError` before any turn.
+  - **The session holds the cursor.** `open(cursor=)` sets it, and each `ok` turn advances it to its `cursor_out`.
+    So a second `ingest()`'s `cursor_in` is the previous `cursor_out`.
+  - Once any cursor is in play, from `open()` or from any event in the batch, every event must carry `cursor`.
+    Otherwise `ingest()` raises `AdvisorInputError` before any turn.
+  - With cursored events but no `open(cursor=)`, the first `cursor_in` is `null`.
   - **Maxim decides what was handled:** every event in the batch is either judged or listed in `inputs[]` as
     rejected. So on `ok`, `covered.cursor_out` is the **last event's** `cursor`, and a rejected event can never be
     re-fed forever.
@@ -385,13 +393,22 @@ takes, keyword-only:
   - There is no `event_id` fallback. With no `cursor` given, both cursor fields are `null`.
 - **Stopping (D, session-scoped).**
   - The library installs no signal handler and never exits (bounded_stop.md's principle). The embedder's handler calls
-    **`session.request_stop(deadline_s, reason="yield")`**, which is thread-safe and callable from a signal handler.
-    An optional per-call `stop=` (a `threading.Event`-like object) abandons only that call.
+    **`session.request_stop(deadline_s, reason="yield")`**.
+    - **"Callable from a signal handler" means exactly this:** it sets a `threading.Event` and stores the monotonic
+      deadline and the reason. It takes no lock, logs nothing, does no I/O, and never raises.
+    - `deadline_s` bounds how long the in-flight `ingest()` may take to return after the stop. The remaining
+      dispatches are skipped, and the report is written.
+    - An optional per-call `stop=` (a `threading.Event`-like object) abandons only that call.
   - **The process-wide `StopRequest` is not consulted.** It is sticky, and `MaximHandle.stop()` sets it too, so in an
     embedding process it would abandon unrelated sessions. This design also does not wait for bounded_stop PR 0.
   - **Per-token checking.** The closed backend's `complete_tokens(..., should_stop)` consults `should_stop()` on every
-    sampled token, in its `stopping_criteria`. A stop ends the turn at the next token, and the report is `abandoned`:
-    no judgement, `cursor_out == cursor_in`.
+    sampled token, in its `stopping_criteria`. A stop ends the turn at the next token.
+    - The backend reports it as `stopped=True`, its own flag, never `deadline_hit`.
+    - The report is `abandoned` with reason **`"stopped"`**. The deadline gives `abandoned` with reason
+      `"deadline"`.
+    - Either way there is no judgement, and `cursor_out == cursor_in`.
+  - **A stop during dispatch** skips the remaining calls. The report is `abandoned` with `proposals: []`. The log
+    keeps the records already written, and `log_last_seq` says how far it got.
   - **Prefill.** A stop that lands during prefill takes effect when prefill returns, which the token cap bounds.
   - **After a stop:**
     - the session is stopped;
@@ -408,7 +425,8 @@ takes, keyword-only:
 {"_format_version": "1.0", "schema": "advisor_report/1", "session_id": "...", "report_id": "uuid4",
  "status": "ok | degraded | error | abandoned", "reason": "set unless ok",
  "banner": "ADVISORY — Maxim v<maxim.__version__>, model <gguf sha256[:16]>; no action taken; not an alert.",
- "covered": {"cursor_in": "...", "cursor_out": "...", "events": 3},
+ "covered": {"cursor_in": "... | null", "cursor_out": "... | null", "events": 3},
+ "prompt": {"tokens": 1834, "max_tokens": 7168},
  "inputs": [{"event_id": "...", "kind": "...", "payload_sha256": "...", "rejected": null}],
  "happening": "UNTRUSTED", "would_do": {"summary": "UNTRUSTED", "executed": false}, "rationale": "UNTRUSTED",
  "confidence": {"value": 0.6, "calibrated": false, "source": "model_self_report"},
@@ -1501,3 +1519,15 @@ class, and the reset guard's fail-closed name match.
 | All three: two producers for `prompt_too_long`; counts in `extra` | B: the session is the one producer; a named `prompt` field on every report |
 | Architecture S6, Executor S5: `degraded` contradicts §4.2/§6 | Stated: §4.2/§6's `degraded` is for non-observer runs |
 | Executor S3: a leaked process stop could mask gates | Moot: no process stop is used |
+
+**v6.7 delta round** (v6.8; `v67_*.md`: Architecture and Wire STOP; the Executor's one fail-open folded):
+
+| Finding | Fold |
+|---|---|
+| Executor S1 (fail-open): nothing proved the process stop is unread | `maxim.utils.cancellation` joins the observer's forbidden closure |
+| Executor S2/S3, Wire S3: SEAMS still had the backend's cap and no `should_stop`; the child fake lacked `n_ctx` | SEAMS updated; the child fake carries `n_ctx`; the backend exposes `n_ctx` |
+| Architecture 1: what "signal-handler-safe" allows | Set an event and store the deadline only |
+| Architecture 2, Wire S1: the clamp does not exist; `n_ctx=0` means unbounded; profile drift | `closed_local` owns the clamp via GGUF metadata; the shared builder gets an explicit `n_ctx`; a gate |
+| Wire S2: a stop reported as `deadline_hit` | A `stopped` flag; reason `"stopped"` vs `"deadline"` |
+| Architecture 3/4: the JSON block; undefined cursor cases | `prompt` field and nullable cursors in the block; the session holds the cursor; second-ingest rule; a gate |
+| NITs | `deadline_s` defined; stop during dispatch defined |
