@@ -181,12 +181,24 @@ def test_a_serialized_action_without_its_identity_is_an_error_not_a_skip() -> No
 
 
 def test_delivered_tags_are_the_turns_delivered_without_error() -> None:
-    from maxim.simulation.experiment import delivered_scenario_tags
+    from maxim.simulation.experiment import ExperimentResult, delivered_scenario_tag_times
 
     turns = [{"metadata": {"scenario_tag": t}} for t in ("seed", "interference", "recall")]
-    records = {"turns": [{"turn": 1}, {"turn": 2, "error": "timeout"}, {"turn": 3}, {"turn": 9}]}
-    assert delivered_scenario_tags(turns, records) == {"seed", "recall"}
-    assert delivered_scenario_tags(turns, {}) is None  # no delivery reported is not "nothing delivered"
+    records = {
+        "turns": [
+            {"turn": 1, "sent_at": 1.0},
+            {"turn": 2, "sent_at": 2.0, "error": "timeout"},
+            {"turn": 3, "sent_at": 3.0},
+            {"turn": 9, "sent_at": 9.0},
+        ]
+    }
+    times = delivered_scenario_tag_times(turns, records)
+    assert times == {"seed": 1.0, "recall": 3.0}
+    assert delivered_scenario_tag_times(turns, {}) is None  # no delivery reported is not "nothing delivered"
+    # One record of delivery: the tag set is derived from the times, so the two cannot drift.
+    base = dict(campaign_path="c", aut_model="m", sim_turns=3, sim_duration_s=1.0, finish_reason="completed")
+    assert ExperimentResult(**base, delivered_tag_times=times).delivered_tags == {"seed", "recall"}
+    assert ExperimentResult(**base).delivered_tags is None
 
 
 def test_an_undelivered_tag_fails_pipeline_continued(healthy_sim, monkeypatch) -> None:
@@ -215,7 +227,6 @@ def test_the_bio_checks_get_the_runs_snapshot(monkeypatch) -> None:
         expectations,
         sink,
         hippocampus=None,
-        emitted_tags=None,
         *,
         subsystem_snapshot=None,
         tool_stats=None,
@@ -261,8 +272,8 @@ def test_an_empty_tag_set_means_the_tag_was_never_emitted() -> None:
 
     sink = RecordingSink.from_serialized([{"timestamp": 1.0, "tool_name": "respond", "result_success": True}])
     exp = Expectation(type="pipeline_continued", after_tag="interference")
-    (empty,) = validate_expectations([exp], sink, emitted_tags=set())
-    (unknown,) = validate_expectations([exp], sink, emitted_tags=None)
+    (empty,) = validate_expectations([exp], sink, tag_times={})
+    (unknown,) = validate_expectations([exp], sink, tag_times=None)
     # #1391: with no delivery time the order is unknown, so ``None`` (tags not reported) fails closed too.
     assert (empty.passed, unknown.passed) == (False, False)
     assert "never emitted" in empty.detail and "order unknown" in unknown.detail
@@ -285,9 +296,10 @@ def test_the_orchestrators_own_action_dicts_rebuild_with_their_blocks() -> None:
 
 
 def test_a_delivered_turn_without_a_tag_adds_none() -> None:
-    from maxim.simulation.experiment import delivered_scenario_tags
+    from maxim.simulation.experiment import delivered_scenario_tag_times
 
-    assert delivered_scenario_tags([{"metadata": {}}, {}], {"turns": [{"turn": 1}, {"turn": 2}]}) == set()
+    records = {"turns": [{"turn": 1, "sent_at": 1.0}, {"turn": 2, "sent_at": 2.0}]}
+    assert delivered_scenario_tag_times([{"metadata": {}}, {}], records) == {}
 
 
 def test_a_run_without_an_introspector_has_no_hippocampus(monkeypatch) -> None:
@@ -339,3 +351,20 @@ def test_a_legacy_or_all_errored_result_does_not_claim_a_verdict(result_kwargs, 
         ln for ln in report.summary_table().splitlines() if ln.strip().startswith("m:") and "expectations" in ln
     )
     assert line.strip() == expected
+
+
+def test_a_run_whose_actions_all_precede_the_tag_does_not_continue_the_pipeline(monkeypatch) -> None:
+    """#1391 end to end through the benchmark: every action happened BEFORE its turn was sent, so
+    ``pipeline_continued`` fails even though the run acted."""
+    import maxim.simulation.orchestrator as orchestrator
+    from maxim.simulation.benchmark import BenchmarkRunner
+
+    def _acted_too_early(**kwargs):
+        result = _a_run_that_did_the_work(**kwargs)
+        for record in result.campaign_analysis["turns"]:
+            record["sent_at"] = 100.0 + record["turn"]
+        return result
+
+    monkeypatch.setattr(orchestrator, "start_simulation_mode", _acted_too_early)
+    result = BenchmarkRunner(models=["m"], suite_path=QUICK_CHECK).run().results["m"]
+    assert (result.expectations_passed, result.expectations_total) == (2, 3)

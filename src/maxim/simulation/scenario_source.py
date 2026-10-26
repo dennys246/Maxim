@@ -73,27 +73,45 @@ class ScenarioDefinition:
     config: dict[str, Any] | None = None
 
 
-_THRESHOLD_KEYS = frozenset({"pass", "pass_above", "pass_below"})
+#: The ONE table of scoring-threshold operators (#1395): ``load_scenario`` refuses any other key, and
+#: ``BenchmarkRunner._check_thresholds`` applies exactly these, so a key cannot be accepted without being checked.
+#: Each maps to "the measured value HOLDS the threshold".
+THRESHOLD_OPERATORS: dict[str, Any] = {
+    "pass": lambda value, threshold: value >= threshold,
+    "pass_above": lambda value, threshold: value >= threshold,
+    "pass_below": lambda value, threshold: value <= threshold,
+}
 _ENTITY_TOOL = re.compile(r"^(sense_[a-z0-9_]+|[a-z0-9]+_[a-z0-9_]+)$")
 
 
-def _check_expectation_tool(path: Path, exp: Expectation) -> None:
-    """A ``tool:`` must be a registered tool name (``action_taken`` matches it exactly, so a class name such as
-    ``RespondTool`` could never pass, #1394), unless the expectation opts in with ``entity_tool: true`` for a
-    per-embodiment entity tool, which must then be shaped ``sense_<x>`` or ``<x>_<y>`` (owner decision 2026-10-26)."""
-    if not exp.tool:
-        return
+def expectation_tool_problem(tool: str | None, *, entity_tool: bool = False) -> str | None:
+    """Why an expectation's ``tool`` cannot match, or ``None``. ``action_taken`` / ``tool_success_rate`` match the
+    REGISTERED tool name exactly, so a class name such as ``RespondTool`` could never pass (#1394). A per-embodiment
+    entity tool is allowed only with the explicit ``entity_tool: true`` (owner decision 2026-10-26), shaped
+    ``sense_<x>`` or ``<x>_<y>`` and not a registered name. Shared by ``load_scenario`` (refuses) and the scenario
+    generator (drops the expectation)."""
+    if not tool:
+        return None
     from maxim.modes.definitions import REGISTERED_TOOL_NAMES
 
-    if exp.entity_tool:
-        if not _ENTITY_TOOL.match(exp.tool):
-            raise ValueError(f"Scenario {path}: entity_tool {exp.tool!r} is not shaped sense_<x> or <x>_<y>")
-        return
-    if exp.tool not in REGISTERED_TOOL_NAMES:
-        raise ValueError(
-            f"Scenario {path}: expectation tool {exp.tool!r} is not a registered tool name (use the name the tool "
-            "registers under, e.g. 'respond' for RespondTool; mark a per-embodiment entity tool with entity_tool: true)"
+    if entity_tool:
+        if tool in REGISTERED_TOOL_NAMES:
+            return f"{tool!r} is a registered tool, not an entity tool (drop entity_tool: true)"
+        if not _ENTITY_TOOL.match(tool):
+            return f"entity_tool {tool!r} is not shaped sense_<x> or <x>_<y>"
+        return None
+    if tool not in REGISTERED_TOOL_NAMES:
+        return (
+            f"expectation tool {tool!r} is not a registered tool name (use the name the tool registers under, e.g. "
+            "'respond' for RespondTool; mark a per-embodiment entity tool with entity_tool: true)"
         )
+    return None
+
+
+def _check_expectation_tool(path: Path, exp: Expectation) -> None:
+    problem = expectation_tool_problem(exp.tool, entity_tool=exp.entity_tool)
+    if problem:
+        raise ValueError(f"Scenario {path}: {problem}")
 
 
 def _check_scoring(path: Path, section: str, body: dict[str, Any]) -> None:
@@ -102,13 +120,13 @@ def _check_scoring(path: Path, section: str, body: dict[str, Any]) -> None:
     for metric, threshold in (body.get("scoring") or {}).items():
         if not isinstance(threshold, dict) or not threshold:
             raise ValueError(
-                f"Scenario {path}: {section}.scoring.{metric} has no threshold ({sorted(_THRESHOLD_KEYS)})"
+                f"Scenario {path}: {section}.scoring.{metric} has no threshold ({sorted(THRESHOLD_OPERATORS)})"
             )
-        unknown = sorted(set(threshold) - _THRESHOLD_KEYS)
+        unknown = sorted(set(threshold) - set(THRESHOLD_OPERATORS))
         if unknown:
             raise ValueError(
                 f"Scenario {path}: {section}.scoring.{metric} has unknown key(s) {unknown}; "
-                f"known: {sorted(_THRESHOLD_KEYS)}"
+                f"known: {sorted(THRESHOLD_OPERATORS)}"
             )
 
 
@@ -231,7 +249,6 @@ class ScenarioSource:
         self._start_time = time.time()
         self._current_step: int = 0
         self._next_index: int = 0
-        self._emitted_tags: set[str] = set()
         self._tag_times: dict[str, float] = {}
 
         # Sort percepts by 'at' value
@@ -286,7 +303,6 @@ class ScenarioSource:
         # Track emitted tags for pipeline_continued checks
         tag = (raw.get("metadata") or {}).get("scenario_tag")
         if tag:
-            self._emitted_tags.add(tag)
             self._tag_times.setdefault(tag, time.time())  # first delivery: actions after it continued the pipeline
 
         logger.debug(
@@ -328,4 +344,4 @@ class ScenarioSource:
     @property
     def emitted_tags(self) -> set[str]:
         """Tags from emitted percepts (for pipeline_continued validation)."""
-        return set(self._emitted_tags)
+        return set(self._tag_times)

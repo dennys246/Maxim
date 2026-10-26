@@ -20,7 +20,6 @@ from maxim.simulation.scenario_source import Expectation, load_scenario
 from maxim.simulation.sinks import ActionRecord, RecordingSink
 
 _REPO = Path(__file__).resolve().parents[2]
-_STRICT = pytest.mark.xfail(strict=True, reason="red gate: benchmark verdict honesty")
 
 
 def _sink(*times: float) -> RecordingSink:
@@ -174,3 +173,103 @@ def test_an_unknown_or_empty_threshold_is_refused_at_load(tmp_path, threshold):
     path.write_text(yaml.safe_dump({"name": "s", "benchmark": {"scoring": {"recall_x": threshold}}}))
     with pytest.raises(ValueError, match="recall_x"):
         load_scenario(path)
+
+
+def test_a_synthetic_record_after_the_tag_is_not_an_action():
+    """The ``_llm_unavailable`` stall marker (and ``_deliberation_noop``) are not actions: a run whose LLM died after
+    the tag did not continue the pipeline."""
+    from maxim.simulation.validation import validate_finished_run
+
+    sink = RecordingSink()
+    sink.record(ActionRecord(timestamp=30.0, tool_name="_llm_unavailable", result_success=False))
+    (result,) = validate_finished_run([_pipeline()], sink=sink, tag_times={"interference": 20.0})
+    assert result.passed is False
+
+
+def test_the_campaign_runner_stamps_each_turn_before_sending_it(monkeypatch):
+    """The producer half of #1391: ``sent_at`` is taken before the bridge delivers the turn, so the turn's own
+    actions come after it."""
+    from maxim.simulation import campaign_runner
+
+    monkeypatch.setattr(campaign_runner.time, "sleep", lambda s: None)
+
+    class _Bridge:
+        def __init__(self):
+            self.acted_at = []
+
+        def send_and_wait(self, text, **kwargs):
+            import time as _t
+
+            self.acted_at.append(_t.time())
+            return {"actions": [], "response": "ok"}
+
+    bridge = _Bridge()
+    analysis = campaign_runner.run_precampaign_turns(
+        turns=[{"text": "a", "metadata": {"scenario_tag": "a"}}, {"text": "b"}], bridge=bridge, introspector=None
+    )
+    records = analysis["turns"]
+    assert [r["turn"] for r in records] == [1, 2]
+    assert all(r["sent_at"] <= acted for r, acted in zip(records, bridge.acted_at))
+
+
+def test_the_cli_scenario_report_judges_the_live_run(tmp_path, monkeypatch):
+    """#1392 on the CLI path: ``_report_scenario_validation`` hands the live hub/executor to the seam (so the bio and
+    tool checks see the run), and writes the ``--sim-report`` JSON."""
+    import json
+    from types import SimpleNamespace
+
+    from maxim import cli
+    from maxim.memory.hippocampus import Hippocampus
+
+    class _Executor:
+        def tool_usage_stats(self):
+            return {"hallucination_rate": 0.0}
+
+    class _Source:
+        expectations = [Expectation(type="hallucination_rate_below", params={"max": 0.5})]
+        definition = SimpleNamespace(name="s")
+        tag_times = {}
+
+    report = tmp_path / "r.json"
+    args = SimpleNamespace(_sim_hippo=Hippocampus(), sim_report=str(report))
+    passed = cli._report_scenario_validation(args, _Source(), _sink(), nac=None, memory_hub=None, executor=_Executor())
+    assert passed is True
+    assert json.loads(report.read_text())["passed"] is True
+
+
+@pytest.mark.parametrize(
+    ("tool", "entity_tool", "ok"),
+    [
+        ("respond", False, True),
+        ("RespondTool", False, False),
+        ("sense_food", True, True),
+        ("respond", True, False),
+        ("Bad-Name", True, False),
+    ],
+)
+def test_the_shared_tool_check(tool, entity_tool, ok):
+    from maxim.simulation.scenario_source import expectation_tool_problem
+
+    assert (expectation_tool_problem(tool, entity_tool=entity_tool) is None) is ok
+
+
+def test_the_generator_drops_an_unregistered_tool_instead_of_the_scenario():
+    from maxim.simulation.simulation_generator import _clean_expectations
+
+    kept = _clean_expectations(
+        [{"type": "action_taken", "tool": "RespondTool"}, {"type": "action_taken", "tool": "respond"}]
+    )
+    assert [e["tool"] for e in kept] == ["respond"]
+
+
+@pytest.mark.parametrize("op", ["pass", "pass_above", "pass_below"])
+def test_every_accepted_operator_is_applied(op):
+    """One table: every key ``load_scenario`` accepts is a comparison ``_check_thresholds`` runs (#1395)."""
+    from maxim.simulation.benchmark import BenchmarkRunner
+    from maxim.simulation.scenario_source import THRESHOLD_OPERATORS
+
+    assert set(THRESHOLD_OPERATORS) == {"pass", "pass_above", "pass_below"}
+    runner = BenchmarkRunner.__new__(BenchmarkRunner)
+    runner._scoring = {"m": {op: 0.5}}
+    failing = 0.0 if op != "pass_below" else 1.0
+    assert runner._check_thresholds({"m": failing}) is False

@@ -738,16 +738,16 @@ class BenchmarkRunner:
         if not self._scoring:
             return True  # No thresholds defined = auto-pass
 
+        from maxim.simulation.scenario_source import THRESHOLD_OPERATORS
+
         for metric_name, threshold in self._scoring.items():
             value = metrics.get(metric_name)
             if value is None:
                 continue
-            if "pass" in threshold and value < threshold["pass"]:
-                return False
-            if "pass_above" in threshold and value < threshold["pass_above"]:
-                return False
-            if "pass_below" in threshold and value > threshold["pass_below"]:
-                return False
+            # The one operator table load_scenario validates against (#1395): every accepted key is applied.
+            for op, bound in threshold.items():
+                if not THRESHOLD_OPERATORS[op](value, bound):
+                    return False
         return True
 
     def _compute_rankings(self, results: dict[str, ModelResult]) -> dict[str, list[str]]:
