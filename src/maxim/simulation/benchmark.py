@@ -387,7 +387,7 @@ class BenchmarkRunner:
         """
         from maxim.simulation.experiment import run_campaign
         from maxim.simulation.scenario_source import load_scenario
-        from maxim.simulation.validation import validate_expectations
+        from maxim.simulation.validation import validate_finished_run
         from maxim.simulation.sinks import RecordingSink
 
         start = time.time()
@@ -436,11 +436,11 @@ class BenchmarkRunner:
                         exp_passed = 0
                         exp_total = 0
                         if defn.expectations:
-                            exp_results = validate_expectations(
+                            exp_results = validate_finished_run(
                                 defn.expectations,
-                                RecordingSink.from_serialized(exp_result.actions),
-                                exp_result.hippocampus,
-                                exp_result.delivered_tags,
+                                sink=RecordingSink.from_serialized(exp_result.actions),
+                                tag_times=exp_result.delivered_tag_times,
+                                hippocampus=exp_result.hippocampus,
                                 # Observer.benchmark_snapshot(): full_analysis() plus the raw *_stats. Empty when
                                 # the orchestrator could not take it (it logs that), and the bio checks then fail.
                                 subsystem_snapshot=exp_result.subsystem_snapshot,

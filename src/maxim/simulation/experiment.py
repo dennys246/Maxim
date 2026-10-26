@@ -54,6 +54,8 @@ class ExperimentResult:
     hippocampus: Any = None  # the AUT's hippocampus, for memory expectations
     # scenario_tag of every campaign turn delivered without error; None when the run did not report delivery
     delivered_tags: set[str] | None = None
+    # When each of those tags was sent (the turn's ``sent_at``); None when the run did not report delivery times
+    delivered_tag_times: dict[str, float] | None = None
 
     def memory_survived(self, keyword: str) -> bool:
         """Check if a specific memory survived the campaign."""
@@ -136,6 +138,28 @@ def delivered_scenario_tags(turns: list[dict[str, Any]], campaign_analysis: dict
     return tags
 
 
+def delivered_scenario_tag_times(
+    turns: list[dict[str, Any]], campaign_analysis: dict[str, Any] | None
+) -> dict[str, float] | None:
+    """The ``sent_at`` of every campaign turn delivered without error, keyed by its ``scenario_tag`` (the first
+    delivery when a tag repeats), so ``pipeline_continued`` can require an action AFTER the tag (#1391). ``None`` when
+    the run reported no delivery at all; a delivered turn without ``sent_at`` (an older record) is left out, so its
+    tag's order stays unknown and fails closed."""
+    records = (campaign_analysis or {}).get("turns")
+    if not isinstance(records, list):
+        return None
+    times: dict[str, float] = {}
+    for record in records:
+        if not isinstance(record, dict) or "error" in record:
+            continue
+        index, sent_at = record.get("turn"), record.get("sent_at")
+        if isinstance(index, int) and 1 <= index <= len(turns) and isinstance(sent_at, (int, float)):
+            tag = (turns[index - 1].get("metadata") or {}).get("scenario_tag")
+            if tag:
+                times.setdefault(str(tag), float(sent_at))
+    return times
+
+
 def run_campaign(
     campaign: str,
     aut_model: str = "mistral-7b",
@@ -204,6 +228,7 @@ def run_campaign(
         tool_stats=dict(sim_result.tool_stats),
         subsystem_snapshot=dict(sim_result.subsystem_snapshot),
         delivered_tags=delivered_scenario_tags(turns, sim_result.campaign_analysis),
+        delivered_tag_times=delivered_scenario_tag_times(turns, sim_result.campaign_analysis),
     )
 
     # Try to get introspection data from the sim result

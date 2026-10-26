@@ -50,7 +50,10 @@ def _a_run_that_did_the_work(**kwargs: Any) -> Any:
         blocked_actions=0,
         duration_s=1.0,
         finish_reason="completed",
-        campaign_analysis={"turns": [{"turn": i, "phase": t.get("phase", "")} for i, t in enumerate(turns, 1)]},
+        # Each turn is sent just before its answer, as run_precampaign_turns records it (``sent_at``, #1391).
+        campaign_analysis={
+            "turns": [{"turn": i, "phase": t.get("phase", ""), "sent_at": i - 1.5} for i, t in enumerate(turns, 1)]
+        },
         introspector=Observer(hippocampus=_hippocampus_holding("Kael: the vault combination is seven-three-nine")),
         actions=actions,
     )
@@ -208,7 +211,16 @@ def test_the_bio_checks_get_the_runs_snapshot(monkeypatch) -> None:
 
     seen: dict = {}
 
-    def _spy(expectations, sink, hippocampus=None, emitted_tags=None, *, subsystem_snapshot=None, tool_stats=None):
+    def _spy(
+        expectations,
+        sink,
+        hippocampus=None,
+        emitted_tags=None,
+        *,
+        subsystem_snapshot=None,
+        tool_stats=None,
+        tag_times=None,
+    ):
         seen.update(subsystem_snapshot or {})
         return []
 
@@ -251,7 +263,9 @@ def test_an_empty_tag_set_means_the_tag_was_never_emitted() -> None:
     exp = Expectation(type="pipeline_continued", after_tag="interference")
     (empty,) = validate_expectations([exp], sink, emitted_tags=set())
     (unknown,) = validate_expectations([exp], sink, emitted_tags=None)
-    assert (empty.passed, unknown.passed) == (False, True)
+    # #1391: with no delivery time the order is unknown, so ``None`` (tags not reported) fails closed too.
+    assert (empty.passed, unknown.passed) == (False, False)
+    assert "never emitted" in empty.detail and "order unknown" in unknown.detail
 
 
 def test_the_orchestrators_own_action_dicts_rebuild_with_their_blocks() -> None:

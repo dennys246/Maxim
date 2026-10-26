@@ -7,6 +7,7 @@ both wall-clock (relative) and loop-iteration (step_based) timing.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -37,6 +38,8 @@ class Expectation:
     min_tier: str | None = None
     # pipeline_continued fields
     after_tag: str | None = None
+    # action_taken: ``tool`` names a per-embodiment entity tool (``sense_<x>`` / ``<x>_<y>``), not a registered one
+    entity_tool: bool = False
     # metric expectation fields (realtime refinement)
     params: dict[str, Any] = field(default_factory=dict)
 
@@ -70,6 +73,45 @@ class ScenarioDefinition:
     config: dict[str, Any] | None = None
 
 
+_THRESHOLD_KEYS = frozenset({"pass", "pass_above", "pass_below"})
+_ENTITY_TOOL = re.compile(r"^(sense_[a-z0-9_]+|[a-z0-9]+_[a-z0-9_]+)$")
+
+
+def _check_expectation_tool(path: Path, exp: Expectation) -> None:
+    """A ``tool:`` must be a registered tool name (``action_taken`` matches it exactly, so a class name such as
+    ``RespondTool`` could never pass, #1394), unless the expectation opts in with ``entity_tool: true`` for a
+    per-embodiment entity tool, which must then be shaped ``sense_<x>`` or ``<x>_<y>`` (owner decision 2026-10-26)."""
+    if not exp.tool:
+        return
+    from maxim.modes.definitions import REGISTERED_TOOL_NAMES
+
+    if exp.entity_tool:
+        if not _ENTITY_TOOL.match(exp.tool):
+            raise ValueError(f"Scenario {path}: entity_tool {exp.tool!r} is not shaped sense_<x> or <x>_<y>")
+        return
+    if exp.tool not in REGISTERED_TOOL_NAMES:
+        raise ValueError(
+            f"Scenario {path}: expectation tool {exp.tool!r} is not a registered tool name (use the name the tool "
+            "registers under, e.g. 'respond' for RespondTool; mark a per-embodiment entity tool with entity_tool: true)"
+        )
+
+
+def _check_scoring(path: Path, section: str, body: dict[str, Any]) -> None:
+    """Each scoring threshold uses only the operators ``BenchmarkRunner._check_thresholds`` knows, and at least one:
+    an unknown key (``pas:``) or an empty threshold used to count as applied while checking nothing (#1395)."""
+    for metric, threshold in (body.get("scoring") or {}).items():
+        if not isinstance(threshold, dict) or not threshold:
+            raise ValueError(
+                f"Scenario {path}: {section}.scoring.{metric} has no threshold ({sorted(_THRESHOLD_KEYS)})"
+            )
+        unknown = sorted(set(threshold) - _THRESHOLD_KEYS)
+        if unknown:
+            raise ValueError(
+                f"Scenario {path}: {section}.scoring.{metric} has unknown key(s) {unknown}; "
+                f"known: {sorted(_THRESHOLD_KEYS)}"
+            )
+
+
 def load_scenario(path: Path) -> ScenarioDefinition:
     """Load and parse a scenario YAML file."""
     try:
@@ -101,6 +143,7 @@ def load_scenario(path: Path) -> ScenarioDefinition:
             "memory_contains",
             "min_tier",
             "after_tag",
+            "entity_tool",
             "params",
         }
         extra_params = {k: v for k, v in exp_raw.items() if k not in known_keys}
@@ -117,9 +160,14 @@ def load_scenario(path: Path) -> ScenarioDefinition:
                 memory_contains=exp_raw.get("memory_contains"),
                 min_tier=exp_raw.get("min_tier"),
                 after_tag=exp_raw.get("after_tag"),
+                entity_tool=bool(exp_raw.get("entity_tool", False)),
                 params=params,
             )
         )
+        _check_expectation_tool(path, expectations[-1])
+
+    for section in ("benchmark", "suite"):
+        _check_scoring(path, section, ((raw.get(section) or {}) if isinstance(raw.get(section), dict) else {}))
 
     percepts = raw.get("percepts", [])
     if not percepts:
@@ -184,6 +232,7 @@ class ScenarioSource:
         self._current_step: int = 0
         self._next_index: int = 0
         self._emitted_tags: set[str] = set()
+        self._tag_times: dict[str, float] = {}
 
         # Sort percepts by 'at' value
         self._definition.percepts.sort(key=lambda p: p.get("at", 0.0))
@@ -238,6 +287,7 @@ class ScenarioSource:
         tag = (raw.get("metadata") or {}).get("scenario_tag")
         if tag:
             self._emitted_tags.add(tag)
+            self._tag_times.setdefault(tag, time.time())  # first delivery: actions after it continued the pipeline
 
         logger.debug(
             "ScenarioSource emitting percept %d/%d (source=%s, at=%s)",
@@ -269,6 +319,11 @@ class ScenarioSource:
     def is_exhausted(self) -> bool:
         """True when all percepts have been emitted."""
         return self._next_index >= len(self._definition.percepts)
+
+    @property
+    def tag_times(self) -> dict[str, float]:
+        """When each tag first reached the agent (``time.time()``, the clock ``ActionRecord.timestamp`` uses)."""
+        return dict(self._tag_times)
 
     @property
     def emitted_tags(self) -> set[str]:

@@ -54,6 +54,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Benchmark verdicts no longer pass or fail without checking anything**
+  ([#1391](https://github.com/dennys246/Maxim/issues/1391), [#1392](https://github.com/dennys246/Maxim/issues/1392),
+  [#1394](https://github.com/dennys246/Maxim/issues/1394), [#1395](https://github.com/dennys246/Maxim/issues/1395)).
+  - **`pipeline_continued` passed on ANY action once its tag was emitted** (vacuous in `quick_check` and about ten
+    scenarios). It now requires an action whose timestamp is later than the tag's delivery time:
+    `ScenarioSource.tag_times` on the CLI path; a new `sent_at` on each campaign delivery record, read into
+    `ExperimentResult.delivered_tag_times`, on the benchmark path. A run that reported no delivery time fails it.
+  - **The CLI scenario path judged every bio expectation against an empty snapshot,** so they always failed. Both
+    callers now validate through ONE seam, `simulation/validation.py::validate_finished_run`, which takes the snapshot
+    and tool stats from the live run when the caller does not carry them (D43). The CLI's validate-and-report block
+    moved out of `cli.py::_main_impl` into `_report_scenario_validation` (rule T; pin 1604 → 1560).
+  - **Six scenarios named `tool: RespondTool`** where `action_taken` matches the registered name `respond`, so those
+    expectations could never pass. They are fixed, and scenario loading now refuses an expectation `tool:` that is not
+    a registered tool name. A per-embodiment entity tool is allowed with `entity_tool: true` (owner decision
+    2026-10-26).
+  - **An unknown threshold operator (`pas:`) or an empty threshold counted as applied while checking nothing.**
+    Loading now refuses it, naming the file and the metric.
+
 - **The robot hears again** ([#1436](https://github.com/dennys246/Maxim/issues/1436), found by maxim-pulse's device
   review). Since `db274547` (2026-04-03) deleted a re-export shim, the robot's transcription start and the audio
   writer imported it lazily, so every robot session ran with no voice input behind one warning. Both now import

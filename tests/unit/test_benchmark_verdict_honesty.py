@@ -37,7 +37,6 @@ def _pipeline(tag: str = "interference") -> Expectation:
 # ── #1391: an action AFTER the tag ─────────────────────────────────────────────
 
 
-@_STRICT
 def test_actions_only_before_the_tag_do_not_continue_the_pipeline():
     from maxim.simulation.validation import validate_finished_run
 
@@ -45,7 +44,6 @@ def test_actions_only_before_the_tag_do_not_continue_the_pipeline():
     assert result.passed is False
 
 
-@_STRICT
 def test_an_action_after_the_tag_continues_the_pipeline():
     from maxim.simulation.validation import validate_finished_run
 
@@ -53,7 +51,6 @@ def test_an_action_after_the_tag_continues_the_pipeline():
     assert result.passed is True
 
 
-@_STRICT
 def test_no_delivery_times_fails_closed():
     """Weak evidence never gates: a run that reported no delivery times cannot show an action came after the tag."""
     from maxim.simulation.validation import validate_finished_run
@@ -63,7 +60,6 @@ def test_no_delivery_times_fails_closed():
     assert "order" in result.detail.lower()
 
 
-@_STRICT
 def test_the_scenario_source_records_when_each_tag_reached_the_agent(tmp_path):
     from maxim.simulation.scenario_source import ScenarioSource
 
@@ -85,7 +81,6 @@ def test_the_scenario_source_records_when_each_tag_reached_the_agent(tmp_path):
     assert source.tag_times["first"] > 0
 
 
-@_STRICT
 def test_campaign_delivery_records_carry_a_sent_time():
     from maxim.simulation.experiment import delivered_scenario_tag_times
 
@@ -97,30 +92,33 @@ def test_campaign_delivery_records_carry_a_sent_time():
 # ── #1392: one seam builds the inputs from a finished run ──────────────────────
 
 
-@_STRICT
-def test_the_seam_builds_the_snapshot_and_tool_stats_from_the_live_run():
-    from maxim.simulation.validation import validate_finished_run
+def test_the_seam_builds_the_snapshot_and_tool_stats_from_the_live_run(monkeypatch):
+    """#1392: given the live run (not a precomputed snapshot), the seam takes ``Observer.benchmark_snapshot()`` and
+    ``executor.tool_usage_stats()``, so no bio expectation is judged against ``{}``."""
+    from maxim.memory.hippocampus import Hippocampus
+    from maxim.simulation import validation
 
     class _Executor:
         def tool_usage_stats(self):
             return {"hallucination_rate": 0.0}
 
-    class _Hippo:
-        def stats(self):
-            return {"total_memories": 3}
+    seen = {}
+    real = validation.validate_expectations
 
-        def search_by_content(self, *a, **k):
-            return []
+    def _spy(*a, **k):
+        seen.update(k)
+        return real(*a, **k)
 
-        def recall(self, *a, **k):
-            return []
-
+    monkeypatch.setattr(validation, "validate_expectations", _spy)
     exp = Expectation(type="hallucination_rate_below", params={"max": 0.5})
-    (result,) = validate_finished_run([exp], sink=_sink(), tag_times={}, hippocampus=_Hippo(), executor=_Executor())
+    (result,) = validation.validate_finished_run(
+        [exp], sink=_sink(), tag_times={}, hippocampus=Hippocampus(), executor=_Executor()
+    )
     assert result.passed is True, result.detail
+    assert "hippocampus_stats" in seen["subsystem_snapshot"]
+    assert seen["tool_stats"] == {"hallucination_rate": 0.0}
 
 
-@_STRICT
 def test_every_caller_validates_through_the_one_seam():
     """D43: no caller outside validation.py calls ``validate_expectations`` directly (the CLI scenario path did, with
     no snapshot and no tool stats, so every bio expectation failed)."""
@@ -141,7 +139,6 @@ def test_every_caller_validates_through_the_one_seam():
 # ── #1394: tool names ──────────────────────────────────────────────────────────
 
 
-@_STRICT
 def test_a_class_named_tool_is_refused_at_load(tmp_path):
     path = tmp_path / "s.yaml"
     path.write_text("name: s\nexpectations:\n  - {type: action_taken, tool: RespondTool}\n")
@@ -156,7 +153,6 @@ def test_an_entity_tool_needs_the_explicit_opt_in(tmp_path):
     assert exp.tool == "sense_food_source"
 
 
-@_STRICT
 def test_every_shipped_scenario_names_registered_tools():
     """Every scenario YAML (``scenarios/campaigns/`` holds campaign files, a different format with its own loader)."""
     paths = [p for p in sorted((_REPO / "scenarios").rglob("*.yaml")) if "campaigns" not in p.parts]
@@ -170,7 +166,6 @@ def test_every_shipped_scenario_names_registered_tools():
 # ── #1395: threshold operators ─────────────────────────────────────────────────
 
 
-@_STRICT
 @pytest.mark.parametrize("threshold", [{"pas": 1.0}, {}])
 def test_an_unknown_or_empty_threshold_is_refused_at_load(tmp_path, threshold):
     import yaml
