@@ -1552,3 +1552,7 @@ class, and the reset guard's fail-closed name match.
 |---|---|
 | S1 (fail-open): the process-stop gate runs on the fake, so a polling `closed_local` would pass | A structural gate: `closed_local` references no process-wide stop signal |
 | S2 (fail-closed): the clamp gate's nonexistent path never reaches `Llama` | A real temporary file; "never constructed" names what was raised |
+
+**v6.10 narrow check** (`v610_check.md`): **STOP: no further round owed.** Its NIT N1 is recorded for the item 1 build:
+a future poll added to the shared `llama_backend` builder would evade the `closed_local` scan, so that PR extends the
+scan to the builder `closed_local` calls.
