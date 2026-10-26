@@ -763,7 +763,7 @@ review of orchestrator slice 0, 2026-10-13; the campaign-dispatch arm added 2026
 below are 1.4.0 gate arms (§The 1.4.0 gate): the lint checks that each is complete, but that each lands BEFORE the
 slice that moves its code is enforced by that slice's review and this paragraph, not mechanically (M56).
 `tests/unit/test_orchestrator_characterization_golden.py` (driver:
-`tests/unit/_orch_harness.py`) runs three arms, all on a fresh throwaway AUT. Before the slice that moves §13
+`tests/unit/_orch_harness.py`) ran three arms at slice 0, all on a fresh throwaway AUT. **Status 2026-10-24: all five arms below have landed** (Session A, branch `test/orch-characterization-arms`; `lint_release_gates`: arms 5/5), each with its deletion probes. Two follow-ups from their review, owed before the slices they name: (1) the **stall arm** reaches the idle threshold only through the post-finish nudge, the #1259 path, because since D13 a live narrator never idles (#1452); #1259's fix removes that path and must re-home the arm in the same PR (the remaining offline route is a wedged narrator call; the harness docstring, arm 5, names it), because the arm's scope is immutable; (2) before the **stdin slice**, turn on the opt-in `events` / `held_inputs` trace keys for the slice-0 `stdin` and `narrator` arms in their own regeneration commit: today they do not record which thread and source each operator percept goes through, and #1262 keeps those percepts out of `turns` and `narrator_calls`. Before the slice that moves §13
 teardown or §14 report/save, it needs an **adopted `persistent_agent` arm** (the HANDLE seam's branches 3 and 4:
 no session AUT snapshot, the tool-lease restore, the DefaultNetwork pain-bridge unsubscribe), an
 **imagination-enabled arm** (§7) and a **`/new` arm** (the post-sim reader faked to return a goal, so the run
@@ -1111,7 +1111,8 @@ Also, an utterance shaped like an instruction appears only inside the frame. Ide
     Design pass first (detecting "started" has no public SDK query); done, with the owner decisions, in
     [speaker_sink_1435.md](speaker_sink_1435.md). **Release gate (owner decision 2026-10-24): 1.3.4 does not publish
     before maxim-pulse releases the build that calls `start_device_player`/`stop_device_player`** (released pulse
-    starts the SDK player itself, so its pairing code would go silent on 1.3.4; mechanization backlog M79). Rides with R2's reachy cell, whose device smoke
+    starts the SDK player itself, so its pairing code would go silent on 1.3.4; mechanization backlog M79). **Met 2026-10-25:**
+    pulse v0.4.4 calls the pair (vendored by #1462). Rides with R2's reachy cell, whose device smoke
     asserts audio reached a STARTED player at the device rate. R1's in-memory "has spoken" stays the readiness signal
     until the embodied-device plan's step 3 makes it PLAYS.
   - **The device defects from pulse's review** (Maxim-pulse #58, 2026-10-24). Each one is bounded, none waits for
@@ -1171,7 +1172,7 @@ they are ready, and the gate takes the next free number when it is done, still o
     first; the 1.4 memory merge rides `migrate_agent_state` (whole or nothing, refuse on conflict).
 
 ### 1.3.5, "The orchestrator"
-- **First the five characterization arms** (`persistent_agent`, `imagination`, `new_goal`, `stall`, `generative`).
+- **First the five characterization arms** (`persistent_agent`, `imagination`, `new_goal`, `stall`, `generative`) (landed 2026-10-24; their findings #1451–#1457; the two follow-ups owed before the #1259 fix and the stdin slice are in §"Characterization owed").
   **Then the `start_simulation_mode` slices** down to 1,000 lines or fewer, descendants included (gate rule 4;
   item `1323.functions-1000`).
 - **Riding with the slices:** [#1259](https://github.com/dennys246/Maxim/issues/1259), [#1262](https://github.com/dennys246/Maxim/issues/1262), #863's orchestrator wraps, #835, #965, #1288's stall nudge, and
