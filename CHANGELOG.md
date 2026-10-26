@@ -54,6 +54,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Dead comms code removed** ([#1466](https://github.com/dennys246/Maxim/issues/1466), corrected): inbound comms
+  are pushed by webhook (`comms/api.py` → `TwilioChannel.receive_sms` → `CommunicationGateway.receive_inbound` → the
+  bus), which a new positive-control test now pins. The headless loop's "poll" read a never-assigned `_gateway` and
+  called a `gateway.poll()` that does not exist (assigning `_gateway` would have swallowed an `AttributeError` every
+  0.5 s), and `MaximAgent.wire_communication` stored a gateway nothing read; both are deleted, with its call sites in
+  `agentic_runtime.py` and `cli.py`.
 - **The robot hears again** ([#1436](https://github.com/dennys246/Maxim/issues/1436), found by maxim-pulse's device
   review). Since `db274547` (2026-04-03) deleted a re-export shim, the robot's transcription start and the audio
   writer imported it lazily, so every robot session ran with no voice input behind one warning. Both now import

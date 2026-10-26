@@ -12,8 +12,6 @@ from __future__ import annotations
 import threading
 from types import SimpleNamespace
 
-import pytest
-
 
 class _Bus:
     def __init__(self) -> None:
@@ -41,7 +39,6 @@ def test_a_webhook_sms_reaches_the_bus_as_a_percept():
     assert percept.metadata.get("external") is True
 
 
-@pytest.mark.xfail(strict=True, reason="#1466: the headless loop polls a gateway method that does not exist")
 def test_the_headless_loop_never_polls_a_gateway(monkeypatch):
     import maxim.embodied_runtime.media_loop as ml
     from maxim.comms.gateway import CommunicationGateway
@@ -61,7 +58,6 @@ def test_the_headless_loop_never_polls_a_gateway(monkeypatch):
     assert swallowed == [], f"the loop swallowed {swallowed!r}"
 
 
-@pytest.mark.xfail(strict=True, reason="#1466: wire_communication only stores a gateway nothing reads")
 def test_maxim_agent_has_no_dead_gateway_wiring():
     from maxim.agents.maxim_agent import MaximAgent
 
