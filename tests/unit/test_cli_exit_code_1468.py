@@ -28,7 +28,6 @@ def _run_robot_session(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, raised: 
     return cli.main(["--mode", "live", "--home-dir", str(tmp_path / "robot"), "--interactive", "false"])
 
 
-@pytest.mark.xfail(strict=True, reason="#1468: the run loop logs '❌ Maxim stopped' and returns 0")
 @pytest.mark.timeout(120)
 def test_a_robot_session_that_stops_on_an_exception_exits_nonzero_1468(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path

@@ -9,12 +9,9 @@ re-pointed at the behaviour, deliberately, in that reviewed change.
 
 from __future__ import annotations
 
-import pytest
-
 from tests.unit._orchestrator_source import orchestrator_source
 
 
-@pytest.mark.xfail(strict=True, reason="#1454: the post-sim prompt promises '(memory carries over)'")
 def test_the_post_sim_prompt_does_not_promise_carried_memory_1454() -> None:
     src = orchestrator_source()
     assert "Tell me a new simulation to imagine" in src  # the prompt is still there, and read from its new home

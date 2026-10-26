@@ -54,6 +54,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A robot session that stops on an exception exits non-zero** ([#1468](https://github.com/dennys246/Maxim/issues/1468)).
+  `maxim`'s robot run loop logged `❌ Maxim stopped` and then returned 0, so a supervisor reading the exit code
+  (systemd, maxim-pulse's app, CI) saw a clean stop; since #1436 a missing robot module failing at import took the
+  same path. It now exits 1. An operator's Ctrl+C still exits 0. The loop's teardown moved to `cli.py::_end_robot_run`.
+- **The post-sim `/new` prompt no longer promises that memory carries over**
+  ([#1454](https://github.com/dennys246/Maxim/issues/1454), interim). The re-entered run builds a fresh agent under
+  test, so its learning did not reach the next run; only the narrator's memory does. The prompt (both the panel and
+  the raw-mode reader) and `docs/user/simulation.md` now say so. The 1.3.5 `/new` slice makes the learning carry
+  (owner decision 2026-10-26) and restores the promise with it.
 - **The Reachy speaker tells the truth, at the right speed and scale** ([#1435](https://github.com/dennys246/Maxim/issues/1435),
   found by maxim-pulse on a real Reachy). Nothing in maxim started the SDK's player, so every robot utterance and
   the spoken pairing code were dropped while the sink reported success; Piper's 22,050 Hz played at 73% speed on the
