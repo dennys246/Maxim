@@ -354,22 +354,6 @@ class MaximAgent(Agent):
                 source = result.get("source", "unknown") if result else "unknown"
                 self.log.info("Action from %s", source)
 
-    def wire_communication(
-        self,
-        gateway: Any,
-        nac: Any | None = None,
-        memory_hub: Any | None = None,
-    ) -> None:
-        """Record the CommunicationGateway.
-
-        The NAc reward-attribution bridge this used to wire (``bridges/communication_bridge.py``)
-        was deleted as dead in 3c6ad81d, but this still imported it whenever ``nac`` was given, so
-        with comms enabled (``MAXIM_COMMS_ENABLED``) the robot's agentic runtime failed to start
-        behind one warning (#1436, found by the dead-import lint). ``nac`` and ``memory_hub`` are
-        accepted and unused, so callers need no change; their removal is #1466.
-        """
-        self._gateway = gateway
-
     def wire_preemption(
         self,
         preemption_circuit: Any,
