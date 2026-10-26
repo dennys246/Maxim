@@ -1,6 +1,6 @@
 # The atonia gate: approach notes for items 2, 3, 1, 5 and 10
 
-**Status:** DRAFT v6.8 (design passes, three-lens round and two deltas folded; red-gate review decisions folded), approach notes (CLAUDE.md "Faster without lowering the bar", item 1). Owner decisions V1–V8
+**Status:** DRAFT v6.9 (design passes, three-lens round and two deltas folded; red-gate review decisions folded), approach notes (CLAUDE.md "Faster without lowering the bar", item 1). Owner decisions V1–V8
 were made 2026-10-24 and V9–V10 on 2026-10-25. Session V, paper only: nothing in `src/` changes until the owner has read the folded
 plan and the red-gate PR is opened.
 - **v1** was written from a read-only census at `d9dffe6e` (origin/main, 2026-10-24).
@@ -401,6 +401,11 @@ takes, keyword-only:
     - An optional per-call `stop=` (a `threading.Event`-like object) abandons only that call.
   - **The process-wide `StopRequest` is not consulted.** It is sticky, and `MaximHandle.stop()` sets it too, so in an
     embedding process it would abandon unrelated sessions. This design also does not wait for bounded_stop PR 0.
+  - **Proved behaviourally, not by the import closure.** The proof does not forbid the cancellation modules: bounded
+    _stop plans module-level `StopRequest` imports in `runtime/`, and those would make an import gate unflippable.
+    Instead a gate sets every process-wide stop signal before `ingest()` and asserts the turn stays `ok`. The signals
+    are `models/language/cancellation.py::request_shutdown()`, the backends' shutdown event, and
+    `utils/cancellation.py::request_stop` once PR 0 lands. **`closed_local` must not poll the shutdown event.**
   - **Per-token checking.** The closed backend's `complete_tokens(..., should_stop)` consults `should_stop()` on every
     sampled token, in its `stopping_criteria`. A stop ends the turn at the next token.
     - The backend reports it as `stopped=True`, its own flag, never `deadline_hit`.
@@ -1531,3 +1536,12 @@ class, and the reset guard's fail-closed name match.
 | Wire S2: a stop reported as `deadline_hit` | A `stopped` flag; reason `"stopped"` vs `"deadline"` |
 | Architecture 3/4: the JSON block; undefined cursor cases | `prompt` field and nullable cursors in the block; the session holds the cursor; second-ingest rule; a gate |
 | NITs | `deadline_s` defined; stop during dispatch defined |
+
+**v6.8 narrow check** (v6.9; `v68_check.md`):
+
+| Finding | Fold |
+|---|---|
+| S1: the forbidden-module proof would become unflippable under bounded_stop's module-level imports | The `maxim.utils.cancellation` entry removed; a behavioural proof replaces it |
+| S2 (fail-open): `request_shutdown()`'s `_SHUTDOWN_EVENT` is a second process signal | The behavioural gate sets both process signals and asserts `ok` with no early stop |
+| S3 (fail-open): no case showed an error turn holds the cursor | The cursor gate adds an error turn between two `ok` turns |
+| S4 (fail-open): the tiny fixture never exercises the clamp | A gate patches the trained context to 131072 and spies `Llama`'s `n_ctx` (8192, never 0) |

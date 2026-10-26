@@ -137,7 +137,6 @@ FORBIDDEN_MODULES = (
     "huggingface_hub",
     "httpx",
     "maxim.utils.http",
-    "maxim.utils.cancellation",  # v6.7 D: the observer's stop is session-scoped; the process StopRequest is unread
 )
 FORBIDDEN_PREFIXES = ("maxim.default_network", "maxim.comms", "maxim.memory", "maxim.hivemind", "maxim.peer")
 FORBIDDEN_PREFIXES += ("maxim.mesh", "maxim.tunnel", "huggingface_hub", "httpx")
@@ -1561,6 +1560,39 @@ def test_session_stop_abandons_at_the_next_token(tmp_path: Path, monkeypatch: py
     assert log["closed"] is True, "close() did not write the close record after a stop"
 
 
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.9 D: flips with the session stop")
+def test_process_stop_signals_do_not_stop_the_observer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every process-wide stop signal set BEFORE ``ingest`` -- ``models.language.cancellation.request_shutdown()``
+    (the backends' shutdown event) and, once bounded_stop PR 0 lands, ``maxim.utils.cancellation.request_stop`` --
+    leaves the observer's turn ``ok``: its ``should_stop`` reads only the session's own stop (v6.7 D). A behavioural
+    proof, so a module-level import of either module elsewhere cannot make it vacuous or unflippable."""
+    advisor = _require_advisor()
+    from maxim.models.language import cancellation as lang_cancel
+
+    backend = FakeBackend("ok")
+    _install_fake(monkeypatch, backend)
+    home_dir, report_dir, model = _dirs(tmp_path)
+    session = advisor.open(home_dir=home_dir, model=model, report_dir=report_dir)
+    utils_cancel = importlib.import_module("maxim.utils.cancellation")
+    try:
+        lang_cancel.request_shutdown()
+        req = getattr(utils_cancel, "request_stop", None)
+        if callable(req):  # bounded_stop PR 0
+            deadline_mod = importlib.import_module("maxim.utils.deadline")
+            req(deadline_mod.Deadline(5.0), "yield")
+        report = _as_dict(session.ingest(EVENTS))
+    finally:
+        lang_cancel.reset_shutdown()
+        reset = getattr(utils_cancel, "_reset_for_tests", None)
+        if callable(reset):
+            reset()
+        session.close()
+    assert report.get("status") == "ok", f"a process-wide stop signal stopped the observer: {report.get('status')!r}"
+    assert backend.tokens_sampled == 8, (
+        f"sampling ended early ({backend.tokens_sampled}): should_stop read a process signal"
+    )
+
+
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.7 D: flips with the per-call stop")
 def test_per_call_stop_abandons_only_that_call(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """``ingest(events, stop=event)``: a set per-call stop abandons that call only; the next ``ingest`` (no stop)
@@ -1595,14 +1627,20 @@ def test_cursor_carries_across_ingests(tmp_path: Path, monkeypatch: pytest.Monke
     home_dir, report_dir, model = _dirs(tmp_path)
     session = advisor.open(home_dir=home_dir, model=model, report_dir=report_dir)
     second = [dict(CURSORED[1], event_id="e3", cursor="feed:103")]
+    third = [dict(CURSORED[1], event_id="e4", cursor="feed:104")]
+    backend = _session_mod()._backend_factory("", n_ctx=None, n_gpu_layers=-1, seed=0)
     try:
         r1 = _as_dict(session.ingest(CURSORED))
-        r2 = _as_dict(session.ingest(second))
+        backend.mode = "raise"  # an error turn must NOT advance the session cursor
+        r_err = _as_dict(session.ingest(second))
+        backend.mode = "ok"
+        r3 = _as_dict(session.ingest(third))
     finally:
         session.close()
-    c1, c2 = r1.get("covered") or {}, r2.get("covered") or {}
+    c1, ce, c3 = (r.get("covered") or {} for r in (r1, r_err, r3))
     assert c1.get("cursor_in") is None and c1.get("cursor_out") == "feed:102", c1
-    assert c2.get("cursor_in") == "feed:102" and c2.get("cursor_out") == "feed:103", c2
+    assert ce.get("cursor_in") == "feed:102" and ce.get("cursor_out") == "feed:102", f"an error turn moved: {ce}"
+    assert c3.get("cursor_in") == "feed:102" and c3.get("cursor_out") == "feed:104", c3
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.8 A: flips with closed_local's clamp")
@@ -1620,6 +1658,33 @@ def test_closed_local_default_context_is_clamped() -> None:
     assert backend.n_ctx == min(trained, 8192), (backend.n_ctx, trained)
     explicit = closed_local.open_closed_local_backend(TINY_GGUF, n_ctx=128, n_gpu_layers=0, seed=0)
     assert explicit.n_ctx == 128, explicit.n_ctx
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.9 A: flips with closed_local's clamp")
+def test_closed_local_clamps_a_huge_trained_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A 128K-trained model: ``n_ctx=None`` reaches ``Llama`` as exactly 8192 -- never 0 (llama-cpp: unbounded) and
+    never the trained 131072. The tiny fixture's context is under 8192, so this patches the metadata read."""
+    spec = importlib.util.find_spec("maxim.models.language.closed_local")
+    assert spec is not None, "item 1 not built: no maxim.models.language.closed_local"
+    closed_local = importlib.import_module("maxim.models.language.closed_local")
+    llama_cpp = _require_llama_cpp()
+    seen: list[dict[str, Any]] = []
+
+    class _SpyLlama:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            seen.append(dict(kwargs))
+            raise ScenarioBroken("spy: Llama() captured, not loaded")  # stop before a real load
+
+    monkeypatch.setattr(closed_local, "trained_context", lambda _path: 131072)
+    monkeypatch.setattr(llama_cpp, "Llama", _SpyLlama)
+    if hasattr(closed_local, "Llama"):
+        monkeypatch.setattr(closed_local, "Llama", _SpyLlama)
+    try:
+        closed_local.open_closed_local_backend("/nonexistent/model.gguf", n_ctx=None, n_gpu_layers=0, seed=0)
+    except Exception:  # the spy stops the load; closed_local may wrap that in its own error -- only the kwargs matter
+        pass
+    assert seen, "open_closed_local_backend never constructed Llama (through llama_cpp.Llama or closed_local.Llama)"
+    assert seen[-1].get("n_ctx") == 8192, f"Llama got n_ctx={seen[-1].get('n_ctx')!r}, want 8192 (never 0)"
 
 
 # ── 8. special-token defang ───────────────────────────────────────────────
