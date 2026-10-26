@@ -16,7 +16,7 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1548
+      "lines": 1543
     },
     {
       "file": "src/maxim/cli_parser.py",
@@ -51,7 +51,7 @@
     {
       "file": "src/maxim/embodied_runtime/agentic_runtime.py",
       "qualname": "AgenticRuntimeMixin._start_agentic_runtime",
-      "lines": 870
+      "lines": 865
     },
     {
       "file": "src/maxim/embodied_runtime/agentic_runtime.py",
@@ -371,6 +371,6 @@
     "_main_impl tightened 1627 -> 1625 and cli_parser.py::_build_parser 652 -> 620 on 2026-10-19 (#1337, rule T): --clear-cache moved to cli.py::_handle_clear_cache, paying for the --clear-memory call line, and the memory argument group (where --yes was added) moved verbatim to cli_parser.py::_add_memory_args.",
     "_main_impl tightened 1627 -> 1606 on 2026-10-19 (#1343): the agentic path's model download branch moved to cli.py::_ensure_agentic_model, which asks the consent gate instead of calling download_llm. Merged with #1337 the same day: 1604.",
     "_main_impl tightened 1604 -> 1593 and start_simulation_mode 2889 -> 2869 on 2026-10-26 (#1468, #1454 interim; rule T): the robot run loop's finally teardown moved verbatim to cli.py::_end_robot_run, paying for the nonzero exit code on an exception; the interactive post-sim report view and new-goal prompt moved to orchestrator.py::_show_report_and_post_sim_prompt, carrying the removal of the false '(memory carries over)' text. The review round's exit-code table (owner 2026-10-26) moved the loop's error-to-code mapping to cli.py::_run_stopped_on: 1593 -> 1588.",
-    "_main_impl tightened 1588 -> 1548 on 2026-10-26 (#1338, advisor item 6; rule T): server mode moved to cli.py::_run_server_mode, its LLM start to cli.py::_start_server_llm, which reports NOT READY instead of printing ready (the process stays up while a LeaderProxy runs; solo server mode exits 1); an unused LeaderRefusal import went with it."
+    "_main_impl tightened 1588 -> 1548 on 2026-10-26 (#1338, advisor item 6; rule T): server mode moved to cli.py::_run_server_mode, its LLM start to cli.py::_start_server_llm, which reports NOT READY instead of printing ready (the process stays up while a LeaderProxy runs; solo server mode exits 1); an unused LeaderRefusal import went with it. Merged with #1485's role-block extraction (1583 on main): 1543."
   ]
 }

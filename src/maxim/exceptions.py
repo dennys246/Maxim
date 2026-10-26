@@ -15,6 +15,7 @@ Usage::
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 
@@ -43,6 +44,23 @@ class MaximError(Exception):
 
     def __str__(self) -> str:
         return self.message
+
+
+class KeyFileUnusable(MaximError, RuntimeError):
+    """A key file exists but cannot be used, so it is refused rather than read as absent or overwritten.
+
+    Key-neutral base of every key-file refusal (#1402): ``tunnel.keys.ensure_key`` (the mesh key) and
+    ``ensure_console_token`` raise it plainly; ``tunnel.keys.LeaderKeyError`` (a leader's mesh key, also a
+    :class:`LeaderRefusal`) and its subclasses build on it. ``path`` is the resolved file, ``reason`` names what is
+    wrong with it and ``fix_hint`` says how to repair it. Generating a new key over the file would silently rotate it
+    and 401 every peer or device holding the old one.
+    """
+
+    def __init__(self, *, path: Path, reason: str, fix_hint: str, message: str | None = None) -> None:
+        self.path = path
+        self.reason = reason
+        self.fix_hint = fix_hint
+        super().__init__(message or f"key file unusable ({reason}): {path}")
 
 
 class LeaderRefusal(MaximError, RuntimeError):
@@ -413,6 +431,7 @@ class AgentLoopError(MaximRuntimeError):
 __all__ = [
     # Base
     "MaximError",
+    "KeyFileUnusable",
     "LeaderRefusal",
     # Connection
     "MaximConnectionError",
