@@ -72,8 +72,9 @@ def test_maxim_agent_has_no_dead_gateway_wiring():
 # ── The HTTP hop (#1466 review: every comms endpoint answered 422 since comms/api.py was written) ──────────────
 
 
-def _api(monkeypatch, bus):
-    """The real comms app over a real gateway and Twilio channel; only Twilio's signature validator is stubbed."""
+def _api(monkeypatch, bus, *, signature_valid: bool = True):
+    """The real comms app over a real gateway and Twilio channel; only Twilio's signature validator is stubbed
+    (it answers `signature_valid`)."""
     import sys
     import types
 
@@ -93,11 +94,14 @@ def _api(monkeypatch, bus):
             pass
 
         def validate(self, *args):
-            return True
+            return signature_valid
 
     validator.RequestValidator = _AlwaysValid
     monkeypatch.setitem(sys.modules, "twilio", sys.modules.get("twilio") or types.ModuleType("twilio"))
     monkeypatch.setitem(sys.modules, "twilio.request_validator", validator)
+    # create_api_app's _load_env() would write a developer's .env (real Twilio credentials, MAXIM_COMMS_ENABLED)
+    # straight into os.environ, outside monkeypatch, for every later test
+    monkeypatch.setattr("maxim.comms.api._load_env", lambda: None)
     monkeypatch.setenv("TWILIO_AUTH_TOKEN", "test-token")
     monkeypatch.setenv("MAXIM_API_TOKEN", "api-token")
 
@@ -127,3 +131,22 @@ def test_the_authenticated_command_endpoint_reaches_the_bus(monkeypatch):
     r = client.post("/api/command", json={"command": "status"}, headers={"Authorization": "Bearer api-token"})
     assert r.status_code == 200, r.text
     assert len(bus.published) == 1
+
+
+def test_the_refusals_this_fix_made_reachable_still_refuse(monkeypatch):
+    """Before #1466 every route answered 422 before its auth dependency ran; now the dependencies are live, so pin
+    that they refuse: a forged Twilio signature (403, nothing on the bus) and a wrong API token (401)."""
+    bus = _Bus()
+    client = _api(monkeypatch, bus, signature_valid=False)
+    for route in ("/api/twilio/sms", "/api/twilio/voice"):
+        r = client.post(
+            route,
+            data={"From": "+15550100", "Body": "x", "SpeechResult": "x"},
+            headers={"X-Twilio-Signature": "forged"},
+        )
+        assert r.status_code == 403, (route, r.status_code, r.text)
+    assert bus.published == []
+    wrong = {"Authorization": "Bearer wrong"}
+    assert client.get("/api/status", headers=wrong).status_code == 401
+    assert client.post("/api/command", json={"command": "x"}, headers=wrong).status_code == 401
+    assert bus.published == []

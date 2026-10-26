@@ -585,7 +585,9 @@ jobs:
           python - <<'PY' > extras-reqs.txt
           import tomllib
           extras = tomllib.load(open("pyproject.toml", "rb"))["project"]["optional-dependencies"]
-          print("\n".join(extras["console"] + extras["sign"]))
+          # + the comms extra's form parser: the Twilio webhook test (#1466) drives request.form()
+          multipart = [r for r in extras["comms"] if r.startswith("python-multipart")]
+          print("\n".join(extras["console"] + extras["sign"] + multipart))
           PY
           cat extras-reqs.txt
           # -c: pin the contract GENERATOR (see the file for why and how to move it)

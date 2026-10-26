@@ -60,10 +60,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Inbound comms reach the robot at last** ([#1466](https://github.com/dennys246/Maxim/issues/1466), corrected):
-  every comms HTTP endpoint (`/api/twilio/sms`, `/api/twilio/voice`, `/api/command`, `/api/status`) answered 422 since
+  every comms HTTP endpoint (`/api/twilio/sms`, `/api/twilio/voice`, `/api/command`, `/api/status`, `/api/goals`) answered 422 since
   `comms/api.py` was written, because a postponed `request: Request` annotation could not be resolved, so no inbound
   SMS ever reached the bus. Fixed; tests drive the real routes (webhook SMS → `TwilioChannel.receive_sms` →
-  `CommunicationGateway.receive_inbound` → the bus; the command endpoint still refuses without its token).
+  `CommunicationGateway.receive_inbound` → the bus; a forged Twilio signature and a wrong API token are refused). The
+  `comms` extra now includes `python-multipart`, which the webhooks need to parse form bodies.
 - **Dead comms code removed** (#1466): inbound comms are pushed by webhook, never polled. The headless loop's "poll" read a never-assigned `_gateway` and
   called a `gateway.poll()` that does not exist (assigning `_gateway` would have swallowed an `AttributeError` every
   0.5 s), and `MaximAgent.wire_communication` stored a gateway nothing read; both are deleted, with its call sites in
