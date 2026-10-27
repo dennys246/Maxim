@@ -1525,10 +1525,12 @@ class TestNAcRewardBiasDisabledEnv:
             ("false", False),
             ("", False),
             ("garbage", False),
+            ("t", False),
+            ("y", False),
         ],
     )
     def test_truthy_parser_handles_canonical_values(self, raw_value, expected):
-        """The env-var parser matches the shared TRUTHY_DISABLE_VALUES shape."""
+        """The env-var parser is the canonical ``maxim._offline.truthy`` (1/true/yes/on; #1315 step 0b)."""
         import os
 
         from maxim.decisions.nac import _read_nac_reward_bias_disabled_env

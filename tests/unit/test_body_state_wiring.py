@@ -20,12 +20,13 @@ class TestBodyStatePromptEnabled:
         assert body_state_prompt_enabled() is False
 
     def test_truthy_values(self, monkeypatch):
-        for val in ("1", "true", "t", " YES ", "y", "on"):
+        for val in ("1", "true", " YES ", "on"):
             monkeypatch.setenv("MAXIM_ENABLE_BODY_STATE_PROMPT", val)
             assert body_state_prompt_enabled() is True
 
     def test_falsy_values(self, monkeypatch):
-        for val in ("", "0", "false", "no", "off"):
+        # "t"/"y": not canonical since #1315 step 0b (maxim._offline.truthy is the one parser)
+        for val in ("", "0", "false", "no", "off", "t", "y"):
             monkeypatch.setenv("MAXIM_ENABLE_BODY_STATE_PROMPT", val)
             assert body_state_prompt_enabled() is False
 
