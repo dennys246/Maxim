@@ -66,7 +66,7 @@
     {
       "file": "src/maxim/embodied_runtime/selfy.py",
       "qualname": "Maxim.__init__",
-      "lines": 329
+      "lines": 317
     },
     {
       "file": "src/maxim/embodiment/body.py",
@@ -247,11 +247,6 @@
       "file": "src/maxim/tools/math_tool.py",
       "qualname": "MathTool.execute",
       "lines": 352
-    },
-    {
-      "file": "src/maxim/tools/reachy.py",
-      "qualname": "FocusOnSoundTool.execute",
-      "lines": 237
     },
     {
       "file": "src/maxim/utils/response_config.py",

@@ -15,7 +15,7 @@ Usage::
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 
 class MaximError(Exception):
@@ -363,6 +363,38 @@ class MotorError(HardwareError):
     pass
 
 
+MotionRefusalKind = Literal["non_finite", "duration", "method", "range", "invalid"]
+
+
+class MotionRefused(HardwareError, ValueError):
+    """A motion command refused before it reached a motor (#1496).
+
+    Raised for a non-finite value, a duration outside [0.1 s, 10 s], an
+    interpolation method that overshoots, a config value past a hard cap, or
+    structurally invalid input. Also a ``ValueError``, so a refusal reads as bad
+    input; that makes every ``except ValueError`` that substitutes a default
+    motion a hazard: validation never sits inside such a handler
+    (docs/plans/motion_finite_1496.md section 3).
+
+    Attributes:
+        kind: ``"non_finite"`` (NaN or Inf), ``"duration"`` (outside the range),
+            ``"method"`` (an unknown or overshooting interpolation), ``"range"``
+            (a config value past a hard cap, e.g. an orient delta over 90 deg), or
+            ``"invalid"`` (not a number, the wrong shape, an unknown pose).
+            #1499's recorder split keys on it.
+        reason: Human-readable reason, returned to the model by the tools.
+    """
+
+    def __init__(self, kind: MotionRefusalKind = "invalid", reason: str = "") -> None:
+        super().__init__(reason, context={"kind": kind})
+        self.kind: MotionRefusalKind = kind
+        self.reason = reason
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        # Positional (kind, reason), so pickle and copy rebuild it faithfully.
+        return (type(self), (self.kind, self.reason))
+
+
 class SensorError(HardwareError):
     """Sensor reading error."""
 
@@ -449,6 +481,7 @@ __all__ = [
     # Hardware
     "HardwareError",
     "MotorError",
+    "MotionRefused",
     "SensorError",
     "CameraError",
     "AudioError",

@@ -6,7 +6,9 @@ import numpy as np
 from pathlib import Path
 from typing import Any
 
-from maxim.utils.logging import warn
+from maxim.hardware.controller import clamp_finite, floor_duration, require_duration, require_finite
+from maxim.hardware.reachy.controller import ANTENNA_LIMIT_RAD, check_sdk_command
+from maxim.utils.logging import log_swallowed_exception, warn
 
 # Bundled seed data — shipped inside the package (src/maxim/_data/motion/).
 _DATA_DIR = Path(__file__).resolve().parent.parent / "_data" / "motion"
@@ -16,7 +18,7 @@ _DEFAULT_THRESHOLDS_PATH = _DATA_DIR / "movement_thresholds.json"
 
 
 def _to_rad(value: float, *, degrees: bool) -> float:
-    value = float(value)
+    value = require_finite("angle", value)  # refuses a bool, a string or NaN as MotionRefused (#1496)
     return math.radians(value) if degrees else value
 
 
@@ -31,16 +33,21 @@ def load_actions(path: Path | str = _DEFAULT_ACTIONS_PATH) -> dict[str, Any]:
     return actions
 
 
-def load_poses(path: Path | str = _DEFAULT_POSES_PATH) -> dict[str, list[float]]:
+def load_poses(path: Path | str = _DEFAULT_POSES_PATH) -> dict[str, list[float] | None]:
     """
     Load named head poses from JSON.
 
     Each pose can be either:
     - list: [x, y, z, roll, pitch, yaw] or [x, y, z, roll, pitch, yaw, duration]
     - dict: {"x":..,"y":..,"z":..,"roll":..,"pitch":..,"yaw":..,"duration":..}
+
+    A pose that does not parse is kept as ``None`` (the invalid sentinel), so
+    ``goto_pose`` refuses that name instead of falling back to the default
+    pose (#1496); so does a scalar, a string, or a list shorter than six
+    values. NaN and Infinity survive the load and are refused at ``goto_pose``.
     """
     poses_path = Path(path)
-    default = {"centered": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5]}
+    default: dict[str, list[float] | None] = {"centered": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5]}
 
     if not poses_path.exists():
         return default
@@ -55,7 +62,7 @@ def load_poses(path: Path | str = _DEFAULT_POSES_PATH) -> dict[str, list[float]]
     if not isinstance(raw, dict):
         return default
 
-    parsed: dict[str, list[float]] = {}
+    parsed: dict[str, list[float] | None] = {}
     for name, spec in raw.items():
         if not isinstance(name, str) or not name.strip():
             continue
@@ -66,8 +73,9 @@ def load_poses(path: Path | str = _DEFAULT_POSES_PATH) -> dict[str, list[float]]
                 vec = [float(spec[i]) for i in range(6)]
                 if len(spec) >= 7 and spec[6] is not None:
                     vec.append(float(spec[6]))
-            except Exception:
-                vec = None
+            except (TypeError, ValueError, OverflowError):
+                parsed[name.strip()] = None  # invalid sentinel: goto_pose refuses this name
+                continue
         elif isinstance(spec, dict):
             try:
                 vec = [
@@ -80,8 +88,12 @@ def load_poses(path: Path | str = _DEFAULT_POSES_PATH) -> dict[str, list[float]]
                 ]
                 if spec.get("duration") is not None:
                     vec.append(float(spec.get("duration") or 0.0))
-            except Exception:
-                vec = None
+            except (TypeError, ValueError, OverflowError):
+                parsed[name.strip()] = None  # invalid sentinel: goto_pose refuses this name
+                continue
+        else:
+            parsed[name.strip()] = None  # a scalar, string or short list: invalid, refused by name
+            continue
 
         if vec is not None:
             parsed[name.strip()] = vec
@@ -163,18 +175,23 @@ _MAX_HEAD_REL_YAW_DEG = 65.0
 
 
 def _current_body_yaw_deg(mini) -> float:
-    """Best-effort body yaw (degrees) from the SDK joint vector; 0.0 on failure.
+    """Body yaw (degrees) from the SDK joint vector; 0.0 when the read is MISSING.
 
     Joint vector is ``[body_yaw, *stewart_legs]`` — the SDK's own fk() reads
-    index 0 as body_yaw.
+    index 0 as body_yaw. A read that fails keeps the historical 0.0 fallback
+    (#1499 owns missing readbacks); a RETURNED non-finite body is refused,
+    outside the try, so composing ``yaw + body`` never sees NaN (#1496).
     """
+    body: Any = None
     try:
         head_joints, _ = mini.get_current_joint_positions()
         if head_joints is not None and len(head_joints) >= 1:
-            return math.degrees(float(head_joints[0]))
-    except Exception:
-        pass
-    return 0.0
+            body = head_joints[0]
+    except Exception:  # missing, not refused
+        log_swallowed_exception()
+    if body is None:
+        return 0.0
+    return math.degrees(require_finite("readback body_yaw", body))
 
 
 def move_head(mini, x, y, z, roll, pitch, yaw, duration, *, motion_lock=None, controller=None):
@@ -209,16 +226,20 @@ def move_head(mini, x, y, z, roll, pitch, yaw, duration, *, motion_lock=None, co
     lock = motion_lock if motion_lock is not None else contextlib.nullcontext()
     with lock:
         body_yaw_deg = _current_body_yaw_deg(mini)
-        roll = max(-_MAX_HEAD_ROLL_DEG, min(_MAX_HEAD_ROLL_DEG, float(roll)))
-        pitch = max(-_MAX_HEAD_PITCH_DEG, min(_MAX_HEAD_PITCH_DEG, float(pitch)))
-        yaw = max(-_MAX_HEAD_REL_YAW_DEG, min(_MAX_HEAD_REL_YAW_DEG, float(yaw)))
+        roll = clamp_finite("roll", roll, -_MAX_HEAD_ROLL_DEG, _MAX_HEAD_ROLL_DEG)
+        pitch = clamp_finite("pitch", pitch, -_MAX_HEAD_PITCH_DEG, _MAX_HEAD_PITCH_DEG)
+        yaw = clamp_finite("yaw", yaw, -_MAX_HEAD_REL_YAW_DEG, _MAX_HEAD_REL_YAW_DEG)
+        x, y, z = (require_finite(name, v) for name, v in (("x", x), ("y", y), ("z", z)))
         # Translation intent is body-frame (x forward, y left of the BODY);
         # rotate into the world frame so a turned body doesn't reinterpret a
         # forward nudge as sideways. mm-scale — not a destruction-class axis.
         b = math.radians(body_yaw_deg)
-        x_w = float(x) * math.cos(b) - float(y) * math.sin(b)
-        y_w = float(x) * math.sin(b) + float(y) * math.cos(b)
+        x_w = x * math.cos(b) - y * math.sin(b)
+        y_w = x * math.sin(b) + y * math.cos(b)
         pose = head_pose_matrix(x_w, y_w, z, roll, pitch, yaw + body_yaw_deg)
+        # Last mile (#1496): every scalar handed to the SDK, the duration's
+        # range, and the present pose (defence in depth).
+        duration, _ = check_sdk_command(mini, duration=duration, head=pose)
         mini.goto_target(head=pose, duration=duration, body_yaw=None)
         # F1 retained-axes fold (2026-08-09): this raw dispatch moves the
         # head outside ReachyMiniController's last-commanded stash. When
@@ -242,12 +263,17 @@ def move_antenna(
     degrees: bool = True,
     relative: bool = False,
 ) -> None:
+    """Move the antennas, always interpolated and bounded (#1496).
+
+    ``duration=None`` takes the default; any explicit duration must lie in
+    [0.1 s, 10 s] (an explicit 0 used to take the SDK's instant ``set_target``).
+    Targets clamp to ±``ANTENNA_LIMIT_RAD``; NaN is refused. ``body_yaw=None``
+    keeps the body still (the SDK's default of 0.0 would turn it to 0).
+    """
     if right is None and left is None:
         raise ValueError("At least one of right or left must be provided.")
 
-    if isinstance(method, str):
-        method = method.strip().lower().replace("-", "_")
-        method = {"min_jerk": "minjerk", "ease": "ease_in_out"}.get(method, method)
+    duration_s = floor_duration(0.5) if duration is None else require_duration(duration)
 
     current_right, current_left = mini.get_present_antenna_joint_positions()
 
@@ -255,19 +281,19 @@ def move_antenna(
     target_left = current_left
 
     if right is not None:
-        right = _to_rad(right, degrees=degrees)
+        right = require_finite("right", _to_rad(right, degrees=degrees))
         target_right = current_right + right if relative else right
 
     if left is not None:
-        left = _to_rad(left, degrees=degrees)
+        left = require_finite("left", _to_rad(left, degrees=degrees))
         target_left = current_left + left if relative else left
 
-    target = [target_right, target_left]
-
-    if duration is None or float(duration) <= 0:
-        mini.set_target(antennas=target, body_yaw=None)
-    else:
-        mini.goto_target(antennas=target, duration=float(duration), method=method, body_yaw=None)
+    target = [
+        clamp_finite("antenna right", target_right, -ANTENNA_LIMIT_RAD, ANTENNA_LIMIT_RAD),
+        clamp_finite("antenna left", target_left, -ANTENNA_LIMIT_RAD, ANTENNA_LIMIT_RAD),
+    ]
+    duration_s, sdk_method = check_sdk_command(mini, duration=duration_s, antennas=target, method=method)
+    mini.goto_target(antennas=target, duration=duration_s, method=sdk_method, body_yaw=None)
 
 
 def head_pose_matrix(x=0, y=0, z=0, roll=0, pitch=0, yaw=0):

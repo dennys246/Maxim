@@ -319,3 +319,42 @@ Also: the daemon listens on `0.0.0.0:8000`, which belongs to the embodied-device
     - A head-pose read that **raises** leaves today's behaviour unchanged: `test_body_read_failure_falls_back_to_zero` stays green.
     - A documentation test pins the WS fact: a NaN `HeadPoseMsg` and a NaN `JointPositionsMsg`, round-tripped through `model_dump_json` and the client's adapter validation, are both rejected. If a future SDK starts passing non-finite values through, this test flips, and the check becomes live on hardware.
 12. DN: a `MotionRefused` from a gaze dispatch is handled by type (no IK classification), and a config `base_duration` of 0.05 is floored, not refused.
+
+## 8. As built (after the three-lens code review, 2026-10-27)
+
+Where the build departs from the sections above, this section is the record. Everything else is built as written.
+
+- **Where the Reachy-specific checks live.** `ANTENNA_LIMIT_RAD`, the SDK method map (`sdk_method`),
+  `require_present_pose_finite` and the single last-mile helper `check_sdk_command` live in
+  `hardware/reachy/controller.py`, not the robot-agnostic `hardware/controller.py` (the generic validators stay
+  there). Every SDK motion call site uses `check_sdk_command`: the controller dispatch, `look_at_pixel` (which also
+  re-checks u/v), `motion/movement.py::move_head`/`move_antenna`, Selfy's SDK `look_at` wrapper, and
+  `scripts/orient_backbone/live_common.py::_goto`.
+- **`MotionRefused`** subclasses `HardwareError` and `ValueError`, pickles and copies, and has a typed `kind`. The
+  kinds are `"non_finite"`, `"duration"`, `"method"`, `"range"` (a config value past a hard cap, such as an orient
+  delta over 90°) and `"invalid"` (not a number, the wrong shape, an unknown pose).
+- **The live harnesses.** `live_common.py::_goto` runs `check_sdk_command`. `live_1_smoke.py` is NOT validated: it
+  stays free of `maxim` imports by design and commands literal finite targets only. Its allow-list reason says so.
+  This is a stated exception to "ever".
+- **The lint.**
+  - `scripts/lint_motion_safety.py` matches any handle chain (`self._maxim.mini.goto_target`), aliases and `getattr`.
+  - It bans any `max()`/`min()` nesting and `np.clip` on the motion path, whatever the bounds; pixel clamps became
+    `clamp_finite` too.
+  - It ignores comments and triple-quoted strings.
+  - Measurement clamps carry an inline `# motion-lint: measurement` pragma, not a list in the lint.
+  - Stated residuals (also in the lint's docstring): a clamp or a handle split across lines; a clamp through a helper
+    other than `max`/`min`/`clip`; a handle aliased to a local not ending in `mini`; `getattr(self, "mini")`; a
+    dynamic `getattr` name; the canned `wake_up`/`goto_sleep` (#1499).
+- **Refusals that reach the caller.**
+  - `Selfy.turn_around` returns a bool, and `maxim_command turn_around` turns False into a tool error. The controller
+    converts a dispatch-time refusal into False, so this is how that refusal reaches the model.
+  - DN still marks a turn as executed at dispatch, and a `MotionRefused` from a non-finite body readback inside
+    `_maybe_turn_around`'s turn leaves its pain-bridge `record_action_start` unpaired (both #1499's recorder split).
+    `_maybe_turn_around` now records the turn's real outcome.
+  - `RobotController.center_vision` returns False on a bad duration.
+  - MoveTool converts all six axes with `_motion_number`.
+- **Sync.** A missing or wrongly shaped head pose is `SyncResult.FAILED` (not `NON_FINITE`), and nothing is written to
+  the mirror before every read is checked.
+- **`load_poses`.** A scalar, a string or a short list is kept as the invalid sentinel too, and `OverflowError`
+  counts as unparseable.
+- **The decision record** is DECISIONS.md MF1–MF10.

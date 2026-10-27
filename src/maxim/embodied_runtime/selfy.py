@@ -21,6 +21,7 @@ from maxim.runtime.capabilities import (
 import time
 import atexit
 import logging
+import math
 from typing import Any
 
 import numpy as np
@@ -93,6 +94,32 @@ from maxim.embodied_runtime.media_loop import MediaLoopMixin
 _robot_registry = RobotRegistry()
 _robot_registry.register_controller_type("reachy_mini", ReachyMiniController)
 _robot_registry.register_controller_type("simulated", SimulatedController)
+
+
+def centered_pose_from(poses: Any, *, log: logging.Logger | None = None) -> dict[str, float] | None:
+    """The ``centered`` pose as finite floats, or None to keep the seed values (#1496).
+
+    A second reader of ``default_poses.json`` (``goto_pose`` is the first). A
+    pose ``load_poses`` could not parse (kept as ``None``), a short one, or one
+    holding NaN/Inf is logged at ERROR and ignored: the seed mirror stays, and
+    ``goto_pose("centered")`` refuses that pose for the run. Every component is
+    checked before any is used, so the mirror is never half-assigned.
+    """
+    if not isinstance(poses, dict) or "centered" not in poses:
+        return None
+    centered = poses["centered"]
+    axes = ("x", "y", "z", "roll", "pitch", "yaw")
+    if isinstance(centered, (list, tuple)) and len(centered) >= 6:
+        try:
+            values = [float(centered[i]) for i in range(6)]
+        except (TypeError, ValueError):
+            values = []
+        if len(values) == 6 and all(math.isfinite(v) for v in values):
+            return dict(zip(axes, values))
+    (log or logging.getLogger(__name__)).error(
+        "default_poses.json: the 'centered' pose %r is not six finite numbers; keeping the seed head pose", centered
+    )
+    return None
 
 
 class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin, AgenticRuntimeMixin, MediaLoopMixin):
@@ -371,22 +398,10 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         self.body_yaw = 0.0  # Body rotation (separate from head yaw)
         self._last_turn_around_time = 0.0  # Cooldown tracking for turn_around
 
-        centered = None
-        try:
-            centered = getattr(self, "poses", {}).get("centered")
-        except (AttributeError, TypeError) as e:
-            log_swallowed_exception(e, operation="get_centered_pose")
-            centered = None
-        if isinstance(centered, (list, tuple)) and len(centered) >= 6:
-            try:
-                self.x = float(centered[0])
-                self.y = float(centered[1])
-                self.z = float(centered[2])
-                self.roll = float(centered[3])
-                self.pitch = float(centered[4])
-                self.yaw = float(centered[5])
-            except (TypeError, ValueError, IndexError) as e:
-                log_swallowed_exception(e, operation="parse_centered_pose", context={"centered": centered})
+        centered = centered_pose_from(getattr(self, "poses", None), log=self.log)
+        if centered is not None:
+            self.x, self.y, self.z = centered["x"], centered["y"], centered["z"]
+            self.roll, self.pitch, self.yaw = centered["roll"], centered["pitch"], centered["yaw"]
 
         self._default_head_pose = {
             "x": float(self.x),

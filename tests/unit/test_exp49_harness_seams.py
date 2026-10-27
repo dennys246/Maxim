@@ -28,6 +28,7 @@ import os
 
 import pytest
 
+from maxim.embodied_runtime.movement import SyncResult
 from maxim.embodiment.audio_localization import doa_to_azimuth
 from maxim.hardware.controller import MotionTarget
 from maxim.hardware.simulation.controller import (
@@ -288,7 +289,7 @@ class TestControllerHeadSync:
         c = _make_controller()
         c.goto_target(MotionTarget(head_yaw=math.radians(10.0), body_yaw=math.radians(30.0)))
         host = self._host(c)
-        assert host.sync_head_position() is True
+        assert host.sync_head_position() is SyncResult.OK
         assert host.body_yaw == pytest.approx(30.0, abs=1e-6)
         # Mirror yaw is BODY-RELATIVE degrees (world − body).
         assert host.yaw == pytest.approx(10.0, abs=1e-6)
@@ -296,7 +297,7 @@ class TestControllerHeadSync:
     def test_sync_false_when_disconnected(self):
         c = SimulatedController()
         host = self._host(c)
-        assert host.sync_head_position() is False
+        assert host.sync_head_position() is SyncResult.FAILED
 
 
 # ─────────────────────────────────────────────────────────────────────────────

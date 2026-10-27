@@ -44,6 +44,9 @@ import logging
 import math
 from typing import Any
 
+from maxim.exceptions import MotionRefused
+from maxim.hardware.controller import clamp_finite, require_duration, require_finite
+
 logger = logging.getLogger(__name__)
 
 # Daemon-side body yaw clamp (matches embodied_runtime/movement.py's
@@ -100,7 +103,9 @@ class ReachyOrientMotorBackend:
         # reading whose sample window overlaps it is frame-mixed and
         # uncorrectable (review F2's repeat-turn wrong-sign path).
         self._last_motion_t_end: float = 0.0
-        self._deltas = dict(deltas)  # affordance -> signed body-yaw delta (rad)
+        # affordance -> signed body-yaw delta (rad); each refused unless finite
+        # and within ±90 deg (#1496: a NaN YAML head_yaw swung the body 160 deg).
+        self._deltas = {aff: _require_orient_delta(aff, delta) for aff, delta in deltas.items()}
         self._modulator_name = modulator_name
         self._entity_name = entity_name
 
@@ -219,7 +224,7 @@ class ReachyOrientMotorBackend:
             return None
         cap_world = cap_head + cap_body
         corrected = az_cap + (entry_world_yaw_deg - cap_world) / 90.0
-        return max(-1.0, min(1.0, corrected))
+        return max(-1.0, min(1.0, corrected))  # motion-lint: measurement (DoA credit, not a command)
 
     def _measure_azimuth_after(self, t_end: float) -> "float | None":
         """First reading whose SAMPLE WINDOW began past ``t_end + settle``.
@@ -271,12 +276,12 @@ class ReachyOrientMotorBackend:
                     success=False,
                     error="Body pose unreadable — refusing to guess the current body angle",
                 )
-            current_body = float(pose["body_yaw"])
-            target_body = max(-_MAX_BODY_YAW_RAD, min(_MAX_BODY_YAW_RAD, current_body + delta))
+            current_body = require_finite("readback body_yaw", pose["body_yaw"])
+            target_body = clamp_finite("body_yaw", current_body + delta, -_MAX_BODY_YAW_RAD, _MAX_BODY_YAW_RAD)
             clamped = abs(current_body + delta) > _MAX_BODY_YAW_RAD
             # Duration scales with the swing (~1.5 s for a normal 17°
             # step, ~2.6 s for a big 52° step). The SDK goto blocks.
-            duration_s = min(3.0, max(1.0, 1.0 + abs(math.degrees(delta)) / 30.0))
+            duration_s = require_duration(clamp_finite("duration", 1.0 + abs(math.degrees(delta)) / 30.0, 1.0, 3.0))
 
             # Phase 2 measured credit: the BEFORE reading is the sound this
             # turn answers, expressed in the TURN-ENTRY frame (frame-
@@ -392,6 +397,46 @@ class ReachyOrientMotorBackend:
             return self._result(affordance, params, success=False, error=str(e))
 
 
+_MAX_ORIENT_DELTA_RAD = math.radians(90.0)
+
+
+def _require_orient_delta(affordance: str, delta: Any) -> float:
+    """One orient affordance's body-yaw delta: finite, not a bool, |delta| <= 90 deg (#1496)."""
+    value = require_finite(f"orient {affordance} head_yaw", delta)
+    if abs(value) > _MAX_ORIENT_DELTA_RAD:
+        raise MotionRefused(
+            "range",
+            f"orient {affordance} head_yaw {math.degrees(value):.1f} deg exceeds the ±90 deg orient cap",
+        )
+    return value
+
+
+def _modulator_orient_deltas(spec_modulator: Any) -> dict[str, float]:
+    """``{affordance: delta}`` for one orient modulator's ``self_effect["head_yaw"]``, each validated."""
+    deltas: dict[str, float] = {}
+    for aff_name, schema in (getattr(spec_modulator, "_affordances", None) or {}).items():
+        se = getattr(schema, "self_effect", None) or {}
+        if "head_yaw" in se:
+            deltas[aff_name] = _require_orient_delta(aff_name, se["head_yaw"])
+    return deltas
+
+
+def validate_orient_deltas(entity: Any) -> dict[str, float]:
+    """Validate every orient affordance delta in a parsed ``Entity`` tree (#1496).
+
+    Walks exactly as ``embodiment.spec.attach_backends`` does (``entity.walk()``,
+    then each entity's ``modulators["orient"]``), so a nested orient cannot slip
+    past into ``build_executor``. Called from body wiring, where a
+    ``MotionRefused`` makes the robot run bodiless with one ERROR.
+    """
+    deltas: dict[str, float] = {}
+    for node in entity.walk():
+        orient = (getattr(node, "modulators", None) or {}).get("orient")
+        if orient is not None:
+            deltas.update(_modulator_orient_deltas(orient))
+    return deltas
+
+
 def make_reachy_orient_factory(robot: Any, maxim: Any = None) -> Any:
     """``attach_backends``-shaped factory binding ONLY the ``orient`` modulator.
 
@@ -404,14 +449,9 @@ def make_reachy_orient_factory(robot: Any, maxim: Any = None) -> Any:
     def factory(entity: Any, mod_name: str, spec_modulator: Any) -> Any:
         if mod_name != "orient":
             return None
-        deltas: dict[str, float] = {}
-        for aff_name, schema in (getattr(spec_modulator, "_affordances", None) or {}).items():
-            se = getattr(schema, "self_effect", None) or {}
-            if "head_yaw" in se:
-                try:
-                    deltas[aff_name] = float(se["head_yaw"])
-                except (TypeError, ValueError):
-                    continue
+        # Validated at body wiring already (validate_orient_deltas); a refusal
+        # here propagates rather than dropping the affordance to stub semantics.
+        deltas = _modulator_orient_deltas(spec_modulator)
         if not deltas:
             return None
         return ReachyOrientMotorBackend(

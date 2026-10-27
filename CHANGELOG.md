@@ -30,6 +30,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Motion API changes from the Reachy safety fix** ([#1496](https://github.com/dennys246/Maxim/issues/1496); the
+  fix itself is under Fixed). Each refusal below raises `maxim.exceptions.MotionRefused`, a `ValueError`.
+  - `maxim.hardware.MotionTarget` and `PixelTarget` validate at construction. `MotionTarget.method` reads back as its
+    canonical name (`"minjerk"` becomes `"minimum_jerk"`, `"ease"` becomes `"ease_in_out"`). `PixelTarget` turns a
+    whole float into an `int` and refuses a fractional one.
+  - On the controller path, `ease` now means ease-in-out (it was minimum-jerk), and an unknown method is refused.
+  - `RobotController.center_vision` returns False for a bad duration, like `goto_target`.
+  - Selfy's `move`, `look_at_image`, `move_antenna` and `turn_around` refuse strings and bools; the tools convert a
+    model's numeric strings (`"30"`) before calling them.
+  - `Selfy.turn_around` returns True only when both steps were accepted, and no longer turns the body after a failed
+    head recentre. `maxim_command turn_around` reports a rejected turn as an error, not a success.
+  - `Selfy.goto_pose` refuses an unknown pose name (it used to move to the default pose), and
+    `motion.movement.load_poses` keeps a pose that does not parse as `None`, so that name is refused too.
+  - `Selfy.sync_head_position()` returns a `SyncResult` (`OK`, `FAILED`, `NON_FINITE`); only `OK` is truthy.
+  - An explicit duration of 0 to `move`, `focus_on_sound` or `track_target` is refused; it used to be swapped for the
+    tool's default.
+  - A non-finite `head_yaw` in any affordance's `self_effect` fails the body's YAML load.
 - **The wheel vendors maxim-pulse Console v0.4.4** (was v0.4.2 at 1.3.3, then v0.4.3; contract 0.6.0, unchanged). It is
   now the newest pulse tag for this contract, so R4's release gate requires it. v0.4.3 brought clearer leader setup
   (key and address guidance, with warnings), commands shown in a distinct style, and readable light-theme status
@@ -58,6 +75,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     3 of 5 arm-A deceptive trials.
 
 ### Fixed
+
+- **Reachy safety: no non-finite, out-of-range-duration or instant command reaches a motor**
+  ([#1496](https://github.com/dennys246/Maxim/issues/1496), a 1.3.4 exit item). A NaN or infinite `head_yaw` in a body
+  YAML commanded a 160° body swing in 1 s, because every `max(-L, min(L, x))` clamp on the motion path turned NaN
+  into a full-range move. The same reached the motors from LLM tool arguments (`"nan"`), from NaN in
+  `default_poses.json`, and from a NaN readback composed into the head target. Durations were unbounded, and
+  antennas and the SDK `look_at` moved instantly on a duration of 0. Now:
+  - one set of validators in `maxim.hardware.controller` runs at entry (`MotionTarget`/`PixelTarget`, Selfy, the
+    tools), at every command clamp (`clamp_finite`), and immediately before each SDK call;
+  - durations lie in [0.1 s, 10 s]: an explicit one outside is refused, a default or derived one is lifted into range;
+  - antennas always interpolate and clamp to ±90° (provisional, until the hand-measured range);
+  - the `cartoon` interpolation, which overshoots its target by 10%, is refused;
+  - a refusal raises the new `maxim.exceptions.MotionRefused` (a `ValueError`). Tools return it to the model as an
+    error, never as a default motion (a garbage `turn_around` angle used to become a 90° turn);
+  - a bad orient delta in a body YAML (non-finite, or over ±90°) makes the robot run bodiless with one ERROR;
+  - an unknown or unparseable pose name is an error, not a move to the default pose;
+  - `sync_head_position()` returns a `SyncResult` (`OK`, `FAILED` or `NON_FINITE`; only `OK` is truthy), and never
+    writes a non-finite readback into the head mirror. The motor worker skips its blind reset from a non-finite pose,
+    and a refused motion no longer counts as a lost connection;
+  - `scripts/lint_motion_safety.py` (in CI) bans the clamp idiom on the motion path and raw SDK motion outside the
+    sanctioned dispatch points, across `src/` and `scripts/`.
+
+  Over the WS transport the robot never reports a non-finite pose (the daemon sends `null` and the client drops the
+  message), so the present-pose check is defence in depth. Still open on the real robot, as 1.3.4 exit item
+  [#1499](https://github.com/dennys246/Maxim/issues/1499): the neck can sweep through about 180° in the middle of a
+  move that combines a large body turn with a head turn.
 
 - **Inbound comms reach the robot at last** ([#1466](https://github.com/dennys246/Maxim/issues/1466), corrected):
   every comms HTTP endpoint (`/api/twilio/sms`, `/api/twilio/voice`, `/api/command`, `/api/status`, `/api/goals`) answered 422 since

@@ -181,7 +181,6 @@ def _refused():
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 1: orient deltas unvalidated")
 @pytest.mark.parametrize("delta", [math.radians(120), NAN, INF, True])
 def test_orient_backend_refuses_a_non_finite_bool_or_over_cap_delta(delta):
     from maxim.hardware.reachy.motor_backend import ReachyOrientMotorBackend
@@ -217,7 +216,6 @@ def _inject_head_yaw(monkeypatch, value):
     monkeypatch.setattr(ComponentRegistry, "get", _get)
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 1: a bad YAML delta is not bodiless+ERROR")
 @pytest.mark.parametrize("value", [2.5, NAN])
 def test_a_bad_yaml_orient_delta_runs_bodiless_with_one_error(monkeypatch, caplog, value):
     import maxim.hardware.config as cfg_mod
@@ -254,7 +252,6 @@ def _command_tool(maxim):
     return tool
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 2: tool parameters unvalidated")
 @pytest.mark.parametrize(
     "params",
     [{"angle": "nan"}, {"angle": "abc"}, {"angle": 45, "duration": "abc"}, {"angle": 45, "duration": 1e6}],
@@ -267,7 +264,6 @@ def test_maxim_command_turn_around_refuses_garbage_without_motion(params, no_sle
     assert robot.targets == [] and body.enqueued == []
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 2: move() accepts NaN")
 def test_maxim_command_move_with_nan_yaw_is_an_error_and_leaves_the_mirror():
     body = _body(mini=_Mini())
     before = (body.x, body.y, body.z, body.roll, body.pitch, body.yaw, body.duration)
@@ -282,7 +278,6 @@ def test_maxim_command_move_with_nan_yaw_is_an_error_and_leaves_the_mirror():
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 3: goto_pose falls back to the default pose")
 def test_goto_pose_with_a_nan_pose_is_refused_without_motion_or_sleep(no_sleep):
     body = _body(mini=_Mini())
     body.poses["bad"] = [0.0, 0.0, 0.0, 0.0, 0.0, NAN, 0.5]
@@ -291,7 +286,6 @@ def test_goto_pose_with_a_nan_pose_is_refused_without_motion_or_sleep(no_sleep):
     assert body.enqueued == [] and no_sleep == []
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 3: an unknown pose name moves to the default")
 def test_goto_pose_with_an_unknown_name_is_an_error_without_motion(no_sleep):
     body = _body(mini=_Mini())
     result = _command_tool(body).execute(command="goto_pose", params={"name": "no_such_pose"})
@@ -301,7 +295,6 @@ def test_goto_pose_with_an_unknown_name_is_an_error_without_motion(no_sleep):
     assert _command_tool(body2).execute(command="goto_pose", params={"name": " centered "}).success is True
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 3: load_poses drops unparseable poses")
 def test_an_unparseable_pose_is_kept_as_invalid_and_refused(tmp_path, no_sleep):
     from maxim.motion.movement import load_poses
 
@@ -320,7 +313,6 @@ def test_an_unparseable_pose_is_kept_as_invalid_and_refused(tmp_path, no_sleep):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 4: MotionTarget unvalidated")
 @pytest.mark.parametrize(
     "kwargs",
     [
@@ -343,7 +335,6 @@ def test_motion_target_refuses(kwargs):
         MotionTarget(**kwargs)
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 4: PixelTarget unvalidated")
 @pytest.mark.parametrize("kwargs", [{"duration": 0}, {"duration": NAN}, {"u": NAN}, {"v": 1.5}])
 def test_pixel_target_refuses(kwargs):
     from maxim.hardware.controller import PixelTarget
@@ -354,7 +345,6 @@ def test_pixel_target_refuses(kwargs):
         PixelTarget(**args)
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 4: MotionTarget unvalidated")
 def test_motion_target_accepts_the_inclusive_bounds_and_aliases():
     from maxim.hardware.controller import MotionTarget
 
@@ -371,17 +361,25 @@ def test_motion_target_accepts_the_inclusive_bounds_and_aliases():
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 5: NaN body readback composes into the head target")
-def test_controller_refuses_a_nan_body_readback():
+def test_controller_refuses_a_nan_body_readback(caplog):
     from maxim.hardware.controller import MotionTarget
 
     mini = _Mini(body=NAN)
     ctl = _controller(mini)
-    assert ctl.goto_target(MotionTarget(head_yaw=0.1, head_pitch=0.0, head_roll=0.0, duration=0.5)) is False
+    with caplog.at_level(logging.ERROR):
+        assert ctl.goto_target(MotionTarget(head_yaw=0.1, head_pitch=0.0, head_roll=0.0, duration=0.5)) is False
     assert mini.motion_calls() == []
+    # Refused at the readback, before composition (the last mile is a second layer, not the only one).
+    assert any("readback body_yaw" in r.getMessage() for r in caplog.records)
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 5: move_head composes NaN body")
+def test_controller_clamp_refuses_nan_instead_of_passing_it_through():
+    ctl = _controller(_Mini())
+    with pytest.raises(_refused()):
+        ctl._clamp(NAN, 1.0, "head_yaw", [])
+    assert ctl._clamp(2.0, 1.0, "head_yaw", []) == 1.0
+
+
 @pytest.mark.parametrize("body", [NAN, INF])
 def test_move_head_refuses_a_non_finite_body_readback(body):
     from maxim.motion.movement import move_head
@@ -392,7 +390,6 @@ def test_move_head_refuses_a_non_finite_body_readback(body):
     assert mini.motion_calls() == []
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 5: NaN args clamp to +L")
 def test_move_head_refuses_nan_arguments_instead_of_clamping():
     from maxim.motion.movement import move_head
 
@@ -409,7 +406,6 @@ def test_move_head_refuses_nan_arguments_instead_of_clamping():
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 6: antenna set_target / unbounded")
 def test_move_antenna_is_bounded_interpolated_and_keeps_the_body():
     from maxim.motion.movement import move_antenna
 
@@ -429,7 +425,6 @@ def test_move_antenna_is_bounded_interpolated_and_keeps_the_body():
     assert first["body_yaw"] is None and second["body_yaw"] is None
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 6: look_at takes the SDK's instant path")
 def test_look_at_with_zero_duration_is_refused_on_both_paths():
     from maxim.hardware.controller import PixelTarget
 
@@ -451,7 +446,6 @@ def test_look_at_with_zero_duration_is_refused_on_both_paths():
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 7: derived step duration below the floor")
 def test_turn_around_floors_its_derived_step_durations(no_sleep):
     robot = _RecordingRobot()
     _body(mini=_Mini(), robot=robot).turn_around(45, duration=0.2)
@@ -459,7 +453,6 @@ def test_turn_around_floors_its_derived_step_durations(no_sleep):
     assert all(0.1 <= t.duration <= 10.0 for t in robot.targets)
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 7: NaN duration laundered into finite steps")
 def test_turn_around_refuses_a_nan_duration_before_inhibiting(no_sleep):
     robot = _RecordingRobot()
     body = _body(mini=_Mini(), robot=robot)
@@ -470,12 +463,11 @@ def test_turn_around_refuses_a_nan_duration_before_inhibiting(no_sleep):
     assert robot.targets == [] and inhibited == []
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 7: step 2 runs after step 1 fails")
 def test_turn_around_skips_step_two_when_step_one_is_rejected(no_sleep):
     robot = _RecordingRobot(results=[False])
     body = _body(mini=_Mini(), robot=robot)
     body.yaw = 12.0
-    body.turn_around(45, duration=5.0)
+    assert body.turn_around(45, duration=5.0) is False
     assert len(robot.targets) == 1
     assert body.yaw == 12.0
 
@@ -485,7 +477,6 @@ def test_turn_around_skips_step_two_when_step_one_is_rejected(no_sleep):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gates 8+11: no last-mile range check")
 def test_a_post_construction_bad_duration_is_refused_at_dispatch_and_keeps_the_stash():
     from maxim.hardware.controller import MotionTarget
 
@@ -509,8 +500,7 @@ def test_a_post_construction_bad_duration_is_refused_at_dispatch_and_keeps_the_s
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 9: no motion-safety lint")
-def test_motion_safety_lint_catches_planted_violations(tmp_path):
+def test_motion_safety_lint_catches_planted_violations(tmp_path, monkeypatch):
     import importlib.util
     from pathlib import Path
 
@@ -518,25 +508,52 @@ def test_motion_safety_lint_catches_planted_violations(tmp_path):
         "lint_motion_safety", Path(__file__).resolve().parents[2] / "scripts" / "lint_motion_safety.py"
     )
     lint = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, "lint_motion_safety", lint)  # @dataclass resolves its module
     spec.loader.exec_module(lint)
 
     clamp = tmp_path / "src" / "maxim" / "motion" / "planted.py"
     clamp.parent.mkdir(parents=True)
     clamp.write_text(
-        "def f(v):\n    a = max(-1.0, min(1.0, v))\n    b = min(2.0, max(-2.0, v))\n    return np.clip(v, -1, 1)\n"
+        "def f(v, lo, hi):\n"  # line 1
+        "    a = max(-1.0, min(1.0, v))\n"  # 2: flagged
+        "    b = min(2.0, max(-2.0, v))\n"  # 3: flagged
+        "    c = max(lo, min(hi, v))\n"  # 4: flagged
+        "    d = min(max(v, lo), hi)\n"  # 5: flagged
+        "    e = v  # max(-1.0, min(1.0, v)) in a comment is not code\n"  # 6
+        "    g = max(-math.radians(40), min(math.radians(40), v))\n"  # 7: flagged
+        "    h = arr.clip(-1, 1)\n"  # 8: flagged
+        "    i = numpy.clip(v, lo, hi)\n"  # 9: flagged
+        "    k = max(1, min(n, 10))  # motion-lint: measurement\n"  # 10: pragma, not flagged
+        '    m = f"""{max(1, min(2, v))}\n'  # 11-12: a multi-line f-string, not flagged
+        '    """\n'
+        "    return np.clip(v, -1, 1)\n"  # 13: flagged
     )
     raw = tmp_path / "src" / "maxim" / "tools" / "planted_raw.py"
     raw.parent.mkdir(parents=True)
     raw.write_text(
-        "def g(self):\n"
-        "    fn = self.mini.set_target\n"
-        "    getattr(self.mini, 'goto_target')(head=None)\n"
-        "    self._mini.look_at_world(1, 2, 3)\n"
+        "def g(self):\n"  # line 1
+        "    fn = self.mini.set_target\n"  # 2: flagged (alias)
+        "    getattr(self.mini, 'goto_target')(head=None)\n"  # 3: flagged (getattr)
+        "    self._mini.look_at_world(1, 2, 3)\n"  # 4: flagged
+        "    self._maxim.mini.goto_target(x)\n"  # 5: flagged (chain)
+        "    self._robot._mini.goto_target(x)\n"  # 6: flagged (chain)
+        "    registration.controller._mini.set_target_body_yaw(t)\n"  # 7: flagged
+        "    self._reachy_mini.goto_target(x)\n"  # 8: flagged (prefixed handle)
+        "    self.robot_mini.play_move(m)\n"  # 9: flagged (prefixed handle)
+        "    maxim.look_at_image(1, 2)\n"  # 10: Selfy's method, not flagged
+        '    """mini.goto_target(head) in a docstring is not code"""\n'  # 11
     )
+    allowed = tmp_path / "src" / "maxim" / "hardware" / "reachy" / "controller.py"
+    allowed.parent.mkdir(parents=True)
+    allowed.write_text("def d(self):\n    self._mini.goto_target(head=None)\n")  # an allow-listed file
     findings = lint.scan(tmp_path)
-    kinds = sorted(f.kind for f in findings)
-    assert kinds.count("clamp") == 3
-    assert kinds.count("raw_sdk") == 3
+    lines = {
+        kind: sorted(f.line for f in findings if f.kind == kind and f.path.endswith(name))
+        for kind, name in (("clamp", "planted.py"), ("raw_sdk", "planted_raw.py"))
+    }
+    assert lines["clamp"] == [2, 3, 4, 5, 7, 8, 9, 13], findings
+    assert lines["raw_sdk"] == [2, 3, 4, 5, 6, 7, 8, 9], findings
+    assert not [f for f in findings if f.path.endswith("hardware/reachy/controller.py")]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -544,7 +561,6 @@ def test_motion_safety_lint_catches_planted_violations(tmp_path):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 10: sync writes NaN into the mirror")
 @pytest.mark.parametrize("body", [NAN, INF])
 def test_sync_keeps_the_mirror_on_a_non_finite_readback(body):
     from maxim.embodied_runtime.movement import SyncResult
@@ -560,7 +576,6 @@ def test_sync_keeps_the_mirror_on_a_non_finite_readback(body):
     assert (selfy.yaw, selfy.body_yaw) == (7.0, 3.0)
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 10: a refusal counts as a connection failure")
 def test_motor_worker_handles_a_refusal_without_a_connection_failure(caplog):
     import queue
 
@@ -594,7 +609,6 @@ def test_motor_worker_handles_a_refusal_without_a_connection_failure(caplog):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 13: TrackTarget substitutes 0 -> 0.3")
 def test_track_target_refuses_an_explicit_zero_duration():
     from maxim.tools.reachy import TrackTargetTool
 
@@ -603,7 +617,6 @@ def test_track_target_refuses_an_explicit_zero_duration():
     assert result.success is False and "duration" in (result.error or "").lower()
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 13: a NaN centred pose seeds the mirror")
 def test_a_nan_centred_pose_never_seeds_the_mirror():
     from maxim.embodied_runtime.selfy import centered_pose_from
 
@@ -635,7 +648,6 @@ def _inf_translation() -> np.ndarray:
     return m
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 14: no present-pose check")
 @pytest.mark.parametrize("head", [_nan_head(), _inf_translation()])
 def test_a_non_finite_present_pose_refuses_every_motion_path(head):
     from maxim.hardware.controller import MotionTarget, PixelTarget
@@ -663,9 +675,8 @@ def test_a_non_finite_present_pose_refuses_every_motion_path(head):
     assert len(mini.motion_calls()) == 1
 
 
-@pytest.mark.xfail(strict=True, reason="#1496 red gate 14: present-pose helper missing")
 def test_a_failed_pose_read_counts_as_missing_not_refused():
-    from maxim.hardware.controller import require_present_pose_finite
+    from maxim.hardware.reachy.controller import require_present_pose_finite
     from maxim.motion.movement import move_head
 
     mini = _Mini()
@@ -704,3 +715,81 @@ def test_the_ws_transport_drops_non_finite_poses(monkeypatch):
     joints = protocol.JointPositionsMsg(**joint_kwargs)
     with pytest.raises(ValidationError):
         protocol.JointPositionsMsg.model_validate_json(joints.model_dump_json())
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Gate 12: the default network floors its derived durations and handles a refusal by type
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_default_network_floors_durations_and_handles_a_refusal_by_type():
+    from maxim.default_network.messages import ActionProposal
+    from maxim.default_network.network import DefaultNetwork
+
+    MotionRefused = _refused()
+    durations: list[float] = []
+
+    class _Maxim:
+        yaw = 0.0
+
+        def look_at_image(self, u, v, *, duration):
+            durations.append(duration)
+
+    dn = DefaultNetwork.__new__(DefaultNetwork)
+    dn._maxim = _Maxim()
+    look = ActionProposal(behavior_name="b", action_type="look_at", target=(320.0, 240.0), priority=1.0, confidence=1.0)
+    assert dn._dispatch_action_to_motor(look, 0.05) == (True, False)
+    assert durations == [0.1]
+
+    class _Refusing(_Maxim):
+        def look_at_image(self, u, v, *, duration):
+            raise MotionRefused("non_finite", "pink ik target")  # message contains "ik"; type must win
+
+    dn._maxim = _Refusing()
+    assert dn._dispatch_action_to_motor(look, 0.5) == (False, False)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Review folds: numeric strings still move; a rejected turn is reported, not a success
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_move_tool_converts_numeric_strings_and_refuses_nan():
+    from maxim.tools.reachy import MoveTool
+
+    body = _body(mini=_Mini())
+    assert MoveTool(body).execute(yaw="30", duration="0.5").success is True
+    assert body.yaw == 30.0 and len(body.enqueued) == 1
+    refused = MoveTool(body).execute(yaw="nan")
+    assert refused.success is False and len(body.enqueued) == 1
+
+
+def test_a_rejected_turn_is_an_error_not_a_success(no_sleep):
+    robot = _RecordingRobot(results=[False])
+    result = _command_tool(_body(mini=_Mini(), robot=robot)).execute(command="turn_around", params={"angle": 45})
+    assert result.success is False and "rejected" in (result.error or "")
+    ok_robot = _RecordingRobot()
+    assert (
+        _command_tool(_body(mini=_Mini(), robot=ok_robot)).execute(command="turn_around", params={"angle": 45}).success
+    )
+
+
+def test_motion_refused_is_a_picklable_hardware_value_error():
+    import copy
+    import pickle
+
+    from maxim.exceptions import HardwareError, MotionRefused
+
+    err = MotionRefused("duration", "duration 0 s is outside [0.1, 10.0] s")
+    assert isinstance(err, HardwareError) and isinstance(err, ValueError)
+    for clone in (pickle.loads(pickle.dumps(err)), copy.copy(err)):
+        assert (clone.kind, clone.reason, str(clone)) == (err.kind, err.reason, str(err))
+
+
+def test_every_method_alias_has_an_sdk_spelling():
+    from maxim.hardware.controller import _METHOD_ALIASES
+    from maxim.hardware.reachy.controller import _SDK_METHODS, sdk_method
+
+    assert set(_METHOD_ALIASES.values()) == set(_SDK_METHODS)
+    with pytest.raises(_refused()):
+        sdk_method("cartoon")

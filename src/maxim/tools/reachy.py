@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from maxim.exceptions import MotionRefused
+from maxim.hardware.controller import clamp_finite, floor_duration, require_duration, require_finite
 from maxim.inference.segment_vision import passive_observation
 from maxim.tools.base import Tool, ToolResult
 from maxim.utils.logging import warn
@@ -13,6 +15,31 @@ from maxim.utils.structured_logging import log_agentic
 
 if TYPE_CHECKING:
     from maxim.hardware import RobotController
+
+
+def _motion_number(params: dict[str, Any], key: str) -> float | None:
+    """A numeric motion parameter from the model: None when absent, else a finite float (#1496).
+
+    Models send numeric strings ("30"); ``float()`` converts them, and the
+    finite check then refuses "nan" and "inf". Garbage raises ``MotionRefused``
+    rather than falling back to a default motion.
+    """
+    value = params.get(key)
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise MotionRefused("invalid", f"{key} must be a number, got {value!r}")
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError) as e:
+        raise MotionRefused("invalid", f"{key} is not a number: {value!r}") from e
+    return require_finite(key, number)
+
+
+def _motion_duration(params: dict[str, Any], key: str, default: float) -> float:
+    """Absent or None takes the tool default; a present duration must lie in [0.1, 10] s (#1496)."""
+    value = _motion_number(params, key)
+    return floor_duration(default) if value is None else require_duration(value)
 
 
 def _get_robot_from_registry(
@@ -193,6 +220,8 @@ class FocusInterestsTool(Tool):
                                 "movement_queued",
                                 {"target_u": target_u, "target_v": target_v},
                             )
+                        except MotionRefused:
+                            raise
                         except Exception as e:
                             _logger.warning("focus_interests: failed to call look_at_image: %s", e)
                     else:
@@ -285,7 +314,10 @@ class TrackTargetTool(Tool):
 
         target_class = kwargs.get("target_class")
         deadzone_px = int(kwargs.get("deadzone_px", 40) or 40)
-        duration_s = float(kwargs.get("duration_s", 0.3) or 0.3)
+        try:
+            duration_s = _motion_duration(kwargs, "duration_s", 0.3)  # a present 0 is refused, not swapped (#1496)
+        except MotionRefused as e:
+            return ToolResult(success=False, error=str(e))
         prefer_people = bool(kwargs.get("prefer_people", True))
 
         # Resolve a target from the active capture manager (or stored fallback)
@@ -732,13 +764,15 @@ class MoveTool(Tool):
         target_x = kwargs.get("target_x")
         target_y = kwargs.get("target_y")
 
-        x = kwargs.get("x")
-        y = kwargs.get("y")
-        z = kwargs.get("z")
-        roll = kwargs.get("roll")
-        pitch = kwargs.get("pitch")
-        yaw = kwargs.get("yaw")
-        duration = kwargs.get("duration", 1.0)
+        # #1496: every number is converted and checked before any motion. Models
+        # send numeric strings ("30"); a present duration is explicit and must lie
+        # in [0.1, 10] s, an absent one takes the 1.0 s default.
+        try:
+            x, y, z, roll, pitch, yaw = (_motion_number(kwargs, k) for k in ("x", "y", "z", "roll", "pitch", "yaw"))
+            duration = _motion_duration(kwargs, "duration", 1.0)
+            target_x, target_y = _motion_number(kwargs, "target_x"), _motion_number(kwargs, "target_y")
+        except MotionRefused as e:
+            return ToolResult(success=False, error=str(e))
 
         # Gaze mapping (2026-08-03 mirror-turn fix). target_x/target_y are the
         # LLM-facing GAZE parameters and must TURN the head — the pre-fix code
@@ -753,10 +787,10 @@ class MoveTool(Tool):
         _MAX_GAZE_YAW_DEG = 45.0
         _MAX_GAZE_PITCH_DEG = 30.0
         if target_x is not None and yaw is None:
-            tx = max(-1.0, min(1.0, float(target_x)))
+            tx = clamp_finite("target_x", target_x, -1.0, 1.0)
             yaw = -tx * _MAX_GAZE_YAW_DEG  # +yaw = LEFT, so look-right (+tx) is negative yaw
         if target_y is not None and pitch is None:
-            ty = max(-1.0, min(1.0, float(target_y)))
+            ty = clamp_finite("target_y", target_y, -1.0, 1.0)
             pitch = ty * _MAX_GAZE_PITCH_DEG  # +pitch = DOWN, matching -1=up/+1=down
 
         try:
@@ -792,7 +826,7 @@ class MoveTool(Tool):
                     head_roll=math.radians(roll) if roll is not None else None,
                     head_pitch=math.radians(pitch) if pitch is not None else None,
                     head_yaw=math.radians(yaw) if yaw is not None else None,
-                    duration=float(duration) if duration else 1.0,
+                    duration=duration,
                 )
 
                 success = robot.goto_target(target)
@@ -981,39 +1015,13 @@ class FocusOnSoundTool(Tool):
                 pass
         return cap
 
-    def execute(self, **kwargs: Any) -> ToolResult:
-        maxim = self._maxim
-        if maxim is None:
-            return ToolResult(success=False, error="No Maxim context available.")
+    def _aim(self, maxim: Any, azimuth: float, capture_yaw: Any, capture_body: Any) -> tuple[float, float, float, bool]:
+        """Body-relative head yaw (degrees) that faces the sound: ``(az, cur_yaw, target_yaw, clamped)``.
 
-        feed = getattr(maxim, "_doa_feed", None)
-        latest = getattr(feed, "latest", None) if feed is not None else None
-        if latest is None:
-            return ToolResult(
-                success=False,
-                error="No sound has been heard yet (no DoA reading available — is the audio feed running?)",
-            )
-
-        # (azimuth, monotonic ts, capture-time head yaw) — the third element
-        # is the FRAME the head-relative azimuth was measured in. Tolerate
-        # the pre-fold 2-tuple shape (capture frame unknown → fall back to
-        # the current yaw, accepting the pre-fold behavior).
-        azimuth, ts = float(latest[0]), float(latest[1])
-        capture_yaw = latest[2] if len(latest) > 2 else None
-        capture_body = latest[3] if len(latest) > 3 else None
-
-        age_s = max(0.0, time.monotonic() - ts)
-        if age_s > self._MAX_READING_AGE_S:
-            return ToolResult(
-                success=False,
-                error=(
-                    f"The last sound faded {age_s:.0f}s ago — nothing current to face. "
-                    "(Stale readings are not re-used: during silence the direction cache "
-                    "holds the final value indefinitely.)"
-                ),
-            )
-
-        az = max(-1.0, min(1.0, azimuth))
+        Raises ``MotionRefused`` for a non-finite azimuth or target (#1496); the
+        envelope clamp is where a NaN from the body-frame correction is caught.
+        """
+        az = clamp_finite("azimuth", azimuth, -1.0, 1.0)
         cur_yaw = float(getattr(maxim, "yaw", 0.0) or 0.0)
         base_yaw = float(capture_yaw) if capture_yaw is not None else cur_yaw
 
@@ -1050,12 +1058,47 @@ class FocusOnSoundTool(Tool):
                     "focus_on_sound: body-frame correction failed", exc_info=True
                 )
         clamped = abs(target_yaw) > envelope
-        target_yaw = max(-envelope, min(envelope, target_yaw))
+        target_yaw = clamp_finite("target yaw", target_yaw, -envelope, envelope)
 
-        duration = kwargs.get("duration")
-        duration_s = float(duration) if duration is not None else 1.0
-        if duration_s <= 0:
-            duration_s = 1.0
+        return az, cur_yaw, target_yaw, clamped
+
+    def execute(self, **kwargs: Any) -> ToolResult:
+        maxim = self._maxim
+        if maxim is None:
+            return ToolResult(success=False, error="No Maxim context available.")
+
+        feed = getattr(maxim, "_doa_feed", None)
+        latest = getattr(feed, "latest", None) if feed is not None else None
+        if latest is None:
+            return ToolResult(
+                success=False,
+                error="No sound has been heard yet (no DoA reading available — is the audio feed running?)",
+            )
+
+        # (azimuth, monotonic ts, capture-time head yaw) — the third element
+        # is the FRAME the head-relative azimuth was measured in. Tolerate
+        # the pre-fold 2-tuple shape (capture frame unknown → fall back to
+        # the current yaw, accepting the pre-fold behavior).
+        azimuth, ts = float(latest[0]), float(latest[1])
+        capture_yaw = latest[2] if len(latest) > 2 else None
+        capture_body = latest[3] if len(latest) > 3 else None
+
+        age_s = max(0.0, time.monotonic() - ts)
+        if age_s > self._MAX_READING_AGE_S:
+            return ToolResult(
+                success=False,
+                error=(
+                    f"The last sound faded {age_s:.0f}s ago — nothing current to face. "
+                    "(Stale readings are not re-used: during silence the direction cache "
+                    "holds the final value indefinitely.)"
+                ),
+            )
+
+        try:
+            az, cur_yaw, target_yaw, clamped = self._aim(maxim, azimuth, capture_yaw, capture_body)
+            duration_s = _motion_duration(kwargs, "duration", 1.0)
+        except MotionRefused as e:
+            return ToolResult(success=False, error=str(e))
 
         # Dispatch via the CONTROLLER's goto_target — the hardware-verified
         # one-shot path (pre-merge review fold): minjerk-interpolated over
@@ -1307,9 +1350,12 @@ class MaximCommandTool(Tool):
                         "interests": list(getattr(maxim, "interests", []) or []),
                     },
                 )
+            # Numeric parameters are converted and checked OUTSIDE the per-command
+            # handlers (#1496): garbage or NaN is a refusal returned to the model,
+            # never a default motion (the old angle parse turned "abc" into 90 deg).
             if command == "goto_pose":
                 name = params.get("name", "centered")
-                duration = params.get("duration")
+                duration = _motion_number(params, "duration")
                 try:
                     maxim.goto_pose(str(name), duration=duration)
                 except Exception as e:
@@ -1321,7 +1367,7 @@ class MaximCommandTool(Tool):
                     v = int(params.get("v"))
                 except Exception:
                     return ToolResult(success=False, error="Missing u/v for look_at_image.")
-                duration = params.get("duration")
+                duration = _motion_number(params, "duration")
                 perform_movement = params.get("perform_movement", True)
                 try:
                     maxim.look_at_image(u, v, duration=duration, perform_movement=bool(perform_movement))
@@ -1329,27 +1375,21 @@ class MaximCommandTool(Tool):
                     return ToolResult(success=False, error=str(e))
                 return ToolResult(success=True, output={"command": command, "u": u, "v": v})
             if command == "move":
-                duration = params.get("duration")
+                axes = {axis: _motion_number(params, axis) for axis in ("x", "y", "z", "roll", "pitch", "yaw")}
+                duration = _motion_number(params, "duration")
                 try:
-                    maxim.move(
-                        x=params.get("x"),
-                        y=params.get("y"),
-                        z=params.get("z"),
-                        roll=params.get("roll"),
-                        pitch=params.get("pitch"),
-                        yaw=params.get("yaw"),
-                        duration=duration,
-                    )
+                    maxim.move(**axes, duration=duration)
                 except Exception as e:
                     return ToolResult(success=False, error=str(e))
                 return ToolResult(success=True, output={"command": command})
             if command == "move_antenna":
+                sides = {key: _motion_number(params, key) for key in ("right", "left", "angle", "duration")}
                 try:
                     maxim.move_antenna(
-                        right=params.get("right"),
-                        left=params.get("left"),
-                        angle=params.get("angle"),
-                        duration=params.get("duration"),
+                        right=sides["right"],
+                        left=sides["left"],
+                        angle=sides["angle"],
+                        duration=sides["duration"],
                         method=params.get("method", "minjerk"),
                         degrees=bool(params.get("degrees", True)),
                         relative=bool(params.get("relative", False)),
@@ -1358,20 +1398,19 @@ class MaximCommandTool(Tool):
                     return ToolResult(success=False, error=str(e))
                 return ToolResult(success=True, output={"command": command})
             if command == "turn_around":
-                # Rotate the body when head is at yaw limits
-                try:
-                    angle = float(params.get("angle", 90.0))
-                except (TypeError, ValueError):
-                    angle = 90.0
-                try:
-                    duration = float(params.get("duration", 5.0))
-                except (TypeError, ValueError):
-                    duration = 5.0
+                # Rotate the body when head is at yaw limits. A missing angle or
+                # duration takes the default; a present one must be valid.
+                angle = _motion_number(params, "angle")
+                angle = 90.0 if angle is None else angle
+                duration = _motion_number(params, "duration")
+                duration = 5.0 if duration is None else duration
                 recenter_head = bool(params.get("recenter_head", True))
                 try:
-                    maxim.turn_around(angle, duration=duration, recenter_head=recenter_head)
+                    turned = maxim.turn_around(angle, duration=duration, recenter_head=recenter_head)
                 except Exception as e:
                     return ToolResult(success=False, error=str(e))
+                if turned is False:  # None (an implementation that reports nothing) keeps the old success
+                    return ToolResult(success=False, error="turn_around did not complete: the motion was rejected")
                 return ToolResult(
                     success=True,
                     output={
@@ -1448,8 +1487,11 @@ def clamp_to_vision_range(
     min_v = margin_v
     max_v = frame_height - margin_v
 
-    clamped_u = max(min_u, min(max_u, u))
-    clamped_v = max(min_v, min(max_v, v))
+    # clamp_finite, not max(min()): a NaN detection centre used to become the edge pixel (#1496).
+    clamped_u = clamp_finite("u", u, min_u, max_u)
+    clamped_v = clamp_finite("v", v, min_v, max_v)
+    if isinstance(u, int) and isinstance(v, int):
+        clamped_u, clamped_v = int(clamped_u), int(clamped_v)
 
     was_clamped = (clamped_u != u) or (clamped_v != v)
     return clamped_u, clamped_v, was_clamped
@@ -1667,7 +1709,10 @@ class NoveltyTrackTool(Tool):
         # Get parameters
         novelty_threshold = float(kwargs.get("novelty_threshold", 0.5))
         deadzone_px = int(kwargs.get("deadzone_px", 40))
-        duration_s = float(kwargs.get("duration_s", 0.3))
+        try:
+            duration_s = _motion_duration(kwargs, "duration_s", 0.3)
+        except MotionRefused as e:
+            return ToolResult(success=False, error=str(e))
         class_filter = kwargs.get("class_filter")
 
         # Get detections from CaptureManager or fallback
