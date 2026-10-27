@@ -55,6 +55,8 @@ substrate didn't already say.
 
 from __future__ import annotations
 
+from maxim._offline import TRUTHY_VALUES, truthy
+
 # Bias-band thresholds — pre-registered in release_0_9_1.md Stage 2.
 # Tests pin these exact boundaries; do not relax without a new plan.
 _BAND_STRONG_REWARDING = 0.5
@@ -105,27 +107,23 @@ CREDIT_SOURCE_GLOSSES: dict[str, tuple[str, str]] = {
 }
 
 # Truthy values that disable Wire-A's annotation at the agent-loop
-# producer site. Shared with the conftest scrub and the test suite
-# so a future env-var divergence here would be caught by tests AND
-# match the producer's actual parsing. Matches the spelling pattern
-# the rest of 0.9.1's opt-in env-var gates use (e.g.,
-# similarity/ec.py::_ec_trace_enabled inverts this with a falsy-set
-# for opt-in semantics).
-TRUTHY_DISABLE_VALUES: frozenset[str] = frozenset({"1", "true", "t", "yes", "y", "on"})
+# producer site. Since #1315 step 0b this IS the canonical MAXIM_* truthy
+# set, owned by the stdlib-only leaf ``maxim._offline`` ("1"/"true"/"yes"/
+# "on"); the name stays exported so existing importers keep working.
+TRUTHY_DISABLE_VALUES: frozenset[str] = TRUTHY_VALUES
 
 
 def annotation_disabled_via_env(raw: str | None) -> bool:
     """Return True when the env-var value matches a disable signal.
 
-    Centralized parser so the producer (``agent_loop.py``), the
-    conftest scrub, and the test suite all consult one truthy-set
-    definition. Case-insensitive; whitespace-tolerant. ``None`` /
-    empty / unrecognized values return False (annotation stays ON,
-    matching the 0.9.1 default).
+    Delegates to the one canonical parser, ``maxim._offline.truthy``
+    (#1315 §1A.1), so the producer (``agent_loop.py``), the conftest
+    scrub, the offline latch and the test suite all consult one
+    truthy-set definition. Case-insensitive; whitespace-tolerant.
+    ``None`` / empty / unrecognized values return False (annotation
+    stays ON, matching the 0.9.1 default).
     """
-    if not raw:
-        return False
-    return raw.strip().lower() in TRUTHY_DISABLE_VALUES
+    return truthy(raw)
 
 
 def bias_to_band(bias: float) -> str:

@@ -468,7 +468,7 @@ class TestEnvVarGateSemantics:
     def test_default_unset_is_enabled(self) -> None:
         assert "MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION" not in os.environ
 
-    @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on", "y", "t", "  true  "])
+    @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on", "  true  "])
     def test_truthy_values_disable(self, value: str) -> None:
         """The producer reads via the shared parser; these values must
         all return True (annotation disabled)."""
@@ -476,7 +476,7 @@ class TestEnvVarGateSemantics:
 
         assert annotation_disabled_via_env(value) is True
 
-    @pytest.mark.parametrize("value", ["", "0", "false", "no", "off", "  ", "garbage"])
+    @pytest.mark.parametrize("value", ["", "0", "false", "no", "off", "  ", "garbage", "y", "t"])
     def test_falsy_values_keep_enabled(self, value: str) -> None:
         from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env
 
@@ -497,7 +497,8 @@ class TestEnvVarGateSemantics:
             annotation_disabled_via_env,
         )
 
-        assert TRUTHY_DISABLE_VALUES == frozenset({"1", "true", "t", "yes", "y", "on"})
+        # Since #1315 step 0b: the canonical set owned by maxim._offline ("t"/"y" dropped).
+        assert TRUTHY_DISABLE_VALUES == frozenset({"1", "true", "yes", "on"})
         for value in TRUTHY_DISABLE_VALUES:
             assert annotation_disabled_via_env(value) is True
 
