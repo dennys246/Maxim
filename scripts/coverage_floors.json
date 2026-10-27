@@ -3,13 +3,13 @@
   "band": 1.0,
   "min_package_statements": 200,
   "overall": {
-    "percent": 70.1,
-    "missing": 28633
+    "percent": 71.1,
+    "missing": 27710
   },
   "packages": {
     "maxim/<root>": {
-      "percent": 59.3,
-      "missing": 1340
+      "percent": 61.6,
+      "missing": 1291
     },
     "maxim/agents": {
       "percent": 69.3,
