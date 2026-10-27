@@ -30,6 +30,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The offline latch, step 0b of the atonia gate** ([#1315](https://github.com/dennys246/Maxim/issues/1315) item 10,
+  `docs/plans/atonia_gate_approach_notes.md` §1A.1/§6). New stdlib-only leaf `maxim/_offline.py`: `engage(reason)`
+  is one-way and, on first use, adds an audit hook that refuses every outbound connect (loopback and `AF_UNIX`
+  included), every `sendto`/`sendmsg` to an explicit destination, DNS lookup, Python-level spawn and `os.fork`/
+  `os.forkpty` (so multiprocessing's `"fork"` and `"forkserver"` start methods do not work offline; only `"spawn"` does) with
+  `OfflineRefusal(RuntimeError)`, booking each in a refusal ledger; inbound `bind`/`listen` pass. Stated residuals:
+  connections opened before the latch, fd adoption with an explicit family (`socket.fromfd(fd, AF_INET, ...)`), and
+  native networking. Not yet safe for operators until item 10's call-site refusals land (e.g. `MAXIM_OFFLINE=1 maxim doctor` crashes). A truthy `MAXIM_OFFLINE` engages it at `import maxim` (so children
+  self-engage) and at any `is_offline()` call; no process that never engages carries the hook. `engage()` sets the
+  HF/YOLO offline variables and the already-imported library flags, and `utils/http.py` closes its pool, builds
+  strict proxy-free clients and refuses every request while engaged. Offline implies `MAXIM_INTERNET_LOWERED` on the
+  read side; `code_tree.git_out` and `get_version_info` spawn nothing offline, and a sim report's code stamp says
+  `"unknown: offline"`. **Behaviour change:** the canonical MAXIM_* truthy parser is now `maxim._offline.truthy`
+  ("1/true/yes/on"). `annotation_disabled_via_env`, `memory_hub.body_state_prompt_enabled`, NAc's
+  `MAXIM_NAC_REWARD_BIAS_DISABLED`, `MAXIM_AUTO_DOWNLOAD_MODELS`, `utils/plotting.py` and the Exp 44 harness's arm
+  label all delegate to it, so `t` and `y` no longer count as truthy for those toggles. Offline, the internet policy's
+  source is `"offline"` and its messages name `MAXIM_OFFLINE` (the `llm.offline` key is item 10's). Item 10's call-site refusals (HF, whisper, ultralytics, downloads, docker, the router)
+  and the `llm.offline` config key are not in this step.
 - **Breaking, to stable surfaces: `create.pool` needs an LLM router, and `create.router` raises instead of returning
   `None`** ([#1338](https://github.com/dennys246/Maxim/issues/1338); owner decisions 2026-10-26).
   - `create.pool(..., llm_router=...)` takes a new keyword and raises `ConfigurationError` without it: a pool with no
