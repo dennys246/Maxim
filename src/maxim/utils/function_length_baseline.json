@@ -16,7 +16,7 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1583
+      "lines": 1562
     },
     {
       "file": "src/maxim/cli_parser.py",
@@ -370,6 +370,7 @@
     "NAc.__init__ tightened 304 -> 303 on 2026-10-17 (NAc correctness A1) when the dead, never-read _last_decay_time stamp was deleted.",
     "_main_impl tightened 1627 -> 1625 and cli_parser.py::_build_parser 652 -> 620 on 2026-10-19 (#1337, rule T): --clear-cache moved to cli.py::_handle_clear_cache, paying for the --clear-memory call line, and the memory argument group (where --yes was added) moved verbatim to cli_parser.py::_add_memory_args.",
     "_main_impl tightened 1627 -> 1606 on 2026-10-19 (#1343): the agentic path's model download branch moved to cli.py::_ensure_agentic_model, which asks the consent gate instead of calling download_llm. Merged with #1337 the same day: 1604.",
-    "_main_impl tightened 1604 -> 1593 and start_simulation_mode 2889 -> 2869 on 2026-10-26 (#1468, #1454 interim; rule T): the robot run loop's finally teardown moved verbatim to cli.py::_end_robot_run, paying for the nonzero exit code on an exception; the interactive post-sim report view and new-goal prompt moved to orchestrator.py::_show_report_and_post_sim_prompt, carrying the removal of the false '(memory carries over)' text. The review round's exit-code table (owner 2026-10-26) moved the loop's error-to-code mapping to cli.py::_run_stopped_on: 1593 -> 1588."
+    "_main_impl tightened 1604 -> 1593 and start_simulation_mode 2889 -> 2869 on 2026-10-26 (#1468, #1454 interim; rule T): the robot run loop's finally teardown moved verbatim to cli.py::_end_robot_run, paying for the nonzero exit code on an exception; the interactive post-sim report view and new-goal prompt moved to orchestrator.py::_show_report_and_post_sim_prompt, carrying the removal of the false '(memory carries over)' text. The review round's exit-code table (owner 2026-10-26) moved the loop's error-to-code mapping to cli.py::_run_stopped_on: 1593 -> 1588.",
+    "_main_impl tightened 1588 -> 1562 on 2026-10-26 (#1485 / #1403, rule T): the role-detection block moved to cli.py::_detect_role_or_warn, which re-raises ConfigDirUnreadable instead of warning past an unreadable config dir. Merged with #1468/#1454's 1588 the same day: 1562."
   ]
 }

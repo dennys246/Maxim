@@ -59,6 +59,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An unreadable `~/.config/maxim` is one typed error, not a traceback** ([#1403](https://github.com/dennys246/Maxim/issues/1403)).
+  With the config dir at mode 000, every `maxim` command (even `--help`) died with a raw `PermissionError` traceback
+  from the `profiles.yml` probe at `models.language` import. On Python 3.14 the same state was silent: `Path.is_file`
+  returned False, so the operator's `config.json`, `profiles.yml`, `peer.yml`, `mesh.yml` and `hive.json` were read
+  as absent (a peer detected as solo; the Oasis registry read as empty; `resolve_setting` fell back to defaults, so
+  the console dropped the operator's `tools.deny`). Every read probe of those files on the startup and loader path
+  now goes through `utils/paths.py::config_file_present`, which raises `maxim.exceptions.ConfigDirUnreadable` (a
+  `ConfigurationError`) naming the directory that blocks access and, for a permission error, `chmod 700 <dir>`.
+  `cli.main` renders it as one line and exits 2 (other errors keep their traceback); role detection and
+  `resolve_setting` re-raise it instead of falling past it. The remaining writers and setup-wizard probes of the
+  same dir are follow-up work.
+
 - **`ensure_key` / `ensure_console_token` never overwrite a key file they cannot read**
   ([#1402](https://github.com/dennys246/Maxim/issues/1402)). They read through the lenient readers, which return None
   for a missing file and for an unusable one alike (mode 000, a directory, non-UTF-8, oversized), then wrote a new key
