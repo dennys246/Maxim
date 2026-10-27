@@ -50,6 +50,8 @@ from maxim.models.language.cloud_dispatch import (
     load_cost_config as _load_cost_config_fn,
 )
 
+_SYSTEM_PLAIN_TEXT = "You are a helpful assistant. Reply in plain text, concisely."
+
 
 def _inference_lock_timeout_s() -> float:
     """Ceiling on waiting for ``_inference_lock`` (bugs ledger D12).
@@ -1893,6 +1895,54 @@ Return JSON exactly like:
                 return None
 
         return {"tool_name": tool_name, "params": dict(params)}
+
+    def generate(
+        self,
+        prompt: str,
+        *,
+        system: str | None = None,
+        max_tokens: int = 256,
+        temperature: float | None = None,
+        request_context: dict[str, Any] | None = None,
+    ) -> str:
+        """Plain-text completion: the stripped text, or a typed error, never a stub (#1338).
+
+        Rides the same dispatch as :meth:`generate_json` (``_complete_text``: cost ceiling, inference lock, provider
+        fallback, accounting).
+
+        Args:
+            prompt: The user message.
+            system: The system prompt; a plain-text assistant prompt when omitted.
+            max_tokens: Maximum tokens to generate.
+            temperature: Sampling temperature; the router config's when omitted.
+            request_context: Metadata for audit logs (agent, request_id, lane).
+
+        Raises:
+            ModelInferenceError: the router is disabled, the dispatch raised, or it produced no text (every provider
+                failed, the session cost ceiling, a held inference lock). ``LeaderRefusal`` propagates as itself.
+        """
+        from maxim.exceptions import LeaderRefusal, ModelInferenceError
+
+        if not self.enabled():
+            raise ModelInferenceError("LLM router is disabled", model_name=self.model_name)
+        try:
+            text, _usage = self._complete_text(
+                system if system is not None else _SYSTEM_PLAIN_TEXT,
+                prompt,
+                temperature=float(self.cfg.temperature if temperature is None else temperature),
+                max_tokens=int(max_tokens),
+                request_context=request_context,
+            )
+        except LeaderRefusal:
+            raise
+        except Exception as e:
+            raise ModelInferenceError(f"LLM inference failed: {e}", model_name=self.model_name) from e
+        if not text or not text.strip():
+            raise ModelInferenceError(
+                "LLM returned no text (every provider failed, the session cost ceiling, or a held inference lock)",
+                model_name=self.model_name,
+            )
+        return text.strip()
 
     def generate_json(
         self,

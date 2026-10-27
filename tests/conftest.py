@@ -5,6 +5,12 @@ This module provides reusable fixtures for testing core components.
 
 from __future__ import annotations
 
+import os
+
+# Before ANY maxim import (#1315 §1A.1 "Tests"): a developer shell's MAXIM_OFFLINE must not latch the pytest process
+# through maxim/__init__'s self-engage. The autouse latch-reset fixture below would be too late for that.
+os.environ.pop("MAXIM_OFFLINE", None)
+
 from maxim.memory.encoding import EncodingSignals
 import atexit
 import functools

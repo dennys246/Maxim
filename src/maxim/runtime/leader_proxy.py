@@ -1117,7 +1117,8 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         upstream inference server (port 8100).
 
         Includes ``llm_ready`` field so peers can distinguish "proxy up" from
-        "LLM model loaded and ready to serve inference."
+        "LLM model loaded and ready to serve inference.", and ``server_llm``, server mode's startup verdict
+        (``{"ready": false, "reason": ...}`` when its LLM never became ready, #1338; ``None`` outside server mode).
         """
         llm_ready = self._probe_upstream_ready()
         self._send_json(
@@ -1129,6 +1130,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 "auth_enabled": self.auth is not None and self.auth.is_bearer,
                 "uptime_s": round(time.time() - self.start_time, 1),
                 "llm_ready": llm_ready,
+                "server_llm": server_llm_status(),
             },
         )
 
@@ -2645,6 +2647,26 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 
 
 _leader_proxy_server: HTTPServer | None = None
+
+# Server mode's LLM startup verdict (#1338), served on /v1/debug/ping as ``server_llm``: ``None`` until server mode
+# reports, else {"ready": bool, "reason": str, "at": epoch seconds}. ``llm_ready`` stays the live upstream probe.
+_server_llm_status: dict[str, Any] | None = None
+
+
+def leader_proxy_running() -> bool:
+    """True when this process runs the default-port LeaderProxy (the leader's remote recovery surface)."""
+    return _leader_proxy_server is not None
+
+
+def set_server_llm_status(*, ready: bool, reason: str) -> None:
+    """Record server mode's LLM startup verdict for ``/v1/debug/ping`` (#1338: not-ready is reported, not hidden)."""
+    global _server_llm_status
+    _server_llm_status = {"ready": bool(ready), "reason": str(reason), "at": round(time.time(), 1)}
+
+
+def server_llm_status() -> dict[str, Any] | None:
+    """A copy of server mode's LLM startup verdict, or ``None`` when server mode has not reported one."""
+    return dict(_server_llm_status) if _server_llm_status is not None else None
 
 
 def start_leader_proxy(

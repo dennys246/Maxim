@@ -918,6 +918,97 @@ def _early_leader_boot() -> int | None:
     return None
 
 
+def _start_server_llm(logger: logging.Logger) -> str | None:
+    """Server mode's LLM: ``None`` once it is ready, else why it is not (#1338: never "ready" when it is not).
+
+    A ``LeaderRefusal`` propagates: a security refusal is not "run without the LLM".
+    """
+    from maxim.exceptions import LeaderRefusal
+
+    try:
+        from maxim.runtime.lane_backends import build_primary_router
+
+        _srv_router, _srv_mgr = build_primary_router(logger=logger)
+        if _srv_router is None:
+            return "the LLM router did not start (check the model config)"
+        _srv_router.warmup()
+        if not _srv_router.wait_ready(timeout=180.0):
+            return "the LLM did not become ready within 180s"
+    except LeaderRefusal:
+        raise
+    except Exception as _srv_err:
+        logger.error("LLM server init failed: %s", _srv_err)
+        return f"LLM server init failed: {_srv_err}"
+    return None
+
+
+def _report_server_not_ready(logger: logging.Logger, reason: str) -> int | None:
+    """Say NOT READY loudly; ``None`` to stay up when a LeaderProxy runs (peers can still `peer llm` / `peer update`
+    it, and ``/v1/debug/ping`` reports ``server_llm.ready = false``), else exit code 1 (solo server mode)."""
+    from maxim.runtime import leader_proxy
+
+    logger.error("LLM server NOT READY: %s", reason)
+    print(f"  ✗ LLM server NOT READY: {reason}", file=sys.stderr)
+    if not leader_proxy.leader_proxy_running():
+        print("  ✗ No LeaderProxy runs in this process: exiting (1).", file=sys.stderr)
+        return 1
+    leader_proxy.set_server_llm_status(ready=False, reason=reason)
+    print(
+        "  ✗ Staying up, not ready, so peers can recover it (`maxim peer llm <model>`, `maxim peer update`); "
+        "/v1/debug/ping reports server_llm.ready=false.",
+        file=sys.stderr,
+    )
+    return None
+
+
+def _run_server_mode(logger: logging.Logger) -> int:
+    """``--mode server``: the LLM server + proxy, no agent loop, until Ctrl+C. An LLM that never becomes ready is
+    reported NOT READY: the process stays up behind a LeaderProxy, and exits 1 without one (#1338)."""
+    from maxim.exceptions import LeaderRefusal
+
+    print("Maxim — server mode")
+    try:
+        try:
+            _not_ready = _start_server_llm(logger)
+        except LeaderRefusal as _refusal:
+            # A server mode that kept going would leave the proxy forwarding to what it refused.
+            print(f"\n  ✗ Refusing to serve: {_refusal}\n", file=sys.stderr)
+            logger.error("server mode refused: %s", _refusal)
+            return 2
+        if _not_ready is not None:
+            _rc = _report_server_not_ready(logger, _not_ready)
+            if _rc is not None:
+                return _rc
+        else:
+            from maxim.runtime import leader_proxy
+
+            leader_proxy.set_server_llm_status(ready=True, reason="ready")
+            logger.info("LLM server ready — accepting peer inference")
+            print("  LLM server ready — accepting peer inference")
+
+        print("  Proxy running — accepting peer commands")
+        print("  Use --sim or --mode to start a session, or Ctrl+C to stop.\n")
+        try:
+            import threading
+
+            threading.Event().wait()
+        except KeyboardInterrupt:
+            print("\n  Shutting down.")
+    finally:
+        _stop_server_spawner(logger)
+    return 0
+
+
+def _stop_server_spawner(logger: logging.Logger) -> None:
+    """Stop the LLM server this process spawned; a failed stop is logged (an orphan may still hold its port)."""
+    try:
+        from maxim.runtime.lane_backends import stop_active_spawner
+
+        stop_active_spawner()
+    except Exception as e:
+        logger.warning("Could not stop the spawned LLM server (it may still hold its port): %s", e)
+
+
 def _report_scenario_validation(
     args: Any, sim_source: Any, sim_sink: Any, *, nac: Any, memory_hub: Any, executor: Any
 ) -> bool:
@@ -1231,8 +1322,6 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
     _sig.signal(_sig.SIGINT, _force_exit_handler)
 
     # ── Early leader proxy bootstrap (before _normalize_args; see _early_leader_boot) ──
-    from maxim.exceptions import LeaderRefusal
-
     _boot_rc = _early_leader_boot()
     if _boot_rc is not None:
         return _boot_rc
@@ -2425,45 +2514,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
             # ── Server mode: LLM server + proxy, no agent loop ──────────
             if mode == "server":
-                print("Maxim — server mode")
-                try:
-                    from maxim.runtime.lane_backends import build_primary_router
-
-                    _srv_router, _srv_mgr = build_primary_router(logger=logger)
-                    if _srv_router is not None:
-                        _srv_router.warmup()
-                        _srv_router.wait_ready(timeout=180.0)
-                        logger.info("LLM server ready — accepting peer inference")
-                        print("  LLM server ready — accepting peer inference")
-                    else:
-                        logger.warning("LLM server did not start")
-                        print("  WARNING: LLM server failed to start (check model config)")
-                except LeaderRefusal as _refusal:
-                    # A security refusal is not "run without the LLM": a server mode that
-                    # kept going would leave the proxy forwarding to what it refused.
-                    print(f"\n  ✗ Refusing to serve: {_refusal}\n", file=sys.stderr)
-                    logger.error("server mode refused: %s", _refusal)
-                    return 2
-                except Exception as _srv_err:
-                    logger.warning("LLM server init failed: %s", _srv_err)
-                    print(f"  WARNING: LLM server init failed: {_srv_err}")
-
-                print("  Proxy running — accepting peer commands")
-                print("  Use --sim or --mode to start a session, or Ctrl+C to stop.\n")
-                try:
-                    import threading
-
-                    threading.Event().wait()
-                except KeyboardInterrupt:
-                    print("\n  Shutting down.")
-                finally:
-                    try:
-                        from maxim.runtime.lane_backends import stop_active_spawner
-
-                        stop_active_spawner()
-                    except Exception:
-                        pass
-                return 0
+                return _run_server_mode(logger)
 
             from maxim.embodied_runtime.selfy import Maxim
 

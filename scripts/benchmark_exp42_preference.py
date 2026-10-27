@@ -387,16 +387,28 @@ def _mock_tools(arm: str, seed: int) -> list[str]:
     return seq
 
 
-# Same six-value truthy set as the runtime parsers
-# (prompts/cluster_bias_annotation.py::TRUTHY_DISABLE_VALUES, replicated in
-# integration/memory_hub.py::body_state_prompt_enabled). Replicated here
-# because this script runs standalone; tests/behavioral/test_exp42_pipeline.py
-# pins arm derivation so divergence fails loudly.
-_TRUTHY = frozenset({"1", "true", "t", "yes", "y", "on"})
+# The runtime's one truthy parser (maxim/_offline.py::truthy), loaded by path
+# from this script's own tree because it runs standalone; tests/behavioral/
+# test_exp42_pipeline.py pins harness-runtime agreement so divergence fails loudly.
+def _load_offline_leaf():
+    """``src/maxim/_offline.py`` from THIS tree, by path (stdlib-only, the ``_provenance._load_code_tree``
+    pattern): the arm label uses the same canonical parser, ``truthy`` ("1/true/yes/on"), as the toggles it
+    labels (``memory_hub.body_state_prompt_enabled``, ``acting_coach_config_from_env``), whatever ``maxim`` the
+    interpreter would import. Loading it engages nothing."""
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[1] / "src" / "maxim" / "_offline.py"
+    spec = importlib.util.spec_from_file_location("_maxim_offline_leaf", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_offline_leaf = _load_offline_leaf()
 
 
 def _env_truthy(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in _TRUTHY
+    return _offline_leaf.truthy(os.environ.get(name))
 
 
 _PROVENANCE: dict[str, Any] = {}

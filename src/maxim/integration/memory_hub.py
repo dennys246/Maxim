@@ -55,8 +55,8 @@ logger = logging.getLogger(__name__)
 def body_state_prompt_enabled() -> bool:
     """Exp 44 opt-in: should the executor's Embodiment be wired into the hub?
 
-    ``MAXIM_ENABLE_BODY_STATE_PROMPT`` (1/true/t/yes/y/on, case-insensitive,
-    whitespace-tolerant) routes ``instance.embodiment``
+    ``MAXIM_ENABLE_BODY_STATE_PROMPT`` (the canonical ``maxim._offline.truthy``:
+    1/true/yes/on, case-insensitive, whitespace-tolerant) routes ``instance.embodiment``
     into ``MemoryHub.embodiment`` at AgentFactory wiring time, which
     activates ``format_body_state_for_prompt`` → ``StructuredContext.
     body_state`` → the body_state prompt section + Acting Coach Layers 2+4.
@@ -69,13 +69,11 @@ def body_state_prompt_enabled() -> bool:
     """
     import os
 
-    # Same six-value truthy set as prompts/cluster_bias_annotation.py::
-    # TRUTHY_DISABLE_VALUES — replicated here (nac.py pattern) rather than
-    # imported so the integration layer doesn't take a prompts-layer import
-    # for one frozenset; test_body_state_wiring.py pins t/y so divergence
-    # from the canonical set fails loudly.
-    truthy = {"1", "true", "t", "yes", "y", "on"}
-    return os.environ.get("MAXIM_ENABLE_BODY_STATE_PROMPT", "").strip().lower() in truthy
+    # The one canonical parser (#1315 step 0b): ``maxim._offline`` is a top-level stdlib leaf, so the integration
+    # layer takes no prompts-layer import for it (the reason this used to be a replica).
+    from maxim._offline import truthy
+
+    return truthy(os.environ.get("MAXIM_ENABLE_BODY_STATE_PROMPT"))
 
 
 @dataclass

@@ -520,19 +520,20 @@ class TestEnvAblationGate:
     ``MAXIM_DISABLE_VARIANCE_ANNOTATION`` between tests.
     """
 
-    @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "Y", "on", "ON"])
+    @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "YES", "on", "ON"])
     def test_truthy_values_disable(self, value: str):
         assert annotation_disabled_via_env(value) is True
 
-    @pytest.mark.parametrize("value", ["", "0", "false", "no", "off", "  ", "anything", None])
+    @pytest.mark.parametrize("value", ["", "0", "false", "no", "off", "  ", "anything", None, "Y", "t"])
     def test_falsy_values_keep_enabled(self, value):
         assert annotation_disabled_via_env(value) is False
 
     def test_canonical_truthy_set_is_shared(self):
         # If Wire-A's TRUTHY set ever changes, Wire 1 inherits the change
         # via the import. Pin the current shape so a future delta is
-        # at least visible at test-collection time.
-        assert TRUTHY_DISABLE_VALUES == frozenset({"1", "true", "t", "yes", "y", "on"})
+        # at least visible at test-collection time. Since #1315 step 0b it is
+        # the canonical set owned by maxim._offline ("t"/"y" dropped).
+        assert TRUTHY_DISABLE_VALUES == frozenset({"1", "true", "yes", "on"})
 
 
 # ─────────────────────────────────────────────────────────────────────
