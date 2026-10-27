@@ -103,6 +103,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [#1499](https://github.com/dennys246/Maxim/issues/1499): the neck can sweep through about 180° in the middle of a
   move that combines a large body turn with a head turn.
 
+- **Benchmark verdicts no longer pass or fail without checking anything**
+  ([#1391](https://github.com/dennys246/Maxim/issues/1391), [#1392](https://github.com/dennys246/Maxim/issues/1392),
+  [#1394](https://github.com/dennys246/Maxim/issues/1394), [#1395](https://github.com/dennys246/Maxim/issues/1395)).
+  - **`pipeline_continued` passed on ANY action once its tag was emitted** (vacuous in `quick_check` and about ten
+    scenarios). It now requires an action whose timestamp is later than the tag's delivery time:
+    `ScenarioSource.tag_times` on the CLI path; a new `sent_at` on each campaign delivery record, read into
+    `ExperimentResult.delivered_tag_times`, on the benchmark path. A run that reported no delivery time fails it.
+  - **The CLI scenario path judged every bio expectation against an empty snapshot,** so they always failed. The CLI
+    path and the benchmark now validate through ONE seam, `simulation/validation.py::validate_finished_run`, which
+    takes the snapshot and tool stats from the live run when the caller does not carry them (D43). The CLI's
+    validate-and-report block moved out of `cli.py::_main_impl` into `_report_scenario_validation` (rule T). Not yet covered: the fixture campaigns' own checks and the CLI path's missing PainDetector (#1489).
+  - `pipeline_continued` no longer counts a synthetic record (the `_llm_unavailable` stall marker,
+    `_deliberation_noop`) as an action. `ExperimentResult.delivered_tags` is now derived from
+    `delivered_tag_times`, so the two cannot drift.
+  - **Six scenarios named `tool: RespondTool`** where `action_taken` matches the registered name `respond`, so those
+    expectations could never pass. They are fixed, and scenario loading now refuses an expectation `tool:` that is not
+    a registered tool name. A per-embodiment entity tool is allowed with `entity_tool: true` (owner decision
+    2026-10-26). The scenario generator's prompt now teaches the registered names, and it drops an expectation whose
+    tool would be refused instead of losing the whole scenario.
+  - **An unknown threshold operator (`pas:`) or an empty threshold counted as applied while checking nothing.**
+    Loading now refuses it, naming the file and the metric. The accepted operators and the comparisons the benchmark
+    applies are one table, `scenario_source.py::THRESHOLD_OPERATORS`.
+
 - **An unreadable `~/.config/maxim` is one typed error, not a traceback** ([#1403](https://github.com/dennys246/Maxim/issues/1403)).
   With the config dir at mode 000, every `maxim` command (even `--help`) died with a raw `PermissionError` traceback
   from the `profiles.yml` probe at `models.language` import. On Python 3.14 the same state was silent: `Path.is_file`
@@ -139,6 +162,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   called a `gateway.poll()` that does not exist (assigning `_gateway` would have swallowed an `AttributeError` every
   0.5 s), and `MaximAgent.wire_communication` stored a gateway nothing read; both are deleted, with its call sites in
   `agentic_runtime.py` and `cli.py`.
+
 - **A run that stops on an error exits non-zero, with one exit-code table** ([#1468](https://github.com/dennys246/Maxim/issues/1468);
   owner decisions 2026-10-26). `maxim`'s run loop (robot `--mode` runs and `--mode agentic`, scenario sims included)
   logged `❌ Maxim stopped` and returned 0, so a supervisor reading the exit code (systemd, maxim-pulse's app, CI,

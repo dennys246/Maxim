@@ -52,8 +52,14 @@ class ExperimentResult:
     tool_stats: dict[str, Any] = field(default_factory=dict)  # Executor.tool_usage_stats()
     subsystem_snapshot: dict[str, Any] = field(default_factory=dict)  # Observer.benchmark_snapshot()
     hippocampus: Any = None  # the AUT's hippocampus, for memory expectations
-    # scenario_tag of every campaign turn delivered without error; None when the run did not report delivery
-    delivered_tags: set[str] | None = None
+    # When each campaign turn's scenario_tag was delivered without error (its ``sent_at``); None when the run reported
+    # no delivery. The one record of delivery: ``delivered_tags`` below is derived from it, so the two cannot drift.
+    delivered_tag_times: dict[str, float] | None = None
+
+    @property
+    def delivered_tags(self) -> set[str] | None:
+        """The scenario tags delivered without error (the keys of ``delivered_tag_times``)."""
+        return set(self.delivered_tag_times) if self.delivered_tag_times is not None else None
 
     def memory_survived(self, keyword: str) -> bool:
         """Check if a specific memory survived the campaign."""
@@ -114,26 +120,26 @@ def load_campaign_turns(campaign_path: str) -> list[dict[str, Any]]:
     return turns
 
 
-def delivered_scenario_tags(turns: list[dict[str, Any]], campaign_analysis: dict[str, Any] | None) -> set[str] | None:
-    """The ``scenario_tag`` of every campaign turn delivered without error, from the delivery records
-    ``campaign_runner.run_precampaign_turns`` writes (``{"turn": <1-based index>, ...}``, ``"error"`` on a failure).
-    A turn that timed out waiting for the AUT's answer (``timed_out``) was still delivered: its percept was sent.
-
-    ``None`` when the run reported no delivery at all, so a caller cannot read "nothing delivered" from it.
-    """
+def delivered_scenario_tag_times(
+    turns: list[dict[str, Any]], campaign_analysis: dict[str, Any] | None
+) -> dict[str, float] | None:
+    """The ``sent_at`` of every campaign turn delivered without error, keyed by its ``scenario_tag`` (the first
+    delivery when a tag repeats), so ``pipeline_continued`` can require an action AFTER the tag (#1391). ``None`` when
+    the run reported no delivery at all; a delivered turn without ``sent_at`` (an older record) is left out, so its
+    tag's order stays unknown and fails closed."""
     records = (campaign_analysis or {}).get("turns")
     if not isinstance(records, list):
         return None
-    tags: set[str] = set()
+    times: dict[str, float] = {}
     for record in records:
         if not isinstance(record, dict) or "error" in record:
             continue
-        index = record.get("turn")
-        if isinstance(index, int) and 1 <= index <= len(turns):
+        index, sent_at = record.get("turn"), record.get("sent_at")
+        if isinstance(index, int) and 1 <= index <= len(turns) and isinstance(sent_at, (int, float)):
             tag = (turns[index - 1].get("metadata") or {}).get("scenario_tag")
             if tag:
-                tags.add(str(tag))
-    return tags
+                times.setdefault(str(tag), float(sent_at))
+    return times
 
 
 def run_campaign(
@@ -203,7 +209,7 @@ def run_campaign(
         actions=list(sim_result.actions),
         tool_stats=dict(sim_result.tool_stats),
         subsystem_snapshot=dict(sim_result.subsystem_snapshot),
-        delivered_tags=delivered_scenario_tags(turns, sim_result.campaign_analysis),
+        delivered_tag_times=delivered_scenario_tag_times(turns, sim_result.campaign_analysis),
     )
 
     # Try to get introspection data from the sim result
