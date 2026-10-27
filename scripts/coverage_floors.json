@@ -4,12 +4,12 @@
   "min_package_statements": 200,
   "overall": {
     "percent": 71.1,
-    "missing": 27710
+    "missing": 27677
   },
   "packages": {
     "maxim/<root>": {
-      "percent": 61.6,
-      "missing": 1291
+      "percent": 62.2,
+      "missing": 1270
     },
     "maxim/agents": {
       "percent": 69.3,
