@@ -396,7 +396,7 @@ def build_speech_output(
         engine.load()  # also sets the voice's real sample rate, which the local speaker needs
     except Exception as e:  # onnxruntime's load errors (InvalidProtobuf, ...) derive from Exception; re-raised typed
         raise SpeechOutputUnavailable(
-            f"the voice model {voice!r} could not be loaded ({e})",
+            f"the voice model {voice!r} could not be loaded ({type(e).__name__}: {e})",
             "Re-download it with `python -m maxim.models.download --tts`.",
         ) from e
     from maxim.utils.audio import tts_local_requested
@@ -418,7 +418,7 @@ def build_speech_output(
             speaker = local
             where = "local speakers"
         elif not prefer_local:
-            where = "local speakers (no robot SDK handle)"
+            where = "local speakers (no robot SDK handle, or a no_media backend)"
     log.info("TTS enabled with voice %s, speaking through %s", voice, where)
     return engine, speaker
 

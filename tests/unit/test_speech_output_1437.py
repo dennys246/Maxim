@@ -272,3 +272,20 @@ def test_a_no_media_robot_and_the_local_env_route_speech_locally(monkeypatch):
     monkeypatch.setenv("MAXIM_TTS_LOCAL", " on ")
     assert audio.tts_local_requested() is True
     assert audio.device_speech_plays_locally(local_backend) is True
+
+
+def test_a_no_media_robot_checks_local_speakers_at_start(monkeypatch):
+    """The wiring: MediaLoopMixin._build_speech_output asks device_speech_plays_locally, so a no_media robot
+    (which plays on this machine) refuses at start when no local speaker can play."""
+    from types import SimpleNamespace
+
+    import maxim.utils.audio as audio
+    from maxim.utils.response_output import SpeechOutputUnavailable
+
+    _patch_voice(monkeypatch)
+    monkeypatch.setattr(audio, "_check_local_audio", lambda: False)
+    runtime = _robot_runtime(tts_requested=True, tts_model=None)
+    runtime.mini = SimpleNamespace(media=SimpleNamespace(backend="no_media"))
+    monkeypatch.setattr(audio, "_backend_of", lambda media: audio._NO_MEDIA if media is runtime.mini.media else None)
+    with pytest.raises(SpeechOutputUnavailable):
+        runtime._build_speech_output()
