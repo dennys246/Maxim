@@ -68,6 +68,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Experiment harness follow-ups** ([#1038](https://github.com/dennys246/Maxim/issues/1038),
+  [#1024](https://github.com/dennys246/Maxim/issues/1024)).
+  - R3's report treats a second clean row for one (arm, seed) as INCOMPLETE and names it, as Exp 60/61/62 do. It used
+    to count both, so a campaign restarted without `--resume` could read COMPLETE.
+  - Exp 57's rows carry `ts` = the start of their unit (the cohort-rung), so the record's min `ts` is the run's
+    start, as Exp 49 stamps a trial's start. Before, `ts` was the time each row was written.
+  - Documented: `_provenance.append_refusal` refuses a run whose code tree is `unknown`, even for a fresh file, and
+    campaign ids must be letters, digits, `-` or `_` (`safe_campaign_id`).
+- **The O19 harness's signal windows** ([#1031](https://github.com/dennys246/Maxim/issues/1031)).
+  - Its SIGTERM/SIGHUP handlers are installed before the marker push.
+  - A signal during the push exits 2 with no attempt declared (the local tag is deleted) when the marker did not reach
+    origin, and exits 1 (aborted) when it did. Preflight and mock runs exit 2.
+  - Every exit path removes the attempt's temp home.
+  - A row write blocks those signals, so a phase's row is never lost or torn.
+  - `stop_sim` escalates to SIGKILL on a second signal.
+  - The model and memory-strategy probes run under the first phase's exact sim environment.
+- **`lint_claude_md_invariants.py` resolves every `path.py::symbol` citation** in CLAUDE.md and `docs/agents/` by AST
+  ([#1121](https://github.com/dennys246/Maxim/issues/1121)).
+  - A symbol must be a def or class, or a module- or class-body binding, in the cited file. A dotted `Class.method`
+    must be inside that class.
+  - An exact path is judged alone.
+  - A symbol moved by a refactor now fails CI's lint job. Five briefs' `report.py::…` citations now name
+    `simulation/report.py`.
+
 - **Fail loud on LLM readiness** ([#1338](https://github.com/dennys246/Maxim/issues/1338); advisor-mode item 6, O8).
   Silent paths made a process with no working LLM look alive (the two stable-surface breaks are under Changed):
   - **`LLMRouter.generate(prompt, *, system=None, max_tokens=256, temperature=None) -> str`** is new: plain-text
