@@ -58,6 +58,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`run_agentic_loop` is a thin wrapper over `_run_agentic_loop_body`**, the loop moved verbatim ([#1438](https://github.com/dennys246/Maxim/issues/1438);
+  `docs/plans/bounded_stop.md` §3 step 0), so the session-ownership work wraps the loop in one seam. The public
+  signature, the `loop_liveness_scope` decorator and the behaviour are unchanged. Swallowed-exception records from
+  the loop now name `_run_agentic_loop_body` as their site.
 - **The offline latch, step 0b of the atonia gate** ([#1315](https://github.com/dennys246/Maxim/issues/1315) item 10,
   `docs/plans/atonia_gate_approach_notes.md` §1A.1/§6). New stdlib-only leaf `maxim/_offline.py`: `engage(reason)`
   is one-way and, on first use, adds an audit hook that refuses every outbound connect (loopback and `AF_UNIX`
