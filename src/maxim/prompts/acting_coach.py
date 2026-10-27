@@ -58,8 +58,8 @@ def acting_coach_config_from_env() -> ActingCoachConfig:
     """Build the production ActingCoachConfig, honoring ablation env vars.
 
     ``MAXIM_DISABLE_COACH_BODY_LAYERS`` (parsed by the canonical
-    ``cluster_bias_annotation.annotation_disabled_via_env`` — 1/true/t/yes/
-    y/on, case-insensitive, whitespace-tolerant) turns Layers 2+4 off for
+    ``cluster_bias_annotation.annotation_disabled_via_env`` — 1/true/yes/on,
+    case-insensitive, whitespace-tolerant; ``maxim._offline.truthy``) turns Layers 2+4 off for
     the Exp 44 arm-B ablation (docs/plans/deferred/acting_coach_body_state_ablation.md).
     Producer sites (cli.py, simulation/orchestrator.py) call this instead of
     ``ActingCoachConfig()`` so the env read lives in ONE place;

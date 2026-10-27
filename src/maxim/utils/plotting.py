@@ -13,9 +13,9 @@ from maxim.utils.logging import warn
 
 
 def _is_truthy(value: str | None) -> bool:
-    if value is None:
-        return False
-    return value.strip().lower() in ("1", "true", "t", "yes", "y", "on")
+    from maxim._offline import truthy  # the one canonical parser (#1315 step 0b)
+
+    return truthy(value)
 
 
 def _matplotlib_preflight_command() -> list[str]:
