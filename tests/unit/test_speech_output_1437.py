@@ -37,7 +37,6 @@ def _patch_voice(monkeypatch, voice_cls=_Voice):
     monkeypatch.setattr("maxim.utils.response_output.require_optional_dependency", lambda *a, **k: None, raising=False)
 
 
-@pytest.mark.xfail(strict=True, reason="#1437: there is no single speech builder; --tts wires no speaker")
 def test_a_tts_request_on_the_cli_reaches_local_speakers(monkeypatch, tmp_path, caplog):
     import maxim.utils.audio as audio
     from maxim.utils.response_output import ResponseOutput, build_speech_output
@@ -55,7 +54,6 @@ def test_a_tts_request_on_the_cli_reaches_local_speakers(monkeypatch, tmp_path, 
     assert any("TTS enabled" in r.getMessage() for r in caplog.records)
 
 
-@pytest.mark.xfail(strict=True, reason="#1437: a request that cannot play is logged as enabled, not refused")
 def test_a_tts_request_that_cannot_play_refuses_at_start_and_never_says_enabled(monkeypatch, caplog):
     import maxim.utils.audio as audio
     from maxim.utils.response_output import SpeechOutputUnavailable, build_speech_output
@@ -73,7 +71,6 @@ def test_a_tts_request_that_cannot_play_refuses_at_start_and_never_says_enabled(
     assert not any("TTS enabled" in r.getMessage() for r in caplog.records)
 
 
-@pytest.mark.xfail(strict=True, reason="#1437: the two toggles are separate copies")
 def test_either_toggle_enables_speech_and_neither_means_silent(monkeypatch):
     from maxim.utils.response_output import build_speech_output
 
@@ -87,7 +84,6 @@ def test_either_toggle_enables_speech_and_neither_means_silent(monkeypatch):
     assert engine is not None and speaker is robot_sink, "on a robot the device sink speaks, not the laptop"
 
 
-@pytest.mark.xfail(strict=True, reason="#1437 (R1): LocalSpeaker.is_available raises when PortAudio is missing")
 def test_local_speaker_availability_is_truthful_without_portaudio(monkeypatch):
     import builtins
 
@@ -105,19 +101,58 @@ def test_local_speaker_availability_is_truthful_without_portaudio(monkeypatch):
     assert audio.LocalSpeaker().is_available is False
 
 
-@pytest.mark.xfail(strict=True, reason="#1437: cli.py passes speaker_fn=None and the robot never hears --tts")
 def test_both_entry_points_build_speech_through_the_one_builder():
     """SOURCE pins on the CLI and robot seams, the convention until Session A's slices extract cli._main_impl
     and _start_agentic_runtime (owner decision Q6, #963)."""
     import inspect
 
     from maxim import cli
-    from maxim.embodied_runtime import agentic_runtime, media_loop
+    from maxim.embodied_runtime import agentic_runtime
     from maxim.embodied_runtime.selfy import Maxim
 
     cli_source = inspect.getsource(cli)
-    assert "build_speech_output(" in cli_source and "speaker_fn=None" not in cli_source
+    assert "tts_engine, speaker_fn = build_speech_output(" in cli_source and "speaker_fn=None" not in cli_source
     assert 'tts=bool(getattr(args, "tts", False))' in cli_source  # the robot hears --tts
     assert "tts" in inspect.signature(Maxim.__init__).parameters
-    assert "build_speech_output(" in inspect.getsource(media_loop.MediaLoopMixin)
-    assert "TTSEngine(" not in inspect.getsource(agentic_runtime)
+    agentic_source = inspect.getsource(agentic_runtime)
+    assert "TTSEngine(" not in agentic_source
+    assert 'tts_engine, speaker_fn = getattr(self, "_speech_output", (None, None))' in agentic_source
+
+
+def _robot_runtime(**attrs):
+    from types import SimpleNamespace
+
+    from maxim.embodied_runtime.media_loop import MediaLoopMixin
+
+    class _Runtime(MediaLoopMixin):
+        def __init__(self):
+            self.mini = None  # no SDK handle: the player start is skipped, speech is still resolved
+            self.audio = False
+            self._capabilities = SimpleNamespace(has_audio=True)
+            self.log = logging.getLogger("t")
+            self.__dict__.update(attrs)
+
+    return _Runtime()
+
+
+def test_the_robot_runtime_builds_speech_on_its_own_sink_at_media_start(monkeypatch):
+    """The robot hears --tts: media start builds speech on the device sink (MediaLoopMixin.speak), before the
+    agentic runtime, which only reads the result."""
+    _patch_voice(monkeypatch)
+    monkeypatch.delenv("MAXIM_TTS_ENABLED", raising=False)
+    runtime = _robot_runtime(tts_requested=True, tts_model=None)
+    runtime._start_media_audio()
+    engine, speaker = runtime._speech_output
+    assert engine is not None and speaker == runtime.speak
+    quiet = _robot_runtime(tts_requested=False, tts_model=None)
+    quiet._start_media_audio()
+    assert quiet._speech_output == (None, None)
+
+
+def test_a_robot_tts_request_that_cannot_play_stops_the_media_start(monkeypatch):
+    """Raised from media start, outside the agentic runtime's warn_unless_refusal, so it is not downgraded."""
+    from maxim.utils.response_output import SpeechOutputUnavailable
+
+    _patch_voice(monkeypatch, _NoVoice)
+    with pytest.raises(SpeechOutputUnavailable):
+        _robot_runtime(tts_requested=True, tts_model="missing")._start_media_audio()

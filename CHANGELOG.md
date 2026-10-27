@@ -59,6 +59,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`maxim --tts` speaks, or refuses at start** ([#1437](https://github.com/dennys246/Maxim/issues/1437), found by
+  maxim-pulse's device review). The CLI built a voice for `--tts`, logged "TTS enabled", and wired no speaker, so it
+  never spoke; the robot runtime had its own copy keyed on `MAXIM_TTS_ENABLED`. Both now go through one builder,
+  `utils.response_output.build_speech_output`: `--tts` or `MAXIM_TTS_ENABLED` turns speech on for either path (the
+  robot now hears `--tts`/`--tts-model`); the CLI speaks through local speakers, a robot through its device sink.
+  A request that cannot play refuses at start with a typed `SpeechOutputUnavailable` naming the fix (download the
+  voice, or `pip install 'pymaxim[tts]'`), and "enabled" is logged only for a path that can play. On a robot, speech
+  is resolved before the agentic runtime starts, so a refusal is not downgraded to a warning. `LocalSpeaker`
+  reports availability truthfully (a missing PortAudio library or no output device is "unavailable", not a crash).
+  The `tts` extra now includes `sounddevice`.
 - **Inbound comms reach the robot at last** ([#1466](https://github.com/dennys246/Maxim/issues/1466), corrected):
   every comms HTTP endpoint (`/api/twilio/sms`, `/api/twilio/voice`, `/api/command`, `/api/status`, `/api/goals`) answered 422 since
   `comms/api.py` was written, because a postponed `request: Request` annotation could not be resolved, so no inbound

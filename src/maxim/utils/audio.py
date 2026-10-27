@@ -56,21 +56,31 @@ _local_audio_lock = threading.Lock()
 
 
 def _check_local_audio() -> bool:
-    """Check if local audio playback is available."""
+    """Whether local audio playback can actually play: sounddevice imports AND an output device exists.
+
+    Truthful for #1437 (R1): on Linux, ``import sounddevice`` raises ``OSError`` (not ``ImportError``)
+    when the PortAudio library is missing, which used to escape this check, and a machine with
+    sounddevice but no output device (a headless box) used to report available. Cached per process.
+    """
     global _local_audio_available
     if _local_audio_available is not None:
         return _local_audio_available
 
     try:
-        import sounddevice as sd  # noqa: F401
-
-        _local_audio_available = True
-        logger.debug("Local audio playback available (sounddevice)")
-    except ImportError:
+        import sounddevice as sd
+    except (ImportError, OSError) as e:  # OSError: the PortAudio system library is missing
         _local_audio_available = False
-        logger.debug("Local audio not available (install sounddevice: pip install sounddevice)")
-
-    return _local_audio_available
+        logger.debug("Local audio not available (sounddevice: %s)", e)
+        return False
+    try:
+        sd.query_devices(kind="output")
+    except Exception as e:  # sounddevice.PortAudioError: no default output device
+        _local_audio_available = False
+        logger.debug("Local audio not available (no output device: %s)", e)
+        return False
+    _local_audio_available = True
+    logger.debug("Local audio playback available (sounddevice)")
+    return True
 
 
 def play_audio_local(

@@ -2011,29 +2011,17 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                     reset_on_startup=bool(getattr(args, "reset", False)),
                 )
 
-                # Set up ResponseOutput for LLM responses
+                # Set up ResponseOutput for LLM responses; spoken replies through local speakers, or a refusal (#1437)
                 from pathlib import Path
-                from maxim.utils.response_output import ResponseOutput
+                from maxim.utils.response_output import ResponseOutput, build_speech_output
 
                 sandbox_path = Path(args.home_dir) / "sandbox"
-                tts_engine = None
-                speaker_fn = None
-
-                # Set up TTS if enabled
-                if getattr(args, "tts", False):
-                    try:
-                        from maxim.models.audio.tts import TTSEngine
-
-                        tts_model = str(getattr(args, "tts_model", "en_US-lessac-medium"))
-                        tts_engine = TTSEngine(model_name=tts_model)
-                        if tts_engine.is_available:
-                            logger.info("TTS enabled with model: %s", tts_model)
-                        else:
-                            logger.warning("TTS model not found, TTS will be disabled")
-                            tts_engine = None
-                    except Exception as e:
-                        logger.warning("Failed to initialize TTS: %s", e)
-                        tts_engine = None
+                tts_engine, speaker_fn = build_speech_output(
+                    requested=bool(getattr(args, "tts", False)),
+                    model_name=getattr(args, "tts_model", None),
+                    sink=None,
+                    log=logger,
+                )
 
                 response_output = ResponseOutput(
                     sandbox_path=sandbox_path,
@@ -2472,6 +2460,8 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 audio_len=float(getattr(args, "audio_len", 5.0) or 5.0),
                 interactive=bool(getattr(args, "interactive", True)),
                 operational_mode=getattr(args, "operational_mode", None),
+                tts=bool(getattr(args, "tts", False)),
+                tts_model=getattr(args, "tts_model", None),
             )
 
             if mode == "sleep":

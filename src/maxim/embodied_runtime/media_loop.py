@@ -463,6 +463,16 @@ class MediaLoopMixin:
             from maxim.utils.audio import start_device_player
 
             start_device_player(mini, log=self.log)
+        # Spoken responses (#1437): built or refused HERE, before the agentic runtime starts, because its
+        # start is wrapped in warn_unless_refusal, which would turn a refusal into a warning.
+        from maxim.utils.response_output import build_speech_output
+
+        self._speech_output = build_speech_output(
+            requested=bool(getattr(self, "tts_requested", False)),
+            model_name=getattr(self, "tts_model", None),
+            sink=self.speak,
+            log=self.log,
+        )
 
         audio_input_rate = None
         audio_output_rate = None
