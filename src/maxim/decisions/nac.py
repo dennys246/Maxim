@@ -273,20 +273,16 @@ def _require_reward_bias_agent_id(agent_id: str, *, op: str) -> None:
 # until the next NAc instance is built. Pairs with the autouse env-
 # scrub fixture in ``tests/conftest.py`` per the CLAUDE.md "Opt-in
 # env vars in hot startup paths need autouse scrubs" rule.
-_REWARD_BIAS_DISABLE_TRUTHY: frozenset[str] = frozenset({"1", "true", "t", "yes", "y", "on"})
-
-
 def _read_nac_reward_bias_disabled_env() -> bool:
     """Return True when ``MAXIM_NAC_REWARD_BIAS_DISABLED`` is truthy.
 
-    Mirrors the ``annotation_disabled_via_env`` parser in
-    ``prompts/cluster_bias_annotation.py``. Defined here rather than
-    imported because ``decisions/`` must not depend on ``prompts/``.
+    Parsed by the one canonical parser, ``maxim._offline.truthy`` (1/true/yes/on; #1315 step 0b). It is a
+    top-level stdlib leaf, so ``decisions/`` takes no dependency on ``prompts/`` (the reason this used to be a
+    replica of ``annotation_disabled_via_env``).
     """
-    raw = os.environ.get("MAXIM_NAC_REWARD_BIAS_DISABLED")
-    if not raw:
-        return False
-    return raw.strip().lower() in _REWARD_BIAS_DISABLE_TRUTHY
+    from maxim._offline import truthy
+
+    return truthy(os.environ.get("MAXIM_NAC_REWARD_BIAS_DISABLED"))
 
 
 def _emit_recommend_action_event(

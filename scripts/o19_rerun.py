@@ -142,6 +142,12 @@ def check_on_main(rows_file: Path) -> None:
         )
 
 
+def _probe_environment(exp: str, *, home: Path, run_id: str) -> dict[str, str]:
+    """The environment the FIRST phase's sim gets (``sim_environment``), so a probe resolves exactly what the sim will
+    (#1031): the harness keys, the phase keys, the run id and a log file under the attempt's home."""
+    return sim_environment(exp, 0, home=home, run_id=run_id, run_log=home / "probe.log")
+
+
 def run_probe(probe: str, env: dict[str, str], label: str) -> dict:
     """Run a preflight probe under ``env``; its last stdout line is a JSON object. Every way it can fail (a non-zero
     exit, a timeout, no output, not JSON, not an object) is a refusal, never a crash (E2)."""
@@ -161,7 +167,7 @@ def run_probe(probe: str, env: dict[str, str], label: str) -> dict:
     return got
 
 
-def check_model_config(home: Path, exp: str) -> dict:
+def check_model_config(home: Path, exp: str, *, run_id: str = "probe") -> dict:
     """The profile and context the sims will resolve, read by THIS repo's maxim under the sims' environment."""
     # The sim's own startup order (cli.main): role detection, then the C7a cloud auto-detect, which may switch a
     # solo run with a cloud key to a cloud profile through the environment — only then the setting resolution.
@@ -179,8 +185,7 @@ def check_model_config(home: Path, exp: str) -> dict:
         "print(json.dumps({'profile': p, 'profile_source': ps, 'n_ctx': n, 'n_ctx_source': ns,"
         " 'stamped_profile': getattr(cfg, 'profile', None), 'model_path': getattr(cfg, 'model_path', None)}))\n"
     ) % json.dumps(v.phase_argv(exp, 0, None))
-    env, _dropped = base_env()
-    env["MAXIM_DATA_HOME"] = str(home)
+    env = _probe_environment(exp, home=home, run_id=run_id)
     got = run_probe(probe, env, "model config")
     problems = []
     if got.get("profile") != v.MODEL_PROFILE or got.get("profile_source") != "config":
@@ -200,7 +205,7 @@ def check_model_config(home: Path, exp: str) -> dict:
     return got
 
 
-def check_memory_strategy(home: Path) -> str:
+def check_memory_strategy(home: Path, exp: str, *, run_id: str = "probe") -> str:
     """Exp 63's C4': the retention model the sims will run, read by THIS repo's maxim through its own resolver
     (``config_loader.resolve_memory_strategy``) in the attempt's fresh data home, under the sims' environment (every
     operator ``MAXIM_*`` key dropped). Run before the marker: a failed import or read is a refusal, not an attempt."""
@@ -209,8 +214,7 @@ def check_memory_strategy(home: Path) -> str:
         "from maxim.runtime.config_loader import resolve_memory_strategy\n"
         "print(json.dumps({'memory_strategy': resolve_memory_strategy()}))\n"
     )
-    env, _dropped = base_env()
-    env["MAXIM_DATA_HOME"] = str(home)
+    env = _probe_environment(exp, home=home, run_id=run_id)
     strategy = run_probe(probe, env, "memory strategy").get("memory_strategy")
     if strategy != v.EXP63_MEMORY_STRATEGY:
         raise Refused(f"memory.strategy resolves to {strategy!r}, not {v.EXP63_MEMORY_STRATEGY!r} (C4')")
@@ -234,6 +238,18 @@ def remote_markers(exp: str) -> dict[str, dict]:
         raise Refused(f"the start markers on origin are not well formed: {exc}") from exc
 
 
+def marker_ref(exp: str, k: int, run_id: str) -> str:
+    return f"{v.MARKER_NAMESPACE}/{exp}/attempt-{k}-{run_id}"
+
+
+def _marker_landed(ref: str) -> bool | None:
+    """Whether ``ref`` is on origin: True / False, or None when origin cannot be asked."""
+    out = subprocess.run(["git", "ls-remote", "--tags", "origin", ref], cwd=REPO_ROOT, capture_output=True, text=True)
+    if out.returncode != 0:
+        return None
+    return bool(out.stdout.strip())
+
+
 def push_marker(exp: str, k: int, run_id: str, *, dry_run: bool) -> str:
     """The start marker: an annotated (unsigned) tag on HEAD, pushed. ``dry_run`` pushes a scratch name with
     ``--dry-run`` (credentials and remote reachable; a dry run does not exercise the ruleset)."""
@@ -245,7 +261,7 @@ def push_marker(exp: str, k: int, run_id: str, *, dry_run: bool) -> str:
         if out.returncode != 0:
             raise Refused(f"dry-run marker push failed: {out.stderr.strip()[-400:]}")
         return ref
-    ref = f"{v.MARKER_NAMESPACE}/{exp}/attempt-{k}-{run_id}"
+    ref = marker_ref(exp, k, run_id)
     name = ref[len("refs/tags/") :]
     tag = subprocess.run(
         ["git", "-c", "tag.gpgSign=false", "tag", "-a", name, "-m", f"O19 Exp {exp} attempt {k} ({run_id})", "HEAD"],
@@ -484,7 +500,10 @@ def copy_session(
 
 
 def stop_sim(proc) -> None:
-    """SIGTERM first (the sim's handler stops the server it spawned), then SIGKILL after a grace period."""
+    """SIGTERM first (the sim's handler stops the server it spawned), then SIGKILL after a grace period.
+
+    Re-entrant (#1031): a second signal to the harness while it waits out the grace escalates to SIGKILL at once and
+    then propagates, so the sim never lingers to block the next attempt's port check."""
     if proc.poll() is not None:
         return
     proc.terminate()
@@ -493,6 +512,10 @@ def stop_sim(proc) -> None:
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.wait()
+    except HarnessSignal:
+        proc.kill()
+        proc.wait()
+        raise
 
 
 class HarnessSignal(BaseException):
@@ -791,11 +814,22 @@ def exp63_attempt_problems(exp: str, data_root: Path, sessions: list) -> list[st
 
 
 def append_row(rows_file: Path, row: dict) -> None:
+    """Append one row, with SIGTERM/SIGHUP blocked for the write (#1031): a signal mid-write used to lose the row or
+    leave a torn JSON line, which a later attempt's within-campaign check cannot read. A signal that arrives while
+    blocked is delivered right after, so the harness still unwinds through its normal path."""
+    import signal  # noqa: PLC0415
+
     rows_file.parent.mkdir(parents=True, exist_ok=True)
-    with rows_file.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(row, sort_keys=True) + "\n")
-        f.flush()
-        os.fsync(f.fileno())
+    blocked = {signal.SIGTERM, signal.SIGHUP}
+    previous = signal.pthread_sigmask(signal.SIG_BLOCK, blocked) if hasattr(signal, "pthread_sigmask") else None
+    try:
+        with rows_file.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(row, sort_keys=True) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+    finally:
+        if previous is not None:
+            signal.pthread_sigmask(signal.SIG_SETMASK, previous)
 
 
 def check_campaign(exp: str) -> None:
@@ -897,9 +931,9 @@ def prepare(args: argparse.Namespace, exp: str, mock: bool):
     stamps: dict = {}
     try:
         if v.experiment_of(exp) == "63":  # mock or not: the mock runs the same read in its own fresh home
-            stamps["memory_strategy"] = check_memory_strategy(home)
+            stamps["memory_strategy"] = check_memory_strategy(home, exp, run_id=run_id)
         if not mock:
-            gguf = check_model_config(home, exp)["model_path"]
+            gguf = check_model_config(home, exp, run_id=run_id)["model_path"]
             check_port_free(v.SIM_PORT)
             read_served = served_reader()
     except BaseException:  # any refusal or failure before the marker: the fresh home goes too (E2)
@@ -926,26 +960,52 @@ def run(args: argparse.Namespace) -> int:
         # Nothing is pushed yet: any failure here is a refusal (2), never "attempt aborted" (1).
         print(f"REFUSED: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
+    import signal  # noqa: PLC0415
+
+    # Installed BEFORE the marker push (#1031): a signal between the push returning and the attempt starting used to
+    # kill the harness outright (no cleanup, the temp home left behind). It now unwinds through the finally below.
+    saved = {sig: signal.signal(sig, _raise_signal) for sig in (signal.SIGTERM, signal.SIGHUP)}
     try:
-        if args.command == "preflight":
-            if not mock:
-                push_marker(exp, k, run_id, dry_run=True)
-            print(f"preflight ok: attempt {k} of Exp {exp} may start (nothing spawned, no marker pushed)")
-            return 0
-        marker = None if mock else push_marker(exp, k, run_id, dry_run=False)
-    except Refused as exc:
-        print(f"REFUSED: {exc}", file=sys.stderr)
-        shutil.rmtree(home, ignore_errors=True)
-        return 2
-    finally:
-        if args.command == "preflight":
-            shutil.rmtree(home, ignore_errors=True)
-    try:
+        try:
+            if args.command == "preflight":
+                if not mock:
+                    push_marker(exp, k, run_id, dry_run=True)
+                print(f"preflight ok: attempt {k} of Exp {exp} may start (nothing spawned, no marker pushed)")
+                return 0
+            marker = None if mock else push_marker(exp, k, run_id, dry_run=False)
+        except Refused as exc:
+            print(f"REFUSED: {exc}", file=sys.stderr)
+            return 2
+        except HarnessSignal as exc:
+            return _interrupted_at_the_marker(args, exp, k, run_id, mock, exc)
         return run_attempt(args, exp, mock, rows_file, provenance, run_id, k, home, gguf, read_served, marker, stamps)
     finally:
-        shutil.rmtree(home, ignore_errors=True)
+        for sig, handler in saved.items():
+            signal.signal(sig, handler)
+        shutil.rmtree(home, ignore_errors=True)  # every exit path, not only a refusal (#1031's temp-home leak)
         if lock is not None:
             lock.close()
+
+
+def _interrupted_at_the_marker(args, exp: str, k: int, run_id: str, mock: bool, exc: BaseException) -> int:
+    """A signal during the marker step: no phase ran. Exit 1 (an attempt, aborted) only when the marker reached origin;
+    otherwise exit 2, nothing declared, and the local tag is deleted so a later ``git push --tags`` cannot publish it."""
+    if args.command == "preflight" or mock:
+        print(f"INTERRUPTED ({exc}): no attempt was declared", file=sys.stderr)
+        return 2
+    ref = marker_ref(exp, k, run_id)
+    landed = _marker_landed(ref)
+    if landed is False:
+        subprocess.run(["git", "tag", "-d", ref[len("refs/tags/") :]], cwd=REPO_ROOT, capture_output=True)
+        print(f"INTERRUPTED ({exc}) before the marker reached origin: no attempt was declared", file=sys.stderr)
+        return 2
+    state = "is on origin" if landed else "may be on origin (origin could not be asked: check it)"
+    print(
+        f"INTERRUPTED ({exc}) before the first phase: the marker {ref} {state}, so attempt {k} reads as aborted "
+        "(on a post-#1079 campaign a rowless marker bars the campaign's later attempts)",
+        file=sys.stderr,
+    )
+    return 1
 
 
 def run_attempt(args, exp, mock, rows_file, provenance, run_id, k, home, gguf, read_served, marker, stamps=None) -> int:

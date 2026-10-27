@@ -1565,8 +1565,8 @@ def _introspection_view(block: Any) -> Any:
         view["hippocampus_stats"] = {k: view["hippocampus_stats"].get(k) for k in _HIPPO_PINNED}
     if isinstance(view.get("system_stats"), dict):
         view["system_stats"] = {k: v for k, v in view["system_stats"].items() if k != "hippocampus_memories"}
-    if isinstance(view.get("turns"), list):  # campaign_analysis: per-turn wall-clock duration
-        view["turns"] = [{k: v for k, v in t.items() if k != "duration_ms"} for t in view["turns"]]
+    if isinstance(view.get("turns"), list):  # campaign_analysis: per-turn wall-clock duration and send time (#1391)
+        view["turns"] = [{k: v for k, v in t.items() if k not in ("duration_ms", "sent_at")} for t in view["turns"]]
     return view
 
 

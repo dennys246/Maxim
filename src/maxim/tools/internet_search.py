@@ -647,7 +647,9 @@ class InternetAccessTool(Tool):
                 output="Internet access is already on; nothing changed.",
                 metadata={"enabled": True, "reason": reason, "scope": "session"},
             )
-        if current.source == "session-lowered":
+        if current.source == "offline":
+            remedy = "the process is offline (MAXIM_OFFLINE); only the operator can run without it"
+        elif current.source == "session-lowered":
             # disabled_reason() already says how the operator restores it; name what to leave out of the new session.
             remedy = "only the operator can start a new session without MAXIM_INTERNET_LOWERED"
         elif current.source == "policy-unreadable":

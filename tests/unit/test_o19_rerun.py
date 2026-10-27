@@ -1357,16 +1357,16 @@ def test_exp63_preflight_refuses_another_retention_model(monkeypatch, tmp_path) 
         monkeypatch.setattr(h.subprocess, "run", lambda *a, **k: sp.CompletedProcess(a, 0, stdout=out, stderr=""))
 
     probe("access_based")
-    assert h.check_memory_strategy(tmp_path) == "access_based"
+    assert h.check_memory_strategy(tmp_path, "10") == "access_based"
     probe("strength")
     with pytest.raises(h.Refused, match="C4'"):
-        h.check_memory_strategy(tmp_path)
+        h.check_memory_strategy(tmp_path, "10")
 
 
 def test_exp63_preflight_reads_the_fresh_home_without_operator_env(monkeypatch, tmp_path) -> None:
     """A real probe (this repo's maxim): MAXIM_MEMORY_STRATEGY in the operator's shell cannot reach it."""
     monkeypatch.setenv("MAXIM_MEMORY_STRATEGY", "strength")
-    assert h.check_memory_strategy(tmp_path) == "access_based"
+    assert h.check_memory_strategy(tmp_path, "10") == "access_based"
 
 
 def _exp63(mock_attempt, monkeypatch=None, variant: str = "pass") -> list[dict]:
@@ -1984,7 +1984,7 @@ def test_a_probe_that_fails_any_way_is_a_refusal(monkeypatch, tmp_path, behaviou
     """E2: both preflight probes (memory strategy and model config) refuse; nothing crashes past the marker."""
     _refused_probe(monkeypatch, **behaviour)
     with pytest.raises(h.Refused):
-        h.check_memory_strategy(tmp_path)
+        h.check_memory_strategy(tmp_path, "10")
     with pytest.raises(h.Refused):
         h.check_model_config(tmp_path, "10")
 
@@ -2003,7 +2003,7 @@ def test_a_refusal_before_the_marker_removes_the_fresh_home(tmp_path, monkeypatc
     monkeypatch.setattr(h._provenance, "evidence_out_path", lambda *a, **k: tmp_path / "rows.jsonl")
     for failure in (h.Refused("C4'"), RuntimeError("probe crashed")):
 
-        def boom(home, failure=failure):
+        def boom(home, exp, *, run_id, failure=failure):
             raise failure
 
         monkeypatch.setattr(h, "check_memory_strategy", boom)
@@ -2800,3 +2800,107 @@ def test_the_pre_marker_address_rule(value, private) -> None:
 def test_a_heartbeat_with_a_non_dict_data_is_not_an_error(data) -> None:
     line = f'{{"e": "heartbeat", "data": {data}}}'.encode()
     assert h.heartbeat_hostname_dotted(line) is False
+
+
+def test_stop_sim_escalates_on_a_second_signal_during_the_grace() -> None:
+    """#1031: a second signal while waiting out the grace no longer skips the SIGKILL."""
+    calls = []
+
+    class Proc:
+        def poll(self):
+            return None
+
+        def terminate(self):
+            calls.append("term")
+
+        def kill(self):
+            calls.append("kill")
+
+        def wait(self, timeout=None):
+            calls.append(f"wait({timeout})")
+            if timeout is not None:
+                raise h.HarnessSignal("signal 15")
+
+    with pytest.raises(h.HarnessSignal):
+        h.stop_sim(Proc())
+    assert calls == ["term", f"wait({h.TERM_GRACE_S})", "kill", "wait(None)"]
+
+
+def test_the_probes_run_under_the_first_phases_sim_environment(monkeypatch, tmp_path) -> None:
+    """#1031: the probes resolve under exactly the env the first phase's sim gets (harness keys, phase keys, run id)."""
+    seen = []
+
+    def _probe(probe, env, label):
+        seen.append(env)
+        return {"memory_strategy": v.EXP63_MEMORY_STRATEGY}
+
+    monkeypatch.setattr(h, "run_probe", _probe)
+    h.check_memory_strategy(tmp_path, "10", run_id="rid-1")
+    expected = h.sim_environment("10", 0, home=tmp_path, run_id="rid-1", run_log=tmp_path / "probe.log")
+    assert seen == [expected]
+
+
+def test_a_signal_during_the_marker_push_unwinds_cleanly(tmp_path, monkeypatch, capsys) -> None:
+    """#1031: the handlers are installed before the push, so a SIGTERM there exits 1 (an aborted attempt), restores the
+    caller's handlers and removes the attempt's fresh home, instead of killing the harness outright."""
+    import signal
+
+    home = tmp_path / "o19-home-x"
+    home.mkdir()
+    monkeypatch.setattr(
+        h,
+        "prepare",
+        lambda args, exp, mock: (tmp_path / "rows.jsonl", {}, "rid", 1, home, None, None, None, {}),
+    )
+
+    def _push(*a, **k):
+        # The handlers must already be installed WHEN the push runs (a real SIGTERM here used to kill the harness).
+        assert signal.getsignal(signal.SIGTERM) is h._raise_signal
+        assert signal.getsignal(signal.SIGHUP) is h._raise_signal
+        raise h.HarnessSignal("signal 15")
+
+    monkeypatch.setattr(h, "push_marker", _push)
+    monkeypatch.setattr(h, "_marker_landed", lambda ref: True)
+    before = signal.getsignal(signal.SIGTERM)
+    assert h.main(["run", "--exp", "63", "--write-experiment-results"]) == 1
+    assert "reads as aborted" in capsys.readouterr().err
+    assert not home.exists()
+    assert signal.getsignal(signal.SIGTERM) is before
+
+
+def test_an_interrupted_push_that_never_landed_declares_nothing(tmp_path, monkeypatch, capsys) -> None:
+    """#1031 (review fold): if the marker did not reach origin, no attempt was declared: exit 2, local tag deleted."""
+    home = tmp_path / "o19-home-y"
+    home.mkdir()
+    monkeypatch.setattr(
+        h, "prepare", lambda args, exp, mock: (tmp_path / "rows.jsonl", {}, "rid", 1, home, None, None, None, {})
+    )
+    monkeypatch.setattr(h, "push_marker", lambda *a, **k: (_ for _ in ()).throw(h.HarnessSignal("signal 15")))
+    monkeypatch.setattr(h, "_marker_landed", lambda ref: False)
+    deleted = []
+    real_run = h.subprocess.run
+    monkeypatch.setattr(
+        h.subprocess,
+        "run",
+        lambda cmd, **k: deleted.append(cmd) if cmd[:3] == ["git", "tag", "-d"] else real_run(cmd, **k),
+    )
+    assert h.main(["run", "--exp", "63", "--write-experiment-results"]) == 2
+    assert "no attempt was declared" in capsys.readouterr().err
+    assert deleted and deleted[0][3] == h.marker_ref("63", 1, "rid")[len("refs/tags/") :]
+
+
+def test_a_row_write_blocks_the_harness_signals(tmp_path, monkeypatch) -> None:
+    """#1031 bullet 2: SIGTERM/SIGHUP are blocked while a row is written, so a phase's row is never lost or torn."""
+    import signal
+
+    seen = []
+    real_fsync = h.os.fsync
+
+    def _fsync(fd):
+        seen.append(signal.pthread_sigmask(signal.SIG_BLOCK, []))
+        return real_fsync(fd)
+
+    monkeypatch.setattr(h.os, "fsync", _fsync)
+    h.append_row(tmp_path / "rows.jsonl", {"a": 1})
+    assert signal.SIGTERM in seen[0] and signal.SIGHUP in seen[0]
+    assert signal.SIGTERM not in signal.pthread_sigmask(signal.SIG_BLOCK, [])

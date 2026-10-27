@@ -50,6 +50,7 @@ from urllib.parse import urlsplit
 import httpcore
 import httpx
 
+from maxim import _offline
 from maxim.utils.net import AddressPolicy
 from maxim.utils.net import is_public_address as _is_public_address
 from maxim.utils.structured_logging import log_structured
@@ -493,7 +494,11 @@ class _EndpointRegistry:
                 backend = _policy_backend(ep.address_policy)
                 if backend is None:
                     self._clients[name] = httpx.Client(
-                        base_url=ep.base_url or "", timeout=ep.timeouts.to_httpx(), limits=limits
+                        base_url=ep.base_url or "",
+                        timeout=ep.timeouts.to_httpx(),
+                        limits=limits,
+                        trust_env=not _offline.is_offline(),  # offline: no env proxy (#1315 §6 layer 2)
+                        event_hooks=_OFFLINE_EVENT_HOOKS,
                     )
                 else:
                     # every DIRECT dial is address-checked; a proxy (unless strict) carries its URLs
@@ -541,8 +546,23 @@ def is_registered(name: str) -> bool:
 
 
 def close_all() -> None:
-    """Close every registered client. Called from process shutdown hooks."""
+    """Close every registered client. Called from process shutdown hooks, and by the offline latch when it goes
+    up (registered below through ``maxim._offline.on_engage``), so a keep-alive connection pooled before the latch
+    cannot keep sending: ``send``/``sendall`` raise no audit event (#1315 §1A.1, ``engage()`` step 3)."""
     _registry.close_all()
+
+
+_offline.on_engage(close_all)
+
+
+def _refuse_offline_request(request: httpx.Request) -> None:
+    """Every client's per-request check (an httpx ``request`` event hook, so every redirect hop is checked too):
+    under the offline latch a request is refused, typed and booked, before any connection (#1315 §6 layer 2)."""
+    if _offline.is_offline():
+        _offline.refuse("utils.http request", _loggable_url(str(request.url)))
+
+
+_OFFLINE_EVENT_HOOKS: dict[str, list[Callable[..., Any]]] = {"request": [_refuse_offline_request]}
 
 
 # ─────────────────────────── Public-only connections (#824) ─────────────
@@ -700,7 +720,9 @@ def _checked_client(
     strict: bool = False,
 ) -> httpx.Client:
     """An ``httpx.Client`` whose DIRECT connections are all address-checked by ``backend``; unless
-    ``strict``, httpx's own proxy mounts carry proxied URLs (see ``_proxy_mounts``)."""
+    ``strict``, httpx's own proxy mounts carry proxied URLs (see ``_proxy_mounts``). Under the offline latch every
+    client is built strict (#1315 §6 layer 2): online proxy behaviour (#921) is unchanged."""
+    strict = strict or _offline.is_offline()
     return httpx.Client(
         base_url=base_url,
         timeout=timeout,
@@ -708,6 +730,7 @@ def _checked_client(
         transport=_checked_transport(limits, backend),
         mounts=None if strict else _proxy_mounts(limits=limits),
         trust_env=False,  # the proxy configuration is the explicit mounts above, nothing implicit
+        event_hooks=_OFFLINE_EVENT_HOOKS,
     )
 
 
