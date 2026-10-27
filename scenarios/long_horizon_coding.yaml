@@ -84,7 +84,7 @@ percepts:
 expectations:
   # The agent should produce code actions across multiple phases
   - type: action_taken
-    tool: RespondTool
+    tool: respond
     description: "Agent responds to initial instruction"
 
   # Pipeline should not halt mid-scenario

@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -68,14 +69,55 @@ class ScenarioResult:
         return [f"{r.expectation.description or r.expectation.type}: {r.detail}" for r in self.results if not r.passed]
 
 
+def validate_finished_run(
+    expectations: list[Expectation],
+    *,
+    sink: RecordingSink,
+    tag_times: Mapping[str, float] | None,
+    hippocampus: Hippocampus | None = None,
+    nac: Any = None,
+    memory_hub: Any = None,
+    pain_detector: Any = None,
+    executor: Any = None,
+    subsystem_snapshot: dict[str, Any] | None = None,
+    tool_stats: dict[str, Any] | None = None,
+) -> list[ExpectationResult]:
+    """Validate a FINISHED run's expectations: the one seam every caller uses (D43; #1392).
+
+    ``tag_times`` maps each scenario tag to the time it reached the agent (``ScenarioSource.tag_times`` for the CLI
+    scenario path, ``ExperimentResult.delivered_tag_times`` for a campaign); ``None`` when the run reported none, and
+    then ``pipeline_continued`` fails closed (#1391). A run that already carries its ``subsystem_snapshot`` /
+    ``tool_stats`` (the benchmark's ``ExperimentResult``) passes them; otherwise they are taken here from the live run
+    (``Observer.benchmark_snapshot()`` over its hippocampus, NAc, hub and pain detector; ``executor.tool_usage_stats()``).
+    A subsystem the caller does not have stays absent and its checks fail closed: the CLI scenario path has no
+    PainDetector, so ``pain_signal_count`` cannot pass there.
+    """
+    if subsystem_snapshot is None and any(x is not None for x in (hippocampus, nac, memory_hub, pain_detector)):
+        from maxim.simulation.introspection import Observer
+
+        subsystem_snapshot = Observer(
+            hippocampus=hippocampus, nac=nac, memory_hub=memory_hub, pain_detector=pain_detector
+        ).benchmark_snapshot()
+    if tool_stats is None and executor is not None:
+        tool_stats = executor.tool_usage_stats()
+    return validate_expectations(
+        expectations,
+        sink,
+        hippocampus,
+        subsystem_snapshot=subsystem_snapshot,
+        tool_stats=tool_stats,
+        tag_times=tag_times,
+    )
+
+
 def validate_expectations(
     expectations: list[Expectation],
     sink: RecordingSink,
     hippocampus: Hippocampus | None = None,
-    emitted_tags: set[str] | None = None,
     *,
     subsystem_snapshot: dict[str, Any] | None = None,
     tool_stats: dict[str, Any] | None = None,
+    tag_times: Mapping[str, float] | None = None,
 ) -> list[ExpectationResult]:
     """Validate all expectations against recorded actions, memory, and bio-system state.
 
@@ -83,7 +125,8 @@ def validate_expectations(
         expectations: List of expectations to check.
         sink: RecordingSink with action history.
         hippocampus: Hippocampus instance for memory checks.
-        emitted_tags: Scenario tags that were emitted.
+        tag_times: When each scenario tag reached the agent (its keys are the delivered tags);
+            ``pipeline_continued`` needs it (#1391). Callers use :func:`validate_finished_run`, which supplies it.
         subsystem_snapshot: From Observer.benchmark_snapshot() — provides
             hippocampus_stats, nac_stats, pain_stats, concepts, etc.
         tool_stats: From Executor.tool_usage_stats() — provides hallucination_rate, etc.
@@ -100,7 +143,7 @@ def validate_expectations(
         elif exp.type == "memory_formed":
             results.append(_check_memory_formed(exp, hippocampus))
         elif exp.type == "pipeline_continued":
-            results.append(_check_pipeline_continued(exp, sink, emitted_tags))
+            results.append(_check_pipeline_continued(exp, sink, tag_times))
         elif exp.type == "action_count_range":
             results.append(_check_action_count_range(exp, sink))
         elif exp.type == "tool_success_rate":
@@ -192,28 +235,41 @@ def _check_memory_formed(exp: Expectation, hippocampus: Hippocampus | None) -> E
 def _check_pipeline_continued(
     exp: Expectation,
     sink: RecordingSink,
-    emitted_tags: set[str] | None,
+    tag_times: Mapping[str, float] | None,
 ) -> ExpectationResult:
-    """Check that the pipeline continued processing after a tagged percept."""
+    """Check that the pipeline acted AFTER a tagged percept reached the agent (#1391).
+
+    An action counts only if its timestamp (taken when the tool call returned) is later than the tag's FIRST delivery
+    time, so a run whose actions all precede the tag fails. "After" is not "in response to": a call that started
+    before the tag and returned after it counts. Synthetic records (``_``-prefixed: the ``_llm_unavailable`` stall
+    marker, ``_deliberation_noop``) are not actions, so a run whose LLM died after the tag does not continue. A run
+    that reported no delivery times cannot show the order and fails closed (weak evidence never gates).
+    """
     tag = exp.after_tag
     if not tag:
         return ExpectationResult(expectation=exp, passed=False, detail="No after_tag specified")
 
-    # ``None`` = the run did not report its tags; an empty set = it emitted none, so the tag was never emitted.
-    if emitted_tags is not None and tag not in emitted_tags:
+    # ``None`` = the run reported no delivery; a mapping without the tag = it never delivered that tag.
+    if tag_times is not None and tag not in tag_times:
         return ExpectationResult(
             expectation=exp,
             passed=False,
             detail=f"Tag {tag!r} was never emitted",
         )
+    if tag_times is None:
+        return ExpectationResult(
+            expectation=exp,
+            passed=False,
+            detail=f"No delivery time for tag {tag!r}: the run cannot show an action came after it (order unknown)",
+        )
 
-    # If there are any actions after the tagged percept was emitted,
-    # the pipeline continued
-    if sink.actions:
+    delivered_at = tag_times[tag]
+    after = [a for a in sink.actions if a.timestamp > delivered_at and not a.tool_name.startswith("_")]
+    if after:
         return ExpectationResult(
             expectation=exp,
             passed=True,
-            detail=f"Pipeline produced {len(sink.actions)} action(s) after tag {tag!r}",
+            detail=f"Pipeline produced {len(after)} action(s) after tag {tag!r}",
         )
 
     return ExpectationResult(

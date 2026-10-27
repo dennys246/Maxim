@@ -77,11 +77,6 @@ def require(cond: Any, msg: str) -> None:
 # ── O8 (#1338, item 6) ────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="#1338 O8 / item 6 (the atonia gate's release): create.pool() must wire an LLM or document-and-raise",
-)
 def test_o8_create_pool_wires_an_llm_or_raises() -> None:
     """``maxim.create.pool()`` with no LLM argument either raises or returns a pool that has an LLM router. Today it
     returns a pool whose NPC turns can only ever produce the persona stub."""
@@ -108,11 +103,6 @@ class _FailingRouter:
         raise RuntimeError("backend down")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="#1338 O8 / item 6 (the atonia gate's release): run_turn's LLM-failure fallback becomes a typed error",
-)
 def test_o8_run_turn_llm_failure_is_typed() -> None:
     """When the LLM call fails, ``AgentPool.run_turn`` raises or returns a ``TurnResult`` with ``error`` set and no
     response. Today it returns the persona stub (``"*Stern guard*"``) as a successful response, logged at DEBUG."""
@@ -203,11 +193,6 @@ _SERVER_CHILD = textwrap.dedent(
 )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="#1338 O8 / item 6 (the atonia gate's release): server mode exits non-zero or reports not-ready",
-)
 def test_o8_server_mode_not_ready_is_reported(tmp_path: Path) -> None:
     """CLI server mode, with ``wait_ready`` returning False, exits non-zero or reports not-ready. Today it drops
     ``wait_ready``'s result, prints "LLM server ready" and returns 0."""

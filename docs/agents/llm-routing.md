@@ -25,14 +25,14 @@ Probe timers are separate and short: `MAXIM_REMOTE_PROBE_FIRST_TIMEOUT_S` 1.5s /
 
 | Area | Key files |
 |---|---|
-| Router | `models/language/router.py` (provider fallback, typed exception branches, `dispatch_exhausted` aggregated WARN), `models/language/config.py` (profiles), `models/language/json_parser.py` (JSON repair), `models/language/types.py` (`BackendError` hierarchy) |
+| Router | `models/language/router.py` (provider fallback, typed exception branches, `dispatch_exhausted` aggregated WARN; the public calls are `route`, `generate_json` and the plain-text `generate`, all over the one `_complete_text` dispatch, #1338), `models/language/config.py` (profiles), `models/language/json_parser.py` (JSON repair), `models/language/types.py` (`BackendError` hierarchy) |
 | Peer backend | `models/language/maxim_peer_backend.py` (one HTTP call, typed failure, strict mid-stream fail, `health_check` + `for_url` factory) |
 | Lane tiers | `runtime/function_router.py`, `runtime/lane_models.py`, `runtime/lane_backends.py` (`BACKEND_CLASSES` dispatch table, auto-spawn, decision log) |
 | Proxy + server | `runtime/leader_proxy.py` (admission gate, keepalive), `runtime/llm_server.py` (singleton spawn guard, `active_llm_model.{role}.txt`) |
 | Call registry / stall | `runtime/llm_call_registry.py`, `runtime/stall_threshold.py` |
 | HTTP plumbing | `utils/http.py` (registered endpoints, typed `HTTPError`s, `raw_proxy_forward*`, `X-Maxim-*` header propagation); `scripts/lint_http_surface.py` keeps every HTTP client library inside it and pins raw socket dials and egress SDKs |
 | Mesh / peer | `peer/mesh_config.py` (frozen parser + `write_mesh_config`), `peer/mesh_setup.py` (sole mesh.yml writer), `peer/probe_classify.py`, `peer/mesh_cli.py`; `mesh/` (simulation-only since R0: `bus.py`, `identity.py`, `message.py`, `naming.py`) |
-| Doctor / tunnel | `doctor/platform_detect.py`, `doctor/checks.py`, `doctor/cli.py`; `tunnel/` (cloudflared wrapping + API key management — `keys.py` holds NAMED keys since hardening PR 2: the mesh `api_key` (defaults, hand-rolled writer, byte-identical behaviour) AND the console's `mxc_`-prefixed `console_token` (written via `atomic_write_secret`, 0600 from creation); the console-auth invariant in docs/agents/runtime-tools.md owns that credential's rules) |
+| Doctor / tunnel | `doctor/platform_detect.py`, `doctor/checks.py`, `doctor/cli.py`; `tunnel/` (cloudflared wrapping + API key management — `keys.py` holds NAMED keys since hardening PR 2: the mesh `api_key` (defaults, hand-rolled writer, byte-identical behaviour) AND the console's `mxc_`-prefixed `console_token` (written via `atomic_write_secret`, 0600 from creation); the console-auth invariant in docs/agents/runtime-tools.md owns that credential's rules; `ensure_key`/`ensure_console_token` create a key only for a missing or empty file, under the key's lock, and refuse any other unusable file with `maxim.exceptions.KeyFileUnusable`, never an overwrite, #1402) |
 
 ## 3. Invariants & lessons
 

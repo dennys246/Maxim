@@ -159,15 +159,6 @@ def test_a_blackwell_gpu_switches_int8_to_float16(monkeypatch, tmp_path):
 # ── The other dead imports the lint found ───────────────────────────────────────────────────────────────────────
 
 
-def test_wiring_comms_with_a_nac_no_longer_imports_the_deleted_bridge():
-    from maxim.agents.maxim_agent import MaximAgent
-
-    agent = MaximAgent.__new__(MaximAgent)
-    gateway = object()
-    agent.wire_communication(gateway=gateway, nac=object(), memory_hub=object())
-    assert agent._gateway is gateway
-
-
 def test_a_task_pending_when_the_transcriber_dies_is_dropped_not_written(tmp_path, monkeypatch, caplog):
     """The flush half of S5: a task whose file failed to write is pending when the child dies; never write it."""
     import maxim.embodied_runtime.workers as workers

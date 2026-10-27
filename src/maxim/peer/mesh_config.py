@@ -510,8 +510,10 @@ def read_mesh_config(path: Path | None = None) -> MeshConfig | None:
     want a "fall back to peer.yml if absent" path should use
     :func:`read_or_synthesize_mesh_config` instead.
     """
+    from maxim.utils.paths import config_file_present
+
     p = path or mesh_config_path()
-    if not p.is_file():
+    if not config_file_present(p):  # an unreadable config dir raises, never reads as "no mesh.yml" (#1403)
         return None
     try:
         content = p.read_text()
