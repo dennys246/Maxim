@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`run_agentic_loop` is a thin wrapper over `_run_agentic_loop_body`**, the loop moved verbatim ([#1438](https://github.com/dennys246/Maxim/issues/1438);
+  `docs/plans/bounded_stop.md` §3 step 0), so the session-ownership work wraps the loop in one seam. The public
+  signature, the `loop_liveness_scope` decorator and the behaviour are unchanged. Swallowed-exception records from
+  the loop now name `_run_agentic_loop_body` as their site.
 - **Breaking, to stable surfaces: `create.pool` needs an LLM router, and `create.router` raises instead of returning
   `None`** ([#1338](https://github.com/dennys246/Maxim/issues/1338); owner decisions 2026-10-26).
   - `create.pool(..., llm_router=...)` takes a new keyword and raises `ConfigurationError` without it: a pool with no
