@@ -16,6 +16,8 @@ curl -s http://localhost:8099/v1/debug/ping
 # Expected: {"service": "LeaderProxy", "proxy_port": 8099, ...}
 # If you get {"detail": "Not Found"} → that's llama-cpp-server, not the proxy
 # /v1/debug/ping is LeaderProxy-only; llama-cpp-server doesn't serve it.
+# "server_llm": {"ready": false, "reason": ...} → server mode's LLM never became ready (#1338); the leader
+# stays up for recovery: `maxim peer llm <model>` or `maxim peer update`, then `maxim peer restart`.
 
 # 3. What does the tunnel point at?
 grep -A1 service ~/.cloudflared/config.yml
