@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Lint the canonical agent-guidance corpus and its provider-neutral adapter.
 
-Four checks (the first is the original Principle 5 lint; the next two were added by
-docs/plans/archive/claude_md_diet.md, 2026-08-13; the fourth closes the AGENTS.md drift seam).
+Five checks (the first is the original Principle 5 lint; the next two were added by
+docs/plans/archive/claude_md_diet.md, 2026-08-13; the fourth closes the AGENTS.md drift seam; the sixth, #1121,
+resolves `file::symbol` citations).
 The fifth, roadmap 1.1.x item 16.9's EARNED-row check, moved to scripts/lint_ledger_format.py (item 5 below):
 
 1. **Guard citations.** For each `[engineering]` invariant, the body must contain a
@@ -28,6 +29,13 @@ The fifth, roadmap 1.1.x item 16.9's EARNED-row check, moved to scripts/lint_led
    exactly. It points auto-loading tools at CLAUDE.md but duplicates no checks, routing
    entries, or project rules that could drift independently.
 
+6. **`file::symbol` citations** (#1121). Every `path.py::symbol` in CLAUDE.md and the briefs must name a symbol its
+   file defines, resolved by AST: a def or class at any depth, or a module-level / class-body assignment or import
+   (a re-export counts). A dotted `Class.method` must be found INSIDE that class. A path that resolves exactly (from
+   the repo root, `src/maxim` or `src`) is judged against that file alone; only a path that resolves nowhere falls
+   back to the files under `src/maxim`, `scripts` and `tests` whose path ends with it. So a symbol moved or renamed
+   by a decomposition slice fails here, not in a reviewer's reading. (The code labels this "Check 4".)
+
 5. *(Moved 2026-09-30, M1b PR 3.)* The ledger's EARNED-row check is now part of
    `scripts/lint_ledger_format.py`, which reads the ledger's status tables through the shared
    parser `scripts/_ledger.py` and judges every positive row, not only `**EARNED` cells.
@@ -43,6 +51,7 @@ step stays a single-line invocation.
 
 from __future__ import annotations
 
+import ast
 import re
 import sys
 from pathlib import Path
@@ -183,6 +192,99 @@ def _broken_repo_links(doc_path: Path, repo_root: Path) -> list[tuple[int, str]]
     return broken
 
 
+CITATION = re.compile(r"((?:[\w.-]+/)*[\w.-]+\.py)::([A-Za-z_](?:[\w.]*\w)?)")
+
+
+def _bound_in(body: list[ast.stmt]) -> dict[str, ast.AST | None]:
+    """The names a module or class body binds directly: defs, classes, assignments and imports. A def or class maps
+    to its node (so a dotted citation can descend into it); other bindings map to None."""
+    out: dict[str, ast.AST | None] = {}
+    for node in body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            out[node.name] = node
+        elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                for sub in ast.walk(target):
+                    if isinstance(sub, ast.Name):
+                        out.setdefault(sub.id, None)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                out.setdefault(alias.asname or alias.name.split(".")[0], None)
+        elif isinstance(node, (ast.If, ast.Try, ast.With)):  # module-level guards (TYPE_CHECKING, try/except import)
+            nested = list(getattr(node, "body", [])) + list(getattr(node, "orelse", []))
+            for handler in getattr(node, "handlers", []):
+                nested += handler.body
+            nested += list(getattr(node, "finalbody", []))
+            for name, sub_node in _bound_in(nested).items():
+                out.setdefault(name, sub_node)
+    return out
+
+
+def _defines(module: Path, symbol: str) -> bool:
+    """Whether ``module`` defines ``symbol``: the first part bound at module level, or a def/class of that name at any
+    depth (a nested helper); each further dotted part bound INSIDE the previous class or def."""
+    tree = ast.parse(module.read_text())
+    parts = symbol.split(".")
+    scope = _bound_in(tree.body)
+    node = scope.get(parts[0], None) if parts[0] in scope else None
+    if parts[0] not in scope:
+        defs = [
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and n.name == parts[0]
+        ]
+        if not defs:
+            return False
+        node = defs[0]
+    for part in parts[1:]:
+        body = getattr(node, "body", None)
+        if not isinstance(body, list):
+            return False
+        inner = _bound_in(body)
+        if part not in inner:
+            return False
+        node = inner[part]
+    return True
+
+
+def _citation_candidates(cited: str, repo_root: Path) -> list[Path]:
+    """The file(s) a ``path.py`` citation means: the path from the repo root, from ``src/maxim`` or from ``src`` when
+    it resolves exactly (judged alone); otherwise every file under ``src/maxim``, ``scripts`` or ``tests`` whose path
+    ENDS with it (briefs cite bare names)."""
+    exact = sorted(
+        {
+            c.resolve()
+            for base in (repo_root, repo_root / "src" / "maxim", repo_root / "src")
+            if (c := base / cited).is_file()
+        }
+    )
+    if exact:
+        return exact
+    found: set[Path] = set()
+    for base in (repo_root / "src" / "maxim", repo_root / "scripts", repo_root / "tests"):
+        if base.is_dir():
+            found.update(h.resolve() for h in base.rglob(Path(cited).name) if h.as_posix().endswith(cited))
+    return sorted(found)
+
+
+def _stale_citations(doc_path: Path, repo_root: Path) -> list[tuple[int, str]]:
+    """(line_num, citation) for every ``path.py::symbol`` that its file does not define (#1121; rules in the module
+    docstring, item 6)."""
+    stale: list[tuple[int, str]] = []
+    cache: dict[tuple[Path, str], bool] = {}
+    for i, line in enumerate(doc_path.read_text().split("\n"), start=1):
+        for m in CITATION.finditer(line):
+            cited, symbol = m.group(1), m.group(2)
+            ok = any(
+                cache.setdefault((candidate, symbol), _defines(candidate, symbol))
+                for candidate in _citation_candidates(cited, repo_root)
+            )
+            if not ok:
+                stale.append((i, f"{cited}::{symbol}"))
+    return stale
+
+
 def lint(claude_md_path: Path) -> int:
     if not claude_md_path.exists():
         print(f"ERROR: {claude_md_path} does not exist", file=sys.stderr)
@@ -253,6 +355,19 @@ def lint(claude_md_path: Path) -> int:
             for line_num, target in broken:
                 print(f"  {rel}:{line_num}: {target}", file=sys.stderr)
 
+    # Check 4 — every ``path.py::symbol`` citation resolves by AST (#1121), CLAUDE.md + briefs.
+    for doc, _ in docs:
+        stale = _stale_citations(doc, repo_root)
+        if stale:
+            failed = True
+            rel = doc.relative_to(repo_root)
+            print(
+                f"FAIL: {len(stale)} file::symbol citation(s) in {rel} name a symbol no such file defines:",
+                file=sys.stderr,
+            )
+            for line_num, citation in stale:
+                print(f"  {rel}:{line_num}: {citation}", file=sys.stderr)
+
     if failed:
         print(
             "\nSee CLAUDE.md 'Working principles for new mechanisms' Principle 5 for the format "
@@ -265,7 +380,7 @@ def lint(claude_md_path: Path) -> int:
     print(
         f"PASS: {n_docs} doc(s) audited — all tagged invariants carry the required field, "
         f"CLAUDE.md ~{est_tokens} est. tokens (ceiling {TOKEN_CEILING}), AGENTS.md adapter "
-        "matches, all repo links resolve."
+        "matches, all repo links and file::symbol citations resolve."
     )
     return 0
 
