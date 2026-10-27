@@ -215,18 +215,27 @@ def test_an_adversarial_4MB_string_scans_in_bounded_time():
         assert time.monotonic() - started < 20, chunk[:4]
 
 
+def _many_keys_scan_cpu_s(n: int) -> float:
+    rows = [json.dumps({"i": i, "note": "a\nb", "k": fake("openai") + f"{i:06d}"}) for i in range(n)]
+    data = ("\n".join(r.ljust(225) for r in rows) + "\n").encode()
+    scan = L.Scan(L.compile_patterns(L.PATTERNS), set())
+    started = time.process_time()
+    scan.blob(DATA + "many.jsonl", data)
+    cpu_s = time.process_time() - started
+    assert len(scan.findings) == n and scan.findings[-1].where == DATA + f"many.jsonl:{n}"
+    return cpu_s
+
+
 def test_many_matches_scan_in_linear_time():
     """Review N1: 40k distinct keys in ~9 MB of escaped JSON Lines. Per-match line counting from offset 0 and a
-    linear dedup scan were each quadratic in the match count (minutes); both passes now run in seconds."""
-    rows = [json.dumps({"i": i, "note": "a\nb", "k": fake("openai") + f"{i:06d}"}) for i in range(40_000)]
-    data = ("\n".join(r.ljust(225) for r in rows) + "\n").encode()
-    assert 8_000_000 < len(data) < 10_000_000
-    scan = L.Scan(L.compile_patterns(L.PATTERNS), set())
-    started = time.monotonic()
-    scan.blob(DATA + "many.jsonl", data)
-    elapsed = time.monotonic() - started
-    assert len(scan.findings) == 40_000 and scan.findings[-1].where == DATA + "many.jsonl:40000"
-    assert elapsed < 8, elapsed
+    linear dedup scan were each quadratic in the match count (minutes); both passes now run in seconds.
+
+    The property is the GROWTH, so it is measured as one (#1500): 4x the matches must cost well under the 16x a
+    quadratic pass would, in CPU time, which other processes on the box cannot inflate. An absolute wall-clock bound
+    (8 s, against 5.6 s on an idle box) failed under four concurrent suites."""
+    small, large = _many_keys_scan_cpu_s(10_000), _many_keys_scan_cpu_s(40_000)
+    assert large < 8 * max(small, 0.05), (small, large)
+    assert large < 60, large  # a hang guard: a quadratic pass took minutes
 
 
 # ── 2. archives ──────────────────────────────────────────────────────────────
