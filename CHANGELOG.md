@@ -69,8 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **The CLI scenario path judged every bio expectation against an empty snapshot,** so they always failed. The CLI
     path and the benchmark now validate through ONE seam, `simulation/validation.py::validate_finished_run`, which
     takes the snapshot and tool stats from the live run when the caller does not carry them (D43). The CLI's
-    validate-and-report block moved out of `cli.py::_main_impl` into `_report_scenario_validation` (rule T; pin 1604
-    → 1560). Not yet covered: the fixture campaigns' own checks and the CLI path's missing PainDetector (#1489).
+    validate-and-report block moved out of `cli.py::_main_impl` into `_report_scenario_validation` (rule T). Not yet covered: the fixture campaigns' own checks and the CLI path's missing PainDetector (#1489).
   - `pipeline_continued` no longer counts a synthetic record (the `_llm_unavailable` stall marker,
     `_deliberation_noop`) as an action. `ExperimentResult.delivered_tags` is now derived from
     `delivered_tag_times`, so the two cannot drift.
