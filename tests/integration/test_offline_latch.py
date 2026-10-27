@@ -416,6 +416,26 @@ def _posix_spawn():
     pid = os.posix_spawn("/bin/true", ["/bin/true"], dict(os.environ)); os.waitpid(pid, 0)
 def _inbound():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.bind(("127.0.0.1", 0)); s.listen(1); s.close()
+# The channels the step 0b review named (Executor S1/S3, owner decision (a) 2026-10-26).
+def _connect_ex():
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.settimeout(1); s.connect_ex(("127.0.0.1", 9))
+def _sendmsg():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.sendmsg([b"x"], [], 0, ("192.0.2.1", 53))
+def _unix_dgram_sendto():
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM); s.sendto(b"x", os.path.join(UNIX_DIR, "d.sock"))
+def _gethostbyname():
+    socket.gethostbyname("example.com")
+def _getnameinfo():
+    socket.getnameinfo(("127.0.0.1", 80), 0)
+def _execv():
+    os.execv("/bin/true", ["/bin/true"])
+def _spawnv():
+    os.spawnv(os.P_WAIT, "/bin/true", ["/bin/true"])  # POSIX: a Python fork+exec, refused at the fork
+def _fork():
+    pid = os.fork()
+    if pid == 0:
+        os._exit(0)
+    os.waitpid(pid, 0)
 
 OUT["attempts"] = {name: attempt(off, name, fn) for name, fn in [
     ("ipv4_connect_loopback", _connect4), ("ipv4_connect", _connect4_remote), ("ipv6_connect", _connect6),
@@ -423,6 +443,9 @@ OUT["attempts"] = {name: attempt(off, name, fn) for name, fn in [
     ("af_unix_connect", _unix), ("socket_non_inet_family", _exotic), ("fd_adoption_family_minus_1", _adopt),
     ("subprocess_popen", _popen), ("os_system", _system), ("os_posix_spawn", _posix_spawn),
     ("inbound_bind_listen", _inbound),
+    ("ipv4_connect_ex_loopback", _connect_ex), ("udp_sendmsg_literal", _sendmsg),
+    ("af_unix_dgram_sendto", _unix_dgram_sendto), ("gethostbyname", _gethostbyname),
+    ("getnameinfo", _getnameinfo), ("os_execv", _execv), ("os_spawnv", _spawnv), ("os_fork", _fork),
 ]}
 emit()
 """
@@ -440,6 +463,15 @@ REFUSED_CHANNELS = (
     "subprocess_popen",
     "os_system",
     "os_posix_spawn",
+    # added with the step 0b review folds (Executor S1/S3; owner decision (a) 2026-10-26: fork is refused)
+    "ipv4_connect_ex_loopback",
+    "udp_sendmsg_literal",
+    "af_unix_dgram_sendto",
+    "gethostbyname",
+    "getnameinfo",
+    "os_execv",
+    "os_spawnv",
+    "os_fork",
 )
 
 

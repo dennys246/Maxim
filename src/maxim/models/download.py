@@ -505,7 +505,9 @@ def _auto_download_enabled() -> bool:
     """
     raw = os.environ.get("MAXIM_AUTO_DOWNLOAD_MODELS", "").strip().lower()
     if raw:
-        return raw in ("1", "true", "t", "yes", "y", "on")
+        from maxim._offline import truthy  # the one canonical parser (#1315 step 0b)
+
+        return truthy(raw)
     from maxim.runtime.config_loader import resolve_setting
 
     value, _source = resolve_setting("llm.auto_download")

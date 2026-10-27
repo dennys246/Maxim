@@ -399,19 +399,30 @@ The advisor_mode.md guard line is superseded (prefetch root and the census-as-en
 2. **[engineering] Every executor carries a `ToolPolicy`; `None` is a `TypeError`** (it joins the canonical-builder
    table). Regression guard: `src/maxim/runtime/bootstrap.py::build_executor` (required keyword-only `policy=`) and
    `tests/unit/test_atonia_red_gates_effect_policy.py::test_item3_policy_is_required_and_permissions_removed`.
-3. **[engineering] Offline is a one-way, process-wide audit-hook latch: once engaged, no new socket connection,
-   no send to a new destination, no DNS and no spawn at the Python level.** "One-way" means no non-test caller can
+3. **[engineering] Offline is a one-way, process-wide audit-hook latch: once engaged, at the Python level, no
+   outbound socket connection (`connect`/`connect_ex`, loopback and `AF_UNIX` included), no `sendto`/`sendmsg` to an
+   explicit destination (any family, `AF_UNIX` datagrams included), no socket of a family other than
+   `AF_INET`/`AF_INET6`/`AF_UNIX` and no fd adoption without a family, no forward or reverse DNS, no spawn
+   (`os.system`, `subprocess.Popen`, `os.exec*`, `os.posix_spawn*`, `os.spawn*`) and no `os.fork`/`os.forkpty`
+   (owner decision 2026-10-26: on POSIX `os.spawn*` and `pty.spawn` are a fork+exec, so the fork is where the
+   refusal stays typed and booked in the caller; multiprocessing's "fork" start method therefore does not work
+   offline, nor does "forkserver", whose `AF_UNIX` connect is refused and which is the Linux default from Python
+   3.14; only "spawn" works).** "One-way" means no non-test caller can
    disengage it: `_reset_for_tests` exists, but a guard refuses any caller outside `tests/`, aliased imports
    included. Disengaging it by `importlib.reload`, by writing its private state, or through a dynamically built name
    is in-process code, out of the model (§0). **Stated residuals:**
    - a connection opened **before** `engage()` keeps sending, because `send`/`sendall` raise no audit event;
      `utils/http`'s pool is closed by its `on_engage` callback, but other pre-latch connections (the reachy_mini
      websocket, the census's allow-listed raw-socket sites) are not;
-   - native networking is invisible to the hook (§6).
+   - fd adoption **with** an explicit family (`socket.fromfd(fd, AF_INET, ...)`, `socket.socket(AF_INET, ..., fd)`)
+     is the same class: the `socket.__new__` audit event carries no fd, so an adopted pre-latch connection can keep
+     sending;
+   - native networking is invisible to the hook, and Windows' `_winapi.CreateProcess` is not listed (§6).
 
    Regression guard: `tests/integration/test_offline_latch.py::test_no_effect_subprocess`,
-   `::test_a_client_pooled_before_engage_cannot_send_after`, `::test_no_caller_of_reset_for_tests_outside_tests`
-   and `src/maxim/_offline.py::engage`.
+   `::test_engaged_latch_refuses_each_channel`, `::test_a_client_pooled_before_engage_cannot_send_after`,
+   `::test_no_caller_of_reset_for_tests_outside_tests`, `tests/unit/test_offline_latch_unit.py` and
+   `src/maxim/_offline.py::engage`.
 4. **[engineering] The atonia composition dispatches only its pinned `propose_action` instance, imports nothing
    outside its closure, and reads only its pinned env set.** Regression guard:
    `tests/integration/test_advisor_gate.py::test_per_layer_deletion_sweep_ceiling`, `::…_pin`, `::…_sealed`,

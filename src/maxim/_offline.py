@@ -3,12 +3,19 @@
 Offline is a one-way, process-wide latch. :func:`engage` raises it; nothing in production lowers it. The first
 ``engage()`` adds one ``sys.addaudithook`` hook, which, while the latch is up, refuses at the Python level:
 
-* creating a socket of any family other than ``AF_INET``, ``AF_INET6`` and ``AF_UNIX`` (fd adoption reports
-  ``family=-1`` and is refused too);
+* creating a socket of any family other than ``AF_INET``, ``AF_INET6`` and ``AF_UNIX``, and fd adoption
+  WITHOUT a family (``socket.socket(fileno=fd)`` reports ``family=-1``);
 * every ``socket.connect`` / ``connect_ex`` (loopback and ``AF_UNIX`` included: there is no allowed endpoint, V8);
-* every ``socket.sendto`` / ``socket.sendmsg`` to an ``AF_INET``/``AF_INET6`` destination;
+* every ``socket.sendto`` / ``socket.sendmsg`` to an explicit destination, whatever the family (``AF_UNIX``
+  datagrams included; a ``None`` destination is a connected socket, whose connect was already refused);
 * every forward and reverse name lookup (``getaddrinfo``, ``gethostbyname``, ``gethostbyaddr``, ``getnameinfo``);
-* every spawn: ``os.system``, ``subprocess.Popen``, ``os.exec*``, ``os.posix_spawn*`` and ``os.spawn*`` (V8).
+* every spawn: ``os.system``, ``subprocess.Popen``, ``os.exec*``, ``os.posix_spawn*`` and ``os.spawn*`` (V8);
+* every ``os.fork`` / ``os.forkpty`` (owner decision 2026-10-26). On POSIX ``os.spawn*`` and ``pty.spawn`` are a
+  Python fork+exec, so refusing the fork keeps their refusal typed and booked in the CALLER, rather than an exec
+  refused in a duplicate child that unwinds the caller's stack. Consequence: multiprocessing's ``"fork"`` start
+  method does not work offline, nor does ``"forkserver"`` (its ``AF_UNIX`` connect to the server is refused; the
+  Linux default from Python 3.14). Only ``"spawn"`` works: its children start through the unaudited ``fork_exec``
+  and self-engage.
 
 Inbound ``bind``/``listen``/``accept`` pass. Each refusal is appended to the refusal ledger (:func:`ledger`) BEFORE
 :class:`OfflineRefusal` is raised, so a refusal a caller swallows is still on record.
@@ -16,9 +23,14 @@ Inbound ``bind``/``listen``/``accept`` pass. Each refusal is appended to the ref
 **The boundary, stated.** The hook sees the Python ``socket``, ``subprocess`` and ``os`` modules only. Native
 networking (uvloop/libuv, gRPC, libzmq, libcurl, Rust clients such as ddgs's primp) raises no audit event, and
 neither do ``send``/``sendall`` on a connection opened before the latch went up, nor multiprocessing's
-``_posixsubprocess.fork_exec``. Those are the call-site refusals', the self-engage's and the OS sandbox's (§6, AD5).
+``_posixsubprocess.fork_exec``. **Fd adoption WITH an explicit family** (``socket.fromfd(fd, AF_INET, ...)``,
+``socket.socket(AF_INET, SOCK_STREAM, 0, fd)``) is the same residual as a pre-latch connection: the
+``socket.__new__`` event carries no fd, so an adopted connection opened before the latch can keep sending. The hook
+is POSIX-only in what it names: Windows' ``_winapi.CreateProcess`` is not listed. Those are the call-site
+refusals', the self-engage's and the OS sandbox's (§6, AD5).
 
-This module is a top-level LEAF and stdlib-only (guard:
+This module is a top-level LEAF (not ``maxim/utils/``, so importing it never runs ``maxim.utils``'s package init)
+and stdlib-only (guard:
 ``tests/integration/test_offline_latch.py::test_offline_module_is_stdlib_only``), so importing it never runs
 ``maxim.utils``'s package init; ``maxim/__init__`` imports it only when ``MAXIM_OFFLINE`` is set.
 """
@@ -47,9 +59,10 @@ ENGAGE_ENV: tuple[tuple[str, str], ...] = (
 )
 
 _ALLOWED_FAMILIES = frozenset({socket.AF_INET, socket.AF_INET6, socket.AF_UNIX})
-_INET_FAMILIES = frozenset({socket.AF_INET, socket.AF_INET6})
 _LOOKUP_EVENTS = frozenset({"socket.getaddrinfo", "socket.gethostbyname", "socket.gethostbyaddr", "socket.getnameinfo"})
-_SPAWN_EVENTS = frozenset({"os.system", "subprocess.Popen", "os.exec", "os.posix_spawn", "os.spawn", "os.startfile"})
+_SPAWN_EVENTS = frozenset(
+    {"os.system", "subprocess.Popen", "os.exec", "os.posix_spawn", "os.spawn", "os.startfile", "os.fork", "os.forkpty"}
+)
 
 
 class OfflineRefusal(RuntimeError):
@@ -73,6 +86,7 @@ _hook_added = False
 _ledger: list[Refusal] = []
 _callbacks: list[Callable[[], Any]] = []
 _saved_env: dict[str, str | None] | None = None
+_saved_flags: list[tuple[Any, str, Any]] = []  # (module, attribute, value before engage) for the reset
 
 
 def truthy(value: str | None) -> bool:
@@ -114,13 +128,20 @@ def engage(reason: str) -> None:
     _run_callbacks(callbacks)
 
 
+# engage() step 2: (module, attribute, offline value). Best effort: a module that ran ``from ultralytics.utils
+# import ONLINE`` keeps its own copy; item 10's call-site refusals own the real refusal.
+_LIBRARY_FLAGS: tuple[tuple[str, str, bool], ...] = (
+    ("huggingface_hub.constants", "HF_HUB_OFFLINE", True),
+    ("ultralytics.utils", "ONLINE", False),
+)
+
+
 def _set_imported_library_flags() -> None:
-    hf_constants = sys.modules.get("huggingface_hub.constants")
-    if hf_constants is not None:
-        hf_constants.HF_HUB_OFFLINE = True  # type: ignore[attr-defined]
-    ultra_utils = sys.modules.get("ultralytics.utils")
-    if ultra_utils is not None:
-        ultra_utils.ONLINE = False  # type: ignore[attr-defined]
+    for module_name, attr, value in _LIBRARY_FLAGS:
+        module = sys.modules.get(module_name)
+        if module is not None:
+            _saved_flags.append((module, attr, getattr(module, attr, None)))
+            setattr(module, attr, value)
 
 
 def _run_callbacks(callbacks: Sequence[Callable[[], Any]]) -> None:
@@ -164,11 +185,6 @@ def hook_installed() -> bool:
     return _hook_added
 
 
-def engaged_reason() -> str:
-    """The reason the latch was engaged with ("" while disengaged)."""
-    return _reason if _engaged else ""
-
-
 def refuse(site: str, detail: str = "") -> NoReturn:
     """Book a call-site refusal in the ledger, then raise :class:`OfflineRefusal`. For the call sites that refuse
     before reaching a socket (§6 layer 2), so their refusal is typed, early and on record."""
@@ -181,10 +197,6 @@ def _book(event: str, detail: str) -> None:
         _ledger.append(Refusal(event, detail, _reason))
 
 
-def _family(sock: Any) -> Any:
-    return getattr(sock, "family", None)
-
-
 def _refused_detail(event: str, args: tuple[Any, ...]) -> str | None:
     """Why ``event`` is refused while engaged, or None when it passes."""
     if event == "socket.__new__":
@@ -194,9 +206,7 @@ def _refused_detail(event: str, args: tuple[Any, ...]) -> str | None:
         return f"connect to {args[1]!r}" if len(args) > 1 else "connect"
     if event in ("socket.sendto", "socket.sendmsg"):
         dest = args[1] if len(args) > 1 else None
-        if dest is not None and _family(args[0]) in _INET_FAMILIES:
-            return f"send to {dest!r}"
-        return None
+        return None if dest is None else f"send to {dest!r}"
     if event in _LOOKUP_EVENTS:
         return f"name lookup {args[:2]!r}"
     if event in _SPAWN_EVENTS:
@@ -218,15 +228,20 @@ def _hook(event: str, args: tuple[Any, ...]) -> None:
 
 def _reset_for_tests() -> None:
     # Tests only: a lint (tests/integration/test_offline_latch.py::test_no_caller_of_reset_for_tests_outside_tests)
-    # forbids any caller outside tests/. Disengages, restores the five env keys to their pre-engage values and
-    # clears the ledger; the on_engage callbacks stay registered and the (inert) hook stays installed.
+    # forbids any caller outside tests/. Disengages, restores the five env keys and the library flags engage() set
+    # to their pre-engage values and clears the ledger; the on_engage callbacks stay registered and the (inert) hook
+    # stays installed.
     global _engaged, _reason, _saved_env
     with _lock:
         saved = _saved_env
+        flags = list(reversed(_saved_flags))
+        _saved_flags.clear()
         _engaged = False
         _reason = ""
         _saved_env = None
         _ledger.clear()
+    for module, attr, value in flags:
+        setattr(module, attr, value)
     if saved is not None:
         for key, value in saved.items():
             if value is None:

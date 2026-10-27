@@ -63,7 +63,9 @@ def git_out(repo: Path | str, *args: str, stdin: bytes | None = None, ok: tuple[
     ``core.worktree`` only from the repo's own config, which :func:`_top_level_problem` catches.)
 
     Under the offline latch it returns ``None`` without spawning (#1315 §1A.7): a stdlib probe of an already
-    imported ``maxim._offline``, so this module imports nothing (it is loaded by path, where the probe is False)."""
+    imported ``maxim._offline``, so this module imports nothing. Loaded by path (``scripts/_provenance.py``) in a
+    process that never imported ``maxim``, the probe is always False even with ``MAXIM_OFFLINE`` set: such a
+    process carries no latch and is not offline."""
     if getattr(sys.modules.get("maxim._offline"), "is_offline", lambda: False)():
         return None
     env = {k: v for k, v in os.environ.items() if k not in _INHERITED and not k.startswith("GIT_CONFIG")}

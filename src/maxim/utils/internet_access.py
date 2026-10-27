@@ -466,6 +466,11 @@ class EffectiveInternetPolicy:
         """Why access is off, in words the model and the operator can act on."""
         if self.source == "policy-unreadable":
             return "Internet access is disabled: the internet policy file is unreadable or invalid (see the log)"
+        if self.source == "offline":
+            return (
+                "Internet access is disabled: this process is offline (MAXIM_OFFLINE), which no tool "
+                "and no session setting can lift. Only the operator can run without it, in a new process."
+            )
         if self.source == "session-lowered":
             return (
                 "Internet access is disabled for this session: it was turned off from inside the session (the "
@@ -590,6 +595,10 @@ def load_internet_policy(
     operator = _operator_policy(path)
     if operator is None:
         return EffectiveInternetPolicy(policy=InternetAccessPolicy(), enabled=False, source="policy-unreadable")
+    from maxim._offline import is_offline
+
+    if is_offline():  # before session-lowered: when the latch is the cause, the source and every message say offline
+        return EffectiveInternetPolicy(policy=operator, enabled=False, source="offline")
     if session_internet_lowered():
         return EffectiveInternetPolicy(policy=operator, enabled=False, source="session-lowered")
     return EffectiveInternetPolicy(policy=operator, enabled=access_state.enabled, source=access_state.source)
@@ -639,7 +648,12 @@ def live_internet_policy_getter(
     if not launch_enabled:
         return None
     initial = load_internet_policy(policy_path, access_path=access_path)
-    if initial.source == "session-lowered":
+    if initial.source == "offline":
+        logger.warning(
+            "Internet access is off: this process is offline (MAXIM_OFFLINE, #1315). Every outbound "
+            "connection is refused; run a new process without it to restore the operator's setting."
+        )
+    elif initial.source == "session-lowered":
         # The session's own lower, inherited across a re-exec (#1345): deleting the toggle file would not help.
         logger.warning(
             "Internet access is off for this session: %s is set (the agent lowered it, or it was started lowered). "
