@@ -207,7 +207,8 @@ agent.personality = "bold and reckless"  # Mutable
 agent.shutdown()
 
 # Multi-agent orchestration
-pool = maxim.create.pool()
+# A pool needs an LLM; create.router raises ConfigurationError without ANTHROPIC_API_KEY (or a local profile)
+pool = maxim.create.pool(llm_router=maxim.create.router("claude-sonnet"))
 pool.add(maxim.create.agent("guard", personality="stern"))
 pool.add(maxim.create.agent("merchant", personality="cunning"))
 
