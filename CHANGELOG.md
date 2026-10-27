@@ -69,6 +69,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is resolved before the agentic runtime starts, so a refusal is not downgraded to a warning. `LocalSpeaker`
   reports availability truthfully (a missing PortAudio library or no output device is "unavailable", not a crash).
   The `tts` extra now includes `sounddevice`.
+
+- **Benchmark verdicts no longer pass or fail without checking anything**
+  ([#1391](https://github.com/dennys246/Maxim/issues/1391), [#1392](https://github.com/dennys246/Maxim/issues/1392),
+  [#1394](https://github.com/dennys246/Maxim/issues/1394), [#1395](https://github.com/dennys246/Maxim/issues/1395)).
+  - **`pipeline_continued` passed on ANY action once its tag was emitted** (vacuous in `quick_check` and about ten
+    scenarios). It now requires an action whose timestamp is later than the tag's delivery time:
+    `ScenarioSource.tag_times` on the CLI path; a new `sent_at` on each campaign delivery record, read into
+    `ExperimentResult.delivered_tag_times`, on the benchmark path. A run that reported no delivery time fails it.
+  - **The CLI scenario path judged every bio expectation against an empty snapshot,** so they always failed. The CLI
+    path and the benchmark now validate through ONE seam, `simulation/validation.py::validate_finished_run`, which
+    takes the snapshot and tool stats from the live run when the caller does not carry them (D43). The CLI's
+    validate-and-report block moved out of `cli.py::_main_impl` into `_report_scenario_validation` (rule T). Not yet covered: the fixture campaigns' own checks and the CLI path's missing PainDetector (#1489).
+  - `pipeline_continued` no longer counts a synthetic record (the `_llm_unavailable` stall marker,
+    `_deliberation_noop`) as an action. `ExperimentResult.delivered_tags` is now derived from
+    `delivered_tag_times`, so the two cannot drift.
+  - **Six scenarios named `tool: RespondTool`** where `action_taken` matches the registered name `respond`, so those
+    expectations could never pass. They are fixed, and scenario loading now refuses an expectation `tool:` that is not
+    a registered tool name. A per-embodiment entity tool is allowed with `entity_tool: true` (owner decision
+    2026-10-26). The scenario generator's prompt now teaches the registered names, and it drops an expectation whose
+    tool would be refused instead of losing the whole scenario.
+  - **An unknown threshold operator (`pas:`) or an empty threshold counted as applied while checking nothing.**
+    Loading now refuses it, naming the file and the metric. The accepted operators and the comparisons the benchmark
+    applies are one table, `scenario_source.py::THRESHOLD_OPERATORS`.
+
+- **An unreadable `~/.config/maxim` is one typed error, not a traceback** ([#1403](https://github.com/dennys246/Maxim/issues/1403)).
+  With the config dir at mode 000, every `maxim` command (even `--help`) died with a raw `PermissionError` traceback
+  from the `profiles.yml` probe at `models.language` import. On Python 3.14 the same state was silent: `Path.is_file`
+  returned False, so the operator's `config.json`, `profiles.yml`, `peer.yml`, `mesh.yml` and `hive.json` were read
+  as absent (a peer detected as solo; the Oasis registry read as empty; `resolve_setting` fell back to defaults, so
+  the console dropped the operator's `tools.deny`). Every read probe of those files on the startup and loader path
+  now goes through `utils/paths.py::config_file_present`, which raises `maxim.exceptions.ConfigDirUnreadable` (a
+  `ConfigurationError`) naming the directory that blocks access and, for a permission error, `chmod 700 <dir>`.
+  `cli.main` renders it as one line and exits 2 (other errors keep their traceback); role detection and
+  `resolve_setting` re-raise it instead of falling past it. The remaining writers and setup-wizard probes of the
+  same dir are follow-up work.
+
+- **`ensure_key` / `ensure_console_token` never overwrite a key file they cannot read**
+  ([#1402](https://github.com/dennys246/Maxim/issues/1402)). They read through the lenient readers, which return None
+  for a missing file and for an unusable one alike (mode 000, a directory, non-UTF-8, oversized), then wrote a new key
+  over it: a silent rotation that 401'd every peer or device with nothing naming why. All three key ensures (mesh key,
+  console token, and `ensure_local_server_key`'s spawn key) now go through one helper: a key is generated only for a
+  missing or empty file (an empty file is unlinked first, so the new key is never written over its old mode), under
+  the key's lock with a re-read inside it, and rotations take the same lock. Anything else raises the new key-neutral
+  `maxim.exceptions.KeyFileUnusable` (`.path`, `.reason`, `.fix_hint`; `LeaderKeyError` and `LocalServerKeyError` now
+  subclass it). In-repo callers present it: `maxim tunnel setup` and `maxim tunnel key rotate` print it and exit 1;
+  `maxim serve`, `--show-token` and `--rotate-token` print it and exit 2 before building the app; `/api/pair/claim`
+  answers **503** (reason only, path in the device log) and the spoken code is consumed. `device_console_handoff`
+  raises it to the device bootstrap, which must now present it (maxim-pulse `apps/reachy`). The fix hint never
+  suggests a rotation, which would keep the unusable mode. `maxim tunnel setup` no longer prints any part of the key (CodeQL py/clear-text-logging-sensitive-data): it names the key file and `maxim tunnel key show`.
+
 - **Inbound comms reach the robot at last** ([#1466](https://github.com/dennys246/Maxim/issues/1466), corrected):
   every comms HTTP endpoint (`/api/twilio/sms`, `/api/twilio/voice`, `/api/command`, `/api/status`, `/api/goals`) answered 422 since
   `comms/api.py` was written, because a postponed `request: Request` annotation could not be resolved, so no inbound
@@ -79,6 +129,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   called a `gateway.poll()` that does not exist (assigning `_gateway` would have swallowed an `AttributeError` every
   0.5 s), and `MaximAgent.wire_communication` stored a gateway nothing read; both are deleted, with its call sites in
   `agentic_runtime.py` and `cli.py`.
+
 - **A run that stops on an error exits non-zero, with one exit-code table** ([#1468](https://github.com/dennys246/Maxim/issues/1468);
   owner decisions 2026-10-26). `maxim`'s run loop (robot `--mode` runs and `--mode agentic`, scenario sims included)
   logged `❌ Maxim stopped` and returned 0, so a supervisor reading the exit code (systemd, maxim-pulse's app, CI,

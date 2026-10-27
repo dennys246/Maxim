@@ -15,14 +15,16 @@ Layout:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import platform
 import secrets
 import stat
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
-from maxim.exceptions import LeaderRefusal
+from maxim.exceptions import KeyFileUnusable, LeaderRefusal
 
 
 KEY_BYTES = 32  # 256-bit random key → 43 char base64url-ish string
@@ -83,7 +85,8 @@ def key_file_state(name: str = MESH_KEY_NAME) -> tuple[str, str | None]:
     """``("missing", None)``, ``("unusable", reason)`` or ``("ok", None)`` for the named key file (never raises).
 
     For callers that must tell an absent key (generate one; "no key set") from one that is there but cannot be used
-    (refuse; report the reason): an unusable key must not be advised away as a mismatch (#1311); #1402 will refuse to overwrite one.
+    (refuse; report the reason): an unusable key must not be advised away as a mismatch (#1311), and an ensure never
+    overwrites one (#1402). An empty file reports ``unusable`` here, though an ensure regenerates it.
     """
     try:
         raw, _mode = _read_key_file(key_file_path(name))
@@ -136,19 +139,105 @@ def _write_key_secret(key: str, name: str) -> Path:
 
 
 def ensure_key() -> str:
-    """Return the existing mesh key if present, else generate, save, and return a new one."""
-    existing = read_key()
-    if existing:
-        return existing
-    key = generate_key()
-    write_key(key)
-    return key
+    """Return the mesh key, generating one only when the file is missing or empty (#1402).
+
+    A file that exists but cannot be used raises :class:`~maxim.exceptions.KeyFileUnusable`, never an overwrite.
+    """
+    return _ensure_named_key(MESH_KEY_NAME, lambda key: write_key(key))
 
 
 def rotate_key() -> str:
     """Generate a new mesh key, overwrite the file, return the new value."""
     key = generate_key()
-    write_key(key)
+    with _key_creation_lock(key_file_path()):
+        write_key(key)
+    return key
+
+
+def _key_unusable_fix(path: Path, name: str) -> str:
+    """How to repair an unusable key file. Never "rotate": a rotation keeps the unusable mode (#1402 design pass)."""
+    holders = (
+        "every peer then needs `maxim peer key set <key>`"
+        if name == MESH_KEY_NAME
+        else "every signed-in device must pair or sign in again"
+    )
+    repair = (
+        f"Fix the file ({path})"
+        if platform.system() == "Windows"
+        else f"Fix the file (`chmod 600 {path}` if it is unreadable; move it aside if it is a directory or not a key)"
+    )
+    return f"{repair}, or remove it so the next start generates a new one ({holders})."
+
+
+def _existing_key(name: str, path: Path) -> str | None:
+    """The key in the named file; None when it is missing or empty (both generate); KeyFileUnusable otherwise."""
+    try:
+        raw, _mode = _read_key_file(path)
+    except LeaderKeyMissing:
+        return None
+    except LeaderKeyError as e:
+        # Plain KeyFileUnusable: a console token is not a leader key, and this is not a LeaderRefusal.
+        raise KeyFileUnusable(path=path, reason=e.reason, fix_hint=_key_unusable_fix(path, name)) from e
+    key = raw.lstrip("\ufeff").strip()
+    if not key:
+        logging.getLogger(__name__).info("key file is empty; generating a new key: %s", path)
+        return None
+    return key
+
+
+@contextlib.contextmanager
+def _key_creation_lock(path: Path, refusal: Callable[[Path, str], KeyFileUnusable] | None = None) -> Iterator[None]:
+    """The per-file lock every creator and rotator in this module holds, so an ensure never writes over a key another
+    process has just created. ``peer key set``, the peer connect writer and the config-loader migration write the
+    mesh key without it (atomically, so never half a file); routing them through it is #1402's follow-up."""
+    from maxim.utils.process_lock import LockContended, file_lock
+
+    try:
+        with file_lock(path.with_name(path.name + ".lock"), timeout_s=_LOCAL_KEY_LOCK_TIMEOUT_S):
+            yield
+    except LockContended as e:
+        if refusal is not None:
+            raise refusal(path, "another process holds the key-creation lock") from e
+        raise KeyFileUnusable(
+            path=path,
+            reason="another process holds the key-creation lock",
+            fix_hint="Another maxim process is creating or rotating this key; retry once it finishes.",
+        ) from e
+
+
+def _ensure_named_key(
+    name: str,
+    write: Callable[[str], object],
+    *,
+    prefix: str = "",
+    read: Callable[[Path], str | None] | None = None,
+    refusal: Callable[[Path, str], KeyFileUnusable] | None = None,
+) -> str:
+    """The named key, created when (and only when) its file is missing or empty: the ONE ensure for key files.
+
+    ``read`` returns the key, None for a missing or empty file, or raises the key's typed refusal for any other
+    unusable file (default: :func:`_existing_key`); ``refusal`` builds that refusal for a creation failure (default: a
+    plain :class:`~maxim.exceptions.KeyFileUnusable`). Read first without a lock (a valid key in a read-only directory
+    still works). Creation happens under the key's lock with a re-read inside it (another process may have just
+    written it), an empty file is unlinked first so the new file is created fresh rather than written over the old
+    one's mode, and the value returned is the one read back from disk, so concurrent first starts agree (#1314, #1402).
+    """
+    path = key_file_path(name)
+    read = read or (lambda p: _existing_key(name, p))
+    refusal = refusal or (lambda p, reason: KeyFileUnusable(path=p, reason=reason, fix_hint=_key_unusable_fix(p, name)))
+    key = read(path)
+    if key is not None:
+        return key
+    try:
+        with _key_creation_lock(path, refusal):
+            if read(path) is None:
+                path.unlink(missing_ok=True)
+                write(generate_key(prefix=prefix))
+    except OSError as e:
+        raise refusal(path, f"cannot create key file ({type(e).__name__})") from e
+    key = read(path)
+    if key is None:
+        raise refusal(path, "key file is missing or empty after it was written")
     return key
 
 
@@ -160,7 +249,7 @@ MIN_LEADER_KEY_CHARS = 16
 _LEADER_KEY_FIX = "Run `maxim tunnel key rotate` on the leader, then `maxim peer key set <key>` on each peer."
 
 
-class LeaderKeyError(LeaderRefusal):
+class LeaderKeyError(KeyFileUnusable, LeaderRefusal):
     """The leader role has no usable mesh key, so the leader refuses to start.
 
     A leader serves inference and admin endpoints on every interface; without a
@@ -171,10 +260,7 @@ class LeaderKeyError(LeaderRefusal):
     """
 
     def __init__(self, *, path: Path, reason: str, fix_hint: str = _LEADER_KEY_FIX) -> None:
-        self.path = path
-        self.reason = reason
-        self.fix_hint = fix_hint
-        super().__init__(f"leader key unusable ({reason}): {path}")
+        super().__init__(path=path, reason=reason, fix_hint=fix_hint, message=f"leader key unusable ({reason}): {path}")
 
 
 class LeaderKeyMissing(LeaderKeyError):
@@ -299,13 +385,16 @@ class LocalServerKeyError(LeaderKeyError):
 
 
 def _read_local_server_key(path: Path) -> str | None:
-    """The local server key at ``path``; None when the file is missing; :class:`LocalServerKeyError` when unusable."""
+    """The local server key at ``path``; None when the file is missing or empty; :class:`LocalServerKeyError` when
+    unusable."""
     try:
         raw, mode = _read_key_file(path)
     except LeaderKeyMissing:
         return None
     except LeaderKeyError as e:
         raise LocalServerKeyError(path=path, reason=e.reason) from e
+    if not raw.lstrip("\ufeff").strip():
+        return None  # empty = missing, as for every key file (owner decision 2026-10-25, #1402)
     return _validated_key(path, raw, mode, LocalServerKeyError, chmod_fix=_local_key_fix(path))
 
 
@@ -316,31 +405,18 @@ def read_local_server_key() -> str | None:
 
 
 def ensure_local_server_key() -> str:
-    """For the SPAWN side only: the local server key, created when (and only when) the file is missing.
+    """For the SPAWN side only: the local server key, created when (and only when) the file is missing or empty.
 
-    Read first without a lock, so a valid key in a read-only directory still works. A missing file is created under
-    an exclusive lock, re-read inside it (another process may have just written it), and the value returned is the
-    one read back from disk, so concurrent first starts all get the key the file holds. A file that exists but is
-    unusable is refused, never overwritten (#1402's lesson).
+    Through :func:`_ensure_named_key` (the lock, the re-read inside it, the value read back from disk). A file that
+    exists but is unusable, or a key that cannot be created, is a :class:`LocalServerKeyError` naming the path; it is
+    never overwritten (#1402).
     """
-    from maxim.utils.process_lock import LockContended, file_lock
-
-    path = key_file_path(LOCAL_SERVER_KEY_NAME)
-    key = _read_local_server_key(path)
-    if key is not None:
-        return key
-    try:
-        with file_lock(path.with_name(path.name + ".lock"), timeout_s=_LOCAL_KEY_LOCK_TIMEOUT_S):
-            if _read_local_server_key(path) is None:
-                _write_key_secret(generate_key(), LOCAL_SERVER_KEY_NAME)
-    except LockContended as e:
-        raise LocalServerKeyError(path=path, reason="another process holds the key-creation lock") from e
-    except OSError as e:
-        raise LocalServerKeyError(path=path, reason=f"cannot create key file ({type(e).__name__})") from e
-    key = _read_local_server_key(path)
-    if key is None:
-        raise LocalServerKeyError(path=path, reason="key file vanished after it was written")
-    return key
+    return _ensure_named_key(
+        LOCAL_SERVER_KEY_NAME,
+        lambda key: _write_key_secret(key, LOCAL_SERVER_KEY_NAME),
+        read=_read_local_server_key,
+        refusal=lambda path, reason: LocalServerKeyError(path=path, reason=reason),
+    )
 
 
 def candidate_server_keys() -> dict[str, str]:
@@ -381,13 +457,14 @@ def read_console_token() -> str | None:
 
 
 def ensure_console_token() -> str:
-    """Return the existing console token, else generate (mxc_-prefixed), save, return."""
-    existing = read_console_token()
-    if existing:
-        return existing
-    token = generate_key(prefix=CONSOLE_TOKEN_PREFIX)
-    _write_key_secret(token, CONSOLE_KEY_NAME)
-    return token
+    """Return the console token, generating one (mxc_-prefixed) only when the file is missing or empty (#1402).
+
+    A file that exists but cannot be used raises :class:`~maxim.exceptions.KeyFileUnusable`, never an overwrite:
+    that would log out every device with no message naming why.
+    """
+    return _ensure_named_key(
+        CONSOLE_KEY_NAME, lambda token: _write_key_secret(token, CONSOLE_KEY_NAME), prefix=CONSOLE_TOKEN_PREFIX
+    )
 
 
 def rotate_console_token() -> str:
@@ -397,7 +474,8 @@ def rotate_console_token() -> str:
     rotation is the console's revocation story (hardening plan, decision A5).
     """
     token = generate_key(prefix=CONSOLE_TOKEN_PREFIX)
-    _write_key_secret(token, CONSOLE_KEY_NAME)
+    with _key_creation_lock(key_file_path(CONSOLE_KEY_NAME)):
+        _write_key_secret(token, CONSOLE_KEY_NAME)
     return token
 
 

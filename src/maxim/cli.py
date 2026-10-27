@@ -916,6 +916,91 @@ def _early_leader_boot() -> int | None:
     return None
 
 
+def _report_scenario_validation(
+    args: Any, sim_source: Any, sim_sink: Any, *, nac: Any, memory_hub: Any, executor: Any
+) -> bool:
+    """Validate a finished ``--sim <scenario>`` run and print/write its verdict, through the one validation seam the
+    benchmark also uses (#1392: this path judged the bio expectations against an empty snapshot). Returns whether
+    every expectation passed."""
+    import json as _json
+    from maxim.simulation.validation import validate_finished_run
+
+    hippo = getattr(args, "_sim_hippo", None)
+
+    # One seam with the benchmark (#1392): the snapshot and tool stats come from the live run.
+    results = validate_finished_run(
+        sim_source.expectations,
+        sink=sim_sink,
+        tag_times=sim_source.tag_times,
+        hippocampus=hippo,
+        nac=nac,
+        memory_hub=memory_hub,
+        executor=executor,
+    )
+
+    passed = all(r.passed for r in results)
+    scenario_name = sim_source.definition.name
+
+    print(f"\n{'PASS' if passed else 'FAIL'}: {scenario_name}")
+    for r in results:
+        status = "PASS" if r.passed else "FAIL"
+        desc = r.expectation.description or r.expectation.type
+        print(f"  [{status}] {desc}")
+        if not r.passed and r.detail:
+            print(f"         {r.detail}")
+    print(f"\nActions recorded: {len(sim_sink.actions)}")
+    for a in sim_sink.actions[:20]:
+        tag = "[BLOCKED]" if a.blocked else ("[OK]" if a.result_success else "[FAIL]")
+        print(f"  {tag} {a.tool_name}")
+
+    report_path = getattr(args, "sim_report", None)
+    if report_path:
+        report = {
+            "scenario": scenario_name,
+            "passed": passed,
+            "action_count": len(sim_sink.actions),
+            "expectations_met": [r.expectation.description or r.expectation.type for r in results if r.passed],
+            "expectations_failed": [
+                f"{r.expectation.description or r.expectation.type}: {r.detail}" for r in results if not r.passed
+            ],
+        }
+        with open(report_path, "w") as f:
+            _json.dump(report, f, indent=2)
+        print(f"Report written to {report_path}")
+    return passed
+
+
+def _detect_role_or_warn(raw_argv: list[str]) -> None:
+    """Run role detection once at startup (Plan 2 R2a); a failure warns and startup continues, except an
+    unreadable config dir, which every later step would hit too."""
+    from maxim.exceptions import ConfigDirUnreadable
+
+    try:
+        from maxim.runtime.role import detect_and_apply_role
+
+        detect_and_apply_role(raw_argv)
+    except ConfigDirUnreadable:
+        raise  # an unreadable config dir is not "role unknown": cli.main renders it, once (#1403)
+    except Exception as _role_err:
+        # Fix #3 (R2 review): role detection failures must not block
+        # startup, but a silent DEBUG log hides real problems. Promote
+        # to WARNING and emit a structured event so the failure shows
+        # up in both human logs and the JSONL stream.
+        _role_logger = logging.getLogger(__name__)
+        _role_logger.warning("role detection failed: %s", _role_err)
+        try:
+            from maxim.utils.structured_logging import log_structured
+
+            log_structured(
+                _role_logger,
+                logging.WARNING,
+                event="role_detection_failed",
+                data={"error": f"{type(_role_err).__name__}: {_role_err}"},
+            )
+        except Exception:
+            pass
+
+
 def _main_impl(argv: Sequence[str] | None = None) -> int:
     """Original ``main`` body.  Wrapped by :func:`main` for typed-error surfacing."""
     # Detect Blackwell GPU and apply GStreamer guards BEFORE any CUDA-touching
@@ -950,28 +1035,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
     # BEFORE subcommand dispatch (so `maxim doctor` / `maxim peer X` both
     # emit the event instead of only the sim loop). See
     # docs/plans/archive/llm_path_typed_errors.md R2a + feedback_subcommand_logging_gap.md.
-    try:
-        from maxim.runtime.role import detect_and_apply_role
-
-        detect_and_apply_role(raw_argv)
-    except Exception as _role_err:
-        # Fix #3 (R2 review): role detection failures must not block
-        # startup, but a silent DEBUG log hides real problems. Promote
-        # to WARNING and emit a structured event so the failure shows
-        # up in both human logs and the JSONL stream.
-        _role_logger = logging.getLogger(__name__)
-        _role_logger.warning("role detection failed: %s", _role_err)
-        try:
-            from maxim.utils.structured_logging import log_structured
-
-            log_structured(
-                _role_logger,
-                logging.WARNING,
-                event="role_detection_failed",
-                data={"error": f"{type(_role_err).__name__}: {_role_err}"},
-            )
-        except Exception:
-            pass
+    _detect_role_or_warn(raw_argv)
 
     # C7a of config_unification.md: solo + cloud-key auto-detect.
     # Runs AFTER detect_and_apply_role so MAXIM_ROLE is exported and
@@ -1350,12 +1414,10 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
     # Simulation mode if requested — runs full agentic pipeline with fake percepts
     if sim_path is not None:
-        import json as _json
         from pathlib import Path
 
         from maxim.simulation.scenario_source import ScenarioSource
         from maxim.simulation.sinks import RecordingSink
-        from maxim.simulation.validation import validate_expectations
 
         # ── Safety net: detect stale sim processes from previous runs ──
         # Graceful shutdown (Ctrl+C → orchestrator cleanup → LLM cancellation)
@@ -2332,52 +2394,10 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
                 # If simulation mode, validate expectations and report
                 if sim_source is not None and sim_sink is not None:
-                    import json as _json
-                    from maxim.simulation.validation import validate_expectations
-
                     scenario_file = getattr(args, "_sim_scenario_file", None)
-                    hippo = getattr(args, "_sim_hippo", None)
-
-                    results = validate_expectations(
-                        expectations=sim_source.expectations,
-                        sink=sim_sink,
-                        hippocampus=hippo,
-                        emitted_tags=sim_source.emitted_tags,
+                    passed = _report_scenario_validation(
+                        args, sim_source, sim_sink, nac=_cli_nac, memory_hub=_cli_memory_hub, executor=executor
                     )
-
-                    passed = all(r.passed for r in results)
-                    scenario_name = sim_source.definition.name
-
-                    print(f"\n{'PASS' if passed else 'FAIL'}: {scenario_name}")
-                    for r in results:
-                        status = "PASS" if r.passed else "FAIL"
-                        desc = r.expectation.description or r.expectation.type
-                        print(f"  [{status}] {desc}")
-                        if not r.passed and r.detail:
-                            print(f"         {r.detail}")
-                    print(f"\nActions recorded: {len(sim_sink.actions)}")
-                    for a in sim_sink.actions[:20]:
-                        tag = "[BLOCKED]" if a.blocked else ("[OK]" if a.result_success else "[FAIL]")
-                        print(f"  {tag} {a.tool_name}")
-
-                    report_path = getattr(args, "sim_report", None)
-                    if report_path:
-                        report = {
-                            "scenario": scenario_name,
-                            "passed": passed,
-                            "action_count": len(sim_sink.actions),
-                            "expectations_met": [
-                                r.expectation.description or r.expectation.type for r in results if r.passed
-                            ],
-                            "expectations_failed": [
-                                f"{r.expectation.description or r.expectation.type}: {r.detail}"
-                                for r in results
-                                if not r.passed
-                            ],
-                        }
-                        with open(report_path, "w") as f:
-                            _json.dump(report, f, indent=2)
-                        print(f"Report written to {report_path}")
 
                     # Save sim log and disable logging
                     saved_log = disable_sim_logging()
@@ -2502,7 +2522,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     invisible to the user.
 
     On ``BackendError``: render via ``user_warn`` (display panel + JSONL
-    + stderr) and exit 2.  ``KeyboardInterrupt`` exits cleanly with 130
+    + stderr) and exit 2; ``ConfigDirUnreadable`` (an unreadable config
+    dir, #1403) the same way, with the traceback at DEBUG.  ``KeyboardInterrupt`` exits cleanly with 130
     (Ctrl-C convention) so the live display can flush.  Any other
     exception re-raises — we don't want to swallow bugs.
     """
@@ -2520,10 +2541,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         logging.getLogger("maxim").error("maxim refused: %s", refusal)
         return 2
     except Exception as e:
+        from maxim.exceptions import ConfigDirUnreadable
+
+        if isinstance(e, ConfigDirUnreadable):
+            # Checked before importing models.language: an unreadable config dir fails that import too (#1403).
+            from maxim.utils.logging import user_warn
+
+            logging.getLogger(__name__).debug("unreadable config dir", exc_info=True)
+            user_warn(f"{type(e).__name__}: {e}", source="config", event="config_dir_unreadable")
+            return 2
         try:
             from maxim.models.language.types import BackendError
         except Exception:
-            raise
+            raise e  # the original error, with the failed import as its context
 
         if isinstance(e, BackendError):
             from maxim.utils.logging import user_warn
