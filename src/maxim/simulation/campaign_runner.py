@@ -232,6 +232,7 @@ def run_precampaign_turns(
         nov = turn.get("novelty", 0.7)
         phase_label = f" [{phase}]" if phase else ""
         display_status(f"Turn {i}/{len(turns)}{phase_label}: sending ({len(text)} chars)...")
+        sent_at = time.time()  # the clock ActionRecord.timestamp uses: an action after it came after this turn (#1391)
         try:
             result = bridge.send_and_wait(text, salience=sal, novelty=nov)
             actions = [a.tool_name for a in result.get("actions", [])]
@@ -248,6 +249,7 @@ def run_precampaign_turns(
                 {
                     "turn": i,
                     "phase": phase,
+                    "sent_at": sent_at,
                     "text_len": len(text),
                     "actions": actions,
                     "blocked": blocked,

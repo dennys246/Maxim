@@ -301,7 +301,7 @@ expectations:
 
   # The agent should respond to the recall challenge (even if it fails to recall)
   - type: action_taken
-    tool: RespondTool
+    tool: respond
     description: "Agent attempts to interact with the door"
 
   # Action count sanity (not a runaway loop)
