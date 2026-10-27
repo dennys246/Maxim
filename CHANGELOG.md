@@ -46,8 +46,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ("1/true/yes/on"). `annotation_disabled_via_env`, `memory_hub.body_state_prompt_enabled`, NAc's
   `MAXIM_NAC_REWARD_BIAS_DISABLED`, `MAXIM_AUTO_DOWNLOAD_MODELS`, `utils/plotting.py` and the Exp 44 harness's arm
   label all delegate to it, so `t` and `y` no longer count as truthy for those toggles. Offline, the internet policy's
-  source is `"offline"` and its messages name `MAXIM_OFFLINE` / `llm.offline`. Item 10's call-site refusals (HF, whisper, ultralytics, downloads, docker, the router)
+  source is `"offline"` and its messages name `MAXIM_OFFLINE` (the `llm.offline` key is item 10's). Item 10's call-site refusals (HF, whisper, ultralytics, downloads, docker, the router)
   and the `llm.offline` config key are not in this step.
+- **Breaking, to stable surfaces: `create.pool` needs an LLM router, and `create.router` raises instead of returning
+  `None`** ([#1338](https://github.com/dennys246/Maxim/issues/1338); owner decisions 2026-10-26).
+  - `create.pool(..., llm_router=...)` takes a new keyword and raises `ConfigurationError` without it: a pool with no
+    router could only answer every turn with a persona stub. **Migration:** pass
+    `llm_router=maxim.create.router(<profile>)`.
+  - `create.router(model)` raises `ConfigurationError` naming what is missing (the cloud profile's key, e.g.
+    `ANTHROPIC_API_KEY`, or a configured local profile) when no backend could be built; it returned `None`, which the
+    caller found only at the first call. **Migration:** a caller that checked for `None` catches `ConfigurationError`.
+
 - **The wheel vendors maxim-pulse Console v0.4.4** (was v0.4.2 at 1.3.3, then v0.4.3; contract 0.6.0, unchanged). It is
   now the newest pulse tag for this contract, so R4's release gate requires it. v0.4.3 brought clearer leader setup
   (key and address guidance, with warnings), commands shown in a distinct style, and readable light-theme status
@@ -76,6 +85,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     3 of 5 arm-A deceptive trials.
 
 ### Fixed
+
+- **Fail loud on LLM readiness** ([#1338](https://github.com/dennys246/Maxim/issues/1338); advisor-mode item 6, O8).
+  Silent paths made a process with no working LLM look alive (the two stable-surface breaks are under Changed):
+  - **`LLMRouter.generate(prompt, *, system=None, max_tokens=256, temperature=None) -> str`** is new: plain-text
+    completion over the same dispatch as `generate_json`, raising `ModelInferenceError` on a failure or no text, never a
+    stub. `AgentPool` called a `.generate` no router had (the `AttributeError` was swallowed into the stub), and
+    `create.router`'s docstring promised it. `ToolPainBridge`'s Reflexion path calls the same method, but no production
+    builder passes it an LLM yet, so that path stays unwired (a follow-up).
+  - **`AgentPool.run_turn` reports an LLM failure.** A router call that raised or returned no text was logged at DEBUG
+    and answered with the persona stub as a successful response; it now comes back as a `TurnResult` with `error` set,
+    the new `error_type` field naming the class (`"ModelInferenceError"`) and `response` None (`run_turn` still never
+    raises). An agent with no personality (`create.agent`'s default) now gets an LLM turn instead of a silent `None`.
+  - **CLI server mode reports NOT READY** when the LLM router does not start, its init fails, or `wait_ready` returns
+    False after 180 s, instead of printing "LLM server ready". Behind a LeaderProxy (a leader) it stays up so peers can
+    recover it (`maxim peer llm <model>`, `maxim peer update`) and `/v1/debug/ping` carries a new `server_llm` field
+    (`{"ready": false, "reason": ...}`, beside the live `llm_ready` probe); with no LeaderProxy it exits `1`. The
+    spawned server is stopped on every exit (a refusal's `2` included), and a failed stop is logged. Server mode moved
+    to `cli.py::_run_server_mode` (rule T).
+- **Benchmark verdicts no longer pass or fail without checking anything**
+  ([#1391](https://github.com/dennys246/Maxim/issues/1391), [#1392](https://github.com/dennys246/Maxim/issues/1392),
+  [#1394](https://github.com/dennys246/Maxim/issues/1394), [#1395](https://github.com/dennys246/Maxim/issues/1395)).
+  - **`pipeline_continued` passed on ANY action once its tag was emitted** (vacuous in `quick_check` and about ten
+    scenarios). It now requires an action whose timestamp is later than the tag's delivery time:
+    `ScenarioSource.tag_times` on the CLI path; a new `sent_at` on each campaign delivery record, read into
+    `ExperimentResult.delivered_tag_times`, on the benchmark path. A run that reported no delivery time fails it.
+  - **The CLI scenario path judged every bio expectation against an empty snapshot,** so they always failed. The CLI
+    path and the benchmark now validate through ONE seam, `simulation/validation.py::validate_finished_run`, which
+    takes the snapshot and tool stats from the live run when the caller does not carry them (D43). The CLI's
+    validate-and-report block moved out of `cli.py::_main_impl` into `_report_scenario_validation` (rule T). Not yet covered: the fixture campaigns' own checks and the CLI path's missing PainDetector (#1489).
+  - `pipeline_continued` no longer counts a synthetic record (the `_llm_unavailable` stall marker,
+    `_deliberation_noop`) as an action. `ExperimentResult.delivered_tags` is now derived from
+    `delivered_tag_times`, so the two cannot drift.
+  - **Six scenarios named `tool: RespondTool`** where `action_taken` matches the registered name `respond`, so those
+    expectations could never pass. They are fixed, and scenario loading now refuses an expectation `tool:` that is not
+    a registered tool name. A per-embodiment entity tool is allowed with `entity_tool: true` (owner decision
+    2026-10-26). The scenario generator's prompt now teaches the registered names, and it drops an expectation whose
+    tool would be refused instead of losing the whole scenario.
+  - **An unknown threshold operator (`pas:`) or an empty threshold counted as applied while checking nothing.**
+    Loading now refuses it, naming the file and the metric. The accepted operators and the comparisons the benchmark
+    applies are one table, `scenario_source.py::THRESHOLD_OPERATORS`.
 
 - **An unreadable `~/.config/maxim` is one typed error, not a traceback** ([#1403](https://github.com/dennys246/Maxim/issues/1403)).
   With the config dir at mode 000, every `maxim` command (even `--help`) died with a raw `PermissionError` traceback
@@ -113,6 +162,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   called a `gateway.poll()` that does not exist (assigning `_gateway` would have swallowed an `AttributeError` every
   0.5 s), and `MaximAgent.wire_communication` stored a gateway nothing read; both are deleted, with its call sites in
   `agentic_runtime.py` and `cli.py`.
+
 - **A run that stops on an error exits non-zero, with one exit-code table** ([#1468](https://github.com/dennys246/Maxim/issues/1468);
   owner decisions 2026-10-26). `maxim`'s run loop (robot `--mode` runs and `--mode agentic`, scenario sims included)
   logged `❌ Maxim stopped` and returned 0, so a supervisor reading the exit code (systemd, maxim-pulse's app, CI,

@@ -180,6 +180,10 @@ Suite-level scoring is a dict keyed by metric name. Each metric entry may have:
 - **`pass_above`** -- The metric must be at or above this value to pass. Used for positive metrics like recall accuracy.
 - **`pass_below`** -- The metric must be at or below this value to pass. Used for negative metrics like hallucination rate.
 
+Any other key (a typo such as `pas:`), or an empty threshold, is refused when the suite or scenario loads, naming
+the file and the metric ([#1395](https://github.com/dennys246/Maxim/issues/1395)): before, it counted as an
+applied threshold while checking nothing.
+
 The **composite score** is the `weight`-weighted mean of the scenarios' scores (since
 2026-10-07; before that it was a flat mean that ignored `weight` and `metrics`, bugs ledger
 D49):
@@ -222,10 +226,11 @@ own reads its thresholds from its own `benchmark.scoring` (`quick_check.yaml` re
 `recall_seven-three-nine: { pass: 1.0 }`); without one it never passes either. A suite reads only its own
 `suite.scoring` and ignores its children's `benchmark.scoring`.
 
-Known gaps (2026-10-19): `cognitive_suite` cannot pass for any model until campaign delivery carries
-pain percepts ([#1393](https://github.com/dennys246/Maxim/issues/1393)) and its scenarios name tools by
-their registered names ([#1394](https://github.com/dennys246/Maxim/issues/1394)); `pipeline_continued`
-does not yet check that the action came after its tag ([#1391](https://github.com/dennys246/Maxim/issues/1391)). `maxim --sim benchmark` exits 0 only when every model passes. The
+Known gap (2026-10-26): `cognitive_suite` cannot pass for any model until campaign delivery carries
+pain percepts ([#1393](https://github.com/dennys246/Maxim/issues/1393)). Since 2026-10-26 its scenarios name
+tools by their registered names ([#1394](https://github.com/dennys246/Maxim/issues/1394)), and
+`pipeline_continued` requires an action AFTER its tag's delivery time
+([#1391](https://github.com/dennys246/Maxim/issues/1391)). `maxim --sim benchmark` exits 0 only when every model passes. The
 summary prints the verdict first, then both halves: `m: FAIL — expectations 2/3 met · thresholds PASS`.
 
 ## Baseline Comparison

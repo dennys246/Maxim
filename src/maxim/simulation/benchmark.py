@@ -387,7 +387,7 @@ class BenchmarkRunner:
         """
         from maxim.simulation.experiment import run_campaign
         from maxim.simulation.scenario_source import load_scenario
-        from maxim.simulation.validation import validate_expectations
+        from maxim.simulation.validation import validate_finished_run
         from maxim.simulation.sinks import RecordingSink
 
         start = time.time()
@@ -436,11 +436,11 @@ class BenchmarkRunner:
                         exp_passed = 0
                         exp_total = 0
                         if defn.expectations:
-                            exp_results = validate_expectations(
+                            exp_results = validate_finished_run(
                                 defn.expectations,
-                                RecordingSink.from_serialized(exp_result.actions),
-                                exp_result.hippocampus,
-                                exp_result.delivered_tags,
+                                sink=RecordingSink.from_serialized(exp_result.actions),
+                                tag_times=exp_result.delivered_tag_times,
+                                hippocampus=exp_result.hippocampus,
                                 # Observer.benchmark_snapshot(): full_analysis() plus the raw *_stats. Empty when
                                 # the orchestrator could not take it (it logs that), and the bio checks then fail.
                                 subsystem_snapshot=exp_result.subsystem_snapshot,
@@ -738,16 +738,16 @@ class BenchmarkRunner:
         if not self._scoring:
             return True  # No thresholds defined = auto-pass
 
+        from maxim.simulation.scenario_source import THRESHOLD_OPERATORS
+
         for metric_name, threshold in self._scoring.items():
             value = metrics.get(metric_name)
             if value is None:
                 continue
-            if "pass" in threshold and value < threshold["pass"]:
-                return False
-            if "pass_above" in threshold and value < threshold["pass_above"]:
-                return False
-            if "pass_below" in threshold and value > threshold["pass_below"]:
-                return False
+            # The one operator table load_scenario validates against (#1395): every accepted key is applied.
+            for op, bound in threshold.items():
+                if not THRESHOLD_OPERATORS[op](value, bound):
+                    return False
         return True
 
     def _compute_rankings(self, results: dict[str, ModelResult]) -> dict[str, list[str]]:
