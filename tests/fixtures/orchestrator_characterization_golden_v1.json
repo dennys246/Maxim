@@ -6226,7 +6226,7 @@
     },
     {
      "inject": "narrator#1",
-     "text": "SYSTEM: Stall detected (<S>s idle, 3 AUT actions so far). For context, the agent under test's last action was 'respond' (blocked=False): ITS tool, not yours. Your previous tool call may have failed or used an invalid tool name. Call send_mess",
+     "text": "SYSTEM: Stall detected (<S>s idle, 3 AUT actions so far). For context, the agent under test's last action was 'respond' (blocked=False): ITS tool, not yours. Your previous tool call may have failed or used an invalid tool name. Call send_me",
      "thread": "sim.stall"
     }
    ],
@@ -6253,7 +6253,7 @@
     "MAXIM_DATA_HOME": "<WORK>/data",
     "MAXIM_SIM_HARD_ABORT": "0",
     "MAXIM_SIM_STALL_CHECK_INTERVAL_S": "0.5",
-    "MAXIM_STALL_FLOOR_S": "5"
+    "MAXIM_STALL_FLOOR_S": "15"
    },
    "nac_credits": {
     "aut": [
@@ -6419,7 +6419,7 @@
       "tool_name": "finish_simulation"
      },
      "kind": "plan",
-     "request": "system: stall detected (<S>s idle, 3 aut actions so far). for context, the agent under test's last action was 'respond' (b"
+     "request": "system: stall detected (<S>s idle, 3 aut actions so far). for context, the agent under test's last action was 'respond' "
     }
    ],
    "other_llm_calls": {
@@ -8271,5 +8271,5 @@
    "unsorted_prompts": []
   }
  },
- "generated_at_commit": "d9dffe6e615d"
+ "generated_at_commit": "5c50c259d6b5"
 }
