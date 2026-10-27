@@ -21,12 +21,11 @@ from maxim.runtime.capabilities import (
 import time
 import atexit
 import logging
-import math
 from typing import Any
 
 import numpy as np
 
-from maxim.motion.movement import load_actions, load_movement_thresholds, load_poses
+from maxim.motion.movement import centered_pose_from, load_actions, load_movement_thresholds, load_poses
 from maxim.utils.data_management import CLIInputLogger, VisionEventLogger
 from maxim.utils.logging import configure_logging, log_swallowed_exception, warn
 from maxim.utils.plotting import preflight_matplotlib_fonts, preload_matplotlib_fonts
@@ -94,32 +93,6 @@ from maxim.embodied_runtime.media_loop import MediaLoopMixin
 _robot_registry = RobotRegistry()
 _robot_registry.register_controller_type("reachy_mini", ReachyMiniController)
 _robot_registry.register_controller_type("simulated", SimulatedController)
-
-
-def centered_pose_from(poses: Any, *, log: logging.Logger | None = None) -> dict[str, float] | None:
-    """The ``centered`` pose as finite floats, or None to keep the seed values (#1496).
-
-    A second reader of ``default_poses.json`` (``goto_pose`` is the first). A
-    pose ``load_poses`` could not parse (kept as ``None``), a short one, or one
-    holding NaN/Inf is logged at ERROR and ignored: the seed mirror stays, and
-    ``goto_pose("centered")`` refuses that pose for the run. Every component is
-    checked before any is used, so the mirror is never half-assigned.
-    """
-    if not isinstance(poses, dict) or "centered" not in poses:
-        return None
-    centered = poses["centered"]
-    axes = ("x", "y", "z", "roll", "pitch", "yaw")
-    if isinstance(centered, (list, tuple)) and len(centered) >= 6:
-        try:
-            values = [float(centered[i]) for i in range(6)]
-        except (TypeError, ValueError):
-            values = []
-        if len(values) == 6 and all(math.isfinite(v) for v in values):
-            return dict(zip(axes, values))
-    (log or logging.getLogger(__name__)).error(
-        "default_poses.json: the 'centered' pose %r is not six finite numbers; keeping the seed head pose", centered
-    )
-    return None
 
 
 class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin, AgenticRuntimeMixin, MediaLoopMixin):

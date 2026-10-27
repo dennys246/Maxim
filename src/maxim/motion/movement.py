@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import json
 import numpy as np
@@ -9,6 +10,8 @@ from typing import Any
 from maxim.hardware.controller import clamp_finite, floor_duration, require_duration, require_finite
 from maxim.hardware.reachy.controller import ANTENNA_LIMIT_RAD, check_sdk_command
 from maxim.utils.logging import log_swallowed_exception, warn
+
+_logger = logging.getLogger(__name__)
 
 # Bundled seed data — shipped inside the package (src/maxim/_data/motion/).
 _DATA_DIR = Path(__file__).resolve().parent.parent / "_data" / "motion"
@@ -103,6 +106,32 @@ def load_poses(path: Path | str = _DEFAULT_POSES_PATH) -> dict[str, list[float] 
 
     parsed.setdefault("centered", default["centered"])
     return parsed
+
+
+def centered_pose_from(poses: Any, *, log: logging.Logger | None = None) -> dict[str, float] | None:
+    """The ``centered`` pose as finite floats, or None to keep the seed values (#1496).
+
+    A second reader of ``default_poses.json`` (``goto_pose`` is the first). A
+    pose ``load_poses`` could not parse (kept as ``None``), a short one, or one
+    holding NaN/Inf is logged at ERROR and ignored: the seed mirror stays, and
+    ``goto_pose("centered")`` refuses that pose for the run. Every component is
+    checked before any is used, so the mirror is never half-assigned.
+    """
+    if not isinstance(poses, dict) or "centered" not in poses:
+        return None
+    centered = poses["centered"]
+    axes = ("x", "y", "z", "roll", "pitch", "yaw")
+    if isinstance(centered, (list, tuple)) and len(centered) >= 6:
+        try:
+            values = [float(centered[i]) for i in range(6)]
+        except (TypeError, ValueError):
+            values = []
+        if len(values) == 6 and all(math.isfinite(v) for v in values):
+            return dict(zip(axes, values))
+    (log or _logger).error(
+        "default_poses.json: the 'centered' pose %r is not six finite numbers; keeping the seed head pose", centered
+    )
+    return None
 
 
 def load_movement_thresholds(path: Path | str = _DEFAULT_THRESHOLDS_PATH) -> dict[str, Any]:

@@ -618,7 +618,7 @@ def test_track_target_refuses_an_explicit_zero_duration():
 
 
 def test_a_nan_centred_pose_never_seeds_the_mirror():
-    from maxim.embodied_runtime.selfy import centered_pose_from
+    from maxim.motion.movement import centered_pose_from
 
     assert centered_pose_from({"centered": [0.0, 0.0, NAN, 0.0, 0.0, 0.0]}) is None
     assert centered_pose_from({"centered": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]}) == {
