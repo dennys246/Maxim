@@ -457,6 +457,7 @@ class MediaLoopMixin:
         motion, and before the agentic runtime, whose start is wrapped in ``warn_unless_refusal`` (which
         would turn the refusal into a warning). The agentic runtime reads ``self._speech_output``.
         """
+        from maxim.utils.audio import device_speech_plays_locally
         from maxim.utils.response_output import build_speech_output
 
         self._speech_output = build_speech_output(
@@ -464,7 +465,7 @@ class MediaLoopMixin:
             model_name=getattr(self, "tts_model", None),
             sink=self.speak,
             log=self.log,
-            sink_plays_locally=getattr(self, "mini", None) is None,
+            sink_plays_locally=device_speech_plays_locally(getattr(self, "mini", None)),
         )
 
     def _effective_wake_up(self, wake_up: bool) -> bool:

@@ -436,7 +436,7 @@ class AgenticRuntimeMixin:
         from maxim.utils.response_output import ResponseOutput
 
         sandbox_path = Path(self.home_dir) / "sandbox"
-        # Spoken responses: built (or refused) once at media start by build_speech_output (#1437)
+        # Spoken responses: built (or refused) once in live(), before awaken(), by build_speech_output (#1437)
         tts_engine, speaker_fn = getattr(self, "_speech_output", (None, None))
 
         response_output = ResponseOutput(

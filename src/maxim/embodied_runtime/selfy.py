@@ -433,7 +433,7 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         """The audio settings: mic capture, chunk length, and the spoken-response request (#1437).
 
         ``tts``/``tts_model`` carry the CLI's ``--tts``/``--tts-model`` to the robot runtime, which builds
-        speech through ``utils.response_output.build_speech_output`` at media start.
+        speech through ``utils.response_output.build_speech_output`` in ``live()``, before ``awaken()``.
         """
         self.audio = bool(audio)
         try:

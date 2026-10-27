@@ -364,7 +364,8 @@ def build_speech_output(
     - the speaker is ``sink`` when the caller has one (the robot's device sink,
       ``MediaLoopMixin.speak``), else this machine's local speakers (:class:`LocalSpeaker`);
     - local speakers are checked whenever speech will play on them: no sink, ``MAXIM_TTS_LOCAL``,
-      or ``sink_plays_locally`` (the device sink falls back to them with no SDK handle);
+      or ``sink_plays_locally`` (``utils.audio.device_speech_plays_locally``: no SDK handle, or a
+      ``no_media`` backend);
     - the voice is loaded here, so a corrupt model refuses at start, not at the first sentence.
 
     Raises:
@@ -393,13 +394,15 @@ def build_speech_output(
         )
     try:
         engine.load()  # also sets the voice's real sample rate, which the local speaker needs
-    except (OSError, ValueError, RuntimeError) as e:
+    except Exception as e:  # onnxruntime's load errors (InvalidProtobuf, ...) derive from Exception; re-raised typed
         raise SpeechOutputUnavailable(
             f"the voice model {voice!r} could not be loaded ({e})",
             "Re-download it with `python -m maxim.models.download --tts`.",
         ) from e
+    from maxim.utils.audio import tts_local_requested
+
     speaker = sink
-    prefer_local = os.environ.get("MAXIM_TTS_LOCAL", "").strip().lower() in _TTS_TRUTHY
+    prefer_local = tts_local_requested()
     where = "local speakers (MAXIM_TTS_LOCAL)" if prefer_local else "the robot's speaker"
     if speaker is None or prefer_local or sink_plays_locally:
         from maxim.utils.audio import LocalSpeaker

@@ -359,6 +359,22 @@ def push_to_started_player(
     return _push_to_started_player(media, samples, sample_rate, log, None)
 
 
+def tts_local_requested() -> bool:
+    """``MAXIM_TTS_LOCAL``: play the robot's speech on this machine's speakers. One parser for every reader."""
+    return os.environ.get("MAXIM_TTS_LOCAL", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def device_speech_plays_locally(mini: Any) -> bool:
+    """Whether :func:`push_audio_to_device` would play on this machine's speakers, as known at start (#1437).
+
+    The decision table's local routes that hold for the whole run: ``MAXIM_TTS_LOCAL``, no SDK handle,
+    or a ``no_media`` backend. (WebRTC before its send chain exists is transient, so it is not counted.)
+    """
+    if tts_local_requested() or mini is None:
+        return True
+    return _backend_of(getattr(mini, "media", None)) == _NO_MEDIA
+
+
 def push_audio_to_device(
     mini: Any,
     samples: np.ndarray,
@@ -405,7 +421,7 @@ def push_audio_to_device(
     if samples is None or np.ndim(samples) == 0 or len(samples) == 0:
         return False
 
-    prefer_local = os.environ.get("MAXIM_TTS_LOCAL", "").lower() in ("1", "true", "yes")
+    prefer_local = tts_local_requested()
 
     if not prefer_local and mini is not None:
         media = getattr(mini, "media", None)

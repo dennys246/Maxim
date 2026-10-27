@@ -186,9 +186,12 @@ def test_a_local_route_needs_a_local_speaker_even_with_a_robot_sink(monkeypatch)
 def test_a_voice_that_will_not_load_refuses_at_start(monkeypatch):
     from maxim.utils.response_output import SpeechOutputUnavailable, build_speech_output
 
+    class InvalidProtobuf(Exception):  # onnxruntime's load errors derive from Exception, not RuntimeError
+        pass
+
     class _Corrupt(_Voice):
         def load(self) -> None:
-            raise RuntimeError("bad onnx")
+            raise InvalidProtobuf("Load model from voice.onnx failed: Protobuf parsing failed")
 
     _patch_voice(monkeypatch, _Corrupt)
     with pytest.raises(SpeechOutputUnavailable, match="could not be loaded"):
@@ -252,3 +255,20 @@ def test_a_missing_tts_extra_is_the_same_refusal(monkeypatch):
     monkeypatch.setattr(ro, "require_optional_dependency", _missing)
     with pytest.raises(ro.SpeechOutputUnavailable, match="tts extra"):
         ro.build_speech_output(requested=True, model_name=None, sink=None, log=logging.getLogger("t"))
+
+
+def test_a_no_media_robot_and_the_local_env_route_speech_locally(monkeypatch):
+    """One rule for 'speech plays here': MAXIM_TTS_LOCAL (any truthy spelling), no SDK handle, or no_media."""
+    from types import SimpleNamespace
+
+    import maxim.utils.audio as audio
+
+    monkeypatch.setattr(audio, "_backend_of", lambda media: getattr(media, "kind", None))
+    local_backend = SimpleNamespace(media=SimpleNamespace(kind=audio._LOCAL))
+    no_media = SimpleNamespace(media=SimpleNamespace(kind=audio._NO_MEDIA))
+    assert audio.device_speech_plays_locally(None) is True
+    assert audio.device_speech_plays_locally(no_media) is True
+    assert audio.device_speech_plays_locally(local_backend) is False
+    monkeypatch.setenv("MAXIM_TTS_LOCAL", " on ")
+    assert audio.tts_local_requested() is True
+    assert audio.device_speech_plays_locally(local_backend) is True
