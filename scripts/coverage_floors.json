@@ -28,8 +28,8 @@
       "missing": 686
     },
     "maxim/comms": {
-      "percent": 39.4,
-      "missing": 178
+      "percent": 58.7,
+      "missing": 121
     },
     "maxim/console": {
       "percent": 93.8,
@@ -160,7 +160,7 @@
       "missing": 1429
     },
     "maxim/tunnel": {
-      "percent": 75.5,
+      "percent": 76.8,
       "missing": 190
     },
     "maxim/utils": {

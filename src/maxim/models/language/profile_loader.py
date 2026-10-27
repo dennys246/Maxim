@@ -386,7 +386,9 @@ def load_user_profiles(path: Path | None = None) -> dict[str, dict[str, Any]]:
     happens later in :func:`apply_user_profiles`.
     """
     target = path if path is not None else profiles_config_path()
-    if not target.is_file():
+    from maxim.utils.paths import config_file_present
+
+    if not config_file_present(target):
         return {}
     try:
         content = target.read_text()
