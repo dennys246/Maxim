@@ -669,7 +669,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-json
+          # Bound to its attempt (M60a): `lint_coverage.py --pins-from-run` reads only the latest attempt's file.
+          name: coverage-json-${{ github.run_attempt }}
           path: coverage.json
           retention-days: 14
           if-no-files-found: warn
