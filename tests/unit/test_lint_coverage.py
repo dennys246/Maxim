@@ -2606,3 +2606,28 @@ def test_the_pinner_names_match_the_real_workflow():
     up = [s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/upload-artifact")]
     assert [s["with"]["name"] for s in up] == [L.COVERAGE_ARTIFACT + "-${{ github.run_attempt }}"]
     assert up[0]["with"]["path"] == L.COVERAGE_JSON and up[0]["if"] == "always()"
+
+
+def test_gh_runs_from_the_checkout_it_pins(repo, tmp_path, monkeypatch):
+    """Code delta NIT: ``gh`` resolves ``{owner}/{repo}`` from its working directory, while HEAD is read from the
+    checkout, so both gh calls run from the checkout, not the caller's shell directory."""
+    seen: list[object] = []
+
+    class R:
+        returncode, stdout, stderr = 0, "{}", ""
+
+    def run(cmd, **kw):
+        seen.append(kw.get("cwd"))
+        return R()
+
+    monkeypatch.setattr(L.subprocess, "run", run)
+    monkeypatch.setattr(L, "REPO_ROOT", repo)
+    L._download_artifact("1", "coverage-json-1", tmp_path)
+    import _lint_git
+
+    monkeypatch.setattr(_lint_git.subprocess, "run", run)
+    _lint_git.gh_api("repos/{owner}/{repo}/actions/runs/1", cwd=repo)
+    assert seen == [repo, repo]
+    with pytest.raises(L.MeasurementError):  # run_measurement's default api passes the checkout as cwd
+        L.run_measurement(repo, "1", tmp=tmp_path)
+    assert seen[-1] == repo

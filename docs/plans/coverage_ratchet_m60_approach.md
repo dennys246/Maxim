@@ -7,6 +7,9 @@
 > Owner decisions on 2026-10-27:
 > 1. Do M60.
 > 2. After two adversarial rounds, ship the safe half now and make the "compare to main" fall check its own item.
+>    The option the owner chose read: "Local floor checks become notes … A one-command pinner reads CI's coverage
+>    file from the PR's own run, **with a ±k noise allowance so the pin passes on the next run**. Today's CI floor
+>    rules stay exactly as they are." Review delta2 P1 then sized that allowance at `K_MIN`, not the size-scaled k.
 >
 > The two rounds:
 > - [reviews/m60/adversarial.md](reviews/m60/adversarial.md) rejected v1, which demoted a rise to a note
@@ -41,7 +44,8 @@ saves comes from removing manual steps, not from loosening any gate.
    - **Bound.** The base side stays strict: a pin can never rise above the previous pin. A pin is therefore at most
      `K_MIN` above the lowest measurement it was taken from, and that slack cannot accumulate across pins.
    - **What it costs.** The LOWERING rule reads that pin. A later PR can therefore lower a floor with up to `K_MIN`
-     more uncovered statements than the measurement allowed, a 5-statement escape in total, which does not
+     more uncovered statements than the measurement allowed: 5 statements for one scope, and `K_MIN` × N for a sum
+     rule over N re-pinned scopes (code review A3). It does not
      accumulate. NEW floors stay exact (two runs, `--merge-floors`).
 3. **The pinner: `python scripts/lint_coverage.py --pins-from-run <run-id>`.** It replaces reading CI's log and
    hand-editing the file.

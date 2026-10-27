@@ -214,7 +214,7 @@ measurement. It binds the run before reading anything: a Tests (``test.yml``) ru
 ``RUN_SUITE_STEP`` to ``success`` (a ``-x`` failure leaves partial data). It then reads that attempt's
 ``coverage-json-<attempt>`` artifact; the unsuffixed legacy name is accepted only on attempt 1. A PR run measures the
 merge with main, so files this branch lacks are accepted: the pins are for that merge, and CI re-measures it on the
-pin commit. Falls, null floors, unmeasured scopes and branch pins more than ``K_MIN`` above the run are reported,
+pin commit. Falls, null floors, unmeasured scopes and committed pins more than ``K_MIN`` above the run are reported,
 never written. It needs ``gh`` (it calls ``gh api`` and ``gh run download`` from the repo root), and fails closed
 (exit 2) when ``gh`` cannot answer. It refuses to run inside GitHub Actions. Every pin it writes is verified again
 by the CHANGED rules on the pin commit's own run, so the mode is a convenience, not an authority.
@@ -289,6 +289,7 @@ ratchet (roadmap 1.3.2 item 5)" step in .github/workflows/test.yml (unit-tests j
 
 Exits: 0 clean; 1 a rule failed (stderr); 2 the measurement or git could not answer.
 Stdlib plus ``pyyaml`` (to read the workflow structurally); does not import ``maxim`` or ``coverage``.
+``--pins-from-run`` also needs the ``gh`` CLI, authenticated for this repository.
 """
 
 from __future__ import annotations
