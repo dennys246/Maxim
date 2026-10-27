@@ -70,7 +70,9 @@ saves comes from removing manual steps, not from loosening any gate.
    check.
 3. **The local measurement.** It no longer gates floors in either direction. CI remains the only floor authority, as
    the brief already says.
-4. **The CHANGED +k slack.** Bounded at k (rule 2). It never applies to LOWERING or NEW floors.
+4. **The CHANGED `K_MIN` slack.** Bounded at `K_MIN` per pin (rule 2). It never applies to NEW floors. LOWERING and
+   the split and rename SUM rules read the pin, so a sum over N re-pinned scopes can absorb `K_MIN` × N. That residual
+   is now stated in the lint's docstring (code review A3).
 
 ## Not in M60a
 

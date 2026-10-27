@@ -25,7 +25,8 @@ uncovered statement count pinned with it.
   noise is about ±2 statements whatever the package size, so ``K_MIN`` is twice that): CI coverage moves by a few statements between runs with no code change (maxim/memory
   measured 760 then 762 missing, 85.59% under an 85.6 floor), and a floor rounded down to 0.1
   leaves only 0–0.1 pt of random slack. It is bounded and NON-cumulative: it applies only to this
-  HEAD comparison against the committed pin, never to the pin rules below, and pins never move
+  HEAD comparison against the committed pin, never to the pin rules below (the CHANGED cap's own
+  ``K_MIN`` noise slack, M60a, is a separate, fixed allowance: see that rule), and pins never move
   with it — so any number of PRs together can drop at most k statements under an unchanged
   floor, and a PR that changes a floor is held to the measurement by the CHANGED/NEW rules. No
   HEAD rule compares measured ``missing`` with a pinned ``missing`` (those comparisons are pin
@@ -206,6 +207,18 @@ matched by its run line, so nothing can rewrite ``coverage.json``; no ``continue
 **"The merge-base" below means the base:** on a pull request the merge-base with ``main``; on a push to main the
 last push whose ``unit-tests`` job passed (``_lint_git.push_base``, #1089).
 
+**Pinning a rise in one command (M60a, owner decisions 2026-10-27).** ``--pins-from-run RUN_ID`` writes the pins the
+"raise it to" hint prints, for every floored scope more than ``band`` above its floor, from CI run ``RUN_ID``'s own
+measurement. It binds the run before reading anything: a Tests (``test.yml``) run of a ``pull_request`` or
+``push``, whose ``head_sha`` is this checkout's ``HEAD``, whose latest attempt's ``unit-tests`` job ran
+``RUN_SUITE_STEP`` to ``success`` (a ``-x`` failure leaves partial data). It then reads that attempt's
+``coverage-json-<attempt>`` artifact; the unsuffixed legacy name is accepted only on attempt 1. A PR run measures the
+merge with main, so files this branch lacks are accepted: the pins are for that merge, and CI re-measures it on the
+pin commit. Falls, null floors, unmeasured scopes and branch pins more than ``K_MIN`` above the run are reported,
+never written. It needs ``gh`` (it calls ``gh api`` and ``gh run download`` from the repo root), and fails closed
+(exit 2) when ``gh`` cannot answer. It refuses to run inside GitHub Actions. Every pin it writes is verified again
+by the CHANGED rules on the pin commit's own run, so the mode is a convenience, not an authority.
+
 **When rules run:** every event runs 1, 3 and the head half of 4. On ``pull_request`` the
 diff rules are the gate and any git failure is an error (``_lint_git.must_not_skip``,
 exit 2) — the job checks out with ``fetch-depth: 0``. Locally they run when a merge-base
@@ -215,6 +228,13 @@ runs them too, against the last push whose ``unit-tests`` job passed (``_lint_gi
 coverage, so the numbers live in the CI log.
 
 **Residuals (not mechanized):**
+
+- the CHANGED cap's ``K_MIN`` slack (M60a): a re-pinned ``missing`` may sit up to ``K_MIN`` (5) statements above
+  the run it is verified on, and never above its base. LOWERING and the split and rename SUM rules read that pin, so
+  a later PR can absorb up to ``K_MIN`` per pin in the group. That is ``K_MIN`` for one scope and ``K_MIN`` × N for a
+  sum over N re-pinned scopes. It is bounded and does not accumulate across re-pins. It was accepted so that a pin
+  taken from one CI run passes on the next (±2 statements of noise): the owner decision of 2026-10-27, "ship the safe
+  half with a noise allowance", sized at ``K_MIN`` by review delta2 P1;
 
 - tests that execute code but assert nothing: coverage without behaviour. The push's
   quality rule (behavioural tests, deletion probes) is enforced by review;
@@ -283,6 +303,7 @@ import posixpath
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import tokenize
 import tomllib
@@ -394,8 +415,9 @@ class ScopeCov:
 
 
 def load_coverage(root: Path, path: Path | None = None) -> dict[str, FileCov]:
-    """The measurement at ``root``'s ``coverage.json``, or at ``path`` (``--pins-from-run``: a CI runner's file, whose
-    absolute keys are re-rooted at ``src/maxim/``; every file must still exist under ``root``)."""
+    """The measurement at ``root``'s ``coverage.json``, or at ``path`` (``--pins-from-run``: a CI run's file, whose
+    keys are relative as CI writes them; an absolute key is re-rooted at ``src/maxim/``, and a file the checkout lacks is
+    accepted, because a PR run measures the merge with main)."""
     foreign = path is not None
     path = root / COVERAGE_JSON if path is None else path
     if not path.is_file():
@@ -418,7 +440,7 @@ def load_coverage(root: Path, path: Path | None = None) -> dict[str, FileCov]:
     for key, f in raw_files.items():
         p = Path(key)
         rel = p.relative_to(root).as_posix() if p.is_absolute() and p.is_relative_to(root) else p.as_posix()
-        if foreign and f"/{SCOPE}/" in rel:
+        if foreign and p.is_absolute() and f"/{SCOPE}/" in rel:  # CI writes relative keys; re-root only an absolute one
             rel = rel[rel.index(f"/{SCOPE}/") + 1 :]  # /home/runner/work/Maxim/Maxim/src/maxim/x.py -> src/maxim/x.py
         if not rel.startswith(SCOPE + "/"):
             raise MeasurementError(f"{COVERAGE_JSON} names a file outside {SCOPE}: {key}")
@@ -670,7 +692,8 @@ def floor_head_rules(
             # that rose past the band while adding statements keeps its current missing pin, never the measured one.
             pin_missing = m.missing if f.missing is None else min(m.missing, f.missing)
             out.append(
-                f"{name}: {_fmt_pct(m.percent)} is more than {BAND} pt above its floor {f.percent}% — raise it to "
+                f"{name}: {_fmt_pct(m.percent)} is more than {BAND} pt above its floor {f.percent}% "
+                "(`python scripts/lint_coverage.py --pins-from-run <run-id>` writes it) — raise it to "
                 f'{{"percent": {round_down(m.percent)}, "missing": {pin_missing}}}'
             )
 
@@ -1859,9 +1882,13 @@ COVERAGE_ARTIFACT = "coverage-json"
 
 
 def _download_artifact(run_id: str, name: str, dest: Path) -> Path:
-    try:
+    try:  # cwd: gh resolves the repository from the checkout, as HEAD is read from it
         r = subprocess.run(
-            ["gh", "run", "download", run_id, "-n", name, "-D", str(dest)], capture_output=True, text=True, timeout=300
+            ["gh", "run", "download", run_id, "-n", name, "-D", str(dest)],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            cwd=REPO_ROOT,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise GitUnavailable(f"gh run download {run_id} -n {name}: {exc}") from exc
@@ -1874,7 +1901,7 @@ def run_measurement(
     root: Path,
     run_id: str,
     *,
-    api: Callable[[str], object] = gh_api,
+    api: Callable[[str], object] | None = None,
     download: Callable[[str, str, Path], Path] = _download_artifact,
     tmp: Path,
 ) -> dict[str, FileCov]:
@@ -1883,6 +1910,7 @@ def run_measurement(
     upload runs on ``always()``), and the artifact is that attempt's (``coverage-json-<attempt>``; the unsuffixed
     legacy name only on attempt 1). Raises :class:`MeasurementError` naming the refusal, :class:`GitUnavailable` when
     ``gh`` cannot answer."""
+    api = api or (lambda path: gh_api(path, cwd=root))  # {owner}/{repo} resolved from the checkout HEAD is read from
     run = api(f"repos/{{owner}}/{{repo}}/actions/runs/{run_id}")
     if not isinstance(run, dict):
         raise MeasurementError(f"run {run_id}: unexpected API response")
@@ -1970,8 +1998,12 @@ def apply_pins(text: str, pins: dict[str, Floor]) -> str:
 
 
 def pins_from_run_main(root: Path, run_id: str) -> int:
-    import tempfile
-
+    if os.environ.get("GITHUB_ACTIONS"):
+        print(
+            "coverage: --pins-from-run writes the floors file for a commit; it cannot run inside GitHub Actions",
+            file=sys.stderr,
+        )
+        return 2
     if not run_id.isdigit():
         print(f"usage: lint_coverage.py --pins-from-run RUN_ID (a number, got {run_id!r})", file=sys.stderr)
         return 2

@@ -14,6 +14,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 from scripts import lint_coverage as L
 
@@ -227,7 +228,8 @@ def test_a_floor_more_than_the_band_below_the_measurement_FAILS(repo, capsys):
     rc, _, err = _run(capsys)
     assert (
         rc == 1
-        and 'maxim/alpha: 100.00% is more than 1.0 pt above its floor 80.0% — raise it to {"percent": 100.0' in err
+        and 'maxim/alpha: 100.00% is more than 1.0 pt above its floor 80.0% (`python scripts/lint_coverage.py --pins-from-run <run-id>` writes it) — raise it to {"percent": 100.0'
+        in err
     )
 
 
@@ -1454,7 +1456,11 @@ def test_a_file_floor_more_than_the_band_under_the_measurement_FAILS(repo, capsy
     _g_base(repo, gamma=(91.0, 9), overall=(86.3, 16))
     _g_cov(repo, set(range(93, 101)))  # 92 covered: more than 1.0 pt over the 90.0 floor
     rc, _, err = _run(capsys)
-    assert rc == 1 and f'{G}: 92.00% is more than 1.0 pt above its floor 90.0% — raise it to {{"percent": 92.0' in err
+    assert (
+        rc == 1
+        and f'{G}: 92.00% is more than 1.0 pt above its floor 90.0% (`python scripts/lint_coverage.py --pins-from-run <run-id>` writes it) — raise it to {{"percent": 92.0'
+        in err
+    )
 
 
 def test_only_the_package_floor_fails_while_the_file_floor_holds(repo, capsys):
@@ -2365,11 +2371,13 @@ def test_the_committed_file_floors_are_case_exact_and_measured():
 # ── --pins-from-run (M60a): CI's pins from the run's own artifact, in one command ───────────────────────────────────
 
 
-def _ci_artifact(repo: Path, dest: Path, **cov) -> Path:
-    """The repo's measurement as a CI runner writes it: absolute keys under the runner's checkout."""
+def _ci_artifact(repo: Path, dest: Path, *, absolute: bool = False, **cov) -> Path:
+    """The repo's measurement as CI writes it: relative ``src/maxim/...`` keys (run 40549504653), or, with
+    ``absolute``, keys under a runner's checkout."""
     _cov(repo, **cov)
     data = json.loads((repo / "coverage.json").read_text())
-    data["files"] = {f"/home/runner/work/Maxim/Maxim/{k}": v for k, v in data["files"].items()}
+    if absolute:
+        data["files"] = {f"/home/runner/work/Maxim/Maxim/{k}": v for k, v in data["files"].items()}
     dest.mkdir(parents=True, exist_ok=True)
     (dest / "coverage.json").write_text(json.dumps(data))
     return dest / "coverage.json"
@@ -2434,7 +2442,7 @@ def test_pins_from_run_accepts_a_measured_file_the_checkout_lacks(repo, tmp_path
     head = _git(repo, "rev-parse", "HEAD").strip()
     art = _ci_artifact(repo, tmp_path / "ci")
     data = json.loads(art.read_text())
-    data["files"]["/home/runner/work/Maxim/Maxim/src/maxim/alpha/new.py"] = next(iter(data["files"].values()))
+    data["files"]["src/maxim/alpha/new.py"] = next(iter(data["files"].values()))
     art.write_text(json.dumps(data))
     cov = L.run_measurement(repo, "1", api=_api(head), download=lambda *a: art, tmp=tmp_path)
     assert "src/maxim/alpha/new.py" in cov
@@ -2564,3 +2572,37 @@ def test_the_pin_noise_slack_is_k_min_not_the_size_scaled_k(repo):
 
     assert not [r for r in rules(1000 + L.K_MIN) if r.startswith("overall")]
     assert any("overall: floor pins missing" in r for r in rules(1000 + L.K_MIN + 1))
+
+
+def test_pins_from_run_reroots_only_an_absolute_runner_key(repo, tmp_path):
+    """CI writes relative keys; an absolute runner key is re-rooted, and a relative key is never rewritten (code review
+    E1: a relative key holding ``/src/maxim/`` twice used to be mangled)."""
+    head = _git(repo, "rev-parse", "HEAD").strip()
+    art = _ci_artifact(repo, tmp_path / "ci", absolute=True)
+    cov = L.run_measurement(repo, "1", api=_api(head), download=lambda *a: art, tmp=tmp_path)
+    assert A in cov and not any(k.startswith("/") for k in cov)
+    data = json.loads(art.read_text())
+    data["files"] = {"src/maxim/alpha/src/maxim/x.py": next(iter(data["files"].values()))}
+    art.write_text(json.dumps(data))
+    assert set(L.run_measurement(repo, "1", api=_api(head), download=lambda *a: art, tmp=tmp_path)) == {
+        "src/maxim/alpha/src/maxim/x.py"
+    }
+
+
+def test_pins_from_run_is_refused_inside_github_actions(monkeypatch, capsys):
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    assert L.main(["--pins-from-run", "123"]) == 2
+    assert "cannot run inside GitHub Actions" in capsys.readouterr().err
+
+
+def test_the_pinner_names_match_the_real_workflow():
+    """Wire W1: the pinner hard-codes the unit-tests job, its measuring step's name and the attempt-bound artifact; a
+    rename in test.yml would make every --pins-from-run refuse while CI stays green, so the real workflow is read."""
+    wf = yaml.safe_load((Path(__file__).resolve().parents[2] / ".github/workflows/test.yml").read_text())
+    job = wf["jobs"]["unit-tests"]
+    assert "name" not in job and "strategy" not in job  # the jobs API reports it as exactly "unit-tests"
+    suite = [s for s in job["steps"] if s.get("name") == L.RUN_SUITE_STEP]
+    assert len(suite) == 1 and L.CI_COV_ARGS in " ".join(suite[0]["run"].split())
+    up = [s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/upload-artifact")]
+    assert [s["with"]["name"] for s in up] == [L.COVERAGE_ARTIFACT + "-${{ github.run_attempt }}"]
+    assert up[0]["with"]["path"] == L.COVERAGE_JSON and up[0]["if"] == "always()"

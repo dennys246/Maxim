@@ -661,9 +661,10 @@ jobs:
         # "Release gates" step; each checks the other's wiring. Positive control: tests/unit/test_lint_release_gates.py.
         run: python scripts/lint_release_gates.py --junit fast-suite.xml
 
-      - name: Upload coverage.json (#1103, diagnostic)
-        # Diagnostic only, after the gate (lint_coverage.ci_step_rules allows nothing between the measuring
-        # suite and the gate but MemoryHub). #1103: a few statements flip between identical CI runs (they did
+      - name: Upload coverage.json (#1103 diagnostic; --pins-from-run's input)
+        # After the gate (lint_coverage.ci_step_rules allows nothing between the measuring suite and the gate but
+        # MemoryHub). Consumers: `lint_coverage.py --pins-from-run` (M60a) reads it to pin a rise, and #1103's
+        # diagnostic. #1103: a few statements flip between identical CI runs (they did
         # not flip across two identical local runs, 2026-10-08); diffing `executed_lines` of two runs of one
         # commit names the timing-dependent lines. Uploaded even when the gate fails, which is when it matters.
         if: always()
