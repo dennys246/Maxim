@@ -2281,6 +2281,21 @@
               }
             },
             "description": "Claims are paced (~1.5 s apart) \u2014 retry momentarily."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The device's console token file is unusable (the code is consumed; fix, then re-request)."
           }
         },
         "summary": "Exchange the spoken code for the console token (single use; no token needed)",
