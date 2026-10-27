@@ -83,11 +83,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `default_poses.json`, and from a NaN readback composed into the head target. Durations were unbounded, and
   antennas and the SDK `look_at` moved instantly on a duration of 0. Now:
   - one set of validators in `maxim.hardware.controller` runs at entry (`MotionTarget`/`PixelTarget`, Selfy, the
-    tools), at every command clamp (`clamp_finite`), and immediately before each SDK call;
+    tools) and at every command clamp (`clamp_finite`), and one Reachy last mile
+    (`hardware/reachy/controller.py::check_sdk_command`) runs immediately before each SDK call;
   - durations lie in [0.1 s, 10 s]: an explicit one outside is refused, a default or derived one is lifted into range;
   - antennas always interpolate and clamp to ±90° (provisional, until the hand-measured range);
   - the `cartoon` interpolation, which overshoots its target by 10%, is refused;
-  - a refusal raises the new `maxim.exceptions.MotionRefused` (a `ValueError`). Tools return it to the model as an
+  - a refusal raises the new `maxim.exceptions.MotionRefused` (a `HardwareError` and a `ValueError`). Tools return it to the model as an
     error, never as a default motion (a garbage `turn_around` angle used to become a 90° turn);
   - a bad orient delta in a body YAML (non-finite, or over ±90°) makes the robot run bodiless with one ERROR;
   - an unknown or unparseable pose name is an error, not a move to the default pose;
@@ -101,6 +102,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   message), so the present-pose check is defence in depth. Still open on the real robot, as 1.3.4 exit item
   [#1499](https://github.com/dennys246/Maxim/issues/1499): the neck can sweep through about 180° in the middle of a
   move that combines a large body turn with a head turn.
+
+- **An unreadable `~/.config/maxim` is one typed error, not a traceback** ([#1403](https://github.com/dennys246/Maxim/issues/1403)).
+  With the config dir at mode 000, every `maxim` command (even `--help`) died with a raw `PermissionError` traceback
+  from the `profiles.yml` probe at `models.language` import. On Python 3.14 the same state was silent: `Path.is_file`
+  returned False, so the operator's `config.json`, `profiles.yml`, `peer.yml`, `mesh.yml` and `hive.json` were read
+  as absent (a peer detected as solo; the Oasis registry read as empty; `resolve_setting` fell back to defaults, so
+  the console dropped the operator's `tools.deny`). Every read probe of those files on the startup and loader path
+  now goes through `utils/paths.py::config_file_present`, which raises `maxim.exceptions.ConfigDirUnreadable` (a
+  `ConfigurationError`) naming the directory that blocks access and, for a permission error, `chmod 700 <dir>`.
+  `cli.main` renders it as one line and exits 2 (other errors keep their traceback); role detection and
+  `resolve_setting` re-raise it instead of falling past it. The remaining writers and setup-wizard probes of the
+  same dir are follow-up work.
+
+- **`ensure_key` / `ensure_console_token` never overwrite a key file they cannot read**
+  ([#1402](https://github.com/dennys246/Maxim/issues/1402)). They read through the lenient readers, which return None
+  for a missing file and for an unusable one alike (mode 000, a directory, non-UTF-8, oversized), then wrote a new key
+  over it: a silent rotation that 401'd every peer or device with nothing naming why. All three key ensures (mesh key,
+  console token, and `ensure_local_server_key`'s spawn key) now go through one helper: a key is generated only for a
+  missing or empty file (an empty file is unlinked first, so the new key is never written over its old mode), under
+  the key's lock with a re-read inside it, and rotations take the same lock. Anything else raises the new key-neutral
+  `maxim.exceptions.KeyFileUnusable` (`.path`, `.reason`, `.fix_hint`; `LeaderKeyError` and `LocalServerKeyError` now
+  subclass it). In-repo callers present it: `maxim tunnel setup` and `maxim tunnel key rotate` print it and exit 1;
+  `maxim serve`, `--show-token` and `--rotate-token` print it and exit 2 before building the app; `/api/pair/claim`
+  answers **503** (reason only, path in the device log) and the spoken code is consumed. `device_console_handoff`
+  raises it to the device bootstrap, which must now present it (maxim-pulse `apps/reachy`). The fix hint never
+  suggests a rotation, which would keep the unusable mode. `maxim tunnel setup` no longer prints any part of the key (CodeQL py/clear-text-logging-sensitive-data): it names the key file and `maxim tunnel key show`.
 
 - **Inbound comms reach the robot at last** ([#1466](https://github.com/dennys246/Maxim/issues/1466), corrected):
   every comms HTTP endpoint (`/api/twilio/sms`, `/api/twilio/voice`, `/api/command`, `/api/status`, `/api/goals`) answered 422 since
