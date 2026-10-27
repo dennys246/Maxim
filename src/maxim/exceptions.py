@@ -322,6 +322,14 @@ class ConfigurationError(MaximError):
     pass
 
 
+class ConfigDirUnreadable(ConfigurationError):
+    """The operator config directory (``~/.config/maxim``) cannot be read, so no command can know its config.
+
+    Raised by :func:`maxim.utils.paths.config_file_present`; the message names the directory and the
+    ``chmod 700`` fix. Distinct from a malformed file, which role detection warns about and falls past (#1403).
+    """
+
+
 class ComponentNotFoundError(ConfigurationError):
     """Requested SEM component template does not exist.
 
@@ -461,6 +469,7 @@ __all__ = [
     "NoValidPlanError",
     # Configuration
     "ConfigurationError",
+    "ConfigDirUnreadable",
     "ComponentNotFoundError",
     "MissingConfigError",
     "InvalidConfigError",
