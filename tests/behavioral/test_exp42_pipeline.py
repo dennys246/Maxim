@@ -300,8 +300,9 @@ class TestExp44HarnessFork:
 
 class TestExp44ArmDerivation:
     """ablation_arm must be derived with the SAME truthy semantics the
-    runtime parsers use (1/true/t/yes/y/on) — grouping on raw env echoes
-    is fragile ("1" vs "true" vs " YES ")."""
+    runtime parsers use (the canonical ``maxim._offline.truthy``:
+    1/true/yes/on) — grouping on raw env echoes is fragile ("1" vs "true"
+    vs " YES ")."""
 
     def test_arm_a_default(self, monkeypatch):
         harness = _load(_HARNESS_PATH, "bench_exp44_arm_a")
@@ -311,15 +312,28 @@ class TestExp44ArmDerivation:
 
     def test_arm_b(self, monkeypatch):
         harness = _load(_HARNESS_PATH, "bench_exp44_arm_b")
-        monkeypatch.setenv("MAXIM_ENABLE_BODY_STATE_PROMPT", "y")  # t/y must count
+        monkeypatch.setenv("MAXIM_ENABLE_BODY_STATE_PROMPT", "yes")
         monkeypatch.setenv("MAXIM_DISABLE_COACH_BODY_LAYERS", " TRUE ")
         assert harness._ablation_arm() == "B"
 
     def test_arm_c(self, monkeypatch):
         harness = _load(_HARNESS_PATH, "bench_exp44_arm_c")
-        monkeypatch.setenv("MAXIM_ENABLE_BODY_STATE_PROMPT", "t")
+        monkeypatch.setenv("MAXIM_ENABLE_BODY_STATE_PROMPT", "on")
         monkeypatch.delenv("MAXIM_DISABLE_COACH_BODY_LAYERS", raising=False)
         assert harness._ablation_arm() == "C"
+
+    def test_arm_matches_the_runtime_toggles_on_non_canonical_values(self, monkeypatch):
+        """``t``/``y`` are not truthy since #1315 step 0b, for the harness exactly as for the runtime parsers it
+        labels: a ``t``/``y`` run is arm A, and the body-state wiring is off too, so the label cannot drift from the
+        behaviour (Wire F1)."""
+        from maxim.integration.memory_hub import body_state_prompt_enabled
+
+        harness = _load(_HARNESS_PATH, "bench_exp44_arm_ty")
+        for val in ("t", "y"):
+            monkeypatch.setenv("MAXIM_ENABLE_BODY_STATE_PROMPT", val)
+            monkeypatch.delenv("MAXIM_DISABLE_COACH_BODY_LAYERS", raising=False)
+            assert harness._ablation_arm() == "A"
+            assert body_state_prompt_enabled() is False
 
     def test_inconsistent_flagged(self, monkeypatch):
         harness = _load(_HARNESS_PATH, "bench_exp44_arm_x")
