@@ -30,6 +30,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking, to stable surfaces: `create.pool` needs an LLM router, and `create.router` raises instead of returning
+  `None`** ([#1338](https://github.com/dennys246/Maxim/issues/1338); owner decisions 2026-10-26).
+  - `create.pool(..., llm_router=...)` takes a new keyword and raises `ConfigurationError` without it: a pool with no
+    router could only answer every turn with a persona stub. **Migration:** pass
+    `llm_router=maxim.create.router(<profile>)`.
+  - `create.router(model)` raises `ConfigurationError` naming what is missing (the cloud profile's key, e.g.
+    `ANTHROPIC_API_KEY`, or a configured local profile) when no backend could be built; it returned `None`, which the
+    caller found only at the first call. **Migration:** a caller that checked for `None` catches `ConfigurationError`.
+
 - **The wheel vendors maxim-pulse Console v0.4.4** (was v0.4.2 at 1.3.3, then v0.4.3; contract 0.6.0, unchanged). It is
   now the newest pulse tag for this contract, so R4's release gate requires it. v0.4.3 brought clearer leader setup
   (key and address guidance, with warnings), commands shown in a distinct style, and readable light-theme status
@@ -59,6 +68,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Experiment harness follow-ups** ([#1038](https://github.com/dennys246/Maxim/issues/1038),
+  [#1024](https://github.com/dennys246/Maxim/issues/1024)).
+  - R3's report treats a second clean row for one (arm, seed) as INCOMPLETE and names it, as Exp 60/61/62 do. It used
+    to count both, so a campaign restarted without `--resume` could read COMPLETE.
+  - Exp 57's rows carry `ts` = the start of their unit (the cohort-rung), so the record's min `ts` is the run's
+    start, as Exp 49 stamps a trial's start. Before, `ts` was the time each row was written.
+  - Documented: `_provenance.append_refusal` refuses a run whose code tree is `unknown`, even for a fresh file, and
+    campaign ids must be letters, digits, `-` or `_` (`safe_campaign_id`).
+- **The O19 harness's signal windows** ([#1031](https://github.com/dennys246/Maxim/issues/1031)).
+  - Its SIGTERM/SIGHUP handlers are installed before the marker push.
+  - A signal during the push exits 2 with no attempt declared (the local tag is deleted) when the marker did not reach
+    origin, and exits 1 (aborted) when it did. Preflight and mock runs exit 2.
+  - Every exit path removes the attempt's temp home.
+  - A row write blocks those signals, so a phase's row is never lost or torn.
+  - `stop_sim` escalates to SIGKILL on a second signal.
+  - The model and memory-strategy probes run under the first phase's exact sim environment.
+- **`lint_claude_md_invariants.py` resolves every `path.py::symbol` citation** in CLAUDE.md and `docs/agents/` by AST
+  ([#1121](https://github.com/dennys246/Maxim/issues/1121)).
+  - A symbol must be a def or class, or a module- or class-body binding, in the cited file. A dotted `Class.method`
+    must be inside that class.
+  - An exact path is judged alone.
+  - A symbol moved by a refactor now fails CI's lint job. Five briefs' `report.py::…` citations now name
+    `simulation/report.py`.
+
+- **Fail loud on LLM readiness** ([#1338](https://github.com/dennys246/Maxim/issues/1338); advisor-mode item 6, O8).
+  Silent paths made a process with no working LLM look alive (the two stable-surface breaks are under Changed):
+  - **`LLMRouter.generate(prompt, *, system=None, max_tokens=256, temperature=None) -> str`** is new: plain-text
+    completion over the same dispatch as `generate_json`, raising `ModelInferenceError` on a failure or no text, never a
+    stub. `AgentPool` called a `.generate` no router had (the `AttributeError` was swallowed into the stub), and
+    `create.router`'s docstring promised it. `ToolPainBridge`'s Reflexion path calls the same method, but no production
+    builder passes it an LLM yet, so that path stays unwired (a follow-up).
+  - **`AgentPool.run_turn` reports an LLM failure.** A router call that raised or returned no text was logged at DEBUG
+    and answered with the persona stub as a successful response; it now comes back as a `TurnResult` with `error` set,
+    the new `error_type` field naming the class (`"ModelInferenceError"`) and `response` None (`run_turn` still never
+    raises). An agent with no personality (`create.agent`'s default) now gets an LLM turn instead of a silent `None`.
+  - **CLI server mode reports NOT READY** when the LLM router does not start, its init fails, or `wait_ready` returns
+    False after 180 s, instead of printing "LLM server ready". Behind a LeaderProxy (a leader) it stays up so peers can
+    recover it (`maxim peer llm <model>`, `maxim peer update`) and `/v1/debug/ping` carries a new `server_llm` field
+    (`{"ready": false, "reason": ...}`, beside the live `llm_ready` probe); with no LeaderProxy it exits `1`. The
+    spawned server is stopped on every exit (a refusal's `2` included), and a failed stop is logged. Server mode moved
+    to `cli.py::_run_server_mode` (rule T).
 - **Benchmark verdicts no longer pass or fail without checking anything**
   ([#1391](https://github.com/dennys246/Maxim/issues/1391), [#1392](https://github.com/dennys246/Maxim/issues/1392),
   [#1394](https://github.com/dennys246/Maxim/issues/1394), [#1395](https://github.com/dennys246/Maxim/issues/1395)).
