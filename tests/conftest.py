@@ -441,6 +441,25 @@ def _isolate_maxim_allow_remote_update_env():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_tts_env():
+    """Scrub the ``MAXIM_TTS_*`` vars across every test (#1437).
+
+    ``MAXIM_TTS_ENABLED`` turns speech on for every later entry point, and with it a voice load and a
+    local-speaker probe at start; ``MAXIM_TTS_MODEL`` and ``MAXIM_TTS_LOCAL`` change which voice and which
+    speaker a later test's runtime would use.
+    """
+    names = ("MAXIM_TTS_ENABLED", "MAXIM_TTS_MODEL", "MAXIM_TTS_LOCAL")
+    saved = {name: os.environ.pop(name, None) for name in names}
+    try:
+        yield
+    finally:
+        for name, value in saved.items():
+            os.environ.pop(name, None)
+            if value is not None:
+                os.environ[name] = value
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_memory_strategy_env():
     """Scrub the ``MAXIM_MEMORY_*`` vars across every test (memory-strength Phase 2c).
 

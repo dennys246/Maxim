@@ -706,14 +706,16 @@ def _runtime_mode_switch_allowed(requested: str, *, current_operational: str, gr
 def _run_stopped_on(error: Exception, logger: Any, *, verbosity: int) -> int:
     """A robot/agentic run stopped on ``error``: the run loop's exit code (#1468, owner decisions 2026-10-26).
 
-    A typed backend error or a leader refusal is RE-RAISED to :func:`main`, which renders its fix hint (or the
-    refusal's reason) and exits 2, so a supervisor can tell "the operator must act" from a crash; a refusal is
-    never absorbed by a broad handler (``exceptions.LeaderRefusal``). Anything else is logged as before and is a
-    crash: 1. The loop's ``finally`` (``_end_robot_run``) runs either way."""
+    A typed backend error, a leader refusal or a spoken-response refusal (``--tts`` that cannot play, #1437)
+    is RE-RAISED to :func:`main`, which renders its fix hint (or the refusal's reason) and exits 2, so a
+    supervisor can tell "the operator must act" from a crash; a refusal is never absorbed by a broad handler
+    (``exceptions.LeaderRefusal``). Anything else is logged as before and is a crash: 1. The loop's
+    ``finally`` (``_end_robot_run``) runs either way."""
     from maxim.exceptions import LeaderRefusal
     from maxim.models.language.types import BackendError
+    from maxim.utils.response_output import SpeechOutputUnavailable
 
-    if isinstance(error, (BackendError, LeaderRefusal)):
+    if isinstance(error, (BackendError, LeaderRefusal, SpeechOutputUnavailable)):
         raise error
     log_exception(logger, error, verbosity=verbosity, message="❌ Maxim stopped")
     return 1
@@ -2549,6 +2551,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             logging.getLogger(__name__).debug("unreadable config dir", exc_info=True)
             user_warn(f"{type(e).__name__}: {e}", source="config", event="config_dir_unreadable")
+            return 2
+        from maxim.utils.response_output import SpeechOutputUnavailable
+
+        if isinstance(e, SpeechOutputUnavailable):  # --tts that cannot play, CLI or robot (#1437)
+            from maxim.utils.logging import user_warn
+
+            # The message already ends with its fix hint (SpeechOutputUnavailable.__init__).
+            user_warn(f"{type(e).__name__}: {e}", source="tts", event="speech_output_unavailable")
             return 2
         try:
             from maxim.models.language.types import BackendError

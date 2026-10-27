@@ -53,7 +53,7 @@ _EXTRA_IMPORT_MAP: dict[str, str] = {
     "llm-anthropic": "anthropic",
     "llm-openai": "openai",
     "vision": "cv2",
-    "audio": "sounddevice",
+    "audio": "faster_whisper",  # the audio extra's own package (sounddevice is the tts extra's, #1437)
     "search": "duckduckgo_search",
     "tts": "piper",
     "yolo": "ultralytics",

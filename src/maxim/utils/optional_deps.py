@@ -90,6 +90,7 @@ EXTRA_FOR_IMPORT: dict[str, str] = {
     "tiktoken": "llm-openai",
     # tts
     "piper": "tts",
+    "sounddevice": "tts",  # local speakers for `maxim --tts` (#1437); needs the PortAudio system library
     # yolo
     "ultralytics": "yolo",
     "lap": "yolo",
@@ -183,11 +184,14 @@ def optional_dependency_available(import_name: str) -> bool:
     Use for capability PROBES (GPU detection, "use X if present") where the
     absence of the dependency is a normal, expected condition rather than a
     setup error. Never logs.
+
+    A package whose import raises ``OSError`` counts as unavailable: ``sounddevice``
+    raises it on Linux when the PortAudio system library is missing (#1437).
     """
     try:
         importlib.import_module(import_name)
         return True
-    except ImportError:
+    except (ImportError, OSError):
         return False
 
 

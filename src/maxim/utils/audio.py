@@ -74,7 +74,7 @@ def _check_local_audio() -> bool:
         return False
     try:
         sd.query_devices(kind="output")
-    except Exception as e:  # sounddevice.PortAudioError: no default output device
+    except (sd.PortAudioError, ValueError) as e:  # no default output device
         _local_audio_available = False
         logger.debug("Local audio not available (no output device: %s)", e)
         return False
@@ -99,7 +99,10 @@ def play_audio_local(
         True if playback started successfully, False otherwise.
     """
     if not _check_local_audio():
-        logger.warning("Local audio not available. Install with: pip install sounddevice")
+        logger.warning(
+            "Local audio not available (sounddevice, the PortAudio library, or an output device is missing). "
+            "Install with: pip install 'pymaxim[tts]'; on Linux also the PortAudio library (apt install libportaudio2)."
+        )
         return False
 
     if samples is None or len(samples) == 0:

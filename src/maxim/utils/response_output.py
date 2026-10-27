@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-from maxim.utils.optional_deps import require_optional_dependency
+from maxim.utils.optional_deps import OptionalDependencyError, require_optional_dependency
 
 # Audio utilities deferred to call site to avoid eager numpy/scipy loading
 
@@ -352,6 +352,7 @@ def build_speech_output(
     model_name: str | None,
     sink: Callable[..., bool] | None,
     log: logging.Logger,
+    sink_plays_locally: bool = False,
 ) -> tuple[Any | None, Callable[..., bool] | None]:
     """The one place spoken responses are set up, for every entry point (#1437).
 
@@ -361,19 +362,26 @@ def build_speech_output(
 
     - the voice is ``model_name``, else ``MAXIM_TTS_MODEL``, else the default voice;
     - the speaker is ``sink`` when the caller has one (the robot's device sink,
-      ``MediaLoopMixin.speak``), else this machine's local speakers (:class:`LocalSpeaker`).
+      ``MediaLoopMixin.speak``), else this machine's local speakers (:class:`LocalSpeaker`);
+    - local speakers are checked whenever speech will play on them: no sink, ``MAXIM_TTS_LOCAL``,
+      or ``sink_plays_locally`` (the device sink falls back to them with no SDK handle);
+    - the voice is loaded here, so a corrupt model refuses at start, not at the first sentence.
 
     Raises:
-        OptionalDependencyError: the ``tts`` extra (piper) is not installed.
-        SpeechOutputUnavailable: the voice model is missing, or there is no sink and no local
-            speaker can play. It never logs "enabled" for a path that cannot play.
+        SpeechOutputUnavailable: the ``tts`` extra (piper) is not installed, the voice model is
+            missing or will not load, or speech would play locally and no local speaker can. It
+            never logs "enabled" for a path that cannot play. ``cli.main`` renders it with its
+            ``fix_hint`` and exits 2.
     """
     import os
 
     enabled = requested or os.environ.get("MAXIM_TTS_ENABLED", "").strip().lower() in _TTS_TRUTHY
     if not enabled:
         return None, None
-    require_optional_dependency("piper", feature="spoken responses (--tts / MAXIM_TTS_ENABLED)")
+    try:
+        require_optional_dependency("piper", feature="spoken responses (--tts / MAXIM_TTS_ENABLED)")
+    except OptionalDependencyError as e:
+        raise SpeechOutputUnavailable("the tts extra (piper) is not installed", e.fix_hint) from e
     from maxim.models.audio.tts import TTSEngine
 
     voice = model_name or os.environ.get("MAXIM_TTS_MODEL") or _DEFAULT_VOICE
@@ -383,10 +391,17 @@ def build_speech_output(
             f"the voice model {voice!r} is not downloaded",
             "Download it with `python -m maxim.models.download --tts`.",
         )
+    try:
+        engine.load()  # also sets the voice's real sample rate, which the local speaker needs
+    except (OSError, ValueError, RuntimeError) as e:
+        raise SpeechOutputUnavailable(
+            f"the voice model {voice!r} could not be loaded ({e})",
+            "Re-download it with `python -m maxim.models.download --tts`.",
+        ) from e
     speaker = sink
     prefer_local = os.environ.get("MAXIM_TTS_LOCAL", "").strip().lower() in _TTS_TRUTHY
     where = "local speakers (MAXIM_TTS_LOCAL)" if prefer_local else "the robot's speaker"
-    if speaker is None:
+    if speaker is None or prefer_local or sink_plays_locally:
         from maxim.utils.audio import LocalSpeaker
 
         local = LocalSpeaker(sample_rate=int(engine.sample_rate))
@@ -396,8 +411,11 @@ def build_speech_output(
                 "Install it with `pip install 'pymaxim[tts]'`; on Linux also the PortAudio library "
                 "(e.g. `apt install libportaudio2`).",
             )
-        speaker = local
-        where = "local speakers"
+        if speaker is None:
+            speaker = local
+            where = "local speakers"
+        elif not prefer_local:
+            where = "local speakers (no robot SDK handle)"
     log.info("TTS enabled with voice %s, speaking through %s", voice, where)
     return engine, speaker
 

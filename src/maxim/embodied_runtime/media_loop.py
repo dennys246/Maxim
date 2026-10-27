@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 import multiprocessing as mp
 import os
 import queue
@@ -22,6 +23,9 @@ _original_cuda_devices = _gpu_state.original_cuda_devices
 
 class MediaLoopMixin:
     """Mixin providing the live media capture/playback loop and related helpers."""
+
+    log: logging.Logger  # set by the host (Selfy.__init__)
+    sleeping: bool  # the robot's sleep state; the host and the loop both write it
 
     def live(
         self,
@@ -141,12 +145,9 @@ class MediaLoopMixin:
             self.log.info("Recording audio: %s", audio_path)
             self.log.info("Transcripts: %s", transcript_path)
 
-        effective_wake_up = bool(wake_up)
+        effective_wake_up = self._effective_wake_up(wake_up)
         mode = str(getattr(self, "mode", "") or "").strip().lower()
-        if mode == "sleep":
-            effective_wake_up = False
-        if str(getattr(self, "requested_mode", "") or "").strip().lower() == "sleep":
-            effective_wake_up = False
+        self._build_speech_output()  # #1437: a --tts that cannot play refuses before the robot moves
         if self._robot is not None:
             self.awaken(vision=bool(vision), motor=bool(motor), audio=bool(self.audio), wake_up=effective_wake_up)
         if vision and self.verbose:
@@ -449,6 +450,29 @@ class MediaLoopMixin:
             self._live_stop_event = None
             self.shutdown()
 
+    def _build_speech_output(self) -> None:
+        """Spoken responses (#1437): built, or refused, before the robot moves.
+
+        ``live()`` calls this before ``awaken()``, so a ``--tts`` that cannot play stops the run before any
+        motion, and before the agentic runtime, whose start is wrapped in ``warn_unless_refusal`` (which
+        would turn the refusal into a warning). The agentic runtime reads ``self._speech_output``.
+        """
+        from maxim.utils.response_output import build_speech_output
+
+        self._speech_output = build_speech_output(
+            requested=bool(getattr(self, "tts_requested", False)),
+            model_name=getattr(self, "tts_model", None),
+            sink=self.speak,
+            log=self.log,
+            sink_plays_locally=getattr(self, "mini", None) is None,
+        )
+
+    def _effective_wake_up(self, wake_up: bool) -> bool:
+        """Whether to run the wake-up motion: never in sleep mode, or when sleep was requested."""
+        if str(getattr(self, "mode", "") or "").strip().lower() == "sleep":
+            return False
+        return str(getattr(self, "requested_mode", "") or "").strip().lower() != "sleep" and bool(wake_up)
+
     def _start_media_audio(self) -> tuple[int | None, int | None]:
         """Start the robot's speaker player, then read the mic/speaker rates (the live loop's media start).
 
@@ -463,16 +487,6 @@ class MediaLoopMixin:
             from maxim.utils.audio import start_device_player
 
             start_device_player(mini, log=self.log)
-        # Spoken responses (#1437): built or refused HERE, before the agentic runtime starts, because its
-        # start is wrapped in warn_unless_refusal, which would turn a refusal into a warning.
-        from maxim.utils.response_output import build_speech_output
-
-        self._speech_output = build_speech_output(
-            requested=bool(getattr(self, "tts_requested", False)),
-            model_name=getattr(self, "tts_model", None),
-            sink=self.speak,
-            log=self.log,
-        )
 
         audio_input_rate = None
         audio_output_rate = None

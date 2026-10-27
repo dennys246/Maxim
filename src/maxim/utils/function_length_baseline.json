@@ -21,7 +21,7 @@
     {
       "file": "src/maxim/cli_parser.py",
       "qualname": "_build_parser",
-      "lines": 620
+      "lines": 610
     },
     {
       "file": "src/maxim/console/server.py",
@@ -61,7 +61,7 @@
     {
       "file": "src/maxim/embodied_runtime/media_loop.py",
       "qualname": "MediaLoopMixin.live",
-      "lines": 425
+      "lines": 422
     },
     {
       "file": "src/maxim/embodied_runtime/selfy.py",

@@ -75,8 +75,8 @@ media-loop step that fails and is retried) is not a stop and does not change the
 | `--segmentation-model` | str | `rtm` | Vision engine: `rtm` or `yolo` |
 | `--audio` | bool | `True` | Enable audio recording and transcription |
 | `--audio_len` | float | `5.0` | Seconds per audio chunk |
-| `--tts` | flag | | Enable text-to-speech |
-| `--tts-model` | str | `en_US-lessac-medium` | TTS voice model |
+| `--tts` | flag | | Speak responses (also `MAXIM_TTS_ENABLED`): through this machine's speakers, or the robot's when one is connected. Needs `pip install 'pymaxim[tts]'`, a downloaded voice (`python -m maxim.models.download --tts`) and, on Linux, the PortAudio library (`apt install libportaudio2`). A request that cannot play stops at start with the fix and exit code 2. |
+| `--tts-model` | str | `$MAXIM_TTS_MODEL`, else `en_US-lessac-medium` | TTS voice model |
 | `--comms` | flag | | Enable Twilio SMS/Voice |
 
 ## Agentic Mode

@@ -65,10 +65,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `utils.response_output.build_speech_output`: `--tts` or `MAXIM_TTS_ENABLED` turns speech on for either path (the
   robot now hears `--tts`/`--tts-model`); the CLI speaks through local speakers, a robot through its device sink.
   A request that cannot play refuses at start with a typed `SpeechOutputUnavailable` naming the fix (download the
-  voice, or `pip install 'pymaxim[tts]'`), and "enabled" is logged only for a path that can play. On a robot, speech
-  is resolved before the agentic runtime starts, so a refusal is not downgraded to a warning. `LocalSpeaker`
-  reports availability truthfully (a missing PortAudio library or no output device is "unavailable", not a crash).
-  The `tts` extra now includes `sounddevice`.
+  voice, or `pip install 'pymaxim[tts]'`), and "enabled" is logged only for a path that can play. The run then stops
+  with that fix and exit code 2, on the CLI and on the robot. On a robot, speech is resolved before the robot moves
+  and before the agentic runtime starts, so a refusal is not downgraded to a warning. The voice is loaded at start
+  (a corrupt model refuses there, not at the first sentence), and local speakers are checked whenever speech will
+  play on them (`MAXIM_TTS_LOCAL`, or a robot run with no SDK handle). `--tts-model` now defaults to
+  `MAXIM_TTS_MODEL`, then the default voice. `LocalSpeaker` reports availability truthfully (a missing PortAudio
+  library or no output device is "unavailable", not a crash), and `optional_dependency_available` treats a package
+  whose import raises `OSError` as unavailable. The `tts` extra now includes `sounddevice` (on Linux it needs the
+  PortAudio library, `apt install libportaudio2`), and the leader's install probe for the `audio` extra checks
+  `faster_whisper`, the extra's own package, instead of `sounddevice`.
 
 - **Benchmark verdicts no longer pass or fail without checking anything**
   ([#1391](https://github.com/dennys246/Maxim/issues/1391), [#1392](https://github.com/dennys246/Maxim/issues/1392),

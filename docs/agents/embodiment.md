@@ -103,6 +103,9 @@ Also see [docs/agents/bio-memory.md](bio-memory.md) for the NAc consumer side (d
 - `MAXIM_MOTOR_CREDIT_TRACE` = one `motor_credit.measured` JSONL event per measured-relief credit decision (Exp 49 H3 channel; logging-only) = `embodiment/tool_bridge.py`
 - `MAXIM_ENABLE_BODY_STATE_PROMPT` = opt-in body_state prompt + Acting Coach Layers 2+4 (default OFF; do NOT default-on outside the pre-registered ablation [docs/plans/deferred/acting_coach_body_state_ablation.md](../../docs/plans/deferred/acting_coach_body_state_ablation.md) — see [docs/agents/simulation-experiments.md](simulation-experiments.md)) = `integration/memory_hub.py::body_state_prompt_enabled` + `runtime/agent_factory.py::_maybe_wire_body_state`
 - `MAXIM_DISABLE_COACH_BODY_LAYERS` = arm-B ablation: disable Acting Coach Layers 2+4 while keeping 1+3 (see [docs/agents/simulation-experiments.md](simulation-experiments.md)) = `prompts/acting_coach.py` via `acting_coach_config_from_env`
+- `MAXIM_TTS_ENABLED` = turn spoken responses on, like `--tts`, on the CLI or the robot (a request that cannot play refuses at start, exit 2; #1437) = `utils/response_output.py::build_speech_output`
+- `MAXIM_TTS_MODEL` = the Piper voice when `--tts-model` is not given (default `en_US-lessac-medium`) = `utils/response_output.py::build_speech_output`
+- `MAXIM_TTS_LOCAL` = play the robot's speech on this machine's speakers instead of the robot's (checked for a local speaker at start) = `utils/audio.py`, `utils/response_output.py`
 
 Every one of these has an autouse scrub in `tests/conftest.py`; a new env-var branch in a hot path must add its scrub in the same commit (rule homed in [docs/agents/runtime-tools.md](runtime-tools.md)). Full rationale paragraphs: `docs/lessons/claude-md-2026-08-13-pre-diet.md`.
 
