@@ -377,10 +377,11 @@ class AgentPool:
         if personality:
             system += f"Your personality: {personality}\n"
         system += "Respond in character with 1-2 sentences of dialogue or action. Stay in character. Be concise."
+        router = self._llm_router
+        if router is None:  # callers route here only with a router; fail loud, never a stub, if that changes
+            raise ModelInferenceError(f"NPC '{agent_id}' has no LLM router", context={"agent_id": agent_id})
         try:
-            text = self._llm_router.generate(
-                percept, system=system, max_tokens=100, request_context={"agent_id": agent_id}
-            )
+            text = router.generate(percept, system=system, max_tokens=100, request_context={"agent_id": agent_id})
         except (ModelError, LeaderRefusal):
             raise
         except Exception as e:  # a router that is not an LLMRouter: still a typed failure, never a stub

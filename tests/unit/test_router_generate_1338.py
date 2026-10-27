@@ -200,3 +200,13 @@ class TestCreateRouterRaises:
         sentinel = object()
         monkeypatch.setattr(lb, "build_primary_router", lambda **kw: (sentinel, None))
         assert maxim.create.router("mistral-7b") is sentinel
+
+
+def test_generate_llm_response_without_a_router_is_a_typed_error() -> None:
+    """The NPC LLM path never falls back to the persona stub: with no router it raises ``ModelInferenceError``."""
+    from maxim.runtime.agent_pool import AgentPool
+
+    pool = AgentPool()
+    assert pool._llm_router is None
+    with pytest.raises(ModelInferenceError, match="no LLM router"):
+        pool._generate_llm_response("npc_a", "gruff", "hello")
