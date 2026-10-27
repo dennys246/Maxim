@@ -339,7 +339,7 @@ class TestExpectations:
                     {"at": 0, "source": "cli", "cli_input": "hello"},
                 ],
                 "expectations": [
-                    {"type": "action_taken", "tool": "nonexistent_tool"},
+                    {"type": "action_taken", "tool": "bash"},
                 ],
             },
         )
