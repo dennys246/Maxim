@@ -221,6 +221,8 @@ break the citation. Each is a record now, not a plan.
 - [oasis_entry_index_v2.md](oasis_entry_index_v2.md): PRs A–C shipped 2026-09-25; the format is frozen under public_format_freeze.
 - [lookback_primitive.md](lookback_primitive.md): DECIDED 2026-09-24 (no new store; #891/#892); R4's look-back design record.
 - [grounded_language_acquisition.md](grounded_language_acquisition.md): superseded by [grounding.md](grounding.md) 2026-10-07 (owner decision G5); kept at its path because `src/`, the CLI help text and `analysis/roy_log.py` cite it. Its paired-data audit entry condition is answered there (the pair became (context, consequence)).
+- [recall_1_3_4.md](recall_1_3_4.md): SHIPPED 2026-10-28 (#1465, #1484, #1515; Session R of 1.3.4); tests cite it. Its §13 lists what remains: the T1-16 re-run #1476, which blocks the recall claim, and the follow-ups #1516.
+- [lazy_import_lint_1436.md](lazy_import_lint_1436.md): SHIPPED 2026-10-26 (#1480); `scripts/lint_dead_imports.py` and its tests cite it.
 - [minecraft_benchmark.md](minecraft_benchmark.md): Part I COMPLETE (Exp 56); Part II's R0–R3 shipped (R3 an instrument + frozen baseline in 1.3.0), and R4 moved to `roadmap_1_4.md` Phase 5. The ladder's own record; `src/maxim/simulation/minecraft.py` and the R1/R2 probe scripts cite it.
 
 Frozen contracts (reference, not plans):
@@ -231,6 +233,11 @@ Approach notes for 1.3.3 and 1.3.4:
 - [advisor_mode.md](advisor_mode.md): **1.3.4, the atonia gate** — Maxim observes and reports while its motor output is inhibited; the gate guards tool dispatch, and the sandbox alone guards disk and egress until item 7 and an egress seam ship (#1315; O1–O9 verified against v1.3.2; owner decisions AD1–AD9 decided 2026-10-17).
 - [readiness_and_extras_standards.md](readiness_and_extras_standards.md): four standards R1–R4 from the pulse seam (readiness proves the capability, extras tested against the real library, typed console payloads, a checked vendoring step; #1332–#1336; 1.3.3).
 - [upgrade_safety.md](upgrade_safety.md): `maxim doctor`'s advisory check and an upgrade manifest (#1295, approach note merged as #1297).
+- [atonia_gate_approach_notes.md](atonia_gate_approach_notes.md): **the atonia gate's approach notes** (Session V; DRAFT, design passes and the red-gate review folded). It builds [advisor_mode.md](advisor_mode.md).
+- [bounded_stop.md](bounded_stop.md): **1.3.4, Session H**: one bounded stop for #1438 with #1344, whose deadline the caller sets (design CLOSED 2026-10-26; PRs 0–3 in order).
+- [speaker_sink_1435.md](speaker_sink_1435.md): **1.3.4, Session S**: the Reachy speaker sink (#1435). ADOPTED 2026-10-24; open until #1435 merges.
+- [embodied_device.md](embodied_device.md): **the embodied device** (own clock, not 1.3.4 scope): one owner per device contract (DRAFT v2, plan PR #1440).
+- [coverage_ratchet_m60_approach.md](coverage_ratchet_m60_approach.md): M60a's approach note. M60a shipped (#1508: `lint_coverage.py --pins-from-run`); M60b, a rise never fails, is still open.
 
 ### Living discipline docs
 
@@ -402,6 +409,9 @@ Archived 2026-10-24 (the plans archive after 1.3.3; each file carries an ARCHIVE
 - [archive/release_pipeline.md](archive/release_pipeline.md): 1.3.3 published through `release.yml`; its hand-off was applied to docs/publication_guide.md.
 - [archive/r4_console_vendor_gate.md](archive/r4_console_vendor_gate.md): built by PR #1383. The rule lives in docs/agents/ci-testing.md, and the cut rule in readiness_and_extras_standards.md §R4.
 - [archive/baseline_floors_b1_evidence.md](archive/baseline_floors_b1_evidence.md): built in #1245. The BF2 obligation lives in docs/agents/simulation-experiments.md.
+
+Marked SHIPPED in place (2026-10-28), because tests or scripts cite them by path: recall_1_3_4.md (Session R of 1.3.4),
+lazy_import_lint_1436.md (#1480). Both are listed under §Shipped plans kept at their path.
 
 Marked SHIPPED in place (2026-10-24), because code or its docs cite them by path: memory_2d2_retroactive_tagging.md,
 memory_2s_d_situation_cue.md, oasis_entry_index_v2.md, lookback_primitive.md, baseline_floors_b1_build.md.
