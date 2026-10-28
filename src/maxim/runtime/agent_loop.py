@@ -3416,14 +3416,18 @@ def _run_agentic_loop_body(
     # D13 planning liveness: RETURNED, and raised by run_agentic_loop AFTER its bio_session ends (#1438 PR 0), so
     # state persistence and the bio session end ran, but the sim still aborts loudly (the orchestrator converts this
     # into a typed finish report) instead of having idled forever on a silently-dropped planning turn.
-    if _planning_liveness_exhausted:
-        from maxim.runtime.loop_controller import PlanningLivenessExhausted
+    return _planning_liveness_abort(ctrl) if _planning_liveness_exhausted else None
 
-        return PlanningLivenessExhausted(
-            f"planning failures={ctrl.planning_failure_streak} "
-            f"(limit {ctrl.planning_retry_limit}), transport failures="
-            f"{ctrl.planning_transport_failure_streak} "
-            f"(limit {ctrl.planning_transport_retry_limit}); "
-            f"last={ctrl.planning_exhausted_reason or 'unknown'} — see bugs ledger D13",
-            finish_status=ctrl.planning_exhausted_status,
-        )
+
+def _planning_liveness_abort(ctrl: Any) -> Exception:
+    """The D13 abort the loop body returns once planning liveness is exhausted (see bugs ledger D13)."""
+    from maxim.runtime.loop_controller import PlanningLivenessExhausted
+
+    return PlanningLivenessExhausted(
+        f"planning failures={ctrl.planning_failure_streak} "
+        f"(limit {ctrl.planning_retry_limit}), transport failures="
+        f"{ctrl.planning_transport_failure_streak} "
+        f"(limit {ctrl.planning_transport_retry_limit}); "
+        f"last={ctrl.planning_exhausted_reason or 'unknown'} — see bugs ledger D13",
+        finish_status=ctrl.planning_exhausted_status,
+    )

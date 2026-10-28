@@ -553,7 +553,7 @@ class AgentInstance:
         """
         if consolidation not in ("full", "lightweight"):
             raise ValueError(f"consolidation must be 'full' or 'lightweight', got {consolidation!r}")
-        if self.memory_hub is not None and not self._end_or_await_session(consolidation, deadline_s):
+        if self.memory_hub is not None and not self._end_or_await_session(self.memory_hub, consolidation, deadline_s):
             return  # a loop still holds the session: its own end persists it; nothing below may run before that
 
         if self.hippocampus is not None:
@@ -589,14 +589,16 @@ class AgentInstance:
             except Exception as e:
                 log.warning("Agent %s: cerebellum save failed: %s", self.agent_id, e)
 
-    def _end_or_await_session(self, consolidation: Literal["full", "lightweight"], deadline_s: float | None) -> bool:
+    def _end_or_await_session(
+        self, hub: Any, consolidation: Literal["full", "lightweight"], deadline_s: float | None
+    ) -> bool:
         """End the session as owner, or, when a loop took it over, wait for that loop's end (#1438 PR 0).
 
         Returns False when the session did not end within ``deadline_s`` (else a 60 s cap): it logs
         ``session_end_not_reached`` and the caller runs none of its after-steps. Otherwise it shuts the hub down
-        (the ConceptExtractor thread lives from construction) and returns True.
+        (the ConceptExtractor thread lives from construction) and returns True. ``hub`` is ``self.memory_hub``, passed
+        in already checked for None.
         """
-        hub = self.memory_hub
         try:
             if hub.holds_session(self._session_ticket):
                 if consolidation == "lightweight":
