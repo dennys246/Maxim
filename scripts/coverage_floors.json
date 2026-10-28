@@ -3,8 +3,8 @@
   "band": 1.0,
   "min_package_statements": 200,
   "overall": {
-    "percent": 71.1,
-    "missing": 27752
+    "percent": 71.3,
+    "missing": 27631
   },
   "packages": {
     "maxim/<root>": {
@@ -33,7 +33,7 @@
     },
     "maxim/console": {
       "percent": 95.3,
-      "missing": 103
+      "missing": 101
     },
     "maxim/data": {
       "percent": 11.1,
