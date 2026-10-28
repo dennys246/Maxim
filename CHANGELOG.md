@@ -69,6 +69,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A memory session has one owner, and only its ticket ends it** ([#1438](https://github.com/dennys246/Maxim/issues/1438)
+  PR 0, docs/plans/bounded_stop.md §4). `MemoryHub`'s session was a test-and-clear flag, so `AgentInstance.shutdown`
+  could end a session a running loop still held, and two closers raced. It is now a three-state ledger
+  (`integration/session_ownership.py`): `on_session_start(*, owner)` returns a `SessionTicket`, and
+  `on_session_end(ticket)` / `on_session_end_lightweight(ticket)` / `sleep(ticket)` end only the current generation (a
+  ticketless call raises `TypeError`; a stale ticket ends nothing). A live loop holding the session refuses anyone
+  else (`SessionHeld`); a claim during an end waits within its deadline (`SessionStillEnding`).
+  - The agent loop's session is opened and ended by ONE seam, `runtime/bio_integration.py::bio_session`, which
+    claims BEFORE setup starts anything and, on every exit path (an exception or Ctrl-C included), stops the Default
+    Network and its own capture worker and ends the session as owner. An abnormal exit persists lightweight, within
+    the stop request's deadline (else 30 s). The D13 planning-liveness abort is raised after that end.
+  - `start_bio_session` is gone; `end_bio_session` takes `ticket=` and `capture=`. `Hippocampus.start_capture_worker()`
+    returns a `CaptureWorker` handle with its own stop event.
+  - A hub whose session cannot be claimed now aborts the loop; it used to run on silently without memory.
+  - `AgentInstance.shutdown(deadline_s=)` waits for a loop that took its session over instead of ending it, and no
+    longer saves NAc itself (the session end does, beside EC). `AgentPool.shutdown` shares one deadline across agents.
+  - New `utils/deadline.Deadline` and the sticky process stop request (`utils/cancellation.request_stop`).
+  - `scripts/exp56/common.py`'s staging close re-claims before it ends: its old close found the session already ended
+    by the loop and persisted nothing (the trap `exp61_run.py` already guarded).
+
 - **`run_agentic_loop` is a thin wrapper over `_run_agentic_loop_body`**, the loop moved verbatim ([#1438](https://github.com/dennys246/Maxim/issues/1438);
   `docs/plans/bounded_stop.md` §3 step 0), so the session-ownership work wraps the loop in one seam. The public
   signature, the `loop_liveness_scope` decorator and the behaviour are unchanged. Swallowed-exception records from
