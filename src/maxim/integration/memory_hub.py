@@ -652,6 +652,11 @@ class MemoryHub:
         """A loop's ``bio_session`` let go of its live claim (its end already ran, or could not start in time)."""
         self._ownership.release_live(ticket)
 
+    def abandon_session(self, ticket: SessionTicket) -> None:
+        """Close ``ticket``'s generation WITHOUT persisting: a closer whose stop bound expired before its persist could
+        start (``bio_session``). The session must not stay OPEN with nobody able to end it."""
+        self._ownership.abandon(ticket)
+
     def wait_session_ended(self, *, deadline_s: float | None = None) -> bool:
         """For a non-owner closer: wait until no session is open or ending, within ``deadline_s`` (else a 60 s cap)."""
         return self._ownership.wait_ended(deadline_s=deadline_s)

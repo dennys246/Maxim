@@ -261,17 +261,17 @@ def bio_session(
     released in a ``finally`` after those steps return. ``__exit__`` never replaces an in-flight exception: its own
     errors are logged and chained.
     """
-    ticket = None
-    if memory_hub is not None:
-        ticket = memory_hub.on_session_start(owner=owner, live=True)
-        log_agentic("memory_hub", "session_start", ticket.start_stats, level="INFO")
+    ticket = memory_hub.on_session_start(owner=owner, live=True) if memory_hub is not None else None
+    # The claim is held from here: everything after it runs inside the try, so no raise can leak a live claim.
     session = BioSession(memory_hub=memory_hub, hippocampus=hippocampus, ticket=ticket, consolidation=consolidation)
-    if hippocampus is not None:
-        try:
-            session.capture = hippocampus.start_capture_worker()
-        except Exception:
-            log_swallowed_exception(site="bio_integration.py:bio_session:capture_worker")
     try:
+        if ticket is not None:
+            log_agentic("memory_hub", "session_start", ticket.start_stats, level="INFO")
+        if hippocampus is not None:
+            try:
+                session.capture = hippocampus.start_capture_worker()
+            except Exception:
+                log_swallowed_exception(site="bio_integration.py:bio_session:capture_worker")
         yield session
     except BaseException:
         stop = current_stop()
@@ -285,7 +285,11 @@ def bio_session(
 def _close_session(
     session: BioSession, *, consolidation: Literal["full", "lightweight"], bound: Deadline | None
 ) -> None:
-    """Stop the session's workers, then end it as owner. Never raises: an exit must not replace an in-flight error."""
+    """Stop the session's workers, then end it as owner. Never raises: an exit must not replace an in-flight error.
+
+    The Default Network and this session's capture worker stop on EVERY path; only the persist is gated on the bound.
+    A bound that expired before the persist could start abandons the generation (closed, nothing persisted), so the
+    session never stays OPEN with nobody able to end it."""
     try:
         if session.stop_default_network is not None:
             try:
@@ -293,6 +297,10 @@ def _close_session(
             except Exception:
                 log_swallowed_exception(site="bio_integration.py:_close_session:stop_default_network")
         if bound is not None and bound.expired():
+            if session.capture is not None:
+                session.capture.stop.set()  # no flush: the bound is spent
+            if session.memory_hub is not None and session.ticket is not None:
+                session.memory_hub.abandon_session(session.ticket)
             logger.warning("Session end skipped: the stop bound expired before the persist could start")
             return
         end_bio_session(

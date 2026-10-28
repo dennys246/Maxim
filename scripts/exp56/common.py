@@ -399,6 +399,7 @@ class BenchSession:
     world_ranges: dict[str, tuple[float, float]]
     recent_outcomes: list[dict[str, Any]] = field(default_factory=list)
     context_pool: Any = None
+    hub_ticket: Any = None  # the session the harness opened at build (#1438 PR 0): the close ends THIS one
 
     @property
     def agent_id(self) -> str:
@@ -526,8 +527,8 @@ def build_bench_session(
     # The hub session must be OPENED by the object that will close it, or
     # the close persists nothing (the D41/D42 lesson — an unopened hub is
     # exactly how a harness loses the very state it measures).
-    aut.bio.memory_hub.on_session_start(owner=aut)  # the harness owns it (#1438 PR 0)
-    return BenchSession(aut=aut, encoder=encoder, world_ranges=ranges, context_pool=pool)
+    hub_ticket = aut.bio.memory_hub.on_session_start(owner=aut)  # the harness owns it (#1438 PR 0)
+    return BenchSession(aut=aut, encoder=encoder, world_ranges=ranges, context_pool=pool, hub_ticket=hub_ticket)
 
 
 # ── the teacher (Exp 52's mechanism on the world channel) ────────────────
@@ -796,10 +797,9 @@ def close_and_stage_session(session: BenchSession, *, stage_dir: Path) -> Path:
     is_sim_mode trap is exactly a lightweight close losing the thing
     measured. Order: the HUB close persists the NAc/EC pair (+ SCN/ATL);
     the bio-stack close saves the cerebellum + distributor cleanup."""
-    # Re-claim as the harness owner, then end THAT ticket (#1438 PR 0): a loop's own bio_session ends its generation,
-    # and the old ticketless close then found the session already closed and persisted nothing (exp61's S1 trap).
-    hub = session.aut.bio.memory_hub
-    hub.on_session_end(hub.on_session_start(owner=session.aut))
+    # End the session the harness opened at build (#1438 PR 0). exp56 runs no agent loop, so that ticket is still
+    # current, exactly as the old ticketless close ended the open session.
+    session.aut.bio.memory_hub.on_session_end(session.hub_ticket)
     session.aut.bio.on_session_end()
     home = Path(session.aut.persistence_dir)
     stage_dir.mkdir(parents=True, exist_ok=True)

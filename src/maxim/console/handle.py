@@ -685,10 +685,10 @@ class MaximHandle:
 
         Waits up to ``campaign_wait_s`` for a live campaign to finish (post-
         merge review, Exec #4 / Arch #1: stopping under a live loop raced its
-        own session-end — the MemoryHub's atomic test-and-clear now guarantees
-        single consolidation either way, but stopping mid-campaign would still
-        steal the loop's consolidation slot, so we wait). On expiry, proceeds
-        LOUDLY — a hung campaign must not make stop() unbounded. ``talk_join_s``
+        own session-end). A running loop OWNS the memory session (#1438 PR 0), so
+        ``shutdown`` waits for that loop's end rather than ending it, bounded by
+        ``talk_join_s``. On expiry, proceeds LOUDLY — a hung campaign must not
+        make stop() unbounded. ``talk_join_s``
         bounds the talk-loop join the same way (was a fixed 20 s inside
         ``_stop_talk_loop``); together they let a caller with its own deadline
         — a machine's stop grace, an operator's "end session" — choose short
@@ -700,8 +700,8 @@ class MaximHandle:
         if not acquired:
             logger.warning(
                 "MaximHandle.stop(): campaign still running after %.0fs wait — "
-                "proceeding with shutdown; the campaign loop's own session-end "
-                "becomes a no-op (atomic session flag)",
+                "proceeding with shutdown; the campaign loop owns the memory "
+                "session, so shutdown waits (bounded) for its end (#1438)",
                 campaign_wait_s,
             )
         try:
@@ -709,11 +709,11 @@ class MaximHandle:
                 return
             self._stopped = True
             # End the live talk loop BEFORE shutdown so its own session-end
-            # settles first (MemoryHub's atomic test-and-clear makes the second
-            # consolidation a no-op either way, but a loop still touching the
-            # bio-stack during shutdown is a race worth not having).
+            # settles first: the loop owns the session (#1438 PR 0), and
+            # shutdown only ends a session its instance still holds, else it
+            # waits for the loop's end, bounded here so stop() stays bounded.
             self._stop_talk_loop(join_s=talk_join_s)
-            self.instance.shutdown(consolidation=consolidation)
+            self.instance.shutdown(consolidation=consolidation, deadline_s=talk_join_s)
         finally:
             if acquired:
                 self._campaign_lock.release()

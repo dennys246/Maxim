@@ -566,9 +566,20 @@ class AgentInstance:
             except Exception as e:
                 log.warning("Agent %s: hippocampus save failed: %s", self.agent_id, e)
 
-        # No NAc save here (#1438 PR 0): the session end saves it in owner order, beside EC (a NAc saved without its
-        # EC is the orphaned-bias state D2/D17 detect). The hippocampus save above STAYS until PR 1's end_session
-        # takes it into the persist order: the hub's session end does not save the hippocampus.
+        # With a hub, NAc is saved by the session end, in owner order beside EC (a NAc saved without its EC is the
+        # orphaned-bias state D2/D17 detect; #1438 PR 0). WITHOUT a hub (create.agent(remembers=False, learns=True), or
+        # a hub whose construction failed) nothing else saves it, and there is no EC to pair it with: save it here.
+        if self.memory_hub is None and self.nac is not None:
+            try:
+                nac_path = getattr(getattr(self.nac, "config", None), "persistence_path", None)
+                if nac_path:
+                    self.nac.save(nac_path)
+            except StoreOverwriteRefused as e:  # (#971): causal model unsaved, file kept
+                log.error("Agent %s: NAc not saved: %s", self.agent_id, e)
+            except Exception as e:
+                log.warning("Agent %s: NAc save failed: %s", self.agent_id, e)
+        # The hippocampus save above STAYS until PR 1's end_session takes it into the persist order: the hub's session
+        # end does not save the hippocampus.
 
         # Review fix (Arch #2): save cerebellum forward models on shutdown.
         # Without this, learned forward models are lost every session.

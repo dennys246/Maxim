@@ -13,6 +13,7 @@ State                 Claimer                             Result
 CLOSED                anyone                              a new generation
 OPEN, same owner      that owner (identity, ``is``)       idempotent: the same ticket
 OPEN, no live loop    a loop (``live=True``)              handover: a new generation; the old ticket goes stale
+OPEN, no live loop    a non-loop claimer                  the existing ticket, shared (``owner`` stays the opener's)
 OPEN, a live loop     anyone else                         :class:`~maxim.exceptions.SessionHeld`
 ENDING                anyone                              waits for ``end_done`` within the deadline, else
                                                           :class:`~maxim.exceptions.SessionStillEnding`
@@ -156,9 +157,14 @@ class SessionOwnership:
         ticket.end_done.set()
 
     def wait_ended(self, *, deadline_s: float | None = None) -> bool:
-        """For a non-owner closer: wait until no session is open or ending, within the deadline (else the cap)."""
+        """For a non-owner closer: wait until no session is open or ending, within the deadline (else the cap).
+
+        Returns False AT ONCE when the session is OPEN and no live loop holds it: nothing is going to end it, so a
+        wait would only burn the deadline (an instance's own open session, or one a closer gave up on)."""
         with self._lock:
             ticket = self._ticket
+            if ticket is not None and self._state == "OPEN" and not self._live:
+                return False
         if ticket is None:
             return True
         return ticket.end_done.wait(ENDING_WAIT_CAP_S if deadline_s is None else min(deadline_s, ENDING_WAIT_CAP_S))

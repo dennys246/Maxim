@@ -486,15 +486,22 @@ class WaterTrial:
             self.aut.executor.execute = self._orig_execute
 
     def reopen_hub_session(self) -> None:
-        """The loop's own start/end bio-session pair CLOSES the hub session the harness opened
-        (`bio_integration.end_bio_session` → `MemoryHub.on_session_end`, atomic test-and-clear),
-        and a hub whose session is not active persists NOTHING at the harness's own close — the
-        environment lens's S1 trap one layer up (fear booked after a liveness loop would never
-        reach the staged nac). Re-open after every loop run; `on_session_start` is idempotent and
-        does not reload state from disk."""
+        """Re-claim the hub session as the harness after every loop run (#1438 PR 0).
+
+        Each loop run's own `bio_session` ends the session it took over, and a hub with no session open persists
+        NOTHING at the harness's own close: the environment lens's S1 trap one layer up (fear booked after a liveness
+        loop would never reach the staged nac). After a loop ended the session this is a FRESH open, so it restores
+        from disk; an open session claimed by the harness is returned as is. A loop that did not stop still holds the
+        session (`SessionHeld`): nothing is re-claimed, and the caller's own "loop thread did not stop" refusal stands.
+        """
+        from maxim.exceptions import SessionHeld
+
         hub = getattr(self.aut.bio, "memory_hub", None)
         if hub is not None:
-            hub.on_session_start(owner=self.aut)  # the harness owns it (#1438 PR 0)
+            try:
+                hub.on_session_start(owner=self.aut)  # the harness owns it (#1438 PR 0)
+            except SessionHeld:
+                pass  # a stuck loop holds it; the caller raises its Refusal for the stuck thread
 
     def resolve_tools(self) -> None:
         names = self.aut.executor.registry.list()

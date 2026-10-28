@@ -250,10 +250,13 @@ class TestBioSession:
 
         hub = self._hub()
         request_stop("test", Deadline.after(0))
+        hippo = MagicMock()
         with pytest.raises(RuntimeError):
-            with bio_session(memory_hub=hub, hippocampus=None, owner=object()):
+            with bio_session(memory_hub=hub, hippocampus=hippo, owner=object()) as s:
                 raise RuntimeError("boom")
         hub.on_session_end_lightweight.assert_not_called()
+        hub.abandon_session.assert_called_once_with(s.ticket)  # closed without a persist: never left OPEN
+        s.capture.stop.set.assert_called_once()  # the capture worker still stops (no flush: the bound is spent)
         hub.release_session_claim.assert_called_once()  # the claim is still released
 
 

@@ -1142,3 +1142,14 @@ def test_recall_default_home_follows_maxim_data_home(api_data_home, monkeypatch)
     monkeypatch.setattr(api, "_build_observer", lambda home: seen.append(home))
     api.recall()
     assert seen == [str(api_data_home)]
+
+
+def test_an_agent_without_a_hub_still_saves_its_nac(tmp_path):
+    """#1438 PR 0 review (wire lens, BLOCKER): shutdown's own NAc save went to the hub's session end, which an agent
+    with no hub (create.agent(remembers=False, learns=True), or a hub that failed to build) does not have."""
+    from maxim.runtime.agent_factory import AgentInstance
+
+    saved: list[str] = []
+    nac = SimpleNamespace(config=SimpleNamespace(persistence_path=str(tmp_path / "nac.json")), save=saved.append)
+    AgentInstance(agent_id="no_hub", role=None, config=None, memory_hub=None, nac=nac).shutdown()
+    assert saved == [str(tmp_path / "nac.json")]

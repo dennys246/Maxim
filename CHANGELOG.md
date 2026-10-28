@@ -82,12 +82,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the stop request's deadline (else 30 s). The D13 planning-liveness abort is raised after that end.
   - `start_bio_session` is gone; `end_bio_session` takes `ticket=` and `capture=`. `Hippocampus.start_capture_worker()`
     returns a `CaptureWorker` handle with its own stop event.
-  - A hub whose session cannot be claimed now aborts the loop; it used to run on silently without memory.
   - `AgentInstance.shutdown(deadline_s=)` waits for a loop that took its session over instead of ending it, and no
     longer saves NAc itself (the session end does, beside EC). `AgentPool.shutdown` shares one deadline across agents.
   - New `utils/deadline.Deadline` and the sticky process stop request (`utils/cancellation.request_stop`).
-  - `scripts/exp56/common.py`'s staging close re-claims before it ends: its old close found the session already ended
-    by the loop and persisted nothing (the trap `exp61_run.py` already guarded).
+  - A hub whose session cannot be claimed now aborts the loop (`SessionRefusal` and its subclasses); the old soft
+    skip that ran the loop without memory is gone. `MaximHandle.stop` bounds its shutdown's wait by `talk_join_s`.
 
 - **`run_agentic_loop` is a thin wrapper over `_run_agentic_loop_body`**, the loop moved verbatim ([#1438](https://github.com/dennys246/Maxim/issues/1438);
   `docs/plans/bounded_stop.md` §3 step 0), so the session-ownership work wraps the loop in one seam. The public

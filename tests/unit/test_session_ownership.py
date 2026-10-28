@@ -177,3 +177,19 @@ def test_the_hub_restores_only_on_a_fresh_open_and_abandons_a_failed_one() -> No
     with pytest.raises(RuntimeError):
         broken.on_session_start(owner=object())
     assert broken._ownership.state == "CLOSED"  # abandoned: no OPEN session nobody holds a ticket to
+
+
+def test_a_non_loop_claimer_shares_an_open_session_no_loop_holds() -> None:
+    own = _ownership()
+    instance, harness = object(), object()
+    opened = own.claim(owner=instance)
+    shared = own.claim(owner=harness)  # not live: shares, never displaces
+    assert shared is opened and shared.owner is instance  # `owner` records the opener
+
+
+def test_a_non_owner_wait_returns_at_once_when_nothing_will_end_the_session() -> None:
+    own = _ownership()
+    own.claim(owner=object())  # OPEN, no live loop: nobody is going to end it for the waiter
+    started = time.monotonic()
+    assert own.wait_ended(deadline_s=5.0) is False
+    assert time.monotonic() - started < 0.5
