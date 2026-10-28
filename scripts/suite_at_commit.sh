@@ -7,9 +7,10 @@
 #   scripts/suite_at_commit.sh "$(git stash create)"  # tracked changes, no commit (and no signature)
 #
 # By default the fast suite runs with CI's exact coverage command and is followed by
-# `scripts/lint_coverage.py --local`, so the coverage ratchet's diff-coverage gate and the floors of the packages
-# the diff touches fail HERE, on the exact commit about to be pushed, not in CI (#1201, #1213, #1232 and #1240 each
-# failed CI on it). The untouched packages' floors are only noted: they are measured in CI's environment.
+# `scripts/lint_coverage.py --local`, so the coverage ratchet's diff-coverage gate and its measurement-free pin rule
+# fail HERE, on the exact commit about to be pushed, not in CI (#1213 and #1232 failed CI on diff coverage). No floor
+# gates locally, in either direction (M60a, 2026-10-27): floors are measured in CI's environment, so they are notes,
+# and a rise is pinned from the PR's own CI run with `lint_coverage.py --pins-from-run <run-id>`.
 # `--no-cov` skips the measurement for a quicker run that is not the pre-push check.
 #
 # No -x, deliberately: a full failure list is worth more than the first one.

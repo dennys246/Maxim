@@ -707,6 +707,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         # A pre-built record keeps its own situation unless one is passed; either is validated.
         memory.situation = _require_situation(situation if situation is not None else memory.situation)
         self._stamp_encoding_strength(memory, experience_us=experience_us, capture_seq=capture_seq)
+        memory.content_tokens()  # keyed once here, outside the lock: a query never re-keys a store (SF5)
 
         with self._rwlock.write():
             self._insert_and_index_locked(memory_id, memory)
@@ -1390,9 +1391,13 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
 
     @staticmethod
     def _searchable_values(memory: Any) -> list[Any]:
-        """The fields ``search_by_content`` matches on: perception observations, outcome result,
-        decision reasoning, and a compressed record's summary. One list for the matcher and for
+        """The fields ``search_by_content`` matches on: an episode's ``text_fields`` (what it heard, its reasoning,
+        its outcome), else perception observations, outcome result, decision reasoning, and a compressed record's
+        summary. One list for the matcher and for
         ``matching_sentence`` (#845: a consumer kept its own copy, and the two drifted)."""
+        text_fields = getattr(memory, "text_fields", None)
+        if callable(text_fields):  # an episode names its own text, the list its ranker reads too (S4)
+            return list(text_fields())
         perception = getattr(memory, "perception", None)
         outcome = getattr(memory, "outcome", None)
         decision = getattr(memory, "decision", None)
@@ -1405,19 +1410,19 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
 
     @staticmethod
     def _memory_matches_query(memory: Any, query_lower: str) -> bool:
-        """Check if a memory's text content matches the query."""
-        return any(value and query_lower in str(value).lower() for value in Hippocampus._searchable_values(memory))
+        """Check if a memory's TEXT matches the query: its readable text values, never ``str(value)`` -- a dict's
+        repr made its keys content, so "error", "salience" or "pain" matched every record (#1163)."""
+        return any(query_lower in text.lower() for text in Hippocampus.memory_texts(memory))
 
     @staticmethod
     def memory_texts(memory: Any) -> list[str]:
-        """The readable text a memory holds: the string values of the searchable fields (a dict
-        field's string values, not its repr)."""
+        """The readable text a memory holds: the string values of the searchable fields, inside dicts and lists to
+        a bounded depth, metadata keys skipped and derived (framed) text removed (``memory/text.py::text_values``)."""
+        from maxim.memory.text import text_values
+
         texts: list[str] = []
         for value in Hippocampus._searchable_values(memory):
-            if isinstance(value, str):
-                texts.append(value)
-            elif isinstance(value, dict):
-                texts.extend(v for v in value.values() if isinstance(v, str))
+            texts.extend(text_values(value))
         return texts
 
     @staticmethod

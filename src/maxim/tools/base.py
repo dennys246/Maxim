@@ -362,6 +362,10 @@ class Tool(ABC):
     # actually runs and records the words as ``ActionRecord.utterance``, which every reader of what an agent
     # said reads (never a tool-name list, never ``result_output``, which for ``respond`` is a receipt).
     speech_params: tuple[str, ...] = ()
+    # ``untrusted_output`` (Session R, #1444) — the output carries text from outside the agent replayed from memory
+    # (a recalled utterance, a stored reflection), so its follow-up is framed as EXTERNAL, untrusted content. Read
+    # off the tool a call actually runs (after alias resolution), stamped on the ``ActionFollowup`` at dispatch.
+    untrusted_output: bool = False
 
     def __init__(self) -> None:
         if not getattr(self, "name", ""):

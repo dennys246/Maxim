@@ -1491,6 +1491,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
                         category=MathCategory.PATTERN,
                         min_confidence=0.5,
                         touch=False,  # the result is Dormant: do not move AG retention (#1128)
+                        include_compressed=False,  # an entry renders ``verbal``, which a compressed record drops
                     )
                     for record in patterns:
                         entries.append(

@@ -25,32 +25,6 @@ class AssociationIndex:
     2. Embedding similarity (slow, precise) - optional, lazy-computed
     """
 
-    STOPWORDS = frozenset(
-        {
-            "the",
-            "a",
-            "an",
-            "is",
-            "are",
-            "was",
-            "were",
-            "be",
-            "been",
-            "to",
-            "of",
-            "and",
-            "or",
-            "in",
-            "on",
-            "at",
-            "for",
-            "it",
-            "this",
-            "that",
-            "with",
-        }
-    )
-
     def __init__(self, embedding_model: str | None = None) -> None:
         self._keyword_index: dict[str, set[str]] = defaultdict(set)
         self._memory_keywords: dict[str, set[str]] = {}  # mid → keywords
@@ -132,15 +106,12 @@ class AssociationIndex:
             return sorted_results[:top_k]
 
     def _extract_keywords(self, content: Any) -> set[str]:
-        """Extract keywords from content for indexing."""
-        if isinstance(content, str):
-            text = content
-        elif isinstance(content, dict):
-            text = " ".join(str(v) for v in content.values() if v)
-        elif hasattr(content, "raw_transcript_text"):
-            text = getattr(content, "raw_transcript_text", "") or ""
-        else:
-            text = str(content)
+        """Extract keywords from content for indexing: ``memory/text.py``'s one standard (Session R, D3), over the
+        content's readable text (a dict's string values, metadata keys skipped)."""
+        from maxim.memory.text import content_tokens
 
-        words = text.lower().split()
-        return {w for w in words if len(w) > 2 and w not in self.STOPWORDS}
+        if hasattr(content, "raw_transcript_text"):
+            content = getattr(content, "raw_transcript_text", "") or ""
+        elif not isinstance(content, (str, dict, list, tuple)):
+            content = str(content)
+        return content_tokens(content)

@@ -56,7 +56,7 @@ def test_lowercase_prose_is_not_a_status_token():
 
 
 def test_a_scoped_claim_must_show_its_scope_word_after_the_status():
-    out = _fails(readme=_swap(README, "**EARNED 2026-10-04** (narrow:", "**EARNED 2026-10-04**: narrow-ish ("))
+    out = _fails(readme=_swap(README, "**PARTIAL 2026-10-14** (narrow:", "**PARTIAL 2026-10-14**: narrow-ish ("))
     assert any("scoped `(narrow …)`" in f for f in out), out
 
 

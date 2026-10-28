@@ -158,7 +158,7 @@ def test_an_enrichment_summary_names_tool_and_intent_goal_for_both_kinds():
     from maxim.integration.bio_enrichment import BioEnrichmentPipeline
 
     for record in (_episode(), CompressedMemory.from_episodic(_episode())):
-        text = BioEnrichmentPipeline._summarize_episode(record)
+        text = BioEnrichmentPipeline()._summarize_episode(record)
         assert "draw_water" in text and "(goal: fetch water)" in text, (type(record).__name__, text)
 
 
