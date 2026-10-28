@@ -14,6 +14,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 from scripts import lint_coverage as L
 
@@ -227,7 +228,8 @@ def test_a_floor_more_than_the_band_below_the_measurement_FAILS(repo, capsys):
     rc, _, err = _run(capsys)
     assert (
         rc == 1
-        and 'maxim/alpha: 100.00% is more than 1.0 pt above its floor 80.0% — raise it to {"percent": 100.0' in err
+        and 'maxim/alpha: 100.00% is more than 1.0 pt above its floor 80.0% (`python scripts/lint_coverage.py --pins-from-run <run-id>` writes it) — raise it to {"percent": 100.0'
+        in err
     )
 
 
@@ -244,7 +246,7 @@ def test_a_changed_floor_cannot_pin_missing_above_the_measurement(repo, capsys):
     _write(repo, L.FLOORS_REL, _floors(overall=(75.0, 5), alpha=(100.0, 3)))
     _commit(repo)
     rc, _, err = _run(capsys)
-    assert rc == 1 and "maxim/alpha: floor pins missing 3 above min(measured 0, base 2)" in err
+    assert rc == 1 and "maxim/alpha: floor pins missing 3 above min(measured 0 + 5 of noise, base 2)" in err
 
 
 @pytest.mark.parametrize("kw,needle", [({"band": 2.0}, "band"), ({"n": 9}, "min_package_statements")])
@@ -965,7 +967,7 @@ def test_a_floor_cannot_walk_down_across_a_chain_of_PRs(repo, capsys):
     _write(repo, L.FLOORS_REL, _floors(alpha=(80.0, 3)))
     _commit(repo)
     rc, _, err = _run(capsys)
-    assert rc == 1 and "maxim/alpha: floor pins missing 3 above min(measured 2, base 2)" in err
+    assert rc == 1 and "maxim/alpha: floor pins missing 3 above min(measured 2 + 5 of noise, base 2)" in err
     # suppose link 1 had merged anyway (the old rule passed it): link 2 must still fail
     _git(repo, "checkout", "-q", "main")
     _git(repo, "merge", "-q", "--ff-only", "feature")
@@ -974,7 +976,7 @@ def test_a_floor_cannot_walk_down_across_a_chain_of_PRs(repo, capsys):
     _write(repo, L.FLOORS_REL, _floors(overall=(60.0, 9), alpha=(70.0, 4)))
     _commit(repo)
     rc, _, err = _run(capsys)
-    assert rc == 1 and "maxim/alpha: floor pins missing 4 above min(measured 3, base 3)" in err
+    assert rc == 1 and "maxim/alpha: floor pins missing 4 above min(measured 3 + 5 of noise, base 3)" in err
     # link 3: the same drop pinned honestly still fails — the drop rule holds against the honest overall pin
     _write(repo, L.FLOORS_REL, _floors(overall=(60.0, 8), alpha=(70.0, 3)))
     _commit(repo)
@@ -1057,7 +1059,7 @@ def test_the_lower_then_repin_walk_fails_at_every_link(repo, capsys):
     _write(repo, L.FLOORS_REL, _floors(overall=(98.3, 17), **{"maxim/gamma": (98.9, 11)}))
     _commit(repo)
     rc, _, err = _run(capsys)
-    assert rc == 1 and "maxim/gamma: floor pins missing 11 above min(measured 11, base 10)" in err
+    assert rc == 1 and "maxim/gamma: floor pins missing 11 above min(measured 11 + 5 of noise, base 10)" in err
     # and the lower half again, from there: below round_down(measured) with measured missing above base
     _write(repo, L.FLOORS_REL, _floors(overall=(98.3, 17), **{"maxim/gamma": (98.8, 10)}))
     _commit(repo)
@@ -1084,7 +1086,7 @@ def test_raising_a_floor_cannot_raise_its_missing_pin(repo, capsys):
     _write(repo, L.FLOORS_REL, _floors(overall=(68.0, 8), alpha=(80.0, 3)))
     _commit(repo)
     rc, _, err = _run(capsys)
-    assert rc == 1 and "overall: floor pins missing 8 above min(measured 8, base 7)" in err
+    assert rc == 1 and "overall: floor pins missing 8 above min(measured 8 + 5 of noise, base 7)" in err
 
 
 def test_following_the_raise_hint_passes_the_next_run(repo, capsys):
@@ -1239,8 +1241,8 @@ def _run_local(capsys) -> tuple[int, str, str]:
 
 
 def test_local_mode_only_notes_a_floor_of_a_package_the_diff_does_not_touch(repo, capsys):
-    """Floors are measured in CI's environment, so a local run cannot gate an UNTOUCHED package on them (the diff
-    touches only beta here); it prints the finding instead. The default (CI) run still fails on it."""
+    """Floors are measured in CI's environment, so a local run gates no floor (M60a); it prints the finding instead.
+    The default (CI) run still fails on it."""
     _write(repo, B, _lines(10, "b") + "zz = 0  # pragma: no cover\n# touched\n")  # touches beta: a comment, no code
     _commit(repo)
     _cov(repo, missing={A: set(range(2, 11)), B: {6, 7, 8, 9, 10}})
@@ -1248,16 +1250,20 @@ def test_local_mode_only_notes_a_floor_of_a_package_the_diff_does_not_touch(repo
     rc, out, err = _run_local(capsys)
     assert rc_ci == 1
     assert rc == 0, err
-    assert "maxim/alpha: 10.00% is below its floor" in out and "untouched" in out
+    assert "maxim/alpha: 10.00% is below its floor" in out and "not gated" in out
 
 
-def test_local_mode_still_gates_a_floor_of_a_package_the_diff_touches(repo, capsys):
-    """The #1240 shape: the PR's own tests lift a touched package above its band, so the floor must be raised."""
+def test_local_mode_only_notes_a_touched_package_rise(repo, capsys):
+    """The #1240 shape: the PR's own tests lift a touched package above its band. M60a (owner decision 2026-10-27): a
+    macOS number cannot pin a Linux floor, so locally it is a note; CI still fails it and prints the pin."""
     _write(repo, A, _lines(10, "a") + "na = 1\n")
     _commit(repo)
     _cov(repo, missing={A: set(), B: {6, 7, 8, 9, 10}})
-    rc, _, err = _run_local(capsys)
-    assert rc == 1 and "maxim/alpha: 100.00% is more than 1.0 pt above its floor" in err
+    rc_ci, _, err_ci = _run(capsys)
+    rc, out, err = _run_local(capsys)
+    assert rc_ci == 1 and "maxim/alpha: 100.00% is more than 1.0 pt above its floor" in err_ci
+    assert rc == 0, err
+    assert "not gated): maxim/alpha: 100.00% is more than 1.0 pt above its floor" in out
 
 
 def test_local_mode_still_gates_diff_coverage(repo, capsys):
@@ -1293,20 +1299,25 @@ def test_the_suite_script_measures_with_cis_own_command():
     assert '-m "not slow" --ignore=tests/integration/test_memory_hub.py' in flat
 
 
-def test_local_mode_gates_a_package_a_changed_test_imports(repo, capsys):
-    """The #1201 shape: a test-only PR lifts a package its src diff never touches; the changed test imports it."""
-    _write(repo, "tests/test_lift.py", "from maxim.alpha import a  # noqa: F401\n\ndef test_lift():\n    assert True\n")
+def test_local_mode_only_notes_a_touched_package_fall(repo, capsys):
+    """Both directions are notes locally (M60a): a touched package that falls below its floor is printed, and CI, the
+    only floor authority, fails it."""
+    _write(repo, A, _lines(10, "a") + "# touched\n")
     _commit(repo)
-    _cov(repo, missing={A: set(), B: {6, 7, 8, 9, 10}})
-    rc, _, err = _run_local(capsys)
-    assert rc == 1 and "maxim/alpha: 100.00% is more than 1.0 pt above its floor" in err
+    _cov(repo, missing={A: set(range(2, 11)), B: {6, 7, 8, 9, 10}})
+    rc_ci, _, err_ci = _run(capsys)
+    rc, out, err = _run_local(capsys)
+    assert rc_ci == 1 and "maxim/alpha: 10.00% is below its floor" in err_ci
+    assert rc == 0, err
+    assert "not gated): maxim/alpha: 10.00% is below its floor" in out
 
 
 def test_local_mode_only_notes_a_floor_pin_edit(repo, capsys):
     """A PR's floor edits are CI measurements; locally they are printed, not verified."""
     _cov(repo, missing={A: set(), B: {6, 7, 8, 9, 10}})
-    # pins missing 2 above the measured 0 (CI refuses: <= measured); not above its base pin 2, so no measurement-free rule
-    _write(repo, L.FLOORS_REL, _floors(overall=(75.0, 5), alpha=(100.0, 2)))
+    # lowers alpha 80 -> 70 below the measured 100% (CI refuses: a lowered floor goes exactly to the measurement);
+    # its missing pin 0 is under its base 2, so no measurement-free rule fires
+    _write(repo, L.FLOORS_REL, _floors(overall=(75.0, 5), alpha=(70.0, 0)))
     _commit(repo)
     rc, out, err = _run_local(capsys)
     rc_ci, _, _ = _run(capsys)
@@ -1445,7 +1456,11 @@ def test_a_file_floor_more_than_the_band_under_the_measurement_FAILS(repo, capsy
     _g_base(repo, gamma=(91.0, 9), overall=(86.3, 16))
     _g_cov(repo, set(range(93, 101)))  # 92 covered: more than 1.0 pt over the 90.0 floor
     rc, _, err = _run(capsys)
-    assert rc == 1 and f'{G}: 92.00% is more than 1.0 pt above its floor 90.0% — raise it to {{"percent": 92.0' in err
+    assert (
+        rc == 1
+        and f'{G}: 92.00% is more than 1.0 pt above its floor 90.0% (`python scripts/lint_coverage.py --pins-from-run <run-id>` writes it) — raise it to {{"percent": 92.0'
+        in err
+    )
 
 
 def test_only_the_package_floor_fails_while_the_file_floor_holds(repo, capsys):
@@ -1585,7 +1600,7 @@ def test_a_file_floor_cannot_raise_its_missing_pin(repo, capsys):
     _write(repo, L.FLOORS_REL, _g_floors(g=(90.0, 11)))
     _commit(repo)
     rc, _, err = _run(capsys)
-    assert rc == 1 and f"{G}: floor pins missing 11 above min(measured 10, base 10)" in err
+    assert rc == 1 and f"{G}: floor pins missing 11 above min(measured 10 + 5 of noise, base 10)" in err
 
 
 def test_lowering_a_file_floor_after_adding_uncovered_code_FAILS(repo, capsys):
@@ -1957,7 +1972,7 @@ def test_an_existing_successor_already_floored_follows_the_changed_rules_and_bri
     assert rc == 0, err  # G 10 + core 10 <= G's pin 10 + core's base pin 10
     _move_30_into_core(repo, {G: (85.7, 10), CORE: (85.7, 11)}, set(range(31, 42)))  # CHANGED: missing never rises
     rc, _, err = _run(capsys)
-    assert rc == 1 and f"{CORE}: floor pins missing 11 above min(measured 11, base 10)" in err
+    assert rc == 1 and f"{CORE}: floor pins missing 11 above min(measured 11 + 5 of noise, base 10)" in err
     _move_30_into_core(repo, {G: (85.7, 10), CORE: (84.2, 10)}, set(range(31, 42)))  # one moved statement uncovered
     rc, _, err = _run(capsys)
     assert rc == 1 and (
@@ -2209,18 +2224,20 @@ def test_a_v2_file_without_files_is_a_format_error():
 # --local and --merge-floors
 
 
-def test_local_mode_gates_a_file_floor_only_when_its_package_is_touched(repo, capsys):
+def test_local_mode_only_notes_a_file_floor_even_when_its_package_is_touched(repo, capsys):
     _g_base(repo, gamma=(85.0, 15), overall=(81.6, 22))
     _g_cov(repo, set(range(85, 101)))  # the file is 6 statements under: beyond k
     _write(repo, "src/maxim/alpha/note.py", "")  # touches alpha only
     _commit(repo)
     rc, out, err = _run_local(capsys)
     assert rc == 0, err
-    assert f"untouched scope, measured in CI's environment, not gated): {G}: 84.00% is below its floor" in out
-    _write(repo, "src/maxim/gamma/note.py", "")  # now gamma is touched
+    assert f"measured in CI's environment, not gated): {G}: 84.00% is below its floor" in out
+    _write(repo, "src/maxim/gamma/note.py", "")  # now gamma is touched: still a note (M60a); CI fails it
     _commit(repo)
-    rc, _, err = _run_local(capsys)
-    assert rc == 1 and f"{G}: 84.00% is below its floor 90.0%" in err
+    rc, out, err = _run_local(capsys)
+    assert rc == 0, err
+    assert f"not gated): {G}: 84.00% is below its floor 90.0%" in out
+    assert _run(capsys)[0] == 1
 
 
 def _run_doc(**files) -> str:
@@ -2349,3 +2366,268 @@ def test_the_committed_file_floors_are_case_exact_and_measured():
     listing = set(L._src_files(root))
     for rel in fl.files:
         assert L.file_present(root, rel, listing) and rel not in ex.paths, rel
+
+
+# ── --pins-from-run (M60a): CI's pins from the run's own artifact, in one command ───────────────────────────────────
+
+
+def _ci_artifact(repo: Path, dest: Path, *, absolute: bool = False, **cov) -> Path:
+    """The repo's measurement as CI writes it: relative ``src/maxim/...`` keys (run 40549504653), or, with
+    ``absolute``, keys under a runner's checkout."""
+    _cov(repo, **cov)
+    data = json.loads((repo / "coverage.json").read_text())
+    if absolute:
+        data["files"] = {f"/home/runner/work/Maxim/Maxim/{k}": v for k, v in data["files"].items()}
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / "coverage.json").write_text(json.dumps(data))
+    return dest / "coverage.json"
+
+
+def _api(head: str, *, attempt=1, suite="success", artifacts=("coverage-json-1",), job="unit-tests"):
+    def api(path: str):
+        if path.endswith("/jobs?per_page=100"):
+            assert f"/attempts/{attempt}/" in path  # the LATEST attempt's jobs, never attempt 1's by default
+            steps = [] if suite is None else [{"name": L.RUN_SUITE_STEP, "conclusion": suite}]
+            return {"jobs": [{"name": job, "steps": steps}]}
+        if path.endswith("/artifacts?per_page=100"):
+            return {"artifacts": [{"name": n, "expired": False} for n in artifacts]}
+        return {"head_sha": head, "run_attempt": attempt, "path": ".github/workflows/test.yml", "event": "pull_request"}
+
+    return api
+
+
+def _measure(repo, tmp_path, api, **cov):
+    art = _ci_artifact(repo, tmp_path / "ci", **cov)
+    got: list[str] = []
+
+    def download(run_id, name, dest):
+        got.append(name)
+        return art
+
+    return L.run_measurement(repo, "123", api=api, download=download, tmp=tmp_path / "dl"), got
+
+
+def test_pins_from_run_reads_the_attempt_bound_artifact_and_reroots_runner_paths(repo, tmp_path):
+    head = _git(repo, "rev-parse", "HEAD").strip()
+    cov, got = _measure(repo, tmp_path, _api(head, attempt=2, artifacts=("coverage-json-1", "coverage-json-2")))
+    assert got == ["coverage-json-2"]  # attempt 1's (possibly partial, -x) upload is never read
+    assert set(cov) >= {A, B}
+
+
+@pytest.mark.parametrize(
+    "kw, match",
+    [
+        ({"head": "0" * 40}, "not this checkout's HEAD"),
+        ({"suite": "failure"}, "is failure, not success"),
+        ({"suite": None}, "is absent, not success"),
+        ({"job": "lint"}, "has no unit-tests job"),
+        ({"attempt": 2, "artifacts": ("coverage-json",)}, "no unexpired artifact 'coverage-json-2'"),
+    ],
+)
+def test_pins_from_run_refuses_a_run_it_cannot_bind(repo, tmp_path, kw, match):
+    head = kw.pop("head", _git(repo, "rev-parse", "HEAD").strip())
+    with pytest.raises(L.MeasurementError, match=match):
+        _measure(repo, tmp_path, _api(head, **kw))
+
+
+def test_pins_from_run_accepts_the_legacy_artifact_name_on_attempt_one_only(repo, tmp_path):
+    head = _git(repo, "rev-parse", "HEAD").strip()
+    _, got = _measure(repo, tmp_path, _api(head, artifacts=("coverage-json",)))
+    assert got == ["coverage-json"]
+
+
+def test_pins_from_run_accepts_a_measured_file_the_checkout_lacks(repo, tmp_path):
+    """A PR run measures the merge with main, which may hold a file this branch lacks; the pins are for that merge,
+    and CI re-measures it on the pin commit (delta2 P2: "merge main first" may never converge)."""
+    head = _git(repo, "rev-parse", "HEAD").strip()
+    art = _ci_artifact(repo, tmp_path / "ci")
+    data = json.loads(art.read_text())
+    data["files"]["src/maxim/alpha/new.py"] = next(iter(data["files"].values()))
+    art.write_text(json.dumps(data))
+    cov = L.run_measurement(repo, "1", api=_api(head), download=lambda *a: art, tmp=tmp_path)
+    assert "src/maxim/alpha/new.py" in cov
+    with pytest.raises(L.MeasurementError, match="does not exist"):  # the local loader still refuses a stale file
+        _cov(repo)
+        data = json.loads((repo / "coverage.json").read_text())
+        data["files"]["src/maxim/alpha/new.py"] = next(iter(data["files"].values()))
+        (repo / "coverage.json").write_text(json.dumps(data))
+        L.load_coverage(repo)
+
+
+def test_pins_are_the_ci_hint_and_falls_nulls_are_left_alone(repo):
+    fl = L.parse_floors(_floors(alpha=(80.0, 2), beta=(70.0, 3)))
+    _cov(repo, missing={A: set(), B: set(range(2, 11))})  # alpha 100% (a rise), beta 10% (a fall beyond k)
+    cov = L.load_coverage(repo)
+    overall, pkgs = L.measure_scopes(cov)
+    pins, notes = L.pins_from_measurement(fl, overall, pkgs, L.file_scopes(cov))
+    # round_down(measured), missing min(measured, pin): alpha 100%/0; overall (55%) is within its band, left alone
+    assert pins == {"maxim/alpha": L.Floor(100.0, 0)}
+    assert "maxim/beta" not in pins and any("maxim/beta" in n and "a pin cannot fix a fall" in n for n in notes)
+    fl_null = L.parse_floors(_floors(alpha=None))
+    _, notes = L.pins_from_measurement(fl_null, overall, pkgs, {})
+    assert any("maxim/alpha: null floor" in n for n in notes)
+
+
+def test_a_pinned_missing_from_the_run_never_rises(repo):
+    """The pin keeps the current missing when the measurement adds uncovered statements (#1409)."""
+    fl = L.parse_floors(_floors(alpha=(50.0, 1)))
+    _cov(repo, missing={A: {9, 10}, B: {6, 7, 8, 9, 10}})  # alpha 80%, missing 2 > pinned 1
+    cov = L.load_coverage(repo)
+    overall, pkgs = L.measure_scopes(cov)
+    pins, _ = L.pins_from_measurement(fl, overall, pkgs, {})
+    assert pins["maxim/alpha"] == L.Floor(80.0, 1)
+
+
+def test_apply_pins_rewrites_only_the_pinned_entries(repo):
+    text = (repo / L.FLOORS_REL).read_text()
+    out = L.apply_pins(text, {"maxim/alpha": L.Floor(90.0, 1), A: L.Floor(95.0, 0)})
+    doc = json.loads(out)
+    assert doc["packages"]["maxim/alpha"] == {"percent": 90.0, "missing": 1}
+    assert doc["files"][A] == {"percent": 95.0, "missing": 0}
+    assert doc["packages"]["maxim/beta"] == json.loads(text)["packages"]["maxim/beta"]
+    assert out.endswith("}\n")
+
+
+def test_the_committed_floors_file_round_trips_through_apply_pins():
+    """--pins-from-run rewrites the real file with json.dumps(indent=2): a no-op pin set must change no byte."""
+    text = (Path(__file__).resolve().parents[2] / L.FLOORS_REL).read_text(encoding="utf-8")
+    assert L.apply_pins(text, {}) == text
+
+
+def test_pins_from_run_main_writes_the_file_and_ci_accepts_it(repo, tmp_path, monkeypatch, capsys):
+    head = _git(repo, "rev-parse", "HEAD").strip()
+    art = _ci_artifact(repo, tmp_path / "ci", missing={A: set(), B: {6, 7, 8, 9, 10}})
+    monkeypatch.setattr(L, "gh_api", _api(head))
+    monkeypatch.setattr(L, "_download_artifact", lambda run_id, name, dest: art)
+    monkeypatch.setattr(L.run_measurement, "__kwdefaults__", {"api": _api(head), "download": lambda *a: art})
+    rc = L.main(["--pins-from-run", "123"])
+    out = capsys.readouterr().out
+    assert rc == 0 and "pin maxim/alpha: 80.0%/2 -> 100.0%/0" in out
+    assert json.loads((repo / L.FLOORS_REL).read_text())["packages"]["maxim/alpha"] == {"percent": 100.0, "missing": 0}
+    _commit(repo)
+    _cov(repo, missing={A: set(), B: {6, 7, 8, 9, 10}})
+    rc_ci, _, err = _run(capsys)
+    assert "maxim/alpha" not in err, err  # the pinned scope now passes CI's own rules
+
+
+def test_pins_from_run_main_refuses_a_non_numeric_id(capsys):
+    assert L.main(["--pins-from-run", "abc"]) == 2
+    assert L.main(["--pins-from-run"]) == 2
+
+
+@pytest.mark.parametrize("over, fails", [(0, False), (L.K_MIN, False), (L.K_MIN + 1, True)])
+def test_a_changed_pin_may_sit_k_min_above_the_measurement_never_above_its_base(repo, capsys, over, fails):
+    """M60a / delta2 P1: a pin taken from one CI run is verified on the pin commit's run (+-2 statements of noise), so a
+    CHANGED pin may sit up to K_MIN (the absolute noise, not the size-scaled k) above the measured missing; one more
+    fails. Measured alpha: 80%, missing 2; the base pin is 80%/20 so the base side never binds here."""
+    _write(repo, L.FLOORS_REL, _floors(alpha=(70.0, 20)))
+    _commit(repo)
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "merge", "-q", "--ff-only", "feature")
+    _git(repo, "checkout", "-q", "feature")
+    _write(repo, L.FLOORS_REL, _floors(alpha=(79.0, 2 + over)))
+    _commit(repo)
+    _cov(repo)
+    rc, _, err = _run(capsys)
+    assert ("a pinned missing never rises" in err) is fails, err
+
+
+def test_the_k_min_slack_never_lets_a_pin_rise_above_its_base(repo, capsys):
+    """The base side stays exact: measured 2 + K_MIN = 7 would allow 7, but the base pin is 3, so 4 fails."""
+    _write(repo, L.FLOORS_REL, _floors(alpha=(70.0, 3)))
+    _commit(repo)
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "merge", "-q", "--ff-only", "feature")
+    _git(repo, "checkout", "-q", "feature")
+    _write(repo, L.FLOORS_REL, _floors(alpha=(79.0, 4)))
+    _commit(repo)
+    _cov(repo)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and "maxim/alpha: floor pins missing 4 above" in err
+
+
+def test_pins_from_run_refuses_a_run_of_another_workflow_or_event(repo, tmp_path):
+    head = _git(repo, "rev-parse", "HEAD").strip()
+    base = _api(head)
+
+    def api(path):
+        r = base(path)
+        return {**r, "event": "schedule"} if "head_sha" in r else r
+
+    with pytest.raises(L.MeasurementError, match="pin from a Tests run"):
+        _measure(repo, tmp_path, api)
+
+
+def test_the_pin_noise_slack_is_k_min_not_the_size_scaled_k(repo):
+    """delta2 P1: on a 20,000-statement scope k is 20 statements, but CI's noise is ~2 at any size. The slack is the
+    absolute K_MIN: measured missing 1000, base pin 2000, so a pin of 1000 + K_MIN passes and 1000 + K_MIN + 1 fails
+    (with k it would pass up to 1020). Deleting the fix (``+ missing_slack(m)``) fails this test."""
+    big = L.ScopeCov(statements=20000, covered=19000)
+    assert L.missing_slack(big) == 20 > L.K_MIN
+
+    def rules(pin_missing: int) -> list[str]:
+        base = L.parse_floors(_floors(overall=(90.0, 2000), alpha=None, beta=None))
+        head = L.parse_floors(_floors(overall=(95.0, pin_missing), alpha=None, beta=None))
+        return L.floor_diff_rules(repo, base, head, big, {}, {}, files={}, fd=L.NO_FILE_DIFF, excluded=set())
+
+    assert not [r for r in rules(1000 + L.K_MIN) if r.startswith("overall")]
+    assert any("overall: floor pins missing" in r for r in rules(1000 + L.K_MIN + 1))
+
+
+def test_pins_from_run_reroots_only_an_absolute_runner_key(repo, tmp_path):
+    """CI writes relative keys; an absolute runner key is re-rooted, and a relative key is never rewritten (code review
+    E1: a relative key holding ``/src/maxim/`` twice used to be mangled)."""
+    head = _git(repo, "rev-parse", "HEAD").strip()
+    art = _ci_artifact(repo, tmp_path / "ci", absolute=True)
+    cov = L.run_measurement(repo, "1", api=_api(head), download=lambda *a: art, tmp=tmp_path)
+    assert A in cov and not any(k.startswith("/") for k in cov)
+    data = json.loads(art.read_text())
+    data["files"] = {"src/maxim/alpha/src/maxim/x.py": next(iter(data["files"].values()))}
+    art.write_text(json.dumps(data))
+    assert set(L.run_measurement(repo, "1", api=_api(head), download=lambda *a: art, tmp=tmp_path)) == {
+        "src/maxim/alpha/src/maxim/x.py"
+    }
+
+
+def test_pins_from_run_is_refused_inside_github_actions(monkeypatch, capsys):
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    assert L.main(["--pins-from-run", "123"]) == 2
+    assert "cannot run inside GitHub Actions" in capsys.readouterr().err
+
+
+def test_the_pinner_names_match_the_real_workflow():
+    """Wire W1: the pinner hard-codes the unit-tests job, its measuring step's name and the attempt-bound artifact; a
+    rename in test.yml would make every --pins-from-run refuse while CI stays green, so the real workflow is read."""
+    wf = yaml.safe_load((Path(__file__).resolve().parents[2] / ".github/workflows/test.yml").read_text())
+    job = wf["jobs"]["unit-tests"]
+    assert "name" not in job and "strategy" not in job  # the jobs API reports it as exactly "unit-tests"
+    suite = [s for s in job["steps"] if s.get("name") == L.RUN_SUITE_STEP]
+    assert len(suite) == 1 and L.CI_COV_ARGS in " ".join(suite[0]["run"].split())
+    up = [s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/upload-artifact")]
+    assert [s["with"]["name"] for s in up] == [L.COVERAGE_ARTIFACT + "-${{ github.run_attempt }}"]
+    assert up[0]["with"]["path"] == L.COVERAGE_JSON and up[0]["if"] == "always()"
+
+
+def test_gh_runs_from_the_checkout_it_pins(repo, tmp_path, monkeypatch):
+    """Code delta NIT: ``gh`` resolves ``{owner}/{repo}`` from its working directory, while HEAD is read from the
+    checkout, so both gh calls run from the checkout, not the caller's shell directory."""
+    seen: list[object] = []
+
+    class R:
+        returncode, stdout, stderr = 0, "{}", ""
+
+    def run(cmd, **kw):
+        seen.append(kw.get("cwd"))
+        return R()
+
+    monkeypatch.setattr(L.subprocess, "run", run)
+    monkeypatch.setattr(L, "REPO_ROOT", repo)
+    L._download_artifact("1", "coverage-json-1", tmp_path)
+    import _lint_git
+
+    monkeypatch.setattr(_lint_git.subprocess, "run", run)
+    _lint_git.gh_api("repos/{owner}/{repo}/actions/runs/1", cwd=repo)
+    assert seen == [repo, repo]
+    with pytest.raises(L.MeasurementError):  # run_measurement's default api passes the checkout as cwd
+        L.run_measurement(repo, "1", tmp=tmp_path)
+    assert seen[-1] == repo

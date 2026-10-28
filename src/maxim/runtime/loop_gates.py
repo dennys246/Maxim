@@ -159,7 +159,11 @@ def pre_tick_gate(
     #   - Pending next_actions chain (multi-step plan in progress)
     #   - First iteration (startup — run initial cycle once)
     #   - Carried live percept / awaited LLM job / substrate tick due (see _loop_is_idle)
-    _has_pending_input = bool(state.data.get("pending_cli_input") or state.data.get("pending_voice_input"))
+    _has_pending_input = bool(
+        state.data.get("pending_cli_input")
+        or state.data.get("pending_voice_input")
+        or state.data.get("pending_loop_reply")  # loop_perception.LOOP_REPLY_SLOT: the loop's own reply
+    )
     _has_pending_work = bool(
         ctrl.pending_proposal or ctrl.pending_action_followup or ctrl.pending_next_actions or ctrl.pending_plan_proposal
     )
