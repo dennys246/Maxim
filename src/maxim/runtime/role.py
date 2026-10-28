@@ -103,19 +103,18 @@ def _mesh_yml_path() -> str:
 
 
 def _peer_yml_exists() -> bool:
-    try:
-        from maxim.peer.config import peer_config_path
+    """Raises :class:`ConfigurationError` for an unreadable config dir: a peer must not detect as solo (#1403)."""
+    from maxim.peer.config import peer_config_path
+    from maxim.utils.paths import config_file_present
 
-        return peer_config_path().is_file()
-    except Exception:
-        return False
+    return config_file_present(peer_config_path())
 
 
 def _mesh_yml_exists() -> bool:
-    try:
-        return Path(_mesh_yml_path()).is_file()
-    except Exception:
-        return False
+    """Raises :class:`ConfigurationError` for an unreadable config dir, as :func:`_peer_yml_exists` does."""
+    from maxim.utils.paths import config_file_present
+
+    return config_file_present(Path(_mesh_yml_path()))
 
 
 def _cloudflared_config_exists() -> Path | None:
@@ -176,8 +175,12 @@ def _config_json_role() -> Role | None:
     except Exception as e:
         logger.debug("role: config_loader import failed (%s); falling through", e)
         return None
+    from maxim.exceptions import ConfigDirUnreadable
+
     try:
         cfg = load_config()
+    except ConfigDirUnreadable:
+        raise  # not a malformed file to fall past: no rank below can be read either (#1403)
     except ConfigurationError as e:
         # Surface the parse failure loudly — operator-visible config
         # errors must not silently corrupt role detection.

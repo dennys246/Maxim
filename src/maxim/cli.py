@@ -703,6 +703,41 @@ def _runtime_mode_switch_allowed(requested: str, *, current_operational: str, gr
     return True
 
 
+def _run_stopped_on(error: Exception, logger: Any, *, verbosity: int) -> int:
+    """A robot/agentic run stopped on ``error``: the run loop's exit code (#1468, owner decisions 2026-10-26).
+
+    A typed backend error or a leader refusal is RE-RAISED to :func:`main`, which renders its fix hint (or the
+    refusal's reason) and exits 2, so a supervisor can tell "the operator must act" from a crash; a refusal is
+    never absorbed by a broad handler (``exceptions.LeaderRefusal``). Anything else is logged as before and is a
+    crash: 1. The loop's ``finally`` (``_end_robot_run``) runs either way."""
+    from maxim.exceptions import LeaderRefusal
+    from maxim.models.language.types import BackendError
+
+    if isinstance(error, (BackendError, LeaderRefusal)):
+        raise error
+    log_exception(logger, error, verbosity=verbosity, message="❌ Maxim stopped")
+    return 1
+
+
+def _end_robot_run(maxim: Any) -> None:
+    """The robot run loop's teardown, after every run (moved out of ``_main_impl``'s ``finally``, #1468):
+    stop the runtime, then the LLM server subprocess."""
+    if maxim is not None:
+        try:
+            maxim.shutdown()
+        except Exception:
+            pass
+    # Belt-and-suspenders: kill the LLM server subprocess even if
+    # shutdown() didn't reach it (e.g. double Ctrl+C, thread hang).
+    # This prevents ghost llama-cpp-server processes holding VRAM.
+    try:
+        from maxim.runtime.lane_backends import stop_active_spawner
+
+        stop_active_spawner()
+    except Exception:
+        pass
+
+
 def _after_run_mode_request(args: Any, maxim: Any, mode: str) -> str | None:
     """Act on the run's ``requested_mode`` once the robot runtime returns (#829). Re-execs (does not
     return) for an allowed switch; returns the run mode to continue with in-process when the re-exec
@@ -881,6 +916,182 @@ def _early_leader_boot() -> int | None:
     return None
 
 
+def _start_server_llm(logger: logging.Logger) -> str | None:
+    """Server mode's LLM: ``None`` once it is ready, else why it is not (#1338: never "ready" when it is not).
+
+    A ``LeaderRefusal`` propagates: a security refusal is not "run without the LLM".
+    """
+    from maxim.exceptions import LeaderRefusal
+
+    try:
+        from maxim.runtime.lane_backends import build_primary_router
+
+        _srv_router, _srv_mgr = build_primary_router(logger=logger)
+        if _srv_router is None:
+            return "the LLM router did not start (check the model config)"
+        _srv_router.warmup()
+        if not _srv_router.wait_ready(timeout=180.0):
+            return "the LLM did not become ready within 180s"
+    except LeaderRefusal:
+        raise
+    except Exception as _srv_err:
+        logger.error("LLM server init failed: %s", _srv_err)
+        return f"LLM server init failed: {_srv_err}"
+    return None
+
+
+def _report_server_not_ready(logger: logging.Logger, reason: str) -> int | None:
+    """Say NOT READY loudly; ``None`` to stay up when a LeaderProxy runs (peers can still `peer llm` / `peer update`
+    it, and ``/v1/debug/ping`` reports ``server_llm.ready = false``), else exit code 1 (solo server mode)."""
+    from maxim.runtime import leader_proxy
+
+    logger.error("LLM server NOT READY: %s", reason)
+    print(f"  ✗ LLM server NOT READY: {reason}", file=sys.stderr)
+    if not leader_proxy.leader_proxy_running():
+        print("  ✗ No LeaderProxy runs in this process: exiting (1).", file=sys.stderr)
+        return 1
+    leader_proxy.set_server_llm_status(ready=False, reason=reason)
+    print(
+        "  ✗ Staying up, not ready, so peers can recover it (`maxim peer llm <model>`, `maxim peer update`); "
+        "/v1/debug/ping reports server_llm.ready=false.",
+        file=sys.stderr,
+    )
+    return None
+
+
+def _run_server_mode(logger: logging.Logger) -> int:
+    """``--mode server``: the LLM server + proxy, no agent loop, until Ctrl+C. An LLM that never becomes ready is
+    reported NOT READY: the process stays up behind a LeaderProxy, and exits 1 without one (#1338)."""
+    from maxim.exceptions import LeaderRefusal
+
+    print("Maxim — server mode")
+    try:
+        try:
+            _not_ready = _start_server_llm(logger)
+        except LeaderRefusal as _refusal:
+            # A server mode that kept going would leave the proxy forwarding to what it refused.
+            print(f"\n  ✗ Refusing to serve: {_refusal}\n", file=sys.stderr)
+            logger.error("server mode refused: %s", _refusal)
+            return 2
+        if _not_ready is not None:
+            _rc = _report_server_not_ready(logger, _not_ready)
+            if _rc is not None:
+                return _rc
+        else:
+            from maxim.runtime import leader_proxy
+
+            leader_proxy.set_server_llm_status(ready=True, reason="ready")
+            logger.info("LLM server ready — accepting peer inference")
+            print("  LLM server ready — accepting peer inference")
+
+        print("  Proxy running — accepting peer commands")
+        print("  Use --sim or --mode to start a session, or Ctrl+C to stop.\n")
+        try:
+            import threading
+
+            threading.Event().wait()
+        except KeyboardInterrupt:
+            print("\n  Shutting down.")
+    finally:
+        _stop_server_spawner(logger)
+    return 0
+
+
+def _stop_server_spawner(logger: logging.Logger) -> None:
+    """Stop the LLM server this process spawned; a failed stop is logged (an orphan may still hold its port)."""
+    try:
+        from maxim.runtime.lane_backends import stop_active_spawner
+
+        stop_active_spawner()
+    except Exception as e:
+        logger.warning("Could not stop the spawned LLM server (it may still hold its port): %s", e)
+
+
+def _report_scenario_validation(
+    args: Any, sim_source: Any, sim_sink: Any, *, nac: Any, memory_hub: Any, executor: Any
+) -> bool:
+    """Validate a finished ``--sim <scenario>`` run and print/write its verdict, through the one validation seam the
+    benchmark also uses (#1392: this path judged the bio expectations against an empty snapshot). Returns whether
+    every expectation passed."""
+    import json as _json
+    from maxim.simulation.validation import validate_finished_run
+
+    hippo = getattr(args, "_sim_hippo", None)
+
+    # One seam with the benchmark (#1392): the snapshot and tool stats come from the live run.
+    results = validate_finished_run(
+        sim_source.expectations,
+        sink=sim_sink,
+        tag_times=sim_source.tag_times,
+        hippocampus=hippo,
+        nac=nac,
+        memory_hub=memory_hub,
+        executor=executor,
+    )
+
+    passed = all(r.passed for r in results)
+    scenario_name = sim_source.definition.name
+
+    print(f"\n{'PASS' if passed else 'FAIL'}: {scenario_name}")
+    for r in results:
+        status = "PASS" if r.passed else "FAIL"
+        desc = r.expectation.description or r.expectation.type
+        print(f"  [{status}] {desc}")
+        if not r.passed and r.detail:
+            print(f"         {r.detail}")
+    print(f"\nActions recorded: {len(sim_sink.actions)}")
+    for a in sim_sink.actions[:20]:
+        tag = "[BLOCKED]" if a.blocked else ("[OK]" if a.result_success else "[FAIL]")
+        print(f"  {tag} {a.tool_name}")
+
+    report_path = getattr(args, "sim_report", None)
+    if report_path:
+        report = {
+            "scenario": scenario_name,
+            "passed": passed,
+            "action_count": len(sim_sink.actions),
+            "expectations_met": [r.expectation.description or r.expectation.type for r in results if r.passed],
+            "expectations_failed": [
+                f"{r.expectation.description or r.expectation.type}: {r.detail}" for r in results if not r.passed
+            ],
+        }
+        with open(report_path, "w") as f:
+            _json.dump(report, f, indent=2)
+        print(f"Report written to {report_path}")
+    return passed
+
+
+def _detect_role_or_warn(raw_argv: list[str]) -> None:
+    """Run role detection once at startup (Plan 2 R2a); a failure warns and startup continues, except an
+    unreadable config dir, which every later step would hit too."""
+    from maxim.exceptions import ConfigDirUnreadable
+
+    try:
+        from maxim.runtime.role import detect_and_apply_role
+
+        detect_and_apply_role(raw_argv)
+    except ConfigDirUnreadable:
+        raise  # an unreadable config dir is not "role unknown": cli.main renders it, once (#1403)
+    except Exception as _role_err:
+        # Fix #3 (R2 review): role detection failures must not block
+        # startup, but a silent DEBUG log hides real problems. Promote
+        # to WARNING and emit a structured event so the failure shows
+        # up in both human logs and the JSONL stream.
+        _role_logger = logging.getLogger(__name__)
+        _role_logger.warning("role detection failed: %s", _role_err)
+        try:
+            from maxim.utils.structured_logging import log_structured
+
+            log_structured(
+                _role_logger,
+                logging.WARNING,
+                event="role_detection_failed",
+                data={"error": f"{type(_role_err).__name__}: {_role_err}"},
+            )
+        except Exception:
+            pass
+
+
 def _main_impl(argv: Sequence[str] | None = None) -> int:
     """Original ``main`` body.  Wrapped by :func:`main` for typed-error surfacing."""
     # Detect Blackwell GPU and apply GStreamer guards BEFORE any CUDA-touching
@@ -915,28 +1126,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
     # BEFORE subcommand dispatch (so `maxim doctor` / `maxim peer X` both
     # emit the event instead of only the sim loop). See
     # docs/plans/archive/llm_path_typed_errors.md R2a + feedback_subcommand_logging_gap.md.
-    try:
-        from maxim.runtime.role import detect_and_apply_role
-
-        detect_and_apply_role(raw_argv)
-    except Exception as _role_err:
-        # Fix #3 (R2 review): role detection failures must not block
-        # startup, but a silent DEBUG log hides real problems. Promote
-        # to WARNING and emit a structured event so the failure shows
-        # up in both human logs and the JSONL stream.
-        _role_logger = logging.getLogger(__name__)
-        _role_logger.warning("role detection failed: %s", _role_err)
-        try:
-            from maxim.utils.structured_logging import log_structured
-
-            log_structured(
-                _role_logger,
-                logging.WARNING,
-                event="role_detection_failed",
-                data={"error": f"{type(_role_err).__name__}: {_role_err}"},
-            )
-        except Exception:
-            pass
+    _detect_role_or_warn(raw_argv)
 
     # C7a of config_unification.md: solo + cloud-key auto-detect.
     # Runs AFTER detect_and_apply_role so MAXIM_ROLE is exported and
@@ -1130,8 +1320,6 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
     _sig.signal(_sig.SIGINT, _force_exit_handler)
 
     # ── Early leader proxy bootstrap (before _normalize_args; see _early_leader_boot) ──
-    from maxim.exceptions import LeaderRefusal
-
     _boot_rc = _early_leader_boot()
     if _boot_rc is not None:
         return _boot_rc
@@ -1315,12 +1503,10 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
     # Simulation mode if requested — runs full agentic pipeline with fake percepts
     if sim_path is not None:
-        import json as _json
         from pathlib import Path
 
         from maxim.simulation.scenario_source import ScenarioSource
         from maxim.simulation.sinks import RecordingSink
-        from maxim.simulation.validation import validate_expectations
 
         # ── Safety net: detect stale sim processes from previous runs ──
         # Graceful shutdown (Ctrl+C → orchestrator cleanup → LLM cancellation)
@@ -1895,6 +2081,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
     build_home(args.home_dir)
     mode = str(getattr(args, "mode", "active")).strip().lower()
+    exit_code = 0  # what a supervisor reads (#1468): a crash 1, a Ctrl+C 130; typed errors go to main() (2)
     while True:
         run_id = time.strftime("%Y-%m-%d_%H%M%S")
         log_path = os.path.join(args.home_dir, "logs", f"reachy_log_{run_id}.log")
@@ -2227,11 +2414,6 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 state.data["internet_access"] = effective_internet_enabled(internet_enabled)
                 state.data["autonomy_level"] = initial_level.value
 
-                # Wire communication gateway if available
-                if gateway is not None:
-                    agentic_agent.wire_communication(gateway=gateway)
-                    logger.info("Communication gateway wired")
-
                 logger.info(
                     "Starting MaximAgent (memory_path=%s, embeddings=%s, reset=%s, autonomy=%s, internet=%s, comms=%s)",
                     memory_path,
@@ -2313,52 +2495,10 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
                 # If simulation mode, validate expectations and report
                 if sim_source is not None and sim_sink is not None:
-                    import json as _json
-                    from maxim.simulation.validation import validate_expectations
-
                     scenario_file = getattr(args, "_sim_scenario_file", None)
-                    hippo = getattr(args, "_sim_hippo", None)
-
-                    results = validate_expectations(
-                        expectations=sim_source.expectations,
-                        sink=sim_sink,
-                        hippocampus=hippo,
-                        emitted_tags=sim_source.emitted_tags,
+                    passed = _report_scenario_validation(
+                        args, sim_source, sim_sink, nac=_cli_nac, memory_hub=_cli_memory_hub, executor=executor
                     )
-
-                    passed = all(r.passed for r in results)
-                    scenario_name = sim_source.definition.name
-
-                    print(f"\n{'PASS' if passed else 'FAIL'}: {scenario_name}")
-                    for r in results:
-                        status = "PASS" if r.passed else "FAIL"
-                        desc = r.expectation.description or r.expectation.type
-                        print(f"  [{status}] {desc}")
-                        if not r.passed and r.detail:
-                            print(f"         {r.detail}")
-                    print(f"\nActions recorded: {len(sim_sink.actions)}")
-                    for a in sim_sink.actions[:20]:
-                        tag = "[BLOCKED]" if a.blocked else ("[OK]" if a.result_success else "[FAIL]")
-                        print(f"  {tag} {a.tool_name}")
-
-                    report_path = getattr(args, "sim_report", None)
-                    if report_path:
-                        report = {
-                            "scenario": scenario_name,
-                            "passed": passed,
-                            "action_count": len(sim_sink.actions),
-                            "expectations_met": [
-                                r.expectation.description or r.expectation.type for r in results if r.passed
-                            ],
-                            "expectations_failed": [
-                                f"{r.expectation.description or r.expectation.type}: {r.detail}"
-                                for r in results
-                                if not r.passed
-                            ],
-                        }
-                        with open(report_path, "w") as f:
-                            _json.dump(report, f, indent=2)
-                        print(f"Report written to {report_path}")
 
                     # Save sim log and disable logging
                     saved_log = disable_sim_logging()
@@ -2384,45 +2524,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
             # ── Server mode: LLM server + proxy, no agent loop ──────────
             if mode == "server":
-                print("Maxim — server mode")
-                try:
-                    from maxim.runtime.lane_backends import build_primary_router
-
-                    _srv_router, _srv_mgr = build_primary_router(logger=logger)
-                    if _srv_router is not None:
-                        _srv_router.warmup()
-                        _srv_router.wait_ready(timeout=180.0)
-                        logger.info("LLM server ready — accepting peer inference")
-                        print("  LLM server ready — accepting peer inference")
-                    else:
-                        logger.warning("LLM server did not start")
-                        print("  WARNING: LLM server failed to start (check model config)")
-                except LeaderRefusal as _refusal:
-                    # A security refusal is not "run without the LLM": a server mode that
-                    # kept going would leave the proxy forwarding to what it refused.
-                    print(f"\n  ✗ Refusing to serve: {_refusal}\n", file=sys.stderr)
-                    logger.error("server mode refused: %s", _refusal)
-                    return 2
-                except Exception as _srv_err:
-                    logger.warning("LLM server init failed: %s", _srv_err)
-                    print(f"  WARNING: LLM server init failed: {_srv_err}")
-
-                print("  Proxy running — accepting peer commands")
-                print("  Use --sim or --mode to start a session, or Ctrl+C to stop.\n")
-                try:
-                    import threading
-
-                    threading.Event().wait()
-                except KeyboardInterrupt:
-                    print("\n  Shutting down.")
-                finally:
-                    try:
-                        from maxim.runtime.lane_backends import stop_active_spawner
-
-                        stop_active_spawner()
-                    except Exception:
-                        pass
-                return 0
+                return _run_server_mode(logger)
 
             from maxim.embodied_runtime.selfy import Maxim
 
@@ -2454,37 +2556,20 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
         except KeyboardInterrupt:
             logger.warning("Interrupted by user (Ctrl+C).")
+            exit_code = 130  # one code for one operator action, as main()'s handler gives (#1468)
             break
         except Exception as e:
-            log_exception(
-                logger,
-                e,
-                verbosity=getattr(args, "verbosity", 0),
-                message="❌ Maxim stopped",
-            )
+            exit_code = _run_stopped_on(e, logger, verbosity=getattr(args, "verbosity", 0))
             break
         finally:
-            if maxim is not None:
-                try:
-                    maxim.shutdown()
-                except Exception:
-                    pass
-            # Belt-and-suspenders: kill the LLM server subprocess even if
-            # shutdown() didn't reach it (e.g. double Ctrl+C, thread hang).
-            # This prevents ghost llama-cpp-server processes holding VRAM.
-            try:
-                from maxim.runtime.lane_backends import stop_active_spawner
-
-                stop_active_spawner()
-            except Exception:
-                pass
+            _end_robot_run(maxim)
 
         next_mode = _after_run_mode_request(args, maxim, mode)
         if next_mode is None:
             break
         mode = next_mode
 
-    return 0
+    return exit_code
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -2498,19 +2583,38 @@ def main(argv: Sequence[str] | None = None) -> int:
     invisible to the user.
 
     On ``BackendError``: render via ``user_warn`` (display panel + JSONL
-    + stderr) and exit 2.  ``KeyboardInterrupt`` exits cleanly with 130
+    + stderr) and exit 2; ``ConfigDirUnreadable`` (an unreadable config
+    dir, #1403) the same way, with the traceback at DEBUG.  ``KeyboardInterrupt`` exits cleanly with 130
     (Ctrl-C convention) so the live display can flush.  Any other
     exception re-raises — we don't want to swallow bugs.
     """
+    from maxim.exceptions import LeaderRefusal
+
     try:
         return _main_impl(argv)
     except KeyboardInterrupt:
         return 130
+    except LeaderRefusal as refusal:
+        # A security refusal is the operator's to act on: say why and exit 2, as server mode and the early leader
+        # boot do (#1468 review, owner decision 2026-10-26).
+        _fix = getattr(refusal, "fix_hint", None)
+        print(f"\n  ✗ Refusing to run: {refusal}\n" + (f"    → {_fix}\n" if _fix else ""), file=sys.stderr)
+        logging.getLogger("maxim").error("maxim refused: %s", refusal)
+        return 2
     except Exception as e:
+        from maxim.exceptions import ConfigDirUnreadable
+
+        if isinstance(e, ConfigDirUnreadable):
+            # Checked before importing models.language: an unreadable config dir fails that import too (#1403).
+            from maxim.utils.logging import user_warn
+
+            logging.getLogger(__name__).debug("unreadable config dir", exc_info=True)
+            user_warn(f"{type(e).__name__}: {e}", source="config", event="config_dir_unreadable")
+            return 2
         try:
             from maxim.models.language.types import BackendError
         except Exception:
-            raise
+            raise e  # the original error, with the failed import as its context
 
         if isinstance(e, BackendError):
             from maxim.utils.logging import user_warn

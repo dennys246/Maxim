@@ -9,7 +9,7 @@ covers the AUT build, the narrator pipeline, the ``sim.aut`` thread, campaign di
 reader, the stall detector, the narrator loop on the calling thread, teardown, the report and the
 ``SimulationResult``. Nothing in ``src/`` is stubbed except the LLM. ``FakeRouter`` is patched in at
 ``maxim.runtime.lane_backends.build_primary_router``, the seam ``test_api_expansion.py`` already
-uses. Three arms (owner decision (a), 2026-10-13):
+uses. The slice-0 arms (owner decision (a), 2026-10-13):
 
   1. ``precampaign``: three ``pre_campaign_turns`` and no narrator LLM. The runner ends the run.
   2. ``narrator``: the fake narrator calls ``send_message`` twice and then ``finish_simulation``.
@@ -20,9 +20,62 @@ uses. Three arms (owner decision (a), 2026-10-13):
      free text while paused (which goes to the AUT), ``/resume``, free text while running (which
      goes to the narrator as guidance), and ``/cancel``.
 
+Then the arms the 1.4.0 gate requires before the slices that move their code (``scripts/release_gates.json``
+``arms``; roadmap_1_3_x.md §1.3.5), added 2026-10-24 without changing the three above:
+
+  4. ``generative``: ``generative=True`` with a one-phase, two-turn arc (``_GENERATIVE_ARC``). The generative
+     campaign's own narrator (``simulation/narrator.py``, the ``story_*`` roles) drives both turns on the calling
+     thread; its ``_finish_runner`` sets ``stop_event``, and only then is the narrator kickoff injected (§9).
+     The §9 RESUME branch (``resume_session``) is not reached; only the kickoff is.
+  5. ``stall``: the stall detector (§11) with its idle threshold at the 5 s clamp floor and a 0.5 s poll
+     (the arm's ``env``). Three probes; the diversity checkpoint lands during turn 3 and rides the narrator's
+     ``observe_actions`` follow-up (``held_inputs``); the narrator then finishes, and the detector's idle nudge
+     reaches the FINISHED narrator (#1259), which answers it with another ``finish_simulation``; the operator
+     ``/cancel`` follows that answer. WHY this shape (measured 2026-10-24): since D13 every action-less narrator
+     answer is a planning failure (the fourth aborts the run ``planning_failed``) and ``finish_simulation`` is its
+     only terminal tool, so a live narrator reaches the idle threshold only after it has finished, or behind a
+     wedged call (owner decision 2026-10-24: the post-finish path; #1259's fix removes it and re-homes this arm).
+     And a percept that reaches the narrator while its planning job is in flight rides the next FOLLOW-UP
+     (``agent_loop._take_deferred_inputs``, #1048): when that job instead ends the chain, the percept is planned only
+     when a later percept wakes the loop, and a second such percept races (two nudges, 15 s apart, in 2 of 8 fresh
+     runs; #1451). The idle-threshold reachability is #1452. The arm's ``observe_actions`` step gives the
+     checkpoint a follow-up to ride, so the nudge is the only post-finish percept. RE-HOMING (owed by #1259's
+     fix, which removes this path; the arm's gate scope is immutable): the remaining offline route to the idle
+     threshold is a WEDGED narrator call, i.e. a FakeRouter call registered in ``llm_call_registry`` the way
+     ``LLMRouter.generate_json`` registers its own (with ``allowed_s`` from the request context) and held past
+     ``stall_threshold.non_streaming_age_bound_s``, with that bound lowered by env, so ``stall_suppression``
+     judges it wedged (the D12/D14 path; keep ``MAXIM_SIM_HARD_ABORT=0``).
+  6. ``new_goal``: interactive ON (``/new`` lives only in the interactive post-sim branch) with a line-read
+     stdin that claims a TTY and has no ``fileno``, so the raw reader falls back to the line reader. The
+     post-sim raw-mode goal reader (a TTY loop, left uncharacterized) is faked (``_post_sim_goals``): a goal
+     once, so the run re-enters ``start_simulation_mode``, then Enter. Each run's narrator probes once and
+     finishes, and an operator ``/cancel`` follows each finish (as in the narrator arm). The re-entry resolves
+     ``sandbox_backend="auto"`` (it does not forward the caller's), so ``check_docker_available`` is patched to
+     False for every arm: never a container, whatever the box has installed. Two findings pinned as-is: the
+     re-entry drops the caller's other arguments (#1453), and the AUT's learning does not carry over (#1454).
+  7. ``persistent_agent``: HANDLE seam (a). A real console ``MaximHandle()`` (the shipped producer of the
+     INSTANCE; owner decision 2026-10-24) is built after the run's env is set, so its home is the run's data home
+     (``agents/console_agent``), and its instance is adopted as the AUT. The CALL is not the handle's: its entry
+     points (``play_campaign``, mode "dm"; ``play_premise``, generative) also take ``_campaign_lock`` and wrap the
+     run in a ``_safety_lease`` restore, which would mask the orchestrator's own branch-4 restore this arm pins.
+     The arm calls ``start_simulation_mode(persistent_agent=...)`` directly, in the default narrator mode
+     (branches 3 and 4 do not read the mode). One probe, a finish and an operator
+     ``/cancel``. The trace's ``handle`` key reads the instance's registry and its persistent pain bus before the
+     run, at the end of turn 1 and after it (``_handle_view``); the harness stops the handle after the trace.
+  8. ``imagination``: §7 with an embodied AUT (``entity_ref="bodies/base_humanoid"``, which builds the
+     ComponentRegistry the ImaginationTrigger needs). The fake scene manifest names an indexed component and a
+     novel entity (``_MANIFEST_ENTITIES``), which the fake designer builds (``_LANTERN``); the trace's
+     ``imagination`` key records the trigger's calls and its teardown (stats, tag, decay, ``clear_ephemeral``).
+     One probe, a finish and an operator ``/cancel``. An embodied registry reads every shipped component, so
+     ``scenario_inputs`` under the checkout's shipped data are pinned by path, their bytes masked
+     (``_SHIPPED_DATA``).
+
 The TTY read loops (the raw-mode stdin reader and the post-sim raw-mode "new goal" prompt) are
-deliberately left uncharacterized (owner decision (e)). Every arm runs non-interactive
-(``InteractiveMode.OFF``, the ``--interactive false`` path), so the line reader is the one exercised.
+deliberately left uncharacterized (owner decision (e)). Every arm but ``new_goal`` runs non-interactive
+(``InteractiveMode.OFF``, the ``--interactive false`` path); ``new_goal`` runs interactive ON on a stdin that
+passes ``stdin_reader_raw``'s isatty check but whose ``fileno()`` raises, so the reader falls back to the line
+reader before it enters raw mode (the head of ``stdin_reader_raw`` runs; its raw loop never does). Either way the
+line reader is the one exercised, and the post-sim raw reader is faked.
 
 ROUTER BUILDS. Every ``build_primary_router`` call returns a ``_RouterView``: the one shared
 ``FakeRouter`` (one call log) under that build's own ``call_serial``, registered with
@@ -58,11 +111,19 @@ threads and its real 3 s settle, so the trace records only CAUSALLY ORDERED fact
   - the threads the run started that are still alive after it returns (``_threads_left``);
   - the ``SimulationResult`` with its timestamps dropped.
 
-It never records a cross-thread interleaving or a stall-detector injection. The arms stay shorter
-than the detector's first diversity checkpoint (3 turns) and its idle threshold (30 s).
+The slice-0 arms never record a cross-thread interleaving or a stall-detector injection: they stay
+shorter than the detector's first diversity checkpoint (3 turns) and its idle threshold (30 s). The
+``stall`` arm records both, made causal: the fake AUT holds its turn-3 answer until the checkpoint has
+landed (``_hold_for_stall_arm``: the detector reads the tool counts on the poll that sees turn 3, which
+otherwise races that turn's action), and the nudge's idle seconds are masked (``_STALL_MASKS``). A hold
+that times out on a run thread is recorded (``_HOLD_HANGS``) and fails the run, since src may swallow it there.
 
-CAUSAL SYNCHRONISATION. Two class-level hooks on ``SimulationBridge``; class attributes hold
-wherever a slice moves the CALLER:
+CAUSAL SYNCHRONISATION. Class-level hooks on ``SimulationBridge`` (and, for the ``events`` arms,
+``ConversationalSource.inject_cli`` and the module attributes ``orchestrator._finish_runner`` and
+``orchestrator.read_post_sim_goal_raw``); class attributes hold wherever a slice moves the CALLER, and a slice
+that moves the caller of either module attribute must keep reading it through ``orchestrator`` or extend the
+patch list (a missed ``read_post_sim_goal_raw`` would run the real reader, which returns "" on this stdin: the
+new_goal arm goes red, loudly):
 
   - ``send_and_wait``: records the turn, then runs the arm's after-turn step ON THE CALLING THREAD,
     before the turn returns to its caller. The stdin arm uses it to feed operator lines and to wait
@@ -152,11 +213,67 @@ _PRECAMPAIGN_TURNS: list[dict[str, Any]] = [
     {"text": "A bell rings twice.", "phase": "middle", "salience": 0.9},
     {"text": "The room goes dark.", "phase": "end", "novelty": 0.5},
 ]
+# The generative arm's arc (written into the work dir, so its path scrubs to ``<WORK>``): one phase of two turns, so
+# the narrator's third ``decide`` exhausts the arc without an LLM call and the campaign completes.
+_GENERATIVE_ARC = """\
+name: orch_golden_arc
+description: two short probes
+phases:
+  - name: probe
+    turns: [2, 2]
+    instruction: Ask the agent one short question.
+"""
+_STORY_SCENES = ("A stranger asks your name.", "The stranger asks your favourite colour.")
+# Per arm: ``max_turns``; the ``start_simulation_mode`` keywords it adds (``kwargs``; ``arc_yaml`` is filled in by
+# ``run_arm``); and ``events``: record every ``ConversationalSource.inject_cli`` and every campaign-runner finish
+# (``orchestrator._finish_runner``), in call order (the trace's ``events`` key). Only the arms added after slice 0
+# set it, so the slice-0 arms' traces stay byte-identical.
 ARMS: dict[str, dict[str, Any]] = {
     "precampaign": {"max_turns": 10, "pre_campaign_turns": _PRECAMPAIGN_TURNS},
     "narrator": {"max_turns": 10, "aut_model": "orch-golden-aut"},
     "stdin": {"max_turns": 10},
+    "generative": {"max_turns": 10, "kwargs": {"generative": True}, "arc": _GENERATIVE_ARC, "events": True},
+    # The detector's idle threshold at its clamp floor (5 s, ``stall_threshold._read_clamped_env``) and its poll at
+    # its own floor (0.5 s), so the arm reaches the diversity checkpoint (after turn 3) and one idle nudge quickly.
+    "stall": {
+        "max_turns": 10,
+        "env": {"MAXIM_STALL_FLOOR_S": "5", "MAXIM_SIM_STALL_CHECK_INTERVAL_S": "0.5"},
+        "events": True,
+    },
+    # Interactive ON (``/new`` exists only there) on a line-read stdin that claims a TTY: no ``fileno``, so the raw
+    # reader falls back to the line reader (``tty_stdin.stdin_reader_raw``) and the post-sim branch reads a goal
+    # through ``read_post_sim_goal_raw``, faked (``_post_sim_goals``).
+    "new_goal": {"max_turns": 10, "interactive": True, "events": True},
+    # HANDLE seam (a): a real console ``MaximHandle`` (the shipped producer, owner decision 2026-10-24) built inside
+    # the run's data home, its instance adopted as the AUT (``_handle_view``).
+    "persistent_agent": {"max_turns": 10, "handle": True, "events": True},
+    # §7: an embodied AUT (``entity_ref``, which builds the ComponentRegistry the ImaginationTrigger needs). The
+    # scene manifest names one indexed component and one novel entity the fake designer builds (``_LANTERN``).
+    "imagination": {
+        "max_turns": 10,
+        "kwargs": {"entity_ref": "bodies/base_humanoid"},
+        "events": True,
+        "shipped_inputs": ("components/bodies/base_humanoid.yaml", "reflexes/humanoid.yaml"),  # its body + reflexes
+    },
 }
+# The imagination arm's scene manifest, one sentence per entity. Short noun phrases ("a rusty sword") would hit a
+# phrase-extractor defect: ``extract_entity_phrases`` merges them across the manifest's newline join ("sword a brass
+# lantern", #1455); the arm characterizes §7's wiring and teardown, not the extractor.
+_MANIFEST_ENTITIES = ["A rusty sword lies on the floor.", "A brass lantern hangs from a hook."]
+# The fake designer's spec for the novel manifest entity (``simulation/entity_designer.py``'s schema, minimal).
+_LANTERN: dict[str, Any] = {
+    "name": "brass_lantern",
+    "entity_type": "item",
+    "sensors": {"fuel": {"unit": "ratio", "range": [0, 1], "initial": 0.5}},
+    "modulators": {
+        "lighting": {"abstract": True, "affordances": {"light": {"params": {}, "description": "light the lantern"}}}
+    },
+}
+# The new_goal arm: the goal the faked post-sim reader returns once (the ``/new`` re-entry), then "" (finish).
+NEW_GOAL = "check what the agent remembers"
+# The stall arm's narrator probes, by the turn whose follow-up sends the next one (turn 3's percept is the one the
+# fake AUT holds until the diversity checkpoint lands: ``_hold_for_stall_arm``).
+_STALL_PROBES = {1: "What is your favourite colour?", 2: "Name one tool you can use."}
 # The report writers the run calls, in order (a removed or reordered save shows even when a later
 # save of the same file masks it on disk).
 _REPORT_WRITERS = ("save_report", "save_action_log", "save_aut_state", "analyze_simulation", "emit_report_json")
@@ -170,6 +287,19 @@ _AUT_SETTLE_S = 3.0  # SimulationBridge's default settle_s: the same quiet windo
 
 class WrongCheckout(AssertionError):
     """The imported ``maxim`` is not this checkout's (an installed package shadowing a worktree)."""
+
+
+class ModelLoaded(AssertionError):
+    """A pretrained model is already loaded in this process: the golden pins the no-model world
+    (``_model_isolation_env``), so a run here would pin something else."""
+
+
+def _assert_no_model_loaded() -> None:
+    from maxim.similarity import encoder, semantic
+
+    for owner, attr in ((encoder, "_encoder_model"), (semantic, "_sentence_transformer_model")):
+        if getattr(owner, attr, None) is not None:
+            raise ModelLoaded(f"{owner.__name__}.{attr} is loaded in this process (MAXIM_RUN_MODEL_TESTS?)")
 
 
 class HarnessHang(AssertionError):
@@ -194,6 +324,8 @@ _EXECUTED = re.compile(r"^TOOL_PROMPT\|You just executed '([^']+)'")
 _ORIGINAL = re.compile(r"Original request: \"(.*?)\"\n\n", re.S)
 _TOOL_LIST = re.compile(r"=== Your Tools ===\nYour tools are: (.*?)\. Choose one of these\.", re.S)
 _TURN = re.compile(r"'turn': (\d+)")
+_NEW_INSTRUCTIONS = re.compile(r"=== New Instructions ===\n(.*?)(?:\n=== |\Z)", re.S)
+_HELD_INPUT_ARMS = ("stall",)
 
 
 class FakeRouter:
@@ -219,10 +351,16 @@ class FakeRouter:
             "fear": [],
             "roundup": [],
             "manifest": [],
+            "story_decide": [],
+            "story_generate": [],
+            "designer": [],
         }
         self.unsorted: list[str] = []
         self.prompts: dict[str, list[str]] = {role: [] for role in self.calls}  # raw, for RUN_SIDE only
         self._lock = threading.Lock()
+        # Called with (role, call) before a sorted prompt is answered, on the calling thread: an arm's causal hold
+        # (a slow model, for one call), e.g. ``_hold_for_stall_arm``. None answers at once.
+        self.hold: Any = None
 
     # The router surface the run touches besides generate_json.
     def warmup(self) -> bool:
@@ -245,6 +383,13 @@ class FakeRouter:
             roles.append("fear")
         if "List the entities:" in prompt and '"entities"' in prompt:
             roles.append("manifest")
+        if prompt.startswith("You are an Entity Designer for a bio-inspired cognitive architecture."):
+            roles.append("designer")
+        # The generative campaign's narrator (``simulation/narrator.py``): its decision and generation calls.
+        if prompt.startswith("You are the narrative director for a cognitive agent simulation."):
+            roles.append("story_decide")
+        if prompt.startswith("You are a vivid, immersive narrator."):
+            roles.append("story_generate")
         if prompt.startswith("TOOL_PROMPT|You just executed "):
             m = _TOOL_LIST.search(prompt)
             roster = m.group(1) if m else ""
@@ -268,6 +413,13 @@ class FakeRouter:
                 self.unsorted.append(prompt[:400])
             return None
         call = _describe(prompt)
+        if self.arm in _HELD_INPUT_ARMS and call["kind"] == "followup":
+            # The inputs that rode this follow-up (``agent_loop._take_deferred_inputs``, #1048): what the narrator was
+            # handed beside the tool result. Recorded only for these arms, so the slice-0 traces stay byte-identical.
+            m = _NEW_INSTRUCTIONS.search(prompt)
+            call["held_inputs"] = m.group(1).strip()[:120] if m else None
+        if self.hold is not None:
+            self.hold(role, call)
         answer = getattr(self, f"_answer_{role}")(call)
         call["answer"] = answer.get("action") if role in ("narrator", "aut") else sorted(answer)
         with self._lock:
@@ -277,6 +429,10 @@ class FakeRouter:
 
     # ── per-role scripts ─────────────────────────────────────────────────
     def _answer_narrator(self, call: dict[str, Any]) -> dict[str, Any]:
+        if self.arm == "stall":
+            return self._answer_stall_narrator(call)
+        if self.arm in ("new_goal", "persistent_agent", "imagination"):
+            return self._answer_one_probe_narrator(call)
         if call["kind"] == "followup" and call["executed"] == "send_message":
             turn = call.get("turn")
             if turn == 1:
@@ -302,6 +458,40 @@ class FakeRouter:
             return {"action": None, "confidence": 0.9, "reasoning": "nothing to do yet", "ready_to_act": False}
         return _act("finish_simulation", status="aborted", reason="unscripted narrator input", summary="")
 
+    def _answer_one_probe_narrator(self, call: dict[str, Any]) -> dict[str, Any]:
+        """One probe per goal, then ``finish_simulation`` (the new_goal arm: the first run, then its ``/new``
+        re-entry; the persistent_agent arm: one run)."""
+        if call["kind"] == "plan" and call["request"].startswith("simulation goal: " + GOAL):
+            return _act("send_message", text="Hello, who are you?")
+        if call["kind"] == "plan" and call["request"].startswith("simulation goal: " + NEW_GOAL):
+            return _act("send_message", text="What do you remember?")
+        if call["kind"] == "followup" and call["executed"] == "send_message" and call.get("turn") == 1:
+            which = "the new goal" if NEW_GOAL in call["request"] else "the first goal"
+            return _act("finish_simulation", status="completed", reason=f"{which} probed", summary="")
+        return _act("finish_simulation", status="aborted", reason="unscripted narrator input", summary="")
+
+    def _answer_stall_narrator(self, call: dict[str, Any]) -> dict[str, Any]:
+        """Three probes, then ``finish_simulation``; after it, the queued diversity checkpoint and one idle nudge each
+        get a narrator plan, answered with another ``finish_simulation`` (the narrator's only terminal tool: since D13
+        an action-less answer is a planning failure, so a live narrator never idles before it finishes)."""
+        if call["kind"] == "followup" and call["executed"] == "send_message":
+            turn = call.get("turn")
+            if turn in _STALL_PROBES:
+                return _act("send_message", text=_STALL_PROBES[turn])
+            if turn == 3:
+                return _act("observe_actions")
+        if call["kind"] == "followup" and call["executed"] == "observe_actions":
+            return _act("finish_simulation", status="completed", reason="three probes delivered", summary="")
+        if call["kind"] == "plan":
+            req = call["request"]
+            if req.startswith("simulation goal:"):
+                return _act("send_message", text="Hello, who are you?")
+            if req.startswith("diversity checkpoint (turn 3):"):
+                return _act("finish_simulation", status="completed", reason="checkpoint after finish", summary="")
+            if req.startswith("system: stall detected ("):
+                return _act("finish_simulation", status="completed", reason="nudge after finish", summary="")
+        return _act("finish_simulation", status="aborted", reason="unscripted narrator input", summary="")
+
     def _answer_aut(self, call: dict[str, Any]) -> dict[str, Any]:
         if call["kind"] == "plan":
             return _act("respond", message=f"I heard: {call['request'][:40]}")
@@ -316,7 +506,17 @@ class FakeRouter:
         return {"summary": "golden roundup", "issues": ["none observed"], "recommendations": ["keep going"]}
 
     def _answer_manifest(self, call: dict[str, Any]) -> dict[str, Any]:
-        return {"entities": []}
+        return {"entities": list(_MANIFEST_ENTITIES) if self.arm == "imagination" else []}
+
+    def _answer_designer(self, call: dict[str, Any]) -> dict[str, Any]:
+        return copy.deepcopy(_LANTERN)
+
+    def _answer_story_decide(self, call: dict[str, Any]) -> dict[str, Any]:
+        return {"phase": "probe", "scene_type": "question", "notes": "ask one short question", "done": False}
+
+    def _answer_story_generate(self, call: dict[str, Any]) -> dict[str, Any]:
+        n = len(self.calls["story_generate"])  # this call is appended after it is answered
+        return {"narrative": _STORY_SCENES[n] if n < len(_STORY_SCENES) else "unscripted scene"}
 
 
 class _RouterView:
@@ -353,6 +553,12 @@ def _describe(prompt: str) -> dict[str, Any]:
     if prompt.startswith("TOOL_PROMPT|"):
         req = _USER_REQUEST.search(prompt)
         return {"kind": "plan", "request": (req.group(1) if req else "")[:120].lower()}
+    if prompt.startswith("You are an Entity Designer"):
+        desc = re.search(r"\nDESCRIPTION: (.*)\n", prompt)
+        return {"kind": "direct", "request": desc.group(1)[:120] if desc else ""}
+    if prompt.startswith(("You are the narrative director", "You are a vivid, immersive narrator")):
+        # The story narrator's prompts: what it was asked is the closing user part, after the system text.
+        return {"kind": "direct", "request": prompt.rstrip().rsplit("\n", 1)[-1][:120]}
     return {"kind": "direct", "request": prompt[:80]}
 
 
@@ -364,8 +570,9 @@ class QueueStdin(io.TextIOBase):
     ``readline`` (no ``fileno``, so CPython takes the non-console path). ``reads`` counts readline
     calls: the reader asking for line k+1 means it has processed line k."""
 
-    def __init__(self) -> None:
+    def __init__(self, tty: bool = False) -> None:
         super().__init__()
+        self._tty = tty
         self._q: queue.Queue[str] = queue.Queue()
         self._cv = threading.Condition()
         self.reads = 0
@@ -374,7 +581,7 @@ class QueueStdin(io.TextIOBase):
         return True
 
     def isatty(self) -> bool:
-        return False
+        return self._tty
 
     def readline(self, size: int | None = -1) -> str:  # type: ignore[override]
         with self._cv:
@@ -399,6 +606,21 @@ class QueueStdin(io.TextIOBase):
                 self._cv.wait(0.05)
 
 
+# Hangs raised by a causal hold on a thread the run owns (the fake AUT's LLM call): src may swallow them there, so
+# each is also recorded here and ``run_arm`` fails on any after the run.
+_HOLD_HANGS: list[str] = []
+
+
+def _wait_for(predicate: Any, what: str) -> None:
+    """A causal wait in the harness (the arms' holds): poll ``predicate`` until it holds, or fail as a hang."""
+    deadline = time.monotonic() + SETTLE_TIMEOUT_S
+    while not predicate():
+        if time.monotonic() > deadline:
+            _HOLD_HANGS.append(what)
+            raise HarnessHang(f"timed out waiting for {what}")
+        time.sleep(0.02)
+
+
 def _thread(name: str) -> threading.Thread | None:
     return next((t for t in threading.enumerate() if t.name == name), None)
 
@@ -410,8 +632,18 @@ _DASH_STAMP = re.compile(r"\d{4}-\d{2}-\d{2}_\d{6}")
 _TMP_SUFFIX = re.compile(r"(sim_agent_<STAMP>_)[A-Za-z0-9_]{8}")
 
 
+# Wall-clock numbers inside the stall detector's injected text, with the reason (the stall arm). Applied to every
+# arm's strings, like the ``<REPO>`` scrub in ``_scrub``; both are inert on the slice-0 traces (neither pattern occurs). The idle nudge
+# reports ``int(now - last activity)``, which is the 5 s floor plus however far into a 0.5 s poll the threshold
+# fell: 5 or 6. Every other number in its text (the AUT's action count, the turn, the tool counts) is causal.
+_STALL_MASKS = ((re.compile(r"\b\d+s idle\b"), "<S>s idle"),)
+
+
 def _scrub(text: str, work: Path) -> str:
+    for pattern, placeholder in _STALL_MASKS:
+        text = pattern.sub(placeholder, text)
     text = text.replace(str(work.resolve()), "<WORK>").replace(str(work), "<WORK>")
+    text = text.replace(str(REPO_ROOT), "<REPO>")  # a spec file read from the checkout (the imagination arm)
     text = _STAMP.sub("<STAMP>", text)
     text = _DASH_STAMP.sub("<STAMP>", text)
     text = _TMP_SUFFIX.sub(r"\1<RAND>", text)
@@ -526,6 +758,20 @@ class _GlobalState:
         )
 
 
+def _model_isolation_env(work: Path) -> dict[str, str]:
+    """No pretrained model ever loads in a run, as under ``tests/conftest.py`` (offline, an empty isolated cache).
+    Measured 2026-10-24: ``--regen`` runs as a plain script, without conftest, and the imagination arm's
+    ComponentIndex loaded ``all-mpnet-base-v2`` from the user's cache (its embedding layer, and two worker threads
+    left alive), while the same arm under pytest took the no-encoder fallback: the golden then pinned the box, not
+    the run. Every run gets the conftest environment instead, whoever drives it."""
+    return {
+        "HF_HOME": str(work / "huggingface"),
+        "TORCH_HOME": str(work / "torch"),
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1",
+    }
+
+
 def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     """Drive the real ``start_simulation_mode`` for one arm; return the CANONICAL trace."""
     assert_this_checkout()
@@ -535,11 +781,14 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     from maxim.models.language.cancellation import reset_shutdown
     from maxim.similarity import ec as ec_mod
     from maxim.simulation import bridge as bridge_mod
+    from maxim.simulation import container_runner as container_mod
+    from maxim.simulation import conversational_source as conv_mod
     from maxim.simulation import orchestrator as orch
     from maxim.simulation import report as report_mod
     from maxim.simulation import sim_logger as SL
     from maxim.utils.paths import _reset_caches
 
+    _assert_no_model_loaded()
     spec = ARMS[arm]
     work = workdir.resolve()
     router = FakeRouter(arm)
@@ -552,7 +801,9 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     nac_credits: list[tuple[Any, dict[str, Any]]] = []  # (the NAc instance, the call), in call order
     credited_keys: set[tuple[int, str, Any]] = set()  # (NAc id, map, key) already written once (``post``)
     last_post: dict[tuple[int, str, Any], Any] = {}  # (NAc id, map, key) -> value after its LAST write (not traced)
-    aut_nac: list[Any] = []  # the NAc handed to save_aut_state (whose credits are the AUT's)
+    # The NAc handed to each save_aut_state call (whose credits are the AUT's). The views read the LAST one: the run
+    # whose session dir the trace reads (a /new re-entry saves twice, and its result is the inner run's).
+    aut_nac: list[Any] = []
 
     def _build_router(*_a: Any, **_k: Any) -> tuple[_RouterView, None]:
         from maxim.models.language import call_accounting
@@ -562,10 +813,20 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
         return _RouterView(router, serial, os.environ.get("MAXIM_LLM_PROFILE")), None
 
     stdin_feed: list[dict[str, Any]] = []
-    stdin = QueueStdin() if arm in ("narrator", "stdin") else io.StringIO("")
+    stdin = (
+        QueueStdin(tty=bool(spec.get("interactive")))
+        if arm != "precampaign" and arm != "generative"
+        else io.StringIO("")
+    )
     counter = iter(range(1, 1_000_000))
     Bridge = bridge_mod.SimulationBridge
-    orig_send, orig_finish = Bridge.send_and_wait, Bridge.finish
+    orig_send, orig_finish, orig_bridge_init = Bridge.send_and_wait, Bridge.finish, Bridge.__init__
+    Source = conv_mod.ConversationalSource
+    orig_inject = Source.inject_cli
+    bridges: list[Any] = []  # every SimulationBridge the run built (a /new re-entry builds a second)
+    events: list[dict[str, Any]] = []  # ``inject_cli`` calls and campaign-runner finishes, in call order
+    run_stops: list[threading.Event] = []  # the stop_event each ``_finish_runner`` was handed
+    narrator_sources: list[int] = []  # id() of each non-bridge source, in first-injection order
     orig_status, orig_summary = SL.display_status, SL.display_summary
 
     def _feed(line: str) -> None:
@@ -601,6 +862,9 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
                 "actions": [_action_view(a) for a in result["actions"]],
             }
         )
+        if handle is not None and "during" not in handle_seen:  # mid-campaign: the lease and the DN bridge in place
+            handle_seen["during"] = _handle_view(handle.instance)
+            handle_seen["during"].pop("_objects")
         if arm == "stdin":
             for line in _STDIN_SCRIPT.get(result["turn"], []):
                 before = len(self.action_sink.actions)
@@ -610,9 +874,103 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
                     turns[-1]["paused_aut_actions"] = [_action_view(a) for a in self.action_sink.actions[before:]]
         return result
 
+    def bridge_init(self: Any, *args: Any, **kwargs: Any) -> None:
+        orig_bridge_init(self, *args, **kwargs)
+        bridges.append(self)
+
+    def inject_cli(self: Any, text: str, *args: Any, **kwargs: Any) -> None:
+        """Every percept injected into a ``ConversationalSource``: which source (the AUT's, owned by a bridge, or a
+        narrator's), the injecting thread, and the text. Recorded in call order; an arm that records them makes that
+        order causal (module docstring, CAUSAL SYNCHRONISATION)."""
+        bridge_index = next((i for i, b in enumerate(bridges) if b.percept_source is self), None)
+        if bridge_index is not None:
+            source = f"aut#{bridge_index + 1}"
+        else:
+            if id(self) not in narrator_sources:
+                narrator_sources.append(id(self))
+            source = f"narrator#{narrator_sources.index(id(self)) + 1}"
+        event = {"inject": source, "thread": threading.current_thread().name, "text": text[:240]}
+        if run_stops:  # a campaign runner already ended: was the run already stopping when this landed?
+            event["stop_event_set"] = run_stops[-1].is_set()
+        events.append(event)
+        orig_inject(self, text, *args, **kwargs)
+
+    orig_finish_runner = orch._finish_runner
+
+    def finish_runner(bridge: Any, stop_event: threading.Event, runner: str, outcome: Any, **kwargs: Any) -> None:
+        """A campaign runner returned (``orchestrator._finish_runner``): recorded with the stop it handed over."""
+        orig_finish_runner(bridge, stop_event, runner, outcome, **kwargs)
+        run_stops.append(stop_event)
+        events.append(
+            {
+                "finish_runner": runner,
+                "thread": threading.current_thread().name,
+                "stop_event_set": stop_event.is_set(),
+                "finish_context": dict(bridge.finish_context or {}),
+            }
+        )
+
+    def _hold_for_stall_arm(role: str, call: dict[str, Any]) -> None:
+        """The fake AUT answers turn 3's percept only after the detector's diversity checkpoint has landed, so the
+        checkpoint's tool counts are those of turns 1 and 2 (the detector reads them on the poll that sees turn 3,
+        which otherwise races the AUT's turn-3 action)."""
+        if role == "aut" and call["kind"] == "plan" and call["request"] == _STALL_PROBES[2].lower():
+            _wait_for(
+                lambda: any(e.get("text", "").startswith("DIVERSITY CHECKPOINT") for e in events),
+                "the stall detector's diversity checkpoint after turn 3",
+            )
+
+    cancelled_bridges: list[Any] = []  # the new_goal arm: the bridges whose finish already fed a /cancel
+    post_sim_reads: list[str] = []  # the new_goal arm: what each post-sim "new goal" read returned
+
+    def _post_sim_goals(*, _stdin: Any, display: Any) -> str:
+        """The post-sim raw-mode reader (``tty_stdin.read_post_sim_goal_raw``, a TTY loop left uncharacterized):
+        a goal once, so the run re-enters ``start_simulation_mode``, then Enter (finish)."""
+        goal = "" if post_sim_reads else NEW_GOAL
+        post_sim_reads.append(goal)
+        return goal
+
+    imagination: list[dict[str, Any]] = []  # the imagination arm: §7's trigger calls and its teardown, in order
+
+    def _record(owner: Any, method: str, view: Any) -> Any:
+        orig = getattr(owner, method)
+
+        def spy(self: Any, *args: Any, **kwargs: Any) -> Any:
+            out = orig(self, *args, **kwargs)
+            imagination.append(
+                {
+                    "call": f"{owner.__name__}.{method}",
+                    "args": [sorted(a) if isinstance(a, (set, frozenset)) else _writer_arg(a) for a in args],
+                    "result": view(out),
+                }
+            )
+            return out
+
+        return spy
+
+    def _answered_the_nudge() -> bool:
+        return any(c["request"].startswith("system: stall detected (") for c in router.calls["narrator"])
+
+    if arm == "stall":
+        router.hold = _hold_for_stall_arm
+
     def finish(self: Any) -> None:
         finish_calls.append(dict(self.finish_context))  # the finish_context each finish() saw
         orig_finish(self)
+        if arm == "stall" and not stdin_feed and _answered_the_nudge():
+            # The stall arm's /cancel: only once the finished narrator has planned on (and answered) the idle nudge.
+            assert isinstance(stdin, QueueStdin)
+            stdin.feed("/cancel")
+            stdin_feed.append({"line": "/cancel", "after_turn": len(turns), "after": "the idle nudge's answer"})
+        if (
+            arm in ("new_goal", "persistent_agent", "imagination")
+            and self.finish_context.get("initiated_by") == "llm_finish_tool"
+            and not any(b is self for b in cancelled_bridges)
+        ):  # each run's narrator finish is followed by its /cancel, as in the narrator arm
+            cancelled_bridges.append(self)
+            assert isinstance(stdin, QueueStdin)
+            stdin.feed("/cancel")
+            stdin_feed.append({"line": "/cancel", "after_turn": len(turns), "after": "finish_simulation"})
         if (
             arm == "narrator"
             and len(finish_calls) == 1
@@ -640,7 +998,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
             writer_args.append(
                 {
                     "writer": name,
-                    "args": [_writer_arg(a) for a in args],
+                    "args": [sorted(a) if isinstance(a, (set, frozenset)) else _writer_arg(a) for a in args],
                     "kwargs": {k: _writer_arg(v) for k, v in kwargs.items()},
                     "shared_refs": _shared_refs(kwargs),
                 }
@@ -672,6 +1030,13 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     patches: list[tuple[Any, str, Any]] = [
         (Bridge, "send_and_wait", send_and_wait),
         (Bridge, "finish", finish),
+        (Bridge, "__init__", bridge_init),
+        (Source, "inject_cli", inject_cli),
+        (orch, "_finish_runner", finish_runner),
+        (orch, "read_post_sim_goal_raw", _post_sim_goals),
+        # Never Docker: a run that resolves sandbox_backend "auto" (the /new re-entry does, #1453) falls back to
+        # tmpdir whatever the box has installed, so the trace does not depend on it and no test starts a container.
+        (container_mod, "check_docker_available", lambda *a, **k: False),
         (SL, "display_status", display_status),
         (SL, "display_summary", display_summary),
         (ec_mod, "uuid4", lambda: uuid.UUID(int=next(counter))),
@@ -679,47 +1044,86 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
         *((report_mod, n, _report_spy(n)) for n in _REPORT_WRITERS),
         *((NAc, m, _credit_spy(m)) for m in _NAC_CREDIT_ENTRY_POINTS),
     ]
+    if arm == "imagination":
+        from maxim.embodiment.component_registry import ComponentRegistry
+        from maxim.imagination.trigger import ImaginationTrigger
+
+        patches += [
+            (
+                ImaginationTrigger,
+                "process_manifest",
+                _record(ImaginationTrigger, "process_manifest", _imagination_results),
+            ),
+            (ImaginationTrigger, "stats", _record(ImaginationTrigger, "stats", dict)),
+            (NAc, "tag_imagined_links", _record(NAc, "tag_imagined_links", lambda n: n)),
+            (NAc, "decay_imagined_links", _record(NAc, "decay_imagined_links", lambda n: n)),
+            (ComponentRegistry, "clear_ephemeral", _record(ComponentRegistry, "clear_ephemeral", sorted)),
+        ]
     saved = [(obj, name, getattr(obj, name)) for obj, name, _ in patches]
 
     state = _GlobalState()
-    for key in [k for k in os.environ if k.startswith("MAXIM_")]:
-        del os.environ[key]
-    os.environ.update(
-        MAXIM_SIM_HARD_ABORT="0",
-        MAXIM_DATA_HOME=str(work / "data"),
-        MAXIM_REPORT_JSON=str(work / "report_json.json"),
-        XDG_CONFIG_HOME=str(work / "xdg-config"),  # module docstring: never the user's config
-    )
-    os.environ.pop("TERM_PROGRAM", None)
-    _reset_caches()
-    from maxim.runtime.config_loader import reset_config_cache
-    from maxim.utils import seeding
+    handle: Any = None  # the persistent_agent arm's MaximHandle (built inside the try: its build can raise)
+    handle_seen: dict[str, Any] = {}
+    try:  # everything after the snapshot is restored in the finally, even when the setup itself raises
+        for key in [k for k in os.environ if k.startswith("MAXIM_")]:
+            del os.environ[key]
+        os.environ.update(
+            MAXIM_SIM_HARD_ABORT="0",
+            MAXIM_DATA_HOME=str(work / "data"),
+            MAXIM_REPORT_JSON=str(work / "report_json.json"),
+            XDG_CONFIG_HOME=str(work / "xdg-config"),  # module docstring: never the user's config
+            **_model_isolation_env(work),
+            **spec.get("env", {}),
+        )
+        os.environ.pop("TERM_PROGRAM", None)
+        _reset_caches()
+        from maxim.runtime.config_loader import reset_config_cache
+        from maxim.utils import seeding
 
-    reset_config_cache()
-    seeding._global_seed = None
-    os.chdir(work)
-    sys.stdin = stdin
-    SL.reset_sim_display_state()
-    SL.set_interactive_mode(SL.InteractiveMode.OFF)
-    json_parse_stats_reset()
-    reset_shutdown()
-    for obj, name, replacement in patches:
-        setattr(obj, name, replacement)
-    threads_before = threading.enumerate()
-    t0 = time.monotonic()
-    try:
+        reset_config_cache()
+        seeding._global_seed = None
+        os.chdir(work)
+        sys.stdin = stdin
+        SL.reset_sim_display_state()
+        SL.set_interactive_mode(SL.InteractiveMode.ON if spec.get("interactive") else SL.InteractiveMode.OFF)
+        json_parse_stats_reset()
+        reset_shutdown()
+        for obj, name, replacement in patches:
+            setattr(obj, name, replacement)
+        kwargs = copy.deepcopy(spec.get("kwargs", {}))
+        if spec.get("handle"):
+            from maxim.console.handle import MaximHandle
+
+            handle = MaximHandle()  # its home: the run's data home (MAXIM_DATA_HOME), agents/console_agent
+            kwargs["persistent_agent"] = handle.instance
+            handle_before = _handle_view(handle.instance)
+        if "arc" in spec:
+            (work / "arc.yaml").write_text(spec["arc"])
+            kwargs["arc_yaml"] = str(work / "arc.yaml")
+        _HOLD_HANGS.clear()
+        threads_before = threading.enumerate()
+        t0 = time.monotonic()
         result = orch.start_simulation_mode(
             goal=GOAL,
             max_turns=spec["max_turns"],
             sandbox_backend="tmpdir",
             pre_campaign_turns=copy.deepcopy(spec.get("pre_campaign_turns")),
             aut_model=spec.get("aut_model"),
+            **kwargs,
         )
         elapsed = time.monotonic() - t0
+        if _HOLD_HANGS:
+            raise HarnessHang(f"a causal hold timed out on a run thread: {_HOLD_HANGS}")
         stragglers = _join_sim_threads()
         threads_left = _threads_left(threads_before)
         env_after = {k: v for k, v in os.environ.items() if k.startswith("MAXIM_")}
         session_dir = Path(result.session_dir)
+        aut_nac_path = session_dir / "aut_nac.json"
+        if handle is not None:
+            # HANDLE branch 3: no session snapshot; the adopted agent's NAc is its own, saved in its own home by the
+            # loop's session end. Read from there, and its credits are the AUT's.
+            aut_nac.append(handle.instance.nac)
+            aut_nac_path = work / "data" / "agents" / handle.agent_id / "nac.json"
         report_json = work / "report_json.json"
         trace = {
             "arm": arm,
@@ -734,35 +1138,81 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
             "report_writer_args": writer_args,
             "lifecycle": [_mask_lifecycle(line) for line in lifecycle],
             "result": _result_view(result),
-            "report": _report_view(session_dir / "report.json"),
+            "report": _report_view(session_dir / "report.json", tuple(spec.get("shipped_inputs", ()))),
             "report_json_emitted": report_json.is_file(),
             "sim_reports_files": _files(work / "data" / "sim_reports"),
             "data_home_files": _data_home_files(work / "data"),
-            "aut_nac": _nac_view(
-                session_dir / "aut_nac.json", _aut_nac_config(aut_nac), _last_writes(last_post, aut_nac)
-            ),
+            "aut_nac": _nac_view(aut_nac_path, _aut_nac_config(aut_nac), _last_writes(last_post, aut_nac)),
             "nac_credits": _nac_credits_view(nac_credits, aut_nac),
             "action_log": _action_log_view(session_dir / "actions.jsonl"),
             "live_sim_threads_after": stragglers,
             "threads_left_alive": threads_left,
             "maxim_env_after": env_after,
         }
+        if spec.get("events"):
+            trace["events"] = events
+        if arm == "new_goal":
+            trace["post_sim_reads"] = post_sim_reads
+        if arm == "imagination":
+            trace["imagination"] = imagination
+        if handle is not None:
+            trace["handle"] = {
+                "before": handle_before,
+                "during": handle_seen.get("during"),
+                "after": _handle_view(handle.instance, handle_before),
+            }
         canon = _canon(_label_serials(trace, builds), work)
+        # File sets sorted AFTER the scrub: two run dirs stamped in different seconds (the session's and the
+        # generative campaign's, ~1.0 s apart, measured 2026-10-24) must give the same list as one shared second.
+        for key in ("sim_reports_files", "data_home_files"):
+            canon[key] = sorted(canon[key])
         canon["_elapsed_s"] = round(elapsed, 1)  # dropped by the test before comparing (timing only)
         return canon
     finally:
-        for obj, name, orig in saved:
-            setattr(obj, name, orig)
-        if isinstance(stdin, QueueStdin):
-            stdin.eof()  # unblock a reader still waiting for a line
-        from maxim.modes import definitions
+        if _HOLD_HANGS:  # also when the run never returned (a pytest timeout): say which hold hung
+            print(f"orch harness: causal hold(s) timed out: {_HOLD_HANGS}", file=sys.stderr)
+        try:
+            if handle is not None:
+                handle.stop()  # after the trace: the run never stops the handle (MaximHandle.play_campaign does not)
+        finally:  # a failing stop must not leave the patches or the process state in place
+            try:
+                for obj, name, orig in saved:
+                    setattr(obj, name, orig)
+                if isinstance(stdin, QueueStdin):
+                    stdin.eof()  # unblock a reader still waiting for a line
+                from maxim.modes import definitions
 
-        RUN_SIDE[arm] = {
-            "prompts": router.prompts,
-            "tool_descriptions_before": state.tool_descriptions,
-            "tool_descriptions_after": copy.deepcopy(definitions.TOOL_DESCRIPTIONS),
-        }
-        state.restore()
+                RUN_SIDE[arm] = {
+                    "prompts": router.prompts,
+                    "tool_descriptions_before": state.tool_descriptions,
+                    "tool_descriptions_after": copy.deepcopy(definitions.TOOL_DESCRIPTIONS),
+                }
+            finally:
+                state.restore()
+
+
+def _imagination_results(results: Any) -> list[dict[str, Any]]:
+    """``process_manifest``'s results: each phrase, the ref it resolved to, and whether it was imagined."""
+    return [{"phrase": r.phrase, "ref": r.ref, "imagined": r.imagined} for r in results or []]
+
+
+def _handle_view(instance: Any, before: dict[str, Any] | None = None) -> dict[str, Any]:
+    """What HANDLE branch 4 restores on the adopted agent: its registry's tool names (and, after the run, whether
+    each baseline name holds the SAME tool object again: the lease re-registers replaced ones), and its persistent
+    pain bus's direct subscribers by qualname (the sim's DefaultNetwork pain bridge must be unsubscribed)."""
+    registry = instance.tool_registry
+    view: dict[str, Any] = {
+        "tools": sorted(registry.list_all()),
+        "pain_subscribers": sorted(
+            getattr(cb, "__qualname__", type(cb).__name__) for cb in instance.pain_bus._pain_signal_subs
+        ),
+    }
+    if before is None:  # the baseline OBJECTS, held (an id() alone can be reused by a fresh same-size instance)
+        view["_objects"] = {name: registry.get(name) for name in view["tools"]}
+    else:
+        objects = before.pop("_objects")
+        view["replaced"] = sorted(n for n in view["tools"] if n in objects and registry.get(n) is not objects[n])
+    return view
 
 
 def _label_serials(trace: dict[str, Any], builds: list[int]) -> dict[str, Any]:
@@ -919,7 +1369,7 @@ def _aut_nac_config(aut_nac: list[Any]) -> Any:
     which the golden's ``report_writer_args`` shows on its own)."""
     from maxim.decisions.nac import NACConfig
 
-    config = getattr(aut_nac[0], "config", None) if len(aut_nac) == 1 else None
+    config = getattr(aut_nac[-1], "config", None) if aut_nac else None
     return config if isinstance(config, NACConfig) else NACConfig()
 
 
@@ -969,7 +1419,7 @@ def _saved_key(store: str, key: Any) -> str:
 
 def _last_writes(last_post: dict[tuple[int, str, Any], Any], aut_nac: list[Any]) -> dict[str, dict[str, Any]]:
     """The saved AUT NAc's value after its last write, per saved map and saved key (``_decayed_bound``)."""
-    target = id(aut_nac[0]) if len(aut_nac) == 1 else None
+    target = id(aut_nac[-1]) if aut_nac else None
     out: dict[str, dict[str, Any]] = {}
     for (nac_id, store, key), value in last_post.items():
         if nac_id == target and store in _SAVED_FIELD:
@@ -1002,7 +1452,7 @@ def _nac_credits_view(calls: list[tuple[Any, dict[str, Any]]], aut_nac: list[Any
     thread: the AUT's by ``sim.aut``, the narrator's by the calling thread, so the order WITHIN an instance
     is causal and the interleaving BETWEEN them is not recorded). ``aut`` is the NAc handed to
     ``save_aut_state``; ``other`` holds every other instance's sequence, sorted."""
-    target = aut_nac[0] if len(aut_nac) == 1 else None
+    target = aut_nac[-1] if aut_nac else None
     per: dict[int, list[dict[str, Any]]] = {}
     owners: dict[int, Any] = {}
     for nac, call in calls:
@@ -1115,8 +1565,8 @@ def _introspection_view(block: Any) -> Any:
         view["hippocampus_stats"] = {k: view["hippocampus_stats"].get(k) for k in _HIPPO_PINNED}
     if isinstance(view.get("system_stats"), dict):
         view["system_stats"] = {k: v for k, v in view["system_stats"].items() if k != "hippocampus_memories"}
-    if isinstance(view.get("turns"), list):  # campaign_analysis: per-turn wall-clock duration
-        view["turns"] = [{k: v for k, v in t.items() if k != "duration_ms"} for t in view["turns"]]
+    if isinstance(view.get("turns"), list):  # campaign_analysis: per-turn wall-clock duration and send time (#1391)
+        view["turns"] = [{k: v for k, v in t.items() if k not in ("duration_ms", "sent_at")} for t in view["turns"]]
     return view
 
 
@@ -1159,10 +1609,48 @@ _PROVENANCE_MASKED = {
 _MASKED = "<MASKED>"
 
 
-def _report_view(path: Path) -> dict[str, Any]:
+# ``scenario_sha256`` is CHECKED, not pinned, when the run read scenario files (``provenance.scenario_inputs``
+# non-empty): it hashes goal + inputs + content (``serving_provenance``), and the inputs' paths are absolute (the work
+# dir, the checkout), so its value moves with the box. Measured 2026-10-24 (generative arm, two identical runs). The
+# harness recomputes it from the report's own fields and pins ``_RECOMPUTED_OK``; a mismatch prints the raw value.
+_PROVENANCE_RECOMPUTED = {"scenario_sha256": "goal + scenario_inputs + scenario_content_sha256, recomputed"}
+_RECOMPUTED_OK = "<RECOMPUTED_OK>"
+# ``scenario_inputs`` under the checkout's shipped data (an embodied AUT's ComponentRegistry reads EVERY shipped
+# component and reflex YAML). The golden names only the files an arm is about (``ARMS[arm]["shipped_inputs"]``, by
+# path, bytes masked) and records that others were read: adding, removing or editing an unrelated shipped spec must
+# not turn the gate red (review 2026-10-24: the embodied-device line edits that tree in parallel).
+_SHIPPED_DATA = REPO_ROOT / "src" / "maxim" / "_data"
+_OTHER_SHIPPED = {"path": "<other shipped data files>", "sha256": _MASKED}
+
+
+def _recompute_scenario_sha(prov: dict[str, Any], goal: Any) -> str:
+    import hashlib
+
+    body = {"goal": goal, "inputs": prov.get("scenario_inputs"), "content": prov.get("scenario_content_sha256")}
+    return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
+
+
+def _shipped_inputs_view(inputs: list[dict[str, Any]], keep: tuple[str, ...]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    others = False
+    for r in inputs:
+        path = str(r.get("path", ""))
+        if not path.startswith(str(_SHIPPED_DATA) + os.sep):
+            out.append(r)
+        elif path[len(str(_SHIPPED_DATA)) + 1 :] in keep:
+            out.append({**r, "sha256": _MASKED})
+        else:
+            others = True
+    return out + ([_OTHER_SHIPPED] if others else [])
+
+
+def _report_view(path: Path, shipped_keep: tuple[str, ...] = ()) -> dict[str, Any]:
     data = json.loads(path.read_text())
     view = {k: v for k, v in data.items() if k not in _REPORT_DROPPED and k != "provenance"}
-    view["provenance"] = {
-        k: (_MASKED if k in _PROVENANCE_MASKED else v) for k, v in (data.get("provenance") or {}).items()
-    }
+    prov = dict(data.get("provenance") or {})
+    if prov.get("scenario_inputs"):
+        got = prov.get("scenario_sha256")
+        prov["scenario_sha256"] = _RECOMPUTED_OK if got == _recompute_scenario_sha(prov, data.get("goal")) else got
+        prov["scenario_inputs"] = _shipped_inputs_view(prov["scenario_inputs"], shipped_keep)
+    view["provenance"] = {k: (_MASKED if k in _PROVENANCE_MASKED else v) for k, v in prov.items()}
     return view

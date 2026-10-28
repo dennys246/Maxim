@@ -237,9 +237,11 @@ class TestValidation:
 
     def test_pipeline_continued_passes(self):
         sink = RecordingSink()
-        sink.record(ActionRecord(timestamp=time.time(), tool_name="RespondTool", result_success=True))
+        delivered_at = time.time()
+        sink.record(ActionRecord(timestamp=delivered_at + 1.0, tool_name="respond", result_success=True))
         exp = Expectation(type="pipeline_continued", after_tag="test_tag")
-        results = validate_expectations([exp], sink, emitted_tags={"test_tag"})
+        # #1391: an action AFTER the tag's delivery time, not merely any action.
+        results = validate_expectations([exp], sink, tag_times={"test_tag": delivered_at})
         assert results[0].passed
 
     # ── Metric expectations (refinement harness) ─────────────────────────

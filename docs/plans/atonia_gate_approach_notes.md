@@ -1,6 +1,6 @@
 # The atonia gate: approach notes for items 2, 3, 1, 5 and 10
 
-**Status:** DRAFT v6.2 (design passes, three-lens round and two deltas folded), approach notes (CLAUDE.md "Faster without lowering the bar", item 1). Owner decisions V1–V8
+**Status:** DRAFT v6.10 (design passes, three-lens round and two deltas folded; red-gate review decisions folded), approach notes (CLAUDE.md "Faster without lowering the bar", item 1). Owner decisions V1–V8
 were made 2026-10-24 and V9–V10 on 2026-10-25. Session V, paper only: nothing in `src/` changes until the owner has read the folded
 plan and the red-gate PR is opened.
 - **v1** was written from a read-only census at `d9dffe6e` (origin/main, 2026-10-24).
@@ -146,8 +146,22 @@ before them. Item 10's call-site refusals stay parallel.
 
 **`MAXIM_OFFLINE` and `MAXIM_INTERNET_LOWERED`.** Offline implies internet-lowered **on the read side**:
 `utils/internet_access.py::session_internet_lowered()` returns `True` when `maxim._offline.is_offline()`. `engage()`
-writes nothing and calls nothing in `maxim.utils`, so the leaf has no back-edge and nothing logs "lowered by the
-agent". `_offline.py` being stdlib-only is guarded by `tests/unit/test_offline_latch.py::test_offline_module_is_stdlib_only`
+**imports** nothing from `maxim.utils`, so the leaf has no back-edge and nothing logs "lowered by the agent".
+In order, `engage()` sets the latch, installs the audit hook if it is not yet installed, and then does exactly three
+things:
+1. **`os.environ` writes.** `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`, `HF_HUB_DISABLE_TELEMETRY`, `YOLO_OFFLINE` and
+   `MAXIM_OFFLINE` (§6), so libraries read them in-process and children inherit them. The observer's env-write
+   allow-list is exactly those five.
+2. **Flags on libraries that are already imported,** found through `sys.modules` and never imported:
+   `huggingface_hub.constants.HF_HUB_OFFLINE = True` and `ultralytics.utils.ONLINE = False`.
+3. **The callbacks registered through `maxim._offline.on_engage(fn)`.** `on_engage` is stdlib-only and runs `fn` at
+   once if the latch is already up. `utils/http.py` registers `close_all` at its own import, so a client pooled
+   before the latch is closed, and a keep-alive socket cannot keep sending: `send`/`sendall` raise no audit event,
+   so the hook alone could not stop it. **Red gate:** a client pooled before `engage()` cannot send after it.
+
+  The observer's closure excludes `maxim.utils.http`, so in the observer that callback is never registered and there
+  is nothing to close. `_offline.py` being stdlib-only is guarded by
+`tests/integration/test_offline_latch.py::test_offline_module_is_stdlib_only`
 (an AST check on the `test_clean_flag_998` pattern). The internet tools'
 `disabled_reason` and the prompt roster then agree. V5 cannot ride on `MAXIM_INTERNET_LOWERED` alone, because that
 covers neither HF nor the LLM. `MAXIM_OFFLINE` goes in llm-routing.md's env table, next to it.
@@ -155,7 +169,8 @@ covers neither HF nor the LLM. `MAXIM_OFFLINE` goes in llm-routing.md's env tabl
 **Tests.**
 - `tests/conftest.py` must `os.environ.pop("MAXIM_OFFLINE", None)` at the top of the module, **before** its
   `import maxim`, so a developer shell cannot latch the pytest process. The autouse scrub alone would be too late.
-- The conftest latch reset touches `maxim._offline`'s private state.
+- The conftest latch reset calls `maxim._offline._reset_for_tests()` (below). The `on_engage` callbacks stay
+  registered across a reset and run again on the next `engage()`.
 
 ### 1A.2 One dispatch seam, and one booking rule
 
@@ -191,7 +206,22 @@ arrive: executor denials return before pain is booked, and NAc is booked downstr
 - **What counts as refused.** `record_outcome` gains `refused: ToolErrorKind | None`, **keyword-only and required**
   (the TF8 `bridge_booked` precedent). It is threaded from `execute_and_learn` (both sites) and
   `execute_parallel_actions`. It is non-`None` only for the frozenset `tools/base.py::GATE_REFUSAL_KINDS` =
-  {`NOT_REGISTERED`, `POLICY_CEILING`, `POLICY_PERMISSIONS`, `POLICY_PIN`, `MODE`, `OFFLINE`}. **It is never
+  {`NOT_REGISTERED`, `INACTIVE_SCENE`, `POLICY_CEILING`, `POLICY_PERMISSIONS`, `POLICY_PIN`, `MODE`, `OFFLINE`}.
+  Each member's value is its snake_case name (`"not_registered"`, …), matching the existing members.
+  **`ToolErrorKind` is serialised by `.value` everywhere:** the report, the log and `actions.jsonl`.
+- **The refusal layer** goes in `ToolOutput.metadata["refusal_layer"]`. Each layer has exactly one kind:
+
+  | Layer | Kind |
+  |---|---|
+  | `"forbid"` | `POLICY_PERMISSIONS` (the autonomy forbid source) |
+  | `"mode"` | `MODE` |
+  | `"registry"` | `NOT_REGISTERED` or `INACTIVE_SCENE` |
+  | `"permissions"` | `POLICY_PERMISSIONS` |
+  | `"ceiling"` | `POLICY_CEILING`, including the V7 offline AND |
+  | `"pin"` | `POLICY_PIN`: a pinned policy's refusal of any non-pinned name, never `"permissions"` |
+  | `"offline"` | `OFFLINE`, an `OfflineRefusal` raised inside a tool body |
+  - `"registry"` means the name is not dispatchable in this registry (`NOT_REGISTERED`, `INACTIVE_SCENE`).
+  - The sealed registry is just a registry, so the executor needs no special case for it. **It is never
   `PERMISSION_DENIED`**, which tools return for their own path refusals: those keep booking their NAc negative,
   unchanged. A test pins the set. The five scripts that call `record_outcome` directly
   (`scripts/orient_substrate/9_tool_competition_repro.py`, `2_full_path_probe.py`,
@@ -322,7 +352,77 @@ caller those catches protected, so list each caller.
 
 advisor_mode.md's draft interfaces are **superseded by this shape**, and that file says so.
 
-**`open()`** takes `home_dir`, `model`, `report_dir`, `cursor`, `max_calls`, `turn_timeout_s` and `log_mode`.
+**`open()`** (owner decisions 2026-10-26, from AvServ's questions, A–D; refined by the v6.6 three-lens round, v6.7)
+takes, keyword-only:
+- `home_dir`, `model` and `report_dir`;
+- `cursor=None`, `max_calls=8`, `turn_timeout_s=120` and `log_mode=0o600`;
+- **`n_ctx=None`, `max_prompt_tokens=None` and `n_gpu_layers=-1`** (A).
+
+**Limits (A).**
+- `n_ctx=None` resolves **in `closed_local`** to `min(trained context, 8192)`.
+  - It is never the full trained context: a 128K default means minutes of prefill, or a memory failure at `open()`.
+  - The trained context is read from the GGUF's metadata before the full load (`closed_local.trained_context(path)`;
+    llama-cpp's `n_ctx=0` means unbounded and is never passed).
+  - The clamp is `closed_local`'s alone. The shared `Llama` kwargs builder (§1A.3) receives an explicit `n_ctx`, so
+    `_LlamaCppBackend`'s profile-driven `n_ctx`, and the PromptBudgeter's agreement with it, are unchanged.
+  - The backend exposes the resolved value as an `n_ctx` int attribute.
+- The completion budget is fixed at **1024 tokens**.
+- `max_prompt_tokens=None` resolves to `n_ctx - 1024`.
+- `open()` refuses (`AdvisorCompositionError`) when `max_prompt_tokens + 1024 > n_ctx`.
+- `session.limits` is a frozen object whose attributes read back the **actual** values: `n_ctx`,
+  `max_prompt_tokens`, `completion_tokens` and `n_gpu_layers`.
+
+**`session.ingest(events, *, stop=None)`.** Each event is `{event_id, kind, occurred_at, payload, text, cursor?}`.
+- **The prompt cap (B).**
+  - The **session** is the one place the cap is checked: it compares `len(prompt.ids)` against `max_prompt_tokens`
+    before any completion, so prefill is bounded by tokens, not by time.
+  - Every report carries a named field, `"prompt": {"tokens": N, "max_tokens": M}`, not an `extra` key, so AvServ can
+    size its batches from any report.
+  - An over-cap prompt gives `error` with reason `prompt_too_long`, and the backend never completes.
+- **Cursors (C).**
+  - `cursor` is the caller's opaque feed cursor; Maxim never parses it, only echoes it.
+  - **The session holds the cursor.** `open(cursor=)` sets it, and each `ok` turn advances it to its `cursor_out`.
+    So a second `ingest()`'s `cursor_in` is the previous `cursor_out`.
+  - Once any cursor is in play, from `open()` or from any event in the batch, every event must carry `cursor`.
+    Otherwise `ingest()` raises `AdvisorInputError` before any turn.
+  - With cursored events but no `open(cursor=)`, the first `cursor_in` is `null`.
+  - **Maxim decides what was handled:** every event in the batch is either judged or listed in `inputs[]` as
+    rejected. So on `ok`, `covered.cursor_out` is the **last event's** `cursor`, and a rejected event can never be
+    re-fed forever.
+  - For `error` and `abandoned`, `cursor_out == cursor_in`.
+  - There is no `event_id` fallback. With no `cursor` given, both cursor fields are `null`.
+- **Stopping (D, session-scoped).**
+  - The library installs no signal handler and never exits (bounded_stop.md's principle). The embedder's handler calls
+    **`session.request_stop(deadline_s, reason="yield")`**.
+    - **"Callable from a signal handler" means exactly this:** it sets a `threading.Event` and stores the monotonic
+      deadline and the reason. It takes no lock, logs nothing, does no I/O, and never raises.
+    - `deadline_s` bounds how long the in-flight `ingest()` may take to return after the stop. The remaining
+      dispatches are skipped, and the report is written.
+    - An optional per-call `stop=` (a `threading.Event`-like object) abandons only that call.
+  - **The process-wide `StopRequest` is not consulted.** It is sticky, and `MaximHandle.stop()` sets it too, so in an
+    embedding process it would abandon unrelated sessions. This design also does not wait for bounded_stop PR 0.
+  - **Proved behaviourally, not by the import closure.** The proof does not forbid the cancellation modules: bounded
+    _stop plans module-level `StopRequest` imports in `runtime/`, and those would make an import gate unflippable.
+    Instead a gate sets every process-wide stop signal before `ingest()` and asserts the turn stays `ok`. The signals
+    are `models/language/cancellation.py::request_shutdown()`, the backends' shutdown event, and
+    `utils/cancellation.py::request_stop` once PR 0 lands. **`closed_local` must not poll the shutdown event.**
+  - **Per-token checking.** The closed backend's `complete_tokens(..., should_stop)` consults `should_stop()` on every
+    sampled token, in its `stopping_criteria`. A stop ends the turn at the next token.
+    - The backend reports it as `stopped=True`, its own flag, never `deadline_hit`.
+    - The report is `abandoned` with reason **`"stopped"`**. The deadline gives `abandoned` with reason
+      `"deadline"`.
+    - Either way there is no judgement, and `cursor_out == cursor_in`.
+  - **A stop during dispatch** skips the remaining calls. The report is `abandoned` with `proposals: []`. The log
+    keeps the records already written, and `log_last_seq` says how far it got.
+  - **Prefill.** A stop that lands during prefill takes effect when prefill returns, which the token cap bounds.
+  - **After a stop:**
+    - the session is stopped;
+    - a further `ingest()`, or one called while the stop was already set, raises a typed `AdvisorStopped` and runs no
+      turn;
+    - `close()` still writes the log's close record.
+- **`degraded`.** In this release the observer has **no `degraded` producer**: it loads no optional weights. The
+  status stays in the schema. A rejected input keeps the report `ok`, with `inputs[].rejected` filled. §4.2's status
+  table and §6's degraded paths apply to non-observer runs.
 
 **The report:**
 
@@ -330,12 +430,13 @@ advisor_mode.md's draft interfaces are **superseded by this shape**, and that fi
 {"_format_version": "1.0", "schema": "advisor_report/1", "session_id": "...", "report_id": "uuid4",
  "status": "ok | degraded | error | abandoned", "reason": "set unless ok",
  "banner": "ADVISORY — Maxim v<maxim.__version__>, model <gguf sha256[:16]>; no action taken; not an alert.",
- "covered": {"cursor_in": "...", "cursor_out": "...", "events": 3},
+ "covered": {"cursor_in": "... | null", "cursor_out": "... | null", "events": 3},
+ "prompt": {"tokens": 1834, "max_tokens": 7168},
  "inputs": [{"event_id": "...", "kind": "...", "payload_sha256": "...", "rejected": null}],
  "happening": "UNTRUSTED", "would_do": {"summary": "UNTRUSTED", "executed": false}, "rationale": "UNTRUSTED",
  "confidence": {"value": 0.6, "calibrated": false, "source": "model_self_report"},
  "proposals": [{"seq": 4, "summary": "UNTRUSTED", "target": "UNTRUSTED"}],
- "refusals": [{"seq": 5, "name": "bash", "error_kind": "POLICY_PIN", "layer": "pin", "effect": ["ALL"], "reason": "..."}],
+ "refusals": [{"seq": 5, "name": "bash", "error_kind": "not_registered", "layer": "registry", "effect": "unknown", "reason": "..."}],
  "log_last_seq": 5, "provenance": {"code": "unknown: offline", "model_sha256": "...", "maxim_version": "..."},
  "created_at": "...", "extra": {}}
 ```
@@ -347,7 +448,14 @@ advisor_mode.md's draft interfaces are **superseded by this shape**, and that fi
   `code: "unknown: offline"`.
 - **`Effect` is serialised as a sorted list of flag names**, never the `Flag` integer, which depends on declaration
   order. The same rule covers #1431's `/api/tools`.
-- **Status precedence:** `error` > `abandoned` > `degraded` > `ok`.
+- **Status precedence:** `error` > `abandoned` > `degraded` > `ok`. One exception: when the deadline flag is set,
+  the status is `abandoned` and the truncated output is **not parsed**, so a half-written JSON is never reported as
+  `error`.
+- **`report_dir` may hold transient names** while `atomic_write_json_at` writes (a temp file renamed through the
+  fd). Its final state is the report plus the log, nothing else.
+- **The closure:** `maxim.advisor` never imports `maxim.agents` directly. `agents.permissions` reaches it
+  transitively through `runtime.tool_policy` (`ToolPolicy` holds `AgentPermissions`), and that is allowed. The
+  closure forbids `agents.autonomy`, `agents.llm_worker` and the loop modules.
 - **Log records** carry `report_id` and `ts`, so every proposal and refusal joins to its report.
 - AvServ plan 50 is read-only to us, so **the owner relays the changed shape to AvServ**, a hand-off.
 
@@ -356,18 +464,40 @@ advisor_mode.md's draft interfaces are **superseded by this shape**, and that fi
 The advisor_mode.md guard line is superseded (prefetch root and the census-as-enforcement no longer apply).
 
 1. **[engineering] A tool's effect is declared in its class's own `__dict__`, recorded at class creation, and checked
-   at one dispatch seam.** Regression guard: `tests/unit/test_tool_effect.py::test_every_tool_declares_own_effect`
-   and `::test_process_and_code_runners_declare_all`, plus `src/maxim/tools/base.py::Tool.__init_subclass__`.
+   at one dispatch seam.** Regression guard:
+   `tests/unit/test_atonia_red_gates_effect_policy.py::test_item2_every_tool_declares_own_effect` and
+   `::test_item2_process_and_code_runners_declare_all`, plus `src/maxim/tools/base.py::Tool.__init_subclass__`.
 2. **[engineering] Every executor carries a `ToolPolicy`; `None` is a `TypeError`** (it joins the canonical-builder
    table). Regression guard: `src/maxim/runtime/bootstrap.py::build_executor` (required keyword-only `policy=`) and
-   `tests/unit/test_tool_policy.py::test_executor_refuses_missing_policy`.
-3. **[engineering] Offline is a one-way, process-wide audit-hook latch: no socket, no DNS, no spawn.** Regression
-   guard: `tests/integration/test_offline_latch.py::test_no_effect_subprocess` and
+   `tests/unit/test_atonia_red_gates_effect_policy.py::test_item3_policy_is_required_and_permissions_removed`.
+3. **[engineering] Offline is a one-way, process-wide audit-hook latch: once engaged, at the Python level, no
+   outbound socket connection (`connect`/`connect_ex`, loopback and `AF_UNIX` included), no `sendto`/`sendmsg` to an
+   explicit destination (any family, `AF_UNIX` datagrams included), no socket of a family other than
+   `AF_INET`/`AF_INET6`/`AF_UNIX` and no fd adoption without a family, no forward or reverse DNS, no spawn
+   (`os.system`, `subprocess.Popen`, `os.exec*`, `os.posix_spawn*`, `os.spawn*`) and no `os.fork`/`os.forkpty`
+   (owner decision 2026-10-26: on POSIX `os.spawn*` and `pty.spawn` are a fork+exec, so the fork is where the
+   refusal stays typed and booked in the caller; multiprocessing's "fork" start method therefore does not work
+   offline, nor does "forkserver", whose `AF_UNIX` connect is refused and which is the Linux default from Python
+   3.14; only "spawn" works).** "One-way" means no non-test caller can
+   disengage it: `_reset_for_tests` exists, but a guard refuses any caller outside `tests/`, aliased imports
+   included. Disengaging it by `importlib.reload`, by writing its private state, or through a dynamically built name
+   is in-process code, out of the model (§0). **Stated residuals:**
+   - a connection opened **before** `engage()` keeps sending, because `send`/`sendall` raise no audit event;
+     `utils/http`'s pool is closed by its `on_engage` callback, but other pre-latch connections (the reachy_mini
+     websocket, the census's allow-listed raw-socket sites) are not;
+   - fd adoption **with** an explicit family (`socket.fromfd(fd, AF_INET, ...)`, `socket.socket(AF_INET, ..., fd)`)
+     is the same class: the `socket.__new__` audit event carries no fd, so an adopted pre-latch connection can keep
+     sending;
+   - native networking is invisible to the hook, and Windows' `_winapi.CreateProcess` is not listed (§6).
+
+   Regression guard: `tests/integration/test_offline_latch.py::test_no_effect_subprocess`,
+   `::test_engaged_latch_refuses_each_channel`, `::test_a_client_pooled_before_engage_cannot_send_after`,
+   `::test_no_caller_of_reset_for_tests_outside_tests`, `tests/unit/test_offline_latch_unit.py` and
    `src/maxim/_offline.py::engage`.
 4. **[engineering] The atonia composition dispatches only its pinned `propose_action` instance, imports nothing
    outside its closure, and reads only its pinned env set.** Regression guard:
-   `tests/integration/test_advisor_gate.py::test_per_layer_deletion_sweep`, `::test_import_closure`,
-   `::test_env_read_set` and `::test_no_effect`.
+   `tests/integration/test_advisor_gate.py::test_per_layer_deletion_sweep_ceiling`, `::…_pin`, `::…_sealed`,
+   `::test_open_builds_all_three_layers`, `::test_import_closure`, `::test_env_read_set` and `::test_no_effect`.
 
 ### 1A.10 Tests that actually run, and actually prove it
 
@@ -521,11 +651,12 @@ embodiment=None, …)` accepts `None`, and a bare `Executor` with no mode source
     and the key reached through introspection (`ToolPolicy.__new__.__globals__`) are all in-process code. Each is
     equivalent to `object.__setattr__` and out of the model (§0), and the docs say so. Future code would not write
     any of them by accident;
-  - `pinned` is snapshotted as `MappingProxyType(dict(instances))`, so a caller's dict cannot add pins later;
+  - the pins are snapshotted as `MappingProxyType(dict(instances))`, so a caller's dict cannot add pins later;
   - `__copy__` and `__deepcopy__` return `self`, and `__reduce__` raises.
 
   Tests cover construction, assignment, and mutation of the source dict. It holds `permissions: AgentPermissions`,
-  `ceiling: Effect`, `pinned: Mapping[str, Tool] | None` and `reason: str`. It lives in memory only, never persisted.
+  `ceiling: Effect`, `pins: Mapping[str, Tool] | None` and `reason: str`. The slot is `pins`, not `pinned`:
+  `__slots__` and a same-named classmethod raise `ValueError`. It lives in memory only, never persisted.
   Its docstring says CC3 does not apply, and the CC3 list records that. Its factories:
   - **`unrestricted(*, reason)`:** ceiling `ALL`, no allow-list. The mode gate still runs.
   - **`deny(names, *, reason)`:** the console's deny-only `tools.deny`. It keeps today's working deny list instead of
@@ -554,8 +685,8 @@ embodiment=None, …)` accepts `None`, and a bare `Executor` with no mode source
   4. Run that object.
 
   This closes the find/get race.
-- **Refusals are typed.** `tools/base.py::ToolErrorKind` (an `Enum`) gains `NOT_REGISTERED`, `POLICY_CEILING`,
-  `POLICY_PERMISSIONS`, `POLICY_PIN`, `MODE` and `OFFLINE`, and every refused dispatch carries one, plus the layer and
+- **Refusals are typed.** `tools/base.py::ToolErrorKind` (an `Enum`) gains `NOT_REGISTERED`, `INACTIVE_SCENE`,
+  `POLICY_CEILING`, `POLICY_PERMISSIONS`, `POLICY_PIN`, `MODE` and `OFFLINE`, and every refused dispatch carries one, plus the layer and
   the effect.
   The `effect` of an unregistered name is `"unknown"`; no lookup builds a registry to find it.
 - **A gate refusal is not a tool failure.** How each refusal is booked is §1A.2's table (superseding v3's text,
@@ -637,7 +768,7 @@ Replacing `ProposalQueue` closes the drain path only. Under V1 none of these is 
 ### 4.2 The design
 
 - **The API.** `maxim.advisor` (Experimental, lazily exported):
-  - `open(*, home_dir, model, report_dir, cursor=None, max_calls=8, turn_timeout_s=120)` returns `AdvisorSession`;
+  - `open(...)` returns `AdvisorSession`; its full signature is §1A.8's, which wins;
   - `session.ingest(events) -> AdvisorReport` (AD4's schema);
   - `close()` writes the log's close record.
 
@@ -669,7 +800,8 @@ Replacing `ProposalQueue` closes the drain path only. Under V1 none of these is 
   The closed entry point constructs llama-cpp-python's `Llama` **eagerly**, at `open()`, from the path alone. It takes
   no profile, does no lazy load, has no cost tracker and no `atexit`, and reads no env. It exposes exactly three calls
   (§1A.10): `open_closed_local_backend`, `build_prompt(template, segments)` (the whole tokenize-and-defang), and
-  `complete_tokens(prompt_ids, *, grammar, max_tokens, max_prompt_tokens, deadline)`. It does not import
+  `complete_tokens(prompt_ids, *, grammar, max_tokens, deadline, should_stop)`. The prompt cap is checked by the
+  session (§1A.8), not here. It does not import
   `agents.llm_worker` or anything under `runtime/`.
   - **The bound is two-part.** Prompt prefill (`eval`) cannot be interrupted, so `max_prompt_tokens` is checked
     before `eval`, and an over-long prompt returns `status: "error"` with `reason: "prompt_too_long"`. After that,
@@ -885,7 +1017,10 @@ v1 rested on URL checks plus a census. **A list of sites cannot be the enforceme
      - an `ssh -L` forward, a reused server and a re-bound port therefore have nothing to impersonate.
    - **The boundary, stated in the docs.** The latch sees the Python `socket`, `subprocess` and `os` modules
      **only**. It is blind to:
-     - **native networking:** libuv (uvloop), gRPC, libzmq, libcurl, Rust clients;
+     - **native networking:** libuv (uvloop), gRPC, libzmq, libcurl, Rust clients. **`ddgs` is one of them:** it dials
+       through primp, a native client that raises no audit event (found by the red-gate census, 2026-10-26, when a
+       stub dry run sent one real DuckDuckGo request). Its call-site refusal (§6, layer 2) is therefore its only
+       in-process defence, and the census drives it through a blocking sentinel;
      - **un-audited spawns:** multiprocessing `spawn`'s `_posixsubprocess.fork_exec`.
 
      So:
@@ -956,8 +1091,11 @@ v1 rested on URL checks plus a census. **A list of sites cannot be the enforceme
 - `llm.offline` is read at CLI startup and at the first router or `api` verb build. A running `maxim serve` picks it
   up on restart, or with #1411's config generation once that covers it.
 - The observer always engages.
-- Tests reset the latch through a conftest fixture that touches the private state. No reset exists in `src/`, and the
-  census forbids one there. The hook is inert when not engaged, so it costs the suite nothing.
+- **Tests reset the latch through `maxim._offline._reset_for_tests()`.** It exists in `src/`, but **a lint forbids
+  any caller outside `tests/`**, so production code cannot disengage the latch. It disengages, restores the five
+  `os.environ` keys to their pre-engage values, and keeps the `on_engage` callbacks. The conftest autouse fixture
+  calls it after each test, and **fails** if `maxim._offline` is loaded but `_reset_for_tests` is missing. The hook
+  is inert when not engaged, so it costs the suite nothing.
 
 **The fallbacks become loud.** A missing encoder or semantic weight under offline logs one structured WARNING per
 process, records a `degraded` reason, and the observer's report says `degraded`. decision_log stamps it; it writes at
@@ -1329,3 +1467,103 @@ realpath-keyed executables, `pinned_executable`); they are history, not instruct
 | W11 | The `"_refused"` dict key; the batch rejection filed as out of scope |
 | W12 | Gate kinds constructed only in the executor (AST test) |
 | all of #6 | The behavioural zero-writes red gate is the enforcement |
+
+**Red-gate PR's three-lens review** (decisions the notes owed, v6.3; the reviews are in this directory, `redgates_*.md`):
+
+| Finding | Fold |
+|---|---|
+| `pinned` is both a factory and a slot (Python rejects it) | Slot `pins` |
+| `error_kind` serialised by name vs `.value` | `.value` everywhere |
+| Layer vocabulary | `metadata["refusal_layer"]`; `"registry"` for `NOT_REGISTERED`/`INACTIVE_SCENE` |
+| The inactive-scene refusal maps to no kind | `INACTIVE_SCENE` joins `GATE_REFUSAL_KINDS` |
+| Deadline plus half-JSON | The deadline wins: `abandoned`, not parsed |
+| What `engage()` writes | Exactly five `os.environ` keys; nothing in `maxim.utils` |
+| `atomic_write_json_at` temp names | Transient names allowed in `report_dir` |
+| `agents.permissions` in the closure | Allowed transitively; `agents.autonomy` forbidden |
+| §1A.9 guard nodeids that did not exist | Pointed at the real ones |
+| Race-gate lookup count | Behavioural only (§3: the run object is the checked object) |
+| Census encoder site | `local_files_only` plus a degraded record counts (§6) |
+| The env-read wildcard vs the prefix refusal | One sanctioned scanner, `maxim.advisor._refusals.code_loading_vars_set` |
+| Children run with `-B` | Stated: Profile B's root is read-only, so `.pyc` writes are out of the no-effect audit |
+
+**Red-gate delta round** (v6.4; `redgates_delta_*.md`):
+
+| Finding | Fold |
+|---|---|
+| Arch D1 (`close_all` dropped by v6.3), Wire D-S2 | `engage()`'s three steps; `on_engage` callbacks; a pooled-client red gate |
+| Arch D3, Exec S2/S3 | `_reset_for_tests` in `src/`, its callers linted to `tests/`; it restores the five env keys; the fixture fails if it is missing |
+| Arch D4, the Exec pin NIT | One kind per layer; `"offline"` added; `pinned()` refuses at `"pin"` |
+| Exec S1 (`dir_fd` writes, rename destination) | Test fold |
+| Arch D2 (prefix-based reader list) | Test fold: exact reader list |
+| Wire D-S1 (O6 ends at the dormant `ExecAgent._build_llm_context`) | Test fold: re-targeted at `PromptBuilder`, the live seam |
+
+**Narrow delta round** (v6.5; `redgates_delta2_*.md`): the Executor lens returned STOP.
+
+| Finding | Fold |
+|---|---|
+| Architecture S1 (the reset guard missed aliased imports) | Test fold: match `ast.alias`; proved by a probe |
+| Architecture S2 (invariant 3 overclaimed "no socket") | Invariant 3 restated, with residuals and guards |
+| Architecture NITs | `engage()` order stated; the reset text; callbacks persist across a reset |
+| Wire S1 (O6 drove only the `/api/command` producer) | Test fold: Twilio's `conversation_context` producer too |
+| Wire NITs; Executor N2 (properties escaping the classification) | Test folds |
+
+**Final narrow check** ([redgates_delta3.md](reviews/atonia_gate/redgates_delta3.md)): **STOP: no further round
+owed.** Both fail-open folds are closed. Its NITs are folded here (invariant 3's out-of-model forms) or recorded for the
+build PRs: the `receive_voice` arm and the `triggering_input` route for O6 (#1481), the double-rendering XPASS
+class, and the reset guard's fail-closed name match.
+
+**AvServ's questions, plan 50 §18.6** (v6.6, owner decisions 2026-10-26):
+
+| Question | Answer and fold |
+|---|---|
+| `log_mode` missing from §4.2's signature | §1A.8 wins; §4.2 points to it |
+| Context size and prompt cap | A: `n_ctx`, `max_prompt_tokens`, `n_gpu_layers` and `session.limits`. B: token counts on a `prompt_too_long` report |
+| Is the cursor opaque, and what sets `cursor_out`? | C: a per-event `cursor`; `cursor_out` is the last judged event's cursor |
+| SIGTERM during `ingest()` | D (v6.7): `session.request_stop()` plus a per-call `stop=`, checked per token; the result is `abandoned`, then `AdvisorStopped`, then `close()` |
+| `degraded` | No producer in this release; rejected inputs stay `ok` |
+| GPU default; `nvidia-smi` under the latch | A: `n_gpu_layers=-1`; the supervisor runs the GPU checks before `open()` (item 11 later) |
+| Phase 1 web research | Out of the gate's scope: the 1.3.2 harness in the sandbox; no `ddgs`. **Corrected in v6.7:** `http_fetch` at defaults (`block_private_ips=True`) uses `fetch_url(public_only=True)`, which **never uses a proxy** (#824), so the sandbox's egress proxy must be transparent (network-level redirect), not an explicit `HTTPS_PROXY` |
+
+**v6.6 three-lens round** (v6.7; `v66_executor.md`, `v66_architecture.md`, `v66_wire.md`):
+
+| Finding | Fold |
+|---|---|
+| Wire B1: `http_fetch` does not honour a proxy at defaults (#824) | The answer corrected: the egress proxy must be transparent |
+| All three: the process stop is sticky, `MaximHandle.stop` sets it, nothing checks it per token | D is session-scoped, with `should_stop` per token and `AdvisorStopped` after a stop |
+| Architecture and Wire: "judged" undefined; the `event_id` fallback | C: Maxim decides; the last event's cursor; cursors required when used |
+| All three: the trained-context default; the budget undefined; the cap unchecked against `n_ctx` | A: the builder's clamp (at most 8192); budget 1024; `open()` refuses an over-large cap |
+| All three: two producers for `prompt_too_long`; counts in `extra` | B: the session is the one producer; a named `prompt` field on every report |
+| Architecture S6, Executor S5: `degraded` contradicts §4.2/§6 | Stated: §4.2/§6's `degraded` is for non-observer runs |
+| Executor S3: a leaked process stop could mask gates | Moot: no process stop is used |
+
+**v6.7 delta round** (v6.8; `v67_*.md`: Architecture and Wire STOP; the Executor's one fail-open folded):
+
+| Finding | Fold |
+|---|---|
+| Executor S1 (fail-open): nothing proved the process stop is unread | `maxim.utils.cancellation` joins the observer's forbidden closure |
+| Executor S2/S3, Wire S3: SEAMS still had the backend's cap and no `should_stop`; the child fake lacked `n_ctx` | SEAMS updated; the child fake carries `n_ctx`; the backend exposes `n_ctx` |
+| Architecture 1: what "signal-handler-safe" allows | Set an event and store the deadline only |
+| Architecture 2, Wire S1: the clamp does not exist; `n_ctx=0` means unbounded; profile drift | `closed_local` owns the clamp via GGUF metadata; the shared builder gets an explicit `n_ctx`; a gate |
+| Wire S2: a stop reported as `deadline_hit` | A `stopped` flag; reason `"stopped"` vs `"deadline"` |
+| Architecture 3/4: the JSON block; undefined cursor cases | `prompt` field and nullable cursors in the block; the session holds the cursor; second-ingest rule; a gate |
+| NITs | `deadline_s` defined; stop during dispatch defined |
+
+**v6.8 narrow check** (v6.9; `v68_check.md`):
+
+| Finding | Fold |
+|---|---|
+| S1: the forbidden-module proof would become unflippable under bounded_stop's module-level imports | The `maxim.utils.cancellation` entry removed; a behavioural proof replaces it |
+| S2 (fail-open): `request_shutdown()`'s `_SHUTDOWN_EVENT` is a second process signal | The behavioural gate sets both process signals and asserts `ok` with no early stop |
+| S3 (fail-open): no case showed an error turn holds the cursor | The cursor gate adds an error turn between two `ok` turns |
+| S4 (fail-open): the tiny fixture never exercises the clamp | A gate patches the trained context to 131072 and spies `Llama`'s `n_ctx` (8192, never 0) |
+
+**v6.9 narrow check** (v6.10; `v69_check.md`):
+
+| Finding | Fold |
+|---|---|
+| S1 (fail-open): the process-stop gate runs on the fake, so a polling `closed_local` would pass | A structural gate: `closed_local` references no process-wide stop signal |
+| S2 (fail-closed): the clamp gate's nonexistent path never reaches `Llama` | A real temporary file; "never constructed" names what was raised |
+
+**v6.10 narrow check** (`v610_check.md`): **STOP: no further round owed.** Its NIT N1 is recorded for the item 1 build:
+a future poll added to the shared `llama_backend` builder would evade the `closed_local` scan, so that PR extends the
+scan to the builder `closed_local` calls.

@@ -3,13 +3,13 @@
   "band": 1.0,
   "min_package_statements": 200,
   "overall": {
-    "percent": 70.1,
-    "missing": 28633
+    "percent": 71.1,
+    "missing": 27677
   },
   "packages": {
     "maxim/<root>": {
-      "percent": 54.1,
-      "missing": 1509
+      "percent": 63.7,
+      "missing": 1270
     },
     "maxim/agents": {
       "percent": 69.3,
@@ -28,12 +28,12 @@
       "missing": 686
     },
     "maxim/comms": {
-      "percent": 25.1,
-      "missing": 215
+      "percent": 58.7,
+      "missing": 121
     },
     "maxim/console": {
       "percent": 95.3,
-      "missing": 103
+      "missing": 101
     },
     "maxim/data": {
       "percent": 11.1,
@@ -52,8 +52,8 @@
       "missing": 494
     },
     "maxim/embodied_runtime": {
-      "percent": 34.0,
-      "missing": 1991
+      "percent": 39.2,
+      "missing": 1819
     },
     "maxim/embodiment": {
       "percent": 84.7,
@@ -76,15 +76,15 @@
       "missing": 333
     },
     "maxim/imagination": {
-      "percent": 87.5,
-      "missing": 76
+      "percent": 89.3,
+      "missing": 60
     },
     "maxim/inference": {
-      "percent": 22.3,
-      "missing": 539
+      "percent": 23.5,
+      "missing": 536
     },
     "maxim/integration": {
-      "percent": 68.4,
+      "percent": 69.4,
       "missing": 430
     },
     "maxim/interactive": {
@@ -144,8 +144,8 @@
       "missing": 444
     },
     "maxim/simulation": {
-      "percent": 72.6,
-      "missing": 2803
+      "percent": 75.1,
+      "missing": 2544
     },
     "maxim/spatial": {
       "percent": 40.1,
@@ -156,22 +156,22 @@
       "missing": 100
     },
     "maxim/tools": {
-      "percent": 65.2,
-      "missing": 1429
+      "percent": 67.8,
+      "missing": 1326
     },
     "maxim/tunnel": {
-      "percent": 75.5,
+      "percent": 76.8,
       "missing": 190
     },
     "maxim/utils": {
-      "percent": 63.6,
-      "missing": 2135
+      "percent": 64.6,
+      "missing": 2095
     }
   },
   "files": {
     "src/maxim/simulation/orchestrator.py": {
-      "percent": 54.0,
-      "missing": 614
+      "percent": 70.7,
+      "missing": 388
     }
   },
   "retired_files": []

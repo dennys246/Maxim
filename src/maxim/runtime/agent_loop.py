@@ -1003,6 +1003,107 @@ def run_agentic_loop(
     # modality-preserving side-channel WITHOUT a percept_source (which would flip is_sim_mode).
     # Only honored when percept_source is None; ignored (with the sim adapter built as before) otherwise.
 ) -> None:
+    """The agent loop: a thin wrapper over ``_run_agentic_loop_body``, which holds the loop and its full docstring.
+
+    Split verbatim (docs/plans/bounded_stop.md §3 step 0) so session ownership can wrap the body in one seam
+    (``bio_session``, PR 0). Every argument is forwarded unchanged; the signature is the public one and is kept
+    identical to the body's."""
+    _run_agentic_loop_body(
+        agent,
+        environment,
+        state,
+        memory,
+        decision_engine,
+        executor,
+        autonomy_controller=autonomy_controller,
+        llm_worker=llm_worker,
+        default_network=default_network,
+        hippocampus=hippocampus,
+        memory_hub=memory_hub,
+        evaluators=evaluators,
+        max_steps=max_steps,
+        run_id=run_id,
+        stop_event=stop_event,
+        on_step=on_step,
+        on_event=on_event,
+        idle_sleep_s=idle_sleep_s,
+        persist_every_n_steps=persist_every_n_steps,
+        target_hz=target_hz,
+        context_pool_config=context_pool_config,
+        use_tool_prompting=use_tool_prompting,
+        protocol_registry=protocol_registry,
+        percept_source=percept_source,
+        action_sink=action_sink,
+        pain_bus=pain_bus,
+        imagination_trigger=imagination_trigger,
+        bio_enrichment_pipeline=bio_enrichment_pipeline,
+        thought_gate=thought_gate,
+        aut_mode=aut_mode,
+        substrate_telemetry=substrate_telemetry,
+        substrate_policy=substrate_policy,
+        substrate_action_gate=substrate_action_gate,
+        consolidation=consolidation,
+        planning_liveness=planning_liveness,
+        sim_adapter=sim_adapter,
+    )
+
+
+def _run_agentic_loop_body(
+    agent: Any,
+    environment: Any,
+    state: Any,
+    memory: Any,
+    decision_engine: Any,
+    executor: Any,
+    *,
+    autonomy_controller: AutonomyController | None = None,
+    llm_worker: LLMWorker | None = None,
+    default_network: Any | None = None,  # DefaultNetwork for reactive behaviors
+    hippocampus: Any | None = None,  # Hippocampus for episodic memory
+    memory_hub: Any | None = None,  # MemoryHub for cross-system memory integration
+    evaluators: list[Evaluator] | None = None,
+    max_steps: int = 0,  # 0 = unlimited
+    run_id: str | None = None,
+    stop_event: Any | None = None,
+    on_step: Any | None = None,
+    on_event: Any | None = None,  # Fine-grained streaming callback
+    idle_sleep_s: float = 0.05,  # Fast loop for responsiveness
+    persist_every_n_steps: int = 10,
+    target_hz: float = 30.0,  # Target loop frequency
+    context_pool_config: dict[str, Any] | None = None,  # Context pool configuration
+    use_tool_prompting: bool = True,  # Enable tool-aware LLM prompts
+    protocol_registry: Any | None = None,  # ProtocolRegistry for dynamic skills
+    percept_source: Any | None = None,  # PerceptSource for simulation
+    action_sink: Any | None = None,  # ActionSink for recording tool outputs
+    pain_bus: Any | None = None,  # PainBus for simulation pain routing
+    imagination_trigger: Any | None = None,  # ImaginationTrigger for real-time entity design
+    bio_enrichment_pipeline: Any | None = None,  # BioEnrichmentPipeline for percept enrichment (L1)
+    thought_gate: Any | None = None,  # ThoughtGate for PFC deliberation gating
+    aut_mode: str = "llm-primary",  # "llm-primary" | "substrate-primary" — Phase -1 of grounded_language_acquisition.md
+    substrate_telemetry: Any
+    | None = None,  # SubstrateTelemetry writer (Phase 0). Called after each substrate-primary tick when set.
+    substrate_policy: _sp.SubstratePolicy | None = None,  # in place of recommend_action (B1); a raise ends the loop
+    substrate_action_gate: Any | None = None,  # Callable[[], bool] — turn-scoped action budget for the
+    # substrate-primary branch (the Exp 48 thrashing fix). When set and returning False, the branch
+    # skips proposing this cadence tick (telemetry still fires with proposal=None). The orchestrator
+    # wires SimulationBridge.substrate_action_allowed here; None = unbounded (pre-fix behavior).
+    consolidation: Literal["full", "lightweight"] | None = None,  # HANDLE seam (b): explicit session-end flavor
+    planning_liveness: bool = False,  # Bugs ledger D13 — OPT-IN, and deliberately so.
+    # Enables bounded reschedule-or-abort for planning turns that end without an executable
+    # proposal. Correct ONLY for a loop with no other wake source between turns: the sim
+    # ORCHESTRATOR, which has no action_sink and no external percept producer, so a dropped
+    # planning turn idles it forever. Every other caller already has a re-arm path and must
+    # NOT opt in — the AUT recovers via the `_llm_unavailable` synthetic action breaking the
+    # bridge's settle loop (so the next probe re-arms it), HANDLE/interactive have a human,
+    # and the live-robot + headless paths have real percept producers. Enabling it wholesale
+    # would convert those existing RECOVERIES into aborts (pre-merge review, architecture
+    # lens B3) and, for a threaded AUT, into a silently dead thread whose campaign keeps
+    # emitting empty turns (B1).
+    sim_adapter: Any | None = None,  # Pre-built NullSimulationAdapter (Stage 3, live_audio_orient_wiring.md):
+    # lets a live producer (the DoA feed) hold the adapter and carry_percept() into the loop's
+    # modality-preserving side-channel WITHOUT a percept_source (which would flip is_sim_mode).
+    # Only honored when percept_source is None; ignored (with the sim adapter built as before) otherwise.
+) -> None:
     """
     Non-blocking agentic loop with LLM worker integration.
 

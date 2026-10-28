@@ -23,6 +23,7 @@ from maxim.tunnel.cloudflared import (
     run_tunnel_login,
     run_tunnel_route_dns,
 )
+from maxim.exceptions import KeyFileUnusable
 from maxim.tunnel.config import (
     CONFIG_PATH,
     TunnelConfig,
@@ -87,6 +88,21 @@ def run_tunnel_subcommand(argv: Sequence[str]) -> int:
 
 
 # ─── setup ────────────────────────────────────────────────────────────────
+
+
+def _setup_api_key() -> str | None:
+    """Setup step 7: the mesh key, generated if missing; None (refusal printed) if the file is unusable (#1402)."""
+    try:
+        key = ensure_key()
+    except KeyFileUnusable as e:
+        print(f"✗ {e}")
+        print(f"  {e.fix_hint}")
+        return None
+    # No key material on the terminal, not even a prefix (CodeQL py/clear-text-logging-sensitive-data, #1490): the
+    # operator reads it with `maxim tunnel key show` / `export` when they need it.
+    print(f"✓ API key ready at {key_file_path()} (view it with `maxim tunnel key show`)")
+    print()
+    return key
 
 
 def _cmd_setup() -> int:
@@ -220,10 +236,9 @@ def _cmd_setup() -> int:
     print()
 
     # 7. Generate API key if not present
-    key = ensure_key()
-    print(f"✓ API key ready at {key_file_path()}")
-    print(f"  {truncate_for_display(key)}")
-    print()
+    key = _setup_api_key()
+    if key is None:
+        return 1
 
     # 8. Summary
     print("─" * 62)
@@ -232,7 +247,7 @@ def _cmd_setup() -> int:
     print(f"  Tunnel:    {tunnel_name} ({tunnel_id})")
     print(f"  Hostname:  https://{hostname}")
     print(f"  Local:     http://localhost:{port}")
-    print(f"  API key:   {truncate_for_display(key)}")
+    print(f"  API key:   ready ({key_file_path()})")
     print()
     print("Next steps:")
     print("  1. Test the tunnel in the foreground first:")
@@ -584,7 +599,12 @@ def _cmd_key_show() -> int:
 def _cmd_key_rotate() -> int:
     had_key = key_exists()
     old_display = truncate_for_display(read_key() or "")
-    key = rotate_key()
+    try:
+        key = rotate_key()
+    except KeyFileUnusable as e:  # the creation lock is held by another maxim process (#1402)
+        print(f"✗ {e}")
+        print(f"  {e.fix_hint}")
+        return 1
     print(f"✓ Generated new API key: {truncate_for_display(key)}")
     print(f"  Saved to: {key_file_path()}")
     if had_key:

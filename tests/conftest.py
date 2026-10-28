@@ -5,6 +5,12 @@ This module provides reusable fixtures for testing core components.
 
 from __future__ import annotations
 
+import os
+
+# Before ANY maxim import (#1315 §1A.1 "Tests"): a developer shell's MAXIM_OFFLINE must not latch the pytest process
+# through maxim/__init__'s self-engage. The autouse latch-reset fixture below would be too late for that.
+os.environ.pop("MAXIM_OFFLINE", None)
+
 from maxim.memory.encoding import EncodingSignals
 import atexit
 import functools
@@ -280,6 +286,39 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     for item in items:
         if "requires_model_cache" in item.keywords:
             item.add_marker(skip)
+
+
+# What ``maxim._offline.engage()`` writes to ``os.environ`` (#1315 notes v6.4 §1A.1).
+_OFFLINE_ENV_KEYS = (
+    "HF_HUB_OFFLINE",
+    "TRANSFORMERS_OFFLINE",
+    "HF_HUB_DISABLE_TELEMETRY",
+    "YOLO_OFFLINE",
+    "MAXIM_OFFLINE",
+)
+
+
+@pytest.fixture(autouse=True)
+def _reset_offline_latch():
+    """Reset the offline latch after every test (#1315 §1A.1): restore the five env keys ``engage()`` writes, so a
+    stray ``MAXIM_OFFLINE`` cannot re-engage the latch in a later test, and call ``maxim._offline._reset_for_tests()``
+    when the module is loaded. A loaded module without that reset fails the test. Until step 0b ships the module
+    this only restores keys nothing changed."""
+    saved = {key: os.environ.get(key) for key in _OFFLINE_ENV_KEYS}
+    yield
+    try:
+        offline = sys.modules.get("maxim._offline")
+        if offline is not None:
+            reset = getattr(offline, "_reset_for_tests", None)
+            if not callable(reset):
+                pytest.fail("maxim._offline is loaded but has no _reset_for_tests(): the latch cannot be reset")
+            reset()
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 @pytest.fixture(autouse=True)

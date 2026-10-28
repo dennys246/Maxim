@@ -391,8 +391,11 @@ class TestBodyStateLayersToggle:
     def test_env_factory_disable(self, monkeypatch):
         from maxim.prompts.acting_coach import acting_coach_config_from_env
 
-        for val in ("1", "true", "t", " YES ", "y", "on"):
+        for val in ("1", "true", " YES ", "on"):
             monkeypatch.setenv("MAXIM_DISABLE_COACH_BODY_LAYERS", val)
             assert acting_coach_config_from_env().body_state_layers is False
+        for val in ("t", "y"):  # not canonical since #1315 step 0b (maxim._offline.truthy)
+            monkeypatch.setenv("MAXIM_DISABLE_COACH_BODY_LAYERS", val)
+            assert acting_coach_config_from_env().body_state_layers is True
         monkeypatch.setenv("MAXIM_DISABLE_COACH_BODY_LAYERS", "0")
         assert acting_coach_config_from_env().body_state_layers is True

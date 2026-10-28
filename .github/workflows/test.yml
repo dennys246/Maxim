@@ -585,7 +585,9 @@ jobs:
           python - <<'PY' > extras-reqs.txt
           import tomllib
           extras = tomllib.load(open("pyproject.toml", "rb"))["project"]["optional-dependencies"]
-          print("\n".join(extras["console"] + extras["sign"]))
+          # + the comms extra's form parser: the Twilio webhook test (#1466) drives request.form()
+          multipart = [r for r in extras["comms"] if r.startswith("python-multipart")]
+          print("\n".join(extras["console"] + extras["sign"] + multipart))
           PY
           cat extras-reqs.txt
           # -c: pin the contract GENERATOR (see the file for why and how to move it)
@@ -659,15 +661,17 @@ jobs:
         # "Release gates" step; each checks the other's wiring. Positive control: tests/unit/test_lint_release_gates.py.
         run: python scripts/lint_release_gates.py --junit fast-suite.xml
 
-      - name: Upload coverage.json (#1103, diagnostic)
-        # Diagnostic only, after the gate (lint_coverage.ci_step_rules allows nothing between the measuring
-        # suite and the gate but MemoryHub). #1103: a few statements flip between identical CI runs (they did
+      - name: Upload coverage.json (#1103 diagnostic; --pins-from-run's input)
+        # After the gate (lint_coverage.ci_step_rules allows nothing between the measuring suite and the gate but
+        # MemoryHub). Consumers: `lint_coverage.py --pins-from-run` (M60a) reads it to pin a rise, and #1103's
+        # diagnostic. #1103: a few statements flip between identical CI runs (they did
         # not flip across two identical local runs, 2026-10-08); diffing `executed_lines` of two runs of one
         # commit names the timing-dependent lines. Uploaded even when the gate fails, which is when it matters.
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-json
+          # Bound to its attempt (M60a): `lint_coverage.py --pins-from-run` reads only the latest attempt's file.
+          name: coverage-json-${{ github.run_attempt }}
           path: coverage.json
           retention-days: 14
           if-no-files-found: warn
@@ -1474,6 +1478,14 @@ jobs:
         # Positive control: tests/unit/test_lint_orphan_modules.py.
         run: |
           python3 scripts/lint_orphan_modules.py
+
+      - name: Dead-import lint (#1436)
+        # Every maxim import in src/ and scripts/, at any depth (lazy, TYPE_CHECKING, class body),
+        # must name a module and a name that exist. #1436: a lazy import of a deleted shim left the
+        # robot's voice input off for six months behind one warning. Zero tolerance, no allowlist.
+        # Positive control: tests/unit/test_lint_dead_imports.py.
+        run: |
+          python3 scripts/lint_dead_imports.py
 
       - name: Harness provenance lint (Exp 42b retraction lesson)
         run: |

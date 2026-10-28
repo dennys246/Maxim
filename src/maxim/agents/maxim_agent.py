@@ -354,26 +354,6 @@ class MaximAgent(Agent):
                 source = result.get("source", "unknown") if result else "unknown"
                 self.log.info("Action from %s", source)
 
-    def wire_communication(
-        self,
-        gateway: Any,
-        nac: Any | None = None,
-        memory_hub: Any | None = None,
-    ) -> None:
-        """Wire CommunicationGateway and CommunicationBridge.
-
-        Call after MemoryHub is created. Sets up:
-        - CommunicationBridge for NAc reward attribution
-        - Registers bridge as PromotionSource with MemoryHub
-        """
-        self._gateway = gateway
-        if nac is not None:
-            from maxim.bridges.communication_bridge import CommunicationBridge
-
-            self._comm_bridge = CommunicationBridge(self._bus, nac)
-            if memory_hub and hasattr(memory_hub, "register_promotion_source"):
-                memory_hub.register_promotion_source(self._comm_bridge)
-
     def wire_preemption(
         self,
         preemption_circuit: Any,
