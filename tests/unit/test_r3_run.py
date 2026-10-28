@@ -497,3 +497,25 @@ def test_report_over_the_committed_r3_bench_matches_the_committed_unamended_repo
     assert set(rep) == set(committed)
     for field in rep:
         assert _equal_to_float_precision(rep[field], committed[field]), field
+
+
+def test_a_duplicate_clean_arm_seed_row_is_incomplete_not_counted() -> None:
+    """#1038: like Exp 60/61/62, a second clean row for one (arm, seed) never lifts an arm to COMPLETE: the arm is
+    one row short, the duplicate is NAMED, and the status is INCOMPLETE."""
+    rows = _campaign_rows()
+    rows = [r for r in rows if not (r["kind"] == "event" and r["arm"] == "B_in_situ" and r["seed"] == 311)]
+    rows.append(_event("B_in_situ", 300))  # the 12th B row repeats seed 300
+    rep = R.report(rows, campaign_id="c1")
+    assert rep["arms"]["B_in_situ"]["n"] == 11
+    assert rep["status"] == "INCOMPLETE"
+    assert "duplicate clean (arm, seed) row ('B_in_situ', 300)" in rep["incomplete_cause"]
+
+
+def test_bench_refuses_a_missing_gauntlet_with_exit_3(tmp_path, monkeypatch, capsys) -> None:
+    """#1024: ``bench`` with no gauntlet at the resolved path refuses before any rig time is spent."""
+    import argparse
+
+    monkeypatch.setattr(R, "_setup", lambda args: (object(), tmp_path / "out.jsonl", "c1"))
+    args = argparse.Namespace(gauntlet=str(tmp_path / "missing_gauntlet.json"))
+    assert R._bench(args) == 3
+    assert "no gauntlet at" in capsys.readouterr().out
