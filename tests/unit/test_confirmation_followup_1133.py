@@ -286,7 +286,9 @@ class TestReviewPins:
             ctrl.handle_confirmation("yes", execute_and_learn=_boom, book_refusal=MagicMock(), observation={})
         assert ctrl.pending_confirmation is None
         assert ctrl.pending_proposal is None
-        assert "pending_cli_input" not in ctrl.state.data
+        # Session R (delta review S1): take_user_input read and popped the tick's slots before this ran; what is left
+        # is the NEXT tick's input, which the controller no longer drops
+        assert ctrl.state.data.get("pending_cli_input") == "yes"
 
     def test_a_confirmed_action_is_audited_as_human_involved(self):
         ctrl = _controller()

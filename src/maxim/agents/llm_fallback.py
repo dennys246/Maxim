@@ -83,6 +83,10 @@ class ReasoningEntry:
         status = "OK" if self.success else "FAIL"
         reason = self.reasoning[:80] if self.reasoning else ""
         summary = self.result_summary[:100] if self.result_summary else ""
+        if "TOOL_OUTPUT" in summary:  # a cut through a recalled frame never shows its body bare (Session R, rule 2)
+            from maxim.utils.content_safety import drop_unbalanced_frames
+
+            summary = drop_unbalanced_frames(summary)[0]
         return f"- {self.action_tool}: {reason} [{status}: {summary}]"
 
 

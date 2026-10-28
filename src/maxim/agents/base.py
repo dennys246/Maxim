@@ -37,6 +37,11 @@ class Agent:
     def propose_intent(self, state: Any, memory: Any, **kwargs: Any) -> dict[str, Any] | None:
         return None
 
+    def publish_arrival(self, state: Any, text: str, *, source: str) -> None:
+        """A person's input, handed over the moment it arrives (``loop_perception.take_user_input``). An agent with no
+        memory pipeline has nothing to tell; ``PerceptionAgent`` / ``MaximAgent`` publish it to memory."""
+        return
+
 
 class AgentList:
     def __init__(self, agents: Iterable[Agent] | None = None) -> None:

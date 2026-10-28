@@ -304,11 +304,16 @@ class ContextPool:
             parts.append(f": {result_summary[:100]}")
         elif error:
             parts.append(f": {error[:100]}")
+        content = "".join(parts)
+        if "TOOL_OUTPUT" in content:  # a cut through a recalled frame never shows its body bare (Session R, rule 2)
+            from maxim.utils.content_safety import drop_unbalanced_frames
+
+            content = drop_unbalanced_frames(content)[0]
 
         entry = ContextEntry(
             timestamp=time.time(),
             entry_type="outcome",
-            content="".join(parts),
+            content=content,
             metadata={
                 "tool": tool_name,
                 "success": success,

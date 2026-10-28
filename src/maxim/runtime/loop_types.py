@@ -102,3 +102,6 @@ class ActionFollowup:
     followup_type: str  # "process" | "respond" | "engage"
     mode: str
     timestamp: float
+    # The EXECUTED tool declares its output untrusted (``Tool.untrusted_output``: it carries recalled or stored text
+    # from outside the agent), stamped at dispatch after alias resolution, so the result is framed as external.
+    untrusted_output: bool = False

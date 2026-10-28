@@ -370,3 +370,98 @@ def outside_tool_output(text: str) -> str:
     check): a page inside a frame must not be able to flip that decision (#823 round 2).
     """
     return _FRAMED_REGION.sub("", text)
+
+
+# The two markers ``frame_tool_output`` writes. Only a hex id is a real one, so the rule text's literal
+# ``id=...`` (TOOL_OUTPUT_RULE) is never read as a marker.
+_FRAME_MARKER = re.compile(r"<<(/?)TOOL_OUTPUT id=([0-9a-f]+)(?: [^\n]*?)?>>")
+# Anything shaped like a marker, real id or not, in any case or spacing: what ``defang_frame_markers`` neutralizes.
+_MARKER_LIKE = re.compile(r"<<(\s*/?\s*)tool[\W_]*output", re.IGNORECASE)
+
+
+def _unbalanced_markers(text: str) -> tuple[list[re.Match[str]], list[re.Match[str]]]:
+    """The orphan openers and orphan closers of ``text``: an opener pairs with the NEXT closer of its id, and only if
+    no second opener of that id comes between (frames never nest: ``frame_tool_output`` defangs markers in its body).
+    A cut copy of a framed text and the whole copy share one id, so an opener repeated before its closer orphans
+    the earlier one: otherwise the cut copy's opener would pair with the whole copy's closer across both."""
+    open_by_id: dict[str, re.Match[str]] = {}
+    orphan_openers: list[re.Match[str]] = []
+    orphan_closers: list[re.Match[str]] = []
+    for m in _FRAME_MARKER.finditer(text):
+        closing, frame_id = m.group(1) == "/", m.group(2)
+        if not closing:
+            if frame_id in open_by_id:
+                orphan_openers.append(open_by_id[frame_id])
+            open_by_id[frame_id] = m
+        elif open_by_id.pop(frame_id, None) is None:
+            orphan_closers.append(m)
+    return sorted([*orphan_openers, *open_by_id.values()], key=lambda m: m.start()), orphan_closers
+
+
+def _partial_marker_start(text: str) -> int | None:
+    """Where a marker cut short at the end of ``text`` begins (``<<TOOL_OUT``, ``<<TOOL_OUTPUT id=ab tool=…``), or None."""
+    at = text.rfind("<<")
+    if at < 0 or ">>" in text[at:]:
+        return None
+    fragment = text[at:]
+    for head in ("<<TOOL_OUTPUT", "<</TOOL_OUTPUT"):
+        if head.startswith(fragment) or fragment.startswith(head):
+            return at
+    return None
+
+
+def drop_unbalanced_frames(text: str) -> tuple[str, int]:
+    """``text`` with every partial frame removed, and how many markers were unbalanced (Session R, #1444).
+
+    A frame cut by a truncation leaves its body outside any complete frame, where the model reads it as raw text:
+    for recalled input that is the stored-injection channel the frame exists to close. So at every site that cuts
+    text which may hold frames: from the first orphan OPENER (a tail cut) to the end is dropped, and from the start
+    through the last orphan CLOSER (a head cut). Balanced frames are kept. It errs toward dropping (fail-closed):
+    callers apply it to ONE item or ONE prompt section, never to a whole prompt.
+    """
+    tail = _partial_marker_start(text)  # a tail cut inside a marker leaves a fragment no regex above matches
+    if tail is not None:
+        text = text[:tail]
+    openers, closers = _unbalanced_markers(text)
+    if not openers and not closers:
+        return (text.rstrip("\n"), 1) if tail is not None else (text, 0)
+    start = closers[-1].end() if closers else 0
+    end = openers[0].start() if openers else len(text)
+    kept = text[start:end] if start < end else ""
+    return kept.strip("\n"), len(openers) + len(closers) + (tail is not None)
+
+
+def defang_frame_markers(text: str, *, unbalanced_only: bool = False) -> tuple[str, int]:
+    """``text`` with marker-shaped strings neutralized IN PLACE (``<<TOOL_OUTPUT`` → ``<<t-o``), and the count.
+
+    For text that never deletes: a user's own request (any marker in it is not the agent's frame), and the router's
+    last-resort pass over a whole prompt (``unbalanced_only=True``: balanced frames keep working). The words
+    "tool output" elsewhere in the text are untouched, so a user asking about tool output keeps their sentence.
+    """
+    if unbalanced_only:
+        openers, closers = _unbalanced_markers(text)
+        bad = sorted(openers + closers, key=lambda m: m.start())
+        if not bad:
+            return text, 0
+        out: list[str] = []
+        prev = 0
+        for m in bad:
+            out.append(text[prev : m.start()])
+            out.append(_MARKER_LIKE.sub(lambda g: f"<<{g.group(1)}t-o", m.group(0), count=1))
+            prev = m.end()
+        out.append(text[prev:])
+        return "".join(out), len(bad)
+    return _MARKER_LIKE.subn(lambda g: f"<<{g.group(1)}t-o", text)
+
+
+def framed_section(text: str) -> str:
+    """A prompt section's text made safe to show (Session R, rule 2): partial frames dropped, and the frame rule
+    stated ABOVE the content when it holds a frame (the #823 instruction hierarchy), once.
+
+    ``PromptBudgeter.add`` applies it to every section, so the rule's tokens are budgeted with the section (N4), and
+    a section built from cut text (a working-memory thought, a carryover line) never shows a frame's body bare.
+    """
+    text, _ = drop_unbalanced_frames(text)
+    if TOOL_OUTPUT_RULE not in text and _FRAME_MARKER.search(text):
+        text = f"{TOOL_OUTPUT_RULE}\n{text}"
+    return text

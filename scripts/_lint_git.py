@@ -237,10 +237,11 @@ _ACCEPT_KEYS = {"sha", "reason", "owner", "date"}
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
-def gh_api(path: str) -> Any:
-    """``gh api <path>`` as JSON. Raises :class:`GitUnavailable`: a push base nobody can verify is no base."""
+def gh_api(path: str, *, cwd: Path | None = None) -> Any:
+    """``gh api <path>`` as JSON, run in ``cwd`` (``gh`` resolves ``{owner}/{repo}`` from it). Raises
+    :class:`GitUnavailable`: a push base nobody can verify is no base."""
     try:
-        r = subprocess.run(["gh", "api", path], capture_output=True, text=True, timeout=60)
+        r = subprocess.run(["gh", "api", path], capture_output=True, text=True, timeout=60, cwd=cwd)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise GitUnavailable(f"gh api {path}: {exc}") from exc
     if r.returncode != 0:
