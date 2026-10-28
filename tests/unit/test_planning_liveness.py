@@ -471,7 +471,7 @@ class TestSlowCallIsNotALostTurn:
         assert "llm_worker.latest_attempt_state()" in gate
         assert "_planning_attempt_is_active(_planning_attempt_state)" in gate
         assert "any_call_in_flight" not in gate
-        assert inspect.getsource(agent_loop.run_agentic_loop).count("pre_tick_gate(") == 1
+        assert inspect.getsource(agent_loop._run_agentic_loop_body).count("pre_tick_gate(") == 1
 
     def test_completed_state_is_active_until_proposal_poll(self):
         """The backstop cannot race the result queue publication."""
@@ -497,7 +497,7 @@ class TestLoopWiringPins:
         A decomposition slice that moves that code updates them consciously."""
         from maxim.runtime import agent_loop
 
-        return inspect.getsource(agent_loop.run_agentic_loop)
+        return inspect.getsource(agent_loop._run_agentic_loop_body)  # the loop's body since bounded_stop step 0
 
     @pytest.fixture(scope="class")
     def loop_text(self):
@@ -773,7 +773,7 @@ class TestParseFailureVsBadToolChoice:
         from maxim.runtime import agent_loop
 
         # FUNCTION-SPECIFIC (a region/ordering inside run_agentic_loop): the slice that moves §2 (LLM-primary; outside phase 1) updates it consciously.
-        src = inspect.getsource(agent_loop.run_agentic_loop)
+        src = inspect.getsource(agent_loop._run_agentic_loop_body)
         block = src.split("_is_parse_failure = ", 1)[1].split("new_proposal = None", 1)[0]
         assert "_tools_hallucinated" in block, (
             "the unregistered-tool case must feed the existing corrective channel, "

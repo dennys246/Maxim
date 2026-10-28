@@ -43,7 +43,7 @@ def test_both_roster_sites_in_the_loop_use_the_one_filter() -> None:
     """The prompt roster and the loop-cap message's "available tools" list: both advertise tools to the model."""
     from maxim.runtime import agent_loop
 
-    src = inspect.getsource(agent_loop.run_agentic_loop)
+    src = inspect.getsource(agent_loop._run_agentic_loop_body)  # the loop's body since bounded_stop step 0
     assert src.count("_advertisable_tools(") == 2
     assert "executor.permits(t)" not in src
 
