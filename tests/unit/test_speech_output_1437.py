@@ -289,3 +289,16 @@ def test_a_no_media_robot_checks_local_speakers_at_start(monkeypatch):
     monkeypatch.setattr(audio, "_backend_of", lambda media: audio._NO_MEDIA if media is runtime.mini.media else None)
     with pytest.raises(SpeechOutputUnavailable):
         runtime._build_speech_output()
+
+
+def test_init_audio_parses_the_audio_settings_and_the_speech_request():
+    runtime = _robot_runtime()
+    runtime._init_audio(True, "bad", tts=True, tts_model="en_GB-voice")
+    assert (runtime.audio, runtime.audio_len, runtime.tts_requested, runtime.tts_model) == (
+        True,
+        5.0,
+        True,
+        "en_GB-voice",
+    )
+    runtime._init_audio(False, -2, tts=False, tts_model=None)
+    assert (runtime.audio, runtime.audio_len, runtime.tts_requested) == (False, 5.0, False)

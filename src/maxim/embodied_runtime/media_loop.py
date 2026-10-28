@@ -450,6 +450,23 @@ class MediaLoopMixin:
             self._live_stop_event = None
             self.shutdown()
 
+    def _init_audio(self, audio: bool, audio_len: float, *, tts: bool, tts_model: str | None) -> None:
+        """The audio settings: mic capture, chunk length, and the spoken-response request (#1437).
+
+        ``tts``/``tts_model`` carry the CLI's ``--tts``/``--tts-model`` to the robot runtime, which builds
+        speech through ``utils.response_output.build_speech_output`` in ``live()``, before ``awaken()``.
+        """
+        self.audio = bool(audio)
+        try:
+            self.audio_len = float(audio_len)
+        except (TypeError, ValueError) as e:
+            log_swallowed_exception(e, operation="parse_audio_len", context={"audio_len": audio_len})
+            self.audio_len = 5.0
+        if self.audio_len <= 0:
+            self.audio_len = 5.0
+        self.tts_requested = bool(tts)
+        self.tts_model = tts_model
+
     def _build_speech_output(self) -> None:
         """Spoken responses (#1437): built, or refused, before the robot moves.
 
