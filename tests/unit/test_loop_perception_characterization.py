@@ -116,8 +116,11 @@ class _Pipeline:
     def __init__(self) -> None:
         self.calls: list[tuple] = []
 
-    def enrich(self, text: str, *, context: Any = None, bypass_gate: bool = False) -> None:
+    def enrich(
+        self, text: str, *, context: Any = None, bypass_gate: bool = False, evaluate_reflexes: bool = True
+    ) -> None:
         self.calls.append((text, context))
+        self.reflexes = getattr(self, "reflexes", []) + [evaluate_reflexes]
         return None
 
 
@@ -996,3 +999,21 @@ def test_a_raising_sim_log_in_the_reflex_tier_is_reported_and_the_reflex_still_e
     assert o.state.data["_last_audio_orient_az"] == 0.0
     [ctx] = worker.contexts
     assert ctx.auto_sense_context == "A loud, sudden sound made you orient toward it (it was at azimuth +0.70)."
+
+
+def test_a_voice_question_from_the_mailbox_is_enriched_recall_only(monkeypatch, tmp_path):
+    """Session R, design review S2 (Executor 1, Architecture S2): the robot's voice reaches the loop through
+    ``pending_voice_input``, not the observation, and §1.2 read only the observation, so a spoken question was
+    memorized but never recalled for. The tick's input is now read ONCE, before §1.2. With a gate that rejects it
+    (here: no thought gate, so the no-gate path passes on the pipeline), the question is enriched with the turn's own
+    words as ``user_input``; a gate rejection would keep it recall-only (reflexes off)."""
+    pipe = _Pipeline()
+    _run(
+        monkeypatch,
+        tmp_path,
+        obs=[{}],
+        state_data={"pending_voice_input": "maxim, what is my favourite colour?"},
+        bio_enrichment_pipeline=pipe,
+    )
+    assert [c[0] for c in pipe.calls] == ["maxim, what is my favourite colour?"]
+    assert pipe.calls[0][1].user_input == "maxim, what is my favourite colour?"

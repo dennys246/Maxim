@@ -1046,6 +1046,27 @@ class ExecutionOutcome:
     followup: ActionFollowup | None
 
 
+def _tool_followup(
+    executor: Any, tool_name: str, result_str: str | None, proposal: Any, followup_type: str, mode: str
+) -> ActionFollowup:
+    """The follow-up a completed tool queues, stamped with whether the tool it RAN declares untrusted output
+    (``Tool.untrusted_output``, Session R): resolved through the executor's one alias resolver, so a ``reflect``
+    that ran as ``think`` carries ``think``'s declaration."""
+    resolve = getattr(executor, "resolve_tool_name", None)
+    registry = getattr(executor, "registry", None)
+    ran = resolve(tool_name) if callable(resolve) else tool_name
+    tool = registry.find(ran) if registry is not None and hasattr(registry, "find") else None
+    return ActionFollowup(
+        tool=tool_name,
+        result=result_str,
+        original_query=getattr(proposal, "triggering_input", ""),
+        followup_type=followup_type,
+        mode=mode,
+        timestamp=time.time(),
+        untrusted_output=bool(getattr(tool, "untrusted_output", False)),
+    )
+
+
 def execute_and_learn(
     *,
     agent: Any,
@@ -1195,7 +1216,7 @@ def execute_and_learn(
                     "original_request": action.get("_original_request"),
                     "timeout_s": timeout_s,
                 }
-                state.data["pending_cli_input"] = sim_timeout_response
+                state.data["pending_loop_reply"] = sim_timeout_response
             else:
                 state.data["pending_timeout_retry"] = {
                     "original_request": action.get("_original_request"),
@@ -1314,15 +1335,7 @@ def execute_and_learn(
         # LLM should immediately re-think, not stall for 60s).
         # Note: Use 'is not None' to handle empty lists [] which are falsy but still valid output
         if followup_type and ((success and output is not None) or followup_type == "process"):
-            triggering_input = getattr(proposal, "triggering_input", "")
-            queued_followup = ActionFollowup(
-                tool=tool_name,
-                result=result_str,
-                original_query=triggering_input,
-                followup_type=followup_type,
-                mode=current_mode,
-                timestamp=time.time(),
-            )
+            queued_followup = _tool_followup(executor, tool_name, result_str, proposal, followup_type, current_mode)
             _loop_logger.info("Tool %s completed with followup_type=%s, queuing follow-up", tool_name, followup_type)
 
         # Track conversation history for response/speak actions
