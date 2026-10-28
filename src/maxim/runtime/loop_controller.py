@@ -400,7 +400,8 @@ class LoopController:
                 self._display_confirmed_outcome(pc, outcome)
             finally:
                 self.pending_confirmation = None
-                self.state.data.pop("pending_cli_input", None)
+                # The tick's input slots were read and popped by loop_perception.take_user_input; anything there now arrived
+                # after that read and is the NEXT tick's (a person's input that waited behind a loop reply; Session R)
                 self.clear_pending_user_input()
                 self.pending_proposal = None
                 self._clear_confirmation_prompt()
@@ -472,7 +473,8 @@ class LoopController:
 
             logger.info("User declined timeout retry")
             display_status("Understood, skipping.")
-            self.state.data.pop("pending_cli_input", None)
+            # The tick's input slots were read and popped by loop_perception.take_user_input; anything there now arrived
+            # after that read and is the NEXT tick's (a person's input that waited behind a loop reply; Session R)
             self.clear_pending_user_input()
             return True
 
@@ -494,7 +496,8 @@ class LoopController:
 
                 display_status(f"Retrying with {int(new_timeout_s)}s time limit...")
                 self.llm_worker.retry_with_timeout(tr.original_request, new_timeout_s)
-                self.state.data.pop("pending_cli_input", None)
+                # The tick's input slots were read and popped by loop_perception.take_user_input; anything there now arrived
+                # after that read and is the NEXT tick's (a person's input that waited behind a loop reply; Session R)
                 self.clear_pending_user_input()
                 return True
 

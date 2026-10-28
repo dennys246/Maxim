@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from maxim.memory.layer import activate_after_use
 from maxim.tools.base import Tool, ToolResult
+from maxim.utils.content_safety import frame_tool_output
 from maxim.utils.logging import log_swallowed_exception
 
 # ExamineTool recall: search this many matches, show at most this many past ones (#845).
@@ -92,6 +93,7 @@ class ThinkTool(Tool):
     """
 
     name = "think"
+    untrusted_output = True  # replays recalled memory text: its follow-up is framed external (Session R)
     description = (
         "Pause and reason about the current situation before acting. "
         "Use when you need to consider options, recall context, or plan "
@@ -290,6 +292,7 @@ class ExamineTool(Tool):
     """
 
     name = "examine"
+    untrusted_output = True  # replays recalled memory text: its follow-up is framed external (Session R)
     description = (
         "Examine an object, person, or feature in the current scene. "
         "Returns what you observe about it based on the scene and your memories."
@@ -356,7 +359,8 @@ class ExamineTool(Tool):
                 text = Hippocampus.matching_sentence(m, target)
                 if not text or text.lower() in shown_now:
                     continue
-                line = f"You recall: {text}"
+                # The recalled sentence is stored text from outside the agent: framed where it is produced (#1444).
+                line = f"You recall: {frame_tool_output('recalled_input', text, external=True)}"
                 shown_now.add(text.lower())  # one line per sentence, whatever its case
                 observations.append(line)
                 recalled[line] = m.id

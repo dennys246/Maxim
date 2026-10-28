@@ -32,8 +32,8 @@
       "missing": 121
     },
     "maxim/console": {
-      "percent": 93.8,
-      "missing": 136
+      "percent": 95.3,
+      "missing": 101
     },
     "maxim/data": {
       "percent": 11.1,
@@ -84,7 +84,7 @@
       "missing": 536
     },
     "maxim/integration": {
-      "percent": 68.4,
+      "percent": 69.4,
       "missing": 430
     },
     "maxim/interactive": {
@@ -96,8 +96,8 @@
       "missing": 600
     },
     "maxim/memory": {
-      "percent": 85.5,
-      "missing": 754
+      "percent": 86.5,
+      "missing": 737
     },
     "maxim/models": {
       "percent": 60.8,
@@ -156,8 +156,8 @@
       "missing": 100
     },
     "maxim/tools": {
-      "percent": 67.3,
-      "missing": 1357
+      "percent": 67.8,
+      "missing": 1326
     },
     "maxim/tunnel": {
       "percent": 76.8,

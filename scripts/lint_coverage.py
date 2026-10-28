@@ -25,7 +25,8 @@ uncovered statement count pinned with it.
   noise is about ±2 statements whatever the package size, so ``K_MIN`` is twice that): CI coverage moves by a few statements between runs with no code change (maxim/memory
   measured 760 then 762 missing, 85.59% under an 85.6 floor), and a floor rounded down to 0.1
   leaves only 0–0.1 pt of random slack. It is bounded and NON-cumulative: it applies only to this
-  HEAD comparison against the committed pin, never to the pin rules below, and pins never move
+  HEAD comparison against the committed pin, never to the pin rules below (the CHANGED cap's own
+  ``K_MIN`` noise slack, M60a, is a separate, fixed allowance: see that rule), and pins never move
   with it — so any number of PRs together can drop at most k statements under an unchanged
   floor, and a PR that changes a floor is held to the measurement by the CHANGED/NEW rules. No
   HEAD rule compares measured ``missing`` with a pinned ``missing`` (those comparisons are pin
@@ -56,7 +57,7 @@ floor, independently, every run: a PR may have to edit both, and neither substit
 - every run: the k tolerance below, the band above, ``null`` fails closed printing the pin; the key must be in the
   case-exact ``src/maxim`` directory listing (never ``Path.is_file()``, which answers True for a case variant on
   APFS) and must not be or pass through a symlink; a floored file that is excluded (so unmeasured) fails; a key whose
-  file is gone is an orphan. Under ``--local`` a file floor gates when its package is touched;
+  file is gone is an orphan. Under ``--local`` no floor gates (a note, M60a);
 - pull requests: NEW/CHANGED/LOWERING exactly as for packages; set back to ``null`` fails; a file floor may be
   removed only when its file is gone (case-exact listing); a ``-M`` rename carries the floor to its target (CHANGED
   rules); with no rename detected every new file floor is a candidate target, and the sum rule applies. That holds
@@ -147,7 +148,9 @@ measurement ``m``; ``k = max(ceil(statements × 0.001), K_MIN)`` statements of r
 
 - a NEW floor (bootstrap, a new package): ``h.percent >= round_down(100 × (covered − k) /
   statements)`` and ``h.missing <= m.missing``;
-- a CHANGED floor: ``h.missing <= min(m.missing, b.missing)`` — the missing pin NEVER rises.
+- a CHANGED floor: ``h.missing <= min(m.missing + K_MIN, b.missing)`` — the missing pin NEVER rises above its base;
+  ``K_MIN`` (5 statements, the absolute noise, never the size-scaled k) lets a pin taken from one CI run pass on the
+  pin commit's own run (M60a, owner decision 2026-10-27). A file floor and a rename target take the same rule.
   LOWERING (``h.percent < b.percent``) needs, with no tolerance, ``m.missing <= b.missing``
   (covered code was deleted; uncovered code did not grow) and ``h.percent >= round_down(m)``
   (lowered exactly to the measurement). Raising or keeping ``percent`` keeps the k tolerance;
@@ -204,6 +207,18 @@ matched by its run line, so nothing can rewrite ``coverage.json``; no ``continue
 **"The merge-base" below means the base:** on a pull request the merge-base with ``main``; on a push to main the
 last push whose ``unit-tests`` job passed (``_lint_git.push_base``, #1089).
 
+**Pinning a rise in one command (M60a, owner decisions 2026-10-27).** ``--pins-from-run RUN_ID`` writes the pins the
+"raise it to" hint prints, for every floored scope more than ``band`` above its floor, from CI run ``RUN_ID``'s own
+measurement. It binds the run before reading anything: a Tests (``test.yml``) run of a ``pull_request`` or
+``push``, whose ``head_sha`` is this checkout's ``HEAD``, whose latest attempt's ``unit-tests`` job ran
+``RUN_SUITE_STEP`` to ``success`` (a ``-x`` failure leaves partial data). It then reads that attempt's
+``coverage-json-<attempt>`` artifact; the unsuffixed legacy name is accepted only on attempt 1. A PR run measures the
+merge with main, so files this branch lacks are accepted: the pins are for that merge, and CI re-measures it on the
+pin commit. Falls, null floors, unmeasured scopes and committed pins more than ``K_MIN`` above the run are reported,
+never written. It needs ``gh`` (it calls ``gh api`` and ``gh run download`` from the repo root), and fails closed
+(exit 2) when ``gh`` cannot answer. It refuses to run inside GitHub Actions. Every pin it writes is verified again
+by the CHANGED rules on the pin commit's own run, so the mode is a convenience, not an authority.
+
 **When rules run:** every event runs 1, 3 and the head half of 4. On ``pull_request`` the
 diff rules are the gate and any git failure is an error (``_lint_git.must_not_skip``,
 exit 2) — the job checks out with ``fetch-depth: 0``. Locally they run when a merge-base
@@ -213,6 +228,13 @@ runs them too, against the last push whose ``unit-tests`` job passed (``_lint_gi
 coverage, so the numbers live in the CI log.
 
 **Residuals (not mechanized):**
+
+- the CHANGED cap's ``K_MIN`` slack (M60a): a re-pinned ``missing`` may sit up to ``K_MIN`` (5) statements above
+  the run it is verified on, and never above its base. LOWERING and the split and rename SUM rules read that pin, so
+  a later PR can absorb up to ``K_MIN`` per pin in the group. That is ``K_MIN`` for one scope and ``K_MIN`` × N for a
+  sum over N re-pinned scopes. It is bounded and does not accumulate across re-pins. It was accepted so that a pin
+  taken from one CI run passes on the next (±2 statements of noise): the owner decision of 2026-10-27, "ship the safe
+  half with a noise allowance", sized at ``K_MIN`` by review delta2 P1;
 
 - tests that execute code but assert nothing: coverage without behaviour. The push's
   quality rule (behavioural tests, deletion probes) is enforced by review;
@@ -267,6 +289,7 @@ ratchet (roadmap 1.3.2 item 5)" step in .github/workflows/test.yml (unit-tests j
 
 Exits: 0 clean; 1 a rule failed (stderr); 2 the measurement or git could not answer.
 Stdlib plus ``pyyaml`` (to read the workflow structurally); does not import ``maxim`` or ``coverage``.
+``--pins-from-run`` also needs the ``gh`` CLI, authenticated for this repository.
 """
 
 from __future__ import annotations
@@ -279,7 +302,9 @@ import math
 import os
 import posixpath
 import re
+import subprocess
 import sys
+import tempfile
 import time
 import tokenize
 import tomllib
@@ -289,7 +314,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import yaml  # noqa: E402  (pyyaml: pinned in the unit-tests job's first install, not the guarded one)
-from _lint_git import GitUnavailable, base_ref, changed_files, git, must_not_skip, show  # noqa: E402
+from _lint_git import GitUnavailable, base_ref, changed_files, gh_api, git, must_not_skip, show  # noqa: E402
 from _lint_allowance import append_only_problem, ref_ok  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -390,8 +415,12 @@ class ScopeCov:
         self.covered_branches += f.covered_branches
 
 
-def load_coverage(root: Path) -> dict[str, FileCov]:
-    path = root / COVERAGE_JSON
+def load_coverage(root: Path, path: Path | None = None) -> dict[str, FileCov]:
+    """The measurement at ``root``'s ``coverage.json``, or at ``path`` (``--pins-from-run``: a CI run's file, whose
+    keys are relative as CI writes them; an absolute key is re-rooted at ``src/maxim/``, and a file the checkout lacks is
+    accepted, because a PR run measures the merge with main)."""
+    foreign = path is not None
+    path = root / COVERAGE_JSON if path is None else path
     if not path.is_file():
         raise MeasurementError(
             f"{COVERAGE_JSON} not found — the fast suite must run with --cov-report=json:{COVERAGE_JSON} first"
@@ -412,9 +441,13 @@ def load_coverage(root: Path) -> dict[str, FileCov]:
     for key, f in raw_files.items():
         p = Path(key)
         rel = p.relative_to(root).as_posix() if p.is_absolute() and p.is_relative_to(root) else p.as_posix()
+        if foreign and p.is_absolute() and f"/{SCOPE}/" in rel:  # CI writes relative keys; re-root only an absolute one
+            rel = rel[rel.index(f"/{SCOPE}/") + 1 :]  # /home/runner/work/Maxim/Maxim/src/maxim/x.py -> src/maxim/x.py
         if not rel.startswith(SCOPE + "/"):
             raise MeasurementError(f"{COVERAGE_JSON} names a file outside {SCOPE}: {key}")
-        if not (root / rel).is_file():
+        # A CI run of a PR measures the merge with main, which may hold files this branch lacks; its pins are for
+        # that merge, and CI re-measures the merge on the pin commit, so a foreign file need not exist here.
+        if not foreign and not (root / rel).is_file():
             raise MeasurementError(f"{COVERAGE_JSON} names {rel}, which does not exist (stale file?)")
         try:
             s = f["summary"]
@@ -630,8 +663,9 @@ def floor_head_rules(
     *,
     files: dict[str, ScopeCov],
 ) -> list[str]:
-    """The HEAD floor rules. ``only`` (``--local``) restricts the per-scope checks to those packages (a file floor
-    gates when its package is in it) and skips ``overall``; the file-format checks always run. CI never passes it.
+    """The HEAD floor rules. ``only`` restricts the per-scope checks to those packages (a file floor gates when its
+    package is in it) and skips ``overall``; the file-format checks always run. ``--local`` passes the empty set, so
+    only the format checks gate there (M60a); CI never passes it.
     ``files`` is :func:`file_scopes` of the measurement (required: a file floor must never be skipped by omission)."""
     out: list[str] = []
     if fl.version != FLOORS_FORMAT_VERSION:
@@ -659,7 +693,8 @@ def floor_head_rules(
             # that rose past the band while adding statements keeps its current missing pin, never the measured one.
             pin_missing = m.missing if f.missing is None else min(m.missing, f.missing)
             out.append(
-                f"{name}: {_fmt_pct(m.percent)} is more than {BAND} pt above its floor {f.percent}% — raise it to "
+                f"{name}: {_fmt_pct(m.percent)} is more than {BAND} pt above its floor {f.percent}% "
+                "(`python scripts/lint_coverage.py --pins-from-run <run-id>` writes it) — raise it to "
                 f'{{"percent": {round_down(m.percent)}, "missing": {pin_missing}}}'
             )
 
@@ -948,7 +983,7 @@ def floor_diff_rules(
 
     def changed_entry(name: str, b: Floor | None, h: Floor, m: ScopeCov | None) -> None:
         """NEW entry (``b`` None): the measurement within k statements, ``missing`` <= measured. CHANGED entry:
-        ``missing`` never rises (<= min(measured, base)); LOWERING needs measured missing <= base missing AND
+        ``missing`` never rises (<= min(measured + K_MIN, base), M60a); LOWERING needs measured missing <= base missing AND
         percent >= round_down(measured), no tolerance; raising (or unchanged percent) keeps the k tolerance."""
         if m is None or h.percent is None or h.missing is None:
             return
@@ -957,12 +992,20 @@ def floor_diff_rules(
             return
         k = missing_slack(m)
         lowest = round_down(100.0 * (m.covered - k) / m.statements) if m.statements else 0.0
-        cap = min(m.missing, b.missing) if based else m.missing
+        # M60a: a CHANGED pin may sit up to K_MIN (the absolute noise, never the size-scaled k) above this run's
+        # measured missing, because a pin taken from one CI run is verified on the pin commit's own run (+-2
+        # statements). The base side stays exact: a pinned missing never rises. NEW floors stay exact (two runs).
+        cap = min(m.missing + K_MIN, b.missing) if based else m.missing
         if h.missing > cap:
+            pin = min(m.missing, b.missing) if based else m.missing
             out.append(
                 f"{name}: floor pins missing {h.missing} above "
-                + (f"min(measured {m.missing}, base {b.missing})" if based else f"the measured {m.missing}")
-                + f" — a pinned missing never rises; pin {cap}"
+                + (
+                    f"min(measured {m.missing} + {K_MIN} of noise, base {b.missing})"
+                    if based
+                    else f"the measured {m.missing}"
+                )
+                + f" — a pinned missing never rises; pin {pin}"
             )
         if based and h.percent < b.percent - 1e-9:
             if m.missing > b.missing:
@@ -1833,44 +1876,164 @@ def merge_floors(texts: list[str], committed: Floors | None) -> tuple[dict, list
     return merged, problems
 
 
-def _package_of_module(root: Path, dotted: str) -> str | None:
-    """``maxim.x.y`` -> ``maxim/x`` when ``src/maxim/x`` is a package directory, else ``maxim/<root>``."""
-    parts = dotted.split(".")
-    if parts[0] != "maxim":
-        return None
-    if len(parts) == 1:
-        return ROOT_PACKAGE
-    return f"maxim/{parts[1]}" if (root / SCOPE / parts[1]).is_dir() else ROOT_PACKAGE
+# ── --pins-from-run: CI's printed pins, applied in one command (M60a) ─────────────────────────────────────────────
+
+RUN_SUITE_STEP = "Run required fast suite"
+COVERAGE_ARTIFACT = "coverage-json"
 
 
-def local_touched_packages(root: Path, base: str) -> set[str]:
-    """``--local``'s gating scopes: the packages of every ``src/maxim`` file the working tree changes against
-    ``base`` (added, modified, deleted or moved: rename detection off, so a move marks both ends), plus the
-    ``maxim`` packages the changed test files import -- a test-only PR lifts a package its ``src`` diff never
-    touches (#1201)."""
-    names = git(root, "-c", "core.quotePath=false", "diff", "--name-only", "--no-renames", base, "--", SCOPE, "tests")
-    touched: set[str] = set()
-    for rel in names.splitlines():
-        if rel.startswith(SCOPE + "/") and rel.endswith(".py"):
-            touched.add(package_of(rel))
-        elif rel.startswith("tests/") and rel.endswith(".py") and (root / rel).is_file():
-            try:
-                tree = ast.parse((root / rel).read_text(encoding="utf-8"))
-            except SyntaxError:
-                continue
-            for node in ast.walk(tree):
-                dotted: list[str] = []
-                if isinstance(node, ast.Import):
-                    dotted = [a.name for a in node.names]
-                elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
-                    dotted = [node.module] + (
-                        [f"{node.module}.{a.name}" for a in node.names] if node.module == "maxim" else []
-                    )
-                for d in dotted:
-                    pkg = _package_of_module(root, d)
-                    if pkg is not None and (pkg != ROOT_PACKAGE or d.count(".") >= 1):
-                        touched.add(pkg)
-    return touched
+def _download_artifact(run_id: str, name: str, dest: Path) -> Path:
+    try:  # cwd: gh resolves the repository from the checkout, as HEAD is read from it
+        r = subprocess.run(
+            ["gh", "run", "download", run_id, "-n", name, "-D", str(dest)],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            cwd=REPO_ROOT,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise GitUnavailable(f"gh run download {run_id} -n {name}: {exc}") from exc
+    if r.returncode != 0:
+        raise GitUnavailable(f"gh run download {run_id} -n {name}: {r.stderr.strip() or r.returncode}")
+    return dest / COVERAGE_JSON
+
+
+def run_measurement(
+    root: Path,
+    run_id: str,
+    *,
+    api: Callable[[str], object] | None = None,
+    download: Callable[[str, str, Path], Path] = _download_artifact,
+    tmp: Path,
+) -> dict[str, FileCov]:
+    """The ``coverage.json`` of CI run ``run_id``, bound to this checkout: the run's head SHA is ``HEAD``, its latest
+    attempt's ``unit-tests`` job ran the measuring suite to ``success`` (a ``-x`` failure leaves partial data, and the
+    upload runs on ``always()``), and the artifact is that attempt's (``coverage-json-<attempt>``; the unsuffixed
+    legacy name only on attempt 1). Raises :class:`MeasurementError` naming the refusal, :class:`GitUnavailable` when
+    ``gh`` cannot answer."""
+    api = api or (lambda path: gh_api(path, cwd=root))  # {owner}/{repo} resolved from the checkout HEAD is read from
+    run = api(f"repos/{{owner}}/{{repo}}/actions/runs/{run_id}")
+    if not isinstance(run, dict):
+        raise MeasurementError(f"run {run_id}: unexpected API response")
+    head = git(root, "rev-parse", "HEAD").strip()
+    if run.get("head_sha") != head:
+        raise MeasurementError(
+            f"run {run_id} measured {str(run.get('head_sha'))[:12]}, not this checkout's HEAD {head[:12]}: "
+            "pin from the run of the commit you are on"
+        )
+    if not str(run.get("path", "")).endswith("workflows/test.yml") or run.get("event") not in ("pull_request", "push"):
+        raise MeasurementError(
+            f"run {run_id} is {run.get('path')!r} on {run.get('event')!r}: pin from a Tests run of a pull_request or push"
+        )
+    attempt = run.get("run_attempt")
+    if not isinstance(attempt, int) or attempt < 1:
+        raise MeasurementError(f"run {run_id}: no run_attempt in the API response")
+    jobs = api(f"repos/{{owner}}/{{repo}}/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100")
+    job = next((j for j in (jobs or {}).get("jobs", []) if isinstance(j, dict) and j.get("name") == "unit-tests"), None)
+    if job is None:
+        raise MeasurementError(f"run {run_id} attempt {attempt} has no unit-tests job")
+    step = next((s for s in job.get("steps") or [] if isinstance(s, dict) and s.get("name") == RUN_SUITE_STEP), None)
+    if step is None or step.get("conclusion") != "success":
+        found = "absent" if step is None else step.get("conclusion")
+        raise MeasurementError(
+            f"run {run_id} attempt {attempt}: the step {RUN_SUITE_STEP!r} is {found}, not success: a failed or "
+            "skipped suite leaves partial coverage data"
+        )
+    names = {
+        a.get("name")
+        for a in (api(f"repos/{{owner}}/{{repo}}/actions/runs/{run_id}/artifacts?per_page=100") or {}).get(
+            "artifacts", []
+        )
+        if isinstance(a, dict) and not a.get("expired")
+    }
+    wanted = f"{COVERAGE_ARTIFACT}-{attempt}"
+    if wanted not in names:
+        if attempt == 1 and COVERAGE_ARTIFACT in names:
+            wanted = COVERAGE_ARTIFACT  # runs uploaded before the attempt-bound name (M60a)
+        else:
+            raise MeasurementError(
+                f"run {run_id}: no unexpired artifact {wanted!r} (found {sorted(n for n in names if n)})"
+            )
+    return load_coverage(root, download(run_id, wanted, tmp))
+
+
+def pins_from_measurement(
+    fl: Floors, overall: ScopeCov, pkgs: dict[str, ScopeCov], files: dict[str, ScopeCov]
+) -> tuple[dict[str, Floor], list[str]]:
+    """The pins the CI hint prints for every floored scope more than ``band`` above its floor (``round_down`` of the
+    measurement, ``missing`` capped by the current pin: a pinned missing never rises), and notes for what is left
+    alone: a scope below its floor (a fall is fixed by covering code, never by a pin), a null floor (NEW floors come
+    from two runs, ``--merge-floors``), an unmeasured scope."""
+    pins: dict[str, Floor] = {}
+    notes: list[str] = []
+    scopes = [("overall", fl.overall, overall)]
+    scopes += [(k, f, pkgs.get(k)) for k, f in sorted(fl.packages.items())]
+    scopes += [(k, f, files.get(k)) for k, f in sorted(fl.files.items())]
+    for name, f, m in scopes:
+        if m is None or m.statements == 0:
+            notes.append(f"{name}: not measured by the run — left alone")
+        elif f.percent is None:
+            notes.append(f"{name}: null floor — a NEW floor is pinned from two runs (--merge-floors), left alone")
+        elif m.percent > f.percent + BAND + 1e-9:
+            pins[name] = Floor(round_down(m.percent), m.missing if f.missing is None else min(m.missing, f.missing))
+        elif f.missing is not None and f.missing > m.missing + K_MIN:
+            notes.append(
+                f"{name}: its pinned missing {f.missing} is more than {K_MIN} above the run's {m.missing}; if this "
+                f"branch changed that pin, CI refuses it: pin {min(m.missing, f.missing)}"
+            )
+        elif m.percent < f.percent - below_tolerance(m) - 1e-9:
+            notes.append(
+                f"{name}: {_fmt_pct(m.percent)} is below its floor {f.percent}% — cover code; a pin cannot fix a fall"
+            )
+    return pins, notes
+
+
+def apply_pins(text: str, pins: dict[str, Floor]) -> str:
+    """``coverage_floors.json`` with ``pins`` written in place: key order and every other byte as the file had them
+    (it round-trips through ``json.dumps(indent=2)``)."""
+    doc = json.loads(text)
+    for name, f in pins.items():
+        slot = doc if name == "overall" else doc["files" if name.startswith(SCOPE + "/") else "packages"]
+        slot[name] = {"percent": f.percent, "missing": f.missing}
+    return json.dumps(doc, indent=2) + "\n"
+
+
+def pins_from_run_main(root: Path, run_id: str) -> int:
+    if os.environ.get("GITHUB_ACTIONS"):
+        print(
+            "coverage: --pins-from-run writes the floors file for a commit; it cannot run inside GitHub Actions",
+            file=sys.stderr,
+        )
+        return 2
+    if not run_id.isdigit():
+        print(f"usage: lint_coverage.py --pins-from-run RUN_ID (a number, got {run_id!r})", file=sys.stderr)
+        return 2
+    try:
+        text = (root / FLOORS_REL).read_text(encoding="utf-8")
+        fl = parse_floors(text)
+        with tempfile.TemporaryDirectory() as td:
+            cov = run_measurement(root, run_id, tmp=Path(td))
+    except (OSError, FileFormatError, GitUnavailable) as e:
+        print(f"coverage: --pins-from-run: {e}", file=sys.stderr)
+        return 2
+    except MeasurementError as e:
+        print(f"coverage: --pins-from-run REFUSED: {e}", file=sys.stderr)
+        return 1
+    overall, pkgs = measure_scopes(cov)
+    pins, notes = pins_from_measurement(fl, overall, pkgs, file_scopes(cov))
+    for n in notes:
+        print(f"coverage: --pins-from-run: {n}")
+    if not pins:
+        print(
+            f"coverage: --pins-from-run: run {run_id} puts no scope more than {BAND} pt above its floor; nothing to pin"
+        )
+        return 0
+    old = {"overall": fl.overall, **fl.packages, **fl.files}
+    for name, f in pins.items():
+        print(f"coverage: pin {name}: {old[name].percent}%/{old[name].missing} -> {f.percent}%/{f.missing}")
+    (root / FLOORS_REL).write_text(apply_pins(text, pins), encoding="utf-8")  # a tracked file: git is the undo
+    print(f"coverage: wrote {len(pins)} pin(s) to {FLOORS_REL} from run {run_id}; commit them, and CI verifies them")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1895,14 +2058,19 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(json.dumps(merged, indent=2))
         return 0
+    if argv[:1] == ["--pins-from-run"]:
+        if len(argv) != 2:
+            print("usage: lint_coverage.py --pins-from-run RUN_ID", file=sys.stderr)
+            return 2
+        return pins_from_run_main(REPO_ROOT, argv[1])
     # --local: the pre-push run scripts/suite_at_commit.sh makes on the exact commit to be pushed. Floors are measured
-    # in CI's environment, so locally only the floors of TOUCHED packages gate (local_touched_packages: changed src
-    # files, deletions and moves included, plus the packages changed tests import -- #1240's and #1201's "raise it");
-    # the overall floor, untouched packages and a PR's own floor-pin edits are printed as notes -- except a pinned
-    # ``missing`` that rose above its base, which reads no measurement and gates as in CI (pin_rises, #1270; a stale
-    # origin/main can misplace the base: fetch first). Touched floors gate DESPITE the environment difference (no
-    # --require-extras, no netns, macOS): a breach within noise of a floor needs CI's number. Diff coverage (#1232) and every other rule gate exactly as in CI. Never in CI: ci_step_rules pins
-    # the step to the bare command, and this refuses to run under GitHub Actions.
+    # in CI's environment (macOS reads 1-2 pt off Linux), so locally NO floor gates, in either direction (M60a, owner
+    # decision 2026-10-27; it gated the touched packages' floors before, which gave false reds and false greens): every
+    # floor result and a PR's own floor-pin edits are printed as notes -- except a pinned ``missing`` that rose above
+    # its base, which reads no measurement and gates as in CI (pin_rises, #1270; a stale origin/main can misplace the
+    # base: fetch first). The floors file's format and fixed fields, diff coverage (#1232) and every other rule gate
+    # exactly as in CI. Never in CI: ci_step_rules pins the step to the bare command, and this refuses to run under
+    # GitHub Actions.
     local = argv[:1] == ["--local"]
     if local and os.environ.get("GITHUB_ACTIONS"):
         print("coverage: --local is the pre-push check and cannot run inside GitHub Actions", file=sys.stderr)
@@ -1931,15 +2099,10 @@ def main(argv: list[str] | None = None) -> int:
     _print_totals(overall, pkgs, fl, files)
     if fl is not None:
         if local:
-            try:
-                touched = local_touched_packages(root, base_ref(root))
-            except GitUnavailable as e:
-                print(f"coverage: --local needs a base to know which packages the diff touches ({e})", file=sys.stderr)
-                return 2
-            gating = floor_head_rules(root, fl, overall, pkgs, only=touched, files=files)
+            gating = floor_head_rules(root, fl, overall, pkgs, only=set(), files=files)  # the format checks only
             for note in floor_head_rules(root, fl, overall, pkgs, files=files):
                 if note not in gating:
-                    print(f"coverage (local, untouched scope, measured in CI's environment, not gated): {note}")
+                    print(f"coverage (local floor result, measured in CI's environment, not gated): {note}")
             failures += gating
         else:
             failures += floor_head_rules(root, fl, overall, pkgs, files=files)
