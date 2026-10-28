@@ -180,7 +180,7 @@ class TestRosterAdvertisesOnlyPermittedTools:
         assert "available_tools = _advertisable_tools(available_tools, executor, autonomy_controller)" in loop_source()
         assert "executor.permits(t)" in inspect.getsource(agent_loop._advertisable_tools)  # #1412: the one filter
         # FUNCTION-SPECIFIC (kept on run_agentic_loop's body; a slice that moves either line updates it):
-        src = inspect.getsource(agent_loop.run_agentic_loop)
+        src = inspect.getsource(agent_loop._run_agentic_loop_body)  # the loop's body since bounded_stop step 0
         # The filter runs AFTER the roster is final (SEM union + Wire 3) and
         # BEFORE the descriptions are collected for the prompt.
         assert src.index("_advertisable_tools(available_tools") < src.index(

@@ -433,3 +433,49 @@ def test_a_client_replaced_after_an_auth_reset_is_closed_at_unload(monkeypatch) 
     assert len(backend._retired_http_clients) == 1
     backend.unload()
     assert second.is_closed and third.is_closed
+
+
+# ── the offline latch (#1315 step 0b, notes §6 layer 2) ──────────────────────────────────────────
+# The conftest autouse fixture resets the latch after each test. Under the latch every client is built strict (no
+# env proxy: the proxy would dial on our behalf) and every request is refused at the call site, typed and booked,
+# before any connection. These guard the call-site layer itself: without it the socket latch would still refuse,
+# so the integration gates in tests/integration/test_offline_latch.py would stay green.
+
+
+def test_offline_the_download_client_drops_the_env_proxy(monkeypatch) -> None:
+    from maxim import _offline
+
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.corp:3128")
+    _http._ensure_external_endpoint()
+    _offline.engage("test: offline clients are strict")
+    client = _http._download_client(_http._registry.get(_http._EXTERNAL_ENDPOINT))
+    try:
+        assert _routes(client, "https://huggingface.co/x") == "checked"
+    finally:
+        client.close()
+
+
+def test_offline_an_any_policy_endpoint_ignores_the_env_proxy(monkeypatch, endpoints) -> None:
+    from maxim import _offline
+
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.corp:3128")
+    endpoints(_http.HTTPEndpoint(name="t1315-any-policy", base_url="https://example.com"))
+    online = _http._registry.get_client("t1315-any-policy")
+    assert online._mounts, "precondition: online, the any-policy client takes the env proxy (#921 unchanged)"
+    _offline.engage("test: offline clients are strict")  # its on_engage callback drops the pooled client
+    client = _http._registry.get_client("t1315-any-policy")
+    assert client is not online, "the client pooled before engage() survived it"
+    assert client.trust_env is False
+    assert client._mounts == {}, "an offline client still routes through the env proxy"
+
+
+def test_offline_every_request_is_refused_at_the_call_site(endpoints) -> None:
+    from maxim import _offline
+
+    endpoints(_http.HTTPEndpoint(name="t1315-request", base_url="http://127.0.0.1:9"))
+    _offline.engage("test: per-request refusal")
+    before = len(_offline.ledger())
+    with pytest.raises(_offline.OfflineRefusal):
+        _http.get("t1315-request", "/")
+    booked = [entry.event for entry in _offline.ledger()[before:]]
+    assert booked == ["utils.http request"], f"refused by {booked}, not by utils/http.py's per-request check"
