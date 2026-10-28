@@ -605,8 +605,9 @@ class AgentInstance:
                     hub.on_session_end(self._session_ticket)
             elif not hub.wait_session_ended(deadline_s=deadline_s):
                 log.warning(
-                    "Agent %s: session_end_not_reached — a loop still holds the memory session; shutdown skipped "
-                    "its after-steps (the loop's own end persists the session)",
+                    "Agent %s: session_end_not_reached — the memory session is held by another opener (a running "
+                    "loop, whose own end persists it, or a harness that has not ended it yet); shutdown skipped its "
+                    "after-steps",
                     self.agent_id,
                 )
                 return False
