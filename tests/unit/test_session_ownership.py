@@ -12,7 +12,6 @@ import time
 
 import pytest
 
-RED = pytest.mark.xfail(strict=True, reason="#1438 PR 0: session ownership is not built yet")
 
 
 def _ownership():
@@ -21,7 +20,6 @@ def _ownership():
     return SessionOwnership()
 
 
-@RED
 def test_owner_is_required_keyword_only() -> None:
     own = _ownership()
     with pytest.raises(TypeError):
@@ -30,7 +28,6 @@ def test_owner_is_required_keyword_only() -> None:
         own.claim(object())  # type: ignore[misc]
 
 
-@RED
 def test_a_claim_on_a_closed_session_opens_a_new_generation() -> None:
     own = _ownership()
     instance = object()
@@ -39,7 +36,6 @@ def test_a_claim_on_a_closed_session_opens_a_new_generation() -> None:
     assert own.state == "OPEN"
 
 
-@RED
 def test_the_same_owner_claiming_again_gets_the_same_ticket() -> None:
     own = _ownership()
     instance = object()
@@ -47,7 +43,6 @@ def test_the_same_owner_claiming_again_gets_the_same_ticket() -> None:
     assert own.claim(owner=instance) is first
 
 
-@RED
 def test_a_loop_takes_over_from_an_owner_with_no_live_loop() -> None:
     own = _ownership()
     instance, loop = object(), object()
@@ -57,7 +52,6 @@ def test_a_loop_takes_over_from_an_owner_with_no_live_loop() -> None:
     assert not own.is_current(held)  # the old ticket is invalidated: ending it ends nothing
 
 
-@RED
 def test_anyone_else_claiming_from_a_live_loop_is_refused() -> None:
     from maxim.exceptions import SessionHeld
 
@@ -70,7 +64,6 @@ def test_anyone_else_claiming_from_a_live_loop_is_refused() -> None:
         own.claim(owner=object())
 
 
-@RED
 def test_only_the_current_ticket_ends_its_generation() -> None:
     own = _ownership()
     instance, loop = object(), object()
@@ -84,7 +77,6 @@ def test_only_the_current_ticket_ends_its_generation() -> None:
     assert own.state == "CLOSED" and current.end_done.is_set()
 
 
-@RED
 def test_a_claim_during_ending_waits_for_end_done() -> None:
     own = _ownership()
     loop = object()
@@ -97,7 +89,6 @@ def test_a_claim_during_ending_waits_for_end_done() -> None:
     assert nxt.generation == ticket.generation + 1
 
 
-@RED
 def test_a_claim_during_ending_past_its_deadline_raises_still_ending() -> None:
     from maxim.exceptions import SessionStillEnding
 
@@ -108,7 +99,6 @@ def test_a_claim_during_ending_past_its_deadline_raises_still_ending() -> None:
         own.claim(owner=object(), deadline_s=0.05)
 
 
-@RED
 def test_a_released_loop_claim_is_no_longer_live() -> None:
     own = _ownership()
     loop = object()
@@ -118,7 +108,6 @@ def test_a_released_loop_claim_is_no_longer_live() -> None:
     assert taken.generation == ticket.generation + 1
 
 
-@RED
 def test_a_non_owner_waits_for_end_done_within_its_deadline() -> None:
     own = _ownership()
     ticket = own.claim(owner=object(), live=True)
@@ -128,7 +117,7 @@ def test_a_non_owner_waits_for_end_done_within_its_deadline() -> None:
     assert own.wait_ended(deadline_s=0.05) is True
 
 
-@RED
+@pytest.mark.xfail(strict=True, reason="#1438 PR 0: MemoryHub is not wired to SessionOwnership yet")
 def test_the_hub_open_requires_an_owner_and_a_ticketless_close_raises() -> None:
     from maxim.integration.memory_hub import MemoryHub
 
