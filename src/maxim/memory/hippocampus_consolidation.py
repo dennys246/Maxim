@@ -228,6 +228,7 @@ class ConsolidationMixin:
         # Create compressed version with actual edge count from the graph
         actual_edge_count = len(self._graph.get_associated(memory_id))
         compressed = CompressedMemory.from_episodic(record, edge_count=actual_edge_count)
+        compressed.content_tokens()  # keyed once at compression: a query never re-keys a store (#1137 review)
 
         # Replace in storage
         self._memories[memory_id] = compressed  # type: ignore[assignment]

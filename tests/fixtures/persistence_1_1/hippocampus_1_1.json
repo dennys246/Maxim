@@ -1,0 +1,155 @@
+{
+  "_format_version": "1.1",
+  "associative_graph": {
+    "edges": [],
+    "nodes": []
+  },
+  "compressed_count": 1,
+  "context_index": {
+    "goal:pain_response": [
+      "e5ba926e-a6e9-49d4-8671-a6c041035c03"
+    ],
+    "mode:observe": [
+      "e5ba926e-a6e9-49d4-8671-a6c041035c03",
+      "bccd648b-e8fe-4aab-939c-443485f90cb1"
+    ],
+    "success:None": [
+      "bccd648b-e8fe-4aab-939c-443485f90cb1"
+    ],
+    "success:True": [
+      "e5ba926e-a6e9-49d4-8671-a6c041035c03"
+    ],
+    "tool:flee": [
+      "e5ba926e-a6e9-49d4-8671-a6c041035c03"
+    ]
+  },
+  "episodes": [],
+  "experience_clock": {
+    "unit": "world_experience_us",
+    "us": 0
+  },
+  "memories": [
+    {
+      "_compressed": true,
+      "access_contexts": [],
+      "access_count": 1,
+      "accessed_at": 1792985360.321685,
+      "activation_count": 0,
+      "activation_sources": {},
+      "capture_seq": 0,
+      "consolidated_at": null,
+      "created_at": 1792985360.321685,
+      "edge_count": 0,
+      "encoded_at_us": 0,
+      "encoding": {
+        "drive_pressure": null,
+        "drive_relief": null,
+        "novelty": null,
+        "pain": null,
+        "salience": null,
+        "site": "memory_agent",
+        "surprise": null
+      },
+      "encoding_tag": 0.0,
+      "goal": null,
+      "had_user_input": true,
+      "id": "bccd648b-e8fe-4aab-939c-443485f90cb1",
+      "last_scored_at": 0.0,
+      "long_term": false,
+      "novelty": 0.5,
+      "novelty_reference_size": 0,
+      "object_count": 0,
+      "promotion_pressure": 0.0,
+      "retrievability_anchor_us": 0,
+      "retro_tag": null,
+      "run_id": "",
+      "salience": 0.9,
+      "storage_strength": 10000000.0,
+      "success": null,
+      "timestamp": 1792985360.321685,
+      "tool_name": ""
+    },
+    {
+      "access_contexts": [],
+      "access_count": 1,
+      "accessed_at": 1792985360.323797,
+      "action": {
+        "execution_time_ms": 0.0,
+        "tool_name": "flee",
+        "tool_params": {}
+      },
+      "activation_count": 0,
+      "activation_sources": {},
+      "capture_seq": 1,
+      "consolidated_at": null,
+      "context": {
+        "active_goal": "pain_response",
+        "active_mode": "observe",
+        "fear_level": 0.0,
+        "memory_context": null,
+        "state_ref": null
+      },
+      "created_at": 1792985360.323797,
+      "decision": {
+        "alternatives_considered": [],
+        "confidence": 1.0,
+        "intent": {
+          "goal": "pain_response"
+        },
+        "plan": null,
+        "reasoning": null
+      },
+      "encoded_at_us": 0,
+      "encoding": {
+        "drive_pressure": null,
+        "drive_relief": null,
+        "novelty": null,
+        "pain": null,
+        "salience": null,
+        "site": "loop",
+        "surprise": null
+      },
+      "encoding_tag": 0.0,
+      "id": "e5ba926e-a6e9-49d4-8671-a6c041035c03",
+      "last_scored_at": 0.0,
+      "long_term": false,
+      "metadata": {},
+      "novelty_reference_size": 1,
+      "outcome": {
+        "error": null,
+        "evaluations": [],
+        "result": {
+          "success": true
+        },
+        "success": true
+      },
+      "perception": {
+        "cli_input": null,
+        "decision_rationale": "",
+        "detected_objects": [],
+        "detected_people": [],
+        "novelty": 0.5,
+        "observations": {},
+        "salience": 0.5,
+        "tool_alternatives": [],
+        "transcript": null
+      },
+      "promotion_pressure": 0.0,
+      "retrievability_anchor_us": 0,
+      "retro_tag": null,
+      "run_id": "",
+      "situation": null,
+      "storage_strength": 10000000.0,
+      "timestamp": 1792985360.323797
+    }
+  ],
+  "next_episode_ordinal": 0,
+  "node_modality": {},
+  "saved_at": 1792985360.32401,
+  "stats": {
+    "memories_captured": 2,
+    "queries": 0,
+    "successful": 1,
+    "unknown_outcome": 1
+  }
+}

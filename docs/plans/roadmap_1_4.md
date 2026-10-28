@@ -649,7 +649,7 @@ frozen status verbatim; **EARNED** per rung = every frozen gate of that rung's p
   choice).
 - **T3 — E1 has a recorded outcome** with the argmax and hunger-state replays committed beside it.
 - **T4 — ledger WALKED, not merely clean.** The release PR carries a trigger-walk table: every
-  Tier-1 row holding a positive or PARTIAL status (written as "EARNED" in 2026-09; since B1 only T1-16 is EARNED, so
+  Tier-1 row holding a positive or PARTIAL status (written as "EARNED" in 2026-09; since B1 only T1-16 was, and it is STALE since 2026-10-25, so
   the walk covers EARNED, RE-VALIDATED, MAINTAINED and PARTIAL rows; owner decision 2026-10-17, the strict option:
   a PARTIAL claim is narrow but a 1.4 change can still break it) × every 1.4 `src/`, bridge and harness change (the recommend-event field; the
   primitive verbs; the campaign core against R3's clause; any credit path or substrate rule that
@@ -824,10 +824,19 @@ slices did not all land in 1.3.2; they continue in 1.3.5 and 1.3.6.
    `runtime/bio_integration.py` (the leaf `embodiment/event_id.py` left the set by G17); GL4 S1 edits `embodiment/tool_bridge.py` (the `ActionContext` assembly and the observe call), `embodiment/cerebellum.py` (payload `"1.2"`, the new payload key, `import_state` refusing newer versions), `runtime/executor.py` (`Executor._stamp_invocation` only), `runtime/bio_integration.py` (`EncodingSignals.extra["context"]` at the loop capture) and the new leaf `embodiment/action_context.py` (the `ActionContext` type). Every other grounding `src/` change waits for the
    decomposition slices.
 
+7. **The experience stream** (added 2026-10-28, from Session R of 1.3.4; owner direction): memory that listens to the
+   stream of what Maxim hears and does, instead of being polled at fixed loop stages. That is the structural cause
+   behind 1.3.4's recall defects, where a user's words were never memorized in Talk. DRAFT v1 is on branch
+   `docs/plan-experience-stream` (c41b7a23). It owes a rebase onto `main`, then its four-lens design review
+   (paper). Its `src/` waits for the fence, because it moves capture out of the loop stages A is decomposing.
+
 **Rig order (Track C)** — one rig, one operator; no live run on code that is still moving:
 1. ~~the complete Exp 10 re-run~~: superseded. T1-1 is SUPERSEDED by T1-16 (Exp 63, EARNED 2026-10-04).
 2. ~~the live Exp 60 re-run~~: done 2026-10-12 (T1-13 MAINTAINED), then measured against its floor by B1
    (2026-10-14, PARTIAL);
+2a. **T1-16's re-run (#1476)**, after its judge is rebuilt for the 1.3.4 ranker and cue path. T1-16 is STALE
+   since 2026-10-25, and 1.3.4 makes no cross-session recall claim until a stamped re-run lands. It is a pure re-run
+   (no design review), on a box with no leader beside it.
 2b. **B4, T1-2's re-fire (L8's dose-response design)**, after 1.3.5 and 1.3.6 unblock B2 and B3 (#1352, #1353), and before 1.4.0
    (owner decision 2026-10-16);
 3. 1.4's campaigns, starting with the schedule below;

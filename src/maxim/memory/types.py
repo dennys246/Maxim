@@ -14,6 +14,7 @@ completion predictions (ATL graph chaining → MemoryAgent).
 
 from __future__ import annotations
 
+import logging
 import math
 import threading
 import time
@@ -465,13 +466,25 @@ class Action:
 def record_active_goal(record: Any) -> str | None:
     """A memory record's ACTIVE goal (the context it served), whichever kind it is (#995, #1137).
 
-    An ``EpisodicMemory`` keeps it on ``context.active_goal``. A ``CompressedMemory`` has lost it and keeps
-    only ``goal`` (intent-first), which is the closest it can answer until #1137. Not the same fact as
-    ``record.goal`` for pain, reflexion and motor episodes."""
+    An ``EpisodicMemory`` keeps it on ``context.active_goal``; a ``CompressedMemory`` on ``active_goal`` since 1.2
+    (#1137), "" when its episode had none. One compressed before 1.2 (``active_goal is None``) kept only ``goal``
+    (intent-first), the closest it can answer. Not the same fact as ``record.goal`` for pain, reflexion and motor
+    episodes."""
     context = getattr(record, "context", None)
     if context is not None:
         return context.active_goal
-    return getattr(record, "goal", None)
+    kept = getattr(record, "active_goal", None)
+    if kept is None:  # compressed before 1.2: not kept
+        return getattr(record, "goal", None)
+    return kept or None  # kept: "" was "no active goal"
+
+
+def _kept_words(text: str) -> str:
+    """What compression keeps of what an episode heard: ``memory/text.py::bounded_words`` at the one recall bound, so a
+    compressed record renders as its episode did (#1137)."""
+    from maxim.memory.text import bounded_words
+
+    return bounded_words(text)
 
 
 def outcome_label(success: bool | None) -> str:
@@ -502,6 +515,145 @@ def _require_tri_state(value: Any, where: str) -> None:
         raise TypeError(f"{where} must be a bool or None, not {type(value).__name__}")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# The stored shape of a tool result (#1163)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# A ``ToolOutput`` repr longer than this is not parsed on load (D2): the real ones measured at most 3.7 KB across
+# 40,337 stored reprs (design review, 2026-10-24).
+_LEGACY_REPR_MAX_CHARS = 16_384
+_RESULT_KEYS = ("success", "output", "error")
+_legacy_repr_drops = 0
+
+
+def _json_native(value: Any, depth: int = 6) -> Any:
+    """``value`` as plain JSON data: containers recursed to ``depth``, sets and tuples as lists, bytes and anything
+    else as ``str``. A stored result must survive the round trip as the same data, not as a repr."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if depth <= 0:
+        return str(value)
+    if isinstance(value, dict):
+        return {str(k): _json_native(v, depth - 1) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [_json_native(v, depth - 1) for v in value]
+    if isinstance(value, (bytes, bytearray)):
+        return bytes(value).decode("utf-8", errors="replace")
+    return str(value)
+
+
+def _stored_result(result: Any) -> Any:
+    """The stored shape of an action result: a tool-result object (``ToolOutput``, or any non-mapping with
+    ``success`` and ``output``) becomes ``{"success", "output", "error"}`` of plain data (#1163).
+
+    The object used to be stored as itself and persisted as ``str(ToolOutput)``, its dataclass repr, so field and
+    drive names (``drive_pressure_before=``, ``pain=``) were searched and rendered as memory text. The executor's
+    stamps are not copied: the measured ones ride on ``EpisodicMemory.encoding``. Other values pass through.
+    """
+    if (
+        result is None
+        or isinstance(result, (str, dict, list))
+        or not (hasattr(result, "success") and hasattr(result, "output"))
+    ):
+        return result
+    success = getattr(result, "success", None)
+    error = getattr(result, "error", None)
+    return {
+        "success": success if isinstance(success, bool) else None,
+        "output": _json_native(getattr(result, "output", None)),
+        "error": str(error) if error else None,
+    }
+
+
+def _cut_at_error_kind(text: str) -> str | None:
+    """``text`` (a ``ToolOutput(...)`` repr) cut before its top-level ``error_kind=`` keyword and closed, or None.
+
+    An enum repr (``error_kind=<ToolErrorKind.X: 'x'>``) is not Python syntax, so it makes the whole repr unparsable;
+    the three fields D2 keeps come before it in the dataclass order.
+    """
+    import io
+    import tokenize
+
+    depth = 0
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
+    except (tokenize.TokenError, SyntaxError, IndentationError):
+        return None
+    for i, tok in enumerate(tokens):
+        if tok.type == tokenize.OP and tok.string in "([{":
+            depth += 1
+        elif tok.type == tokenize.OP and tok.string in ")]}":
+            depth -= 1
+        elif depth == 1 and tok.type == tokenize.NAME and tok.string == "error_kind" and i > 0:
+            prev = tokens[i - 1]
+            if prev.type == tokenize.OP and prev.string == ",":
+                line_offsets = [0]
+                for line in text.splitlines(keepends=True):
+                    line_offsets.append(line_offsets[-1] + len(line))
+                cut = line_offsets[prev.start[0] - 1] + prev.start[1]
+                return text[:cut] + ")"
+    return None
+
+
+def _parse_legacy_tool_output_repr(text: str) -> dict[str, Any] | None:
+    """The ``{"success", "output", "error"}`` of a stored ``ToolOutput(...)`` repr (a file written before #1163), or
+    None when it cannot be read safely (owner decision D2, 2026-10-24).
+
+    Never evaluated: ``ast`` parses it, only a top-level call named ``ToolOutput`` is read, and only its three
+    keywords are ``literal_eval``'d. An ``output`` that is not a literal (a path, a datetime) drops only ``output``.
+    """
+    import ast
+
+    if len(text) > _LEGACY_REPR_MAX_CHARS:
+        return None
+    try:
+        try:
+            tree = ast.parse(text, mode="eval")
+        except SyntaxError:
+            cut = _cut_at_error_kind(text)
+            if cut is None:
+                return None
+            tree = ast.parse(cut, mode="eval")
+        call = tree.body
+        if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == "ToolOutput"):
+            return None
+        if call.args or "success" not in {kw.arg for kw in call.keywords}:
+            return None  # a dataclass repr names every field, success first: anything else is not one
+        values: dict[str, Any] = {}
+        for kw in call.keywords:
+            if kw.arg not in _RESULT_KEYS:
+                continue
+            try:
+                values[kw.arg] = ast.literal_eval(kw.value)
+            except ValueError:
+                if kw.arg != "output":
+                    return None
+    except (SyntaxError, ValueError, TypeError, RecursionError, MemoryError):
+        return None
+    success = values.get("success")
+    error = values.get("error")
+    if success is not None and not isinstance(success, bool):
+        return None
+    return {"success": success, "output": _json_native(values.get("output")), "error": str(error) if error else None}
+
+
+def _loaded_result(result: Any) -> Any:
+    """A stored result as read back: a legacy ``ToolOutput(`` repr is parsed (D2), and one that cannot be is dropped,
+    counted, and logged once per process."""
+    global _legacy_repr_drops
+    if not (isinstance(result, str) and result.startswith("ToolOutput(")):
+        return result
+    parsed = _parse_legacy_tool_output_repr(result)
+    if parsed is None:
+        _legacy_repr_drops += 1
+        if _legacy_repr_drops == 1:
+            logging.getLogger(__name__).warning(
+                "A stored tool result could not be read as a ToolOutput repr and was dropped (#1163, D2); "
+                "further drops are counted in maxim.memory.types._legacy_repr_drops, not logged"
+            )
+    return parsed
+
+
 @dataclass
 class Outcome:
     """What happened as a result of the action.
@@ -519,6 +671,8 @@ class Outcome:
 
     def __post_init__(self) -> None:
         _require_tri_state(self.success, "Outcome.success")
+        # A tool-result object is stored as plain data, never as itself (#1163): the persistence seam.
+        self.result = _stored_result(self.result)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for storage."""
@@ -534,7 +688,7 @@ class Outcome:
         """Deserialize from storage."""
         return cls(
             success=data.get("success"),
-            result=data.get("result"),
+            result=_loaded_result(data.get("result")),
             error=data.get("error"),
             evaluations=data.get("evaluations", []),
         )
@@ -672,12 +826,18 @@ class CompressedMemory(CompressedRecord):
 
     Used for long-term storage when full EpisodicMemory data is no longer needed.
     Preserves essential information for basic queries while significantly
-    reducing memory footprint (~200 bytes vs ~2.5KB for full EpisodicMemory).
+    reducing memory footprint (well under 1 KB as JSON with a short ``heard``, at most ~2 KB with 240 non-ASCII
+    characters, vs several KB for a full EpisodicMemory).
 
     Compressed memories still appear in queries but have limited data.
 
     Inherits from CompressedRecord: id, timestamp, created_at, accessed_at,
     access_count, long_term, consolidated_at, edge_count, touch().
+
+    Forward compatibility (persisted in ``hippocampus.json``): every field has a default, and ``from_dict`` reads each
+    with ``data.get``, so a file written before a field existed loads (``active_goal`` and ``heard`` since 1.2,
+    #1137: ``None``/``""`` on older files, read as "not kept"). A new field follows the same rule and bumps
+    ``hippocampus_persistence.HIPPOCAMPUS_FORMAT_VERSION``.
     """
 
     # Carried from the full episode (Phase 2c): compression must not reset how well-learned a trace
@@ -716,11 +876,23 @@ class CompressedMemory(CompressedRecord):
     # The intent goal, else the active goal (from_episodic). NOT the active goal itself: a compressed record
     # has lost that (#1137); ``EpisodicMemory.goal`` answers the same way.
     goal: str | None = None
+    # The episode's ACTIVE goal, the context it served (#1137): a different fact from ``goal`` for pain, reflexion and
+    # motor records. "" = kept, the episode had none; ``None`` = compressed before 1.2, when it was not kept
+    # (``record_active_goal`` falls back to ``goal`` only then).
+    active_goal: str | None = None
     tool_name: str = ""
     success: bool | None = None  # None: not an action outcome (#843)
 
     # Minimal perception summary
     had_user_input: bool = False
+    # What the episode HEARD, bounded (#1137, owner decision D7): compression used to keep only the bool above, so a
+    # fact the user stated was lost once its record aged (about 3 days for a user's words). Raw stored text from
+    # outside the agent: render it only framed, through ``input_text`` (bio_enrichment frames it, #1444).
+    heard: str = field(default="", repr=False)  # raw stored text: kept out of the repr, rendered only framed
+    # ``content_tokens``' cache: never persisted, never compared.
+    _content_cache: tuple[tuple[Any, ...], frozenset[str]] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
     object_count: int = 0
     novelty: float = 0.5
     salience: float = 0.5
@@ -729,20 +901,41 @@ class CompressedMemory(CompressedRecord):
         _require_tri_state(self.success, f"CompressedMemory {self.id!r} success")
 
     def keywords(self) -> set[str]:
-        """Extract keywords from compressed episodic data."""
-        kws: set[str] = set()
-        if self.goal:
-            kws.update(w.lower() for w in self.goal.split() if len(w) > 2)
-        if self.tool_name:
-            kws.add(self.tool_name.lower())
-        return kws
+        """Extract keywords from compressed episodic data (``memory/text.py``'s one standard, D3)."""
+        return set(self.content_tokens())
+
+    def text_fields(self) -> list[Any]:
+        """The record's readable TEXT, the list substring search and ``matching_sentence`` read (as an episode's
+        ``text_fields``): what its episode heard, as compression kept it (#1137 review: the ranker saw it, search
+        did not)."""
+        return [self.heard]
+
+    def content_tokens(self) -> frozenset[str]:
+        """The content keys a query matches this record on: what compression kept -- what it heard, its goals, tool.
+        Cached by its inputs (#1137 review: an old store is mostly compressed records, and re-keying each on every
+        query cost ~0.5 s per query on 2,000 of them, the SF5 regression)."""
+        from maxim.memory.text import content_tokens
+
+        stamp = (self.heard, self.goal, self.active_goal, self.tool_name)
+        cached = self._content_cache
+        if cached is not None and cached[0] == stamp:
+            return cached[1]
+        tokens = frozenset(content_tokens(*stamp))
+        self._content_cache = (stamp, tokens)
+        return tokens
+
+    @property
+    def input_text(self) -> str:
+        """What the episode heard or was told, as compression kept it (bounded, #1137); "" if it heard nothing or was
+        compressed before 1.2. Raw stored text: render it only framed (#1444)."""
+        return self.heard
 
     def to_context_dict(self) -> dict[str, Any]:
         """Format compressed memory for LLM context."""
         return {
             "id": self.id,
             "type": "compressed_episodic",
-            "goal": self.goal,
+            "goal": self.goal,  # intent-first, as EpisodicMemory.to_context_dict reports ``self.goal``
             "tool": self.tool_name,
             "success": self.success,
             "had_user_input": self.had_user_input,
@@ -763,9 +956,11 @@ class CompressedMemory(CompressedRecord):
             long_term=memory.long_term,
             consolidated_at=memory.consolidated_at,
             goal=memory.goal,
+            active_goal=memory.context.active_goal or "",  # kept beside the intent goal; "" = it had none (#1137)
             tool_name=memory.tool_name,
             success=memory.outcome.success,
             had_user_input=bool(memory.perception.cli_input or memory.perception.transcript),
+            heard=_kept_words(memory.input_text),
             object_count=len(memory.perception.detected_objects),
             novelty=memory.perception.novelty,
             salience=memory.perception.salience,
@@ -795,9 +990,11 @@ class CompressedMemory(CompressedRecord):
             "last_scored_at": self.last_scored_at,
             "access_contexts": list(self.access_contexts),
             "goal": self.goal,
+            "active_goal": self.active_goal,
             "tool_name": self.tool_name,
             "success": self.success,
             "had_user_input": self.had_user_input,
+            "heard": self.heard,
             "object_count": self.object_count,
             "novelty": self.novelty,
             "salience": self.salience,
@@ -824,9 +1021,11 @@ class CompressedMemory(CompressedRecord):
             last_scored_at=data.get("last_scored_at", 0.0),
             access_contexts=deque(data.get("access_contexts", []), maxlen=10),
             goal=data.get("goal"),
+            active_goal=data.get("active_goal"),
             tool_name=data.get("tool_name", ""),
             success=data.get("success"),
             had_user_input=data.get("had_user_input", False),
+            heard=data.get("heard") or "",
             object_count=data.get("object_count", 0),
             novelty=data.get("novelty", 0.5),
             salience=data.get("salience", 0.5),
@@ -936,28 +1135,74 @@ class EpisodicMemory(MemoryRecord):
     # written before 2S-b). Episodic only: compression drops it, as it drops the concept refs. Not
     # EC's ``SituationSignature`` (a text signature keyed by memory id) -- this is substrate clusters.
     situation: dict[str, str] | None = field(default=None, repr=False, compare=False)
+    # ``content_tokens``' cache: never persisted, never compared (Session R, SF5).
+    _content_cache: tuple[tuple[Any, ...], frozenset[str]] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     @property
     def duration_ms(self) -> float:
         return self.action.execution_time_ms
 
     def keywords(self) -> set[str]:
-        """Extract keywords from episodic memory fields."""
-        kws: set[str] = set()
-        # Objects and people
-        kws.update(o.lower() for o in self.perception.detected_objects)
-        kws.update(p.lower() for p in self.perception.detected_people)
-        # Goal
-        goal = self.goal
-        if goal:
-            kws.update(w.lower() for w in goal.split() if len(w) > 2)
-        # Tool
-        if self.action.tool_name:
-            kws.add(self.action.tool_name.lower())
-        # CLI input
-        if self.perception.cli_input:
-            kws.update(w.lower() for w in self.perception.cli_input.split() if len(w) > 2)
-        return kws
+        """Extract keywords from episodic memory fields (``memory/text.py``'s one standard, D3)."""
+        return set(self.content_tokens())
+
+    def text_fields(self) -> list[Any]:
+        """The record's readable TEXT, the one field list the substring search, ``matching_sentence`` and the
+        ranker all read (design review S4: two lists drifted, #845): what it heard (``cli_input``, ``transcript``,
+        the observation), the rationale and reasoning, and the outcome: its whole result (a stored tool result's
+        output and error, a Reflexion reflection, a pain context) and error. Captures write these;
+        ``observations["text"]``, which the old ranker read, none does."""
+        return [
+            self.perception.cli_input,
+            self.perception.transcript,
+            self.perception.observations,
+            self.perception.decision_rationale,
+            self.decision.reasoning,
+            self.outcome.result,  # whole: a reflection, a stdout, a pain context (values only, metadata keys skipped)
+            self.outcome.error,
+        ]
+
+    def content_tokens(self) -> frozenset[str]:
+        """The content keys a query matches this record on (#1064): its ``text_fields`` plus its labels -- the active
+        goal (``# active goal on purpose``: the context it happened in), tool, detected objects and people.
+
+        Cached on the record (design review SF5: re-keying every record's text on every query cost ~1 s on a
+        2,000-record store, under the store's read lock). A stored record is not edited after capture; a field
+        object replaced (MemoryAgent's own staged copies) invalidates the cache (the objects are held and compared
+        with ``is``, never their ``id()``, which a freed object's successor can reuse)."""
+        from maxim.memory.text import content_tokens
+
+        stamp = (self.perception, self.decision, self.outcome, self.context, self.action)
+        cached = self._content_cache
+        if cached is not None and all(a is b for a, b in zip(cached[0], stamp)):
+            return cached[1]
+        tokens = frozenset(
+            content_tokens(
+                *self.text_fields(),
+                self.context.active_goal,
+                self.action.tool_name,
+                self.perception.detected_objects,
+                self.perception.detected_people,
+            )
+        )
+        self._content_cache = (stamp, tokens)
+        return tokens
+
+    @property
+    def input_text(self) -> str:
+        """What the episode heard or was told, as it arrived: ``cli_input``, else ``transcript``, else the observation's
+        own ``cli_input``/``transcript``/``text``, else "". Raw stored text: render it only framed (#1444)."""
+        for value in (self.perception.cli_input, self.perception.transcript):
+            if isinstance(value, str) and value.strip():
+                return value
+        observations = self.perception.observations or {}
+        for key in ("cli_input", "transcript", "text"):
+            value = observations.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+        return ""
 
     def to_context_dict(self) -> dict[str, Any]:
         """Format episodic memory for LLM context."""

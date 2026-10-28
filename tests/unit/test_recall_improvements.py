@@ -138,7 +138,9 @@ class TestRelevanceRanking:
         results = _rank_by_relevance([mem_merchant, mem_guard], "guard gate", limit=5)
         assert results[0] is mem_guard  # Guard matches both tokens
 
-    def test_empty_query_returns_by_recency(self):
+    def test_a_query_with_no_content_word_ranks_nothing(self):
+        """D1 (Session R, 2026-10-24): the ranker returns no memory that shares no content word with the query, so
+        an empty one ranks nothing. ``recall(query="")`` still returns by recency: an empty query never ranks."""
         mem1 = _em(
             perception=Perception(observations={}, detected_objects=[], detected_people=[], tool_alternatives=[]),
             context=Context(),
@@ -152,8 +154,8 @@ class TestRelevanceRanking:
             outcome=Outcome(success=True),
         )
         # mem2 has later timestamp (created second)
-        results = _rank_by_relevance([mem1, mem2], "", limit=5)
-        assert len(results) == 2
+        assert _rank_by_relevance([mem1, mem2], "", limit=5) == []
+        assert _rank_by_relevance([mem1, mem2], "the of a", limit=5) == []
 
     def test_respects_limit(self):
         mems = []

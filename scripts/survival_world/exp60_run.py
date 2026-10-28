@@ -115,6 +115,7 @@ from _provenance import (  # noqa: E402
     append_refusal,
     instrument_check_authorizes,
     is_ancestor_of_main,
+    apparatus_check_stamp,
     is_gated_path,
     stamp_harness_row,
     stamp_verdict,
@@ -560,10 +561,9 @@ def _run(args: argparse.Namespace) -> int:
         return 3
     if record_problem is not None:
         print(f"WARNING: --allow-dirty: apparatus record {apparatus_path} is not committed on main: {record_problem}")
-        # The waiver the ledger gate reads (`_evidence_records.judge_provenance`: allowed-dirty, never sole support),
-        # even on a clean tree; `apparatus_record_check` below keeps the detail.
-        provenance = {**provenance, "allow_dirty": True}
-    apparatus_check = {"gated": gated, "problem": record_problem, "allow_dirty": record_problem is not None}
+    # The waiver the ledger gate reads (`_evidence_records.judge_provenance`: allowed-dirty, never sole support), even
+    # on a clean tree, and `apparatus_record_check`, which keeps the detail: both stamps from one builder (#1220).
+    apparatus_check, provenance = apparatus_check_stamp(gated, record_problem, provenance)
     gate = _load(args.gate_record)
     refusal = instrument_check_authorizes(apparatus)
     if refusal is not None:

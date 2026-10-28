@@ -1005,6 +1005,26 @@ def cost_energy_divergence(policy: Any, totals: dict[str, float]) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _whole_frames(text: str) -> str:
+    """``text`` without any partial untrusted-content frame (Session R, rule 2): the loop stores enrichment text cut to
+    a length (``[:500]``, ``[:200]``, ``[:800]``), and a cut through a recalled frame would show its body bare."""
+    if "TOOL_OUTPUT" not in text:
+        return text
+    from maxim.utils.content_safety import drop_unbalanced_frames
+
+    return drop_unbalanced_frames(text)[0]
+
+
+def _defanged(text: str) -> str:
+    """A user's raw words with any frame-shaped marker neutralized in place (Session R, N3): text the agent did not
+    frame can never open or close a frame, so a pasted ``<</TOOL_OUTPUT id=…>>`` cannot cut a section."""
+    if "<<" not in text:
+        return text
+    from maxim.utils.content_safety import defang_frame_markers
+
+    return defang_frame_markers(text)[0]
+
+
 class PromptBuilder:
     """Builds prompts for LLM requests.
 
@@ -1044,7 +1064,9 @@ class PromptBuilder:
             prompt = self._build_followup_prompt(action_followup_input, tools=set(request.available_tools))
             # Inputs held back while the previous planning request was in flight (#1048) follow the result.
             deferred = (
-                "=== New Instructions ===\n" + "\n".join(request.deferred_inputs) if request.deferred_inputs else ""
+                "=== New Instructions ===\n" + "\n".join(_defanged(d) for d in request.deferred_inputs)
+                if request.deferred_inputs
+                else ""
             )
             correction = build_followup_retry_correction(request)
             return "\n\n".join(part for part in (prompt, deferred, correction) if part)
@@ -1252,7 +1274,7 @@ class PromptBuilder:
         if question_text:
             budgeter.add(
                 "user_request",
-                f'=== User Request ===\n"{question_text}"',
+                f'=== User Request ===\n"{_defanged(question_text)}"',
                 SectionPriority.MANDATORY,
                 source="data",
             )
@@ -1843,7 +1865,7 @@ class PromptBuilder:
         lines = ["=== Your inner deliberation (private — not speech) ==="]
         for i, entry in enumerate(transcript, 1):
             lines.append(f"\n[Cycle {i}]")
-            lines.append(entry)
+            lines.append(_whole_frames(entry))  # per item (rule 2): the loop stores cut enrichment text here
         text = "\n".join(lines)
 
         def _truncate_transcript(content: str, max_tok: int) -> str:
@@ -1890,7 +1912,12 @@ class PromptBuilder:
             return
         lines = ["=== Your prior reasoning ==="]
         for thought in thoughts[-6:]:  # Last 6 entries (covers 2 full 3-cycle deliberations)
-            lines.append(f"- {thought[:200]}")
+            # Per item (rule 2): a thought cut through a recalled frame loses the partial frame, not its neighbours.
+            thought = _whole_frames(thought[:200])
+            if thought.strip():
+                lines.append(f"- {thought}")
+        if len(lines) == 1:
+            return
         budgeter.add(
             "working_memory_thoughts",
             "\n".join(lines),
@@ -2151,6 +2178,9 @@ class PromptBuilder:
                 result = followup_input
                 if tools is not None and "internet_search" not in tools:
                     followup_type, tool_name = "process", ""  # not a search: "your last tool"
+
+        # The query is the user's own words: it never carries a frame marker (Session R, N3).
+        original_query = _defanged(original_query)
 
         # State the frame rule ABOVE the (framed) tool output, in every follow-up template (#823).
         from maxim.utils.content_safety import TOOL_OUTPUT_RULE

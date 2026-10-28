@@ -56,7 +56,9 @@ def test_the_llm_sees_each_memory_marked_by_its_own_outcome() -> None:
     pipeline, _ = _pipeline_over({"whistled": True, "burned": False, "sat": None})
     memories = tuple(pipeline._query_hippocampus("kettle", ["kettle"]))
     text = pipeline.format_thought_response(EnrichmentResult(memories=memories))
-    assert sorted(line.strip()[:3] for line in text.splitlines()[1:]) == ["[+]", "[-]", "[~]"]
+    # A memory's line opens with its marker; what it heard follows in a multi-line untrusted frame (Session R).
+    markers = [line.strip()[:3] for line in text.splitlines() if line.startswith("  [")]
+    assert sorted(markers) == ["[+]", "[-]", "[~]"]
 
 
 @pytest.mark.parametrize("success", [True, False, None])

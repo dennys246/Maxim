@@ -1793,10 +1793,20 @@ class AgentBus:
                 self._subscribers[msg_type].remove(handler)
 
     def publish(self, message: Any) -> None:
-        """Publish a message to all subscribers."""
+        """Publish a message to all subscribers.
+
+        A handler's ordinary failure is logged and the fan-out continues. A memory CAPTURE CONTRACT break
+        (``EncodingContractError``, which ``SituationContractError`` subclasses) is not a runtime hiccup: every
+        handler still runs, then the first such break is re-raised to the publisher (Session R). The bus carries the
+        user's words to ``MemoryAgent``'s capture since they are published at arrival, and swallowing the contract
+        there would drop the trace the contract exists to keep.
+        """
+        from maxim.memory.encoding import EncodingContractError
+
         with self._lock:
             handlers = list(self._subscribers[type(message)])
 
+        contract_break: EncodingContractError | None = None
         for handler in handlers:
             try:
                 _t0 = time.monotonic()
@@ -1809,12 +1819,16 @@ class AgentBus:
                         _elapsed * 1000,
                         type(message).__name__,
                     )
+            except EncodingContractError as e:
+                contract_break = contract_break or e
             except Exception as e:
                 logger.debug(
                     "Bus handler %s raised: %s",
                     getattr(handler, "__qualname__", repr(handler)),
                     e,
                 )
+        if contract_break is not None:
+            raise contract_break
 
     def clear(self) -> None:
         """Clear all subscriptions."""
