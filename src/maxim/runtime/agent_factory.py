@@ -470,6 +470,8 @@ class AgentInstance:
 
     # Internal state
     _memories_exported: bool = field(default=False, repr=False)
+    # The ticket start_session() claimed (#1438 PR 0): shutdown() ends the session only while it is still current.
+    _session_ticket: Any | None = field(default=None, repr=False)
 
     def export_memories(self) -> dict[str, Any]:
         """Export agent's memory state for post-sim analysis.
@@ -508,9 +510,9 @@ class AgentInstance:
         """Open the memory session this instance's ``shutdown()`` will close.
 
         The opener and the closer must be the SAME object, on the SAME hub
-        (bugs ledger D41 / score card N2): ``shutdown()`` calls
-        ``on_session_end()``, an atomic test-and-CLEAR that returns ``{}`` when
-        no session was started, so an instance whose session was never opened
+        (bugs ledger D41 / score card N2): ``shutdown()`` ends the session with
+        the ticket this call claimed, and a hub on which no session was ever
+        opened consolidates nothing, so an instance whose session was never opened
         persists only ``hippocampus.json`` + ``nac.json`` and silently drops EC,
         SCN, ATL and the Angular Gyrus — after which every ``load.agent()``
         warns "Half-present NAc/EC pair" on the runtime's own output.
@@ -520,18 +522,23 @@ class AgentInstance:
         hub after construction; opening in the factory's `create_agent` opened
         the throwaway skeleton and left the real hub closed (caught by both
         lenses of the 1.1.1 Cluster D review round, reproduced black-box).
-        Idempotent via ``MemoryHub.on_session_start``, so the runtime's own
-        ``start_bio_session`` is a no-op on an adopted persistent agent.
+        The instance is the session's OWNER (``owner=self``, #1438 PR 0). Calling it again
+        is idempotent (the same ticket). A loop run on this instance's hub takes the session
+        over as a new generation without a restore; ``shutdown()`` then waits for that loop's
+        end instead of ending a session a running loop holds.
         """
         if self.memory_hub is None:
             return {}
         try:
-            return self.memory_hub.on_session_start()
+            self._session_ticket = self.memory_hub.on_session_start(owner=self)
+            return dict(self._session_ticket.start_stats)
         except Exception as e:
             log.warning("Agent %s: memory_hub session start failed: %s", self.agent_id, e)
             return {}
 
-    def shutdown(self, *, consolidation: Literal["full", "lightweight"] = "full") -> None:
+    def shutdown(
+        self, *, consolidation: Literal["full", "lightweight"] = "full", deadline_s: float | None = None
+    ) -> None:
         """Flush memories and clean up resources.
 
         Args:
@@ -546,20 +553,8 @@ class AgentInstance:
         """
         if consolidation not in ("full", "lightweight"):
             raise ValueError(f"consolidation must be 'full' or 'lightweight', got {consolidation!r}")
-        if self.memory_hub is not None:
-            try:
-                if consolidation == "lightweight":
-                    self.memory_hub.on_session_end_lightweight()
-                else:
-                    self.memory_hub.on_session_end()
-            except Exception as e:
-                log.warning("Agent %s: memory_hub shutdown failed: %s", self.agent_id, e)
-            finally:
-                # MemoryHub owns a ConceptExtractor thread from construction,
-                # even if no session became active and on_session_end() no-ops.
-                shutdown_fn = getattr(self.memory_hub, "shutdown", None)
-                if callable(shutdown_fn):
-                    shutdown_fn()
+        if self.memory_hub is not None and not self._end_or_await_session(consolidation, deadline_s):
+            return  # a loop still holds the session: its own end persists it; nothing below may run before that
 
         if self.hippocampus is not None:
             try:
@@ -571,15 +566,9 @@ class AgentInstance:
             except Exception as e:
                 log.warning("Agent %s: hippocampus save failed: %s", self.agent_id, e)
 
-        if self.nac is not None:
-            try:
-                nac_path = getattr(getattr(self.nac, "config", None), "persistence_path", None)
-                if nac_path:
-                    self.nac.save(nac_path)
-            except StoreOverwriteRefused as e:  # (#971): causal model unsaved, file kept
-                log.error("Agent %s: NAc not saved: %s", self.agent_id, e)
-            except Exception as e:
-                log.warning("Agent %s: NAc save failed: %s", self.agent_id, e)
+        # No NAc save here (#1438 PR 0): the session end saves it in owner order, beside EC (a NAc saved without its
+        # EC is the orphaned-bias state D2/D17 detect). The hippocampus save above STAYS until PR 1's end_session
+        # takes it into the persist order: the hub's session end does not save the hippocampus.
 
         # Review fix (Arch #2): save cerebellum forward models on shutdown.
         # Without this, learned forward models are lost every session.
@@ -588,6 +577,48 @@ class AgentInstance:
                 self.bio_stack.save_cerebellum()
             except Exception as e:
                 log.warning("Agent %s: cerebellum save failed: %s", self.agent_id, e)
+
+    def _end_or_await_session(self, consolidation: Literal["full", "lightweight"], deadline_s: float | None) -> bool:
+        """End the session as owner, or, when a loop took it over, wait for that loop's end (#1438 PR 0).
+
+        Returns False when the session did not end within ``deadline_s`` (else a 60 s cap): it logs
+        ``session_end_not_reached`` and the caller runs none of its after-steps. Otherwise it shuts the hub down
+        (the ConceptExtractor thread lives from construction) and returns True.
+        """
+        hub = self.memory_hub
+        try:
+            if hub.holds_session(self._session_ticket):
+                if consolidation == "lightweight":
+                    hub.on_session_end_lightweight(self._session_ticket)
+                else:
+                    hub.on_session_end(self._session_ticket)
+            elif not hub.wait_session_ended(deadline_s=deadline_s):
+                log.warning(
+                    "Agent %s: session_end_not_reached — a loop still holds the memory session; shutdown skipped "
+                    "its after-steps (the loop's own end persists the session)",
+                    self.agent_id,
+                )
+                return False
+        except Exception as e:
+            log.warning("Agent %s: memory_hub shutdown failed: %s", self.agent_id, e)
+        shutdown_fn = getattr(hub, "shutdown", None)
+        if callable(shutdown_fn):
+            shutdown_fn()
+        return True
+
+
+def _adopt_bio_stack(instance: AgentInstance, bio: Any) -> None:
+    """Swap the bio-stack's handles into ``instance`` and open the memory session on the hub it keeps."""
+    instance.hippocampus = bio.hippocampus
+    instance.nac = bio.nac
+    instance.atl = bio.atl
+    instance.memory_hub = bio.memory_hub
+    # D41/N2: open on the hub the caller keeps, HERE rather than before the
+    # return — steps 3-4 below can roll back via instance.shutdown(), and a
+    # rollback that closes an unopened session consolidates nothing while
+    # still writing nac.json without ec.json (tripping check_nac_ec_pairing
+    # on the next load). A loop run later takes the session over without a restore (#1438 PR 0).
+    instance.start_session()
 
 
 # ---------------------------------------------------------------------------
@@ -974,16 +1005,7 @@ class AgentFactory:
             # (nac_cross_session_persistence.md), this line silently
             # discarded create_agent's auto-loaded NAc, which is why a
             # save-only persistence patch TRUNCATED every prior session.
-            instance.hippocampus = bio.hippocampus
-            instance.nac = bio.nac
-            instance.atl = bio.atl
-            instance.memory_hub = bio.memory_hub
-            # D41/N2: open on the hub the caller keeps, HERE rather than before the
-            # return — steps 3-4 below can roll back via instance.shutdown(), and a
-            # rollback that closes an unopened session consolidates nothing while
-            # still writing nac.json without ec.json (tripping check_nac_ec_pairing
-            # on the next load). Idempotent, so the later start_bio_session no-ops.
-            instance.start_session()
+            _adopt_bio_stack(instance, bio)
             if skeleton_memory_hub is not None and skeleton_memory_hub is not bio.memory_hub:
                 try:
                     skeleton_memory_hub.shutdown()

@@ -645,7 +645,7 @@ def _build(args: argparse.Namespace, *, agent_id: str, home: Path) -> tuple[Any,
         entity_ref=f"bodies/{BODY_REF}",
         client=client,
     )
-    aut.bio.memory_hub.on_session_start()  # the object that closes it must open it (D41/D42)
+    aut.bio.memory_hub.on_session_start(owner=aut)  # the object that closes it must open it (D41/D42; #1438: owner)
     encoder = make_fresh_encoder(aut)
     pump = MinecraftSyncPump(aut, interval_s=0.25)
     pump.start()
@@ -664,8 +664,8 @@ def close_and_stage(aut: Any, pump: Any, stage_dir: Path | None) -> None:
             pump.stop()
         except Exception as exc:
             print(f"WARNING: pump stop raised: {exc!r}")
-        aut.bio.memory_hub.on_session_start()
-        stats = aut.bio.memory_hub.on_session_end()
+        # Re-claim as the harness owner (a loop's own bio_session ended its generation), then end THAT ticket.
+        stats = aut.bio.memory_hub.on_session_end(aut.bio.memory_hub.on_session_start(owner=aut))
         if not stats:
             raise Refusal("hub session was not active at the staging close — nothing persisted (S1)")
         aut.bio.on_session_end()

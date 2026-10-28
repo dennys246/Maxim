@@ -494,7 +494,7 @@ class WaterTrial:
         does not reload state from disk."""
         hub = getattr(self.aut.bio, "memory_hub", None)
         if hub is not None:
-            hub.on_session_start()
+            hub.on_session_start(owner=self.aut)  # the harness owns it (#1438 PR 0)
 
     def resolve_tools(self) -> None:
         names = self.aut.executor.registry.list()

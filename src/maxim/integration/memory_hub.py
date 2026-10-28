@@ -109,15 +109,15 @@ class MemoryHub:
             salience=salience_network,
         )
 
-        # Start session (restores priors from memory)
-        hub.on_session_start()
+        # Claim the session (restores priors from memory on a fresh open); keep the ticket
+        ticket = hub.on_session_start(owner=me)
 
         # During operation...
         boosts = hub.get_spatial_boosts("find mug")
         enriched = hub.enrich_salience(detections, goal="find mug")
 
-        # End session (consolidates learning)
-        hub.on_session_end()
+        # End the session as its owner (consolidates learning)
+        hub.on_session_end(ticket)
     """
 
     # Core memory systems (required)
@@ -643,6 +643,14 @@ class MemoryHub:
     def _session_active(self) -> bool:
         """An OPEN session (read-only; the ledger owns the state). Kept for ``stats()`` and the bridges' readers."""
         return self._ownership.state == "OPEN"
+
+    def holds_session(self, ticket: SessionTicket | None) -> bool:
+        """Whether ``ticket`` is this hub's CURRENT session: only that ticket ends its generation."""
+        return self._ownership.is_current(ticket)
+
+    def wait_session_ended(self, *, deadline_s: float | None = None) -> bool:
+        """For a non-owner closer: wait until no session is open or ending, within ``deadline_s`` (else a 60 s cap)."""
+        return self._ownership.wait_ended(deadline_s=deadline_s)
 
     def on_session_start(self, *, owner: Any, deadline_s: float | None = None, live: bool = False) -> SessionTicket:
         """Claim this hub's memory session for ``owner`` and, on a FRESH open, restore every bridge (#1438 PR 0).

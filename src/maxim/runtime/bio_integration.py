@@ -17,6 +17,7 @@ from maxim.integration.session_ownership import SessionTicket
 from maxim.memory.experience_clock import ExperienceClockStalled
 from maxim.utils.cancellation import current_stop
 from maxim.utils.deadline import Deadline
+from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import log_agentic
 
 logger = logging.getLogger(__name__)
@@ -268,8 +269,8 @@ def bio_session(
     if hippocampus is not None:
         try:
             session.capture = hippocampus.start_capture_worker()
-        except Exception as e:
-            logger.warning("Failed to start hippocampus capture worker: %s", e)
+        except Exception:
+            log_swallowed_exception(site="bio_integration.py:bio_session:capture_worker")
     try:
         yield session
     except BaseException:
@@ -289,8 +290,8 @@ def _close_session(
         if session.stop_default_network is not None:
             try:
                 session.stop_default_network()
-            except Exception as e:
-                logger.warning("Failed to stop the Default Network at session end: %s", e)
+            except Exception:
+                log_swallowed_exception(site="bio_integration.py:_close_session:stop_default_network")
         if bound is not None and bound.expired():
             logger.warning("Session end skipped: the stop bound expired before the persist could start")
             return
