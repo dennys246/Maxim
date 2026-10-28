@@ -56,8 +56,10 @@ class PeerConfig:
 
 def read_peer_config() -> PeerConfig | None:
     """Load the peer config, or None if missing / malformed."""
+    from maxim.utils.paths import config_file_present
+
     path = peer_config_path()
-    if not path.is_file():
+    if not config_file_present(path):  # an unreadable config dir raises, never reads as "no peer.yml" (#1403)
         return None
     try:
         content = path.read_text()

@@ -75,8 +75,8 @@ expectations:
   # Response tool should almost always succeed — this catches regressions
   # where the responder errors out or returns malformed output.
   - type: tool_success_rate
-    description: "RespondTool success rate >= 80%"
-    tool: RespondTool
+    description: "respond success rate >= 80%"
+    tool: respond
     params:
       min_rate: 0.8
 

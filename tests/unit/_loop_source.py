@@ -17,16 +17,18 @@ a call-site form of the string, or ``loop_call_count`` (an AST count of CALLS) -
 deletion probe found five pins that had gone vacuous that way.
 
 Function-specific pins (update consciously, by owning slice). These read one function's body (an
-ordering, a region split, an AST of that function) and are NOT routed through this helper:
+ordering, a region split, an AST of that function) and are NOT routed through this helper. Since
+bounded_stop.md §3 step 0 the loop's body is ``_run_agentic_loop_body`` (``run_agentic_loop`` is a thin
+wrapper), and every pin below reads the body:
 
   - ``test_substrate_action_budget.py::TestWiringPins::test_substrate_branch_consults_gate_before_proposing``
     (gate before propose inside §6b): reads ``loop_substrate.substrate_tick`` since slice 3, and pins one
-    ``substrate_tick(`` call inside ``run_agentic_loop``'s ``_substrate_tick_due`` branch.
+    ``substrate_tick(`` call inside ``_run_agentic_loop_body``'s ``_substrate_tick_due`` branch.
   - ``test_planning_liveness.py::test_idle_gate_uses_exact_worker_state`` and
     ``::test_completed_state_is_active_until_proposal_poll`` (§0.6 idle gate): read
     ``loop_gates.pre_tick_gate`` since slice 2 (the first also pins one ``pre_tick_gate(`` call in the loop).
   - ``test_experience_clock.py::_loop_calls`` / ``_setup_calls`` / ``_gate_calls`` (ASTs of
-    ``run_agentic_loop``, ``loop_setup.build_loop_run`` and ``loop_gates.pre_tick_gate``: one
+    ``_run_agentic_loop_body``, ``loop_setup.build_loop_run`` and ``loop_gates.pre_tick_gate``: one
     ``_loop_bio_handles``, in the setup since slice 1; one ``_loop_live_tick`` carrying the setup's driver,
     in the pre-tick gate since slice 2, which the loop calls with ``experience_driver=_loop_xclock``).
   - ``test_planning_liveness.py::TestLoopWiringPins`` ``loop_src`` pins: ``test_single_gate_covers_every_failure_site``

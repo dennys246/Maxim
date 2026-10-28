@@ -50,6 +50,8 @@ from maxim.models.language.cloud_dispatch import (
     load_cost_config as _load_cost_config_fn,
 )
 
+_SYSTEM_PLAIN_TEXT = "You are a helpful assistant. Reply in plain text, concisely."
+
 
 def _inference_lock_timeout_s() -> float:
     """Ceiling on waiting for ``_inference_lock`` (bugs ledger D12).
@@ -116,6 +118,32 @@ def _maybe_dispatch_backend_class(provider_type: str) -> type | None:
         return resolve_backend_class(provider_type)
     except Exception:  # pragma: no cover — defensive
         return None
+
+
+_stray_frame_markers = 0
+
+
+def _neutralize_stray_frame_markers(text: str) -> str:
+    """The last line of the untrusted-content frame (Session R, rule 2 backstop): every router call's system and user
+    text, each on its own, with an UNBALANCED frame marker neutralized in place, never deleted (a deletion here could
+    remove instructions; balanced frames are untouched). The prompt builders drop partial frames before this; a
+    marker that reaches here is a cut site they missed, so the first one is logged and the rest counted."""
+    global _stray_frame_markers
+    if not text or "TOOL_OUTPUT" not in text:
+        return text
+    from maxim.utils.content_safety import defang_frame_markers
+
+    text, n = defang_frame_markers(text, unbalanced_only=True)
+    if n:
+        _stray_frame_markers += n
+        if _stray_frame_markers == n:
+            logger.warning(
+                "LLM prompt carried %d unbalanced untrusted-content frame marker(s), neutralized in place: a cut site "
+                "that does not drop partial frames (Session R). Further ones counted in "
+                "maxim.models.language.router._stray_frame_markers",
+                n,
+            )
+    return text
 
 
 class LLMRouter:
@@ -919,6 +947,7 @@ class LLMRouter:
         """Complete text with optional usage metadata."""
         if not self.enabled():
             return "", None
+        system, user = _neutralize_stray_frame_markers(system), _neutralize_stray_frame_markers(user)
 
         # Hard session cost ceiling — once exceeded, ALL requests rejected
         policy = self._routing_policy
@@ -1893,6 +1922,54 @@ Return JSON exactly like:
                 return None
 
         return {"tool_name": tool_name, "params": dict(params)}
+
+    def generate(
+        self,
+        prompt: str,
+        *,
+        system: str | None = None,
+        max_tokens: int = 256,
+        temperature: float | None = None,
+        request_context: dict[str, Any] | None = None,
+    ) -> str:
+        """Plain-text completion: the stripped text, or a typed error, never a stub (#1338).
+
+        Rides the same dispatch as :meth:`generate_json` (``_complete_text``: cost ceiling, inference lock, provider
+        fallback, accounting).
+
+        Args:
+            prompt: The user message.
+            system: The system prompt; a plain-text assistant prompt when omitted.
+            max_tokens: Maximum tokens to generate.
+            temperature: Sampling temperature; the router config's when omitted.
+            request_context: Metadata for audit logs (agent, request_id, lane).
+
+        Raises:
+            ModelInferenceError: the router is disabled, the dispatch raised, or it produced no text (every provider
+                failed, the session cost ceiling, a held inference lock). ``LeaderRefusal`` propagates as itself.
+        """
+        from maxim.exceptions import LeaderRefusal, ModelInferenceError
+
+        if not self.enabled():
+            raise ModelInferenceError("LLM router is disabled", model_name=self.model_name)
+        try:
+            text, _usage = self._complete_text(
+                system if system is not None else _SYSTEM_PLAIN_TEXT,
+                prompt,
+                temperature=float(self.cfg.temperature if temperature is None else temperature),
+                max_tokens=int(max_tokens),
+                request_context=request_context,
+            )
+        except LeaderRefusal:
+            raise
+        except Exception as e:
+            raise ModelInferenceError(f"LLM inference failed: {e}", model_name=self.model_name) from e
+        if not text or not text.strip():
+            raise ModelInferenceError(
+                "LLM returned no text (every provider failed, the session cost ceiling, or a held inference lock)",
+                model_name=self.model_name,
+            )
+        return text.strip()
 
     def generate_json(
         self,

@@ -28,7 +28,7 @@ from maxim.runtime.loop_setup import build_loop_run
 from maxim.runtime.loop_controller import _handle_planning_failure
 from maxim.runtime.loop_substrate import substrate_tick
 from maxim.runtime.loop_planning import drain_approved
-from maxim.runtime.loop_perception import perceive, take_observation
+from maxim.runtime.loop_perception import perceive, percept_text, take_observation, take_user_input
 
 # Module reference, not a name import: a test that patches the leaf also reaches the loop's call.
 from maxim.runtime import substrate_proposal as _sp
@@ -933,13 +933,14 @@ def _followup_synthetic_input(followup: Any) -> str:
     The single consumer every ``ActionFollowup`` producer converges on (the loop's result paths,
     the batched-exploration path, and ``LoopController``'s human-confirmed path), so no producer
     can bypass the frame. ``batched_exploration`` may contain fetched pages, so it is framed as
-    external. The query is quoted so it cannot shift the parser's ``']: `` split.
+    external, and so is a tool that declares ``untrusted_output`` (recalled or stored text). The query
+    is quoted so it cannot shift the parser's ``']: `` split.
     """
     from maxim.modes.definitions import NETWORK_TOOLS
     from maxim.utils.content_safety import frame_tool_output
 
     tool = followup.tool
-    external = tool in NETWORK_TOOLS or tool == "batched_exploration"
+    external = tool in NETWORK_TOOLS or tool == "batched_exploration" or followup.untrusted_output
     result = frame_tool_output(tool, followup.result or "", external=external)
     query = str(followup.original_query or "").replace("'", "\u2019")
     return f"[ACTION_FOLLOWUP type={followup.followup_type} tool={tool} mode={followup.mode} query='{query}']: {result}"
@@ -947,6 +948,107 @@ def _followup_synthetic_input(followup: Any) -> str:
 
 @loop_liveness_scope  # one liveness entry per run for the heartbeat's stall rule, cleared in a finally (#1268)
 def run_agentic_loop(
+    agent: Any,
+    environment: Any,
+    state: Any,
+    memory: Any,
+    decision_engine: Any,
+    executor: Any,
+    *,
+    autonomy_controller: AutonomyController | None = None,
+    llm_worker: LLMWorker | None = None,
+    default_network: Any | None = None,  # DefaultNetwork for reactive behaviors
+    hippocampus: Any | None = None,  # Hippocampus for episodic memory
+    memory_hub: Any | None = None,  # MemoryHub for cross-system memory integration
+    evaluators: list[Evaluator] | None = None,
+    max_steps: int = 0,  # 0 = unlimited
+    run_id: str | None = None,
+    stop_event: Any | None = None,
+    on_step: Any | None = None,
+    on_event: Any | None = None,  # Fine-grained streaming callback
+    idle_sleep_s: float = 0.05,  # Fast loop for responsiveness
+    persist_every_n_steps: int = 10,
+    target_hz: float = 30.0,  # Target loop frequency
+    context_pool_config: dict[str, Any] | None = None,  # Context pool configuration
+    use_tool_prompting: bool = True,  # Enable tool-aware LLM prompts
+    protocol_registry: Any | None = None,  # ProtocolRegistry for dynamic skills
+    percept_source: Any | None = None,  # PerceptSource for simulation
+    action_sink: Any | None = None,  # ActionSink for recording tool outputs
+    pain_bus: Any | None = None,  # PainBus for simulation pain routing
+    imagination_trigger: Any | None = None,  # ImaginationTrigger for real-time entity design
+    bio_enrichment_pipeline: Any | None = None,  # BioEnrichmentPipeline for percept enrichment (L1)
+    thought_gate: Any | None = None,  # ThoughtGate for PFC deliberation gating
+    aut_mode: str = "llm-primary",  # "llm-primary" | "substrate-primary" — Phase -1 of grounded_language_acquisition.md
+    substrate_telemetry: Any
+    | None = None,  # SubstrateTelemetry writer (Phase 0). Called after each substrate-primary tick when set.
+    substrate_policy: _sp.SubstratePolicy | None = None,  # in place of recommend_action (B1); a raise ends the loop
+    substrate_action_gate: Any | None = None,  # Callable[[], bool] — turn-scoped action budget for the
+    # substrate-primary branch (the Exp 48 thrashing fix). When set and returning False, the branch
+    # skips proposing this cadence tick (telemetry still fires with proposal=None). The orchestrator
+    # wires SimulationBridge.substrate_action_allowed here; None = unbounded (pre-fix behavior).
+    consolidation: Literal["full", "lightweight"] | None = None,  # HANDLE seam (b): explicit session-end flavor
+    planning_liveness: bool = False,  # Bugs ledger D13 — OPT-IN, and deliberately so.
+    # Enables bounded reschedule-or-abort for planning turns that end without an executable
+    # proposal. Correct ONLY for a loop with no other wake source between turns: the sim
+    # ORCHESTRATOR, which has no action_sink and no external percept producer, so a dropped
+    # planning turn idles it forever. Every other caller already has a re-arm path and must
+    # NOT opt in — the AUT recovers via the `_llm_unavailable` synthetic action breaking the
+    # bridge's settle loop (so the next probe re-arms it), HANDLE/interactive have a human,
+    # and the live-robot + headless paths have real percept producers. Enabling it wholesale
+    # would convert those existing RECOVERIES into aborts (pre-merge review, architecture
+    # lens B3) and, for a threaded AUT, into a silently dead thread whose campaign keeps
+    # emitting empty turns (B1).
+    sim_adapter: Any | None = None,  # Pre-built NullSimulationAdapter (Stage 3, live_audio_orient_wiring.md):
+    # lets a live producer (the DoA feed) hold the adapter and carry_percept() into the loop's
+    # modality-preserving side-channel WITHOUT a percept_source (which would flip is_sim_mode).
+    # Only honored when percept_source is None; ignored (with the sim adapter built as before) otherwise.
+) -> None:
+    """The agent loop: a thin wrapper over ``_run_agentic_loop_body``, which holds the loop and its full docstring.
+
+    Split verbatim (docs/plans/bounded_stop.md §3 step 0) so session ownership can wrap the body in one seam
+    (``bio_session``, PR 0). Every argument is forwarded unchanged; the signature is the public one and is kept
+    identical to the body's."""
+    _run_agentic_loop_body(
+        agent,
+        environment,
+        state,
+        memory,
+        decision_engine,
+        executor,
+        autonomy_controller=autonomy_controller,
+        llm_worker=llm_worker,
+        default_network=default_network,
+        hippocampus=hippocampus,
+        memory_hub=memory_hub,
+        evaluators=evaluators,
+        max_steps=max_steps,
+        run_id=run_id,
+        stop_event=stop_event,
+        on_step=on_step,
+        on_event=on_event,
+        idle_sleep_s=idle_sleep_s,
+        persist_every_n_steps=persist_every_n_steps,
+        target_hz=target_hz,
+        context_pool_config=context_pool_config,
+        use_tool_prompting=use_tool_prompting,
+        protocol_registry=protocol_registry,
+        percept_source=percept_source,
+        action_sink=action_sink,
+        pain_bus=pain_bus,
+        imagination_trigger=imagination_trigger,
+        bio_enrichment_pipeline=bio_enrichment_pipeline,
+        thought_gate=thought_gate,
+        aut_mode=aut_mode,
+        substrate_telemetry=substrate_telemetry,
+        substrate_policy=substrate_policy,
+        substrate_action_gate=substrate_action_gate,
+        consolidation=consolidation,
+        planning_liveness=planning_liveness,
+        sim_adapter=sim_adapter,
+    )
+
+
+def _run_agentic_loop_body(
     agent: Any,
     environment: Any,
     state: Any,
@@ -1203,23 +1305,22 @@ def run_agentic_loop(
         # ThoughtGate + BioEnrichment.  The multi-cycle deliberation
         # (LLM calls) happens later at the submission point (section 2)
         # where StructuredContext is available.
+        # Ensure maxim_runtime carries the RUN mode for MemoryAgent (PerceptionAgent -> MemoryAgent -> ExecAgent):
+        # before the input's arrival percept, which carries it
+        if "maxim_runtime" not in state.data:
+            state.data["maxim_runtime"] = {}
+        seed_runtime_run_mode(state)  # keeps a mode already there (#963 Q5: the run mode, not the operational one)
+
+        # The tick's input, read ONCE from every channel and memorized as it arrives (Session R): §1.2 enriches it
+        _user_input = take_user_input(observation, state, agent)
+        transcript, hard_override, cli_input, is_agentic_voice_input, _addressed = _user_input
         _percept_enrichment_text = ""
         _percept_text_for_cycle = ""
         _pfc_gate_passed = False
         _wms = None
         if bio_enrichment_pipeline is not None or thought_gate is not None:
             try:
-                if hasattr(observation, "get"):
-                    _percept_text_for_cycle = str(
-                        observation.get("transcript")
-                        or observation.get("raw_transcript_text")
-                        or observation.get("cli_input")
-                        or ""
-                    )
-                elif hasattr(observation, "transcript"):
-                    _percept_text_for_cycle = str(
-                        getattr(observation, "transcript", "") or getattr(observation, "cli_input", "") or ""
-                    )
+                _percept_text_for_cycle = percept_text(observation)  # what the gate (deliberation) reads, as before
                 # Defaults so the no-gate path (and an exception) still log
                 # coherent numbers rather than tripping a NameError.
                 _gate_score = 0.0
@@ -1267,7 +1368,8 @@ def run_agentic_loop(
                         _wms = getattr(_exec, "working_memory", None)
 
                 # Gate-fired minimum: always enrich cycle 1 when gate passes
-                if _pfc_gate_passed and bio_enrichment_pipeline is not None and _percept_text_for_cycle:
+                _enrich_text = _percept_text_for_cycle or _addressed  # a mailbox input (voice, CLI, API) too (D5)
+                if (_pfc_gate_passed or _addressed) and bio_enrichment_pipeline is not None and _enrich_text:
                     from maxim.integration.bio_enrichment import EnrichmentContext
 
                     # Collect entity refs resolved by ImaginationTrigger this tick
@@ -1277,9 +1379,13 @@ def run_agentic_loop(
                     _enrich_ctx = EnrichmentContext(
                         active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                         resolved_entities=_resolved_entity_refs,
+                        user_input=_addressed,
                     )
-                    _enrich_result = bio_enrichment_pipeline.enrich(
-                        _percept_text_for_cycle, context=_enrich_ctx, bypass_gate=True
+                    _enrich_result = bio_enrichment_pipeline.enrich(  # recall-only when only addressed (D5)
+                        _enrich_text,
+                        context=_enrich_ctx,
+                        bypass_gate=True,
+                        evaluate_reflexes=_pfc_gate_passed,
                     )
                     if _enrich_result is not None:
                         _percept_enrichment_text = bio_enrichment_pipeline.format_thought_response(_enrich_result)
@@ -1298,11 +1404,12 @@ def run_agentic_loop(
 
                         # Real numbers here too — a PASS logged as 0.00/0.00 is
                         # just as uninformative as a rejection was.
-                        sim_pre_deliberation(
-                            gate_passed=True,
+                        sim_pre_deliberation(  # the gate's real decision: an addressed input is enriched either way
+                            gate_passed=_pfc_gate_passed,
                             score=_gate_score,
                             threshold=_gate_threshold,
                             enrichment_sections=_n_sections,
+                            reason="" if _pfc_gate_passed else f"{_gate_reason or 'gate closed'}; recall only",
                         )
                         # Push cycle 1 enrichment to thinking panel
                         _c1_tags: list[str] = []
@@ -1390,43 +1497,6 @@ def run_agentic_loop(
             sim_contemplation(gate_passed=True, refined=False, score=_gate_score)
             if thought_gate is not None:
                 thought_gate.reset_refractory(step_num)
-
-        # Ensure maxim_runtime carries the RUN mode for MemoryAgent (PerceptionAgent -> MemoryAgent -> ExecAgent)
-        if "maxim_runtime" not in state.data:
-            state.data["maxim_runtime"] = {}
-        seed_runtime_run_mode(state)  # keeps a mode already there (#963 Q5: the run mode, not the operational one)
-
-        # Check for hard stops in observation
-        transcript = None
-        hard_override = None
-        cli_input = None
-        if hasattr(observation, "get"):
-            transcript = observation.get("transcript") or observation.get("raw_transcript_text")
-            hard_override = observation.get("hard_override")
-            cli_input = observation.get("cli_input")
-        elif hasattr(observation, "transcript"):
-            transcript = getattr(observation, "transcript", None)
-            hard_override = getattr(observation, "hard_override", None)
-            cli_input = getattr(observation, "cli_input", None)
-
-        # Also check state.data for CLI input injected from the interactive CLI thread
-        # IMPORTANT: Always pop pending_cli_input to prevent duplicate processing
-        # If observation already has cli_input, just discard the pending one
-        pending_cli = state.data.pop("pending_cli_input", None)
-        if not cli_input:
-            cli_input = pending_cli
-
-        # Check for voice input injected from the transcription thread
-        # Voice input only gets forwarded when agentic mode is enabled (wake word was said)
-        voice_input = state.data.pop("pending_voice_input", None)
-        state.data.pop("pending_voice_transcript", None)
-        is_agentic_voice_input = False
-
-        # Use voice input if no CLI input (CLI takes priority)
-        if not cli_input and voice_input:
-            cli_input = voice_input
-            is_agentic_voice_input = True  # Came from agentic voice session (wake word already said)
-            logger.info("Using voice transcript as user input: %s", voice_input[:50] if voice_input else "")
 
         # Store CLI input in state and memory for LLM processing
         if cli_input:
@@ -2254,7 +2324,7 @@ def run_agentic_loop(
                         # Inject the response as if the user typed it
                         sim.log("PIPELINE", f"Auto-resolved confirmation for {tool_name}: {sim_response}")
                         ctrl.pending_confirmation = _pending
-                        state.data["pending_cli_input"] = sim_response
+                        state.data["pending_loop_reply"] = sim_response
                     else:
                         # Production mode: display prompt if interactive, auto-resolve if not
                         from maxim.simulation.sim_logger import should_prompt, display_scene
@@ -2281,7 +2351,7 @@ def run_agentic_loop(
                                 display_scene("  Type 'yes' or 'no' to confirm/reject:")
                         else:
                             # Non-interactive: auto-approve via supervision policy
-                            state.data["pending_cli_input"] = "yes"
+                            state.data["pending_loop_reply"] = "yes"
                             sim.log("PIPELINE", f"Auto-approved (non-interactive): {tool_name}")
 
                         ctrl.pending_confirmation = _pending

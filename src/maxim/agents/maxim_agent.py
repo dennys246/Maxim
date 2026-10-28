@@ -286,6 +286,11 @@ class MaximAgent(Agent):
         self.perception.on_stop(**kwargs)
         self._bus.clear()
 
+    def publish_arrival(self, state: Any, text: str, *, source: str) -> None:
+        """A user's input, published once as it arrives (``PerceptionAgent.publish_arrival``): memory hears it then,
+        not whenever §3's pipeline next runs."""
+        self.perception.publish_arrival(state, text, source=source)
+
     def propose_intent(self, state: Any, memory: Any, **kwargs: Any) -> dict[str, Any] | None:
         """
         Run the full perception-memory-goal pipeline.

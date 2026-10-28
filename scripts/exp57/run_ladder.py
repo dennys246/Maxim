@@ -432,6 +432,9 @@ def main() -> int:
                         if cohort == 0 and rung == max(rungs) and "creche" in pending
                         else None
                     )
+                    # A row's ``ts`` is the RUN START of its cohort-rung, as Exp 49 stamps a trial's start: the
+                    # ledger's "record time = min ts over counted units" then reads a start, never an end (#1024).
+                    rung_started = time.time()
                     rows = run_cohort_rung(
                         cohort=cohort,
                         rung=rung,
@@ -449,7 +452,7 @@ def main() -> int:
                         artifacts_dir=artifacts_dir,
                     )
                     for row in rows:
-                        row["ts"] = time.time()  # before the stamp, which requires it (M1b PR 5a-3)
+                        row["ts"] = rung_started  # before the stamp, which requires it (M1b PR 5a-3)
                         stamp_harness_row(row, mock=bool(args.mock))  # record_kind / status / mock (M1b PR 5a)
                         row["seed_base"] = args.seed_base
                         row.update(preflight)

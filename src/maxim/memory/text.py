@@ -8,11 +8,21 @@ Used by:
 - ConceptExtractor: goal tokenization during concept registration
 - ConceptContextBuilder: percept-to-concept matching during recall
 - PatternCompleter: concept matching during pattern completion
+- since Session R (#1064/#1447, owner decision D3 2026-10-24): every memory store's text keying, on the write and
+  read side alike -- the Hippocampus ranker and cue, the NAc keyword scan, the ATL token index, the enrichment
+  query, the association index and the records' ``keywords()``. One standard, so a word the user said is keyed the
+  same way wherever it is memorized and wherever it is recalled.
+
+``normalize_tokens`` is FROZEN: ATL concept names are persisted from its output, so its known quirks ("used" ->
+"us", "status" -> "statu", tokens under 3 characters dropped, so "Al" and "TV" are lost) are not fixed in place;
+a change here orphans stored concepts and needs its own migration.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
+from typing import Any
 
 _STOP_WORDS: frozenset[str] = frozenset(
     {
@@ -234,4 +244,76 @@ def _has_vowel(word: str) -> bool:
     return any(c in "aeiou" for c in word)
 
 
-__all__ = ["normalize_tokens"]
+# Record fields that describe a capture rather than hold what was said or seen: never content (Session R, N6).
+# ``bio_response`` is a past ThinkTool render of recalled memories; tokenizing it would re-surface every utterance it
+# once recalled (an echo).
+_METADATA_KEYS: frozenset[str] = frozenset(
+    {
+        "source",
+        "modality",
+        "has_maxim",
+        "detections_count",
+        "_skill_name",
+        "bio_response",
+        "salience",
+        "novelty",
+        "spatial_source",
+        "entity_source",
+        "perceived_intensity",
+    }
+)
+
+
+def text_values(value: Any, *, depth: int = 3) -> Iterator[str]:
+    """The readable text in a stored value: strings, and the strings inside dicts and lists to ``depth``, with
+    metadata keys skipped and every framed region removed (Session R).
+
+    A frame in a record is always DERIVED text, a past render of something recalled (stored user input is never
+    framed), so its body is not this record's content. A partial frame left by a cut is dropped the same way.
+    """
+    if isinstance(value, str):
+        if "TOOL_OUTPUT" in value:
+            from maxim.utils.content_safety import drop_unbalanced_frames, outside_tool_output
+
+            value = drop_unbalanced_frames(outside_tool_output(value))[0]
+        if value:
+            yield value
+    elif depth > 0 and isinstance(value, dict):
+        for key, inner in value.items():
+            if key not in _METADATA_KEYS:
+                yield from text_values(inner, depth=depth - 1)
+    elif depth > 0 and isinstance(value, (list, tuple)):
+        for inner in value:
+            yield from text_values(inner, depth=depth - 1)
+
+
+def settle_key(token: str) -> str:
+    """One WORD as a content key: normalized until it stops changing; a key the tokenizer would drop (under 3
+    characters, "used" -> "us") keeps its last form. Idempotent: a keyed word keys to itself, so a store that is
+    handed keys (NAc's keyword scan) settles them rather than re-tokenizing them."""
+    for _ in range(4):
+        again = normalize_tokens(token)
+        if not again or again == [token]:
+            return token
+        token = again[0]
+    return token
+
+
+def key_tokens(text: str) -> list[str]:
+    """The content KEYS of ``text``: ``normalize_tokens``, each token settled to a fixed point, so keying is
+    idempotent (design review S1/SF2: "settings" -> "setting" -> "set" when a keyed word was keyed again, which lost
+    NAc and ATL matches). Every store keys text through this, on the write and the read side; ``normalize_tokens``
+    itself stays frozen (ATL names are persisted from it)."""
+    return [settle_key(t) for t in normalize_tokens(text)]
+
+
+def content_tokens(*values: Any) -> set[str]:
+    """``key_tokens`` over the readable text of ``values``: the one content key every store matches on."""
+    tokens: set[str] = set()
+    for value in values:
+        for text in text_values(value):
+            tokens.update(key_tokens(text))
+    return tokens
+
+
+__all__ = ["normalize_tokens", "key_tokens", "settle_key", "text_values", "content_tokens"]

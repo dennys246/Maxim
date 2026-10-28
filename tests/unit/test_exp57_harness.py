@@ -737,3 +737,29 @@ class TestScriptedBridgeOneClient:
             b.close()
         finally:
             srv.close()
+
+
+def test_a_rows_ts_is_its_cohort_rungs_start() -> None:
+    """#1024: Exp 57 stamps ``ts`` as the run's START (as Exp 49 does), so the ledger's "record time = min ts over
+    counted units" reads a start. ``main`` needs the rig, so this guards the source order: the stamp is taken BEFORE
+    ``run_cohort_rung`` and reused for every row, never ``time.time()`` at write time."""
+    import ast
+
+    src = (REPO / "scripts" / "exp57" / "run_ladder.py").read_text()
+    main = next(n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.FunctionDef) and n.name == "main")
+    stamp = next(
+        n.lineno
+        for n in ast.walk(main)
+        if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "rung_started" for t in n.targets)
+    )
+    call = next(
+        n.lineno for n in ast.walk(main) if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "run_cohort_rung"
+    )
+    ts_values = [
+        n.value
+        for n in ast.walk(main)
+        if isinstance(n, ast.Assign)
+        and any(isinstance(t, ast.Subscript) and getattr(t.slice, "value", None) == "ts" for t in n.targets)
+    ]
+    assert stamp < call
+    assert ts_values and all(isinstance(v, ast.Name) and v.id == "rung_started" for v in ts_values)
