@@ -538,7 +538,10 @@ class TestCapturedPreV1Fixtures:
         out = tmp_path / "hippocampus_resaved.json"
         hippo.save(str(out))
         on_disk = json.loads(out.read_text())
-        assert on_disk["_format_version"] == FORMAT_VERSION
+        from maxim.memory.hippocampus_persistence import HIPPOCAMPUS_FORMAT_VERSION
+
+        # The hippocampus' own version (1.1 since #1163: a tool result stored as data), like NAc's below.
+        assert on_disk["_format_version"] == HIPPOCAMPUS_FORMAT_VERSION == "1.1"
 
     def test_captured_nac_loads_and_resaves(self, tmp_path, caplog) -> None:
         from maxim.decisions.nac import NACConfig, NAc, _NAC_FORMAT_VERSION

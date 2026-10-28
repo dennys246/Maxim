@@ -21,49 +21,26 @@ def _rank_by_relevance(
     query: str,
     limit: int,
 ) -> list[EpisodicMemory | CompressedMemory]:
-    """Rank memories by keyword overlap with a free-text query.
+    """Rank memories by content-token overlap with a free-text query (#1064).
 
-    Scores each memory by how many query tokens appear in its goal,
-    tool name, detected objects/people, and observation text.
-    Results are sorted by score descending, with recency as tiebreaker.
+    Both sides go through ``memory/text.py``'s one standard (case, punctuation, possessives, stop words, lemmas), and
+    a record is scored on the fields captures actually write (``content_tokens``: what it heard, its goal, tool,
+    objects, rationale and outcome). The score is the fraction of query tokens the record holds. A record holding
+    none is NOT returned (owner decision D1, 2026-10-24): before, ~90-95% of a store scored 0 and recency filled
+    every slot, so this path was mostly recency. Recency breaks ties among the rest; a query with no
+    content token returns nothing.
     """
-    query_tokens = set(query.lower().split())
+    from maxim.memory.text import key_tokens
+
+    query_tokens = set(key_tokens(query))
     if not query_tokens:
-        memories.sort(key=lambda m: m.timestamp, reverse=True)
-        return memories[:limit]
+        return []
 
     scored: list[tuple[float, float, EpisodicMemory | CompressedMemory]] = []
     for mem in memories:
-        tokens: set[str] = set()
-
-        # Extract searchable text from memory
-        if isinstance(mem, CompressedMemory):
-            tokens.update((mem.goal or "").lower().split())
-            tokens.add((mem.tool_name or "").lower())
-        else:
-            # Full EpisodicMemory. # active goal on purpose, not ``.goal`` (intent-first): the two differ for pain/reflexion/motor records (#1137)
-            if mem.context and mem.context.active_goal:
-                tokens.update(mem.context.active_goal.lower().split())
-            if mem.action:
-                tokens.add((mem.action.tool_name or "").lower())
-            if mem.perception:
-                for obj in mem.perception.detected_objects or []:
-                    tokens.update(obj.lower().split())
-                for person in mem.perception.detected_people or []:
-                    tokens.update(person.lower().split())
-                # Also check observation text
-                obs_text = mem.perception.observations.get("text", "")
-                if isinstance(obs_text, str):
-                    tokens.update(obs_text.lower().split()[:50])  # Cap to avoid huge scans
-                # Check decision_rationale
-                rationale = getattr(mem.perception, "decision_rationale", "")
-                if rationale:
-                    tokens.update(rationale.lower().split())
-
-        # Score = fraction of query tokens found
-        overlap = query_tokens & tokens
-        score = len(overlap) / len(query_tokens) if query_tokens else 0.0
-        scored.append((score, mem.timestamp, mem))
+        overlap = query_tokens & mem.content_tokens()
+        if overlap:
+            scored.append((len(overlap) / len(query_tokens), mem.timestamp, mem))
 
     # Sort by score descending, then recency as tiebreaker
     scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
@@ -111,14 +88,13 @@ class RetrievalMixin:
 
         All filters are AND-ed together. Use None to skip a filter.
 
-        When *query* is provided, results are ranked by keyword relevance
-        instead of recency.  The query is tokenized and scored against each
-        memory's goal text, tool name, detected objects/people, and
-        observation text.
+        When *query* is provided, results are ranked by content-token relevance
+        instead of recency, and a memory sharing no content token with the
+        query is not returned (``_rank_by_relevance``, #1064).
 
         Args:
             limit: Maximum number of memories to return.
-            query: Free-text query for relevance ranking (keyword overlap).
+            query: Free-text query for relevance ranking (content-token overlap; zero-overlap memories excluded).
             goal: Match memories with this goal text.
             tool: Match memories that used this tool.
             success: Match memories with this success status.
@@ -547,11 +523,10 @@ class RetrievalMixin:
             weight += 0.25
         elif new_goal and old_goal:
             # Partial goal overlap via word intersection
-            w1 = set(new_goal.lower().split())
-            w2 = set(old_goal.lower().split())
-            common = {"the", "a", "an", "to", "and", "or", "in", "on", "at"}
-            w1 -= common
-            w2 -= common
+            from maxim.memory.text import key_tokens  # the one standard (D3)
+
+            w1 = set(key_tokens(new_goal))
+            w2 = set(key_tokens(old_goal))
             if w1 and w2:
                 overlap = len(w1 & w2) / len(w1 | w2)
                 weight += 0.25 * overlap

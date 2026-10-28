@@ -25,6 +25,7 @@ class MemoryRecallTool(Tool):
     """Search episodic memories with optional spreading activation."""
 
     name = "memory_recall"
+    untrusted_output = True  # returns stored records' text (errors, reflections): framed external (Session R)
     description = (
         "Search your episodic memories. Filter by goal, tool, success/failure, "
         "detected objects, or time range. Use 'expand=true' to find associated "
@@ -447,6 +448,7 @@ class ConceptQueryTool(Tool):
     """Search semantic knowledge base for concepts and relationships."""
 
     name = "concept_query"
+    untrusted_output = True  # replays ATL names, which can be raw stored text: framed external (Session R)
     description = (
         "Search your semantic knowledge base for concepts, facts, and "
         "relationships. Query by name, category, or explore relationships "

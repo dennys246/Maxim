@@ -18,6 +18,14 @@ def _hippocampus() -> Hippocampus:
     return Hippocampus(HippocampusConfig(auto_save_after_sleep=False))
 
 
+def _recalled(observation: str) -> list[str]:
+    """The recalled sentences of an ExamineTool observation: each is framed as untrusted stored text (Session R)."""
+    import re
+
+    pattern = r"You recall: <<TOOL_OUTPUT id=(\w+) tool=recalled_input source=external, untrusted[^>]*>>\n(.*?)\n<</TOOL_OUTPUT id=\1>>"
+    return [m.group(2) for m in re.finditer(pattern, observation)]
+
+
 # -- ExamineTool: wired (owner decision 2026-10-06) ---------------------------
 
 
@@ -26,7 +34,7 @@ def test_examine_recalls_what_the_matching_memory_holds():
     assert h.store_observation("The brass key lies under the loose floorboard.")
     out = ExamineTool(hippocampus=h).execute(target="brass key")
     assert out.success
-    assert "You recall: The brass key lies under the loose floorboard." in out.output["observation"]
+    assert _recalled(out.output["observation"]) == ["The brass key lies under the loose floorboard."]
 
 
 def test_a_recalled_memory_is_counted_as_used_by_a_tool():
@@ -80,7 +88,7 @@ def test_examine_recalls_the_past_beside_a_matching_scene():
     out = ExamineTool(bridge=_bridge(scene), hippocampus=h).execute(target="brass key")
     text = out.output["observation"]
     assert "A brass key glints on the table." in text
-    assert "You recall: Yesterday the brass key opened the cellar door." in text
+    assert _recalled(text) == ["Yesterday the brass key opened the cellar door."]
     assert text.count("You recall") == 1
     [record] = h.recall_by_ids([past])
     assert record.activation_sources.get("tool") == 1

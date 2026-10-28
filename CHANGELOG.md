@@ -28,8 +28,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `MaximAgent.wire_communication` (public in 1.3.3; [#1466](https://github.com/dennys246/Maxim/issues/1466)): it stored
   a gateway nothing read, and with a `nac` it crashed on the deleted communication bridge until #1436.
 
+### Fixed
+
+- **Talk remembers what you told it in an earlier session** (#1444, #1163, #1064, #1447; found by maxim-pulse on a
+  real Reachy: "My name is Denny and my favourite colour is green", a restart, then "What is Denny's favorite
+  color?" got "I do not have information"). Six defects composed into that one symptom, and each alone fixed
+  nothing:
+  - **Your words were never memorized.** Loop §3 alone published them to memory, and Talk never reached it (a
+    proposal was always pending), so in a measured session 0 of 4 utterances were stored. What a person says is now
+    published once, as it arrives, on every channel (Talk, the CLI, voice and the robot, whose capture manager
+    skipped the old path): `runtime/loop_perception.py::take_user_input`. Replies the loop makes itself (an
+    auto-approved confirmation, a sim-resolved one, a timeout retry) are not memorized as someone's words.
+  - **A recalled memory showed only its tool.** What an episode heard now renders, framed as untrusted content
+    (recalled text replayed into later prompts is a stored prompt-injection channel), bounded.
+  - **Stored tool results were their Python repr.** `hippocampus.json` is now `_format_version` 1.1 and stores a
+    result as data; 1.0 files load, their reprs parsed (never evaluated).
+  - **Recall ignored your question** and ranked on a field no capture writes. One tokenizer now keys text recall in
+    every memory store (Hippocampus, NAc, ATL), the ranker scores what captures write and returns nothing unrelated,
+    and recall cues on what you just said. Keys are computed once per record, so a large store stays fast.
+  - **The first question after a restart was never recalled for** (the reflection gate rejected an empty working
+    memory): an addressed input is now always enriched for recall, on every channel. Reflexes and multi-cycle
+    deliberation keep the gate.
+  - **No prompt section carries a partial untrusted-content frame**, wherever its text was cut, every `LLMRouter`
+    call neutralizes a stray frame marker, and a person's own text can no longer open or close one.
+
+  Limits: a fact survives until its memory is compressed (about a day; the compressed record keeps the words in a
+  later release, with #1137). The agent bus now re-raises a memory capture-contract break to the publisher, after
+  every handler ran. Ledger: T1-16 (carried memory in recall, Exp 63) is STALE until it is re-run on the new ranker.
+- **An Angular Gyrus recall by `MathCategory` found nothing** (#1153). The store keys a record by the category's
+  name, and `recall(category=MathCategory.PATTERN)` looked up a key built from the enum itself, so every enum-keyed
+  recall came back empty (its one enum caller, MemoryAgent's knowledge fallback, is Dormant), and so did a
+  lower-case name, which the `math` tool passes straight from the model. Storing and recalling now follow one
+  category contract: the enum or its name in any case, blank for none (no filter on recall, the PATTERN default on
+  store), and an unknown name is an error the tool returns to the model. The tool used to store an unknown category
+  as PATTERN while recalling it found nothing.
+
 ### Changed
 
+- **`run_agentic_loop` is a thin wrapper over `_run_agentic_loop_body`**, the loop moved verbatim ([#1438](https://github.com/dennys246/Maxim/issues/1438);
+  `docs/plans/bounded_stop.md` §3 step 0), so the session-ownership work wraps the loop in one seam. The public
+  signature, the `loop_liveness_scope` decorator and the behaviour are unchanged. Swallowed-exception records from
+  the loop now name `_run_agentic_loop_body` as their site.
 - **The offline latch, step 0b of the atonia gate** ([#1315](https://github.com/dennys246/Maxim/issues/1315) item 10,
   `docs/plans/atonia_gate_approach_notes.md` §1A.1/§6). New stdlib-only leaf `maxim/_offline.py`: `engage(reason)`
   is one-way and, on first use, adds an audit hook that refuses every outbound connect (loopback and `AF_UNIX`
