@@ -253,7 +253,15 @@ fails closed at upload, after the approval.
    `release-1.3.3-T1-2`) merges BEFORE the bump: a release PR may not add its own exception (M25's rule).
 2. **The bump PR.** It holds:
    - pyproject + `__init__.py`;
-   - the CHANGELOG cut to `## [X.Y.Z] - YYYY-MM-DD — "<Name>"`;
+   - the CHANGELOG cut, made by `python scripts/changelog_fragments.py assemble --version X.Y.Z --date YYYY-MM-DD
+     --name "<Name>"`. It folds `[Unreleased]` and every `changelog.d/` fragment into `## [X.Y.Z] - YYYY-MM-DD —
+     "<Name>"`, merged by kind, and `git rm`s the fragments. **Re-run it after each merge of `main` into the bump
+     branch**: it merges into the existing section and keeps wording edits. The release summary paragraph is
+     still written by hand, and the different-reader pass may reword any entry but must leave each
+     `<!-- changelog.d/... -->` marker directly above its entry. CI (`changelog_fragments.py check`) refuses a
+     bump that drops, duplicates or leaves a fragment, and `check_release_tag.py notes` refuses a fragment at the
+     tagged commit (M83 step 3; format: `changelog.d/README.md`). So `check_release_tag.py notes` prints `ok`
+     only after `assemble` has run, because before it the cycle's fragments are still pending;
    - the sync lines (below);
    - the release-gate checkout tests, at a gated version (§4b);
    - the roadmap's release block;

@@ -1,6 +1,8 @@
 # M83 step 3: CHANGELOG fragments (approach note)
 
-> **Status:** v4.1, design SETTLED 2026-10-28, process session. **Round 4: STOP, no further round owed**
+> **Status:** v4.2, design SETTLED 2026-10-28, process session. **Code round (three lenses, 2026-10-28):** 0 BLOCKER,
+> 8 SHOULD-FIX, folded. Rebase-merged PRs are now judged as one push unit through `push_units`, as rule 3 always
+> intended; the copy semantics are corrected below; the rest are code-level. **Round 4: STOP, no further round owed**
 > (4 NITs, all folded: a pinned F3 test, the freeze wording made consistent, the 80-character residual stated,
 > named F1 tests). Any `scripts/` fold after this point still gets a delta-scoped code round.
 > - **Round 3 (a third reader, delta-scoped):** 0 DO-NOT-BUILD, 3 SHOULD-FIX (F1 fail-closed; F2 and F3 fail-open,
@@ -84,7 +86,11 @@ cannot do is accept an entry anywhere except one shared section, and that shared
 
 1. **A `src/` change carries a new fragment.** If the diff touches any path under `src/` (the wider scope of
    today's `lint_unreleased_declared::SRC_PREFIX`, so YAML and packaged data count; S5), it must ADD at least
-   one valid fragment: a name-status line of exactly `A`. A rename (`R`) or copy (`C`) never counts.
+   one valid fragment. A rename (`R`) never counts. An add (`A`) or a copy (`C`) counts unless it repeats another
+   fragment (below). *Code round (2026-10-28), Executor SF3:* this note first said a copy "never counts". The code
+   instead routes copies through the duplicate check, because strict `A`-only would refuse legitimate fragments that
+   share boilerplate. A git-detected copy (50% line similarity or more) that scores under 0.9 is a distinct entry.
+   Exact copies are refused at any length.
    - **Near-duplicates are refused too (R2, F2).** An added fragment whose body is 0.9 or more similar to any other
      fragment's body in the tree fails, with both names in the message. This catches a copy with one word changed,
      which every copy-detection flag misses.
