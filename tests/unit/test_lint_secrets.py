@@ -215,18 +215,44 @@ def test_an_adversarial_4MB_string_scans_in_bounded_time():
         assert time.monotonic() - started < 20, chunk[:4]
 
 
+def _many_keys_scan_cpu_s(n: int, *, runs: int = 2) -> float:
+    """The scan's CPU time for ``n`` matches: the MIN of ``runs`` scans with the garbage collector off.
+
+    CPU time (not wall time) so other processes on the box cannot inflate it; GC off because its passes grow faster
+    than linearly with tens of thousands of live objects and would read as a non-linear scan; the min of a few runs
+    because one noisy sample on a shared CI runner measured 8.5x growth where the scan itself is about 4x (#1500).
+    """
+    import gc
+
+    rows = [json.dumps({"i": i, "note": "a\nb", "k": fake("openai") + f"{i:06d}"}) for i in range(n)]
+    data = ("\n".join(r.ljust(225) for r in rows) + "\n").encode()
+    best = float("inf")
+    for _ in range(runs):
+        scan = L.Scan(L.compile_patterns(L.PATTERNS), set())
+        gc_was_enabled = gc.isenabled()
+        gc.disable()
+        try:
+            started = time.process_time()
+            scan.blob(DATA + "many.jsonl", data)
+            best = min(best, time.process_time() - started)
+        finally:
+            if gc_was_enabled:
+                gc.enable()
+        assert len(scan.findings) == n and scan.findings[-1].where == DATA + f"many.jsonl:{n}"
+    return best
+
+
 def test_many_matches_scan_in_linear_time():
     """Review N1: 40k distinct keys in ~9 MB of escaped JSON Lines. Per-match line counting from offset 0 and a
-    linear dedup scan were each quadratic in the match count (minutes); both passes now run in seconds."""
-    rows = [json.dumps({"i": i, "note": "a\nb", "k": fake("openai") + f"{i:06d}"}) for i in range(40_000)]
-    data = ("\n".join(r.ljust(225) for r in rows) + "\n").encode()
-    assert 8_000_000 < len(data) < 10_000_000
-    scan = L.Scan(L.compile_patterns(L.PATTERNS), set())
-    started = time.monotonic()
-    scan.blob(DATA + "many.jsonl", data)
-    elapsed = time.monotonic() - started
-    assert len(scan.findings) == 40_000 and scan.findings[-1].where == DATA + "many.jsonl:40000"
-    assert elapsed < 8, elapsed
+    linear dedup scan were each quadratic in the match count (minutes); both passes now run in seconds.
+
+    The property is the GROWTH, so it is measured as one (#1500): 4x the matches must cost well under the 16x a
+    quadratic pass would (bound 10x), in CPU time, which other processes on the box cannot inflate. An absolute wall-clock bound
+    (8 s, against 5.6 s on an idle box) failed under four concurrent suites."""
+    small, large = _many_keys_scan_cpu_s(10_000), _many_keys_scan_cpu_s(40_000)
+    # Linear is about 4x; quadratic is about 16x (deletion probe: 15.7x). 10x sits between with room on both sides.
+    assert large < 10 * max(small, 0.05), (small, large)
+    assert large < 60, large  # a hang guard: a quadratic pass took minutes
 
 
 # ── 2. archives ──────────────────────────────────────────────────────────────
