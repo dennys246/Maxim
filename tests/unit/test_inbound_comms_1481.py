@@ -588,3 +588,44 @@ def test_deliberation_cycles_carry_the_messages_count_once_and_read_autonomy_per
     assert "failed_tools" not in second
     assert len(prompts) >= 2 and "rm -rf / now" in prompts[1], "cycle 2 does not carry the held messages"
     assert second["inbound_feed"] is not first["inbound_feed"], "cycle 2 must carry the continuation feed"
+
+
+def test_a_bus_that_cannot_unsubscribe_is_never_subscribed():
+    """A's must-fix 2: a ``_bus`` without ``unsubscribe`` (a real shape: test stubs, bus-like adapters) would raise at the
+    run's exit, over its own exception. Checked before subscribing: no inbox, nothing subscribed."""
+    from maxim.runtime.loop_external import inbound_comms_subscription
+
+    subscribed = []
+
+    class _HalfBus:
+        def subscribe(self, *a: Any) -> None:
+            subscribed.append(a)
+
+    class _Agent:
+        _bus = _HalfBus()
+
+    with inbound_comms_subscription(_Agent()) as inbox:
+        assert inbox is None
+    assert subscribed == []
+
+
+def test_the_runs_own_exception_passes_through_unchanged(caplog):
+    from maxim.runtime.loop_external import inbound_comms_subscription
+
+    class _Boom(Exception):
+        pass
+
+    class _BadBus:
+        def subscribe(self, *a: Any) -> None:
+            return None
+
+        def unsubscribe(self, *a: Any) -> None:
+            raise RuntimeError("bus torn down")
+
+    class _Agent:
+        _bus = _BadBus()
+
+    with pytest.raises(_Boom):
+        with inbound_comms_subscription(_Agent()):
+            raise _Boom()
+    assert "not removed at run end" in caplog.text

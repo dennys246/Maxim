@@ -186,7 +186,8 @@ def inbound_comms_subscription(agent: Any) -> Iterator[ExternalInbox | None]:
     from maxim.agents.bus import Percept
 
     bus = getattr(agent, "_bus", None)
-    if bus is None:
+    if bus is None or not callable(getattr(bus, "subscribe", None)) or not callable(getattr(bus, "unsubscribe", None)):
+        # Checked BEFORE subscribing: a bus that cannot unsubscribe would raise at exit, over the run's own exception.
         yield None
         return
     inbox = ExternalInbox()
@@ -194,8 +195,11 @@ def inbound_comms_subscription(agent: Any) -> Iterator[ExternalInbox | None]:
     try:
         yield inbox
     finally:
-        inbox.close()
-        bus.unsubscribe(Percept, inbox.on_percept)  # AgentBus.unsubscribe never raises: no in-flight error is masked
+        inbox.close()  # sets a flag under the lock: cannot raise
+        try:
+            bus.unsubscribe(Percept, inbox.on_percept)
+        except Exception as exc:  # noqa: BLE001 - never raise over the run's own exit (bounded_stop.md §4)
+            logger.warning("Inbound comms subscription not removed at run end: %s", exc)
 
 
 def _release_unsent_deferred_inputs(processed_cli_inputs: Any, deferred: list[str], submitted: bool) -> None:

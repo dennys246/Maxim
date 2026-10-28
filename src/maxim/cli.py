@@ -1092,6 +1092,25 @@ def _detect_role_or_warn(raw_argv: list[str]) -> None:
             pass
 
 
+def _build_cli_comms(args: Any, agentic_agent: Any) -> Any:
+    """The CLI's comms stack, when enabled (``--comms`` or ``MAXIM_COMMS_ENABLED``): wired to the agent, so its inbound
+    messages land on the bus the run's loop watches (#1481). Returns the gateway, or None. Moved from ``_main_impl``
+    (rule T; Session A's grant)."""
+    comms_enabled = bool(getattr(args, "comms", False)) or os.environ.get("MAXIM_COMMS_ENABLED", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    gateway = None
+    if comms_enabled:
+        from maxim.runtime.bootstrap import build_comms_stack
+
+        gateway, _conv_manager = build_comms_stack(
+            agent=agentic_agent,
+        )
+    return gateway
+
+
 def _main_impl(argv: Sequence[str] | None = None) -> int:
     """Original ``main`` body.  Wrapped by :func:`main` for typed-error surfacing."""
     # Detect Blackwell GPU and apply GStreamer guards BEFORE any CUDA-touching
@@ -2197,17 +2216,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 # builds the live policy getter from it (#822, #832).
                 internet_enabled = not bool(getattr(args, "no_internet", False))
 
-                # Build comms stack if enabled (--comms flag or MAXIM_COMMS_ENABLED env)
-                comms_enabled = bool(getattr(args, "comms", False)) or os.environ.get(
-                    "MAXIM_COMMS_ENABLED", ""
-                ).lower() in ("1", "true", "yes")
-                gateway = None
-                if comms_enabled:
-                    from maxim.runtime.bootstrap import build_comms_stack
-
-                    gateway, _conv_manager = build_comms_stack(
-                        agent=agentic_agent,
-                    )
+                gateway = _build_cli_comms(args, agentic_agent)  # --comms flag or MAXIM_COMMS_ENABLED env
 
                 # ── Tool registry (CLI-specific: depends on response_output,
                 # internet_policy, gateway, prompt_handler) ──

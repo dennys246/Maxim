@@ -16,7 +16,7 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1478
+      "lines": 1468
     },
     {
       "file": "src/maxim/cli_parser.py",
@@ -51,7 +51,7 @@
     {
       "file": "src/maxim/embodied_runtime/agentic_runtime.py",
       "qualname": "AgenticRuntimeMixin._start_agentic_runtime",
-      "lines": 865
+      "lines": 854
     },
     {
       "file": "src/maxim/embodied_runtime/agentic_runtime.py",
@@ -389,6 +389,7 @@
     "_main_impl tightened 1588 -> 1562 on 2026-10-26 (#1485 / #1403, rule T): the role-detection block moved to cli.py::_detect_role_or_warn, which re-raises ConfigDirUnreadable instead of warning past an unreadable config dir. Merged with #1468/#1454's 1588 the same day: 1562.",
     "_main_impl tightened 1562 -> 1518 on 2026-10-27 (#1391/#1392/#1394/#1395, rule T): the scenario-validation report moved to cli.py::_report_scenario_validation, carrying the switch to simulation/validation.py::validate_finished_run (snapshot and tool stats on the CLI path). Merged with #1466's 1583, #1468/#1454's 1588 and #1485's 1562: 1518.",
     "_main_impl tightened 1588 -> 1548 on 2026-10-26 (#1338, advisor item 6; rule T): server mode moved to cli.py::_run_server_mode, its LLM start to cli.py::_start_server_llm, which reports NOT READY instead of printing ready (the process stays up while a LeaderProxy runs; solo server mode exits 1); an unused LeaderRefusal import went with it. Merged with #1485's 1562 on 2026-10-27, after #1485 landed first: 1522. Merged with #1503's 1518 the same day: 1478.",
-    "_run_agentic_loop_body tightened 2379 -> 2208 and LLMWorker._process_request 259 -> 252 on 2026-10-28 (#1481, rule T; Session A's grants): the section 6 submit try/finally moved whole to loop_external.submit_tick_context with the two submits' shared arguments built once by loop_external.planning_submit_shared_kwargs (autonomy_level stays per call), and the Wire 1 variance-annotation block moved verbatim to loop_planning.annotate_tool_variance (AST-identical); _process_request's proposal sim-log moved to llm_worker._sim_log_proposal_built, paying for the two inbound fields; execute_and_learn 384 -> 374: its conversation-history after-effect moved verbatim to tool_dispatch._record_turn_after_effects (the seed of #1150's after-effects step), which carries the inbound acknowledgement."
+    "_run_agentic_loop_body tightened 2379 -> 2208 and LLMWorker._process_request 259 -> 252 on 2026-10-28 (#1481, rule T; Session A's grants): the section 6 submit try/finally moved whole to loop_external.submit_tick_context with the two submits' shared arguments built once by loop_external.planning_submit_shared_kwargs (autonomy_level stays per call), and the Wire 1 variance-annotation block moved verbatim to loop_planning.annotate_tool_variance (AST-identical); _process_request's proposal sim-log moved to llm_worker._sim_log_proposal_built, paying for the two inbound fields; execute_and_learn 384 -> 374: its conversation-history after-effect moved verbatim to tool_dispatch._record_turn_after_effects (the seed of #1150's after-effects step), which carries the inbound acknowledgement.",
+    "_main_impl tightened 1478 -> 1468 on 2026-10-29 (#1481, rule T; Session A's grant): the comms-stack block moved to cli.py::_build_cli_comms, carrying its build_comms_stack(bus=) -> (agent=) edit; AgenticRuntimeMixin._start_agentic_runtime 865 -> 854 the same way (its comms block moved to AgenticRuntimeMixin._build_runtime_comms)."
   ]
 }

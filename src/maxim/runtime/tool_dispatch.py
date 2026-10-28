@@ -1071,8 +1071,9 @@ def _record_turn_after_effects(*, action: dict[str, Any], success: bool, proposa
     """After-effects of a turn whose action was dispatched and RETURNED (the normal path of ``execute_and_learn``; a
     dispatch that raised never reaches here). The seed of #1150's after-effects step (Session A's grant). Returns the
     action's tool name, which the caller reads on."""
-    # The inbound comms this turn's prompt showed whole are delivered: the turn was acted on (#1481). Only the
-    # success branch of LLMWorker._process_request sets these, so a fallback acknowledges nothing.
+    # The inbound comms this turn's prompt showed whole are delivered: the turn was acted on (#1481), even when the
+    # tool then failed (``success`` False): the model saw them and acted. Only the success branch of
+    # LLMWorker._process_request sets these, so a fallback acknowledges nothing.
     feed = getattr(proposal, "inbound_feed", None)
     if feed is not None:
         feed.ack(list(getattr(proposal, "inbound_rendered_ids", ())))
