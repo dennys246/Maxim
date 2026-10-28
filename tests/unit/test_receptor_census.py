@@ -81,7 +81,7 @@ CENSUS: dict[str, dict[str, tuple[str, str, frozenset[str]]]] = {
             "dormant",
             _T({"loop"}),
         ),
-        "maxim/runtime/agent_loop.py::run_agentic_loop": (
+        "maxim/runtime/agent_loop.py::_run_agentic_loop_body": (
             "Observation text (CLI / voice / environment) as an ABSTRACT percept",
             "live",
             _T({"loop"}),

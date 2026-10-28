@@ -248,7 +248,7 @@ class TestWiringPins:
         # FUNCTION-SPECIFIC (an ordering inside §6b): since the 1.3.2 decomposition's slice 3 the
         # branch head stays in run_agentic_loop and its body is loop_substrate.substrate_tick
         # (tests/unit/_loop_source.py lists every such pin).
-        loop_src = inspect.getsource(al.run_agentic_loop)
+        loop_src = inspect.getsource(al._run_agentic_loop_body)  # the loop's body since bounded_stop step 0
         # The branch head is the shared cadence predicate (2026-09-16, substrate wake source):
         # substrate-primary AND no pending proposal AND cadence elapsed, in ONE helper; the tick is
         # called inside it.

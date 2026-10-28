@@ -290,7 +290,7 @@ def _calls(module: ModuleType, function: str, name: str) -> list[ast.Call]:
 def _loop_calls(name: str) -> list[ast.Call]:
     import maxim.runtime.agent_loop as agent_loop
 
-    return _calls(agent_loop, "run_agentic_loop", name)
+    return _calls(agent_loop, "_run_agentic_loop_body", name)  # the loop's body since bounded_stop step 0
 
 
 def _setup_calls(name: str) -> list[ast.Call]:
