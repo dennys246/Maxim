@@ -185,7 +185,7 @@ expectations:
     description: "Pipeline continues through all 6 interference encounters"
 
   - type: action_taken
-    tool: RespondTool
+    tool: respond
     description: "Agent attempts to interact with the door"
 
   - type: action_count_range

@@ -172,7 +172,7 @@ def _unpack_map() -> dict[str, list[str]]:
     import maxim.runtime.agent_loop as agent_loop
 
     tree = ast.parse(Path(agent_loop.__file__).read_text())
-    [fn] = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "run_agentic_loop"]
+    [fn] = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_run_agentic_loop_body"]
     seen: dict[str, list[str]] = {}
     for stmt in fn.body:
         if not isinstance(stmt, ast.Assign) or len(stmt.targets) != 1:
@@ -592,3 +592,42 @@ def test_a_registry_without_tool_descriptions_fails_the_run_at_setup(monkeypatch
     with pytest.raises(error):
         _build(monkeypatch, tmp_path, executor=executor)
     assert executed == []
+
+
+def test_run_agentic_loop_is_a_wrapper_that_forwards_every_argument_to_the_body() -> None:
+    """bounded_stop.md §3 step 0: ``run_agentic_loop`` keeps the public signature and only forwards to
+    ``_run_agentic_loop_body`` (the loop, moved verbatim), so PR 0 can wrap the body in its session seam. A
+    parameter added to one but not the other, forwarded under another name, or dropped fails here, and so does a
+    second caller of the body: the wrapper is its one entry."""
+    import inspect
+
+    import maxim.runtime.agent_loop as agent_loop
+
+    wrapper_sig = inspect.signature(agent_loop.run_agentic_loop)
+    body_params = inspect.signature(agent_loop._run_agentic_loop_body).parameters
+    # Keyword-only parameters only the wrapper supplies (PR 0 adds ``session``); every other one is public and shared.
+    body_only: frozenset[str] = frozenset()
+    assert {p: v for p, v in body_params.items() if p not in body_only} == dict(wrapper_sig.parameters)
+    tree = ast.parse(Path(agent_loop.__file__).read_text())
+    [fn] = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "run_agentic_loop"]
+    calls = [
+        n
+        for n in ast.walk(fn)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "_run_agentic_loop_body"
+    ]
+    assert len(calls) == 1
+    [call] = calls
+    positional = [a.id for a in call.args if isinstance(a, ast.Name)]
+    keywords = {k.arg: k.value.id for k in call.keywords if isinstance(k.value, ast.Name) and k.arg not in body_only}
+    params = wrapper_sig.parameters
+    assert len(call.args) == len(positional)  # no starred or non-name positional
+    assert positional == [p for p, v in params.items() if v.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD]
+    assert keywords == {p: p for p, v in params.items() if v.kind is inspect.Parameter.KEYWORD_ONLY}
+    assert {k.arg for k in call.keywords} - set(params) <= body_only
+    callers = [
+        p
+        for p in (Path(agent_loop.__file__).parents[1]).rglob("*.py")
+        if "_run_agentic_loop_body(" in p.read_text() and p.name != "agent_loop.py"
+    ]
+    assert callers == []
+    assert Path(agent_loop.__file__).read_text().count("_run_agentic_loop_body(") == 2  # its def and the one call

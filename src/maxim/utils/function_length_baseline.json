@@ -16,7 +16,7 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1583
+      "lines": 1478
     },
     {
       "file": "src/maxim/cli_parser.py",
@@ -145,7 +145,7 @@
     },
     {
       "file": "src/maxim/runtime/agent_loop.py",
-      "qualname": "run_agentic_loop",
+      "qualname": "_run_agentic_loop_body",
       "lines": 2411
     },
     {
@@ -317,6 +317,19 @@
       "date": "2026-10-14",
       "ref": "#1260",
       "reason": "#1260 review fold SF1: the run's own tool descriptions (LoopRun.tool_overlay, resolved once at setup by loop_state.tool_description_overlay, so a registry without tool_descriptions() fails the run before any action) reach the follow-up type as a REQUIRED keyword, overlay=, bound per run like rec_outcome: one signature line and one docstring line naming it. Reading it inside the function instead put the read after executor.execute, where a missing method booked an already-run success as a failure. Splitting execute_and_learn stays #1150's."
+    },
+    {
+      "file": "src/maxim/runtime/agent_loop.py",
+      "qualname": "_run_agentic_loop_body",
+      "from": null,
+      "to": 2411,
+      "split_from": {
+        "file": "src/maxim/runtime/agent_loop.py",
+        "qualname": "run_agentic_loop"
+      },
+      "date": "2026-10-27",
+      "ref": "#1438",
+      "reason": "run_agentic_loop split verbatim into a thin wrapper (99 lines, keeping the public signature and the loop_liveness_scope decorator) and _run_agentic_loop_body (the whole former body, text identical but for its name), so bounded_stop.md's session ownership (PR 0) wraps the body in one seam (owner decision 2026-10-26, bounded_stop.md section 3 step 0). The body keeps the former pin, 2411; rule T now charges edits inside it. run_agentic_loop was retired from the 1.4.0 200-line list on 2026-10-16 (#1323), so the body is held by item 1323.functions-1000 (at most 1,000 lines, through this split_from) and by the gate's new-debt rule."
     }
   ],
   "history": [
@@ -370,6 +383,9 @@
     "NAc.__init__ tightened 304 -> 303 on 2026-10-17 (NAc correctness A1) when the dead, never-read _last_decay_time stamp was deleted.",
     "_main_impl tightened 1627 -> 1625 and cli_parser.py::_build_parser 652 -> 620 on 2026-10-19 (#1337, rule T): --clear-cache moved to cli.py::_handle_clear_cache, paying for the --clear-memory call line, and the memory argument group (where --yes was added) moved verbatim to cli_parser.py::_add_memory_args.",
     "_main_impl tightened 1627 -> 1606 on 2026-10-19 (#1343): the agentic path's model download branch moved to cli.py::_ensure_agentic_model, which asks the consent gate instead of calling download_llm. Merged with #1337 the same day: 1604.",
-    "_main_impl tightened 1604 -> 1593 and start_simulation_mode 2889 -> 2869 on 2026-10-26 (#1468, #1454 interim; rule T): the robot run loop's finally teardown moved verbatim to cli.py::_end_robot_run, paying for the nonzero exit code on an exception; the interactive post-sim report view and new-goal prompt moved to orchestrator.py::_show_report_and_post_sim_prompt, carrying the removal of the false '(memory carries over)' text. The review round's exit-code table (owner 2026-10-26) moved the loop's error-to-code mapping to cli.py::_run_stopped_on: 1593 -> 1588."
+    "_main_impl tightened 1604 -> 1593 and start_simulation_mode 2889 -> 2869 on 2026-10-26 (#1468, #1454 interim; rule T): the robot run loop's finally teardown moved verbatim to cli.py::_end_robot_run, paying for the nonzero exit code on an exception; the interactive post-sim report view and new-goal prompt moved to orchestrator.py::_show_report_and_post_sim_prompt, carrying the removal of the false '(memory carries over)' text. The review round's exit-code table (owner 2026-10-26) moved the loop's error-to-code mapping to cli.py::_run_stopped_on: 1593 -> 1588.",
+    "_main_impl tightened 1588 -> 1562 on 2026-10-26 (#1485 / #1403, rule T): the role-detection block moved to cli.py::_detect_role_or_warn, which re-raises ConfigDirUnreadable instead of warning past an unreadable config dir. Merged with #1468/#1454's 1588 the same day: 1562.",
+    "_main_impl tightened 1562 -> 1518 on 2026-10-27 (#1391/#1392/#1394/#1395, rule T): the scenario-validation report moved to cli.py::_report_scenario_validation, carrying the switch to simulation/validation.py::validate_finished_run (snapshot and tool stats on the CLI path). Merged with #1466's 1583, #1468/#1454's 1588 and #1485's 1562: 1518.",
+    "_main_impl tightened 1588 -> 1548 on 2026-10-26 (#1338, advisor item 6; rule T): server mode moved to cli.py::_run_server_mode, its LLM start to cli.py::_start_server_llm, which reports NOT READY instead of printing ready (the process stays up while a LeaderProxy runs; solo server mode exits 1); an unused LeaderRefusal import went with it. Merged with #1485's 1562 on 2026-10-27, after #1485 landed first: 1522. Merged with #1503's 1518 the same day: 1478."
   ]
 }

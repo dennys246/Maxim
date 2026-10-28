@@ -40,6 +40,12 @@ must act: a typed backend error (its fix hint is printed) or a security refusal 
 media-loop step that fails and is retried) is not a stop and does not change the code. Sims add `4`, a typed abort
 (incomplete or aborted run; [simulation.md](simulation.md) has the full contract), and share `2` and `130`.
 
+**Server mode** (no action with an LLM enabled or the leader role; since the next release after 1.3.3, [#1338](https://github.com/dennys246/Maxim/issues/1338)):
+`0` stopped by Ctrl+C; `2` a security refusal; `1` the LLM is NOT READY (the router did not start, its init failed, or
+`wait_ready` timed out after 180 s) **and no LeaderProxy runs** (solo server mode). Behind a LeaderProxy (a leader) a
+not-ready LLM does not exit: the process prints `NOT READY` on stderr, stays up so peers can recover it
+(`maxim peer llm <model>`, `maxim peer update`), and `/v1/debug/ping` reports `server_llm: {"ready": false, "reason": ...}`.
+
 ## Cloud LLM Providers
 
 | Flag | Type | Default | Description |
