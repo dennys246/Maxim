@@ -120,6 +120,32 @@ def _maybe_dispatch_backend_class(provider_type: str) -> type | None:
         return None
 
 
+_stray_frame_markers = 0
+
+
+def _neutralize_stray_frame_markers(text: str) -> str:
+    """The last line of the untrusted-content frame (Session R, rule 2 backstop): every router call's system and user
+    text, each on its own, with an UNBALANCED frame marker neutralized in place, never deleted (a deletion here could
+    remove instructions; balanced frames are untouched). The prompt builders drop partial frames before this; a
+    marker that reaches here is a cut site they missed, so the first one is logged and the rest counted."""
+    global _stray_frame_markers
+    if not text or "TOOL_OUTPUT" not in text:
+        return text
+    from maxim.utils.content_safety import defang_frame_markers
+
+    text, n = defang_frame_markers(text, unbalanced_only=True)
+    if n:
+        _stray_frame_markers += n
+        if _stray_frame_markers == n:
+            logger.warning(
+                "LLM prompt carried %d unbalanced untrusted-content frame marker(s), neutralized in place: a cut site "
+                "that does not drop partial frames (Session R). Further ones counted in "
+                "maxim.models.language.router._stray_frame_markers",
+                n,
+            )
+    return text
+
+
 class LLMRouter:
     """
     Small, swappable transcript → action router.
@@ -921,6 +947,7 @@ class LLMRouter:
         """Complete text with optional usage metadata."""
         if not self.enabled():
             return "", None
+        system, user = _neutralize_stray_frame_markers(system), _neutralize_stray_frame_markers(user)
 
         # Hard session cost ceiling — once exceeded, ALL requests rejected
         policy = self._routing_policy
