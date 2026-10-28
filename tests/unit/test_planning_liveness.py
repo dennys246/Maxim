@@ -418,7 +418,9 @@ class TestWorkerParseFailurePath:
         worker.start()
         try:
             assert _submit_test_context(worker) is True
-            assert llm.started.wait(timeout=2.0)
+            # A hang guard, not a latency claim: wait() returns the moment the worker enters generate. 2 s failed
+            # once on a box running four suites (#1494).
+            assert llm.started.wait(timeout=10.0)
             assert worker.latest_attempt_state() is LLMAttemptState.RUNNING
 
             llm.release.set()
