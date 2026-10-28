@@ -1,6 +1,6 @@
 # #1436 approach note: voice input fails loud, and a lint for lazy imports of missing code (Session S, 1.3.4)
 
-Status: ADOPTED 2026-10-25. **Read the two fold sections at the end first:** the adversarial pass and the three-lens round superseded parts of the sections above (the shipped lint is `scripts/lint_dead_imports.py`; a missing maxim module fails at import, not as a typed raise; there is no `listening_off_reason` attribute). Owner decisions, 2026-10-25:
+Status: **SHIPPED 2026-10-26 (#1480); a record now, kept at its path because code cites it.** ADOPTED 2026-10-25. **Read the two fold sections at the end first:** the adversarial pass and the three-lens round superseded parts of the sections above (the shipped lint is `scripts/lint_dead_imports.py`; a missing maxim module fails at import, not as a typed raise; there is no `listening_off_reason` attribute). Owner decisions, 2026-10-25:
 - **Split by cause.** A maxim-internal import failure (a code defect) raises a typed error and stops the session.
   A missing `audio` extra keeps the session running, with ONE ERROR naming `pip install 'pymaxim[audio]'` and a
   recorded `listening: off (reason)` on the runtime.
