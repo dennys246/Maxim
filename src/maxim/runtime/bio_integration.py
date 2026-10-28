@@ -304,7 +304,7 @@ def _close_session(
         )
     finally:
         if session.memory_hub is not None and session.ticket is not None:
-            session.memory_hub._ownership.release_live(session.ticket)
+            session.memory_hub.release_session_claim(session.ticket)
 
 
 def end_bio_session(

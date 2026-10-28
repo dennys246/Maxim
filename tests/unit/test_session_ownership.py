@@ -13,7 +13,6 @@ import time
 import pytest
 
 
-
 def _ownership():
     from maxim.integration.session_ownership import SessionOwnership
 
@@ -125,3 +124,56 @@ def test_the_hub_open_requires_an_owner_and_a_ticketless_close_raises() -> None:
     for closer in ("on_session_end", "on_session_end_lightweight"):
         with pytest.raises(TypeError):
             getattr(MemoryHub, closer)(MemoryHub.__new__(MemoryHub))  # type: ignore[call-arg]
+
+
+def test_claim_reporting_says_whether_this_call_opened_the_generation() -> None:
+    own = _ownership()
+    instance, loop = object(), object()
+    first, opened = own.claim_reporting(owner=instance)
+    assert opened and first.fresh  # CLOSED -> OPEN: the hub restores
+    again, opened = own.claim_reporting(owner=instance)
+    assert again is first and not opened  # idempotent: no second restore, though the ticket is still fresh
+    taken, opened = own.claim_reporting(owner=loop, live=True)
+    assert opened and not taken.fresh  # a handover: a new generation, the data is continuous, no restore
+
+
+def test_an_abandoned_open_leaves_no_orphaned_session() -> None:
+    own = _ownership()
+    ticket = own.claim(owner=object())
+    own.abandon(ticket)
+    assert own.state == "CLOSED" and ticket.end_done.is_set()
+
+
+def test_the_hub_restores_only_on_a_fresh_open_and_abandons_a_failed_one() -> None:
+    from maxim.integration.memory_hub import MemoryHub
+    from maxim.integration.session_ownership import SessionOwnership
+
+    class _Clock:
+        def advanced_us(self) -> int:
+            return 0
+
+    hub = MemoryHub.__new__(MemoryHub)
+    hub._ownership = SessionOwnership()
+    hub._session_ever_started = False
+    hub.hippocampus = type("H", (), {"experience_clock": _Clock(), "session_work": lambda self: (0, 0)})()
+    restores: list[int] = []
+    hub._restore_on_open = lambda: restores.append(1) or {"restored": 1}  # type: ignore[method-assign]
+    owner = object()
+    ticket = hub.on_session_start(owner=owner)
+    assert ticket.start_stats == {"restored": 1} and restores == [1]
+    assert hub.on_session_start(owner=owner) is ticket and restores == [1]  # idempotent: no second restore
+    handed = hub.on_session_start(owner=object(), live=True)
+    assert handed.start_stats == {} and restores == [1]  # a handover restores nothing
+
+    broken = MemoryHub.__new__(MemoryHub)
+    broken._ownership = SessionOwnership()
+    broken._session_ever_started = False
+    broken.hippocampus = hub.hippocampus
+
+    def _boom() -> dict:
+        raise RuntimeError("restore failed")
+
+    broken._restore_on_open = _boom  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError):
+        broken.on_session_start(owner=object())
+    assert broken._ownership.state == "CLOSED"  # abandoned: no OPEN session nobody holds a ticket to

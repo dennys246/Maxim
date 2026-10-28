@@ -177,7 +177,6 @@ class EpisodeConfig:
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
 
 
-@dataclass(frozen=True)
 @dataclass(eq=False)
 class CaptureWorker:
     """One capture worker's thread and its own stop event (#1438 PR 0). In-process only."""
@@ -186,6 +185,7 @@ class CaptureWorker:
     stop: threading.Event
 
 
+@dataclass(frozen=True)
 class HippocampusConfig:
     """Configuration for the Hippocampus."""
 

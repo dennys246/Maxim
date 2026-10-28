@@ -648,6 +648,10 @@ class MemoryHub:
         """Whether ``ticket`` is this hub's CURRENT session: only that ticket ends its generation."""
         return self._ownership.is_current(ticket)
 
+    def release_session_claim(self, ticket: SessionTicket) -> None:
+        """A loop's ``bio_session`` let go of its live claim (its end already ran, or could not start in time)."""
+        self._ownership.release_live(ticket)
+
     def wait_session_ended(self, *, deadline_s: float | None = None) -> bool:
         """For a non-owner closer: wait until no session is open or ending, within ``deadline_s`` (else a 60 s cap)."""
         return self._ownership.wait_ended(deadline_s=deadline_s)

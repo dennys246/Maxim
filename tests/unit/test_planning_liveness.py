@@ -571,11 +571,22 @@ class TestLoopWiringPins:
         assert "planning_liveness=True" in orch_call
 
     def test_exhaustion_raises_after_teardown(self, loop_src):
-        # The raise must come AFTER _end_bio_session so state persistence
-        # and the bio session end run before the sim aborts.
-        teardown_idx = loop_src.rindex("_end_bio_session(")
-        raise_idx = loop_src.rindex("raise PlanningLivenessExhausted(")
-        assert raise_idx > teardown_idx
+        # The abort must come AFTER the bio session ends, so state persistence and the session end run before the
+        # sim aborts (#1438 PR 0): the body RETURNS the exhaustion, and run_agentic_loop raises it only after its
+        # `with bio_session(...)` block (whose exit ends the session) has closed.
+        import ast
+        import inspect
+        import textwrap
+
+        from maxim.runtime import agent_loop
+
+        assert "return PlanningLivenessExhausted(" in loop_src
+        assert "raise PlanningLivenessExhausted(" not in loop_src
+        wrapper = ast.parse(textwrap.dedent(inspect.getsource(agent_loop.run_agentic_loop))).body[0]
+        [session_block] = [n for n in wrapper.body if isinstance(n, ast.With)]
+        assert "bio_session" in ast.unparse(session_block.items[0].context_expr)
+        [deferred_raise] = [n for n in ast.walk(wrapper) if isinstance(n, ast.Raise)]
+        assert deferred_raise.lineno > session_block.end_lineno
 
     def test_proposal_time_stamped_on_any_proposal(self, loop_src):
         # FUNCTION-SPECIFIC: the same line also lives in a module-level helper, so the loop's own stamp

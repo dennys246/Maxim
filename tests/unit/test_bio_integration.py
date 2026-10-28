@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import pytest
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from maxim.tools.base import ToolOutput
 from maxim.runtime.bio_integration import (
     capture_episodic_memory,
     record_plan_outcome,
-    start_bio_session,
+    bio_session,
     end_bio_session,
     record_substrate_nodes,
     consume_substrate_nodes,
@@ -176,127 +177,123 @@ class TestRecordPlanOutcome:
         record_plan_outcome(memory_hub=hub, goal="test", tool_name="look", success=True)
 
 
-class TestStartBioSession:
-    """Test bio-system session initialization."""
+class TestBioSession:
+    """The ONE seam that opens and ends an agent loop's memory session (#1438 PR 0)."""
 
-    def test_starts_both(self):
+    def _hub(self):
         hub = MagicMock()
-        hub.on_session_start.return_value = {"status": "ok"}
+        hub.on_session_start.return_value = SimpleNamespace(generation=1, start_stats={"restored": 1})
+        return hub
+
+    def test_claims_as_a_live_loop_and_starts_its_own_capture_worker(self):
+        hub, hippo, owner = self._hub(), MagicMock(), object()
+        with bio_session(memory_hub=hub, hippocampus=hippo, owner=owner) as s:
+            hub.on_session_start.assert_called_once_with(owner=owner, live=True)
+            assert s.ticket is hub.on_session_start.return_value and s.memory_hub_enabled
+            assert s.capture is hippo.start_capture_worker.return_value
+        hub.on_session_end.assert_called_once_with(s.ticket)  # a clean, non-sim exit: full
+        hippo.stop_capture_worker.assert_called_once_with(s.capture)  # only ITS worker
+        hub.release_session_claim.assert_called_once_with(s.ticket)
+
+    def test_a_sim_run_ends_lightweight_and_an_override_wins(self):
+        hub = self._hub()
+        with bio_session(memory_hub=hub, hippocampus=None, owner=object()) as s:
+            s.is_sim_mode = True
+        hub.on_session_end_lightweight.assert_called_once()
+        hub = self._hub()
+        with bio_session(memory_hub=hub, hippocampus=None, owner=object(), consolidation="full") as s:
+            s.is_sim_mode = True  # a persistent HANDLE forces "full" even through the sim loop
+        hub.on_session_end.assert_called_once()
+
+    def test_an_abnormal_exit_persists_lightweight_and_re_raises(self):
+        hub, stopped = self._hub(), []
+        with pytest.raises(KeyboardInterrupt):
+            with bio_session(memory_hub=hub, hippocampus=None, owner=object()) as s:
+                s.stop_default_network = lambda: stopped.append("dn")
+                raise KeyboardInterrupt
+        assert stopped == ["dn"]  # the DN stops first, on every path
+        hub.on_session_end_lightweight.assert_called_once()
+        hub.release_session_claim.assert_called_once()
+
+    def test_its_own_errors_never_replace_an_in_flight_exception(self):
+        hub = self._hub()
+        hub.on_session_end_lightweight.side_effect = RuntimeError("end error")
+        with pytest.raises(ValueError, match="the real one"):
+            with bio_session(memory_hub=hub, hippocampus=None, owner=object()):
+                raise ValueError("the real one")
+
+    def test_a_claim_refusal_aborts_and_starts_nothing(self):
+        from maxim.exceptions import SessionHeld
+
+        hub, hippo = self._hub(), MagicMock()
+        hub.on_session_start.side_effect = SessionHeld("held by a live loop")
+        with pytest.raises(SessionHeld):
+            with bio_session(memory_hub=hub, hippocampus=hippo, owner=object()):
+                pass  # pragma: no cover - never entered
+        hippo.start_capture_worker.assert_not_called()
+
+    def test_no_hub_is_the_one_soft_skip(self):
         hippo = MagicMock()
-        result = start_bio_session(memory_hub=hub, hippocampus=hippo)
-        assert result is True
-        hub.on_session_start.assert_called_once()
-        hippo.start_capture_worker.assert_called_once()
+        with bio_session(memory_hub=None, hippocampus=hippo, owner=object()) as s:
+            assert s.ticket is None and not s.memory_hub_enabled
+        hippo.stop_capture_worker.assert_called_once_with(s.capture)  # its worker still started AND stopped
 
-    def test_hub_failure_returns_false(self):
-        hub = MagicMock()
-        hub.on_session_start.side_effect = RuntimeError("init failed")
-        hippo = MagicMock()
-        result = start_bio_session(memory_hub=hub, hippocampus=hippo)
-        assert result is False
-        # Hippocampus should still start
-        hippo.start_capture_worker.assert_called_once()
-
-    def test_none_hub_returns_false(self):
-        result = start_bio_session(memory_hub=None, hippocampus=MagicMock())
-        assert result is False
-
-    def test_none_hippocampus_ok(self):
-        hub = MagicMock()
-        hub.on_session_start.return_value = {}
-        result = start_bio_session(memory_hub=hub, hippocampus=None)
-        assert result is True
-
-    def test_hippo_worker_failure_nonfatal(self):
+    def test_a_capture_worker_failure_is_non_fatal(self):
         hippo = MagicMock()
         hippo.start_capture_worker.side_effect = RuntimeError("thread error")
-        result = start_bio_session(memory_hub=None, hippocampus=hippo)
-        assert result is False  # No hub
+        with bio_session(memory_hub=None, hippocampus=hippo, owner=object()) as s:
+            assert s.capture is None
+
+    def test_an_expired_stop_bound_skips_the_abnormal_persist(self):
+        from maxim.utils.cancellation import request_stop
+        from maxim.utils.deadline import Deadline
+
+        hub = self._hub()
+        request_stop("test", Deadline.after(0))
+        with pytest.raises(RuntimeError):
+            with bio_session(memory_hub=hub, hippocampus=None, owner=object()):
+                raise RuntimeError("boom")
+        hub.on_session_end_lightweight.assert_not_called()
+        hub.release_session_claim.assert_called_once()  # the claim is still released
 
 
 class TestEndBioSession:
-    """Test bio-system session teardown."""
+    """Test bio-system session teardown (the owner's end; #1438 PR 0 tickets)."""
 
     def test_flushes_and_saves_hippocampus(self):
         hippo = MagicMock()
         hippo.config = MagicMock()
         hippo.config.persistence_path = "/tmp/test.json"
         hippo.__len__ = MagicMock(return_value=10)
-        end_bio_session(
-            memory_hub=None,
-            memory_hub_enabled=False,
-            hippocampus=hippo,
-            is_sim_mode=False,
-        )
+        worker = object()
+        end_bio_session(memory_hub=None, ticket=None, hippocampus=hippo, capture=worker)
         hippo.flush.assert_called_once_with(timeout=5.0)
-        hippo.stop_capture_worker.assert_called_once()
+        hippo.stop_capture_worker.assert_called_once_with(worker)
         hippo.save.assert_called_once()
 
-    def test_ends_memory_hub_session(self):
-        hub = MagicMock()
+    def test_ends_memory_hub_session_with_its_ticket(self):
+        hub, ticket = MagicMock(), object()
         hub.on_session_end.return_value = {"consolidated": 5}
-        end_bio_session(
-            memory_hub=hub,
-            memory_hub_enabled=True,
-            hippocampus=None,
-            is_sim_mode=False,
-        )
-        hub.on_session_end.assert_called_once()
-
-    def test_lightweight_consolidation_in_sim_mode(self):
-        """Sim mode (deprecated is_sim_mode fallback) → lightweight consolidation."""
-        hub = MagicMock()
-        end_bio_session(
-            memory_hub=hub,
-            memory_hub_enabled=True,
-            hippocampus=None,
-            is_sim_mode=True,
-        )
-        hub.on_session_end.assert_not_called()
-        hub.on_session_end_lightweight.assert_called_once()
+        end_bio_session(memory_hub=hub, ticket=ticket, hippocampus=None)
+        hub.on_session_end.assert_called_once_with(ticket)
 
     def test_default_consolidation_is_full(self):
-        """HANDLE seam (b): with neither param set, default is FULL consolidation
-        (the count-silent-failures default — wrongly-lightweight loses data)."""
+        """HANDLE seam (b): the default is FULL consolidation (wrongly-lightweight loses data)."""
         hub = MagicMock()
-        end_bio_session(memory_hub=hub, memory_hub_enabled=True, hippocampus=None)
-        hub.on_session_end.assert_called_once()
-        hub.on_session_end_lightweight.assert_not_called()
-
-    def test_explicit_consolidation_full_overrides_sim_flag(self):
-        """A persistent HANDLE forces "full" even when driven through the sim loop:
-        explicit consolidation wins over the deprecated is_sim_mode proxy."""
-        hub = MagicMock()
-        end_bio_session(
-            memory_hub=hub,
-            memory_hub_enabled=True,
-            hippocampus=None,
-            consolidation="full",
-            is_sim_mode=True,  # would say lightweight — explicit param wins
-        )
+        end_bio_session(memory_hub=hub, ticket=object(), hippocampus=None)
         hub.on_session_end.assert_called_once()
         hub.on_session_end_lightweight.assert_not_called()
 
     def test_explicit_consolidation_lightweight(self):
-        """CC8 preserved: an explicit "lightweight" still gets the lightweight path."""
+        """CC8 preserved: an explicit "lightweight" gets the lightweight path."""
         hub = MagicMock()
-        end_bio_session(
-            memory_hub=hub,
-            memory_hub_enabled=True,
-            hippocampus=None,
-            consolidation="lightweight",
-        )
+        end_bio_session(memory_hub=hub, ticket=object(), hippocampus=None, consolidation="lightweight")
         hub.on_session_end_lightweight.assert_called_once()
         hub.on_session_end.assert_not_called()
 
-    def test_skips_hub_when_not_enabled(self):
+    def test_skips_hub_without_a_ticket(self):
         hub = MagicMock()
-        end_bio_session(
-            memory_hub=hub,
-            memory_hub_enabled=False,
-            hippocampus=None,
-            is_sim_mode=False,
-        )
+        end_bio_session(memory_hub=hub, ticket=None, hippocampus=None)
         hub.on_session_end.assert_not_called()
 
     def test_all_failures_nonfatal(self):
@@ -307,13 +304,7 @@ class TestEndBioSession:
         hippo.save.side_effect = RuntimeError("save error")
         hub = MagicMock()
         hub.on_session_end.side_effect = RuntimeError("end error")
-        # Should not raise
-        end_bio_session(
-            memory_hub=hub,
-            memory_hub_enabled=True,
-            hippocampus=hippo,
-            is_sim_mode=False,
-        )
+        end_bio_session(memory_hub=hub, ticket=object(), hippocampus=hippo)  # should not raise
 
 
 @pytest.fixture(autouse=True)

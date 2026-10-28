@@ -83,9 +83,9 @@ class LoopRun:
     holds (``ctrl``, the context pool, the encoder) are themselves mutable, and ``ctrl`` is where the
     loop's mutable state lives.
 
-    ``dn_enabled`` duplicates ``ctrl.dn_enabled`` (a duplication that predates the move: the loop's
-    local and the controller's field were both set by the setup). Carried as-is so the move stays
-    pure; a later slice should read one source of truth.
+    The Default Network's stop and the memory-session ticket are the run's ``BioSession``'s, not fields here
+    (#1438 PR 0): ``dn_enabled`` and ``memory_hub_enabled`` left with the body's session end, and the one source of
+    truth for the DN is ``ctrl.dn_enabled``.
     """
 
     executor: Any  # the caller's executor, instrumented when an action sink is given
@@ -101,7 +101,6 @@ class LoopRun:
     is_novel_thought: Callable[..., bool]
     max_response_tokens_override: int | None
     max_cycles_override: int | None
-    dn_enabled: bool  # the Default Network started (False when absent or its start failed)
     nac: Any
     xclock: Any  # the ExperienceClockDriver
     agent_id: str
@@ -109,7 +108,6 @@ class LoopRun:
     rec_outcome: Callable[..., Any]
     sensor_encoder: Any
     situation_cue: Any
-    memory_hub_enabled: bool
     planning_liveness_on: bool
     # ``tool_dispatch.execute_and_learn`` with every per-run argument bound (#1133): callers pass only
     # ``action``, ``confidence``, ``proposal``, ``observation`` and ``human_involved``.
@@ -594,7 +592,7 @@ def build_loop_run(
     # mid-session anyway.
     _max_response_tokens_override, _max_cycles_override = resolve_llm_loop_overrides()
 
-    dn_enabled = _start_default_network(ctrl, session, sim)
+    _start_default_network(ctrl, session, sim)  # the session stops it (#1438 PR 0)
 
     # Extract NAc reference for causal learning (passed to record_outcome)
     _loop_nac, _loop_xclock = _loop_bio_handles(memory_hub, hippocampus, sim, autonomy_controller)
@@ -659,7 +657,6 @@ def build_loop_run(
         is_novel_thought=is_novel_thought,
         max_response_tokens_override=_max_response_tokens_override,
         max_cycles_override=_max_cycles_override,
-        dn_enabled=dn_enabled,
         nac=_loop_nac,
         xclock=_loop_xclock,
         agent_id=_loop_agent_id,
@@ -667,7 +664,6 @@ def build_loop_run(
         rec_outcome=_rec_outcome,
         sensor_encoder=_loop_sensor_encoder,
         situation_cue=_loop_situation_cue,
-        memory_hub_enabled=memory_hub_enabled,
         planning_liveness_on=_planning_liveness_on,
         execute_and_learn=_execute_and_learn,
         book_refusal=_book_refusal,

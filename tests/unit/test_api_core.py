@@ -829,15 +829,19 @@ def test_load_mutate_shutdown_load_round_trips(api_home):
 
 
 def test_session_start_is_idempotent(api_home):
-    """The runtime also opens a session (start_bio_session) on an adopted instance;
-    a second open must be a no-op, not a re-restore that clears ATL."""
+    """A second open by the same owner returns the same ticket, and a loop taking the session over starts a
+    new generation WITHOUT a restore (#1438 PR 0): neither may re-restore and clear in-memory ATL state."""
     from maxim import create
 
     agent = create.agent("api_idempotent")
     try:
         concept_id, _ = agent.memory_hub.atl.find_or_create("kept", category="test", definition="in memory only")
-        assert agent.memory_hub.on_session_start() == {"already_active": 1}
+        ticket = agent._session_ticket
+        assert agent.memory_hub.on_session_start(owner=agent) is ticket
+        loop_ticket = agent.memory_hub.on_session_start(owner=object(), live=True)  # a loop's handover
+        assert loop_ticket.generation == ticket.generation + 1 and loop_ticket.start_stats == {}
         assert agent.memory_hub.atl.get(concept_id) is not None, "a second session start discarded in-memory ATL state"
+        agent.memory_hub.on_session_end(loop_ticket)
     finally:
         agent.shutdown()
 
@@ -904,11 +908,12 @@ def test_the_loop_closing_its_own_session_does_not_make_shutdown_cry_wolf(api_ho
     It must still fire for a hub where NO session was ever opened, which is the defect.
     """
     from maxim.runtime.agent_factory import AgentConfig, AgentFactory
-    from maxim.runtime.bio_integration import end_bio_session, start_bio_session
+    from maxim.runtime.bio_integration import bio_session
 
     agent = AgentFactory().create_full_agent(AgentConfig(agent_id="loop_nesting", with_bio_stack=True))
-    enabled = start_bio_session(memory_hub=agent.memory_hub, hippocampus=agent.hippocampus)
-    end_bio_session(memory_hub=agent.memory_hub, hippocampus=agent.hippocampus, memory_hub_enabled=enabled)
+    # #1438 PR 0: the loop takes the instance's session over (handover) and ends its own generation.
+    with bio_session(memory_hub=agent.memory_hub, hippocampus=agent.hippocampus, owner=object()) as s:
+        assert s.ticket is not agent._session_ticket
     assert agent.memory_hub._session_active is False, "the loop should have closed the session"
 
     caplog.set_level(logging.WARNING)
@@ -918,19 +923,18 @@ def test_the_loop_closing_its_own_session_does_not_make_shutdown_cry_wolf(api_ho
 
 
 def test_a_hub_that_never_opened_a_session_still_warns_on_both_closers(caplog):
-    """The defect itself: closing a session nobody opened persists nothing."""
-    import threading
-
+    """The defect itself: closing a session nobody opened persists nothing (D41), so it still warns. Under #1438
+    PR 0 such a close has no current ticket to present (None, or a stale one)."""
     from maxim.integration.memory_hub import MemoryHub
+    from maxim.integration.session_ownership import SessionOwnership
 
     for closer in ("on_session_end", "on_session_end_lightweight"):
         hub = MemoryHub.__new__(MemoryHub)
-        hub._session_active = False
+        hub._ownership = SessionOwnership()
         hub._session_ever_started = False
-        hub._session_flag_lock = threading.Lock()
         caplog.clear()
         with caplog.at_level(logging.WARNING):
-            assert getattr(MemoryHub, closer)(hub) == {}
+            assert getattr(MemoryHub, closer)(hub, None) == {}
         assert any("no session ever started" in r.getMessage() for r in caplog.records), closer
 
 
