@@ -47,6 +47,11 @@ class SessionTicket:
     generation: int
     owner: Any
     end_done: threading.Event = field(default_factory=threading.Event, repr=False)
+    # True when this claim moved CLOSED -> OPEN (the hub restores its stores); False for a handover, whose session
+    # data is continuous: a restore would clear and reload what was stored since the open.
+    fresh: bool = False
+    # What the hub restored at a fresh open (counts per store); empty for a handover or an idempotent claim.
+    start_stats: dict = field(default_factory=dict, repr=False)
 
 
 class SessionOwnership:
@@ -72,6 +77,16 @@ class SessionOwnership:
 
     def claim(self, *, owner: Any, live: bool = False, deadline_s: float | None = None) -> SessionTicket:
         """Claim the session for ``owner`` by the rules in the module docstring."""
+        return self.claim_reporting(owner=owner, live=live, deadline_s=deadline_s)[0]
+
+    def claim_reporting(
+        self, *, owner: Any, live: bool = False, deadline_s: float | None = None
+    ) -> tuple[SessionTicket, bool]:
+        """:meth:`claim`, also reporting whether THIS call opened the generation it returns.
+
+        An idempotent re-claim returns the existing ticket (``opened`` False) even though that ticket's ``fresh`` is
+        still True from its own open; the hub restores its stores only when ``opened and ticket.fresh``.
+        """
         wait_until = time.monotonic() + (
             ENDING_WAIT_CAP_S if deadline_s is None else min(deadline_s, ENDING_WAIT_CAP_S)
         )
@@ -82,7 +97,7 @@ class SessionOwnership:
                 elif self._state == "OPEN" and self._ticket is not None:
                     if self._ticket.owner is owner:
                         self._live = self._live or live
-                        return self._ticket
+                        return self._ticket, False
                     if self._live:
                         raise SessionHeld(
                             f"the memory session (generation {self._generation}) is held by a live loop; "
@@ -90,10 +105,10 @@ class SessionOwnership:
                         )
                     if not live:
                         # Only a loop takes over an owner with no live loop; any other claimer shares it.
-                        return self._ticket
-                    return self._open(owner, live)
+                        return self._ticket, False
+                    return self._open(owner, live, fresh=False), True
                 else:
-                    return self._open(owner, live)
+                    return self._open(owner, live, fresh=True), True
             remaining = wait_until - time.monotonic()
             if ending is None or remaining <= 0 or not ending.end_done.wait(remaining):
                 with self._lock:
@@ -104,12 +119,17 @@ class SessionOwnership:
                     f"{ENDING_WAIT_CAP_S if deadline_s is None else deadline_s:g} s"
                 )
 
-    def _open(self, owner: Any, live: bool) -> SessionTicket:
+    def _open(self, owner: Any, live: bool, *, fresh: bool) -> SessionTicket:
         self._generation += 1
-        self._ticket = SessionTicket(generation=self._generation, owner=owner)
+        self._ticket = SessionTicket(generation=self._generation, owner=owner, fresh=fresh)
         self._state = "OPEN"
         self._live = live
         return self._ticket
+
+    def abandon(self, ticket: SessionTicket) -> None:
+        """Close a generation whose open failed half-way, so no orphaned OPEN session outlives a raising opener."""
+        if self.begin_end(ticket):
+            self.finish_end(ticket)
 
     def release_live(self, ticket: SessionTicket) -> None:
         """The loop's context manager let go of its claim; a stale ticket changes nothing."""

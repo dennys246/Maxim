@@ -117,7 +117,6 @@ def test_a_non_owner_waits_for_end_done_within_its_deadline() -> None:
     assert own.wait_ended(deadline_s=0.05) is True
 
 
-@pytest.mark.xfail(strict=True, reason="#1438 PR 0: MemoryHub is not wired to SessionOwnership yet")
 def test_the_hub_open_requires_an_owner_and_a_ticketless_close_raises() -> None:
     from maxim.integration.memory_hub import MemoryHub
 
