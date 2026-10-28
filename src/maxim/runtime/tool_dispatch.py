@@ -1067,6 +1067,32 @@ def _tool_followup(
     )
 
 
+def _record_turn_after_effects(*, action: dict[str, Any], success: bool, proposal: Any, context_pool: Any) -> str:
+    """After-effects of a turn whose action was dispatched and RETURNED (the normal path of ``execute_and_learn``; a
+    dispatch that raised never reaches here). The seed of #1150's after-effects step (Session A's grant). Returns the
+    action's tool name, which the caller reads on."""
+    # The inbound comms this turn's prompt showed whole are delivered: the turn was acted on (#1481). Only the
+    # success branch of LLMWorker._process_request sets these, so a fallback acknowledges nothing.
+    feed = getattr(proposal, "inbound_feed", None)
+    if feed is not None:
+        feed.ack(list(getattr(proposal, "inbound_rendered_ids", ())))
+
+    # Track conversation history for response/speak actions
+    tool_name = action.get("tool_name", "")
+    if tool_name in ("respond", "speak") and success:
+        raw_params = action.get("params")
+        params = raw_params if isinstance(raw_params, dict) else {}
+        response_message = params.get("message") or params.get("text", "")
+        triggering_input = getattr(proposal, "triggering_input", "")
+        if response_message and triggering_input:
+            context_pool.add_conversation_turn(
+                user_input=triggering_input,
+                assistant_response=response_message,
+                tool_used=tool_name,
+            )
+    return tool_name
+
+
 def execute_and_learn(
     *,
     agent: Any,
@@ -1338,19 +1364,9 @@ def execute_and_learn(
             queued_followup = _tool_followup(executor, tool_name, result_str, proposal, followup_type, current_mode)
             _loop_logger.info("Tool %s completed with followup_type=%s, queuing follow-up", tool_name, followup_type)
 
-        # Track conversation history for response/speak actions
-        tool_name = action.get("tool_name", "")
-        if tool_name in ("respond", "speak") and success:
-            raw_params = action.get("params")
-            params = raw_params if isinstance(raw_params, dict) else {}
-            response_message = params.get("message") or params.get("text", "")
-            triggering_input = getattr(proposal, "triggering_input", "")
-            if response_message and triggering_input:
-                context_pool.add_conversation_turn(
-                    user_input=triggering_input,
-                    assistant_response=response_message,
-                    tool_used=tool_name,
-                )
+        tool_name = _record_turn_after_effects(
+            action=action, success=success, proposal=proposal, context_pool=context_pool
+        )
 
         # Process result
         try:

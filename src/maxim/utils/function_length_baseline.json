@@ -6,7 +6,7 @@
     {
       "file": "src/maxim/agents/llm_worker.py",
       "qualname": "LLMWorker._process_request",
-      "lines": 259
+      "lines": 252
     },
     {
       "file": "src/maxim/api.py",
@@ -146,7 +146,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "_run_agentic_loop_body",
-      "lines": 2379
+      "lines": 2208
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -186,7 +186,7 @@
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
       "qualname": "execute_and_learn",
-      "lines": 384
+      "lines": 374
     },
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
@@ -388,6 +388,7 @@
     "_main_impl tightened 1604 -> 1593 and start_simulation_mode 2889 -> 2869 on 2026-10-26 (#1468, #1454 interim; rule T): the robot run loop's finally teardown moved verbatim to cli.py::_end_robot_run, paying for the nonzero exit code on an exception; the interactive post-sim report view and new-goal prompt moved to orchestrator.py::_show_report_and_post_sim_prompt, carrying the removal of the false '(memory carries over)' text. The review round's exit-code table (owner 2026-10-26) moved the loop's error-to-code mapping to cli.py::_run_stopped_on: 1593 -> 1588.",
     "_main_impl tightened 1588 -> 1562 on 2026-10-26 (#1485 / #1403, rule T): the role-detection block moved to cli.py::_detect_role_or_warn, which re-raises ConfigDirUnreadable instead of warning past an unreadable config dir. Merged with #1468/#1454's 1588 the same day: 1562.",
     "_main_impl tightened 1562 -> 1518 on 2026-10-27 (#1391/#1392/#1394/#1395, rule T): the scenario-validation report moved to cli.py::_report_scenario_validation, carrying the switch to simulation/validation.py::validate_finished_run (snapshot and tool stats on the CLI path). Merged with #1466's 1583, #1468/#1454's 1588 and #1485's 1562: 1518.",
-    "_main_impl tightened 1588 -> 1548 on 2026-10-26 (#1338, advisor item 6; rule T): server mode moved to cli.py::_run_server_mode, its LLM start to cli.py::_start_server_llm, which reports NOT READY instead of printing ready (the process stays up while a LeaderProxy runs; solo server mode exits 1); an unused LeaderRefusal import went with it. Merged with #1485's 1562 on 2026-10-27, after #1485 landed first: 1522. Merged with #1503's 1518 the same day: 1478."
+    "_main_impl tightened 1588 -> 1548 on 2026-10-26 (#1338, advisor item 6; rule T): server mode moved to cli.py::_run_server_mode, its LLM start to cli.py::_start_server_llm, which reports NOT READY instead of printing ready (the process stays up while a LeaderProxy runs; solo server mode exits 1); an unused LeaderRefusal import went with it. Merged with #1485's 1562 on 2026-10-27, after #1485 landed first: 1522. Merged with #1503's 1518 the same day: 1478.",
+    "_run_agentic_loop_body tightened 2379 -> 2208 and LLMWorker._process_request 259 -> 252 on 2026-10-28 (#1481, rule T; Session A's grants): the section 6 submit try/finally moved whole to loop_external.submit_tick_context with the two submits' shared arguments built once by loop_external.planning_submit_shared_kwargs (autonomy_level stays per call), and the Wire 1 variance-annotation block moved verbatim to loop_planning.annotate_tool_variance (AST-identical); _process_request's proposal sim-log moved to llm_worker._sim_log_proposal_built, paying for the two inbound fields; execute_and_learn 384 -> 374: its conversation-history after-effect moved verbatim to tool_dispatch._record_turn_after_effects (the seed of #1150's after-effects step), which carries the inbound acknowledgement."
   ]
 }

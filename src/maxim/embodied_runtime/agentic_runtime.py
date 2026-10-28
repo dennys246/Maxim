@@ -488,7 +488,7 @@ class AgenticRuntimeMixin:
                 from maxim.runtime.bootstrap import build_comms_stack
 
                 gateway, _conv_manager = build_comms_stack(
-                    bus=agent_bus,
+                    agent=agent,
                     nac=nac,
                 )
             except Exception as e:

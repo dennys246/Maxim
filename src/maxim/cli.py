@@ -2206,7 +2206,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                     from maxim.runtime.bootstrap import build_comms_stack
 
                     gateway, _conv_manager = build_comms_stack(
-                        bus=agentic_agent._bus,
+                        agent=agentic_agent,
                     )
 
                 # ── Tool registry (CLI-specific: depends on response_output,

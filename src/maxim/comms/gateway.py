@@ -85,8 +85,8 @@ class CommunicationGateway:
             sender=sender,
             salience=0.9,  # Fixed — not from external data
             metadata={
-                "external": True,
                 **(metadata or {}),
+                "external": True,  # last: caller metadata cannot clear it (#1481)
             },
             sensory=SensoryTag(modality=SensoryModality.NARRATIVE, submodality="comms"),
         )

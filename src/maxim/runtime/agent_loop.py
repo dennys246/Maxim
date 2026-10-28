@@ -25,9 +25,15 @@ from maxim.runtime.bio_integration import (
 )
 from maxim.runtime.loop_gates import GateOutcome, pre_tick_gate
 from maxim.runtime.loop_setup import build_loop_run
+from maxim.runtime.loop_external import (
+    ExternalInbox,
+    inbound_comms_subscription,
+    planning_submit_shared_kwargs,
+    submit_tick_context,
+)
 from maxim.runtime.loop_controller import _handle_planning_failure
 from maxim.runtime.loop_substrate import substrate_tick
-from maxim.runtime.loop_planning import drain_approved
+from maxim.runtime.loop_planning import annotate_tool_variance, drain_approved
 from maxim.runtime.loop_perception import perceive, percept_text, take_observation, take_user_input
 
 # Module reference, not a name import: a test that patches the leaf also reaches the loop's call.
@@ -65,55 +71,6 @@ logger = logging.getLogger(__name__)
 # additional band must update both this regex AND
 # ``Embodiment.integrity_to_felt_phrase`` together.
 _WIRE3_PHRASE_RE = re.compile(r" \((?:feels strained|feels weakened, prone to failing)\)$")
-
-# Wire 1 (release_0_9_1.md Stage 4): regex matching the experience-voice
-# annotations the variance-annotation hook produces. Same shape rationale as
-# the Wire 3 regex above — strip stale annotation before re-applying the
-# current-tick one so the description doesn't accumulate suffixes across
-# observations.
-#
-# **Register choice (bio-fidelity fold from pre-merge review):** Wire 3's
-# phrases ("feels strained" / "feels weakened, prone to failing") carry a
-# SOMATIC voice — they describe proprioceptive body-state. Wire 1's signal
-# is METACOGNITIVE — variance over outcome reliability is "what experience
-# has taught me about this action", not "what my body senses right now".
-# Reusing the "feels X" stem for both collapsed two distinct bio-system
-# registers (somatic vs experience-acquired) into one indistinguishable
-# surface, so the LLM could not separate "I will fail because the body
-# is broken" from "I will fail because the outcome is stochastic". The
-# experience-voice phrasing "(unpredictable from prior experience)" /
-# "(reliable from prior experience)" aligns with Wire-A's
-# "[... from prior experience]" prompt-section register (the only other
-# substrate surface that exposes learned variability to the LLM), keeping
-# the experience-acquired signals coherent across wires while Wire 3 owns
-# the somatic surface alone.
-#
-# Two phrases match the two bands (high variance / reliable); the middle
-# band emits no annotation. Wire 1 annotation appears AFTER any Wire 3
-# annotation in the description, so the regex is anchored at end-of-
-# string and Wire 3's strip runs first (the two suffixes can co-occur on
-# one tool — physical-damage + outcome-variance signals are orthogonal).
-_WIRE1_PHRASE_RE = re.compile(r" \((?:unpredictable|reliable) from prior experience\)$")
-
-# Wire 1 thresholds. Bernoulli variance on binary {0, 1} reward maxes at 0.25
-# (p = 0.5). The bands are pre-registered in release_0_9_1.md Stage 4:
-#   variance >= 0.15 → "(unpredictable from prior experience)"  — ~30/70 or worse
-#   variance <  0.05 → "(reliable from prior experience)"       — ~94/6 or better
-#   otherwise        → no annotation (middle band)
-# Min observation count guards against single-sample noise — Welford variance
-# stabilises around n ~= 5 for binary signals.
-_WIRE1_HIGH_VARIANCE_THRESHOLD = 0.15
-_WIRE1_LOW_VARIANCE_THRESHOLD = 0.05
-_WIRE1_MIN_OBSERVATIONS = 5
-
-# Wire 1 ablation gate. Reuses Wire-A's canonical
-# ``annotation_disabled_via_env`` parser so the truthy-value set is a single
-# source of truth across 0.9.1's two annotation gates. Default OFF
-# (annotation ON in 0.9.1 by design). Roy-3 may set this for variance-
-# annotation-off arms; the conftest scrub clears it between tests.
-_WIRE1_DISABLE_ENV = "MAXIM_DISABLE_VARIANCE_ANNOTATION"
-_WIRE1_HIGH_PHRASE = "unpredictable from prior experience"
-_WIRE1_LOW_PHRASE = "reliable from prior experience"
 
 
 from maxim.runtime.loop_state import (
@@ -437,18 +394,6 @@ def _take_deferred_inputs(context: Any, processed_cli_inputs: Any, liveness_on: 
     for c in taken:
         processed_cli_inputs.append(c)
     return taken
-
-
-def _release_unsent_deferred_inputs(processed_cli_inputs: Any, deferred: list[str], submitted: bool) -> None:
-    """A submit that failed (queue full, or raised) must not lose the inputs it carried: they become unprocessed
-    again and ride the next submit."""
-    if submitted:
-        return
-    for c in deferred:
-        try:
-            processed_cli_inputs.remove(c)
-        except ValueError:
-            continue  # already evicted from the bounded deque: it reads as unprocessed anyway
 
 
 # A completed proposal that waited longer than this is dropped (#1048's cutoff).
@@ -1007,45 +952,47 @@ def run_agentic_loop(
 
     Split verbatim (docs/plans/bounded_stop.md §3 step 0) so session ownership can wrap the body in one seam
     (``bio_session``, PR 0). Every argument is forwarded unchanged; the signature is the public one and is kept
-    identical to the body's."""
-    _run_agentic_loop_body(
-        agent,
-        environment,
-        state,
-        memory,
-        decision_engine,
-        executor,
-        autonomy_controller=autonomy_controller,
-        llm_worker=llm_worker,
-        default_network=default_network,
-        hippocampus=hippocampus,
-        memory_hub=memory_hub,
-        evaluators=evaluators,
-        max_steps=max_steps,
-        run_id=run_id,
-        stop_event=stop_event,
-        on_step=on_step,
-        on_event=on_event,
-        idle_sleep_s=idle_sleep_s,
-        persist_every_n_steps=persist_every_n_steps,
-        target_hz=target_hz,
-        context_pool_config=context_pool_config,
-        use_tool_prompting=use_tool_prompting,
-        protocol_registry=protocol_registry,
-        percept_source=percept_source,
-        action_sink=action_sink,
-        pain_bus=pain_bus,
-        imagination_trigger=imagination_trigger,
-        bio_enrichment_pipeline=bio_enrichment_pipeline,
-        thought_gate=thought_gate,
-        aut_mode=aut_mode,
-        substrate_telemetry=substrate_telemetry,
-        substrate_policy=substrate_policy,
-        substrate_action_gate=substrate_action_gate,
-        consolidation=consolidation,
-        planning_liveness=planning_liveness,
-        sim_adapter=sim_adapter,
-    )
+    identical to the body's. The run's inbound comms are held for exactly its lifetime (#1481)."""
+    with inbound_comms_subscription(agent) as inbound_inbox:
+        _run_agentic_loop_body(
+            agent,
+            environment,
+            state,
+            memory,
+            decision_engine,
+            executor,
+            autonomy_controller=autonomy_controller,
+            llm_worker=llm_worker,
+            default_network=default_network,
+            hippocampus=hippocampus,
+            memory_hub=memory_hub,
+            evaluators=evaluators,
+            max_steps=max_steps,
+            run_id=run_id,
+            stop_event=stop_event,
+            on_step=on_step,
+            on_event=on_event,
+            idle_sleep_s=idle_sleep_s,
+            persist_every_n_steps=persist_every_n_steps,
+            target_hz=target_hz,
+            context_pool_config=context_pool_config,
+            use_tool_prompting=use_tool_prompting,
+            protocol_registry=protocol_registry,
+            percept_source=percept_source,
+            action_sink=action_sink,
+            pain_bus=pain_bus,
+            imagination_trigger=imagination_trigger,
+            bio_enrichment_pipeline=bio_enrichment_pipeline,
+            thought_gate=thought_gate,
+            aut_mode=aut_mode,
+            substrate_telemetry=substrate_telemetry,
+            substrate_policy=substrate_policy,
+            substrate_action_gate=substrate_action_gate,
+            consolidation=consolidation,
+            planning_liveness=planning_liveness,
+            sim_adapter=sim_adapter,
+            inbound_inbox=inbound_inbox,
+        )
 
 
 def _run_agentic_loop_body(
@@ -1099,7 +1046,9 @@ def _run_agentic_loop_body(
     # would convert those existing RECOVERIES into aborts (pre-merge review, architecture
     # lens B3) and, for a threaded AUT, into a silently dead thread whose campaign keeps
     # emitting empty turns (B1).
-    sim_adapter: Any | None = None,  # Pre-built NullSimulationAdapter (Stage 3, live_audio_orient_wiring.md):
+    sim_adapter: Any | None = None,
+    inbound_inbox: ExternalInbox
+    | None = None,  # #1481: the run's held inbound comms (wrapper-supplied)  # Pre-built NullSimulationAdapter (Stage 3, live_audio_orient_wiring.md):
     # lets a live producer (the DoA feed) hold the adapter and carry_percept() into the loop's
     # modality-preserving side-channel WITHOUT a percept_source (which would flip is_sim_mode).
     # Only honored when percept_source is None; ignored (with the sim adapter built as before) otherwise.
@@ -2978,180 +2927,13 @@ def _run_agentic_loop_body(
                                 # future calls (and other agents).
                                 tool_descriptions[name] = {**entry, "description": stripped + annotation}
 
-                        # Wire 1 (release_0_9_1.md Stage 4): annotate
-                        # tools with outcome-variance experience phrasing.
-                        # Runs AFTER Wire 3 so an integrity-degraded tool
-                        # that is ALSO outcome-variable gets both
-                        # annotations (orthogonal signals: somatic body
-                        # damage vs. experience-acquired unpredictability).
-                        # The hybrid bio-system + LLM caveat is documented
-                        # in docs/plans/deferred/bio_emergent_persona_foundations.md
-                        # § Wire 1 — variance reaches the LLM through
-                        # description text, not a pre-filter ranker.
-                        # A cleaner post-1.0 design would pre-rank tools
-                        # before the LLM sees them.
-                        #
-                        # Idempotency: _WIRE1_PHRASE_RE strips the prior
-                        # annotation before the current one is appended
-                        # so the description does not accumulate suffixes
-                        # across observations. Wire 3 (somatic
-                        # "feels strained" / "feels weakened, prone to
-                        # failing") and Wire 1 (experience-voice
-                        # "unpredictable from prior experience" /
-                        # "reliable from prior experience") use distinct
-                        # phrases so the two regexes do not conflict.
-                        _wire1_annotated_high: list[str] = []
-                        _wire1_annotated_low: list[str] = []
-                        _wire1_middle_band: list[tuple[str, float]] = []
-                        _wire1_felt_phrases: dict[str, str] = {}
-                        # Gate on bio-system + tool list FIRST so cold-start
-                        # agents skip the env-var read entirely (one fewer
-                        # os.environ lookup per submission). The ablation
-                        # parser is Wire-A's canonical helper — single
-                        # source of truth across 0.9.1's two gates.
-                        _risk_profile: dict[str, float] = {}
-                        if _loop_nac is not None and available_tools:
-                            from maxim.prompts.cluster_bias_annotation import (
-                                annotation_disabled_via_env,
-                            )
-
-                            _wire1_disabled_via_env = annotation_disabled_via_env(os.environ.get(_WIRE1_DISABLE_ENV))
-                            if not _wire1_disabled_via_env:
-                                try:
-                                    _risk_profile = _loop_nac.get_action_risk_profile(
-                                        agent_id=_loop_agent_id,
-                                        min_observations=_WIRE1_MIN_OBSERVATIONS,
-                                    )
-                                except (ValueError, AttributeError) as e:
-                                    # ValueError: empty agent_id (defensive —
-                                    # _loop_agent_id is non-empty by construction
-                                    # at line ~1025, but a future refactor could
-                                    # introduce a regression here). AttributeError:
-                                    # _loop_nac is something other than an NAc
-                                    # (test stubs / forward-compat). Either case:
-                                    # WARN so operators notice + no-op the wire.
-                                    logger.warning("Wire 1: risk profile fetch failed — annotation no-op: %s", e)
-                                    _risk_profile = {}
-                            # _risk_profile keys are "tool:<name>" (or
-                            # "tool:use:<action>" for the generic use
-                            # tool); available_tools entries are bare
-                            # names. Strip the "tool:" prefix to match.
-                            for event_sig, variance in _risk_profile.items():
-                                if event_sig.startswith("tool:use:"):
-                                    # The compound generic-use signature
-                                    # doesn't map back to a bare tool
-                                    # name in available_tools — the
-                                    # available_tools entry is "use".
-                                    # Skip; Wire 1 doesn't annotate at
-                                    # the action-arg level (no separate
-                                    # description per use:<action>).
-                                    continue
-                                tool_name = event_sig[len("tool:") :] if event_sig.startswith("tool:") else event_sig
-                                if tool_name not in available_tools:
-                                    continue
-                                if variance >= _WIRE1_HIGH_VARIANCE_THRESHOLD:
-                                    phrase = _WIRE1_HIGH_PHRASE
-                                    _wire1_annotated_high.append(tool_name)
-                                    _wire1_felt_phrases[tool_name] = phrase
-                                elif variance < _WIRE1_LOW_VARIANCE_THRESHOLD:
-                                    phrase = _WIRE1_LOW_PHRASE
-                                    _wire1_annotated_low.append(tool_name)
-                                    _wire1_felt_phrases[tool_name] = phrase
-                                else:
-                                    # Middle band: no annotation. Strip
-                                    # any prior annotation so an LLM
-                                    # cannot read stale signal after the
-                                    # tool's variance has decayed back
-                                    # to the neutral band.
-                                    _wire1_middle_band.append((tool_name, variance))
-                                    entry = tool_descriptions.get(tool_name)
-                                    if isinstance(entry, dict):
-                                        base_desc = entry.get("description", "")
-                                        if isinstance(base_desc, str) and _WIRE1_PHRASE_RE.search(base_desc):
-                                            tool_descriptions[tool_name] = {
-                                                **entry,
-                                                "description": _WIRE1_PHRASE_RE.sub("", base_desc),
-                                            }
-                                    continue
-                                entry = tool_descriptions.get(tool_name)
-                                if not isinstance(entry, dict):
-                                    continue
-                                base_desc = entry.get("description", "")
-                                if not isinstance(base_desc, str):
-                                    continue
-                                stripped = _WIRE1_PHRASE_RE.sub("", base_desc)
-                                tool_descriptions[tool_name] = {
-                                    **entry,
-                                    "description": f"{stripped} ({phrase})",
-                                }
-                            # Emit Roy-3 disambiguator (bio-fidelity
-                            # measurability): without this event,
-                            # "Wire 1 annotated the tool" and "LLM
-                            # ignored the annotation" are
-                            # indistinguishable post-hoc. Mirrors the
-                            # Wire 3 WIRE_3_FILTER shape so Roy-3 can
-                            # count annotation effects uniformly.
-                            # Payload carries:
-                            #   - agent_id          (multi-agent attribution)
-                            #   - high_variance_tools, reliable_tools
-                            #   - felt_phrases      (exact strings the LLM saw)
-                            #   - annotated_variances (numeric float per annotated tool)
-                            #   - middle_band       (tool, variance) tuples for
-                            #                       counterfactual Roy-3 analysis
-                            if _wire1_annotated_high or _wire1_annotated_low or _wire1_middle_band:
-                                try:
-                                    from maxim.simulation import sim_logger as _sl_w1
-
-                                    _w1_tick = int(time.time() - _sl_w1._sim_start) if _sl_w1._sim_start > 0.0 else 0
-                                    _sl_w1.sim_log(
-                                        "WIRE_1_ANNOTATION",
-                                        f"wire_1: high_variance={len(_wire1_annotated_high)} "
-                                        f"reliable={len(_wire1_annotated_low)} "
-                                        f"middle={len(_wire1_middle_band)}",
-                                        {
-                                            "tick": _w1_tick,
-                                            "agent_id": _loop_agent_id,
-                                            "high_variance_tools": sorted(_wire1_annotated_high),
-                                            "reliable_tools": sorted(_wire1_annotated_low),
-                                            # felt_phrases is the LLM-visible
-                                            # text — Roy-3 reads this to
-                                            # decide what the prompt actually
-                                            # contained (vs reconstructing
-                                            # from thresholds + variances).
-                                            "felt_phrases": dict(_wire1_felt_phrases),
-                                            # Numeric variance for each
-                                            # annotated tool — LLM does NOT
-                                            # see these floats, only the
-                                            # felt phrase above.
-                                            "annotated_variances": {
-                                                (
-                                                    event_sig[len("tool:") :]
-                                                    if event_sig.startswith("tool:")
-                                                    else event_sig
-                                                ): round(variance, 4)
-                                                for event_sig, variance in _risk_profile.items()
-                                                if not event_sig.startswith("tool:use:")
-                                                and (
-                                                    event_sig[len("tool:") :]
-                                                    if event_sig.startswith("tool:")
-                                                    else event_sig
-                                                )
-                                                in (_wire1_annotated_high + _wire1_annotated_low)
-                                            },
-                                            # Middle-band tools: present
-                                            # in the profile but not
-                                            # annotated. The counterfactual
-                                            # for Roy-3 ablation analysis
-                                            # ("substrate produced variance
-                                            # in this band but no
-                                            # annotation reached the LLM").
-                                            "middle_band_variances": {
-                                                name: round(var, 4) for name, var in _wire1_middle_band
-                                            },
-                                        },
-                                    )
-                                except ImportError:
-                                    pass
+                        annotate_tool_variance(  # Wire 1, moved verbatim to loop_planning (#1481 Rule T, A's grant)
+                            tool_descriptions=tool_descriptions,
+                            available_tools=available_tools,
+                            _loop_nac=_loop_nac,
+                            _loop_agent_id=_loop_agent_id,
+                            logger=logger,
+                        )
 
                         # Get context pool text
                         context_pool_text = context_pool.get_context_text(
@@ -3195,36 +2977,38 @@ def _run_agentic_loop_body(
                             # down to the base Executor where the list lives.
                             _failed_tools = list(getattr(executor, "_tools_hallucinated", []))
 
-                        submitted = False
-                        try:
-                            submitted = llm_worker.submit_context(
-                                context=context,
-                                mode=mode_info,
-                                autonomy_level=autonomy_controller.current_level,
-                                internet_access=internet_access,
-                                internet_policy_summary=internet_policy_summary,
-                                available_tools=available_tools,
-                                tool_descriptions=tool_descriptions,
-                                failed_tools=_failed_tools,
-                                context_pool_text=context_pool_text,
-                                agent_states=agent_states,
-                                recent_outcomes=recent_outcomes,
-                                use_tool_prompting=use_tool_prompting and bool(available_tools),
-                                # Use modification text as triggering_input if no new input but pending modification
-                                triggering_input=new_cli_input
-                                or followup_original_query
-                                or (pending_modification.get("user_modification", "") if pending_modification else ""),
-                                conversation_history_text=conversation_history_text,
-                                pending_modification=pending_modification,
-                                prefetch_context=prefetch_context_text,
-                                skip_exploration=skip_exploration,
-                                is_sleeping=is_sleeping,
-                                protocol_context=_protocol_context,
-                                deliberation_available=bio_enrichment_pipeline is not None,
-                                deferred_inputs=_deferred_inputs,
-                            )
-                        finally:  # a refused or raising submit must not lose the inputs it carried
-                            _release_unsent_deferred_inputs(processed_cli_inputs, _deferred_inputs, submitted)
+                        _shared_submit = planning_submit_shared_kwargs(
+                            mode_info=mode_info,
+                            internet_access=internet_access,
+                            internet_policy_summary=internet_policy_summary,
+                            available_tools=available_tools,
+                            tool_descriptions=tool_descriptions,
+                            context_pool_text=context_pool_text,
+                            agent_states=agent_states,
+                            recent_outcomes=recent_outcomes,
+                            use_tool_prompting=use_tool_prompting and bool(available_tools),
+                            conversation_history_text=conversation_history_text,
+                            is_sleeping=is_sleeping,
+                            protocol_context=_protocol_context,
+                        )
+                        submitted = submit_tick_context(
+                            llm_worker,
+                            context=context,
+                            shared=_shared_submit,
+                            autonomy_level=autonomy_controller.current_level,
+                            _failed_tools=_failed_tools,
+                            # Use modification text as triggering_input if no new input but pending modification
+                            triggering_input=new_cli_input
+                            or followup_original_query
+                            or (pending_modification.get("user_modification", "") if pending_modification else ""),
+                            pending_modification=pending_modification,
+                            prefetch_context_text=prefetch_context_text,
+                            skip_exploration=skip_exploration,
+                            deliberation_available=bio_enrichment_pipeline is not None,
+                            processed_cli_inputs=processed_cli_inputs,
+                            _deferred_inputs=_deferred_inputs,
+                            inbound_feed=inbound_inbox,
+                        )
                         ctrl.last_llm_submit_time = now
                         # Log submission for both user input and followups
                         if submitted:
@@ -3270,25 +3054,17 @@ def _run_agentic_loop_body(
                                 if not _first.ready_to_act:
                                     # Build a submit closure that captures all params
                                     _submit_kwargs = dict(
-                                        mode=mode_info,
+                                        **_shared_submit,
                                         autonomy_level=autonomy_controller.current_level,
-                                        internet_access=internet_access,
-                                        internet_policy_summary=internet_policy_summary,
-                                        available_tools=available_tools,
-                                        tool_descriptions=tool_descriptions,
-                                        context_pool_text=context_pool_text,
-                                        agent_states=agent_states,
-                                        recent_outcomes=recent_outcomes,
-                                        use_tool_prompting=use_tool_prompting and bool(available_tools),
                                         triggering_input="",
-                                        conversation_history_text=conversation_history_text,
                                         pending_modification=None,
                                         prefetch_context="",
                                         skip_exploration=False,
-                                        is_sleeping=is_sleeping,
-                                        protocol_context=_protocol_context,
                                         deliberation_available=True,
                                         deferred_inputs=[],
+                                        inbound_feed=inbound_inbox.continuation()
+                                        if inbound_inbox is not None
+                                        else None,
                                     )
 
                                     def _submit_fn(_ctx: Any, _kw: dict = _submit_kwargs) -> bool:
