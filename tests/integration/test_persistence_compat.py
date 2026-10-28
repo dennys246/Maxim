@@ -538,7 +538,11 @@ class TestCapturedPreV1Fixtures:
         out = tmp_path / "hippocampus_resaved.json"
         hippo.save(str(out))
         on_disk = json.loads(out.read_text())
-        assert on_disk["_format_version"] == FORMAT_VERSION
+        from maxim.memory.hippocampus_persistence import HIPPOCAMPUS_FORMAT_VERSION
+
+        # The hippocampus' own version (1.1 since #1163: a tool result stored as data; 1.2 since #1137: a compressed
+        # record's active goal and words), like NAc's below.
+        assert on_disk["_format_version"] == HIPPOCAMPUS_FORMAT_VERSION == "1.2"
 
     def test_captured_nac_loads_and_resaves(self, tmp_path, caplog) -> None:
         from maxim.decisions.nac import NACConfig, NAc, _NAC_FORMAT_VERSION
@@ -576,3 +580,35 @@ class TestCapturedPreV1Fixtures:
 
         warnings = [r for r in caplog.records if "pre-1.0 nac" in r.message]
         assert len(warnings) == 1, f"expected exactly one pre-1.0 nac warning across 3 loads, got {len(warnings)}"
+
+
+class TestHippocampus11Fixture:
+    """``hippocampus.json`` 1.2 (#1137) adds a compressed record's ``active_goal`` and ``heard``. A 1.1 file, whose
+    compressed records carry neither, loads (the record answers "not kept": no words, the intent goal as its active
+    goal) and re-saves at 1.2 with both fields present."""
+
+    FIXTURE = Path(__file__).parent.parent / "fixtures" / "persistence_1_1" / "hippocampus_1_1.json"
+
+    def test_a_1_1_compressed_record_loads_without_the_new_fields_and_resaves_at_1_2(self, tmp_path) -> None:
+        from maxim.memory.hippocampus import Hippocampus
+        from maxim.memory.hippocampus_persistence import HIPPOCAMPUS_FORMAT_VERSION
+        from maxim.memory.types import CompressedMemory, record_active_goal
+
+        raw = json.loads(self.FIXTURE.read_text())
+        assert raw["_format_version"] == "1.1"
+        assert all("heard" not in m and "active_goal" not in m for m in raw["memories"] if m.get("_compressed"))
+        working = tmp_path / "hippocampus.json"
+        working.write_bytes(self.FIXTURE.read_bytes())
+
+        hippo = Hippocampus()
+        hippo.load(str(working))
+        [compressed] = [m for m in hippo._memories.values() if isinstance(m, CompressedMemory)]
+        assert compressed.heard == "" and compressed.input_text == "" and compressed.active_goal is None
+        assert record_active_goal(compressed) == compressed.goal  # the closest a pre-1.2 record can answer
+
+        out = tmp_path / "hippocampus_resaved.json"
+        hippo.save(str(out))
+        resaved = json.loads(out.read_text())
+        assert resaved["_format_version"] == HIPPOCAMPUS_FORMAT_VERSION == "1.2"
+        [kept] = [m for m in resaved["memories"] if m.get("_compressed")]
+        assert kept["heard"] == "" and kept["active_goal"] is None

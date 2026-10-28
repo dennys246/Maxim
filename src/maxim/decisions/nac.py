@@ -22,11 +22,13 @@ not the algorithm.
 
 from __future__ import annotations
 
+import functools
 import itertools
 import json
 import logging
 import math
 import os
+import re
 import threading
 import time
 from dataclasses import dataclass
@@ -689,6 +691,16 @@ _DRIVE_TOOL_AFFINITIES: dict[str, tuple[str, ...]] = {
     "curiosity": ("examine", "look", "sense", "inspect"),
     "pain": ("rest", "heal", "tend", "withdraw"),
 }
+
+
+@functools.lru_cache(maxsize=8192)
+def _signature_tokens(signature: str) -> frozenset[str]:
+    """An event signature's content words (``scan_links_for_keywords``): split on ``:``/``_``/``-`` and normalized by
+    ``memory/text.py``'s one standard. Memoized: enrichment scans every signature on every enrich, inside a < 50 ms
+    budget."""
+    from maxim.memory.text import key_tokens
+
+    return frozenset(key_tokens(re.sub(r"[:_\-]+", " ", signature)))
 
 
 class NAc(StoreFileOwnership):
@@ -1839,32 +1851,37 @@ class NAc(StoreFileOwnership):
         min_confidence: float = 0.3,
         max_matches: int = 10,
     ) -> list[CausalLink]:
-        """Find causal links whose event_signature contains any keyword.
+        """Find causal links whose event signature shares a content word with the keywords.
 
         Companion to ``get_links_for_event`` for narrative-keyword queries
         where the caller doesn't know the exact stored signature. Tool
         events are stored under canonical signatures like
-        ``tool:rusty_sword_slash``; this method lets a query keyword
-        ``rusty`` or ``slash`` find those links via case-insensitive
-        substring containment.
+        ``tool:rusty_sword_slash``; a query keyword ``rusty`` or ``slash``
+        finds those links. Both sides go through ``memory/text.py``'s one
+        standard (Session R, owner decision D3): the signature is split on
+        ``:``/``_``/``-`` and normalized, then intersected with the keywords'
+        tokens. Substring containment broke on lemmas ("berry" vs
+        ``eat_berries``). The namespace segment (``tool:``, ``drive:``, ...)
+        is kept, as substring matching kept it: a keyword "tool" still
+        matches every tool link.
 
         Returns links sorted by confidence descending, deduplicated by
-        link id, capped at ``max_matches``. Short keywords (below
-        ``min_keyword_length``) are dropped to avoid matching everything
-        — narrative stop-words like "to"/"of" would otherwise hit nearly
-        every signature.
+        link id, capped at ``max_matches``. Keywords shorter than
+        ``min_keyword_length`` are dropped.
         """
         if not keywords:
             return []
-        kws_lower = [kw.lower() for kw in keywords if kw and len(kw) >= min_keyword_length]
-        if not kws_lower:
+        from maxim.memory.text import settle_key
+
+        # The keywords arrive KEYED (enrichment's ``key_tokens``): settled, never re-tokenized (design review S1/SF2)
+        kw_tokens = {settle_key(kw.lower()) for kw in keywords if kw and len(kw) >= min_keyword_length}
+        if not kw_tokens:
             return []
         matched: list[CausalLink] = []
         seen_ids: set[str] = set()
         with self._lock:
             for sig, links in self._links.items():
-                sig_lower = sig.lower()
-                if not any(kw in sig_lower for kw in kws_lower):
+                if not kw_tokens & _signature_tokens(sig):
                     continue
                 for link in links:
                     if link.confidence < min_confidence:

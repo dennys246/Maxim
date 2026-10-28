@@ -1,6 +1,6 @@
 # Exp 63: carried memory takes part in recall across sessions (pre-registered 2026-10-03)
 
-> **Outcome 2026-10-03 (run), ledger 2026-10-04: EARNED, narrow, row T1-16.** Carried memories take part in recall
+> **Ledger 2026-10-25: STALE, re-run owed** (1.3.4's recall fix, Session R, replaced the ranker this run measured and the record shape; a re-run needs this judge rebuilt for the new `cue` path, see T1-16's walk). **Outcome 2026-10-03 (run), ledger 2026-10-04: earned, narrow, row T1-16.** Carried memories take part in recall
 > across sessions, on the current goal-keyword ranker (one run, mistral-7b): the store reloaded exactly (84
 > memories), every resumed turn's surfaced set matched the shipped ranker, and carried memories surfaced on the first
 > resumed turn ([verdict](data/63_carried_recall/verdict.json), [rows](data/63_carried_recall/rows.jsonl)). Storage
