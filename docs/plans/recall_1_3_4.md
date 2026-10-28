@@ -141,7 +141,7 @@ zero scores only.
 **Rule 1: frame at production.**
 - `_summarize_episode` renders the episode's input text (`cli_input`, else `transcript`, else the observation's
   text values).
-  - The text is NFKC-normalized and whitespace-collapsed, THEN bounded to `_RECALLED_TEXT_MAX_CHARS = 240`, so
+  - The text is NFKC-normalized and whitespace-collapsed, THEN bounded to 240 (now `memory/text.py::bounded_words`), so
     expansion cannot exceed the bound (F7).
   - It is framed with `frame_tool_output("recalled_input", text, external=True)` and labelled `earlier input:`.
     The label claims no speaker, because sim narration and room speech arrive on the same fields (F12).
@@ -357,3 +357,35 @@ All findings were folded into this branch.
   so no new deliberation starts (D5).
 - **S3:** memory hears the `cli_input` the loop processes, not a transcript beside it.
 - **N1:** the content cache holds the field objects, never their `id()`.
+
+## 12. #1137 (owner decision 2026-10-25: in 1.3.4, Session R's next PR after #1465)
+
+Without this change the 1.3.4 recall fix stopped working once a record was compressed, which for a user's words
+under `access_based` is 3 × `compression_age`, about 3 days. It ships as a release condition for the recall claim.
+
+- **`CompressedMemory.active_goal`** keeps the episode's context goal beside the intent `goal`. `record_active_goal`
+  reads it on both kinds. `_memory_summary` and `_compute_association_weight` now read the active goal.
+- **`CompressedMemory.heard`** keeps what the episode heard: NFKC-normalized, whitespace-collapsed and bounded to 240
+  characters, the render bound. It is stored raw, and `input_text` returns it, so recall frames it at render exactly
+  as it frames an episode's words.
+- **The format:** `hippocampus.json` is 1.2. A 1.1 file loads, and a compressed record keeps neither field
+  (fixture: `tests/fixtures/persistence_1_1/hippocampus_1_1.json`).
+- **The red gate:** `tests/unit/test_compressed_recall_1137.py` (strict xfail at `c79ef22b`, flipped in place). It
+  extends #1444's gate with forced compression, and a non-vacuity test pins that the record is compressed. Deleting
+  `heard` or `input_text` turns it red.
+- **Not changed:** `bridges/planning_bridge.py` still skips compressed records (its template key needs an action),
+  and the Dormant `integration/recall.py::EpisodicRecallSource` reads `record_active_goal` as before.
+
+**#1137's three-lens review (2026-10-25), folded.** Executor+Architecture found one blocker; Wire found no blocker.
+- **The blocker:** `CompressedMemory.content_tokens` was uncached. An old store is mostly compressed records, so on
+  2,000 of them each query took about 0.53 s, the SF5 regression again. They are now cached, and keyed at
+  compression and at load: about 5 ms per query.
+- **SF:** compressed words reached the ranker but not substring search or ExamineTool. `CompressedMemory.text_fields`
+  is now `[heard]`.
+- **SF:** `active_goal=None` meant both "pre-1.2" and "the episode had none". The second case is now stored as `""`.
+- **SF:** the new lines had no tests (round trip, bound, the two readers). They are tested now.
+- **NIT:** one bound, `memory/text.py::bounded_words` / `RECALLED_WORDS_MAX_CHARS`, shared by the render and
+  compression.
+- **NIT:** `heard` is kept out of the repr.
+- **NIT:** the stale size claim and `to_context_dict`'s goal are fixed, and the downgrade note is in
+  `hippocampus_persistence.py` and `docs/user/upgrading.md`.

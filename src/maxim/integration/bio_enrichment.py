@@ -22,6 +22,7 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from maxim.memory.text import RECALLED_WORDS_MAX_CHARS
 from maxim.memory.types import record_success
 from maxim.utils.logging import log_swallowed_exception
 
@@ -1039,7 +1040,7 @@ class BioEnrichmentPipeline:
         goal = mem.goal or ""
         if goal:
             parts.append(f"(goal: {goal[:40]})")
-        heard = _bounded_text(_input_text(mem), _RECALLED_TEXT_MAX_CHARS)
+        heard = _bounded_text(_input_text(mem), RECALLED_WORDS_MAX_CHARS)
         if heard:
             parts.append(f"earlier input: {_frame_recalled('recalled_input', heard)}")
         # Outcome
@@ -1060,10 +1061,9 @@ class BioEnrichmentPipeline:
         return "past experience"
 
 
-# Recalled text is bounded AFTER normalization (design review F7: NFKC can expand a character up to ~18x). Reviewed
-# constants: 240 holds a stated fact or a question, 80 an outcome's gist; three episodes stay well under the
-# enrichment section's budget.
-_RECALLED_TEXT_MAX_CHARS = 240
+# Recalled text is bounded AFTER normalization (design review F7: NFKC can expand a character up to ~18x):
+# ``memory/text.py::bounded_words``, whose ``RECALLED_WORDS_MAX_CHARS`` compression keeps too (#1137); 80 holds an
+# outcome's gist.
 _RECALLED_RESULT_MAX_CHARS = 80
 
 
@@ -1083,10 +1083,9 @@ def _input_text(mem: Any) -> str:
 
 
 def _bounded_text(text: str, limit: int) -> str:
-    import unicodedata
+    from maxim.memory.text import bounded_words
 
-    text = " ".join(unicodedata.normalize("NFKC", text).split())
-    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+    return bounded_words(text, limit)
 
 
 def _result_text(result: Any) -> str:

@@ -20,7 +20,7 @@ The 1.0 upgrade is **state-preserving**. Every file Maxim writes under `~/.maxim
 
 | Path | Contents | 0.8 → 1.0 behavior |
 |---|---|---|
-| `~/.maxim/agents/<name>/hippocampus.json` | Episodic memory + associative graph + episodes | Loads. Re-save adds `_format_version: "1.0"`. |
+| `~/.maxim/agents/<name>/hippocampus.json` | Episodic memory + associative graph + episodes | Loads. Re-save writes the hippocampus' own `_format_version` (`"1.2"` since 1.3.4: stored tool results as data; compressed records keep their words and active goal). An older build re-saving it drops those fields. |
 | `~/.maxim/agents/<name>/nac.json` | Causal links + reward biases + outcome index | Loads. Re-save adds `_format_version: "1.0"`. |
 | `~/.maxim/agents/<name>/atl.json` | Semantic concepts + concept graph | Loads. Re-save adds `_format_version: "1.0"`. |
 | `~/.maxim/agents/<name>/scn.json` | Temporal signatures + circadian phase priors | Loads. Re-save adds `_format_version: "1.0"`. |

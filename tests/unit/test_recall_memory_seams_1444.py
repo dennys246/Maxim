@@ -115,7 +115,7 @@ def test_a_1_0_store_with_reprs_loads_as_data_and_saves_as_1_1(tmp_path: Path) -
     assert mem.outcome.result == {"success": True, "output": "hi", "error": None}
     assert old.search_by_content("pain") == []  # the repr's field names are not memory text any more
     old.save()
-    assert json.loads(path.read_text())["_format_version"] == HIPPOCAMPUS_FORMAT_VERSION == "1.1"
+    assert json.loads(path.read_text())["_format_version"] == HIPPOCAMPUS_FORMAT_VERSION == "1.2"
 
 
 # ── #1064 / D1 / D3: the ranker ──────────────────────────────────────────────────────────────────────────────────
