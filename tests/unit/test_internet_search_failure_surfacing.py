@@ -161,6 +161,17 @@ class TestHtmlScraperGoesThroughUtilsHttp:
         # Decoded once: the target's own %26 survives.
         assert [(r["url"], r["title"]) for r in results] == [("https://example.com/a?q=a%26b", "Example A")]
 
+    def test_only_duckduckgos_own_host_is_filtered_never_a_lookalike(self):
+        # The host check is exact (CodeQL py/incomplete-url-substring-sanitization on the first version, a substring
+        # test): results hosted at a lookalike must be kept, DuckDuckGo's own links dropped.
+        from maxim.tools.internet_search import _is_duckduckgo_host
+
+        assert _is_duckduckgo_host("//duckduckgo.com/y.js?ad_domain=x")
+        assert _is_duckduckgo_host("https://html.duckduckgo.com/settings")
+        assert not _is_duckduckgo_host("https://notduckduckgo.com/a")
+        assert not _is_duckduckgo_host("https://duckduckgo.com.example/a")
+        assert not _is_duckduckgo_host("https://example.com/duckduckgo.com-review")
+
     def test_a_bot_challenge_202_is_a_failure_not_an_empty_result(self):
         # Captured live 2026-10-26: html.duckduckgo.com answered a scripted query with HTTP 202 and its
         # "anomaly" challenge page, which parses to zero links.

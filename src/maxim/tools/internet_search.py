@@ -266,6 +266,14 @@ def _search_duckduckgo(
     return [], failure
 
 
+def _is_duckduckgo_host(url: str) -> bool:
+    """True when ``url``'s HOST is duckduckgo.com or a subdomain of it (an exact host match, never a substring:
+    ``notduckduckgo.com`` or ``duckduckgo.com.example`` are someone else's results). Scheme-relative ``//host/...``
+    links, which the HTML page uses, are parsed as such."""
+    host = (urllib.parse.urlparse(url).hostname or "").lower()
+    return host == "duckduckgo.com" or host.endswith(".duckduckgo.com")
+
+
 def _search_duckduckgo_lite(
     query: str,
     max_results: int = 5,
@@ -327,7 +335,7 @@ def _search_duckduckgo_lite(
         if "uddg=" in url:
             # parse_qs already percent-decodes the value; decoding it again would corrupt a target holding %26.
             url = urllib.parse.parse_qs(urllib.parse.urlparse(url).query).get("uddg", [url])[0]
-        if url.startswith("//duckduckgo.com") or "duckduckgo.com" in urllib.parse.urlparse(url).netloc:
+        if _is_duckduckgo_host(url):
             continue  # DuckDuckGo's own links (ads, settings)
         snippet = snippets[len(results)] if len(results) < len(snippets) else ""
         results.append(
