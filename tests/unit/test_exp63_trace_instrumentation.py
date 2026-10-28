@@ -25,7 +25,9 @@ def _store(n: int) -> tuple[Hippocampus, list[str]]:
     h = Hippocampus(HippocampusConfig(auto_save_after_sleep=False))
     ids = [
         h.capture(
-            perception=Perception(salience=0.5, observations={"text": f"memory {i}"}),
+            # a word of the goal ("dungeon") and none of the input's: the goal path finds them, the cue path does
+            # not (Session R's cue sits before the goal path, and the ranker returns no zero score, D1)
+            perception=Perception(salience=0.5, observations={"text": f"memory {i} of the dungeon"}),
             outcome=Outcome(success=True),
             encoding=ENC,
         )
@@ -62,8 +64,9 @@ class _StubStore:
 
     _memories: dict = {}
 
-    def __init__(self, graph=(), goal=(), substring=(), view=(7, [])):
+    def __init__(self, graph=(), goal=(), substring=(), view=(7, []), cue=()):
         self._graph, self._goal, self._substring, self._view = list(graph), list(goal), list(substring), view
+        self._cue = list(cue)
 
     def stored_capture_seqs(self):
         return self._view
@@ -72,7 +75,9 @@ class _StubStore:
         return [("n1", 0.9)] if self._graph else []
 
     def recall(self, *, query=None, object_detected=None, limit=5):
-        return self._graph if object_detected else self._goal
+        if object_detected:
+            return self._graph
+        return self._goal if query == GOAL else self._cue  # the goal path queries the goal; the cue, the input
 
     def search_by_content(self, text, limit=5):
         return self._substring
@@ -96,6 +101,13 @@ def test_every_path_is_labelled_deduplicated_and_capped(caplog) -> None:
     assert data["memory_ids"] == ["g", "d", "s1"]
     assert data["memory_paths"] == ["graph", "goal", "substring"]
     assert (data["goal_path_horizon"], data["goal_path_holes"]) == (7, [[5, 5]])
+
+
+def test_the_cue_path_is_labelled_and_comes_before_the_goal_path(caplog) -> None:
+    """Session R (#1447): the input's own words cue recall before the goal does, and the trace says so."""
+    store = _StubStore(cue=[_mem("c")], goal=[_mem("d"), _mem("c")], substring=[_mem("s")])
+    data = _trace(caplog, BioEnrichmentPipeline(hippocampus=store))
+    assert data["memory_ids"] == ["c", "d", "s"] and data["memory_paths"] == ["cue", "goal", "substring"]
 
 
 def test_without_a_goal_the_substring_path_is_labelled(caplog) -> None:

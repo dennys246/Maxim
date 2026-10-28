@@ -124,6 +124,12 @@ class PromptBudgeter:
             raise ValueError(f"prompt section {name!r}: source must be 'builder' or 'data', not {source!r}")
         if source == "builder" and self._builder_gate is not None and content:
             content = self._builder_gate(content)
+        if content and "TOOL_OUTPUT" in content:
+            # Recalled and tool text arrives framed, sometimes cut on the way (Session R, rule 2): a section never
+            # carries a partial frame, and one holding a frame states the frame rule first, budgeted with it.
+            from maxim.utils.content_safety import framed_section
+
+            content = framed_section(content)
         if not content or not content.strip():
             return
         token_count = self._counter.count_tokens(content)
@@ -171,6 +177,10 @@ class PromptBudgeter:
                     and remaining > 0
                 ):
                     truncated = section.truncate_fn(section.content, remaining)
+                    if "TOOL_OUTPUT" in truncated:  # a truncator may cut a frame, front or back (rule 2)
+                        from maxim.utils.content_safety import drop_unbalanced_frames
+
+                        truncated = drop_unbalanced_frames(truncated)[0]
                     new_count = self._counter.count_tokens(truncated)
                     if new_count <= remaining and truncated.strip():
                         included.append(

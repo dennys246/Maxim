@@ -60,7 +60,8 @@ def test_a_compressed_records_context_item_keeps_goal_and_tool():
     from maxim.agents.memory_agent import MemoryAgent
 
     item = MemoryAgent._memory_to_context_item(CompressedMemory.from_episodic(_episode()), 0.5)
-    assert (item["content"].get("goal"), item["content"].get("action")) == ("fetch water", "draw_water")
+    # The ACTIVE goal, kept by compression since #1137 (it fell back to the intent goal before)
+    assert (item["content"].get("goal"), item["content"].get("action")) == ("stay warm", "draw_water")
 
 
 # -- #993: summaries read real fields ------------------------------------------------------------
@@ -79,10 +80,10 @@ def test_the_observers_memory_list_shows_goal_and_tool_for_both_kinds():
             return 2
 
     out = Observer(hippocampus=_H()).memory_recall()
-    # An episode shows its ACTIVE goal; the compressed record only kept the intent goal (#1137).
+    # Both kinds show their ACTIVE goal: compression keeps it since #1137 (the compressed one showed the intent goal).
     assert [(m["goal"], m["tool"]) for m in out["memories"]] == [
         ("stay warm", "draw_water"),
-        ("fetch water", "draw_water"),
+        ("stay warm", "draw_water"),
     ]
 
 
@@ -118,7 +119,8 @@ def test_public_recall_reads_a_real_records_fields_when_an_id_resolves():
     ]
     hippo = SimpleNamespace(get=records.get, _episode_store=SimpleNamespace(all_episodes=lambda: episodes))
     items = EpisodicRecallSource(hippo).recalled_items(limit=8)
-    assert sorted(i.text for i in items) == ["a well stands in the yard", "find the cellar"]
+    # The compressed record answers its ACTIVE goal, kept since #1137 (the intent goal "find the cellar" before)
+    assert sorted(i.text for i in items) == ["a well stands in the yard", "stay warm"]
     assert max(i.salience for i in items) == pytest.approx(0.7)
 
 
@@ -158,7 +160,7 @@ def test_an_enrichment_summary_names_tool_and_intent_goal_for_both_kinds():
     from maxim.integration.bio_enrichment import BioEnrichmentPipeline
 
     for record in (_episode(), CompressedMemory.from_episodic(_episode())):
-        text = BioEnrichmentPipeline._summarize_episode(record)
+        text = BioEnrichmentPipeline()._summarize_episode(record)
         assert "draw_water" in text and "(goal: fetch water)" in text, (type(record).__name__, text)
 
 
@@ -193,4 +195,4 @@ def test_the_memory_tool_formats_tool_and_goal_for_both_kinds():
     assert [
         (_format_episodic_memory(r)["tool"], _format_episodic_memory(r)["goal"])
         for r in (_episode(), CompressedMemory.from_episodic(_episode()))
-    ] == [("draw_water", "stay warm"), ("draw_water", "fetch water")]
+    ] == [("draw_water", "stay warm"), ("draw_water", "stay warm")]  # the active goal on both kinds (#1137)
