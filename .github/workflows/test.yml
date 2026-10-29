@@ -250,6 +250,23 @@ jobs:
           python -m pip install --upgrade pip packaging
           python3 scripts/extras_matrix.py pins --extra ${{ matrix.extra }} --resolution ${{ matrix.resolution }} -o extras-pins.txt
 
+      - name: Install the PortAudio system library and a sound server (tts)
+        # The tts extra's sounddevice (local speakers for `maxim --tts`, #1437) raises OSError on import without
+        # PortAudio, and its own PortAudioError with no sound server: Ubuntu 26's PortAudio links libpulse and
+        # Pa_Initialize() fails hard when no PulseAudio server answers. A headless daemon (its automatic null sink)
+        # outlives this step; its socket is a filesystem path, so the network namespace reaches it.
+        if: matrix.extra == 'tts' && (github.event_name != 'pull_request' || steps.scope.outputs.run == 'true')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libportaudio2 pulseaudio
+          if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
+            export XDG_RUNTIME_DIR="$RUNNER_TEMP/xdg-runtime"
+            mkdir -p -m 700 "$XDG_RUNTIME_DIR"
+            echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR" >> "$GITHUB_ENV"
+          fi
+          pulseaudio --start --exit-idle-time=-1
+          pactl info
+
       - name: Install only the extra (and pytest)
         if: github.event_name != 'pull_request' || steps.scope.outputs.run == 'true'
         # A fresh interpreter: nothing but the extra's closure may be installed (verify checks it). NOT `|| echo`.

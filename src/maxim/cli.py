@@ -706,14 +706,16 @@ def _runtime_mode_switch_allowed(requested: str, *, current_operational: str, gr
 def _run_stopped_on(error: Exception, logger: Any, *, verbosity: int) -> int:
     """A robot/agentic run stopped on ``error``: the run loop's exit code (#1468, owner decisions 2026-10-26).
 
-    A typed backend error or a leader refusal is RE-RAISED to :func:`main`, which renders its fix hint (or the
-    refusal's reason) and exits 2, so a supervisor can tell "the operator must act" from a crash; a refusal is
-    never absorbed by a broad handler (``exceptions.LeaderRefusal``). Anything else is logged as before and is a
-    crash: 1. The loop's ``finally`` (``_end_robot_run``) runs either way."""
+    A typed backend error, a leader refusal or a spoken-response refusal (``--tts`` that cannot play, #1437)
+    is RE-RAISED to :func:`main`, which renders its fix hint (or the refusal's reason) and exits 2, so a
+    supervisor can tell "the operator must act" from a crash; a refusal is never absorbed by a broad handler
+    (``exceptions.LeaderRefusal``). Anything else is logged as before and is a crash: 1. The loop's
+    ``finally`` (``_end_robot_run``) runs either way."""
     from maxim.exceptions import LeaderRefusal
     from maxim.models.language.types import BackendError
+    from maxim.utils.response_output import SpeechOutputUnavailable
 
-    if isinstance(error, (BackendError, LeaderRefusal)):
+    if isinstance(error, (BackendError, LeaderRefusal, SpeechOutputUnavailable)):
         raise error
     log_exception(logger, error, verbosity=verbosity, message="❌ Maxim stopped")
     return 1
@@ -2162,29 +2164,17 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                     reset_on_startup=bool(getattr(args, "reset", False)),
                 )
 
-                # Set up ResponseOutput for LLM responses
+                # Set up ResponseOutput for LLM responses; spoken replies through local speakers, or a refusal (#1437)
                 from pathlib import Path
-                from maxim.utils.response_output import ResponseOutput
+                from maxim.utils.response_output import ResponseOutput, build_speech_output
 
                 sandbox_path = Path(args.home_dir) / "sandbox"
-                tts_engine = None
-                speaker_fn = None
-
-                # Set up TTS if enabled
-                if getattr(args, "tts", False):
-                    try:
-                        from maxim.models.audio.tts import TTSEngine
-
-                        tts_model = str(getattr(args, "tts_model", "en_US-lessac-medium"))
-                        tts_engine = TTSEngine(model_name=tts_model)
-                        if tts_engine.is_available:
-                            logger.info("TTS enabled with model: %s", tts_model)
-                        else:
-                            logger.warning("TTS model not found, TTS will be disabled")
-                            tts_engine = None
-                    except Exception as e:
-                        logger.warning("Failed to initialize TTS: %s", e)
-                        tts_engine = None
+                tts_engine, speaker_fn = build_speech_output(
+                    requested=bool(getattr(args, "tts", False)),
+                    model_name=getattr(args, "tts_model", None),
+                    sink=None,
+                    log=logger,
+                )
 
                 response_output = ResponseOutput(
                     sandbox_path=sandbox_path,
@@ -2543,6 +2533,8 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 audio_len=float(getattr(args, "audio_len", 5.0) or 5.0),
                 interactive=bool(getattr(args, "interactive", True)),
                 operational_mode=getattr(args, "operational_mode", None),
+                tts=bool(getattr(args, "tts", False)),
+                tts_model=getattr(args, "tts_model", None),
             )
 
             if mode == "sleep":
@@ -2610,6 +2602,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             logging.getLogger(__name__).debug("unreadable config dir", exc_info=True)
             user_warn(f"{type(e).__name__}: {e}", source="config", event="config_dir_unreadable")
+            return 2
+        from maxim.utils.response_output import SpeechOutputUnavailable
+
+        if isinstance(e, SpeechOutputUnavailable):  # --tts that cannot play, CLI or robot (#1437)
+            from maxim.utils.logging import user_warn
+
+            # The message already ends with its fix hint (SpeechOutputUnavailable.__init__).
+            user_warn(f"{type(e).__name__}: {e}", source="tts", event="speech_output_unavailable")
             return 2
         try:
             from maxim.models.language.types import BackendError

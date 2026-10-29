@@ -16,12 +16,12 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1478
+      "lines": 1468
     },
     {
       "file": "src/maxim/cli_parser.py",
       "qualname": "_build_parser",
-      "lines": 620
+      "lines": 610
     },
     {
       "file": "src/maxim/console/server.py",
@@ -51,7 +51,7 @@
     {
       "file": "src/maxim/embodied_runtime/agentic_runtime.py",
       "qualname": "AgenticRuntimeMixin._start_agentic_runtime",
-      "lines": 865
+      "lines": 840
     },
     {
       "file": "src/maxim/embodied_runtime/agentic_runtime.py",
@@ -61,12 +61,12 @@
     {
       "file": "src/maxim/embodied_runtime/media_loop.py",
       "qualname": "MediaLoopMixin.live",
-      "lines": 425
+      "lines": 422
     },
     {
       "file": "src/maxim/embodied_runtime/selfy.py",
       "qualname": "Maxim.__init__",
-      "lines": 317
+      "lines": 312
     },
     {
       "file": "src/maxim/embodiment/body.py",

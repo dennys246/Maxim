@@ -338,3 +338,30 @@ def test_the_spec_only_probe_never_imports_and_never_raises():
     sys.modules.pop("colorsys", None)
     assert optional_dependency_installed("colorsys") is True
     assert "colorsys" not in sys.modules, "find_spec only: the probe must not import the package"
+
+
+def _exception_from(module: str, base: type[BaseException] = Exception) -> BaseException:
+    cls = type("Err", (base,), {})
+    cls.__module__ = module
+    return cls("x")
+
+
+@pytest.mark.parametrize(
+    ("exc", "import_name", "refused"),
+    [
+        (ImportError("x"), "pkg", True),
+        (OSError("libportaudio not found"), "sounddevice", True),
+        (_exception_from("sounddevice"), "sounddevice", True),  # PortAudioError from import (#1437)
+        (_exception_from("pkg._internal"), "pkg", True),  # the package's own submodule
+        (_exception_from("pkg"), "pkg.sub", True),  # a dotted import name
+        (_exception_from("pkg", OSError), "other", True),
+        (RuntimeError("a defect"), "pkg", False),
+        (ValueError("a defect"), "pkg", False),
+        (_exception_from("otherpkg"), "pkg", False),  # another package's error stays loud
+        (_exception_from("pkgextra"), "pkg", False),  # a prefix is not the package
+    ],
+)
+def test_import_refused_classifies_by_cause(exc, import_name, refused):
+    from maxim.utils.optional_deps import import_refused
+
+    assert import_refused(exc, import_name) is refused

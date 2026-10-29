@@ -454,33 +454,8 @@ class AgenticRuntimeMixin:
         from maxim.utils.response_output import ResponseOutput
 
         sandbox_path = Path(self.home_dir) / "sandbox"
-        tts_engine = None
-        speaker_fn = None
-
-        # Check if TTS is enabled (set via environment or config)
-        if os.environ.get("MAXIM_TTS_ENABLED", "").lower() in ("1", "true", "yes"):
-            try:
-                from maxim.models.audio.tts import TTSEngine
-                from maxim.utils.audio import _check_local_audio
-
-                tts_model = os.environ.get("MAXIM_TTS_MODEL", "en_US-lessac-medium")
-                tts_engine = TTSEngine(model_name=tts_model)
-                if tts_engine.is_available:
-                    speaker_fn = self.speak  # Uses Reachy speaker with local fallback
-                    self.log.info("TTS enabled with model: %s", tts_model)
-
-                    # Check local audio availability for fallback
-                    prefer_local = os.environ.get("MAXIM_TTS_LOCAL", "").lower() in ("1", "true", "yes")
-                    if prefer_local:
-                        self.log.info("TTS using local audio (MAXIM_TTS_LOCAL=1)")
-                    elif _check_local_audio():
-                        self.log.info("Local audio available as fallback for remote connections")
-                else:
-                    self.log.warning("TTS model not found, TTS disabled")
-                    tts_engine = None
-            except Exception as e:
-                self.log.warning("Failed to initialize TTS: %s", e)
-                tts_engine = None
+        # Spoken responses: built (or refused) once in live(), before awaken(), by build_speech_output (#1437)
+        tts_engine, speaker_fn = getattr(self, "_speech_output", (None, None))
 
         response_output = ResponseOutput(
             sandbox_path=sandbox_path,
