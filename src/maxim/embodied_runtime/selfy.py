@@ -119,6 +119,8 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         simulation: bool = False,
         robot_id: str | None = None,
         operational_mode: str | None = None,
+        tts: bool = False,
+        tts_model: str | None = None,
     ):
         # Apply hardware env guards (mp start method, GPU detection, OpenGL)
         _setup_hardware_env()
@@ -195,14 +197,7 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         self.launch_operational_mode = operational_mode
 
         self.observation_period = 1
-        self.audio = bool(audio)
-        try:
-            self.audio_len = float(audio_len)
-        except (TypeError, ValueError) as e:
-            log_swallowed_exception(e, operation="parse_audio_len", context={"audio_len": audio_len})
-            self.audio_len = 5.0
-        if self.audio_len <= 0:
-            self.audio_len = 5.0
+        self._init_audio(audio, audio_len, tts=tts, tts_model=tts_model)
 
         self.video_fps = 20.0
 

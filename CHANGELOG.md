@@ -168,6 +168,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`maxim --tts` speaks, or refuses at start** ([#1437](https://github.com/dennys246/Maxim/issues/1437), found by
+  maxim-pulse's device review). The CLI built a voice for `--tts`, logged "TTS enabled", and wired no speaker, so it
+  never spoke; the robot runtime had its own copy keyed on `MAXIM_TTS_ENABLED`. Both now go through one builder,
+  `utils.response_output.build_speech_output`: `--tts` or `MAXIM_TTS_ENABLED` turns speech on for either path (the
+  robot now hears `--tts`/`--tts-model`); the CLI speaks through local speakers, a robot through its device sink.
+  A request that cannot play refuses at start with a typed `SpeechOutputUnavailable` naming the fix (download the
+  voice, or `pip install 'pymaxim[tts]'`), and "enabled" is logged only for a path that can play. The run then stops
+  with that fix and exit code 2, on the CLI and on the robot. On a robot, speech is resolved before the robot moves
+  and before the agentic runtime starts, so a refusal is not downgraded to a warning. The voice is loaded at start
+  (a corrupt model refuses there, not at the first sentence), and local speakers are checked whenever speech will
+  play on them (`MAXIM_TTS_LOCAL`, or a robot run with no SDK handle). `--tts-model` now defaults to
+  `MAXIM_TTS_MODEL`, then the default voice. `LocalSpeaker` reports availability truthfully (a missing PortAudio
+  library, no sound server or no output device is "unavailable", not a crash), and `optional_dependency_available`
+  treats a package that is installed but cannot load on this machine as unavailable: an import raising `OSError`,
+  or the package's own exception (`sounddevice` raises its `PortAudioError` from import on Ubuntu 26 when no
+  PulseAudio server answers); the rule is `optional_deps.import_refused`, and any other import error stays loud.
+  The `tts` extra now includes `sounddevice` (on Linux it needs the PortAudio library, `apt install libportaudio2`,
+  and a running sound server), and the leader's install probe for the `audio` extra checks
+  `faster_whisper`, the extra's own package, instead of `sounddevice`.
+
 - **Reachy safety: no non-finite, out-of-range-duration or instant command reaches a motor**
   ([#1496](https://github.com/dennys246/Maxim/issues/1496), a 1.3.4 exit item). A NaN or infinite `head_yaw` in a body
   YAML commanded a 160° body swing in 1 s, because every `max(-L, min(L, x))` clamp on the motion path turned NaN

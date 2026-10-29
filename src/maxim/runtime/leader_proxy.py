@@ -53,7 +53,7 @@ _EXTRA_IMPORT_MAP: dict[str, str] = {
     "llm-anthropic": "anthropic",
     "llm-openai": "openai",
     "vision": "cv2",
-    "audio": "sounddevice",
+    "audio": "faster_whisper",  # the audio extra's own package (sounddevice is the tts extra's, #1437)
     "search": "duckduckgo_search",
     "tts": "piper",
     "yolo": "ultralytics",
@@ -218,7 +218,8 @@ def _try_import(module_name: str) -> bool:
     Thin back-compat wrapper over the shared
     :func:`maxim.utils.optional_deps.optional_dependency_available` probe (this
     is a capability check for the ``maxim doctor`` extras table, not a
-    requested-feature gate, so it must never raise).
+    requested-feature gate). A package that is missing or cannot load here
+    reports False; an unrelated error at import is a defect and propagates.
     """
     from maxim.utils.optional_deps import optional_dependency_available
 
