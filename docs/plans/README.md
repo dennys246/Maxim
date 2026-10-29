@@ -271,6 +271,10 @@ Design work preserved in [deferred/](deferred/). Each has an explicit "revive wh
 - [deferred/situation_cue_fallback.md](deferred/situation_cue_fallback.md) — the 2S-d situation cue's lossy links (compressed / evicted / re-created concepts) and the llm-primary + hardware paths it does not cover, each with its revive trigger.
 - [deferred/generalization_by_pattern_completion.md](deferred/generalization_by_pattern_completion.md) — memory 2S-e (B), parked 2026-09-25: its measured gap (the Exp 62 "night miss") was the `time_of_day` wrap (#899), a keying defect; revive on a measured generalization gap keying does not own.
 
+**Proposed 2026-10-29:**
+
+- [deferred/phone_device.md](deferred/phone_device.md) — a phone (later a watch) as a sensing device under `embody()` and a remote UI (a pulse shell), not a mesh peer and not a second body (owner PD1–PD5). Phase 0 homed in 1.3.5; atonia with a device attached planned now. **Revive when:** 1.4.0 is published and embodied_device's `embody()` and STT route exist.
+
 **Deferred 2026-10-18:**
 
 - [deferred/three_factor_credit_assignment.md](deferred/three_factor_credit_assignment.md) — the credit-routing map `roadmap_1_4.md` Phase 5 names (the shipped eligibility trace and the Cerebellum), plus one proposed learnable (calibration). Design note, zero code; moved from the root. **Revive when:** the R4 credit build starts. Owner decisions A (the thesis wording) and B (learnable or hand-specified tuning curves) remain open.

@@ -1215,6 +1215,10 @@ they are ready, and the gate takes the next free number when it is done, still o
   `_end_robot_run` and `_run_stopped_on`) and #1454's interim prompt fix (the post-sim prompt drops "(memory carries over)"; the
   report view and prompt moved to `orchestrator.py::_show_report_and_post_sim_prompt`, registered in
   `tests/unit/_orchestrator_source.py`'s `PARTS`). The `/new` slice restores the promise with the behaviour.
+- **Phone device, Phase 0** (owner decision 2026-10-29; [deferred/phone_device.md](deferred/phone_device.md) §Phase 0, register O21):
+  the `Percept.from_wire_dict` trust boundary, console_tunnel_hardening's PR 3 (admission control; it did not ship
+  in 1.3.3), the auth principal seam, M3, the `reported` provenance kind, device identity riding R3's 0.7.0 bump, and
+  O2/#784. Outside the fence: none of it edits `orchestrator.py` or `agent_loop.py`.
 - **Meets B2's entry condition** ([#1352](https://github.com/dennys246/Maxim/issues/1352), the bare LLM loop). B2's code
   prerequisites land in 1.3.6.
 - **Exit:** `start_simulation_mode` and its descendants pass gate rule 4, and all five arms are satisfied.
