@@ -237,7 +237,7 @@ Neither protocol assumes the simulation orchestrator, narrative phases, conversa
 
 The `is_sim_mode` flag inside `runtime/sim_adapter.py` is more accurately read as "an external adapter is driving percepts" — it gates behaviors that fire when a `PerceptSource` is supplied, not behaviors specific to the simulation orchestrator. The field is retained as `is_sim_mode` for back-compat.
 
-**Caveat for long-running adapters:** when `is_sim_mode=True`, the agent loop ends the session via `MemoryHub.on_session_end_lightweight()` rather than the full `on_session_end()` (the full path runs blocking sleep/replay consolidation). This is correct for short-lived sim runs but may surprise an external adapter (e.g. a Minecraft session running for hours) that expects full consolidation at session end. Adapter integrations that need the full path should arrange for `end_bio_session(is_sim_mode=False, ...)` to be called directly. This trade-off is preserved in 1.0 to avoid changing existing sim behavior.
+**Caveat for long-running adapters:** when `is_sim_mode=True`, the agent loop ends its session via `MemoryHub.on_session_end_lightweight(ticket)` rather than the full `on_session_end(ticket)` (the full path runs blocking sleep/replay consolidation). This is correct for short-lived sim runs but may surprise an external adapter (e.g. a Minecraft session running for hours) that expects full consolidation at session end. Adapter integrations that need the full path pass `run_agentic_loop(consolidation="full")`, which the loop's session honors first (#1438; the session is owned and ended by the loop's `bio_session`). This trade-off is preserved in 1.0 to avoid changing existing sim behavior.
 
 ---
 

@@ -162,8 +162,9 @@ def test_the_hub_refuses_to_hand_over_a_cue_it_does_not_have_and_resets_at_sessi
     completer = hub._pattern_completer
     assert hub.situation_cue == completer.cue_situation
     completer._last_situation["a"] = {"world": "x"}
-    hub.on_session_end()
-    hub.on_session_start()
+    # #1438 PR 0: the old ticketless close before this open ended nothing (no session was open); a close needs a
+    # ticket now, so only the open remains, and a FRESH open is what resets the cue.
+    hub.on_session_start(owner=object())
     assert completer._last_situation == {}
     hub._pattern_completer = None
     with pytest.raises(RuntimeError, match="NO_SITUATION_CUE"):
@@ -273,14 +274,15 @@ def test_the_session_end_reports_what_the_cue_found(tmp_path):
     from maxim.runtime.bio_stack import build_bio_stack
 
     hub = build_bio_stack(agent_id="a", persistence_dir=str(tmp_path / "bio")).memory_hub
-    hub.on_session_start()
+    owner = object()
+    ticket = hub.on_session_start(owner=owner)
     hub.situation_cue("a", {"world": "nowhere"})
-    report = hub.on_session_end()
+    report = hub.on_session_end(ticket)
     assert report["situation_cue_cues"] == 1 and report["situation_cue_changes"] == 1
     assert report["situation_cue_with_matches"] == 0
-    hub.on_session_start()  # the sim path closes with the LIGHTWEIGHT end: it reports too
+    ticket = hub.on_session_start(owner=owner)  # the sim path closes with the LIGHTWEIGHT end: it reports too
     hub.situation_cue("a", {"world": "elsewhere"})
-    assert hub.on_session_end_lightweight()["situation_cue_cues"] == 2  # cumulative for the hub's life
+    assert hub.on_session_end_lightweight(ticket)["situation_cue_cues"] == 2  # cumulative for the hub's life
 
 
 def test_the_loop_resolves_its_cue_once_and_degrades_loudly(tmp_path, caplog):

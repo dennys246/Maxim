@@ -303,6 +303,16 @@ _OFFLINE_ENV_KEYS = (
 
 
 @pytest.fixture(autouse=True)
+def _clear_stop_request():
+    """A process stop request is sticky (#1438): one test's `request_stop` must not make every later loop yield."""
+    from maxim.utils.cancellation import clear_stop_request
+
+    clear_stop_request()
+    yield
+    clear_stop_request()
+
+
+@pytest.fixture(autouse=True)
 def _reset_offline_latch():
     """Reset the offline latch after every test (#1315 §1A.1): restore the five env keys ``engage()`` writes, so a
     stray ``MAXIM_OFFLINE`` cannot re-engage the latch in a later test, and call ``maxim._offline._reset_for_tests()``

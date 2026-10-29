@@ -41,13 +41,15 @@ def test_the_write_but_dont_read_agent_does_not_restore_its_atl_or_ag(tmp_path: 
 
     _seed_atl_and_ag(tmp_path)
     stack = build_bio_stack(persistence_dir=str(tmp_path), agent_id="default_agent", load_persisted=False)
+    ticket = None
     try:
-        stack.memory_hub.on_session_start()
+        ticket = stack.memory_hub.on_session_start(owner=object())
         assert "last_runs_wolf" not in _names(stack.atl)
         assert stack.angular_gyrus._total_stores != 987654  # nothing from the file
         assert stack.memory_hub.load_persisted is False
     finally:
-        stack.memory_hub.on_session_end()
+        if ticket is not None:
+            stack.memory_hub.on_session_end(ticket)
         stack.memory_hub.shutdown()
 
 
@@ -56,13 +58,15 @@ def test_a_normal_agent_still_restores_them(tmp_path: Path) -> None:
 
     _seed_atl_and_ag(tmp_path)
     stack = build_bio_stack(persistence_dir=str(tmp_path), agent_id="default_agent")
+    ticket = None
     try:
-        stack.memory_hub.on_session_start()
+        ticket = stack.memory_hub.on_session_start(owner=object())
         assert "last_runs_wolf" in _names(stack.atl)
         assert stack.angular_gyrus._total_stores == 987654
         assert stack.memory_hub.load_persisted is True
     finally:
-        stack.memory_hub.on_session_end()
+        if ticket is not None:
+            stack.memory_hub.on_session_end(ticket)
         stack.memory_hub.shutdown()
 
 
@@ -132,7 +136,7 @@ def test_the_cross_layer_graph_is_not_restored_either(tmp_path: Path) -> None:
     stack = build_bio_stack(persistence_dir=str(tmp_path), agent_id="default_agent", load_persisted=False)
     try:
         stack.memory_hub._cross_layer._persistence_path = str(path)
-        stack.memory_hub.on_session_start()
+        stack.memory_hub.on_session_start(owner=object())
         assert stack.memory_hub._cross_layer.stats()["total_edges"] == 0
     finally:
         stack.memory_hub.shutdown()

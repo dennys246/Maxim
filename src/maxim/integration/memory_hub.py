@@ -19,7 +19,6 @@ Architecture:
 from __future__ import annotations
 
 import logging
-import threading
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
@@ -48,6 +47,7 @@ if TYPE_CHECKING:
     from maxim.time.scn import SCN
 
 from maxim.exceptions import StoreOverwriteRefused
+from maxim.integration.session_ownership import SessionOwnership, SessionTicket
 
 logger = logging.getLogger(__name__)
 
@@ -109,15 +109,15 @@ class MemoryHub:
             salience=salience_network,
         )
 
-        # Start session (restores priors from memory)
-        hub.on_session_start()
+        # Claim the session (restores priors from memory on a fresh open); keep the ticket
+        ticket = hub.on_session_start(owner=me)
 
         # During operation...
         boosts = hub.get_spatial_boosts("find mug")
         enriched = hub.enrich_salience(detections, goal="find mug")
 
-        # End session (consolidates learning)
-        hub.on_session_end()
+        # End the session as its owner (consolidates learning)
+        hub.on_session_end(ticket)
     """
 
     # Core memory systems (required)
@@ -139,8 +139,10 @@ class MemoryHub:
     _fear_agent: "FearAgent | None" = None
     _salience_network: "SalienceNetwork | None" = None
 
-    # Session state
-    _session_active: bool = False
+    # Session state. WHO owns the session, and who may end it, is the three-state ledger (#1438 PR 0):
+    # CLOSED -> OPEN(gen, owner) -> ENDING -> CLOSED, every transition under its own lock. Only the ticket that
+    # opened a generation ends it (see integration/session_ownership.py).
+    _ownership: SessionOwnership = field(default_factory=SessionOwnership, repr=False, compare=False)
     # Whether a session was EVER opened on this hub. `_session_active` alone cannot
     # tell "nobody ever opened one" (the D41 defect) from "an inner scope opened and
     # already closed one" (the agent loop's normal start/end pair around a run) —
@@ -152,14 +154,6 @@ class MemoryHub:
     # to raise ``ExperienceClockStalled``; see ``_assert_experience_advanced``.
     _session_advanced_us: int = 0
     _session_work_at_start: tuple[int, int] = (0, 0)
-    # Guards the _session_active transitions. Post-merge review round
-    # (2026-07-26, Exec #4 / Arch #1 cross-confirmed): the unlocked
-    # check-then-act let a console shutdown-hook stop() and the campaign
-    # loop's own session-end BOTH pass `if not _session_active` and run
-    # full consolidation concurrently (double sleep/saves interleaving).
-    # Session-end now atomically test-and-CLEARS the flag at entry: exactly
-    # one caller wins; the loser gets the honest no-op {}.
-    _session_flag_lock: Any = field(default_factory=threading.Lock, repr=False, compare=False)
 
     # Disabled bridges (for fault isolation)
     _disabled_bridges: set[str] = field(default_factory=set)
@@ -645,39 +639,63 @@ class MemoryHub:
     # Session Lifecycle
     # ─────────────────────────────────────────────────────────────────────────
 
-    def on_session_start(self) -> dict[str, int]:
-        """Initialize all bridges for a new session.
+    @property
+    def _session_active(self) -> bool:
+        """An OPEN session (read-only; the ledger owns the state). Kept for ``stats()`` and the bridges' readers."""
+        return self._ownership.state == "OPEN"
 
-        Restores priors and learned patterns from Hippocampus.
+    def holds_session(self, ticket: SessionTicket | None) -> bool:
+        """Whether ``ticket`` is this hub's CURRENT session: only that ticket ends its generation."""
+        return self._ownership.is_current(ticket)
 
-        Idempotent: opening a session that is already open is a no-op, mirroring
-        ``on_session_end``'s atomic test-and-clear. This matters because the
-        instance now opens its own session at construction (D41) AND the runtime
-        opens one via ``start_bio_session``: without idempotence the second pass
-        would call ``atl.load()``, which CLEARS before restoring, discarding
-        anything stored between the two opens (a hazard this pairing introduces,
-        not a pre-existing one).
+    def release_session_claim(self, ticket: SessionTicket) -> None:
+        """A loop's ``bio_session`` let go of its live claim (its end already ran, or could not start in time)."""
+        self._ownership.release_live(ticket)
+
+    def abandon_session(self, ticket: SessionTicket) -> None:
+        """Close ``ticket``'s generation WITHOUT persisting: a closer whose stop bound expired before its persist could
+        start (``bio_session``). The session must not stay OPEN with nobody able to end it."""
+        self._ownership.abandon(ticket)
+
+    def wait_session_ended(self, *, deadline_s: float | None = None) -> bool:
+        """For a non-owner closer: wait until no session is open or ending, within ``deadline_s`` (else a 60 s cap)."""
+        return self._ownership.wait_ended(deadline_s=deadline_s)
+
+    def on_session_start(self, *, owner: Any, deadline_s: float | None = None, live: bool = False) -> SessionTicket:
+        """Claim this hub's memory session for ``owner`` and, on a FRESH open, restore every bridge (#1438 PR 0).
+
+        ``owner`` is REQUIRED and keyword-only: an object identity (the ``AgentInstance``, a fresh token per loop
+        invocation, or a harness's token), never a label. The claim rules live in
+        ``integration/session_ownership.py``: the same owner gets the same ticket (idempotent; no second restore,
+        whose ``atl.load()`` would clear what was stored since the open); a loop (``live=True``) takes over an owner
+        with no live loop as a new generation WITHOUT a restore (the session data is continuous); a live loop
+        refuses anyone else (``SessionHeld``); an ENDING session is waited for within ``deadline_s``
+        (``SessionStillEnding``). Only the returned ticket ends its generation.
 
         Returns:
-            Dict with counts of restored items per bridge, or
-            ``{"already_active": 1}`` when a session was already open.
+            The ticket. ``ticket.start_stats`` holds the restore counts per bridge on a fresh open, else ``{}``.
         """
-        # Read BEFORE the flag is latched (review round, Executor #8: fail fast before mutation).
-        # A stand-in hippocampus missing these would otherwise leave the session half-open --
-        # flagged active, with the ATL/EC/ConceptExtractor restores below never run.
+        # Read BEFORE the claim (review round, Executor #8: fail fast before mutation). A stand-in hippocampus
+        # missing these would otherwise leave the session half-open.
         advanced_at_start = self.hippocampus.experience_clock.advanced_us()
         work_at_start = self.hippocampus.session_work()
-        with self._session_flag_lock:
-            if self._session_active:
-                logger.debug("Session already active; on_session_start is a no-op")
-                return {"already_active": 1}
-            self._session_active = True
-            self._session_ever_started = True
-            self._session_start_time = time.time()
-            self._session_advanced_us = advanced_at_start
-            self._session_work_at_start = work_at_start
+        ticket, opened = self._ownership.claim_reporting(owner=owner, live=live, deadline_s=deadline_s)
+        if not (opened and ticket.fresh):
+            logger.debug("Memory session generation %d claimed without a restore", ticket.generation)
+            return ticket
+        self._session_ever_started = True
+        self._session_start_time = time.time()
+        self._session_advanced_us = advanced_at_start
+        self._session_work_at_start = work_at_start
+        try:
+            ticket.start_stats = self._restore_on_open()
+        except BaseException:
+            self._ownership.abandon(ticket)  # never leave an OPEN session nobody holds a ticket to
+            raise
+        return ticket
 
-        # 2S-d: a new session starts with no last situation, so its first cue is an entry.
+    def _restore_on_open(self) -> dict[str, int]:
+        """The fresh-open restore body; ``on_session_start`` already claimed the session."""
         if self._pattern_completer is not None:
             self._pattern_completer.reset_situations()
 
@@ -863,7 +881,7 @@ class MemoryHub:
         )
         raise ExperienceClockStalled(captures=did[0], activations=did[1], results=results)
 
-    def on_session_end(self) -> dict[str, int]:
+    def on_session_end(self, ticket: SessionTicket) -> dict[str, int]:
         """End session and consolidate learning.
 
         Runs sleep consolidation on Hippocampus and any bridge-specific
@@ -872,29 +890,35 @@ class MemoryHub:
         Returns:
             Dict with consolidation statistics
         """
-        # Atomic test-and-CLEAR: exactly one concurrent session-end caller
-        # runs consolidation (see _session_flag_lock field comment).
-        with self._session_flag_lock:
-            if not self._session_active:
-                # Silence here IS D41/N2 — but only when this hub NEVER had a
-                # session: an owner that never opened one loses EC/SCN/ATL on
-                # every close and finds out when a later load warns "Half-present
-                # NAc/EC pair". A hub whose session was opened and already closed
-                # by an INNER scope (the agent loop's start/end_bio_session pair
-                # around a run) is the normal nesting and must stay quiet — a
-                # guard that fires on every clean shutdown is a guard nobody
-                # reads. Residual gap, deliberately not papered over: mutations
-                # made AFTER the loop closed and before shutdown() are not
-                # persisted by this call.
-                if not self._session_ever_started:
-                    logger.warning(
-                        "on_session_end with no session ever started on this MemoryHub — nothing is consolidated or "
-                        "persisted beyond what the caller saves itself. A session OWNER must call "
-                        "on_session_start() / AgentInstance.start_session() first (bugs ledger D41).",
-                    )
-                return {}
-            self._session_active = False
+        if not self._begin_session_end(ticket, "on_session_end"):
+            return {}
+        try:
+            return self._consolidate_full()
+        finally:
+            self._ownership.finish_end(ticket)
 
+    def _begin_session_end(self, ticket: SessionTicket | None, closer: str) -> bool:
+        """OPEN -> ENDING for the CURRENT ticket only (#1438 PR 0). Any other ticket ends nothing.
+
+        Silence there IS D41/N2 only when this hub NEVER had a session: an owner that never opened one loses
+        EC/SCN/ATL on every close and finds out when a later load warns "Half-present NAc/EC pair". A stale ticket
+        (its generation was handed over or already ended) is the normal create -> loop -> shutdown path: DEBUG.
+        """
+        if self._ownership.begin_end(ticket):
+            return True
+        if not self._session_ever_started:
+            logger.warning(
+                "%s with no session ever started on this MemoryHub — nothing is consolidated or persisted beyond what "
+                "the caller saves itself. A session OWNER must call on_session_start(owner=...) / "
+                "AgentInstance.start_session() first (bugs ledger D41).",
+                closer,
+            )
+        else:
+            logger.debug("%s: the ticket is not this hub's current session; nothing ended", closer)
+        return False
+
+    def _consolidate_full(self) -> dict[str, int]:
+        """The full session-end body; ``on_session_end`` already moved its ticket to ENDING."""
         results = {}
 
         # Run sleep consolidation
@@ -1039,7 +1063,7 @@ class MemoryHub:
             except Exception as e:
                 logger.warning("Provenance session end failed: %s", e)
 
-        # (_session_active was cleared atomically at entry.)
+        # (the ticket moved the session to ENDING at entry.)
         session_duration = time.time() - self._session_start_time
         results["session_duration_seconds"] = session_duration
         results.update(self._situation_cue_report())
@@ -1048,7 +1072,7 @@ class MemoryHub:
         self._assert_experience_advanced(results)
         return results
 
-    def on_session_end_lightweight(self) -> dict[str, Any]:
+    def on_session_end_lightweight(self, ticket: SessionTicket) -> dict[str, Any]:
         """Lightweight session end for sim mode — persist state without full replay.
 
         Skips the expensive hippocampus.sleep() consolidation (full replay,
@@ -1057,21 +1081,15 @@ class MemoryHub:
         ensures ATL concept extraction completes), and saves all persistence-backed
         subsystems so learning from sim sessions is not silently lost.
         """
-        # Atomic test-and-CLEAR — same discipline as on_session_end, including
-        # its never-opened warning: sim mode resolves to the lightweight closer,
-        # so the D41 detector must live on BOTH paths or it is absent on the one
-        # most agents take.
-        with self._session_flag_lock:
-            if not self._session_active:
-                if not self._session_ever_started:
-                    logger.warning(
-                        "on_session_end_lightweight with no session ever started on this MemoryHub — "
-                        "nothing is persisted beyond what the caller saves itself. A session OWNER must "
-                        "call on_session_start() / AgentInstance.start_session() first (bugs ledger D41)."
-                    )
-                return {}
-            self._session_active = False
+        if not self._begin_session_end(ticket, "on_session_end_lightweight"):
+            return {}
+        try:
+            return self._consolidate_light()
+        finally:
+            self._ownership.finish_end(ticket)
 
+    def _consolidate_light(self) -> dict[str, Any]:
+        """The lightweight session-end body; ``on_session_end_lightweight`` already moved its ticket to ENDING."""
         results: dict[str, Any] = {"lightweight": True}
 
         # Decay NAc confidence (same as full path)
@@ -1165,7 +1183,7 @@ class MemoryHub:
 
         self.shutdown()
 
-        # (_session_active was cleared atomically at entry.)
+        # (the ticket moved the session to ENDING at entry.)
         session_duration = time.time() - self._session_start_time
         results["session_duration_seconds"] = session_duration
         results.update(self._situation_cue_report())
@@ -1174,12 +1192,9 @@ class MemoryHub:
         self._assert_experience_advanced(results)
         return results
 
-    def sleep(self) -> dict[str, int]:
-        """Consolidate learning across all bridges.
-
-        Alias for on_session_end() for API compatibility.
-        """
-        return self.on_session_end()
+    def sleep(self, ticket: SessionTicket) -> dict[str, int]:
+        """Consolidate learning across all bridges: :meth:`on_session_end` for the session ``ticket`` holds."""
+        return self.on_session_end(ticket)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Multi-Layer Knowledge Queries

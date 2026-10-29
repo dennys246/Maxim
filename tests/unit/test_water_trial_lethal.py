@@ -95,7 +95,7 @@ def _rig(
     aut = build_minecraft_aut(
         agent_id=agent_id, bridge_port=srv.port, persistence_dir=str(home), entity_ref="bodies/minecraft_player"
     )
-    aut.bio.memory_hub.on_session_start()
+    aut.bio.memory_hub.on_session_start(owner=aut)  # the harness owns it, as the scripts do (#1438 PR 0)
     if detach:
         assert _detach_fear_subscriber(aut) >= 1
     encoder = make_fresh_encoder(aut)

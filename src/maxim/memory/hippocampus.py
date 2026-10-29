@@ -177,6 +177,14 @@ class EpisodeConfig:
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
 
 
+@dataclass(eq=False)
+class CaptureWorker:
+    """One capture worker's thread and its own stop event (#1438 PR 0). In-process only."""
+
+    thread: threading.Thread
+    stop: threading.Event
+
+
 @dataclass(frozen=True)
 class HippocampusConfig:
     """Configuration for the Hippocampus."""
@@ -1161,28 +1169,36 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
     def start_capture_worker(
         self,
         thread_registry: Any | None = None,
-    ) -> None:
-        """Start the background capture worker thread.
+    ) -> CaptureWorker:
+        """Start a background capture worker and return its handle (#1438 PR 0).
+
+        Each worker has its OWN stop event, so a session that stops its worker never stops another loop's on the same
+        Hippocampus (the old single shared event did). Two workers may overlap briefly, which is safe:
+        ``queue.Queue.get`` hands each item to exactly one worker, and there is never a window with none.
 
         Args:
             thread_registry: Optional ThreadRegistry for coordinated shutdown.
         """
-        self._capture_stop.clear()
-        self._capture_worker_thread = threading.Thread(
-            target=self._capture_worker,
-            daemon=True,
-            name="hippocampus-capture",
-        )
-        self._capture_worker_thread.start()
+        stop = threading.Event()
+        thread = threading.Thread(target=self._capture_worker, args=(stop,), daemon=True, name="hippocampus-capture")
+        worker = CaptureWorker(thread=thread, stop=stop)
+        # The most recent worker, for a caller that stops without a handle (scripts; stop_capture_worker()).
+        self._capture_stop = stop
+        self._capture_worker_thread = thread
+        thread.start()
         if thread_registry is not None:
-            thread_registry.register("hippocampus-capture", self._capture_worker_thread)
+            thread_registry.register("hippocampus-capture", thread)
+        return worker
 
-    def stop_capture_worker(self) -> None:
-        """Stop the background capture worker. Drains queue first."""
+    def stop_capture_worker(self, worker: CaptureWorker | None = None) -> None:
+        """Drain the queue, then stop ``worker`` (else the most recently started one)."""
         self.flush(timeout=5.0)
-        self._capture_stop.set()
-        if self._capture_worker_thread is not None and self._capture_worker_thread.is_alive():
-            self._capture_worker_thread.join(timeout=2.0)
+        stop, thread = (
+            (worker.stop, worker.thread) if worker is not None else (self._capture_stop, self._capture_worker_thread)
+        )
+        stop.set()
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=2.0)
 
     def capture_from_loop_async(
         self, *, encoding: EncodingSignals, situation: "Mapping[str, str] | None", **kwargs: Any
@@ -1263,9 +1279,10 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             return False
         return True
 
-    def _capture_worker(self) -> None:
-        """Background thread: drain capture queue, process each."""
-        while not self._capture_stop.is_set():
+    def _capture_worker(self, stop: threading.Event | None = None) -> None:
+        """Background thread: drain capture queue, process each, until ITS stop event is set."""
+        stop = stop if stop is not None else self._capture_stop
+        while not stop.is_set():
             try:
                 request = self._capture_queue.get(timeout=0.5)
             except queue.Empty:
