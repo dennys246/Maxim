@@ -191,6 +191,31 @@ def test_a_planning_job_in_flight_holds_the_next_submit_for_the_narrator_only() 
         assert not _planning_submit_in_flight(worker(state), True), state
 
 
+def test_the_held_gate_logs_its_changes_not_every_tick_1488(caplog, monkeypatch) -> None:
+    """The loop asks every tick (2 Hz for the narrator): one line when a job starts holding inputs and one when it
+    ends, so a long planning call cannot flood a DEBUG log or push the lines that show a stranded input out of the
+    golden test's printed tail."""
+    import logging
+
+    from maxim.agents.llm_types import LLMAttemptState as S
+    from maxim.runtime import agent_loop
+    from maxim.runtime.agent_loop import _planning_submit_in_flight
+
+    # An earlier test's collected worker may have left a True under the id this one reuses.
+    monkeypatch.setattr(agent_loop, "_PLANNING_HELD", {})
+    state = [S.RUNNING]
+    worker = SimpleNamespace(latest_attempt_state=lambda: state[0])
+    with caplog.at_level(logging.DEBUG, logger="maxim.runtime.agent_loop"):
+        for _ in range(5):
+            _planning_submit_in_flight(worker, True)
+        state[0] = S.CONSUMED
+        for _ in range(5):
+            _planning_submit_in_flight(worker, True)
+        _planning_submit_in_flight(None, True)  # no worker: no state to track, and no error
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("Planning job")]
+    assert lines == ["Planning job in flight: new inputs wait (#1048)", "Planning job done: inputs are free (#1048)"]
+
+
 def test_the_loops_submit_gate_waits_for_the_job_in_flight() -> None:
     from tests.unit._loop_source import loop_source
 

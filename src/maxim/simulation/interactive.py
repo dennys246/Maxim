@@ -28,7 +28,6 @@ from typing import Any
 
 import yaml
 
-from maxim.memory.experience_clock import ExperienceClockStalled
 
 logger = logging.getLogger(__name__)
 
@@ -313,19 +312,7 @@ def run_interactive_sim(
             except Exception:
                 pass
 
-        # End of conversation — run consolidation now
-        if memory_hub is not None:
-            try:
-                display_status("Consolidating memories...")
-                session_stats = memory_hub.on_session_end()
-                sim_log("PIPELINE", f"Session ended: {session_stats}")
-            except ExperienceClockStalled as e:
-                # See the twin handler in runtime/bio_integration.py: a stalled clock means this
-                # run's memory model did nothing, which the broad branch below would bury at DEBUG.
-                logger.error("MemoryHub session ended on a stalled experience clock: %s", e)
-                sim_log("PIPELINE", f"Session ended on a STALLED experience clock: {e.results}")
-            except Exception as e:
-                logger.debug("Failed to end MemoryHub session: %s", e)
+        _await_conversation_session_end(memory_hub)
 
         _save_full_transcript(transcript_path, all_percepts, description)
         _print_summary(total_sink)
@@ -337,6 +324,28 @@ def run_interactive_sim(
 
         if not restart:
             break
+
+
+def _await_conversation_session_end(memory_hub: Any | None) -> None:
+    """End of conversation: the memory session must have ended (#1438 PR 0).
+
+    Each turn's agent loop owns the session it ran in: its ``bio_session`` claimed it and ended it, as owner, when
+    the loop exited, which is where the consolidation (and an ``ExperienceClockStalled`` report) happens. This flow
+    is a non-owner, so it WAITS, bounded, for that end instead of ending a session it does not hold. (Before #1438 the
+    end here found the session already closed by the last turn's loop and consolidated nothing.)
+    """
+    if memory_hub is None:
+        return
+    from maxim.simulation.sim_logger import display_status, sim_log
+
+    display_status("Consolidating memories...")
+    if memory_hub.wait_session_ended(deadline_s=_CONVERSATION_SESSION_WAIT_S):
+        sim_log("PIPELINE", "Session ended (by the last turn's loop)")
+    else:
+        logger.warning("session_end_not_reached at the end of the conversation: the memory session is still open")
+
+
+_CONVERSATION_SESSION_WAIT_S = 30.0
 
 
 def _run_scenario_turn(  # noqa: PLR0913

@@ -178,9 +178,6 @@ class LoopController:
         self.context_pool: Any = None
         self.prefetcher: Any = None
 
-        # ── Memory hub / hippocampus ─────────────────────────────────────
-        self.memory_hub_enabled = memory_hub is not None
-
         # ── Default Network ──────────────────────────────────────────────
         self.dn_ctrl = DefaultNetworkController(default_network)
         self.dn_enabled = self.dn_ctrl.enabled

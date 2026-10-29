@@ -82,20 +82,26 @@ class _Hub:
             return object.__getattribute__(self, "_values")[name]
         return object.__getattribute__(self, name)
 
-    def on_session_start(self) -> dict[str, Any]:
+    def on_session_start(self, *, owner: Any, live: bool = False, deadline_s: float | None = None) -> Any:
         state_files = list(Path("data").glob("agents/*/runtime/state_*.json"))
         self._events.append(f"hub.on_session_start(persisted={bool(state_files)})")
         if self._start_fails:
             raise RuntimeError("hub start failed")
-        return {}
+        self.ticket = SimpleNamespace(owner=owner, live=live, generation=1, start_stats={})
+        return self.ticket
 
-    def on_session_end(self) -> dict[str, Any]:
+    def on_session_end(self, ticket: Any) -> dict[str, Any]:
+        assert ticket is self.ticket, "ended a session this fake never opened"  # #1438 PR 0: every fake checks
         self.ended.append("full")
         return {}
 
-    def on_session_end_lightweight(self) -> dict[str, Any]:
+    def on_session_end_lightweight(self, ticket: Any) -> dict[str, Any]:
+        assert ticket is self.ticket, "ended a session this fake never opened"
         self.ended.append("lightweight")
         return {}
+
+    def release_session_claim(self, ticket: Any) -> None:
+        return None
 
     def record_plan_outcome(self, **_kw: Any) -> None:
         return None
@@ -222,7 +228,10 @@ def test_a_sim_mode_sim_adapter_is_refused_before_any_side_effect(monkeypatch, t
     with pytest.raises(ValueError, match=r"sim_adapter= must be a non-sim adapter"):
         _run(monkeypatch, tmp_path, events=events, sim_adapter=adapter, memory_hub=hub)
     assert _state_files(tmp_path) == []  # refused before the first persist
-    assert events == []  # no context pool, controller, DN or bio session
+    # #1438 PR 0: the session is claimed BEFORE setup (bio_session), so the refusal ends it on the abnormal path;
+    # still no context pool, controller or DN.
+    assert events == ["hub.on_session_start(persisted=False)"]
+    assert hub.ended == ["lightweight"]
 
 
 def test_a_non_sim_adapter_is_the_loops_adapter(monkeypatch, tmp_path):
@@ -609,9 +618,12 @@ def test_llm_primary_credits_drive_relief_only(monkeypatch, tmp_path):
 # ── the bio session ──────────────────────────────────────────────────────────
 
 
-def test_a_hub_that_fails_to_start_is_not_ended(monkeypatch, tmp_path):
+def test_a_hub_that_fails_to_start_aborts_the_loop_and_is_not_ended(monkeypatch, tmp_path):
+    """#1438 PR 0: only "no memory hub configured" stays a soft skip; a hub whose session cannot be claimed
+    aborts the loop (it used to run on silently, without memory)."""
     hub = _Hub([], start_fails=True)
-    _run(monkeypatch, tmp_path, memory_hub=hub)
+    with pytest.raises(RuntimeError, match="hub start failed"):
+        _run(monkeypatch, tmp_path, memory_hub=hub)
     assert hub.ended == []
 
 
@@ -703,6 +715,7 @@ def test_the_setup_side_effects_run_in_order(monkeypatch, tmp_path):
     )
     end = events.index("liveness_inactive_log") + 1
     assert events[:end] == [
+        "hub.on_session_start(persisted=False)",  # #1438 PR 0: claimed BEFORE setup starts anything
         "context_pool",
         "ctrl",
         "overrides",
@@ -713,7 +726,6 @@ def test_the_setup_side_effects_run_in_order(monkeypatch, tmp_path):
         "hub.ec",
         "hub.atl",
         "hub.situation_cue",
-        "hub.on_session_start(persisted=True)",
         "liveness_inactive_log",
     ]
 
@@ -730,4 +742,6 @@ def test_an_override_config_error_stops_the_run_before_the_bio_session(monkeypat
     with pytest.raises(_ConfigBroken):
         _run(monkeypatch, tmp_path, events=events, overrides=_broken, memory_hub=hub, default_network=_DN(events))
     assert len(_state_files(tmp_path)) == 1  # persisted before the overrides resolve
-    assert events == ["context_pool", "ctrl"]  # no DN start, no bio handles, no session start
+    # #1438 PR 0: the session was claimed first, so the error ends it on the abnormal path; no DN start, no bio handles
+    assert events == ["hub.on_session_start(persisted=False)", "context_pool", "ctrl"]
+    assert hub.ended == ["lightweight"]

@@ -381,7 +381,7 @@ def test_benchmark_memory_hub_session_start() -> None:
 
         hub = MemoryHub(hippocampus=hippocampus, scn=scn, nac=nac, ec=ec, _allow_raw=True)
         hub.connect()
-        return hub.on_session_start()
+        return hub.on_session_start(owner=object()).start_stats
 
     result = run_benchmark(
         name="MemoryHub.on_session_start",
@@ -414,7 +414,7 @@ def test_benchmark_memory_hub_plan_outcome() -> None:
 
     hub = MemoryHub(hippocampus=hippocampus, scn=scn, nac=nac, ec=ec, _allow_raw=True)
     hub.connect()
-    hub.on_session_start()
+    hub.on_session_start(owner=object())
 
     counter = [0]
 

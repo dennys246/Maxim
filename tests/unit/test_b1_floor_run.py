@@ -677,7 +677,7 @@ def _trial(tmp_path, arm, seed=99, drain=3.0):
     aut = build_minecraft_aut(
         agent_id=agent_id, bridge_port=srv.port, persistence_dir=str(home), entity_ref="bodies/minecraft_player"
     )
-    aut.bio.memory_hub.on_session_start()
+    aut.bio.memory_hub.on_session_start(owner=aut)  # the harness owns it, as the scripts do (#1438 PR 0)
     pump = MinecraftSyncPump(aut, interval_s=0.25)
     pump.start()
     trial = B.FloorWaterTrial(

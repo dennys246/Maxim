@@ -27,8 +27,8 @@ Then the arms the 1.4.0 gate requires before the slices that move their code (``
      campaign's own narrator (``simulation/narrator.py``, the ``story_*`` roles) drives both turns on the calling
      thread; its ``_finish_runner`` sets ``stop_event``, and only then is the narrator kickoff injected (§9).
      The §9 RESUME branch (``resume_session``) is not reached; only the kickoff is.
-  5. ``stall``: the stall detector (§11) with its idle threshold at the 5 s clamp floor and a 0.5 s poll
-     (the arm's ``env``). Three probes; the diversity checkpoint lands during turn 3 and rides the narrator's
+  5. ``stall``: the stall detector (§11) with its idle threshold at 15 s (#1488; the clamp floor is 5 s) and a
+     0.5 s poll (the arm's ``env``). Three probes; the diversity checkpoint lands during turn 3 and rides the narrator's
      ``observe_actions`` follow-up (``held_inputs``); the narrator then finishes, and the detector's idle nudge
      reaches the FINISHED narrator (#1259), which answers it with another ``finish_simulation``; the operator
      ``/cancel`` follows that answer. WHY this shape (measured 2026-10-24): since D13 every action-less narrator
@@ -233,11 +233,16 @@ ARMS: dict[str, dict[str, Any]] = {
     "narrator": {"max_turns": 10, "aut_model": "orch-golden-aut"},
     "stdin": {"max_turns": 10},
     "generative": {"max_turns": 10, "kwargs": {"generative": True}, "arc": _GENERATIVE_ARC, "events": True},
-    # The detector's idle threshold at its clamp floor (5 s, ``stall_threshold._read_clamped_env``) and its poll at
-    # its own floor (0.5 s), so the arm reaches the diversity checkpoint (after turn 3) and one idle nudge quickly.
+    # The detector's idle threshold at 15 s and its poll at its own floor (0.5 s). The threshold was the 5 s clamp
+    # floor (``stall_threshold._read_clamped_env``) until #1488. At 5 s the nudge fell inside the narrator's
+    # observe_actions -> finish hand-off on a loaded runner, and on CI once sat unplanned until the next nudge woke
+    # the loop (a stranded input, cause OPEN in #1488: offsets 0-3 s into the hand-off and 8-20 s planning delays
+    # never strand it unloaded). A starved runner also nudged during startup (20 GIL-contending threads, --cpus=2:
+    # 5/6 runs at 5 s, 0/6 at 15 s). 15 s lands the nudge well after the finish. Determinism by construction is the
+    # §11 slice's injected clock; the golden test prints the loop's log on a mismatch.
     "stall": {
         "max_turns": 10,
-        "env": {"MAXIM_STALL_FLOOR_S": "5", "MAXIM_SIM_STALL_CHECK_INTERVAL_S": "0.5"},
+        "env": {"MAXIM_STALL_FLOOR_S": "15", "MAXIM_SIM_STALL_CHECK_INTERVAL_S": "0.5"},
         "events": True,
     },
     # Interactive ON (``/new`` exists only there) on a line-read stdin that claims a TTY: no ``fileno``, so the raw
@@ -407,6 +412,28 @@ class FakeRouter:
     def generate_json(
         self, prompt: str, temperature: float = 0.3, max_tokens: int = 1024, **kwargs: Any
     ) -> dict[str, Any] | None:
+        """Every call is registered in the in-flight LLM call registry for its duration, the way
+        ``LLMRouter.generate_json``'s dispatch registers its own (lane from the request context, the worker's
+        ``allowed_s``; ``models/language/router.py``), as one window where production registers each dispatch.
+        The stall detector's suppression reads that registry to tell a narrator that is busy planning from an idle
+        one (#1042), so an unregistered fake pinned behaviour production never shows. Faithfulness only: measured
+        not to cure #1488. A held call (``_hold_for_stall_arm``) counts as busy, as a slow real call would."""
+        from maxim.agents.llm_worker import _normalize_request_context
+        from maxim.runtime.llm_call_registry import register_call_end, register_call_start
+
+        context = kwargs.get("request_context")
+        allowed = context.get("allowed_s") if isinstance(context, dict) else None
+        call_id = register_call_start(
+            tier=_normalize_request_context(context).lane or "unknown",
+            streams=bool(kwargs.get("stream")),
+            allowed_s=float(allowed) if isinstance(allowed, (int, float)) else None,
+        )
+        try:
+            return self._answer(prompt, kwargs)
+        finally:
+            register_call_end(call_id)
+
+    def _answer(self, prompt: str, kwargs: dict[str, Any]) -> dict[str, Any] | None:
         role = self.classify(prompt, kwargs.get("system_override"))
         if role is None:
             with self._lock:
@@ -540,6 +567,7 @@ def _act(tool: str, **params: Any) -> dict[str, Any]:
 
 def _describe(prompt: str) -> dict[str, Any]:
     """The causal content of a prompt: what was asked, never the clock-stamped context around it."""
+    raw, prompt = prompt, _mask_stall(prompt)  # masked before every cut below: a number's width never moves one (#1488)
     m = _EXECUTED.match(prompt)
     if m:
         orig = _ORIGINAL.search(prompt)
@@ -551,8 +579,8 @@ def _describe(prompt: str) -> dict[str, Any]:
             "turn": int(turn.group(1)) if turn else None,
         }
     if prompt.startswith("TOOL_PROMPT|"):
-        req = _USER_REQUEST.search(prompt)
-        return {"kind": "plan", "request": (req.group(1) if req else "")[:120].lower()}
+        req = _USER_REQUEST.search(raw)  # lowered BEFORE the mask, so its placeholder stays ``<S>``
+        return {"kind": "plan", "request": _mask_stall((req.group(1) if req else "").lower())[:120]}
     if prompt.startswith("You are an Entity Designer"):
         desc = re.search(r"\nDESCRIPTION: (.*)\n", prompt)
         return {"kind": "direct", "request": desc.group(1)[:120] if desc else ""}
@@ -634,14 +662,20 @@ _TMP_SUFFIX = re.compile(r"(sim_agent_<STAMP>_)[A-Za-z0-9_]{8}")
 
 # Wall-clock numbers inside the stall detector's injected text, with the reason (the stall arm). Applied to every
 # arm's strings, like the ``<REPO>`` scrub in ``_scrub``; both are inert on the slice-0 traces (neither pattern occurs). The idle nudge
-# reports ``int(now - last activity)``, which is the 5 s floor plus however far into a 0.5 s poll the threshold
-# fell: 5 or 6. Every other number in its text (the AUT's action count, the turn, the tool counts) is causal.
+# reports ``int(now - last activity)``, which is the arm's floor plus however far into a 0.5 s poll the threshold
+# fell (15 or 16; any width, since every cut is taken after the mask). Every other number in its text (the AUT's
+# action count, the turn, the tool counts) is causal.
 _STALL_MASKS = ((re.compile(r"\b\d+s idle\b"), "<S>s idle"),)
 
 
-def _scrub(text: str, work: Path) -> str:
+def _mask_stall(text: str) -> str:
     for pattern, placeholder in _STALL_MASKS:
         text = pattern.sub(placeholder, text)
+    return text
+
+
+def _scrub(text: str, work: Path) -> str:
+    text = _mask_stall(text)
     text = text.replace(str(work.resolve()), "<WORK>").replace(str(work), "<WORK>")
     text = text.replace(str(REPO_ROOT), "<REPO>")  # a spec file read from the checkout (the imagination arm)
     text = _STAMP.sub("<STAMP>", text)
@@ -889,7 +923,8 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
             if id(self) not in narrator_sources:
                 narrator_sources.append(id(self))
             source = f"narrator#{narrator_sources.index(id(self)) + 1}"
-        event = {"inject": source, "thread": threading.current_thread().name, "text": text[:240]}
+        masked = _mask_stall(text)  # before the cut, so a number's width never moves it (#1488)
+        event = {"inject": source, "thread": threading.current_thread().name, "text": masked[:240]}
         if run_stops:  # a campaign runner already ended: was the run already stopping when this landed?
             event["stop_event_set"] = run_stops[-1].is_set()
         events.append(event)
@@ -1188,6 +1223,11 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
                     "tool_descriptions_after": copy.deepcopy(definitions.TOOL_DESCRIPTIONS),
                 }
             finally:
+                # The registry is process-global: a FakeRouter call still blocked on a leftover thread would keep a
+                # "busy" entry for its 1800 s TTL and flip a later test's stall suppression.
+                from maxim.runtime import llm_call_registry
+
+                llm_call_registry._reset_for_tests()
                 state.restore()
 
 

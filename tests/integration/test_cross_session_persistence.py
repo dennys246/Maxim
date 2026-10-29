@@ -82,7 +82,7 @@ from maxim.runtime.bio_stack import build_bio_stack
 {episode_snippet}
 
 bio = build_bio_stack(persistence_dir={dir!r}, agent_id="rt_agent")
-bio.memory_hub.on_session_start()
+ticket = bio.memory_hub.on_session_start(owner=object())
 
 # Causal learning: tool_a succeeded.
 bio.nac.observe(
@@ -100,7 +100,7 @@ from maxim.memory.encoding import EncodingSignals
 bio.hippocampus.store(mem, encoding=EncodingSignals.unmeasured("api"))
 bio.ec.register(mem.id, memory=mem)
 
-results = bio.memory_hub.on_session_end()
+results = bio.memory_hub.on_session_end(ticket)
 print(json.dumps({{
     "memory_id": mem.id,
     "cluster_bias": bio.nac.cluster_reward_bias("rt_agent", "cluster_1", "tool:warm"),
@@ -119,7 +119,7 @@ from maxim.similarity.signature import SituationSignature
 {episode_snippet}
 
 bio = build_bio_stack(persistence_dir={dir!r}, agent_id="rt_agent")
-bio.memory_hub.on_session_start()
+ticket = bio.memory_hub.on_session_start(owner=object())
 
 # ---- RECALL BEFORE ANY NEW LEARNING ----
 links_a = bio.nac.get_links_for_event("tool_a")
@@ -149,7 +149,7 @@ bio.nac.observe(
     "tool_call", "tool_b", "result", "success", Valence.POSITIVE, 0.5,
     context={{"agent_id": "rt_agent"}},
 )
-bio.memory_hub.on_session_end()
+bio.memory_hub.on_session_end(ticket)
 print(json.dumps(restored))
 """
 
@@ -230,8 +230,8 @@ class TestLoadPersistedOptOut:
             0.5,
             context={"agent_id": "fresh_agent"},
         )
-        bio.memory_hub.on_session_start()
-        bio.memory_hub.on_session_end()
+        ticket = bio.memory_hub.on_session_start(owner=object())
+        bio.memory_hub.on_session_end(ticket)
         assert (Path(d) / "nac.json").exists()
 
         bio2 = build_bio_stack(persistence_dir=d, agent_id="fresh_agent", load_persisted=False)

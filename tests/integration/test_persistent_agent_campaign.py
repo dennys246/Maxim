@@ -18,6 +18,7 @@ tests/integration/test_orchestrator_sandbox.py):
 from __future__ import annotations
 
 import inspect
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -347,16 +348,46 @@ class TestNonePathUnchanged:
 
 
 class _SpyHub:
+    """#1438 PR 0: a ticketed fake. Only the current ticket ends (and is counted); ending a never-opened session
+    fails the test, so a spy that silently "consolidates" a session nobody opened cannot pass."""
+
     def __init__(self) -> None:
         self.full_calls = 0
         self.lightweight_calls = 0
+        self.opens = 0
+        self._ticket: SimpleNamespace | None = None
 
-    def on_session_end(self) -> dict:
-        self.full_calls += 1
+    def on_session_start(self, *, owner, live: bool = False, deadline_s: float | None = None) -> SimpleNamespace:
+        del live, deadline_s
+        if self._ticket is None or self._ticket.owner is not owner:
+            self.opens += 1
+            self._ticket = SimpleNamespace(start_stats={}, generation=self.opens, owner=owner)
+        return self._ticket
+
+    def holds_session(self, ticket) -> bool:
+        return ticket is not None and ticket is self._ticket
+
+    def wait_session_ended(self, *, deadline_s: float | None = None) -> bool:
+        return True
+
+    def release_session_claim(self, ticket) -> None:
+        del ticket
+
+    def _end(self, ticket) -> bool:
+        assert self.opens > 0, "a session was ended that was never opened"
+        if ticket is None or ticket is not self._ticket:
+            return False
+        self._ticket = None
+        return True
+
+    def on_session_end(self, ticket) -> dict:
+        if self._end(ticket):
+            self.full_calls += 1
         return {}
 
-    def on_session_end_lightweight(self) -> dict:
-        self.lightweight_calls += 1
+    def on_session_end_lightweight(self, ticket) -> dict:
+        if self._end(ticket):
+            self.lightweight_calls += 1
         return {}
 
 
@@ -371,6 +402,8 @@ class TestStopConsolidation:
             config=AgentConfig(agent_id="console_agent"),
             memory_hub=hub,
         )
+        # #1438 PR 0: shutdown ends only the session its instance opened (owner ticket), so open it first.
+        inst.start_session()
         return inst, hub
 
     def test_shutdown_default_is_full(self):
@@ -441,13 +474,14 @@ class TestRepeatedSessions:
         assert ce is not None, "persistent hub must have a concept extractor wired"
         assert ce._worker.is_alive()
 
-        hub.on_session_start()
-        hub.on_session_end()
+        # #1438 PR 0: the instance owns the open session; its owner re-claim returns the same ticket (was a no-op).
+        ticket = hub.on_session_start(owner=inst)
+        hub.on_session_end(ticket)
         assert not ce._worker.is_alive(), "full consolidation stops the worker"
 
-        hub.on_session_start()
+        ticket = hub.on_session_start(owner=inst)
         assert ce._worker.is_alive(), "second session must revive concept extraction"
-        hub.on_session_end()
+        hub.on_session_end(ticket)
 
     def test_dn_pain_bridge_unsubscribe_leaves_persistent_learners(self, tmp_path):
         """A sim-scoped DefaultNetwork subscribes its PainCircuitBridge to
@@ -494,14 +528,15 @@ class TestSessionEndRace:
 
         inst = _build_persistent_agent(tmp_path)
         hub = inst.memory_hub
-        hub.on_session_start()
+        # #1438 PR 0: both closers hold the CURRENT ticket (the instance's); the ledger still admits exactly one.
+        ticket = hub.on_session_start(owner=inst)
 
         barrier = threading.Barrier(2)
         results: list[dict] = []
 
         def _end() -> None:
             barrier.wait()
-            results.append(hub.on_session_end())
+            results.append(hub.on_session_end(ticket))
 
         threads = [threading.Thread(target=_end) for _ in range(2)]
         for t in threads:
@@ -522,6 +557,7 @@ class TestSessionEndRace:
         handle = MaximHandle(agent_id="console_agent", home=tmp_path / "home")
         hub = _SpyHub()
         handle.instance.memory_hub = hub
+        handle.instance.start_session()  # #1438 PR 0: stop ends the session the instance opened on THIS hub
 
         handle._campaign_lock.acquire()  # simulate a live (wedged) campaign
         try:
@@ -567,6 +603,7 @@ class TestMaximHandle:
         handle = MaximHandle(agent_id="console_agent", home=tmp_path / "home")
         hub = _SpyHub()
         handle.instance.memory_hub = hub
+        handle.instance.start_session()  # #1438 PR 0: stop ends the session the instance opened on THIS hub
         handle.stop()
         assert hub.full_calls == 1, "stop() must run FULL consolidation (#427)"
         handle.stop()
