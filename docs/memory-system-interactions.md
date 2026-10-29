@@ -110,23 +110,23 @@ MemoryHub.get_spatial_boosts(goal)        → spatial_bridge cache    [READ cach
 MemoryHub.get_escalation_threshold()      → escalation_bridge cache [READ cache, no hippocampus]
 ```
 
-### Phase 3: Session End (`MemoryHub.on_session_end(ticket)`)
+### Phase 3: Session End (`MemoryHub.on_session_end(ticket, deadline=)`)
+
+Saves first, then consolidates only within the deadline (#1438 PR 1a; `integration/session_end.py`):
 
 ```
-MemoryHub.on_session_end(ticket)   # only the current generation's ticket ends it (#1438)
-  ├─ hippocampus.flush()                  [drain async capture queue if passive]
-  ├─ hippocampus.sleep()                  [consolidation: compress, prune, promote]
-  │   ├─ _compress_old_memories()
-  │   ├─ _remove_low_retention()
-  │   └─ _promote_to_long_term()
-  ├─ promoter.scan_for_promotions()       [hippocampus patterns → ATL concepts]
-  │   └─ atl.store(concept)              [WRITE ATL]
-  ├─ atl.consolidate()                    [compress/prune ATL]
-  ├─ ag.consolidate()                     [compress/prune AG]
-  ├─ hippocampus.save()                   [persist to disk]
-  ├─ atl.save()                           [persist to disk]
-  ├─ ag.save()                            [persist to disk]
-  └─ bridge.on_session_end() for each     [cleanup]
+MemoryHub.on_session_end(ticket, deadline=None)   # only the current generation's ticket ends it (#1438)
+  a ├─ stop_capture_workers / extractor flush+stop / embedder drain   [best effort, within shares; logged]
+  b ├─ spatial bridge end (full), nac.decay_all()                     [once]
+    ├─ [hippocampus READ section] hippocampus, EC, embeddings, cross-layer save
+    ├─ nac.save(), atl.save(), scn.save(), ag.save()
+  c ├─ hippocampus.sleep(auto_save=False)   [full only, if the time left covers its reserve]
+    ├─ promoter.scan_for_promotions() → atl.store()                   [WRITE ATL]
+    ├─ atl.consolidate(), ag.consolidate()
+  d ├─ re-save, dependants before owners    [only if a step of c ran]
+  e ├─ plan manager end, provenance end
+    └─ hub.shutdown()                       [grounder / completer]
+  (finish_end) handed-over after-steps of a waiting AgentInstance.shutdown (#1520), then CLOSED
 ```
 
 ---

@@ -4131,7 +4131,6 @@
     "agents/console_agent/atl.json",
     "agents/console_agent/ec.json",
     "agents/console_agent/hippocampus.json",
-    "agents/console_agent/hippocampus.json.backup",
     "agents/console_agent/nac.json",
     "agents/console_agent/scn.json",
     "orchestrator/angular_gyrus.json",
@@ -8271,5 +8270,5 @@
    "unsorted_prompts": []
   }
  },
- "generated_at_commit": "5c50c259d6b5"
+ "generated_at_commit": "3c35139f4cf2"
 }

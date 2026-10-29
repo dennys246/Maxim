@@ -92,6 +92,9 @@ bio.nac.observe(
 # Pavlovian percept valence (slow cross-session surface).
 bio.nac.record_percept_valence("dragon", "burn", -0.5, agent_id="rt_agent")
 # Cluster-keyed bias (fast surface, 1-day wall half-life).
+# A cluster id is an EC substrate node id; since #1438 PR 1a the first session open prunes NAc biases keyed on a
+# node the loaded EC does not hold, so the cluster must exist in EC to survive the round trip.
+bio.ec.register_substrate_node("cluster_1", [1.0, 0.0, 0.0], "world")
 bio.nac.update_cluster_reward("rt_agent", "cluster_1", "tool:warm", 1.0)
 # Episodic memory + EC signature (the NAc min_similarity=0.5 gate rides
 # on EC signature matching surviving the process boundary).

@@ -39,6 +39,8 @@ class ConsolidationMixin:
     def sleep(
         self,
         strategy: "MemoryStrategy | None" = None,
+        *,
+        auto_save: bool = True,
     ) -> dict[str, int]:
         """Perform sleep-like memory consolidation.
 
@@ -52,6 +54,8 @@ class ConsolidationMixin:
 
         Args:
             strategy: Memory strategy to use. Defaults to config.memory_strategy.
+            auto_save: False skips the ``auto_save_after_sleep`` save. The hub's session end passes it: it
+                re-saves the hippocampus with the stores keyed on its ids, in one read section (#1438 PR 1a).
 
         Returns:
             Dict with counts: {"compressed": N, "removed": M, "preserved": P, "promoted": Q}
@@ -67,7 +71,7 @@ class ConsolidationMixin:
         # auto_save_after_sleep=False; surfaced by the HANDLE seam's
         # repeated-session guard, where a persistent agent runs full
         # consolidation with a live persistence_path every campaign.
-        if self.config.auto_save_after_sleep and self.config.persistence_path:
+        if auto_save and self.config.auto_save_after_sleep and self.config.persistence_path:
             self._auto_save_after_sleep()
 
         # Log consolidation activity OUTSIDE rwlock (P3f — Tier 2)

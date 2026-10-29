@@ -235,9 +235,10 @@ class SemanticMemory(MemoryRecord):
             "name": self.name,
             "definition": self.definition,
             "category": self.category,
-            "properties": self.properties,
+            # Copies, not the live containers (#1438): ATL.save serializes this dict after releasing its lock.
+            "properties": dict(self.properties),
             "provenance": self.provenance.name,
-            "source_episode_ids": self.source_episode_ids,
+            "source_episode_ids": list(self.source_episode_ids),
             "source_document": self.source_document,
             "confidence": self.confidence,
             "reinforcement_count": self.reinforcement_count,

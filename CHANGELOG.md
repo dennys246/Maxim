@@ -100,11 +100,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the stop request's deadline (else 30 s). The D13 planning-liveness abort is raised after that end.
   - `start_bio_session` is gone; `end_bio_session` takes `ticket=` and `capture=`. `Hippocampus.start_capture_worker()`
     returns a `CaptureWorker` handle with its own stop event.
-  - `AgentInstance.shutdown(deadline_s=)` waits for a loop that took its session over instead of ending it, and no
-    longer saves NAc itself (the session end does, beside EC). `AgentPool.shutdown` shares one deadline across agents.
+  - `AgentInstance.shutdown` waits for a loop that took its session over instead of ending it (and, since PR 1a, hands
+    that loop its after-steps), and no longer saves NAc itself (the session end does, beside EC). `AgentPool.shutdown` shares one deadline across agents.
   - New `utils/deadline.Deadline` and the sticky process stop request (`utils/cancellation.request_stop`).
   - A hub whose session cannot be claimed now aborts the loop (`SessionRefusal` and its subclasses); the old soft
     skip that ran the loop without memory is gone. `MaximHandle.stop` bounds its shutdown's wait by `talk_join_s`.
+- **The session end saves every store first, and consolidates only within the caller's deadline**
+  ([#1438](https://github.com/dennys246/Maxim/issues/1438) PR 1a, docs/plans/bounded_stop.md §5). It used to run the
+  slow sleep/replay BEFORE saving anything, so a stop that ran out of time lost every store.
+  - `on_session_end` / `on_session_end_lightweight` / `sleep` take `deadline=` (a `utils.deadline.Deadline`; `None`
+    is no bound). Sleep, promotion and ATL/AG consolidation each run only if the time left covers them, and skipped
+    steps are named in the result's `consolidation_skipped`. The phases live in `integration/session_end.py`.
+  - The hippocampus, EC, the semantic embedding store and the cross-layer graph are saved inside one hippocampus
+    read section, so no eviction lands between them. The hub's end now saves the hippocampus itself (the lightweight
+    end did not); `end_bio_session` and `AgentInstance.shutdown` save it only when no hub end covers it.
+  - EC and the embedding store have their own locks, and ATL's memory-ref writes take ATL's: a percept arriving on a
+    sensor thread during the save no longer fails it ("dictionary changed size", which also skipped NAc).
+  - The first session open prunes and counts references to memories the saved hippocampus no longer holds (NAc,
+    ATL) and NAc biases and fears keyed on EC nodes that no longer exist; restored ATL refs are now cleaned when their
+    memory is deleted (the ConceptExtractor's index is rebuilt after ATL loads).
+  - A shutdown that has to wait for a running loop hands its after-steps (the cerebellum save, the hub's workers) to
+    that loop's session end, which runs them once; it used to skip them ([#1520](https://github.com/dennys246/Maxim/issues/1520)).
+  - `AgentInstance.shutdown(deadline=, loop_wait=)` take `Deadline`s (PR 0's `deadline_s=` never shipped):
+    `deadline` bounds the agent's own end, `loop_wait` only its wait for a loop. `MaximHandle.stop` and the pool pass
+    `loop_wait` alone, so a persistent agent still consolidates in full when it stops, until the console gets its stop
+    budget (#1438 PR 1b). An abandoned session (its stop bound spent) drops handed-over after-steps, logged at ERROR.
+  - Loaders prune only against a store that read its file, so a missing or unreadable `hippocampus.json` no longer
+    looks like "every reference dangles".
 
 - **The agent loop logs, at DEBUG, when a planning job starts and stops holding new inputs, and when held inputs ride
   a follow-up** (#1488), so a narrator input that sits unplanned can be told from one that waits its turn. It logs

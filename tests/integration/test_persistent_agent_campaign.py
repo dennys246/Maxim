@@ -380,15 +380,28 @@ class _SpyHub:
         self._ticket = None
         return True
 
-    def on_session_end(self, ticket) -> dict:
+    def on_session_end(self, ticket, *, deadline=None) -> dict:
+        del deadline
         if self._end(ticket):
             self.full_calls += 1
         return {}
 
-    def on_session_end_lightweight(self, ticket) -> dict:
+    def on_session_end_lightweight(self, ticket, *, deadline=None) -> dict:
+        del deadline
         if self._end(ticket):
             self.lightweight_calls += 1
         return {}
+
+    # #1438 PR 1a: the after-steps AgentInstance.shutdown runs (or hands to a loop holding the session).
+    def run_after_session_end(self, name, step) -> bool:
+        del name, step
+        return False
+
+    def shutdown(self) -> None:
+        pass
+
+    def hippocampus_unsaved(self) -> bool:
+        return False
 
 
 class TestStopConsolidation:
