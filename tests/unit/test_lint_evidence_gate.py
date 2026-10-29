@@ -3933,3 +3933,66 @@ def test_a_release_exception_moves_no_row() -> None:
         "from": "STALE",
     }
     assert G.active_exceptions([as_ledger], row, row), "positive control: a ledger clause for the same row acts"
+
+
+# ── #1220: the row-level apparatus check is judged beside provenance.allow_dirty ─────────────────────────────
+
+
+def _arc(problem=None, *, gated=True, allow_dirty=None) -> dict:
+    return {
+        "gated": gated,
+        "problem": problem,
+        "allow_dirty": problem is not None if allow_dirty is None else allow_dirty,
+    }
+
+
+def _judge_rows(rig: Rig, name: str, make_row) -> R.Judgement:
+    rig.base(STALE_BOTH)  # sets rig.base_sha, which _row/_prov read: build the row after it
+    rig.write(f"{DATA}/{name}.jsonl", json.dumps(make_row()) + "\n")
+    rig.commit(name, HEAD_DATE)
+    return _judge(rig, f"{DATA}/{name}.jsonl")
+
+
+def test_a_waived_apparatus_check_without_the_provenance_waiver_fails(rig) -> None:
+    j = _judge_rows(rig, "w1", lambda: _row(rig, apparatus_record_check=_arc("not committed on main")))
+    assert j.status == G.NOT_ESTABLISHED and any("disagree" in r for r in j.reasons), j.reasons
+
+
+def test_a_provenance_waiver_without_the_apparatus_waiver_fails(rig) -> None:
+    j = _judge_rows(
+        rig, "w2", lambda: _row(rig, provenance=_prov(rig, allow_dirty=True), apparatus_record_check=_arc())
+    )
+    assert j.status == G.NOT_ESTABLISHED and any("disagree" in r for r in j.reasons), j.reasons
+
+
+@pytest.mark.parametrize("arc", [{"gated": True}, "yes", _arc(allow_dirty=True), _arc("", allow_dirty=True)])
+def test_a_malformed_apparatus_check_fails(rig, arc) -> None:
+    j = _judge_rows(rig, "w3", lambda: _row(rig, apparatus_record_check=arc))
+    assert j.status == G.NOT_ESTABLISHED, j.reasons
+
+
+def test_an_ungated_apparatus_check_in_the_data_dir_fails(rig) -> None:
+    j = _judge_rows(rig, "w4", lambda: _row(rig, apparatus_record_check=_arc(gated=False)))
+    assert j.status == G.NOT_ESTABLISHED and any("gated" in r for r in j.reasons), j.reasons
+
+
+@pytest.mark.parametrize("value", ["true", 1, None, "false", 0])
+def test_a_non_bool_allow_dirty_fails(rig, value) -> None:
+    j = _judge_rows(rig, "w5", lambda: _row(rig, provenance=_prov(rig, allow_dirty=value)))
+    assert j.status == G.NOT_ESTABLISHED and any("allow_dirty" in r for r in j.reasons), j.reasons
+
+
+def test_a_matched_apparatus_waiver_is_an_allowance(rig) -> None:
+    j = _judge_rows(
+        rig,
+        "w6",
+        lambda: _row(
+            rig, provenance=_prov(rig, allow_dirty=True), apparatus_record_check=_arc("not committed on main")
+        ),
+    )
+    assert j.status == G.ESTABLISHED and j.allowed_dirty, j.reasons
+
+
+def test_a_clean_apparatus_check_is_clean_support(rig) -> None:
+    j = _judge_rows(rig, "w7", lambda: _row(rig, apparatus_record_check=_arc()))
+    assert j.status == G.ESTABLISHED and not j.allowed_dirty, j.reasons

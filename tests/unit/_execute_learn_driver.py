@@ -117,15 +117,27 @@ class _Hub:
         self.hippocampus = None
         self.situation_cue = NO_SITUATION_CUE
         self._obs = obs
+        self.ends: list[bool] = []
 
-    def on_session_start(self) -> dict[str, Any]:
+    # #1438 PR 0: the session API takes an owner and hands back a ticket that every end must present.
+    def on_session_start(self, *, owner: Any, live: bool = False, deadline_s: float | None = None) -> Any:
+        self._ticket = SimpleNamespace(generation=1, owner=owner, start_stats={})
+        return self._ticket
+
+    def _end(self, ticket: Any) -> dict[str, Any]:
+        # Recorded, not asserted: end_bio_session logs a raising end at WARNING, so the driver checks ``ends``.
+        self.ends.append(ticket is not None and ticket is getattr(self, "_ticket", None))
+        self._ticket = None
         return {}
 
-    def on_session_end(self) -> dict[str, Any]:
-        return {}
+    def on_session_end(self, ticket: Any) -> dict[str, Any]:
+        return self._end(ticket)
 
-    def on_session_end_lightweight(self) -> dict[str, Any]:
-        return {}
+    def on_session_end_lightweight(self, ticket: Any) -> dict[str, Any]:
+        return self._end(ticket)
+
+    def release_session_claim(self, ticket: Any) -> None:
+        return None
 
     def record_plan_outcome(self, **kw: Any) -> None:
         self._obs.plan_outcomes.append(kw)
@@ -402,6 +414,7 @@ def run_once(
         state.data["mode"] = state_mode
     if active_goal is not None:
         state.data["active_goal"] = active_goal
+    hub = _Hub(obs)
     try:
         AL.run_agentic_loop(
             MaximAgent(),
@@ -412,7 +425,7 @@ def run_once(
             executor,
             autonomy_controller=controller,
             hippocampus=_Hippocampus(obs, raises=capture_raises),
-            memory_hub=_Hub(obs),
+            memory_hub=hub,
             aut_mode="substrate-primary",
             max_steps=max_steps,
             target_hz=200.0,
@@ -423,6 +436,9 @@ def run_once(
         if not catch:
             raise
         obs.raised = exc
+    assert all(hub.ends), "the loop ended a hub session with a ticket the hub never issued"
+    if obs.raised is None:
+        assert hub.ends == [True], f"the loop's own session end did not run exactly once: {hub.ends}"
     obs.note_followup()
     return obs
 

@@ -5,7 +5,7 @@ across loop iterations.  The IPS auto-categorizes each stored value
 by magnitude.  Computation history is logged for learning and replay.
 
 Saved/loaded as part of the mandatory consolidation cycle in
-MemoryHub.on_session_end() / on_session_start().
+MemoryHub.on_session_end(ticket) / on_session_start(owner=...).
 """
 
 from __future__ import annotations

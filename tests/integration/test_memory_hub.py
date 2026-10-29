@@ -151,22 +151,22 @@ class TestMemoryHubLifecycle:
 
     def test_session_start(self, memory_hub):
         """Test session start initializes bridges."""
-        results = memory_hub.on_session_start()
+        results = memory_hub.on_session_start(owner=object()).start_stats
 
         assert memory_hub._session_active is True
         assert isinstance(results, dict)
 
     def test_session_end(self, memory_hub):
         """Test session end consolidates memory."""
-        memory_hub.on_session_start()
-        results = memory_hub.on_session_end()
+        ticket = memory_hub.on_session_start(owner=object())
+        results = memory_hub.on_session_end(ticket)
 
         assert memory_hub._session_active is False
         assert "session_duration_seconds" in results
 
     def test_stats(self, memory_hub):
         """Test stats collection from all subsystems."""
-        memory_hub.on_session_start()
+        memory_hub.on_session_start(owner=object())
         stats = memory_hub.stats()
 
         assert "hippocampus" in stats
@@ -302,7 +302,7 @@ class TestPlanningBridge:
 
     def test_record_plan_outcome(self, memory_hub):
         """Test recording plan outcomes."""
-        memory_hub.on_session_start()
+        memory_hub.on_session_start(owner=object())
 
         # Record a successful plan
         memory_hub.record_plan_outcome(
@@ -323,7 +323,7 @@ class TestPlanningBridge:
         the same logical tool's CausalLinks across two _links keys and
         starving every query path that used build_tool_signature.
         """
-        memory_hub.on_session_start()
+        memory_hub.on_session_start(owner=object())
         memory_hub.record_plan_outcome(
             goal="find mug",
             tool_sequence=["look_around", "grasp"],
@@ -386,7 +386,7 @@ class TestEscalationBridge:
 
     def test_record_escalation_outcome(self, memory_hub):
         """Test recording escalation outcomes."""
-        memory_hub.on_session_start()
+        memory_hub.on_session_start(owner=object())
 
         # Record an escalation outcome
         memory_hub.record_escalation_outcome(
@@ -403,7 +403,7 @@ class TestEscalationBridge:
 
     def test_threshold_learning(self, memory_hub):
         """Test that thresholds adapt from outcomes."""
-        memory_hub.on_session_start()
+        memory_hub.on_session_start(owner=object())
 
         # Get initial threshold
         initial = memory_hub.get_escalation_threshold("find mug", 0.5, 0.5)
@@ -435,8 +435,8 @@ class TestSleepConsolidation:
 
     def test_sleep_empty(self, memory_hub):
         """Test sleep with no memories."""
-        memory_hub.on_session_start()
-        results = memory_hub.sleep()
+        ticket = memory_hub.on_session_start(owner=object())
+        results = memory_hub.sleep(ticket)
 
         assert results["compressed"] == 0
         assert results["removed"] == 0
@@ -452,7 +452,7 @@ class TestSleepConsolidation:
         sample_outcome,
     ):
         """Test sleep preserves recently captured memories."""
-        memory_hub.on_session_start()
+        ticket = memory_hub.on_session_start(owner=object())
 
         # Capture a memory
         memory_hub.hippocampus.capture(
@@ -465,7 +465,7 @@ class TestSleepConsolidation:
         )
 
         # Run sleep
-        results = memory_hub.sleep()
+        results = memory_hub.sleep(ticket)
 
         # Recent memory should be preserved
         assert len(memory_hub.hippocampus) == 1
@@ -483,7 +483,7 @@ class TestSleepConsolidation:
         """Test sleep uses SCN for temporal-aware consolidation."""
         from maxim.time.temporal_signature import TemporalSignature
 
-        memory_hub.on_session_start()
+        ticket = memory_hub.on_session_start(owner=object())
 
         # Capture memory and register with SCN
         memory_id = memory_hub.hippocampus.capture(
@@ -499,7 +499,7 @@ class TestSleepConsolidation:
         memory_hub.scn.register(memory_id, sig)
 
         # Run sleep
-        results = memory_hub.sleep()
+        results = memory_hub.sleep(ticket)
 
         # Memory should be preserved
         assert results["preserved"] == 1
@@ -549,7 +549,7 @@ class TestPerformance:
         sample_outcome,
     ):
         """Test that memory capture is fast enough for real-time use."""
-        memory_hub.on_session_start()
+        memory_hub.on_session_start(owner=object())
 
         start = time.perf_counter()
         for _ in range(100):
@@ -578,7 +578,7 @@ class TestPerformance:
         sample_outcome,
     ):
         """Test that memory recall is fast."""
-        memory_hub.on_session_start()
+        memory_hub.on_session_start(owner=object())
 
         # Populate with 100 memories
         for _ in range(100):

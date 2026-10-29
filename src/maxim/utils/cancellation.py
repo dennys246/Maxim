@@ -78,6 +78,9 @@ from __future__ import annotations
 
 import threading
 from contextvars import ContextVar, Token
+from dataclasses import dataclass
+
+from maxim.utils.deadline import Deadline
 
 # The ContextVar's value MUST be an Event (mutable shared reference),
 # NOT a bool. See module docstring for why.
@@ -113,3 +116,52 @@ def is_cancelled() -> bool:
     """Shorthand: True iff a cancel Event is bound AND set."""
     event = _cancel_event_var.get()
     return event is not None and event.is_set()
+
+
+# ── The process stop request (#1438; docs/plans/bounded_stop.md §5) ─────────────────────────────────────────────
+# The THIRD cancellation primitive, beside the per-call ContextVar above and the LLM backend's process-wide
+# `models/language/cancellation.request_shutdown()`. It lives here, the neutral home, so memory, runtime, console and
+# the CLI can read it without depending on the LLM package. Sticky: once requested it stays set until
+# `clear_stop_request()` (tests, via an autouse conftest scrub). PR 0 lands the request and its accessors, which bound
+# a session's abnormal-exit persist; PR 1 registers the stop events it also sets (loops, campaigns, LLM workers).
+
+
+@dataclass(frozen=True)
+class StopRequest:
+    """A stop the process was asked to make: why, and by when. In-process only, never persisted.
+
+    SHAPE-FROZEN at 1.0 (CC3): never persisted or sent; it carries a monotonic Deadline.
+    """
+
+    reason: str
+    deadline: Deadline
+
+
+_stop_lock = threading.Lock()
+_stop_request: StopRequest | None = None
+
+
+def request_stop(reason: str, deadline: Deadline) -> StopRequest:
+    """Ask the process to stop within ``deadline``. The FIRST request wins; later ones return it unchanged."""
+    global _stop_request
+    with _stop_lock:
+        if _stop_request is None:
+            _stop_request = StopRequest(reason=reason, deadline=deadline)
+        return _stop_request
+
+
+def current_stop() -> StopRequest | None:
+    """The process's stop request, or None."""
+    return _stop_request
+
+
+def yield_requested() -> bool:
+    """True once a stop was requested: a cooperative loop yields at its next turn boundary."""
+    return _stop_request is not None
+
+
+def clear_stop_request() -> None:
+    """Forget the stop request. For tests (a conftest autouse scrub) and a process that deliberately re-arms."""
+    global _stop_request
+    with _stop_lock:
+        _stop_request = None

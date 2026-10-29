@@ -310,7 +310,7 @@ def test_session_start_does_not_wipe_writes_made_after_load(agent_home, tmp_path
     """ATL.load_state clears before restoring — a second read would discard writes."""
     inst = _load(tmp_path)
     inst.atl.store(SemanticMemory(id="d17-rope", timestamp=0.0, name="rope", definition="cordage", category="object"))
-    inst.memory_hub.on_session_start()
+    inst.memory_hub.on_session_start(owner=object())
     names = {getattr(c, "name", None) for c in inst.atl.recall(limit=50)}
     assert {"lantern", "rope"} <= names, f"session start discarded a post-load write: {names}"
 

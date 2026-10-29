@@ -557,6 +557,25 @@ def _show_report_and_post_sim_prompt(report: Any, report_dir: str) -> Any:
     return display
 
 
+def _await_aut_session_end_before_new(aut_memory_hub: Any | None) -> None:
+    """Before ``/new`` restarts with a new goal, the AUT's memory session must have ended and consolidated.
+
+    The AUT's own loop owns that session (#1438 PR 0): its ``bio_session`` ended it, as owner, when the loop exited.
+    ``/new`` is a non-owner, so it WAITS for that end (bounded) rather than ending a session it does not hold.
+    Without the end, in-session learning (NAc decay, hippocampus consolidation, semantic embeddings) is lost on /new.
+    """
+    if aut_memory_hub is None:
+        return
+    try:
+        if not aut_memory_hub.wait_session_ended(deadline_s=_NEW_GOAL_SESSION_WAIT_S):
+            logger.warning("session_end_not_reached before /new: the AUT's memory session is still open or ending")
+    except Exception as _mhe:
+        logger.warning("Memory consolidation before /new failed: %s", _mhe)
+
+
+_NEW_GOAL_SESSION_WAIT_S = 30.0
+
+
 def start_simulation_mode(
     goal: str,
     mode: str = "generative",
@@ -3034,7 +3053,7 @@ def start_simulation_mode(
                 logger.warning("Error stopping LLM worker during shutdown: %s", e, exc_info=True)
 
     # Persist orchestrator memory (Phase 3: cross-session learning).
-    # shutdown() calls on_session_end() + saves hippocampus/NAc/cerebellum.
+    # shutdown() ends the session it owns (or waits for the loop that took it over) + saves hippocampus/cerebellum.
     try:
         _orch_instance.shutdown()
     except Exception as e:
@@ -3322,14 +3341,7 @@ def start_simulation_mode(
             display.stop()
 
         if _new_goal and _new_goal.lower() not in ("/cancel", "quit", "exit"):
-            # Consolidate memory before restarting with a new goal.
-            # Without this, in-session learning (NAc decay, hippocampus
-            # consolidation, semantic embeddings) is lost on /new.
-            if aut_memory_hub is not None:
-                try:
-                    aut_memory_hub.on_session_end()
-                except Exception as _mhe:
-                    logger.warning("Memory consolidation before /new failed: %s", _mhe)
+            _await_aut_session_end_before_new(aut_memory_hub)
             # NOTE: This recurses. Depth is bounded by human interaction
             # (each level requires typing a new goal + running a full sim).
             # RecursionError after ~50-100 is theoretically possible but

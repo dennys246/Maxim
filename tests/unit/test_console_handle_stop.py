@@ -19,9 +19,11 @@ from maxim.console.handle import MaximHandle
 class _FakeInstance:
     def __init__(self):
         self.shutdowns: list[str] = []
+        self.deadlines: list[float | None] = []
 
-    def shutdown(self, *, consolidation: str) -> None:
+    def shutdown(self, *, consolidation: str, deadline_s: float | None = None) -> None:
         self.shutdowns.append(consolidation)
+        self.deadlines.append(deadline_s)  # #1438 PR 0: stop() bounds the wait for a loop that owns the session
 
 
 def _bare_handle(*, talk_thread: threading.Thread | None = None) -> MaximHandle:
@@ -56,6 +58,7 @@ class TestStopWaits:
             release.set()
         assert elapsed < 2.0, f"stop() waited {elapsed:.2f}s for a hung talk loop despite talk_join_s=0.05"
         assert h.instance.shutdowns == ["full"]  # proceeded LOUDLY, still consolidated
+        assert h.instance.deadlines == [0.05]  # #1438 PR 0: shutdown's wait for the loop is bounded by the same budget
         assert h._stopped
 
     def test_campaign_wait_is_bounded_by_the_caller(self):

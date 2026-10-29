@@ -32,9 +32,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any
 
+from maxim.utils.deadline import Deadline
 from maxim.utils.logging import log_swallowed_exception
 
 log = logging.getLogger(__name__)
+
+
+# One budget for every agent a pool stops: each waits only for its own loop's session end within it.
+POOL_SHUTDOWN_BUDGET_S = 60.0
 
 
 @dataclass
@@ -101,12 +106,16 @@ class AgentPool:
                 except Exception:
                     pass
 
-    def remove(self, agent_id: str) -> None:
-        """Stop and remove an agent from the pool."""
+    def remove(self, agent_id: str, *, deadline: Deadline | None = None) -> None:
+        """Stop and remove an agent from the pool.
+
+        ``deadline`` bounds the wait for a loop that still holds the agent's memory session (#1438 PR 0);
+        :meth:`shutdown` passes ONE deadline to every agent, so the serial waits do not add up.
+        """
         with self._lock:
             instance = self._agents.pop(agent_id, None)
         if instance is not None:
-            instance.shutdown()
+            instance.shutdown(deadline_s=deadline.remaining() if deadline is not None else None)
             if self._bus is not None:
                 try:
                     self._bus.unregister(agent_id)
@@ -321,9 +330,10 @@ class AgentPool:
         with self._lock:
             agent_ids = list(self._agents.keys())
 
+        deadline = Deadline.after(POOL_SHUTDOWN_BUDGET_S)  # shared by every agent's wait (#1438 PR 0)
         for aid in agent_ids:
             try:
-                self.remove(aid)
+                self.remove(aid, deadline=deadline)
             except Exception as e:
                 log.warning("Failed to remove agent '%s' during shutdown: %s", aid, e)
 

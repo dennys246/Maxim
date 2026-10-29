@@ -18,18 +18,17 @@ treats it as ``is_sim_mode=True``. The behaviors gated by the flag are:
 - Skip LLM fallback proposals (wait for the real LLM rather than emit
   a placeholder action).
 - **End the session in lightweight mode**:
-  ``runtime/bio_integration.py::end_bio_session`` calls
-  ``MemoryHub.on_session_end_lightweight()`` instead of
-  ``on_session_end()``, skipping the blocking sleep/replay
+  ``runtime/bio_integration.py::bio_session`` resolves the session-end flavor
+  to ``MemoryHub.on_session_end_lightweight(ticket)`` instead of
+  ``on_session_end(ticket)``, skipping the blocking sleep/replay
   consolidation pass. The lightweight path still persists NAc decay,
   semantic embeddings, and subsystem state so learning is not lost,
   but it does not run the full consolidation. This matches sim
   expectations (short-lived AUT runs) but **may surprise long-running
   external adapters** (e.g. a Minecraft session lasting hours expects
   full consolidation). 1.1+ adapter integrations should either set
-  ``is_sim_mode=False`` post-construction, or
-  ``end_bio_session(is_sim_mode=False, ...)`` should be called
-  directly. This trade-off is preserved in 1.0 to avoid changing
+  ``is_sim_mode=False`` post-construction, or pass
+  ``run_agentic_loop(consolidation="full")``, which the session honors first. This trade-off is preserved in 1.0 to avoid changing
   existing sim behavior; revisit when the first non-sim adapter ships.
 
 The field is kept as ``is_sim_mode`` for back-compat with existing
