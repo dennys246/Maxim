@@ -59,6 +59,27 @@ def _maxim_file() -> str | None:
 provenance_digest = _provenance.provenance_digest
 
 
+def _require_finite_goto(mini, kwargs: dict) -> None:
+    """The controller's last-mile check on this allow-listed raw goto_target (#1496).
+
+    Refuses non-finite values, a duration outside [0.1, 10] s, an unknown method
+    and a non-finite present pose; the method is rewritten to the SDK spelling.
+    """
+    from maxim.hardware.reachy.controller import check_sdk_command
+
+    duration, sdk_method = check_sdk_command(
+        mini,
+        duration=kwargs.get("duration", 0.5),
+        head=kwargs.get("head"),
+        body_yaw=kwargs.get("body_yaw"),
+        antennas=kwargs.get("antennas"),
+        method=kwargs.get("method", "minimum_jerk"),
+    )
+    kwargs["duration"] = duration
+    if "method" in kwargs:
+        kwargs["method"] = sdk_method
+
+
 class JsonlLog:
     """Append-only JSONL event log (one dict per line, ts stamped).
 
@@ -290,7 +311,11 @@ class LiveRig:
         A SECOND failure of either kind is a real fault (daemon down, motors
         wedged or thermally throttled) and propagates — the loop's `finally`
         still saves the NAc, and checkpoints every 5 trials bound the loss.
+
+        Every value is validated first (#1496): this is an allow-listed RAW
+        dispatch, so it carries the controller's last-mile checks itself.
         """
+        _require_finite_goto(self.mini, kwargs)
         for attempt in range(2):
             try:
                 self.mini.goto_target(**kwargs)
