@@ -7,7 +7,7 @@ import logging
 import os
 import time
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, Callable, ClassVar
 
 if TYPE_CHECKING:
     pass
@@ -110,45 +110,52 @@ class PersistenceMixin(StoreFileOwnership):
         ``_rwlock``.
         """
         with self._rwlock.read():
-            # Serialize memories (handles both EpisodicMemory and CompressedMemory)
-            memories_data = [m.to_dict() for m in self._memories.values()]
+            return self._dump_locked()
 
-            # Serialize index (convert sets to lists)
-            index_data = {k: list(v) for k, v in self._context_index.items()}
+    def _dump_locked(self) -> dict[str, Any]:
+        """:meth:`dump`'s body, for a caller that already holds the read lock (#1438 PR 1a).
 
-            # Serialize associative graph edges
-            graph_data = self._graph.to_dict()
+        The session end saves the hippocampus and the stores keyed on its ids inside ONE read section
+        (``integration/session_end.py::_run_section``); taking the lock again here would deadlock against a waiting
+        writer, because the RWLock is writer-priority and not re-entrant.
+        """
+        # Serialize memories (handles both EpisodicMemory and CompressedMemory)
+        memories_data = [m.to_dict() for m in self._memories.values()]
 
-            # P4 Stage 1 — snapshot all episode-binding state (episodes,
-            # ordinal, modality sidecar) under a SINGLE _episode_lock
-            # acquisition. Previous implementation held _episode_lock only
-            # around the sidecar copy and touched _episode_store / the
-            # ordinal outside of it, which exposed a torn-read window to
-            # any concurrent observe_episode_event call. Round 2 fold
-            # (Arch-lens #1): close the window by widening the lock to
-            # cover every episode-subsystem read in dump(). Lock-
-            # acquisition order is _rwlock.read() → _episode_lock,
-            # verified deadlock-free by inspection (no _episode_lock
-            # holder ever acquires _rwlock).
-            with self._episode_lock:
-                episodes_data: list[dict[str, Any]] = self._episode_store.to_dict().get("episodes", [])
-                next_episode_ordinal = self._next_episode_ordinal
-                node_modality_data: dict[str, str] = (
-                    dict(self._node_modality) if self._node_modality is not None else {}
-                )
+        # Serialize index (convert sets to lists)
+        index_data = {k: list(v) for k, v in self._context_index.items()}
 
-            return {
-                "saved_at": time.time(),
-                "memories": memories_data,
-                "context_index": index_data,
-                "stats": dict(self._stats),
-                "compressed_count": self._compressed_count,
-                "associative_graph": graph_data,
-                "episodes": episodes_data,
-                "next_episode_ordinal": next_episode_ordinal,
-                "node_modality": node_modality_data,
-                "experience_clock": self.experience_clock.to_dict(),
-            }
+        # Serialize associative graph edges
+        graph_data = self._graph.to_dict()
+
+        # P4 Stage 1 — snapshot all episode-binding state (episodes,
+        # ordinal, modality sidecar) under a SINGLE _episode_lock
+        # acquisition. Previous implementation held _episode_lock only
+        # around the sidecar copy and touched _episode_store / the
+        # ordinal outside of it, which exposed a torn-read window to
+        # any concurrent observe_episode_event call. Round 2 fold
+        # (Arch-lens #1): close the window by widening the lock to
+        # cover every episode-subsystem read in dump(). Lock-
+        # acquisition order is _rwlock.read() → _episode_lock,
+        # verified deadlock-free by inspection (no _episode_lock
+        # holder ever acquires _rwlock).
+        with self._episode_lock:
+            episodes_data: list[dict[str, Any]] = self._episode_store.to_dict().get("episodes", [])
+            next_episode_ordinal = self._next_episode_ordinal
+            node_modality_data: dict[str, str] = dict(self._node_modality) if self._node_modality is not None else {}
+
+        return {
+            "saved_at": time.time(),
+            "memories": memories_data,
+            "context_index": index_data,
+            "stats": dict(self._stats),
+            "compressed_count": self._compressed_count,
+            "associative_graph": graph_data,
+            "episodes": episodes_data,
+            "next_episode_ordinal": next_episode_ordinal,
+            "node_modality": node_modality_data,
+            "experience_clock": self.experience_clock.to_dict(),
+        }
 
     def load_state(self, state: dict[str, Any]) -> None:
         """Mutate self in place from a state dict.
@@ -324,12 +331,29 @@ class PersistenceMixin(StoreFileOwnership):
         """
         if not (path or self.config.persistence_path):
             raise ValueError("No persistence path specified")
+        self._save_with(self.dump, path, overwrite=overwrite)
+
+    def _save_locked(self, path: str | None = None, *, overwrite: bool = False, backup: bool = False) -> None:
+        """:meth:`save` for a caller that already holds the read lock (#1438 PR 1a; see :meth:`_dump_locked`).
+
+        ``backup`` first copies the existing file to ``<path>.backup``, as :meth:`save_with_backup` (the session end's
+        re-save after sleep replaces sleep's own auto-save, which made that backup)."""
+        if not (path or self.config.persistence_path):
+            raise ValueError("No persistence path specified")
+        if backup:
+            target = self._default_store_path(path)
+            self._check_store_write(target, overwrite=overwrite)
+            self._copy_to_backup(target)
+            overwrite = True  # checked above, before the backup was taken
+        self._save_with(self._dump_locked, path, overwrite=overwrite)
+
+    def _save_with(self, dump: Callable[[], dict[str, Any]], path: str | None, *, overwrite: bool) -> None:
         path = self._default_store_path(path)
         self._check_store_write(path, overwrite=overwrite)
 
         from maxim.utils.format_version import with_format_version
 
-        payload = with_format_version(self.dump(), version=HIPPOCAMPUS_FORMAT_VERSION)
+        payload = with_format_version(dump(), version=HIPPOCAMPUS_FORMAT_VERSION)
         atomic_write_json(path, payload)
         self._claim_store_file(path)
         logger.info("Saved hippocampus to %s (%d memories)", path, len(payload["memories"]))
@@ -359,6 +383,7 @@ class PersistenceMixin(StoreFileOwnership):
         check_format_version(state, "hippocampus", log=logger)
         self.load_state(state)
         self._claim_store_file(path)
+        self._note_store_file_loaded()
 
         edge_count = sum(
             len(self._graph.get_associated(mid)) for mid in self._memories if self._graph.get_node(mid) is not None
@@ -445,23 +470,28 @@ class PersistenceMixin(StoreFileOwnership):
             path: File path. Uses config.persistence_path if None.
             overwrite: As for ``save``; the refusal comes BEFORE the backup is taken.
         """
-        import shutil
 
         if not (path or self.config.persistence_path):
             raise ValueError("No persistence path specified")
         path = self._default_store_path(path)
         self._check_store_write(path, overwrite=overwrite)
 
-        # Create backup of existing file
+        self._copy_to_backup(path)
+
+        # Save normally (already checked above)
+        self.save(path, overwrite=True)
+
+    @staticmethod
+    def _copy_to_backup(path: str) -> None:
+        """Copy an existing ``path`` to ``<path>.backup`` (a failed copy is logged; the save still runs)."""
+        import shutil
+
         if os.path.exists(path):
             backup_path = f"{path}.backup"
             try:
                 shutil.copy2(path, backup_path)
             except Exception as e:
                 logger.warning("Failed to create backup: %s", e)
-
-        # Save normally (already checked above)
-        self.save(path, overwrite=True)
 
     def _restore_graph(self, graph_data: dict[str, Any]) -> None:
         """Restore the associative graph from serialized data (lock must be held).

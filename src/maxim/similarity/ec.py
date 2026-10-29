@@ -41,10 +41,12 @@ measured index-prerequisite remedy; see that class's docstring).
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import math
 import os
+import threading
 
 import numpy as np
 
@@ -76,6 +78,17 @@ except ImportError:
     _NEURAL_SEMANTIC_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
+
+def _locked(method):
+    """Run ``method`` holding the EC's leaf lock (#1438); see the lock rules in ``EntorhinalCortex``."""
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -529,11 +542,30 @@ class EntorhinalCortex(StoreFileOwnership):
 
         # Query by structural features
         tool_memories = ec.query(tool="internet_search")
+
+    Thread safety (#1438): ONE re-entrant lock, ``_lock``, guards every piece of mutable state (signatures, LSH
+    tables, inverted indices, substrate nodes and their parallel dicts, the modality matrices and geometry counts,
+    encoder provenance, the geometry-mismatch notes, and the config ``load`` adopts). Writers arrive on several
+    threads at once: percepts on sensor/bus threads (``MemoryHub.on_percept_received`` -> encoder ->
+    ``pattern_complete_or_separate`` / ``register_substrate_node`` / ``record_encoder_provenance``), Hippocampus
+    deletion callbacks (``remove_signature``, under the Hippocampus WRITE lock), NAc's causal-link registration, and
+    the session end's ``save``. Every method that reads or writes that state takes the lock, iterating readers too.
+
+    It is a LEAF lock: nothing outside the EC is called while holding it. The activation trace (``sim_log`` and its
+    sinks), the geometry-mismatch warning, the load-time migration report, the neural embedder and the
+    ``EmbeddingStore`` (which has its own leaf lock) all run after it is released; ``save`` snapshots under it and
+    writes the file outside it, and ``load`` parses the file outside it and swaps the parsed state in under it.
+    The only callees under it are the EC's own index structures (``LSHIndex``, ``InvertedIndices``,
+    ``_ModalityMatrix``, ``SituationSignature``) and the pure geometry-tag hash. Lock order:
+    Hippocampus RWLock (write, via deletion callbacks; read, via the session end's persist section) -> EC lock.
     """
 
     _store_name = "ec"  # StoreFileOwnership (#971): never saves over a file it did not read
 
     def __init__(self, config: ECConfig | None = None):
+        # The leaf lock (#1438): see "Thread safety" above. Re-entrant because locked methods call each other
+        # (``find_similar_by_memory`` -> ``find_similar``, ``remove_signature`` -> ``unregister``).
+        self._lock = threading.RLock()
         self.config = config or ECConfig()
 
         # LSH index for approximate nearest neighbor
@@ -619,6 +651,7 @@ class EntorhinalCortex(StoreFileOwnership):
         # across ALL dims of the modality, exactly as the loop did).
         self._geom_counts_by_modality: dict[str, dict[str, int]] = {}
 
+    @_locked
     def record_encoder_provenance(self, key: str, info: dict[str, Any]) -> None:
         """Merge an encoder's realized-state stamp under ``key``.
 
@@ -672,6 +705,11 @@ class EntorhinalCortex(StoreFileOwnership):
         Nested lists are copied too — a caller mutating the returned
         structure must not corrupt internal state.
         """
+        with self._lock:
+            return self._encoder_provenance_copy()
+
+    def _encoder_provenance_copy(self) -> dict[str, dict[str, Any]]:
+        """The provenance with nested lists copied; the caller holds ``_lock``."""
         return {
             k: {kk: (list(vv) if isinstance(vv, list) else vv) for kk, vv in v.items()}
             for k, v in self._encoder_provenance.items()
@@ -736,6 +774,23 @@ class EntorhinalCortex(StoreFileOwnership):
             PatternResult with the node_id, similarity score, and
             whether a new node was created.
         """
+        # #1438: decide and mutate under the leaf lock; trace and warn after releasing it.
+        with self._lock:
+            result, mismatches = self._complete_or_separate_locked(
+                embedding, modality, threshold, threshold_override, geometry
+            )
+        self._report_scan(result, modality, mismatches)
+        return result
+
+    def _complete_or_separate_locked(
+        self,
+        embedding: list[float],
+        modality: str,
+        threshold: float | None,
+        threshold_override: dict[str, float] | None,
+        geometry: str | None,
+    ) -> tuple[PatternResult, list[tuple[str, str, str]]]:
+        """The body of :meth:`pattern_complete_or_separate`; the caller holds ``_lock`` and reports the result."""
         base_threshold = threshold if threshold is not None else self.config.pattern_complete_threshold
         overrides = threshold_override or {}
 
@@ -749,10 +804,7 @@ class EntorhinalCortex(StoreFileOwnership):
         # of dim (the dimension guard itself is separate: a query only
         # scans the matrix of its own dim, and cross-dim cosine is 0.0 —
         # the 768-vs-384 fallback case).
-        if geometry is not None:
-            for stored_geom, count in self._geom_counts_by_modality.get(modality, {}).items():
-                if count > 0 and stored_geom != geometry:
-                    self._note_geometry_mismatch(modality, stored_geom, geometry)
+        mismatches = self._new_geometry_mismatches(modality, geometry)
 
         matrix = self._matrix_for(modality, len(embedding))
         best_node, best_sim, best_comparable = matrix.scan(embedding, base_threshold, overrides, geometry)
@@ -778,15 +830,9 @@ class EntorhinalCortex(StoreFileOwnership):
             # See ECConfig.frozen_centroid_modalities for rationale.
             if modality in self.config.frozen_centroid_modalities:
                 self._substrate_node_counts[best_node] = self._substrate_node_counts.get(best_node, 1) + 1
-                _emit_ec_activation(
-                    node_id=best_node,
-                    similarity=best_sim,
-                    is_new=False,
-                    modality=modality,
-                )
                 return PatternResult(
                     node_id=best_node, similarity=best_sim, is_new=False, best_similarity=best_comparable
-                )
+                ), mismatches
 
             # Update centroid: running mean of all embeddings that completed here.
             # new_centroid = (old_centroid * n + new_embedding) / (n + 1)
@@ -796,13 +842,9 @@ class EntorhinalCortex(StoreFileOwnership):
             self._substrate_nodes[best_node] = (updated, stored_mod)
             matrix.update_row(best_node, updated)
             self._substrate_node_counts[best_node] = n + 1
-            _emit_ec_activation(
-                node_id=best_node,
-                similarity=best_sim,
-                is_new=False,
-                modality=modality,
-            )
-            return PatternResult(node_id=best_node, similarity=best_sim, is_new=False, best_similarity=best_comparable)
+            return PatternResult(
+                node_id=best_node, similarity=best_sim, is_new=False, best_similarity=best_comparable
+            ), mismatches
 
         # Separation — allocate a new node ID but don't register yet.
         # The caller (LinguisticEncoder) registers via register_substrate_node
@@ -810,13 +852,22 @@ class EntorhinalCortex(StoreFileOwnership):
         # separation path and allows the test harness to inspect without
         # side effects.
         new_id = str(uuid4())
+        return PatternResult(node_id=new_id, similarity=0.0, is_new=True, best_similarity=best_comparable), mismatches
+
+    def _report_scan(self, result: PatternResult, modality: str, mismatches: list[tuple[str, str, str]]) -> None:
+        """Warn about first-seen geometry mismatches and emit the activation trace, with the EC lock RELEASED.
+
+        Both call out of the EC (``logging`` handlers; ``sim_log`` and its sinks), so neither may run under the
+        leaf lock (#1438). ``similarity`` is the matched score on completion and 0.0 on separation, as before.
+        """
+        for modality_, stored, live in mismatches:
+            self._warn_geometry_mismatch(modality_, stored, live)
         _emit_ec_activation(
-            node_id=new_id,
-            similarity=0.0,
-            is_new=True,
+            node_id=result.node_id,
+            similarity=result.similarity,
+            is_new=result.is_new,
             modality=modality,
         )
-        return PatternResult(node_id=new_id, similarity=0.0, is_new=True, best_similarity=best_comparable)
 
     def pattern_complete_readonly(
         self,
@@ -850,48 +901,46 @@ class EntorhinalCortex(StoreFileOwnership):
         without behavior change. The deduped geometry-mismatch warning still
         fires (diagnostic state, not substrate state).
         """
-        base_threshold = threshold if threshold is not None else self.config.pattern_complete_threshold
         overrides = threshold_override or {}
 
-        if geometry is not None:
-            for stored_geom, count in self._geom_counts_by_modality.get(modality, {}).items():
-                if count > 0 and stored_geom != geometry:
-                    self._note_geometry_mismatch(modality, stored_geom, geometry)
-
-        matrix = self._matrix_for(modality, len(embedding))
-        best_node, best_sim, best_comparable = matrix.scan(embedding, base_threshold, overrides, geometry)
+        with self._lock:  # the scan reads the matrices a concurrent encode grows (#1438)
+            base_threshold = threshold if threshold is not None else self.config.pattern_complete_threshold
+            mismatches = self._new_geometry_mismatches(modality, geometry)
+            matrix = self._matrix_for(modality, len(embedding))
+            best_node, best_sim, best_comparable = matrix.scan(embedding, base_threshold, overrides, geometry)
 
         if best_node is not None:
-            _emit_ec_activation(
-                node_id=best_node,
-                similarity=best_sim,
-                is_new=False,
-                modality=modality,
+            result = PatternResult(
+                node_id=best_node, similarity=best_sim, is_new=False, best_similarity=best_comparable
             )
-            return PatternResult(node_id=best_node, similarity=best_sim, is_new=False, best_similarity=best_comparable)
+        else:
+            result = PatternResult(node_id=str(uuid4()), similarity=0.0, is_new=True, best_similarity=best_comparable)
+        self._report_scan(result, modality, mismatches)
+        return result
 
-        new_id = str(uuid4())
-        _emit_ec_activation(
-            node_id=new_id,
-            similarity=0.0,
-            is_new=True,
-            modality=modality,
-        )
-        return PatternResult(node_id=new_id, similarity=0.0, is_new=True, best_similarity=best_comparable)
-
-    def _note_geometry_mismatch(self, modality: str, stored: str, live: str) -> None:
-        """Report a live-vs-stored encoding-space divergence ONCE per triple.
+    def _new_geometry_mismatches(self, modality: str, geometry: str | None) -> list[tuple[str, str, str]]:
+        """The (modality, stored, live) mismatches not reported before, marked as seen; the caller holds ``_lock``.
 
         Gate 1 / D1's actual complaint was that nothing reported this at all.
         Deduped because the scan runs per node per encode — an undeduped
         warning here would emit thousands of lines a second and be promptly
         filtered out by whoever had to read the logs, which is the same as
-        not warning.
+        not warning. The warning itself is :meth:`_warn_geometry_mismatch`,
+        called after the lock is released.
         """
-        key = (modality, stored, live)
-        if key in self._geometry_mismatch_seen:
-            return
-        self._geometry_mismatch_seen.add(key)
+        if geometry is None:
+            return []
+        new: list[tuple[str, str, str]] = []
+        for stored_geom, count in self._geom_counts_by_modality.get(modality, {}).items():
+            key = (modality, stored_geom, geometry)
+            if count > 0 and stored_geom != geometry and key not in self._geometry_mismatch_seen:
+                self._geometry_mismatch_seen.add(key)
+                new.append(key)
+        return new
+
+    @staticmethod
+    def _warn_geometry_mismatch(modality: str, stored: str, live: str) -> None:
+        """Report a live-vs-stored encoding-space divergence (once per triple: see ``_new_geometry_mismatches``)."""
         logger.warning(
             "EC geometry mismatch on %s: stored nodes were encoded in space %s, "
             "this encoder produces %s. Those nodes are being SKIPPED for pattern "
@@ -907,6 +956,7 @@ class EntorhinalCortex(StoreFileOwnership):
             stored,
         )
 
+    @_locked
     def _matrix_for(self, modality: str, dim: int) -> _ModalityMatrix:
         """The (modality, dim) acceleration matrix, built lazily from the dicts."""
         key = (modality, dim)
@@ -919,6 +969,7 @@ class EntorhinalCortex(StoreFileOwnership):
             self._matrix_cache[key] = matrix
         return matrix
 
+    @_locked
     def _invalidate_matrix_cache(self) -> None:
         """Bulk-op reset (load / ingest / migrate): drop matrices, recount geometries."""
         self._matrix_cache.clear()
@@ -930,6 +981,7 @@ class EntorhinalCortex(StoreFileOwnership):
                 by_geom[geom] = by_geom.get(geom, 0) + 1
         self._geom_counts_by_modality = counts
 
+    @_locked
     def _cache_forget_node(self, node_id: str) -> None:
         """Remove a node from whichever cached matrix holds it, and the counts."""
         entry = self._substrate_nodes.get(node_id)
@@ -945,6 +997,7 @@ class EntorhinalCortex(StoreFileOwnership):
             if by_geom and geom in by_geom:
                 by_geom[geom] -= 1
 
+    @_locked
     def _scan_substrate_reference(
         self,
         embedding: list[float],
@@ -973,6 +1026,7 @@ class EntorhinalCortex(StoreFileOwnership):
                 best_node = node_id
         return best_node, best_sim
 
+    @_locked
     def register_substrate_node(
         self,
         node_id: str,
@@ -1017,6 +1071,7 @@ class EntorhinalCortex(StoreFileOwnership):
             by_geom = self._geom_counts_by_modality.setdefault(modality, {})
             by_geom[geometry] = by_geom.get(geometry, 0) + 1
 
+    @_locked
     def ingest_substrate_nodes(self, nodes: dict[str, dict[str, Any]]) -> int:
         """Load merged substrate nodes into a LIVE EC, preserving member counts.
 
@@ -1084,14 +1139,25 @@ class EntorhinalCortex(StoreFileOwnership):
 
         Returns the number of nodes stamped.
         """
+        with self._lock:
+            stamped, skipped, underivable = self._migrate_legacy_geometries_locked()
+        self._log_migration(stamped, skipped, underivable)  # logging is a call-out: outside the leaf lock (#1438)
+        return stamped
+
+    def _migrate_legacy_geometries_locked(self) -> tuple[int, dict[str, int], list[tuple[str, str, Exception]]]:
+        """The stamping half of :meth:`_migrate_legacy_geometries`; the caller holds ``_lock`` and logs the result.
+
+        Returns ``(stamped, skipped-by-modality, [(node, modality, error)] for corrupt persisted values)``.
+        """
         unstamped = [nid for nid, g in self._substrate_node_geometries.items() if g is None]
         if not unstamped:
-            return 0
+            return 0, {}, []
 
         from maxim.similarity.encoder import encoding_geometry_tag, sensor_geometry_fields
 
         stamped = 0
         skipped: dict[str, int] = {}
+        underivable: list[tuple[str, str, Exception]] = []
         for nid in unstamped:
             emb, modality = self._substrate_nodes[nid]
             tag: str | None = None
@@ -1141,8 +1207,9 @@ class EntorhinalCortex(StoreFileOwnership):
                     except (TypeError, ValueError) as exc:
                         # A corrupt PERSISTED value (hand-edited or malformed ranges) must
                         # skip the node, not refuse the whole load — the same posture the
-                        # `sensor_names` merge takes. Counted under the warning below.
-                        logger.debug("EC: cannot derive a geometry tag for %s (%s): %s", nid, modality, exc)
+                        # `sensor_names` merge takes. Counted under the warning, and each
+                        # one logged at DEBUG, in `_log_migration`.
+                        underivable.append((nid, modality, exc))
                         tag = None
             if tag is None:
                 skipped[modality] = skipped.get(modality, 0) + 1
@@ -1151,11 +1218,19 @@ class EntorhinalCortex(StoreFileOwnership):
             stamped += 1
 
         if stamped:
-            logger.info("EC: migrated %d legacy node(s) to a derived geometry tag (D66)", stamped)
             # Stamps changed geometry state — resync the acceleration cache
             # here rather than trusting every caller to remember (load() also
             # invalidates; doing it twice is cheap, forgetting once is not).
             self._invalidate_matrix_cache()
+        return stamped, skipped, underivable
+
+    @staticmethod
+    def _log_migration(stamped: int, skipped: dict[str, int], underivable: list[tuple[str, str, Exception]]) -> None:
+        """Report a D66 migration; called with the EC lock RELEASED (logging is a call-out, #1438)."""
+        for nid, modality, exc in underivable:
+            logger.debug("EC: cannot derive a geometry tag for %s (%s): %s", nid, modality, exc)
+        if stamped:
+            logger.info("EC: migrated %d legacy node(s) to a derived geometry tag (D66)", stamped)
         if skipped:
             logger.warning(
                 "EC: %d node(s) could not be migrated to a geometry tag and stay unstamped "
@@ -1170,8 +1245,8 @@ class EntorhinalCortex(StoreFileOwnership):
                 sum(skipped.values()),
                 ", ".join(f"{k}={v}" for k, v in sorted(skipped.items())),
             )
-        return stamped
 
+    @_locked
     def remove_substrate_node(self, node_id: str) -> None:
         """Remove a substrate node."""
         self._cache_forget_node(node_id)
@@ -1181,6 +1256,7 @@ class EntorhinalCortex(StoreFileOwnership):
         self._substrate_node_sources.pop(node_id, None)
         self._substrate_node_domains.pop(node_id, None)
 
+    @_locked
     def substrate_node_metadata(self, node_id: str) -> dict[str, Any] | None:
         """Return ``{node_id, embedding, modality, member_count, source, domain}``.
 
@@ -1213,10 +1289,32 @@ class EntorhinalCortex(StoreFileOwnership):
             "domain": self._substrate_node_domains.get(node_id),
         }
 
+    @_locked
+    def substrate_node_ids(self) -> frozenset[str]:
+        """Every substrate node id, as a snapshot taken under the leaf lock (#1438).
+
+        For the hub's post-load prune pass (NAc's EC-keyed biases are pruned against it through ``NAc.prune_ec_keys``)
+        and any other reader that must not iterate the live dict.
+        """
+        return frozenset(self._substrate_nodes)
+
+    @_locked
+    def substrate_modality_counts(self) -> dict[str, int]:
+        """Substrate node count per modality, from one snapshot taken under the leaf lock (#1438).
+
+        For live readers such as ``simulation/substrate_telemetry.py``, which iterated ``_substrate_nodes`` while
+        percepts were registering nodes on other threads.
+        """
+        counts: dict[str, int] = {}
+        for _emb, modality in self._substrate_nodes.values():
+            counts[modality] = counts.get(modality, 0) + 1
+        return counts
+
     @property
     def substrate_node_count(self) -> int:
         """Number of substrate nodes registered."""
-        return len(self._substrate_nodes)
+        with self._lock:
+            return len(self._substrate_nodes)
 
     def register(
         self,
@@ -1237,14 +1335,17 @@ class EntorhinalCortex(StoreFileOwnership):
         if signature is None:
             if memory is None:
                 raise ValueError("Either signature or memory must be provided")
+            # Built before the lock: it reads the caller's memory and hashes its text (#1438).
             signature = SituationSignature.from_memory(memory, semantic_hasher=self._semantic_hasher)
 
-        self._signatures[memory_id] = signature
-        self._lsh.add(memory_id, signature)
-        self._inverted.add(memory_id, signature)
+        with self._lock:
+            self._signatures[memory_id] = signature
+            self._lsh.add(memory_id, signature)
+            self._inverted.add(memory_id, signature)
 
         return signature
 
+    @_locked
     def unregister(self, memory_id: str) -> None:
         """Remove a memory from the EC.
 
@@ -1256,10 +1357,12 @@ class EntorhinalCortex(StoreFileOwnership):
             self._lsh.remove(memory_id)
             self._inverted.remove(memory_id, signature)
 
+    @_locked
     def remove_signature(self, memory_id: str) -> None:
         """Alias for unregister for deletion callback compatibility."""
         self.unregister(memory_id)
 
+    @_locked
     def get_signature(self, memory_id: str) -> SituationSignature | None:
         """Get the signature for a memory."""
         return self._signatures.get(memory_id)
@@ -1268,6 +1371,7 @@ class EntorhinalCortex(StoreFileOwnership):
     # Similarity Queries
     # ─────────────────────────────────────────────────────────────────────────
 
+    @_locked
     def find_similar(
         self,
         signature: SituationSignature,
@@ -1295,6 +1399,7 @@ class EntorhinalCortex(StoreFileOwnership):
 
         return filtered[:k]
 
+    @_locked
     def find_similar_by_memory(
         self,
         memory_id: str,
@@ -1320,6 +1425,7 @@ class EntorhinalCortex(StoreFileOwnership):
         # Exclude the reference memory
         return [(mid, score) for mid, score in results if mid != memory_id]
 
+    @_locked
     def find_similar_situations_for_action(
         self,
         tool_name: str,
@@ -1399,16 +1505,19 @@ class EntorhinalCortex(StoreFileOwnership):
             List of (memory_id, similarity) tuples
         """
         if self._embedding_store is not None:
-            # Use neural semantic search
+            # Use neural semantic search. Never under the EC lock: the store embeds the query with the model and
+            # takes its own leaf lock (#1438).
             return self._embedding_store.find_similar(query, k=k, threshold=threshold)
 
         # Fallback: use LSH-based similarity on existing signatures
         # This provides structural but not semantic similarity
         if self._semantic_hasher:
             query_hash = self._semantic_hasher.hash(query)
+            with self._lock:
+                hashes = [(mid, sig.semantic_hash) for mid, sig in self._signatures.items()]
             results = []
-            for mid, sig in self._signatures.items():
-                similarity = self._semantic_hasher.estimated_similarity(query_hash, sig.semantic_hash)
+            for mid, semantic_hash in hashes:
+                similarity = self._semantic_hasher.estimated_similarity(query_hash, semantic_hash)
                 if similarity >= threshold:
                     results.append((mid, similarity))
             results.sort(key=lambda x: x[1], reverse=True)
@@ -1425,6 +1534,7 @@ class EntorhinalCortex(StoreFileOwnership):
     # Structural Queries
     # ─────────────────────────────────────────────────────────────────────────
 
+    @_locked
     def query(
         self,
         tool: str | None = None,
@@ -1449,6 +1559,7 @@ class EntorhinalCortex(StoreFileOwnership):
         """
         return self._inverted.query_intersection(tool=tool, outcome=outcome, mode=mode, hour=hour, day=day)
 
+    @_locked
     def find_by_temporal(
         self,
         hour_bin: int | None = None,
@@ -1471,16 +1582,17 @@ class EntorhinalCortex(StoreFileOwnership):
 
     def stats(self) -> dict[str, Any]:
         """Return EC statistics."""
-        stats = {
-            "total_signatures": len(self._signatures),
-            "lsh_entries": len(self._lsh),
-            "inverted_indices": self._inverted.stats(),
-            "semantic_enabled": self.config.enable_semantic,
-            "neural_semantic_available": self._neural_embedder is not None,
-            "substrate_nodes": len(self._substrate_nodes),
-        }
+        with self._lock:
+            stats = {
+                "total_signatures": len(self._signatures),
+                "lsh_entries": len(self._lsh),
+                "inverted_indices": self._inverted.stats(),
+                "semantic_enabled": self.config.enable_semantic,
+                "neural_semantic_available": self._neural_embedder is not None,
+                "substrate_nodes": len(self._substrate_nodes),
+            }
 
-        # Add neural embedder stats if available
+        # Add neural embedder stats if available (outside the EC lock: neither is EC state, #1438)
         if self._neural_embedder is not None:
             stats["neural_embedder"] = self._neural_embedder.stats()
 
@@ -1499,6 +1611,7 @@ class EntorhinalCortex(StoreFileOwnership):
         """
         return True
 
+    @_locked
     def __len__(self) -> int:
         """Number of registered signatures."""
         return len(self._signatures)
@@ -1515,7 +1628,34 @@ class EntorhinalCortex(StoreFileOwnership):
         """
         path = self._default_store_path(path)  # `~` means home
         self._check_store_write(path, overwrite=overwrite)
-        data = {
+        # #1438: SNAPSHOT under the leaf lock (percepts and deletion callbacks write the EC from other threads
+        # while the session end saves it), write the file OUTSIDE it, as SCN.save does.
+        with self._lock:
+            data = self._snapshot_locked()
+
+        from maxim.utils.atomic_io import atomic_write_json
+        from maxim.utils.format_version import with_format_version
+
+        atomic_write_json(path, with_format_version(data))
+        self._claim_store_file(path)
+
+        logger.info(
+            "Saved EC to %s (%d signatures, %d substrate nodes)",
+            path,
+            len(data["signatures"]),
+            len(data["substrate_nodes"]),
+        )
+
+    def _lsh_snapshot_locked(self) -> dict[str, Any]:
+        """``LSHIndex.serialize`` with its bucket lists copied: it returns the LIVE lists ``LSHIndex.add`` appends to,
+        so the JSON write outside the lock would otherwise read a list another thread is growing (#1438)."""
+        lsh = self._lsh.serialize()
+        lsh["tables"] = [{k: list(v) for k, v in table.items()} for table in lsh["tables"]]
+        return lsh
+
+    def _snapshot_locked(self) -> dict[str, Any]:
+        """The save payload, deep enough that no live structure is shared; the caller holds ``_lock``."""
+        return {
             "version": "1.0",
             # Marks that persisted hash-derived values (signature
             # structural/context/semantic hashes, LSH tables) were computed
@@ -1531,12 +1671,12 @@ class EntorhinalCortex(StoreFileOwnership):
                 "min_similarity": self.config.min_similarity,
                 "enable_semantic": self.config.enable_semantic,
             },
-            "lsh": self._lsh.serialize(),
+            "lsh": self._lsh_snapshot_locked(),
             "inverted": self._inverted.to_dict(),
             "signatures": {k: v.to_dict() for k, v in self._signatures.items()},
             "substrate_nodes": {
                 nid: {
-                    "embedding": emb,
+                    "embedding": list(emb),
                     "modality": mod,
                     "count": self._substrate_node_counts.get(nid, 1),
                     "source": self._substrate_node_sources.get(nid, "local"),
@@ -1550,24 +1690,8 @@ class EntorhinalCortex(StoreFileOwnership):
             # Snapshotted (not by reference) so a concurrent record from
             # the capture thread cannot mutate the payload mid-serialize —
             # same discipline as the substrate_nodes comprehension above.
-            "encoder_provenance": {
-                k: {kk: (list(vv) if isinstance(vv, list) else vv) for kk, vv in v.items()}
-                for k, v in self._encoder_provenance.items()
-            },
+            "encoder_provenance": self._encoder_provenance_copy(),
         }
-
-        from maxim.utils.atomic_io import atomic_write_json
-        from maxim.utils.format_version import with_format_version
-
-        atomic_write_json(path, with_format_version(data))
-        self._claim_store_file(path)
-
-        logger.info(
-            "Saved EC to %s (%d signatures, %d substrate nodes)",
-            path,
-            len(self._signatures),
-            len(self._substrate_nodes),
-        )
 
     def load(self, path: str | None = None) -> None:
         """Load EC state from JSON file (default: ``config.persistence_path``).
@@ -1577,15 +1701,21 @@ class EntorhinalCortex(StoreFileOwnership):
         then crashed the recovery, and a well-typed one was written back by the "fresh" EC).
         """
         path = self._default_store_path(path)  # `~` means home
-        config_before = self.config
+        with self._lock:
+            config_before = self.config
         try:
             self._load_file(path)
         except BaseException:
-            self.config = config_before
+            with self._lock:
+                self.config = config_before
             raise
         self._claim_store_file(path)
+        self._note_store_file_loaded()
 
     def _load_file(self, path: str) -> None:
+        # #1438: read, parse and BUILD the new state outside the leaf lock (file I/O and the logging below are
+        # call-outs), then swap it in under the lock in one step, so a concurrent percept or save sees the old
+        # store or the new one, never a mix. A file that fails to parse leaves the live EC untouched.
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
 
@@ -1618,8 +1748,10 @@ class EntorhinalCortex(StoreFileOwnership):
         from dataclasses import replace as _dc_replace
 
         cfg_data = data.get("config", {})
-        self.config = _dc_replace(
-            self.config,
+        with self._lock:
+            live_config = self.config
+        config = _dc_replace(
+            live_config,
             num_lsh_tables=cfg_data.get("num_lsh_tables", 4),
             bits_per_table=cfg_data.get("bits_per_table", 8),
             default_k=cfg_data.get("default_k", 10),
@@ -1627,60 +1759,61 @@ class EntorhinalCortex(StoreFileOwnership):
             enable_semantic=cfg_data.get("enable_semantic", False),
         )
 
-        # Load LSH
-        self._lsh = LSHIndex(
-            num_tables=self.config.num_lsh_tables,
-            bits_per_table=self.config.bits_per_table,
-        )
-        self._lsh.deserialize(data.get("lsh", {}))
+        lsh = LSHIndex(num_tables=config.num_lsh_tables, bits_per_table=config.bits_per_table)
+        lsh.deserialize(data.get("lsh", {}))
+        inverted = InvertedIndices.from_dict(data.get("inverted", {}))
+        signatures = {k: SituationSignature.from_dict(v) for k, v in data.get("signatures", {}).items()}
 
-        # Load inverted indices
-        self._inverted = InvertedIndices.from_dict(data.get("inverted", {}))
-
-        # Load signatures
-        self._signatures = {k: SituationSignature.from_dict(v) for k, v in data.get("signatures", {}).items()}
-
-        # Load substrate nodes (P1). Pre-B5 dumps lack the ``source`` and
+        # Substrate nodes (P1). Pre-B5 dumps lack the ``source`` and
         # ``domain`` fields — both default to ``"local"`` and ``None``.
-        # try/finally: the store is replaced wholesale, so a malformed entry
-        # raising mid-loop must STILL invalidate the acceleration cache, or
-        # the old store's matrices stay live against the partial new dicts
-        # (executor-lens review, PR 1 round).
-        try:
-            self._substrate_nodes = {}
-            self._substrate_node_geometries = {}
-            self._substrate_node_counts = {}
-            self._substrate_node_sources = {}
-            self._substrate_node_domains = {}
-            for nid, ndata in data.get("substrate_nodes", {}).items():
-                self._substrate_nodes[nid] = (ndata["embedding"], ndata["modality"])
-                self._substrate_node_counts[nid] = ndata.get("count", 1)
-                self._substrate_node_sources[nid] = ndata.get("source", "local")
-                self._substrate_node_domains[nid] = ndata.get("domain")
-                self._substrate_node_geometries[nid] = ndata.get("geometry")
+        nodes: dict[str, tuple[list[float], str]] = {}
+        geometries: dict[str, str | None] = {}
+        counts: dict[str, int] = {}
+        sources: dict[str, str] = {}
+        domains: dict[str, str | None] = {}
+        for nid, ndata in data.get("substrate_nodes", {}).items():
+            nodes[nid] = (ndata["embedding"], ndata["modality"])
+            counts[nid] = ndata.get("count", 1)
+            sources[nid] = ndata.get("source", "local")
+            domains[nid] = ndata.get("domain")
+            geometries[nid] = ndata.get("geometry")
 
-            # Encoder stamps (artifact stamping, 1.1 item 7). Pre-stamping
-            # files lack the key — empty dict, and the bundle will honestly
-            # carry recorded=None for them. Inner dicts are copied so later
-            # record calls never mutate the caller-visible parsed JSON.
-            self._encoder_provenance = {
-                k: dict(v) for k, v in (data.get("encoder_provenance") or {}).items() if isinstance(v, dict)
-            }
+        # Encoder stamps (artifact stamping, 1.1 item 7). Pre-stamping
+        # files lack the key — empty dict, and the bundle will honestly
+        # carry recorded=None for them. Inner dicts are copied so later
+        # record calls never mutate the caller-visible parsed JSON.
+        provenance = {k: dict(v) for k, v in (data.get("encoder_provenance") or {}).items() if isinstance(v, dict)}
 
-            # D66: AFTER the provenance loads — the migration derives tags from
-            # it, so running it earlier reads an empty dict and silently
-            # migrates nothing while reporting that nothing could be migrated.
-            self._migrate_legacy_geometries()
-        finally:
-            # The store was replaced wholesale (and migrate may have stamped
-            # geometries): drop the acceleration matrices and recount.
-            self._invalidate_matrix_cache()
+        with self._lock:
+            self.config = config
+            self._lsh = lsh
+            self._inverted = inverted
+            self._signatures = signatures
+            self._substrate_nodes = nodes
+            self._substrate_node_geometries = geometries
+            self._substrate_node_counts = counts
+            self._substrate_node_sources = sources
+            self._substrate_node_domains = domains
+            self._encoder_provenance = provenance
+            # try/finally: the store was replaced wholesale, so even a migration
+            # that raises must invalidate the acceleration cache, or the old
+            # store's matrices stay live against the new dicts (executor-lens
+            # review, PR 1 round).
+            try:
+                # D66: AFTER the provenance loads — the migration derives tags from
+                # it, so running it earlier reads an empty dict and silently
+                # migrates nothing while reporting that nothing could be migrated.
+                migration = self._migrate_legacy_geometries_locked()
+            finally:
+                # Drop the acceleration matrices and recount (migrate may have stamped geometries).
+                self._invalidate_matrix_cache()
+        self._log_migration(*migration)
 
         logger.info(
             "Loaded EC from %s (%d signatures, %d substrate nodes)",
             path,
-            len(self._signatures),
-            len(self._substrate_nodes),
+            len(signatures),
+            len(nodes),
         )
 
     def load_safe(self, path: str | None = None) -> tuple[bool, str | None]:
@@ -1708,24 +1841,27 @@ class EntorhinalCortex(StoreFileOwnership):
     def _reset_store_state(self) -> None:
         """Empty every surface ``load`` replaces (EC has no ``dump``/``load_state``). The encoders stay:
         they are not persisted in this file. Built without the neural embedder, which would only be
-        thrown away."""
+        thrown away. The fresh EC is built outside the leaf lock and swapped in under it (#1438)."""
         from dataclasses import replace
 
-        fresh = EntorhinalCortex(replace(self.config, enable_semantic=False))
-        for name in (
-            "_lsh",
-            "_inverted",
-            "_signatures",
-            "_substrate_nodes",
-            "_substrate_node_geometries",
-            "_substrate_node_counts",
-            "_substrate_node_sources",
-            "_substrate_node_domains",
-            "_geometry_mismatch_seen",
-            "_encoder_provenance",
-        ):
-            setattr(self, name, getattr(fresh, name))
-        self._invalidate_matrix_cache()
+        with self._lock:
+            config = self.config
+        fresh = EntorhinalCortex(replace(config, enable_semantic=False))
+        with self._lock:
+            for name in (
+                "_lsh",
+                "_inverted",
+                "_signatures",
+                "_substrate_nodes",
+                "_substrate_node_geometries",
+                "_substrate_node_counts",
+                "_substrate_node_sources",
+                "_substrate_node_domains",
+                "_geometry_mismatch_seen",
+                "_encoder_provenance",
+            ):
+                setattr(self, name, getattr(fresh, name))
+            self._invalidate_matrix_cache()
 
     def get_version(self) -> str:
         """Return data format version."""

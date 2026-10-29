@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Literal
 from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
@@ -46,8 +46,9 @@ if TYPE_CHECKING:
     from maxim.spatial.spatial_map import SpatialMap
     from maxim.time.scn import SCN
 
-from maxim.exceptions import StoreOverwriteRefused
+from maxim.integration.session_end import end_session
 from maxim.integration.session_ownership import SessionOwnership, SessionTicket
+from maxim.utils.deadline import Deadline
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +155,9 @@ class MemoryHub:
     # to raise ``ExperienceClockStalled``; see ``_assert_experience_advanced``.
     _session_advanced_us: int = 0
     _session_work_at_start: tuple[int, int] = (0, 0)
+    # The hippocampus's change mark when the session end last saved it; None before (``hippocampus_unsaved``).
+    _hippocampus_saved_mark: tuple[int, ...] | None = None
+    _refs_pruned: bool = False  # ``_prune_dangling_refs`` ran (once per hub)
 
     # Disabled bridges (for fault isolation)
     _disabled_bridges: set[str] = field(default_factory=set)
@@ -798,8 +802,72 @@ class MemoryHub:
             except Exception as e:
                 logger.warning("PlanManager session start failed: %s", e)
 
+        # The ConceptExtractor's reverse index (memory id -> concepts) is first built at hub construction, before
+        # build_bio_stack's ATL is loaded above: rebuilt here, or the restored concepts' refs are never cleaned when
+        # their memory is deleted this session (#1438 PR 1a).
+        if self._concept_extractor is not None and self.atl is not None:
+            try:
+                self._concept_extractor.rebuild_reverse_index()
+            except Exception as e:
+                logger.warning("ConceptExtractor reverse index rebuild failed: %s", e)
+        pruned = self._prune_dangling_refs()
+        if pruned:
+            results["pruned_refs"] = pruned
+
         logger.info("Session started: %s", results)
         return results
+
+    def _prune_dangling_refs(self) -> dict[str, int]:
+        """Drop and COUNT references to records their target store no longer holds (#1438 PR 1a; plan §5).
+
+        Every store has loaded by now on both build paths (a holder's own loader cannot resolve its targets: NAc loads
+        before EC, ATL before AG). A session end that was cut short, or a crash between two saves, leaves such refs.
+        Pruned, resolvable refs only, and only against a target that READ its file (``store_file_loaded``): a target
+        that came up empty (missing, unreadable or refused file) would make every ref look dangling.
+
+        - NAc causal links' ``memory_ids`` (not imagined links), ATL ``memory_refs`` / ``source_episode_ids`` -> the
+          hippocampus's ids;
+        - NAc's EC-keyed biases and fears -> EC's substrate nodes (``NAc.prune_ec_keys``, in place under its lock);
+        - ATL ``memory_refs["angular_gyrus"]`` -> AG's ids.
+
+        NOT pruned: SCN and EC signatures, whose ids are not the hippocampus's (SCN mixes in the tool-pain bridge's
+        persistent event signatures and temporal credit's events; EC's ``register`` is an open id space no shipped
+        path fills with hippocampus ids); NAc label / ``entity_ref`` keys and percept refs; imagined links; the semantic
+        embedding store (its file is MACHINE-WIDE: pruning against one agent's hippocampus would delete other agents'
+        rows); the cross-layer graph (pathless in every shipped builder). Under ``MAXIM_SUBSTRATE_PATH`` an ATL
+        substrate concept's ``source_episode_ids`` also holds EC node ids (``ATL.activate_substrate_node``), which this
+        pass drops with the dangling hippocampus ids. Returns the per-store counts that were non-zero.
+        """
+        if not self.load_persisted or self._refs_pruned:
+            return {}  # nothing was restored; or the first open already pruned what the files held
+        # ONCE per hub: refs dangle in what was read from disk, and NAc, EC and the hippocampus are loaded once, at
+        # build. (ATL and AG reload at every fresh open; their files were saved consistent by the previous end.)
+        self._refs_pruned = True
+        counts: dict[str, int] = {}
+
+        def _count(name: str, prune: Callable[[], int]) -> None:
+            try:
+                n = prune()
+            except Exception as e:
+                logger.warning("Pruning dangling %s refs failed: %s", name, e)
+                return
+            if n:
+                counts[name] = n
+
+        if self.hippocampus.store_file_loaded():
+            memory_ids = self.hippocampus.memory_ids()
+            if self.nac is not None:
+                _count("nac_memory_ids", lambda: self.nac.prune_memory_refs(memory_ids))
+            if self.atl is not None:
+                _count("atl_hippocampus_refs", lambda: self.atl.prune_refs("hippocampus", memory_ids))
+        if self.nac is not None and self.ec.store_file_loaded():
+            _count("nac_ec_keys", lambda: self.nac.prune_ec_keys(self.ec.substrate_node_ids()))
+        if self.atl is not None and self.angular_gyrus is not None and self.angular_gyrus.store_file_loaded():
+            ag_ids = frozenset(record.id for record in self.angular_gyrus)
+            _count("atl_angular_gyrus_refs", lambda: self.atl.prune_refs("angular_gyrus", ag_ids))
+        if counts:
+            logger.info("Pruned dangling cross-store refs at session start: %s", counts)
+        return counts
 
     def shutdown(self) -> None:
         """Stop constructor-owned background workers without requiring a session.
@@ -809,7 +877,9 @@ class MemoryHub:
         rollback and superseded hubs therefore need this independent,
         idempotent lifecycle seam.
         """
-        if self._concept_extractor is not None:
+        # Only a RUNNING worker is flushed: the session end stops it within its deadline, and a flush on a stopped
+        # worker with items left would only wait out the full 5 s (#1438 PR 1a; shutdown runs again after the end).
+        if self._concept_extractor is not None and self._concept_extractor.is_running():
             try:
                 if not self._concept_extractor.flush(timeout=5.0):
                     logger.warning("ConceptExtractor flush timed out during shutdown")
@@ -881,21 +951,76 @@ class MemoryHub:
         )
         raise ExperienceClockStalled(captures=did[0], activations=did[1], results=results)
 
-    def on_session_end(self, ticket: SessionTicket) -> dict[str, int]:
-        """End session and consolidate learning.
+    def on_session_end(self, ticket: SessionTicket, *, deadline: Deadline | None = None) -> dict[str, Any]:
+        """End the session ``ticket`` holds: save every store first, then consolidate within ``deadline``.
 
-        Runs sleep consolidation on Hippocampus and any bridge-specific
-        consolidation.
+        The phases and the store/lock table: ``integration/session_end.py`` (#1438 PR 1a). ``deadline=None`` is no
+        bound: every consolidation step runs, after the saves. A stale or foreign ticket ends nothing (``{}``).
 
         Returns:
-            Dict with consolidation statistics
+            Dict with consolidation statistics; ``consolidation_skipped`` names steps the deadline left no time for.
         """
-        if not self._begin_session_end(ticket, "on_session_end"):
+        return self._end(ticket, "on_session_end", "full", deadline)
+
+    def on_session_end_lightweight(self, ticket: SessionTicket, *, deadline: Deadline | None = None) -> dict[str, Any]:
+        """Lightweight session end for sim mode: the same saves as :meth:`on_session_end`, no consolidation.
+
+        Skips the expensive hippocampus.sleep() replay (and promotion, ATL/AG consolidation), which can block for
+        seconds on large episode sets, so learning from sim sessions is saved without it.
+        """
+        return self._end(ticket, "on_session_end_lightweight", "lightweight", deadline)
+
+    def sleep(self, ticket: SessionTicket, *, deadline: Deadline | None = None) -> dict[str, Any]:
+        """Consolidate learning across all bridges: :meth:`on_session_end` for the session ``ticket`` holds."""
+        return self.on_session_end(ticket, deadline=deadline)
+
+    def _end(
+        self,
+        ticket: SessionTicket,
+        closer: str,
+        consolidation: Literal["full", "lightweight"],
+        deadline: Deadline | None,
+    ) -> dict[str, Any]:
+        if not self._begin_session_end(ticket, closer):
             return {}
         try:
-            return self._consolidate_full()
+            results = end_session(self, deadline=deadline or Deadline.none(), consolidation=consolidation)
+            # (the ticket moved the session to ENDING at entry.)
+            session_duration = time.time() - self._session_start_time
+            results["session_duration_seconds"] = session_duration
+            results.update(self._situation_cue_report())
+            logger.info(
+                "Session ended%s after %.1fs: %s",
+                " (lightweight)" if consolidation == "lightweight" else "",
+                session_duration,
+                results,
+            )
+            self._assert_experience_advanced(results)
+            return results
         finally:
             self._ownership.finish_end(ticket)
+
+    def note_hippocampus_saved(self, mark: tuple[int, ...]) -> None:
+        """The session end saved the hippocampus at ``mark`` (``Hippocampus.change_mark``, read in the read section)."""
+        self._hippocampus_saved_mark = mark
+
+    def hippocampus_unsaved(self) -> bool:
+        """Whether the hippocampus changed since this hub's session end last saved it (#1438 PR 1a).
+
+        Compared by ``Hippocampus.change_mark`` (write sections, episode events, activations), so a removal, a load
+        or a sleep outside the session end counts too. True when no session end has saved it yet: the closers that
+        ask (``AgentInstance.shutdown``'s after-steps, ``end_bio_session``) then save it themselves, as they always
+        did before the hub's end took the save over.
+        """
+        if self._hippocampus_saved_mark is None:
+            return True
+        return self.hippocampus.change_mark() != self._hippocampus_saved_mark
+
+    def run_after_session_end(self, name: str, step: Callable[[], None]) -> bool:
+        """Hand ``step`` to the end of a session a running loop holds (#1520); see ``SessionOwnership.defer_until_ended``.
+
+        False: nothing is going to end a session (none is open, or no loop holds it), so the caller runs ``step``."""
+        return self._ownership.defer_until_ended(name, step)
 
     def _begin_session_end(self, ticket: SessionTicket | None, closer: str) -> bool:
         """OPEN -> ENDING for the CURRENT ticket only (#1438 PR 0). Any other ticket ends nothing.
@@ -916,285 +1041,6 @@ class MemoryHub:
         else:
             logger.debug("%s: the ticket is not this hub's current session; nothing ended", closer)
         return False
-
-    def _consolidate_full(self) -> dict[str, int]:
-        """The full session-end body; ``on_session_end`` already moved its ticket to ENDING."""
-        results = {}
-
-        # Run sleep consolidation
-        try:
-            sleep_results = self.hippocampus.sleep()
-            results.update(sleep_results)
-        except Exception as e:
-            logger.error("Sleep consolidation failed: %s", e)
-            results["sleep_error"] = str(e)
-
-        # Session cleanup
-        if self._spatial_bridge and "spatial" not in self._disabled_bridges:
-            try:
-                self._spatial_bridge.on_session_end()
-            except Exception as e:
-                logger.warning("Spatial bridge cleanup failed: %s", e)
-
-        # Decay NAc confidence (stale patterns fade over time)
-        try:
-            self.nac.decay_all(factor=0.95)
-            results["nac_decayed"] = True
-        except Exception as e:
-            logger.debug("NAc decay failed: %s", e)
-
-        # Phase 4: Save semantic embeddings
-        if self.ec.semantic_enabled and self.ec._embedding_store is not None:
-            try:
-                import os
-
-                os.makedirs(os.path.dirname(self.embedding_persist_path), exist_ok=True)
-                self.ec._embedding_store.save(self.embedding_persist_path)
-                results["semantic_embeddings_saved"] = len(self.ec._embedding_store)
-            except Exception as e:
-                logger.warning("Failed to save semantic embeddings: %s", e)
-
-        # Run semantic promotion (before consolidation — new concepts get consolidated too)
-        if self._promoter is not None:
-            try:
-                promoted = self._promoter.scan_for_promotions()
-                results["concepts_promoted"] = len(promoted)
-            except Exception as e:
-                logger.warning("Semantic promotion failed: %s", e)
-
-        # Consolidate ATL
-        if self.atl is not None:
-            try:
-                atl_results = self.atl.consolidate()
-                results["atl_removed"] = atl_results.get("removed", 0)
-                results["atl_compressed"] = atl_results.get("compressed", 0)
-            except Exception as e:
-                logger.warning("ATL consolidation failed: %s", e)
-
-        # Consolidate Angular Gyrus
-        if self.angular_gyrus is not None:
-            try:
-                ag_results = self.angular_gyrus.consolidate()
-                results.update({f"ag_{k}": v for k, v in ag_results.items()})
-            except Exception as e:
-                logger.warning("AG consolidation failed: %s", e)
-
-        # Flush and stop constructor-owned background workers before saving.
-        self.shutdown()
-
-        # Save SCN state. F0.5: SCN now carries ``persistence_path`` as a
-        # typed field set at construction time. Legacy underscore fallback
-        # tolerates pre-F0.5 SCN instances that may still exist in tests.
-        if self.scn is not None:
-            scn_path = getattr(self.scn, "persistence_path", None) or getattr(self.scn, "_persistence_path", None)
-            if scn_path:
-                try:
-                    self.scn.save(scn_path)
-                except StoreOverwriteRefused as e:  # (#971): temporal state unsaved, file kept
-                    logger.error("SCN state not saved: %s", e)
-                except Exception as e:
-                    logger.warning("Failed to save SCN state: %s", e)
-
-        # Save NAc state (if persistence path set in NACConfig)
-        if self.nac is not None:
-            nac_path = getattr(getattr(self.nac, "config", None), "persistence_path", None)
-            if nac_path:
-                try:
-                    self.nac.save(nac_path)
-                except StoreOverwriteRefused as e:  # (#971): causal model unsaved, file kept
-                    logger.error("NAc state not saved: %s", e)
-                except Exception as e:
-                    logger.warning("Failed to save NAc state: %s", e)
-
-        # Save EC state (if persistence path set in ECConfig). Saved
-        # beside NAc because NAc's reward biases are keyed by EC node
-        # ids — restoring one without the other leaves dangling keys
-        # (nac_cross_session_persistence.md).
-        if self.ec is not None:
-            ec_path = getattr(getattr(self.ec, "config", None), "persistence_path", None)
-            if ec_path:
-                try:
-                    self.ec.save(ec_path)
-                except StoreOverwriteRefused as e:  # (#971): substrate unsaved, file kept
-                    logger.error("EC state not saved: %s", e)
-                except Exception as e:
-                    logger.warning("Failed to save EC state: %s", e)
-
-        # Save ATL state
-        if self.atl is not None:
-            try:
-                self.atl.save()
-            except StoreOverwriteRefused as e:  # (#939): concepts unsaved, file kept
-                logger.error("ATL state not saved: %s", e)
-            except Exception as e:
-                logger.warning("Failed to save ATL state: %s", e)
-
-        # Save Angular Gyrus state
-        if self.angular_gyrus is not None:
-            try:
-                self.angular_gyrus.save()
-            except StoreOverwriteRefused as e:  # (#971): math memory unsaved, file kept
-                logger.error("AG state not saved: %s", e)
-            except Exception as e:
-                logger.warning("Failed to save AG state: %s", e)
-
-        # Save cross-layer graph
-        if self._cross_layer is not None:
-            try:
-                self._cross_layer.save()
-            except StoreOverwriteRefused as e:  # (#971): edges unsaved, file kept
-                logger.error("Cross-layer graph state not saved: %s", e)
-            except Exception as e:
-                logger.warning("Failed to save cross-layer graph: %s", e)
-
-        # Long-horizon planning session save
-        if self._plan_manager is not None:
-            try:
-                plan_result = self._plan_manager.on_session_end()
-                if plan_result.get("plan_saved"):
-                    results["plan_saved"] = plan_result["plan_saved"]
-            except Exception as e:
-                logger.warning("PlanManager session end failed: %s", e)
-
-        # Flush provenance data and write session summary
-        if hasattr(self, "_collector") and self._collector:
-            try:
-                self._collector.on_session_end()
-            except Exception as e:
-                logger.warning("Provenance session end failed: %s", e)
-
-        # (the ticket moved the session to ENDING at entry.)
-        session_duration = time.time() - self._session_start_time
-        results["session_duration_seconds"] = session_duration
-        results.update(self._situation_cue_report())
-
-        logger.info("Session ended after %.1fs: %s", session_duration, results)
-        self._assert_experience_advanced(results)
-        return results
-
-    def on_session_end_lightweight(self, ticket: SessionTicket) -> dict[str, Any]:
-        """Lightweight session end for sim mode — persist state without full replay.
-
-        Skips the expensive hippocampus.sleep() consolidation (full replay,
-        compression, removal) which can block for seconds on large episode sets.
-        Runs NAc decay, flushes the concept extractor (prevents thread leak and
-        ensures ATL concept extraction completes), and saves all persistence-backed
-        subsystems so learning from sim sessions is not silently lost.
-        """
-        if not self._begin_session_end(ticket, "on_session_end_lightweight"):
-            return {}
-        try:
-            return self._consolidate_light()
-        finally:
-            self._ownership.finish_end(ticket)
-
-    def _consolidate_light(self) -> dict[str, Any]:
-        """The lightweight session-end body; ``on_session_end_lightweight`` already moved its ticket to ENDING."""
-        results: dict[str, Any] = {"lightweight": True}
-
-        # Decay NAc confidence (same as full path)
-        try:
-            self.nac.decay_all(factor=0.95)
-            results["nac_decayed"] = True
-        except Exception as e:
-            logger.debug("NAc decay failed: %s", e)
-
-        # Save semantic embeddings
-        if self.ec.semantic_enabled and self.ec._embedding_store is not None:
-            try:
-                import os
-
-                os.makedirs(os.path.dirname(self.embedding_persist_path), exist_ok=True)
-                self.ec._embedding_store.save(self.embedding_persist_path)
-                results["semantic_embeddings_saved"] = len(self.ec._embedding_store)
-            except Exception as e:
-                logger.warning("Failed to save semantic embeddings: %s", e)
-
-        # Save SCN state
-        if self.scn is not None:
-            scn_path = getattr(self.scn, "persistence_path", None) or getattr(self.scn, "_persistence_path", None)
-            if scn_path:
-                try:
-                    self.scn.save(scn_path)
-                except StoreOverwriteRefused as e:  # (#971): temporal state unsaved, file kept
-                    logger.error("SCN state not saved: %s", e)
-                except Exception as e:
-                    logger.warning("Failed to save SCN state: %s", e)
-
-        # Save NAc state
-        if self.nac is not None:
-            nac_path = getattr(getattr(self.nac, "config", None), "persistence_path", None)
-            if nac_path:
-                try:
-                    self.nac.save(nac_path)
-                except StoreOverwriteRefused as e:  # (#971): causal model unsaved, file kept
-                    logger.error("NAc state not saved: %s", e)
-                except Exception as e:
-                    logger.warning("Failed to save NAc state: %s", e)
-
-        # Save EC state (same pairing rationale as the full session-end
-        # path: NAc reward biases key on EC node ids).
-        if self.ec is not None:
-            ec_path = getattr(getattr(self.ec, "config", None), "persistence_path", None)
-            if ec_path:
-                try:
-                    self.ec.save(ec_path)
-                except StoreOverwriteRefused as e:  # (#971): substrate unsaved, file kept
-                    logger.error("EC state not saved: %s", e)
-                except Exception as e:
-                    logger.warning("Failed to save EC state: %s", e)
-
-        # Flush ConceptExtractor before saving ATL — pending background
-        # extractions write to ATL, so flush ensures ATL state is complete.
-        # Also prevents daemon thread accumulation in long sim loops.
-        if self._concept_extractor is not None:
-            try:
-                if not self._concept_extractor.flush(timeout=5.0):
-                    logger.warning("ConceptExtractor flush timed out during lightweight session end")
-            except Exception as e:
-                logger.warning("ConceptExtractor flush failed: %s", e)
-
-        # Save ATL state
-        if self.atl is not None:
-            try:
-                self.atl.save()
-            except StoreOverwriteRefused as e:  # (#939): concepts unsaved, file kept
-                logger.error("ATL state not saved: %s", e)
-            except Exception as e:
-                logger.warning("Failed to save ATL state: %s", e)
-
-        # Save Angular Gyrus state
-        if self.angular_gyrus is not None:
-            try:
-                self.angular_gyrus.save()
-            except StoreOverwriteRefused as e:  # (#971): math memory unsaved, file kept
-                logger.error("AG state not saved: %s", e)
-            except Exception as e:
-                logger.warning("Failed to save AG state: %s", e)
-
-        # Save cross-layer graph
-        if self._cross_layer is not None:
-            try:
-                self._cross_layer.save()
-            except StoreOverwriteRefused as e:  # (#971): edges unsaved, file kept
-                logger.error("Cross-layer graph state not saved: %s", e)
-            except Exception as e:
-                logger.warning("Failed to save cross-layer graph: %s", e)
-
-        self.shutdown()
-
-        # (the ticket moved the session to ENDING at entry.)
-        session_duration = time.time() - self._session_start_time
-        results["session_duration_seconds"] = session_duration
-        results.update(self._situation_cue_report())
-
-        logger.info("Session ended (lightweight) after %.1fs: %s", session_duration, results)
-        self._assert_experience_advanced(results)
-        return results
-
-    def sleep(self, ticket: SessionTicket) -> dict[str, int]:
-        """Consolidate learning across all bridges: :meth:`on_session_end` for the session ``ticket`` holds."""
-        return self.on_session_end(ticket)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Multi-Layer Knowledge Queries

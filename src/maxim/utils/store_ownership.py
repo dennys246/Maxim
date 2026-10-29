@@ -156,6 +156,7 @@ class StoreFileOwnership:
         # A failed load can leave PART of the file in the store; "starting empty" must be true before
         # the store is allowed to save over the file.
         self._reset_store_state()
+        self._note_store_file_loaded(False)
         # Two loaders can meet the same corrupt file in one construction (create_full_agent's factory,
         # then its bio stack): keep ONE copy of identical bytes -- among copies made by THIS process.
         for existing in sorted(_COPIES_MADE_THIS_PROCESS):
@@ -196,6 +197,7 @@ class StoreFileOwnership:
         except OSError as e:
             target = self._default_store_path(path)
             self._reset_store_state()
+            self._note_store_file_loaded(False)
             self.disown_store_file(target)
             log.error(
                 "%s: could not keep a copy of %s (%s); starting empty, and saves over it are refused",
@@ -218,6 +220,17 @@ class StoreFileOwnership:
         """Record that this store read, created or was told to replace ``path``."""
         self._owned_store_files().add(self._store_file_key(path))
 
+    def _note_store_file_loaded(self, loaded: bool = True) -> None:
+        """Record whether this store's state came from READING its file (#1438 PR 1a). Every fresh start clears it."""
+        object.__setattr__(self, "_store_file_loaded", loaded)
+
+    def store_file_loaded(self) -> bool:
+        """Whether this store holds what it READ from its file (not empty after a missing, unreadable or refused one).
+
+        The loaders' prune pass resolves refs only against a store that loaded: an empty store looks exactly like
+        "everything dangles" (``MemoryHub._prune_dangling_refs``)."""
+        return bool(getattr(self, "_store_file_loaded", False))
+
     def disown_store_file(self, path: str | None = None) -> None:
         """Stop owning ``path`` (default: the configured one): a save over it is refused again, so the file
         stays as it is on disk (#971: an EC beside an NAc whose copy failed; a store whose load failed for
@@ -230,6 +243,7 @@ class StoreFileOwnership:
         store is literally fresh, and a save over the file is refused, so the file stays as it was.
         Raises ``ValueError`` (via ``_default_store_path``) for a store with no path given or configured."""
         self._reset_store_state()
+        self._note_store_file_loaded(False)
         self.disown_store_file(path)
 
     def _check_store_write(self, path: str, *, overwrite: bool) -> None:

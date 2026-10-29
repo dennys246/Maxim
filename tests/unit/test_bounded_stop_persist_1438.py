@@ -13,8 +13,6 @@ import threading
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 
 def _agent(tmp_path: Path, agent_id: str = "persist_agent") -> Any:
     """A REAL persistent agent (full bio-stack) homed in ``tmp_path``."""
@@ -42,7 +40,6 @@ def _stored_ids(path: Path) -> set[str]:
     return {m["id"] for m in data["memories"]}
 
 
-@pytest.mark.xfail(strict=True, reason="#1438 PR 1a: the session end consolidates before it saves; no deadline")
 def test_a_deadline_too_short_for_sleep_still_saves_every_store_and_names_the_skipped_step(tmp_path: Path) -> None:
     from maxim.utils.deadline import Deadline
 
@@ -63,7 +60,6 @@ def test_a_deadline_too_short_for_sleep_still_saves_every_store_and_names_the_sk
         assert (tmp_path / "persist_agent" / name).exists(), name
 
 
-@pytest.mark.xfail(strict=True, reason="#1438 PR 1a: the hub's lightweight end does not save the hippocampus")
 def test_the_lightweight_end_saves_the_hippocampus(tmp_path: Path) -> None:
     inst = _agent(tmp_path)
     hub = inst.memory_hub
@@ -75,7 +71,6 @@ def test_the_lightweight_end_saves_the_hippocampus(tmp_path: Path) -> None:
     assert record_id in _stored_ids(_hippocampus_file(inst))
 
 
-@pytest.mark.xfail(strict=True, reason="#1438 PR 1a: the hippocampus and EC are saved outside one read section")
 def test_no_eviction_lands_between_the_hippocampus_save_and_the_ec_save(tmp_path: Path) -> None:
     """Evictions run their deletion callbacks (EC, embeddings, cross-layer) under the hippocampus WRITE lock, so a
     writer that gets in between the two saves leaves ``ec.json`` holding a signature for a memory the saved
@@ -105,7 +100,6 @@ def test_no_eviction_lands_between_the_hippocampus_save_and_the_ec_save(tmp_path
     assert writer_got_in == [False]
 
 
-@pytest.mark.xfail(strict=True, reason="#1520: a shutdown that has to wait for a loop never saves the cerebellum")
 def test_a_shutdown_that_waits_for_a_running_loop_hands_its_after_steps_to_that_loop(tmp_path: Path) -> None:
     from maxim.utils.deadline import Deadline
 
