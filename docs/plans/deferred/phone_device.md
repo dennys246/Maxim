@@ -2,7 +2,7 @@
 
 **Status:** PROPOSED 2026-10-29, plan only. **Phase 0 is homed in 1.3.5** (owner decision 2026-10-29, §Phase 0).
 Phases 1–3 start **after the 1.4.0 cut**; nothing here holds 1.4.0. **Revive trigger for Phase 1:** 1.4.0 is
-published, Phase 0 has landed, and [embodied_device.md](../embodied_device.md) has built `embody()` (its step 1)
+published, Phase 0 has landed, and [embodied_device.md](../embodied_device.md) has built `embody()` (its step 4)
 and the leader STT route (its step 5).
 
 **Input:** a four-lens read-only review on 2026-10-29 (security, architecture and wire integrity, pulse
@@ -11,7 +11,8 @@ the same disclosed gap as O6. Every load-bearing code claim was re-checked befor
 loopback bind (`console/server.py::run_serve`), the control fields in the wire whitelist
 (`agents/bus.py::_PERCEPT_WIRE_FIELDS`), and the phone app as the motivating goal of
 [console_tunnel_hardening.md](console_tunnel_hardening.md). One reviewer claim was wrong and is not used: there is
-no LAN bind; A9 trusts extra origins, while the server still binds loopback only.
+no LAN bind; A9 trusts extra origins, while the server still binds loopback only. **Pre-merge round (Executor,
+Architecture, Wire integrity) folded 2026-10-29;** the owner decisions the folds took are listed in §Fold decisions.
 
 **Companion plans, authoritative in their own areas:** [embodied_device.md](../embodied_device.md) (one owner per
 device contract; `embody()`; the embodied census) · [console_tunnel_hardening.md](console_tunnel_hardening.md)
@@ -28,7 +29,7 @@ device contract; `embody()`; the embodied census) · [console_tunnel_hardening.m
 |---|---|
 | PD1 | **The phone attaches through `embody()` as a device, and is not a second robot body.** Its outputs (speaker, haptics, notifications) are in the embodied census, so the atonia gate can inhibit them. It never registers a `maxim.robots` controller: it has no motor command whose consequence Maxim senses. So M76's second-body tripwire, [second_body_staging.md](second_body_staging.md) and the microduck plan stay asleep. |
 | PD2 | **Remote reach is cloudflared only** for v1: one path to harden, and the one the tunnel plan was written for. `tailscale serve` is recorded as "not now, additive later", not as rejected. `maxim serve` keeps its loopback bind as an invariant; there is no LAN bind. |
-| PD3 | **Atonia with a device attached is planned now** (§Atonia with a device attached), so `embody()` and the gate are not redesigned later. It is designed now and built after the atonia gate ships and `embody()` exists. |
+| PD3 | **Atonia with a device attached is planned now** (§Atonia with a device attached), so `embody()` and the gate are not redesigned later. It is designed now and built after the atonia gate ships and `embody()` exists. The pre-merge round found it is a larger reversal than first drafted (the open problems are recorded there); nothing here changes the gate as shipped. |
 | PD4 | **Phase 0 is homed in 1.3.5.** This re-homes console_tunnel_hardening's PR 3 (admission control), a recorded 1.3.3 move that did not ship. No remote reach ships before it. |
 | PD5 | **The camera stays in scope** as user-directed perception ("look at this"), not as an orienting sensor: the agent cannot point it. Frames reach the operator's own leader only. |
 
@@ -41,8 +42,12 @@ device contract; `embody()`; the embodied census) · [console_tunnel_hardening.m
   for a phone (amended there).
 - **Not an inference peer.** It does not serve an LLM to the mesh (thermal limits, OS background limits, tiny models).
 - **A device under `embody()`** (PD1), with the device contract owned by pymaxim. maxim-pulse owns capture and UI only.
-- **Its percepts enter through the relay** as registered receptors with `reported` provenance (M39: every percept
-  reaches the EC through the relay's one registration point). No `PerceptSource` side door.
+  This reshapes embodied_device.md's step 4 (today `embody(sdk)` adopts a Reachy SDK, and its census covers motors
+  and sound): `embody()` must take a device adapter, and the census must cover every effector (sound, haptics,
+  notifications) across all attached devices. Whether `embody()` holds a Reachy and a phone at once is open (P0-7).
+- **Its percepts enter through the relay** as registered receptors with a non-`experienced` provenance kind (`reported`,
+  or `narrated` + `caused_by`, whichever thalamic_relay's open TR11 decides; P0-5). M39: every percept reaches the EC
+  through the relay's one registration point. No `PerceptSource` side door.
 - **Its device id comes from the token, never from the body** of a request.
 
 **The hivemind carries what was learned, not what was seen.** [maxim_hivemind.md](../maxim_hivemind.md) shares
@@ -58,8 +63,8 @@ else's Maxim.
 | The UI | the pulse kit: `DeviceProfile`, `bootConsole`, the auth flow, `HttpFacade`, `EventClient` | **rides**: a third shell, from the Reachy profile template |
 | Auth | `_GuardMiddleware`, bearer auth, A9.1 pairing | **rides, reshaped**: a principal seam (P0-3), then PR 4's per-device tokens |
 | Speech | embodied_device step 5's leader STT route; step 1's framed `talk(source=...)` | **rides**: no second STT route |
-| Sensor ingress | the relay's receptor registry (GL3.B1) | **rides**: a remote-receptor row, `reported` provenance |
-| Outputs | `embody()` and the embodied census | **rides**: a phone device adapter |
+| Sensor ingress | the relay's receptor registry (GL3.B1) | **rides**: a remote-device receptor, a non-`experienced` kind (TR11) |
+| Outputs | `embody()` and the embodied census | **rides, reshaped**: `embody()` takes a device adapter; the census widens to every effector (P0-7) |
 | Remote transport | cloudflared, console_tunnel_hardening | **rides** |
 | A phone-specific transport or package | none | **not built**: embodied_device §2 forbids a new top-level package |
 
@@ -68,7 +73,7 @@ else's Maxim.
 | Modality | Consumer | Verdict |
 |---|---|---|
 | Location + activity (GPS, IMU collapsed to an activity label) | SCN (`time/oscillator.py` runs circadian to annual scales, and every run so far is minutes long); Hippocampus `situation=` context | **The strongest case.** Weeks of input at the scale the SCN was built for. Phase 2's experiment. |
-| Mic → transcript | the talk path; the word world of [grounded_language_acquisition.md](../grounded_language_acquisition.md) | **Real.** Phase 1's slice. Enters as `reported` provenance; language stays off the E-ladder (G5). |
+| Mic → transcript | the talk path; the word world of [grounded_language_acquisition.md](../grounded_language_acquisition.md) | **Real.** Phase 1's slice. Enters with a non-`experienced` kind (TR11); language stays off the E-ladder (G5). |
 | Camera | perception, after placement and the fabric revive | **User-directed perception only** (PD5). Earns no orienting claim. Phase 3. |
 | IMU as proprioception | none | **Not built.** It measures the human, not the agent; the Cerebellum needs the agent's own motor command. |
 | Watch heart rate | none | **Never interoception.** It is the user's physiology, an observation of another agent. Never written into drives, `vital_metrics` or `InteroceptiveOutcome` (G16, M78). |
@@ -76,23 +81,25 @@ else's Maxim.
 
 ## Phase 0 — 1.3.5 (PD4)
 
-Ranked. "Lenses" names the reviewers that raised it independently.
+Ranked. "Lenses" names the reviewers that raised it independently. "Owner" is **proposed**: 1.3.5 is Session A's
+orchestrator release, and these items sit in other sessions' files, so each session confirms when it picks one up.
+Nothing here edits `orchestrator.py`, `agent_loop.py`, `cli.py` or NAc's selection path.
 
-| # | Item | Why now | Severity | Lenses |
-|---|---|---|---|---|
-| P0-1 | **`Percept.from_wire_dict` becomes a trust boundary.** The control fields in `_PERCEPT_WIRE_FIELDS` (`hard_override`, `has_voice_command`, `has_maxim_keyword`, `cli_input`, `explore_command`) are fixed server-side, as `comms/gateway.py::CommunicationGateway.receive_inbound` already does; `sensory` is rehydrated through `SensoryTag.from_dict` (a raw dict today reads as non-SOUND in `sim_adapter.py`, skips entity novelty in `default_network/network.py` and raises in `memory_agent.py`); `PerceptContext.channel` is validated at runtime. `tests/unit/test_percept_wire_format.py` changes with it. | No producer exists yet, so it is cheap; a latent defect with or without a phone | SHOULD-FIX | architecture |
-| P0-2 | **console_tunnel_hardening PR 3, admission control**: `limit_concurrency`, `ws_max_size`, an input cap outside the sandbox, a rate limit on `/api/pair/claim`. | Needed for any remote reach | SHOULD-FIX | security, pulse |
-| P0-3 | **A principal seam in `_GuardMiddleware`.** `_bearer_authorized` returns `{device_id, scopes}` in `scope["state"]`, not a bool; a path→scope table defaults unknown routes to `admin`. Today's token is the operator entry, so behaviour is unchanged. | PR 4's per-device tokens become additive, not a refactor | SHOULD-FIX | security |
-| P0-4 | **M3: the Talk registry is built without `bash`, write, edit and execute tools**, rather than kept out by `handle.py::talk_autonomy`'s deny derivation. | Before any remote turn reaches the loop | SHOULD-FIX | security |
-| P0-5 | **Reserve the `reported` provenance kind and an "other body" source class** at GL3.B1 ([thalamic_relay.md](../thalamic_relay.md) §11, TR11), with a remote-sensor row in `tests/unit/test_receptor_census.py::CENSUS`. | Keeps a user's speech and physiology out of interoception, and gives the phone its way in | SHOULD-FIX | research, architecture |
-| P0-6 | **Device identity on the console contract**: a device/origin id beside embodied_device step 1's `source=`, in the same bump as R3's 0.7.0 ([#1336](https://github.com/dennys246/Maxim/issues/1336)). M70's note to pulse covers the interim. | One contract bump instead of two | SHOULD-FIX | architecture |
-| P0-7 | **embodied_device steps 1 and 5 are body-agnostic**: the framed talk ingestion and the leader STT route take a device id and are not tied to the Reachy SDK. A design-review note on that plan. | The phone becomes an adapter, not a fork | SHOULD-FIX | architecture, pulse, research |
-| P0-8 | **O2 / [#784](https://github.com/dennys246/Maxim/issues/784)**: the A4 gain inverts a place code. | Location is exactly a place-coded sensor | SHOULD-FIX | research |
-| P0-9 | **A privacy design for evidence**: a derived, quantized record schema for location and activity, and `scripts/lint_secrets.py` (M45) extended to coordinates. | Must precede the first capture, or M1's committed-evidence rule and privacy deadlock | SHOULD-FIX | research |
-| P0-10 | **Every declared SCN `event_type` has a producer or is marked reserved**: item 3 of [scn_event_producer_gap.md](scn_event_producer_gap.md). | Tests only; a tripwire before a phone producer arrives | SHOULD-FIX | research |
-| P0-11 | **Pulse kit groundwork** (a note to pulse; pulse owns it): reconnect on `visibilitychange` and `online` with catch-up from `/api/runs` in `facade/events.ts`; a size budget per profile (generalize `scripts/size-reachy.mjs`); an e2e device server that takes an origin and a TLS argument. | A hidden laptop tab has the reconnect problem today | SHOULD-FIX | pulse |
-| P0-12 | **Doc reconciliation** (this PR): `maxim_ui.md`'s localhost line; mesh_perception_transport's ingress for phones; M76's wording (PD1); the tunnel plan's PR 3 homing. Pulse's own `docs/plans/maxim_ui.md`, `CLAUDE.md` and `AGENTS.md` carry the same localhost line: a note to pulse. | Otherwise three revive triggers misfire | SHOULD-FIX | all four |
-| P0-13 | **NITs**: loopback-origin trust in `_origin_allowed` becomes scheme-aware (http/https only; `capacitor://localhost` named explicitly); an additive-only check in pulse's `gen:facade:check`, warn-only until a store binary exists; responsive kit layout. | Cheap | NIT | security, pulse |
+| # | Item and done state | Why now | Severity | Lenses | Owner (proposed) |
+|---|---|---|---|---|---|
+| P0-1 | **The percept wire is a trust boundary inbound.** Split `agents/bus.py::_PERCEPT_WIRE_FIELDS` into an outbound set (what `to_wire_dict` ships) and an inbound set. `from_wire_dict` forces `cli_input`, `has_voice_command`, `has_maxim_keyword` and `explore_command` to None and re-derives `hard_override` with `agents/autonomy.py::check_hard_stop` over the transcript or content, the way `comms/gateway.py::CommunicationGateway.receive_inbound` treats `hard_override`. `context` is no longer taken whole: `agent_id`, `sender` and `channel` are set by the receiver, `channel` is validated at runtime, and `timestamp`/`scn_tag` are receiver-stamped (a sender's clock never feeds the experience clock). `sensory` is rehydrated through `SensoryTag.from_dict`, in `from_wire_dict` and in the session path `Percept.from_dict`. **No consumer changes**: `agent_loop.py`'s `check_hard_stop` call and `exec_agent.py`'s `hard_override` branch stay as they are. `tests/unit/test_percept_wire_format.py::test_wire_dict_round_trips_without_loss` is inverted for the control fields, and `test_wire_fields_constant_matches_to_wire_dict_output` follows the split. This changes mesh-peer ingress too (mesh_perception_transport.md), which has no producer yet. | Neither path has a `src/` caller today, so it is cheap; a latent defect with or without a phone | SHOULD-FIX | architecture, wire | V (`autonomy.py` is in V's fence) |
+| P0-2 | **console_tunnel_hardening PR 3, admission control**: `limit_concurrency`, `ws_max_size`, an input cap outside the sandbox (today `max_input_chars` is sandbox-only), a rate limit on `/api/pair/claim`. Generalize `runtime/leader_proxy.py::_check_admission` per PR 3's front-gate note rather than building a second limiter. | Needed for any remote reach; it did not ship in 1.3.3 | SHOULD-FIX | security, pulse | S (`console/`) |
+| P0-3 | **A principal seam in `console/server.py::_GuardMiddleware`** (pulled forward from tunnel PR 4). `_bearer_authorized` (one caller) returns a principal `{device_id, scopes}` in `scope["state"]`, not a bool; a path→scope table defaults unknown routes to `admin`. Today's token is the operator principal. Defined explicitly: the sandbox principal (bearer auth is off under sandbox by design) and the anonymous principal of `_AUTH_EXEMPT_PATHS` and the static bundle. Guards: `tests/unit/test_console_auth.py`, `tests/unit/test_console_device_handoff.py`. | PR 4's per-device tokens become additive, not a refactor | SHOULD-FIX | security, wire | S |
+| P0-4 | **The tunnel plan's M3 (talk's tool gate; not outstanding.md's M3), pulled forward from PR 4:** Talk's registry holds no `bash`, write, edit or execute tool by construction, not by `console/handle.py::talk_autonomy`'s deny derivation. Today Talk shares the persistent instance's `tool_registry`, built `operational_mode="active"`. Open design choice, decided by the picking session with the owner: a separate talk registry in `handle.py`, or a change in `runtime/agent_factory.py`. Guard: a test that fails when one of those tools is added to Talk's registry. | Before any remote turn reaches the loop | SHOULD-FIX | security, executor | S with V (if `agent_factory.py`) |
+| P0-5 | **A plan amendment only in 1.3.5:** thalamic_relay.md §11 records the phone as a named case for the open TR11 (a remote device's percepts carry a non-`experienced` kind: `reported`, or `narrated` + `caused_by`) and a remote-device / observed-other-agent `ReceptorClass`. The `test_receptor_census.py::CENSUS` row and the code land with GL3.B1 in 1.4, with the first producer (a row without a src site fails that test as STALE). | Keeps a user's speech and physiology out of interoception before GL3.B1 freezes its kinds | SHOULD-FIX | research, architecture, executor, wire | doc |
+| P0-6 | **Device identity on the console contract**: a device/origin id beside embodied_device step 1's `source=` (#1439), after that step lands. It rides R3's 0.7.0 ([#1336](https://github.com/dennys246/Maxim/issues/1336)) if that bump has not shipped, else its own minor bump (embodied_device.md's own rule). Contract today: `console/ui_bundle.py::CONSOLE_CONTRACT_VERSION` 0.6.0. M70's note to pulse covers the interim. | One contract bump instead of two where possible | SHOULD-FIX | architecture, executor, wire | S |
+| P0-7 | **Doc-only: embodied_device.md steps 1, 4 and 5 become device-generic.** The framed talk ingestion and the leader STT route take a device id; `embody()` takes a device adapter, not only a Reachy SDK; the census covers every effector across all attached devices; one owner per device. Decide whether `embody()` holds several devices at once. | The phone becomes an adapter, not a fork | SHOULD-FIX | architecture, pulse, research | doc (embodied_device's session) |
+| P0-8 | **Owner decision on [#784](https://github.com/dennys246/Maxim/issues/784)'s option** (the A4 gain inverts a place code), recorded on the issue before 1.3.5 closes. The fix still rides the grounding line, where roadmap_1_3_x.md parks it. | Location is exactly a place-coded sensor | SHOULD-FIX | research, executor | owner |
+| P0-9 | **A privacy design for evidence**: a derived, quantized record schema for location and activity, and `scripts/lint_secrets.py` (M45) extended to coordinates. | Must precede the first capture, or M1's committed-evidence rule and privacy deadlock | SHOULD-FIX | research | H |
+| P0-10 | **Every declared SCN `event_type` has a producer or is marked reserved**: item 3 of [scn_event_producer_gap.md](scn_event_producer_gap.md). | Tests only; a tripwire before a phone producer arrives | SHOULD-FIX | research | R |
+| P0-11 | **Pulse kit groundwork** (a note to pulse; pulse owns it): reconnect on `visibilitychange` and `online` with catch-up from `/api/runs` in pulse: `facade/events.ts`; a size budget per profile (generalize pulse: `scripts/size-reachy.mjs`); an e2e device server that takes an origin and a TLS argument. | A hidden laptop tab has the reconnect problem today | SHOULD-FIX | pulse | pulse |
+| P0-12 | **DONE in this PR — doc reconciliation**: `maxim_ui.md`'s localhost line; mesh_perception_transport's ingress for phones; M76's wording (PD1); the PR 3 homing in console_tunnel_hardening.md, roadmap_1_3_x.md and README.md; pointers on embodied_device.md and maxim_console.md. **Owed to pulse:** its `docs/plans/maxim_ui.md`, `CLAUDE.md` and `AGENTS.md` carry the same localhost line. | Otherwise three revive triggers misfire | SHOULD-FIX | all four | doc / pulse |
+| P0-13 | **NITs**: loopback-origin trust in `_origin_allowed` becomes scheme-aware (http/https only; `capacitor://localhost` named explicitly), pinned in `tests/unit/test_console_trust_guard.py` beside `test_non_http_scheme_origin_can_be_listed`, with `server.py`'s docstring updated; an additive-only check in pulse's `gen:facade:check`, warn-only until a store binary exists; responsive kit layout. | Cheap | NIT | security, pulse, wire | S / pulse |
 
 **Not built before 1.4.0 (DO-NOT-BUILD):** a sensor-ingest endpoint, a service worker or manifest, a Capacitor
 scaffold, per-device tokens (PR 4 has its own trigger), watch work, any phone `src/` behind the decomposition
@@ -151,25 +158,38 @@ before any harness is built.
 [embodied_device.md](../embodied_device.md) §3 names "atonia within embodiment" as a later extension that reverses
 advisor_mode's Actuation row and needs its own design passes. This section is the approach note for that pass. It
 is a GATE, so it gets an adversarial design pass before any code (CLAUDE.md, "Faster without lowering the bar"),
-on the atonia gate's own clock ([advisor_mode.md](../advisor_mode.md)).
+on the atonia gate's own clock ([advisor_mode.md](../advisor_mode.md)). **Nothing here changes the gate as shipped**
+(embodied_device §3: the gate ships as designed, and the device plan does not gate it).
 
-**The rule, by channel:**
+**The intended rule, by channel:**
 
 | Channel | Under atonia | Why |
 |---|---|---|
-| Phone receptors (camera, mic, location) | **Open**, through item 4's single framed entry, tagged untrusted and `reported` | REM atonia blocks motor output, not perception |
+| Phone receptors (camera, mic, location) | **Open**, through advisor item 4's single framed entry, tagged untrusted with a non-`experienced` kind | REM atonia blocks motor output, not perception |
 | Speaker, haptics, notifications | **Inhibited**, through the `embody()` census | Actuation |
 | The screen showing the report and proposals | **Open**: the report channel | The gate is "act inhibited, report open" |
 | Reading the report aloud | **Inhibited** by default (proposed; owner to confirm) | Sound is actuation under the census |
-| Frame upload anywhere but the local leader; hivemind contribution | **Refused** (item 10, offline) | Egress |
+| Frame upload anywhere but the local leader; hivemind contribution | **Refused** (advisor item 10, offline) | Egress |
 
-**What changes in the gate.** The closed builder's refusal of `percept_source` and embodiment narrows rather than
-reverses: it accepts a device whose census shows every output inhibited, and still refuses a robot.
+**What changes in the gate: open, for the extension's own design pass.** The pre-merge round found this is a larger
+reversal than "narrowing" one refusal:
+- It reverses the **Actuation** row, and with a remote device also the **Environment** and **Egress** rows. A phone
+  reaches Maxim only through `maxim serve` and the tunnel, and its speech through the leader STT route. The closed
+  builder ignores `MAXIM_ROLE=leader` (proxy, mesh, tunnel), and advisor item 10 refuses the leader proxy and tunnel.
+  So the two open rows above need channels the gate closes today.
+- **Under V1 the observer runs one bounded turn per `ingest()`, with no loop.** A receptor stream needs a loop or an
+  ingest path that the gate does not have.
+- The closed builder refuses "any embodiment or robot". (`percept_source=None` is Profile A's recipe, not a builder
+  refusal.)
+- **The census is a CI acceptance test, not a runtime object.** Which runtime object the builder would consult in
+  its place is undecided.
+- A local-only variant (a phone on the same host, no tunnel) is not a real deployment, so it does not dodge these.
 
-**Acceptance.** An SDK-faithful fake phone device that records every output call; CI asserts it records zero under
-atonia. One operator-attested real-phone drill is supporting evidence, never the only evidence (embodied_device §3).
+**Acceptance, if the extension is taken.** An SDK-faithful fake phone device that records every output call; CI
+asserts it records zero under atonia. One operator-attested real-phone drill is supporting evidence, never the only
+evidence (embodied_device §3).
 
-**The inputs the gate consults, and how each could lie** (the pass extends this list):
+**The inputs the gate would consult, and how each could lie** (the pass extends this list):
 
 | Input | How it could lie |
 |---|---|
@@ -179,7 +199,7 @@ atonia. One operator-attested real-phone drill is supporting evidence, never the
 | The relay's provenance on inbound percepts | a transcript or OCR text carrying instructions; a body-supplied device id |
 | The pulse UI | the screen as a side channel: a proposal rendered as a one-tap action |
 | Speech output | TTS reached through `Voice` outside `embody()` |
-| Egress | a frame upload that reaches a cloud lane through the vision stage |
+| Egress | a frame upload that reaches a cloud lane through the vision stage; the tunnel itself, which the gate closes |
 
 ## Security shape
 
@@ -201,3 +221,13 @@ atonia. One operator-attested real-phone drill is supporting evidence, never the
 2. Does a phone percept ever trigger the perception fabric's revive (re-keyed to GL3), or only through a camera
    placement decision?
 3. Phase 2's record schema: how coarse must location be before it is committable evidence?
+
+## Fold decisions (pre-merge round, 2026-10-29; owner to confirm)
+
+The folds took these choices; each is the conservative reading and is reversible:
+1. **M3 and the principal seam are pulled forward from tunnel PR 4 into 1.3.5** (P0-3, P0-4), with Phase 0's homing.
+   PR 4's per-device tokens still fire with Phase 1.
+2. **P0-5 is a plan amendment in 1.3.5**; its census row and code wait for GL3.B1 (1.4).
+3. **P0-8 is an owner decision, not a fix,** in 1.3.5; the fix stays parked with the grounding line.
+4. **P0-1 also fixes the session path `Percept.from_dict`** (`sensory` rehydration), and changes the mesh-peer ingress.
+5. **PD3's atonia extension is recorded with its open problems**, not as a narrowing of the builder.

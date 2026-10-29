@@ -861,7 +861,7 @@ Owner decisions taken with this path (2026-10-16):
 >   and #1288's lists. They still hold 1.4.0;
 > - small correctness fixes #982, #1153, #1155, #1163, #1225, and #1369, #1370, #1371;
 > - the recorded Session C moves #954, #984, #985, #988, #989, #1285, #1286, #1287, #1291, and
->   console_tunnel_hardening's PR 3 (admission control);
+>   console_tunnel_hardening's PR 3 (admission control; did not ship, re-homed to 1.3.5 on 2026-10-29);
 > - the node_security remainder, fail-loud Stage 3 and M25 (the STALE/BROKEN-row release check; until it is
 >   built, the release session checks the ledger by hand and writes the `kind: "release"` clause).
 - **The release pipeline:** [#1372](https://github.com/dennys246/Maxim/issues/1372) (a tag-triggered,
@@ -878,7 +878,7 @@ Owner decisions taken with this path (2026-10-16):
   whether `passed` should require the expectations, is the owner's).
 - **Recorded 1.3.3 moves** (release-readiness block above): #954, #984, #985, #988, #989, #1285–#1287, #1291,
   #1292 (F4, the device-app facade, after pulse v0.4.1), and console_tunnel_hardening's PR 3 (admission control),
-  whose revive trigger fired.
+  whose revive trigger fired (PR 3 did not ship in 1.3.3; re-homed to 1.3.5, phone_device.md P0-2, 2026-10-29).
 - **Backlog:** M25 (the STALE/BROKEN-row release check that reads `kind: "release"` exceptions). While T1-2 stays
   STALE, M25 refuses each patch release unless it carries its own committed `kind: "release"` exception for T1-2
   (owner decision 2026-10-18, §Path to 1.4.0); writing that exception is each release session's job.
@@ -1216,9 +1216,11 @@ they are ready, and the gate takes the next free number when it is done, still o
   report view and prompt moved to `orchestrator.py::_show_report_and_post_sim_prompt`, registered in
   `tests/unit/_orchestrator_source.py`'s `PARTS`). The `/new` slice restores the promise with the behaviour.
 - **Phone device, Phase 0** (owner decision 2026-10-29; [deferred/phone_device.md](deferred/phone_device.md) §Phase 0, register O21):
-  the `Percept.from_wire_dict` trust boundary, console_tunnel_hardening's PR 3 (admission control; it did not ship
-  in 1.3.3), the auth principal seam, M3, the `reported` provenance kind, device identity riding R3's 0.7.0 bump, and
-  O2/#784. Outside the fence: none of it edits `orchestrator.py` or `agent_loop.py`.
+  the percept-wire trust boundary, console_tunnel_hardening's PR 3 (admission control; it did not ship in 1.3.3),
+  the auth principal seam and the tunnel plan's M3 (both pulled forward from its PR 4), the TR11 amendment, device
+  identity on the contract (with R3's 0.7.0 if unreleased, else its own minor bump), and an owner decision on #784.
+  Outside the fence: none of it edits `orchestrator.py`, `agent_loop.py`, `cli.py` or NAc's selection path.
+  Proposed owners per item are in the plan (S, V, H, R, pulse).
 - **Meets B2's entry condition** ([#1352](https://github.com/dennys246/Maxim/issues/1352), the bare LLM loop). B2's code
   prerequisites land in 1.3.6.
 - **Exit:** `start_simulation_mode` and its descendants pass gate rule 4, and all five arms are satisfied.
