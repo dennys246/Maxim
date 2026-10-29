@@ -181,11 +181,11 @@ class SemanticPromoter:
             )
 
             # If found existing, reinforce with additional episodes
+            # (through ATL's write lock, #1438 PR 1a: ``reinforce`` appends to a list ``ATL.save`` serializes; and
+            # without ``atl.get``, a bookkeeping read that counted as an access)
             if not was_created and candidate.source_memory_ids:
-                concept = self._atl.get(concept_id)
-                if concept and hasattr(concept, "reinforce"):
-                    for mid in candidate.source_memory_ids[1:]:
-                        concept.reinforce(mid)
+                for mid in candidate.source_memory_ids[1:]:
+                    self._atl.reinforce_concept(concept_id, mid)
 
             # Create cross-layer edges
             self._create_cross_layer_edges(concept_id, candidate)

@@ -34,6 +34,9 @@ class RWLock:
         self._readers = 0
         self._writers_waiting = 0
         self._writer_active = False
+        # Completed write sections, ever (#1438 PR 1a): a change mark. Read inside a read section it is exact, since no
+        # writer can be active there.
+        self.writes = 0
 
     def acquire_read(self) -> None:
         """Acquire a read lock (blocks if writer is active or waiting)."""
@@ -65,6 +68,7 @@ class RWLock:
         """Release a write lock."""
         with self._read_ready:
             self._writer_active = False
+            self.writes += 1
             # Wake up all waiting threads (readers and writers)
             self._read_ready.notify_all()
 
