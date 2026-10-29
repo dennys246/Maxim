@@ -88,6 +88,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - A hub whose session cannot be claimed now aborts the loop (`SessionRefusal` and its subclasses); the old soft
     skip that ran the loop without memory is gone. `MaximHandle.stop` bounds its shutdown's wait by `talk_join_s`.
 
+- **The agent loop logs, at DEBUG, when a planning job starts and stops holding new inputs, and when held inputs ride
+  a follow-up** (#1488), so a narrator input that sits unplanned can be told from one that waits its turn. It logs
+  the changes only, never once per tick.
 - **`run_agentic_loop` is a thin wrapper over `_run_agentic_loop_body`**, the loop moved verbatim ([#1438](https://github.com/dennys246/Maxim/issues/1438);
   `docs/plans/bounded_stop.md` §3 step 0), so the session-ownership work wraps the loop in one seam. The public
   signature, the `loop_liveness_scope` decorator and the behaviour are unchanged. Swallowed-exception records from
@@ -118,7 +121,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `create.router(model)` raises `ConfigurationError` naming what is missing (the cloud profile's key, e.g.
     `ANTHROPIC_API_KEY`, or a configured local profile) when no backend could be built; it returned `None`, which the
     caller found only at the first call. **Migration:** a caller that checked for `None` catches `ConfigurationError`.
-
 - **The wheel vendors maxim-pulse Console v0.4.4** (was v0.4.2 at 1.3.3, then v0.4.3; contract 0.6.0, unchanged). It is
   now the newest pulse tag for this contract, so R4's release gate requires it. v0.4.3 brought clearer leader setup
   (key and address guidance, with warnings), commands shown in a distinct style, and readable light-theme status
@@ -147,6 +149,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     3 of 5 arm-A deceptive trials.
 
 ### Fixed
+
+- **Web search no longer fetches outside `maxim.utils.http`, and a broken search is reported as broken.**
+  `tools/internet_search.py::_search_duckduckgo_lite` used its own urllib3 pool whenever urllib3 was importable. That pool
+  skipped the 2 MB download cap (#825), the caller's timeout and the proxy settings. Its blanket except also turned every
+  failure into an empty result, so the agent heard "nothing matched". It now fetches through `fetch_url`, and it raises on
+  any status other than 200, including the HTTP 202 bot-challenge page DuckDuckGo serves to scripted queries. The
+  existing failure path then reports the failure, so `internet_search` returns `success=False` there instead of an empty
+  success. The pool's one retry is gone, and a redirect is now a failure rather than followed. The scraper also unwraps
+  DuckDuckGo's `//duckduckgo.com/l/?uddg=` result links before filtering out DuckDuckGo's own links. It used to drop
+  them, so a normal results page read as "nothing matched". A new lint, `scripts/lint_http_surface.py` (CI lint job), keeps every
+  HTTP client library (urllib3, requests, httpx, httpcore, aiohttp, http.client, urllib.request, in any import
+  spelling) inside `utils/http.py`. It also pins raw socket dials per file and registers the SDKs that egress on
+  their own.
 
 - **Experiment harness follow-ups** ([#1038](https://github.com/dennys246/Maxim/issues/1038),
   [#1024](https://github.com/dennys246/Maxim/issues/1024)).

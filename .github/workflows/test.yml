@@ -1400,6 +1400,12 @@ jobs:
           # per-file; new files start at zero; burn-down is free).
           python3 scripts/lint_atomic_io_ratchet.py
 
+      - name: HTTP surface (HTTP clients only in utils/http.py; raw dials + egress SDKs pinned)
+        # CLAUDE.md's HTTP invariant. The urlopen grep in "CI grep invariants" stays (CLAUDE.md cites it);
+        # this AST lint also sees urllib3/requests/httpx/httpcore/aiohttp/http.client in any spelling,
+        # pins raw socket dials per file, and registers the SDKs that egress on their own.
+        run: python3 scripts/lint_http_surface.py
+
       - name: mypy per-file ratchet (roadmap 1.3.2 item 4)
         # Repo-wide, per file: no src/maxim/ file's mypy error count, nor its suppression count
         # (type: ignore, # mypy:, @no_type_check, tests mentioning TYPE_CHECKING/MYPY), may rise above its

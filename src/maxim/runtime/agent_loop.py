@@ -421,7 +421,17 @@ def _planning_submit_in_flight(llm_worker: Any, liveness_on: bool) -> bool:
     narrator, #1048). Only loops with planning liveness (the sim narrator) wait; the AUT is unaffected. Inputs that
     arrive meanwhile ride the next submit (``_take_deferred_inputs``)."""
     attempt_state = getattr(llm_worker, "latest_attempt_state", None)
-    return bool(liveness_on and callable(attempt_state) and _planning_attempt_is_active(attempt_state()))
+    held = bool(liveness_on and callable(attempt_state) and _planning_attempt_is_active(attempt_state()))
+    if callable(attempt_state) and held != _PLANNING_HELD.get(id(llm_worker), False):  # on a change: asked every tick
+        _PLANNING_HELD[id(llm_worker)] = held
+        # With "received CLI input" and "Submitted", tells an input that waited its turn from a stranded one (#1488).
+        logger.debug("Planning job %s (#1048)", "in flight: new inputs wait" if held else "done: inputs are free")
+    return held
+
+
+# Each worker's last planning-held state, for the change-only log above. Keyed by id(): a run builds a handful of
+# workers, and an id reused after one is collected costs at most one missing or extra DEBUG line.
+_PLANNING_HELD: dict[int, bool] = {}
 
 
 def _take_deferred_inputs(context: Any, processed_cli_inputs: Any, liveness_on: bool) -> list[str]:
@@ -437,6 +447,8 @@ def _take_deferred_inputs(context: Any, processed_cli_inputs: Any, liveness_on: 
     ]
     for c in taken:
         processed_cli_inputs.append(c)
+    if taken:
+        logger.debug("Deferred inputs ride the follow-up: %s", [c[:60] for c in taken])
     return taken
 
 

@@ -698,7 +698,8 @@ class TestCommittedRecordOnAGatedRun:
     def test_a_waived_record_reaches_the_ledger_gate_as_an_allowance(self, repo, monkeypatch, waived):
         """Delta-review SHOULD-FIX: on a CLEAN tree, `--allow-dirty` past an uncommitted record must stamp the row's
         `provenance.allow_dirty` — the waiver `_evidence_records.judge_provenance` reads (allowed-dirty, never sole
-        support) — not only `apparatus_record_check`, which no gate reads. The live pieces are mocks; the seed
+        support) — as well as `apparatus_record_check`, which the gate also reads since #1220 and fails when the two
+        disagree. The live pieces are mocks; the seed
         refuses at its first step so a real row is written through `_write_row`."""
         import types
         from unittest import mock

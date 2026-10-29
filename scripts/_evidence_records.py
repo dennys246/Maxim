@@ -277,6 +277,10 @@ def judge_provenance(prov, j: Judgement, ctx: Ctx, label: str, *, allow_dirty_ok
     if unknown(tree):
         j.fail(f"{label}: code_tree_sha256 is {tree!r}")
         return None
+    if "allow_dirty" in prov and not isinstance(prov["allow_dirty"], bool):
+        # Writers stamp it only as True; "true", 1 or null would otherwise read as no allowance at all (#1220).
+        j.fail(f"{label}: allow_dirty is {prov['allow_dirty']!r}, not a bool")
+        return tree
     dirty = prov.get("working_tree_dirty_src_scripts")
     if dirty is not False:
         if dirty is True and allow_dirty_ok and prov.get("allow_dirty") is True:
@@ -291,6 +295,42 @@ def judge_provenance(prov, j: Judgement, ctx: Ctx, label: str, *, allow_dirty_ok
         else:
             j.fail(f"{label}: allow_dirty is granted where no allowance is accepted")
     return tree
+
+
+def judge_apparatus_check(row: dict, j: Judgement, label: str) -> None:
+    """The row-level ``apparatus_record_check`` (exp60_run, b1_floor_run), judged beside ``provenance.allow_dirty``
+    (#1220). The writers stamp one fact twice: ``problem`` (why the apparatus record is not the committed one) makes
+    ``allow_dirty`` True in both places. Absent means nothing to judge. A row under data/ was written to a gated
+    path, so ``gated`` must be True: one that is not was written past a broken ``is_gated_path`` (#1218)."""
+    if "apparatus_record_check" not in row:
+        return
+    arc = row["apparatus_record_check"]
+    prov = as_dict(row.get("provenance"))
+    problem = arc.get("problem") if isinstance(arc, dict) else None
+    if (
+        not isinstance(arc, dict)
+        or not isinstance(arc.get("gated"), bool)
+        or not (problem is None or (isinstance(problem, str) and problem))
+        or arc.get("allow_dirty") is not (problem is not None)
+    ):
+        j.fail(f"{label}: apparatus_record_check {arc!r} is malformed")
+        return
+    if arc["gated"] is not True:
+        j.fail(f"{label}: apparatus_record_check says the run was not gated, yet the row is committed evidence")
+    waived, granted = problem is not None, prov.get("allow_dirty") is True
+    clean = prov.get("working_tree_dirty_src_scripts") is False
+    if waived and not granted:
+        j.fail(
+            f"{label}: apparatus_record_check and provenance disagree: the apparatus check was waived without allow_dirty"
+        )
+    elif granted and clean and not waived:
+        j.fail(
+            f"{label}: apparatus_record_check and provenance disagree: allow_dirty on a clean tree with no waived check"
+        )
+    elif waived:
+        j.allowed_dirty = True  # an allowance like provenance's: established, never sole support
+    # A granted allowance on a DIRTY tree with no waived check is legitimate (preflight's dirty-tree grant) and is
+    # judge_provenance's to judge, not this function's.
 
 
 def check_skew(ts, executed, j: Judgement, ctx: Ctx, label: str) -> None:
@@ -510,8 +550,10 @@ def judge_row_file(rows: list[dict], j: Judgement, ctx: Ctx, *, scope_rows: list
     for i, r in enumerate(rows, 1):
         if r.get("record_kind") == "harness_header" or r.get("status") == "failed":
             judge_provenance(r.get("provenance"), j, ctx, f"line {i} provenance")
+            judge_apparatus_check(r, j, f"line {i}")
             continue
         tree = judge_provenance(r.get("provenance"), j, ctx, f"row {i}")
+        judge_apparatus_check(r, j, f"row {i}")
         trees.add(tree)
         if isinstance(r.get("ts"), (int, float)):
             check_skew(r["ts"], as_dict(r.get("provenance")).get("executed_git_hash"), j, ctx, f"row {i}")

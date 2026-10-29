@@ -109,7 +109,7 @@ CENSUS_SITES: tuple[str, ...] = (
     "simulation.container_runner.ensure_image",
     "hivemind.substrate_client.list_releases",
     "tools.internet_search[ddgs package]",
-    "tools.internet_search._search_duckduckgo_lite[urllib3 bypass]",
+    "tools.internet_search._search_duckduckgo_lite[html scrape]",
     "models.vision.ultralytics_engine[attempt_download_asset]",
     "inference.transcribe_audio[faster-whisper WhisperModel]",
     "huggingface_hub.hf_hub_download[direct]",
@@ -814,7 +814,7 @@ DRIVERS = {
         lambda: container_runner.LocalDockerRunner().ensure_image("alpine:3.19"),
     "hivemind.substrate_client.list_releases": lambda: substrate_client.list_releases("https://oasis.invalid"),
     "tools.internet_search[ddgs package]": lambda: internet_search._search_with_ddg_package("maxim", 1),
-    "tools.internet_search._search_duckduckgo_lite[urllib3 bypass]":
+    "tools.internet_search._search_duckduckgo_lite[html scrape]":
         lambda: internet_search._search_duckduckgo_lite("maxim", 1),
     "models.vision.ultralytics_engine[attempt_download_asset]": _ultralytics,
     "inference.transcribe_audio[faster-whisper WhisperModel]": _whisper,
