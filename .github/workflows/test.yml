@@ -250,6 +250,23 @@ jobs:
           python -m pip install --upgrade pip packaging
           python3 scripts/extras_matrix.py pins --extra ${{ matrix.extra }} --resolution ${{ matrix.resolution }} -o extras-pins.txt
 
+      - name: Install the PortAudio system library and a sound server (tts)
+        # The tts extra's sounddevice (local speakers for `maxim --tts`, #1437) raises OSError on import without
+        # PortAudio, and its own PortAudioError with no sound server: Ubuntu 26's PortAudio links libpulse and
+        # Pa_Initialize() fails hard when no PulseAudio server answers. A headless daemon (its automatic null sink)
+        # outlives this step; its socket is a filesystem path, so the network namespace reaches it.
+        if: matrix.extra == 'tts' && (github.event_name != 'pull_request' || steps.scope.outputs.run == 'true')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libportaudio2 pulseaudio
+          if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
+            export XDG_RUNTIME_DIR="$RUNNER_TEMP/xdg-runtime"
+            mkdir -p -m 700 "$XDG_RUNTIME_DIR"
+            echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR" >> "$GITHUB_ENV"
+          fi
+          pulseaudio --start --exit-idle-time=-1
+          pactl info
+
       - name: Install only the extra (and pytest)
         if: github.event_name != 'pull_request' || steps.scope.outputs.run == 'true'
         # A fresh interpreter: nothing but the extra's closure may be installed (verify checks it). NOT `|| echo`.
@@ -1184,7 +1201,7 @@ jobs:
           fi
           echo "CI grep invariants clean"
 
-      - name: CI grep invariants (1.0 guard promotion — NAc name, backend imports, raw_proxy_forward, tier names, deleted energy classes)
+      - name: CI grep invariants (1.0 guard promotion — NAc name, backend imports, raw_proxy_forward, tier names, deleted energy classes, motion safety)
         run: |
           # CLAUDE.md "NAc class name" lesson: the class is NAc
           # (decisions/nac.py), NOT NucleusAccumbens. A stale reference
@@ -1267,35 +1284,12 @@ jobs:
             echo "ERROR: deleted energy classes referenced (EnergyReactionBridge/MovementEnergyTracker)"
             exit 1
           fi
-          # 2026-08-07 orient workspace-safety fold: raw SDK motion dispatch
-          # (mini.goto_target / mini.set_target / mini.look_at_image) is
-          # restricted to the two sanctioned primitives — the controller
-          # (hardware/reachy/controller.py, clamps + motion lock) and
-          # motion/movement.py (move_head: frame composition + rotation
-          # clamps; move_antenna). One additional reference is allow-listed:
-          # embodied_runtime/movement.py's _enqueue_sdk_look_at (the SDK's
-          # own IK-managed look_at path) — since the 2026-08-09 F1
-          # retained-axes fold that site binds the SDK fn to a local
-          # (sdk_look_at = self.mini.look_at_image) so a wrapper can
-          # invalidate the controller's last-commanded stash around the
-          # dispatch; both the old direct-enqueue shape and the new binding
-          # shape are allow-listed. A new hand-rolled raw dispatch is
-          # the motor-destruction failure class (motors 2+3, hardware note
-          # in docs/plans/roadmap_1_1_to_1_3.md).
-          RAW_SDK_MOTION=$(grep -rnE --include="*.py" "mini\.(goto_target|set_target|look_at_image)" src/maxim/ \
-            | grep -v "^src/maxim/hardware/reachy/controller\.py:" \
-            | grep -v "^src/maxim/motion/movement\.py:" \
-            | grep -vE "^src/maxim/embodied_runtime/movement\.py:[0-9]+: *self\._enqueue_motor\(self\.mini\.look_at_image" \
-            | grep -vE "^src/maxim/embodied_runtime/movement\.py:[0-9]+: *sdk_look_at = self\.mini\.look_at_image" \
-            | grep -vE "^[^:]+:[0-9]+: *#" \
-            || true)
-          if [ -n "$RAW_SDK_MOTION" ]; then
-            echo "ERROR: raw SDK motion dispatch outside the sanctioned primitives"
-            echo "$RAW_SDK_MOTION"
-            echo "       Route through ReachyMiniController.goto_target (clamps + lock) or"
-            echo "       Selfy.move()'s clamped enqueue. See docs/embodiment/reachy_mini/orient_vocabulary_audit.md."
-            exit 1
-          fi
+          # Raw SDK motion dispatch and the NaN-to-limit clamp idiom on the
+          # motion path (2026-08-07 orient workspace-safety fold, widened to
+          # scripts/ and more entry points by #1496): scripts/lint_motion_safety.py
+          # owns both bans and their allow-lists. Motors 2+3 were destroyed by an
+          # unclamped pose (docs/agents/embodiment.md section 1).
+          python scripts/lint_motion_safety.py
           echo "1.0 promoted grep invariants clean"
 
       - name: CLAUDE.md invariant regression-guard lint (Principle 5)
@@ -1399,6 +1393,12 @@ jobs:
           # fails if any file's count rose vs origin/main (grandfathered
           # per-file; new files start at zero; burn-down is free).
           python3 scripts/lint_atomic_io_ratchet.py
+
+      - name: HTTP surface (HTTP clients only in utils/http.py; raw dials + egress SDKs pinned)
+        # CLAUDE.md's HTTP invariant. The urlopen grep in "CI grep invariants" stays (CLAUDE.md cites it);
+        # this AST lint also sees urllib3/requests/httpx/httpcore/aiohttp/http.client in any spelling,
+        # pins raw socket dials per file, and registers the SDKs that egress on their own.
+        run: python3 scripts/lint_http_surface.py
 
       - name: mypy per-file ratchet (roadmap 1.3.2 item 4)
         # Repo-wide, per file: no src/maxim/ file's mypy error count, nor its suppression count

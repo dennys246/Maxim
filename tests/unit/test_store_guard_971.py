@@ -468,9 +468,9 @@ def test_the_hub_logs_a_session_end_refusal_at_error(tmp_path: Path, store: str,
         # The hub READS these at session start; keep that read off the file under test.
         if getattr(hub, name, None) is not None:
             getattr(hub, name).load = lambda *a, **k: None
-    hub.on_session_start()
+    ticket = hub.on_session_start(owner=object())
     with caplog.at_level(logging.ERROR):
-        (hub.on_session_end_lightweight if lightweight else hub.on_session_end)()
+        (hub.on_session_end_lightweight if lightweight else hub.on_session_end)(ticket)
     assert any(r.levelno >= logging.ERROR and "refusing to save" in r.getMessage() for r in caplog.records)
 
 
@@ -551,11 +551,14 @@ def test_shutdown_logs_its_own_nac_refusal_at_error(tmp_path: Path, caplog) -> N
     home = tmp_path / "agents" / "a1"
     _seed_home(home)
     agent = AgentFactory(base_data_dir=tmp_path / "agents").create_agent(AgentConfig(agent_id="a1"))
-    agent.memory_hub.shutdown()
-    agent.memory_hub = None  # only shutdown's own NAc save runs
+    # #1438 PR 0: shutdown no longer saves NAc itself; its session end (the hub, in owner order) does, and that
+    # refusal must still reach ERROR on the shutdown path.
     with caplog.at_level(logging.ERROR):
         agent.shutdown()
-    assert any(r.levelno >= logging.ERROR and "NAc not saved" in r.getMessage() for r in caplog.records)
+    assert any(
+        r.levelno >= logging.ERROR and "NAc state not saved" in r.getMessage() and "nac: refusing" in r.getMessage()
+        for r in caplog.records
+    )
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,8 @@
 # Cross-session recall (1.3.4, Session R): approach note
 
-**Status:** v4, as built. Design rounds 1 and 2 are folded (§9). §10 records what building found and the owner
-decisions it took.
+**Status: SHIPPED 2026-10-28; a record now, kept at its path because tests cite it.** #1465 (a0a3e571) shipped
+§1–§11, #1484 (7b82002b) shipped #1153, and #1515 (f177ab45) shipped §12 (#1137). What remains is in §13. v4, as built.
+Design rounds 1 and 2 are folded (§9). §10 records what building found and the owner decisions it took.
 
 **Issues:** #1444, #1163, #1064 and #1447, shipped as ONE change, plus the first-turn gate (F1) and the
 tool-result channel (F3).
@@ -389,3 +390,17 @@ under `access_based` is 3 × `compression_age`, about 3 days. It ships as a rele
 - **NIT:** `heard` is kept out of the repr.
 - **NIT:** the stale size claim and `to_context_dict`'s goal are fixed, and the downgrade note is in
   `hippocampus_persistence.py` and `docs/user/upgrading.md`.
+
+## 13. What remains (2026-10-28)
+
+- **#1476: the T1-16 re-run.** T1-16 is STALE since 2026-10-25 (§7). The judge (`o19_verdict.py`'s `EXP63_PATHS`
+  and R3′ order) rejects the new `cue` path, so it is rebuilt first, then Exp 63 re-runs on the shipped ranker. Until a
+  stamped re-run lands, **1.3.4 makes no cross-session recall claim** (weak evidence never gates). It is a pure
+  re-run, so it needs no design review, but it does need the harness provenance assert and a box with no leader.
+- **#1516: the deferred follow-ups** from §8 and §9: F7 Unicode, F15 raw channels and N11, F6 activation gap,
+  spelling variants, Wire 2's tokenizer, ATL formation from user words, and `bounded_words` with a limit under 3.
+- **Not Session R's:** #845 item 1 (`runtime/loop_state.py`) moved to 1.3.6 with the B4 replan. #1422 is loop work
+  (`cli_input` is popped at arrival now; the other per-tick keys are not). #1470–#1475 are filed on their own.
+- **1.4: the experience stream.** The owner wants memory to listen to the stream instead of being polled at fixed
+  loop stages. DRAFT v1 is on branch `docs/plan-experience-stream` and owes its four-lens design review
+  (roadmap_1_4.md §Groundwork).

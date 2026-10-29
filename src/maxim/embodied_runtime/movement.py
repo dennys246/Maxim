@@ -6,11 +6,22 @@ methods that are mixed into the main Selfy class.
 
 from __future__ import annotations
 
+import logging
 import math
 import time
 import uuid
+from enum import Enum
 from typing import Any, Optional
 
+from maxim.exceptions import MotionRefused
+from maxim.hardware.reachy.controller import check_sdk_command
+from maxim.hardware.controller import (
+    clamp_finite,
+    floor_duration,
+    normalize_method,
+    require_duration,
+    require_finite,
+)
 from maxim.motion.movement import (
     move_antenna,
     move_head,
@@ -18,8 +29,35 @@ from maxim.motion.movement import (
 from maxim.utils.logging import warn
 
 
+class SyncResult(Enum):
+    """Outcome of a head-position sync (#1496).
+
+    ``OK`` is truthy; ``FAILED`` and ``NON_FINITE`` are falsy, so a caller that
+    reads the result as a bool treats a non-finite readback like any failed
+    sync. Branch on ``result is SyncResult.NON_FINITE`` (identity) where it
+    matters: the motor worker skips its blind reset from an unknown pose.
+    """
+
+    OK = "ok"
+    FAILED = "failed"
+    NON_FINITE = "non_finite"
+
+    def __bool__(self) -> bool:
+        return self is SyncResult.OK
+
+
+def _all_finite(values: Any) -> bool:
+    """True when every entry converts to a finite float."""
+    try:
+        return all(math.isfinite(float(v)) for v in values)
+    except (TypeError, ValueError):
+        return False
+
+
 class MovementMixin:
     """Mixin that supplies movement / kinematics behaviour to Selfy."""
+
+    log: logging.Logger  # set by the host (Selfy.__init__)
 
     # Safe pixel bounds for look_at_image to prevent IK failures.
     # With translation-first approach, we can use more of the frame.
@@ -122,42 +160,44 @@ class MovementMixin:
             warn("Failed to mark trainable moment: %s", e, logger=self.log)
 
     def goto_pose(self, name: str = "centered", *, duration: Optional[float] = None) -> None:
-        pose = None
-        try:
-            pose = getattr(self, "poses", {}).get(name)
-        except Exception:
-            pose = None
+        """Move the head to a named pose from ``default_poses.json``.
 
-        # Collect into locals and dispatch through self.move() — NOT a direct
-        # _enqueue_motor(move_head, ...) (2026-08-07 safety fold): move() owns
-        # the workspace clamp, so a config-authored pose beyond limits cannot
-        # ship raw. (Setting self.x..yaw first and then calling move() would
-        # trip move()'s no-op check — collect first, assign nothing.)
-        vals: tuple[float, float, float, float, float, float] | None = None
-        if isinstance(pose, (list, tuple)) and len(pose) >= 6:
-            try:
-                vals = tuple(float(pose[i]) for i in range(6))  # type: ignore[assignment]
-                if duration is None and len(pose) >= 7:
-                    duration = float(pose[6])
-            except Exception:
-                vals = None
-
-        if vals is None:
-            fallback = getattr(self, "_default_head_pose", None)
-            if not isinstance(fallback, dict):
-                fallback = {}
-            vals = (
-                float(fallback.get("x", 0.0) or 0.0),
-                float(fallback.get("y", 0.0) or 0.0),
-                float(fallback.get("z", 0.0) or 0.0),
-                float(fallback.get("roll", 0.0) or 0.0),
-                float(fallback.get("pitch", 0.0) or 0.0),
-                float(fallback.get("yaw", 0.0) or 0.0),
+        Validated before any motion (#1496): an unknown name, a pose that
+        failed to parse (``load_poses`` keeps it as ``None``), a non-finite
+        value, or an out-of-range duration raises, with no motion and no
+        sleep. A duration given here, or stored in the pose, is explicit; only
+        the mirror's ``self.duration`` is a default and gets floored.
+        """
+        key = name.strip() if isinstance(name, str) else name
+        poses = getattr(self, "poses", None) or {}
+        if key in poses:
+            pose = poses[key]
+            if pose is None:
+                raise MotionRefused("invalid", f"pose {key!r} in default_poses.json could not be parsed")
+            if not isinstance(pose, (list, tuple)) or len(pose) < 6:
+                raise MotionRefused("invalid", f"pose {key!r} needs six values, got {pose!r}")
+            vals = tuple(require_finite(f"pose {key!r}[{i}]", pose[i]) for i in range(6))
+            if duration is None and len(pose) >= 7:
+                duration = pose[6]
+        elif key == "centered":
+            # No pose table (a bare Selfy): the configured head pose is the centre.
+            fallback = getattr(self, "_default_head_pose", None) or {}
+            vals = tuple(
+                require_finite(f"default head pose {axis}", fallback.get(axis, 0.0) or 0.0)
+                for axis in ("x", "y", "z", "roll", "pitch", "yaw")
+            )
+        else:
+            raise MotionRefused(
+                "invalid", f"Unknown pose {name!r}; known poses: {', '.join(sorted(poses)) or 'centered'}"
             )
 
         if duration is None:
-            duration = float(getattr(self, "duration", 0.5) or 0.5)
+            duration = floor_duration(getattr(self, "duration", 0.5) or 0.5)
+        else:
+            duration = require_duration(duration)
 
+        # Dispatch through self.move() (2026-08-07 safety fold): move() owns the
+        # workspace clamp, so a config-authored pose beyond limits cannot ship raw.
         try:
             self.move(
                 x=vals[0],
@@ -166,17 +206,16 @@ class MovementMixin:
                 roll=vals[3],
                 pitch=vals[4],
                 yaw=vals[5],
-                duration=float(duration),
+                duration=duration,
             )
+        except MotionRefused:
+            raise
         except Exception as e:
             warn("Failed to center vision: %s", e, logger=self.log)
 
-        try:
-            time.sleep(float(duration))
-        except Exception:
-            pass
+        time.sleep(duration)
 
-    def sync_head_position(self) -> bool:
+    def sync_head_position(self) -> SyncResult:
         """Sync internal position tracking with actual hardware position.
 
         Reads the current head pose from the reachy_mini SDK and updates
@@ -195,180 +234,211 @@ class MovementMixin:
         non-SDK controller (Exp 49 seam, 2026-08-04).
 
         Returns:
-            True if sync was successful, False otherwise.
+            ``SyncResult.OK`` on success, ``FAILED`` when the read failed, and
+            ``NON_FINITE`` when it returned a non-finite value. Every readback
+            is checked BEFORE any arithmetic or mirror write (#1496): NaN slips
+            past the ``abs(x) > LIMIT`` clamps below, and an infinite body
+            would hang the angle-normalising loop.
         """
         if getattr(self, "mini", None) is None:
             return self._sync_head_position_from_controller()
         try:
-            import math
-
-            # Get current joint positions - this gives us body_yaw directly.
-            # SDK >= 1.5 joint vector is [body_yaw, *6 stewart_legs] — its own
-            # kinematics reads INDEX 0 as body_yaw (analytical_kinematics.fk:
-            # `body_yaw = joint_angles[0]`; ik returns `[body_yaw] + stewart`).
-            # The previous index-6 read (zenoh-era ordering, never migrated
-            # across the v1.5 pivot) returned a STEWART LEG angle, so every
-            # body-relative yaw derived here folded a leg-motor angle in —
-            # measured live 2026-08-04: maxim.yaw reported 26.0° while the
-            # daemon's ground truth (/api/state/full) showed world yaw −0.4°,
-            # body −0.3°, with a leg at ≈ −0.45 rad ≈ −26°. That phantom
-            # frame corrupted DoA capture yaw, focus_on_sound aim math, and
-            # the bounds learner's coordinates.
-            head_joints, antenna_joints = self.mini.get_current_joint_positions()
-
-            if head_joints is not None and len(head_joints) >= 1:
-                body_yaw_rad = head_joints[0]
-                body_yaw_deg = math.degrees(body_yaw_rad)
-                self.body_yaw = body_yaw_deg
-            else:
-                body_yaw_deg = float(getattr(self, "body_yaw", 0.0) or 0.0)
-
-            # Get current pose matrix from SDK
-            pose_matrix = self.mini.get_current_head_pose()
-
-            # Extract rotation matrix (upper-left 3x3)
-            R = pose_matrix[:3, :3]
-
-            # Extract Euler angles from rotation matrix
-            # Using ZYX convention (yaw, pitch, roll)
-            # Check for gimbal lock
-            if abs(R[2, 0]) < 0.9999:
-                pitch = -math.asin(R[2, 0])
-                yaw_world = math.atan2(R[1, 0], R[0, 0])
-                roll = math.atan2(R[2, 1], R[2, 2])
-            else:
-                # Gimbal lock - pitch is ±90°
-                pitch = math.copysign(math.pi / 2, -R[2, 0])
-                yaw_world = math.atan2(-R[0, 1], R[1, 1])
-                roll = 0.0
-
-            # Convert to degrees
-            yaw_world_deg = math.degrees(yaw_world)
-            pitch_deg = math.degrees(pitch)
-            roll_deg = math.degrees(roll)
-
-            # The pose matrix from get_current_head_pose() is in WORLD frame.
-            # We need to convert to HEAD-relative yaw by accounting for body rotation.
-            #
-            # SDK sign convention:
-            # - Negative body_yaw = body has turned LEFT
-            # - Positive body_yaw = body has turned RIGHT
-            #
-            # Formula: head_yaw = world_yaw - body_yaw
-            #
-            # Example: body turned left 77° (body_yaw=-77), head at world_yaw=-65
-            # - head_yaw = -65 - (-77) = -65 + 77 = +12° (head is 12° right of body forward)
-            yaw_deg = yaw_world_deg - body_yaw_deg  # SUBTRACT to get head-relative
-
-            # Normalize to [-180, 180]
-            while yaw_deg > 180:
-                yaw_deg -= 360
-            while yaw_deg < -180:
-                yaw_deg += 360
-
-            # DEBUG: Log body_yaw and world_yaw to diagnose frame issues
-            if abs(yaw_deg) > 55.0:
-                self.log.warning(
-                    "SYNC_DEBUG: yaw=%.1f EXCEEDS physical limit | world_yaw=%.1f body_yaw=%.1f",
-                    yaw_deg,
-                    yaw_world_deg,
-                    body_yaw_deg,
-                )
-
-            # SANITY CHECK: The head physically cannot rotate more than ±55° relative
-            # to the body. If calculated yaw exceeds this, clamp it to prevent bad behavior.
-            # Previous ±90° threshold was too permissive and allowed invalid values through.
-            # Use workspace limits (respects protocol overrides)
-            limits = self._get_workspace_limits()
-            HEAD_YAW_PHYSICAL_LIMIT = limits.get("yaw", 55.0)
-            HEAD_PITCH_PHYSICAL_LIMIT = limits.get("pitch", 35.0)
-            HEAD_ROLL_PHYSICAL_LIMIT = limits.get("roll", 35.0)
-
-            if abs(yaw_deg) > HEAD_YAW_PHYSICAL_LIMIT:
-                old_yaw = float(getattr(self, "yaw", 0.0) or 0.0)
-                clamped_yaw = max(-HEAD_YAW_PHYSICAL_LIMIT, min(HEAD_YAW_PHYSICAL_LIMIT, yaw_deg))
-                self.log.warning(
-                    "Sync: clamping invalid yaw=%.1f -> %.1f (world=%.1f - body=%.1f, old=%.1f)",
-                    yaw_deg,
-                    clamped_yaw,
-                    yaw_world_deg,
-                    body_yaw_deg,
-                    old_yaw,
-                )
-                yaw_deg = clamped_yaw
-
-            if abs(pitch_deg) > HEAD_PITCH_PHYSICAL_LIMIT:
-                old_pitch = float(getattr(self, "pitch", 0.0) or 0.0)
-                clamped_pitch = max(-HEAD_PITCH_PHYSICAL_LIMIT, min(HEAD_PITCH_PHYSICAL_LIMIT, pitch_deg))
-                self.log.warning(
-                    "Sync: clamping invalid pitch=%.1f -> %.1f (old=%.1f)", pitch_deg, clamped_pitch, old_pitch
-                )
-                pitch_deg = clamped_pitch
-
-            if abs(roll_deg) > HEAD_ROLL_PHYSICAL_LIMIT:
-                old_roll = float(getattr(self, "roll", 0.0) or 0.0)
-                clamped_roll = max(-HEAD_ROLL_PHYSICAL_LIMIT, min(HEAD_ROLL_PHYSICAL_LIMIT, roll_deg))
-                self.log.warning(
-                    "Sync: clamping invalid roll=%.1f -> %.1f (old=%.1f)", roll_deg, clamped_roll, old_roll
-                )
-                roll_deg = clamped_roll
-
-            # Extract translation (convert meters to mm)
-            x_mm = pose_matrix[0, 3] * 1000
-            y_mm = pose_matrix[1, 3] * 1000
-            z_mm = pose_matrix[2, 3] * 1000
-
-            # Update internal tracking
-            old_yaw = float(getattr(self, "yaw", 0.0) or 0.0)
-            old_pitch = float(getattr(self, "pitch", 0.0) or 0.0)
-            old_y = float(getattr(self, "y", 0.0) or 0.0)
-            old_z = float(getattr(self, "z", 0.0) or 0.0)
-
-            self.x = x_mm
-            self.y = y_mm
-            self.z = z_mm
-            self.roll = roll_deg
-            self.pitch = pitch_deg
-            self.yaw = yaw_deg
-
-            # Only log if there's a significant difference (>2° or >2mm)
-            yaw_diff = abs(old_yaw - yaw_deg)
-            pitch_diff = abs(old_pitch - pitch_deg)
-            y_diff = abs(old_y - y_mm)
-            z_diff = abs(old_z - z_mm)
-
-            if yaw_diff > 2.0 or pitch_diff > 2.0 or y_diff > 2.0 or z_diff > 2.0:
-                self.log.debug(
-                    "Sync: yaw=%.1f (body=%.1f), pitch=%.1f, y=%.1f, z=%.1f",
-                    yaw_deg,
-                    body_yaw_deg,
-                    pitch_deg,
-                    y_mm,
-                    z_mm,
-                )
-
-            # Record position for pain detection (if enabled)
-            pain_bridge = getattr(getattr(self, "_default_network", None), "_pain_bridge", None)
-            if pain_bridge is not None:
-                try:
-                    pain_bridge.detector.record_position(
-                        yaw=yaw_deg,
-                        pitch=pitch_deg,
-                        x=x_mm,
-                        y=y_mm,
-                        z=z_mm,
-                        roll=roll_deg,
-                    )
-                except Exception as pain_e:
-                    self.log.debug("Pain recording failed: %s", pain_e)
-
-            return True
-
+            reading = self._read_sdk_head_pose()
         except Exception as e:
             self.log.warning("Failed to sync head position: %s", e)
-            return False
+            return SyncResult.FAILED
+        if reading is None:
+            return self._note_non_finite_sync()
+        body_yaw_deg, pose_matrix = reading
+        try:
+            self.body_yaw = body_yaw_deg
+            return self._apply_sdk_head_pose(body_yaw_deg, pose_matrix)
+        except Exception as e:
+            self.log.warning("Failed to sync head position: %s", e)
+            return SyncResult.FAILED
 
-    def _sync_head_position_from_controller(self) -> bool:
+    def _note_non_finite_sync(self) -> SyncResult:
+        """Keep the mirror; log one ERROR per episode of non-finite readbacks."""
+        if not getattr(self, "_sync_non_finite_episode", False):
+            self._sync_non_finite_episode = True
+            self.log.error(
+                "Head sync: the readback is not finite; keeping the last mirror and refusing to move from it"
+            )
+        return SyncResult.NON_FINITE
+
+    def _read_sdk_head_pose(self) -> "tuple[float, Any] | None":
+        """Read (body yaw degrees, head pose matrix) from the SDK; None if non-finite."""
+        import numpy as np
+
+        # Get current joint positions - this gives us body_yaw directly.
+        # SDK >= 1.5 joint vector is [body_yaw, *6 stewart_legs] — its own
+        # kinematics reads INDEX 0 as body_yaw (analytical_kinematics.fk:
+        # `body_yaw = joint_angles[0]`; ik returns `[body_yaw] + stewart`).
+        # The previous index-6 read (zenoh-era ordering, never migrated
+        # across the v1.5 pivot) returned a STEWART LEG angle, so every
+        # body-relative yaw derived here folded a leg-motor angle in —
+        # measured live 2026-08-04: maxim.yaw reported 26.0° while the
+        # daemon's ground truth (/api/state/full) showed world yaw −0.4°,
+        # body −0.3°, with a leg at ≈ −0.45 rad ≈ −26°. That phantom
+        # frame corrupted DoA capture yaw, focus_on_sound aim math, and
+        # the bounds learner's coordinates.
+        mini = getattr(self, "mini", None)
+        head_joints, _antenna_joints = mini.get_current_joint_positions()
+        body_values = [head_joints[0]] if head_joints is not None and len(head_joints) >= 1 else []
+        head = mini.get_current_head_pose()
+        if head is None:
+            raise ValueError("no head pose yet")  # missing -> FAILED, not NON_FINITE
+        pose_matrix = np.asarray(head, dtype=np.float64)
+        if pose_matrix.shape != (4, 4):
+            raise ValueError(f"head pose has shape {pose_matrix.shape}, expected (4, 4)")
+        if not _all_finite(body_values) or not _all_finite(pose_matrix.ravel()):
+            return None
+        if body_values:
+            body_yaw_deg = math.degrees(float(body_values[0]))
+        else:
+            body_yaw_deg = float(getattr(self, "body_yaw", 0.0) or 0.0)
+        return body_yaw_deg, pose_matrix
+
+    def _apply_sdk_head_pose(self, body_yaw_deg: float, pose_matrix: Any) -> SyncResult:
+        """Write the checked readback into the mirrors (the SDK arm of sync)."""
+        # Extract rotation matrix (upper-left 3x3)
+        R = pose_matrix[:3, :3]
+
+        # Extract Euler angles from rotation matrix
+        # Using ZYX convention (yaw, pitch, roll)
+        # Check for gimbal lock
+        if abs(R[2, 0]) < 0.9999:
+            pitch = -math.asin(R[2, 0])
+            yaw_world = math.atan2(R[1, 0], R[0, 0])
+            roll = math.atan2(R[2, 1], R[2, 2])
+        else:
+            # Gimbal lock - pitch is ±90°
+            pitch = math.copysign(math.pi / 2, -R[2, 0])
+            yaw_world = math.atan2(-R[0, 1], R[1, 1])
+            roll = 0.0
+
+        # Convert to degrees
+        yaw_world_deg = math.degrees(yaw_world)
+        pitch_deg = math.degrees(pitch)
+        roll_deg = math.degrees(roll)
+
+        # The pose matrix from get_current_head_pose() is in WORLD frame.
+        # We need to convert to HEAD-relative yaw by accounting for body rotation.
+        #
+        # SDK sign convention:
+        # - Negative body_yaw = body has turned LEFT
+        # - Positive body_yaw = body has turned RIGHT
+        #
+        # Formula: head_yaw = world_yaw - body_yaw
+        #
+        # Example: body turned left 77° (body_yaw=-77), head at world_yaw=-65
+        # - head_yaw = -65 - (-77) = -65 + 77 = +12° (head is 12° right of body forward)
+        yaw_deg = yaw_world_deg - body_yaw_deg  # SUBTRACT to get head-relative
+
+        # Normalize to [-180, 180]
+        while yaw_deg > 180:
+            yaw_deg -= 360
+        while yaw_deg < -180:
+            yaw_deg += 360
+
+        # DEBUG: Log body_yaw and world_yaw to diagnose frame issues
+        if abs(yaw_deg) > 55.0:
+            self.log.warning(
+                "SYNC_DEBUG: yaw=%.1f EXCEEDS physical limit | world_yaw=%.1f body_yaw=%.1f",
+                yaw_deg,
+                yaw_world_deg,
+                body_yaw_deg,
+            )
+
+        # SANITY CHECK: The head physically cannot rotate more than ±55° relative
+        # to the body. If calculated yaw exceeds this, clamp it to prevent bad behavior.
+        # Previous ±90° threshold was too permissive and allowed invalid values through.
+        # Use workspace limits (respects protocol overrides)
+        limits = self._get_workspace_limits()
+        HEAD_YAW_PHYSICAL_LIMIT = limits.get("yaw", 55.0)
+        HEAD_PITCH_PHYSICAL_LIMIT = limits.get("pitch", 35.0)
+        HEAD_ROLL_PHYSICAL_LIMIT = limits.get("roll", 35.0)
+
+        if abs(yaw_deg) > HEAD_YAW_PHYSICAL_LIMIT:
+            old_yaw = float(getattr(self, "yaw", 0.0) or 0.0)
+            clamped_yaw = clamp_finite("yaw_deg", yaw_deg, -HEAD_YAW_PHYSICAL_LIMIT, HEAD_YAW_PHYSICAL_LIMIT)
+            self.log.warning(
+                "Sync: clamping invalid yaw=%.1f -> %.1f (world=%.1f - body=%.1f, old=%.1f)",
+                yaw_deg,
+                clamped_yaw,
+                yaw_world_deg,
+                body_yaw_deg,
+                old_yaw,
+            )
+            yaw_deg = clamped_yaw
+
+        if abs(pitch_deg) > HEAD_PITCH_PHYSICAL_LIMIT:
+            old_pitch = float(getattr(self, "pitch", 0.0) or 0.0)
+            clamped_pitch = clamp_finite("pitch_deg", pitch_deg, -HEAD_PITCH_PHYSICAL_LIMIT, HEAD_PITCH_PHYSICAL_LIMIT)
+            self.log.warning(
+                "Sync: clamping invalid pitch=%.1f -> %.1f (old=%.1f)", pitch_deg, clamped_pitch, old_pitch
+            )
+            pitch_deg = clamped_pitch
+
+        if abs(roll_deg) > HEAD_ROLL_PHYSICAL_LIMIT:
+            old_roll = float(getattr(self, "roll", 0.0) or 0.0)
+            clamped_roll = clamp_finite("roll_deg", roll_deg, -HEAD_ROLL_PHYSICAL_LIMIT, HEAD_ROLL_PHYSICAL_LIMIT)
+            self.log.warning("Sync: clamping invalid roll=%.1f -> %.1f (old=%.1f)", roll_deg, clamped_roll, old_roll)
+            roll_deg = clamped_roll
+
+        # Extract translation (convert meters to mm)
+        x_mm = pose_matrix[0, 3] * 1000
+        y_mm = pose_matrix[1, 3] * 1000
+        z_mm = pose_matrix[2, 3] * 1000
+
+        # Update internal tracking
+        old_yaw = float(getattr(self, "yaw", 0.0) or 0.0)
+        old_pitch = float(getattr(self, "pitch", 0.0) or 0.0)
+        old_y = float(getattr(self, "y", 0.0) or 0.0)
+        old_z = float(getattr(self, "z", 0.0) or 0.0)
+
+        self.x = x_mm
+        self.y = y_mm
+        self.z = z_mm
+        self.roll = roll_deg
+        self.pitch = pitch_deg
+        self.yaw = yaw_deg
+
+        # Only log if there's a significant difference (>2° or >2mm)
+        yaw_diff = abs(old_yaw - yaw_deg)
+        pitch_diff = abs(old_pitch - pitch_deg)
+        y_diff = abs(old_y - y_mm)
+        z_diff = abs(old_z - z_mm)
+
+        if yaw_diff > 2.0 or pitch_diff > 2.0 or y_diff > 2.0 or z_diff > 2.0:
+            self.log.debug(
+                "Sync: yaw=%.1f (body=%.1f), pitch=%.1f, y=%.1f, z=%.1f",
+                yaw_deg,
+                body_yaw_deg,
+                pitch_deg,
+                y_mm,
+                z_mm,
+            )
+
+        # Record position for pain detection (if enabled)
+        pain_bridge = getattr(getattr(self, "_default_network", None), "_pain_bridge", None)
+        if pain_bridge is not None:
+            try:
+                pain_bridge.detector.record_position(
+                    yaw=yaw_deg,
+                    pitch=pitch_deg,
+                    x=x_mm,
+                    y=y_mm,
+                    z=z_mm,
+                    roll=roll_deg,
+                )
+            except Exception as pain_e:
+                self.log.debug("Pain recording failed: %s", pain_e)
+
+        self._sync_non_finite_episode = False
+        return SyncResult.OK
+
+    def _sync_head_position_from_controller(self) -> SyncResult:
         """Sync the frame mirrors from the RobotController abstraction.
 
         The non-SDK arm of :meth:`sync_head_position` (see its docstring).
@@ -385,10 +455,12 @@ class MovementMixin:
 
             robot = getattr(self, "_robot", None)
             if robot is None or not robot.is_connected():
-                return False
+                return SyncResult.FAILED
             pose = robot.get_current_pose() or {}
             if "yaw" not in pose:
-                return False
+                return SyncResult.FAILED
+            if not _all_finite(pose[k] for k in ("yaw", "body_yaw", "pitch", "roll") if k in pose):
+                return self._note_non_finite_sync()
             body_yaw_deg = math.degrees(float(pose.get("body_yaw", 0.0) or 0.0))
             yaw_deg = math.degrees(float(pose["yaw"])) - body_yaw_deg
             while yaw_deg > 180:
@@ -401,10 +473,11 @@ class MovementMixin:
                 self.pitch = math.degrees(float(pose["pitch"]))
             if "roll" in pose:
                 self.roll = math.degrees(float(pose["roll"]))
-            return True
+            self._sync_non_finite_episode = False
+            return SyncResult.OK
         except Exception as e:
             self.log.debug("Controller-abstraction head sync failed: %s", e)
-            return False
+            return SyncResult.FAILED
 
     # Protocol workspace override — set by ProtocolRegistry, read by
     # _get_workspace_limits(). Can only tighten, never widen limits.
@@ -484,14 +557,14 @@ class MovementMixin:
         yaw_limit = limits["yaw"]
 
         # 1. Clamp translation to rectangular bounds first
-        x = max(-x_limit, min(x_limit, x))
-        y = max(-y_limit, min(y_limit, y))
-        z = max(-z_limit, min(z_limit, z))
+        x = clamp_finite("x", x, -x_limit, x_limit)
+        y = clamp_finite("y", y, -y_limit, y_limit)
+        z = clamp_finite("z", z, -z_limit, z_limit)
 
         # 2. Clamp rotation to rectangular bounds
-        roll = max(-roll_limit, min(roll_limit, roll))
-        pitch = max(-pitch_limit, min(pitch_limit, pitch))
-        yaw = max(-yaw_limit, min(yaw_limit, yaw))
+        roll = clamp_finite("roll", roll, -roll_limit, roll_limit)
+        pitch = clamp_finite("pitch", pitch, -pitch_limit, pitch_limit)
+        yaw = clamp_finite("yaw", yaw, -yaw_limit, yaw_limit)
 
         # 3. Check translation ellipsoid: (x/max_x)² + (y/max_y)² + (z/max_z)² <= 1
         if x_limit > 0 and y_limit > 0 and z_limit > 0:
@@ -601,8 +674,12 @@ class MovementMixin:
             clamp_to_bounds: Whether to clamp coordinates to safe pixel bounds.
                              This prevents the robot from drifting outside servo limits.
         """
-        if duration is None:
-            duration = getattr(self, "duration", 0.5)
+        # Validated synchronously (#1496): a duration of 0 or NaN would take the
+        # SDK's instant set_target branch on the motor thread.
+        duration = (
+            floor_duration(getattr(self, "duration", 0.5) or 0.5) if duration is None else require_duration(duration)
+        )
+        u, v = require_finite("u", u), require_finite("v", v)
 
         u, v = self._clamp_pixel_to_safe_bounds(u, v, clamp_to_bounds)
         position = (int(u), int(v))
@@ -672,8 +749,8 @@ class MovementMixin:
         if not clamp_to_bounds:
             return int(u), int(v)
         bounds = self._LOOK_AT_PIXEL_BOUNDS
-        u_clamped = max(bounds["u_min"], min(bounds["u_max"], int(u)))
-        v_clamped = max(bounds["v_min"], min(bounds["v_max"], int(v)))
+        u_clamped = int(clamp_finite("u", int(u), bounds["u_min"], bounds["u_max"]))
+        v_clamped = int(clamp_finite("v", int(v), bounds["v_min"], bounds["v_max"]))
         if u_clamped != int(u) or v_clamped != int(v):
             self.log.debug("Clamped look_at_image coordinates: (%d, %d) -> (%d, %d)", u, v, u_clamped, v_clamped)
         return u_clamped, v_clamped
@@ -800,11 +877,11 @@ class MovementMixin:
             except Exception as e:
                 self.log.debug("Pain bridge record_action_start failed: %s", e)
 
-        self.turn_around(turn_angle, duration=self._TURN_AROUND_DURATION, recenter_head=True)
+        turned = self.turn_around(turn_angle, duration=self._TURN_AROUND_DURATION, recenter_head=True)
 
         if pain_bridge is not None:
             try:
-                pain_bridge.record_action_complete(success=True)
+                pain_bridge.record_action_complete(success=turned is not False)
             except Exception as e:
                 self.log.debug("Pain bridge record_action_complete failed: %s", e)
 
@@ -873,8 +950,8 @@ class MovementMixin:
         final_u = int(self._IMAGE_CENTER_U + du)
         final_v = int(self._IMAGE_CENTER_V + dv)
         px_bounds = self._LOOK_AT_PIXEL_BOUNDS
-        final_u = max(px_bounds["u_min"], min(px_bounds["u_max"], final_u))
-        final_v = max(px_bounds["v_min"], min(px_bounds["v_max"], final_v))
+        final_u = int(clamp_finite("u", final_u, px_bounds["u_min"], px_bounds["u_max"]))
+        final_v = int(clamp_finite("v", final_v, px_bounds["v_min"], px_bounds["v_max"]))
         return final_u, final_v
 
     def _log_look_at_debug(
@@ -990,17 +1067,23 @@ class MovementMixin:
         # Invalidate BEFORE dispatch (conservative direction: a spurious
         # clear costs one readback seed; a missed clear leaves stale
         # re-commands) and only when the head will actually move.
+        #
+        # Last mile (#1496), at motor-thread dispatch time, on every moving
+        # call: the duration's range (0 or NaN takes the SDK's instant
+        # set_target) and the present pose (defence in depth). The SDK computes
+        # its target from that same readback, so the check runs BEFORE the call.
+        mini = self.mini
         sdk_look_at = self.mini.look_at_image
         invalidate = getattr(getattr(self, "_robot", None), "note_external_head_motion", None)
-        if perform_movement and invalidate is not None:
 
-            def _look_at_with_invalidate(*args: Any, **kw: Any) -> Any:
-                invalidate()
-                return sdk_look_at(*args, **kw)
+        def _checked_look_at(*args: Any, **kw: Any) -> Any:
+            if kw.get("perform_movement", True):
+                kw["duration"], _ = check_sdk_command(mini, duration=kw.get("duration"))
+                if invalidate is not None:
+                    invalidate()
+            return sdk_look_at(*args, **kw)
 
-            self._enqueue_motor(_look_at_with_invalidate, sdk_u, sdk_v, **kwargs)
-        else:
-            self._enqueue_motor(sdk_look_at, sdk_u, sdk_v, **kwargs)
+        self._enqueue_motor(_checked_look_at, sdk_u, sdk_v, **kwargs)
 
     def move(
         self,
@@ -1031,6 +1114,15 @@ class MovementMixin:
         :param duration: Description
         :type duration: Optional[float]
         """
+
+        # Validate before mutating anything (#1496): a refusal must never poison
+        # the mirror (self.x..yaw, self.duration) that DN and move_relative read.
+        x, y, z, roll, pitch, yaw = (
+            None if value is None else require_finite(axis, value)
+            for axis, value in (("x", x), ("y", y), ("z", z), ("roll", roll), ("pitch", pitch), ("yaw", yaw))
+        )
+        if duration is not None:
+            duration = require_duration(duration)
 
         # Update duration if specified
         if duration is not None:
@@ -1183,10 +1275,11 @@ class MovementMixin:
                    Values are in "scaled units" - divide by 10 to get actual movement.
             duration: Movement duration in seconds.
         """
-        if duration is None:
-            duration = getattr(self, "duration", 0.5)
+        duration = (
+            floor_duration(getattr(self, "duration", 0.5) or 0.5) if duration is None else require_duration(duration)
+        )
 
-        dx, dy = delta
+        dx, dy = (require_finite("delta", d) for d in delta)
 
         # Convert from scaled units to actual movement amounts
         # Split between translation (primary) and rotation (secondary)
@@ -1240,7 +1333,7 @@ class MovementMixin:
         *,
         duration: float = 5.0,
         recenter_head: bool = True,
-    ) -> None:
+    ) -> bool:
         """Rotate the body to bring a new area into view.
 
         This is used when the head is at its yaw limit and there's something
@@ -1252,7 +1345,21 @@ class MovementMixin:
                    negative = clockwise (right).
             duration: Time for the rotation in seconds (default 5.0).
             recenter_head: If True, return head toward center during rotation.
+
+        Returns:
+            True when the controller accepted both steps. False when there is no
+            controller, a step was rejected (the controller turns a dispatch-time
+            refusal into a rejection), or the turn failed; the body never turns
+            under a head that did not recentre (#1496).
+
+        Raises:
+            MotionRefused: a non-finite angle or an out-of-range duration, checked
+                before the motor queue is cleared or DN inhibited, so it changes
+                nothing; or a non-finite body readback, refused after the queue
+                was cleared (DN is still released).
         """
+        angle = require_finite("angle", angle)
+        duration = require_duration(duration)
 
         self.log.info("turn_around: rotating body %.0f° over %.1fs (recenter_head=%s)", angle, duration, recenter_head)
 
@@ -1294,19 +1401,23 @@ class MovementMixin:
             robot = getattr(self, "_robot", None)
             if robot is None:
                 self.log.warning("turn_around: no robot controller — skipping body rotation")
-                return
+                return False
 
             # Get ACTUAL current body yaw from the controller's pose read.
+            # A MISSING readback falls back to the mirror (#1499 owns that); a
+            # RETURNED non-finite one is refused, outside the try (#1496).
+            body_read: Any = None
             try:
                 pose = robot.get_current_pose() or {}
-                current_body_yaw = math.degrees(float(pose["body_yaw"])) if "body_yaw" in pose else None
-            except Exception:
-                current_body_yaw = None
-            if current_body_yaw is None:
+                body_read = pose.get("body_yaw")
+            except Exception as read_e:
+                self.log.debug("turn_around: body readback failed: %s", read_e)
+            if body_read is not None:
+                current_body_yaw = math.degrees(require_finite("readback body_yaw", body_read))
+            else:
                 current_body_yaw = float(getattr(self, "body_yaw", 0.0) or 0.0)
 
-            target_body_yaw = current_body_yaw + angle
-            target_body_yaw = max(-160.0, min(160.0, target_body_yaw))
+            target_body_yaw = clamp_finite("body_yaw", current_body_yaw + angle, -160.0, 160.0)
 
             self.log.info(
                 "turn_around: 2-step sequence starting (body %.1f -> %.1f)", current_body_yaw, target_body_yaw
@@ -1317,8 +1428,10 @@ class MovementMixin:
             # during the turn). head_yaw on MotionTarget is body-relative, so
             # 0.0 means "straight ahead of the body", not world zero.
             # ═══════════════════════════════════════════════════════════════════
-            step1_duration = min(2.0, duration * 0.3)
+            # Derived step durations are floored into range, never refused.
+            step1_duration = floor_duration(min(2.0, duration * 0.3))
             self.log.info("turn_around STEP 1: centering head (%.1fs)", step1_duration)
+            ok1 = False
             try:
                 ok1 = robot.goto_target(
                     MotionTarget(head_roll=0.0, head_pitch=0.0, head_yaw=0.0, duration=step1_duration)
@@ -1326,15 +1439,21 @@ class MovementMixin:
                 if not ok1:
                     self.log.warning("turn_around STEP 1: motion command rejected")
                 time_mod.sleep(step1_duration + 0.3)  # Wait for completion + buffer
+            except MotionRefused:
+                raise
             except Exception as e1:
                 self.log.warning("turn_around STEP 1 failed: %s", e1)
+            if not ok1:
+                # Never turn the body under a head that did not recentre.
+                self.log.warning("turn_around: skipping the body rotation after STEP 1 failed")
+                return False
 
             # ═══════════════════════════════════════════════════════════════════
             # STEP 2: Rotate body. The controller composes a head matrix with
             # the body delta added (head-frame invariant), so the head — and
             # the camera/mics in it — ride along instead of counter-rotating.
             # ═══════════════════════════════════════════════════════════════════
-            step2_duration = max(3.0, duration * 0.5)
+            step2_duration = floor_duration(max(3.0, duration * 0.5))
             body_yaw_rad = math.radians(target_body_yaw)
 
             self.log.info("turn_around STEP 2: rotating body to %.1f° (%.1fs)", target_body_yaw, step2_duration)
@@ -1344,6 +1463,8 @@ class MovementMixin:
                 if not ok2:
                     self.log.warning("turn_around STEP 2: motion command rejected")
                 time_mod.sleep(step2_duration + 0.3)  # Wait for completion + buffer
+            except MotionRefused:
+                raise
             except Exception as e2:
                 self.log.warning("turn_around STEP 2 failed: %s", e2)
 
@@ -1362,7 +1483,7 @@ class MovementMixin:
             # happened — sync_head_position above already restored the
             # hardware truth, and overwriting it with the TARGET would
             # corrupt every frame consumer until the next sync.
-            if ok2:
+            if ok1 and ok2:
                 self.body_yaw = target_body_yaw
                 if recenter_head:
                     self.yaw = 0.0
@@ -1376,12 +1497,16 @@ class MovementMixin:
                 target_body_yaw,
                 step1_duration + step2_duration + 0.8,
             )
+            return bool(ok2)
 
+        except MotionRefused:
+            raise
         except Exception as e:
             self.log.warning("turn_around failed: %s", e)
             import traceback
 
             self.log.debug("turn_around traceback: %s", traceback.format_exc())
+            return False
 
         finally:
             # Release DefaultNetwork inhibition
@@ -1405,8 +1530,12 @@ class MovementMixin:
         if angle is not None:
             right = angle
             left = angle
-        if duration is None:
-            duration = self.duration
+        # Validated synchronously (#1496); the motor-thread primitive re-checks.
+        for side, value in (("right", right), ("left", left)):
+            if value is not None:
+                require_finite(side, value)
+        duration = floor_duration(self.duration) if duration is None else require_duration(duration)
+        method = normalize_method(method)
 
         self._enqueue_motor(
             move_antenna,

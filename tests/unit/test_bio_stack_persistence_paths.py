@@ -49,7 +49,8 @@ def test_nac_actually_round_trips_to_disk():
 
     d = Path(tempfile.mkdtemp())
     bs = build_bio_stack(agent_id="roundtrip_probe", persistence_dir=str(d))
-    bs.memory_hub._session_active = True
+    # #1438 PR 0: _session_active is read-only; claim the ledger directly (no restore), as the old flag did.
+    ticket = bs.memory_hub._ownership.claim(owner=object())
     bs.nac.observe(
         event_type="tool_use",
         event_signature="tool:respond",
@@ -58,7 +59,7 @@ def test_nac_actually_round_trips_to_disk():
         outcome_valence=Valence.POSITIVE,
         delta_seconds=0.0,
     )
-    bs.memory_hub.on_session_end_lightweight()
+    bs.memory_hub.on_session_end_lightweight(ticket)
     assert (d / "nac.json").is_file(), "NAc state was not written — the save is being skipped again"
 
 

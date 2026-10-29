@@ -34,6 +34,8 @@ from pathlib import Path
 
 import pytest
 
+from maxim.integration.session_ownership import SessionTicket
+
 SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
@@ -76,7 +78,7 @@ def _build(tmp_path: Path, srv: ScriptedWaterBridge, agent_id: str):
     aut = build_minecraft_aut(
         agent_id=agent_id, bridge_port=srv.port, persistence_dir=str(home), entity_ref="bodies/minecraft_player"
     )
-    aut.bio.memory_hub.on_session_start()
+    aut.bio.memory_hub.on_session_start(owner=aut)  # the harness owns it, as the scripts do (#1438 PR 0)
     encoder = make_fresh_encoder(aut)
     pump = MinecraftSyncPump(aut, interval_s=0.25)
     pump.start()
@@ -260,10 +262,15 @@ def test_staging_close_refuses_when_the_hub_session_is_not_active() -> None:
     """The negative arm: a hub whose close returns {} persisted nothing — never copy a stale file."""
 
     class _Hub:
-        def on_session_start(self):
-            return {"already_active": 0}
+        # #1438 PR 0: the fake speaks the ticket API; its close of the ticket it handed out still persists nothing.
+        ticket = None
 
-        def on_session_end(self):
+        def on_session_start(self, *, owner, live=False, deadline_s=None):
+            self.ticket = SessionTicket(generation=1, owner=owner)
+            return self.ticket
+
+        def on_session_end(self, ticket):
+            assert ticket is not None and ticket is self.ticket, "ended a session this fake never opened"
             return {}
 
     class _Bio:
@@ -367,7 +374,9 @@ def test_without_the_reopen_the_staging_close_refuses_instead_of_staging_stale_f
         assert trial.check_liveness() >= FAST["loop_liveness_min_ticks"]  # the loop closes the hub session here
         aut.bio.nac.record_cluster_fear(agent_id, "some-water-node", "drive:oxygen", 1.0)
         trial.detach_instruments()
-        aut.bio.memory_hub.on_session_start = lambda: {}  # type: ignore[method-assign]  — a hub that will not re-open
+        # A hub that will not re-open: the re-claim hands back a ticket that is not the hub's current one, so its
+        # close ends nothing and returns {} (#1438 PR 0: the old fake returned {} from a ticketless start).
+        aut.bio.memory_hub.on_session_start = lambda *, owner, **_kw: SessionTicket(generation=-1, owner=owner)  # type: ignore[method-assign]
         with pytest.raises(Refusal, match="nothing persisted"):
             close_and_stage(aut, pump, tmp_path / "stage_trap")
         assert not (tmp_path / "stage_trap" / "aut_nac.json").exists()

@@ -16,7 +16,7 @@ Usage::
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 
 class MaximError(Exception):
@@ -261,6 +261,23 @@ class RunDirAmbiguous(MaximMemoryError, ValueError):
     """
 
 
+class SessionRefusal(MaximMemoryError, RuntimeError):
+    """A memory-session claim was refused (#1438): the one class a loop's caller catches (PR 1/2 map it to a 409 or
+    exit 2). Its subclasses say why."""
+
+
+class SessionHeld(SessionRefusal):
+    """A memory session is held by a live loop, so another owner cannot claim it (#1438 PR 0).
+
+    Raised by ``integration.session_ownership.SessionOwnership.claim`` (through ``MemoryHub.on_session_start``) when
+    a running agent loop holds the hub's session. It propagates as a typed abort of the loop that tried to claim it.
+    """
+
+
+class SessionStillEnding(SessionRefusal):
+    """A memory session is still ending and did not finish within the claimer's deadline (#1438 PR 0)."""
+
+
 class MemoryCapacityError(MaximMemoryError):
     """Memory capacity limit exceeded."""
 
@@ -389,6 +406,38 @@ class MotorError(HardwareError):
     pass
 
 
+MotionRefusalKind = Literal["non_finite", "duration", "method", "range", "invalid"]
+
+
+class MotionRefused(HardwareError, ValueError):
+    """A motion command refused before it reached a motor (#1496).
+
+    Raised for a non-finite value, a duration outside [0.1 s, 10 s], an
+    interpolation method that overshoots, a config value past a hard cap, or
+    structurally invalid input. Also a ``ValueError``, so a refusal reads as bad
+    input; that makes every ``except ValueError`` that substitutes a default
+    motion a hazard: validation never sits inside such a handler
+    (docs/plans/motion_finite_1496.md section 3).
+
+    Attributes:
+        kind: ``"non_finite"`` (NaN or Inf), ``"duration"`` (outside the range),
+            ``"method"`` (an unknown or overshooting interpolation), ``"range"``
+            (a config value past a hard cap, e.g. an orient delta over 90 deg), or
+            ``"invalid"`` (not a number, the wrong shape, an unknown pose).
+            #1499's recorder split keys on it.
+        reason: Human-readable reason, returned to the model by the tools.
+    """
+
+    def __init__(self, kind: MotionRefusalKind = "invalid", reason: str = "") -> None:
+        super().__init__(reason, context={"kind": kind})
+        self.kind: MotionRefusalKind = kind
+        self.reason = reason
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        # Positional (kind, reason), so pickle and copy rebuild it faithfully.
+        return (type(self), (self.kind, self.reason))
+
+
 class SensorError(HardwareError):
     """Sensor reading error."""
 
@@ -463,6 +512,9 @@ __all__ = [
     "RunDirNotFound",
     "RunDirAmbiguous",
     "MemoryCapacityError",
+    "SessionRefusal",
+    "SessionHeld",
+    "SessionStillEnding",
     # Planning
     "PlanningError",
     "ConstraintViolation",
@@ -477,6 +529,7 @@ __all__ = [
     # Hardware
     "HardwareError",
     "MotorError",
+    "MotionRefused",
     "SensorError",
     "CameraError",
     "AudioError",

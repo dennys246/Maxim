@@ -29,12 +29,12 @@ protocol: `store`, `get`, `remove`, `recall`, `recall_associated`, `graph`,
 
 ## Access Patterns by Phase
 
-### Phase 1: Session Start (`MemoryHub.on_session_start()`)
+### Phase 1: Session Start (`MemoryHub.on_session_start(owner=...)`)
 
 This is the only time bridges do heavy hippocampus reads.
 
 ```
-MemoryHub.on_session_start()
+MemoryHub.on_session_start(owner=...)   # a fresh open restores; a re-claim or a loop's handover does not (#1438)
   ├─ hippocampus.load()                    [READ disk → memory]
   ├─ spatial_bridge.on_session_start()
   │   ├─ hippocampus.recall(success=True)  [READ — 500 memories]
@@ -110,10 +110,10 @@ MemoryHub.get_spatial_boosts(goal)        → spatial_bridge cache    [READ cach
 MemoryHub.get_escalation_threshold()      → escalation_bridge cache [READ cache, no hippocampus]
 ```
 
-### Phase 3: Session End (`MemoryHub.on_session_end()`)
+### Phase 3: Session End (`MemoryHub.on_session_end(ticket)`)
 
 ```
-MemoryHub.on_session_end()
+MemoryHub.on_session_end(ticket)   # only the current generation's ticket ends it (#1438)
   ├─ hippocampus.flush()                  [drain async capture queue if passive]
   ├─ hippocampus.sleep()                  [consolidation: compress, prune, promote]
   │   ├─ _compress_old_memories()

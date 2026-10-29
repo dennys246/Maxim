@@ -107,6 +107,10 @@ def _build(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, **overrides: Any) ->
         sim_adapter=None,
     )
     kwargs.update(overrides)
+    if "session" not in kwargs:  # #1438 PR 0: run_agentic_loop's bio_session hands setup the claimed session
+        from maxim.runtime.bio_integration import BioSession
+
+        kwargs["session"] = BioSession(memory_hub=kwargs["memory_hub"], hippocampus=kwargs["hippocampus"], ticket=None)
     return build_loop_run(**kwargs)
 
 
@@ -150,8 +154,6 @@ _UNPACK = {
     "_is_novel_thought": "is_novel_thought",
     "_max_response_tokens_override": "max_response_tokens_override",
     "_max_cycles_override": "max_cycles_override",
-    "dn_enabled": "dn_enabled",
-    "memory_hub_enabled": "memory_hub_enabled",
     "_loop_nac": "nac",
     "_loop_xclock": "xclock",
     "_loop_agent_id": "agent_id",
@@ -224,16 +226,18 @@ def test_execute_and_learn_is_bound_to_the_runs_own_handles(monkeypatch, tmp_pat
     assert unbound == ["action", "confidence", "proposal", "observation", "human_involved"]
 
 
-@pytest.mark.parametrize("start_fails", [False, True])
-def test_execute_and_learn_gets_the_hub_only_when_its_session_started(monkeypatch, tmp_path, start_fails):
+@pytest.mark.parametrize("has_ticket", [True, False])
+def test_execute_and_learn_gets_the_hub_only_when_its_session_started(monkeypatch, tmp_path, has_ticket):
     """#1133: ``execute_and_learn`` books a plan outcome iff ``memory_hub`` is not None, so the binding must
-    pass ``None`` when the hub's session did not start (the old ``memory_hub_enabled and ...`` gate)."""
+    pass ``None`` when the run holds no hub session (#1438 PR 0: the session's ticket is that gate)."""
+    from maxim.runtime.bio_integration import BioSession
     from tests.unit.test_loop_setup_characterization import _Hub
 
-    hub = _Hub([], start_fails=start_fails)
-    run = _build(monkeypatch, tmp_path, memory_hub=hub)
-    assert run.memory_hub_enabled is (not start_fails)
-    assert run.execute_and_learn.keywords["memory_hub"] is (None if start_fails else hub)
+    hub = _Hub([])
+    ticket = SimpleNamespace(generation=1, start_stats={}) if has_ticket else None
+    session = BioSession(memory_hub=hub, hippocampus=None, ticket=ticket)
+    run = _build(monkeypatch, tmp_path, memory_hub=hub, session=session)
+    assert run.execute_and_learn.keywords["memory_hub"] is (hub if has_ticket else None)
 
 
 def test_book_refusal_is_bound_to_the_runs_own_handles(monkeypatch, tmp_path):
@@ -318,10 +322,14 @@ def test_bad_timing_args_are_refused_before_any_thread_starts(monkeypatch, tmp_p
     from tests.unit.test_loop_setup_characterization import _DN, _Hub, _run
 
     events: list[str] = []
+    hub = _Hub(events)
     with pytest.raises((ValueError, TypeError, ZeroDivisionError)):
-        _run(monkeypatch, tmp_path, events=events, default_network=_DN(events), memory_hub=_Hub(events), **bad)
+        _run(monkeypatch, tmp_path, events=events, default_network=_DN(events), memory_hub=hub, **bad)
     assert "dn.start" not in events, events
-    assert not any(e.startswith("hub.on_session_start") for e in events), events
+    # #1438 PR 0: the session is claimed BEFORE setup (bio_session), so the refusal ends it, and with it the capture
+    # worker, on the abnormal path: nothing is left started without its stop.
+    assert events[0].startswith("hub.on_session_start"), events
+    assert hub.ended == ["lightweight"]
 
 
 # ── import direction, rule (c) (1.3.2 decomposition; closed in slice 5) ─────────────────────────────────────
@@ -606,7 +614,7 @@ def test_run_agentic_loop_is_a_wrapper_that_forwards_every_argument_to_the_body(
     wrapper_sig = inspect.signature(agent_loop.run_agentic_loop)
     body_params = inspect.signature(agent_loop._run_agentic_loop_body).parameters
     # Keyword-only parameters only the wrapper supplies (PR 0 adds ``session``); every other one is public and shared.
-    body_only: frozenset[str] = frozenset()
+    body_only: frozenset[str] = frozenset({"session"})  # #1438 PR 0: the wrapper's bio_session hands it to the body
     assert {p: v for p, v in body_params.items() if p not in body_only} == dict(wrapper_sig.parameters)
     tree = ast.parse(Path(agent_loop.__file__).read_text())
     [fn] = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "run_agentic_loop"]

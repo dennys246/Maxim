@@ -181,3 +181,71 @@ def test_executed_code_provenance_stamps_dirty_flag_and_refuses_gated_dirty_writ
         repo, sys.executable, out_path=repo / "docs/experiments/data/x.jsonl", allow_dirty=True
     )
     assert prov["allow_dirty"] is True and prov["working_tree_dirty_src_scripts"] is True
+
+
+# ── #1218: the gated / governed checks fold case (macOS APFS is case-insensitive) ─────────────────────────────
+
+
+def test_a_differently_cased_out_path_into_the_gated_dir_is_gated(repo: Path) -> None:
+    assert P.is_gated_path(repo, repo / "docs/Experiments/Data/t.jsonl") is True
+
+
+def test_a_differently_cased_spelling_is_gated_before_the_data_dir_exists(tmp_path: Path) -> None:
+    assert P.is_gated_path(tmp_path, tmp_path / "Docs/experiments/DATA/new/t.jsonl") is True
+
+
+def test_a_differently_cased_governed_path_is_redirected_not_written(tmp_path: Path, capsys) -> None:
+    (tmp_path / "docs/experiments/results").mkdir(parents=True)
+    out = P.evidence_out_paths(tmp_path, [tmp_path / "docs/Experiments/Results/x.json"], write_experiment_results=False)
+    assert not str(out[0]).lower().startswith(str(tmp_path).lower())
+    assert "NOT updating committed record" in capsys.readouterr().out
+
+
+def test_an_unresolvable_out_path_counts_as_gated(repo: Path) -> None:
+    (repo / "loop").symlink_to(repo / "loop")  # resolve() raises on a loop (RuntimeError before 3.13, OSError after)
+    assert P.is_gated_path(repo, repo / "loop" / "t.jsonl") is True
+
+
+def test_an_unrelated_path_is_not_gated_even_when_the_data_dir_is_missing(tmp_path: Path) -> None:
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    assert P.is_gated_path(tmp_path, other / "t.jsonl") is False
+    assert P.is_gated_path(tmp_path, Path("/tmp/x.jsonl")) is False
+
+
+def test_the_exact_spelling_and_a_symlink_into_the_gated_dir_are_gated(repo: Path) -> None:
+    assert P.is_gated_path(repo, repo / "docs/experiments/data/t.jsonl") is True
+    (repo / "alias").symlink_to(repo / "docs/experiments/data")
+    assert P.is_gated_path(repo, repo / "alias/t.jsonl") is True
+    assert P.is_gated_path(repo, repo / "docs/experiments/data-old/t.jsonl") is False
+
+
+@pytest.mark.skipif(os.name != "posix" or os.geteuid() == 0, reason="needs a non-root POSIX user for chmod 000")
+def test_an_unreadable_unrelated_ancestor_still_passes_through(repo: Path, tmp_path_factory) -> None:
+    locked = tmp_path_factory.mktemp("locked")
+    (locked / "inner").mkdir()
+    locked.chmod(0)
+    try:
+        assert P.is_gated_path(repo, locked / "inner" / "t.jsonl") is False
+    finally:
+        locked.chmod(0o700)
+
+
+@pytest.mark.parametrize("problem", [None, "not the committed record"])
+def test_the_apparatus_stamp_builds_both_stamps_of_one_fact(problem) -> None:
+    check, prov = P.apparatus_check_stamp(True, problem, {"executed_git_hash": "x"})
+    assert check == {"gated": True, "problem": problem, "allow_dirty": problem is not None}
+    assert prov.get("allow_dirty", False) is (problem is not None)
+
+
+def test_a_symlink_loop_is_redirected_by_the_d27_check_not_crashed(tmp_path: Path, capsys) -> None:
+    (tmp_path / "loop").symlink_to(tmp_path / "loop")
+    out = P.evidence_out_paths(tmp_path, [tmp_path / "loop" / "x.json"], write_experiment_results=False)
+    assert out[0].name == "x.json" and "NOT updating committed record" in capsys.readouterr().out
+
+
+def test_a_symlink_loop_on_a_dirty_tree_is_a_typed_refusal(repo: Path, monkeypatch) -> None:
+    (repo / "loop").symlink_to(repo / "loop")
+    monkeypatch.setattr(P, "working_tree_difference", lambda *a, **k: "src/x.py: untracked")
+    with pytest.raises(P.DirtyTreeError):
+        P.preflight_gated_record(repo, repo / "loop" / "t.jsonl")

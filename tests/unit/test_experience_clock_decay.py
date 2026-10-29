@@ -112,15 +112,32 @@ class _Hub:
 
         self.nac = nac
         self.situation_cue = NO_SITUATION_CUE
+        self._ticket: SimpleNamespace | None = None
+        self._generation = 0
 
-    def on_session_start(self) -> dict[str, Any]:
+    # #1438 PR 0: the session API is owner tickets; the fake asserts a session was opened before it is ended.
+    def on_session_start(self, *, owner: Any, live: bool = False, deadline_s: float | None = None) -> SimpleNamespace:
+        del live, deadline_s
+        if self._ticket is None or self._ticket.owner is not owner:
+            self._generation += 1
+            self._ticket = SimpleNamespace(start_stats={}, generation=self._generation, owner=owner)
+        return self._ticket
+
+    def _end(self, ticket: Any) -> dict[str, Any]:
+        assert self._generation > 0, "the session was ended without ever being opened"
+        if ticket is not self._ticket:
+            return {}
+        self._ticket = None
         return {}
 
-    def on_session_end(self) -> dict[str, Any]:
-        return {}
+    def on_session_end(self, ticket: Any) -> dict[str, Any]:
+        return self._end(ticket)
 
-    def on_session_end_lightweight(self) -> dict[str, Any]:
-        return {}
+    def on_session_end_lightweight(self, ticket: Any) -> dict[str, Any]:
+        return self._end(ticket)
+
+    def release_session_claim(self, ticket: Any) -> None:
+        del ticket
 
     def record_plan_outcome(self, **kw: Any) -> None:
         return None
@@ -724,7 +741,10 @@ def test_g5_ten_six_turn_sessions_equal_one_sixty_turn_session(monkeypatch, tmp_
                 hooks={k: tick(k) for k in range(turns)},
                 hub=hub,
             )
-            hub.on_session_end_lightweight()
+            # #1438 PR 0: the loop's bio_session ends its own session (with its ticket) on exit; the old explicit
+            # ticketless end after it was a no-op. Pin that the loop really closed it, as a harness fault.
+            if hub._ownership.state != "CLOSED":
+                raise HarnessFault(f"session {s}: the loop left the memory session {hub._ownership.state}")
         [link] = [link for ls in nac._links.values() for link in ls]
         return link.confidence
 
