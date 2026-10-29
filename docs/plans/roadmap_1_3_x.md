@@ -1215,7 +1215,7 @@ they are ready, and the gate takes the next free number when it is done, still o
   `_end_robot_run` and `_run_stopped_on`) and #1454's interim prompt fix (the post-sim prompt drops "(memory carries over)"; the
   report view and prompt moved to `orchestrator.py::_show_report_and_post_sim_prompt`, registered in
   `tests/unit/_orchestrator_source.py`'s `PARTS`). The `/new` slice restores the promise with the behaviour.
-- **Phone device, Phase 0** (owner decision 2026-10-29; [deferred/phone_device.md](deferred/phone_device.md) §Phase 0, register O21):
+- **Phone device, Phase 0** (owner decision 2026-10-29; [deferred/phone_device.md](deferred/phone_device.md) §Phase 0, register O22):
   the percept-wire trust boundary, console_tunnel_hardening's PR 3 (admission control; it did not ship in 1.3.3),
   the auth principal seam and the tunnel plan's M3 (both pulled forward from its PR 4), the TR11 amendment, device
   identity on the contract (with R3's 0.7.0 if unreleased, else its own minor bump), and an owner decision on #784.
