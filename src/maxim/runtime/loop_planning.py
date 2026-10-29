@@ -62,7 +62,7 @@ logger = logging.getLogger("maxim.runtime.agent_loop")
 
 # Wire 1 (release_0_9_1.md Stage 4): regex matching the experience-voice
 # annotations the variance-annotation hook produces. Same shape rationale as
-# the Wire 3 regex above — strip stale annotation before re-applying the
+# the Wire 3 regex (``agent_loop._WIRE3_PHRASE_RE``) — strip stale annotation before re-applying the
 # current-tick one so the description doesn't accumulate suffixes across
 # observations.
 #

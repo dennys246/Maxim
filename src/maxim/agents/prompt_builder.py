@@ -1270,7 +1270,9 @@ class PromptBuilder:
         import secrets
 
         feed = request.inbound_feed
-        entries = feed.held() if feed is not None else []
+        # Only a NEW turn's first build may evict a message shown in K un-acted turns (code delta D1): a retry rebuild
+        # (the request already counted) or a deliberation continuation never does.
+        entries = feed.held(evict=not request.inbound_counted) if feed is not None else []
         if not entries:
             return ""
         cap = max(1, self._n_ctx // 10)
@@ -1286,9 +1288,14 @@ class PromptBuilder:
                 if len(lines) > 1:
                     break
                 keep = max(1, int(len(entry.content) * (cap - used) / max(tokens, 1)) - 40)
-                body = f"{entry.content[:keep]}\n[... truncated to fit the prompt]"
-                frame = frame_tool_output(label, body, external=True, nonce=nonce)
-                tokens = counter.count_tokens(frame)
+                while True:  # shrink until the frame fits (the estimate can overshoot: code review E-NIT3)
+                    body = f"{entry.content[:keep]}\n[... truncated to fit the prompt]"
+                    frame = frame_tool_output(label, body, external=True, nonce=nonce)
+                    tokens = counter.count_tokens(frame)
+                    if used + tokens <= cap or keep <= 1:
+                        break
+                    keep = max(1, keep * 3 // 4)
+                logger.info("Inbound message from %s truncated to fit the prompt", entry.alias)
             lines.append(frame)
             used += tokens
             request.inbound_frame_ids[nonce] = entry.id

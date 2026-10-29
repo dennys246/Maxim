@@ -250,12 +250,9 @@ def _record_inbound_rendered(request: LLMRequest, prompt: str) -> None:
     """Which held inbound messages this build showed WHOLE (#1481, delta1 N1, delta2 P2/P4): a frame the budgeter
     dropped, or ``drop_unbalanced_frames`` cut, is not complete in the text sent and does not count. Replaced on every
     build; the render is counted once per request, so a retry of the same turn is not a second turn."""
-    rendered = []
-    for nonce, entry_id in request.inbound_frame_ids.items():
-        opener = prompt.find(f"<<TOOL_OUTPUT id={nonce} ")
-        closer = prompt.find(f"<</TOOL_OUTPUT id={nonce}>>")
-        if 0 <= opener < closer:
-            rendered.append(entry_id)
+    from maxim.utils.content_safety import frame_is_whole
+
+    rendered = [entry_id for nonce, entry_id in request.inbound_frame_ids.items() if frame_is_whole(prompt, nonce)]
     request.inbound_rendered_ids = rendered
     if rendered and request.inbound_feed is not None and not request.inbound_counted:
         request.inbound_counted = True

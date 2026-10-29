@@ -38,7 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The run's loop now holds `comms:*` messages in a bounded inbox (`runtime/loop_external.py`):
     - at most 20 held;
     - Twilio retries de-duplicated by `MessageSid`;
-    - each sender shown as a per-session alias ("sender 1"): a phone number never reaches a prompt or a log.
+    - each sender shown as a per-session alias ("sender 1"): a phone number never reaches the live prompt or a log
+      (the dormant `ExecAgent` path still would; #1519).
   - The next prompt the loop builds for another reason shows them in an `inbound_messages` section. Each message sits in
     its own untrusted-data frame, with the alias in the frame header, inside a token cap of about 10% of the context.
     The rule line says what the frames hold.

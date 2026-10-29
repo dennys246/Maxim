@@ -1046,12 +1046,11 @@ def _run_agentic_loop_body(
     # would convert those existing RECOVERIES into aborts (pre-merge review, architecture
     # lens B3) and, for a threaded AUT, into a silently dead thread whose campaign keeps
     # emitting empty turns (B1).
-    sim_adapter: Any | None = None,
-    inbound_inbox: ExternalInbox
-    | None = None,  # #1481: the run's held inbound comms (wrapper-supplied)  # Pre-built NullSimulationAdapter (Stage 3, live_audio_orient_wiring.md):
+    sim_adapter: Any | None = None,  # Pre-built NullSimulationAdapter (Stage 3, live_audio_orient_wiring.md):
     # lets a live producer (the DoA feed) hold the adapter and carry_percept() into the loop's
     # modality-preserving side-channel WITHOUT a percept_source (which would flip is_sim_mode).
     # Only honored when percept_source is None; ignored (with the sim adapter built as before) otherwise.
+    inbound_inbox: ExternalInbox | None = None,  # #1481: the run's held inbound comms (wrapper-supplied)
 ) -> None:
     """
     Non-blocking agentic loop with LLM worker integration.
@@ -2126,6 +2125,7 @@ def _run_agentic_loop_body(
                     cluster_id=getattr(ctrl.pending_proposal, "cluster_id", None),
                     clusters=getattr(ctrl.pending_proposal, "clusters", None),
                     drive_relief_only=_drive_relief_only,
+                    proposal=ctrl.pending_proposal,
                 )
 
                 # Queue as a followup for the next LLM call

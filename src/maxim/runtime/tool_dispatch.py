@@ -624,8 +624,13 @@ def execute_parallel_actions(
     cluster_id: str | None = None,
     clusters: dict[str, str] | None = None,
     drive_relief_only: bool = False,
+    proposal: Any = None,
 ) -> tuple[list[dict[str, Any]], str]:
     """Execute a batch of parallel actions with autonomy gating.
+
+    ``proposal`` (#1481): the proposal whose batch this is. Once the batch has returned, the inbound messages its prompt
+    showed whole are acknowledged (``_ack_inbound``), once per batch; a batch that raised acknowledges nothing, and the
+    default None acknowledges nothing, so every other caller is unchanged.
 
     Returns a tuple of (parallel_results, combined_results_text).
     Each result dict has keys: tool, success, result, error, params.
@@ -797,6 +802,7 @@ def execute_parallel_actions(
         for key in [k for k in pr if k.startswith("_")]:
             del pr[key]
 
+    _ack_inbound(proposal)
     return parallel_results, combined_results
 
 
@@ -1067,16 +1073,22 @@ def _tool_followup(
     )
 
 
+def _ack_inbound(proposal: Any) -> None:
+    """Acknowledge the inbound comms a dispatched turn's prompt showed whole (#1481). Only the success branch of
+    ``LLMWorker._process_request`` sets these fields, so a fallback (and a None proposal) acknowledges nothing; ``ack``
+    is idempotent, so a turn that reaches both dispatch paths cannot double-count."""
+    feed = getattr(proposal, "inbound_feed", None)
+    if feed is not None:
+        feed.ack(list(getattr(proposal, "inbound_rendered_ids", ())))
+
+
 def _record_turn_after_effects(*, action: dict[str, Any], success: bool, proposal: Any, context_pool: Any) -> str:
     """After-effects of a turn whose action was dispatched and RETURNED (the normal path of ``execute_and_learn``; a
     dispatch that raised never reaches here). The seed of #1150's after-effects step (Session A's grant). Returns the
     action's tool name, which the caller reads on."""
     # The inbound comms this turn's prompt showed whole are delivered: the turn was acted on (#1481), even when the
-    # tool then failed (``success`` False): the model saw them and acted. Only the success branch of
-    # LLMWorker._process_request sets these, so a fallback acknowledges nothing.
-    feed = getattr(proposal, "inbound_feed", None)
-    if feed is not None:
-        feed.ack(list(getattr(proposal, "inbound_rendered_ids", ())))
+    # tool then failed (``success`` False): the model saw them and acted.
+    _ack_inbound(proposal)
 
     # Track conversation history for response/speak actions
     tool_name = action.get("tool_name", "")

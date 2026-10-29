@@ -118,7 +118,9 @@ class InboundFeed(Protocol):
     """Held inbound comms, as the prompt builder and dispatch see them (#1481). Implemented in ``runtime`` by
     ``loop_external.ExternalInbox``; ``agents`` depends only on this shape."""
 
-    def held(self) -> list[Any]: ...  # entries with ``id``, ``alias``, ``channel``, ``content``, oldest first
+    def held(
+        self, *, evict: bool = True
+    ) -> list[Any]: ...  # entries with ``id``, ``alias``, ``channel``, ``content``, oldest first
 
     def note_rendered(self, ids: list[int]) -> None: ...
 

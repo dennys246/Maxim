@@ -7,7 +7,7 @@ accepted, logged and never shown to the model. Here:
 - :class:`ExternalInbox` holds those messages: bounded, de-duplicated by Twilio ``MessageSid``, the sender replaced by
   a per-session alias (owner decision 2026-10-28: no phone number ever reaches a prompt or a log).
 - :func:`inbound_comms_subscription` subscribes it on the loop agent's bus for exactly the run's lifetime. The
-  wrapper enters it inside the run's session claim (A's grant; H's bounded-stop PR 0).
+  wrapper enters it around the body today, and inside the run's session claim once H's bounded-stop PR 0 lands.
 - The inbox is the ``InboundFeed`` the request carries. The prompt builder reads :meth:`ExternalInbox.held` when it
   BUILDS the prompt, records which messages survived the fit whole, and dispatch acknowledges them only when the
   model's turn is ACTED ON (``tool_dispatch.execute_and_learn``). A message leaves only then, or after
@@ -41,7 +41,6 @@ MAX_CHARS = 2000
 RENDER_LIMIT = 3
 # Twilio MessageSids remembered for de-duplication of webhook retries.
 _SEEN_SIDS = 200
-# What the frame rule says the inbound frames hold (owner decision 2026-10-28: /api/command is untrusted too).
 
 
 @dataclass
@@ -113,25 +112,19 @@ class ExternalInbox:
 
     # -- the InboundFeed the request carries ------------------------------------------------------------------------
 
-    def held(self) -> list[InboundEntry]:
-        """The messages held NOW, oldest first (read when a prompt is built, never at submit: delta1 N4)."""
-        with self._lock:
-            return [InboundEntry(e.id, e.alias, e.channel, e.content, e.received_at, e.renders) for e in self._held]
-
-    def note_rendered(self, ids: list[int]) -> None:
-        """One turn showed these messages whole. After :data:`RENDER_LIMIT` such turns without acting on them, a
-        message is evicted, logged (the WARNING is emitted outside the lock: delta2 P6)."""
-        if not ids:
-            return
-        wanted = set(ids)
+    def held(self, *, evict: bool = True) -> list[InboundEntry]:
+        """The messages held NOW, oldest first (read when a prompt is built, never at submit: delta1 N4). A message
+        already shown in :data:`RENDER_LIMIT` turns that were not acted on is evicted here, logged, before the next
+        prompt: so the K-th turn that shows it can still act on it (code review E1: counting at build used to evict
+        it before that turn replied). ``evict`` is False on every read that is not a NEW turn's first build (a retry
+        rebuild, a deliberation cycle 2+: code delta D1), so a turn still working on a message never loses it."""
         evicted: list[InboundEntry] = []
         with self._lock:
             for entry in list(self._held):
-                if entry.id in wanted:
-                    entry.renders += 1
-                    if entry.renders >= RENDER_LIMIT:
-                        self._held.remove(entry)
-                        evicted.append(entry)
+                if evict and entry.renders >= RENDER_LIMIT:
+                    self._held.remove(entry)
+                    evicted.append(entry)
+            kept = [InboundEntry(e.id, e.alias, e.channel, e.content, e.received_at, e.renders) for e in self._held]
         for entry in evicted:
             logger.warning(
                 "Inbound message from %s (%s) evicted: shown in %d turns, none acted on",
@@ -139,6 +132,18 @@ class ExternalInbox:
                 entry.channel,
                 RENDER_LIMIT,
             )
+        return kept
+
+    def note_rendered(self, ids: list[int]) -> None:
+        """One turn showed these messages whole. After :data:`RENDER_LIMIT` such turns without acting on them, the
+        next :meth:`held` evicts them, logged (the WARNING is emitted outside the lock: delta2 P6)."""
+        if not ids:
+            return
+        wanted = set(ids)
+        with self._lock:
+            for entry in self._held:
+                if entry.id in wanted:
+                    entry.renders += 1
 
     def ack(self, ids: list[int]) -> None:
         """A turn that showed these messages whole was acted on: they leave the inbox. Idempotent."""
@@ -164,8 +169,8 @@ class _ContinuationFeed:
     def __init__(self, inbox: ExternalInbox) -> None:
         self._inbox = inbox
 
-    def held(self) -> list[InboundEntry]:
-        return self._inbox.held()
+    def held(self, *, evict: bool = True) -> list[InboundEntry]:
+        return self._inbox.held(evict=False)  # a cycle of a turn already counted: never evicts (code delta D1)
 
     def note_rendered(self, ids: list[int]) -> None:
         return None  # a cycle of the same turn: the turn already counted

@@ -294,6 +294,8 @@ def test_a_malformed_or_late_percept_never_raises_and_is_logged(caplog):
 
 
 def test_k_renders_without_acting_evict_and_a_continuation_does_not_count(caplog):
+    """The K-th turn that shows a message can still act on it (code review E1); only the read after K un-acted turns
+    evicts it, logged. A deliberation continuation never counts."""
     from maxim.runtime import loop_external as LE
 
     inbox = LE.ExternalInbox()
@@ -303,8 +305,46 @@ def test_k_renders_without_acting_evict_and_a_continuation_does_not_count(caplog
         inbox.continuation().note_rendered([entry.id])  # deliberation cycles 2+ of one turn
     assert inbox.held(), "a continuation counted toward K"
     for _ in range(LE.RENDER_LIMIT):
+        assert inbox.held(), "evicted before the K-th turn could act on it"
         inbox.note_rendered([entry.id])
+    assert "evicted" not in caplog.text
     assert inbox.held() == [] and "evicted" in caplog.text
+
+
+def test_the_k_th_turn_acting_on_a_message_is_not_an_eviction(caplog):
+    from maxim.runtime import loop_external as LE
+
+    inbox = LE.ExternalInbox()
+    inbox.on_percept(_percept("answered late"))
+    [entry] = inbox.held()
+    for _ in range(LE.RENDER_LIMIT):
+        inbox.note_rendered([entry.id])
+    inbox.ack([entry.id])
+    assert inbox.held() == [] and "evicted" not in caplog.text
+
+
+def test_each_build_starts_with_no_frame_ids():
+    """A build that renders nothing (the feed is gone) must not keep the previous build's nonces (code review E-NIT4)."""
+    w = _worker()
+    req = _request(_inbox_with("one"))
+    w._build_prompt(req)
+    assert req.inbound_frame_ids
+    req.inbound_feed = None
+    w._build_prompt(req)
+    assert req.inbound_frame_ids == {} and req.inbound_rendered_ids == []
+
+
+def test_the_subscription_closes_its_inbox_on_exit(caplog):
+    from maxim.agents.bus import AgentBus
+    from maxim.runtime.loop_external import inbound_comms_subscription
+
+    class _Agent:
+        _bus = AgentBus()
+
+    with inbound_comms_subscription(_Agent()) as inbox:
+        pass
+    inbox.on_percept(_percept("late"))  # a publisher that snapshotted the handler before unsubscribe
+    assert inbox.held() == [] and "after its loop ended" in caplog.text
 
 
 def test_ack_is_idempotent_and_removes_only_the_ids_shown():
@@ -629,3 +669,107 @@ def test_the_runs_own_exception_passes_through_unchanged(caplog):
         with inbound_comms_subscription(_Agent()):
             raise _Boom()
     assert "not removed at run end" in caplog.text
+
+
+def _run_parallel_batch(proposal: Any, *, raises: bool = False, escapes: bool = False) -> None:
+    from types import SimpleNamespace
+
+    from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SafetyConstraints
+    from maxim.runtime.tool_dispatch import execute_parallel_actions
+    from maxim.tools.base import ToolOutput
+
+    class _Executor:
+        def execute(self, action: Any) -> Any:
+            if raises:
+                raise RuntimeError("the batch failed")
+            return ToolOutput(success=True, output="ok")
+
+        def permits(self, *_a: Any, **_k: Any) -> bool:
+            return True
+
+    execute_parallel_actions(
+        agent_id="a",
+        actions=object()  # type: ignore[arg-type]  # not iterable: the batch itself raises before it returns
+        if escapes
+        else [
+            {"tool_name": "respond", "params": {"message": "x"}},
+            {"tool_name": "respond", "params": {"message": "y"}},
+        ],
+        executor=_Executor(),
+        autonomy_controller=AutonomyController(
+            initial_level=AutonomyLevel.AUTONOMOUS, safety_constraints=SafetyConstraints()
+        ),
+        confidence=0.9,
+        reasoning="",
+        recent_outcomes=[],
+        max_recent=5,
+        llm_worker=None,
+        context_pool=SimpleNamespace(add_conversation_turn=lambda **_k: None, add_outcome=lambda *_a, **_k: None),
+        proposal=proposal,
+    )
+
+
+def test_a_parallel_batch_acknowledges_once_after_it_returned_and_never_when_it_raised():
+    """Wire review S1 / A's grant: the batch bypasses execute_and_learn, so it acknowledges itself, once per batch."""
+    from types import SimpleNamespace
+
+    inbox = _inbox_with("a", "b")
+    ids = tuple(e.id for e in inbox.held())
+    calls: list[list[int]] = []
+
+    class _CountingFeed:
+        def ack(self, got: list[int]) -> None:
+            calls.append(got)
+            inbox.ack(got)
+
+    _run_parallel_batch(SimpleNamespace(inbound_feed=_CountingFeed(), inbound_rendered_ids=ids[:1]))
+    assert calls == [[ids[0]]] and [e.content for e in inbox.held()] == ["b"]  # once per batch, not per action
+    calls.clear()
+    with pytest.raises(TypeError):  # the batch raised before returning: nothing acknowledged
+        _run_parallel_batch(SimpleNamespace(inbound_feed=_CountingFeed(), inbound_rendered_ids=ids[1:]), escapes=True)
+    assert calls == [] and [e.content for e in inbox.held()] == ["b"]
+    # Every action failing is still a turn the model acted on (as in execute_and_learn): acknowledged.
+    _run_parallel_batch(SimpleNamespace(inbound_feed=_CountingFeed(), inbound_rendered_ids=ids[1:]), raises=True)
+    assert calls == [[ids[1]]] and inbox.held() == []
+    _run_parallel_batch(None)  # every other caller: no proposal, nothing acknowledged
+
+
+def test_frame_is_whole_needs_both_markers_in_order():
+    from maxim.utils.content_safety import frame_is_whole, frame_tool_output
+
+    whole = frame_tool_output("comms:api:sender 1", "hi", external=True, nonce="abcd1234")
+    assert frame_is_whole(whole, "abcd1234")
+    assert not frame_is_whole(whole[: len(whole) // 2], "abcd1234")
+    assert not frame_is_whole(whole, "ffff0000")
+
+
+def test_a_turn_still_working_on_a_message_never_loses_it(caplog):
+    """Code delta D1: after K counted turns, a retry rebuild of the K-th turn (``evict=False``) and its deliberation
+    cycles 2+ (the continuation) still see the message; only the next NEW turn's read evicts it."""
+    from maxim.runtime import loop_external as LE
+
+    inbox = LE.ExternalInbox()
+    inbox.on_percept(_percept("thinking about it"))
+    [entry] = inbox.held()
+    for _ in range(LE.RENDER_LIMIT):
+        inbox.note_rendered([entry.id])
+    assert inbox.held(evict=False) and inbox.continuation().held(), "a turn still working lost its message"
+    assert "evicted" not in caplog.text
+    assert inbox.held() == [] and "evicted" in caplog.text
+
+
+def test_the_builder_evicts_only_on_a_new_turns_first_build():
+    from maxim.runtime import loop_external as LE
+
+    inbox = _inbox_with("seen thrice")
+    [entry] = inbox.held()
+    for _ in range(LE.RENDER_LIMIT):
+        inbox.note_rendered([entry.id])
+    w = _worker()
+    retry = _request(inbox)
+    retry.inbound_counted = True  # a rebuild of the K-th turn's request
+    w._build_prompt(retry)
+    assert retry.inbound_rendered_ids == [entry.id]
+    fresh = _request(inbox)
+    w._build_prompt(fresh)
+    assert fresh.inbound_rendered_ids == [] and inbox.held() == []
