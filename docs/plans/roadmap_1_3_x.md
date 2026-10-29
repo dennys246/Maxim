@@ -1167,7 +1167,7 @@ Also, an utterance shaped like an instruction appears only inside the frame. Ide
     - [#1499](https://github.com/dennys246/Maxim/issues/1499), split out of #1496 after five design rounds: the
       mid-move neck sweep (the head interpolates on the world geodesic and the body in joint space, so the neck
       passes through about 180° whenever |Δbody + Δrel_yaw| > 180°; live on `main`), the rate cap, `look_at` turning
-      the body to 0, and readback-as-reference. Design (v5 plus round 5's findings): [motion_path_model.md](motion_path_model.md).
+      the body to 0, and readback-as-reference. Design (v8, after the v6 three-lens review, the v7 delta and the v8 scoped rounds; owner decisions O1–O7, 2026-10-29): [motion_path_model.md](motion_path_model.md). Three PRs; 1.3.4 does not publish until all three merge.
     - Until #1499 ships, pulse holds an operational caution: body turns stay within ±90° on the real robot.
     - Fence (owner, 2026-10-26): Session S, with named exceptions for `embodied_runtime/movement.py`, `motion/`,
       `hardware/controller.py`, `hardware/reachy/`, `default_network/`, `embodiment/spec.py`, the CI greps, and
