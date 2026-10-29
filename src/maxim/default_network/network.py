@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
 
 from maxim.default_network.arbiter import ArbiterConfig, PriorityArbiter
+from maxim.exceptions import MotionRefused
+from maxim.hardware.controller import floor_duration
 from maxim.attention import AttentionConfig, AttentionNetwork
 from maxim.attention import SalienceMap, SalienceMapConfig
 from maxim.attention import GazeController, GazeControllerConfig, GazeCommand, GazeState
@@ -1249,6 +1251,9 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
         movement_failed = False
 
         try:
+            # DN durations come from config, so they are defaults: floored into
+            # [0.1, 10] s, never refused (#1496); only a non-finite one refuses.
+            duration = floor_duration(duration)
             if proposal.action_type == "look_at" and proposal.target:
                 u, v = proposal.target
                 if hasattr(self._maxim, "look_at_image"):
@@ -1259,7 +1264,7 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
                 # fall back to move_relative for ReturnToCenter etc.
                 if proposal.target and hasattr(self._maxim, "look_at_image"):
                     u, v = proposal.target
-                    explore_duration = max(0.5, duration * 0.8)
+                    explore_duration = floor_duration(max(0.5, duration * 0.8))
                     self._maxim.look_at_image(u, v, duration=explore_duration)
                     executed = True
                 elif hasattr(self._maxim, "move_relative"):
@@ -1269,7 +1274,7 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             elif proposal.action_type == "track" and proposal.target:
                 u, v = proposal.target
                 if hasattr(self._maxim, "look_at_image"):
-                    track_duration = max(0.1, duration * 0.5)  # Half duration for tracking
+                    track_duration = floor_duration(duration * 0.5)  # Half duration for tracking
                     if proposal.behavior_name == "social":
                         cur_yaw = float(getattr(self._maxim, "yaw", 0.0) or 0.0)
                         direction = "RIGHT" if u > 320 else "LEFT" if u < 320 else "CENTER"
@@ -1285,11 +1290,15 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
                     executed = True
             elif proposal.action_type == "turn_around":
                 turn_angle = proposal.metadata.get("turn_angle", 90.0)
-                turn_duration = proposal.metadata.get("duration", 5.0)
+                turn_duration = floor_duration(proposal.metadata.get("duration", 5.0))
                 if hasattr(self._maxim, "turn_around"):
                     self._maxim.turn_around(turn_angle, duration=turn_duration)
                     executed = True
                     logger.info("Executing turn_around: %.0f° over %.1fs", turn_angle, turn_duration)
+        except MotionRefused as e:
+            # By type, before the substring check below: a refusal is bad input,
+            # not an IK failure the spatial map should learn from.
+            logger.warning("DN action refused: %s", e)
         except Exception as e:
             error_msg = str(e).lower()
             if "collision" in error_msg or "ik" in error_msg or "not achievable" in error_msg:

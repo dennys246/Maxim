@@ -16,6 +16,8 @@ import time
 from typing import TYPE_CHECKING
 
 from maxim.attention import GazeCommand
+from maxim.exceptions import MotionRefused
+from maxim.hardware.controller import floor_duration
 from maxim.default_network.movement_utils import compute_dynamic_duration, compute_opposite_position
 
 if TYPE_CHECKING:
@@ -84,6 +86,7 @@ class GazeManagerMixin:
 
         # Execute movement
         try:
+            duration = floor_duration(duration)  # derived, so floored, never refused (#1496)
             if hasattr(self._maxim, "look_at_image"):
                 self._maxim.look_at_image(target[0], target[1], duration=duration)
                 self._gaze_history.record_gaze(target)
@@ -95,6 +98,8 @@ class GazeManagerMixin:
 
                 logger.debug("look_opposite: moved to (%.0f, %.0f)", target[0], target[1])
                 return True
+        except MotionRefused as e:
+            logger.warning("look_opposite refused: %s", e)  # by type: not an IK failure to learn from
         except Exception as e:
             error_msg = str(e).lower()
             if "collision" in error_msg or "ik" in error_msg or "not achievable" in error_msg:

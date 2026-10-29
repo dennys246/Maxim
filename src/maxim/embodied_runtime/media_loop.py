@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 import multiprocessing as mp
 import os
 import queue
@@ -22,6 +23,9 @@ _original_cuda_devices = _gpu_state.original_cuda_devices
 
 class MediaLoopMixin:
     """Mixin providing the live media capture/playback loop and related helpers."""
+
+    log: logging.Logger  # set by the host (Selfy.__init__)
+    sleeping: bool  # the robot's sleep state; the host and the loop both write it
 
     def live(
         self,
