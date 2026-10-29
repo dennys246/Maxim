@@ -302,3 +302,93 @@ def test_init_audio_parses_the_audio_settings_and_the_speech_request():
     )
     runtime._init_audio(False, -2, tts=False, tts_model=None)
     assert (runtime.audio, runtime.audio_len, runtime.tts_requested) == (False, 5.0, False)
+
+
+def _refuse_sounddevice_import(monkeypatch, fake_import):
+    """Route both import paths (the `import` statement and `importlib.import_module`) through *fake_import*."""
+    import builtins
+    import importlib
+    import sys
+
+    real_import_module = importlib.import_module
+
+    def _import_module(name, package=None):
+        if name == "sounddevice":
+            return fake_import(name)
+        return real_import_module(name, package)
+
+    monkeypatch.delitem(sys.modules, "sounddevice", raising=False)
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    monkeypatch.setattr(importlib, "import_module", _import_module)
+
+
+def _portaudio_cannot_initialise(monkeypatch):
+    """`import sounddevice` raises sounddevice's own PortAudioError, as on Ubuntu 26 with no sound server.
+
+    Its PortAudio links libpulse, and `Pa_Initialize()` (run at sounddevice's import) fails hard when no
+    PulseAudio server answers. PortAudioError subclasses Exception, not OSError (the tts nightly, 2026-10-28)."""
+    import builtins
+
+    import maxim.utils.audio as audio
+
+    class PortAudioError(Exception):
+        pass
+
+    PortAudioError.__module__ = "sounddevice"
+    real_import = builtins.__import__
+
+    def _import(name, *args, **kwargs):
+        if name == "sounddevice":
+            raise PortAudioError("Error initializing PortAudio: 'PulseAudio_Initialize: Can't connect to server'")
+        return real_import(name, *args, **kwargs)
+
+    _refuse_sounddevice_import(monkeypatch, _import)
+    monkeypatch.setattr(audio, "_local_audio_available", None)
+
+
+@pytest.mark.xfail(strict=True, reason="tts nightly 2026-10-28: an import-time PortAudioError escapes the check")
+def test_portaudio_that_cannot_initialise_means_no_local_speaker(monkeypatch):
+    import maxim.utils.audio as audio
+
+    _portaudio_cannot_initialise(monkeypatch)
+    assert audio.LocalSpeaker().is_available is False
+
+
+@pytest.mark.xfail(strict=True, reason="tts nightly 2026-10-28: an import-time PortAudioError escapes the probe")
+def test_a_package_that_refuses_to_initialise_is_not_available(monkeypatch):
+    from maxim.utils.optional_deps import optional_dependency_available
+
+    _portaudio_cannot_initialise(monkeypatch)
+    assert optional_dependency_available("sounddevice") is False
+
+
+@pytest.mark.xfail(strict=True, reason="tts nightly 2026-10-28: `--tts` crashes untyped on a box with no sound server")
+def test_a_tts_request_with_no_sound_server_refuses_typed(monkeypatch):
+    from maxim.utils.response_output import SpeechOutputUnavailable, build_speech_output
+
+    _patch_voice(monkeypatch)
+    _portaudio_cannot_initialise(monkeypatch)
+    with pytest.raises(SpeechOutputUnavailable, match="sound server"):
+        build_speech_output(requested=True, model_name=None, sink=None, log=logging.getLogger("t"))
+
+
+def test_a_foreign_error_at_import_still_propagates(monkeypatch):
+    """Only the package's OWN exception (or ImportError/OSError) means "unavailable"; a bug elsewhere stays loud."""
+    import builtins
+
+    import maxim.utils.audio as audio
+    from maxim.utils.optional_deps import optional_dependency_available
+
+    real_import = builtins.__import__
+
+    def _import(name, *args, **kwargs):
+        if name == "sounddevice":
+            raise RuntimeError("a defect, not an absence")
+        return real_import(name, *args, **kwargs)
+
+    _refuse_sounddevice_import(monkeypatch, _import)
+    monkeypatch.setattr(audio, "_local_audio_available", None)
+    with pytest.raises(RuntimeError):
+        audio._check_local_audio()
+    with pytest.raises(RuntimeError):
+        optional_dependency_available("sounddevice")
