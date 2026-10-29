@@ -808,8 +808,8 @@ class MemoryHub:
         if self._concept_extractor is not None and self.atl is not None:
             try:
                 self._concept_extractor.rebuild_reverse_index()
-            except Exception as e:
-                logger.warning("ConceptExtractor reverse index rebuild failed: %s", e)
+            except Exception:
+                log_swallowed_exception(site="memory_hub.py:_restore_on_open:rebuild_reverse_index")
         pruned = self._prune_dangling_refs()
         if pruned:
             results["pruned_refs"] = pruned
@@ -848,23 +848,24 @@ class MemoryHub:
         def _count(name: str, prune: Callable[[], int]) -> None:
             try:
                 n = prune()
-            except Exception as e:
-                logger.warning("Pruning dangling %s refs failed: %s", name, e)
+            except Exception:
+                log_swallowed_exception(site=f"memory_hub.py:_prune_dangling_refs:{name}")
                 return
             if n:
                 counts[name] = n
 
+        nac, atl, ag = self.nac, self.atl, self.angular_gyrus
         if self.hippocampus.store_file_loaded():
             memory_ids = self.hippocampus.memory_ids()
-            if self.nac is not None:
-                _count("nac_memory_ids", lambda: self.nac.prune_memory_refs(memory_ids))
-            if self.atl is not None:
-                _count("atl_hippocampus_refs", lambda: self.atl.prune_refs("hippocampus", memory_ids))
-        if self.nac is not None and self.ec.store_file_loaded():
-            _count("nac_ec_keys", lambda: self.nac.prune_ec_keys(self.ec.substrate_node_ids()))
-        if self.atl is not None and self.angular_gyrus is not None and self.angular_gyrus.store_file_loaded():
-            ag_ids = frozenset(record.id for record in self.angular_gyrus)
-            _count("atl_angular_gyrus_refs", lambda: self.atl.prune_refs("angular_gyrus", ag_ids))
+            if nac is not None:
+                _count("nac_memory_ids", lambda: nac.prune_memory_refs(memory_ids))
+            if atl is not None:
+                _count("atl_hippocampus_refs", lambda: atl.prune_refs("hippocampus", memory_ids))
+        if nac is not None and self.ec.store_file_loaded():
+            _count("nac_ec_keys", lambda: nac.prune_ec_keys(self.ec.substrate_node_ids()))
+        if atl is not None and ag is not None and ag.store_file_loaded():
+            ag_ids = frozenset(record.id for record in ag)
+            _count("atl_angular_gyrus_refs", lambda: atl.prune_refs("angular_gyrus", ag_ids))
         if counts:
             logger.info("Pruned dangling cross-store refs at session start: %s", counts)
         return counts

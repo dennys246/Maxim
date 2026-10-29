@@ -337,9 +337,8 @@ class PersistenceMixin(StoreFileOwnership):
         """:meth:`save` for a caller that already holds the read lock (#1438 PR 1a; see :meth:`_dump_locked`).
 
         ``backup`` first copies the existing file to ``<path>.backup``, as :meth:`save_with_backup` (the session end's
-        re-save after sleep replaces sleep's own auto-save, which made that backup)."""
-        if not (path or self.config.persistence_path):
-            raise ValueError("No persistence path specified")
+        re-save after sleep replaces sleep's own auto-save, which made that backup). A missing path raises
+        ``ValueError`` from ``_default_store_path``."""
         if backup:
             target = self._default_store_path(path)
             self._check_store_write(target, overwrite=overwrite)

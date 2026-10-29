@@ -400,9 +400,12 @@ class NeuralSemanticLSH:
 
     def _embedding_worker(self) -> None:
         """Background thread for async embedding."""
-        while not self._shutdown_event.is_set():
+        work, stop = self._embedding_queue, self._shutdown_event
+        if work is None or stop is None:
+            return  # __init__ creates both before it starts this thread
+        while not stop.is_set():
             try:
-                item = self._embedding_queue.get(timeout=0.1)
+                item = work.get(timeout=0.1)
             except queue.Empty:
                 continue
             try:
@@ -419,7 +422,7 @@ class NeuralSemanticLSH:
             except Exception as e:
                 logger.error("Embedding worker error: %s", e)
             finally:
-                self._embedding_queue.task_done()  # drain() waits on it
+                work.task_done()  # drain() waits on it
 
     def drain(self, timeout: float) -> bool:
         """Wait until every scheduled embedding has been written by its callback; False if ``timeout`` ran out first.

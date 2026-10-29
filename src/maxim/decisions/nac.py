@@ -1977,15 +1977,15 @@ class NAc(StoreFileOwnership):
         counted, as there. The loaders' prune pass (``MemoryHub._prune_dangling_refs``) is the caller."""
         pruned = 0
         with self._lock:
-            for key in [k for k in self._reward_bias if k[1] not in valid_node_ids]:
-                del self._reward_bias[key]
+            for bias_key in [k for k in self._reward_bias if k[1] not in valid_node_ids]:
+                del self._reward_bias[bias_key]
                 pruned += 1
             for table in (self._cluster_reward_bias, self._cluster_fear):
-                for key in [k for k in table if k[1] not in valid_node_ids]:
-                    del table[key]
+                for cluster_key in [k for k in table if k[1] not in valid_node_ids]:
+                    del table[cluster_key]
                     pruned += 1
-            for key in [k for k in self._cluster_reward_source if k[1] not in valid_node_ids]:
-                del self._cluster_reward_source[key]
+            for source_key in [k for k in self._cluster_reward_source if k[1] not in valid_node_ids]:
+                del self._cluster_reward_source[source_key]
                 pruned += 1
             self._inherent_bias_keys = {k for k in self._inherent_bias_keys if k[1] in valid_node_ids}
         return pruned

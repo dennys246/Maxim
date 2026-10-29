@@ -390,8 +390,8 @@ def _end_hub_session(
             # cost us the telemetry line.
             logger.error("MemoryHub session ended on a stalled experience clock: %s", e)
             log_agentic("memory_hub", "session_end", e.results or {}, level="INFO")
-        except Exception as e:
-            logger.warning("Failed to end MemoryHub session: %s", e)
+        except Exception:
+            log_swallowed_exception(site="bio_integration.py:_end_hub_session")
 
 
 # ── Episode observation (P3a binding in production) ──────────────────
