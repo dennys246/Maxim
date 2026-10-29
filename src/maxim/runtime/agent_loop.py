@@ -20,8 +20,9 @@ from maxim.runtime.tool_dispatch import (
 
 # Extracted to bio_integration.py
 from maxim.runtime.bio_integration import (
+    BioSession,
+    bio_session,
     capture_loop_action,
-    end_bio_session as _end_bio_session,
 )
 from maxim.runtime.loop_gates import GateOutcome, pre_tick_gate
 from maxim.runtime.loop_setup import build_loop_run
@@ -958,6 +959,16 @@ def _followup_synthetic_input(followup: Any) -> str:
     return f"[ACTION_FOLLOWUP type={followup.followup_type} tool={tool} mode={followup.mode} query='{query}']: {result}"
 
 
+class _LoopOwner:
+    """One agent-loop invocation's identity as a memory-session owner (an object, compared with ``is``)."""
+
+    def __init__(self, run_id: str | None) -> None:
+        self.run_id = run_id
+
+    def __repr__(self) -> str:
+        return f"<agent loop {self.run_id or 'unnamed'}>"
+
+
 @loop_liveness_scope  # one liveness entry per run for the heartbeat's stall rule, cleared in a finally (#1268)
 def run_agentic_loop(
     agent: Any,
@@ -1020,44 +1031,53 @@ def run_agentic_loop(
     Split verbatim (docs/plans/bounded_stop.md §3 step 0) so session ownership can wrap the body in one seam
     (``bio_session``, PR 0). Every argument is forwarded unchanged; the signature is the public one and is kept
     identical to the body's."""
-    _run_agentic_loop_body(
-        agent,
-        environment,
-        state,
-        memory,
-        decision_engine,
-        executor,
-        autonomy_controller=autonomy_controller,
-        llm_worker=llm_worker,
-        default_network=default_network,
-        hippocampus=hippocampus,
-        memory_hub=memory_hub,
-        evaluators=evaluators,
-        max_steps=max_steps,
-        run_id=run_id,
-        stop_event=stop_event,
-        on_step=on_step,
-        on_event=on_event,
-        idle_sleep_s=idle_sleep_s,
-        persist_every_n_steps=persist_every_n_steps,
-        target_hz=target_hz,
-        context_pool_config=context_pool_config,
-        use_tool_prompting=use_tool_prompting,
-        protocol_registry=protocol_registry,
-        percept_source=percept_source,
-        action_sink=action_sink,
-        pain_bus=pain_bus,
-        imagination_trigger=imagination_trigger,
-        bio_enrichment_pipeline=bio_enrichment_pipeline,
-        thought_gate=thought_gate,
-        aut_mode=aut_mode,
-        substrate_telemetry=substrate_telemetry,
-        substrate_policy=substrate_policy,
-        substrate_action_gate=substrate_action_gate,
-        consolidation=consolidation,
-        planning_liveness=planning_liveness,
-        sim_adapter=sim_adapter,
-    )
+    # ONE seam owns the run's memory session (#1438 PR 0): claimed before the body's setup starts anything, ended on
+    # every exit path. The owner is a fresh token per invocation, never a label.
+    with bio_session(
+        memory_hub=memory_hub, hippocampus=hippocampus, owner=_LoopOwner(run_id), consolidation=consolidation
+    ) as session:
+        deferred = _run_agentic_loop_body(
+            agent,
+            environment,
+            state,
+            memory,
+            decision_engine,
+            executor,
+            autonomy_controller=autonomy_controller,
+            llm_worker=llm_worker,
+            default_network=default_network,
+            hippocampus=hippocampus,
+            memory_hub=memory_hub,
+            evaluators=evaluators,
+            max_steps=max_steps,
+            run_id=run_id,
+            stop_event=stop_event,
+            on_step=on_step,
+            on_event=on_event,
+            idle_sleep_s=idle_sleep_s,
+            persist_every_n_steps=persist_every_n_steps,
+            target_hz=target_hz,
+            context_pool_config=context_pool_config,
+            use_tool_prompting=use_tool_prompting,
+            protocol_registry=protocol_registry,
+            percept_source=percept_source,
+            action_sink=action_sink,
+            pain_bus=pain_bus,
+            imagination_trigger=imagination_trigger,
+            bio_enrichment_pipeline=bio_enrichment_pipeline,
+            thought_gate=thought_gate,
+            aut_mode=aut_mode,
+            substrate_telemetry=substrate_telemetry,
+            substrate_policy=substrate_policy,
+            substrate_action_gate=substrate_action_gate,
+            consolidation=consolidation,
+            planning_liveness=planning_liveness,
+            sim_adapter=sim_adapter,
+            session=session,
+        )
+    # D13 (bugs ledger): raised only AFTER the session ended, so an aborted sim still persisted and consolidated.
+    if deferred is not None:
+        raise deferred
 
 
 def _run_agentic_loop_body(
@@ -1115,7 +1135,8 @@ def _run_agentic_loop_body(
     # lets a live producer (the DoA feed) hold the adapter and carry_percept() into the loop's
     # modality-preserving side-channel WITHOUT a percept_source (which would flip is_sim_mode).
     # Only honored when percept_source is None; ignored (with the sim adapter built as before) otherwise.
-) -> None:
+    session: BioSession,  # the run's memory session, claimed by run_agentic_loop's bio_session (#1438 PR 0)
+) -> Exception | None:
     """
     Non-blocking agentic loop with LLM worker integration.
 
@@ -1174,13 +1195,13 @@ def _run_agentic_loop_body(
         aut_mode=aut_mode,
         planning_liveness=planning_liveness,
         sim_adapter=sim_adapter,
+        session=session,
     )
     executor, sim, ctrl, autonomy_controller = run.executor, run.sim, run.ctrl, run.autonomy_controller
     run_id, agent_name, state_path = run.run_id, run.agent_name, run.state_path
     context_pool, prefetcher, result_cache = run.context_pool, run.prefetcher, run.result_cache
     _is_novel_thought = run.is_novel_thought
     _max_response_tokens_override, _max_cycles_override = run.max_response_tokens_override, run.max_cycles_override
-    dn_enabled, memory_hub_enabled = run.dn_enabled, run.memory_hub_enabled
     _loop_nac, _loop_xclock, _loop_agent_id = run.nac, run.xclock, run.agent_id
     _drive_relief_only, _rec_outcome = run.drive_relief_only, run.rec_outcome
     _loop_sensor_encoder, _loop_situation_cue = run.sensor_encoder, run.situation_cue
@@ -3404,38 +3425,21 @@ def _run_agentic_loop_body(
     except Exception as e:
         logger.debug(f"Failed to save context pool: {e}")
 
-    # End bio-system session (hippocampus flush/save + MemoryHub session_end).
-    # Consolidation flavor is explicit (HANDLE seam b): a caller-supplied
-    # `consolidation` override wins (a persistent HANDLE forces "full" even when
-    # driven through the sim loop); absent an override we derive it from the sim
-    # flag at THIS call site — the choice is explicit at end_bio_session, not
-    # inferred from a proxy flag inside it. Default when neither: "full".
-    _resolved_consolidation = (
-        consolidation if consolidation is not None else ("lightweight" if sim.is_sim_mode else "full")
+    # D13 planning liveness: RETURNED, and raised by run_agentic_loop AFTER its bio_session ends (#1438 PR 0), so
+    # state persistence and the bio session end ran, but the sim still aborts loudly (the orchestrator converts this
+    # into a typed finish report) instead of having idled forever on a silently-dropped planning turn.
+    return _planning_liveness_abort(ctrl) if _planning_liveness_exhausted else None
+
+
+def _planning_liveness_abort(ctrl: Any) -> Exception:
+    """The D13 abort the loop body returns once planning liveness is exhausted (see bugs ledger D13)."""
+    from maxim.runtime.loop_controller import PlanningLivenessExhausted
+
+    return PlanningLivenessExhausted(
+        f"planning failures={ctrl.planning_failure_streak} "
+        f"(limit {ctrl.planning_retry_limit}), transport failures="
+        f"{ctrl.planning_transport_failure_streak} "
+        f"(limit {ctrl.planning_transport_retry_limit}); "
+        f"last={ctrl.planning_exhausted_reason or 'unknown'} — see bugs ledger D13",
+        finish_status=ctrl.planning_exhausted_status,
     )
-    _end_bio_session(
-        memory_hub=memory_hub,
-        memory_hub_enabled=memory_hub_enabled,
-        hippocampus=hippocampus,
-        consolidation=_resolved_consolidation,
-    )
-
-    # Stop the Default Network build_loop_run started, in a sim too: its owner is this loop (#1263, #1281)
-    if dn_enabled:
-        ctrl.dn_ctrl.stop()
-
-    # D13 planning liveness: raise AFTER teardown so state persistence and
-    # the bio session end ran, but the sim still aborts loudly (the
-    # orchestrator converts this into a typed finish report) instead of
-    # having idled forever on a silently-dropped planning turn.
-    if _planning_liveness_exhausted:
-        from maxim.runtime.loop_controller import PlanningLivenessExhausted
-
-        raise PlanningLivenessExhausted(
-            f"planning failures={ctrl.planning_failure_streak} "
-            f"(limit {ctrl.planning_retry_limit}), transport failures="
-            f"{ctrl.planning_transport_failure_streak} "
-            f"(limit {ctrl.planning_transport_retry_limit}); "
-            f"last={ctrl.planning_exhausted_reason or 'unknown'} — see bugs ledger D13",
-            finish_status=ctrl.planning_exhausted_status,
-        )

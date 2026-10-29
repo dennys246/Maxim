@@ -14,11 +14,22 @@ import threading
 import time
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+
 from maxim.hardware.capabilities import (
     REACHY_MINI_CAPABILITIES,
     RobotConnectionState,
 )
-from maxim.hardware.controller import MotionTarget, PixelTarget, RobotController
+from maxim.exceptions import MotionRefused
+from maxim.hardware.controller import (
+    MotionTarget,
+    PixelTarget,
+    RobotController,
+    normalize_method,
+    require_duration,
+    require_finite,
+)
+from maxim.utils.logging import log_swallowed_exception
 from maxim.hardware.reachy.streams import ReachyAudioStream, ReachyVideoStream
 from maxim.hardware.streams import AudioStream, VideoStream
 
@@ -26,6 +37,110 @@ if TYPE_CHECKING:
     pass
 
 logger = logging.getLogger(__name__)
+
+
+# ── Reachy last-mile checks (#1496) ───────────────────────────────────────────
+# One copy, used by every SDK motion call site: the controller dispatch,
+# look_at_pixel, motion/movement.py's primitives, Selfy's SDK look_at wrapper
+# and the allow-listed live harness. docs/plans/motion_finite_1496.md.
+
+# Provisional: neither the SDK nor the daemon declares an antenna limit. To be
+# replaced by the hand-measured range (requested from pulse 2026-10-26).
+ANTENNA_LIMIT_RAD = math.radians(90.0)
+
+# Canonical interpolation name (hardware.controller.normalize_method) -> the
+# SDK's InterpolationTechnique spelling. No default: an unknown name is refused,
+# and ``cartoon`` is absent because it overshoots its target past any clamp.
+_SDK_METHODS = {
+    "minimum_jerk": "minjerk",
+    "linear": "linear",
+    "ease_in_out": "ease_in_out",
+}
+
+
+def sdk_method(method: Any) -> str:
+    """The Reachy SDK spelling of an interpolation method, or ``MotionRefused(kind="method")``."""
+    return _SDK_METHODS[normalize_method(method)]
+
+
+def _numeric_or_missing(read: Any) -> np.ndarray | None:
+    """A readback as an object array (entries checked one by one), or None when it is missing."""
+    if read is None:
+        return None
+    try:
+        arr = np.asarray(read, dtype=object)
+    except (TypeError, ValueError):
+        return None
+    if arr.size == 0:
+        return None
+    return arr
+
+
+def require_present_pose_finite(mini: Any) -> None:
+    """Refuse when a RETURNED present pose holds a non-finite value (defence in depth).
+
+    Over the reachy-mini WS transport this cannot fire: the daemon serialises a
+    non-finite pose as ``null`` and the client drops the message, keeping the last
+    finite pose. It guards fakes, sims and future transports; the hardware signal
+    (a stale cache) is #1499's. A read that raises, returns None, has the wrong
+    shape or will not convert counts as MISSING and never refuses; a ``None``
+    inside a returned matrix or vector is refused.
+    """
+    reads: list[tuple[str, Any, tuple[int, ...] | None]] = []
+    try:
+        reads.append(("head pose", mini.get_current_head_pose(), (4, 4)))
+    except Exception:  # missing, not refused (#1499 owns missing readbacks)
+        log_swallowed_exception()
+    try:
+        head_joints, antenna_joints = mini.get_current_joint_positions()
+        reads.append(("head joints", head_joints, None))
+        reads.append(("antenna joints", antenna_joints, None))
+    except Exception:  # missing, not refused
+        log_swallowed_exception()
+    for name, read, shape in reads:
+        arr = _numeric_or_missing(read)
+        if arr is None or (shape is not None and arr.shape != shape) or (shape is None and arr.ndim != 1):
+            continue
+        for entry in arr.ravel():
+            if entry is None:
+                raise MotionRefused("non_finite", f"present {name} contains None")
+            try:
+                number = float(entry)
+            except (TypeError, ValueError):
+                break  # a non-numeric object (a test double) is missing, not refused
+            if not math.isfinite(number):
+                raise MotionRefused("non_finite", f"present {name} is not finite")
+
+
+def check_sdk_command(
+    mini: Any,
+    *,
+    duration: Any,
+    head: Any = None,
+    body_yaw: Any = None,
+    antennas: Any = None,
+    method: Any = "minimum_jerk",
+) -> tuple[float, str]:
+    """The last mile before a Reachy SDK motion call: refuse, or return ``(duration, sdk_method)``.
+
+    Every scalar handed to the SDK must be finite (the 16 head-matrix entries,
+    body yaw, antennas), the duration must lie in [0.1 s, 10 s] (0 or NaN takes
+    the SDK's instant set_target branch), the method must be known, and the
+    present pose must not be non-finite (defence in depth). Raises ``MotionRefused``.
+    """
+    if body_yaw is not None:
+        require_finite("body_yaw", body_yaw)
+    for name, values in (("head pose entry", head), ("antenna", antennas)):
+        if values is not None:
+            try:
+                entries = np.asarray(values, dtype=np.float64).ravel()
+            except (TypeError, ValueError) as e:
+                raise MotionRefused("invalid", f"{name} values are not numbers: {e}") from e
+            for entry in entries:
+                require_finite(name, entry)
+    checked = require_duration(duration), sdk_method(method)
+    require_present_pose_finite(mini)
+    return checked
 
 
 class ReachyMiniController(RobotController):
@@ -484,18 +599,16 @@ class ReachyMiniController(RobotController):
     # (caught 2026-07-17 by the #397 hardware smoke, before which nothing exercised
     # this path on hardware). Translation is the controller's job — the abstract
     # MotionTarget must not know SDK spellings.
-    _METHOD_MAP = {
-        "minimum_jerk": "minjerk",
-        "minjerk": "minjerk",
-        "linear": "linear",
-        "ease_in_out": "ease_in_out",
-        "cartoon": "cartoon",
-    }
+    #
+    # Keyed by the CANONICAL name (hardware.controller.normalize_method). There is
+    # no default: an unknown name is refused, never silently minjerk, and
+    # ``cartoon`` is absent because it overshoots its target past any clamp (#1496).
+    _METHOD_MAP = _SDK_METHODS
 
     @classmethod
     def _sdk_method(cls, method: str) -> str:
         """Map a MotionTarget.method name to the Reachy SDK's InterpolationTechnique value."""
-        return cls._METHOD_MAP.get(method, "minjerk")
+        return sdk_method(method)
 
     # ── PHYSICAL workspace limits (radians) ──────────────────────────────
     # These are CAPABILITY limits, not style preferences — commanding past
@@ -512,7 +625,12 @@ class ReachyMiniController(RobotController):
     _MAX_BODY_YAW_RAD = 2.792526803190927  # 160°
 
     def _clamp(self, value: float, limit: float, axis: str, clamped_axes: list[str]) -> float:
-        """Clamp to ±limit; WARN + record the axis when the command exceeded it."""
+        """Clamp to ±limit; WARN + record the axis when the command exceeded it.
+
+        A non-finite value is refused (#1496): ``abs(nan) > limit`` is False, so
+        NaN would otherwise pass straight through to the SDK.
+        """
+        value = require_finite(axis, value)
         if abs(value) > limit:
             logger.warning(
                 "goto_target: %s %.3f rad exceeds physical limit ±%.3f — clamping "
@@ -658,7 +776,9 @@ class ReachyMiniController(RobotController):
             elif "head_rel_yaw" in stash:
                 relative_yaw = stash["head_rel_yaw"]
             else:
-                relative_yaw = current["yaw"] - current["body_yaw"]
+                relative_yaw = require_finite("readback yaw", current["yaw"]) - require_finite(
+                    "readback body_yaw", current["body_yaw"]
+                )
             # Body fill-in for the world-yaw composition: last commanded
             # body when one exists. A never-commanded body reads back its
             # actual angle instead — head-only dispatches don't move the
@@ -671,7 +791,9 @@ class ReachyMiniController(RobotController):
             elif "body_yaw" in stash:
                 target_body = stash["body_yaw"]
             else:
-                target_body = current.get("body_yaw", 0.0) or 0.0
+                # A NaN readback is refused (#1496); a MISSING one keeps the
+                # historical 0.0 fill-in, which #1499 owns.
+                target_body = require_finite("readback body_yaw", current.get("body_yaw", 0.0) or 0.0)
             self._warn_commanded_vs_achieved(stash, current)
             # Clamp in the BODY-RELATIVE frame — that is where the physical
             # 65° neck constraint lives. Clamping the world-frame sum instead
@@ -708,12 +830,13 @@ class ReachyMiniController(RobotController):
                 degrees=False,
             )
 
-        self.last_clamped_axes = tuple(clamped_axes)
+        duration, sdk_method = self._last_mile(target, head_target, body_yaw_target)
+        self.last_clamped_axes = tuple(clamped_axes)  # after the last mile: a refusal leaves it as it was
         self._mini.goto_target(
             head=head_target,
             body_yaw=body_yaw_target,
-            duration=target.duration,
-            method=self._sdk_method(target.method),
+            duration=duration,
+            method=sdk_method,
         )
 
         # Stash AFTER the dispatch returns (fail-fast-before-mutation): a
@@ -732,6 +855,18 @@ class ReachyMiniController(RobotController):
             self._last_commanded["body_yaw"] = body_yaw_target
 
         return True
+
+    def _last_mile(self, target: MotionTarget, head_target: Any, body_yaw_target: float | None) -> tuple[float, str]:
+        """Re-check every value handed to the SDK, immediately before dispatch (#1496).
+
+        ``MotionTarget`` is mutable, so a post-construction write bypasses its
+        ``__post_init__``. Also refuses a non-finite present pose (defence in
+        depth: over the WS transport the client never sees one). Raises
+        ``MotionRefused``; returns the checked duration and SDK method name.
+        """
+        return check_sdk_command(
+            self._mini, duration=target.duration, head=head_target, body_yaw=body_yaw_target, method=target.method
+        )
 
     # Achieved-vs-commanded divergence threshold + throttle for the
     # observability WARNING below. 5° is well above the XVF-era measured
@@ -809,6 +944,11 @@ class ReachyMiniController(RobotController):
             # same TOCTOU (clamp risk is low here — pixel→angle is
             # FOV-bounded — but the serialization claim must be true).
             with self._motion_lock:
+                # Last mile BEFORE the stash is touched (#1496): a duration of
+                # 0 or NaN takes the SDK's instant set_target branch.
+                require_finite("u", target.u)
+                require_finite("v", target.v)
+                duration, _ = check_sdk_command(self._mini, duration=target.duration)
                 # look_at_image moves the head outside goto_target's stash —
                 # the retained head axes will no longer describe where the
                 # head was commanded. Forget BEFORE dispatching (two-lens
@@ -821,7 +961,7 @@ class ReachyMiniController(RobotController):
                 self._mini.look_at_image(
                     target.u,
                     target.v,
-                    duration=target.duration,
+                    duration=duration,
                 )
             return True
 

@@ -176,7 +176,7 @@ class ProvenanceCollector:
     def on_session_end(self) -> dict[str, Any]:
         """Flush all pending data and write session summary.
 
-        Called from MemoryHub.on_session_end() hook.
+        Called from the MemoryHub's session end (``on_session_end(ticket)``).
         Collects trace refs under lock, releases lock, then writes
         outside — avoids holding lock during file I/O.
         """

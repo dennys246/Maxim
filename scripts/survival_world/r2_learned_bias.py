@@ -281,12 +281,13 @@ def _run_arm(
     home = tempfile.mkdtemp(prefix=f"r2lb_{arm}_{seed}_")
     r: dict[str, Any] = {"arm": arm, "seed": seed, "agent_id": agent_id}
     aut = None
+    hub_ticket = None
     try:
         aut = _build_aut(agent_id, home, bridge_host, bridge_port)
         fp = _config_fingerprint(aut)
         _assert_frozen_apparatus(fp)
         r["config_fingerprint"] = fp
-        aut.bio.memory_hub.on_session_start()  # open the hub or nothing persists (D41/D42)
+        hub_ticket = aut.bio.memory_hub.on_session_start(owner=aut)  # open the hub or nothing persists (D41/D42)
         encoder = _make_encoder(aut)
         available = [t for t in aut.executor.registry.list() if t not in INTROSPECTION_TOOL_NAMES]
         eat_tool = next((t for t in available if t.endswith("_eat")), None)
@@ -398,7 +399,7 @@ def _run_arm(
     finally:
         if aut is not None:
             try:
-                aut.bio.memory_hub.on_session_end()
+                aut.bio.memory_hub.on_session_end(hub_ticket)  # ends it only while still the harness's (#1438)
             except Exception:
                 pass
             try:

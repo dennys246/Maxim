@@ -154,6 +154,7 @@ llm-openai = [
 # piper-phonemize); 1.3.0+ has a cp39-abi3 aarch64 wheel with espeak-ng bundled.
 tts = [
     "piper-tts>=1.3.0",
+    "sounddevice>=0.4.6",  # local speakers for `maxim --tts` (#1437); needs the PortAudio library on Linux
 ]
 # YOLOv8 vision backend (AGPL-3.0 — NOT included in core to keep Apache-2.0 clean)
 # Bounded to 8.x so security patches flow through; pin major to catch breaking

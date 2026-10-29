@@ -8,9 +8,16 @@ and RPE-based salience boosting.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Any, Literal
 
+from maxim.integration.session_ownership import SessionTicket
 from maxim.memory.experience_clock import ExperienceClockStalled
+from maxim.utils.cancellation import current_stop
+from maxim.utils.deadline import Deadline
+from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import log_agentic
 
 logger = logging.getLogger(__name__)
@@ -202,79 +209,138 @@ def record_plan_outcome(
         logger.debug("Failed to record plan outcome: %s", e)
 
 
-def start_bio_session(
+ABNORMAL_EXIT_CAP_S = (
+    30.0  # a session's abnormal-exit persist starts only while this (or the stop request's bound) lasts
+)
+
+
+@dataclass(eq=False)
+class BioSession:
+    """One agent loop's claim on its memory session (#1438 PR 0; docs/plans/bounded_stop.md §4).
+
+    Built by :func:`bio_session` BEFORE ``build_loop_run``, so the Default Network, prefetcher and context pool start
+    inside a claimed session. ``build_loop_run`` records the run's facts that ``__exit__`` needs: whether it is a sim
+    (the consolidation flavor is RESOLVED at exit, since ``sim`` is built in setup) and how to stop the Default
+    Network it started. In-process only.
+    """
+
+    memory_hub: Any | None
+    hippocampus: Any | None
+    ticket: SessionTicket | None  # None: no memory hub configured (the one soft skip)
+    capture: Any | None = None  # the Hippocampus CaptureWorker this session started
+    consolidation: Literal["full", "lightweight"] | None = None  # the caller's override, if any
+    is_sim_mode: bool = False  # recorded by build_loop_run
+    stop_default_network: Callable[[], None] | None = None  # recorded by build_loop_run when the DN started
+
+    @property
+    def memory_hub_enabled(self) -> bool:
+        return self.ticket is not None
+
+    def resolved_consolidation(self) -> Literal["full", "lightweight"]:
+        """The caller's override first (``minecraft_harness`` and a persistent HANDLE pass "full"), then the sim."""
+        if self.consolidation is not None:
+            return self.consolidation
+        return "lightweight" if self.is_sim_mode else "full"
+
+
+@contextmanager
+def bio_session(
     *,
     memory_hub: Any | None,
     hippocampus: Any | None,
-) -> bool:
-    """Initialize MemoryHub session and start hippocampus capture worker.
+    owner: Any,
+    consolidation: Literal["full", "lightweight"] | None = None,
+) -> Iterator[BioSession]:
+    """The ONE seam that opens and ends an agent loop's memory session (#1438 PR 0).
 
-    Returns True if memory_hub was successfully started, False otherwise.
+    ``__enter__`` claims the hub's session for ``owner`` as a LIVE loop (``SessionHeld`` / ``SessionStillEnding``
+    propagate as a typed abort of that loop) and starts this session's capture worker. ``__exit__``, on every path:
+    stops the Default Network and the capture worker first, then ends the session as owner. On a clean exit the end
+    uses the resolved flavor; on an abnormal one (any BaseException, KeyboardInterrupt included) it persists with the
+    lightweight flavor, and only while the stop request's deadline (else a 30 s cap) has time left. The claim is
+    released in a ``finally`` after those steps return. ``__exit__`` never replaces an in-flight exception: its own
+    errors are logged and chained.
     """
-    memory_hub_enabled = memory_hub is not None
-    if memory_hub_enabled:
-        try:
-            startup_stats = memory_hub.on_session_start()
-            log_agentic(
-                "memory_hub",
-                "session_start",
-                startup_stats,
-                level="INFO",
-            )
-        except Exception as e:
-            logger.warning("Failed to start MemoryHub session: %s", e)
-            memory_hub_enabled = False
+    ticket = memory_hub.on_session_start(owner=owner, live=True) if memory_hub is not None else None
+    # The claim is held from here: everything after it runs inside the try, so no raise can leak a live claim.
+    session = BioSession(memory_hub=memory_hub, hippocampus=hippocampus, ticket=ticket, consolidation=consolidation)
+    try:
+        if ticket is not None:
+            log_agentic("memory_hub", "session_start", ticket.start_stats, level="INFO")
+        if hippocampus is not None:
+            try:
+                session.capture = hippocampus.start_capture_worker()
+            except Exception:
+                log_swallowed_exception(site="bio_integration.py:bio_session:capture_worker")
+        yield session
+    except BaseException:
+        stop = current_stop()
+        bound = stop.deadline if stop is not None else Deadline.after(ABNORMAL_EXIT_CAP_S)
+        _close_session(session, consolidation="lightweight", bound=bound)
+        raise
+    else:
+        _close_session(session, consolidation=session.resolved_consolidation(), bound=None)
 
-    if hippocampus is not None:
-        try:
-            hippocampus.start_capture_worker()
-        except Exception as e:
-            logger.debug("Failed to start hippocampus capture worker: %s", e)
 
-    return memory_hub_enabled
+def _close_session(
+    session: BioSession, *, consolidation: Literal["full", "lightweight"], bound: Deadline | None
+) -> None:
+    """Stop the session's workers, then end it as owner. Never raises: an exit must not replace an in-flight error.
+
+    The Default Network and this session's capture worker stop on EVERY path; only the persist is gated on the bound.
+    A bound that expired before the persist could start abandons the generation (closed, nothing persisted), so the
+    session never stays OPEN with nobody able to end it."""
+    try:
+        if session.stop_default_network is not None:
+            try:
+                session.stop_default_network()
+            except Exception:
+                log_swallowed_exception(site="bio_integration.py:_close_session:stop_default_network")
+        if bound is not None and bound.expired():
+            if session.capture is not None:
+                session.capture.stop.set()  # no flush: the bound is spent
+            if session.memory_hub is not None and session.ticket is not None:
+                session.memory_hub.abandon_session(session.ticket)
+            logger.warning("Session end skipped: the stop bound expired before the persist could start")
+            return
+        end_bio_session(
+            memory_hub=session.memory_hub,
+            ticket=session.ticket,
+            hippocampus=session.hippocampus,
+            capture=session.capture,
+            consolidation=consolidation,
+        )
+    finally:
+        if session.memory_hub is not None and session.ticket is not None:
+            session.memory_hub.release_session_claim(session.ticket)
 
 
 def end_bio_session(
     *,
     memory_hub: Any | None,
-    memory_hub_enabled: bool,
+    ticket: SessionTicket | None,
     hippocampus: Any | None,
-    consolidation: Literal["full", "lightweight"] | None = None,
-    is_sim_mode: bool | None = None,
+    capture: Any | None = None,
+    consolidation: Literal["full", "lightweight"] = "full",
 ) -> None:
-    """Drain hippocampus capture queue and end MemoryHub session.
+    """Drain and stop this session's capture worker, save the hippocampus, and end the MemoryHub session as owner.
 
-    The consolidation flavor is an **explicit choice** (HANDLE seam, part b):
-    ``"full"`` runs the blocking sleep/replay + bridge consolidation
-    (``on_session_end``); ``"lightweight"`` persists NAc decay + embeddings +
-    subsystem state but skips the expensive replay (``on_session_end_lightweight``).
+    The consolidation flavor is an **explicit choice** (HANDLE seam, part b): ``"full"`` runs the blocking
+    sleep/replay + bridge consolidation (``on_session_end``); ``"lightweight"`` persists NAc decay + embeddings +
+    subsystem state but skips the expensive replay (``on_session_end_lightweight``). **Default is ``"full"``**: wrongly
+    lightweight loses consolidation silently; wrongly full is a slightly slow shutdown that is loud and harmless.
 
-    **Default is ``"full"``** — the count-silent-failures choice: wrongly
-    lightweight loses consolidation *silently*; wrongly full is a slightly slow
-    shutdown that is loud and harmless. Sims must opt into ``"lightweight"``.
-
-    Args:
-        memory_hub: MemoryHub instance (may be None).
-        memory_hub_enabled: Whether the session was started successfully.
-        hippocampus: Hippocampus instance (may be None).
-        consolidation: Explicit consolidation flavor. When ``None`` (unset), the
-            flavor is derived from the deprecated ``is_sim_mode`` proxy for
-            back-compat; an explicit value always wins (this is how a persistent
-            HANDLE forces ``"full"`` even when driven through the sim loop).
-        is_sim_mode: **Deprecated** back-compat fallback — only consulted when
-            ``consolidation`` is ``None``. New callers pass ``consolidation``
-            directly rather than inferring end-of-session from a proxy flag.
+    ``ticket`` is the session's (``bio_session``); ``None`` means no hub session to end. ``capture`` is the worker this
+    session started; only it is stopped, never another loop's on the same Hippocampus.
     """
-    if consolidation is None:
-        consolidation = "lightweight" if is_sim_mode else "full"
     use_lightweight = consolidation == "lightweight"
     # Drain async capture queue and save hippocampus
     if hippocampus is not None:
         try:
             hippocampus.flush(timeout=5.0)
-            hippocampus.stop_capture_worker()
+            hippocampus.stop_capture_worker(capture)
         except Exception as e:
-            logger.debug("Failed to flush hippocampus: %s", e)
+            logger.warning("Failed to flush/stop the hippocampus capture worker: %s", e)
         try:
             if hasattr(hippocampus, "config") and hippocampus.config.persistence_path:
                 hippocampus.save()
@@ -282,17 +348,16 @@ def end_bio_session(
         except FileExistsError as e:  # StoreOverwriteRefused (#939): never at DEBUG, the memories are unsaved
             logger.error("Hippocampus not saved at session end: %s", e)
         except Exception as e:
-            logger.debug("Failed to save hippocampus: %s", e)
+            logger.warning("Failed to save hippocampus: %s", e)
 
-    # End MemoryHub session — full consolidation for non-sim, lightweight for sim.
-    # Sim mode skips hippocampus.sleep() (expensive replay) but still persists
-    # NAc decay, semantic embeddings, and subsystem state so learning is not lost.
-    if memory_hub_enabled and memory_hub is not None:
+    # End the MemoryHub session as its owner. Sim mode skips hippocampus.sleep() (expensive replay) but still
+    # persists NAc decay, semantic embeddings, and subsystem state so learning is not lost.
+    if memory_hub is not None and ticket is not None:
         try:
             if use_lightweight:
-                session_stats = memory_hub.on_session_end_lightweight()
+                session_stats = memory_hub.on_session_end_lightweight(ticket)
             else:
-                session_stats = memory_hub.on_session_end()
+                session_stats = memory_hub.on_session_end(ticket)
             log_agentic(
                 "memory_hub",
                 "session_end",
@@ -302,13 +367,13 @@ def end_bio_session(
         except ExperienceClockStalled as e:
             # Named BEFORE the broad handler (memory-strength 2c-3 review round, cross-confirmed):
             # this is the one session-end failure that means the run's memory model silently did
-            # nothing, and the generic branch below logs at DEBUG, where nobody sees it. The
+            # nothing, and the generic branch below would hide it. The
             # session's own stats ride on the exception precisely so the diagnostic does not also
             # cost us the telemetry line.
             logger.error("MemoryHub session ended on a stalled experience clock: %s", e)
             log_agentic("memory_hub", "session_end", e.results or {}, level="INFO")
         except Exception as e:
-            logger.debug("Failed to end MemoryHub session: %s", e)
+            logger.warning("Failed to end MemoryHub session: %s", e)
 
 
 # ── Episode observation (P3a binding in production) ──────────────────

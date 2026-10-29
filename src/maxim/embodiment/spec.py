@@ -27,6 +27,7 @@ Example YAML::
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -369,6 +370,12 @@ def _affordance_schema(
     (``entity.modulator.affordance``) in a load error."""
     self_effect_raw = aff_spec.get("self_effect", {})
     self_effect = {k: float(v) for k, v in self_effect_raw.items()} if self_effect_raw else {}
+    if "head_yaw" in self_effect and not math.isfinite(self_effect["head_yaw"]):
+        # #1496: a NaN head_yaw commanded a 160 deg body swing in 1 s. Raised as a
+        # MotionRefused, which body wiring catches to run the robot bodiless.
+        from maxim.exceptions import MotionRefused
+
+        raise MotionRefused("non_finite", f"affordance {where}: self_effect head_yaw is not finite")
     target_effect_raw = aff_spec.get("target_effect", {})
     target_effect = {k: float(v) for k, v in target_effect_raw.items()} if target_effect_raw else {}
     # #1261: speech is DECLARED, never inferred from a modulator or param name; a declaration that names no

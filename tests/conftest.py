@@ -214,6 +214,8 @@ def _require_extras_importable(config: pytest.Config) -> None:
     ``pyproject.toml`` does not declare is a typo, and refused too."""
     import importlib
 
+    from maxim.utils.optional_deps import import_refused
+
     required = sorted({e.strip() for e in (config.getoption("--require-extras") or "").split(",") if e.strip()})
     for extra in required:
         if extra not in _optional_dependencies():
@@ -221,7 +223,9 @@ def _require_extras_importable(config: pytest.Config) -> None:
         for name in extra_import_names(extra):
             try:
                 importlib.import_module(name)
-            except ImportError as exc:
+            except Exception as exc:  # a package that refuses to load here (#1437) refuses the lane too
+                if not import_refused(exc, name):
+                    raise
                 raise pytest.UsageError(
                     f"--require-extras: the '{extra}' extra is required on this lane, but '{name}' does not import: {exc}"
                 ) from exc
@@ -300,6 +304,16 @@ _OFFLINE_ENV_KEYS = (
     "YOLO_OFFLINE",
     "MAXIM_OFFLINE",
 )
+
+
+@pytest.fixture(autouse=True)
+def _clear_stop_request():
+    """A process stop request is sticky (#1438): one test's `request_stop` must not make every later loop yield."""
+    from maxim.utils.cancellation import clear_stop_request
+
+    clear_stop_request()
+    yield
+    clear_stop_request()
 
 
 @pytest.fixture(autouse=True)
@@ -448,6 +462,25 @@ def _isolate_maxim_allow_remote_update_env():
             os.environ.pop(n, None)
             if saved[n] is not None:
                 os.environ[n] = saved[n]
+
+
+@pytest.fixture(autouse=True)
+def _isolate_maxim_tts_env():
+    """Scrub the ``MAXIM_TTS_*`` vars across every test (#1437).
+
+    ``MAXIM_TTS_ENABLED`` turns speech on for every later entry point, and with it a voice load and a
+    local-speaker probe at start; ``MAXIM_TTS_MODEL`` and ``MAXIM_TTS_LOCAL`` change which voice and which
+    speaker a later test's runtime would use.
+    """
+    names = ("MAXIM_TTS_ENABLED", "MAXIM_TTS_MODEL", "MAXIM_TTS_LOCAL")
+    saved = {name: os.environ.pop(name, None) for name in names}
+    try:
+        yield
+    finally:
+        for name, value in saved.items():
+            os.environ.pop(name, None)
+            if value is not None:
+                os.environ[name] = value
 
 
 @pytest.fixture(autouse=True)

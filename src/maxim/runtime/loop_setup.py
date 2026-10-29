@@ -16,7 +16,7 @@ rebinds (step counters, the consecutive-tool cap, the planning-liveness exhausti
 container aliases) stays a local of ``run_agentic_loop``.
 
 **Imports.** Helpers with a home outside ``agent_loop`` are imported from it directly
-(``bio_integration.start_bio_session``, ``loop_state._persist_state_json``,
+(``bio_integration.bio_session``, ``loop_state._persist_state_json``,
 ``tool_dispatch.safe_agent_name``; each is the same object ``agent_loop`` re-binds). The five helpers
 only the setup calls moved here with it, bodies verbatim (rule (a) of the roadmap's import-direction
 paragraph): ``_prepare_executor``, ``_planning_liveness_enabled_via_env``, ``_loop_bio_handles``,
@@ -48,7 +48,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from maxim.runtime import tool_dispatch as _td
-from maxim.runtime.bio_integration import start_bio_session
+from maxim.runtime.bio_integration import BioSession
 from maxim.runtime.loop_state import _persist_state_json, run_mode, tool_description_overlay
 from maxim.runtime.loop_types import ActionFollowup
 from maxim.runtime.tool_dispatch import (
@@ -83,9 +83,9 @@ class LoopRun:
     holds (``ctrl``, the context pool, the encoder) are themselves mutable, and ``ctrl`` is where the
     loop's mutable state lives.
 
-    ``dn_enabled`` duplicates ``ctrl.dn_enabled`` (a duplication that predates the move: the loop's
-    local and the controller's field were both set by the setup). Carried as-is so the move stays
-    pure; a later slice should read one source of truth.
+    The Default Network's stop and the memory-session ticket are the run's ``BioSession``'s, not fields here
+    (#1438 PR 0): ``dn_enabled`` and ``memory_hub_enabled`` left with the body's session end, and the one source of
+    truth for the DN is ``ctrl.dn_enabled``.
     """
 
     executor: Any  # the caller's executor, instrumented when an action sink is given
@@ -101,7 +101,6 @@ class LoopRun:
     is_novel_thought: Callable[..., bool]
     max_response_tokens_override: int | None
     max_cycles_override: int | None
-    dn_enabled: bool  # the Default Network started (False when absent or its start failed)
     nac: Any
     xclock: Any  # the ExperienceClockDriver
     agent_id: str
@@ -109,7 +108,6 @@ class LoopRun:
     rec_outcome: Callable[..., Any]
     sensor_encoder: Any
     situation_cue: Any
-    memory_hub_enabled: bool
     planning_liveness_on: bool
     # ``tool_dispatch.execute_and_learn`` with every per-run argument bound (#1133): callers pass only
     # ``action``, ``confidence``, ``proposal``, ``observation`` and ``human_involved``.
@@ -466,6 +464,19 @@ def _bind_book_hard_rejection(
     )
 
 
+def _start_default_network(ctrl: LoopController, session: BioSession, sim: Any) -> bool:
+    """Start the Default Network the controller holds and hand its stop to the session (#1438 PR 0), which stops it on
+    every exit path and resolves the consolidation flavor from the sim flag at exit. Returns whether it started."""
+    dn_enabled = ctrl.dn_enabled
+    if dn_enabled and not ctrl.dn_ctrl.start():
+        dn_enabled = False
+        ctrl.dn_enabled = False
+    session.is_sim_mode = bool(sim.is_sim_mode)
+    if dn_enabled:
+        session.stop_default_network = ctrl.dn_ctrl.stop
+    return dn_enabled
+
+
 def build_loop_run(
     *,
     agent: Any,
@@ -497,6 +508,7 @@ def build_loop_run(
     aut_mode: str,
     planning_liveness: bool,
     sim_adapter: Any | None,
+    session: BioSession,
 ) -> LoopRun:
     """Build and start everything ``run_agentic_loop`` needs before its first tick (module docstring).
 
@@ -580,12 +592,7 @@ def build_loop_run(
     # mid-session anyway.
     _max_response_tokens_override, _max_cycles_override = resolve_llm_loop_overrides()
 
-    # Default Network lifecycle — managed by controller
-    dn_enabled = ctrl.dn_enabled
-    if dn_enabled:
-        if not ctrl.dn_ctrl.start():
-            dn_enabled = False
-            ctrl.dn_enabled = False
+    _start_default_network(ctrl, session, sim)  # the session stops it (#1438 PR 0)
 
     # Extract NAc reference for causal learning (passed to record_outcome)
     _loop_nac, _loop_xclock = _loop_bio_handles(memory_hub, hippocampus, sim, autonomy_controller)
@@ -611,8 +618,9 @@ def build_loop_run(
     _loop_sensor_encoder = _build_loop_sensor_encoder(memory_hub, _loop_nac)
     _loop_situation_cue = _resolve_situation_cue(memory_hub)
 
-    # Initialize bio-system session (MemoryHub + hippocampus capture worker)
-    memory_hub_enabled = start_bio_session(memory_hub=memory_hub, hippocampus=hippocampus)
+    # The bio-system session (MemoryHub claim + capture worker) is the caller's: run_agentic_loop's bio_session
+    # opened it before this setup ran (#1438 PR 0). A run without a hub session skips the plan outcome.
+    memory_hub_enabled = session.memory_hub_enabled
 
     _planning_liveness_on = _planning_liveness_gate(
         planning_liveness=planning_liveness, aut_mode=aut_mode, llm_worker=llm_worker
@@ -649,7 +657,6 @@ def build_loop_run(
         is_novel_thought=is_novel_thought,
         max_response_tokens_override=_max_response_tokens_override,
         max_cycles_override=_max_cycles_override,
-        dn_enabled=dn_enabled,
         nac=_loop_nac,
         xclock=_loop_xclock,
         agent_id=_loop_agent_id,
@@ -657,7 +664,6 @@ def build_loop_run(
         rec_outcome=_rec_outcome,
         sensor_encoder=_loop_sensor_encoder,
         situation_cue=_loop_situation_cue,
-        memory_hub_enabled=memory_hub_enabled,
         planning_liveness_on=_planning_liveness_on,
         execute_and_learn=_execute_and_learn,
         book_refusal=_book_refusal,
